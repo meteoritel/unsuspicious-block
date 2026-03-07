@@ -1,0 +1,7 @@
+{
+  "item.unsuspiciousblock.suspicious_reader": "Suspicious Reader",
+  "item.unsuspiciousblock.suspicious_reader.not_suspicious": "This is not a suspicious block.",
+  "item.unsuspiciousblock.suspicious_reader.result_header": "[Suspicious Reader]",
+  "item.unsuspiciousblock.suspicious_reader.result_empty": "Block at (%d, %d, %d) contains nothing.",
+  "itemGroup.unsuspiciousblock.tab": "Unsuspicious Block"
+}

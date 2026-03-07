@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " S ",
+    " B ",
+    " F "
+  ],
+  "key": {
+    "S": { "item": "minecraft:spyglass" },
+    "B": { "item": "minecraft:brush" },
+    "F": { "item": "minecraft:feather" }
+  },
+  "result": {
+    "id": "unsuspiciousblock:suspicious_reader",
+    "count": 1
+  }
+}
