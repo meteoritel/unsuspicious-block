@@ -69,12 +69,12 @@ public class SuspiciousReaderItem extends Item {
         if (lootItem.isEmpty()) {
             PacketDistributor.sendToPlayer(serverPlayer,
                     new LootResultPacket(ItemStack.EMPTY, pos));
-            UnsuspiciousBlock.LOGGER.debug("[UnsuspiciousBlock] Suspicious block at {} contains nothing.",
+            LOGGER.debug("[UnsuspiciousBlock] Suspicious block at {} contains nothing.",
                     pos);
         } else {
             PacketDistributor.sendToPlayer(serverPlayer,
                     new LootResultPacket(lootItem, pos));
-            UnsuspiciousBlock.LOGGER.debug("[UnsuspiciousBlock] Suspicious block at {} contains: {} x{}",
+            LOGGER.debug("[UnsuspiciousBlock] Suspicious block at {} contains: {} x{}",
                     pos, lootItem.getHoverName().getString(), lootItem.getCount());
         }
 
