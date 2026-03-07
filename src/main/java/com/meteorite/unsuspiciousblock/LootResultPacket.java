@@ -35,6 +35,11 @@ public record LootResultPacket(ItemStack item, BlockPos pos) implements CustomPa
             if (mc.player == null) return;
 
             BlockPos pos = packet.pos();
+            long posKey = pos.asLong();
+
+            // 写入客户端缓存
+            ItemStack toCache = packet.item().isEmpty() ? ItemStack.EMPTY : packet.item().copy();
+            SuspiciousReaderItem.SCAN_CACHE.put(posKey, toCache);
 
             if (packet.item().isEmpty()) {
                 Component msg = Component.translatable(

@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -17,13 +16,21 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class SuspiciousReaderItem extends Item {
     private static final Logger LOGGER = LogManager.getLogger(UnsuspiciousBlock.MOD_ID);
     // 使用世界坐标作为缓存
-    public static final Map<Long, ItemStack> SCAN_CACHE = new ConcurrentHashMap<>();
+    public static final Map<Long, ItemStack> SCAN_CACHE = Collections.synchronizedMap(
+            new LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Long, ItemStack> eldest) {
+                    return size() > 512;
+                }
+            }
+    );
     public SuspiciousReaderItem(Properties properties) {
         super(properties);
     }
@@ -57,8 +64,6 @@ public class SuspiciousReaderItem extends Item {
         long posKey = pos.asLong();
         SCAN_CACHE.put(posKey, lootItem.isEmpty() ? ItemStack.EMPTY : lootItem.copy());
 
-        LOGGER.info("SCAN_CACHE put isClientSide={} thread={}",
-                level.isClientSide(), Thread.currentThread().getName());
         ServerPlayer serverPlayer = (ServerPlayer) player;
 
         if (lootItem.isEmpty()) {

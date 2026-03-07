@@ -23,12 +23,14 @@
 
 示例：[可疑解析仪] (X, Y, Z) → 物品名称 ×数量
 
-
+![scan_sus_block.png](docs/readme/scan_sus_block.png)
+![scan_empty.png](docs/readme/scan_empty.png)
 ### Jade 联动（可选）
 如果安装了 **Jade 模组**：
 
 - 当玩家手持解析仪并看向 **已解析过的可疑方块** 时
 - 战利品信息会自动显示在 **Jade 提示框** 中
+- 注意：在生存模式下，Jade 显示可疑方块详细内容需要将 `<version_file>/config/jade.json` 中的 `builtinCamouflage` 条目修改为 `false`（默认值为 `true`）
 
 ---
 
@@ -67,7 +69,7 @@ If **Jade** is installed:
 
 - Looking at a **previously scanned suspicious block**
 - The loot information will appear in the **Jade tooltip**
-
+> Note: In survival mode, displaying full block details in Jade requires setting `builtinCamouflage` to `false` in `<version_file>/config/jade.json` (default is `true`).
 ---
 
 ## 📄 License
