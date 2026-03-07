@@ -7,7 +7,7 @@ license="MIT"
 modId="unsuspiciousblock"
 version="${mod_version}"
 displayName="${mod_name}"
-authors="me_teorite/meteoritel"
+authors="meteoritel"
 description='''
 添加一个解析可疑方块内部战利品的物品
 '''
