@@ -16,6 +16,7 @@ public class UnsuspiciousBlock {
         ModItems.ITEMS.register(modEventBus);
         modEventBus.addListener(this::registerPackets);
 
+        modEventBus.addListener(ModItems::addCreativeTabEntries);
         LOGGER.info("[UnsuspiciousBlock] Mod initialized.");
     }
 

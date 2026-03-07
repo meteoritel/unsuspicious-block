@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -11,9 +13,17 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class SuspiciousReaderItem extends Item {
+    private static final Logger LOGGER = LogManager.getLogger(UnsuspiciousBlock.MOD_ID);
+    // 使用世界坐标作为缓存
+    public static final Map<Long, ItemStack> SCAN_CACHE = new ConcurrentHashMap<>();
     public SuspiciousReaderItem(Properties properties) {
         super(properties);
     }
@@ -43,24 +53,26 @@ public class SuspiciousReaderItem extends Item {
         brushable.unpackLootTable(player);
         ItemStack lootItem = brushable.getItem();
 
-        // 发送消息到玩家聊天栏
+        BlockPos pos = context.getClickedPos();
+        long posKey = pos.asLong();
+        SCAN_CACHE.put(posKey, lootItem.isEmpty() ? ItemStack.EMPTY : lootItem.copy());
+
+        LOGGER.info("SCAN_CACHE put isClientSide={} thread={}",
+                level.isClientSide(), Thread.currentThread().getName());
         ServerPlayer serverPlayer = (ServerPlayer) player;
 
         if (lootItem.isEmpty()) {
             PacketDistributor.sendToPlayer(serverPlayer,
-                    new LootResultPacket(ItemStack.EMPTY, context.getClickedPos()));
+                    new LootResultPacket(ItemStack.EMPTY, pos));
             UnsuspiciousBlock.LOGGER.debug("[UnsuspiciousBlock] Suspicious block at {} contains nothing.",
-                    context.getClickedPos());
+                    pos);
         } else {
             PacketDistributor.sendToPlayer(serverPlayer,
-                    new LootResultPacket(lootItem, context.getClickedPos()));
+                    new LootResultPacket(lootItem, pos));
             UnsuspiciousBlock.LOGGER.debug("[UnsuspiciousBlock] Suspicious block at {} contains: {} x{}",
-                    context.getClickedPos(),
-                    lootItem.getHoverName().getString(),
-                    lootItem.getCount());
+                    pos, lootItem.getHoverName().getString(), lootItem.getCount());
         }
 
-        // Swing arm to give feedback without modifying the block
         player.swing(context.getHand());
         return InteractionResult.SUCCESS;
     }

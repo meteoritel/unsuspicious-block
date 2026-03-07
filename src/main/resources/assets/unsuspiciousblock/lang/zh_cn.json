@@ -1,7 +1,13 @@
 {
   "item.unsuspiciousblock.suspicious_reader": "可疑解析仪",
+
   "item.unsuspiciousblock.suspicious_reader.not_suspicious": "这不是一个可疑方块。",
   "item.unsuspiciousblock.suspicious_reader.result_header": "[可疑解析仪]",
   "item.unsuspiciousblock.suspicious_reader.result_empty": "坐标 (%d, %d, %d) 处的可疑方块内没有任何物品。",
-  "itemGroup.unsuspiciousblock.tab": "Unsuspicious Block"
+
+  "item.unsuspiciousblock.suspicious_reader.jade_prefix": "§7解析战利品: ",
+  "item.unsuspiciousblock.suspicious_reader.jade_empty": "§7解析结果: 空",
+  "item.unsuspiciousblock.suspicious_reader.jade_contains_unknown": "§7未知的物品: %s §r×%d",
+  "config.jade.plugin_unsuspiciousblock.scanned_loot": "解析战利品"
+
 }

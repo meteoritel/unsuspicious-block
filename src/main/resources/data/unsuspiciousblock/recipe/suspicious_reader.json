@@ -1,14 +1,20 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    " S ",
-    " B ",
-    " F "
+    " SG",
+    " CS",
+    "S  "
   ],
   "key": {
-    "S": { "item": "minecraft:spyglass" },
-    "B": { "item": "minecraft:brush" },
-    "F": { "item": "minecraft:feather" }
+    "S": {
+      "item": "minecraft:stick"
+    },
+    "C": {
+      "item": "minecraft:copper_ingot"
+    },
+    "G": {
+      "tag": "minecraft:glass_panes"
+    }
   },
   "result": {
     "id": "unsuspiciousblock:suspicious_reader",

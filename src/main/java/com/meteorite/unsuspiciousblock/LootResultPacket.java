@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -44,18 +45,27 @@ public record LootResultPacket(ItemStack item, BlockPos pos) implements CustomPa
             } else {
                 ItemStack loot = packet.item();
 
-                // "[Suspicious Reader] Block at (x, y, z) contains: ✦ <item> ×<count>"
+                // 标题前缀
                 Component header = Component.translatable(
                         "item.unsuspiciousblock.suspicious_reader.result_header"
                 ).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
 
+                // 坐标
                 Component coords = Component.literal(
                         String.format("(%d, %d, %d)", pos.getX(), pos.getY(), pos.getZ())
                 ).withStyle(ChatFormatting.AQUA);
 
+                // 物品名称
                 Component itemName = loot.getHoverName().copy()
-                        .withStyle(ChatFormatting.YELLOW);
+                        .withStyle(style -> style
+                                .withColor(ChatFormatting.YELLOW)
+                                .withHoverEvent(new HoverEvent(
+                                        HoverEvent.Action.SHOW_ITEM,
+                                        new HoverEvent.ItemStackInfo(loot)
+                                ))
+                        );
 
+                // 数量
                 Component count = Component.literal(" ×" + loot.getCount())
                         .withStyle(ChatFormatting.WHITE);
 
@@ -65,7 +75,8 @@ public record LootResultPacket(ItemStack item, BlockPos pos) implements CustomPa
                         .append(coords)
                         .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
                         .append(itemName)
-                        .append(count);
+                        .append(count)
+                        .append(Component.literal(" "));
 
                 mc.player.sendSystemMessage(full);
             }
