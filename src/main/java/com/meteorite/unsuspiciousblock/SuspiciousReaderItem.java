@@ -22,12 +22,12 @@ import java.util.Map;
 
 public class SuspiciousReaderItem extends Item {
     private static final Logger LOGGER = LogManager.getLogger(UnsuspiciousBlock.MOD_ID);
-    // 使用世界坐标作为缓存
+    // 使用世界坐标作为缓存，最多缓存1024个方块，应该不会有人闲着没事扫这么多吧
     public static final Map<Long, ItemStack> SCAN_CACHE = Collections.synchronizedMap(
             new LinkedHashMap<>(256, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<Long, ItemStack> eldest) {
-                    return size() > 512;
+                    return size() > 1024;
                 }
             }
     );

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "II ",
+    "IC ",
+    "  S"
+  ],
+  "key": {
+    "S": {"item": "minecraft:stick"},
+    "C": {"item": "minecraft:copper_ingot"},
+    "I": {"item": "minecraft:iron_ingot" }
+  },
+  "result": {
+    "id": "unsuspiciousblock:luoyang_spade",
+    "count": 1
+  }
+}

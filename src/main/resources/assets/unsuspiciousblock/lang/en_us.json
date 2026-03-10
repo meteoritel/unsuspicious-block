@@ -1,12 +1,17 @@
 {
   "item.unsuspiciousblock.suspicious_reader": "Suspicious Reader",
-
-  "item.unsuspiciousblock.suspicious_reader.not_suspicious": "This is not a suspicious block.",
+  "item.unsuspiciousblock.suspicious_reader.not_suspicious": "This is not a suspicious block!",
   "item.unsuspiciousblock.suspicious_reader.result_header": "[Suspicious Reader]",
   "item.unsuspiciousblock.suspicious_reader.result_empty": "Block at (%d, %d, %d) contains nothing.",
 
   "item.unsuspiciousblock.suspicious_reader.jade_prefix": "§7Scanned loot: ",
   "item.unsuspiciousblock.suspicious_reader.jade_empty": "§7Scanned: empty",
   "item.unsuspiciousblock.suspicious_reader.jade_contains_unknown": "§7Unknown item: %s §r×%d",
-  "config.jade.plugin_unsuspiciousblock.scanned_loot": "Scanned Loot"
+  "config.jade.plugin_unsuspiciousblock.scanned_loot": "Scanned Loot",
+
+  "item.unsuspiciousblock.luoyang_spade": "Luoyang Spade",
+  "item.unsuspiciousblock.luoyang_spade.not_suspicious": "This is not a suspicious block!",
+  "item.unsuspiciousblock.luoyang_spade.not_scanned": "Scan this block with the Suspicious Reader first!",
+  "item.unsuspiciousblock.luoyang_spade.already_empty": "The suspicious block at (%d, %d, %d) is already empty.",
+  "item.unsuspiciousblock.luoyang_spade.reflection_failed": "Internal error: could not extract loot. Check mod compatibility."
 }

@@ -14,10 +14,15 @@ public class ModItems {
             ITEMS.register("suspicious_reader",
                     () -> new SuspiciousReaderItem(new Item.Properties().stacksTo(1)));
 
+    public static final DeferredItem<LuoyangSpadeItem> LUOYANG_SPADE =
+            ITEMS.register("luoyang_spade",
+                    () -> new LuoyangSpadeItem(new Item.Properties().stacksTo(1)));
+
     // 将物品注册到原版的工具与实用工具标签页
     public static void addCreativeTabEntries(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(SUSPICIOUS_READER);
+            event.accept(LUOYANG_SPADE);
         }
     }
 }

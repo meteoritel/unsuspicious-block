@@ -13,14 +13,14 @@ import org.apache.logging.log4j.Logger;
 @Mod(UnsuspiciousBlock.MOD_ID)
 public class UnsuspiciousBlock {
     public static final String MOD_ID = "unsuspiciousblock";
-    public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
+    public static final Logger LOGGER = LogManager.getLogger();
 
     public UnsuspiciousBlock(IEventBus modEventBus) {
         ModItems.ITEMS.register(modEventBus);
         modEventBus.addListener(this::registerPackets);
         modEventBus.addListener(ModItems::addCreativeTabEntries);
         NeoForge.EVENT_BUS.addListener(this::onBlockBreak);
-        LOGGER.info("[UnsuspiciousBlock] Mod initialized.");
+        LOGGER.info("UnsuspiciousBlock Mod initialized.");
     }
 
     private void registerPackets(RegisterPayloadHandlersEvent event) {
