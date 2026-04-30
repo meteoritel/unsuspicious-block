@@ -1,5 +1,6 @@
-package com.meteorite.unsuspiciousblock.client.ui.journal;
+package com.meteorite.unsuspiciousblock.client.ui;
 
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,7 +17,7 @@ public final class ArchaeologyJournalUi {
         ArchaeologyJournalUi.opener = opener;
     }
 
-    /** 打开考古笔记 UI（使用客户端缓存的同步状态） */
+    // 打开考古笔记 UI（使用客户端缓存的同步状态）
     public static void open() {
         Consumer<ArchaeologyJournalState> currentOpener = opener;
         if (currentOpener == null) return;

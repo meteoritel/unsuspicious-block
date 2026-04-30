@@ -34,6 +34,8 @@
   "screen.unsuspiciousblock.archaeology_journal.acquired": "获得: %d次",
   "screen.unsuspiciousblock.archaeology_journal.weight": "权重: %s",
   "screen.unsuspiciousblock.archaeology_journal.progress_items": "已解析 %d/%d 种物品",
+  "screen.unsuspiciousblock.archaeology_journal.mod_source": "模组来源",
+  "screen.unsuspiciousblock.archaeology_journal.parse_progress": "解析进度",
   "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid": "沙漠神殿",
   "screen.unsuspiciousblock.archaeology_journal.table.desert_well": "沙漠水井",
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold": "冷水海底废墟",

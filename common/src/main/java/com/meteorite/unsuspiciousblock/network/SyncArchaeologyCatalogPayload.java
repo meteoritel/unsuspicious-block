@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.network;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;

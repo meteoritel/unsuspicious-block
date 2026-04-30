@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.journal;
+package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -32,18 +32,18 @@ import java.util.Map;
 
 public final class ArchaeologyJournalCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
-    /** 以 "loot_table" 为前缀（Minecraft 数据包目录使用单数形式），通过 fileToId 转换为标准战利品表 ID */
+    // 以 "loot_table" 为前缀（Minecraft 数据包目录使用单数形式），通过 fileToId 转换为标准战利品表 ID
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
 
     private ArchaeologyJournalCatalog() {
     }
 
-    /** 从客户端 Minecraft 实例加载目录（委托到 load(ResourceManager)） */
+    // 从客户端 Minecraft 实例加载目录（委托到 load(ResourceManager)）
     public static Map<ResourceLocation, TableDefinition> load(Minecraft minecraft) {
         return load(minecraft.getResourceManager());
     }
 
-    /** 从任意 ResourceManager 加载目录（客户端或服务端均可使用） */
+    // 从任意 ResourceManager 加载目录（客户端或服务端均可使用）
     public static Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager) {
         Map<ResourceLocation, Resource> allResources = LOOT_TABLES.listMatchingResources(resourceManager);
         // 转换为标准战利品表 ID（去掉 "loot_table/" 前缀和 ".json" 后缀），并仅保留 archaeology 子目录

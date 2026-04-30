@@ -33,6 +33,8 @@
   "screen.unsuspiciousblock.archaeology_journal.acquired": "Acquired: %d",
   "screen.unsuspiciousblock.archaeology_journal.weight": "Weight: %s",
   "screen.unsuspiciousblock.archaeology_journal.progress_items": "Parsed %d/%d items",
+  "screen.unsuspiciousblock.archaeology_journal.mod_source": "Mod Source",
+  "screen.unsuspiciousblock.archaeology_journal.parse_progress": "Parse Progress",
   "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid": "Desert Pyramid",
   "screen.unsuspiciousblock.archaeology_journal.table.desert_well": "Desert Well",
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold": "Cold Ocean Ruin",

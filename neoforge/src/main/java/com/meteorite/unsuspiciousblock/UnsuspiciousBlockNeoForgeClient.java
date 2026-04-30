@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalUi;
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
+import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;

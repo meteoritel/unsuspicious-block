@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.item;
 
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalUi;
+import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock;
 
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.item.ArchaeologyJournalItem;
 import com.meteorite.unsuspiciousblock.item.LuoyangSpadeItem;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -69,9 +70,9 @@ public class UnsuspiciousBlockNeoForge {
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("1.0");
         registrar.playToClient(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
-                (payload, context) -> com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalClientState.receiveCatalog(payload));
+                (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
         registrar.playToClient(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
-                (payload, context) -> com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalClientState.receiveState(payload));
+                (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
     }
 
     @SubscribeEvent

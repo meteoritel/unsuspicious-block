@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalUi;
-import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
+import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
 import net.fabricmc.api.ClientModInitializer;
