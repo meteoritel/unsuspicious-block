@@ -21,10 +21,10 @@ public interface BrushableBlockEntityScanState {
 
     boolean unsuspiciousblock$isLootTableParsed();
 
-    /** 获取可疑方块内的物品（替代反射） */
+    // 获取可疑方块内的物品
     ItemStack unsuspiciousblock$getItem();
 
-    /** 设置可疑方块内的物品（替代反射） */
+    // 设置可疑方块内的物品
     void unsuspiciousblock$setItem(ItemStack stack);
 
     default boolean unsuspiciousblock$isScanner(UUID uuid) {

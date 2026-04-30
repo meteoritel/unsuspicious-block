@@ -17,13 +17,13 @@ public final class ArchaeologyJournalNetwork {
     private ArchaeologyJournalNetwork() {
     }
 
-    /** 玩家加入时调用：发送全量目录 + 玩家状态 */
+    // 玩家加入时调用：发送全量目录 + 玩家状态
     public static void syncOnJoin(ServerPlayer player) {
         syncCatalog(player);
         syncState(player);
     }
 
-    /** 发送全量目录 */
+    // 发送全量目录
     public static void syncCatalog(ServerPlayer player) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
@@ -35,7 +35,7 @@ public final class ArchaeologyJournalNetwork {
         Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(catalog));
     }
 
-    /** 发送玩家状态（解锁/计数变更后调用） */
+    // 发送玩家状态（解锁/计数变更后调用）
     public static void syncState(ServerPlayer player) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) return;
 
@@ -43,7 +43,7 @@ public final class ArchaeologyJournalNetwork {
         Services.NETWORK.sendToPlayer(player, new SyncJournalStatePayload(state.toTag()));
     }
 
-    /** 数据包重载后调用：重新加载服务端目录并广播给所有在线玩家 */
+    // 数据包重载后调用：重新加载服务端目录并广播给所有在线玩家
     public static void onDataPackReload(MinecraftServer server) {
         ArchaeologyJournalServerCatalog.invalidate();
         ArchaeologyJournalServerCatalog.ensureLoaded(server);

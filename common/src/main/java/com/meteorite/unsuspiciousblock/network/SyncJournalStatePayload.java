@@ -6,6 +6,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 
 /** 玩家考古状态同步包 —— 服务端→客户端 */
 public record SyncJournalStatePayload(CompoundTag state) implements CustomPacketPayload {
@@ -14,7 +15,7 @@ public record SyncJournalStatePayload(CompoundTag state) implements CustomPacket
             new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_journal_state"));
 
     @Override
-    public Type<SyncJournalStatePayload> type() {
+    public @NotNull Type<SyncJournalStatePayload> type() {
         return TYPE;
     }
 

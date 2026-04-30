@@ -178,19 +178,19 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.item = stack;
     }
 
-    /** 标记刷子 context 开始 */
+    // 标记刷子 context 开始
     @Inject(method = "brush", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushStart(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {
         this.unsuspiciousblock$brushContext = true;
     }
 
-    /** 标记刷子 context 结束 */
+    // 标记刷子 context 结束
     @Inject(method = "brush", at = @At("TAIL"))
     private void unsuspiciousblock$onBrushEnd(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {
         this.unsuspiciousblock$brushContext = false;
     }
 
-    /** 刷拭完成物品掉落时增加获得计数 */
+    // 刷拭完成物品掉落时增加获得计数
     @Inject(method = "dropContent", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushItemDrop(Player player, CallbackInfo ci) {
         if (this.unsuspiciousblock$lootTableName != null

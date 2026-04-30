@@ -5,11 +5,10 @@ import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalCatal
 import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalCatalog.TableDefinition;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.ComponentSerialization;
-import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,7 +23,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_archaeology_catalog"));
 
     @Override
-    public Type<SyncArchaeologyCatalogPayload> type() {
+    public @NotNull Type<SyncArchaeologyCatalogPayload> type() {
         return TYPE;
     }
 

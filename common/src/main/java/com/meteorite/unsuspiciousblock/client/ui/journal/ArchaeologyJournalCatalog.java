@@ -197,9 +197,6 @@ public final class ArchaeologyJournalCatalog {
             }
 
             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
-            if (itemId == null) {
-                continue;
-            }
 
             itemIds.add(itemId);
         }
@@ -253,7 +250,7 @@ public final class ArchaeologyJournalCatalog {
                 continue;
             }
 
-            if (builder.length() > 0) {
+            if (!builder.isEmpty()) {
                 builder.append(' ');
             }
 
