@@ -1,0 +1,71 @@
+package com.meteorite.unsuspiciousblock.network;
+
+import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.client.ui.journal.ArchaeologyJournalCatalog.TableDefinition;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** 全量目录同步包 —— 服务端→客户端 */
+public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinition> catalog)
+        implements CustomPacketPayload {
+
+    public static final Type<SyncArchaeologyCatalogPayload> TYPE =
+            new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_archaeology_catalog"));
+
+    @Override
+    public Type<SyncArchaeologyCatalogPayload> type() {
+        return TYPE;
+    }
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, SyncArchaeologyCatalogPayload> STREAM_CODEC =
+            StreamCodec.of(SyncArchaeologyCatalogPayload::encode, SyncArchaeologyCatalogPayload::decode);
+
+    private static void encode(RegistryFriendlyByteBuf buf, SyncArchaeologyCatalogPayload payload) {
+        buf.writeVarInt(payload.catalog.size());
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : payload.catalog.entrySet()) {
+            buf.writeResourceLocation(entry.getKey());
+            TableDefinition table = entry.getValue();
+            buf.writeUtf(Component.Serializer.toJson(table.displayName(), buf.registryAccess()));
+            buf.writeVarInt(table.items().size());
+            for (ItemDefinition item : table.items()) {
+                buf.writeResourceLocation(item.id());
+                buf.writeUtf(Component.Serializer.toJson(item.displayName(), buf.registryAccess()));
+                buf.writeDouble(item.weight());
+            }
+            buf.writeDouble(table.totalWeight());
+            buf.writeBoolean(table.approximate());
+        }
+    }
+
+    private static SyncArchaeologyCatalogPayload decode(RegistryFriendlyByteBuf buf) {
+        int tableCount = buf.readVarInt();
+        LinkedHashMap<ResourceLocation, TableDefinition> catalog = new LinkedHashMap<>();
+        for (int i = 0; i < tableCount; i++) {
+            ResourceLocation tableId = buf.readResourceLocation();
+            Component displayName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+            int itemCount = buf.readVarInt();
+            List<ItemDefinition> items = new ArrayList<>();
+            for (int j = 0; j < itemCount; j++) {
+                ResourceLocation itemId = buf.readResourceLocation();
+                Component itemName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+                double weight = buf.readDouble();
+                items.add(new ItemDefinition(itemId, itemName, weight));
+            }
+            double totalWeight = buf.readDouble();
+            boolean approximate = buf.readBoolean();
+            catalog.put(tableId, new TableDefinition(tableId, displayName, items, totalWeight, approximate));
+        }
+        return new SyncArchaeologyCatalogPayload(catalog);
+    }
+}

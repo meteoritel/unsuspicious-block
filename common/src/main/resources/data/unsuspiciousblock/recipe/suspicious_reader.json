@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GS ",
+    "SC ",
+    "  S"
+  ],
+  "key": {
+    "S": {"item": "minecraft:stick"},
+    "C": {"item": "minecraft:copper_ingot"},
+    "G": { "tag": "c:glass_panes" }
+  },
+  "result": {
+    "id": "unsuspiciousblock:suspicious_reader",
+    "count": 1
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "item.unsuspiciousblock.suspicious_reader": "可疑解析仪",
+  "item.unsuspiciousblock.suspicious_reader.not_suspicious": "这不是一个可疑方块。",
+  "item.unsuspiciousblock.suspicious_reader.result_header": "[可疑解析仪]",
+  "item.unsuspiciousblock.suspicious_reader.result_empty": "坐标 (%d, %d, %d) 处的可疑方块内没有任何物品。",
+
+  "item.unsuspiciousblock.suspicious_reader.jade_prefix": "§7解析战利品: ",
+  "item.unsuspiciousblock.suspicious_reader.jade_empty": "§7解析结果: 空",
+  "item.unsuspiciousblock.suspicious_reader.jade_contains_unknown": "§7未知的物品: %s §r×%d",
+
+  "config.jade.plugin_unsuspiciousblock.scanned_loot": "解析战利品",
+
+  "item.unsuspiciousblock.luoyang_spade": "洛阳铲",
+  "item.unsuspiciousblock.luoyang_spade.not_suspicious": "这不是可疑方块！",
+  "item.unsuspiciousblock.luoyang_spade.not_scanned": "请先用扫描仪扫描此方块！",
+  "item.unsuspiciousblock.luoyang_spade.already_empty": "此处 (%d, %d, %d) 的可疑方块已经空了。",
+  "item.unsuspiciousblock.luoyang_spade.reflection_failed": "内部错误：无法取出战利品，请检查 mod 兼容性。",
+
+  "item.unsuspiciousblock.archaeology_journal": "考古笔记",
+
+  "screen.unsuspiciousblock.archaeology_journal.title": "考古笔记",
+  "screen.unsuspiciousblock.archaeology_journal.catalog": "目录",
+  "screen.unsuspiciousblock.archaeology_journal.entries": "条目",
+  "screen.unsuspiciousblock.archaeology_journal.empty": "尚无记录。",
+  "screen.unsuspiciousblock.archaeology_journal.tables": "战利品表：%d",
+  "screen.unsuspiciousblock.archaeology_journal.items": "物品：%d",
+  "screen.unsuspiciousblock.archaeology_journal.summary": "已解锁战利品表：%d | 已解析：%d/%d",
+  "screen.unsuspiciousblock.archaeology_journal.progress": "已解析 %d/%d 种物品",
+  "screen.unsuspiciousblock.archaeology_journal.page": "第 %d/%d 页",
+  "screen.unsuspiciousblock.archaeology_journal.empty_catalog": "尚未解锁任何战利品表。",
+  "screen.unsuspiciousblock.archaeology_journal.empty_entries": "此表暂无记录。",
+  "screen.unsuspiciousblock.archaeology_journal.too_small": "窗口太小。",
+  "screen.unsuspiciousblock.archaeology_journal.probability": "概率 %s",
+  "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid": "沙漠神殿",
+  "screen.unsuspiciousblock.archaeology_journal.table.desert_well": "沙漠水井",
+  "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold": "冷水海底废墟",
+  "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_warm": "温水海底废墟",
+  "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_common": "古迹废墟（常见）",
+  "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare": "古迹废墟（稀有）"
+}
