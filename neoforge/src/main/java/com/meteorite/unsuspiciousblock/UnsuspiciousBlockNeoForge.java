@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.command.ClearArchaeologyDataCommand;
+import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.item.ArchaeologyJournalItem;
 import com.meteorite.unsuspiciousblock.item.LuoyangSpadeItem;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -86,6 +86,6 @@ public class UnsuspiciousBlockNeoForge {
 
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
-        ClearArchaeologyDataCommand.register(event.getDispatcher());
+        UsbCommand.register(event.getDispatcher());
     }
 }

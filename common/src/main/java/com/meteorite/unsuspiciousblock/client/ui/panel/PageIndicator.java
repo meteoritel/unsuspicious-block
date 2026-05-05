@@ -28,7 +28,15 @@ public final class PageIndicator {
                 "screen.unsuspiciousblock.archaeology_journal.page", page + 1, pageCount);
         int textWidth = font.width(pageText);
         guiGraphics.drawString(font, pageText,
-                layout.rightPageRight() - textWidth - 8,
-                layout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y, 0x6E5A42, false);
+                centerX() - textWidth / 2,
+                textY(), 0x6E5A42, false);
+    }
+
+    public int centerX() {
+        return layout.rightPageX() + layout.rightPageWidth() / 2;
+    }
+
+    public int textY() {
+        return layout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y;
     }
 }

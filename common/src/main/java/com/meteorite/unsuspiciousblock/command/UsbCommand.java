@@ -1,0 +1,162 @@
+package com.meteorite.unsuspiciousblock.command;
+
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+
+/** USB 调试指令入口 */
+public final class UsbCommand {
+    private static final String TABLE_ID_ARG = "table_id";
+    private static final DynamicCommandExceptionType UNKNOWN_TABLE = new DynamicCommandExceptionType(
+            tableId -> Component.translatable("command.unsuspiciousblock.usb.error.unknown_table", tableId)
+    );
+
+    private UsbCommand() {}
+
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("usb")
+                .requires(source -> source.hasPermission(2))
+                .then(buildClearSubcommand())
+                .then(buildUnlockTableSubcommand())
+                .then(buildUnlockItemSubcommand()));
+    }
+
+    // 清空玩家考古数据
+    private static LiteralArgumentBuilder<CommandSourceStack> buildClearSubcommand() {
+        return Commands.literal("clear")
+                .executes(context -> mutateCurrentPlayer(context,
+                        ArchaeologyJournalState::clear,
+                        Component.translatable("command.unsuspiciousblock.usb.clear.success")));
+    }
+
+    // 解锁战利品表；无参数时解锁全部，有参数时解锁指定表
+    private static LiteralArgumentBuilder<CommandSourceStack> buildUnlockTableSubcommand() {
+        return Commands.literal("unlock_table")
+                .executes(context -> {
+                    ServerPlayer player = requirePlayer(context);
+                    Map<ResourceLocation, TableDefinition> catalog = getCatalog(context.getSource());
+                    return mutateAndSync(context.getSource(), player, state -> {
+                        for (ResourceLocation tableId : catalog.keySet()) {
+                            state.unlockTable(tableId);
+                        }
+                    }, Component.translatable("command.unsuspiciousblock.usb.unlock_tables.success", catalog.size()));
+                })
+                .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
+                        .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
+                        .executes(context -> {
+                            ServerPlayer player = requirePlayer(context);
+                            ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
+                            requireTable(context.getSource(), tableId);
+                            return mutateAndSync(context.getSource(), player,
+                                    state -> state.unlockTable(tableId),
+                                    Component.translatable("command.unsuspiciousblock.usb.unlock_table.success", tableId.toString()));
+                        }));
+    }
+
+    // 解锁物品条目；无参数时解锁全部，有参数时解锁指定表中的全部条目
+    private static LiteralArgumentBuilder<CommandSourceStack> buildUnlockItemSubcommand() {
+        return Commands.literal("unlock_item")
+                .executes(context -> {
+                    ServerPlayer player = requirePlayer(context);
+                    Map<ResourceLocation, TableDefinition> catalog = getCatalog(context.getSource());
+                    int itemCount = countTotalItems(catalog);
+                    return mutateAndSync(context.getSource(), player, state -> {
+                        for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
+                            ResourceLocation tableId = entry.getKey();
+                            TableDefinition table = entry.getValue();
+                            state.unlockTable(tableId);
+                            for (ItemDefinition item : table.items()) {
+                                state.unlockItem(tableId, item.id());
+                            }
+                        }
+                    }, Component.translatable("command.unsuspiciousblock.usb.unlock_items.success", itemCount, catalog.size()));
+                })
+                .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
+                        .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
+                        .executes(context -> {
+                            ServerPlayer player = requirePlayer(context);
+                            ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
+                            TableDefinition table = requireTable(context.getSource(), tableId);
+                            return mutateAndSync(context.getSource(), player, state -> {
+                                state.unlockTable(tableId);
+                                for (ItemDefinition item : table.items()) {
+                                    state.unlockItem(tableId, item.id());
+                                }
+                            }, Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
+                        }));
+    }
+
+    private static ServerPlayer requirePlayer(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return context.getSource().getPlayerOrException();
+    }
+
+    private static int mutateCurrentPlayer(CommandContext<CommandSourceStack> context,
+                                           Consumer<ArchaeologyJournalState> mutator,
+                                           Component successMessage) throws CommandSyntaxException {
+        ServerPlayer player = requirePlayer(context);
+        return mutateAndSync(context.getSource(), player, mutator, successMessage);
+    }
+
+    private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,
+                                     Consumer<ArchaeologyJournalState> mutator,
+                                     Component successMessage) {
+        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
+            source.sendFailure(Component.translatable("command.unsuspiciousblock.usb.error.state_unavailable"));
+            return 0;
+        }
+
+        ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
+        mutator.accept(state);
+        ArchaeologyJournalNetwork.syncState(player);
+        source.sendSuccess(() -> successMessage, false);
+        return 1;
+    }
+
+    private static Map<ResourceLocation, TableDefinition> getCatalog(CommandSourceStack source) {
+        ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
+        return ArchaeologyJournalServerCatalog.getCatalog();
+    }
+
+    private static TableDefinition requireTable(CommandSourceStack source, ResourceLocation tableId) throws CommandSyntaxException {
+        TableDefinition table = getCatalog(source).get(tableId);
+        if (table == null) {
+            throw UNKNOWN_TABLE.create(tableId.toString());
+        }
+        return table;
+    }
+
+    private static CompletableFuture<Suggestions> suggestTableIds(CommandSourceStack source, SuggestionsBuilder builder) {
+        for (ResourceLocation tableId : getCatalog(source).keySet()) {
+            builder.suggest(tableId.toString());
+        }
+        return builder.buildFuture();
+    }
+
+    private static int countTotalItems(Map<ResourceLocation, TableDefinition> catalog) {
+        int count = 0;
+        for (TableDefinition table : catalog.values()) {
+            count += table.items().size();
+        }
+        return count;
+    }
+}

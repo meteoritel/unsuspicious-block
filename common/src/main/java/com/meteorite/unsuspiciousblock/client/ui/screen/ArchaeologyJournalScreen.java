@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -161,16 +162,19 @@ public class ArchaeologyJournalScreen extends Screen {
         this.addRenderableWidget(rightPage.getIntroTabButton());
         this.addRenderableWidget(rightPage.getArchaeologyTabButton());
 
-        int buttonSize = JournalLayout.PAGE_BUTTON_SIZE;
-        int bottomY = this.bookLayout.leftPageBottom() - buttonSize - JournalLayout.PAGE_BUTTON_BOTTOM_PAD;
+        int indicatorCenterX = this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() / 2;
+        int bottomY = this.bookLayout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y
+                + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
+        int buttonWidth = JournalLayout.PAGE_BUTTON_WIDTH;
+        int buttonGap = JournalLayout.PAGE_BUTTON_CENTER_GAP;
 
-        // 右页（物品）翻页按钮
+        // 右页（考古页）翻页按钮
         this.itemPrevButton = this.addRenderableWidget(
-                Button.builder(Component.literal("◀"), btn -> { rightPage.changePage(-1); syncButtonState(); })
-                        .bounds(this.bookLayout.rightPageX() + 8, bottomY, buttonSize, buttonSize).build());
+                createPageButton(indicatorCenterX - buttonGap - buttonWidth, bottomY, false,
+                        btn -> { rightPage.changePage(-1); syncButtonState(); }));
         this.itemNextButton = this.addRenderableWidget(
-                Button.builder(Component.literal("▶"), btn -> { rightPage.changePage(1); syncButtonState(); })
-                        .bounds(this.bookLayout.rightPageX() + 8 + buttonSize + 4, bottomY, buttonSize, buttonSize).build());
+                createPageButton(indicatorCenterX + buttonGap, bottomY, true,
+                        btn -> { rightPage.changePage(1); syncButtonState(); }));
 
         // 左侧目录面板（resize 时也需要重建）
         this.catalogPanel = new CatalogPanel(this.bookLayout);
@@ -251,13 +255,13 @@ public class ArchaeologyJournalScreen extends Screen {
     private void updateItemGridPanel() {
         TableView selected = selectedTable();
         if (selected == null) {
-            this.rightPage.setTable(null, Component.empty(), List.of(), 0.0, 0, 0, false);
+            this.rightPage.setTable(null, List.of(), 0.0, 0, 0, false);
         } else {
             List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
             for (ItemView iv : selected.items()) {
                 gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.weight(), iv.unlocked(), iv.count()));
             }
-            this.rightPage.setTable(selected.id(), selected.displayName(), gridItems,
+            this.rightPage.setTable(selected.id(), gridItems,
                     selected.totalWeight(), selected.parsedCount(), selected.totalCount(), selected.approximate());
         }
     }
@@ -298,21 +302,50 @@ public class ArchaeologyJournalScreen extends Screen {
         syncButtonState();
     }
 
+    private PageButton createPageButton(int x, int y, boolean isForward, Button.OnPress onPress) {
+        return new JournalPageButton(x, y, isForward, onPress);
+    }
+
     private void syncButtonState() {
-        boolean isIntro = this.rightPage.isIntroActive();
+        boolean isArchaeology = this.rightPage.isArchaeologyActive();
         if (this.itemPrevButton != null) {
-            this.itemPrevButton.visible = isIntro;
-            this.itemPrevButton.active = isIntro && this.rightPage.pageCount() > 1 && this.rightPage.getPage() > 0;
+            this.itemPrevButton.visible = isArchaeology && this.rightPage.pageCount() > 1;
+            this.itemPrevButton.active = isArchaeology && this.rightPage.pageCount() > 1 && this.rightPage.getPage() > 0;
         }
         if (this.itemNextButton != null) {
-            this.itemNextButton.visible = isIntro;
-            this.itemNextButton.active = isIntro && this.rightPage.pageCount() > 1 && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
+            this.itemNextButton.visible = isArchaeology && this.rightPage.pageCount() > 1;
+            this.itemNextButton.active = isArchaeology && this.rightPage.pageCount() > 1 && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
         }
     }
 
     private TableView selectedTable() {
         if (this.selectedIndex < 0 || this.selectedIndex >= this.tableViews.size()) return null;
         return this.tableViews.get(this.selectedIndex);
+    }
+
+    private static final class JournalPageButton extends PageButton {
+        private static final ResourceLocation PAGE_FORWARD_HIGHLIGHTED_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_forward_highlighted");
+        private static final ResourceLocation PAGE_FORWARD_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_forward");
+        private static final ResourceLocation PAGE_BACKWARD_HIGHLIGHTED_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_backward_highlighted");
+        private static final ResourceLocation PAGE_BACKWARD_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_backward");
+
+        private final boolean isForward;
+
+        private JournalPageButton(int x, int y, boolean isForward, Button.OnPress onPress) {
+            super(x, y, isForward, onPress, true);
+            this.isForward = isForward;
+        }
+
+        @Override
+        public void renderWidget(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            ResourceLocation sprite;
+            if (this.isForward) {
+                sprite = this.active && this.isHovered() ? PAGE_FORWARD_HIGHLIGHTED_SPRITE : PAGE_FORWARD_SPRITE;
+            } else {
+                sprite = this.active && this.isHovered() ? PAGE_BACKWARD_HIGHLIGHTED_SPRITE : PAGE_BACKWARD_SPRITE;
+            }
+            guiGraphics.blitSprite(sprite, this.getX(), this.getY(), JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT);
+        }
     }
 
     private record TableView(ResourceLocation id, Component displayName, List<ItemView> items,

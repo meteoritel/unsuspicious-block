@@ -47,5 +47,11 @@
   "screen.unsuspiciousblock.archaeology_journal.discovered_items": "Discovered Items",
   "screen.unsuspiciousblock.archaeology_journal.no_discoveries": "No discoveries yet.",
 
-  "command.unsuspiciousblock.clear_data.success": "Your archaeology journal data has been cleared."
+  "command.unsuspiciousblock.usb.clear.success": "Your archaeology journal data has been cleared.",
+  "command.unsuspiciousblock.usb.unlock_tables.success": "Unlocked %d archaeology loot tables.",
+  "command.unsuspiciousblock.usb.unlock_table.success": "Unlocked archaeology loot table %s.",
+  "command.unsuspiciousblock.usb.unlock_items.success": "Unlocked %d archaeology items across %d loot tables.",
+  "command.unsuspiciousblock.usb.unlock_items_in.success": "Unlocked %2$d archaeology items in loot table %1$s.",
+  "command.unsuspiciousblock.usb.error.unknown_table": "Unknown archaeology loot table: %s",
+  "command.unsuspiciousblock.usb.error.state_unavailable": "Could not access this player's archaeology journal data."
 }

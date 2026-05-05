@@ -62,13 +62,11 @@ public final class DetailOverlayPanel {
         guiGraphics.drawString(font, progressLabel, leftX, y, LABEL_COLOR, false);
         y += 14;
 
-        // 进度条
-        int barWidth = contentWidth;
-        guiGraphics.fill(leftX, y, leftX + barWidth, y + BAR_HEIGHT, BAR_BG_COLOR);
+        guiGraphics.fill(leftX, y, leftX + contentWidth, y + BAR_HEIGHT, BAR_BG_COLOR);
 
         if (totalCount > 0) {
             double ratio = (double) parsedCount / totalCount;
-            int filledWidth = (int) (barWidth * ratio);
+            int filledWidth = (int) (contentWidth * ratio);
             if (filledWidth > 0) {
                 int progressColor = ratio >= 1.0 ? 0xFF6BA050 : BAR_FG_COLOR;
                 guiGraphics.fill(leftX + 1, y + 1, leftX + filledWidth - 1, y + BAR_HEIGHT - 1, progressColor);
@@ -78,7 +76,7 @@ public final class DetailOverlayPanel {
             String percentText = percent + "%  (" + parsedCount + "/" + totalCount + ")";
             int textWidth = font.width(percentText);
             guiGraphics.drawString(font, percentText,
-                    leftX + (barWidth - textWidth) / 2, y + 2, 0xFFFFFFFF, false);
+                    leftX + (contentWidth - textWidth) / 2, y + 2, 0xFFFFFFFF, false);
         }
         y += BAR_HEIGHT + 10;
 

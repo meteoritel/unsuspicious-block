@@ -48,5 +48,11 @@
   "screen.unsuspiciousblock.archaeology_journal.discovered_items": "已发现物品",
   "screen.unsuspiciousblock.archaeology_journal.no_discoveries": "尚未发现任何物品。",
 
-  "command.unsuspiciousblock.clear_data.success": "你的考古笔记数据已清除。"
+  "command.unsuspiciousblock.usb.clear.success": "你的考古笔记数据已清除。",
+  "command.unsuspiciousblock.usb.unlock_tables.success": "已为当前玩家解锁 %d 个考古战利品表。",
+  "command.unsuspiciousblock.usb.unlock_table.success": "已为当前玩家解锁考古战利品表 %s。",
+  "command.unsuspiciousblock.usb.unlock_items.success": "已为当前玩家解锁 %2$d 个战利品表中的 %1$d 个考古物品条目。",
+  "command.unsuspiciousblock.usb.unlock_items_in.success": "已为当前玩家解锁战利品表 %1$s 中的 %2$d 个考古物品条目。",
+  "command.unsuspiciousblock.usb.error.unknown_table": "未知的考古战利品表：%s",
+  "command.unsuspiciousblock.usb.error.state_unavailable": "无法访问当前玩家的考古笔记数据。"
 }

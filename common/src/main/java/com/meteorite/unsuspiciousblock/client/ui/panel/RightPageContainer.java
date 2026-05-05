@@ -7,45 +7,46 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+
 import java.util.List;
 
 /** 右侧页面容器 —— 通过双书签Tab切换介绍信息/考古信息 */
 public final class RightPageContainer {
+
+    private static final int TAB_WIDTH = 40;
+    private static final int TAB_HEIGHT = 16;
+    private static final int TAB_GAP = 2;
 
     public enum Tab { INTRO, ARCHAEOLOGY }
 
     private final JournalBookBackground.BookLayout layout;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
-    private final DetailOverlayPanel archaeologyPanel;
+    private final DetailOverlayPanel detailPanel;
     private final BookmarkToggleButton introTabBtn;
     private final BookmarkToggleButton archaeologyTabBtn;
 
-    private Component title = Component.empty();
     private int parsedCount;
     private int totalCount;
     private Tab activeTab = Tab.INTRO;
-    private List<ItemGridPanel.GridItem> items = List.of();
-    private String modSource = "";
 
     public RightPageContainer(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
-        this.archaeologyPanel = new DetailOverlayPanel(layout);
+        this.detailPanel = new DetailOverlayPanel(layout);
 
         int btnY = layout.rightPageY() + 2;
-        int btnHeight = 16;
-        int btnWidth = 40;
-        int archBtnX = layout.rightPageRight() - btnWidth - 2;
-        int introBtnX = archBtnX - btnWidth;
+        int groupWidth = TAB_WIDTH * 2 + TAB_GAP;
+        int introBtnX = layout.rightPageX() + (layout.rightPageWidth() - groupWidth) / 2;
+        int archBtnX = introBtnX + TAB_WIDTH + TAB_GAP;
 
-        this.introTabBtn = new BookmarkToggleButton(introBtnX, btnY, btnWidth, btnHeight,
+        this.introTabBtn = new BookmarkToggleButton(introBtnX, btnY, TAB_WIDTH, TAB_HEIGHT,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_intro"),
                 () -> switchTab(Tab.INTRO));
         this.introTabBtn.setToggled(true);
 
-        this.archaeologyTabBtn = new BookmarkToggleButton(archBtnX, btnY, btnWidth, btnHeight,
+        this.archaeologyTabBtn = new BookmarkToggleButton(archBtnX, btnY, TAB_WIDTH, TAB_HEIGHT,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_archaeology"),
                 () -> switchTab(Tab.ARCHAEOLOGY));
     }
@@ -57,26 +58,17 @@ public final class RightPageContainer {
         this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
     }
 
-    public void setTable(ResourceLocation tableId, Component tableName, List<ItemGridPanel.GridItem> items,
+    public void setTable(ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
                          double totalWeight, int parsedCount, int totalCount, boolean approximate) {
-        this.title = tableName;
         this.parsedCount = parsedCount;
         this.totalCount = totalCount;
-        this.items = items;
         this.activeTab = Tab.INTRO;
         this.introTabBtn.setToggled(true);
         this.archaeologyTabBtn.setToggled(false);
         this.gridPanel.setTable(items, totalWeight, approximate);
         this.gridPanel.resetPage();
         this.pageIndicator.setPage(gridPanel.getPage(), gridPanel.pageCount());
-
-        if (tableId != null) {
-            String ns = tableId.getNamespace();
-            this.modSource = "minecraft".equals(ns) ? "原版 (Minecraft)" : ns;
-        } else {
-            this.modSource = "???";
-        }
-        this.archaeologyPanel.setData(tableId, parsedCount, totalCount, items);
+        this.detailPanel.setData(tableId, parsedCount, totalCount, items);
     }
 
     public BookmarkToggleButton getIntroTabButton() {
@@ -90,12 +82,6 @@ public final class RightPageContainer {
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         int leftX = layout.rightPageX() + 8;
 
-        // 表名标题（为两个Tab按钮留出空间）
-        int titleMaxWidth = layout.rightPageWidth() - 90;
-        String clippedTitle = font.plainSubstrByWidth(title.getString(), titleMaxWidth);
-        guiGraphics.drawString(font, clippedTitle, leftX,
-                layout.rightPageY() + JournalLayout.GRID_TITLE_Y, 0x4A3320, false);
-
         // 进度文字
         Component progress = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.progress_items", parsedCount, totalCount);
@@ -106,8 +92,8 @@ public final class RightPageContainer {
         introTabBtn.render(guiGraphics, mouseX, mouseY, 0f);
         archaeologyTabBtn.render(guiGraphics, mouseX, mouseY, 0f);
 
-        if (activeTab == Tab.ARCHAEOLOGY) {
-            archaeologyPanel.render(guiGraphics, font, mouseX, mouseY);
+        if (activeTab == Tab.INTRO) {
+            detailPanel.render(guiGraphics, font, mouseX, mouseY);
         } else {
             gridPanel.render(guiGraphics, font, mouseX, mouseY);
             pageIndicator.render(guiGraphics, font);
@@ -133,14 +119,14 @@ public final class RightPageContainer {
     }
 
     public void handleScroll(double scrollY) {
-        if (activeTab == Tab.INTRO && gridPanel.pageCount() > 1) {
+        if (activeTab == Tab.ARCHAEOLOGY && gridPanel.pageCount() > 1) {
             gridPanel.changePage(scrollY < 0.0 ? 1 : -1);
             pageIndicator.setPage(gridPanel.getPage(), gridPanel.pageCount());
         }
     }
 
     public int pageCount() {
-        return activeTab == Tab.ARCHAEOLOGY ? 1 : gridPanel.pageCount();
+        return activeTab == Tab.ARCHAEOLOGY ? gridPanel.pageCount() : 1;
     }
 
     public int getPage() {
@@ -148,7 +134,7 @@ public final class RightPageContainer {
     }
 
     public void changePage(int delta) {
-        if (activeTab == Tab.INTRO) {
+        if (activeTab == Tab.ARCHAEOLOGY) {
             gridPanel.changePage(delta);
             pageIndicator.setPage(gridPanel.getPage(), gridPanel.pageCount());
         }
@@ -180,5 +166,9 @@ public final class RightPageContainer {
 
     public boolean isIntroActive() {
         return activeTab == Tab.INTRO;
+    }
+
+    public boolean isArchaeologyActive() {
+        return activeTab == Tab.ARCHAEOLOGY;
     }
 }

@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.command.ClearArchaeologyDataCommand;
+import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
@@ -53,9 +53,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));
 
-        // 注册清除考古数据指令
+        // 注册 USB 调试指令
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-                ClearArchaeologyDataCommand.register(dispatcher));
+                UsbCommand.register(dispatcher));
 
         Constants.LOG.info("UnsuspiciousBlock Fabric initialized.");
     }

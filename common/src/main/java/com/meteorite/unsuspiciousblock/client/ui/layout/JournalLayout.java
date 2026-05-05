@@ -28,16 +28,17 @@ public final class JournalLayout {
     public static final int GRID_ROWS_PER_PAGE = 3;
     public static final int GRID_ITEMS_PER_PAGE = GRID_CELLS_PER_ROW * GRID_ROWS_PER_PAGE;
     public static final int GRID_CELL_WIDTH = 50;
-    public static final int GRID_CELL_HEIGHT = 64;
+    public static final int GRID_CELL_HEIGHT = 56;
     public static final int GRID_TOP = 32;
     public static final int GRID_TITLE_Y = 6;
     public static final int GRID_PROGRESS_Y = 18;
-    public static final int GRID_PAGE_INDICATOR_Y = 216;
+    public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
     // —— 翻页按钮 ——
-    public static final int PAGE_BUTTON_SIZE = 18;
-    public static final int PAGE_BUTTON_BOTTOM_PAD = 4;
+    public static final int PAGE_BUTTON_WIDTH = 23;
+    public static final int PAGE_BUTTON_HEIGHT = 13;
+    public static final int PAGE_BUTTON_CENTER_GAP = 32;
 
     private JournalLayout() {}
 }
