@@ -24,13 +24,12 @@ public final class JournalLayout {
     public static final int CATALOG_SCROLLBAR_MIN_HANDLE = 16;
 
     // —— 右侧网格 ——
-    public static final int GRID_CELLS_PER_ROW = 3;
+    public static final int GRID_CELLS_PER_ROW = 2;
     public static final int GRID_ROWS_PER_PAGE = 3;
     public static final int GRID_ITEMS_PER_PAGE = GRID_CELLS_PER_ROW * GRID_ROWS_PER_PAGE;
-    public static final int GRID_CELL_WIDTH = 50;
+    public static final int GRID_CELL_WIDTH = 74;
     public static final int GRID_CELL_HEIGHT = 56;
     public static final int GRID_TOP = 32;
-    public static final int GRID_TITLE_Y = 6;
     public static final int GRID_PROGRESS_Y = 18;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;

@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.jade;
+package com.meteorite.unsuspiciousblock.plugin.jade;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;

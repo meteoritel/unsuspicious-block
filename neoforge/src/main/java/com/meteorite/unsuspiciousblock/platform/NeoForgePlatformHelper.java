@@ -18,6 +18,14 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public String getModDisplayName(String modId) {
+        return ModList.get().getModContainerById(modId)
+                .map(container -> container.getModInfo().getDisplayName())
+                .filter(name -> !name.isBlank())
+                .orElse(IPlatformHelper.super.getModDisplayName(modId));
+    }
+
+    @Override
     public boolean isDevelopmentEnvironment() {
         return !FMLLoader.isProduction();
     }

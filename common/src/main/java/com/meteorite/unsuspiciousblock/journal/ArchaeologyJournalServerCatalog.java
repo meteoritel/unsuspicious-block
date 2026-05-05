@@ -20,7 +20,7 @@ public final class ArchaeologyJournalServerCatalog {
     private ArchaeologyJournalServerCatalog() {
     }
 
-    /** 确保目录已加载（幂等） */
+    // 确保目录已加载
     public static void ensureLoaded(MinecraftServer server) {
         if (loaded) return;
 

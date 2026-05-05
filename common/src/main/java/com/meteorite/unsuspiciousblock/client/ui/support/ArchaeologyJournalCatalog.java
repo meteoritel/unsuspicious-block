@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.FileToIdConverter;
@@ -27,12 +28,11 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public final class ArchaeologyJournalCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
-    // 以 "loot_table" 为前缀（Minecraft 数据包目录使用单数形式），通过 fileToId 转换为标准战利品表 ID
+    // 以 "loot_table" 为前缀，通过 fileToId 转换为标准战利品表 ID
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
 
     private ArchaeologyJournalCatalog() {
@@ -218,49 +218,7 @@ public final class ArchaeologyJournalCatalog {
     }
 
     private static Component resolveTableName(ResourceLocation tableId) {
-        String key = tableNameKey(tableId);
-        if (key != null) {
-            return Component.translatable(key);
-        }
-
-        return Component.literal(humanize(tableId.getPath()));
-    }
-
-    private static String tableNameKey(ResourceLocation tableId) {
-        return switch (tableId.toString()) {
-            case "minecraft:archaeology/desert_pyramid" -> "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid";
-            case "minecraft:archaeology/desert_well" -> "screen.unsuspiciousblock.archaeology_journal.table.desert_well";
-            case "minecraft:archaeology/ocean_ruin_cold" -> "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold";
-            case "minecraft:archaeology/ocean_ruin_warm" -> "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_warm";
-            case "minecraft:archaeology/trail_ruins_common" -> "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_common";
-            case "minecraft:archaeology/trail_ruins_rare" -> "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare";
-            default -> null;
-        };
-    }
-
-    private static String humanize(String path) {
-        String normalized = path.replace('/', ' ').replace('_', ' ').trim();
-        if (normalized.isEmpty()) {
-            return path;
-        }
-
-        StringBuilder builder = new StringBuilder();
-        for (String part : normalized.split("\\s+")) {
-            if (part.isEmpty()) {
-                continue;
-            }
-
-            if (!builder.isEmpty()) {
-                builder.append(' ');
-            }
-
-            if (part.length() == 1) {
-                builder.append(part.toUpperCase(Locale.ROOT));
-            } else {
-                builder.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1).toLowerCase(Locale.ROOT));
-            }
-        }
-        return builder.toString();
+        return ArchaeologyLootTableNames.resolveDisplayName(tableId);
     }
 
     private static String normalizeType(String type) {

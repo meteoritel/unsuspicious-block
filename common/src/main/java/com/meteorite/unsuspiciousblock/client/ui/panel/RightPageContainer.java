@@ -7,6 +7,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -56,6 +58,7 @@ public final class RightPageContainer {
         this.activeTab = tab;
         this.introTabBtn.setToggled(tab == Tab.INTRO);
         this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
+        syncPageIndicator();
     }
 
     public void setTable(ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
@@ -67,8 +70,8 @@ public final class RightPageContainer {
         this.archaeologyTabBtn.setToggled(false);
         this.gridPanel.setTable(items, totalWeight, approximate);
         this.gridPanel.resetPage();
-        this.pageIndicator.setPage(gridPanel.getPage(), gridPanel.pageCount());
         this.detailPanel.setData(tableId, parsedCount, totalCount, items);
+        syncPageIndicator();
     }
 
     public BookmarkToggleButton getIntroTabButton() {
@@ -94,6 +97,9 @@ public final class RightPageContainer {
 
         if (activeTab == Tab.INTRO) {
             detailPanel.render(guiGraphics, font, mouseX, mouseY);
+            if (detailPanel.pageCount() > 1) {
+                pageIndicator.render(guiGraphics, font);
+            }
         } else {
             gridPanel.render(guiGraphics, font, mouseX, mouseY);
             pageIndicator.render(guiGraphics, font);
@@ -119,30 +125,32 @@ public final class RightPageContainer {
     }
 
     public void handleScroll(double scrollY) {
-        if (activeTab == Tab.ARCHAEOLOGY && gridPanel.pageCount() > 1) {
-            gridPanel.changePage(scrollY < 0.0 ? 1 : -1);
-            pageIndicator.setPage(gridPanel.getPage(), gridPanel.pageCount());
+        if (pageCount() > 1) {
+            changePage(scrollY < 0.0 ? 1 : -1);
         }
     }
 
     public int pageCount() {
-        return activeTab == Tab.ARCHAEOLOGY ? gridPanel.pageCount() : 1;
+        return activeTab == Tab.ARCHAEOLOGY ? gridPanel.pageCount() : detailPanel.pageCount();
     }
 
     public int getPage() {
-        return gridPanel.getPage();
+        return activeTab == Tab.ARCHAEOLOGY ? gridPanel.getPage() : detailPanel.getPage();
     }
 
     public void changePage(int delta) {
         if (activeTab == Tab.ARCHAEOLOGY) {
             gridPanel.changePage(delta);
-            pageIndicator.setPage(gridPanel.getPage(), gridPanel.pageCount());
+        } else {
+            detailPanel.changePage(delta);
         }
+        syncPageIndicator();
     }
 
     public void resetPage() {
         gridPanel.resetPage();
-        pageIndicator.setPage(0, gridPanel.pageCount());
+        detailPanel.resetPage();
+        syncPageIndicator();
     }
 
     /** 切换到指定Tab（不触发按钮回调） */
@@ -151,6 +159,7 @@ public final class RightPageContainer {
         this.activeTab = tab;
         this.introTabBtn.setToggled(tab == Tab.INTRO);
         this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
+        syncPageIndicator();
     }
 
     /** 获取当前激活的Tab */
@@ -158,10 +167,14 @@ public final class RightPageContainer {
         return activeTab;
     }
 
-    /** 设置物品网格页码（resize 后恢复页码用） */
-    public void setGridPage(int page) {
-        this.gridPanel.setPage(page);
-        this.pageIndicator.setPage(page, gridPanel.pageCount());
+    /** 设置当前标签页页码（resize 后恢复页码用） */
+    public void setPage(int page) {
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
+            this.gridPanel.setPage(page);
+        } else {
+            this.detailPanel.setPage(page);
+        }
+        syncPageIndicator();
     }
 
     public boolean isIntroActive() {
@@ -170,5 +183,21 @@ public final class RightPageContainer {
 
     public boolean isArchaeologyActive() {
         return activeTab == Tab.ARCHAEOLOGY;
+    }
+
+    private void syncPageIndicator() {
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
+            this.pageIndicator.setPage(this.gridPanel.getPage(), this.gridPanel.pageCount());
+        } else {
+            this.pageIndicator.setPage(this.detailPanel.getPage(), this.detailPanel.pageCount());
+        }
+    }
+
+    @Nullable
+    public ItemStack getTooltipStack(double mouseX, double mouseY) {
+        if (this.activeTab != Tab.ARCHAEOLOGY) {
+            return null;
+        }
+        return this.gridPanel.getTooltipStack(mouseX, mouseY);
     }
 }

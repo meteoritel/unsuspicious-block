@@ -13,9 +13,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -73,7 +75,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
         // 恢复 Tab 和页码状态
         this.rightPage.setActiveTab(savedTab);
-        this.rightPage.setGridPage(savedPage);
+        this.rightPage.setPage(savedPage);
 
         this.rebuildWidgets();
     }
@@ -85,9 +87,6 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.refreshClientDataIfNeeded();
-
-        // 屏幕暗色背景
-        // guiGraphics.fill(0, 0, this.width, this.height, 0xFF2A221A);
 
         // 书页背景纹理
         JournalBookBackground.render(guiGraphics, this.bookLayout);
@@ -117,6 +116,11 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.render(guiGraphics, this.font, mouseX, mouseY);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+
+        ItemStack tooltipStack = this.rightPage.getTooltipStack(mouseX, mouseY);
+        if (tooltipStack != null && !tooltipStack.isEmpty()) {
+            guiGraphics.renderTooltip(this.font, tooltipStack, mouseX, mouseY);
+        }
     }
 
     @Override
@@ -237,9 +241,8 @@ public class ArchaeologyJournalScreen extends Screen {
                 }
             }
         }
-        if (this.tableViews.isEmpty()) {
-            this.selectedIndex = -1;
-        } else if (!foundSelected || this.selectedIndex < 0 || this.selectedIndex >= this.tableViews.size()) {
+        if (!this.tableViews.isEmpty()
+                && (!foundSelected || this.selectedIndex < 0 || this.selectedIndex >= this.tableViews.size())) {
             this.selectedIndex = 0;
         }
 
@@ -307,14 +310,14 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void syncButtonState() {
-        boolean isArchaeology = this.rightPage.isArchaeologyActive();
+        boolean hasMultiplePages = this.rightPage.pageCount() > 1;
         if (this.itemPrevButton != null) {
-            this.itemPrevButton.visible = isArchaeology && this.rightPage.pageCount() > 1;
-            this.itemPrevButton.active = isArchaeology && this.rightPage.pageCount() > 1 && this.rightPage.getPage() > 0;
+            this.itemPrevButton.visible = hasMultiplePages;
+            this.itemPrevButton.active = hasMultiplePages && this.rightPage.getPage() > 0;
         }
         if (this.itemNextButton != null) {
-            this.itemNextButton.visible = isArchaeology && this.rightPage.pageCount() > 1;
-            this.itemNextButton.active = isArchaeology && this.rightPage.pageCount() > 1 && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
+            this.itemNextButton.visible = hasMultiplePages;
+            this.itemNextButton.active = hasMultiplePages && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
         }
     }
 
@@ -353,8 +356,8 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private record ItemView(ResourceLocation id, Component displayName, double weight, boolean unlocked, int count) {
-        private net.minecraft.world.item.ItemStack stack() {
-            return new net.minecraft.world.item.ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(this.id));
+        private ItemStack stack() {
+            return new ItemStack(BuiltInRegistries.ITEM.get(this.id));
         }
     }
 }

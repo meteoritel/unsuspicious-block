@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -20,17 +21,24 @@ public final class DetailOverlayPanel {
     private static final int TEXT_COLOR = 0x4A3320;
     private static final int LABEL_COLOR = 0x5A422C;
     private static final int MUTED_COLOR = 0x7A6247;
+    private static final int ITEM_ROW_HEIGHT = 16;
+    private static final int FOOTER_HEIGHT = 50;
+    private static final int MOD_SOURCE_TOP_OFFSET = 44;
+    private static final int SCROLL_PAUSE_WIDTH = 20;
+    private static final int SCROLL_SPEED = 1;
 
     private final JournalBookBackground.BookLayout layout;
     private int parsedCount;
     private int totalCount;
+    private int page;
     private String modSource;
-    private List<ItemGridPanel.GridItem> unlockedItems = List.of();
+    private List<DiscoveredItemEntry> unlockedItems = List.of();
 
     public DetailOverlayPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
         this.parsedCount = 0;
         this.totalCount = 0;
+        this.page = 0;
         this.modSource = "";
     }
 
@@ -38,16 +46,16 @@ public final class DetailOverlayPanel {
                         List<ItemGridPanel.GridItem> allItems) {
         this.parsedCount = parsedCount;
         this.totalCount = totalCount;
+        this.page = 0;
         if (tableId != null) {
-            String ns = tableId.getNamespace();
-            this.modSource = "minecraft".equals(ns) ? "原版 (Minecraft)" : ns;
+            this.modSource = Services.PLATFORM.getModDisplayName(tableId.getNamespace());
         } else {
             this.modSource = "???";
         }
         this.unlockedItems = new ArrayList<>();
         for (ItemGridPanel.GridItem item : allItems) {
             if (item.unlocked()) {
-                this.unlockedItems.add(item);
+                this.unlockedItems.add(new DiscoveredItemEntry(item));
             }
         }
     }
@@ -83,42 +91,124 @@ public final class DetailOverlayPanel {
         // 已发现物品列表
         Component discoveredLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.discovered_items");
         guiGraphics.drawString(font, discoveredLabel, leftX, y, LABEL_COLOR, false);
-        y += 14;
+        y = listStartY(y);
 
         if (unlockedItems.isEmpty()) {
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.no_discoveries"),
                     leftX + 2, y, MUTED_COLOR, false);
             y += 12;
         } else {
-            // 物品列表（每行：图标 + 名称 + 获得次数）
-            int itemRowHeight = 16;
-            int maxVisibleItems = (layout.rightPageBottom() - y - 50) / itemRowHeight;
-            int showCount = Math.min(unlockedItems.size(), Math.max(1, maxVisibleItems));
+            int maxVisibleItems = maxVisibleItems(y);
+            int from = page * maxVisibleItems;
+            int to = Math.min(unlockedItems.size(), from + maxVisibleItems);
+            int showCount = Math.max(0, to - from);
 
             for (int i = 0; i < showCount; i++) {
-                ItemGridPanel.GridItem item = unlockedItems.get(i);
-                int rowY = y + i * itemRowHeight;
+                DiscoveredItemEntry entry = unlockedItems.get(from + i);
+                ItemGridPanel.GridItem item = entry.item;
+                int rowY = y + i * ITEM_ROW_HEIGHT;
 
                 // 图标
                 ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(item.id()));
                 guiGraphics.renderItem(stack, leftX + 2, rowY - 1);
                 guiGraphics.renderItemDecorations(font, stack, leftX + 2, rowY - 1);
 
-                // 名称
-                guiGraphics.drawString(font, item.displayName(), leftX + 22, rowY + 2, TEXT_COLOR, false);
-
                 // 获得次数
                 String countText = "×" + item.count();
                 int countWidth = font.width(countText);
                 guiGraphics.drawString(font, countText, leftX + contentWidth - countWidth, rowY + 2, LABEL_COLOR, false);
+
+                // 名称
+                int nameX = leftX + 22;
+                int nameMaxWidth = Math.max(0, contentWidth - 24 - countWidth - 6);
+                boolean hovered = mouseX >= nameX && mouseX < nameX + nameMaxWidth
+                        && mouseY >= rowY && mouseY < rowY + ITEM_ROW_HEIGHT;
+                if (!entry.wasHovered && hovered) {
+                    entry.scrollTicks = 0;
+                }
+                entry.wasHovered = hovered;
+                if (hovered) {
+                    entry.scrollTicks++;
+                }
+                drawScrollingText(guiGraphics, font, item.displayName().getString(),
+                        nameX, rowY + 2, nameMaxWidth, TEXT_COLOR, hovered, entry.scrollTicks);
             }
-            y += showCount * itemRowHeight + 6;
+            y += showCount * ITEM_ROW_HEIGHT + 6;
         }
 
         // 模组来源
-        y = Math.max(y, layout.rightPageBottom() - 30);
+        y = Math.max(y, layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
         Component modLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.mod_source");
         guiGraphics.drawString(font, modLabel, leftX, y, LABEL_COLOR, false);
         guiGraphics.drawString(font, modSource, leftX, y + 12, TEXT_COLOR, false);
+    }
+
+    public int pageCount() {
+        if (unlockedItems.isEmpty()) {
+            return 1;
+        }
+        int maxVisibleItems = maxVisibleItems(listStartY(layout.rightPageY() + JournalLayout.GRID_TOP + 14 + BAR_HEIGHT + 10));
+        return Math.max(1, (unlockedItems.size() + maxVisibleItems - 1) / maxVisibleItems);
+    }
+
+    public int getPage() {
+        return this.page;
+    }
+
+    public void changePage(int delta) {
+        this.page = Math.max(0, Math.min(this.page + delta, pageCount() - 1));
+    }
+
+    public void resetPage() {
+        this.page = 0;
+    }
+
+    public void setPage(int page) {
+        this.page = Math.max(0, Math.min(page, pageCount() - 1));
+    }
+
+    private int maxVisibleItems(int listStartY) {
+        return Math.max(1, (layout.rightPageBottom() - listStartY - FOOTER_HEIGHT) / ITEM_ROW_HEIGHT);
+    }
+
+    private int listStartY(int discoveredLabelY) {
+        return discoveredLabelY + 14;
+    }
+
+    private void drawScrollingText(GuiGraphics guiGraphics, Font font, String text,
+                                   int x, int y, int width, int color, boolean hovered, int scrollTicks) {
+        if (width <= 0) {
+            return;
+        }
+        int textWidth = font.width(text);
+        if (textWidth <= width) {
+            guiGraphics.drawString(font, text, x, y, color, false);
+            return;
+        }
+
+        guiGraphics.enableScissor(x, y, x + width, y + font.lineHeight + 1);
+        int overflow = textWidth - width;
+        int offset = 0;
+        if (hovered) {
+            offset = (scrollTicks * SCROLL_SPEED / 2) % (overflow + SCROLL_PAUSE_WIDTH * 2);
+            if (offset > overflow + SCROLL_PAUSE_WIDTH) {
+                offset = overflow + SCROLL_PAUSE_WIDTH * 2 - offset;
+            }
+            if (offset > overflow) {
+                offset = overflow;
+            }
+        }
+        guiGraphics.drawString(font, text, x - offset, y, color, false);
+        guiGraphics.disableScissor();
+    }
+
+    private static final class DiscoveredItemEntry {
+        private final ItemGridPanel.GridItem item;
+        private int scrollTicks;
+        private boolean wasHovered;
+
+        private DiscoveredItemEntry(ItemGridPanel.GridItem item) {
+            this.item = item;
+        }
     }
 }

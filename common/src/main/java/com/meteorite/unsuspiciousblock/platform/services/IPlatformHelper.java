@@ -7,6 +7,10 @@ public interface IPlatformHelper {
 
     boolean isModLoaded(String modId);
 
+    default String getModDisplayName(String modId) {
+        return "minecraft".equals(modId) ? "Minecraft" : modId;
+    }
+
     boolean isDevelopmentEnvironment();
 
     default String getEnvironmentName() {

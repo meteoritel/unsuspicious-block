@@ -17,6 +17,14 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public String getModDisplayName(String modId) {
+        return FabricLoader.getInstance().getModContainer(modId)
+                .map(container -> container.getMetadata().getName())
+                .filter(name -> !name.isBlank())
+                .orElse(IPlatformHelper.super.getModDisplayName(modId));
+    }
+
+    @Override
     public boolean isDevelopmentEnvironment() {
         return FabricLoader.getInstance().isDevelopmentEnvironment();
     }
