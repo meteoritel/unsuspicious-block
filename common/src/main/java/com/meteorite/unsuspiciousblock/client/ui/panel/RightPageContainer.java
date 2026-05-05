@@ -153,7 +153,7 @@ public final class RightPageContainer {
         syncPageIndicator();
     }
 
-    /** 切换到指定Tab（不触发按钮回调） */
+    // 切换到指定Tab（不触发按钮回调）
     public void setActiveTab(Tab tab) {
         if (this.activeTab == tab) return;
         this.activeTab = tab;
@@ -162,12 +162,12 @@ public final class RightPageContainer {
         syncPageIndicator();
     }
 
-    /** 获取当前激活的Tab */
+    // 获取当前激活的Tab
     public Tab getActiveTab() {
         return activeTab;
     }
 
-    /** 设置当前标签页页码（resize 后恢复页码用） */
+    // 设置当前标签页页码（resize 后恢复页码用）
     public void setPage(int page) {
         if (this.activeTab == Tab.ARCHAEOLOGY) {
             this.gridPanel.setPage(page);

@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.item.ArchaeologyJournalItem;
 import com.meteorite.unsuspiciousblock.item.LuoyangSpadeItem;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
@@ -19,6 +20,8 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -87,5 +90,15 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         UsbCommand.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
+    public void onServerStarted(ServerStartedEvent event) {
+        ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
+    }
+
+    @SubscribeEvent
+    public void onServerStopped(ServerStoppedEvent event) {
+        ArchaeologyJournalServerCatalog.invalidate();
     }
 }

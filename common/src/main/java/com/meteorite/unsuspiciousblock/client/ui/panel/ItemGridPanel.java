@@ -41,7 +41,7 @@ public final class ItemGridPanel {
         this.page = 0;
     }
 
-    /** 设置当前展示的战利品表数据 */
+    // 设置当前展示的战利品表数据
     public void setTable(List<GridItem> items, double totalWeight, boolean approximate) {
         this.items.clear();
         for (GridItem item : items) {
@@ -69,7 +69,7 @@ public final class ItemGridPanel {
         page = 0;
     }
 
-    /** 直接设置页码（resize 后恢复用） */
+    // 直接设置页码（resize 后恢复用）
     public void setPage(int page) {
         this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
     }
@@ -80,7 +80,7 @@ public final class ItemGridPanel {
                 && mouseY >= layout.rightPageY() && mouseY <= layout.rightPageBottom();
     }
 
-    /** 渲染物品网格（仅网格区域，不含标题/进度/页码） */
+    // 渲染物品网格（仅网格区域，不含进度/页码）
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         if (items.isEmpty()) {
             int leftX = layout.rightPageX() + 8;

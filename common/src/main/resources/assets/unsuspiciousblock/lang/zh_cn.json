@@ -53,6 +53,9 @@
   "command.unsuspiciousblock.usb.unlock_table.success": "已为当前玩家解锁考古战利品表 %s。",
   "command.unsuspiciousblock.usb.unlock_items.success": "已为当前玩家解锁 %2$d 个战利品表中的 %1$d 个考古物品条目。",
   "command.unsuspiciousblock.usb.unlock_items_in.success": "已为当前玩家解锁战利品表 %1$s 中的 %2$d 个考古物品条目。",
+  "command.unsuspiciousblock.usb.debug.table_list.empty": "当前服务端尚未加载任何考古战利品表。",
+  "command.unsuspiciousblock.usb.debug.table_list.header": "当前服务端已加载 %d 个考古战利品表：",
+  "command.unsuspiciousblock.usb.debug.table_list.entry": "[%1$d] %2$s | key=%3$s | fallback=%4$s | display=%5$s",
   "command.unsuspiciousblock.usb.error.unknown_table": "未知的考古战利品表：%s",
   "command.unsuspiciousblock.usb.error.state_unavailable": "无法访问当前玩家的考古笔记数据。"
 }

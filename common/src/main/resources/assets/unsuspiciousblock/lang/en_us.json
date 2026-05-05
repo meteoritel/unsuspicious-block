@@ -52,6 +52,9 @@
   "command.unsuspiciousblock.usb.unlock_table.success": "Unlocked archaeology loot table %s.",
   "command.unsuspiciousblock.usb.unlock_items.success": "Unlocked %d archaeology items across %d loot tables.",
   "command.unsuspiciousblock.usb.unlock_items_in.success": "Unlocked %2$d archaeology items in loot table %1$s.",
+  "command.unsuspiciousblock.usb.debug.table_list.empty": "No archaeology loot tables are currently loaded on the server.",
+  "command.unsuspiciousblock.usb.debug.table_list.header": "Loaded %d archaeology loot tables on the server:",
+  "command.unsuspiciousblock.usb.debug.table_list.entry": "[%1$d] %2$s | key=%3$s | fallback=%4$s | display=%5$s",
   "command.unsuspiciousblock.usb.error.unknown_table": "Unknown archaeology loot table: %s",
   "command.unsuspiciousblock.usb.error.state_unavailable": "Could not access this player's archaeology journal data."
 }

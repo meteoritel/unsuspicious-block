@@ -58,15 +58,15 @@ public class BookmarkToggleButton extends AbstractButton {
         // 上半部分矩形
         guiGraphics.fill(x, y, x + w, tabBottom, fillColor);
         // 下半部分三角形（尖角）
-        // guiGraphics.fill(x + tabWidth, tabBottom, x + w - tabWidth, y + h, fillColor);
+        guiGraphics.fill(x + tabWidth, tabBottom, x + w - tabWidth, y + h, fillColor);
         // 填充三角缺口
-        // guiGraphics.fill(x + tabWidth + 1, tabBottom - 1, x + w - tabWidth - 1, tabBottom, fillColor);
+        guiGraphics.fill(x + tabWidth + 1, tabBottom - 1, x + w - tabWidth - 1, tabBottom, fillColor);
 
         // 描边
-        guiGraphics.fill(x, y, x + w, y + 1, outlineColor);
-        guiGraphics.fill(x, y, x + 1, tabBottom, outlineColor);
-        guiGraphics.fill(x + w - 1, y, x + w, tabBottom, outlineColor);
-        guiGraphics.fill(x + tabWidth, tabBottom, x + w - tabWidth, tabBottom + 1, outlineColor);
+        //guiGraphics.fill(x, y, x + w, y + 1, outlineColor);
+        //guiGraphics.fill(x, y, x + 1, tabBottom, outlineColor);
+        //guiGraphics.fill(x + w - 1, y, x + w, tabBottom, outlineColor);
+        //guiGraphics.fill(x + tabWidth, tabBottom, x + w - tabWidth, tabBottom + 1, outlineColor);
         for (int i = 0; i < 3; i++) {
             int inset = tabWidth - i;
             guiGraphics.fill(x + inset, tabBottom + 1 + i, x + w - inset, tabBottom + 2 + i, outlineColor);

@@ -46,11 +46,11 @@ public final class ArchaeologyJournalCatalog {
     // 从任意 ResourceManager 加载目录（客户端或服务端均可使用）
     public static Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager) {
         Map<ResourceLocation, Resource> allResources = LOOT_TABLES.listMatchingResources(resourceManager);
-        // 转换为标准战利品表 ID（去掉 "loot_table/" 前缀和 ".json" 后缀），并仅保留 archaeology 子目录
+        // 转换为标准战利品表 ID（去掉 "loot_table/" 前缀和 ".json" 后缀），并仅保留命中统一考古路径前缀规则的表
         List<Map.Entry<ResourceLocation, Resource>> orderedResources = new ArrayList<>();
         for (Map.Entry<ResourceLocation, Resource> entry : allResources.entrySet()) {
             ResourceLocation tableId = LOOT_TABLES.fileToId(entry.getKey());
-            if (tableId.getPath().startsWith("archaeology/")) {
+            if (ArchaeologyLootTableNames.isArchaeologyLootTable(tableId)) {
                 orderedResources.add(Map.entry(tableId, entry.getValue()));
             }
         }
@@ -58,6 +58,7 @@ public final class ArchaeologyJournalCatalog {
 
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (Map.Entry<ResourceLocation, Resource> entry : orderedResources) {
+            ArchaeologyLootTableNames.ensureRegistered(entry.getKey());
             try (BufferedReader reader = entry.getValue().openAsReader()) {
                 JsonElement element = JsonParser.parseReader(reader);
                 TableDefinition definition = parseTable(entry.getKey(), element);

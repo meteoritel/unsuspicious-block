@@ -2,11 +2,13 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -48,6 +50,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         // 注册考古笔记网络包类型
         PayloadTypeRegistry.playS2C().register(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC);
+
+        // 服务端启动时预加载考古战利品表目录
+        ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> ArchaeologyJournalServerCatalog.invalidate());
 
         // 玩家加入时同步目录和状态
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->

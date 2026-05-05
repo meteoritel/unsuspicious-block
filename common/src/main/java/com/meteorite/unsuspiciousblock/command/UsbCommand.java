@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.command;
 
+import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
@@ -38,7 +39,8 @@ public final class UsbCommand {
                 .requires(source -> source.hasPermission(2))
                 .then(buildClearSubcommand())
                 .then(buildUnlockTableSubcommand())
-                .then(buildUnlockItemSubcommand()));
+                .then(buildUnlockItemSubcommand())
+                .then(buildDebugSubcommand()));
     }
 
     // 清空玩家考古数据
@@ -104,6 +106,40 @@ public final class UsbCommand {
                                 }
                             }, Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
                         }));
+    }
+
+    // 调试子指令
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugSubcommand() {
+        return Commands.literal("debug")
+                .then(Commands.literal("table_list")
+                        .executes(context -> sendTableList(context.getSource())));
+    }
+
+    private static int sendTableList(CommandSourceStack source) {
+        Map<ResourceLocation, TableDefinition> catalog = getCatalog(source);
+        if (catalog.isEmpty()) {
+            source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.debug.table_list.empty"), false);
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.debug.table_list.header", catalog.size()), false);
+        int index = 1;
+        for (TableDefinition table : catalog.values()) {
+            int lineIndex = index++;
+            ResourceLocation tableId = table.id();
+            String translationKey = ArchaeologyLootTableNames.translationKey(tableId);
+            String fallbackName = ArchaeologyLootTableNames.fallbackName(tableId);
+            String displayName = table.displayName().getString();
+            source.sendSuccess(() -> Component.translatable(
+                    "command.unsuspiciousblock.usb.debug.table_list.entry",
+                    lineIndex,
+                    tableId.toString(),
+                    translationKey,
+                    fallbackName,
+                    displayName
+            ), false);
+        }
+        return catalog.size();
     }
 
     private static ServerPlayer requirePlayer(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {

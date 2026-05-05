@@ -5,6 +5,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -12,6 +13,8 @@ import java.util.Objects;
 /** 考古战利品表名称注册表——提供名称映射、本地化 key 规则与 fallback 解析 */
 public final class ArchaeologyLootTableNames {
     private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.table.";
+    // 统一维护可接受的考古战利品表路径前缀，后续兼容其他模组时只需扩充这里
+    private static final List<String> ARCHAEOLOGY_PATH_PREFIXES = List.of("archaeology/", "archeology/");
     private static final Map<ResourceLocation, NameRegistration> REGISTRATIONS = new LinkedHashMap<>();
 
     static {
@@ -38,6 +41,27 @@ public final class ArchaeologyLootTableNames {
         registerInternal(tableId, createTranslationKey(tableId), fallbackName);
     }
 
+    // 判断该表是否属于统一考古路径前缀规则
+    public static boolean isArchaeologyLootTable(ResourceLocation tableId) {
+        return hasArchaeologyPathPrefix(tableId.getPath());
+    }
+
+    // 判断 path 是否命中任一可接受的考古路径前缀
+    public static boolean hasArchaeologyPathPrefix(String path) {
+        for (String prefix : ARCHAEOLOGY_PATH_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 确保该战利品表已进入名称映射；若外部未显式注册，则自动生成默认 key 与 fallback 规则
+    public static void ensureRegistered(ResourceLocation tableId) {
+        validateArchaeologyTableId(tableId);
+        REGISTRATIONS.computeIfAbsent(tableId, id -> new NameRegistration(createTranslationKey(id), null));
+    }
+
     // 获取该战利品表当前会使用的本地化 key
     public static String translationKey(ResourceLocation tableId) {
         validateArchaeologyTableId(tableId);
@@ -45,18 +69,20 @@ public final class ArchaeologyLootTableNames {
         return registration != null ? registration.translationKey() : createTranslationKey(tableId);
     }
 
-    // 解析最终展示名：已注册时优先走 translatableWithFallback，否则退回清洗后的文件名
-    public static Component resolveDisplayName(ResourceLocation tableId) {
+    // 获取该战利品表当前会使用的 fallback 展示名
+    public static String fallbackName(ResourceLocation tableId) {
         validateArchaeologyTableId(tableId);
         NameRegistration registration = REGISTRATIONS.get(tableId);
-        if (registration == null) {
-            return Component.literal(humanizeTablePath(tableId));
+        if (registration != null && hasText(registration.fallbackName())) {
+            return registration.fallbackName();
         }
+        return humanizeTablePath(tableId);
+    }
 
-        String fallbackName = hasText(registration.fallbackName())
-                ? registration.fallbackName()
-                : humanizeTablePath(tableId);
-        return Component.translatableWithFallback(registration.translationKey(), fallbackName);
+    // 解析最终展示名：优先走规则 key，本地化缺失时退回 fallback 名称
+    public static Component resolveDisplayName(ResourceLocation tableId) {
+        validateArchaeologyTableId(tableId);
+        return Component.translatableWithFallback(translationKey(tableId), fallbackName(tableId));
     }
 
     private static void seedVanilla(String tableId, String translationKey) {
@@ -77,7 +103,7 @@ public final class ArchaeologyLootTableNames {
     }
 
     private static void validateArchaeologyTableId(ResourceLocation tableId) {
-        if (!tableId.getPath().startsWith("archaeology/")) {
+        if (!isArchaeologyLootTable(tableId)) {
             throw new IllegalArgumentException("Only archaeology loot tables are supported: " + tableId);
         }
     }
@@ -119,8 +145,10 @@ public final class ArchaeologyLootTableNames {
     }
 
     private static String stripArchaeologyPrefix(String path) {
-        if (path.startsWith("archaeology/")) {
-            return path.substring("archaeology/".length());
+        for (String prefix : ARCHAEOLOGY_PATH_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return path.substring(prefix.length());
+            }
         }
         return path;
     }

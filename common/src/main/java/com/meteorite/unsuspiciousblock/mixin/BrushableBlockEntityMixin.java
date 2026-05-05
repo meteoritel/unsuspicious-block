@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -253,6 +254,8 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(this.item.getItem());
                 holder.unsuspiciousblock$getArchaeologyJournalState()
                         .unlockItem(this.unsuspiciousblock$lootTableName, itemId);
+
+                Constants.LOG.debug("刷子刷物品刚露头");
                 ArchaeologyJournalNetwork.syncState(sp);
             }
         }
