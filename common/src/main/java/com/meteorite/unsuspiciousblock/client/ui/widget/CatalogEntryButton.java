@@ -7,8 +7,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 
 /** 目录条目 —— ObjectSelectionList 的自定义 Entry，支持超长文字滚动 */
+@Deprecated
 public class CatalogEntryButton extends ObjectSelectionList.Entry<CatalogEntryButton> {
 
     private static final ResourceLocation ENTRY_TEXTURE =
@@ -40,9 +42,13 @@ public class CatalogEntryButton extends ObjectSelectionList.Entry<CatalogEntryBu
     }
 
     @Override
-    public Component getNarration() {
+    public @NotNull Component getNarration() {
         return displayName;
     }
+
+    // 三态在材质中的 UV 偏移(px) 和 高度(px): 0=normal, 1=hovered, 2=selected
+    private static final int[] STATE_V = {0, 20, 39};
+    private static final int[] STATE_H = {19, 18, 18};
 
     @Override
     public void render(GuiGraphics guiGraphics, int index, int y, int x, int width, int height,
@@ -52,8 +58,8 @@ public class CatalogEntryButton extends ObjectSelectionList.Entry<CatalogEntryBu
         int rowHeight = JournalLayout.CATALOG_ROW_HEIGHT;
         guiGraphics.blit(ENTRY_TEXTURE,
                 x, y, width, rowHeight,
-                0, state * rowHeight,
-                JournalLayout.CATALOG_TEXTURE_WIDTH, rowHeight,
+                0, STATE_V[state],
+                JournalLayout.CATALOG_TEXTURE_WIDTH, STATE_H[state],
                 JournalLayout.CATALOG_TEXTURE_WIDTH, JournalLayout.CATALOG_TEXTURE_HEIGHT);
 
         String displayText = unlocked ? displayName.getString() : "???";
@@ -98,7 +104,7 @@ public class CatalogEntryButton extends ObjectSelectionList.Entry<CatalogEntryBu
     }
 
     @Override
-    public void renderBack(GuiGraphics guiGraphics, int index, int y, int x, int width, int height,
+    public void renderBack(@NotNull GuiGraphics guiGraphics, int index, int y, int x, int width, int height,
                            int mouseX, int mouseY, boolean hovered, float partialTick) {
         if (isFocused()) {
             int rowHeight = JournalLayout.CATALOG_ROW_HEIGHT;

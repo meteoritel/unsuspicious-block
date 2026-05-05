@@ -59,6 +59,11 @@ public final class ItemGridPanel {
         page = 0;
     }
 
+    /** 直接设置页码（resize 后恢复用） */
+    public void setPage(int page) {
+        this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+    }
+
     // 判断鼠标是否在物品网格面板区域内
     public boolean containsMouse(double mouseX, double mouseY) {
         return mouseX >= layout.rightPageX() && mouseX <= layout.rightPageRight()

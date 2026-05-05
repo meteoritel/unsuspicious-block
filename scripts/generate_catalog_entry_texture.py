@@ -21,21 +21,22 @@ BORDER_SELECTED = (185, 150, 90, 200)
 HOVER_WARM = (245, 232, 200, 200)
 TOP_LINE = (210, 190, 155, 40)
 
-img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+# 使用背景色初始化，避免透明黑像素导致的黑边
+img = Image.new("RGBA", (W, H), PARCHMENT_BG)
 draw = ImageDraw.Draw(img)
 
 
 def draw_state(y0, y1, bg_color, border_color, top_line_color):
     """Draw one button state row from y0 to y1."""
-    # Background
-    draw.rectangle([2, y0 + 1, W - 3, y1 - 1], fill=bg_color)
-    # Bottom border
+    # 背景：填充整行，不留透明边距
+    draw.rectangle([0, y0, W - 1, y1 - 1], fill=bg_color)
+    # 底部边框
     draw.rectangle([4, y1 - 2, W - 5, y1 - 1], fill=border_color)
-    # Top faint line
-    draw.rectangle([4, y0 + 1, W - 5, y0 + 2], fill=top_line_color)
-    # Left/right subtle edges
-    draw.rectangle([2, y0 + 1, 3, y1 - 1], fill=border_color[:3] + (border_color[3] // 2,))
-    draw.rectangle([W - 4, y0 + 1, W - 3, y1 - 1], fill=border_color[:3] + (border_color[3] // 2,))
+    # 顶部线条
+    draw.rectangle([4, y0, W - 5, y0 + 1], fill=top_line_color)
+    # 左右边缘
+    draw.rectangle([0, y0, 1, y1 - 1], fill=border_color[:3] + (border_color[3] // 2,))
+    draw.rectangle([W - 2, y0, W - 1, y1 - 1], fill=border_color[:3] + (border_color[3] // 2,))
 
 
 # State 0: Normal

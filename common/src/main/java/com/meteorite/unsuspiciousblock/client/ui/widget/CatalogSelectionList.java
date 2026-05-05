@@ -7,12 +7,14 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 /** 左侧目录选择列表，基于 ObjectSelectionList */
+@Deprecated
 public class CatalogSelectionList extends ObjectSelectionList<CatalogEntryButton> {
 
     private final List<CatalogEntryButton> entryButtons = new ArrayList<>();
@@ -62,12 +64,12 @@ public class CatalogSelectionList extends ObjectSelectionList<CatalogEntryButton
     }
 
     @Override
-    protected void renderListBackground(GuiGraphics guiGraphics) {
+    protected void renderListBackground(@NotNull GuiGraphics guiGraphics) {
         // 书页已提供背景，不绘制列表默认背景
     }
 
     @Override
-    protected void renderListSeparators(GuiGraphics guiGraphics) {
+    protected void renderListSeparators(@NotNull GuiGraphics guiGraphics) {
         // 书页不需要顶/底部分隔线
     }
 

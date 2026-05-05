@@ -41,5 +41,12 @@
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold": "冷水海底废墟",
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_warm": "温水海底废墟",
   "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_common": "古迹废墟（常见）",
-  "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare": "古迹废墟（稀有）"
+  "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare": "古迹废墟（稀有）",
+
+  "screen.unsuspiciousblock.archaeology_journal.tab_intro": "介绍",
+  "screen.unsuspiciousblock.archaeology_journal.tab_archaeology": "考古",
+  "screen.unsuspiciousblock.archaeology_journal.discovered_items": "已发现物品",
+  "screen.unsuspiciousblock.archaeology_journal.no_discoveries": "尚未发现任何物品。",
+
+  "command.unsuspiciousblock.clear_data.success": "你的考古笔记数据已清除。"
 }

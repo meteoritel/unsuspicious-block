@@ -13,14 +13,14 @@ public final class JournalLayout {
     public static final int PAGE_Y_OFFSET = 16;
 
     // —— 左侧目录 ——
-    public static final int CATALOG_ROW_HEIGHT = 22;
+    public static final int CATALOG_ROW_HEIGHT = 20;
     public static final int CATALOG_TITLE_Y = 6;
     public static final int CATALOG_LIST_TOP = 28;
     public static final int CATALOG_LIST_BOTTOM_PAD = 6;
     public static final int CATALOG_LEFT_PAD = 4;
     public static final int CATALOG_SCROLLBAR_WIDTH = 4;
-    public static final int CATALOG_TEXTURE_WIDTH = 160;
-    public static final int CATALOG_TEXTURE_HEIGHT = 66;
+    public static final int CATALOG_TEXTURE_WIDTH = 152;
+    public static final int CATALOG_TEXTURE_HEIGHT = 58;
     public static final int CATALOG_SCROLLBAR_MIN_HANDLE = 16;
 
     // —— 右侧网格 ——

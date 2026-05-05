@@ -40,5 +40,12 @@
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold": "Cold Ocean Ruin",
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_warm": "Warm Ocean Ruin",
   "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_common": "Trail Ruins (Common)",
-  "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare": "Trail Ruins (Rare)"
+  "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare": "Trail Ruins (Rare)",
+
+  "screen.unsuspiciousblock.archaeology_journal.tab_intro": "Intro",
+  "screen.unsuspiciousblock.archaeology_journal.tab_archaeology": "Journal",
+  "screen.unsuspiciousblock.archaeology_journal.discovered_items": "Discovered Items",
+  "screen.unsuspiciousblock.archaeology_journal.no_discoveries": "No discoveries yet.",
+
+  "command.unsuspiciousblock.clear_data.success": "Your archaeology journal data has been cleared."
 }

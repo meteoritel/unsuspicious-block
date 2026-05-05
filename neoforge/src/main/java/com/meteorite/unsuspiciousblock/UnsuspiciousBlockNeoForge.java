@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.command.ClearArchaeologyDataCommand;
 import com.meteorite.unsuspiciousblock.item.ArchaeologyJournalItem;
 import com.meteorite.unsuspiciousblock.item.LuoyangSpadeItem;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -16,6 +17,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -80,5 +82,10 @@ public class UnsuspiciousBlockNeoForge {
         if (event.getEntity() instanceof ServerPlayer sp) {
             ArchaeologyJournalNetwork.syncOnJoin(sp);
         }
+    }
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        ClearArchaeologyDataCommand.register(event.getDispatcher());
     }
 }

@@ -1,10 +1,12 @@
 package com.meteorite.unsuspiciousblock;
 
+import com.meteorite.unsuspiciousblock.command.ClearArchaeologyDataCommand;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -50,6 +52,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         // 玩家加入时同步目录和状态
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));
+
+        // 注册清除考古数据指令
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+                ClearArchaeologyDataCommand.register(dispatcher));
 
         Constants.LOG.info("UnsuspiciousBlock Fabric initialized.");
     }
