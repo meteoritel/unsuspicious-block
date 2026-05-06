@@ -25,6 +25,7 @@
   "screen.unsuspiciousblock.archaeology_journal.tables": "战利品表：%d",
   "screen.unsuspiciousblock.archaeology_journal.items": "物品：%d",
   "screen.unsuspiciousblock.archaeology_journal.summary": "已解锁战利品表：%d | 已解析：%d/%d",
+  "screen.unsuspiciousblock.archaeology_journal.unlocked_tables": "已解锁 %d/%d",
   "screen.unsuspiciousblock.archaeology_journal.progress": "已解析 %d/%d 种物品",
   "screen.unsuspiciousblock.archaeology_journal.page": "第 %d/%d 页",
   "screen.unsuspiciousblock.archaeology_journal.empty_catalog": "尚未解锁任何战利品表。",

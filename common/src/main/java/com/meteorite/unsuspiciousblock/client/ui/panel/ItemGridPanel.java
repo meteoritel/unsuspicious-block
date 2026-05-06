@@ -23,7 +23,7 @@ public final class ItemGridPanel {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
     private static final int ICON_SIZE = 16;
     private static final int ICON_TOP = 4;
-    private static final int INFO_TEXT_LEFT_PAD = 1;
+    private static final int INFO_TEXT_LEFT_PAD = 0;
     private static final int INFO_TEXT_WIDTH = JournalLayout.GRID_CELL_WIDTH - INFO_TEXT_LEFT_PAD * 2;
     private static final int NAME_TEXT_Y = 24;
     private static final int DETAIL_TEXT_Y = 34;
@@ -91,8 +91,9 @@ public final class ItemGridPanel {
         }
 
         // 网格区域
-        int gridWidth = JournalLayout.GRID_CELLS_PER_ROW * JournalLayout.GRID_CELL_WIDTH;
-        int gridX = layout.rightPageX() + (layout.rightPageWidth() - gridWidth) / 2;
+        int gridWidth = JournalLayout.GRID_CELLS_PER_ROW * JournalLayout.GRID_CELL_WIDTH
+                + (JournalLayout.GRID_CELLS_PER_ROW - 1) * JournalLayout.GRID_COLUMN_GAP;
+        int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
 
         int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
@@ -150,9 +151,9 @@ public final class ItemGridPanel {
             drawScrollingText(guiGraphics, font, nameText,
                     textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x5A422C, textHovered, entry.scrollTicks);
             drawScrollingText(guiGraphics, font, countText,
-                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x7B3E18, textHovered, entry.scrollTicks);
+                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x71604B, textHovered, entry.scrollTicks);
             drawScrollingText(guiGraphics, font, probabilityText,
-                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x6E5A42, textHovered, entry.scrollTicks);
+                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x857565, textHovered, entry.scrollTicks);
         } else {
             // 黑色立体剪影材质
             guiGraphics.blit(UNKNOWN_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
@@ -160,13 +161,12 @@ public final class ItemGridPanel {
             String nameText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_entry").getString();
             String detailText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered").getString();
             String footerText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.pending_analysis").getString();
-            int mutedColor = 0x6E655B;
             drawScrollingText(guiGraphics, font, nameText,
-                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, textHovered, entry.scrollTicks);
+                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x6A6157, textHovered, entry.scrollTicks);
             drawScrollingText(guiGraphics, font, detailText,
-                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, false, 0);
+                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x7B7268, false, 0);
             drawScrollingText(guiGraphics, font, footerText,
-                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, false, 0);
+                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x8B8278, false, 0);
         }
     }
 
@@ -174,8 +174,7 @@ public final class ItemGridPanel {
     public ItemStack getTooltipStack(double mouseX, double mouseY) {
         int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
         int to = Math.min(items.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
-        int gridWidth = JournalLayout.GRID_CELLS_PER_ROW * JournalLayout.GRID_CELL_WIDTH;
-        int gridX = layout.rightPageX() + (layout.rightPageWidth() - gridWidth) / 2;
+        int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
 
         for (int i = from; i < to; i++) {
@@ -195,7 +194,7 @@ public final class ItemGridPanel {
 
     private static int cellX(int gridX, int visualIndex) {
         int col = visualIndex % JournalLayout.GRID_CELLS_PER_ROW;
-        return gridX + col * JournalLayout.GRID_CELL_WIDTH;
+        return gridX + col * (JournalLayout.GRID_CELL_WIDTH + JournalLayout.GRID_COLUMN_GAP);
     }
 
     private static int cellY(int gridY, int visualIndex) {
@@ -222,7 +221,7 @@ public final class ItemGridPanel {
         }
         int textWidth = font.width(text);
         if (textWidth <= width) {
-            guiGraphics.drawString(font, text, x, y, color, false);
+            guiGraphics.drawString(font, text, x + (width - textWidth) / 2, y, color, false);
             return;
         }
 

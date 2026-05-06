@@ -22,20 +22,6 @@
 
 - **[Jade](https://modrinth.com/mod/jade)** — Displays Suspicious Reader results directly in the Jade HUD overlay.
 
-## Crafting Recipes
-
-### Suspicious Reader
-
-| Glass Pane | Stick        | |
-|------------|--------------|-|
-| Stick      | Copper Ingot | |
-|            | Stick        | |
-
-*Ingredients: 1 Glass Pane (any type), 2 Sticks, 1 Copper Ingot*
-
-### Archaeology Journal
-
-**Shapeless Crafting:** `Book` + `Brush`
 
 ## Compatibility
 
@@ -46,12 +32,6 @@
 | **Required Dependencies** | Fabric API *(Fabric only)* |
 | **Optional**              | Jade (15+)                 |
 
-## Installation
-
-1. Install the correct mod loader (Fabric or NeoForge) for Minecraft 1.21.1.
-2. Download the latest `unsuspiciousblock-<loader>-<version>.jar` from the [Releases]() page.
-3. Place the `.jar` file into your `mods/` folder.
-4. Launch the game and enjoy!
 
 ## License
 

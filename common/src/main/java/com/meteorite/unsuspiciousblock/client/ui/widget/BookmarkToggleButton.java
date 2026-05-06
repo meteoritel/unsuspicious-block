@@ -77,7 +77,7 @@ public class BookmarkToggleButton extends AbstractButton {
         int textColor = toggled ? 0xFF3A2210 : 0xFF5A422C;
         int textWidth = font.width(label);
         int textX = x + (w - textWidth) / 2;
-        int textY = y + (h - 8 - font.lineHeight) / 2;
+        int textY = y + 1 + (h - 8 - font.lineHeight) / 2;
         guiGraphics.drawString(font, label, textX, textY, textColor, false);
     }
 }

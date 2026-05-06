@@ -10,7 +10,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatal
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -106,21 +105,39 @@ public class ArchaeologyJournalScreen extends Screen {
         guiGraphics.drawString(this.font, this.title,
                 (this.width - titleWidth) / 2, this.bookLayout.bookY() + 2, 0x4A3320, false);
 
-        Component catalogTitle = Component.translatable("screen.unsuspiciousblock.archaeology_journal.catalog")
-                .copy()
-                .withStyle(ChatFormatting.BOLD);
-        int catalogTitleWidth = this.font.width(catalogTitle);
+        Component catalogTitle = Component.translatable("screen.unsuspiciousblock.archaeology_journal.catalog");
+        float catalogTitleScale = 1.125F;
+        int catalogTitleWidth = Mth.ceil(this.font.width(catalogTitle) * catalogTitleScale);
         int catalogTitleX = this.bookLayout.leftPageX()
                 + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
                 + JournalLayout.CATALOG_X_OFFSET
                 + (JournalLayout.CATALOG_TEXTURE_WIDTH - catalogTitleWidth) / 2;
+        int catalogTitleY = this.bookLayout.leftPageY() + JournalLayout.CATALOG_TITLE_Y;
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().scale(catalogTitleScale, catalogTitleScale, 1.0F);
         guiGraphics.drawString(this.font, catalogTitle,
-                catalogTitleX,
-                this.bookLayout.leftPageY() + JournalLayout.CATALOG_TITLE_Y, 0x4A3320, true);
+                Mth.floor(catalogTitleX / catalogTitleScale),
+                Mth.floor(catalogTitleY / catalogTitleScale), 0x5A3D23, false);
+        guiGraphics.pose().popPose();
 
         if (this.catalogPanel != null) {
             this.catalogPanel.render(guiGraphics, this.font, this.selectedIndex, mouseX, mouseY);
         }
+
+        if (!this.tableViews.isEmpty()) {
+            Component unlockedTables = Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.unlocked_tables",
+                    this.unlockedTableCount(), this.tableViews.size());
+            int unlockedTablesWidth = this.font.width(unlockedTables);
+            int unlockedTablesX = this.bookLayout.leftPageX()
+                    + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
+                    + JournalLayout.CATALOG_X_OFFSET
+                    + (JournalLayout.CATALOG_TEXTURE_WIDTH - unlockedTablesWidth) / 2;
+            guiGraphics.drawString(this.font, unlockedTables,
+                    unlockedTablesX,
+                    this.bookLayout.leftPageY() + JournalLayout.CATALOG_SUMMARY_Y, 0x6E5A42, false);
+        }
+
         if (this.catalogPageIndicator != null && this.catalogPanel != null && !this.tableViews.isEmpty()) {
             this.catalogPageIndicator.setPage(this.catalogPanel.getPage(), this.catalogPanel.pageCount());
             this.catalogPageIndicator.render(guiGraphics, this.font);
@@ -391,6 +408,16 @@ public class ArchaeologyJournalScreen extends Screen {
             return null;
         }
         return this.tableViews.get(this.selectedIndex);
+    }
+
+    private int unlockedTableCount() {
+        int unlocked = 0;
+        for (TableView tableView : this.tableViews) {
+            if (tableView.unlocked()) {
+                unlocked++;
+            }
+        }
+        return unlocked;
     }
 
     private static final class JournalPageButton extends PageButton {
