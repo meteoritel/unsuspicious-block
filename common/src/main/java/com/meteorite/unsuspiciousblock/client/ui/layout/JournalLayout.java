@@ -14,14 +14,15 @@ public final class JournalLayout {
 
     // —— 左侧目录 ——
     public static final int CATALOG_ROW_HEIGHT = 20;
+    public static final int CATALOG_ROW_GAP = 3;
     public static final int CATALOG_TITLE_Y = 6;
-    public static final int CATALOG_LIST_TOP = 28;
-    public static final int CATALOG_LIST_BOTTOM_PAD = 6;
+    public static final int CATALOG_LIST_TOP = 32;
+    public static final int CATALOG_PAGE_INDICATOR_Y = 208;
+    public static final int CATALOG_LIST_BOTTOM = CATALOG_PAGE_INDICATOR_Y - 10;
     public static final int CATALOG_LEFT_PAD = 4;
-    public static final int CATALOG_SCROLLBAR_WIDTH = 4;
+    public static final int CATALOG_X_OFFSET = 2;
     public static final int CATALOG_TEXTURE_WIDTH = 152;
-    public static final int CATALOG_TEXTURE_HEIGHT = 58;
-    public static final int CATALOG_SCROLLBAR_MIN_HANDLE = 16;
+    public static final int CATALOG_TEXTURE_HEIGHT = 76;
 
     // —— 右侧网格 ——
     public static final int GRID_CELLS_PER_ROW = 2;
@@ -29,7 +30,8 @@ public final class JournalLayout {
     public static final int GRID_ITEMS_PER_PAGE = GRID_CELLS_PER_ROW * GRID_ROWS_PER_PAGE;
     public static final int GRID_CELL_WIDTH = 74;
     public static final int GRID_CELL_HEIGHT = 56;
-    public static final int GRID_TOP = 32;
+    public static final int GRID_TOP = 28;
+    public static final int GRID_LEFT_PAD = 6;
     public static final int GRID_PROGRESS_Y = 18;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;

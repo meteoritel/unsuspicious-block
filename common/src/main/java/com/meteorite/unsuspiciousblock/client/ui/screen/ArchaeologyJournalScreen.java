@@ -4,23 +4,30 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
+import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 public class ArchaeologyJournalScreen extends Screen {
 
@@ -32,6 +39,9 @@ public class ArchaeologyJournalScreen extends Screen {
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
+    private PageIndicator catalogPageIndicator;
+    private Button catalogPrevButton;
+    private Button catalogNextButton;
     private Button itemPrevButton;
     private Button itemNextButton;
     private long lastCatalogRevision;
@@ -48,8 +58,8 @@ public class ArchaeologyJournalScreen extends Screen {
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
         this.reloadCatalog();
-        this.rebuildViewModels();   // 先构建数据模型（tableViews），更新右侧面板
-        this.rebuildWidgets();      // 创建所有 widget 和目录面板
+        this.rebuildViewModels();
+        this.rebuildWidgets();
 
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
@@ -62,22 +72,24 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     protected void repositionElements() {
-        // resize 时保存右侧面板状态
         RightPageContainer.Tab savedTab = this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO;
         int savedPage = this.rightPage != null ? this.rightPage.getPage() : 0;
+        int savedCatalogPage = this.catalogPanel != null ? this.catalogPanel.getPage() : 0;
 
-        // 重新计算布局
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
 
-        // 恢复数据（setTable 会重置 Tab 和页码）
+        // 先重新灌入当前选中表的数据，再恢复右页状态；否则新容器内的默认页码会覆盖保存的用户上下文。
         this.updateItemGridPanel();
 
-        // 恢复 Tab 和页码状态
         this.rightPage.setActiveTab(savedTab);
         this.rightPage.setPage(savedPage);
 
         this.rebuildWidgets();
+        if (this.catalogPanel != null) {
+            this.catalogPanel.setPage(savedCatalogPage);
+        }
+        this.syncButtonState();
     }
 
     @Override
@@ -88,31 +100,41 @@ public class ArchaeologyJournalScreen extends Screen {
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.refreshClientDataIfNeeded();
 
-        // 书页背景纹理
         JournalBookBackground.render(guiGraphics, this.bookLayout);
 
-        // 标题
         int titleWidth = this.font.width(this.title);
         guiGraphics.drawString(this.font, this.title,
                 (this.width - titleWidth) / 2, this.bookLayout.bookY() + 2, 0x4A3320, false);
 
-        // 左侧目录标题
-        guiGraphics.drawString(this.font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.catalog"),
-                this.bookLayout.leftPageX() + JournalLayout.CATALOG_LEFT_PAD + 4,
-                this.bookLayout.leftPageY() + JournalLayout.CATALOG_TITLE_Y, 0x4A3320, false);
+        Component catalogTitle = Component.translatable("screen.unsuspiciousblock.archaeology_journal.catalog")
+                .copy()
+                .withStyle(ChatFormatting.BOLD);
+        int catalogTitleWidth = this.font.width(catalogTitle);
+        int catalogTitleX = this.bookLayout.leftPageX()
+                + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
+                + JournalLayout.CATALOG_X_OFFSET
+                + (JournalLayout.CATALOG_TEXTURE_WIDTH - catalogTitleWidth) / 2;
+        guiGraphics.drawString(this.font, catalogTitle,
+                catalogTitleX,
+                this.bookLayout.leftPageY() + JournalLayout.CATALOG_TITLE_Y, 0x4A3320, true);
 
         if (this.catalogPanel != null) {
             this.catalogPanel.render(guiGraphics, this.font, this.selectedIndex, mouseX, mouseY);
         }
+        if (this.catalogPageIndicator != null && this.catalogPanel != null && !this.tableViews.isEmpty()) {
+            this.catalogPageIndicator.setPage(this.catalogPanel.getPage(), this.catalogPanel.pageCount());
+            this.catalogPageIndicator.render(guiGraphics, this.font);
+        }
 
-        // 空目录提示
         if (this.tableViews.isEmpty()) {
             guiGraphics.drawString(this.font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_catalog"),
-                    this.bookLayout.leftPageX() + JournalLayout.CATALOG_LEFT_PAD + 4,
+                    this.bookLayout.leftPageX()
+                            + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
+                            + JournalLayout.CATALOG_X_OFFSET
+                            + JournalLayout.CATALOG_LEFT_PAD,
                     this.bookLayout.leftPageY() + JournalLayout.CATALOG_LIST_TOP, 0x7A6247, false);
         }
 
-        // 右侧页面
         this.rightPage.render(guiGraphics, this.font, mouseX, mouseY);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -136,7 +158,6 @@ public class ArchaeologyJournalScreen extends Screen {
             }
             return true;
         }
-        // 非 widget 区域的点击（右侧面板其他子区域）
         if (this.rightPage.mouseClicked(mouseX, mouseY, button)) {
             syncButtonState();
             return true;
@@ -148,6 +169,7 @@ public class ArchaeologyJournalScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (this.catalogPanel != null && this.catalogPanel.containsMouse(mouseX, mouseY)) {
             this.catalogPanel.mouseScrolled(scrollY);
+            this.syncButtonState();
             return true;
         }
         if (this.rightPage.containsMouse(mouseX, mouseY) && this.rightPage.pageCount() > 1) {
@@ -162,25 +184,50 @@ public class ArchaeologyJournalScreen extends Screen {
     protected void rebuildWidgets() {
         this.clearWidgets();
 
-        // 双书签Tab切换按钮
-        this.addRenderableWidget(rightPage.getIntroTabButton());
-        this.addRenderableWidget(rightPage.getArchaeologyTabButton());
+        this.addRenderableWidget(this.rightPage.getIntroTabButton());
+        this.addRenderableWidget(this.rightPage.getArchaeologyTabButton());
 
-        int indicatorCenterX = this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() / 2;
-        int bottomY = this.bookLayout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y
-                + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
         int buttonWidth = JournalLayout.PAGE_BUTTON_WIDTH;
         int buttonGap = JournalLayout.PAGE_BUTTON_CENTER_GAP;
 
-        // 右页（考古页）翻页按钮
-        this.itemPrevButton = this.addRenderableWidget(
-                createPageButton(indicatorCenterX - buttonGap - buttonWidth, bottomY, false,
-                        btn -> { rightPage.changePage(-1); syncButtonState(); }));
-        this.itemNextButton = this.addRenderableWidget(
-                createPageButton(indicatorCenterX + buttonGap, bottomY, true,
-                        btn -> { rightPage.changePage(1); syncButtonState(); }));
+        int catalogIndicatorCenterX = this.bookLayout.leftPageX() + this.bookLayout.leftPageWidth() / 2;
+        int catalogBottomY = this.bookLayout.leftPageY() + JournalLayout.CATALOG_PAGE_INDICATOR_Y
+                + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
+        this.catalogPageIndicator = new PageIndicator(catalogIndicatorCenterX,
+                this.bookLayout.leftPageY() + JournalLayout.CATALOG_PAGE_INDICATOR_Y);
+        this.catalogPrevButton = this.addRenderableWidget(
+                createPageButton(catalogIndicatorCenterX - buttonGap - buttonWidth, catalogBottomY, false,
+                        btn -> {
+                            if (this.catalogPanel != null) {
+                                this.catalogPanel.changePage(-1);
+                                this.syncButtonState();
+                            }
+                        }));
+        this.catalogNextButton = this.addRenderableWidget(
+                createPageButton(catalogIndicatorCenterX + buttonGap, catalogBottomY, true,
+                        btn -> {
+                            if (this.catalogPanel != null) {
+                                this.catalogPanel.changePage(1);
+                                this.syncButtonState();
+                            }
+                        }));
 
-        // 左侧目录面板（resize 时也需要重建）
+        int itemIndicatorCenterX = this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() / 2;
+        int itemBottomY = this.bookLayout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y
+                + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
+        this.itemPrevButton = this.addRenderableWidget(
+                createPageButton(itemIndicatorCenterX - buttonGap - buttonWidth, itemBottomY, false,
+                        btn -> {
+                            this.rightPage.changePage(-1);
+                            this.syncButtonState();
+                        }));
+        this.itemNextButton = this.addRenderableWidget(
+                createPageButton(itemIndicatorCenterX + buttonGap, itemBottomY, true,
+                        btn -> {
+                            this.rightPage.changePage(1);
+                            this.syncButtonState();
+                        }));
+
         this.catalogPanel = new CatalogPanel(this.bookLayout);
         this.catalogPanel.setEntries(buildCatalogEntries());
         this.catalogPanel.ensureIndexVisible(this.selectedIndex);
@@ -222,12 +269,13 @@ public class ArchaeologyJournalScreen extends Screen {
             ResourceLocation id = entry.getKey();
             TableDefinition definition = entry.getValue();
             ArchaeologyJournalState.TableProgress progress = this.state.getTable(id);
-            if (progress == null || !progress.isUnlocked()) {
-                continue;
-            }
             this.tableViews.add(buildTableView(id, definition, progress));
         }
-        this.tableViews.sort(Comparator.comparing(view -> view.displayName().getString()));
+        this.tableViews.sort(Comparator
+                .comparing((TableView view) -> !"minecraft".equals(view.id().getNamespace()))
+                .thenComparing(view -> view.id().getNamespace())
+                .thenComparing(view -> view.displayName().getString())
+                .thenComparing(view -> view.id().getPath()));
 
         boolean foundSelected = selectedId == null;
         if (this.tableViews.isEmpty()) {
@@ -272,23 +320,29 @@ public class ArchaeologyJournalScreen extends Screen {
     private List<CatalogPanel.CatalogEntryData> buildCatalogEntries() {
         List<CatalogPanel.CatalogEntryData> catalogEntries = new ArrayList<>();
         for (TableView tv : this.tableViews) {
-            catalogEntries.add(new CatalogPanel.CatalogEntryData(tv.id(), tv.displayName()));
+            catalogEntries.add(new CatalogPanel.CatalogEntryData(tv.id(), tv.displayName(), tv.unlocked()));
         }
         return catalogEntries;
     }
 
-    private static TableView buildTableView(ResourceLocation tableId, TableDefinition definition, ArchaeologyJournalState.TableProgress progress) {
+    private static TableView buildTableView(ResourceLocation tableId, TableDefinition definition,
+                                            @Nullable ArchaeologyJournalState.TableProgress progress) {
         List<ItemView> items = new ArrayList<>();
         int parsedCount = 0;
+        Map<ResourceLocation, ArchaeologyJournalState.ItemProgress> progressItems =
+                progress != null ? progress.getItems() : Map.of();
         for (ItemDefinition itemDefinition : definition.items()) {
-            boolean unlocked = progress.getItems().containsKey(itemDefinition.id())
-                    && progress.getItems().get(itemDefinition.id()).isUnlocked();
-            int count = unlocked ? progress.getItems().get(itemDefinition.id()).getCount() : 0;
-            if (unlocked) parsedCount++;
+            ArchaeologyJournalState.ItemProgress itemProgress = progressItems.get(itemDefinition.id());
+            boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
+            int count = unlocked ? itemProgress.getCount() : 0;
+            if (unlocked) {
+                parsedCount++;
+            }
             items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.weight(), unlocked, count));
         }
+        boolean tableUnlocked = progress != null && progress.isUnlocked();
         return new TableView(tableId, definition.displayName(), items, definition.totalWeight(),
-                definition.items().size(), parsedCount, definition.approximate());
+                definition.items().size(), parsedCount, definition.approximate(), tableUnlocked);
     }
 
     private void setSelectedIndex(int index) {
@@ -300,7 +354,6 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.catalogPanel != null) {
             this.catalogPanel.ensureIndexVisible(this.selectedIndex);
         }
-        this.rightPage.resetPage();
         updateItemGridPanel();
         syncButtonState();
     }
@@ -310,19 +363,33 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void syncButtonState() {
-        boolean hasMultiplePages = this.rightPage.pageCount() > 1;
+        boolean hasMultipleCatalogPages = this.catalogPanel != null && !this.tableViews.isEmpty()
+                && this.catalogPanel.pageCount() > 1;
+        if (this.catalogPrevButton != null) {
+            this.catalogPrevButton.visible = hasMultipleCatalogPages;
+            this.catalogPrevButton.active = hasMultipleCatalogPages && this.catalogPanel.getPage() > 0;
+        }
+        if (this.catalogNextButton != null) {
+            this.catalogNextButton.visible = hasMultipleCatalogPages;
+            this.catalogNextButton.active = hasMultipleCatalogPages
+                    && this.catalogPanel.getPage() < this.catalogPanel.pageCount() - 1;
+        }
+
+        boolean hasMultipleItemPages = this.rightPage.pageCount() > 1;
         if (this.itemPrevButton != null) {
-            this.itemPrevButton.visible = hasMultiplePages;
-            this.itemPrevButton.active = hasMultiplePages && this.rightPage.getPage() > 0;
+            this.itemPrevButton.visible = hasMultipleItemPages;
+            this.itemPrevButton.active = hasMultipleItemPages && this.rightPage.getPage() > 0;
         }
         if (this.itemNextButton != null) {
-            this.itemNextButton.visible = hasMultiplePages;
-            this.itemNextButton.active = hasMultiplePages && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
+            this.itemNextButton.visible = hasMultipleItemPages;
+            this.itemNextButton.active = hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
         }
     }
 
     private TableView selectedTable() {
-        if (this.selectedIndex < 0 || this.selectedIndex >= this.tableViews.size()) return null;
+        if (this.selectedIndex < 0 || this.selectedIndex >= this.tableViews.size()) {
+            return null;
+        }
         return this.tableViews.get(this.selectedIndex);
     }
 
@@ -352,12 +419,9 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private record TableView(ResourceLocation id, Component displayName, List<ItemView> items,
-                             double totalWeight, int totalCount, int parsedCount, boolean approximate) {
+                             double totalWeight, int totalCount, int parsedCount, boolean approximate, boolean unlocked) {
     }
 
     private record ItemView(ResourceLocation id, Component displayName, double weight, boolean unlocked, int count) {
-        private ItemStack stack() {
-            return new ItemStack(BuiltInRegistries.ITEM.get(this.id));
-        }
     }
 }

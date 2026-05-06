@@ -23,10 +23,11 @@ public final class ItemGridPanel {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
     private static final int ICON_SIZE = 16;
     private static final int ICON_TOP = 4;
-    private static final int INFO_TEXT_LEFT_PAD = 2;
+    private static final int INFO_TEXT_LEFT_PAD = 1;
     private static final int INFO_TEXT_WIDTH = JournalLayout.GRID_CELL_WIDTH - INFO_TEXT_LEFT_PAD * 2;
-    private static final int COUNT_TEXT_Y = 24;
-    private static final int PROBABILITY_TEXT_Y = 34;
+    private static final int NAME_TEXT_Y = 24;
+    private static final int DETAIL_TEXT_Y = 34;
+    private static final int FOOTER_TEXT_Y = 44;
     private static final int SCROLL_PAUSE_WIDTH = 20;
     private static final int SCROLL_SPEED = 1;
 
@@ -83,7 +84,7 @@ public final class ItemGridPanel {
     // 渲染物品网格（仅网格区域，不含进度/页码）
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         if (items.isEmpty()) {
-            int leftX = layout.rightPageX() + 8;
+            int leftX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_entries"),
                     leftX, layout.rightPageY() + JournalLayout.GRID_TOP, 0x7A6247, false);
             return;
@@ -135,6 +136,7 @@ public final class ItemGridPanel {
             guiGraphics.fill(cellX, cellY, cellX + JournalLayout.GRID_CELL_WIDTH, cellY + JournalLayout.GRID_CELL_HEIGHT, bgColor);
         }
 
+        int textX = cellX + INFO_TEXT_LEFT_PAD;
         if (unlocked) {
             ItemStack stack = item.stack();
 
@@ -142,22 +144,29 @@ public final class ItemGridPanel {
             guiGraphics.renderItem(stack, iconX, iconY);
             guiGraphics.renderItemDecorations(font, stack, iconX, iconY);
 
-            // 获得次数
+            String nameText = item.displayName().getString();
             String countText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.acquired", item.count()).getString();
-            drawScrollingText(guiGraphics, font, countText,
-                    cellX + INFO_TEXT_LEFT_PAD, cellY + COUNT_TEXT_Y, INFO_TEXT_WIDTH, 0x7B3E18, textHovered, entry.scrollTicks);
-            // 概率
             String probabilityText = formatProbability(item.weight(), totalWeight, approximate);
+            drawScrollingText(guiGraphics, font, nameText,
+                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x5A422C, textHovered, entry.scrollTicks);
+            drawScrollingText(guiGraphics, font, countText,
+                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x7B3E18, textHovered, entry.scrollTicks);
             drawScrollingText(guiGraphics, font, probabilityText,
-                    cellX + INFO_TEXT_LEFT_PAD, cellY + PROBABILITY_TEXT_Y, INFO_TEXT_WIDTH, 0x6E5A42, textHovered, entry.scrollTicks);
+                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x6E5A42, textHovered, entry.scrollTicks);
         } else {
             // 黑色立体剪影材质
             guiGraphics.blit(UNKNOWN_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
 
-            // 未解锁信息
+            String nameText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_entry").getString();
+            String detailText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered").getString();
+            String footerText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.pending_analysis").getString();
             int mutedColor = 0x6E655B;
-            drawScrollingText(guiGraphics, font, "?", cellX + INFO_TEXT_LEFT_PAD, cellY + COUNT_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, false, 0);
-            drawScrollingText(guiGraphics, font, "?", cellX + INFO_TEXT_LEFT_PAD, cellY + PROBABILITY_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, false, 0);
+            drawScrollingText(guiGraphics, font, nameText,
+                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, textHovered, entry.scrollTicks);
+            drawScrollingText(guiGraphics, font, detailText,
+                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, false, 0);
+            drawScrollingText(guiGraphics, font, footerText,
+                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, mutedColor, false, 0);
         }
     }
 
@@ -220,7 +229,7 @@ public final class ItemGridPanel {
         guiGraphics.enableScissor(x, y, x + width, y + font.lineHeight + 1);
         int overflow = textWidth - width;
         int offset = 0;
-        if (hovered && overflow > 0) {
+        if (hovered) {
             offset = (scrollTicks * SCROLL_SPEED / 2) % (overflow + SCROLL_PAUSE_WIDTH * 2);
             if (offset > overflow + SCROLL_PAUSE_WIDTH) {
                 offset = overflow + SCROLL_PAUSE_WIDTH * 2 - offset;
@@ -233,7 +242,7 @@ public final class ItemGridPanel {
         guiGraphics.disableScissor();
     }
 
-    /** 格式化概率文字 */
+    // 格式化概率文字
     public static String formatProbability(double weight, double totalWeight, boolean approximate) {
         if (totalWeight <= 0 || weight <= 0) return "???";
         double percent = weight * 100.0 / totalWeight;
@@ -252,7 +261,7 @@ public final class ItemGridPanel {
         }
     }
 
-    /** 物品网格条目 */
+    // 物品网格条目
     public record GridItem(ResourceLocation id, Component displayName, double weight, boolean unlocked, int count) {
         public ItemStack stack() {
             return new ItemStack(BuiltInRegistries.ITEM.get(this.id));

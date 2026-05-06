@@ -10,10 +10,17 @@ import net.minecraft.network.chat.Component;
 public final class PageIndicator {
     private int page;
     private int pageCount;
-    private final JournalBookBackground.BookLayout layout;
+    private final int centerX;
+    private final int textY;
 
     public PageIndicator(JournalBookBackground.BookLayout layout) {
-        this.layout = layout;
+        this(layout.rightPageX() + layout.rightPageWidth() / 2,
+                layout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y);
+    }
+
+    public PageIndicator(int centerX, int textY) {
+        this.centerX = centerX;
+        this.textY = textY;
         this.page = 0;
         this.pageCount = 1;
     }
@@ -33,10 +40,10 @@ public final class PageIndicator {
     }
 
     public int centerX() {
-        return layout.rightPageX() + layout.rightPageWidth() / 2;
+        return this.centerX;
     }
 
     public int textY() {
-        return layout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y;
+        return this.textY;
     }
 }

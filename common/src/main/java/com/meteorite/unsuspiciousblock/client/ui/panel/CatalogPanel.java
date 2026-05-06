@@ -12,13 +12,15 @@ import net.minecraft.util.Mth;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 左侧战利品表目录面板 —— 自定义可滚动列表 */
+/** 左侧战利品表目录面板 —— 分页目录列表 */
 public final class CatalogPanel {
 
     private static final ResourceLocation ENTRY_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/catalog_entry.png");
-    private static final int[] STATE_V = {0, 20, 39};
-    private static final int[] STATE_H = {19, 18, 18};
+    private static final int[] UNLOCKED_STATE_V = {0, 19, 38};
+    private static final int[] UNLOCKED_STATE_H = {19, 19, 19};
+    private static final int LOCKED_STATE_V = 57;
+    private static final int LOCKED_STATE_H = 19;
     private static final int TEXT_INNER_PAD = 8;
     private static final int TEXT_Y_OFFSET = 7;
     private static final int SCROLL_PAUSE_WIDTH = 20;
@@ -26,7 +28,7 @@ public final class CatalogPanel {
 
     private final List<CatalogEntry> entries = new ArrayList<>();
     private final JournalBookBackground.BookLayout layout;
-    private double scrollOffset;
+    private int page;
 
     public CatalogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -35,53 +37,57 @@ public final class CatalogPanel {
     public void setEntries(List<CatalogEntryData> entries) {
         this.entries.clear();
         for (CatalogEntryData entry : entries) {
-            this.entries.add(new CatalogEntry(entry.displayName()));
+            this.entries.add(new CatalogEntry(entry.displayName(), entry.unlocked()));
         }
-        this.scrollOffset = Mth.clamp(this.scrollOffset, 0.0, maxScroll());
+        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
     }
 
     public void ensureIndexVisible(int index) {
         if (index < 0 || index >= entries.size()) {
             return;
         }
-
-        int listHeight = listHeight();
-        int itemTop = index * JournalLayout.CATALOG_ROW_HEIGHT;
-        int itemBottom = itemTop + JournalLayout.CATALOG_ROW_HEIGHT;
-        if (itemTop < this.scrollOffset) {
-            this.scrollOffset = itemTop;
-        } else if (itemBottom > this.scrollOffset + listHeight) {
-            this.scrollOffset = itemBottom - listHeight;
-        }
-        this.scrollOffset = Mth.clamp(this.scrollOffset, 0.0, maxScroll());
+        this.page = Mth.clamp(index / itemsPerPage(), 0, Math.max(0, pageCount() - 1));
     }
 
     public void mouseScrolled(double scrollY) {
-        setScrollOffset(this.scrollOffset - scrollY * JournalLayout.CATALOG_ROW_HEIGHT);
+        if (pageCount() > 1) {
+            changePage(scrollY < 0.0 ? 1 : -1);
+        }
+    }
+
+    public void changePage(int delta) {
+        this.page = Mth.clamp(this.page + delta, 0, Math.max(0, pageCount() - 1));
+    }
+
+    public int pageCount() {
+        if (entries.isEmpty()) {
+            return 1;
+        }
+        int itemsPerPage = itemsPerPage();
+        return (entries.size() + itemsPerPage - 1) / itemsPerPage;
+    }
+
+    public int getPage() {
+        return this.page;
+    }
+
+    public void setPage(int page) {
+        this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+    }
+
+    public void resetPage() {
+        this.page = 0;
     }
 
     public int handleClick(double mouseX, double mouseY) {
-        int listTop = listTop();
-        int listBottom = listBottom();
+        int from = this.page * itemsPerPage();
+        int to = Math.min(entries.size(), from + itemsPerPage());
         int buttonX = buttonX();
         int buttonWidth = buttonWidth();
 
-        double maxScroll = maxScroll();
-        if (maxScroll > 0.0) {
-            int scrollbarX = scrollbarX();
-            if (mouseX >= scrollbarX && mouseX <= scrollbarX + JournalLayout.CATALOG_SCROLLBAR_WIDTH
-                    && mouseY >= listTop && mouseY <= listBottom) {
-                double ratio = (mouseY - listTop) / Math.max(1.0, listBottom - listTop);
-                setScrollOffset(ratio * maxScroll);
-                return -1;
-            }
-        }
-
-        for (int i = 0; i < entries.size(); i++) {
-            int rowY = listTop + i * JournalLayout.CATALOG_ROW_HEIGHT - (int) this.scrollOffset;
-            if (rowY + JournalLayout.CATALOG_ROW_HEIGHT <= listTop || rowY >= listBottom) {
-                continue;
-            }
+        for (int i = from; i < to; i++) {
+            int visualIndex = i - from;
+            int rowY = listTop() + visualIndex * rowStride();
             if (mouseX >= buttonX && mouseX <= buttonX + buttonWidth
                     && mouseY >= rowY && mouseY < rowY + JournalLayout.CATALOG_ROW_HEIGHT) {
                 return i;
@@ -102,38 +108,37 @@ public final class CatalogPanel {
 
         int buttonX = buttonX();
         int buttonWidth = buttonWidth();
-        int listTop = listTop();
-        int listBottom = listBottom();
-        int listHeight = listHeight();
+        int from = this.page * itemsPerPage();
+        int to = Math.min(entries.size(), from + itemsPerPage());
 
-        int firstVisible = Math.max(0, (int) this.scrollOffset / JournalLayout.CATALOG_ROW_HEIGHT);
-        int lastVisible = Math.min(entries.size() - 1,
-                (int) ((this.scrollOffset + listHeight) / JournalLayout.CATALOG_ROW_HEIGHT) + 1);
-
-        for (int i = firstVisible; i <= lastVisible && i < entries.size(); i++) {
+        for (int i = from; i < to; i++) {
             CatalogEntry entry = entries.get(i);
-            int rowY = listTop + i * JournalLayout.CATALOG_ROW_HEIGHT - (int) this.scrollOffset;
-            if (rowY + JournalLayout.CATALOG_ROW_HEIGHT <= listTop || rowY >= listBottom) {
-                continue;
-            }
+            int visualIndex = i - from;
+            int rowY = listTop() + visualIndex * rowStride();
             boolean selected = i == selectedIndex;
             boolean hovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth
                     && mouseY >= rowY && mouseY < rowY + JournalLayout.CATALOG_ROW_HEIGHT;
             renderEntry(guiGraphics, font, entry, buttonX, rowY, buttonWidth, hovered, selected);
         }
-
-        renderScrollbar(guiGraphics, listTop, listBottom, listHeight);
     }
 
     private void renderEntry(GuiGraphics guiGraphics, Font font, CatalogEntry entry,
                              int x, int y, int width, boolean hovered, boolean selected) {
-        int state = selected ? 2 : (hovered ? 1 : 0);
         int rowHeight = JournalLayout.CATALOG_ROW_HEIGHT;
-        guiGraphics.blit(ENTRY_TEXTURE,
-                x, y, width, rowHeight,
-                0, STATE_V[state],
-                JournalLayout.CATALOG_TEXTURE_WIDTH, STATE_H[state],
-                JournalLayout.CATALOG_TEXTURE_WIDTH, JournalLayout.CATALOG_TEXTURE_HEIGHT);
+        if (entry.unlocked) {
+            int state = selected ? 2 : (hovered ? 1 : 0);
+            guiGraphics.blit(ENTRY_TEXTURE,
+                    x, y, width, rowHeight,
+                    0, UNLOCKED_STATE_V[state],
+                    JournalLayout.CATALOG_TEXTURE_WIDTH, UNLOCKED_STATE_H[state],
+                    JournalLayout.CATALOG_TEXTURE_WIDTH, JournalLayout.CATALOG_TEXTURE_HEIGHT);
+        } else {
+            guiGraphics.blit(ENTRY_TEXTURE,
+                    x, y, width, rowHeight,
+                    0, LOCKED_STATE_V,
+                    JournalLayout.CATALOG_TEXTURE_WIDTH, LOCKED_STATE_H,
+                    JournalLayout.CATALOG_TEXTURE_WIDTH, JournalLayout.CATALOG_TEXTURE_HEIGHT);
+        }
 
         if (!entry.wasHovered && hovered) {
             entry.scrollTicks = 0;
@@ -143,8 +148,15 @@ public final class CatalogPanel {
             entry.scrollTicks++;
         }
 
-        String displayText = entry.displayName.getString();
-        int textColor = selected ? 0x7B3E18 : 0x5A422C;
+        String displayText = entry.unlocked
+                ? entry.displayName.getString()
+                : "";
+        int textColor;
+        if (entry.unlocked) {
+            textColor = selected ? 0x7B3E18 : 0x5A422C;
+        } else {
+            textColor = selected ? 0x6E4D34 : 0x7A6247;
+        }
         int textMaxWidth = width - TEXT_INNER_PAD * 2;
         int textWidth = font.width(displayText);
         if (textWidth <= textMaxWidth) {
@@ -170,37 +182,20 @@ public final class CatalogPanel {
         guiGraphics.disableScissor();
     }
 
-    private void renderScrollbar(GuiGraphics guiGraphics, int listTop, int listBottom, int listHeight) {
-        double maxScroll = maxScroll();
-        if (maxScroll <= 0.0) {
-            return;
-        }
-
-        int scrollbarX = scrollbarX();
-        int totalContentHeight = entries.size() * JournalLayout.CATALOG_ROW_HEIGHT;
-        guiGraphics.fill(scrollbarX, listTop, scrollbarX + JournalLayout.CATALOG_SCROLLBAR_WIDTH, listBottom, 0x18FFFFFF);
-        int handleHeight = Math.max(JournalLayout.CATALOG_SCROLLBAR_MIN_HANDLE,
-                (int) ((long) listHeight * listHeight / totalContentHeight));
-        int handleTravel = listHeight - handleHeight;
-        int handleY = listTop + (int) (this.scrollOffset * handleTravel / maxScroll);
-        guiGraphics.fill(scrollbarX, handleY,
-                scrollbarX + JournalLayout.CATALOG_SCROLLBAR_WIDTH, handleY + handleHeight, 0x60FFFFFF);
+    private int itemsPerPage() {
+        return Math.max(1, (listHeight() + JournalLayout.CATALOG_ROW_GAP) / rowStride());
     }
 
-    private void setScrollOffset(double offset) {
-        this.scrollOffset = Mth.clamp(offset, 0.0, maxScroll());
-    }
-
-    private double maxScroll() {
-        return Math.max(0.0, entries.size() * JournalLayout.CATALOG_ROW_HEIGHT - listHeight());
+    private int rowStride() {
+        return JournalLayout.CATALOG_ROW_HEIGHT + JournalLayout.CATALOG_ROW_GAP;
     }
 
     private int listLeft() {
-        return this.layout.leftPageX() + JournalLayout.CATALOG_LEFT_PAD;
+        return buttonX();
     }
 
     private int listRight() {
-        return this.layout.leftPageRight() - JournalLayout.CATALOG_LEFT_PAD;
+        return buttonX() + buttonWidth();
     }
 
     private int listTop() {
@@ -208,7 +203,7 @@ public final class CatalogPanel {
     }
 
     private int listBottom() {
-        return this.layout.leftPageBottom() - JournalLayout.CATALOG_LIST_BOTTOM_PAD;
+        return this.layout.leftPageY() + JournalLayout.CATALOG_LIST_BOTTOM;
     }
 
     private int listHeight() {
@@ -216,27 +211,26 @@ public final class CatalogPanel {
     }
 
     private int buttonX() {
-        return listLeft();
+        return this.layout.leftPageX() + (this.layout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
+                + JournalLayout.CATALOG_X_OFFSET;
     }
 
     private int buttonWidth() {
-        return scrollbarX() - buttonX() - 2;
+        return JournalLayout.CATALOG_TEXTURE_WIDTH;
     }
 
-    private int scrollbarX() {
-        return listRight() - JournalLayout.CATALOG_SCROLLBAR_WIDTH;
-    }
-
-    public record CatalogEntryData(ResourceLocation id, Component displayName) {
+    public record CatalogEntryData(ResourceLocation id, Component displayName, boolean unlocked) {
     }
 
     private static final class CatalogEntry {
         private final Component displayName;
+        private final boolean unlocked;
         private int scrollTicks;
         private boolean wasHovered;
 
-        private CatalogEntry(Component displayName) {
+        private CatalogEntry(Component displayName, boolean unlocked) {
             this.displayName = displayName;
+            this.unlocked = unlocked;
         }
     }
 }

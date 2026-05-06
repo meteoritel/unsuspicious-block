@@ -8,7 +8,8 @@ public class ModItems {
     public static SuspiciousReaderItem SUSPICIOUS_READER;
     public static LuoyangSpadeItem LUOYANG_SPADE;
     public static ArchaeologyJournalItem ARCHAEOLOGY_JOURNAL;
-    //供平台模块通过 Supplier/Registry.register 调用
+
+    // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
     // 创建可疑解析仪实例
     public static SuspiciousReaderItem createSuspiciousReader() {
         return new SuspiciousReaderItem(new Item.Properties().stacksTo(1));

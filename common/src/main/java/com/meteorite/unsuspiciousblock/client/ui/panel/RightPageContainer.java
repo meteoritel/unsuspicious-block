@@ -65,9 +65,6 @@ public final class RightPageContainer {
                          double totalWeight, int parsedCount, int totalCount, boolean approximate) {
         this.parsedCount = parsedCount;
         this.totalCount = totalCount;
-        this.activeTab = Tab.INTRO;
-        this.introTabBtn.setToggled(true);
-        this.archaeologyTabBtn.setToggled(false);
         this.gridPanel.setTable(items, totalWeight, approximate);
         this.gridPanel.resetPage();
         this.detailPanel.setData(tableId, parsedCount, totalCount, items);
@@ -86,10 +83,10 @@ public final class RightPageContainer {
         int leftX = layout.rightPageX() + 8;
 
         // 进度文字
-        Component progress = Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.progress_items", parsedCount, totalCount);
-        guiGraphics.drawString(font, progress, leftX,
-                layout.rightPageY() + JournalLayout.GRID_PROGRESS_Y, 0x5A422C, false);
+//        Component progress = Component.translatable(
+//                "screen.unsuspiciousblock.archaeology_journal.progress_items", parsedCount, totalCount);
+//        guiGraphics.drawString(font, progress, leftX,
+//                layout.rightPageY() + JournalLayout.GRID_PROGRESS_Y, 0x5A422C, false);
 
         // Tab按钮
         introTabBtn.render(guiGraphics, mouseX, mouseY, 0f);
