@@ -1,102 +1,56 @@
 # Unsuspicious Block
 
-**Unsuspicious Block** is a Minecraft mod that enhances the archaeology system, allowing you to analyze and extract loot from suspicious blocks without the tedious brushing process — while the **Archaeology Journal** records every discovery along your journey.
+**Unsuspicious Block** is a Minecraft 1.21.1 multi-loader archaeology enhancement mod that lets you quickly reveal the loot hidden inside suspicious blocks without long brushing sessions, while recording every excavation in the **Archaeology Journal**.
 
-> **中文版本**: [README (中文)](../../README.md)
+> **中文版**: [README](../../README.md)
 
 ---
 
 ## Features
 
-### Archaeology Journal — Core System
+### Archaeology Journal
 
-The **Archaeology Journal** is the heart of this mod — a personal logbook that automatically records every archaeological discovery you make.
+The **Archaeology Journal** is the core feature of this mod. It automatically records all of your archaeology discoveries.
 
-Open the journal to reveal an elegant book interface with two tabs:
+#### Crafting Recipe
 
-| Tab | Function |
-|-----|----------|
-| **Intro** | Mod introduction and usage guide |
-| **Archaeology** | Loot table catalog, displaying all archaeological discoveries |
+| <img src="../image/readme/archaeology_journal_recipe.png" alt="Archaeology Journal crafting recipe" width="480"> |
+|:----------------------------------------------------------------------------------------------------------------:|
+|                                       Archaeology Journal crafting recipe                                        |
 
-#### Loot Table Catalog
+#### Interface Preview
 
-The journal automatically scans all archaeology loot tables in the game and organizes them by structure:
+The Archaeology Journal automatically scans all archaeology loot tables in the game, displays them by structure name, and is also compatible with loot tables added by other mods.
 
-<!-- TODO: Screenshot - Archaeology Journal main interface -->
+| <img src="../image/readme/archaeology_journal_GUI1.png" alt="Archaeology Journal catalog screen" width="360"> | <img src="../image/readme/archaeology_journal_GUI2.png" alt="Archaeology Journal item details screen" width="360"> |
+|:-------------------------------------------------------------------------------------------------------------:|:------------------------------------------------------------------------------------------------------------------:|
+|                                              Loot table catalog                                               |                                                 Item details page                                                  |
 
-![Archaeology Journal Main]()
+#### Unlock Status
 
-- **Left Panel — Catalog**: Lists all archaeology loot tables (Desert Pyramid, Desert Well, Cold Ocean Ruin, Warm Ocean Ruin, Trail Ruins, etc.). Unlocked entries are highlighted.
-- **Progress Bar**: Shows "Unlocked X/Y" count at the bottom
-- **Pagination**: Supports browsing when many mod-added loot tables are present
+Each time you brush out a new item, the Archaeology Journal automatically unlocks the corresponding entry and records it.
 
-#### Item Details
+When no entries have been unlocked yet, the interface looks like this:
 
-Click any loot table in the catalog to reveal all possible drops for that structure:
+| <img src="../image/readme/archaeology_journal_unlock1.png" alt="No loot tables unlocked" width="360"> | <img src="../image/readme/archaeology_journal_unlock2.png" alt="No items unlocked" width="360"> |
+|:-----------------------------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------:|
+|                                        No loot tables unlocked                                        |                                        No items unlocked                                        |
 
-<!-- TODO: Screenshot - Item grid page -->
+### Suspicious Analyzer
 
-![Archaeology Journal Items]()
+The **Suspicious Analyzer** reveals the hidden loot inside any suspicious block with a right-click.
 
-- **Item Grid**: Displays all possible loot items in a grid layout
-- **Parse Progress**: Discovered items show their icons and names; undiscovered items appear as ghost silhouettes with "?"
-- **Weight Info**: Hover over items to view drop probability (weight)
-- **Acquisition Count**: Tracks how many times each item has been obtained
+| <img src="../image/readme/jade_plugin.png" alt="Jade integration preview" width="480"> |
+|:--------------------------------------------------------------------------------------:|
+|                                Jade integration preview                                |
 
-#### First Discovery Tracking
-
-Each time you brush out a new item, the journal automatically unlocks that entry and records:
-
-- Item name and icon
-- Source loot table (structure origin)
-- First unlock time (in-game day)
-
-<!-- TODO: Screenshot - First discovery record -->
-
-![First Discovery]()
-
-### Suspicious Reader
-
-The **Suspicious Reader** is an archaeologist's essential tool. Right-click any suspicious block to instantly reveal the hidden loot — no brush, no waiting!
-
-<!-- TODO: Screenshot - Scanning a suspicious block -->
-
-![Suspicious Reader]()
-
-- Right-click suspicious sand/gravel to instantly display the contained item
-- Automatically syncs results to the Archaeology Journal
-- Compatible with all `BrushableBlockEntity` implementations (including suspicious blocks from other mods)
-
----
-
-## Optional Integrations
-
-| Mod | Feature |
-|-----|---------|
-| **[Jade](https://modrinth.com/mod/jade)** (15+) | Displays Suspicious Reader results directly in the Jade HUD overlay |
-
-<!-- TODO: Screenshot - Jade integration -->
-
-![Jade Integration]()
-
----
-
-## Compatibility
-
-| | |
-|---|---|
-| **Minecraft** | 1.21.1 |
-| **Mod Loaders** | Fabric, NeoForge |
-| **Required Dependencies** | Fabric API *(Fabric only)* |
-| **Optional** | Jade (15+) |
+- Right-click suspicious sand or suspicious gravel to immediately reveal the contained item
+- Automatically sync the result to the Archaeology Journal
+- Compatible with all block entities derived from `BrushableBlockEntity`, including suspicious blocks added by other mods
+- When used with Jade, the scanned item information can be shown directly in the HUD
 
 ---
 
 ## License
 
-This mod is licensed under the **MIT License**. Feel free to use it in modpacks, fork it, or contribute!
-
----
-
-*Made by meteoritel*
+This mod is licensed under the **MIT License**. Feel free to use it in modpacks.

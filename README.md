@@ -1,6 +1,6 @@
 # Unsuspicious Block
 
-**Unsuspicious Block** 是一个 Minecraft 考古系统增强模组，让你无需漫长刷拭即可解析可疑方块中的战利品，并通过**考古笔记**记录每一次发掘旅程。
+**Unsuspicious Block** 是一个 Minecraft 1.21.1 多加载器考古增强模组，让你无需漫长刷拭即可快速解析可疑方块中的战利品，并通过 **考古笔记** 记录每一次发掘过程。
 
 > **English version**: [README (English)](./doc/readme/README_EN.md)
 
@@ -10,44 +10,48 @@
 
 ### 考古笔记
 
-**考古笔记**是本模组的核心，一本自动记录你所有考古发现的随身手册，合成配方如下：
+**考古笔记** 是本模组的核心，会自动记录你的所有考古发现。
 
-![archaeology_journal_recipe.png](doc/image/readme/archaeology_journal_recipe.png)
+#### 合成配方
+
+| <img src="doc/image/readme/archaeology_journal_recipe.png" alt="考古笔记合成配方" width="480"> |
+|:--------------------------------------------------------------------------------------:|
+|                                        考古笔记合成配方                                        |
+
+#### 界面展示
+
+考古笔记会自动扫描游戏中的所有考古战利品表，并按结构名称分类展示，同时兼容其他模组新增的战利品表。
+
+| <img src="doc/image/readme/archaeology_journal_GUI1.png" alt="考古笔记目录界面" width="360"> | <img src="doc/image/readme/archaeology_journal_GUI2.png" alt="考古笔记物品详情界面" width="360"> |
+|:------------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------:|
+|                                        战利品表目录                                        |                                         物品详情页                                          |
 
 
-考古笔记自动扫描游戏内所有考古战利品表，并以结构名称分类展示，自适应其他模组添加的战利品表：
-![archaeology_journal_GUI1.png](doc/image/readme/archaeology_journal_GUI1.png)
+#### 解锁状态
 
-点击左侧任意战利品表，右侧展示该结构可能掉落的全部物品：
-![archaeology_journal_GUI2.png](doc/image/readme/archaeology_journal_GUI2.png)
+每次刷拭出新的物品时，考古笔记会自动解锁对应条目并记录下来。
 
-每次刷拭出新的物品时，考古笔记会自动解锁该物品条目并记录。未解锁任何条目的状态如下：
-![archaeology_journal_unlock1.png](doc/image/readme/archaeology_journal_unlock1.png)
+未解锁任何条目时，界面如下：
 
-![archaeology_journal_unlock2.png](doc/image/readme/archaeology_journal_unlock2.png)
-
+| <img src="doc/image/readme/archaeology_journal_unlock1.png" alt="未解锁状态" width="360"> | <img src="doc/image/readme/archaeology_journal_unlock2.png" alt="解锁后状态" width="360"> |
+|:------------------------------------------------------------------------------------:|:------------------------------------------------------------------------------------:|
+|                                      未解锁任何战利品表                                       |                                       未解锁任何物品                                        |
 
 ### 可疑解析仪
 
-**可疑解析仪**右键任意可疑方块即可揭示其中隐藏的战利品
-![jade_plugin.png](doc/image/readme/jade_plugin.png)
+**可疑解析仪** 右键任意可疑方块，即可直接揭示其中隐藏的战利品。
 
-- 右键点击可疑沙子/可疑沙砾，立即显示内部物品
+| <img src="doc/image/readme/jade_plugin.png" alt="Jade 联动展示" width="480"> |
+|:------------------------------------------------------------------------:|
+|                                Jade 联动展示                                 |
+
+- 右键可疑沙子 / 可疑沙砾后，立即显示内部物品
 - 自动将结果同步到考古笔记
-- 兼容所有继承 `BrushableBlockEntity` 的方块实体（包括其他模组添加的可疑方块）
-- 与jade联动可直接显示扫描后的物品信息
-
----
-
-## 可选联动
-
-| 模组                                        | 功能                      |
-|-------------------------------------------|-------------------------|
-| **[Jade](https://modrinth.com/mod/jade)** | 在 Jade HUD 悬浮框中直接显示解析结果 |
+- 兼容所有继承 `BrushableBlockEntity` 的方块实体，包括其他模组添加的可疑方块
+- 配合 Jade 时，可直接在 HUD 中显示扫描后的物品信息
 
 ---
 
 ## 许可证
 
 本模组采用 **MIT License** 开源。欢迎自由在整合包中使用！
-
