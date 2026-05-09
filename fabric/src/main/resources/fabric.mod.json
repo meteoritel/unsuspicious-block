@@ -18,6 +18,9 @@
         ],
         "client": [
             "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricClient"
+        ],
+        "jade": [
+            "com.meteorite.unsuspiciousblock.plugin.jade.JadePlugin"
         ]
     },
     "mixins": [

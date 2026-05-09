@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -24,9 +25,6 @@ public final class DetailOverlayPanel {
     private static final int ITEM_ROW_HEIGHT = 16;
     private static final int FOOTER_HEIGHT = 50;
     private static final int MOD_SOURCE_TOP_OFFSET = 44;
-    private static final int SCROLL_PAUSE_WIDTH = 20;
-    private static final int SCROLL_SPEED = 1;
-
     private final JournalBookBackground.BookLayout layout;
     private int parsedCount;
     private int totalCount;
@@ -130,8 +128,8 @@ public final class DetailOverlayPanel {
                 if (hovered) {
                     entry.scrollTicks++;
                 }
-                drawScrollingText(guiGraphics, font, item.displayName().getString(),
-                        nameX, rowY + 2, nameMaxWidth, TEXT_COLOR, hovered, entry.scrollTicks);
+                ScrollTextHelper.draw(guiGraphics, font, item.displayName().getString(),
+                        nameX, rowY + 2, nameMaxWidth, TEXT_COLOR, hovered, entry.scrollTicks, false);
             }
             y += showCount * ITEM_ROW_HEIGHT + 6;
         }
@@ -159,10 +157,6 @@ public final class DetailOverlayPanel {
         this.page = Math.max(0, Math.min(this.page + delta, pageCount() - 1));
     }
 
-    public void resetPage() {
-        this.page = 0;
-    }
-
     public void setPage(int page) {
         this.page = Math.max(0, Math.min(page, pageCount() - 1));
     }
@@ -173,33 +167,6 @@ public final class DetailOverlayPanel {
 
     private int listStartY(int discoveredLabelY) {
         return discoveredLabelY + 14;
-    }
-
-    private void drawScrollingText(GuiGraphics guiGraphics, Font font, String text,
-                                   int x, int y, int width, int color, boolean hovered, int scrollTicks) {
-        if (width <= 0) {
-            return;
-        }
-        int textWidth = font.width(text);
-        if (textWidth <= width) {
-            guiGraphics.drawString(font, text, x, y, color, false);
-            return;
-        }
-
-        guiGraphics.enableScissor(x, y, x + width, y + font.lineHeight + 1);
-        int overflow = textWidth - width;
-        int offset = 0;
-        if (hovered) {
-            offset = (scrollTicks * SCROLL_SPEED / 2) % (overflow + SCROLL_PAUSE_WIDTH * 2);
-            if (offset > overflow + SCROLL_PAUSE_WIDTH) {
-                offset = overflow + SCROLL_PAUSE_WIDTH * 2 - offset;
-            }
-            if (offset > overflow) {
-                offset = overflow;
-            }
-        }
-        guiGraphics.drawString(font, text, x - offset, y, color, false);
-        guiGraphics.disableScissor();
     }
 
     private static final class DiscoveredItemEntry {

@@ -75,10 +75,6 @@ public final class CatalogPanel {
         this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
     }
 
-    public void resetPage() {
-        this.page = 0;
-    }
-
     public int handleClick(double mouseX, double mouseY) {
         int from = this.page * itemsPerPage();
         int to = Math.min(entries.size(), from + itemsPerPage());

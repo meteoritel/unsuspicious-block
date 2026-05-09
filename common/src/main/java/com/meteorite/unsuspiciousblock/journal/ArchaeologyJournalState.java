@@ -42,16 +42,6 @@ public final class ArchaeologyJournalState {
         return table != null && table.isUnlocked();
     }
 
-    public int getItemCount(ResourceLocation tableId, ResourceLocation itemId) {
-        TableProgress table = this.tables.get(tableId);
-        if (table == null) {
-            return 0;
-        }
-
-        ItemProgress item = table.getItems().get(itemId);
-        return item == null ? 0 : item.getCount();
-    }
-
     public boolean isItemUnlocked(ResourceLocation tableId, ResourceLocation itemId) {
         TableProgress table = this.tables.get(tableId);
         if (table == null) {
@@ -157,7 +147,7 @@ public final class ArchaeologyJournalState {
             return changed;
         }
 
-        /** 统计已解析（已解锁）的物品数量 */
+        // 统计已解析（已解锁）的物品数量
         public int getResolvedItemCount() {
             int count = 0;
             for (ItemProgress item : this.items.values()) {

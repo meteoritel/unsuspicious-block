@@ -9,13 +9,14 @@ import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.ItemStack;
 
 /** Fabric 平台入口（服务端） */
 public class UnsuspiciousBlockFabric implements ModInitializer {
@@ -41,11 +42,18 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 ModItems.createArchaeologyJournal()
         );
 
-        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(entries -> {
-            entries.accept(ModItems.SUSPICIOUS_READER);
-            entries.accept(ModItems.LUOYANG_SPADE);
-            entries.accept(ModItems.ARCHAEOLOGY_JOURNAL);
-        });
+        Registry.register(
+                BuiltInRegistries.CREATIVE_MODE_TAB,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "main"),
+                FabricItemGroup.builder()
+                        .title(Component.translatable("itemGroup.unsuspiciousblock.main"))
+                        .icon(() -> new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL))
+                        .displayItems((context, entries) -> {
+                            entries.accept(ModItems.SUSPICIOUS_READER);
+                            entries.accept(ModItems.ARCHAEOLOGY_JOURNAL);
+                        })
+                        .build()
+        );
 
         // 注册考古笔记网络包类型
         PayloadTypeRegistry.playS2C().register(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC);

@@ -21,7 +21,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import org.jetbrains.annotations.NotNull;
 
-/** 洛阳铲——从已扫描的可疑方块中取出战利品 */
+/** 洛阳铲——从已扫描的可疑方块中取出战利品
+ * 调试物品，只能通过指令获得
+ * */
 public class LuoyangSpadeItem extends Item {
 
     public LuoyangSpadeItem(Properties properties) {

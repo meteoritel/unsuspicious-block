@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,19 +20,15 @@ public final class RightPageContainer {
 
     public enum Tab { INTRO, ARCHAEOLOGY }
 
-    private final JournalBookBackground.BookLayout layout;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
     private final DetailOverlayPanel detailPanel;
     private final BookmarkToggleButton introTabBtn;
     private final BookmarkToggleButton archaeologyTabBtn;
 
-    private int parsedCount;
-    private int totalCount;
     private Tab activeTab = Tab.INTRO;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout) {
-        this.layout = layout;
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
         this.detailPanel = new DetailOverlayPanel(layout);
@@ -63,8 +58,6 @@ public final class RightPageContainer {
 
     public void setTable(ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
                          double totalWeight, int parsedCount, int totalCount, boolean approximate) {
-        this.parsedCount = parsedCount;
-        this.totalCount = totalCount;
         this.gridPanel.setTable(items, totalWeight, approximate);
         this.gridPanel.resetPage();
         this.detailPanel.setData(tableId, parsedCount, totalCount, items);
@@ -80,14 +73,6 @@ public final class RightPageContainer {
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        int leftX = layout.rightPageX() + 8;
-
-        // 进度文字
-//        Component progress = Component.translatable(
-//                "screen.unsuspiciousblock.archaeology_journal.progress_items", parsedCount, totalCount);
-//        guiGraphics.drawString(font, progress, leftX,
-//                layout.rightPageY() + JournalLayout.GRID_PROGRESS_Y, 0x5A422C, false);
-
         // Tab按钮
         introTabBtn.render(guiGraphics, mouseX, mouseY, 0f);
         archaeologyTabBtn.render(guiGraphics, mouseX, mouseY, 0f);
@@ -144,12 +129,6 @@ public final class RightPageContainer {
         syncPageIndicator();
     }
 
-    public void resetPage() {
-        gridPanel.resetPage();
-        detailPanel.resetPage();
-        syncPageIndicator();
-    }
-
     // 切换到指定Tab（不触发按钮回调）
     public void setActiveTab(Tab tab) {
         if (this.activeTab == tab) return;
@@ -172,14 +151,6 @@ public final class RightPageContainer {
             this.detailPanel.setPage(page);
         }
         syncPageIndicator();
-    }
-
-    public boolean isIntroActive() {
-        return activeTab == Tab.INTRO;
-    }
-
-    public boolean isArchaeologyActive() {
-        return activeTab == Tab.ARCHAEOLOGY;
     }
 
     private void syncPageIndicator() {

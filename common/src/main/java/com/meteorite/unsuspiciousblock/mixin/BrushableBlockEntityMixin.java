@@ -125,6 +125,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         }
     }
 
+    // ========== 接口实现 ========== //
     @Override
     public void unsuspiciousblock$markScanned(UUID scannerUuid) {
         if (this.unsuspiciousblock$scanned && scannerUuid.equals(this.unsuspiciousblock$scannerUuid)) {
@@ -179,6 +180,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.item = stack;
     }
 
+    // ========== 注入 ========== //
     // 标记刷子 context 开始
     @Inject(method = "brush", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushStart(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {

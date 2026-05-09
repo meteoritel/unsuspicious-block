@@ -10,19 +10,22 @@ import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -41,13 +44,26 @@ public class UnsuspiciousBlockNeoForge {
     private static final DeferredItem<ArchaeologyJournalItem> ARCHAEOLOGY_JOURNAL =
             ITEMS.register("archaeology_journal", ModItems::createArchaeologyJournal);
 
+    private static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
+            DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Constants.MOD_ID);
+
+    private static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB =
+            CREATIVE_MODE_TABS.register("main", () -> CreativeModeTab.builder()
+                    .title(Component.translatable("itemGroup.unsuspiciousblock.main"))
+                    .icon(() -> new ItemStack(ARCHAEOLOGY_JOURNAL.get()))
+                    .displayItems((parameters, output) -> {
+                        output.accept(SUSPICIOUS_READER.get());
+                        output.accept(ARCHAEOLOGY_JOURNAL.get());
+                    })
+                    .build());
+
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus) {
         UnsuspiciousBlockCommon.init();
 
         ITEMS.register(modEventBus);
+        CREATIVE_MODE_TABS.register(modEventBus);
 
         modEventBus.addListener(this::syncCommonItemRefs);
-        modEventBus.addListener(this::addCreativeTabEntries);
         modEventBus.addListener(this::registerPayloads);
 
         // 注册玩家登录事件用于初始同步
@@ -62,14 +78,6 @@ public class UnsuspiciousBlockNeoForge {
             ModItems.LUOYANG_SPADE = LUOYANG_SPADE.get();
             ModItems.ARCHAEOLOGY_JOURNAL = ARCHAEOLOGY_JOURNAL.get();
         });
-    }
-
-    private void addCreativeTabEntries(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
-            event.accept(SUSPICIOUS_READER);
-            event.accept(LUOYANG_SPADE);
-            event.accept(ARCHAEOLOGY_JOURNAL);
-        }
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {

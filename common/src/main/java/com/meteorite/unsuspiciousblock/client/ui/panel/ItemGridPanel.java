@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -23,13 +24,10 @@ public final class ItemGridPanel {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
     private static final int ICON_SIZE = 16;
     private static final int ICON_TOP = 4;
-    private static final int INFO_TEXT_LEFT_PAD = 0;
-    private static final int INFO_TEXT_WIDTH = JournalLayout.GRID_CELL_WIDTH - INFO_TEXT_LEFT_PAD * 2;
+    private static final int INFO_TEXT_WIDTH = JournalLayout.GRID_CELL_WIDTH;
     private static final int NAME_TEXT_Y = 24;
     private static final int DETAIL_TEXT_Y = 34;
     private static final int FOOTER_TEXT_Y = 44;
-    private static final int SCROLL_PAUSE_WIDTH = 20;
-    private static final int SCROLL_SPEED = 1;
 
     private final List<GridEntry> items = new ArrayList<>();
     private final JournalBookBackground.BookLayout layout;
@@ -92,7 +90,7 @@ public final class ItemGridPanel {
 
         // 网格区域
         int gridWidth = JournalLayout.GRID_CELLS_PER_ROW * JournalLayout.GRID_CELL_WIDTH
-                + (JournalLayout.GRID_CELLS_PER_ROW - 1) * JournalLayout.GRID_COLUMN_GAP;
+                + JournalLayout.GRID_COLUMN_GAP;
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
 
@@ -137,7 +135,7 @@ public final class ItemGridPanel {
             guiGraphics.fill(cellX, cellY, cellX + JournalLayout.GRID_CELL_WIDTH, cellY + JournalLayout.GRID_CELL_HEIGHT, bgColor);
         }
 
-        int textX = cellX + INFO_TEXT_LEFT_PAD;
+        int textX = cellX;
         if (unlocked) {
             ItemStack stack = item.stack();
 
@@ -148,12 +146,12 @@ public final class ItemGridPanel {
             String nameText = item.displayName().getString();
             String countText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.acquired", item.count()).getString();
             String probabilityText = formatProbability(item.weight(), totalWeight, approximate);
-            drawScrollingText(guiGraphics, font, nameText,
-                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x5A422C, textHovered, entry.scrollTicks);
-            drawScrollingText(guiGraphics, font, countText,
-                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x71604B, textHovered, entry.scrollTicks);
-            drawScrollingText(guiGraphics, font, probabilityText,
-                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x857565, textHovered, entry.scrollTicks);
+            ScrollTextHelper.draw(guiGraphics, font, nameText,
+                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x5A422C, textHovered, entry.scrollTicks, true);
+            ScrollTextHelper.draw(guiGraphics, font, countText,
+                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x71604B, textHovered, entry.scrollTicks, true);
+            ScrollTextHelper.draw(guiGraphics, font, probabilityText,
+                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x857565, textHovered, entry.scrollTicks, true);
         } else {
             // 黑色立体剪影材质
             guiGraphics.blit(UNKNOWN_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
@@ -161,12 +159,12 @@ public final class ItemGridPanel {
             String nameText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_entry").getString();
             String detailText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered").getString();
             String footerText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.pending_analysis").getString();
-            drawScrollingText(guiGraphics, font, nameText,
-                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x6A6157, textHovered, entry.scrollTicks);
-            drawScrollingText(guiGraphics, font, detailText,
-                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x7B7268, false, 0);
-            drawScrollingText(guiGraphics, font, footerText,
-                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x8B8278, false, 0);
+            ScrollTextHelper.draw(guiGraphics, font, nameText,
+                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x6A6157, textHovered, entry.scrollTicks, true);
+            ScrollTextHelper.draw(guiGraphics, font, detailText,
+                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x7B7268, false, 0, true);
+            ScrollTextHelper.draw(guiGraphics, font, footerText,
+                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x8B8278, false, 0, true);
         }
     }
 
@@ -212,33 +210,6 @@ public final class ItemGridPanel {
         int iconY = cellY + ICON_TOP;
         return mouseX >= iconX && mouseX < iconX + ICON_SIZE
                 && mouseY >= iconY && mouseY < iconY + ICON_SIZE;
-    }
-
-    private static void drawScrollingText(GuiGraphics guiGraphics, Font font, String text,
-                                          int x, int y, int width, int color, boolean hovered, int scrollTicks) {
-        if (width <= 0) {
-            return;
-        }
-        int textWidth = font.width(text);
-        if (textWidth <= width) {
-            guiGraphics.drawString(font, text, x + (width - textWidth) / 2, y, color, false);
-            return;
-        }
-
-        guiGraphics.enableScissor(x, y, x + width, y + font.lineHeight + 1);
-        int overflow = textWidth - width;
-        int offset = 0;
-        if (hovered) {
-            offset = (scrollTicks * SCROLL_SPEED / 2) % (overflow + SCROLL_PAUSE_WIDTH * 2);
-            if (offset > overflow + SCROLL_PAUSE_WIDTH) {
-                offset = overflow + SCROLL_PAUSE_WIDTH * 2 - offset;
-            }
-            if (offset > overflow) {
-                offset = overflow;
-            }
-        }
-        guiGraphics.drawString(font, text, x - offset, y, color, false);
-        guiGraphics.disableScissor();
     }
 
     // 格式化概率文字

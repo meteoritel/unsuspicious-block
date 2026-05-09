@@ -63,10 +63,6 @@ public class BookmarkToggleButton extends AbstractButton {
         guiGraphics.fill(x + tabWidth + 1, tabBottom - 1, x + w - tabWidth - 1, tabBottom, fillColor);
 
         // 描边
-        //guiGraphics.fill(x, y, x + w, y + 1, outlineColor);
-        //guiGraphics.fill(x, y, x + 1, tabBottom, outlineColor);
-        //guiGraphics.fill(x + w - 1, y, x + w, tabBottom, outlineColor);
-        //guiGraphics.fill(x + tabWidth, tabBottom, x + w - tabWidth, tabBottom + 1, outlineColor);
         for (int i = 0; i < 3; i++) {
             int inset = tabWidth - i;
             guiGraphics.fill(x + inset, tabBottom + 1 + i, x + w - inset, tabBottom + 2 + i, outlineColor);
