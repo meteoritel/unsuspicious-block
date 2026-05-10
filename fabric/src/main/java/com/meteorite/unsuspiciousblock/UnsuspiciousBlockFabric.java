@@ -5,27 +5,29 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.UploadJournalLogSnapshotPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
-/** Fabric 平台入口（服务端） */
 public class UnsuspiciousBlockFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
         UnsuspiciousBlockCommon.init();
 
-        // 物品注册（Fabric 端在 onInitialize 时注册表尚未冻结，可直接使用 Registry.register）
         ModItems.SUSPICIOUS_READER = Registry.register(
                 BuiltInRegistries.ITEM,
                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "suspicious_reader"),
@@ -55,19 +57,21 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                         .build()
         );
 
-        // 注册考古笔记网络包类型
         PayloadTypeRegistry.playS2C().register(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playC2S().register(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(UploadJournalLogSnapshotPayload.TYPE,
+                (payload, context) -> context.server().execute(
+                        () -> ArchaeologyJournalNetwork.handleUploadedLogSnapshot(context.player(), payload)));
 
-        // 服务端启动时预加载考古战利品表目录
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> ArchaeologyJournalServerCatalog.invalidate());
 
-        // 玩家加入时同步目录和状态
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));
 
-        // 注册 USB 调试指令
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 UsbCommand.register(dispatcher));
 

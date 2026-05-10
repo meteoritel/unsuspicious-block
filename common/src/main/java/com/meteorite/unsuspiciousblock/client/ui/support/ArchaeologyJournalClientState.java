@@ -1,8 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
 import net.minecraft.resources.ResourceLocation;
 
@@ -11,7 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** 客户端缓存：保存服务端同步的目录和玩家状态 */
 public final class ArchaeologyJournalClientState {
     private static volatile Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
     private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
@@ -21,14 +23,14 @@ public final class ArchaeologyJournalClientState {
     private ArchaeologyJournalClientState() {
     }
 
-    // 客户端接收全量目录
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
+        ArchaeologyJournalLogLocalStore.tick();
         serverCatalog = Collections.unmodifiableMap(new LinkedHashMap<>(payload.catalog()));
         catalogRevision.incrementAndGet();
     }
 
-    // 客户端接收玩家状态
     public static void receiveState(SyncJournalStatePayload payload) {
+        ArchaeologyJournalLogLocalStore.tick();
         if (payload.state() == null) return;
         ArchaeologyJournalState updated = new ArchaeologyJournalState();
         updated.readFrom(payload.state());
@@ -36,7 +38,18 @@ public final class ArchaeologyJournalClientState {
         stateRevision.incrementAndGet();
     }
 
-    // 获取服务端同步的目录（只读）
+    public static void receiveLogUpdate(SyncJournalLogPayload payload) {
+        ArchaeologyJournalLogLocalStore.applyUpdate(payload);
+    }
+
+    public static void receiveLogSnapshot(SyncJournalLogSnapshotPayload payload) {
+        ArchaeologyJournalLogLocalStore.applySnapshot(payload);
+    }
+
+    public static void tick() {
+        ArchaeologyJournalLogLocalStore.tick();
+    }
+
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         return serverCatalog;
     }
@@ -49,8 +62,15 @@ public final class ArchaeologyJournalClientState {
         return stateRevision.get();
     }
 
-    // 获取当前缓存的玩家状态
+    public static long getLogRevision() {
+        return ArchaeologyJournalLogLocalStore.getRevision();
+    }
+
     public static ArchaeologyJournalState getState() {
         return journalState;
+    }
+
+    public static ArchaeologyJournalLogState getLogState() {
+        return ArchaeologyJournalLogLocalStore.getState().copy();
     }
 }

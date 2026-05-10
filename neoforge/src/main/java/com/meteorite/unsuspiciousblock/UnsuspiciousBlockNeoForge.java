@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.item.ArchaeologyJournalItem;
 import com.meteorite.unsuspiciousblock.item.LuoyangSpadeItem;
@@ -8,8 +7,7 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
-import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.UploadJournalLogSnapshotPayload;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -29,7 +27,6 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/** NeoForge 平台入口 */
 @Mod(Constants.MOD_ID)
 public class UnsuspiciousBlockNeoForge {
 
@@ -66,7 +63,6 @@ public class UnsuspiciousBlockNeoForge {
         modEventBus.addListener(this::syncCommonItemRefs);
         modEventBus.addListener(this::registerPayloads);
 
-        // 注册玩家登录事件用于初始同步
         NeoForge.EVENT_BUS.register(this);
 
         Constants.LOG.info("UnsuspiciousBlock NeoForge initialized.");
@@ -82,10 +78,8 @@ public class UnsuspiciousBlockNeoForge {
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("1.0");
-        registrar.playToClient(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
-        registrar.playToClient(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
+        registrar.playToServer(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalNetwork.handleUploadedLogSnapshot((ServerPlayer) context.player(), payload));
     }
 
     @SubscribeEvent

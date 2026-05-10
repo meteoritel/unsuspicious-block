@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -31,6 +32,7 @@ import java.util.Objects;
 public class ArchaeologyJournalScreen extends Screen {
 
     private final ArchaeologyJournalState state;
+    private ArchaeologyJournalLogState logState;
     private final List<TableView> tableViews = new ArrayList<>();
     private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
     private int selectedIndex = -1;
@@ -45,10 +47,12 @@ public class ArchaeologyJournalScreen extends Screen {
     private Button itemNextButton;
     private long lastCatalogRevision;
     private long lastStateRevision;
+    private long lastLogRevision;
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
         this.state = state;
+        this.logState = ArchaeologyJournalClientState.getLogState();
     }
 
     @Override
@@ -62,6 +66,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
+        this.lastLogRevision = ArchaeologyJournalClientState.getLogRevision();
     }
 
     @Override
@@ -203,6 +208,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
         this.addRenderableWidget(this.rightPage.getIntroTabButton());
         this.addRenderableWidget(this.rightPage.getArchaeologyTabButton());
+        this.addRenderableWidget(this.rightPage.getLogTabButton());
 
         int buttonWidth = JournalLayout.PAGE_BUTTON_WIDTH;
         int buttonGap = JournalLayout.PAGE_BUTTON_CENTER_GAP;
@@ -259,10 +265,12 @@ public class ArchaeologyJournalScreen extends Screen {
     private void refreshClientDataIfNeeded() {
         long currentCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         long currentStateRevision = ArchaeologyJournalClientState.getStateRevision();
+        long currentLogRevision = ArchaeologyJournalClientState.getLogRevision();
         boolean catalogChanged = currentCatalogRevision != this.lastCatalogRevision;
         boolean stateChanged = currentStateRevision != this.lastStateRevision;
+        boolean logChanged = currentLogRevision != this.lastLogRevision;
 
-        if (!catalogChanged && !stateChanged) {
+        if (!catalogChanged && !stateChanged && !logChanged) {
             return;
         }
 
@@ -276,6 +284,11 @@ public class ArchaeologyJournalScreen extends Screen {
             this.reloadCatalog();
         }
 
+        if (logChanged) {
+            this.lastLogRevision = currentLogRevision;
+            this.logState = ArchaeologyJournalClientState.getLogState();
+        }
+
         this.rebuildViewModels();
     }
 
@@ -286,7 +299,8 @@ public class ArchaeologyJournalScreen extends Screen {
             ResourceLocation id = entry.getKey();
             TableDefinition definition = entry.getValue();
             ArchaeologyJournalState.TableProgress progress = this.state.getTable(id);
-            this.tableViews.add(buildTableView(id, definition, progress));
+            ArchaeologyJournalLogState.TableLogHistory logHistory = this.logState.getTable(id);
+            this.tableViews.add(buildTableView(id, definition, progress, logHistory));
         }
         this.tableViews.sort(Comparator
                 .comparing((TableView view) -> !"minecraft".equals(view.id().getNamespace()))
@@ -323,14 +337,15 @@ public class ArchaeologyJournalScreen extends Screen {
     private void updateItemGridPanel() {
         TableView selected = selectedTable();
         if (selected == null) {
-            this.rightPage.setTable(null, List.of(), 0.0, 0, 0, false);
+            this.rightPage.setTable(null, List.of(), 0.0, 0, 0, false, null, null, List.of());
         } else {
             List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
             for (ItemView iv : selected.items()) {
                 gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.weight(), iv.unlocked(), iv.count()));
             }
             this.rightPage.setTable(selected.id(), gridItems,
-                    selected.totalWeight(), selected.parsedCount(), selected.totalCount(), selected.approximate());
+                    selected.totalWeight(), selected.parsedCount(), selected.totalCount(), selected.approximate(),
+                    selected.firstUnlockedGameTime(), selected.firstUnlockedDayTime(), selected.recentLogs());
         }
     }
 
@@ -343,7 +358,8 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private static TableView buildTableView(ResourceLocation tableId, TableDefinition definition,
-                                            @Nullable ArchaeologyJournalState.TableProgress progress) {
+                                            @Nullable ArchaeologyJournalState.TableProgress progress,
+                                            @Nullable ArchaeologyJournalLogState.TableLogHistory logHistory) {
         List<ItemView> items = new ArrayList<>();
         int parsedCount = 0;
         Map<ResourceLocation, ArchaeologyJournalState.ItemProgress> progressItems =
@@ -358,8 +374,14 @@ public class ArchaeologyJournalScreen extends Screen {
             items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.weight(), unlocked, count));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
+        Long firstUnlockedGameTime = logHistory != null ? logHistory.getFirstUnlockedGameTime() : null;
+        Long firstUnlockedDayTime = logHistory != null ? logHistory.getFirstUnlockedDayTime() : null;
+        List<ArchaeologyJournalLogState.ExcavationLogEntry> recentLogs = logHistory != null
+                ? List.copyOf(logHistory.getRecentEntries())
+                : List.of();
         return new TableView(tableId, definition.displayName(), items, definition.totalWeight(),
-                definition.items().size(), parsedCount, definition.approximate(), tableUnlocked);
+                definition.items().size(), parsedCount, definition.approximate(), tableUnlocked,
+                firstUnlockedGameTime, firstUnlockedDayTime, recentLogs);
     }
 
     private void setSelectedIndex(int index) {
@@ -446,7 +468,9 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private record TableView(ResourceLocation id, Component displayName, List<ItemView> items,
-                             double totalWeight, int totalCount, int parsedCount, boolean approximate, boolean unlocked) {
+                             double totalWeight, int totalCount, int parsedCount, boolean approximate, boolean unlocked,
+                             @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
+                             List<ArchaeologyJournalLogState.ExcavationLogEntry> recentLogs) {
     }
 
     private record ItemView(ResourceLocation id, Component displayName, double weight, boolean unlocked, int count) {

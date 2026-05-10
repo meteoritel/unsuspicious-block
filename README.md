@@ -1,6 +1,6 @@
 # Unsuspicious Block
 
-**Unsuspicious Block** 是一个 Minecraft 1.21.1 多加载器考古增强模组，让你无需漫长刷拭即可快速解析可疑方块中的战利品，并通过 **考古笔记** 记录每一次发掘过程。
+**Unsuspicious Block** 是一个 Minecraft 1.21.1 考古增强模组，让你无需漫长刷拭即可快速解析可疑方块中的战利品，并通过 **考古笔记** 记录每一次发掘过程。
 
 > **English version**: [README (English)](./doc/readme/README_EN.md)
 

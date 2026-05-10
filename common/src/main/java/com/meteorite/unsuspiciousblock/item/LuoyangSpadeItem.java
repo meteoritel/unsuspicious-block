@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -81,8 +82,15 @@ public class LuoyangSpadeItem extends Item {
         if (lootTableName != null && player instanceof ArchaeologyJournalStateHolder holder) {
             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(extracted.getItem());
             ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
+            boolean tableUnlockedBefore = journalState.isTableUnlocked(lootTableName);
             journalState.recordItemAcquired(lootTableName, itemId);
             if (player instanceof ServerPlayer sp) {
+                if (!tableUnlockedBefore) {
+                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
+                            level.getGameTime(), level.getDayTime());
+                }
+                ArchaeologyJournalLogCollector.recordExcavation(sp, lootTableName, itemId,
+                        pos, level.getGameTime(), level.getDayTime());
                 ArchaeologyJournalNetwork.syncState(sp);
             }
         }

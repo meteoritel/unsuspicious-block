@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -58,13 +59,16 @@ public class SuspiciousReaderItem extends Item {
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && player instanceof ArchaeologyJournalStateHolder holder) {
             ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
-            journalState.unlockTable(lootTableName);
+            boolean tableUnlockedNow = journalState.unlockTable(lootTableName);
             if (!lootItem.isEmpty()) {
                 ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(lootItem.getItem());
                 journalState.unlockItem(lootTableName, itemId);
             }
-            // 同步状态到客户端
             if (player instanceof ServerPlayer sp) {
+                if (tableUnlockedNow) {
+                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
+                            level.getGameTime(), level.getDayTime());
+                }
                 ArchaeologyJournalNetwork.syncState(sp);
             }
         }

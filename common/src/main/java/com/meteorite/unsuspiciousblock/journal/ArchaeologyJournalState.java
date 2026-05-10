@@ -37,6 +37,10 @@ public final class ArchaeologyJournalState {
         return table.recordItemAcquired(itemId);
     }
 
+    public boolean removeTable(ResourceLocation tableId) {
+        return this.tables.remove(tableId) != null;
+    }
+
     public boolean isTableUnlocked(ResourceLocation tableId) {
         TableProgress table = this.tables.get(tableId);
         return table != null && table.isUnlocked();

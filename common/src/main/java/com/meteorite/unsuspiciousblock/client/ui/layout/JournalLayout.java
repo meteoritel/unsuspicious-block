@@ -38,6 +38,14 @@ public final class JournalLayout {
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
+    // —— 右侧日志页 ——
+    public static final int LOG_TOP = 28;
+    public static final int LOG_FIRST_UNLOCK_VALUE_Y = LOG_TOP + 12;
+    public static final int LOG_LIST_LABEL_Y = LOG_TOP + 28;
+    public static final int LOG_LIST_TOP = LOG_TOP + 42;
+    public static final int LOG_LIST_BOTTOM = GRID_PAGE_INDICATOR_Y - 8;
+    public static final int LOG_ROW_HEIGHT = 50;
+
     // —— 翻页按钮 ——
     public static final int PAGE_BUTTON_WIDTH = 23;
     public static final int PAGE_BUTTON_HEIGHT = 13;

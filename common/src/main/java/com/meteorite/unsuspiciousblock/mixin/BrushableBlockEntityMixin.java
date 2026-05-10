@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import net.minecraft.core.BlockPos;
@@ -68,6 +70,12 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
     @Unique
     private boolean unsuspiciousblock$brushContext;
+
+    @Unique
+    private long unsuspiciousblock$brushGameTime = -1L;
+
+    @Unique
+    private long unsuspiciousblock$brushDayTime = -1L;
 
     @Unique
     private void unsuspiciousblock$writeScanData(CompoundTag tag) {
@@ -185,12 +193,16 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Inject(method = "brush", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushStart(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {
         this.unsuspiciousblock$brushContext = true;
+        this.unsuspiciousblock$brushGameTime = gameTime;
+        this.unsuspiciousblock$brushDayTime = player.level().getDayTime();
     }
 
     // 标记刷子 context 结束
     @Inject(method = "brush", at = @At("TAIL"))
     private void unsuspiciousblock$onBrushEnd(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {
         this.unsuspiciousblock$brushContext = false;
+        this.unsuspiciousblock$brushGameTime = -1L;
+        this.unsuspiciousblock$brushDayTime = -1L;
     }
 
     // 刷拭完成物品掉落时增加获得计数
@@ -201,8 +213,21 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 && player instanceof ArchaeologyJournalStateHolder holder) {
             if (!this.item.isEmpty()) {
                 ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(this.item.getItem());
-                holder.unsuspiciousblock$getArchaeologyJournalState()
-                        .recordItemAcquired(this.unsuspiciousblock$lootTableName, itemId);
+                ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
+                boolean tableUnlockedBefore = journalState.isTableUnlocked(this.unsuspiciousblock$lootTableName);
+                journalState.recordItemAcquired(this.unsuspiciousblock$lootTableName, itemId);
+                long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
+                        ? this.unsuspiciousblock$brushGameTime
+                        : sp.serverLevel().getGameTime();
+                long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
+                        ? this.unsuspiciousblock$brushDayTime
+                        : sp.serverLevel().getDayTime();
+                if (!tableUnlockedBefore) {
+                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, this.unsuspiciousblock$lootTableName,
+                            gameTime, dayTime);
+                }
+                ArchaeologyJournalLogCollector.recordExcavation(sp, this.unsuspiciousblock$lootTableName,
+                        itemId, ((BlockEntity) (Object) this).getBlockPos(), gameTime, dayTime);
                 ArchaeologyJournalNetwork.syncState(sp);
             }
         }
@@ -254,8 +279,19 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 && player instanceof ArchaeologyJournalStateHolder holder) {
             if (!this.item.isEmpty()) {
                 ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(this.item.getItem());
-                holder.unsuspiciousblock$getArchaeologyJournalState()
-                        .unlockItem(this.unsuspiciousblock$lootTableName, itemId);
+                ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
+                boolean tableUnlockedBefore = journalState.isTableUnlocked(this.unsuspiciousblock$lootTableName);
+                journalState.unlockItem(this.unsuspiciousblock$lootTableName, itemId);
+                if (!tableUnlockedBefore) {
+                    long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
+                            ? this.unsuspiciousblock$brushGameTime
+                            : sp.serverLevel().getGameTime();
+                    long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
+                            ? this.unsuspiciousblock$brushDayTime
+                            : sp.serverLevel().getDayTime();
+                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, this.unsuspiciousblock$lootTableName,
+                            gameTime, dayTime);
+                }
 
                 Constants.LOG.debug("刷子刷物品刚露头");
                 ArchaeologyJournalNetwork.syncState(sp);

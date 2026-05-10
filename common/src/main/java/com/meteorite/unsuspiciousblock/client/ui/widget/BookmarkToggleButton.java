@@ -1,15 +1,28 @@
 package com.meteorite.unsuspiciousblock.client.ui.widget;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 
 /** 书签形状的Tab按钮 —— 带文字标签，由外部控制选中状态 */
 public class BookmarkToggleButton extends AbstractButton {
+    // 40x64 纵向四态切片：普通、悬停、选中、禁用
+    private static final ResourceLocation TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/bookmark_tab.png");
+    private static final int TEXTURE_WIDTH = 40;
+    private static final int STATE_HEIGHT = 16;
+    private static final int TEXTURE_HEIGHT = STATE_HEIGHT * 4;
+    private static final int NORMAL_STATE_V = 0;
+    private static final int HOVERED_STATE_V = STATE_HEIGHT;
+    private static final int TOGGLED_STATE_V = STATE_HEIGHT * 2;
+    private static final int DISABLED_STATE_V = STATE_HEIGHT * 3;
+
     private boolean toggled;
     private final Component label;
     private final Runnable onToggle;
@@ -49,28 +62,13 @@ public class BookmarkToggleButton extends AbstractButton {
         int y = this.getY();
         int w = this.width;
         int h = this.height;
-        int tabWidth = w / 4;
 
-        int fillColor = toggled ? 0xFFD4B896 : (isHovered() ? 0xFFC8B090 : 0xFFA08060);
-        int outlineColor = 0xFF5A422C;
-        int tabBottom = y + h - 3;
+        int textureV = !this.active ? DISABLED_STATE_V
+                : (this.toggled ? TOGGLED_STATE_V : (this.isHovered() ? HOVERED_STATE_V : NORMAL_STATE_V));
+        guiGraphics.blit(TEXTURE, x, y, 0, textureV, w, h, TEXTURE_WIDTH, TEXTURE_HEIGHT);
 
-        // 上半部分矩形
-        guiGraphics.fill(x, y, x + w, tabBottom, fillColor);
-        // 下半部分三角形（尖角）
-        guiGraphics.fill(x + tabWidth, tabBottom, x + w - tabWidth, y + h, fillColor);
-        // 填充三角缺口
-        guiGraphics.fill(x + tabWidth + 1, tabBottom - 1, x + w - tabWidth - 1, tabBottom, fillColor);
-
-        // 描边
-        for (int i = 0; i < 3; i++) {
-            int inset = tabWidth - i;
-            guiGraphics.fill(x + inset, tabBottom + 1 + i, x + w - inset, tabBottom + 2 + i, outlineColor);
-        }
-
-        // 文字标签
         Font font = Minecraft.getInstance().font;
-        int textColor = toggled ? 0xFF3A2210 : 0xFF5A422C;
+        int textColor = !this.active ? 0xFF7A624A : (this.toggled ? 0xFF3A2210 : 0xFF5A422C);
         int textWidth = font.width(label);
         int textX = x + (w - textWidth) / 2;
         int textY = y + 1 + (h - 8 - font.lineHeight) / 2;

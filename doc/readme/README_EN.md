@@ -1,6 +1,6 @@
 # Unsuspicious Block
 
-**Unsuspicious Block** is a Minecraft 1.21.1 multi-loader archaeology enhancement mod that lets you quickly reveal the loot hidden inside suspicious blocks without long brushing sessions, while recording every excavation in the **Archaeology Journal**.
+**Unsuspicious Block** is a lightweight mod that lets you quickly reveal the loot hidden inside suspicious blocks without long brushing sessions, while recording every excavation in the **Archaeology Journal**.
 
 > **中文版**: [README](../../README.md)
 
@@ -38,7 +38,7 @@ When no entries have been unlocked yet, the interface looks like this:
 
 ### Suspicious Analyzer
 
-The **Suspicious Analyzer** reveals the hidden loot inside any suspicious block with a right-click.
+The **Suspicious Reader** reveals the hidden loot inside any suspicious block with a right-click.
 
 | <img src="../image/readme/jade_plugin.png" alt="Jade integration preview" width="480"> |
 |:--------------------------------------------------------------------------------------:|

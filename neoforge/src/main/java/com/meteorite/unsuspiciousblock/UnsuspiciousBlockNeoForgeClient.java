@@ -2,11 +2,19 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 @EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class UnsuspiciousBlockNeoForgeClient {
@@ -15,6 +23,26 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state))));
+        event.enqueueWork(() -> {
+            ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
+            NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
+        });
+    }
+
+    @SubscribeEvent
+    public static void registerPayloads(RegisterPayloadHandlersEvent event) {
+        var registrar = event.registrar(Constants.MOD_ID).versioned("1.0");
+        registrar.playToClient(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
+        registrar.playToClient(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
+        registrar.playToClient(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalClientState.receiveLogUpdate(payload));
+        registrar.playToClient(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalClientState.receiveLogSnapshot(payload));
+    }
+
+    private static void onClientTick(ClientTickEvent.Post event) {
+        ArchaeologyJournalClientState.tick();
     }
 }

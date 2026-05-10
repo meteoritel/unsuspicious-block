@@ -48,7 +48,19 @@ public final class UsbCommand {
         return Commands.literal("clear")
                 .executes(context -> mutateCurrentPlayer(context,
                         ArchaeologyJournalState::clear,
-                        Component.translatable("command.unsuspiciousblock.usb.clear.success")));
+                        ArchaeologyJournalNetwork::clearLogs,
+                        Component.translatable("command.unsuspiciousblock.usb.clear.success")))
+                .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
+                        .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
+                        .executes(context -> {
+                            ServerPlayer player = requirePlayer(context);
+                            ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
+                            requireTable(context.getSource(), tableId);
+                            return mutateAndSync(context.getSource(), player,
+                                    state -> state.removeTable(tableId),
+                                    target -> ArchaeologyJournalNetwork.clearLogsForTable(target, tableId),
+                                    Component.translatable("command.unsuspiciousblock.usb.clear_table.success", tableId.toString()));
+                        }));
     }
 
     // 解锁战利品表；无参数时解锁全部，有参数时解锁指定表
@@ -149,12 +161,26 @@ public final class UsbCommand {
     private static int mutateCurrentPlayer(CommandContext<CommandSourceStack> context,
                                            Consumer<ArchaeologyJournalState> mutator,
                                            Component successMessage) throws CommandSyntaxException {
+        return mutateCurrentPlayer(context, mutator, null, successMessage);
+    }
+
+    private static int mutateCurrentPlayer(CommandContext<CommandSourceStack> context,
+                                           Consumer<ArchaeologyJournalState> mutator,
+                                           Consumer<ServerPlayer> afterSync,
+                                           Component successMessage) throws CommandSyntaxException {
         ServerPlayer player = requirePlayer(context);
-        return mutateAndSync(context.getSource(), player, mutator, successMessage);
+        return mutateAndSync(context.getSource(), player, mutator, afterSync, successMessage);
     }
 
     private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,
                                      Consumer<ArchaeologyJournalState> mutator,
+                                     Component successMessage) {
+        return mutateAndSync(source, player, mutator, null, successMessage);
+    }
+
+    private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,
+                                     Consumer<ArchaeologyJournalState> mutator,
+                                     Consumer<ServerPlayer> afterSync,
                                      Component successMessage) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
             source.sendFailure(Component.translatable("command.unsuspiciousblock.usb.error.state_unavailable"));
@@ -164,6 +190,9 @@ public final class UsbCommand {
         ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
         mutator.accept(state);
         ArchaeologyJournalNetwork.syncState(player);
+        if (afterSync != null) {
+            afterSync.accept(player);
+        }
         source.sendSuccess(() -> successMessage, false);
         return 1;
     }
