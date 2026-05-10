@@ -25,7 +25,8 @@ public abstract class ServerPlayerJournalStateMixin implements ArchaeologyJourna
         if (oldPlayer instanceof ArchaeologyJournalStateHolder holder && this instanceof ArchaeologyJournalStateHolder self) {
             self.unsuspiciousblock$getArchaeologyJournalState().copyFrom(holder.unsuspiciousblock$getArchaeologyJournalState());
         }
-        if (oldPlayer instanceof ArchaeologyJournalLogSyncSessionHolder holder && this instanceof ArchaeologyJournalLogSyncSessionHolder self) {
+        if (oldPlayer instanceof ArchaeologyJournalLogSyncSessionHolder holder) {
+            ArchaeologyJournalLogSyncSessionHolder self = this;
             self.unsuspiciousblock$getArchaeologyJournalLogSyncSession()
                     .copyFrom(holder.unsuspiciousblock$getArchaeologyJournalLogSyncSession());
         }
