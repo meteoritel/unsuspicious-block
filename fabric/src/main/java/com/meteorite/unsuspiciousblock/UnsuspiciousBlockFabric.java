@@ -4,11 +4,11 @@ import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
-import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.UploadJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -43,6 +43,21 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "archaeology_journal"),
                 ModItems.createArchaeologyJournal()
         );
+        ModItems.ANCIENT_COIN = Registry.register(
+                BuiltInRegistries.ITEM,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "ancient_coin"),
+                ModItems.createAncientCoin()
+        );
+        ModItems.LOST_PAGE = Registry.register(
+                BuiltInRegistries.ITEM,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "lost_page"),
+                ModItems.createLostPage()
+        );
+        ModItems.PAGE_BASE = Registry.register(
+                BuiltInRegistries.ITEM,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "page_base"),
+                ModItems.createPageBase()
+        );
 
         Registry.register(
                 BuiltInRegistries.CREATIVE_MODE_TAB,
@@ -53,6 +68,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                         .displayItems((context, entries) -> {
                             entries.accept(ModItems.SUSPICIOUS_READER);
                             entries.accept(ModItems.ARCHAEOLOGY_JOURNAL);
+                            entries.accept(ModItems.ANCIENT_COIN);
+                            entries.accept(ModItems.LOST_PAGE);
+                            entries.accept(ModItems.PAGE_BASE);
                         })
                         .build()
         );

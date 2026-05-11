@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.network;
+package com.meteorite.unsuspiciousblock.network.payload;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;

@@ -17,6 +17,11 @@
   "item.unsuspiciousblock.luoyang_spade.reflection_failed": "内部错误：无法取出战利品，请检查 mod 兼容性。",
 
   "item.unsuspiciousblock.archaeology_journal": "考古笔记",
+  "item.unsuspiciousblock.ancient_coin": "古代金币",
+  "item.unsuspiciousblock.lost_page": "失落书页",
+  "item.unsuspiciousblock.page_base": "书页基底",
+  "enchantment.unsuspiciousblock.mud_dredging": "泥底打捞",
+  "enchantment.unsuspiciousblock.textile_recovery": "织物采集",
   "itemGroup.unsuspiciousblock.main": "Unsuspicious Block",
 
   "screen.unsuspiciousblock.archaeology_journal.title": "考古笔记",

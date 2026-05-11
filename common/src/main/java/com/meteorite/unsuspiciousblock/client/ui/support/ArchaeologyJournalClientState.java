@@ -3,10 +3,10 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.network.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Collections;

@@ -6,8 +6,11 @@
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
     "BrushableBlockEntityMixin",
+    "FishingHookMixin",
     "PlayerJournalStateMixin",
-    "ServerPlayerJournalStateMixin"
+    "ServerPlayerJournalStateMixin",
+    "ShearsItemMixin",
+    "SheepMixin"
   ],
   "client": [],
   "server": [],

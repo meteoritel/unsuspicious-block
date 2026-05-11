@@ -1,0 +1,22 @@
+{
+  "description": {
+    "translate": "enchantment.unsuspiciousblock.mud_dredging"
+  },
+  "supported_items": "#minecraft:enchantable/fishing",
+  "primary_items": "#minecraft:enchantable/fishing",
+  "exclusive_set": "minecraft:luck_of_the_sea",
+  "weight": 2,
+  "max_level": 2,
+  "min_cost": {
+    "base": 15,
+    "per_level_above_first": 9
+  },
+  "max_cost": {
+    "base": 65,
+    "per_level_above_first": 9
+  },
+  "anvil_cost": 4,
+  "slots": [
+    "mainhand"
+  ]
+}

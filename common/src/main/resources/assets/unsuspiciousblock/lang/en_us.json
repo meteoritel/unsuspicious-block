@@ -19,6 +19,11 @@
   "item.unsuspiciousblock.luoyang_spade.reflection_failed": "Internal error: could not extract loot. Check mod compatibility.",
 
   "item.unsuspiciousblock.archaeology_journal": "Archaeology Journal",
+  "item.unsuspiciousblock.ancient_coin": "Ancient Coin",
+  "item.unsuspiciousblock.lost_page": "Lost Page",
+  "item.unsuspiciousblock.page_base": "Page Base",
+  "enchantment.unsuspiciousblock.mud_dredging": "Mud Dredging",
+  "enchantment.unsuspiciousblock.textile_recovery": "Textile Recovery",
   "screen.unsuspiciousblock.archaeology_journal.title": "Archaeology Journal",
   "screen.unsuspiciousblock.archaeology_journal.catalog": "Catalog",
   "screen.unsuspiciousblock.archaeology_journal.entries": "Entries",

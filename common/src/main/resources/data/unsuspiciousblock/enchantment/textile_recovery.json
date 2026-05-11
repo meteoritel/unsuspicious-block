@@ -1,0 +1,21 @@
+{
+  "description": {
+    "translate": "enchantment.unsuspiciousblock.textile_recovery"
+  },
+  "supported_items": "minecraft:shears",
+  "primary_items": "minecraft:shears",
+  "weight": 2,
+  "max_level": 1,
+  "min_cost": {
+    "base": 15,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 65,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 4,
+  "slots": [
+    "mainhand"
+  ]
+}

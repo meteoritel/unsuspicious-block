@@ -7,11 +7,12 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
-import com.meteorite.unsuspiciousblock.network.UploadJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -40,6 +41,12 @@ public class UnsuspiciousBlockNeoForge {
             ITEMS.register("luoyang_spade", ModItems::createLuoyangSpade);
     private static final DeferredItem<ArchaeologyJournalItem> ARCHAEOLOGY_JOURNAL =
             ITEMS.register("archaeology_journal", ModItems::createArchaeologyJournal);
+    private static final DeferredItem<Item> ANCIENT_COIN =
+            ITEMS.register("ancient_coin", ModItems::createAncientCoin);
+    private static final DeferredItem<Item> LOST_PAGE =
+            ITEMS.register("lost_page", ModItems::createLostPage);
+    private static final DeferredItem<Item> PAGE_BASE =
+            ITEMS.register("page_base", ModItems::createPageBase);
 
     private static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Constants.MOD_ID);
@@ -51,6 +58,9 @@ public class UnsuspiciousBlockNeoForge {
                     .displayItems((parameters, output) -> {
                         output.accept(SUSPICIOUS_READER.get());
                         output.accept(ARCHAEOLOGY_JOURNAL.get());
+                        output.accept(ANCIENT_COIN.get());
+                        output.accept(LOST_PAGE.get());
+                        output.accept(PAGE_BASE.get());
                     })
                     .build());
 
@@ -73,6 +83,9 @@ public class UnsuspiciousBlockNeoForge {
             ModItems.SUSPICIOUS_READER = SUSPICIOUS_READER.get();
             ModItems.LUOYANG_SPADE = LUOYANG_SPADE.get();
             ModItems.ARCHAEOLOGY_JOURNAL = ARCHAEOLOGY_JOURNAL.get();
+            ModItems.ANCIENT_COIN = ANCIENT_COIN.get();
+            ModItems.LOST_PAGE = LOST_PAGE.get();
+            ModItems.PAGE_BASE = PAGE_BASE.get();
         });
     }
 
