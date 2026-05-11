@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.api;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -9,6 +10,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** 考古战利品表名称注册表——提供名称映射、本地化 key 规则与 fallback 解析 */
 public final class ArchaeologyLootTableNames {
@@ -16,6 +19,7 @@ public final class ArchaeologyLootTableNames {
     // 统一维护可接受的考古战利品表路径前缀，后续兼容其他模组时只需扩充这里
     private static final List<String> ARCHAEOLOGY_PATH_PREFIXES = List.of("archaeology/", "archeology/");
     private static final Map<ResourceLocation, NameRegistration> REGISTRATIONS = new LinkedHashMap<>();
+    private static final Set<ResourceLocation> WARNED_MISSING_TRANSLATIONS = ConcurrentHashMap.newKeySet();
 
     static {
         seedVanilla("minecraft:archaeology/desert_pyramid", "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid");
@@ -82,7 +86,10 @@ public final class ArchaeologyLootTableNames {
     // 解析最终展示名：优先走规则 key，本地化缺失时退回 fallback 名称
     public static Component resolveDisplayName(ResourceLocation tableId) {
         validateArchaeologyTableId(tableId);
-        return Component.translatableWithFallback(translationKey(tableId), fallbackName(tableId));
+        String translationKey = translationKey(tableId);
+        String fallbackName = fallbackName(tableId);
+        warnMissingTranslation(tableId, translationKey, fallbackName);
+        return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
     private static void seedVanilla(String tableId, String translationKey) {
@@ -91,6 +98,14 @@ public final class ArchaeologyLootTableNames {
             throw new IllegalStateException("Invalid archaeology loot table id: " + tableId);
         }
         registerInternal(id, translationKey, null);
+    }
+
+    private static void warnMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
+        if (Language.getInstance().has(translationKey) || !WARNED_MISSING_TRANSLATIONS.add(tableId)) {
+            return;
+        }
+        Constants.LOG.warn("Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
+                tableId, fallbackName, translationKey);
     }
 
     private static void registerInternal(ResourceLocation tableId, String translationKey, String fallbackName) {

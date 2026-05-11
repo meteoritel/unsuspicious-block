@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -17,6 +18,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ArchaeologyJournalClientState {
     private static volatile Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
     private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
+    @Nullable
+    private static volatile ResourceLocation lastSelectedTableId;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
 
@@ -72,5 +75,14 @@ public final class ArchaeologyJournalClientState {
 
     public static ArchaeologyJournalLogState getLogState() {
         return ArchaeologyJournalLogLocalStore.getState().copy();
+    }
+
+    @Nullable
+    public static ResourceLocation getLastSelectedTableId() {
+        return lastSelectedTableId;
+    }
+
+    public static void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
+        lastSelectedTableId = tableId;
     }
 }

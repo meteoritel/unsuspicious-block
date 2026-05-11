@@ -5,9 +5,14 @@
   "compatibilityLevel": "JAVA_21",
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
+    "AbstractContainerMenuMixin",
+    "BaseContainerBlockEntityMixin",
     "BrushableBlockEntityMixin",
+    "CompoundContainerMixin",
     "FishingHookMixin",
     "PlayerJournalStateMixin",
+    "RandomizableContainerBlockEntityMixin",
+    "RandomizableContainerMixin",
     "ServerPlayerJournalStateMixin",
     "ShearsItemMixin",
     "SheepMixin"

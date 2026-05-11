@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -83,21 +83,23 @@ public class LuoyangSpadeItem extends Item {
             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(extracted.getItem());
             ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
             boolean tableUnlockedBefore = journalState.isTableUnlocked(lootTableName);
-            journalState.recordItemAcquired(lootTableName, itemId);
             if (player instanceof ServerPlayer sp) {
+                ArchaeologyLootRuntimeTracker.unlockResolvedLoot(sp, lootTableName, extracted);
                 if (!tableUnlockedBefore) {
                     ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
                             level.getGameTime(), level.getDayTime());
                 }
                 ArchaeologyJournalLogCollector.recordExcavation(sp, lootTableName, itemId,
                         pos, level.getGameTime(), level.getDayTime());
-                ArchaeologyJournalNetwork.syncState(sp);
             }
         }
 
         scanState.unsuspiciousblock$clearScanned();
 
         boolean given = player.getInventory().add(extracted);
+        if (given && lootTableName != null && player instanceof ServerPlayer sp) {
+            ArchaeologyLootRuntimeTracker.recordItemAcquired(sp, lootTableName, extracted);
+        }
         if (!given) {
             ItemEntity itemEntity = new ItemEntity(
                     level,

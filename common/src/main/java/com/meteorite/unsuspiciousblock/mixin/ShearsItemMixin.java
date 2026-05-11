@@ -13,8 +13,13 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/**
+ * 在剪刀破坏树叶后补充织物回收掉落逻辑。
+ */
 @Mixin(ShearsItem.class)
 public abstract class ShearsItemMixin {
+
+    // 在原版剪刀挖掘结束后触发额外树叶掉落判定
     @Inject(method = "mineBlock", at = @At("TAIL"))
     private void unsuspiciousblock$dropExtraLeafLoot(ItemStack stack, Level level, BlockState state,
                                                      BlockPos pos, LivingEntity miningEntity,

@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -57,19 +57,14 @@ public class SuspiciousReaderItem extends Item {
         scanState.unsuspiciousblock$markScanned(player.getUUID());
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ArchaeologyJournalStateHolder holder) {
+        if (lootTableName != null && player instanceof ArchaeologyJournalStateHolder holder
+                && player instanceof ServerPlayer sp) {
             ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
-            boolean tableUnlockedNow = journalState.unlockTable(lootTableName);
-            if (!lootItem.isEmpty()) {
-                ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(lootItem.getItem());
-                journalState.unlockItem(lootTableName, itemId);
-            }
-            if (player instanceof ServerPlayer sp) {
-                if (tableUnlockedNow) {
-                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
-                            level.getGameTime(), level.getDayTime());
-                }
-                ArchaeologyJournalNetwork.syncState(sp);
+            boolean tableUnlockedBefore = journalState.isTableUnlocked(lootTableName);
+            ArchaeologyLootRuntimeTracker.unlockResolvedLoot(sp, lootTableName, lootItem);
+            if (!tableUnlockedBefore) {
+                ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
+                        level.getGameTime(), level.getDayTime());
             }
         }
 

@@ -27,7 +27,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 public class ArchaeologyJournalScreen extends Screen {
 
@@ -48,6 +47,7 @@ public class ArchaeologyJournalScreen extends Screen {
     private long lastCatalogRevision;
     private long lastStateRevision;
     private long lastLogRevision;
+    private boolean selectionInitialized;
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
@@ -67,6 +67,12 @@ public class ArchaeologyJournalScreen extends Screen {
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
         this.lastLogRevision = ArchaeologyJournalClientState.getLogRevision();
+    }
+
+    @Override
+    public void removed() {
+        ArchaeologyJournalClientState.rememberLastSelectedTable(this.selectedTableId());
+        super.removed();
     }
 
     @Override
@@ -293,7 +299,10 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void rebuildViewModels() {
-        ResourceLocation selectedId = selectedTable() == null ? null : Objects.requireNonNull(selectedTable()).id();
+        ResourceLocation selectedId = this.selectedTableId();
+        ResourceLocation rememberedId = this.selectionInitialized
+                ? null
+                : ArchaeologyJournalClientState.getLastSelectedTableId();
         this.tableViews.clear();
         for (Map.Entry<ResourceLocation, TableDefinition> entry : this.catalogDefinitions.entrySet()) {
             ResourceLocation id = entry.getKey();
@@ -308,21 +317,9 @@ public class ArchaeologyJournalScreen extends Screen {
                 .thenComparing(view -> view.displayName().getString())
                 .thenComparing(view -> view.id().getPath()));
 
-        boolean foundSelected = selectedId == null;
-        if (this.tableViews.isEmpty()) {
-            this.selectedIndex = -1;
-        } else if (selectedId != null) {
-            for (int i = 0; i < this.tableViews.size(); i++) {
-                if (this.tableViews.get(i).id().equals(selectedId)) {
-                    this.selectedIndex = i;
-                    foundSelected = true;
-                    break;
-                }
-            }
-        }
-        if (!this.tableViews.isEmpty()
-                && (!foundSelected || this.selectedIndex < 0 || this.selectedIndex >= this.tableViews.size())) {
-            this.selectedIndex = 0;
+        this.selectedIndex = resolveSelectedIndex(selectedId, rememberedId);
+        if (!this.selectionInitialized && !this.tableViews.isEmpty()) {
+            this.selectionInitialized = true;
         }
 
         if (this.catalogPanel != null) {
@@ -397,6 +394,46 @@ public class ArchaeologyJournalScreen extends Screen {
         syncButtonState();
     }
 
+    private int resolveSelectedIndex(@Nullable ResourceLocation selectedId, @Nullable ResourceLocation rememberedId) {
+        if (this.tableViews.isEmpty()) {
+            return -1;
+        }
+
+        int currentIndex = findTableIndex(selectedId);
+        if (currentIndex >= 0) {
+            return currentIndex;
+        }
+
+        int rememberedIndex = findTableIndex(rememberedId);
+        if (rememberedIndex >= 0) {
+            return rememberedIndex;
+        }
+
+        int firstUnlockedIndex = findFirstUnlockedIndex();
+        return firstUnlockedIndex >= 0 ? firstUnlockedIndex : 0;
+    }
+
+    private int findTableIndex(@Nullable ResourceLocation tableId) {
+        if (tableId == null) {
+            return -1;
+        }
+        for (int i = 0; i < this.tableViews.size(); i++) {
+            if (this.tableViews.get(i).id().equals(tableId)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findFirstUnlockedIndex() {
+        for (int i = 0; i < this.tableViews.size(); i++) {
+            if (this.tableViews.get(i).unlocked()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private PageButton createPageButton(int x, int y, boolean isForward, Button.OnPress onPress) {
         return new JournalPageButton(x, y, isForward, onPress);
     }
@@ -423,6 +460,12 @@ public class ArchaeologyJournalScreen extends Screen {
             this.itemNextButton.visible = hasMultipleItemPages;
             this.itemNextButton.active = hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
         }
+    }
+
+    @Nullable
+    private ResourceLocation selectedTableId() {
+        TableView selectedTable = this.selectedTable();
+        return selectedTable != null ? selectedTable.id() : null;
     }
 
     private TableView selectedTable() {

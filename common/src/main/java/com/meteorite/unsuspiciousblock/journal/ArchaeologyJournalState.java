@@ -32,9 +32,17 @@ public final class ArchaeologyJournalState {
     }
 
     public boolean recordItemAcquired(ResourceLocation tableId, ResourceLocation itemId) {
+        return this.recordItemAcquired(tableId, itemId, 1);
+    }
+
+    public boolean recordItemAcquired(ResourceLocation tableId, ResourceLocation itemId, int count) {
+        if (count <= 0) {
+            return false;
+        }
+
         TableProgress table = this.getOrCreateTable(tableId);
         table.unlock();
-        return table.recordItemAcquired(itemId);
+        return table.recordItemAcquired(itemId, count);
     }
 
     public boolean removeTable(ResourceLocation tableId) {
@@ -145,9 +153,17 @@ public final class ArchaeologyJournalState {
         }
 
         public boolean recordItemAcquired(ResourceLocation itemId) {
+            return this.recordItemAcquired(itemId, 1);
+        }
+
+        public boolean recordItemAcquired(ResourceLocation itemId, int count) {
+            if (count <= 0) {
+                return false;
+            }
+
             ItemProgress item = this.getOrCreateItem(itemId);
             boolean changed = item.unlock();
-            changed |= item.incrementCount();
+            changed |= item.incrementCount(count);
             return changed;
         }
 
@@ -231,7 +247,15 @@ public final class ArchaeologyJournalState {
         }
 
         public boolean incrementCount() {
-            this.count++;
+            return this.incrementCount(1);
+        }
+
+        public boolean incrementCount(int amount) {
+            if (amount <= 0) {
+                return false;
+            }
+
+            this.count += amount;
             return true;
         }
 

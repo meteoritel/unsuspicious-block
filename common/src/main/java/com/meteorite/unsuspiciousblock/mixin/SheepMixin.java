@@ -16,11 +16,15 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/**
+ * 在绵羊剪毛流程中接入掉落线的逻辑。
+ */
 @Mixin(Sheep.class)
 public abstract class SheepMixin {
     @Unique
     private ItemStack unsuspiciousblock$shears = ItemStack.EMPTY;
 
+    // 在交互开始时记录本次是否由剪刀触发剪毛
     @Inject(method = "mobInteract", at = @At("HEAD"))
     private void unsuspiciousblock$captureShears(Player player, InteractionHand hand,
                                                  CallbackInfoReturnable<InteractionResult> cir) {
@@ -31,6 +35,7 @@ public abstract class SheepMixin {
                 : ItemStack.EMPTY;
     }
 
+    // 在原版完成剪毛后追加额外线掉落处理
     @Inject(method = "shear", at = @At("TAIL"))
     private void unsuspiciousblock$dropExtraString(SoundSource soundSource, CallbackInfo ci) {
         Sheep sheep = (Sheep) (Object) this;
@@ -39,6 +44,7 @@ public abstract class SheepMixin {
         }
     }
 
+    // 在交互结束后清理本次缓存的剪刀引用
     @Inject(method = "mobInteract", at = @At("RETURN"))
     private void unsuspiciousblock$clearShears(Player player, InteractionHand hand,
                                                CallbackInfoReturnable<InteractionResult> cir) {

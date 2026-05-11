@@ -13,17 +13,21 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/**
+ * 在钓鱼收杆流程中替换原版战利品表。
+ */
 @Mixin(FishingHook.class)
 public abstract class FishingHookMixin {
     @Unique
     private ItemStack unsuspiciousblock$fishingRod = ItemStack.EMPTY;
 
+    // 在收杆开始时缓存本次使用的鱼竿
     @Inject(method = "retrieve", at = @At("HEAD"))
     private void unsuspiciousblock$captureFishingRod(ItemStack fishingRod, CallbackInfoReturnable<Integer> cir) {
         this.unsuspiciousblock$fishingRod = fishingRod;
     }
 
-    // 替换原版战利品表为本模组的战利品表
+    // 在原版查询战利品表参数时改写为本模组解析出的目标表
     @ModifyArg(
             method = "retrieve",
             at = @At(
@@ -41,6 +45,7 @@ public abstract class FishingHookMixin {
                 this.unsuspiciousblock$fishingRod, originalLootTable);
     }
 
+    // 在收杆结束后清理缓存的鱼竿引用
     @Inject(method = "retrieve", at = @At("RETURN"))
     private void unsuspiciousblock$clearFishingRod(ItemStack fishingRod, CallbackInfoReturnable<Integer> cir) {
         this.unsuspiciousblock$fishingRod = ItemStack.EMPTY;
