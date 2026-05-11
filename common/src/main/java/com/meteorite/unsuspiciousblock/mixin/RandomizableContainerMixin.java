@@ -3,14 +3,24 @@ package com.meteorite.unsuspiciousblock.mixin;
 import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.LootResultSignature;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.RandomizableContainer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.loot.LootTable;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -57,8 +67,37 @@ public interface RandomizableContainerMixin {
             return;
         }
 
+        List<LootResultSignature> candidates = unsuspiciousblock$collectCandidates(trackedContainer, tableId);
         ArchaeologyLootRuntimeTracker.onContainerLootResolved(sp, trackedContainer,
                 tableId,
-                trackedContainer.unsuspiciousblock$collectContainerItemCounts());
+                trackedContainer.unsuspiciousblock$collectContainerItemCounts(candidates));
+    }
+
+    // 为当前容器生成用于运行时匹配的签名候选；目录缺失时退回到容器现状的普通物品签名
+    private static List<LootResultSignature> unsuspiciousblock$collectCandidates(TrackedContainerLootState trackedContainer,
+                                                                                 ResourceLocation tableId) {
+        TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
+        if (table != null && !table.items().isEmpty()) {
+            List<LootResultSignature> candidates = new ArrayList<>();
+            for (ItemDefinition item : table.items()) {
+                candidates.add(item.signature());
+            }
+            return candidates;
+        }
+
+        LinkedHashSet<ResourceLocation> fallbackItems = new LinkedHashSet<>();
+        for (int slot = 0; slot < trackedContainer.getContainerSize(); slot++) {
+            ItemStack stack = trackedContainer.getItem(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            fallbackItems.add(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+        }
+
+        List<LootResultSignature> fallbackCandidates = new ArrayList<>();
+        for (ResourceLocation itemId : fallbackItems) {
+            fallbackCandidates.add(LootResultSignature.plain(itemId));
+        }
+        return fallbackCandidates;
     }
 }

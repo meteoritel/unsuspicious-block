@@ -338,7 +338,7 @@ public class ArchaeologyJournalScreen extends Screen {
         } else {
             List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
             for (ItemView iv : selected.items()) {
-                gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.weight(), iv.unlocked(), iv.count()));
+                gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.weight(), iv.unlocked(), iv.count(), iv.signature()));
             }
             this.rightPage.setTable(selected.id(), gridItems,
                     selected.totalWeight(), selected.parsedCount(), selected.totalCount(), selected.approximate(),
@@ -359,16 +359,17 @@ public class ArchaeologyJournalScreen extends Screen {
                                             @Nullable ArchaeologyJournalLogState.TableLogHistory logHistory) {
         List<ItemView> items = new ArrayList<>();
         int parsedCount = 0;
-        Map<ResourceLocation, ArchaeologyJournalState.ItemProgress> progressItems =
+        Map<String, ArchaeologyJournalState.ItemProgress> progressItems =
                 progress != null ? progress.getItems() : Map.of();
         for (ItemDefinition itemDefinition : definition.items()) {
-            ArchaeologyJournalState.ItemProgress itemProgress = progressItems.get(itemDefinition.id());
+            ArchaeologyJournalState.ItemProgress itemProgress = progressItems.get(itemDefinition.signature().toStoredKey());
             boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
             int count = unlocked ? itemProgress.getCount() : 0;
             if (unlocked) {
                 parsedCount++;
             }
-            items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.weight(), unlocked, count));
+            items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.weight(), unlocked, count,
+                    itemDefinition.signature()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         Long firstUnlockedGameTime = logHistory != null ? logHistory.getFirstUnlockedGameTime() : null;
@@ -516,6 +517,8 @@ public class ArchaeologyJournalScreen extends Screen {
                              List<ArchaeologyJournalLogState.ExcavationLogEntry> recentLogs) {
     }
 
-    private record ItemView(ResourceLocation id, Component displayName, double weight, boolean unlocked, int count) {
+    private record ItemView(ResourceLocation id, Component displayName, double weight,
+                            boolean unlocked, int count,
+                            com.meteorite.unsuspiciousblock.journal.LootResultSignature signature) {
     }
 }

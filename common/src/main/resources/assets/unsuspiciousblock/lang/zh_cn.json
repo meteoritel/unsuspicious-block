@@ -106,6 +106,11 @@
   "screen.unsuspiciousblock.archaeology_journal.log_time_value": "时间：第 %1$d 天 %2$2d:%3$02d",
   "screen.unsuspiciousblock.archaeology_journal.unknown_item": "未知物品",
   "screen.unsuspiciousblock.archaeology_journal.unknown_structure": "未知",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "随机附魔",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "%s级附魔",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "已附魔",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "未完全解析",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.wrapper": "（%s）",
 
   "command.unsuspiciousblock.usb.clear.success": "你的考古笔记数据已清除。",
   "command.unsuspiciousblock.usb.clear_table.success": "已清除考古战利品表 %s 的笔记数据。",

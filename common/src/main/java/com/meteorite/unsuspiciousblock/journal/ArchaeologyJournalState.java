@@ -26,23 +26,31 @@ public final class ArchaeologyJournalState {
     }
 
     public boolean unlockItem(ResourceLocation tableId, ResourceLocation itemId) {
+        return this.unlockItem(tableId, LootResultSignature.plain(itemId));
+    }
+
+    public boolean unlockItem(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.getOrCreateTable(tableId);
         table.unlock();
-        return table.unlockItem(itemId);
+        return table.unlockItem(signature);
     }
 
     public boolean recordItemAcquired(ResourceLocation tableId, ResourceLocation itemId) {
-        return this.recordItemAcquired(tableId, itemId, 1);
+        return this.recordItemAcquired(tableId, LootResultSignature.plain(itemId), 1);
     }
 
     public boolean recordItemAcquired(ResourceLocation tableId, ResourceLocation itemId, int count) {
+        return this.recordItemAcquired(tableId, LootResultSignature.plain(itemId), count);
+    }
+
+    public boolean recordItemAcquired(ResourceLocation tableId, LootResultSignature signature, int count) {
         if (count <= 0) {
             return false;
         }
 
         TableProgress table = this.getOrCreateTable(tableId);
         table.unlock();
-        return table.recordItemAcquired(itemId, count);
+        return table.recordItemAcquired(signature, count);
     }
 
     public boolean removeTable(ResourceLocation tableId) {
@@ -55,12 +63,16 @@ public final class ArchaeologyJournalState {
     }
 
     public boolean isItemUnlocked(ResourceLocation tableId, ResourceLocation itemId) {
+        return this.isItemUnlocked(tableId, LootResultSignature.plain(itemId));
+    }
+
+    public boolean isItemUnlocked(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.tables.get(tableId);
         if (table == null) {
             return false;
         }
 
-        ItemProgress item = table.getItems().get(itemId);
+        ItemProgress item = table.getItems().get(signature.toStoredKey());
         return item != null && item.isUnlocked();
     }
 
@@ -129,13 +141,13 @@ public final class ArchaeologyJournalState {
 
     public static final class TableProgress {
         private boolean unlocked;
-        private final LinkedHashMap<ResourceLocation, ItemProgress> items = new LinkedHashMap<>();
+        private final LinkedHashMap<String, ItemProgress> items = new LinkedHashMap<>();
 
         public boolean isUnlocked() {
             return this.unlocked;
         }
 
-        public Map<ResourceLocation, ItemProgress> getItems() {
+        public Map<String, ItemProgress> getItems() {
             return Collections.unmodifiableMap(this.items);
         }
 
@@ -149,19 +161,27 @@ public final class ArchaeologyJournalState {
         }
 
         public boolean unlockItem(ResourceLocation itemId) {
-            return this.getOrCreateItem(itemId).unlock();
+            return this.unlockItem(LootResultSignature.plain(itemId));
+        }
+
+        public boolean unlockItem(LootResultSignature signature) {
+            return this.getOrCreateItem(signature).unlock();
         }
 
         public boolean recordItemAcquired(ResourceLocation itemId) {
-            return this.recordItemAcquired(itemId, 1);
+            return this.recordItemAcquired(LootResultSignature.plain(itemId), 1);
         }
 
         public boolean recordItemAcquired(ResourceLocation itemId, int count) {
+            return this.recordItemAcquired(LootResultSignature.plain(itemId), count);
+        }
+
+        public boolean recordItemAcquired(LootResultSignature signature, int count) {
             if (count <= 0) {
                 return false;
             }
 
-            ItemProgress item = this.getOrCreateItem(itemId);
+            ItemProgress item = this.getOrCreateItem(signature);
             boolean changed = item.unlock();
             changed |= item.incrementCount(count);
             return changed;
@@ -171,7 +191,9 @@ public final class ArchaeologyJournalState {
         public int getResolvedItemCount() {
             int count = 0;
             for (ItemProgress item : this.items.values()) {
-                if (item.isUnlocked()) count++;
+                if (item.isUnlocked()) {
+                    count++;
+                }
             }
             return count;
         }
@@ -183,7 +205,7 @@ public final class ArchaeologyJournalState {
         public TableProgress copy() {
             TableProgress copy = new TableProgress();
             copy.unlocked = this.unlocked;
-            for (Map.Entry<ResourceLocation, ItemProgress> entry : this.items.entrySet()) {
+            for (Map.Entry<String, ItemProgress> entry : this.items.entrySet()) {
                 copy.items.put(entry.getKey(), entry.getValue().copy());
             }
             return copy;
@@ -194,8 +216,8 @@ public final class ArchaeologyJournalState {
             tag.putBoolean(UNLOCKED_TAG, this.unlocked);
 
             CompoundTag itemsTag = new CompoundTag();
-            for (Map.Entry<ResourceLocation, ItemProgress> entry : this.items.entrySet()) {
-                itemsTag.put(entry.getKey().toString(), entry.getValue().toTag());
+            for (Map.Entry<String, ItemProgress> entry : this.items.entrySet()) {
+                itemsTag.put(entry.getKey(), entry.getValue().toTag());
             }
             tag.put(ITEMS_TAG, itemsTag);
             return tag;
@@ -208,20 +230,20 @@ public final class ArchaeologyJournalState {
             if (tag.contains(ITEMS_TAG, Tag.TAG_COMPOUND)) {
                 CompoundTag itemsTag = tag.getCompound(ITEMS_TAG);
                 for (String key : itemsTag.getAllKeys()) {
-                    ResourceLocation itemId = ResourceLocation.tryParse(key);
-                    if (itemId == null) {
+                    LootResultSignature signature = LootResultSignature.fromStoredKey(key);
+                    if (signature == null) {
                         continue;
                     }
 
-                    progress.items.put(itemId, ItemProgress.fromTag(itemsTag.getCompound(key)));
+                    progress.items.put(signature.toStoredKey(), ItemProgress.fromTag(itemsTag.getCompound(key)));
                 }
             }
 
             return progress;
         }
 
-        private ItemProgress getOrCreateItem(ResourceLocation itemId) {
-            return this.items.computeIfAbsent(itemId, ignored -> new ItemProgress());
+        private ItemProgress getOrCreateItem(LootResultSignature signature) {
+            return this.items.computeIfAbsent(signature.toStoredKey(), ignored -> new ItemProgress());
         }
     }
 

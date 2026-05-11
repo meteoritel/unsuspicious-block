@@ -100,7 +100,7 @@ public final class UsbCommand {
                             TableDefinition table = entry.getValue();
                             state.unlockTable(tableId);
                             for (ItemDefinition item : table.items()) {
-                                state.unlockItem(tableId, item.id());
+                                state.unlockItem(tableId, item.signature());
                             }
                         }
                     }, Component.translatable("command.unsuspiciousblock.usb.unlock_items.success", itemCount, catalog.size()));
@@ -114,7 +114,7 @@ public final class UsbCommand {
                             return mutateAndSync(context.getSource(), player, state -> {
                                 state.unlockTable(tableId);
                                 for (ItemDefinition item : table.items()) {
-                                    state.unlockItem(tableId, item.id());
+                                    state.unlockItem(tableId, item.signature());
                                 }
                             }, Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
                         }));

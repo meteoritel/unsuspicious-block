@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.network.payload;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
@@ -41,6 +42,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 buf.writeResourceLocation(item.id());
                 buf.writeUtf(Component.Serializer.toJson(item.displayName(), buf.registryAccess()));
                 buf.writeDouble(item.weight());
+                buf.writeUtf(item.signature().toStoredKey());
             }
             buf.writeDouble(table.totalWeight());
             buf.writeBoolean(table.approximate());
@@ -59,7 +61,11 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 ResourceLocation itemId = buf.readResourceLocation();
                 Component itemName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
                 double weight = buf.readDouble();
-                items.add(new ItemDefinition(itemId, itemName, weight));
+                LootResultSignature signature = LootResultSignature.fromStoredKey(buf.readUtf());
+                if (signature == null) {
+                    signature = LootResultSignature.plain(itemId);
+                }
+                items.add(new ItemDefinition(itemId, itemName, weight, signature));
             }
             double totalWeight = buf.readDouble();
             boolean approximate = buf.readBoolean();

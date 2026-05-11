@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -31,27 +33,31 @@ public final class ArchaeologyLootRuntimeTracker {
         }
 
         boolean changed = state.unlockTable(tableId);
-        if (!stack.isEmpty()) {
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            changed |= state.unlockItem(tableId, itemId);
+        LootResultSignature signature = resolveSignature(tableId, stack);
+        if (signature != null) {
+            changed |= state.unlockItem(tableId, signature);
         }
         if (changed) {
             ArchaeologyJournalNetwork.syncState(player);
         }
     }
 
-    public static void unlockResolvedLoot(ServerPlayer player, ResourceLocation tableId, Map<ResourceLocation, Integer> itemCounts) {
+    public static void unlockResolvedLoot(ServerPlayer player, ResourceLocation tableId, Map<String, Integer> itemCounts) {
         ArchaeologyJournalState state = getState(player);
         if (state == null) {
             return;
         }
 
         boolean changed = state.unlockTable(tableId);
-        for (Map.Entry<ResourceLocation, Integer> entry : itemCounts.entrySet()) {
+        for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
             if (entry.getValue() <= 0) {
                 continue;
             }
-            changed |= state.unlockItem(tableId, entry.getKey());
+            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
+            if (signature == null) {
+                continue;
+            }
+            changed |= state.unlockItem(tableId, signature);
         }
         if (changed) {
             ArchaeologyJournalNetwork.syncState(player);
@@ -62,10 +68,16 @@ public final class ArchaeologyLootRuntimeTracker {
         if (stack.isEmpty()) {
             return;
         }
-        recordItemAcquired(player, tableId, BuiltInRegistries.ITEM.getKey(stack.getItem()), stack.getCount());
+
+        LootResultSignature signature = resolveSignature(tableId, stack);
+        if (signature == null) {
+            return;
+        }
+        recordItemAcquired(player, tableId, signature, stack.getCount());
     }
 
-    public static void recordItemAcquired(ServerPlayer player, ResourceLocation tableId, ResourceLocation itemId, int count) {
+    public static void recordItemAcquired(ServerPlayer player, ResourceLocation tableId,
+                                          LootResultSignature signature, int count) {
         if (count <= 0) {
             return;
         }
@@ -75,7 +87,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return;
         }
 
-        if (state.recordItemAcquired(tableId, itemId, count)) {
+        if (state.recordItemAcquired(tableId, signature, count)) {
             ArchaeologyJournalNetwork.syncState(player);
         }
     }
@@ -83,7 +95,7 @@ public final class ArchaeologyLootRuntimeTracker {
     public static void onContainerLootResolved(ServerPlayer player,
                                                TrackedContainerLootState container,
                                                ResourceLocation tableId,
-                                               Map<ResourceLocation, Integer> itemCounts) {
+                                               Map<String, Integer> itemCounts) {
         unlockResolvedLoot(player, tableId, itemCounts);
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearTrackedLoot();
@@ -99,19 +111,24 @@ public final class ArchaeologyLootRuntimeTracker {
             return null;
         }
 
-        LinkedHashSet<ResourceLocation> trackedItemIds = new LinkedHashSet<>();
+        LinkedHashMap<String, LootResultSignature> trackedSignatures = new LinkedHashMap<>();
         for (TrackedContainerLootState trackedContainer : trackedContainers) {
-            for (Map.Entry<ResourceLocation, Integer> entry : trackedContainer.unsuspiciousblock$getTrackedLootCounts().entrySet()) {
-                if (entry.getValue() > 0) {
-                    trackedItemIds.add(entry.getKey());
+            for (Map.Entry<String, Integer> entry : trackedContainer.unsuspiciousblock$getTrackedLootCounts().entrySet()) {
+                if (entry.getValue() <= 0) {
+                    continue;
+                }
+                LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
+                if (signature != null) {
+                    trackedSignatures.putIfAbsent(signature.toStoredKey(), signature);
                 }
             }
         }
-        if (trackedItemIds.isEmpty()) {
+        if (trackedSignatures.isEmpty()) {
             return null;
         }
 
-        return new MenuTrackingSnapshot(trackedContainers, capturePlayerInventoryCounts(player.getInventory(), trackedItemIds));
+        return new MenuTrackingSnapshot(trackedContainers,
+                capturePlayerInventoryCounts(player.getInventory(), trackedSignatures.values()));
     }
 
     public static void applyMenuTrackingSnapshot(ServerPlayer player, MenuTrackingSnapshot snapshot) {
@@ -120,13 +137,26 @@ public final class ArchaeologyLootRuntimeTracker {
             return;
         }
 
-        Map<ResourceLocation, Integer> afterCounts = capturePlayerInventoryCounts(player.getInventory(), snapshot.beforeInventoryCounts().keySet());
+        List<LootResultSignature> signatures = new ArrayList<>();
+        for (String signatureKey : snapshot.beforeInventoryCounts().keySet()) {
+            LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
+            if (signature != null) {
+                signatures.add(signature);
+            }
+        }
+
+        Map<String, Integer> afterCounts = capturePlayerInventoryCounts(player.getInventory(), signatures);
         boolean changed = false;
-        for (Map.Entry<ResourceLocation, Integer> entry : afterCounts.entrySet()) {
-            ResourceLocation itemId = entry.getKey();
-            int before = snapshot.beforeInventoryCounts().getOrDefault(itemId, 0);
+        for (Map.Entry<String, Integer> entry : afterCounts.entrySet()) {
+            String signatureKey = entry.getKey();
+            int before = snapshot.beforeInventoryCounts().getOrDefault(signatureKey, 0);
             int delta = entry.getValue() - before;
             if (delta <= 0) {
+                continue;
+            }
+
+            LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
+            if (signature == null) {
                 continue;
             }
 
@@ -137,12 +167,12 @@ public final class ArchaeologyLootRuntimeTracker {
                     continue;
                 }
 
-                int consumed = trackedContainer.unsuspiciousblock$consumeTrackedLoot(itemId, remaining);
+                int consumed = trackedContainer.unsuspiciousblock$consumeTrackedLoot(signatureKey, remaining);
                 if (consumed <= 0) {
                     continue;
                 }
 
-                changed |= state.recordItemAcquired(tableId, itemId, consumed);
+                changed |= state.recordItemAcquired(tableId, signature, consumed);
                 remaining -= consumed;
                 if (remaining <= 0) {
                     break;
@@ -159,6 +189,28 @@ public final class ArchaeologyLootRuntimeTracker {
         for (TrackedContainerLootState trackedContainer : collectTrackedContainers(rootContainers)) {
             trackedContainer.unsuspiciousblock$reconcileTrackedLoot();
         }
+    }
+
+    @Nullable
+    public static LootResultSignature resolveSignature(ResourceLocation tableId, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return null;
+        }
+
+        TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
+        if (table == null || table.items().isEmpty()) {
+            return LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+        }
+
+        List<LootResultSignature> candidates = new ArrayList<>();
+        for (ItemDefinition item : table.items()) {
+            candidates.add(item.signature());
+        }
+        LootResultSignature matched = LootResultMatcher.resolve(stack, candidates);
+        if (matched != null) {
+            return matched;
+        }
+        return null;
     }
 
     private static List<TrackedContainerLootState> collectTrackedContainers(Collection<Container> rootContainers) {
@@ -193,11 +245,11 @@ public final class ArchaeologyLootRuntimeTracker {
         }
     }
 
-    private static Map<ResourceLocation, Integer> capturePlayerInventoryCounts(Inventory inventory, Collection<ResourceLocation> trackedItemIds) {
-        LinkedHashSet<ResourceLocation> trackedSet = new LinkedHashSet<>(trackedItemIds);
-        LinkedHashMap<ResourceLocation, Integer> itemCounts = new LinkedHashMap<>();
-        for (ResourceLocation itemId : trackedSet) {
-            itemCounts.put(itemId, 0);
+    private static Map<String, Integer> capturePlayerInventoryCounts(Inventory inventory, Collection<LootResultSignature> trackedSignatures) {
+        List<LootResultSignature> candidates = new ArrayList<>(trackedSignatures);
+        LinkedHashMap<String, Integer> itemCounts = new LinkedHashMap<>();
+        for (LootResultSignature signature : candidates) {
+            itemCounts.put(signature.toStoredKey(), 0);
         }
 
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
@@ -206,11 +258,11 @@ public final class ArchaeologyLootRuntimeTracker {
                 continue;
             }
 
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            if (!trackedSet.contains(itemId)) {
+            LootResultSignature signature = LootResultMatcher.resolve(stack, candidates);
+            if (signature == null) {
                 continue;
             }
-            itemCounts.merge(itemId, stack.getCount(), Integer::sum);
+            itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
         }
         return itemCounts;
     }
@@ -224,7 +276,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     public record MenuTrackingSnapshot(List<TrackedContainerLootState> trackedContainers,
-                                       Map<ResourceLocation, Integer> beforeInventoryCounts) {
+                                       Map<String, Integer> beforeInventoryCounts) {
         public MenuTrackingSnapshot {
             trackedContainers = List.copyOf(trackedContainers);
             beforeInventoryCounts = Map.copyOf(beforeInventoryCounts);

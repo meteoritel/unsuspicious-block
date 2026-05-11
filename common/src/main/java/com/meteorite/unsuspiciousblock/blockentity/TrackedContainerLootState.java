@@ -1,24 +1,27 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
-import net.minecraft.core.registries.BuiltInRegistries;
+import com.meteorite.unsuspiciousblock.journal.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.journal.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public interface TrackedContainerLootState extends Container {
     @Nullable
     ResourceLocation unsuspiciousblock$getTrackedLootTableName();
 
-    Map<ResourceLocation, Integer> unsuspiciousblock$getTrackedLootCounts();
+    Map<String, Integer> unsuspiciousblock$getTrackedLootCounts();
 
-    void unsuspiciousblock$setTrackedLoot(ResourceLocation tableId, Map<ResourceLocation, Integer> itemCounts);
+    void unsuspiciousblock$setTrackedLoot(ResourceLocation tableId, Map<String, Integer> itemCounts);
 
-    int unsuspiciousblock$consumeTrackedLoot(ResourceLocation itemId, int amount);
+    int unsuspiciousblock$consumeTrackedLoot(String signatureKey, int amount);
 
     void unsuspiciousblock$reconcileTrackedLoot();
 
@@ -33,16 +36,24 @@ public interface TrackedContainerLootState extends Container {
                 && !this.unsuspiciousblock$getTrackedLootCounts().isEmpty();
     }
 
-    default Map<ResourceLocation, Integer> unsuspiciousblock$collectContainerItemCounts() {
-        LinkedHashMap<ResourceLocation, Integer> itemCounts = new LinkedHashMap<>();
+    default Map<String, Integer> unsuspiciousblock$collectContainerItemCounts(Iterable<LootResultSignature> candidates) {
+        List<LootResultSignature> candidateList = new ArrayList<>();
+        for (LootResultSignature candidate : candidates) {
+            candidateList.add(candidate);
+        }
+
+        LinkedHashMap<String, Integer> itemCounts = new LinkedHashMap<>();
         for (int slot = 0; slot < this.getContainerSize(); slot++) {
             ItemStack stack = this.getItem(slot);
             if (stack.isEmpty()) {
                 continue;
             }
 
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            itemCounts.merge(itemId, stack.getCount(), Integer::sum);
+            LootResultSignature signature = LootResultMatcher.resolve(stack, candidateList);
+            if (signature == null) {
+                continue;
+            }
+            itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
         }
         return itemCounts;
     }

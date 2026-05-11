@@ -107,6 +107,11 @@
   "screen.unsuspiciousblock.archaeology_journal.log_time_value": "Time: Day %1$d %2$2d:%3$02d",
   "screen.unsuspiciousblock.archaeology_journal.unknown_item": "Unknown Item",
   "screen.unsuspiciousblock.archaeology_journal.unknown_structure": "Unknown",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "Random Enchant",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "Level %s Enchant",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "Enchanted",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "Approximate",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.wrapper": "(%s)",
 
   "command.unsuspiciousblock.usb.clear.success": "Your archaeology journal data has been cleared.",
   "command.unsuspiciousblock.usb.clear_table.success": "Cleared archaeology journal data for loot table %s.",

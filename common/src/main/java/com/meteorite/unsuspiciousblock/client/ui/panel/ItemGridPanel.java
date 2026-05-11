@@ -2,8 +2,9 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.journal.LootResultSignature;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -232,8 +233,16 @@ public final class ItemGridPanel {
     }
 
     // 物品网格条目
-    public record GridItem(ResourceLocation id, Component displayName, double weight, boolean unlocked, int count) {
+    public record GridItem(ResourceLocation id, Component displayName, double weight,
+                           boolean unlocked, int count,
+                           LootResultSignature signature) {
         public ItemStack stack() {
+            if (this.signature != null) {
+                ItemStack preview = this.signature.createPreviewStack();
+                if (!preview.isEmpty()) {
+                    return preview;
+                }
+            }
             return new ItemStack(BuiltInRegistries.ITEM.get(this.id));
         }
     }
