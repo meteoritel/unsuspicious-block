@@ -31,6 +31,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 @Mod(Constants.MOD_ID)
 public class UnsuspiciousBlockNeoForge {
@@ -56,13 +57,11 @@ public class UnsuspiciousBlockNeoForge {
     private static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB =
             CREATIVE_MODE_TABS.register("main", () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.unsuspiciousblock.main"))
-                    .icon(() -> new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL))
+                    .icon(ModItems.CREATIVE_TAB_ICON)
                     .displayItems((parameters, output) -> {
-                        output.accept(ModItems.SUSPICIOUS_READER);
-                        output.accept(ModItems.ARCHAEOLOGY_JOURNAL);
-                        output.accept(ModItems.ANCIENT_COIN);
-                        output.accept(ModItems.LOST_PAGE);
-                        output.accept(ModItems.PAGE_BASE);
+                        for (Supplier<Item> sup : ModItems.CREATIVE_TAB_ITEMS) {
+                            output.accept(sup.get());
+                        }
                     })
                     .build());
 

@@ -34,16 +34,6 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
         return new LootResultSignature(itemId, SignatureType.ENCHANTED_APPROX, null);
     }
 
-    // 构造随机附魔签名（当前统一映射为附魔近似签名）
-    public static LootResultSignature enchantedRandom(ResourceLocation itemId) {
-        return enchantedApprox(itemId);
-    }
-
-    // 构造等级附魔签名（等级信息仅用于 UI 提示，不进入匹配签名）
-    public static LootResultSignature enchantedLevel(ResourceLocation itemId, @Nullable String levelInfo) {
-        return enchantedApprox(itemId);
-    }
-
     // 构造严格组件签名
     public static LootResultSignature componentExact(ItemStack stack) {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());

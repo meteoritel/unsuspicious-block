@@ -169,14 +169,6 @@ public final class ArchaeologyJournalState {
             return this.getOrCreateItem(signature).unlock();
         }
 
-        public boolean recordItemAcquired(ResourceLocation itemId) {
-            return this.recordItemAcquired(LootResultSignature.plain(itemId), 1);
-        }
-
-        public boolean recordItemAcquired(ResourceLocation itemId, int count) {
-            return this.recordItemAcquired(LootResultSignature.plain(itemId), count);
-        }
-
         public boolean recordItemAcquired(LootResultSignature signature, int count) {
             if (count <= 0) {
                 return false;
@@ -186,17 +178,6 @@ public final class ArchaeologyJournalState {
             boolean changed = item.unlock();
             changed |= item.incrementCount(count);
             return changed;
-        }
-
-        // 统计已解析（已解锁）的物品数量
-        public int getResolvedItemCount() {
-            int count = 0;
-            for (ItemProgress item : this.items.values()) {
-                if (item.isUnlocked()) {
-                    count++;
-                }
-            }
-            return count;
         }
 
         public boolean isEmpty() {

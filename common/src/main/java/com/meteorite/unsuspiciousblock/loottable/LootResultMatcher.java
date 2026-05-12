@@ -45,7 +45,7 @@ public final class LootResultMatcher {
             int priority = entry.getKey();
             List<LootResultSignature> matches = distinctSignatures(entry.getValue());
             if (matches.size() == 1) {
-                return priority >= minimumFallbackPriority ? matches.get(0) : null;
+                return priority >= minimumFallbackPriority ? matches.getFirst() : null;
             }
 
             int fallbackPriority = fallbackPriority(priority);

@@ -23,6 +23,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.function.Supplier;
+
 public class UnsuspiciousBlockFabric implements ModInitializer {
 
     @Override
@@ -44,13 +46,11 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "main"),
                 FabricItemGroup.builder()
                         .title(Component.translatable("itemGroup.unsuspiciousblock.main"))
-                        .icon(() -> new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL))
+                        .icon(ModItems.CREATIVE_TAB_ICON)
                         .displayItems((context, entries) -> {
-                            entries.accept(ModItems.SUSPICIOUS_READER);
-                            entries.accept(ModItems.ARCHAEOLOGY_JOURNAL);
-                            entries.accept(ModItems.ANCIENT_COIN);
-                            entries.accept(ModItems.LOST_PAGE);
-                            entries.accept(ModItems.PAGE_BASE);
+                            for (Supplier<Item> sup : ModItems.CREATIVE_TAB_ITEMS) {
+                                entries.accept(sup.get());
+                            }
                         })
                         .build()
         );

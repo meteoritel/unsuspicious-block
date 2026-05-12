@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.item;
 
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -39,6 +40,19 @@ public class ModItems {
             new ItemEntry("page_base",
                     ModItems::createPageBase,
                     item -> PAGE_BASE = item)
+    );
+
+    // 创造模式物品栏图标 —— 考古笔记
+    public static final Supplier<ItemStack> CREATIVE_TAB_ICON =
+            () -> new ItemStack(ARCHAEOLOGY_JOURNAL);
+
+    // 创造模式物品栏中展示的物品（使用 Supplier 延迟求值，因为静态字段在注册后才被赋值）
+    public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
+            () -> SUSPICIOUS_READER,
+            () -> ARCHAEOLOGY_JOURNAL,
+            () -> ANCIENT_COIN,
+            () -> LOST_PAGE,
+            () -> PAGE_BASE
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //

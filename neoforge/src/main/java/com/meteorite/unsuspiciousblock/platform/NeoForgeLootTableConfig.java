@@ -31,6 +31,6 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
     @Override
     @SuppressWarnings("unchecked")
     public List<String> getArchaeologyPathPrefixes() {
-        return (List<String>) (List<?>) ARCHAEOLOGY_PATH_PREFIXES.get();
+        return (List<String>) ARCHAEOLOGY_PATH_PREFIXES.get();
     }
 }
