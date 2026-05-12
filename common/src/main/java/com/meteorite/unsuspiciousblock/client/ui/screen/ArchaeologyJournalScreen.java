@@ -6,11 +6,12 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -519,6 +520,6 @@ public class ArchaeologyJournalScreen extends Screen {
 
     private record ItemView(ResourceLocation id, Component displayName, double weight,
                             boolean unlocked, int count,
-                            com.meteorite.unsuspiciousblock.journal.LootResultSignature signature) {
+                            LootResultSignature signature) {
     }
 }

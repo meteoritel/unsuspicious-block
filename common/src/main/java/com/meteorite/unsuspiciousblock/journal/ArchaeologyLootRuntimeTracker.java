@@ -1,8 +1,10 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;

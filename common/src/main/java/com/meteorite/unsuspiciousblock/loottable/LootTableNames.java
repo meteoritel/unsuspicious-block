@@ -1,6 +1,7 @@
-package com.meteorite.unsuspiciousblock.api;
+package com.meteorite.unsuspiciousblock.loottable;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -14,10 +15,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** 考古战利品表名称注册表——提供名称映射、本地化 key 规则与 fallback 解析 */
-public final class ArchaeologyLootTableNames {
+public final class LootTableNames {
     private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.table.";
-    // 统一维护可接受的考古战利品表路径前缀，后续兼容其他模组时只需扩充这里
-    private static final List<String> ARCHAEOLOGY_PATH_PREFIXES = List.of("archaeology/", "archeology/");
     private static final Map<ResourceLocation, NameRegistration> REGISTRATIONS = new LinkedHashMap<>();
     private static final Set<ResourceLocation> WARNED_MISSING_TRANSLATIONS = ConcurrentHashMap.newKeySet();
 
@@ -30,7 +29,7 @@ public final class ArchaeologyLootTableNames {
         seedVanilla("minecraft:archaeology/trail_ruins_rare", "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare");
     }
 
-    private ArchaeologyLootTableNames() {
+    private LootTableNames() {
     }
 
     // 注册战利品表名称映射；使用规则生成 key，fallback 名称由 path 自动清洗得到
@@ -52,7 +51,7 @@ public final class ArchaeologyLootTableNames {
 
     // 判断 path 是否命中任一可接受的考古路径前缀
     public static boolean hasArchaeologyPathPrefix(String path) {
-        for (String prefix : ARCHAEOLOGY_PATH_PREFIXES) {
+        for (String prefix : Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes()) {
             if (path.startsWith(prefix)) {
                 return true;
             }
@@ -160,7 +159,7 @@ public final class ArchaeologyLootTableNames {
     }
 
     private static String stripArchaeologyPrefix(String path) {
-        for (String prefix : ARCHAEOLOGY_PATH_PREFIXES) {
+        for (String prefix : Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes()) {
             if (path.startsWith(prefix)) {
                 return path.substring(prefix.length());
             }

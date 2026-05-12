@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
-import com.meteorite.unsuspiciousblock.journal.LootResultMatcher;
-import com.meteorite.unsuspiciousblock.journal.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;

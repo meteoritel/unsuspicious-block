@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 
@@ -11,6 +12,7 @@ public class Services {
 
     public static final IPlatformHelper PLATFORM = load(IPlatformHelper.class);
     public static final INetworkHelper NETWORK = load(INetworkHelper.class);
+    public static final ILootTableConfig LOOT_TABLE_CONFIG = load(ILootTableConfig.class);
 
     public static <T> T load(Class<T> clazz) {
         final T loadedService = ServiceLoader.load(clazz)

@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal;
 
-import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -35,7 +35,7 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    /** 使缓存失效（数据包重载后调用） */
+    // 使缓存失效（数据包重载后调用）
     public static void invalidate() {
         catalog.clear();
         loaded = false;
@@ -46,13 +46,13 @@ public final class ArchaeologyJournalServerCatalog {
             ResourceLocation tableId = table.id();
             LOGGER.debug("考古战利品表: {} | key={} | fallback={} | display={}",
                     tableId,
-                    ArchaeologyLootTableNames.translationKey(tableId),
-                    ArchaeologyLootTableNames.fallbackName(tableId),
+                    LootTableNames.translationKey(tableId),
+                    LootTableNames.fallbackName(tableId),
                     table.displayName().getString());
         }
     }
 
-    /** 获取目录（只读） */
+    // 获取目录（只读）
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         return Collections.unmodifiableMap(catalog);
     }

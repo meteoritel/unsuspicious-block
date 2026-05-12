@@ -4,7 +4,10 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.client.Minecraft;
@@ -62,7 +65,7 @@ public final class ArchaeologyJournalCatalog {
         List<Map.Entry<ResourceLocation, Resource>> orderedResources = new ArrayList<>();
         for (Map.Entry<ResourceLocation, Resource> entry : allResources.entrySet()) {
             ResourceLocation tableId = LOOT_TABLES.fileToId(entry.getKey());
-            if (ArchaeologyLootTableNames.isArchaeologyLootTable(tableId)) {
+            if (LootTableNames.isArchaeologyLootTable(tableId)) {
                 orderedResources.add(Map.entry(tableId, entry.getValue()));
             }
         }
@@ -70,7 +73,7 @@ public final class ArchaeologyJournalCatalog {
 
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (Map.Entry<ResourceLocation, Resource> entry : orderedResources) {
-            ArchaeologyLootTableNames.ensureRegistered(entry.getKey());
+            LootTableNames.ensureRegistered(entry.getKey());
             try (BufferedReader reader = entry.getValue().openAsReader()) {
                 JsonElement element = JsonParser.parseReader(reader);
                 TableDefinition definition = parseTable(entry.getKey(), element);
@@ -548,7 +551,7 @@ public final class ArchaeologyJournalCatalog {
     }
 
     private static Component resolveTableName(ResourceLocation tableId) {
-        return ArchaeologyLootTableNames.resolveDisplayName(tableId);
+        return LootTableNames.resolveDisplayName(tableId);
     }
 
     private static String normalizeType(String type) {
@@ -570,14 +573,6 @@ public final class ArchaeologyJournalCatalog {
 
     private static boolean getBoolean(JsonObject object, String key, boolean fallback) {
         return object.has(key) && object.get(key).isJsonPrimitive() ? object.get(key).getAsBoolean() : fallback;
-    }
-
-    public record TableDefinition(ResourceLocation id, Component displayName, List<ItemDefinition> items,
-                                  double totalWeight, boolean approximate) {
-    }
-
-    public record ItemDefinition(ResourceLocation id, Component displayName, double weight,
-                                 LootResultSignature signature) {
     }
 
     private record ResolvedEntry(ResourceLocation itemId, Component displayName, LootResultSignature signature) {

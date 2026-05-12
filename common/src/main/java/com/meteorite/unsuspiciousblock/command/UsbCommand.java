@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.command;
 
-import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
@@ -140,8 +140,8 @@ public final class UsbCommand {
         for (TableDefinition table : catalog.values()) {
             int lineIndex = index++;
             ResourceLocation tableId = table.id();
-            String translationKey = ArchaeologyLootTableNames.translationKey(tableId);
-            String fallbackName = ArchaeologyLootTableNames.fallbackName(tableId);
+            String translationKey = LootTableNames.translationKey(tableId);
+            String fallbackName = LootTableNames.fallbackName(tableId);
             String displayName = table.displayName().getString();
             source.sendSuccess(() -> Component.translatable(
                     "command.unsuspiciousblock.usb.debug.table_list.entry",
