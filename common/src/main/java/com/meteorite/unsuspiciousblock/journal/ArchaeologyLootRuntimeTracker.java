@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -17,7 +17,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,6 +60,23 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         if (changed) {
             ArchaeologyJournalNetwork.syncState(player);
+        }
+    }
+
+    /**
+     * 一站式处理：解锁战利品 + 若为首次解锁则记录日志。
+     * 替代多处重复的 holder 提取与首次解锁判断逻辑。
+     */
+    public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
+                                         ItemStack loot, long gameTime, long dayTime) {
+        ArchaeologyJournalState state = getState(player);
+        if (state == null) {
+            return;
+        }
+        boolean tableUnlockedBefore = state.isTableUnlocked(tableId);
+        unlockResolvedLoot(player, tableId, loot);
+        if (!tableUnlockedBefore) {
+            ArchaeologyJournalLogCollector.recordFirstUnlock(player, tableId, gameTime, dayTime);
         }
     }
 

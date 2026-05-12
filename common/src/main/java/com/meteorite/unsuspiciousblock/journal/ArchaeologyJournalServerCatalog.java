@@ -1,8 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;

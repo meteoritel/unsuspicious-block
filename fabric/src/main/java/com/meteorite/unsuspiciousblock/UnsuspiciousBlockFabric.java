@@ -20,6 +20,7 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 public class UnsuspiciousBlockFabric implements ModInitializer {
@@ -28,36 +29,15 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
     public void onInitialize() {
         UnsuspiciousBlockCommon.init();
 
-        ModItems.SUSPICIOUS_READER = Registry.register(
-                BuiltInRegistries.ITEM,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "suspicious_reader"),
-                ModItems.createSuspiciousReader()
-        );
-        ModItems.LUOYANG_SPADE = Registry.register(
-                BuiltInRegistries.ITEM,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "luoyang_spade"),
-                ModItems.createLuoyangSpade()
-        );
-        ModItems.ARCHAEOLOGY_JOURNAL = Registry.register(
-                BuiltInRegistries.ITEM,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "archaeology_journal"),
-                ModItems.createArchaeologyJournal()
-        );
-        ModItems.ANCIENT_COIN = Registry.register(
-                BuiltInRegistries.ITEM,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "ancient_coin"),
-                ModItems.createAncientCoin()
-        );
-        ModItems.LOST_PAGE = Registry.register(
-                BuiltInRegistries.ITEM,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "lost_page"),
-                ModItems.createLostPage()
-        );
-        ModItems.PAGE_BASE = Registry.register(
-                BuiltInRegistries.ITEM,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "page_base"),
-                ModItems.createPageBase()
-        );
+        // 遍历物品注册清单，统一注册并回写静态字段
+        for (ModItems.ItemEntry entry : ModItems.REGISTRY_MANIFEST) {
+            Item registered = Registry.register(
+                    BuiltInRegistries.ITEM,
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, entry.name()),
+                    entry.factory().get()
+            );
+            entry.setter().accept(registered);
+        }
 
         Registry.register(
                 BuiltInRegistries.CREATIVE_MODE_TAB,

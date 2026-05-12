@@ -9,7 +9,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -46,10 +45,7 @@ public final class FishingLootOverrideService {
 
     private static boolean shouldOverride(ServerLevel level, FishingHook hook, ItemStack fishingRod,
                                           FishingLootOverrideDefinition definition) {
-        int enchantmentLevel = level.registryAccess().lookup(Registries.ENCHANTMENT)
-                .flatMap(registry -> registry.get(definition.enchantmentKey()))
-                .map(enchantment -> EnchantmentHelper.getItemEnchantmentLevel(enchantment, fishingRod))
-                .orElse(0);
+        int enchantmentLevel = ModEnchantments.getEnchantmentLevel(level.registryAccess(), fishingRod, definition.enchantmentKey());
         if (enchantmentLevel <= 0 || !hook.isOpenWaterFishing()) {
             return false;
         }

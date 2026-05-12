@@ -293,23 +293,16 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$lootTableParsedThisCall = false;
 
         if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$lootTableName != null
-                && player instanceof ServerPlayer sp
-                && player instanceof ArchaeologyJournalStateHolder holder) {
+                && player instanceof ServerPlayer sp) {
             if (!this.item.isEmpty()) {
-                ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
-                boolean tableUnlockedBefore = journalState.isTableUnlocked(this.unsuspiciousblock$lootTableName);
-                ArchaeologyLootRuntimeTracker.unlockResolvedLoot(sp, this.unsuspiciousblock$lootTableName, this.item);
-                if (!tableUnlockedBefore) {
-                    long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
-                            ? this.unsuspiciousblock$brushGameTime
-                            : sp.serverLevel().getGameTime();
-                    long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
-                            ? this.unsuspiciousblock$brushDayTime
-                            : sp.serverLevel().getDayTime();
-                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, this.unsuspiciousblock$lootTableName,
-                            gameTime, dayTime);
-                }
-
+                long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
+                        ? this.unsuspiciousblock$brushGameTime
+                        : sp.serverLevel().getGameTime();
+                long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
+                        ? this.unsuspiciousblock$brushDayTime
+                        : sp.serverLevel().getDayTime();
+                ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
+                        this.item, gameTime, dayTime);
                 Constants.LOG.debug("刷子刷物品刚露头");
             }
         }

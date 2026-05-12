@@ -3,8 +3,6 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -79,19 +77,12 @@ public class LuoyangSpadeItem extends Item {
         brushable.setChanged();
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ArchaeologyJournalStateHolder holder) {
+        if (lootTableName != null && player instanceof ServerPlayer sp) {
             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(extracted.getItem());
-            ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
-            boolean tableUnlockedBefore = journalState.isTableUnlocked(lootTableName);
-            if (player instanceof ServerPlayer sp) {
-                ArchaeologyLootRuntimeTracker.unlockResolvedLoot(sp, lootTableName, extracted);
-                if (!tableUnlockedBefore) {
-                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
-                            level.getGameTime(), level.getDayTime());
-                }
-                ArchaeologyJournalLogCollector.recordExcavation(sp, lootTableName, itemId,
-                        pos, level.getGameTime(), level.getDayTime());
-            }
+            ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, extracted,
+                    level.getGameTime(), level.getDayTime());
+            ArchaeologyJournalLogCollector.recordExcavation(sp, lootTableName, itemId,
+                    pos, level.getGameTime(), level.getDayTime());
         }
 
         scanState.unsuspiciousblock$clearScanned();

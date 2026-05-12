@@ -2,14 +2,12 @@ package com.meteorite.unsuspiciousblock.enchantment.shears;
 
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
@@ -56,21 +54,14 @@ public final class TextileRecoveryService {
     }
 
     private static boolean shouldDropExtraLeafLoot(ServerLevel level, ItemStack tool) {
-        int fortuneLevel = getEnchantmentLevel(level, tool, Enchantments.FORTUNE);
+        int fortuneLevel = ModEnchantments.getEnchantmentLevel(level.registryAccess(), tool, Enchantments.FORTUNE);
         double chance = Math.min(1.0D,
                 EXTRA_LEAF_DROP_BASE_CHANCE + fortuneLevel * EXTRA_LEAF_DROP_FORTUNE_CHANCE);
         return level.getRandom().nextDouble() < chance;
     }
 
     private static boolean isTextileRecoveryShears(ServerLevel level, ItemStack tool) {
-        return tool.is(Items.SHEARS) && getEnchantmentLevel(level, tool, ModEnchantments.TEXTILE_RECOVERY) > 0;
+        return tool.is(Items.SHEARS) && ModEnchantments.getEnchantmentLevel(level.registryAccess(), tool, ModEnchantments.TEXTILE_RECOVERY) > 0;
     }
 
-    private static int getEnchantmentLevel(ServerLevel level, ItemStack stack,
-                                           net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment> enchantmentKey) {
-        return level.registryAccess().lookup(Registries.ENCHANTMENT)
-                .flatMap(registry -> registry.get(enchantmentKey))
-                .map(enchantment -> EnchantmentHelper.getItemEnchantmentLevel(enchantment, stack))
-                .orElse(0);
-    }
 }

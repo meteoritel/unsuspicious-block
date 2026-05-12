@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.command;
 
 import com.meteorite.unsuspiciousblock.api.ArchaeologyLootTableNames;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
@@ -73,7 +73,7 @@ public final class UsbCommand {
                         for (ResourceLocation tableId : catalog.keySet()) {
                             state.unlockTable(tableId);
                         }
-                    }, Component.translatable("command.unsuspiciousblock.usb.unlock_tables.success", catalog.size()));
+                    }, null, Component.translatable("command.unsuspiciousblock.usb.unlock_tables.success", catalog.size()));
                 })
                 .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                         .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
@@ -83,6 +83,7 @@ public final class UsbCommand {
                             requireTable(context.getSource(), tableId);
                             return mutateAndSync(context.getSource(), player,
                                     state -> state.unlockTable(tableId),
+                                    null,
                                     Component.translatable("command.unsuspiciousblock.usb.unlock_table.success", tableId.toString()));
                         }));
     }
@@ -103,7 +104,7 @@ public final class UsbCommand {
                                 state.unlockItem(tableId, item.signature());
                             }
                         }
-                    }, Component.translatable("command.unsuspiciousblock.usb.unlock_items.success", itemCount, catalog.size()));
+                    }, null, Component.translatable("command.unsuspiciousblock.usb.unlock_items.success", itemCount, catalog.size()));
                 })
                 .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                         .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
@@ -116,7 +117,7 @@ public final class UsbCommand {
                                 for (ItemDefinition item : table.items()) {
                                     state.unlockItem(tableId, item.signature());
                                 }
-                            }, Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
+                            }, null, Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
                         }));
     }
 
@@ -160,22 +161,10 @@ public final class UsbCommand {
 
     private static int mutateCurrentPlayer(CommandContext<CommandSourceStack> context,
                                            Consumer<ArchaeologyJournalState> mutator,
-                                           Component successMessage) throws CommandSyntaxException {
-        return mutateCurrentPlayer(context, mutator, null, successMessage);
-    }
-
-    private static int mutateCurrentPlayer(CommandContext<CommandSourceStack> context,
-                                           Consumer<ArchaeologyJournalState> mutator,
                                            Consumer<ServerPlayer> afterSync,
                                            Component successMessage) throws CommandSyntaxException {
         ServerPlayer player = requirePlayer(context);
         return mutateAndSync(context.getSource(), player, mutator, afterSync, successMessage);
-    }
-
-    private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,
-                                     Consumer<ArchaeologyJournalState> mutator,
-                                     Component successMessage) {
-        return mutateAndSync(source, player, mutator, null, successMessage);
     }
 
     private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,

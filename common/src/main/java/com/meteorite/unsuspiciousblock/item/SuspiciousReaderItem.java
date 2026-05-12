@@ -2,9 +2,6 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -57,15 +54,9 @@ public class SuspiciousReaderItem extends Item {
         scanState.unsuspiciousblock$markScanned(player.getUUID());
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ArchaeologyJournalStateHolder holder
-                && player instanceof ServerPlayer sp) {
-            ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
-            boolean tableUnlockedBefore = journalState.isTableUnlocked(lootTableName);
-            ArchaeologyLootRuntimeTracker.unlockResolvedLoot(sp, lootTableName, lootItem);
-            if (!tableUnlockedBefore) {
-                ArchaeologyJournalLogCollector.recordFirstUnlock(sp, lootTableName,
-                        level.getGameTime(), level.getDayTime());
-            }
+        if (lootTableName != null && player instanceof ServerPlayer sp) {
+            ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, lootItem,
+                    level.getGameTime(), level.getDayTime());
         }
 
         BlockPos pos = context.getClickedPos();

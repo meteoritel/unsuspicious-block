@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.network;
 
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
