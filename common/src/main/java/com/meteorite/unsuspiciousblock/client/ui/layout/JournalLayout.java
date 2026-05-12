@@ -41,10 +41,11 @@ public final class JournalLayout {
     // —— 右侧日志页 ——
     public static final int LOG_TOP = 28;
     public static final int LOG_FIRST_UNLOCK_VALUE_Y = LOG_TOP + 12;
-    public static final int LOG_LIST_LABEL_Y = LOG_TOP + 28;
-    public static final int LOG_LIST_TOP = LOG_TOP + 42;
+    public static final int LOG_FIRST_UNLOCK_TRIGGER_Y = LOG_TOP + 24;
+    public static final int LOG_LIST_LABEL_Y = LOG_TOP + 40;
+    public static final int LOG_LIST_TOP = LOG_TOP + 54;
     public static final int LOG_LIST_BOTTOM = GRID_PAGE_INDICATOR_Y - 8;
-    public static final int LOG_ROW_HEIGHT = 50;
+    public static final int LOG_ROW_HEIGHT = 38;
 
     // —— 翻页按钮 ——
     public static final int PAGE_BUTTON_WIDTH = 23;

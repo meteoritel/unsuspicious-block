@@ -58,6 +58,11 @@ public final class DetailOverlayPanel {
         }
     }
 
+    public boolean containsMouse(double mouseX, double mouseY) {
+        return mouseX >= this.layout.rightPageX() && mouseX <= this.layout.rightPageRight()
+                && mouseY >= this.layout.rightPageY() && mouseY <= this.layout.rightPageBottom();
+    }
+
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         int leftX = layout.rightPageX() + 8;
         int contentWidth = layout.rightPageWidth() - 20;

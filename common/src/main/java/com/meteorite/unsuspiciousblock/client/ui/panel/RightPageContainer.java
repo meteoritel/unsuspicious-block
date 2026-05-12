@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -12,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /** 右侧页面容器 —— 通过三枚书签 Tab 切换介绍信息/考古信息/日志 */
 public final class RightPageContainer {
@@ -22,10 +24,13 @@ public final class RightPageContainer {
 
     public enum Tab { INTRO, ARCHAEOLOGY, LOG }
 
+    private enum LogMode { LIST, DETAIL }
+
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
     private final DetailOverlayPanel detailPanel;
     private final LogPanel logPanel;
+    private final LogDetailPanel logDetailPanel;
     private final BookmarkToggleButton introTabBtn;
     private final BookmarkToggleButton archaeologyTabBtn;
     private final BookmarkToggleButton logTabBtn;
@@ -33,12 +38,16 @@ public final class RightPageContainer {
     @Nullable
     private ResourceLocation currentTableId;
     private Tab activeTab = Tab.INTRO;
+    private LogMode logMode = LogMode.LIST;
+    @Nullable
+    private UUID selectedLogEntryId;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout) {
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
         this.detailPanel = new DetailOverlayPanel(layout);
         this.logPanel = new LogPanel(layout);
+        this.logDetailPanel = new LogDetailPanel(layout);
 
         int btnY = layout.rightPageY() + 2;
         int groupWidth = TAB_WIDTH * 3 + TAB_GAP * 2;
@@ -61,7 +70,9 @@ public final class RightPageContainer {
     }
 
     private void switchTab(Tab tab) {
-        if (this.activeTab == tab) return;
+        if (this.activeTab == tab) {
+            return;
+        }
         this.activeTab = tab;
         this.introTabBtn.setToggled(tab == Tab.INTRO);
         this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
@@ -69,37 +80,56 @@ public final class RightPageContainer {
         syncPageIndicator();
     }
 
-    public void setTable(ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
+    public void setTable(@Nullable ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
                          double totalWeight, int parsedCount, int totalCount, boolean approximate,
                          @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
-                         List<ExcavationLogEntry> recentEntries) {
+                         @Nullable TriggerType firstUnlockTriggerType,
+                         List<ExcavationLogEntry> logEntries) {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
         int archaeologyPage = this.gridPanel.getPage();
         int introPage = this.detailPanel.getPage();
-        int logPage = this.logPanel.getPage();
+        int logListPage = this.logPanel.getPage();
+        LogMode savedLogMode = this.logMode;
+        UUID savedSelectedLogEntryId = this.selectedLogEntryId;
 
         this.gridPanel.setTable(items, totalWeight, approximate);
         this.detailPanel.setData(tableId, parsedCount, totalCount, items);
-        this.logPanel.setData(firstUnlockedGameTime, firstUnlockedDayTime, recentEntries);
+        this.logPanel.setData(firstUnlockedGameTime, firstUnlockedDayTime, firstUnlockTriggerType, logEntries);
 
         if (sameTable) {
             this.gridPanel.setPage(archaeologyPage);
             this.detailPanel.setPage(introPage);
-            this.logPanel.setPage(logPage);
+            this.logPanel.setPage(logListPage);
+            restoreLogSelection(savedSelectedLogEntryId, savedLogMode == LogMode.DETAIL);
         } else {
             this.gridPanel.resetPage();
+            restoreLogSelection(null, false);
         }
 
         this.currentTableId = tableId;
         syncPageIndicator();
     }
 
+    public void restoreLogSelection(@Nullable UUID entryId, boolean detailMode) {
+        this.selectedLogEntryId = entryId;
+        ExcavationLogEntry selectedEntry = entryId != null ? this.logPanel.findEntry(entryId) : null;
+        if (detailMode && selectedEntry != null) {
+            this.logMode = LogMode.DETAIL;
+            this.logDetailPanel.setEntry(selectedEntry);
+        } else {
+            this.logMode = LogMode.LIST;
+            this.selectedLogEntryId = null;
+            this.logDetailPanel.setEntry(null);
+        }
+        syncPageIndicator();
+    }
+
     public BookmarkToggleButton getIntroTabButton() {
-        return introTabBtn;
+        return this.introTabBtn;
     }
 
     public BookmarkToggleButton getArchaeologyTabButton() {
-        return archaeologyTabBtn;
+        return this.archaeologyTabBtn;
     }
 
     public BookmarkToggleButton getLogTabButton() {
@@ -107,43 +137,85 @@ public final class RightPageContainer {
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (activeTab == Tab.INTRO) {
-            detailPanel.render(guiGraphics, font, mouseX, mouseY);
-            if (detailPanel.pageCount() > 1) {
-                pageIndicator.render(guiGraphics, font);
+        if (this.activeTab == Tab.INTRO) {
+            this.detailPanel.render(guiGraphics, font, mouseX, mouseY);
+            if (this.detailPanel.pageCount() > 1) {
+                this.pageIndicator.render(guiGraphics, font);
             }
-        } else if (activeTab == Tab.ARCHAEOLOGY) {
-            gridPanel.render(guiGraphics, font, mouseX, mouseY);
-            pageIndicator.render(guiGraphics, font);
-        } else {
-            logPanel.render(guiGraphics, font, mouseX, mouseY);
-            if (logPanel.pageCount() > 1) {
-                pageIndicator.render(guiGraphics, font);
+            return;
+        }
+
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
+            this.gridPanel.render(guiGraphics, font, mouseX, mouseY);
+            this.pageIndicator.render(guiGraphics, font);
+            return;
+        }
+
+        if (this.logMode == LogMode.DETAIL) {
+            this.logDetailPanel.render(guiGraphics, font, mouseX, mouseY);
+            if (this.logDetailPanel.pageCount() > 1) {
+                this.pageIndicator.render(guiGraphics, font);
             }
+            return;
+        }
+
+        this.logPanel.render(guiGraphics, font, mouseX, mouseY);
+        if (this.logPanel.pageCount() > 1) {
+            this.pageIndicator.render(guiGraphics, font);
         }
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        if (introTabBtn.isMouseOver(mouseX, mouseY)) return true;
-        if (archaeologyTabBtn.isMouseOver(mouseX, mouseY)) return true;
-        if (logTabBtn.isMouseOver(mouseX, mouseY)) return true;
-        return activeTab == Tab.LOG ? logPanel.containsMouse(mouseX, mouseY) : gridPanel.containsMouse(mouseX, mouseY);
+        if (this.introTabBtn.isMouseOver(mouseX, mouseY)) {
+            return true;
+        }
+        if (this.archaeologyTabBtn.isMouseOver(mouseX, mouseY)) {
+            return true;
+        }
+        if (this.logTabBtn.isMouseOver(mouseX, mouseY)) {
+            return true;
+        }
+        return switch (this.activeTab) {
+            case INTRO -> this.detailPanel.containsMouse(mouseX, mouseY);
+            case ARCHAEOLOGY -> this.gridPanel.containsMouse(mouseX, mouseY);
+            case LOG -> this.logMode == LogMode.DETAIL
+                    ? this.logDetailPanel.containsMouse(mouseX, mouseY)
+                    : this.logPanel.containsMouse(mouseX, mouseY);
+        };
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (introTabBtn.isMouseOver(mouseX, mouseY)) {
-            introTabBtn.mouseClicked(mouseX, mouseY, button);
+        if (this.introTabBtn.isMouseOver(mouseX, mouseY)) {
+            this.introTabBtn.mouseClicked(mouseX, mouseY, button);
             return true;
         }
-        if (archaeologyTabBtn.isMouseOver(mouseX, mouseY)) {
-            archaeologyTabBtn.mouseClicked(mouseX, mouseY, button);
+        if (this.archaeologyTabBtn.isMouseOver(mouseX, mouseY)) {
+            this.archaeologyTabBtn.mouseClicked(mouseX, mouseY, button);
             return true;
         }
-        if (logTabBtn.isMouseOver(mouseX, mouseY)) {
-            logTabBtn.mouseClicked(mouseX, mouseY, button);
+        if (this.logTabBtn.isMouseOver(mouseX, mouseY)) {
+            this.logTabBtn.mouseClicked(mouseX, mouseY, button);
             return true;
         }
-        return false;
+        if (this.activeTab != Tab.LOG) {
+            return false;
+        }
+        if (this.logMode == LogMode.DETAIL) {
+            if (this.logDetailPanel.handleClick(mouseX, mouseY)) {
+                restoreLogSelection(null, false);
+                return true;
+            }
+            return false;
+        }
+        ExcavationLogEntry clickedEntry = this.logPanel.handleClick(mouseX, mouseY);
+        if (clickedEntry == null) {
+            return false;
+        }
+        this.selectedLogEntryId = clickedEntry.entryId();
+        this.logMode = LogMode.DETAIL;
+        this.logDetailPanel.setEntry(clickedEntry);
+        syncPageIndicator();
+        return true;
     }
 
     public void handleScroll(double scrollY) {
@@ -153,32 +225,40 @@ public final class RightPageContainer {
     }
 
     public int pageCount() {
-        return switch (activeTab) {
-            case INTRO -> detailPanel.pageCount();
-            case ARCHAEOLOGY -> gridPanel.pageCount();
-            case LOG -> logPanel.pageCount();
+        return switch (this.activeTab) {
+            case INTRO -> this.detailPanel.pageCount();
+            case ARCHAEOLOGY -> this.gridPanel.pageCount();
+            case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel.pageCount() : this.logPanel.pageCount();
         };
     }
 
     public int getPage() {
-        return switch (activeTab) {
-            case INTRO -> detailPanel.getPage();
-            case ARCHAEOLOGY -> gridPanel.getPage();
-            case LOG -> logPanel.getPage();
+        return switch (this.activeTab) {
+            case INTRO -> this.detailPanel.getPage();
+            case ARCHAEOLOGY -> this.gridPanel.getPage();
+            case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel.getPage() : this.logPanel.getPage();
         };
     }
 
     public void changePage(int delta) {
-        switch (activeTab) {
-            case INTRO -> detailPanel.changePage(delta);
-            case ARCHAEOLOGY -> gridPanel.changePage(delta);
-            case LOG -> logPanel.changePage(delta);
+        switch (this.activeTab) {
+            case INTRO -> this.detailPanel.changePage(delta);
+            case ARCHAEOLOGY -> this.gridPanel.changePage(delta);
+            case LOG -> {
+                if (this.logMode == LogMode.DETAIL) {
+                    this.logDetailPanel.changePage(delta);
+                } else {
+                    this.logPanel.changePage(delta);
+                }
+            }
         }
         syncPageIndicator();
     }
 
     public void setActiveTab(Tab tab) {
-        if (this.activeTab == tab) return;
+        if (this.activeTab == tab) {
+            return;
+        }
         this.activeTab = tab;
         this.introTabBtn.setToggled(tab == Tab.INTRO);
         this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
@@ -187,31 +267,56 @@ public final class RightPageContainer {
     }
 
     public Tab getActiveTab() {
-        return activeTab;
+        return this.activeTab;
     }
 
     public void setPage(int page) {
         switch (this.activeTab) {
             case INTRO -> this.detailPanel.setPage(page);
             case ARCHAEOLOGY -> this.gridPanel.setPage(page);
-            case LOG -> this.logPanel.setPage(page);
+            case LOG -> {
+                if (this.logMode == LogMode.DETAIL) {
+                    this.logDetailPanel.setPage(page);
+                } else {
+                    this.logPanel.setPage(page);
+                }
+            }
         }
         syncPageIndicator();
+    }
+
+    public boolean isShowingLogDetail() {
+        return this.logMode == LogMode.DETAIL;
+    }
+
+    @Nullable
+    public UUID getSelectedLogEntryId() {
+        return this.selectedLogEntryId;
     }
 
     private void syncPageIndicator() {
         switch (this.activeTab) {
             case INTRO -> this.pageIndicator.setPage(this.detailPanel.getPage(), this.detailPanel.pageCount());
             case ARCHAEOLOGY -> this.pageIndicator.setPage(this.gridPanel.getPage(), this.gridPanel.pageCount());
-            case LOG -> this.pageIndicator.setPage(this.logPanel.getPage(), this.logPanel.pageCount());
+            case LOG -> {
+                if (this.logMode == LogMode.DETAIL) {
+                    this.pageIndicator.setPage(this.logDetailPanel.getPage(), this.logDetailPanel.pageCount());
+                } else {
+                    this.pageIndicator.setPage(this.logPanel.getPage(), this.logPanel.pageCount());
+                }
+            }
         }
     }
 
     @Nullable
-    public ItemStack getTooltipStack(double mouseX, double mouseY) {
-        if (this.activeTab != Tab.ARCHAEOLOGY) {
-            return null;
+    public ItemGridPanel.TooltipData getTooltipData(double mouseX, double mouseY) {
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
+            return this.gridPanel.getTooltipData(mouseX, mouseY);
         }
-        return this.gridPanel.getTooltipStack(mouseX, mouseY);
+        if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
+            ItemStack stack = this.logDetailPanel.getTooltipStack(mouseX, mouseY);
+            return stack != null ? new ItemGridPanel.TooltipData(stack, null) : null;
+        }
+        return null;
     }
 }

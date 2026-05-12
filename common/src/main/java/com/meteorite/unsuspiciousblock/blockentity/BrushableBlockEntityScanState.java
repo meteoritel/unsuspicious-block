@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -26,6 +27,15 @@ public interface BrushableBlockEntityScanState {
 
     // 设置可疑方块内的物品
     void unsuspiciousblock$setItem(ItemStack stack);
+
+    @Nullable
+    ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry();
+
+    void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry);
+
+    default void unsuspiciousblock$clearPendingJournalEntry() {
+        this.unsuspiciousblock$setPendingJournalEntry(null);
+    }
 
     default boolean unsuspiciousblock$isScanner(UUID uuid) {
         return this.unsuspiciousblock$isScanned()

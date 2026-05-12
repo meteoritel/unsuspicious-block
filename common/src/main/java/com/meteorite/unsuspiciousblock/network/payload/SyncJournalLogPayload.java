@@ -1,7 +1,9 @@
 package com.meteorite.unsuspiciousblock.network.payload;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import net.minecraft.core.BlockPos;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -15,16 +17,10 @@ public record SyncJournalLogPayload(UUID sessionId,
                                     long sequence,
                                     Action action,
                                     @Nullable ResourceLocation tableId,
-                                    boolean hasFirstUnlockedTime,
-                                    long firstUnlockedGameTime,
-                                    long firstUnlockedDayTime,
-                                    boolean hasEntry,
-                                    @Nullable ResourceLocation itemId,
-                                    @Nullable ResourceLocation structureId,
-                                    ResourceLocation biomeId,
-                                    BlockPos pos,
-                                    long gameTime,
-                                    long dayTime) implements CustomPacketPayload {
+                                    CompoundTag data) implements CustomPacketPayload {
+    private static final String TRIGGER_TYPE_TAG = "trigger_type";
+    private static final String GAME_TIME_TAG = "game_time";
+    private static final String DAY_TIME_TAG = "day_time";
 
     public static final Type<SyncJournalLogPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_journal_log"));
@@ -32,28 +28,29 @@ public record SyncJournalLogPayload(UUID sessionId,
     public static final StreamCodec<RegistryFriendlyByteBuf, SyncJournalLogPayload> STREAM_CODEC =
             StreamCodec.of(SyncJournalLogPayload::encode, SyncJournalLogPayload::decode);
 
-    public static SyncJournalLogPayload firstUnlock(UUID sessionId, long sequence, ResourceLocation tableId,
-                                                    long firstUnlockedGameTime, long firstUnlockedDayTime) {
-        return new SyncJournalLogPayload(sessionId, sequence, Action.APPEND, tableId, true,
-                firstUnlockedGameTime, firstUnlockedDayTime, false,
-                null, null, ResourceLocation.withDefaultNamespace("plains"), BlockPos.ZERO, 0L, 0L);
+    public static SyncJournalLogPayload setFirstUnlockMeta(UUID sessionId, long sequence, ResourceLocation tableId,
+                                                           @Nullable TriggerType triggerType,
+                                                           long firstUnlockedGameTime, long firstUnlockedDayTime) {
+        CompoundTag data = new CompoundTag();
+        data.putLong(GAME_TIME_TAG, firstUnlockedGameTime);
+        data.putLong(DAY_TIME_TAG, firstUnlockedDayTime);
+        if (triggerType != null) {
+            data.putString(TRIGGER_TYPE_TAG, triggerType.serializedName());
+        }
+        return new SyncJournalLogPayload(sessionId, sequence, Action.SET_FIRST_UNLOCK_META, tableId, data);
     }
 
-    public static SyncJournalLogPayload excavation(UUID sessionId, long sequence, ResourceLocation tableId,
-                                                   ResourceLocation itemId, @Nullable ResourceLocation structureId,
-                                                   ResourceLocation biomeId, BlockPos pos, long gameTime, long dayTime) {
-        return new SyncJournalLogPayload(sessionId, sequence, Action.APPEND, tableId, false, 0L, 0L, true,
-                itemId, structureId, biomeId, pos, gameTime, dayTime);
+    public static SyncJournalLogPayload upsertEntry(UUID sessionId, long sequence, ResourceLocation tableId,
+                                                    CompoundTag entryTag) {
+        return new SyncJournalLogPayload(sessionId, sequence, Action.UPSERT_ENTRY, tableId, entryTag.copy());
     }
 
     public static SyncJournalLogPayload clearAll(UUID sessionId, long sequence) {
-        return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_ALL, null, false, 0L, 0L, false,
-                null, null, ResourceLocation.withDefaultNamespace("plains"), BlockPos.ZERO, 0L, 0L);
+        return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_ALL, null, new CompoundTag());
     }
 
     public static SyncJournalLogPayload clearTable(UUID sessionId, long sequence, ResourceLocation tableId) {
-        return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_TABLE, tableId, false, 0L, 0L, false,
-                null, null, ResourceLocation.withDefaultNamespace("plains"), BlockPos.ZERO, 0L, 0L);
+        return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_TABLE, tableId, new CompoundTag());
     }
 
     @Override
@@ -61,10 +58,29 @@ public record SyncJournalLogPayload(UUID sessionId,
         return TYPE;
     }
 
+    @Nullable
+    public TriggerType triggerType() {
+        if (!this.data.contains(TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
+            return null;
+        }
+        return TriggerType.fromSerializedName(this.data.getString(TRIGGER_TYPE_TAG));
+    }
+
+    public long gameTime() {
+        return Math.max(0L, this.data.getLong(GAME_TIME_TAG));
+    }
+
+    public long dayTime() {
+        return this.data.contains(DAY_TIME_TAG, Tag.TAG_LONG)
+                ? Math.max(0L, this.data.getLong(DAY_TIME_TAG))
+                : this.gameTime();
+    }
+
     public enum Action {
-        APPEND(0),
-        CLEAR_ALL(1),
-        CLEAR_TABLE(2);
+        SET_FIRST_UNLOCK_META(0),
+        UPSERT_ENTRY(1),
+        CLEAR_ALL(2),
+        CLEAR_TABLE(3);
 
         private final int id;
 
@@ -78,7 +94,7 @@ public record SyncJournalLogPayload(UUID sessionId,
                     return action;
                 }
             }
-            return APPEND;
+            return UPSERT_ENTRY;
         }
     }
 
@@ -92,26 +108,7 @@ public record SyncJournalLogPayload(UUID sessionId,
         } else {
             buf.writeBoolean(false);
         }
-        buf.writeBoolean(payload.hasFirstUnlockedTime);
-        if (payload.hasFirstUnlockedTime) {
-            buf.writeVarLong(payload.firstUnlockedGameTime);
-            buf.writeVarLong(payload.firstUnlockedDayTime);
-        }
-        buf.writeBoolean(payload.hasEntry);
-        if (payload.hasEntry) {
-            buf.writeBoolean(payload.itemId != null);
-            if (payload.itemId != null) {
-                buf.writeResourceLocation(payload.itemId);
-            }
-            buf.writeBoolean(payload.structureId != null);
-            if (payload.structureId != null) {
-                buf.writeResourceLocation(payload.structureId);
-            }
-            buf.writeResourceLocation(payload.biomeId);
-            buf.writeBlockPos(payload.pos);
-            buf.writeVarLong(payload.gameTime);
-            buf.writeVarLong(payload.dayTime);
-        }
+        buf.writeNbt(payload.data);
     }
 
     private static SyncJournalLogPayload decode(RegistryFriendlyByteBuf buf) {
@@ -119,30 +116,7 @@ public record SyncJournalLogPayload(UUID sessionId,
         long sequence = buf.readVarLong();
         Action action = Action.fromId(buf.readByte());
         ResourceLocation tableId = buf.readBoolean() ? buf.readResourceLocation() : null;
-        boolean hasFirstUnlockedTime = buf.readBoolean();
-        long firstUnlockedGameTime = hasFirstUnlockedTime ? buf.readVarLong() : 0L;
-        long firstUnlockedDayTime = hasFirstUnlockedTime ? buf.readVarLong() : 0L;
-        boolean hasEntry = buf.readBoolean();
-        ResourceLocation itemId = null;
-        ResourceLocation structureId = null;
-        ResourceLocation biomeId = ResourceLocation.withDefaultNamespace("plains");
-        BlockPos pos = BlockPos.ZERO;
-        long gameTime = 0L;
-        long dayTime = 0L;
-        if (hasEntry) {
-            if (buf.readBoolean()) {
-                itemId = buf.readResourceLocation();
-            }
-            if (buf.readBoolean()) {
-                structureId = buf.readResourceLocation();
-            }
-            biomeId = buf.readResourceLocation();
-            pos = buf.readBlockPos();
-            gameTime = buf.readVarLong();
-            dayTime = buf.readVarLong();
-        }
-        return new SyncJournalLogPayload(sessionId, sequence, action, tableId,
-                hasFirstUnlockedTime, firstUnlockedGameTime, firstUnlockedDayTime,
-                hasEntry, itemId, structureId, biomeId, pos, gameTime, dayTime);
+        CompoundTag data = buf.readNbt();
+        return new SyncJournalLogPayload(sessionId, sequence, action, tableId, data != null ? data : new CompoundTag());
     }
 }

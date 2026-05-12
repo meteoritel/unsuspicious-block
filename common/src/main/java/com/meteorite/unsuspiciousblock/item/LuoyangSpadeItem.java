@@ -2,7 +2,8 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -77,19 +78,31 @@ public class LuoyangSpadeItem extends Item {
         brushable.setChanged();
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ServerPlayer sp) {
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(extracted.getItem());
+        ExcavationLogEntry pendingEntry = scanState.unsuspiciousblock$getPendingJournalEntry();
+        if (lootTableName != null && player instanceof ServerPlayer sp && pendingEntry == null) {
+            long gameTime = level.getGameTime();
+            long dayTime = level.getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, extracted,
-                    level.getGameTime(), level.getDayTime());
-            ArchaeologyJournalLogCollector.recordExcavation(sp, lootTableName, itemId,
-                    pos, level.getGameTime(), level.getDayTime());
+                    TriggerType.SPADE, gameTime, dayTime);
+            pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(
+                    sp,
+                    lootTableName,
+                    TriggerType.SPADE,
+                    BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock()),
+                    pos,
+                    extracted,
+                    gameTime,
+                    dayTime
+            );
+            scanState.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
         }
-
-        scanState.unsuspiciousblock$clearScanned();
 
         boolean given = player.getInventory().add(extracted);
         if (given && lootTableName != null && player instanceof ServerPlayer sp) {
-            ArchaeologyLootRuntimeTracker.recordItemAcquired(sp, lootTableName, extracted);
+            long gameTime = level.getGameTime();
+            long dayTime = level.getDayTime();
+            ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, lootTableName,
+                    scanState.unsuspiciousblock$getPendingJournalEntry(), extracted, gameTime, dayTime);
         }
         if (!given) {
             ItemEntity itemEntity = new ItemEntity(
@@ -101,6 +114,7 @@ public class LuoyangSpadeItem extends Item {
             level.addFreshEntity(itemEntity);
         }
 
+        scanState.unsuspiciousblock$clearScanned();
         player.swing(context.getHand());
         Constants.LOG.debug("洛阳铲从 {} 处取出了 {} ×{}",
                 pos, extracted.getHoverName().getString(), extracted.getCount());

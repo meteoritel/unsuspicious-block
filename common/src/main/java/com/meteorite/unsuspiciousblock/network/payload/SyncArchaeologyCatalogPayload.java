@@ -41,6 +41,10 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             for (ItemDefinition item : table.items()) {
                 buf.writeResourceLocation(item.id());
                 buf.writeUtf(Component.Serializer.toJson(item.displayName(), buf.registryAccess()));
+                buf.writeBoolean(item.tooltipHint() != null);
+                if (item.tooltipHint() != null) {
+                    buf.writeUtf(Component.Serializer.toJson(item.tooltipHint(), buf.registryAccess()));
+                }
                 buf.writeDouble(item.weight());
                 buf.writeUtf(item.signature().toStoredKey());
             }
@@ -60,12 +64,15 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             for (int j = 0; j < itemCount; j++) {
                 ResourceLocation itemId = buf.readResourceLocation();
                 Component itemName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+                Component tooltipHint = buf.readBoolean()
+                        ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess())
+                        : null;
                 double weight = buf.readDouble();
                 LootResultSignature signature = LootResultSignature.fromStoredKey(buf.readUtf());
                 if (signature == null) {
                     signature = LootResultSignature.plain(itemId);
                 }
-                items.add(new ItemDefinition(itemId, itemName, weight, signature));
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, weight, signature));
             }
             double totalWeight = buf.readDouble();
             boolean approximate = buf.readBoolean();

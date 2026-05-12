@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -19,7 +20,8 @@ import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.TooltipFlag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,6 +30,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class ArchaeologyJournalScreen extends Screen {
 
@@ -86,12 +89,15 @@ public class ArchaeologyJournalScreen extends Screen {
         RightPageContainer.Tab savedTab = this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO;
         int savedPage = this.rightPage != null ? this.rightPage.getPage() : 0;
         int savedCatalogPage = this.catalogPanel != null ? this.catalogPanel.getPage() : 0;
+        boolean savedLogDetail = this.rightPage != null && this.rightPage.isShowingLogDetail();
+        UUID savedLogEntryId = this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null;
 
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
 
         // 先重新灌入当前选中表的数据，再恢复右页状态；否则新容器内的默认页码会覆盖保存的用户上下文。
         this.updateItemGridPanel();
+        this.rightPage.restoreLogSelection(savedLogEntryId, savedLogDetail);
 
         this.rightPage.setActiveTab(savedTab);
         this.rightPage.setPage(savedPage);
@@ -168,9 +174,17 @@ public class ArchaeologyJournalScreen extends Screen {
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-        ItemStack tooltipStack = this.rightPage.getTooltipStack(mouseX, mouseY);
-        if (tooltipStack != null && !tooltipStack.isEmpty()) {
-            guiGraphics.renderTooltip(this.font, tooltipStack, mouseX, mouseY);
+        ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
+        if (tooltipData != null && !tooltipData.stack().isEmpty()) {
+            if (tooltipData.hint() == null || this.minecraft == null || this.minecraft.level == null || this.minecraft.player == null) {
+                guiGraphics.renderTooltip(this.font, tooltipData.stack(), mouseX, mouseY);
+            } else {
+                List<Component> tooltipLines = new ArrayList<>(tooltipData.stack().getTooltipLines(
+                        Item.TooltipContext.of(this.minecraft.level), this.minecraft.player,
+                        this.minecraft.options.advancedItemTooltips ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL));
+                tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY));
+                guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
+            }
         }
     }
 
@@ -312,8 +326,10 @@ public class ArchaeologyJournalScreen extends Screen {
             ArchaeologyJournalLogState.TableLogHistory logHistory = this.logState.getTable(id);
             this.tableViews.add(buildTableView(id, definition, progress, logHistory));
         }
+        // 目录先按解锁状态分区，分区内继续按模组来源聚类，并保持 minecraft 优先。
         this.tableViews.sort(Comparator
-                .comparing((TableView view) -> !"minecraft".equals(view.id().getNamespace()))
+                .comparing((TableView view) -> !view.unlocked())
+                .thenComparing(view -> !"minecraft".equals(view.id().getNamespace()))
                 .thenComparing(view -> view.id().getNamespace())
                 .thenComparing(view -> view.displayName().getString())
                 .thenComparing(view -> view.id().getPath()));
@@ -335,15 +351,18 @@ public class ArchaeologyJournalScreen extends Screen {
     private void updateItemGridPanel() {
         TableView selected = selectedTable();
         if (selected == null) {
-            this.rightPage.setTable(null, List.of(), 0.0, 0, 0, false, null, null, List.of());
+            this.rightPage.setTable(null, List.of(), 0.0, 0, 0, false,
+                    null, null, null, List.of());
         } else {
             List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
             for (ItemView iv : selected.items()) {
-                gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.weight(), iv.unlocked(), iv.count(), iv.signature()));
+                gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.tooltipHint(),
+                        iv.weight(), iv.unlocked(), iv.count(), iv.signature()));
             }
             this.rightPage.setTable(selected.id(), gridItems,
                     selected.totalWeight(), selected.parsedCount(), selected.totalCount(), selected.approximate(),
-                    selected.firstUnlockedGameTime(), selected.firstUnlockedDayTime(), selected.recentLogs());
+                    selected.firstUnlockedGameTime(), selected.firstUnlockedDayTime(),
+                    selected.firstUnlockTriggerType(), selected.logEntries());
         }
     }
 
@@ -369,18 +388,21 @@ public class ArchaeologyJournalScreen extends Screen {
             if (unlocked) {
                 parsedCount++;
             }
-            items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.weight(), unlocked, count,
-                    itemDefinition.signature()));
+            items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.tooltipHint(),
+                    itemDefinition.weight(), unlocked, count, itemDefinition.signature()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         Long firstUnlockedGameTime = logHistory != null ? logHistory.getFirstUnlockedGameTime() : null;
         Long firstUnlockedDayTime = logHistory != null ? logHistory.getFirstUnlockedDayTime() : null;
-        List<ArchaeologyJournalLogState.ExcavationLogEntry> recentLogs = logHistory != null
-                ? List.copyOf(logHistory.getRecentEntries())
+        ArchaeologyJournalLogState.TriggerType firstUnlockTriggerType = logHistory != null
+                ? logHistory.getFirstUnlockTriggerType()
+                : null;
+        List<ArchaeologyJournalLogState.ExcavationLogEntry> logEntries = logHistory != null
+                ? List.copyOf(logHistory.getEntries())
                 : List.of();
         return new TableView(tableId, definition.displayName(), items, definition.totalWeight(),
                 definition.items().size(), parsedCount, definition.approximate(), tableUnlocked,
-                firstUnlockedGameTime, firstUnlockedDayTime, recentLogs);
+                firstUnlockedGameTime, firstUnlockedDayTime, firstUnlockTriggerType, logEntries);
     }
 
     private void setSelectedIndex(int index) {
@@ -412,7 +434,7 @@ public class ArchaeologyJournalScreen extends Screen {
         }
 
         int firstUnlockedIndex = findFirstUnlockedIndex();
-        return firstUnlockedIndex >= 0 ? firstUnlockedIndex : 0;
+        return Math.max(firstUnlockedIndex, 0);
     }
 
     private int findTableIndex(@Nullable ResourceLocation tableId) {
@@ -515,10 +537,12 @@ public class ArchaeologyJournalScreen extends Screen {
     private record TableView(ResourceLocation id, Component displayName, List<ItemView> items,
                              double totalWeight, int totalCount, int parsedCount, boolean approximate, boolean unlocked,
                              @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
-                             List<ArchaeologyJournalLogState.ExcavationLogEntry> recentLogs) {
+                             @Nullable ArchaeologyJournalLogState.TriggerType firstUnlockTriggerType,
+                             List<ArchaeologyJournalLogState.ExcavationLogEntry> logEntries) {
     }
 
-    private record ItemView(ResourceLocation id, Component displayName, double weight,
+    private record ItemView(ResourceLocation id, Component displayName,
+                            @Nullable Component tooltipHint, double weight,
                             boolean unlocked, int count,
                             LootResultSignature signature) {
     }

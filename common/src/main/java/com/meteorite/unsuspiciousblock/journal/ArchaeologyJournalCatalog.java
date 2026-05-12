@@ -318,8 +318,9 @@ public final class ArchaeologyJournalCatalog {
             signature = LootResultSignature.approximateItemOnly(currentItemId(previewStack), "function");
         }
 
-        Component displayName = resolveItemDisplayName(previewStack, hint, entryApproximate && hint == null);
-        return new ResolvedEntry(currentItemId(previewStack), displayName, signature);
+        Component displayName = resolveItemDisplayName(previewStack);
+        Component tooltipHint = resolveItemTooltipHint(hint, entryApproximate && hint == null);
+        return new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint, signature);
     }
 
     private static ResourceLocation currentItemId(ItemStack stack) {
@@ -521,7 +522,7 @@ public final class ArchaeologyJournalCatalog {
     }
 
     private static ItemDefinitionBuilder createBuilder(ResolvedEntry resolved) {
-        return new ItemDefinitionBuilder(resolved.itemId(), resolved.displayName(), resolved.signature());
+        return new ItemDefinitionBuilder(resolved.itemId(), resolved.displayName(), resolved.tooltipHint(), resolved.signature());
     }
 
     private static Component resolveMergedDisplayName(ResourceLocation itemId, LootResultSignature signature) {
@@ -529,25 +530,32 @@ public final class ArchaeologyJournalCatalog {
         if (previewStack.isEmpty()) {
             previewStack = new ItemStack(BuiltInRegistries.ITEM.get(itemId));
         }
-        if (signature.isEnchantedVariant()) {
-            return resolveItemDisplayName(previewStack, Component.translatable(ENCHANTED_HINT_KEY), false);
-        }
-        return resolveItemDisplayName(previewStack, null,
-                signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY);
+        return resolveItemDisplayName(previewStack);
     }
 
-    private static Component resolveItemDisplayName(ItemStack previewStack, @Nullable Component hint, boolean showApproximate) {
-        Component baseName = previewStack.isEmpty()
+    @Nullable
+    private static Component resolveMergedTooltipHint(LootResultSignature signature) {
+        if (signature.isEnchantedVariant()) {
+            return Component.translatable(ENCHANTED_HINT_KEY);
+        }
+        if (signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY) {
+            return Component.translatable(APPROXIMATE_HINT_KEY);
+        }
+        return null;
+    }
+
+    private static Component resolveItemDisplayName(ItemStack previewStack) {
+        return previewStack.isEmpty()
                 ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_entry")
                 : previewStack.getHoverName().copy();
+    }
+
+    @Nullable
+    private static Component resolveItemTooltipHint(@Nullable Component hint, boolean showApproximate) {
         if (hint != null) {
-            return baseName.copy().append(Component.literal(" ")).append(Component.translatable(HINT_WRAPPER_KEY, hint));
+            return hint;
         }
-        if (showApproximate) {
-            return baseName.copy().append(Component.literal(" "))
-                    .append(Component.translatable(HINT_WRAPPER_KEY, Component.translatable(APPROXIMATE_HINT_KEY)));
-        }
-        return baseName;
+        return showApproximate ? Component.translatable(APPROXIMATE_HINT_KEY) : null;
     }
 
     private static Component resolveTableName(ResourceLocation tableId) {
@@ -575,26 +583,35 @@ public final class ArchaeologyJournalCatalog {
         return object.has(key) && object.get(key).isJsonPrimitive() ? object.get(key).getAsBoolean() : fallback;
     }
 
-    private record ResolvedEntry(ResourceLocation itemId, Component displayName, LootResultSignature signature) {
+    private record ResolvedEntry(ResourceLocation itemId, Component displayName,
+                                 @Nullable Component tooltipHint, LootResultSignature signature) {
     }
 
     private static final class ItemDefinitionBuilder {
         private final ResourceLocation id;
         private Component displayName;
+        @Nullable
+        private Component tooltipHint;
         private final LootResultSignature signature;
         private double weight;
 
-        private ItemDefinitionBuilder(ResourceLocation id, Component displayName, LootResultSignature signature) {
+        private ItemDefinitionBuilder(ResourceLocation id, Component displayName,
+                                      @Nullable Component tooltipHint, LootResultSignature signature) {
             this.id = id;
             this.displayName = displayName;
+            this.tooltipHint = tooltipHint;
             this.signature = signature;
         }
 
         private void mergeResolved(ResolvedEntry resolved) {
-            if (this.displayName.getString().equals(resolved.displayName().getString())) {
+            if (!this.displayName.getString().equals(resolved.displayName().getString())) {
+                this.displayName = resolveMergedDisplayName(this.id, this.signature);
+            }
+            if (this.tooltipHint == null ? resolved.tooltipHint() == null
+                    : this.tooltipHint.getString().equals(resolved.tooltipHint() != null ? resolved.tooltipHint().getString() : null)) {
                 return;
             }
-            this.displayName = resolveMergedDisplayName(this.id, this.signature);
+            this.tooltipHint = resolveMergedTooltipHint(this.signature);
         }
 
         private void addWeight(double weight) {
@@ -602,7 +619,7 @@ public final class ArchaeologyJournalCatalog {
         }
 
         private ItemDefinition build() {
-            return new ItemDefinition(this.id, this.displayName, this.weight, this.signature);
+            return new ItemDefinition(this.id, this.displayName, this.tooltipHint, this.weight, this.signature);
         }
     }
 }

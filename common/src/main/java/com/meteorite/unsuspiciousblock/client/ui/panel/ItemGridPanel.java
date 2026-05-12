@@ -131,7 +131,7 @@ public final class ItemGridPanel {
         }
 
         // 单元格背景
-        int bgColor = unlocked ? (iconHovered ? 0x22C8B090 : 0x00000000) : (iconHovered ? 0x22776456 : 0x00000000);
+        int bgColor = unlocked ? (textHovered ? 0x22C8B090 : 0x00000000) : (textHovered ? 0x22776456 : 0x00000000);
         if (bgColor != 0) {
             guiGraphics.fill(cellX, cellY, cellX + JournalLayout.GRID_CELL_WIDTH, cellY + JournalLayout.GRID_CELL_HEIGHT, bgColor);
         }
@@ -170,7 +170,7 @@ public final class ItemGridPanel {
     }
 
     @Nullable
-    public ItemStack getTooltipStack(double mouseX, double mouseY) {
+    public TooltipData getTooltipData(double mouseX, double mouseY) {
         int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
         int to = Math.min(items.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
@@ -184,8 +184,8 @@ public final class ItemGridPanel {
             int visualIndex = i - from;
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
-            if (isMouseOverIcon(cellX, cellY, mouseX, mouseY)) {
-                return item.stack();
+            if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
+                return new TooltipData(item.stack(), item.tooltipHint());
             }
         }
         return null;
@@ -232,9 +232,12 @@ public final class ItemGridPanel {
         }
     }
 
+    public record TooltipData(ItemStack stack, @Nullable Component hint) {
+    }
+
     // 物品网格条目
-    public record GridItem(ResourceLocation id, Component displayName, double weight,
-                           boolean unlocked, int count,
+    public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                           double weight, boolean unlocked, int count,
                            LootResultSignature signature) {
         public ItemStack stack() {
             if (this.signature != null) {

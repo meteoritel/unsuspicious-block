@@ -1,0 +1,28 @@
+{
+  "parent": "minecraft:adventure/root",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:archaeology_journal"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.cache_me_if_you_can"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.cache_me_if_you_can.desc"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "reach_1024_entries": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "reach_1024_entries"
+    ]
+  ]
+}

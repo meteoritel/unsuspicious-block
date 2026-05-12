@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.loottable;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -20,7 +21,7 @@ public final class ArchaeologyLootTableCatalog {
     }
 
     /** 战利品表物品条目定义 */
-    public record ItemDefinition(ResourceLocation id, Component displayName, double weight,
-                                 LootResultSignature signature) {
+    public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                                 double weight, LootResultSignature signature) {
     }
 }

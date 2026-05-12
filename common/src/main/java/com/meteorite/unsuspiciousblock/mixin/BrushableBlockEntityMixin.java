@@ -2,14 +2,14 @@ package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogCollector;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -28,6 +28,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -46,6 +47,9 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
     @Unique
     private static final String UNSUSPICIOUSBLOCK_LOOT_TABLE_PARSED_TAG = "unsuspiciousblock_loot_table_parsed";
+
+    @Unique
+    private static final String UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG = "unsuspiciousblock_pending_journal_entry";
 
     @Shadow
     @Nullable
@@ -67,6 +71,10 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
     @Unique
     private boolean unsuspiciousblock$lootTableParsed;
+
+    @Unique
+    @Nullable
+    private ExcavationLogEntry unsuspiciousblock$pendingJournalEntry;
 
     @Unique
     private boolean unsuspiciousblock$lootTableParsedThisCall;
@@ -109,6 +117,11 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         } else {
             tag.remove(UNSUSPICIOUSBLOCK_LOOT_TABLE_NAME_TAG);
         }
+        if (this.unsuspiciousblock$pendingJournalEntry != null) {
+            tag.put(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, this.unsuspiciousblock$pendingJournalEntry.toTag());
+        } else {
+            tag.remove(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG);
+        }
     }
 
     // 从方块实体 NBT 中读取战利品表解析状态
@@ -117,6 +130,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         if (!tag.getBoolean(UNSUSPICIOUSBLOCK_LOOT_TABLE_PARSED_TAG)) {
             this.unsuspiciousblock$lootTableParsed = false;
             this.unsuspiciousblock$lootTableName = null;
+            this.unsuspiciousblock$pendingJournalEntry = null;
             return;
         }
 
@@ -125,6 +139,9 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 : null;
         this.unsuspiciousblock$lootTableParsed = lootTableName != null;
         this.unsuspiciousblock$lootTableName = lootTableName;
+        this.unsuspiciousblock$pendingJournalEntry = tag.contains(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, Tag.TAG_COMPOUND)
+                ? ExcavationLogEntry.fromTag(tag.getCompound(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG))
+                : null;
     }
 
     // 将状态变化同步回方块实体并通知区块更新
@@ -163,6 +180,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         this.unsuspiciousblock$scanned = false;
         this.unsuspiciousblock$scannerUuid = null;
+        this.unsuspiciousblock$pendingJournalEntry = null;
         this.unsuspiciousblock$syncBlockEntity();
     }
 
@@ -204,6 +222,21 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.item = stack;
     }
 
+    @Override
+    @Nullable
+    public ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry() {
+        return this.unsuspiciousblock$pendingJournalEntry;
+    }
+
+    @Override
+    public void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry) {
+        if (Objects.equals(this.unsuspiciousblock$pendingJournalEntry, entry)) {
+            return;
+        }
+        this.unsuspiciousblock$pendingJournalEntry = entry;
+        this.unsuspiciousblock$syncBlockEntity();
+    }
+
     // 在刷拭开始时记录本次刷拭与时间信息
     @Inject(method = "brush", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushStart(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {
@@ -223,28 +256,19 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // 在可疑方块真正掉出物品时记录获得次数并写入日志
     @Inject(method = "dropContent", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushItemDrop(Player player, CallbackInfo ci) {
-        if (this.unsuspiciousblock$lootTableName != null
-                && player instanceof ServerPlayer sp
-                && player instanceof ArchaeologyJournalStateHolder holder) {
-            if (!this.item.isEmpty()) {
-                ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(this.item.getItem());
-                ArchaeologyJournalState journalState = holder.unsuspiciousblock$getArchaeologyJournalState();
-                boolean tableUnlockedBefore = journalState.isTableUnlocked(this.unsuspiciousblock$lootTableName);
-                ArchaeologyLootRuntimeTracker.recordItemAcquired(sp, this.unsuspiciousblock$lootTableName, this.item);
-                long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
-                        ? this.unsuspiciousblock$brushGameTime
-                        : sp.serverLevel().getGameTime();
-                long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
-                        ? this.unsuspiciousblock$brushDayTime
-                        : sp.serverLevel().getDayTime();
-                if (!tableUnlockedBefore) {
-                    ArchaeologyJournalLogCollector.recordFirstUnlock(sp, this.unsuspiciousblock$lootTableName,
-                            gameTime, dayTime);
-                }
-                ArchaeologyJournalLogCollector.recordExcavation(sp, this.unsuspiciousblock$lootTableName,
-                        itemId, ((BlockEntity) (Object) this).getBlockPos(), gameTime, dayTime);
-            }
+        if (this.unsuspiciousblock$lootTableName == null || !(player instanceof ServerPlayer sp) || this.item.isEmpty()) {
+            return;
         }
+
+        long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
+                ? this.unsuspiciousblock$brushGameTime
+                : sp.serverLevel().getGameTime();
+        long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
+                ? this.unsuspiciousblock$brushDayTime
+                : sp.serverLevel().getDayTime();
+        ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, this.unsuspiciousblock$lootTableName,
+                this.unsuspiciousblock$pendingJournalEntry, this.item, gameTime, dayTime);
+        this.unsuspiciousblock$setPendingJournalEntry(null);
     }
 
     // 在方块实体保存附加数据时写入扫描与战利品表状态
@@ -294,15 +318,25 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$lootTableName != null
                 && player instanceof ServerPlayer sp) {
+            long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
+                    ? this.unsuspiciousblock$brushGameTime
+                    : sp.serverLevel().getGameTime();
+            long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
+                    ? this.unsuspiciousblock$brushDayTime
+                    : sp.serverLevel().getDayTime();
+            ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
+                    this.item, TriggerType.BRUSH, gameTime, dayTime);
+            this.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
+                    sp,
+                    this.unsuspiciousblock$lootTableName,
+                    TriggerType.BRUSH,
+                    BuiltInRegistries.BLOCK.getKey(((BlockEntity) (Object) this).getBlockState().getBlock()),
+                    ((BlockEntity) (Object) this).getBlockPos(),
+                    this.item,
+                    gameTime,
+                    dayTime
+            ));
             if (!this.item.isEmpty()) {
-                long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
-                        ? this.unsuspiciousblock$brushGameTime
-                        : sp.serverLevel().getGameTime();
-                long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
-                        ? this.unsuspiciousblock$brushDayTime
-                        : sp.serverLevel().getDayTime();
-                ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
-                        this.item, gameTime, dayTime);
                 Constants.LOG.debug("刷子刷物品刚露头");
             }
         }
@@ -313,9 +347,11 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // 重新设置战利品表时清空旧的解析状态
     @Inject(method = "setLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$clearLootTableState(ResourceKey<LootTable> lootTable, long seed, CallbackInfo ci) {
-        boolean hadLootTableState = this.unsuspiciousblock$lootTableParsed || this.unsuspiciousblock$lootTableName != null;
+        boolean hadLootTableState = this.unsuspiciousblock$lootTableParsed || this.unsuspiciousblock$lootTableName != null
+                || this.unsuspiciousblock$pendingJournalEntry != null;
         this.unsuspiciousblock$lootTableName = null;
         this.unsuspiciousblock$lootTableParsed = false;
+        this.unsuspiciousblock$pendingJournalEntry = null;
         this.unsuspiciousblock$lootTableParsedThisCall = false;
         if (hadLootTableState) {
             this.unsuspiciousblock$syncBlockEntity();

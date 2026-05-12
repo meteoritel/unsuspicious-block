@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
@@ -17,6 +18,7 @@ import net.minecraft.world.level.levelgen.structure.StructureStart;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import java.util.UUID;
 
 public final class ArchaeologyJournalLogCollector {
     private ArchaeologyJournalLogCollector() {
@@ -31,9 +33,11 @@ public final class ArchaeologyJournalLogCollector {
         ServerLevel level = player.serverLevel();
         ResourceLocation biomeId = resolveBiomeId(level, pos);
         ResourceLocation structureId = resolveStructureId(level, pos);
+        Map<String, Integer> loot = Map.of(LootResultSignature.plain(itemId).toStoredKey(), 1);
         ArchaeologyJournalNetwork.recordExcavation(player, tableId,
-                new ExcavationLogEntry(itemId, structureId, biomeId, pos,
-                        Math.max(0L, gameTime), Math.max(0L, dayTime)));
+                new ExcavationLogEntry(UUID.randomUUID(), null, null, structureId, biomeId, pos,
+                        Math.max(0L, gameTime), Math.max(0L, dayTime),
+                        Math.max(0L, gameTime), Math.max(0L, dayTime), loot, loot));
     }
 
     private static ResourceLocation resolveBiomeId(ServerLevel level, BlockPos pos) {

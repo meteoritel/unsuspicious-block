@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -55,8 +56,20 @@ public class SuspiciousReaderItem extends Item {
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && player instanceof ServerPlayer sp) {
+            long gameTime = level.getGameTime();
+            long dayTime = level.getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, lootItem,
-                    level.getGameTime(), level.getDayTime());
+                    TriggerType.READER, gameTime, dayTime);
+            scanState.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
+                    sp,
+                    lootTableName,
+                    TriggerType.READER,
+                    BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock()),
+                    context.getClickedPos(),
+                    lootItem,
+                    gameTime,
+                    dayTime
+            ));
         }
 
         BlockPos pos = context.getClickedPos();

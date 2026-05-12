@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
@@ -26,6 +27,15 @@ public interface TrackedContainerLootState extends Container {
     void unsuspiciousblock$reconcileTrackedLoot();
 
     void unsuspiciousblock$clearTrackedLoot();
+
+    @Nullable
+    ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry();
+
+    void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry);
+
+    default void unsuspiciousblock$clearPendingJournalEntry() {
+        this.unsuspiciousblock$setPendingJournalEntry(null);
+    }
 
     void unsuspiciousblock$writeTrackedLootData(CompoundTag tag);
 

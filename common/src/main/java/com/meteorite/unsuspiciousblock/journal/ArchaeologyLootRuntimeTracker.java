@@ -1,17 +1,30 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -22,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public final class ArchaeologyLootRuntimeTracker {
     private ArchaeologyLootRuntimeTracker() {
@@ -65,21 +79,115 @@ public final class ArchaeologyLootRuntimeTracker {
         }
     }
 
-    /**
-     * 一站式处理：解锁战利品 + 若为首次解锁则记录日志。
-     * 替代多处重复的 holder 提取与首次解锁判断逻辑。
-     */
     public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
-                                         ItemStack loot, long gameTime, long dayTime) {
+                                        ItemStack loot, long gameTime, long dayTime) {
+        onLootDiscovered(player, tableId, loot, null, gameTime, dayTime);
+    }
+
+    public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
+                                        ItemStack loot, @Nullable TriggerType triggerType,
+                                        long gameTime, long dayTime) {
         ArchaeologyJournalState state = getState(player);
         if (state == null) {
             return;
         }
-        boolean tableUnlockedBefore = state.isTableUnlocked(tableId);
         unlockResolvedLoot(player, tableId, loot);
-        if (!tableUnlockedBefore) {
-            ArchaeologyJournalLogCollector.recordFirstUnlock(player, tableId, gameTime, dayTime);
+        ArchaeologyJournalNetwork.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+    }
+
+    public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
+                                        Map<String, Integer> itemCounts, @Nullable TriggerType triggerType,
+                                        long gameTime, long dayTime) {
+        ArchaeologyJournalState state = getState(player);
+        if (state == null) {
+            return;
         }
+        unlockResolvedLoot(player, tableId, itemCounts);
+        ArchaeologyJournalNetwork.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+    }
+
+    @Nullable
+    public static ExcavationLogEntry createPendingEntry(ServerPlayer player, ResourceLocation tableId,
+                                                        TriggerType triggerType, @Nullable ResourceLocation sourceBlockId,
+                                                        BlockPos pos, ItemStack expectedLoot,
+                                                        long gameTime, long dayTime) {
+        if (expectedLoot.isEmpty()) {
+            return null;
+        }
+        LootResultSignature signature = resolveSignature(tableId, expectedLoot);
+        if (signature == null) {
+            return null;
+        }
+        return createPendingEntry(player, triggerType, sourceBlockId, pos,
+                Map.of(signature.toStoredKey(), expectedLoot.getCount()), gameTime, dayTime);
+    }
+
+    @Nullable
+    public static ExcavationLogEntry createPendingEntry(ServerPlayer player, TriggerType triggerType,
+                                                        @Nullable ResourceLocation sourceBlockId, BlockPos pos,
+                                                        Map<String, Integer> expectedLoot,
+                                                        long gameTime, long dayTime) {
+        Map<String, Integer> normalizedExpectedLoot = normalizeLootCounts(expectedLoot);
+        if (normalizedExpectedLoot.isEmpty()) {
+            return null;
+        }
+        ServerLevel level = player.serverLevel();
+        return new ExcavationLogEntry(UUID.randomUUID(), triggerType, sourceBlockId,
+                resolveStructureId(level, pos), resolveBiomeId(level, pos), pos,
+                Math.max(0L, gameTime), Math.max(0L, dayTime),
+                Math.max(0L, gameTime), Math.max(0L, dayTime),
+                normalizedExpectedLoot, Map.of());
+    }
+
+    @Nullable
+    public static ExcavationLogEntry applyPendingLoot(ServerPlayer player, ResourceLocation tableId,
+                                                      @Nullable ExcavationLogEntry pendingEntry,
+                                                      ItemStack stack, long gameTime, long dayTime) {
+        if (stack.isEmpty()) {
+            return pendingEntry;
+        }
+        LootResultSignature signature = resolveSignature(tableId, stack);
+        if (signature == null) {
+            return pendingEntry;
+        }
+        return applyPendingLoot(player, tableId, pendingEntry,
+                Map.of(signature.toStoredKey(), stack.getCount()), gameTime, dayTime);
+    }
+
+    @Nullable
+    public static ExcavationLogEntry applyPendingLoot(ServerPlayer player, ResourceLocation tableId,
+                                                      @Nullable ExcavationLogEntry pendingEntry,
+                                                      Map<String, Integer> actualLoot,
+                                                      long gameTime, long dayTime) {
+        Map<String, Integer> normalizedActualLoot = normalizeLootCounts(actualLoot);
+        if (normalizedActualLoot.isEmpty()) {
+            return pendingEntry;
+        }
+
+        ArchaeologyJournalState state = getState(player);
+        if (state == null) {
+            return pendingEntry;
+        }
+
+        boolean stateChanged = false;
+        for (Map.Entry<String, Integer> entry : normalizedActualLoot.entrySet()) {
+            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
+            if (signature == null) {
+                continue;
+            }
+            stateChanged |= state.recordItemAcquired(tableId, signature, entry.getValue());
+        }
+        if (stateChanged) {
+            ArchaeologyJournalNetwork.syncState(player);
+        }
+
+        if (pendingEntry == null) {
+            return null;
+        }
+
+        ExcavationLogEntry updatedEntry = pendingEntry.withActualLootMerged(normalizedActualLoot, gameTime, dayTime);
+        ArchaeologyJournalNetwork.upsertExcavationEntry(player, tableId, updatedEntry);
+        return updatedEntry;
     }
 
     public static void recordItemAcquired(ServerPlayer player, ResourceLocation tableId, ItemStack stack) {
@@ -114,11 +222,16 @@ public final class ArchaeologyLootRuntimeTracker {
                                                TrackedContainerLootState container,
                                                ResourceLocation tableId,
                                                Map<String, Integer> itemCounts) {
-        unlockResolvedLoot(player, tableId, itemCounts);
+        long gameTime = player.serverLevel().getGameTime();
+        long dayTime = player.serverLevel().getDayTime();
+        onLootDiscovered(player, tableId, itemCounts, TriggerType.CONTAINER, gameTime, dayTime);
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearTrackedLoot();
             return;
         }
+        BlockPos pos = resolveContainerPos(container);
+        container.unsuspiciousblock$setPendingJournalEntry(createPendingEntry(player, TriggerType.CONTAINER,
+                resolveContainerSourceBlockId(container), pos, itemCounts, gameTime, dayTime));
         container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
     }
 
@@ -150,11 +263,6 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     public static void applyMenuTrackingSnapshot(ServerPlayer player, MenuTrackingSnapshot snapshot) {
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return;
-        }
-
         List<LootResultSignature> signatures = new ArrayList<>();
         for (String signatureKey : snapshot.beforeInventoryCounts().keySet()) {
             LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
@@ -164,17 +272,12 @@ public final class ArchaeologyLootRuntimeTracker {
         }
 
         Map<String, Integer> afterCounts = capturePlayerInventoryCounts(player.getInventory(), signatures);
-        boolean changed = false;
+        LinkedHashMap<TrackedContainerLootState, ContainerLootUpdate> updates = new LinkedHashMap<>();
         for (Map.Entry<String, Integer> entry : afterCounts.entrySet()) {
             String signatureKey = entry.getKey();
             int before = snapshot.beforeInventoryCounts().getOrDefault(signatureKey, 0);
             int delta = entry.getValue() - before;
             if (delta <= 0) {
-                continue;
-            }
-
-            LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
-            if (signature == null) {
                 continue;
             }
 
@@ -190,7 +293,9 @@ public final class ArchaeologyLootRuntimeTracker {
                     continue;
                 }
 
-                changed |= state.recordItemAcquired(tableId, signature, consumed);
+                ContainerLootUpdate update = updates.computeIfAbsent(trackedContainer,
+                        ignored -> new ContainerLootUpdate(tableId));
+                update.actualLoot().merge(signatureKey, consumed, Integer::sum);
                 remaining -= consumed;
                 if (remaining <= 0) {
                     break;
@@ -198,8 +303,23 @@ public final class ArchaeologyLootRuntimeTracker {
             }
         }
 
-        if (changed) {
-            ArchaeologyJournalNetwork.syncState(player);
+        if (updates.isEmpty()) {
+            return;
+        }
+
+        long gameTime = player.serverLevel().getGameTime();
+        long dayTime = player.serverLevel().getDayTime();
+        for (Map.Entry<TrackedContainerLootState, ContainerLootUpdate> entry : updates.entrySet()) {
+            TrackedContainerLootState trackedContainer = entry.getKey();
+            ContainerLootUpdate update = entry.getValue();
+            ExcavationLogEntry updatedEntry = applyPendingLoot(player, update.tableId(),
+                    trackedContainer.unsuspiciousblock$getPendingJournalEntry(),
+                    update.actualLoot(), gameTime, dayTime);
+            if (trackedContainer.unsuspiciousblock$hasTrackedLoot()) {
+                trackedContainer.unsuspiciousblock$setPendingJournalEntry(updatedEntry);
+            } else {
+                trackedContainer.unsuspiciousblock$clearPendingJournalEntry();
+            }
         }
     }
 
@@ -285,6 +405,75 @@ public final class ArchaeologyLootRuntimeTracker {
         return itemCounts;
     }
 
+    private static Map<String, Integer> normalizeLootCounts(@Nullable Map<String, Integer> lootCounts) {
+        if (lootCounts == null || lootCounts.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Integer> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : lootCounts.entrySet()) {
+            String signatureKey = entry.getKey();
+            Integer count = entry.getValue();
+            if (signatureKey == null || signatureKey.isBlank() || count == null || count <= 0) {
+                continue;
+            }
+            if (LootResultSignature.fromStoredKey(signatureKey) == null) {
+                continue;
+            }
+            normalized.merge(signatureKey, count, Integer::sum);
+        }
+        if (normalized.isEmpty()) {
+            return Map.of();
+        }
+        return Map.copyOf(normalized);
+    }
+
+    private static BlockPos resolveContainerPos(TrackedContainerLootState container) {
+        if (container instanceof BlockEntity blockEntity) {
+            return blockEntity.getBlockPos();
+        }
+        return BlockPos.ZERO;
+    }
+
+    @Nullable
+    private static ResourceLocation resolveContainerSourceBlockId(TrackedContainerLootState container) {
+        if (container instanceof BlockEntity blockEntity) {
+            return BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
+        }
+        return null;
+    }
+
+    private static ResourceLocation resolveBiomeId(ServerLevel level, BlockPos pos) {
+        Holder<Biome> biomeHolder = level.getBiome(pos);
+        return biomeHolder.unwrapKey()
+                .map(ResourceKey::location)
+                .orElse(ResourceLocation.withDefaultNamespace("plains"));
+    }
+
+    @Nullable
+    private static ResourceLocation resolveStructureId(ServerLevel level, BlockPos pos) {
+        StructureManager structureManager = level.structureManager();
+        Map<Structure, LongSet> structureReferences = structureManager.getAllStructuresAt(pos);
+        if (structureReferences.isEmpty()) {
+            return null;
+        }
+        ResourceLocation bestMatch = null;
+        var structureRegistry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
+        for (Structure structure : structureReferences.keySet()) {
+            StructureStart structureStart = structureManager.getStructureAt(pos, structure);
+            if (!structureStart.isValid()) {
+                continue;
+            }
+            ResourceLocation structureId = structureRegistry.getKey(structure);
+            if (structureId == null) {
+                continue;
+            }
+            if (bestMatch == null || structureId.toString().compareTo(bestMatch.toString()) < 0) {
+                bestMatch = structureId;
+            }
+        }
+        return bestMatch;
+    }
+
     @Nullable
     private static ArchaeologyJournalState getState(ServerPlayer player) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
@@ -298,6 +487,13 @@ public final class ArchaeologyLootRuntimeTracker {
         public MenuTrackingSnapshot {
             trackedContainers = List.copyOf(trackedContainers);
             beforeInventoryCounts = Map.copyOf(beforeInventoryCounts);
+        }
+    }
+
+    private record ContainerLootUpdate(ResourceLocation tableId,
+                                       LinkedHashMap<String, Integer> actualLoot) {
+        private ContainerLootUpdate(ResourceLocation tableId) {
+            this(tableId, new LinkedHashMap<>());
         }
     }
 }

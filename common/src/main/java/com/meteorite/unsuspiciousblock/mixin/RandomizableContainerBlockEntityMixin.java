@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -29,11 +30,18 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
     private static final String UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG = "unsuspiciousblock_tracked_loot_items";
 
     @Unique
+    private static final String UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG = "unsuspiciousblock_pending_journal_entry";
+
+    @Unique
     @Nullable
     private ResourceLocation unsuspiciousblock$trackedLootTableName;
 
     @Unique
     private final LinkedHashMap<String, Integer> unsuspiciousblock$trackedLootCounts = new LinkedHashMap<>();
+
+    @Unique
+    @Nullable
+    private ExcavationLogEntry unsuspiciousblock$pendingJournalEntry;
 
     // 返回当前容器关联的已追踪战利品表
     @Override
@@ -46,6 +54,21 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
     @Override
     public Map<String, Integer> unsuspiciousblock$getTrackedLootCounts() {
         return this.unsuspiciousblock$trackedLootCounts;
+    }
+
+    @Override
+    @Nullable
+    public ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry() {
+        return this.unsuspiciousblock$pendingJournalEntry;
+    }
+
+    @Override
+    public void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry) {
+        if (Objects.equals(this.unsuspiciousblock$pendingJournalEntry, entry)) {
+            return;
+        }
+        this.unsuspiciousblock$pendingJournalEntry = entry;
+        this.unsuspiciousblock$markTrackingChanged();
     }
 
     // 用本次开箱解析结果覆盖容器追踪状态
@@ -88,6 +111,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         }
         if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
             this.unsuspiciousblock$trackedLootTableName = null;
+            this.unsuspiciousblock$pendingJournalEntry = null;
         }
         this.unsuspiciousblock$markTrackingChanged();
         return consumed;
@@ -143,6 +167,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
 
         this.unsuspiciousblock$trackedLootTableName = null;
         this.unsuspiciousblock$trackedLootCounts.clear();
+        this.unsuspiciousblock$pendingJournalEntry = null;
         this.unsuspiciousblock$markTrackingChanged();
     }
 
@@ -177,6 +202,11 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         } else {
             tag.remove(UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG);
         }
+        if (this.unsuspiciousblock$pendingJournalEntry != null) {
+            tag.put(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, this.unsuspiciousblock$pendingJournalEntry.toTag());
+        } else {
+            tag.remove(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG);
+        }
 
         if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
             tag.remove(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG);
@@ -195,6 +225,9 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
     public void unsuspiciousblock$readTrackedLootData(CompoundTag tag) {
         this.unsuspiciousblock$trackedLootTableName = tag.contains(UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG, Tag.TAG_STRING)
                 ? ResourceLocation.tryParse(tag.getString(UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG))
+                : null;
+        this.unsuspiciousblock$pendingJournalEntry = tag.contains(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, Tag.TAG_COMPOUND)
+                ? ExcavationLogEntry.fromTag(tag.getCompound(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG))
                 : null;
         this.unsuspiciousblock$trackedLootCounts.clear();
         if (!tag.contains(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG, Tag.TAG_COMPOUND)) {
@@ -215,6 +248,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         }
         if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
             this.unsuspiciousblock$trackedLootTableName = null;
+            this.unsuspiciousblock$pendingJournalEntry = null;
         }
     }
 }

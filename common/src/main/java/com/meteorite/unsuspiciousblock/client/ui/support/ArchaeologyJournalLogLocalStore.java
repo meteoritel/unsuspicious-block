@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;
@@ -243,25 +244,24 @@ public final class ArchaeologyJournalLogLocalStore {
         return switch (payload.action()) {
             case CLEAR_ALL -> clearAll(state);
             case CLEAR_TABLE -> payload.tableId() != null && state.removeTable(payload.tableId());
-            case APPEND -> applyAppend(state, payload);
+            case SET_FIRST_UNLOCK_META -> applyFirstUnlockMeta(state, payload);
+            case UPSERT_ENTRY -> applyUpsertEntry(state, payload);
         };
     }
 
-    private static boolean applyAppend(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
+    private static boolean applyFirstUnlockMeta(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
         if (payload.tableId() == null) {
             return false;
         }
-        boolean changed = false;
-        if (payload.hasFirstUnlockedTime()) {
-            changed |= state.setFirstUnlockedTimeMin(
-                    payload.tableId(), payload.firstUnlockedGameTime(), payload.firstUnlockedDayTime());
+        TriggerType triggerType = payload.triggerType();
+        return state.setFirstUnlockMetaMin(payload.tableId(), triggerType, payload.gameTime(), payload.dayTime());
+    }
+
+    private static boolean applyUpsertEntry(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
+        if (payload.tableId() == null) {
+            return false;
         }
-        if (payload.hasEntry()) {
-            changed |= state.appendEntry(payload.tableId(),
-                    new ExcavationLogEntry(payload.itemId(), payload.structureId(), payload.biomeId(),
-                            payload.pos(), payload.gameTime(), payload.dayTime()));
-        }
-        return changed;
+        return state.upsertEntry(payload.tableId(), ExcavationLogEntry.fromTag(payload.data()));
     }
 
     private static boolean clearAll(ArchaeologyJournalLogState state) {

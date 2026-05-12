@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.journal.sync;
 
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -65,12 +66,13 @@ public final class ArchaeologyJournalLogSyncSession {
         this.queuedMutations.clear();
     }
 
-    public void queueFirstUnlock(ResourceLocation tableId, long gameTime, long dayTime) {
-        this.queuedMutations.add(QueuedMutation.firstUnlock(tableId, gameTime, dayTime));
+    public void queueFirstUnlockMeta(ResourceLocation tableId, @Nullable TriggerType triggerType,
+                                     long gameTime, long dayTime) {
+        this.queuedMutations.add(QueuedMutation.firstUnlockMeta(tableId, triggerType, gameTime, dayTime));
     }
 
-    public void queueExcavation(ResourceLocation tableId, ExcavationLogEntry entry) {
-        this.queuedMutations.add(QueuedMutation.excavation(tableId, entry));
+    public void queueUpsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
+        this.queuedMutations.add(QueuedMutation.upsertEntry(tableId, entry));
     }
 
     public void queueClearAll() {
@@ -83,35 +85,38 @@ public final class ArchaeologyJournalLogSyncSession {
 
     private record QueuedMutation(Type type,
                                   @Nullable ResourceLocation tableId,
+                                  @Nullable TriggerType triggerType,
                                   long firstUnlockedGameTime,
                                   long firstUnlockedDayTime,
                                   @Nullable ExcavationLogEntry entry) {
-        private static QueuedMutation firstUnlock(ResourceLocation tableId, long gameTime, long dayTime) {
-            return new QueuedMutation(Type.FIRST_UNLOCK, tableId, gameTime, dayTime, null);
+        private static QueuedMutation firstUnlockMeta(ResourceLocation tableId, @Nullable TriggerType triggerType,
+                                                      long gameTime, long dayTime) {
+            return new QueuedMutation(Type.SET_FIRST_UNLOCK_META, tableId, triggerType, gameTime, dayTime, null);
         }
 
-        private static QueuedMutation excavation(ResourceLocation tableId, ExcavationLogEntry entry) {
-            return new QueuedMutation(Type.EXCAVATION, tableId, 0L, 0L, entry);
+        private static QueuedMutation upsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
+            return new QueuedMutation(Type.UPSERT_ENTRY, tableId, null, 0L, 0L, entry);
         }
 
         private static QueuedMutation clearAll() {
-            return new QueuedMutation(Type.CLEAR_ALL, null, 0L, 0L, null);
+            return new QueuedMutation(Type.CLEAR_ALL, null, null, 0L, 0L, null);
         }
 
         private static QueuedMutation clearTable(ResourceLocation tableId) {
-            return new QueuedMutation(Type.CLEAR_TABLE, tableId, 0L, 0L, null);
+            return new QueuedMutation(Type.CLEAR_TABLE, tableId, null, 0L, 0L, null);
         }
 
         private void apply(ArchaeologyJournalLogState state) {
             switch (this.type) {
-                case FIRST_UNLOCK -> {
+                case SET_FIRST_UNLOCK_META -> {
                     if (this.tableId != null) {
-                        state.setFirstUnlockedTimeMin(this.tableId, this.firstUnlockedGameTime, this.firstUnlockedDayTime);
+                        state.setFirstUnlockMetaMin(this.tableId, this.triggerType,
+                                this.firstUnlockedGameTime, this.firstUnlockedDayTime);
                     }
                 }
-                case EXCAVATION -> {
+                case UPSERT_ENTRY -> {
                     if (this.tableId != null && this.entry != null) {
-                        state.appendEntry(this.tableId, this.entry);
+                        state.upsertEntry(this.tableId, this.entry);
                     }
                 }
                 case CLEAR_ALL -> state.clear();
@@ -125,8 +130,8 @@ public final class ArchaeologyJournalLogSyncSession {
     }
 
     private enum Type {
-        FIRST_UNLOCK,
-        EXCAVATION,
+        SET_FIRST_UNLOCK_META,
+        UPSERT_ENTRY,
         CLEAR_ALL,
         CLEAR_TABLE
     }
