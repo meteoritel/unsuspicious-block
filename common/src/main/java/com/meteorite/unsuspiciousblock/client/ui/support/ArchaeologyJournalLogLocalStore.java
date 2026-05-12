@@ -198,10 +198,10 @@ public final class ArchaeologyJournalLogLocalStore {
         }
 
         if (!changed) {
-            if (acceptedSnapshot || acceptedIncremental) {
+            if (acceptedIncremental) {
                 currentSessionId = workingSessionId;
                 lastAppliedSequence = workingSequence;
-                baselineUploaded = previousBaselineUploaded || acceptedSnapshot;
+                baselineUploaded = previousBaselineUploaded;
             }
             pendingSnapshot = null;
             pendingIncrementals.clear();

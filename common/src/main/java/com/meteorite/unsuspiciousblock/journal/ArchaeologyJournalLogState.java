@@ -6,6 +6,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
@@ -65,17 +66,9 @@ public final class ArchaeologyJournalLogState {
         return total;
     }
 
-    public boolean setFirstUnlockedTimeMin(ResourceLocation tableId, long gameTime, long dayTime) {
-        return this.setFirstUnlockMetaMin(tableId, null, gameTime, dayTime);
-    }
-
     public boolean setFirstUnlockMetaMin(ResourceLocation tableId, @Nullable TriggerType triggerType,
                                          long gameTime, long dayTime) {
         return this.getOrCreateTable(tableId).setFirstUnlockMetaMin(triggerType, gameTime, dayTime);
-    }
-
-    public boolean appendEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
-        return this.upsertEntry(tableId, entry);
     }
 
     public boolean upsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
@@ -346,6 +339,20 @@ public final class ArchaeologyJournalLogState {
         }
 
         public CompoundTag toTag() {
+            CompoundTag tag = getCompoundTag();
+            tag.putInt(POS_X_TAG, this.pos.getX());
+            tag.putInt(POS_Y_TAG, this.pos.getY());
+            tag.putInt(POS_Z_TAG, this.pos.getZ());
+            tag.putLong(CREATED_GAME_TIME_TAG, this.createdGameTime);
+            tag.putLong(CREATED_DAY_TIME_TAG, this.createdDayTime);
+            tag.putLong(LAST_UPDATED_GAME_TIME_TAG, this.lastUpdatedGameTime);
+            tag.putLong(LAST_UPDATED_DAY_TIME_TAG, this.lastUpdatedDayTime);
+            tag.put(EXPECTED_LOOT_TAG, writeLootMap(this.expectedLoot));
+            tag.put(ACTUAL_LOOT_TAG, writeLootMap(this.actualLoot));
+            return tag;
+        }
+
+        private @NotNull CompoundTag getCompoundTag() {
             CompoundTag tag = new CompoundTag();
             tag.putString(ENTRY_ID_TAG, this.entryId.toString());
             if (this.triggerType != null) {
@@ -358,15 +365,6 @@ public final class ArchaeologyJournalLogState {
                 tag.putString(STRUCTURE_ID_TAG, this.structureId.toString());
             }
             tag.putString(BIOME_ID_TAG, this.biomeId.toString());
-            tag.putInt(POS_X_TAG, this.pos.getX());
-            tag.putInt(POS_Y_TAG, this.pos.getY());
-            tag.putInt(POS_Z_TAG, this.pos.getZ());
-            tag.putLong(CREATED_GAME_TIME_TAG, this.createdGameTime);
-            tag.putLong(CREATED_DAY_TIME_TAG, this.createdDayTime);
-            tag.putLong(LAST_UPDATED_GAME_TIME_TAG, this.lastUpdatedGameTime);
-            tag.putLong(LAST_UPDATED_DAY_TIME_TAG, this.lastUpdatedDayTime);
-            tag.put(EXPECTED_LOOT_TAG, writeLootMap(this.expectedLoot));
-            tag.put(ACTUAL_LOOT_TAG, writeLootMap(this.actualLoot));
             return tag;
         }
 

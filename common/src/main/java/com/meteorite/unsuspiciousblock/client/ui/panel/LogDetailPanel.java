@@ -25,7 +25,6 @@ public final class LogDetailPanel {
     private static final int ICON_GAP = 2;
     private static final int SECTION_GAP = 6;
     private static final int HEADER_GAP = 14;
-    private static final int DEFAULT_LINE_HEIGHT = 9;
 
     private final JournalBookBackground.BookLayout layout;
     @Nullable
@@ -58,14 +57,15 @@ public final class LogDetailPanel {
                 this.backBounds.contains(mouseX, mouseY) ? LABEL_COLOR : MUTED_COLOR, false);
         y += HEADER_GAP;
 
-        if (this.entry == null) {
+        ExcavationLogEntry entry = this.entry;
+        if (entry == null) {
             guiGraphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_empty"),
                     leftX, y, MUTED_COLOR, false);
             return;
         }
 
-        ItemStack sourceStack = LogPanel.createSourceStack(this.entry.sourceBlockId());
+        ItemStack sourceStack = LogPanel.createSourceStack(entry.sourceBlockId());
         int sourceTextX = leftX;
         int sourceTextWidth = contentWidth;
         if (!sourceStack.isEmpty()) {
@@ -77,40 +77,40 @@ public final class LogDetailPanel {
         }
         int sourceHeight = renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_source_block_value",
-                        LogPanel.formatBlockName(this.entry.sourceBlockId())),
+                        LogPanel.formatBlockName(entry.sourceBlockId())),
                 sourceTextX, y, sourceTextWidth, 2, TEXT_COLOR);
         y += Math.max(sourceHeight, sourceStack.isEmpty() ? 0 : ICON_SIZE) + SECTION_GAP;
 
         y += renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_trigger_type_value",
-                        LogPanel.formatTriggerType(this.entry.triggerType())),
+                        LogPanel.formatTriggerType(entry.triggerType())),
                 leftX, y, contentWidth, 1, TEXT_COLOR) + SECTION_GAP;
 
         guiGraphics.drawString(font,
                 LogPanel.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
-                        this.entry.createdGameTime(), this.entry.createdDayTime()),
+                        entry.createdGameTime(), entry.createdDayTime()),
                 leftX, y, TEXT_COLOR, false);
         y += font.lineHeight + 2;
 
         guiGraphics.drawString(font,
                 LogPanel.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
-                        this.entry.lastUpdatedGameTime(), this.entry.lastUpdatedDayTime()),
+                        entry.lastUpdatedGameTime(), entry.lastUpdatedDayTime()),
                 leftX, y, TEXT_COLOR, false);
         y += font.lineHeight + SECTION_GAP;
 
         y += renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_structure_value",
-                        LogPanel.formatStructureName(this.entry.structureId())),
+                        LogPanel.formatStructureName(entry.structureId())),
                 leftX, y, contentWidth, 2, TEXT_COLOR) + 2;
 
         y += renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_biome_value",
-                        LogPanel.formatBiomeName(this.entry.biomeId())),
+                        LogPanel.formatBiomeName(entry.biomeId())),
                 leftX, y, contentWidth, 2, TEXT_COLOR) + 2;
 
         guiGraphics.drawString(font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_position_value",
-                        this.entry.pos().getX(), this.entry.pos().getY(), this.entry.pos().getZ()),
+                        entry.pos().getX(), entry.pos().getY(), entry.pos().getZ()),
                 leftX, y, TEXT_COLOR, false);
         y += font.lineHeight + SECTION_GAP;
 
@@ -123,14 +123,14 @@ public final class LogDetailPanel {
                 leftX, y, LABEL_COLOR, false);
         y += font.lineHeight + 2;
         y += renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                this.entry.expectedLoot(), this.page, rowsPerSection, iconsPerRow) + SECTION_GAP;
+                entry.expectedLoot(), this.page, rowsPerSection, iconsPerRow) + SECTION_GAP;
 
         guiGraphics.drawString(font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_actual_loot"),
                 leftX, y, LABEL_COLOR, false);
         y += font.lineHeight + 2;
         renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                this.entry.actualLoot(), this.page, rowsPerSection, iconsPerRow);
+                entry.actualLoot(), this.page, rowsPerSection, iconsPerRow);
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -153,15 +153,16 @@ public final class LogDetailPanel {
     }
 
     public int pageCount() {
-        if (this.entry == null) {
+        ExcavationLogEntry entry = this.entry;
+        if (entry == null) {
             return 1;
         }
         int lineHeight = currentLineHeight();
         int contentWidth = this.layout.rightPageWidth() - 20;
         int iconsPerRow = iconsPerRow(contentWidth);
         int rowsPerSection = rowsPerSection(detailContentTop(lineHeight), lineHeight);
-        int expectedPages = lootPageCount(this.entry.expectedLoot(), iconsPerRow, rowsPerSection);
-        int actualPages = lootPageCount(this.entry.actualLoot(), iconsPerRow, rowsPerSection);
+        int expectedPages = lootPageCount(entry.expectedLoot(), iconsPerRow, rowsPerSection);
+        int actualPages = lootPageCount(entry.actualLoot(), iconsPerRow, rowsPerSection);
         return Math.max(1, Math.max(expectedPages, actualPages));
     }
 
@@ -266,7 +267,7 @@ public final class LogDetailPanel {
 
     private int currentLineHeight() {
         Font font = Minecraft.getInstance().font;
-        return font != null ? font.lineHeight : DEFAULT_LINE_HEIGHT;
+        return font.lineHeight;
     }
 
     private static int renderWrappedText(GuiGraphics guiGraphics, Font font, Component text,

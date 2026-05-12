@@ -30,3 +30,5 @@ TECHNICAL_ROUTE.md
 .git
 
 common/src/test
+common/logs
+report

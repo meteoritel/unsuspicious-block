@@ -225,7 +225,7 @@ public final class LogPanel {
 
     private int maxVisibleEntries() {
         int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
-        return Math.max(1, availableHeight / JournalLayout.LOG_ROW_HEIGHT);
+        return availableHeight / JournalLayout.LOG_ROW_HEIGHT;
     }
 
     static Component formatGameTime(String key, long gameTime, long dayTime) {

@@ -190,18 +190,6 @@ public final class ArchaeologyLootRuntimeTracker {
         return updatedEntry;
     }
 
-    public static void recordItemAcquired(ServerPlayer player, ResourceLocation tableId, ItemStack stack) {
-        if (stack.isEmpty()) {
-            return;
-        }
-
-        LootResultSignature signature = resolveSignature(tableId, stack);
-        if (signature == null) {
-            return;
-        }
-        recordItemAcquired(player, tableId, signature, stack.getCount());
-    }
-
     public static void recordItemAcquired(ServerPlayer player, ResourceLocation tableId,
                                           LootResultSignature signature, int count) {
         if (count <= 0) {
@@ -344,11 +332,7 @@ public final class ArchaeologyLootRuntimeTracker {
         for (ItemDefinition item : table.items()) {
             candidates.add(item.signature());
         }
-        LootResultSignature matched = LootResultMatcher.resolve(stack, candidates);
-        if (matched != null) {
-            return matched;
-        }
-        return null;
+        return LootResultMatcher.resolve(stack, candidates);
     }
 
     private static List<TrackedContainerLootState> collectTrackedContainers(Collection<Container> rootContainers) {

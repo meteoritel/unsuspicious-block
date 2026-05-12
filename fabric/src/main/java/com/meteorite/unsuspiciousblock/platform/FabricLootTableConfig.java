@@ -24,7 +24,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final List<String> DEFAULT_PREFIXES = List.of("archaeology/", "archeology/");
 
-    private List<String> prefixes;
+    private final List<String> prefixes;
 
     public FabricLootTableConfig() {
         this.prefixes = new ArrayList<>(loadPrefixes());

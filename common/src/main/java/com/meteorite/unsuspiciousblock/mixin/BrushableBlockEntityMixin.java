@@ -144,10 +144,17 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 : null;
     }
 
+    // Mixin 运行时实例实际就是 BrushableBlockEntity，这里集中封装为 BlockEntity 访问，避免散落重复强转。
+    @Unique
+    @SuppressWarnings("DataFlowIssue")
+    private BlockEntity unsuspiciousblock$asBlockEntity() {
+        return (BlockEntity) (Object) this;
+    }
+
     // 将状态变化同步回方块实体并通知区块更新
     @Unique
     private void unsuspiciousblock$syncBlockEntity() {
-        BlockEntity blockEntity = (BlockEntity) (Object) this;
+        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
         blockEntity.setChanged();
 
         Level level = blockEntity.getLevel();
@@ -296,8 +303,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Inject(method = "unpackLootTable", at = @At("HEAD"))
     private void unsuspiciousblock$captureLootTableName(Player player, CallbackInfo ci) {
         this.unsuspiciousblock$lootTableParsedThisCall = false;
-        BlockEntity blockEntity = (BlockEntity) (Object) this;
-        Level level = blockEntity.getLevel();
+        Level level = this.unsuspiciousblock$asBlockEntity().getLevel();
         if (this.lootTable == null || level == null || level.isClientSide() || level.getServer() == null) {
             return;
         }
@@ -326,12 +332,13 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                     : sp.serverLevel().getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
                     this.item, TriggerType.BRUSH, gameTime, dayTime);
+            BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
             this.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
                     sp,
                     this.unsuspiciousblock$lootTableName,
                     TriggerType.BRUSH,
-                    BuiltInRegistries.BLOCK.getKey(((BlockEntity) (Object) this).getBlockState().getBlock()),
-                    ((BlockEntity) (Object) this).getBlockPos(),
+                    BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
+                    blockEntity.getBlockPos(),
                     this.item,
                     gameTime,
                     dayTime

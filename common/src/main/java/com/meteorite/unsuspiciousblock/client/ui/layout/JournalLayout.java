@@ -34,7 +34,6 @@ public final class JournalLayout {
     public static final int GRID_COLUMN_GAP = 2;
     public static final int GRID_TOP = 28;
     public static final int GRID_LEFT_PAD = 4;
-    public static final int GRID_PROGRESS_Y = 18;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
