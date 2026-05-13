@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.enchantment.archaeology.PrecisionExcavationService;
 import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
@@ -334,6 +335,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$lootTableName != null
                 && player instanceof ServerPlayer sp) {
+            this.item = PrecisionExcavationService.tryApply(sp, this.item);
             long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
                     ? this.unsuspiciousblock$brushGameTime
                     : sp.serverLevel().getGameTime();

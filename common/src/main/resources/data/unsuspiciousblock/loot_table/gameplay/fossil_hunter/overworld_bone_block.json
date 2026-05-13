@@ -1,0 +1,35 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:bone",
+          "weight": 8
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:coal",
+          "weight": 5
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:flint",
+          "weight": 4
+        },
+        {
+          "type": "minecraft:item",
+          "name": "unsuspiciousblock:lost_page",
+          "weight": 2
+        },
+        {
+          "type": "minecraft:item",
+          "name": "unsuspiciousblock:ancient_coin",
+          "weight": 1
+        }
+      ]
+    }
+  ]
+}

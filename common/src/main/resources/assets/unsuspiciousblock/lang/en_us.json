@@ -7,6 +7,7 @@
   "item.unsuspiciousblock.suspicious_reader.not_suspicious": "This is not a suspicious block!",
   "item.unsuspiciousblock.suspicious_reader.result_header": "[Suspicious Reader]",
   "item.unsuspiciousblock.suspicious_reader.result_empty": "Block at (%d, %d, %d) contains nothing.",
+  "item.unsuspiciousblock.suspicious_reader.penetrating_summary": "Penetrating Scan additionally checked %1$d suspicious blocks, and %2$d of them contained loot.",
 
   "item.unsuspiciousblock.suspicious_reader.jade_prefix": "§7Scanned loot: ",
   "item.unsuspiciousblock.suspicious_reader.jade_empty": "§7Scanned: empty",
@@ -24,6 +25,9 @@
   "item.unsuspiciousblock.page_base": "Page Base",
   "enchantment.unsuspiciousblock.mud_dredging": "Mud Dredging",
   "enchantment.unsuspiciousblock.textile_recovery": "Textile Recovery",
+  "enchantment.unsuspiciousblock.precision_excavation": "Precision Excavation",
+  "enchantment.unsuspiciousblock.penetrating_scan": "Penetrating Scan",
+  "enchantment.unsuspiciousblock.fossil_hunter": "Fossil Hunter",
   "screen.unsuspiciousblock.archaeology_journal.title": "Archaeology Journal",
   "screen.unsuspiciousblock.archaeology_journal.catalog": "Catalog",
   "screen.unsuspiciousblock.archaeology_journal.entries": "Entries",

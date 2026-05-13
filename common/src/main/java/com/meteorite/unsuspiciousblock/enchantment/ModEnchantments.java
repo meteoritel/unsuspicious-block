@@ -14,6 +14,9 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 public final class ModEnchantments {
     public static final ResourceKey<Enchantment> MUD_DREDGING = key("mud_dredging");
     public static final ResourceKey<Enchantment> TEXTILE_RECOVERY = key("textile_recovery");
+    public static final ResourceKey<Enchantment> PRECISION_EXCAVATION = key("precision_excavation");
+    public static final ResourceKey<Enchantment> PENETRATING_SCAN = key("penetrating_scan");
+    public static final ResourceKey<Enchantment> FOSSIL_HUNTER = key("fossil_hunter");
 
     private ModEnchantments() {
     }

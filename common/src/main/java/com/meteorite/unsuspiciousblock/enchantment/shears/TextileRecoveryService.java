@@ -8,7 +8,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -19,8 +18,7 @@ public final class TextileRecoveryService {
     private static final double EXTRA_STRING_CHANCE = 0.15D;
     private static final int EXTRA_STRING_MIN = 1;
     private static final int EXTRA_STRING_MAX = 2;
-    private static final double EXTRA_LEAF_DROP_BASE_CHANCE = 0.05D;
-    private static final double EXTRA_LEAF_DROP_FORTUNE_CHANCE = 0.05D;
+    private static final double EXTRA_LEAF_DROP_CHANCE = 0.05D;
 
     private TextileRecoveryService() {
     }
@@ -41,7 +39,7 @@ public final class TextileRecoveryService {
                 || !serverLevel.getGameRules().getBoolean(GameRules.RULE_DOBLOCKDROPS)
                 || !state.is(BlockTags.LEAVES)
                 || !isTextileRecoveryShears(serverLevel, tool)
-                || !shouldDropExtraLeafLoot(serverLevel, tool)) {
+                || !shouldDropExtraLeafLoot(serverLevel)) {
             return;
         }
 
@@ -53,11 +51,8 @@ public final class TextileRecoveryService {
         }
     }
 
-    private static boolean shouldDropExtraLeafLoot(ServerLevel level, ItemStack tool) {
-        int fortuneLevel = ModEnchantments.getEnchantmentLevel(level.registryAccess(), tool, Enchantments.FORTUNE);
-        double chance = Math.min(1.0D,
-                EXTRA_LEAF_DROP_BASE_CHANCE + fortuneLevel * EXTRA_LEAF_DROP_FORTUNE_CHANCE);
-        return level.getRandom().nextDouble() < chance;
+    private static boolean shouldDropExtraLeafLoot(ServerLevel level) {
+        return level.getRandom().nextDouble() < EXTRA_LEAF_DROP_CHANCE;
     }
 
     private static boolean isTextileRecoveryShears(ServerLevel level, ItemStack tool) {

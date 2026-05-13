@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
+import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -64,7 +65,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                         () -> ArchaeologyJournalNetwork.handleUploadedLogSnapshot(context.player(), payload)));
 
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
-        ServerLifecycleEvents.SERVER_STOPPED.register(server -> ArchaeologyJournalServerCatalog.invalidate());
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            ArchaeologyJournalServerCatalog.invalidate();
+            FossilHunterService.clearPendingPlayerBreaks();
+        });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));

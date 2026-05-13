@@ -7,6 +7,9 @@
   "mixins": [
     "AbstractContainerMenuMixin",
     "BaseContainerBlockEntityMixin",
+    "BlockBehaviourMixin",
+    "BlockItemMixin",
+    "BlockMixin",
     "BrushableBlockEntityMixin",
     "CompoundContainerMixin",
     "FishingHookMixin",
