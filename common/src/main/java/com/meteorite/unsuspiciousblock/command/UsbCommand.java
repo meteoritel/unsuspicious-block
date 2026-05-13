@@ -97,12 +97,7 @@ public final class UsbCommand {
                     int itemCount = countTotalItems(catalog);
                     return mutateAndSync(context.getSource(), player, state -> {
                         for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
-                            ResourceLocation tableId = entry.getKey();
-                            TableDefinition table = entry.getValue();
-                            state.unlockTable(tableId);
-                            for (ItemDefinition item : table.items()) {
-                                state.unlockItem(tableId, item.signature());
-                            }
+                            unlockTableItems(state, entry.getKey(), entry.getValue());
                         }
                     }, null, Component.translatable("command.unsuspiciousblock.usb.unlock_items.success", itemCount, catalog.size()));
                 })
@@ -112,12 +107,10 @@ public final class UsbCommand {
                             ServerPlayer player = requirePlayer(context);
                             ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
                             TableDefinition table = requireTable(context.getSource(), tableId);
-                            return mutateAndSync(context.getSource(), player, state -> {
-                                state.unlockTable(tableId);
-                                for (ItemDefinition item : table.items()) {
-                                    state.unlockItem(tableId, item.signature());
-                                }
-                            }, null, Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
+                            return mutateAndSync(context.getSource(), player,
+                                    state -> unlockTableItems(state, tableId, table),
+                                    null,
+                                    Component.translatable("command.unsuspiciousblock.usb.unlock_items_in.success", tableId.toString(), table.items().size()));
                         }));
     }
 
@@ -126,6 +119,14 @@ public final class UsbCommand {
         return Commands.literal("debug")
                 .then(Commands.literal("table_list")
                         .executes(context -> sendTableList(context.getSource())));
+    }
+
+    private static void unlockTableItems(ArchaeologyJournalState state, ResourceLocation tableId, TableDefinition table) {
+        if (table.items().isEmpty()) {
+            state.unlockTable(tableId);
+            return;
+        }
+        state.unlockItems(tableId, table.items().stream().map(ItemDefinition::signature).toList());
     }
 
     private static int sendTableList(CommandSourceStack source) {

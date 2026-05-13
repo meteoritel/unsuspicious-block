@@ -381,12 +381,12 @@ public class ArchaeologyJournalScreen extends Screen {
                                             @Nullable ArchaeologyJournalLogState.TableLogHistory logHistory) {
         List<ItemView> items = new ArrayList<>();
         int parsedCount = 0;
-        Map<String, ArchaeologyJournalState.ItemProgress> progressItems =
-                progress != null ? progress.getItems() : Map.of();
         for (ItemDefinition itemDefinition : definition.items()) {
-            ArchaeologyJournalState.ItemProgress itemProgress = progressItems.get(itemDefinition.signature().toStoredKey());
+            ArchaeologyJournalState.ItemProgress itemProgress = progress != null
+                    ? progress.getItemProgress(itemDefinition.signature())
+                    : null;
             boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
-            int count = unlocked ? itemProgress.getCount() : 0;
+            int count = progress != null ? progress.getItemCount(itemDefinition.signature()) : 0;
             if (unlocked) {
                 parsedCount++;
             }

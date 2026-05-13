@@ -1,8 +1,6 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
@@ -65,24 +63,10 @@ public final class ArchaeologyLootRuntimeTracker {
         }
 
         boolean changed = state.unlockTable(tableId);
-        for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
-            if (entry.getValue() <= 0) {
-                continue;
-            }
-            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
-            if (signature == null) {
-                continue;
-            }
-            changed |= state.unlockItem(tableId, signature);
-        }
+        changed |= state.unlockItems(tableId, toSignatures(itemCounts));
         if (changed) {
             ArchaeologyJournalNetwork.syncState(player);
         }
-    }
-
-    public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
-                                        ItemStack loot, long gameTime, long dayTime) {
-        onLootDiscovered(player, tableId, loot, null, gameTime, dayTime);
     }
 
     public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
@@ -170,14 +154,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return pendingEntry;
         }
 
-        boolean stateChanged = false;
-        for (Map.Entry<String, Integer> entry : normalizedActualLoot.entrySet()) {
-            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
-            if (signature == null) {
-                continue;
-            }
-            stateChanged |= state.recordItemAcquired(tableId, signature, entry.getValue());
-        }
+        boolean stateChanged = state.recordItemsAcquired(tableId, toSignatureCounts(normalizedActualLoot));
         if (stateChanged) {
             ArchaeologyJournalNetwork.syncState(player);
         }
@@ -189,22 +166,6 @@ public final class ArchaeologyLootRuntimeTracker {
         ExcavationLogEntry updatedEntry = pendingEntry.withActualLootMerged(normalizedActualLoot, gameTime, dayTime);
         ArchaeologyJournalNetwork.upsertExcavationEntry(player, tableId, updatedEntry);
         return updatedEntry;
-    }
-
-    public static void recordItemAcquired(ServerPlayer player, ResourceLocation tableId,
-                                          LootResultSignature signature, int count) {
-        if (count <= 0) {
-            return;
-        }
-
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return;
-        }
-
-        if (state.recordItemAcquired(tableId, signature, count)) {
-            ArchaeologyJournalNetwork.syncState(player);
-        }
     }
 
     public static void onContainerLootResolved(ServerPlayer player,
@@ -334,6 +295,48 @@ public final class ArchaeologyLootRuntimeTracker {
             candidates.add(item.signature());
         }
         return LootResultMatcher.resolve(stack, candidates);
+    }
+
+    static List<LootResultSignature> toSignatures(Map<String, Integer> itemCounts) {
+        if (itemCounts == null || itemCounts.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashMap<String, LootResultSignature> signatures = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
+            Integer count = entry.getValue();
+            if (count == null || count <= 0) {
+                continue;
+            }
+
+            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
+            if (signature == null) {
+                continue;
+            }
+            signatures.putIfAbsent(signature.toStoredKey(), signature);
+        }
+        return List.copyOf(signatures.values());
+    }
+
+    static Map<LootResultSignature, Integer> toSignatureCounts(Map<String, Integer> itemCounts) {
+        if (itemCounts == null || itemCounts.isEmpty()) {
+            return Map.of();
+        }
+
+        LinkedHashMap<LootResultSignature, Integer> signatureCounts = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
+            Integer count = entry.getValue();
+            if (count == null || count <= 0) {
+                continue;
+            }
+
+            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
+            if (signature == null) {
+                continue;
+            }
+            signatureCounts.merge(signature, count, Integer::sum);
+        }
+        return signatureCounts;
     }
 
     private static List<TrackedContainerLootState> collectTrackedContainers(Collection<Container> rootContainers) {

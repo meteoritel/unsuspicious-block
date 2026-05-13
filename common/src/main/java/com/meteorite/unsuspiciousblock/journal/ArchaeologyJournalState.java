@@ -26,22 +26,32 @@ public final class ArchaeologyJournalState {
         return this.getOrCreateTable(tableId).unlock();
     }
 
-    public boolean unlockItem(ResourceLocation tableId, ResourceLocation itemId) {
-        return this.unlockItem(tableId, LootResultSignature.plain(itemId));
-    }
-
     public boolean unlockItem(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.getOrCreateTable(tableId);
         table.unlock();
         return table.unlockItem(signature);
     }
 
-    public boolean recordItemAcquired(ResourceLocation tableId, ResourceLocation itemId) {
-        return this.recordItemAcquired(tableId, LootResultSignature.plain(itemId), 1);
-    }
+    public boolean unlockItems(ResourceLocation tableId, Iterable<LootResultSignature> signatures) {
+        if (signatures == null) {
+            return false;
+        }
 
-    public boolean recordItemAcquired(ResourceLocation tableId, ResourceLocation itemId, int count) {
-        return this.recordItemAcquired(tableId, LootResultSignature.plain(itemId), count);
+        LinkedHashMap<String, LootResultSignature> uniqueSignatures = new LinkedHashMap<>();
+        for (LootResultSignature signature : signatures) {
+            if (signature == null) {
+                continue;
+            }
+            uniqueSignatures.putIfAbsent(signature.toStoredKey(), signature);
+        }
+        if (uniqueSignatures.isEmpty()) {
+            return false;
+        }
+
+        TableProgress table = this.getOrCreateTable(tableId);
+        boolean changed = table.unlock();
+        changed |= table.unlockItems(uniqueSignatures.values());
+        return changed;
     }
 
     public boolean recordItemAcquired(ResourceLocation tableId, LootResultSignature signature, int count) {
@@ -54,6 +64,30 @@ public final class ArchaeologyJournalState {
         return table.recordItemAcquired(signature, count);
     }
 
+    public boolean recordItemsAcquired(ResourceLocation tableId, Map<LootResultSignature, Integer> counts) {
+        if (counts == null) {
+            return false;
+        }
+
+        LinkedHashMap<LootResultSignature, Integer> normalizedCounts = new LinkedHashMap<>();
+        for (Map.Entry<LootResultSignature, Integer> entry : counts.entrySet()) {
+            LootResultSignature signature = entry.getKey();
+            Integer count = entry.getValue();
+            if (signature == null || count == null || count <= 0) {
+                continue;
+            }
+            normalizedCounts.merge(signature, count, Integer::sum);
+        }
+        if (normalizedCounts.isEmpty()) {
+            return false;
+        }
+
+        TableProgress table = this.getOrCreateTable(tableId);
+        boolean changed = table.unlock();
+        changed |= table.recordItemsAcquired(normalizedCounts);
+        return changed;
+    }
+
     public boolean removeTable(ResourceLocation tableId) {
         return this.tables.remove(tableId) != null;
     }
@@ -63,18 +97,9 @@ public final class ArchaeologyJournalState {
         return table != null && table.isUnlocked();
     }
 
-    public boolean isItemUnlocked(ResourceLocation tableId, ResourceLocation itemId) {
-        return this.isItemUnlocked(tableId, LootResultSignature.plain(itemId));
-    }
-
     public boolean isItemUnlocked(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.tables.get(tableId);
-        if (table == null) {
-            return false;
-        }
-
-        ItemProgress item = table.getItems().get(signature.toStoredKey());
-        return item != null && item.isUnlocked();
+        return table != null && table.isItemUnlocked(signature);
     }
 
     public Map<ResourceLocation, TableProgress> getTables() {
@@ -84,6 +109,17 @@ public final class ArchaeologyJournalState {
     @Nullable
     public TableProgress getTable(ResourceLocation tableId) {
         return this.tables.get(tableId);
+    }
+
+    @Nullable
+    public ItemProgress getItemProgress(ResourceLocation tableId, LootResultSignature signature) {
+        TableProgress table = this.tables.get(tableId);
+        return table != null ? table.getItemProgress(signature) : null;
+    }
+
+    public int getItemCount(ResourceLocation tableId, LootResultSignature signature) {
+        TableProgress table = this.tables.get(tableId);
+        return table != null ? table.getItemCount(signature) : 0;
     }
 
     public ArchaeologyJournalState copy() {
@@ -148,8 +184,22 @@ public final class ArchaeologyJournalState {
             return this.unlocked;
         }
 
-        public Map<String, ItemProgress> getItems() {
-            return Collections.unmodifiableMap(this.items);
+        @Nullable
+        public ItemProgress getItemProgress(LootResultSignature signature) {
+            if (signature == null) {
+                return null;
+            }
+            return this.items.get(signature.toStoredKey());
+        }
+
+        public boolean isItemUnlocked(LootResultSignature signature) {
+            ItemProgress item = this.getItemProgress(signature);
+            return item != null && item.isUnlocked();
+        }
+
+        public int getItemCount(LootResultSignature signature) {
+            ItemProgress item = this.getItemProgress(signature);
+            return item != null && item.isUnlocked() ? item.getCount() : 0;
         }
 
         public boolean unlock() {
@@ -161,12 +211,23 @@ public final class ArchaeologyJournalState {
             return true;
         }
 
-        public boolean unlockItem(ResourceLocation itemId) {
-            return this.unlockItem(LootResultSignature.plain(itemId));
-        }
-
         public boolean unlockItem(LootResultSignature signature) {
             return this.getOrCreateItem(signature).unlock();
+        }
+
+        public boolean unlockItems(Iterable<LootResultSignature> signatures) {
+            if (signatures == null) {
+                return false;
+            }
+
+            boolean changed = false;
+            for (LootResultSignature signature : signatures) {
+                if (signature == null) {
+                    continue;
+                }
+                changed |= this.unlockItem(signature);
+            }
+            return changed;
         }
 
         public boolean recordItemAcquired(LootResultSignature signature, int count) {
@@ -177,6 +238,23 @@ public final class ArchaeologyJournalState {
             ItemProgress item = this.getOrCreateItem(signature);
             boolean changed = item.unlock();
             changed |= item.incrementCount(count);
+            return changed;
+        }
+
+        public boolean recordItemsAcquired(Map<LootResultSignature, Integer> counts) {
+            if (counts == null) {
+                return false;
+            }
+
+            boolean changed = false;
+            for (Map.Entry<LootResultSignature, Integer> entry : counts.entrySet()) {
+                LootResultSignature signature = entry.getKey();
+                Integer count = entry.getValue();
+                if (signature == null || count == null || count <= 0) {
+                    continue;
+                }
+                changed |= this.recordItemAcquired(signature, count);
+            }
             return changed;
         }
 
