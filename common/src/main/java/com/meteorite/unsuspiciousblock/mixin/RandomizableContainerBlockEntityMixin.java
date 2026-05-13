@@ -1,7 +1,8 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -74,7 +75,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
     // 用本次开箱解析结果覆盖容器追踪状态
     @Override
     public void unsuspiciousblock$setTrackedLoot(ResourceLocation tableId, Map<String, Integer> itemCounts) {
-        LinkedHashMap<String, Integer> normalized = this.unsuspiciousblock$normalizeTrackedLootCounts(itemCounts);
+        LinkedHashMap<String, Integer> normalized = new LinkedHashMap<>(LootCounts.normalize(itemCounts));
         if (normalized.isEmpty()) {
             this.unsuspiciousblock$clearTrackedLoot();
             return;
@@ -171,22 +172,6 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         this.unsuspiciousblock$markTrackingChanged();
     }
 
-    // 过滤并合并非法或重复的追踪数量记录
-    @Unique
-    private LinkedHashMap<String, Integer> unsuspiciousblock$normalizeTrackedLootCounts(Map<String, Integer> itemCounts) {
-        LinkedHashMap<String, Integer> normalized = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
-            String signatureKey = entry.getKey();
-            if (signatureKey == null || entry.getValue() == null || entry.getValue() <= 0) {
-                continue;
-            }
-            if (LootResultSignature.fromStoredKey(signatureKey) == null) {
-                continue;
-            }
-            normalized.merge(signatureKey, entry.getValue(), Integer::sum);
-        }
-        return normalized;
-    }
 
     // 标记追踪状态已变化，便于容器方块实体后续保存
     @Unique
@@ -213,11 +198,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
             return;
         }
 
-        CompoundTag itemCountsTag = new CompoundTag();
-        for (Map.Entry<String, Integer> entry : this.unsuspiciousblock$trackedLootCounts.entrySet()) {
-            itemCountsTag.putInt(entry.getKey(), entry.getValue());
-        }
-        tag.put(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG, itemCountsTag);
+        tag.put(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG, LootCounts.writeToNbt(this.unsuspiciousblock$trackedLootCounts));
     }
 
     // 从容器方块实体 NBT 中恢复当前追踪状态
@@ -238,14 +219,9 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
             return;
         }
 
-        CompoundTag itemCountsTag = tag.getCompound(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG);
-        for (String key : itemCountsTag.getAllKeys()) {
-            int count = itemCountsTag.getInt(key);
-            if (count <= 0 || LootResultSignature.fromStoredKey(key) == null) {
-                continue;
-            }
-            this.unsuspiciousblock$trackedLootCounts.put(key, count);
-        }
+        this.unsuspiciousblock$trackedLootCounts.putAll(
+                LootCounts.normalize(LootCounts.readFromNbt(tag, UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG))
+        );
         if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
             this.unsuspiciousblock$trackedLootTableName = null;
             this.unsuspiciousblock$pendingJournalEntry = null;

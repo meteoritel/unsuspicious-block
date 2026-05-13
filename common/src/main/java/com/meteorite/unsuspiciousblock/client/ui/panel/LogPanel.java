@@ -1,27 +1,19 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
-import com.meteorite.unsuspiciousblock.journal.GameTimeFormatHelper;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /** 日志列表面板——展示来源方块、结构名与创建/更新时间 */
@@ -38,13 +30,13 @@ public final class LogPanel {
 
     private final JournalBookBackground.BookLayout layout;
     private final List<LogEntryState> entries = new ArrayList<>();
+    private final PaginationState pagination = new PaginationState(this::computePageCount);
     @Nullable
     private Long firstUnlockedGameTime;
     @Nullable
     private Long firstUnlockedDayTime;
     @Nullable
     private TriggerType firstUnlockTriggerType;
-    private int page;
 
     public LogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -82,7 +74,7 @@ public final class LogPanel {
         for (ExcavationLogEntry entry : sortedEntries) {
             this.entries.add(new LogEntryState(entry));
         }
-        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        this.pagination.setPage(this.pagination.getPage());
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
@@ -95,7 +87,7 @@ public final class LogPanel {
 
         Component firstUnlockValue = this.firstUnlockedGameTime == null
                 ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.first_unlock_time_unknown")
-                : formatGameTime("screen.unsuspiciousblock.archaeology_journal.first_unlock_time_value",
+                : JournalFormatHelper.formatGameTime("screen.unsuspiciousblock.archaeology_journal.first_unlock_time_value",
                         this.firstUnlockedGameTime,
                         this.firstUnlockedDayTime != null ? this.firstUnlockedDayTime : this.firstUnlockedGameTime);
         guiGraphics.drawString(font, firstUnlockValue, leftX,
@@ -103,7 +95,7 @@ public final class LogPanel {
 
         Component firstUnlockTriggerValue = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.first_unlock_trigger_value",
-                formatTriggerType(this.firstUnlockTriggerType));
+                JournalFormatHelper.formatTriggerType(this.firstUnlockTriggerType));
         guiGraphics.drawString(font, firstUnlockTriggerValue, leftX,
                 this.layout.rightPageY() + JournalLayout.LOG_FIRST_UNLOCK_TRIGGER_Y, TEXT_COLOR, false);
 
@@ -120,7 +112,8 @@ public final class LogPanel {
         }
 
         int maxVisibleEntries = maxVisibleEntries();
-        int from = this.page * maxVisibleEntries;
+        int page = this.pagination.getPage();
+        int from = page * maxVisibleEntries;
         int to = Math.min(this.entries.size(), from + maxVisibleEntries);
         for (int i = from; i < to; i++) {
             int rowY = listStartY + (i - from) * JournalLayout.LOG_ROW_HEIGHT;
@@ -135,7 +128,7 @@ public final class LogPanel {
 
     @Nullable
     public ExcavationLogEntry handleClick(double mouseX, double mouseY) {
-        int from = this.page * maxVisibleEntries();
+        int from = this.pagination.getPage() * maxVisibleEntries();
         int to = Math.min(this.entries.size(), from + maxVisibleEntries());
         int leftX = this.layout.rightPageX() + 8;
         for (int i = from; i < to; i++) {
@@ -159,23 +152,19 @@ public final class LogPanel {
     }
 
     public int pageCount() {
-        if (this.entries.isEmpty()) {
-            return 1;
-        }
-        int maxVisibleEntries = maxVisibleEntries();
-        return Math.max(1, (this.entries.size() + maxVisibleEntries - 1) / maxVisibleEntries);
+        return this.pagination.pageCount();
     }
 
     public int getPage() {
-        return this.page;
+        return this.pagination.getPage();
     }
 
     public void changePage(int delta) {
-        this.page = Mth.clamp(this.page + delta, 0, Math.max(0, pageCount() - 1));
+        this.pagination.changePage(delta);
     }
 
     public void setPage(int page) {
-        this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+        this.pagination.setPage(page);
     }
 
     private void renderEntry(GuiGraphics guiGraphics, Font font, int leftX, int rowY,
@@ -196,7 +185,7 @@ public final class LogPanel {
         int bottomY = rowY + JournalLayout.LOG_ROW_HEIGHT - 6;
         guiGraphics.fill(leftX, bottomY, leftX + ENTRY_TEXT_WIDTH, bottomY + 1, ENTRY_SEPARATOR_COLOR);
 
-        ItemStack sourceStack = createSourceStack(state.entry.sourceBlockId());
+        var sourceStack = JournalFormatHelper.createSourceStack(state.entry.sourceBlockId());
         int textX = leftX;
         int textWidth = ENTRY_TEXT_WIDTH;
         if (!sourceStack.isEmpty()) {
@@ -209,11 +198,11 @@ public final class LogPanel {
 
         String structureText = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_structure_value",
-                formatStructureName(state.entry.structureId())).getString();
-        String createdText = formatGameTime(
+                JournalFormatHelper.formatStructureName(state.entry.structureId())).getString();
+        String createdText = JournalFormatHelper.formatGameTime(
                 "screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
                 state.entry.createdGameTime(), state.entry.createdDayTime()).getString();
-        String updatedText = formatGameTime(
+        String updatedText = JournalFormatHelper.formatGameTime(
                 "screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
                 state.entry.lastUpdatedGameTime(), state.entry.lastUpdatedDayTime()).getString();
 
@@ -228,90 +217,12 @@ public final class LogPanel {
         return availableHeight / JournalLayout.LOG_ROW_HEIGHT;
     }
 
-    static Component formatGameTime(String key, long gameTime, long dayTime) {
-        GameTimeFormatHelper.GameTimeParts parts = GameTimeFormatHelper.fromTime(gameTime, dayTime);
-        return Component.translatable(key, parts.day(), parts.hour(), parts.minute());
-    }
-
-    static Component formatTriggerType(@Nullable TriggerType triggerType) {
-        String name = triggerType != null ? triggerType.serializedName() : TriggerType.UNKNOWN.serializedName();
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_trigger_type." + name);
-    }
-
-    static String formatBlockName(@Nullable ResourceLocation blockId) {
-        if (blockId == null) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_source_block").getString();
+    private int computePageCount() {
+        if (this.entries.isEmpty()) {
+            return 1;
         }
-        Item item = BuiltInRegistries.ITEM.get(blockId);
-        if (item != Items.AIR || blockId.equals(ResourceLocation.withDefaultNamespace("air"))) {
-            return new ItemStack(item).getHoverName().getString();
-        }
-        return formatTranslatedIdentifier(blockId, "block");
-    }
-
-    static String formatStructureName(@Nullable ResourceLocation id) {
-        if (id == null) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_structure").getString();
-        }
-        return formatTranslatedIdentifier(id, "structure");
-    }
-
-    static String formatBiomeName(ResourceLocation id) {
-        return formatTranslatedIdentifier(id, "biome");
-    }
-
-    static ItemStack createSourceStack(@Nullable ResourceLocation sourceBlockId) {
-        if (sourceBlockId == null) {
-            return ItemStack.EMPTY;
-        }
-        Item item = BuiltInRegistries.ITEM.get(sourceBlockId);
-        if (item == Items.AIR && !sourceBlockId.equals(ResourceLocation.withDefaultNamespace("air"))) {
-            return ItemStack.EMPTY;
-        }
-        return new ItemStack(item);
-    }
-
-    @Nullable
-    static ItemStack createLootStack(String signatureKey, int count) {
-        LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
-        if (signature == null || count <= 0) {
-            return null;
-        }
-        ItemStack stack = signature.createPreviewStack();
-        if (stack.isEmpty()) {
-            return null;
-        }
-        stack = stack.copy();
-        stack.setCount(Math.max(1, Math.min(count, stack.getMaxStackSize())));
-        return stack;
-    }
-
-    static List<Map.Entry<String, Integer>> sortedLootEntries(Map<String, Integer> lootMap) {
-        List<Map.Entry<String, Integer>> entries = new ArrayList<>(lootMap.entrySet());
-        entries.sort((left, right) -> {
-            int cmp = Integer.compare(right.getValue(), left.getValue());
-            if (cmp != 0) {
-                return cmp;
-            }
-            return left.getKey().compareTo(right.getKey());
-        });
-        return entries;
-    }
-
-    private static String formatTranslatedIdentifier(ResourceLocation id, String type) {
-        String translationKey = type + "." + id.getNamespace() + "." + id.getPath().replace('/', '.');
-        if (Language.getInstance().has(translationKey)) {
-            return Component.translatable(translationKey).getString();
-        }
-        return formatReadableIdentifier(id);
-    }
-
-    private static String formatReadableIdentifier(ResourceLocation id) {
-        String readablePath = id.getPath().replace('_', ' ');
-        if ("minecraft".equals(id.getNamespace())) {
-            return readablePath;
-        }
-        return id.getNamespace() + ":" + readablePath;
+        int maxVisibleEntries = maxVisibleEntries();
+        return Math.max(1, (this.entries.size() + maxVisibleEntries - 1) / maxVisibleEntries);
     }
 
     private static final class LogEntryState {

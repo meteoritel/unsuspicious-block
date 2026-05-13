@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal.sync;
 
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 

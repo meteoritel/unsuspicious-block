@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.network.payload;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;

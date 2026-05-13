@@ -1,8 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -25,10 +26,11 @@ public final class DetailOverlayPanel {
     private static final int ITEM_ROW_HEIGHT = 16;
     private static final int FOOTER_HEIGHT = 50;
     private static final int MOD_SOURCE_TOP_OFFSET = 44;
+
     private final JournalBookBackground.BookLayout layout;
+    private final PaginationState pagination = new PaginationState(this::computePageCount);
     private int parsedCount;
     private int totalCount;
-    private int page;
     private String modSource;
     private List<DiscoveredItemEntry> unlockedItems = List.of();
 
@@ -36,7 +38,6 @@ public final class DetailOverlayPanel {
         this.layout = layout;
         this.parsedCount = 0;
         this.totalCount = 0;
-        this.page = 0;
         this.modSource = "";
     }
 
@@ -44,7 +45,7 @@ public final class DetailOverlayPanel {
                         List<ItemGridPanel.GridItem> allItems) {
         this.parsedCount = parsedCount;
         this.totalCount = totalCount;
-        this.page = 0;
+        this.pagination.reset();
         if (tableId != null) {
             this.modSource = Services.PLATFORM.getModDisplayName(tableId.getNamespace());
         } else {
@@ -64,9 +65,9 @@ public final class DetailOverlayPanel {
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        int leftX = layout.rightPageX() + 8;
-        int contentWidth = layout.rightPageWidth() - 20;
-        int y = layout.rightPageY() + JournalLayout.GRID_TOP;
+        int leftX = this.layout.rightPageX() + 8;
+        int contentWidth = this.layout.rightPageWidth() - 20;
+        int y = this.layout.rightPageY() + JournalLayout.GRID_TOP;
 
         // 解析进度标题
         Component progressLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.parse_progress");
@@ -75,8 +76,8 @@ public final class DetailOverlayPanel {
 
         guiGraphics.fill(leftX, y, leftX + contentWidth, y + BAR_HEIGHT, BAR_BG_COLOR);
 
-        if (totalCount > 0) {
-            double ratio = (double) parsedCount / totalCount;
+        if (this.totalCount > 0) {
+            double ratio = (double) this.parsedCount / this.totalCount;
             int filledWidth = (int) (contentWidth * ratio);
             if (filledWidth > 0) {
                 int progressColor = ratio >= 1.0 ? 0xFF6BA050 : BAR_FG_COLOR;
@@ -84,7 +85,7 @@ public final class DetailOverlayPanel {
             }
 
             int percent = (int) (ratio * 100.0);
-            String percentText = percent + "%  (" + parsedCount + "/" + totalCount + ")";
+            String percentText = percent + "%  (" + this.parsedCount + "/" + this.totalCount + ")";
             int textWidth = font.width(percentText);
             guiGraphics.drawString(font, percentText,
                     leftX + (contentWidth - textWidth) / 2, y + 2, 0xFFFFFFFF, false);
@@ -96,18 +97,19 @@ public final class DetailOverlayPanel {
         guiGraphics.drawString(font, discoveredLabel, leftX, y, LABEL_COLOR, false);
         y = listStartY(y);
 
-        if (unlockedItems.isEmpty()) {
+        if (this.unlockedItems.isEmpty()) {
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.no_discoveries"),
                     leftX + 2, y, MUTED_COLOR, false);
             y += 12;
         } else {
             int maxVisibleItems = maxVisibleItems(y);
+            int page = this.pagination.getPage();
             int from = page * maxVisibleItems;
-            int to = Math.min(unlockedItems.size(), from + maxVisibleItems);
+            int to = Math.min(this.unlockedItems.size(), from + maxVisibleItems);
             int showCount = Math.max(0, to - from);
 
             for (int i = 0; i < showCount; i++) {
-                DiscoveredItemEntry entry = unlockedItems.get(from + i);
+                DiscoveredItemEntry entry = this.unlockedItems.get(from + i);
                 ItemGridPanel.GridItem item = entry.item;
                 int rowY = y + i * ITEM_ROW_HEIGHT;
 
@@ -140,38 +142,43 @@ public final class DetailOverlayPanel {
         }
 
         // 模组来源
-        y = Math.max(y, layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
+        y = Math.max(y, this.layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
         Component modLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.mod_source");
         guiGraphics.drawString(font, modLabel, leftX, y, LABEL_COLOR, false);
-        guiGraphics.drawString(font, modSource, leftX, y + 12, TEXT_COLOR, false);
+        guiGraphics.drawString(font, this.modSource, leftX, y + 12, TEXT_COLOR, false);
     }
 
     public int pageCount() {
-        if (unlockedItems.isEmpty()) {
-            return 1;
-        }
-        int maxVisibleItems = maxVisibleItems(listStartY(layout.rightPageY() + JournalLayout.GRID_TOP + 14 + BAR_HEIGHT + 10));
-        return Math.max(1, (unlockedItems.size() + maxVisibleItems - 1) / maxVisibleItems);
+        return this.pagination.pageCount();
     }
 
     public int getPage() {
-        return this.page;
+        return this.pagination.getPage();
     }
 
     public void changePage(int delta) {
-        this.page = Math.max(0, Math.min(this.page + delta, pageCount() - 1));
+        this.pagination.changePage(delta);
     }
 
     public void setPage(int page) {
-        this.page = Math.max(0, Math.min(page, pageCount() - 1));
+        this.pagination.setPage(page);
     }
 
     private int maxVisibleItems(int listStartY) {
-        return Math.max(1, (layout.rightPageBottom() - listStartY - FOOTER_HEIGHT) / ITEM_ROW_HEIGHT);
+        return Math.max(1, (this.layout.rightPageBottom() - listStartY - FOOTER_HEIGHT) / ITEM_ROW_HEIGHT);
     }
 
     private int listStartY(int discoveredLabelY) {
         return discoveredLabelY + 14;
+    }
+
+    private int computePageCount() {
+        if (this.unlockedItems.isEmpty()) {
+            return 1;
+        }
+        int listStartY = listStartY(this.layout.rightPageY() + JournalLayout.GRID_TOP + 14 + BAR_HEIGHT + 10);
+        int maxVisibleItems = maxVisibleItems(listStartY);
+        return Math.max(1, (this.unlockedItems.size() + maxVisibleItems - 1) / maxVisibleItems);
     }
 
     private static final class DiscoveredItemEntry {

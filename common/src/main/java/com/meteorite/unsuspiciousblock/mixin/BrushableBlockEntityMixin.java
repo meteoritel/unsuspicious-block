@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -36,6 +36,7 @@ import java.util.UUID;
  */
 @Mixin(BrushableBlockEntity.class)
 public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityScanState {
+    // ========== NBT 键 ========== //
     @Unique
     private static final String UNSUSPICIOUSBLOCK_SCANNED_TAG = "unsuspiciousblock_scanned";
 
@@ -58,6 +59,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Shadow
     private ItemStack item;
 
+    // ========== 扫描状态字段 ========== //
     @Unique
     private boolean unsuspiciousblock$scanned;
 
@@ -65,6 +67,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Nullable
     private UUID unsuspiciousblock$scannerUuid;
 
+    // ========== 战利品表状态字段 ========== //
     @Unique
     @Nullable
     private ResourceLocation unsuspiciousblock$lootTableName;
@@ -72,6 +75,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Unique
     private boolean unsuspiciousblock$lootTableParsed;
 
+    // ========== 日志追踪字段 ========== //
     @Unique
     @Nullable
     private ExcavationLogEntry unsuspiciousblock$pendingJournalEntry;
@@ -79,6 +83,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Unique
     private boolean unsuspiciousblock$lootTableParsedThisCall;
 
+    // ========== 刷拭上下文字段 ========== //
     @Unique
     private boolean unsuspiciousblock$brushContext;
 
@@ -88,6 +93,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Unique
     private long unsuspiciousblock$brushDayTime = -1L;
 
+    // ========== 扫描状态 NBT ========== //
     // 将扫描状态写入方块实体 NBT
     @Unique
     private void unsuspiciousblock$writeScanData(CompoundTag tag) {
@@ -108,6 +114,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 : null;
     }
 
+    // ========== 战利品表状态 NBT ========== //
     // 将战利品表解析状态写入方块实体 NBT
     @Unique
     private void unsuspiciousblock$writeLootTableData(CompoundTag tag) {
@@ -165,7 +172,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         }
     }
 
-    // ========== 接口实现 ========= //
+    // ========== 扫描状态接口实现 ========== //
     // 标记当前可疑方块已被指定玩家扫描
     @Override
     public void unsuspiciousblock$markScanned(UUID scannerUuid) {
@@ -204,6 +211,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         return this.unsuspiciousblock$scannerUuid;
     }
 
+    // ========== 战利品表状态接口实现 ========== //
     // 返回当前缓存的战利品表名称
     @Override
     @Nullable
@@ -229,6 +237,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.item = stack;
     }
 
+    // ========== 日志追踪接口实现 ========== //
     @Override
     @Nullable
     public ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry() {
@@ -244,6 +253,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$syncBlockEntity();
     }
 
+    // ========== Mixin 注入 ========== //
     // 在刷拭开始时记录本次刷拭与时间信息
     @Inject(method = "brush", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushStart(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {

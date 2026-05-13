@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
@@ -65,6 +66,6 @@ public interface TrackedContainerLootState extends Container {
             }
             itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
         }
-        return itemCounts;
+        return LootCounts.normalize(itemCounts);
     }
 }

@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;
@@ -47,6 +47,8 @@ public final class ArchaeologyJournalLogLocalStore {
     private ArchaeologyJournalLogLocalStore() {
     }
 
+    // 每次读取状态前先执行 tick，确保本地缓存与连接状态同步。
+    // 这是刻意设计：调用方只需读取状态，无需额外记住刷新步骤。
     public static synchronized ArchaeologyJournalLogState getState() {
         tick();
         return logState;
@@ -78,10 +80,6 @@ public final class ArchaeologyJournalLogLocalStore {
         if (!shouldAcceptSnapshot(currentSessionId, lastAppliedSequence, payload)) {
             return;
         }
-        ArchaeologyJournalLogState previousState = logState.copy();
-        UUID previousSessionId = currentSessionId;
-        long previousSequence = lastAppliedSequence;
-        boolean previousBaselineUploaded = baselineUploaded;
 
         ArchaeologyJournalLogState updatedState = new ArchaeologyJournalLogState();
         updatedState.readFrom(payload.state());
@@ -89,14 +87,7 @@ public final class ArchaeologyJournalLogLocalStore {
         currentSessionId = payload.sessionId();
         lastAppliedSequence = payload.sequence();
         baselineUploaded = true;
-        if (save()) {
-            revision++;
-            return;
-        }
-        logState = previousState;
-        currentSessionId = previousSessionId;
-        lastAppliedSequence = previousSequence;
-        baselineUploaded = previousBaselineUploaded;
+
     }
 
     public static synchronized void applyUpdate(SyncJournalLogPayload payload) {
@@ -108,9 +99,7 @@ public final class ArchaeologyJournalLogLocalStore {
         if (!shouldAcceptUpdate(currentSessionId, lastAppliedSequence, payload)) {
             return;
         }
-        ArchaeologyJournalLogState previousState = logState.copy();
-        UUID previousSessionId = currentSessionId;
-        long previousSequence = lastAppliedSequence;
+
         boolean changed = applyIncremental(logState, payload);
         if (!changed) {
             if (currentSessionId == null) {
@@ -121,13 +110,22 @@ public final class ArchaeologyJournalLogLocalStore {
         }
         currentSessionId = payload.sessionId();
         lastAppliedSequence = payload.sequence();
+
+    }
+
+    private static boolean saveWithRollback(ArchaeologyJournalLogState previousState,
+                                            @Nullable UUID previousSessionId,
+                                            long previousSequence,
+                                            boolean previousBaselineUploaded) {
         if (save()) {
             revision++;
-            return;
+            return true;
         }
         logState = previousState;
         currentSessionId = previousSessionId;
         lastAppliedSequence = previousSequence;
+        baselineUploaded = previousBaselineUploaded;
+        return false;
     }
 
     private static void refreshConnection() {
@@ -212,16 +210,10 @@ public final class ArchaeologyJournalLogLocalStore {
         currentSessionId = workingSessionId;
         lastAppliedSequence = workingSequence;
         baselineUploaded = previousBaselineUploaded || acceptedSnapshot;
-        if (save()) {
+        if (saveWithRollback(previousState, previousSessionId, previousSequence, previousBaselineUploaded)) {
             pendingSnapshot = null;
             pendingIncrementals.clear();
-            revision++;
-            return;
         }
-        logState = previousState;
-        currentSessionId = previousSessionId;
-        lastAppliedSequence = previousSequence;
-        baselineUploaded = previousBaselineUploaded;
     }
 
     private static boolean shouldAcceptSnapshot(@Nullable UUID sessionId, long lastSequence,

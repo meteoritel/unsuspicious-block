@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.TreeMap;
 
 /**
@@ -21,14 +20,14 @@ public final class LootResultMatcher {
     }
 
     // 在候选签名中解析当前 stack 应命中的条目
+    // 同优先级出现多个候选时，宁可保守返回 null，也不要把掉落错误归到具体条目上。
     @Nullable
     public static LootResultSignature resolve(ItemStack stack, Iterable<LootResultSignature> candidates) {
         if (stack.isEmpty()) {
             return null;
         }
 
-        // 同优先级出现多个候选时，宁可保守降级，也不要把掉落错误归到具体条目上。
-        Map<Integer, List<LootResultSignature>> matchesByPriority = new TreeMap<>(Comparator.reverseOrder());
+        TreeMap<Integer, List<LootResultSignature>> matchesByPriority = new TreeMap<>(Comparator.reverseOrder());
         for (LootResultSignature candidate : candidates) {
             if (!matches(stack, candidate)) {
                 continue;
@@ -36,25 +35,14 @@ public final class LootResultMatcher {
 
             matchesByPriority.computeIfAbsent(priority(candidate), ignored -> new ArrayList<>()).add(candidate);
         }
-        if (matchesByPriority.isEmpty()) {
+
+        // 取最高优先级分组；若恰好只有一个不重复候选则命中，否则视为歧义返回 null
+        var firstEntry = matchesByPriority.firstEntry();
+        if (firstEntry == null) {
             return null;
         }
-
-        int minimumFallbackPriority = Integer.MIN_VALUE;
-        for (Map.Entry<Integer, List<LootResultSignature>> entry : matchesByPriority.entrySet()) {
-            int priority = entry.getKey();
-            List<LootResultSignature> matches = distinctSignatures(entry.getValue());
-            if (matches.size() == 1) {
-                return priority >= minimumFallbackPriority ? matches.getFirst() : null;
-            }
-
-            int fallbackPriority = fallbackPriority(priority);
-            if (fallbackPriority == Integer.MIN_VALUE) {
-                return null;
-            }
-            minimumFallbackPriority = Math.max(minimumFallbackPriority, fallbackPriority);
-        }
-        return null;
+        List<LootResultSignature> matches = distinctSignatures(firstEntry.getValue());
+        return matches.size() == 1 ? matches.getFirst() : null;
     }
 
     // 判断 stack 是否满足某个签名的最小匹配条件
@@ -86,10 +74,7 @@ public final class LootResultMatcher {
         return new ArrayList<>(new LinkedHashSet<>(matches));
     }
 
-    private static int fallbackPriority(int priority) {
-        return Integer.MIN_VALUE;
-    }
-
+    
     private static int priority(LootResultSignature signature) {
         return switch (signature.type()) {
             case COMPONENT_EXACT -> 50;

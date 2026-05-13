@@ -89,6 +89,8 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
             return null;
         }
 
+        // 历史上保存过的 ENCHANTED_RANDOM / ENCHANTED_LEVEL 统一折叠为 ENCHANTED_APPROX。
+        // 它们仅作为兼容旧数据的别名存在，不再以原始类型恢复。
         if (type == SignatureType.ENCHANTED_RANDOM || type == SignatureType.ENCHANTED_LEVEL) {
             return enchantedApprox(itemId);
         }

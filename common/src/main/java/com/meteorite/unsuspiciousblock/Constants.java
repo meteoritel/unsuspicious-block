@@ -7,5 +7,5 @@ import org.slf4j.LoggerFactory;
 public class Constants {
     public static final String MOD_ID = "unsuspiciousblock";
     public static final String MOD_NAME = "Unsuspicious Block";
-    public static final Logger LOG = LoggerFactory.getLogger(MOD_NAME);
+    public static final Logger LOG = LoggerFactory.getLogger(MOD_ID);
 }

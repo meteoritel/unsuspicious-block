@@ -264,18 +264,12 @@ public final class ArchaeologyJournalCatalog {
                                 : Component.translatable(RANDOM_HINT_KEY);
                     }
                     case "set_enchantments" -> {
-                        ItemStack resolvedStack = applyFixedEnchantments(previewStack, functionObject);
-                        if (resolvedStack != null) {
-                            previewStack = resolvedStack;
-                            signature = LootResultSignature.plain(currentItemId(previewStack));
-                        } else {
-                            previewStack = promoteBookPreviewIfNeeded(previewStack);
-                            signature = LootResultSignature.enchantedApprox(currentItemId(previewStack));
-                            if (hint == null) {
-                                hint = Component.translatable(ENCHANTED_HINT_KEY);
-                            }
-                            entryApproximate = true;
+                        previewStack = promoteBookPreviewIfNeeded(previewStack);
+                        signature = LootResultSignature.enchantedApprox(currentItemId(previewStack));
+                        if (hint == null) {
+                            hint = Component.translatable(ENCHANTED_HINT_KEY);
                         }
+                        entryApproximate = true;
                     }
                     case "set_components" -> {
                         if (!applyExactComponents(previewStack, functionObject.get("components"))) {
@@ -397,12 +391,6 @@ public final class ArchaeologyJournalCatalog {
         };
     }
 
-    @Nullable
-    private static ItemStack applyFixedEnchantments(ItemStack previewStack, JsonObject functionObject) {
-        // 附魔注册表属于动态注册表，这里在缺少注册表上下文时不做伪精确推导。
-        // 后续若目录加载链路补入 RegistryAccess，可在此恢复显式附魔的严格静态展开。
-        return null;
-    }
 
     @Nullable
     private static ResourceLocation parseFunctionItemId(JsonObject functionObject) {
@@ -499,13 +487,6 @@ public final class ArchaeologyJournalCatalog {
         return null;
     }
 
-    @Nullable
-    private static JsonObject getJsonObject(JsonObject object, String key) {
-        if (!object.has(key) || !object.get(key).isJsonObject()) {
-            return null;
-        }
-        return object.getAsJsonObject(key);
-    }
 
     private static boolean isEnchantLikeFunction(String function) {
         return function.contains("enchant");

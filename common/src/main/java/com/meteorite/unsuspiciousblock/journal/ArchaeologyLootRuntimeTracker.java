@@ -1,11 +1,12 @@
 package com.meteorite.unsuspiciousblock.journal;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -127,7 +128,7 @@ public final class ArchaeologyLootRuntimeTracker {
                                                         @Nullable ResourceLocation sourceBlockId, BlockPos pos,
                                                         Map<String, Integer> expectedLoot,
                                                         long gameTime, long dayTime) {
-        Map<String, Integer> normalizedExpectedLoot = normalizeLootCounts(expectedLoot);
+        Map<String, Integer> normalizedExpectedLoot = LootCounts.normalize(expectedLoot);
         if (normalizedExpectedLoot.isEmpty()) {
             return null;
         }
@@ -159,7 +160,7 @@ public final class ArchaeologyLootRuntimeTracker {
                                                       @Nullable ExcavationLogEntry pendingEntry,
                                                       Map<String, Integer> actualLoot,
                                                       long gameTime, long dayTime) {
-        Map<String, Integer> normalizedActualLoot = normalizeLootCounts(actualLoot);
+        Map<String, Integer> normalizedActualLoot = LootCounts.normalize(actualLoot);
         if (normalizedActualLoot.isEmpty()) {
             return pendingEntry;
         }
@@ -389,27 +390,6 @@ public final class ArchaeologyLootRuntimeTracker {
         return itemCounts;
     }
 
-    private static Map<String, Integer> normalizeLootCounts(@Nullable Map<String, Integer> lootCounts) {
-        if (lootCounts == null || lootCounts.isEmpty()) {
-            return Map.of();
-        }
-        LinkedHashMap<String, Integer> normalized = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : lootCounts.entrySet()) {
-            String signatureKey = entry.getKey();
-            Integer count = entry.getValue();
-            if (signatureKey == null || signatureKey.isBlank() || count == null || count <= 0) {
-                continue;
-            }
-            if (LootResultSignature.fromStoredKey(signatureKey) == null) {
-                continue;
-            }
-            normalized.merge(signatureKey, count, Integer::sum);
-        }
-        if (normalized.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(normalized);
-    }
 
     private static BlockPos resolveContainerPos(TrackedContainerLootState container) {
         if (container instanceof BlockEntity blockEntity) {

@@ -1,14 +1,15 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
-import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,11 +28,11 @@ public final class LogDetailPanel {
     private static final int HEADER_GAP = 14;
 
     private final JournalBookBackground.BookLayout layout;
+    private final PaginationState pagination = new PaginationState(this::computePageCount);
     @Nullable
     private ExcavationLogEntry entry;
     private final List<IconSlot> tooltipSlots = new ArrayList<>();
     private Bounds backBounds = Bounds.EMPTY;
-    private int page;
 
     public LogDetailPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -41,7 +42,7 @@ public final class LogDetailPanel {
         this.entry = entry;
         this.tooltipSlots.clear();
         this.backBounds = Bounds.EMPTY;
-        this.page = 0;
+        this.pagination.reset();
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
@@ -65,7 +66,7 @@ public final class LogDetailPanel {
             return;
         }
 
-        ItemStack sourceStack = LogPanel.createSourceStack(entry.sourceBlockId());
+        ItemStack sourceStack = JournalFormatHelper.createSourceStack(entry.sourceBlockId());
         int sourceTextX = leftX;
         int sourceTextWidth = contentWidth;
         if (!sourceStack.isEmpty()) {
@@ -77,35 +78,35 @@ public final class LogDetailPanel {
         }
         int sourceHeight = renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_source_block_value",
-                        LogPanel.formatBlockName(entry.sourceBlockId())),
+                        JournalFormatHelper.formatBlockName(entry.sourceBlockId())),
                 sourceTextX, y, sourceTextWidth, 2, TEXT_COLOR);
         y += Math.max(sourceHeight, sourceStack.isEmpty() ? 0 : ICON_SIZE) + SECTION_GAP;
 
         y += renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_trigger_type_value",
-                        LogPanel.formatTriggerType(entry.triggerType())),
+                        JournalFormatHelper.formatTriggerType(entry.triggerType())),
                 leftX, y, contentWidth, 1, TEXT_COLOR) + SECTION_GAP;
 
         guiGraphics.drawString(font,
-                LogPanel.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
+                JournalFormatHelper.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
                         entry.createdGameTime(), entry.createdDayTime()),
                 leftX, y, TEXT_COLOR, false);
         y += font.lineHeight + 2;
 
         guiGraphics.drawString(font,
-                LogPanel.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
+                JournalFormatHelper.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
                         entry.lastUpdatedGameTime(), entry.lastUpdatedDayTime()),
                 leftX, y, TEXT_COLOR, false);
         y += font.lineHeight + SECTION_GAP;
 
         y += renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_structure_value",
-                        LogPanel.formatStructureName(entry.structureId())),
+                        JournalFormatHelper.formatStructureName(entry.structureId())),
                 leftX, y, contentWidth, 2, TEXT_COLOR) + 2;
 
         y += renderWrappedText(guiGraphics, font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_biome_value",
-                        LogPanel.formatBiomeName(entry.biomeId())),
+                        JournalFormatHelper.formatBiomeName(entry.biomeId())),
                 leftX, y, contentWidth, 2, TEXT_COLOR) + 2;
 
         guiGraphics.drawString(font,
@@ -116,21 +117,21 @@ public final class LogDetailPanel {
 
         int rowsPerSection = rowsPerSection(y, font.lineHeight);
         int iconsPerRow = iconsPerRow(contentWidth);
-        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        int page = this.pagination.getPage();
 
         guiGraphics.drawString(font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_expected_loot"),
                 leftX, y, LABEL_COLOR, false);
         y += font.lineHeight + 2;
         y += renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                entry.expectedLoot(), this.page, rowsPerSection, iconsPerRow) + SECTION_GAP;
+                entry.expectedLoot(), page, rowsPerSection, iconsPerRow) + SECTION_GAP;
 
         guiGraphics.drawString(font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_actual_loot"),
                 leftX, y, LABEL_COLOR, false);
         y += font.lineHeight + 2;
         renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                entry.actualLoot(), this.page, rowsPerSection, iconsPerRow);
+                entry.actualLoot(), page, rowsPerSection, iconsPerRow);
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -153,29 +154,19 @@ public final class LogDetailPanel {
     }
 
     public int pageCount() {
-        ExcavationLogEntry entry = this.entry;
-        if (entry == null) {
-            return 1;
-        }
-        int lineHeight = currentLineHeight();
-        int contentWidth = this.layout.rightPageWidth() - 20;
-        int iconsPerRow = iconsPerRow(contentWidth);
-        int rowsPerSection = rowsPerSection(detailContentTop(lineHeight), lineHeight);
-        int expectedPages = lootPageCount(entry.expectedLoot(), iconsPerRow, rowsPerSection);
-        int actualPages = lootPageCount(entry.actualLoot(), iconsPerRow, rowsPerSection);
-        return Math.max(1, Math.max(expectedPages, actualPages));
+        return this.pagination.pageCount();
     }
 
     public int getPage() {
-        return this.page;
+        return this.pagination.getPage();
     }
 
     public void changePage(int delta) {
-        this.page = Mth.clamp(this.page + delta, 0, Math.max(0, pageCount() - 1));
+        this.pagination.changePage(delta);
     }
 
     public void setPage(int page) {
-        this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+        this.pagination.setPage(page);
     }
 
     private int renderLootIcons(GuiGraphics guiGraphics, Font font, int leftX, int topY, int width,
@@ -195,7 +186,7 @@ public final class LogDetailPanel {
         int renderedCount = 0;
         for (int i = from; i < to; i++) {
             Map.Entry<String, Integer> entry = entries.get(i);
-            ItemStack stack = LogPanel.createLootStack(entry.getKey(), entry.getValue());
+            ItemStack stack = JournalFormatHelper.createLootStack(entry.getKey(), entry.getValue());
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
@@ -233,8 +224,8 @@ public final class LogDetailPanel {
 
     private static List<Map.Entry<String, Integer>> renderableLootEntries(Map<String, Integer> lootMap) {
         List<Map.Entry<String, Integer>> entries = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : LogPanel.sortedLootEntries(lootMap)) {
-            ItemStack stack = LogPanel.createLootStack(entry.getKey(), entry.getValue());
+        for (Map.Entry<String, Integer> entry : JournalFormatHelper.sortedLootEntries(lootMap)) {
+            ItemStack stack = JournalFormatHelper.createLootStack(entry.getKey(), entry.getValue());
             if (stack != null && !stack.isEmpty()) {
                 entries.add(entry);
             }
@@ -268,6 +259,20 @@ public final class LogDetailPanel {
     private int currentLineHeight() {
         Font font = Minecraft.getInstance().font;
         return font.lineHeight;
+    }
+
+    private int computePageCount() {
+        ExcavationLogEntry currentEntry = this.entry;
+        if (currentEntry == null) {
+            return 1;
+        }
+        int lineHeight = currentLineHeight();
+        int contentWidth = this.layout.rightPageWidth() - 20;
+        int iconsPerRow = iconsPerRow(contentWidth);
+        int rowsPerSection = rowsPerSection(detailContentTop(lineHeight), lineHeight);
+        int expectedPages = lootPageCount(currentEntry.expectedLoot(), iconsPerRow, rowsPerSection);
+        int actualPages = lootPageCount(currentEntry.actualLoot(), iconsPerRow, rowsPerSection);
+        return Math.max(1, Math.max(expectedPages, actualPages));
     }
 
     private static int renderWrappedText(GuiGraphics guiGraphics, Font font, Component text,

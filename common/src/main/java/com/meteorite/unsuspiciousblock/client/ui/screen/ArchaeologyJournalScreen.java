@@ -11,6 +11,8 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.Tab
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.TriggerType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -394,10 +396,10 @@ public class ArchaeologyJournalScreen extends Screen {
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         Long firstUnlockedGameTime = logHistory != null ? logHistory.getFirstUnlockedGameTime() : null;
         Long firstUnlockedDayTime = logHistory != null ? logHistory.getFirstUnlockedDayTime() : null;
-        ArchaeologyJournalLogState.TriggerType firstUnlockTriggerType = logHistory != null
+        TriggerType firstUnlockTriggerType = logHistory != null
                 ? logHistory.getFirstUnlockTriggerType()
                 : null;
-        List<ArchaeologyJournalLogState.ExcavationLogEntry> logEntries = logHistory != null
+        List<ExcavationLogEntry> logEntries = logHistory != null
                 ? List.copyOf(logHistory.getEntries())
                 : List.of();
         return new TableView(tableId, definition.displayName(), items, definition.totalWeight(),
@@ -537,8 +539,8 @@ public class ArchaeologyJournalScreen extends Screen {
     private record TableView(ResourceLocation id, Component displayName, List<ItemView> items,
                              double totalWeight, int totalCount, int parsedCount, boolean approximate, boolean unlocked,
                              @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
-                             @Nullable ArchaeologyJournalLogState.TriggerType firstUnlockTriggerType,
-                             List<ArchaeologyJournalLogState.ExcavationLogEntry> logEntries) {
+                             @Nullable TriggerType firstUnlockTriggerType,
+                             List<ExcavationLogEntry> logEntries) {
     }
 
     private record ItemView(ResourceLocation id, Component displayName,
