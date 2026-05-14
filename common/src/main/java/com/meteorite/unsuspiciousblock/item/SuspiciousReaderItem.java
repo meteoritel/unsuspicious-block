@@ -29,7 +29,7 @@ public class SuspiciousReaderItem extends Item {
     }
 
     @Override
-    public boolean isEnchantable(ItemStack stack) {
+    public boolean isEnchantable(@NotNull ItemStack stack) {
         return true;
     }
 

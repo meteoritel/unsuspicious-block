@@ -2,17 +2,22 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.network.payload.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.SyncSpecimenBoxViewPayload;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
@@ -26,7 +31,13 @@ public final class UnsuspiciousBlockNeoForgeClient {
         event.enqueueWork(() -> {
             ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
+            NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
         });
+    }
+
+    @SubscribeEvent
+    public static void registerScreens(RegisterMenuScreensEvent event) {
+        event.register(UnsuspiciousBlockNeoForge.specimenBoxMenu(), SpecimenBoxScreen::new);
     }
 
     @SubscribeEvent
@@ -40,9 +51,16 @@ public final class UnsuspiciousBlockNeoForgeClient {
                 (payload, context) -> ArchaeologyJournalClientState.receiveLogUpdate(payload));
         registrar.playToClient(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalClientState.receiveLogSnapshot(payload));
+        registrar.playToClient(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC,
+                (payload, context) -> SpecimenBoxClientState.receiveView(payload));
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {
         ArchaeologyJournalClientState.tick();
+        SpecimenBoxClientState.tick();
+    }
+
+    private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        SpecimenBoxClientState.clearAll();
     }
 }

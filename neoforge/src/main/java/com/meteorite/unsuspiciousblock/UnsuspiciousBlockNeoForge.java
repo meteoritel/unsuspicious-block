@@ -5,11 +5,14 @@ import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.menu.ModMenus;
+import com.meteorite.unsuspiciousblock.menu.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
@@ -19,6 +22,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -38,6 +42,11 @@ public class UnsuspiciousBlockNeoForge {
 
     private static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(Constants.MOD_ID);
+    private static final DeferredRegister<MenuType<?>> MENUS =
+            DeferredRegister.create(Registries.MENU, Constants.MOD_ID);
+    private static final DeferredHolder<MenuType<?>, MenuType<SpecimenBoxMenu>> SPECIMEN_BOX_MENU =
+            MENUS.register("specimen_box", () -> IMenuTypeExtension.create((containerId, inventory, extraData) ->
+                    new SpecimenBoxMenu(containerId, inventory)));
 
     /** 存储 (DeferredItem, Consumer<Item>) 对，供 FMLCommonSetupEvent 中回写 */
     private record ItemSyncEntry(DeferredItem<Item> deferred, Consumer<Item> setter) {}
@@ -71,6 +80,7 @@ public class UnsuspiciousBlockNeoForge {
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC);
 
         ITEMS.register(modEventBus);
+        MENUS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
 
         modEventBus.addListener(this::syncCommonItemRefs);
@@ -86,7 +96,12 @@ public class UnsuspiciousBlockNeoForge {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
             }
+            ModMenus.SPECIMEN_BOX = SPECIMEN_BOX_MENU.get();
         });
+    }
+
+    public static MenuType<SpecimenBoxMenu> specimenBoxMenu() {
+        return SPECIMEN_BOX_MENU.get();
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {

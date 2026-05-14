@@ -20,6 +20,7 @@
   "item.unsuspiciousblock.luoyang_spade.reflection_failed": "Internal error: could not extract loot. Check mod compatibility.",
 
   "item.unsuspiciousblock.archaeology_journal": "Archaeology Journal",
+  "item.unsuspiciousblock.specimen_box": "Specimen Box",
   "item.unsuspiciousblock.ancient_coin": "Ancient Coin",
   "item.unsuspiciousblock.lost_page": "Lost Page",
   "item.unsuspiciousblock.page_base": "Page Base",
@@ -29,6 +30,9 @@
   "enchantment.unsuspiciousblock.penetrating_scan": "Penetrating Scan",
   "enchantment.unsuspiciousblock.fossil_hunter": "Fossil Hunter",
   "screen.unsuspiciousblock.archaeology_journal.title": "Archaeology Journal",
+  "screen.unsuspiciousblock.specimen_box.title": "Specimen Box",
+  "screen.unsuspiciousblock.specimen_box.empty": "No unlocked tables.",
+  "screen.unsuspiciousblock.specimen_box.stored": "Stored: %d",
   "screen.unsuspiciousblock.archaeology_journal.catalog": "Catalog",
   "screen.unsuspiciousblock.archaeology_journal.entries": "Entries",
   "screen.unsuspiciousblock.archaeology_journal.empty": "No records yet.",

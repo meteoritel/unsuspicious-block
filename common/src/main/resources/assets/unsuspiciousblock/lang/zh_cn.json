@@ -18,6 +18,7 @@
   "item.unsuspiciousblock.luoyang_spade.reflection_failed": "内部错误：无法取出战利品，请检查 mod 兼容性。",
 
   "item.unsuspiciousblock.archaeology_journal": "考古笔记",
+  "item.unsuspiciousblock.specimen_box": "标本箱",
   "item.unsuspiciousblock.ancient_coin": "古代金币",
   "item.unsuspiciousblock.lost_page": "失落书页",
   "item.unsuspiciousblock.page_base": "书页基底",
@@ -29,6 +30,9 @@
   "itemGroup.unsuspiciousblock.main": "Unsuspicious Block",
 
   "screen.unsuspiciousblock.archaeology_journal.title": "考古笔记",
+  "screen.unsuspiciousblock.specimen_box.title": "标本箱",
+  "screen.unsuspiciousblock.specimen_box.empty": "尚未解锁任何战利品表。",
+  "screen.unsuspiciousblock.specimen_box.stored": "存放：%d",
   "screen.unsuspiciousblock.archaeology_journal.catalog": "目录",
   "screen.unsuspiciousblock.archaeology_journal.entries": "条目",
   "screen.unsuspiciousblock.archaeology_journal.empty": "尚无记录。",

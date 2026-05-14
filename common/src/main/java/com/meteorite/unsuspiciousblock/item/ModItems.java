@@ -13,6 +13,7 @@ public class ModItems {
     public static SuspiciousReaderItem SUSPICIOUS_READER;
     public static LuoyangSpadeItem LUOYANG_SPADE;
     public static ArchaeologyJournalItem ARCHAEOLOGY_JOURNAL;
+    public static SpecimenBoxItem SPECIMEN_BOX;
     public static Item ANCIENT_COIN;
     public static Item LOST_PAGE;
     public static Item PAGE_BASE;
@@ -31,6 +32,9 @@ public class ModItems {
             new ItemEntry("archaeology_journal",
                     ModItems::createArchaeologyJournal,
                     item -> ARCHAEOLOGY_JOURNAL = (ArchaeologyJournalItem) item),
+            new ItemEntry("specimen_box",
+                    ModItems::createSpecimenBox,
+                    item -> SPECIMEN_BOX = (SpecimenBoxItem) item),
             new ItemEntry("ancient_coin",
                     ModItems::createAncientCoin,
                     item -> ANCIENT_COIN = item),
@@ -50,6 +54,7 @@ public class ModItems {
     public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGY_JOURNAL,
+            () -> SPECIMEN_BOX,
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
             () -> PAGE_BASE
@@ -69,6 +74,11 @@ public class ModItems {
     // 创建考古笔记实例
     public static ArchaeologyJournalItem createArchaeologyJournal() {
         return new ArchaeologyJournalItem(new Item.Properties().stacksTo(1));
+    }
+
+    // 创建标本箱实例
+    public static SpecimenBoxItem createSpecimenBox() {
+        return new SpecimenBoxItem(new Item.Properties().stacksTo(1));
     }
 
     // 创建古代金币实例
