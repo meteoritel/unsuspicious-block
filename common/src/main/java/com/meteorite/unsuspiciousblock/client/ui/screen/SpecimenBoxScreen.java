@@ -15,10 +15,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
-/** 标本箱界面——使用权威菜单快照渲染目录、分页与 2x3 逻辑槽位。 */
+/** 标本箱界面——使用权威菜单快照渲染目录、分页与 3x3 逻辑槽位。 */
 public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> {
     private static final ResourceLocation MAIN_PANEL_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/specimen_box_main_panel.png");
@@ -32,44 +31,44 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
 
     // ========== 主页面常量 玩家物品栏 + 标本箱物品栏 ========== //
-    private static final int MAIN_PANEL_WIDTH = 198;
-    private static final int MAIN_PANEL_HEIGHT = 124;
-    private static final int INVENTORY_PANEL_X = 11;
-    private static final int INVENTORY_PANEL_Y = 132;
+    private static final int MAIN_PANEL_WIDTH = 233;
+    private static final int MAIN_PANEL_HEIGHT = 117;
+    private static final int INVENTORY_PANEL_X = 29;
+    private static final int INVENTORY_PANEL_Y = 128;
     private static final int INVENTORY_PANEL_WIDTH = 176;
     private static final int INVENTORY_PANEL_HEIGHT = 100;
+    private static final int BOX_TITLE_X = 24;
+    private static final int BOX_TITLE_Y = 8;
+    private static final int PLAYER_TITLE_X = 35;
+    private static final int PLAYER_TITLE_Y = 134;
 
-    // ========== 标题与翻页 ========== //
-    private static final int TITLE_X = 12;
-    private static final int TITLE_Y = 10;
-    private static final int PLAYER_TITLE_X = 20;
-    private static final int PLAYER_TITLE_Y = 137;
-    private static final int RIGHT_HEADER_CENTER_X = 148;
-    private static final int RIGHT_HEADER_Y = 12;
-    private static final int PAGE_LABEL_CENTER_X = 148;
-    private static final int PAGE_LABEL_Y = 99;
+    // ========== 目录与翻页 ========== //
+    private static final int PAGE_LABEL_CENTER_X = 170;
+    private static final int PAGE_LABEL_Y = 119;
+    private static final int EMPTY_HINT_Y = 54;
 
-    private static final int CATALOG_X = 13;
-    private static final int CATALOG_Y = 31;
+    private static final int CATALOG_X = 24;
+    private static final int CATALOG_Y = 20;
     private static final int CATALOG_WIDTH = 72;
-    private static final int CATALOG_VISIBLE_ROWS = 5;
-    private static final int CATALOG_ROW_HEIGHT = 18;
-    private static final int CATALOG_PREV_X = 82;
-    private static final int CATALOG_PREV_Y = 9;
-    private static final int CATALOG_NEXT_X = 95;
-    private static final int CATALOG_NEXT_Y = 9;
+    private static final int CATALOG_VISIBLE_ROWS = 4;
+    private static final int CATALOG_ENTRY_HEIGHT = 18;
+    private static final int CATALOG_ROW_SPACING = CATALOG_ENTRY_HEIGHT + 1;
+    private static final int CATALOG_PREV_X = 68;
+    private static final int CATALOG_PREV_Y = 4;
+    private static final int CATALOG_NEXT_X = 83;
+    private static final int CATALOG_NEXT_Y = 4;
 
-    private static final int SLOT_GRID_X = 111;
-    private static final int SLOT_GRID_Y = 34;
+    private static final int SLOT_GRID_X = 135;
+    private static final int SLOT_GRID_Y = 17;
     private static final int SLOT_SIZE = 20;
     private static final int SLOT_FRAME_SIZE = 24;
     private static final int SLOT_FRAME_OFFSET = 2;
     private static final int SLOT_COLUMN_SPACING = 28;
-    private static final int SLOT_ROW_SPACING = 32;
-    private static final int PAGE_PREV_X = 118;
-    private static final int PAGE_PREV_Y = 97;
-    private static final int PAGE_NEXT_X = 166;
-    private static final int PAGE_NEXT_Y = 97;
+    private static final int SLOT_ROW_SPACING = 28;
+    private static final int PAGE_PREV_X = 136;
+    private static final int PAGE_PREV_Y = 116;
+    private static final int PAGE_NEXT_X = 192;
+    private static final int PAGE_NEXT_Y = 116;
     private static final int BUTTON_SIZE = 12;
 
     private SpecimenBoxClientState.Snapshot snapshot;
@@ -82,7 +81,7 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+        // this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
         this.renderTooltip(guiGraphics, mouseX, mouseY);
         this.renderLogicalTooltips(guiGraphics, mouseX, mouseY);
@@ -106,20 +105,20 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
 
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        guiGraphics.drawString(this.font, this.title, TITLE_X, TITLE_Y, 0xFFF4DD, false);
+        guiGraphics.drawString(this.font, this.title, BOX_TITLE_X, BOX_TITLE_Y, 0xFFF4DD, false);
         guiGraphics.drawString(this.font, this.playerInventoryTitle, PLAYER_TITLE_X, PLAYER_TITLE_Y, 0x4A4A4A, false);
 
-        if (this.selectedTable() != null) {
-            String tableName = this.font.plainSubstrByWidth(Objects.requireNonNull(this.selectedTable()).displayName().getString(), 84);
-            guiGraphics.drawCenteredString(this.font, tableName, RIGHT_HEADER_CENTER_X, RIGHT_HEADER_Y, 0xFFF3DD);
+        if (this.selectedTable() == null) {
+            guiGraphics.drawCenteredString(this.font,
+                    Component.translatable("screen.unsuspiciousblock.specimen_box.empty"),
+                    PAGE_LABEL_CENTER_X, EMPTY_HINT_Y, 0xA18364);
+            return;
+        }
+        if (this.pageCount() > 1) {
             guiGraphics.drawCenteredString(this.font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.page",
                             this.pageIndex() + 1, this.pageCount()),
                     PAGE_LABEL_CENTER_X, PAGE_LABEL_Y, 0xF2E2C6);
-        } else {
-            guiGraphics.drawCenteredString(this.font,
-                    Component.translatable("screen.unsuspiciousblock.specimen_box.empty"),
-                    RIGHT_HEADER_CENTER_X, 76, 0xA18364);
         }
     }
 
@@ -146,8 +145,11 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
         int left = this.leftPos;
         int top = this.topPos;
         if (button == 0) {
-            boolean canSelectPrevTable = this.selectedTableIndex() > 0;
-            boolean canSelectNextTable = this.selectedTableIndex() >= 0 && this.selectedTableIndex() < this.tableCount() - 1;
+            boolean showTableButtons = this.tableCount() > CATALOG_VISIBLE_ROWS;
+            boolean canSelectPrevTable = showTableButtons && this.selectedTableIndex() > 0;
+            boolean canSelectNextTable = showTableButtons
+                    && this.selectedTableIndex() >= 0
+                    && this.selectedTableIndex() < this.tableCount() - 1;
             boolean canSelectPrevPage = this.pageIndex() > 0;
             boolean canSelectNextPage = this.pageIndex() + 1 < this.pageCount();
             if (canSelectPrevTable
@@ -172,8 +174,8 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
             for (int index = visibleStart; index < visibleEnd; index++) {
                 int row = index - visibleStart;
                 int rowX = left + CATALOG_X;
-                int rowY = top + CATALOG_Y + row * CATALOG_ROW_HEIGHT;
-                if (this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ROW_HEIGHT, mouseX, mouseY)) {
+                int rowY = top + CATALOG_Y + row * CATALOG_ROW_SPACING;
+                if (this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ENTRY_HEIGHT, mouseX, mouseY)) {
                     return this.sendMenuButton(SpecimenBoxMenu.visibleTableButtonId(row));
                 }
             }
@@ -189,24 +191,26 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     }
 
     private void renderCatalogPanel(GuiGraphics guiGraphics, int left, int top, int mouseX, int mouseY) {
-        this.renderArrowButton(guiGraphics, left + CATALOG_PREV_X, top + CATALOG_PREV_Y,
-                this.selectedTableIndex() > 0, mouseX, mouseY, "<");
-        this.renderArrowButton(guiGraphics, left + CATALOG_NEXT_X, top + CATALOG_NEXT_Y,
-                this.selectedTableIndex() >= 0 && this.selectedTableIndex() < this.tableCount() - 1,
-                mouseX, mouseY, ">"
-        );
+        if (this.tableCount() > CATALOG_VISIBLE_ROWS) {
+            this.renderArrowButton(guiGraphics, left + CATALOG_PREV_X, top + CATALOG_PREV_Y,
+                    this.selectedTableIndex() > 0, mouseX, mouseY, "<");
+            this.renderArrowButton(guiGraphics, left + CATALOG_NEXT_X, top + CATALOG_NEXT_Y,
+                    this.selectedTableIndex() >= 0 && this.selectedTableIndex() < this.tableCount() - 1,
+                    mouseX, mouseY, ">"
+            );
+        }
 
         int visibleStart = this.visibleTableStart();
         int visibleEnd = Math.min(visibleStart + CATALOG_VISIBLE_ROWS, this.tableCount());
         for (int index = visibleStart; index < visibleEnd; index++) {
             int row = index - visibleStart;
             int rowX = left + CATALOG_X;
-            int rowY = top + CATALOG_Y + row * CATALOG_ROW_HEIGHT;
+            int rowY = top + CATALOG_Y + row * CATALOG_ROW_SPACING;
             boolean selected = index == this.selectedTableIndex();
-            boolean hovered = this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ROW_HEIGHT, mouseX, mouseY);
-            int v = selected ? CATALOG_ROW_HEIGHT * 2 : hovered ? CATALOG_ROW_HEIGHT : 0;
+            boolean hovered = this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ENTRY_HEIGHT, mouseX, mouseY);
+            int v = selected ? CATALOG_ENTRY_HEIGHT * 2 : hovered ? CATALOG_ENTRY_HEIGHT : 0;
             guiGraphics.blit(CATALOG_ENTRY_TEXTURE, rowX, rowY, 0, v,
-                    CATALOG_WIDTH, CATALOG_ROW_HEIGHT, CATALOG_WIDTH, CATALOG_ROW_HEIGHT * 3);
+                    CATALOG_WIDTH, CATALOG_ENTRY_HEIGHT, CATALOG_WIDTH, CATALOG_ENTRY_HEIGHT * 3);
 
             String label = this.font.plainSubstrByWidth(this.tableAt(index).displayName().getString(), CATALOG_WIDTH - 8);
             guiGraphics.drawString(this.font, label, rowX + 4, rowY + 5, selected ? 0xFFF9ED : 0xF2E2C7, false);
@@ -264,6 +268,9 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     }
 
     private void renderPageButtons(GuiGraphics guiGraphics, int left, int top, int mouseX, int mouseY) {
+        if (this.pageCount() <= 1) {
+            return;
+        }
         this.renderArrowButton(guiGraphics, left + PAGE_PREV_X, top + PAGE_PREV_Y,
                 this.pageIndex() > 0, mouseX, mouseY, "<");
         this.renderArrowButton(guiGraphics, left + PAGE_NEXT_X, top + PAGE_NEXT_Y,
@@ -306,8 +313,8 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
         for (int index = visibleStart; index < visibleEnd; index++) {
             int row = index - visibleStart;
             int rowX = this.leftPos + CATALOG_X;
-            int rowY = this.topPos + CATALOG_Y + row * CATALOG_ROW_HEIGHT;
-            if (this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ROW_HEIGHT, mouseX, mouseY)) {
+            int rowY = this.topPos + CATALOG_Y + row * CATALOG_ROW_SPACING;
+            if (this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ENTRY_HEIGHT, mouseX, mouseY)) {
                 guiGraphics.renderTooltip(this.font, this.tableAt(index).displayName(), mouseX, mouseY);
                 return;
             }

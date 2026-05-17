@@ -93,7 +93,7 @@ public class SpecimenBoxStorage extends SimpleContainer {
 
     @Override
     public void clearContent() {
-        this.slotEntries.replaceAll(ignored -> null);
+        Collections.fill(this.slotEntries, null);
         super.clearContent();
     }
 

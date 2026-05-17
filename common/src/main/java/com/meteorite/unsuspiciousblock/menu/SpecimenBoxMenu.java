@@ -34,7 +34,7 @@ import java.util.Map;
 
 /** 标本箱菜单——当前阶段先接入隐藏后端容器、目录分页状态与权威客户端快照。 */
 public class SpecimenBoxMenu extends AbstractContainerMenu {
-    public static final int LOGICAL_SLOTS_PER_PAGE = 6;
+    public static final int LOGICAL_SLOTS_PER_PAGE = 9;
     public static final int BUTTON_PREV_PAGE = 1;
     public static final int BUTTON_NEXT_PAGE = 2;
     public static final int BUTTON_PREV_TABLE = 3;
@@ -42,14 +42,14 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     public static final int BUTTON_SELECT_VISIBLE_TABLE_BASE = 10;
     public static final int BUTTON_LOGICAL_SLOT_PRIMARY_BASE = 20;
     public static final int BUTTON_LOGICAL_SLOT_SECONDARY_BASE = 30;
-    public static final int VISIBLE_TABLE_BUTTON_COUNT = 5;
+    public static final int VISIBLE_TABLE_BUTTON_COUNT = 4;
 
     private static final int MAX_LOGICAL_SLOT_STACK_MULTIPLIER = 4;
     private static final int BACKEND_SLOT_X = -2000;
     private static final int BACKEND_SLOT_Y = -2000;
-    private static final int PLAYER_INVENTORY_X = 19;
-    private static final int PLAYER_INVENTORY_Y = 150;
-    private static final int HOTBAR_Y = 208;
+    private static final int PLAYER_INVENTORY_X = 37;
+    private static final int PLAYER_INVENTORY_Y = 146;
+    private static final int HOTBAR_Y = 204;
 
     private final Player owner;
     private final SpecimenBoxStorage storage;
