@@ -5,10 +5,9 @@ import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.menu.ModMenus;
-import com.meteorite.unsuspiciousblock.menu.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
-import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -96,7 +95,7 @@ public class UnsuspiciousBlockNeoForge {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
             }
-            ModMenus.SPECIMEN_BOX = SPECIMEN_BOX_MENU.get();
+            SpecimenBoxMenu.TYPE = SPECIMEN_BOX_MENU.get();
         });
     }
 

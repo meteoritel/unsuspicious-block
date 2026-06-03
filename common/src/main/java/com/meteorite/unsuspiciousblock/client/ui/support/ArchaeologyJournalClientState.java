@@ -3,10 +3,10 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.network.payload.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 

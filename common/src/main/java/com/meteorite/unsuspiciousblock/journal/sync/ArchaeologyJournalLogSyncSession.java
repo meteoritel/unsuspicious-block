@@ -43,12 +43,11 @@ public final class ArchaeologyJournalLogSyncSession {
     }
 
     @Nullable
-    // 获取当前同步会话 ID
     public UUID getSessionId() {
         return this.sessionId;
     }
 
-    // 检查是否已收到客户端的基础日志数据（已播种）
+    // 检查是否已收到客户端的基础日志数据
     public boolean isSeeded() {
         return this.seeded;
     }

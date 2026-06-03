@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.menu;
+package com.meteorite.unsuspiciousblock.specimen;
 
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -8,10 +8,9 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.Ite
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.network.payload.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxState;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxStorage;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -21,6 +20,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.DataSlot;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -47,6 +47,12 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     public static final int BUTTON_SELECT_TABLE_ABSOLUTE_BASE = 100;
     public static final int BUTTON_LOGICAL_SLOT_PRIMARY_BASE = 20;
     public static final int BUTTON_LOGICAL_SLOT_SECONDARY_BASE = 30;
+
+    /** 菜单类型 ID，各平台注册时使用 */
+    public static final ResourceLocation ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "specimen_box");
+    /** 菜单类型，由平台模块注册后回写 */
+    public static MenuType<SpecimenBoxMenu> TYPE;
 
     private static final int MAX_LOGICAL_SLOT_STACK_MULTIPLIER = 4;
     private static final int BACKEND_SLOT_X = -2000;
@@ -76,7 +82,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
 
     // 完整构造：初始化 DataSlot、后端槽位、玩家物品栏；服务端侧立即规范化选择并推送快照
     private SpecimenBoxMenu(int containerId, Inventory playerInventory, InteractionHand hand, int carrierSlotIndex) {
-        super(ModMenus.SPECIMEN_BOX, containerId);
+        super(TYPE, containerId);
         this.owner = playerInventory.player;
         this.storage = new SpecimenBoxStorage(this.owner, hand, carrierSlotIndex);
         this.carrierHandData.set(hand == InteractionHand.OFF_HAND ? 1 : 0);

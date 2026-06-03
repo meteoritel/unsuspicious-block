@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.network.payload;
+package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -34,7 +34,6 @@ public record SyncSpecimenBoxViewPayload(int containerId,
         return TYPE;
     }
 
-    // 将 payload 编码到网络缓冲区
     private static void encode(RegistryFriendlyByteBuf buf, SyncSpecimenBoxViewPayload payload) {
         buf.writeVarInt(payload.containerId);
         buf.writeVarInt(payload.tables.size());
@@ -55,7 +54,6 @@ public record SyncSpecimenBoxViewPayload(int containerId,
         }
     }
 
-    // 从网络缓冲区解码 payload
     private static SyncSpecimenBoxViewPayload decode(RegistryFriendlyByteBuf buf) {
         int containerId = buf.readVarInt();
         int tableCount = buf.readVarInt();

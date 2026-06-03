@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.network.payload.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;

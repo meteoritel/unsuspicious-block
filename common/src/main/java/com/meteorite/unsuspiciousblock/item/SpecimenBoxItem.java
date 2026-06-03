@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.item;
 
-import com.meteorite.unsuspiciousblock.menu.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;

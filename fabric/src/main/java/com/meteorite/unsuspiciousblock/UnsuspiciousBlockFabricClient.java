@@ -5,12 +5,12 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
-import com.meteorite.unsuspiciousblock.menu.ModMenus;
-import com.meteorite.unsuspiciousblock.network.payload.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -22,7 +22,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
-        MenuScreens.register(ModMenus.SPECIMEN_BOX, SpecimenBoxScreen::new);
+        MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
         ClientPlayNetworking.registerGlobalReceiver(SyncArchaeologyCatalogPayload.TYPE,
                 (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
@@ -35,6 +35,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(SyncSpecimenBoxViewPayload.TYPE,
                 (payload, context) -> SpecimenBoxClientState.receiveView(payload));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> SpecimenBoxClientState.clearAll());
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ArchaeologyJournalClientState.tick();
             SpecimenBoxClientState.tick();

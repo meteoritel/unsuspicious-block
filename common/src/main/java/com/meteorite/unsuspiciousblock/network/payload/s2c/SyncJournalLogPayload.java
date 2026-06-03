@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.network.payload;
+package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
@@ -13,6 +13,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
+/**
+ * 日记日志增量同步包（服务端→客户端）。
+ * 将单次操作（设置首解锁元数据、插入条目、清空等）以增量形式同步至客户端，
+ * 客户端按 sessionId + sequence 保证操作顺序与幂等性。
+ */
 public record SyncJournalLogPayload(UUID sessionId,
                                     long sequence,
                                     Action action,
@@ -28,6 +33,7 @@ public record SyncJournalLogPayload(UUID sessionId,
     public static final StreamCodec<RegistryFriendlyByteBuf, SyncJournalLogPayload> STREAM_CODEC =
             StreamCodec.of(SyncJournalLogPayload::encode, SyncJournalLogPayload::decode);
 
+    // 构建"设置首解锁元数据"操作包
     public static SyncJournalLogPayload setFirstUnlockMeta(UUID sessionId, long sequence, ResourceLocation tableId,
                                                            @Nullable TriggerType triggerType,
                                                            long firstUnlockedGameTime, long firstUnlockedDayTime) {
@@ -40,15 +46,18 @@ public record SyncJournalLogPayload(UUID sessionId,
         return new SyncJournalLogPayload(sessionId, sequence, Action.SET_FIRST_UNLOCK_META, tableId, data);
     }
 
+    // 构建"插入/更新条目"操作包
     public static SyncJournalLogPayload upsertEntry(UUID sessionId, long sequence, ResourceLocation tableId,
                                                     CompoundTag entryTag) {
         return new SyncJournalLogPayload(sessionId, sequence, Action.UPSERT_ENTRY, tableId, entryTag.copy());
     }
 
+    // 构建"清空全部日志"操作包
     public static SyncJournalLogPayload clearAll(UUID sessionId, long sequence) {
         return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_ALL, null, new CompoundTag());
     }
 
+    // 构建"清空指定表日志"操作包
     public static SyncJournalLogPayload clearTable(UUID sessionId, long sequence, ResourceLocation tableId) {
         return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_TABLE, tableId, new CompoundTag());
     }
@@ -58,6 +67,7 @@ public record SyncJournalLogPayload(UUID sessionId,
         return TYPE;
     }
 
+    // 从包数据中解析触发类型
     @Nullable
     public TriggerType triggerType() {
         if (!this.data.contains(TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
@@ -66,16 +76,19 @@ public record SyncJournalLogPayload(UUID sessionId,
         return TriggerType.fromSerializedName(this.data.getString(TRIGGER_TYPE_TAG));
     }
 
+    // 从包数据中获取游戏时间（非负）
     public long gameTime() {
         return Math.max(0L, this.data.getLong(GAME_TIME_TAG));
     }
 
+    // 从包数据中获取日时间，若不存在则回退为游戏时间
     public long dayTime() {
         return this.data.contains(DAY_TIME_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, this.data.getLong(DAY_TIME_TAG))
                 : this.gameTime();
     }
 
+    // 日志同步操作类型
     public enum Action {
         SET_FIRST_UNLOCK_META(0),
         UPSERT_ENTRY(1),
@@ -88,6 +101,7 @@ public record SyncJournalLogPayload(UUID sessionId,
             this.id = id;
         }
 
+        // 根据数字 ID 解析操作类型，默认返回 UPSERT_ENTRY
         private static Action fromId(int id) {
             for (Action action : values()) {
                 if (action.id == id) {

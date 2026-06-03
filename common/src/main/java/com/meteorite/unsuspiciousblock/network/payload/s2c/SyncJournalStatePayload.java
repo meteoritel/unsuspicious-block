@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.network.payload;
+package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.nbt.CompoundTag;

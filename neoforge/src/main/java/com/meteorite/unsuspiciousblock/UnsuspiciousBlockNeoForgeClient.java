@@ -5,11 +5,12 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
-import com.meteorite.unsuspiciousblock.network.payload.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.payload.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -37,7 +38,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void registerScreens(RegisterMenuScreensEvent event) {
-        event.register(UnsuspiciousBlockNeoForge.specimenBoxMenu(), SpecimenBoxScreen::new);
+        event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
     }
 
     @SubscribeEvent

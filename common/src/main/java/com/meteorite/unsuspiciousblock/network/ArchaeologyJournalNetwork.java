@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.network;
 
-import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
@@ -10,9 +11,12 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
-import com.meteorite.unsuspiciousblock.network.payload.*;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,21 +25,24 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 考古日记网络同步中枢。
+ * 负责日记目录、状态、日志的快照/增量同步，以及客户端日志上传合并。
+ */
 public final class ArchaeologyJournalNetwork {
-    private static final ResourceLocation CACHE_ME_IF_YOU_CAN_ADVANCEMENT =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "challenges/cache_me_if_you_can");
-    private static final String CACHE_ME_IF_YOU_CAN_CRITERION = "reach_1024_entries";
     private static final int CACHE_ME_IF_YOU_CAN_THRESHOLD = 1024;
 
     private ArchaeologyJournalNetwork() {
     }
 
+    // 玩家加入时全量同步：重置日志会话 → 下发目录 → 下发状态
     public static void syncOnJoin(ServerPlayer player) {
         resetLogSession(player);
         syncCatalog(player);
         syncState(player);
     }
 
+    // 向玩家同步全量战利品目录
     public static void syncCatalog(ServerPlayer player) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
@@ -47,6 +54,7 @@ public final class ArchaeologyJournalNetwork {
         Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(catalog));
     }
 
+    // 向玩家同步考古日记状态（进度与解锁信息）
     public static void syncState(ServerPlayer player) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) return;
 
@@ -54,6 +62,7 @@ public final class ArchaeologyJournalNetwork {
         Services.NETWORK.sendToPlayer(player, new SyncJournalStatePayload(state.toTag()));
     }
 
+    // 处理客户端上传的日志快照：seed 合并 → 检测成就 → 下发权威快照
     public static void handleUploadedLogSnapshot(ServerPlayer player, UploadJournalLogSnapshotPayload payload) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
@@ -65,15 +74,12 @@ public final class ArchaeologyJournalNetwork {
         session.seedFromClient(payload.sessionId(), uploadedState);
         int mirroredEntryCount = session.mirroredState().getTotalEntryCount();
         if (crossesCacheMeIfYouCanThreshold(uploadedEntryCount, mirroredEntryCount)) {
-            tryAwardCacheMeIfYouCan(player, mirroredEntryCount);
+            AchievementManager.grant(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
         }
         syncLogSnapshot(player);
     }
 
-    public static void recordFirstUnlock(ServerPlayer player, ResourceLocation tableId, long gameTime, long dayTime) {
-        recordFirstUnlock(player, tableId, null, gameTime, dayTime);
-    }
-
+    // 记录表首次解锁事件（含触发类型），未 seed 时排队，已 seed 时增量同步
     public static void recordFirstUnlock(ServerPlayer player, ResourceLocation tableId, @Nullable TriggerType triggerType,
                                          long gameTime, long dayTime) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
@@ -98,10 +104,7 @@ public final class ArchaeologyJournalNetwork {
                         triggerType, normalizedGameTime, normalizedDayTime));
     }
 
-    public static void recordExcavation(ServerPlayer player, ResourceLocation tableId, ExcavationLogEntry entry) {
-        upsertExcavationEntry(player, tableId, entry);
-    }
-
+    // 插入或更新挖掘日志条目，未 seed 时排队，已 seed 时增量同步并检测成就
     public static void upsertExcavationEntry(ServerPlayer player, ResourceLocation tableId, ExcavationLogEntry entry) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
@@ -117,7 +120,7 @@ public final class ArchaeologyJournalNetwork {
         }
         int currentTotalEntryCount = session.mirroredState().getTotalEntryCount();
         if (crossesCacheMeIfYouCanThreshold(previousTotalEntryCount, currentTotalEntryCount)) {
-            tryAwardCacheMeIfYouCan(player, currentTotalEntryCount);
+            AchievementManager.grant(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
         }
         UUID sessionId = session.getSessionId();
         if (sessionId == null) {
@@ -127,6 +130,7 @@ public final class ArchaeologyJournalNetwork {
                 SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), tableId, entry.toTag()));
     }
 
+    // 清空全部日志，未 seed 时排队，已 seed 时增量同步
     public static void clearLogs(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
@@ -149,6 +153,7 @@ public final class ArchaeologyJournalNetwork {
         syncLogSnapshot(player);
     }
 
+    // 清空指定表的日志，未 seed 时排队，已 seed 时增量同步
     public static void clearLogsForTable(ServerPlayer player, ResourceLocation tableId) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
@@ -170,6 +175,7 @@ public final class ArchaeologyJournalNetwork {
         syncLogSnapshot(player);
     }
 
+    /** 向玩家下发当前日志全量快照 */
     public static void syncLogSnapshot(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null || !session.isSeeded()) {
@@ -183,6 +189,7 @@ public final class ArchaeologyJournalNetwork {
                 new SyncJournalLogSnapshotPayload(sessionId, session.lastSequence(), session.mirroredState().toTag()));
     }
 
+    /** 数据包重载时使缓存失效并重新同步目录给所有在线玩家 */
     public static void onDataPackReload(MinecraftServer server) {
         ArchaeologyJournalServerCatalog.invalidate();
         ArchaeologyJournalServerCatalog.ensureLoaded(server);
@@ -191,26 +198,13 @@ public final class ArchaeologyJournalNetwork {
         }
     }
 
+    // 判断是否跨越了"缓存大师"成就门槛
     static boolean crossesCacheMeIfYouCanThreshold(int previousTotalEntryCount, int currentTotalEntryCount) {
         return previousTotalEntryCount < CACHE_ME_IF_YOU_CAN_THRESHOLD
                 && currentTotalEntryCount >= CACHE_ME_IF_YOU_CAN_THRESHOLD;
     }
 
-    private static void tryAwardCacheMeIfYouCan(ServerPlayer player, int totalEntryCount) {
-        if (totalEntryCount < CACHE_ME_IF_YOU_CAN_THRESHOLD) {
-            return;
-        }
-        MinecraftServer server = player.getServer();
-        if (server == null) {
-            return;
-        }
-        AdvancementHolder advancement = server.getAdvancements().get(CACHE_ME_IF_YOU_CAN_ADVANCEMENT);
-        if (advancement == null) {
-            return;
-        }
-        player.getAdvancements().award(advancement, CACHE_ME_IF_YOU_CAN_CRITERION);
-    }
-
+    // 重置玩家的日志同步会话
     private static void resetLogSession(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session != null) {
@@ -218,6 +212,7 @@ public final class ArchaeologyJournalNetwork {
         }
     }
 
+    // 获取玩家的日志同步会话（通过 mixin 接口）
     private static ArchaeologyJournalLogSyncSession getLogSession(ServerPlayer player) {
         if (player instanceof ArchaeologyJournalLogSyncSessionHolder holder) {
             return holder.unsuspiciousblock$getArchaeologyJournalLogSyncSession();

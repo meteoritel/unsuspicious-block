@@ -25,7 +25,7 @@ public final class ModEnchantments {
         return registryAccess.lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(enchantmentKey);
     }
 
-    /** 获取物品上指定附魔的等级，未附魔返回 0。供各附魔 Service 统一使用。 */
+    // 获取物品上指定附魔的等级，未附魔返回 0。供各附魔 Service 统一使用
     public static int getEnchantmentLevel(RegistryAccess registryAccess, ItemStack stack,
                                            ResourceKey<Enchantment> enchantmentKey) {
         return registryAccess.lookupOrThrow(Registries.ENCHANTMENT)

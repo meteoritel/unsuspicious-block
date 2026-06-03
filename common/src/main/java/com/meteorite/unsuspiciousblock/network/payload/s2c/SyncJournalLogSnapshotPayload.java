@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.network.payload;
+package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.nbt.CompoundTag;
@@ -10,6 +10,10 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 
+/**
+ * 日记日志全量快照同步包（服务端→客户端）。
+ * 在登录同步或清空操作后，将完整的客户端权威日志状态下发。
+ */
 public record SyncJournalLogSnapshotPayload(UUID sessionId,
                                             long sequence,
                                             CompoundTag state) implements CustomPacketPayload {

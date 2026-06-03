@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
-import com.meteorite.unsuspiciousblock.menu.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
