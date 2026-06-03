@@ -12,6 +12,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,10 +54,10 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     private static final int CATALOG_VISIBLE_ROWS = 4;
     private static final int CATALOG_ENTRY_HEIGHT = 18;
     private static final int CATALOG_ROW_SPACING = CATALOG_ENTRY_HEIGHT + 1;
-    private static final int CATALOG_PREV_X = 68;
-    private static final int CATALOG_PREV_Y = 4;
-    private static final int CATALOG_NEXT_X = 83;
-    private static final int CATALOG_NEXT_Y = 4;
+    private static final int CATALOG_SCROLLBAR_X = CATALOG_X + CATALOG_WIDTH + 3;
+    private static final int CATALOG_SCROLLBAR_Y = CATALOG_Y;
+    private static final int CATALOG_SCROLLBAR_WIDTH = 3;
+    private static final int CATALOG_SCROLLBAR_HEIGHT = CATALOG_VISIBLE_ROWS * CATALOG_ROW_SPACING - 1;
 
     private static final int SLOT_GRID_X = 135;
     private static final int SLOT_GRID_Y = 17;
@@ -72,6 +73,7 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     private static final int BUTTON_SIZE = 12;
 
     private SpecimenBoxClientState.Snapshot snapshot;
+    private int catalogScrollStart;
 
     public SpecimenBoxScreen(SpecimenBoxMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -81,7 +83,6 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
         this.renderTooltip(guiGraphics, mouseX, mouseY);
         this.renderLogicalTooltips(guiGraphics, mouseX, mouseY);
@@ -132,6 +133,38 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     }
 
     @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        int catalogHeight = CATALOG_VISIBLE_ROWS * CATALOG_ROW_SPACING - 1;
+        if (this.isPointInside(this.leftPos + CATALOG_X, this.topPos + CATALOG_Y,
+                CATALOG_WIDTH, catalogHeight, mouseX, mouseY)) {
+            int deltaRows = scrollY > 0 ? -1 : (scrollY < 0 ? 1 : 0);
+            if (deltaRows != 0) {
+                this.scrollCatalogBy(deltaRows);
+            }
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        this.refreshSnapshot();
+        if (keyCode == GLFW.GLFW_KEY_UP || keyCode == GLFW.GLFW_KEY_DOWN) {
+            int tableCount = this.tableCount();
+            if (tableCount <= 0) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
+            int selected = this.selectedTableIndex();
+            int step = keyCode == GLFW.GLFW_KEY_UP ? -1 : 1;
+            int targetIndex = Mth.clamp(Math.max(0, selected) + step, 0, tableCount - 1);
+            this.ensureCatalogIndexVisible(targetIndex);
+            this.sendMenuButton(SpecimenBoxMenu.absoluteTableButtonId(targetIndex));
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public void removed() {
         SpecimenBoxClientState.clear(this.menu.containerId);
         super.removed();
@@ -145,21 +178,8 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
         int left = this.leftPos;
         int top = this.topPos;
         if (button == 0) {
-            boolean showTableButtons = this.tableCount() > CATALOG_VISIBLE_ROWS;
-            boolean canSelectPrevTable = showTableButtons && this.selectedTableIndex() > 0;
-            boolean canSelectNextTable = showTableButtons
-                    && this.selectedTableIndex() >= 0
-                    && this.selectedTableIndex() < this.tableCount() - 1;
             boolean canSelectPrevPage = this.pageIndex() > 0;
             boolean canSelectNextPage = this.pageIndex() + 1 < this.pageCount();
-            if (canSelectPrevTable
-                    && this.isPointInside(left + CATALOG_PREV_X, top + CATALOG_PREV_Y, BUTTON_SIZE, BUTTON_SIZE, mouseX, mouseY)) {
-                return this.sendMenuButton(SpecimenBoxMenu.BUTTON_PREV_TABLE);
-            }
-            if (canSelectNextTable
-                    && this.isPointInside(left + CATALOG_NEXT_X, top + CATALOG_NEXT_Y, BUTTON_SIZE, BUTTON_SIZE, mouseX, mouseY)) {
-                return this.sendMenuButton(SpecimenBoxMenu.BUTTON_NEXT_TABLE);
-            }
             if (canSelectPrevPage
                     && this.isPointInside(left + PAGE_PREV_X, top + PAGE_PREV_Y, BUTTON_SIZE, BUTTON_SIZE, mouseX, mouseY)) {
                 return this.sendMenuButton(SpecimenBoxMenu.BUTTON_PREV_PAGE);
@@ -169,14 +189,14 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
                 return this.sendMenuButton(SpecimenBoxMenu.BUTTON_NEXT_PAGE);
             }
 
-            int visibleStart = this.visibleTableStart();
+            int visibleStart = this.catalogScrollStart;
             int visibleEnd = Math.min(visibleStart + CATALOG_VISIBLE_ROWS, this.tableCount());
             for (int index = visibleStart; index < visibleEnd; index++) {
                 int row = index - visibleStart;
                 int rowX = left + CATALOG_X;
                 int rowY = top + CATALOG_Y + row * CATALOG_ROW_SPACING;
                 if (this.isPointInside(rowX, rowY, CATALOG_WIDTH, CATALOG_ENTRY_HEIGHT, mouseX, mouseY)) {
-                    return this.sendMenuButton(SpecimenBoxMenu.visibleTableButtonId(row));
+                    return this.sendMenuButton(SpecimenBoxMenu.absoluteTableButtonId(index));
                 }
             }
         }
@@ -191,16 +211,7 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     }
 
     private void renderCatalogPanel(GuiGraphics guiGraphics, int left, int top, int mouseX, int mouseY) {
-        if (this.tableCount() > CATALOG_VISIBLE_ROWS) {
-            this.renderArrowButton(guiGraphics, left + CATALOG_PREV_X, top + CATALOG_PREV_Y,
-                    this.selectedTableIndex() > 0, mouseX, mouseY, "<");
-            this.renderArrowButton(guiGraphics, left + CATALOG_NEXT_X, top + CATALOG_NEXT_Y,
-                    this.selectedTableIndex() >= 0 && this.selectedTableIndex() < this.tableCount() - 1,
-                    mouseX, mouseY, ">"
-            );
-        }
-
-        int visibleStart = this.visibleTableStart();
+        int visibleStart = this.catalogScrollStart;
         int visibleEnd = Math.min(visibleStart + CATALOG_VISIBLE_ROWS, this.tableCount());
         for (int index = visibleStart; index < visibleEnd; index++) {
             int row = index - visibleStart;
@@ -215,6 +226,26 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
             String label = this.font.plainSubstrByWidth(this.tableAt(index).displayName().getString(), CATALOG_WIDTH - 8);
             guiGraphics.drawString(this.font, label, rowX + 4, rowY + 5, selected ? 0xFFF9ED : 0xF2E2C7, false);
         }
+        this.renderCatalogScrollbar(guiGraphics, left, top);
+    }
+
+    private void renderCatalogScrollbar(GuiGraphics guiGraphics, int left, int top) {
+        int tableCount = this.tableCount();
+        if (tableCount <= CATALOG_VISIBLE_ROWS) {
+            return;
+        }
+
+        int trackX = left + CATALOG_SCROLLBAR_X;
+        int trackY = top + CATALOG_SCROLLBAR_Y;
+        int trackBottom = trackY + CATALOG_SCROLLBAR_HEIGHT;
+        guiGraphics.fill(trackX, trackY, trackX + CATALOG_SCROLLBAR_WIDTH, trackBottom, 0x4C2A1D10);
+
+        int knobHeight = Math.max(8, Math.round((float) CATALOG_SCROLLBAR_HEIGHT * CATALOG_VISIBLE_ROWS / tableCount));
+        int maxScrollStart = tableCount - CATALOG_VISIBLE_ROWS;
+        int maxKnobOffset = CATALOG_SCROLLBAR_HEIGHT - knobHeight;
+        int knobOffset = Math.round((float) this.catalogScrollStart * maxKnobOffset / maxScrollStart);
+        int knobY = trackY + Mth.clamp(knobOffset, 0, maxKnobOffset);
+        guiGraphics.fill(trackX, knobY, trackX + CATALOG_SCROLLBAR_WIDTH, knobY + knobHeight, 0xFFDFC69A);
     }
 
     private void renderSlotGrid(GuiGraphics guiGraphics, int left, int top, int mouseX, int mouseY) {
@@ -308,7 +339,7 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
             return;
         }
 
-        int visibleStart = this.visibleTableStart();
+        int visibleStart = this.catalogScrollStart;
         int visibleEnd = Math.min(visibleStart + CATALOG_VISIBLE_ROWS, this.tableCount());
         for (int index = visibleStart; index < visibleEnd; index++) {
             int row = index - visibleStart;
@@ -322,7 +353,14 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     }
 
     private void refreshSnapshot() {
+        SpecimenBoxClientState.Snapshot previousSnapshot = this.snapshot;
         this.snapshot = SpecimenBoxClientState.getSnapshot(this.menu.containerId);
+        this.clampCatalogScrollStart();
+
+        int selectedIndex = this.selectedTableIndex();
+        if (this.snapshot != previousSnapshot && selectedIndex >= 0) {
+            this.ensureCatalogIndexVisible(selectedIndex);
+        }
     }
 
     private int tableCount() {
@@ -371,13 +409,26 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
         return true;
     }
 
-    private int visibleTableStart() {
-        int tableCount = this.tableCount();
-        int selectedIndex = this.selectedTableIndex();
-        if (tableCount <= CATALOG_VISIBLE_ROWS || selectedIndex < 0) {
-            return 0;
+    private void clampCatalogScrollStart() {
+        int maxStart = Math.max(0, this.tableCount() - CATALOG_VISIBLE_ROWS);
+        this.catalogScrollStart = Mth.clamp(this.catalogScrollStart, 0, maxStart);
+    }
+
+    private void scrollCatalogBy(int deltaRows) {
+        if (deltaRows == 0) {
+            return;
         }
-        return Mth.clamp(selectedIndex - CATALOG_VISIBLE_ROWS / 2, 0, tableCount - CATALOG_VISIBLE_ROWS);
+        this.catalogScrollStart += deltaRows;
+        this.clampCatalogScrollStart();
+    }
+
+    private void ensureCatalogIndexVisible(int selectedIndex) {
+        if (selectedIndex < this.catalogScrollStart) {
+            this.catalogScrollStart = selectedIndex;
+        } else if (selectedIndex > this.catalogScrollStart + CATALOG_VISIBLE_ROWS - 1) {
+            this.catalogScrollStart = selectedIndex - CATALOG_VISIBLE_ROWS + 1;
+        }
+        this.clampCatalogScrollStart();
     }
 
     private boolean isPointInside(int x, int y, int width, int height, double mouseX, double mouseY) {

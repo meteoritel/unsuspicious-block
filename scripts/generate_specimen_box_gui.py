@@ -2,6 +2,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+# 已弃用，未来删除
 ROOT = Path(__file__).resolve().parents[1]
 GUI_DIR = ROOT / "common" / "src" / "main" / "resources" / "assets" / "unsuspiciousblock" / "textures" / "gui"
 OUT_COMPOSITE = GUI_DIR / "specimen_box_screen.png"

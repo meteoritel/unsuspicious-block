@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** 标本箱菜单视图同步包——服务端→客户端。 */
+// TODO 发送文本时修改为发送key而不是翻译后的Component
 public record SyncSpecimenBoxViewPayload(int containerId,
                                          List<TableEntry> tables,
                                          int selectedTableIndex,

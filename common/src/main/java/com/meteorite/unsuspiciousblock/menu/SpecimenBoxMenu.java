@@ -39,10 +39,9 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     public static final int BUTTON_NEXT_PAGE = 2;
     public static final int BUTTON_PREV_TABLE = 3;
     public static final int BUTTON_NEXT_TABLE = 4;
-    public static final int BUTTON_SELECT_VISIBLE_TABLE_BASE = 10;
+    public static final int BUTTON_SELECT_TABLE_ABSOLUTE_BASE = 100;
     public static final int BUTTON_LOGICAL_SLOT_PRIMARY_BASE = 20;
     public static final int BUTTON_LOGICAL_SLOT_SECONDARY_BASE = 30;
-    public static final int VISIBLE_TABLE_BUTTON_COUNT = 4;
 
     private static final int MAX_LOGICAL_SLOT_STACK_MULTIPLIER = 4;
     private static final int BACKEND_SLOT_X = -2000;
@@ -157,8 +156,8 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return this.pageData.get();
     }
 
-    public static int visibleTableButtonId(int visibleRowIndex) {
-        return BUTTON_SELECT_VISIBLE_TABLE_BASE + visibleRowIndex;
+    public static int absoluteTableButtonId(int absoluteTableIndex) {
+        return BUTTON_SELECT_TABLE_ABSOLUTE_BASE + absoluteTableIndex;
     }
 
     public static int logicalSlotButtonId(int slotIndex, boolean secondaryClick) {
@@ -210,7 +209,16 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         }
 
         int selected = Mth.clamp(this.selectedTableData.get(), 0, unlockedTables.size() - 1);
-        int visibleTableStart = this.visibleTableStart(unlockedTables);
+        int absoluteTableIndex = id - BUTTON_SELECT_TABLE_ABSOLUTE_BASE;
+        if (absoluteTableIndex >= 0 && absoluteTableIndex < unlockedTables.size()) {
+            boolean changed = absoluteTableIndex != selected || this.pageData.get() != 0;
+            this.selectedTableData.set(absoluteTableIndex);
+            this.pageData.set(0);
+            this.normalizeSelection();
+            this.syncClientView();
+            return changed;
+        }
+
         boolean changed = false;
         switch (id) {
             case BUTTON_PREV_PAGE -> {
@@ -235,17 +243,6 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
                 changed = nextSelected != selected || this.pageData.get() != 0;
                 this.selectedTableData.set(nextSelected);
                 this.pageData.set(0);
-            }
-            default -> {
-                int visibleRow = id - BUTTON_SELECT_VISIBLE_TABLE_BASE;
-                if (visibleRow >= 0 && visibleRow < VISIBLE_TABLE_BUTTON_COUNT) {
-                    int tableIndex = visibleTableStart + visibleRow;
-                    if (tableIndex < unlockedTables.size()) {
-                        changed = tableIndex != selected || this.pageData.get() != 0;
-                        this.selectedTableData.set(tableIndex);
-                        this.pageData.set(0);
-                    }
-                }
             }
         }
 
@@ -440,6 +437,9 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return new ResolvedLogicalSlot(tableId, table.items().get(itemIndex).signature());
     }
 
+    // TODO：补充shift快速移动物品
+    // 目前还不支持快速整理
+    // 需要注意测试对于背包整理类模组的兼容性。快速移动逻辑应在服务端执行，客户端保持只读
     @Override
     public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
         return ItemStack.EMPTY;
@@ -451,6 +451,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         this.storage.flush();
     }
 
+    // TODO 补充GUI打开后物品栏状态的锁定，避免刷物品
     @Override
     public boolean stillValid(@NotNull Player player) {
         if (this.getCarrierHand() == InteractionHand.OFF_HAND) {
@@ -558,15 +559,6 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         ResourceLocation tableId = unlockedTables.get(selected);
         this.selectedTableData.set(selected);
         this.pageData.set(Mth.clamp(this.pageData.get(), 0, this.maxPageFor(tableId)));
-    }
-
-    private int visibleTableStart(List<ResourceLocation> unlockedTables) {
-        if (unlockedTables.size() <= VISIBLE_TABLE_BUTTON_COUNT) {
-            return 0;
-        }
-        int selected = Mth.clamp(this.selectedTableData.get(), 0, unlockedTables.size() - 1);
-        return Mth.clamp(selected - VISIBLE_TABLE_BUTTON_COUNT / 2, 0,
-                unlockedTables.size() - VISIBLE_TABLE_BUTTON_COUNT);
     }
 
     private int maxPageFor(ResourceLocation tableId) {

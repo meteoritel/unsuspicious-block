@@ -28,6 +28,10 @@ CLAUDE.md
 TECHNICAL_ROUTE.md
 .claude
 .git
+.aegis
+.worktrees
+
+docs/aegis
 
 common/src/test
 common/logs
