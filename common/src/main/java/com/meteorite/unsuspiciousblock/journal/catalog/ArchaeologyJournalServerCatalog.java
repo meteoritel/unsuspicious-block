@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
@@ -11,7 +11,10 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** 服务端懒加载目录：解析命中统一考古路径前缀规则的所有战利品表并缓存 */
+/**
+ * 服务端懒加载目录——在服务端解析并缓存所有考古战利品表。
+ * 在数据包重载或服务器启动时懒加载，通过 ensureLoaded / invalidate 控制生命周期。
+ */
 public final class ArchaeologyJournalServerCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<ResourceLocation, TableDefinition> catalog = new LinkedHashMap<>();
@@ -20,7 +23,7 @@ public final class ArchaeologyJournalServerCatalog {
     private ArchaeologyJournalServerCatalog() {
     }
 
-    // 确保目录已加载
+    // 确保服务端目录已加载（懒加载，只加载一次）
     public static void ensureLoaded(MinecraftServer server) {
         if (loaded) return;
 
@@ -35,7 +38,7 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    // 使缓存失效（数据包重载后调用）
+    // 使缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载）
     public static void invalidate() {
         catalog.clear();
         loaded = false;
@@ -52,7 +55,7 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    // 获取目录（只读）
+    // 获取缓存目录的只读视图
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         return Collections.unmodifiableMap(catalog);
     }

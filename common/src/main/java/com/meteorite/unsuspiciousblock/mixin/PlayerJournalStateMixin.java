@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.entity.player.Player;

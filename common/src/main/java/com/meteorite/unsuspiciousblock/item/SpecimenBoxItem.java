@@ -12,7 +12,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
-/** 标本箱物品——右键打开服务端菜单 */
+/**
+ * 标本箱物品——右键打开标本箱菜单。
+ * 服务端创建并打开 SpecimenBoxMenu（含隐藏后端容器）
+ */
 public class SpecimenBoxItem extends Item {
     public SpecimenBoxItem(Properties properties) {
         super(properties);
@@ -21,6 +24,7 @@ public class SpecimenBoxItem extends Item {
     @Override
     public @NotNull InteractionResultHolder<ItemStack> use(@NotNull Level level, @NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
+        // 服务端创建并打开菜单；客户端不开放菜单直接返回成功
         if (player instanceof ServerPlayer serverPlayer) {
             serverPlayer.openMenu(new SimpleMenuProvider(
                     (containerId, inventory, menuPlayer) -> new SpecimenBoxMenu(containerId, inventory, hand),

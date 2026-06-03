@@ -1,9 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.UploadJournalLogSnapshotPayload;

@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;

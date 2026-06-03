@@ -2,12 +2,12 @@ package com.meteorite.unsuspiciousblock.network;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.TriggerType;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
 import com.meteorite.unsuspiciousblock.network.payload.*;

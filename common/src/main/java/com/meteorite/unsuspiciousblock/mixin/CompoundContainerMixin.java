@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
-import com.meteorite.unsuspiciousblock.journal.CompoundContainerAccess;
+import com.meteorite.unsuspiciousblock.journal.tracking.CompoundContainerAccess;
 import net.minecraft.world.CompoundContainer;
 import net.minecraft.world.Container;
 import org.spongepowered.asm.mixin.Final;

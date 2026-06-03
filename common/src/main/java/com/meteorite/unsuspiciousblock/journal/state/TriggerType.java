@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.state;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -18,10 +18,12 @@ public enum TriggerType {
         this.serializedName = serializedName;
     }
 
+    // 返回枚举的序列化名称
     public String serializedName() {
         return this.serializedName;
     }
 
+    // 根据序列化名称反序列化枚举值
     @Nullable
     public static TriggerType fromSerializedName(String name) {
         for (TriggerType value : values()) {

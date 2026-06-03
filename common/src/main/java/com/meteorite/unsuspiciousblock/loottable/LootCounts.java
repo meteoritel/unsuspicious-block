@@ -17,10 +17,7 @@ public final class LootCounts {
     private LootCounts() {
     }
 
-    /**
-     * 过滤空键、空值、零/负计数以及无效签名键，并合并重复键的计数。
-     * 返回不可变的规范化 Map；若输入为空或全部无效，返回空 Map。
-     */
+    // 标准化，过滤空键、空值、零/负计数以及无效签名键，并合并重复键的计数，返回不可变的规范化 Map
     public static Map<String, Integer> normalize(@Nullable Map<String, Integer> lootCounts) {
         if (lootCounts == null || lootCounts.isEmpty()) {
             return Map.of();
@@ -43,10 +40,7 @@ public final class LootCounts {
         return Collections.unmodifiableMap(normalized);
     }
 
-    /**
-     * 将 source 中的有效条目合并到 target（使用 Integer::sum）。
-     * 不修改 source；直接修改 target。
-     */
+    // 将 source 中的有效条目合并到 target
     public static void mergeInto(Map<String, Integer> target, @Nullable Map<String, Integer> source) {
         if (source == null || source.isEmpty()) {
             return;
@@ -61,10 +55,7 @@ public final class LootCounts {
         }
     }
 
-    /**
-     * 从父 NBT CompoundTag 的指定键中读取战利品计数 Map。
-     * 只保留 count > 0 的条目，并返回不可变 Map。
-     */
+    // 从父 NBT CompoundTag 的指定键中读取战利品计数 Map
     public static Map<String, Integer> readFromNbt(CompoundTag tag, String key) {
         if (!tag.contains(key, Tag.TAG_COMPOUND)) {
             return Map.of();
@@ -72,10 +63,7 @@ public final class LootCounts {
         return readFromNbt(tag.getCompound(key));
     }
 
-    /**
-     * 从战利品子 CompoundTag 中读取战利品计数 Map。
-     * 只保留 count > 0 的条目，并返回不可变 Map。
-     */
+    // 从战利品子 CompoundTag 中读取战利品计数 Map
     public static Map<String, Integer> readFromNbt(CompoundTag lootTag) {
         if (lootTag.isEmpty()) {
             return Map.of();
@@ -93,10 +81,7 @@ public final class LootCounts {
         return Collections.unmodifiableMap(lootMap);
     }
 
-    /**
-     * 将战利品计数 Map 写入 NBT CompoundTag。
-     * 只写入 count > 0 的条目。
-     */
+    // 将战利品计数 Map 写入 NBT CompoundTag
     public static CompoundTag writeToNbt(Map<String, Integer> lootMap) {
         CompoundTag tag = new CompoundTag();
         for (Map.Entry<String, Integer> entry : lootMap.entrySet()) {

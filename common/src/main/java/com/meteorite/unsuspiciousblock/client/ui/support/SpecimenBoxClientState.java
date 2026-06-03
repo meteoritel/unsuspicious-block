@@ -12,13 +12,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** 标本箱客户端菜单快照——只保存当前打开菜单需要的权威视图。 */
+/**
+ * 标本箱客户端菜单快照——服务端推送的权威视图的客户端缓存。
+ * 以容器 ID（containerId）为索引保存每个打开菜单的 Snapshot，
+ * 供 SpecimenBoxScreen 读取纯渲染所需数据（目录、逻辑槽位、页码）。
+ */
 public final class SpecimenBoxClientState {
     private static final Map<Integer, Snapshot> SNAPSHOTS = new ConcurrentHashMap<>();
 
     private SpecimenBoxClientState() {
     }
 
+    // 接收服务端推送的权威视图，按 containerId 缓存
     public static void receiveView(SyncSpecimenBoxViewPayload payload) {
         List<TableView> tables = new ArrayList<>(payload.tables().size());
         for (SyncSpecimenBoxViewPayload.TableEntry table : payload.tables()) {
@@ -42,18 +47,22 @@ public final class SpecimenBoxClientState {
     }
 
     @Nullable
+    // 获取指定容器 ID 的快照
     public static Snapshot getSnapshot(int containerId) {
         return SNAPSHOTS.get(containerId);
     }
 
+    // 清除指定容器的快照
     public static void clear(int containerId) {
         SNAPSHOTS.remove(containerId);
     }
 
+    // 清除所有容器的快照
     public static void clearAll() {
         SNAPSHOTS.clear();
     }
 
+    // 客户端 tick：当玩家退出世界时自动清理所有快照
     public static void tick() {
         if (SNAPSHOTS.isEmpty()) {
             return;

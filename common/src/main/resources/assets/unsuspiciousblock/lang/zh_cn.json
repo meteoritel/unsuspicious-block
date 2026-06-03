@@ -135,7 +135,6 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "%s级附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "已附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "未完全解析",
-  "screen.unsuspiciousblock.archaeology_journal.item_hint.wrapper": "（%s）",
 
   "command.unsuspiciousblock.usb.clear.success": "你的考古笔记数据已清除。",
   "command.unsuspiciousblock.usb.clear_table.success": "已清除考古战利品表 %s 的笔记数据。",

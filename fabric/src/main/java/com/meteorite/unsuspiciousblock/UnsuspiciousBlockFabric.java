@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
 import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.menu.ModMenus;
 import com.meteorite.unsuspiciousblock.menu.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;

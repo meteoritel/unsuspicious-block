@@ -2,9 +2,9 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.TriggerType;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;

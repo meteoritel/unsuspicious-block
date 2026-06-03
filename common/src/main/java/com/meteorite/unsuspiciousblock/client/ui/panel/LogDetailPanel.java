@@ -4,7 +4,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;

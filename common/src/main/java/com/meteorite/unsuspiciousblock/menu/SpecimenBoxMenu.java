@@ -1,9 +1,9 @@
 package com.meteorite.unsuspiciousblock.menu;
 
 import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
@@ -32,7 +32,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 标本箱菜单——当前阶段先接入隐藏后端容器、目录分页状态与权威客户端快照。 */
+/**
+ * 标本箱菜单（AbstractContainerMenu）——服务端侧菜单逻辑。
+ * 管理隐藏后端容器（54 格 SpecimenBoxStorage）、战利品目录分页、
+ * 3x3 逻辑槽位的存取操作，以及向客户端推送权威快照（SyncSpecimenBoxViewPayload）。
+ * 所有物品操作在服务端校验后执行，客户端保持只读渲染。
+ */
 public class SpecimenBoxMenu extends AbstractContainerMenu {
     public static final int LOGICAL_SLOTS_PER_PAGE = 9;
     public static final int BUTTON_PREV_PAGE = 1;
@@ -59,14 +64,17 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     @Nullable
     private SyncSpecimenBoxViewPayload lastSyncedView;
 
+    // 无手参数构造：自动检测载体手持
     public SpecimenBoxMenu(int containerId, Inventory playerInventory) {
         this(containerId, playerInventory, detectCarrierHand(playerInventory));
     }
 
+    // 带手持参数构造：自动解析载体槽位索引
     public SpecimenBoxMenu(int containerId, Inventory playerInventory, InteractionHand hand) {
         this(containerId, playerInventory, hand, resolveCarrierSlot(playerInventory, hand));
     }
 
+    // 完整构造：初始化 DataSlot、后端槽位、玩家物品栏；服务端侧立即规范化选择并推送快照
     private SpecimenBoxMenu(int containerId, Inventory playerInventory, InteractionHand hand, int carrierSlotIndex) {
         super(ModMenus.SPECIMEN_BOX, containerId);
         this.owner = playerInventory.player;
@@ -85,6 +93,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         }
     }
 
+    // 检测载体标本箱所在的手（主手优先）
     private static InteractionHand detectCarrierHand(Inventory playerInventory) {
         Player player = playerInventory.player;
         if (player.getMainHandItem().is(ModItems.SPECIMEN_BOX)) {
@@ -96,10 +105,12 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return InteractionHand.MAIN_HAND;
     }
 
+    // 根据手持解析载体物品在玩家物品栏中的槽位索引
     private static int resolveCarrierSlot(Inventory playerInventory, InteractionHand hand) {
         return hand == InteractionHand.OFF_HAND ? Inventory.SLOT_OFFHAND : playerInventory.selected;
     }
 
+    // 添加 54 格隐藏后端槽位（屏幕外，不可直接交互）
     private void addBackendSlots() {
         for (int slot = 0; slot < SpecimenBoxState.BACKEND_SLOT_COUNT; slot++) {
             this.addSlot(new Slot(this.storage, slot, BACKEND_SLOT_X, BACKEND_SLOT_Y) {
@@ -116,6 +127,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         }
     }
 
+    // 添加玩家物品栏槽位（3×9 背包 + 9 快捷栏）
     private void addPlayerInventorySlots(Inventory playerInventory) {
         for (int row = 0; row < 3; row++) {
             for (int column = 0; column < 9; column++) {
@@ -132,39 +144,33 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         }
     }
 
+    // 创建单一玩家槽位
     private Slot createPlayerSlot(Inventory playerInventory, int slotIndex, int x, int y) {
         return new Slot(playerInventory, slotIndex, x, y);
     }
 
-    public SpecimenBoxStorage getStorage() {
-        return this.storage;
-    }
-
+    // 获取载体所在的手
     public InteractionHand getCarrierHand() {
         return this.carrierHandData.get() == 1 ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
     }
 
+    // 获取载体物品的槽位索引
     public int getCarrierSlotIndex() {
         return this.carrierSlotData.get();
     }
 
-    public int getSelectedTableIndex() {
-        return this.selectedTableData.get();
-    }
-
-    public int getPageIndex() {
-        return this.pageData.get();
-    }
-
+    // 根据绝对索引生成选择表的按键 ID
     public static int absoluteTableButtonId(int absoluteTableIndex) {
         return BUTTON_SELECT_TABLE_ABSOLUTE_BASE + absoluteTableIndex;
     }
 
+    // 根据逻辑槽位索引生成存取操作的按键 ID（区分左键/右键）
     public static int logicalSlotButtonId(int slotIndex, boolean secondaryClick) {
         return (secondaryClick ? BUTTON_LOGICAL_SLOT_SECONDARY_BASE : BUTTON_LOGICAL_SLOT_PRIMARY_BASE) + slotIndex;
     }
 
     @Override
+    // 阻止对载体物品槽位的点击操作（防止抽出标本箱）
     public void clicked(int slotId, int button, @NotNull ClickType clickType, @NotNull Player player) {
         if (this.isCarrierMenuSlot(slotId)) {
             return;
@@ -181,6 +187,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     }
 
     @Override
+    // 定期广播变更：规范化选择后检查是否需要推送新快照
     public void broadcastChanges() {
         if (!this.owner.level().isClientSide()) {
             this.normalizeSelection();
@@ -190,6 +197,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     }
 
     @Override
+    // 处理从客户端发来的菜单按钮点击：逻辑槽位存取、翻页、切换表
     public boolean clickMenuButton(@NotNull Player player, int id) {
         LogicalSlotClick logicalSlotClick = decodeLogicalSlotClick(id);
         if (logicalSlotClick != null) {
@@ -254,6 +262,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     }
 
     @Nullable
+    // 将 button ID 解码为逻辑槽位点击事件
     private static LogicalSlotClick decodeLogicalSlotClick(int id) {
         if (id >= BUTTON_LOGICAL_SLOT_PRIMARY_BASE && id < BUTTON_LOGICAL_SLOT_PRIMARY_BASE + LOGICAL_SLOTS_PER_PAGE) {
             return new LogicalSlotClick(id - BUTTON_LOGICAL_SLOT_PRIMARY_BASE, false);
@@ -264,6 +273,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return null;
     }
 
+    // 处理逻辑槽位点击：手中无物品 → 取出，手中有物品 → 存入
     private boolean handleLogicalSlotClick(int slotIndex, boolean secondaryClick) {
         ResolvedLogicalSlot logicalSlot = this.resolveLogicalSlot(slotIndex);
         if (logicalSlot == null) {
@@ -274,6 +284,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
                 : this.insertIntoLogicalSlot(logicalSlot, secondaryClick);
     }
 
+    // 向逻辑槽位插入物品：优先合并至已有精确匹配的槽位，余量插入空槽
     private boolean insertIntoLogicalSlot(ResolvedLogicalSlot logicalSlot, boolean secondaryClick) {
         ItemStack carried = this.getCarried();
         if (carried.isEmpty() || !this.matchesLogicalSlot(carried, logicalSlot.signature())) {
@@ -300,6 +311,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return true;
     }
 
+    // 从逻辑槽位取出物品：左键全部取出，右键取一半（向上取整）
     private boolean extractFromLogicalSlot(ResolvedLogicalSlot logicalSlot, boolean secondaryClick) {
         for (SpecimenBoxState.Entry entry : this.storage.snapshotEntries()) {
             if (!logicalSlot.tableId().equals(entry.tableId()) || !logicalSlot.signature().equals(entry.signature())) {
@@ -325,6 +337,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return false;
     }
 
+    // 合并到已有精确匹配的槽位（按最大堆叠量填充）
     private int mergeIntoExactEntries(ResourceLocation tableId, LootResultSignature signature, ItemStack carried, int requested) {
         int moved = 0;
         for (SpecimenBoxState.Entry entry : this.storage.snapshotEntries()) {
@@ -353,6 +366,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return moved;
     }
 
+    // 插入到空后端槽位
     private int insertIntoEmptyEntries(ResourceLocation tableId, LootResultSignature signature, ItemStack carried, int requested) {
         int moved = 0;
         while (moved < requested && !carried.isEmpty()) {
@@ -371,6 +385,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return moved;
     }
 
+    // 查找第一个空的后端槽位
     private int findEmptyBackendSlot() {
         for (int slot = 0; slot < this.storage.getContainerSize(); slot++) {
             if (this.storage.getItem(slot).isEmpty()) {
@@ -380,6 +395,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return -1;
     }
 
+    // 统计指定表与签名在存储中已占用的总数量
     private int countStoredItems(ResourceLocation tableId, LootResultSignature signature) {
         int storedCount = 0;
         for (SpecimenBoxState.Entry entry : this.storage.snapshotEntries()) {
@@ -390,10 +406,12 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return storedCount;
     }
 
+    // 检查物品栈是否匹配逻辑槽位的签名
     private boolean matchesLogicalSlot(ItemStack stack, LootResultSignature signature) {
         return LootResultMatcher.matches(stack, signature);
     }
 
+    // 判断指定 slotId 是否为载体物品所在格（主手）
     private boolean isCarrierMenuSlot(int slotId) {
         if (this.getCarrierHand() != InteractionHand.MAIN_HAND) {
             return false;
@@ -401,6 +419,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return slotId == this.menuSlotIdForPlayerSlot(this.getCarrierSlotIndex());
     }
 
+    // 将玩家槽位索引转换为菜单 slotId（考虑后端槽位偏移）
     private int menuSlotIdForPlayerSlot(int playerSlotIndex) {
         if (playerSlotIndex >= 9 && playerSlotIndex < 36) {
             return SpecimenBoxState.BACKEND_SLOT_COUNT + (playerSlotIndex - 9);
@@ -412,6 +431,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     }
 
     @Nullable
+    // 根据槽位索引、选中表与当前页解析对应的逻辑槽位
     private ResolvedLogicalSlot resolveLogicalSlot(int slotIndex) {
         if (slotIndex < 0 || slotIndex >= LOGICAL_SLOTS_PER_PAGE) {
             return null;
@@ -441,11 +461,13 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     // 目前还不支持快速整理
     // 需要注意测试对于背包整理类模组的兼容性。快速移动逻辑应在服务端执行，客户端保持只读
     @Override
+    // TODO 补充 shift 快速移动物品（目前返回空，阻塞整理操作）
     public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
         return ItemStack.EMPTY;
     }
 
     @Override
+    // 菜单关闭时将数据回写至载体物品
     public void removed(@NotNull Player player) {
         super.removed(player);
         this.storage.flush();
@@ -453,6 +475,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
 
     // TODO 补充GUI打开后物品栏状态的锁定，避免刷物品
     @Override
+    // 检查菜单是否仍有效：载体物品必须仍在原位
     public boolean stillValid(@NotNull Player player) {
         if (this.getCarrierHand() == InteractionHand.OFF_HAND) {
             return player.getOffhandItem().is(ModItems.SPECIMEN_BOX);
@@ -464,14 +487,17 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return player.getMainHandItem().is(ModItems.SPECIMEN_BOX) || player.getOffhandItem().is(ModItems.SPECIMEN_BOX);
     }
 
+    // 立即推送客户端快照（无条件）
     public void syncClientView() {
         this.syncClientView(false);
     }
 
+    // 仅在快照有变更时推送（避免重复发包）
     private void syncClientViewIfChanged() {
         this.syncClientView(true);
     }
 
+    // 构建并推送快照；onlyWhenChanged 时与上次快照比较避免重复
     private void syncClientView(boolean onlyWhenChanged) {
         if (!(this.owner instanceof ServerPlayer serverPlayer)) {
             return;
@@ -484,6 +510,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         Services.NETWORK.sendToPlayer(serverPlayer, snapshot);
     }
 
+    // 构建包含目录、选中表、页码与逻辑槽位的完整快照
     private SyncSpecimenBoxViewPayload buildSnapshot() {
         List<ResourceLocation> unlockedTables = this.collectUnlockedTables();
         Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
@@ -515,6 +542,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return new SyncSpecimenBoxViewPayload(this.containerId, tables, selectedIndex, pageIndex, pageCount, logicalSlots);
     }
 
+    // 构建当前页所有逻辑槽位的条目（含解锁状态、日记计数、存储计数）
     private List<SyncSpecimenBoxViewPayload.LogicalSlotEntry> buildLogicalSlotEntries(ResourceLocation tableId,
                                                                                        TableDefinition table,
                                                                                        int pageIndex) {
@@ -547,6 +575,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return List.copyOf(logicalSlots);
     }
 
+    // 规范化选中表与页码至合法范围
     private void normalizeSelection() {
         List<ResourceLocation> unlockedTables = this.collectUnlockedTables();
         if (unlockedTables.isEmpty()) {
@@ -561,6 +590,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         this.pageData.set(Mth.clamp(this.pageData.get(), 0, this.maxPageFor(tableId)));
     }
 
+    // 计算指定表的最大页码（基于逻辑槽位分页）
     private int maxPageFor(ResourceLocation tableId) {
         TableDefinition definition = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
         if (definition == null || definition.items().isEmpty()) {
@@ -569,6 +599,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return Math.max(0, (definition.items().size() - 1) / LOGICAL_SLOTS_PER_PAGE);
     }
 
+    // 收集所有已解锁的战利品表（排序：minecraft 优先，按命名空间+名称排序）
     private List<ResourceLocation> collectUnlockedTables() {
         if (this.owner.level().getServer() != null) {
             ArchaeologyJournalServerCatalog.ensureLoaded(this.owner.level().getServer());
@@ -594,6 +625,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
         return unlockedTables;
     }
 
+    // 获取玩家的考古日记状态（通过 mixin 接口）
     private ArchaeologyJournalState getJournalState() {
         if (this.owner instanceof ArchaeologyJournalStateHolder holder) {
             return holder.unsuspiciousblock$getArchaeologyJournalState();

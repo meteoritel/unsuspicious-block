@@ -1,6 +1,11 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
@@ -36,10 +41,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 考古战利品运行时追踪器——服务端核心业务逻辑入口。
+ * 负责：战利品解锁、日志条目创建与更新、容器物品追踪与核对。
+ * 通过 captureMenuTrackingSnapshot / applyMenuTrackingSnapshot 实现
+ * "打开容器前快照 → 打开容器后核对" 的两阶段追踪模式。
+ */
 public final class ArchaeologyLootRuntimeTracker {
     private ArchaeologyLootRuntimeTracker() {
     }
 
+    // 将单个物品栈标记为已解锁（解析签名后处理）
     public static void unlockResolvedLoot(ServerPlayer player, ResourceLocation tableId, ItemStack stack) {
         ArchaeologyJournalState state = getState(player);
         if (state == null) {
@@ -56,6 +68,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
     }
 
+    // 将多个物品按签名批量标记为已解锁
     public static void unlockResolvedLoot(ServerPlayer player, ResourceLocation tableId, Map<String, Integer> itemCounts) {
         ArchaeologyJournalState state = getState(player);
         if (state == null) {
@@ -69,6 +82,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
     }
 
+    // 战利品发现事件处理（单物品栈）：解锁 + 记录首次发现时间
     public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
                                         ItemStack loot, @Nullable TriggerType triggerType,
                                         long gameTime, long dayTime) {
@@ -80,6 +94,7 @@ public final class ArchaeologyLootRuntimeTracker {
         ArchaeologyJournalNetwork.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
     }
 
+    // 战利品发现事件处理（批量物品）：解锁 + 记录首次发现时间
     public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
                                         Map<String, Integer> itemCounts, @Nullable TriggerType triggerType,
                                         long gameTime, long dayTime) {
@@ -92,6 +107,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
+    // 创建待定的日志条目（从单物品栈预期战利品）
     public static ExcavationLogEntry createPendingEntry(ServerPlayer player, ResourceLocation tableId,
                                                         TriggerType triggerType, @Nullable ResourceLocation sourceBlockId,
                                                         BlockPos pos, ItemStack expectedLoot,
@@ -108,6 +124,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
+    // 创建待定的日志条目（从批量预期战利品，同时解析生物群系与结构）
     public static ExcavationLogEntry createPendingEntry(ServerPlayer player, TriggerType triggerType,
                                                         @Nullable ResourceLocation sourceBlockId, BlockPos pos,
                                                         Map<String, Integer> expectedLoot,
@@ -125,6 +142,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
+    // 将实际获取物品应用到待定日志条目（单物品栈版本）
     public static ExcavationLogEntry applyPendingLoot(ServerPlayer player, ResourceLocation tableId,
                                                       @Nullable ExcavationLogEntry pendingEntry,
                                                       ItemStack stack, long gameTime, long dayTime) {
@@ -140,6 +158,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
+    // 将实际获取物品应用到待定日志条目（批量版本），同时更新日记状态
     public static ExcavationLogEntry applyPendingLoot(ServerPlayer player, ResourceLocation tableId,
                                                       @Nullable ExcavationLogEntry pendingEntry,
                                                       Map<String, Integer> actualLoot,
@@ -168,6 +187,7 @@ public final class ArchaeologyLootRuntimeTracker {
         return updatedEntry;
     }
 
+    // 容器战利品确认处理：解锁物品 + 创建待定日志条目 + 记录追踪状态
     public static void onContainerLootResolved(ServerPlayer player,
                                                TrackedContainerLootState container,
                                                ResourceLocation tableId,
@@ -186,6 +206,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
+    // 捕获容器菜单打开前的快照（记录追踪容器与玩家物品栏中相关物品的计数）
     public static MenuTrackingSnapshot captureMenuTrackingSnapshot(ServerPlayer player, Collection<Container> rootContainers) {
         List<TrackedContainerLootState> trackedContainers = collectTrackedContainers(rootContainers);
         if (trackedContainers.isEmpty()) {
@@ -212,6 +233,7 @@ public final class ArchaeologyLootRuntimeTracker {
                 capturePlayerInventoryCounts(player.getInventory(), trackedSignatures.values()));
     }
 
+    // 应用容器菜单关闭后的核对快照：计算增量 → 更新日志条目
     public static void applyMenuTrackingSnapshot(ServerPlayer player, MenuTrackingSnapshot snapshot) {
         List<LootResultSignature> signatures = new ArrayList<>();
         for (String signatureKey : snapshot.beforeInventoryCounts().keySet()) {
@@ -273,6 +295,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
     }
 
+    // 核对容器追踪状态：清理已过期或已标记移除的追踪
     public static void reconcileTrackedContainers(Collection<Container> rootContainers) {
         for (TrackedContainerLootState trackedContainer : collectTrackedContainers(rootContainers)) {
             trackedContainer.unsuspiciousblock$reconcileTrackedLoot();
@@ -280,6 +303,7 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
+    // 解析物品栈在指定战利品表中匹配的签名
     public static LootResultSignature resolveSignature(ResourceLocation tableId, ItemStack stack) {
         if (stack.isEmpty()) {
             return null;

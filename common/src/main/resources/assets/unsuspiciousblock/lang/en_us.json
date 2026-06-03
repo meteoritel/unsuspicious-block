@@ -135,7 +135,6 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "Level %s Enchant",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "Enchanted",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "Approximate",
-  "screen.unsuspiciousblock.archaeology_journal.item_hint.wrapper": "(%s)",
 
   "command.unsuspiciousblock.usb.clear.success": "Your archaeology journal data has been cleared.",
   "command.unsuspiciousblock.usb.clear_table.success": "Cleared archaeology journal data for loot table %s.",

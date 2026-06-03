@@ -17,11 +17,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** 标本箱物品内的持久化状态——当前阶段先保存后端精确物品槽位。 */
+/**
+ * 标本箱物品内的持久化状态——管理物品 NBT 中的后端槽位数据。
+ * 负责 Entries 的序列化/反序列化、激活表限制（MAX_ACTIVE_TABLES）、
+ * 脏槽清理（sanitize），以及与 ItemStack CUSTOM_DATA 的读写。
+ */
 public final class SpecimenBoxState {
+    // 最大激活表数——超过后不能再存入新表物品
     public static final int MAX_ACTIVE_TABLES = 6;
+    // 后端隐藏容器总槽位数（54 = 双箱子容量）
     public static final int BACKEND_SLOT_COUNT = 54;
 
+    // NBT 键名常量
     private static final String ROOT_KEY = "specimen_box";
     private static final String ENTRIES_KEY = "entries";
     private static final String SLOT_KEY = "slot";
@@ -29,20 +36,24 @@ public final class SpecimenBoxState {
     private static final String SIGNATURE_KEY = "signature";
     private static final String STACK_KEY = "stack";
 
+    // 已清理的 Entry 列表（只读）
     private final List<Entry> entries;
 
     private SpecimenBoxState(List<Entry> entries) {
         this.entries = entries;
     }
 
+    // 创建空状态
     public static SpecimenBoxState empty() {
         return new SpecimenBoxState(List.of());
     }
 
+    // 从 Entry 列表创建，自动执行 sanitize 清理
     public static SpecimenBoxState of(List<Entry> entries) {
         return new SpecimenBoxState(sanitize(entries));
     }
 
+    // 从载体物品的 CUSTOM_DATA 中读取并反序列化状态
     public static SpecimenBoxState read(ItemStack carrier, HolderLookup.Provider registries) {
         CustomData customData = carrier.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
         CompoundTag rootTag = customData.copyTag();
@@ -62,10 +73,12 @@ public final class SpecimenBoxState {
         return new SpecimenBoxState(sanitize(loadedEntries));
     }
 
+    // 获取已清理的 Entry 列表
     public List<Entry> entries() {
         return this.entries;
     }
 
+    // 收集当前所有条目涉及的激活表 ID
     public Set<ResourceLocation> activeTables() {
         LinkedHashSet<ResourceLocation> tables = new LinkedHashSet<>();
         for (Entry entry : this.entries) {
@@ -74,6 +87,7 @@ public final class SpecimenBoxState {
         return Set.copyOf(tables);
     }
 
+    // 检查是否还能存入指定表（已激活则返回 true，未激活且未达上限也返回 true）
     public boolean canStoreInTable(ResourceLocation tableId) {
         if (tableId == null) {
             return false;
@@ -82,6 +96,7 @@ public final class SpecimenBoxState {
         return tables.contains(tableId) || tables.size() < MAX_ACTIVE_TABLES;
     }
 
+    // 将状态序列化写入载体物品的 CUSTOM_DATA
     public void writeTo(ItemStack carrier, HolderLookup.Provider registries) {
         List<Entry> sanitizedEntries = sanitize(this.entries);
         CustomData.update(DataComponents.CUSTOM_DATA, carrier, tag -> {
@@ -100,6 +115,7 @@ public final class SpecimenBoxState {
         });
     }
 
+    // 清理已损坏、重复、超限图表的脏数据槽位
     private static List<Entry> sanitize(List<Entry> entries) {
         if (entries == null || entries.isEmpty()) {
             return List.of();
@@ -132,6 +148,7 @@ public final class SpecimenBoxState {
         return List.copyOf(sanitizedEntries);
     }
 
+    // 检查槽位索引是否在合法范围内
     private static boolean isValidSlot(int slot) {
         return slot >= 0 && slot < BACKEND_SLOT_COUNT;
     }
@@ -142,11 +159,13 @@ public final class SpecimenBoxState {
             stack = stack.copy();
         }
 
+        // 复制当前条目
         public Entry copy() {
             return new Entry(this.slot, this.tableId, this.signature, this.stack);
         }
 
         @Nullable
+        // 从 NBT Compound 反序列化条目
         public static Entry fromTag(CompoundTag tag, HolderLookup.Provider registries) {
             int slot = tag.getInt(SLOT_KEY);
             ResourceLocation tableId = ResourceLocation.tryParse(tag.getString(TABLE_KEY));
@@ -166,6 +185,7 @@ public final class SpecimenBoxState {
             return new Entry(slot, tableId, signature, stack);
         }
 
+        // 将条目序列化为 NBT Compound
         public CompoundTag toTag(HolderLookup.Provider registries) {
             CompoundTag tag = new CompoundTag();
             tag.putInt(SLOT_KEY, this.slot);

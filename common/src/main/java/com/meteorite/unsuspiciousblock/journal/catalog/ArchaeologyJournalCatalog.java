@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.catalog;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -10,7 +10,6 @@ import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.JsonOps;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
@@ -41,6 +40,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 考古战利品表目录——客户端侧 JSON 解析器。
+ * 从资源包加载所有匹配考古路径前缀的战利品表 JSON，
+ * 解析为 TableDefinition 与 ItemDefinition，供考古笔记 UI 渲染目录树。
+ */
 public final class ArchaeologyJournalCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
@@ -49,14 +53,8 @@ public final class ArchaeologyJournalCatalog {
     private static final String LEVEL_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level";
     private static final String ENCHANTED_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted";
     private static final String APPROXIMATE_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate";
-    private static final String HINT_WRAPPER_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.wrapper";
 
     private ArchaeologyJournalCatalog() {
-    }
-
-    // 从客户端 Minecraft 实例加载目录（委托到 load(ResourceManager)）
-    public static Map<ResourceLocation, TableDefinition> load(Minecraft minecraft) {
-        return load(minecraft.getResourceManager());
     }
 
     // 从任意 ResourceManager 加载目录（客户端或服务端均可使用）

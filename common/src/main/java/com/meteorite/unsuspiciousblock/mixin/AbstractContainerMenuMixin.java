@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;

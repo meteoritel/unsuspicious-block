@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
 import net.minecraft.server.level.ServerPlayer;

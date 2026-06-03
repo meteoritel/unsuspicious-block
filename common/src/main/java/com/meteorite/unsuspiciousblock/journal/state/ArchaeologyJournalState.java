@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.state;
 
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
@@ -10,6 +10,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 玩家考古日记的进度状态——管理战利品表的解锁与物品收集计数。
+ * 每个表对应一个 TableProgress，表内每个物品对应一个 ItemProgress。
+ * 提供序列化 (toTag / fromTag) 支持，通过 mixin 附加在玩家 NBT 中持久化。
+ */
 public final class ArchaeologyJournalState {
     private static final String TABLES_TAG = "tables";
     private static final String UNLOCKED_TAG = "unlocked";
@@ -18,20 +23,24 @@ public final class ArchaeologyJournalState {
 
     private final LinkedHashMap<ResourceLocation, TableProgress> tables = new LinkedHashMap<>();
 
+    // 清除所有表进度
     public void clear() {
         this.tables.clear();
     }
 
+    // 解锁指定战利品表（同时创建 TableProgress）
     public boolean unlockTable(ResourceLocation tableId) {
         return this.getOrCreateTable(tableId).unlock();
     }
 
+    // 解锁指定表中指定物品（表会自动解锁）
     public boolean unlockItem(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.getOrCreateTable(tableId);
         table.unlock();
         return table.unlockItem(signature);
     }
 
+    // 批量解锁指定表中的多个物品（去重后操作）
     public boolean unlockItems(ResourceLocation tableId, Iterable<LootResultSignature> signatures) {
         if (signatures == null) {
             return false;
@@ -54,6 +63,7 @@ public final class ArchaeologyJournalState {
         return changed;
     }
 
+    // 记录单个物品的获取数量
     public boolean recordItemAcquired(ResourceLocation tableId, LootResultSignature signature, int count) {
         if (count <= 0) {
             return false;
@@ -64,6 +74,7 @@ public final class ArchaeologyJournalState {
         return table.recordItemAcquired(signature, count);
     }
 
+    // 批量记录多个物品的获取数量
     public boolean recordItemsAcquired(ResourceLocation tableId, Map<LootResultSignature, Integer> counts) {
         if (counts == null) {
             return false;
@@ -88,46 +99,55 @@ public final class ArchaeologyJournalState {
         return changed;
     }
 
+    // 移除指定表及其所有物品进度
     public boolean removeTable(ResourceLocation tableId) {
         return this.tables.remove(tableId) != null;
     }
 
+    // 检查指定表是否已解锁
     public boolean isTableUnlocked(ResourceLocation tableId) {
         TableProgress table = this.tables.get(tableId);
         return table != null && table.isUnlocked();
     }
 
+    // 检查指定表中某个物品是否已解锁
     public boolean isItemUnlocked(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.tables.get(tableId);
         return table != null && table.isItemUnlocked(signature);
     }
 
+    // 获取所有表进度的只读映射
     public Map<ResourceLocation, TableProgress> getTables() {
         return Collections.unmodifiableMap(this.tables);
     }
 
     @Nullable
+    // 获取指定表的进度（不存在返回 null）
     public TableProgress getTable(ResourceLocation tableId) {
         return this.tables.get(tableId);
     }
 
     @Nullable
+    // 获取指定表中某物品的进度（不存在返回 null）
     public ItemProgress getItemProgress(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.tables.get(tableId);
         return table != null ? table.getItemProgress(signature) : null;
     }
 
+    // 获取指定表中某物品的收集数量
     public int getItemCount(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.tables.get(tableId);
         return table != null ? table.getItemCount(signature) : 0;
     }
 
+    // 深度复制整个状态
     public ArchaeologyJournalState copy() {
         ArchaeologyJournalState copy = new ArchaeologyJournalState();
         copy.copyFrom(this);
         return copy;
     }
 
+    // 从另一个状态复制全部数据
     public void copyFrom(ArchaeologyJournalState other) {
         this.tables.clear();
         for (Map.Entry<ResourceLocation, TableProgress> entry : other.tables.entrySet()) {
@@ -135,12 +155,14 @@ public final class ArchaeologyJournalState {
         }
     }
 
+    // 序列化为 NBT（创建新 CompoundTag 并写入）
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         this.writeTo(tag);
         return tag;
     }
 
+    // 将状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableProgress> entry : this.tables.entrySet()) {
@@ -149,6 +171,7 @@ public final class ArchaeologyJournalState {
         tag.put(TABLES_TAG, tablesTag);
     }
 
+    // 从 CompoundTag 反序列化恢复状态
     public void readFrom(CompoundTag tag) {
         this.clear();
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
@@ -166,6 +189,7 @@ public final class ArchaeologyJournalState {
         }
     }
 
+    // 静态工厂：从 CompoundTag 创建新的状态实例
     public static ArchaeologyJournalState fromTag(CompoundTag tag) {
         ArchaeologyJournalState state = new ArchaeologyJournalState();
         state.readFrom(tag);

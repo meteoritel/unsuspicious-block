@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui;
 
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.journal.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;

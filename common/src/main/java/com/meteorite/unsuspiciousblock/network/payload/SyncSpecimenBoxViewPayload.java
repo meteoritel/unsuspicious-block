@@ -11,8 +11,11 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 标本箱菜单视图同步包——服务端→客户端。 */
-// TODO 发送文本时修改为发送key而不是翻译后的Component
+/**
+ * 标本箱菜单视图同步包（服务端→客户端）。
+ * 包含当前菜单的目录列表、选中表项、页码信息以及当前页逻辑槽位的权威快照。
+ * 客户端收到后写入 SpecimenBoxClientState 供 Screen 渲染。
+ */
 public record SyncSpecimenBoxViewPayload(int containerId,
                                          List<TableEntry> tables,
                                          int selectedTableIndex,
@@ -26,10 +29,12 @@ public record SyncSpecimenBoxViewPayload(int containerId,
             StreamCodec.of(SyncSpecimenBoxViewPayload::encode, SyncSpecimenBoxViewPayload::decode);
 
     @Override
+    // 返回自定义包类型标识
     public @NotNull Type<SyncSpecimenBoxViewPayload> type() {
         return TYPE;
     }
 
+    // 将 payload 编码到网络缓冲区
     private static void encode(RegistryFriendlyByteBuf buf, SyncSpecimenBoxViewPayload payload) {
         buf.writeVarInt(payload.containerId);
         buf.writeVarInt(payload.tables.size());
@@ -50,6 +55,7 @@ public record SyncSpecimenBoxViewPayload(int containerId,
         }
     }
 
+    // 从网络缓冲区解码 payload
     private static SyncSpecimenBoxViewPayload decode(RegistryFriendlyByteBuf buf) {
         int containerId = buf.readVarInt();
         int tableCount = buf.readVarInt();

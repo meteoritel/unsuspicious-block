@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.state;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -12,6 +12,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 考古日志的历史记录状态——记录每个战利品表的首次解锁时间与所有发掘日志条目。
+ * 每张表对应一个 TableLogHistory，内含 firstUnlockMeta 与 ExcavationLogEntry 列表。
+ * 提供服务端-客户端双向同步支持（配合 sync 子包中的 ArchaeologyJournalLogSyncSession）。
+ */
 public final class ArchaeologyJournalLogState {
     private static final String TABLES_TAG = "tables";
     private static final String FIRST_UNLOCKED_TIME_TAG = "first_unlocked_game_time";
@@ -21,19 +26,23 @@ public final class ArchaeologyJournalLogState {
 
     private final LinkedHashMap<ResourceLocation, TableLogHistory> tables = new LinkedHashMap<>();
 
+    // 清除所有表的历史记录
     public void clear() {
         this.tables.clear();
     }
 
     @Nullable
+    // 获取指定表的历史记录
     public TableLogHistory getTable(ResourceLocation tableId) {
         return this.tables.get(tableId);
     }
 
+    // 获取所有表历史记录的只读映射
     public Map<ResourceLocation, TableLogHistory> getTables() {
         return Collections.unmodifiableMap(this.tables);
     }
 
+    // 检查是否没有任何历史记录
     public boolean isEmpty() {
         return this.tables.isEmpty();
     }
@@ -46,25 +55,30 @@ public final class ArchaeologyJournalLogState {
         return total;
     }
 
+    // 设置（或保留最小）首次解锁时间元数据
     public boolean setFirstUnlockMetaMin(ResourceLocation tableId, @Nullable TriggerType triggerType,
                                          long gameTime, long dayTime) {
         return this.getOrCreateTable(tableId).setFirstUnlockMetaMin(triggerType, gameTime, dayTime);
     }
 
+    // 插入或更新指定表中的日志条目（基于 entryId 去重）
     public boolean upsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
         return this.getOrCreateTable(tableId).upsertEntry(entry);
     }
 
+    // 移除指定表及其所有日志条目
     public boolean removeTable(ResourceLocation tableId) {
         return this.tables.remove(tableId) != null;
     }
 
+    // 深度复制整个日志状态
     public ArchaeologyJournalLogState copy() {
         ArchaeologyJournalLogState copy = new ArchaeologyJournalLogState();
         copy.copyFrom(this);
         return copy;
     }
 
+    // 从另一个日志状态复制全部数据
     public void copyFrom(ArchaeologyJournalLogState other) {
         this.tables.clear();
         for (Map.Entry<ResourceLocation, TableLogHistory> entry : other.tables.entrySet()) {
@@ -72,12 +86,14 @@ public final class ArchaeologyJournalLogState {
         }
     }
 
+    // 序列化为 NBT
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         this.writeTo(tag);
         return tag;
     }
 
+    // 将日志状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableLogHistory> entry : this.tables.entrySet()) {
@@ -86,6 +102,7 @@ public final class ArchaeologyJournalLogState {
         tag.put(TABLES_TAG, tablesTag);
     }
 
+    // 从 CompoundTag 反序列化恢复日志状态
     public void readFrom(CompoundTag tag) {
         this.clear();
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {

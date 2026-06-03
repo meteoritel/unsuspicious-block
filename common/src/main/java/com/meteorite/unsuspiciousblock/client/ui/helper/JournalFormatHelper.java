@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.helper;
 
-import com.meteorite.unsuspiciousblock.journal.GameTimeFormatHelper;
-import com.meteorite.unsuspiciousblock.journal.TriggerType;
+import com.meteorite.unsuspiciousblock.util.GameTimeFormatHelper;
+import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;

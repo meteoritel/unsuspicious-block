@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;

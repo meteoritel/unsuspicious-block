@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.journal;
+package com.meteorite.unsuspiciousblock.journal.state;
 
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
@@ -13,7 +13,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 单条考古日志记录。
+ * 单条考古日志记录——记录一次发掘事件的全部上下文。
+ * 包含触发类型、源方块、位置、生物群系、所在结构、
+ * 预期的战利品（expectedLoot）与实际获取的战利品（actualLoot）。
+ * 支持 NBT 序列化与双向同步。
  */
 public record ExcavationLogEntry(UUID entryId,
                                  @Nullable TriggerType triggerType,
