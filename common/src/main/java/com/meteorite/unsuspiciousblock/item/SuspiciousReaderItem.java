@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.enchantment.scanner.PenetratingScanService;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
 import net.minecraft.core.BlockPos;
@@ -22,7 +21,6 @@ import org.jetbrains.annotations.NotNull;
 
 /** 可疑解析仪——右键可疑方块查看其内部战利品 */
 public class SuspiciousReaderItem extends Item {
-    private static final int ENCHANTABILITY = 12;
 
     public SuspiciousReaderItem(Properties properties) {
         super(properties);
@@ -31,11 +29,6 @@ public class SuspiciousReaderItem extends Item {
     @Override
     public boolean isEnchantable(@NotNull ItemStack stack) {
         return true;
-    }
-
-    @Override
-    public int getEnchantmentValue() {
-        return ENCHANTABILITY;
     }
 
     @Override
@@ -59,15 +52,6 @@ public class SuspiciousReaderItem extends Item {
 
         ScanResult clickedResult = scanBrushable(serverPlayer, level, clickedPos, blockEntity, brushable, scanState);
         sendPrimaryResultMessage(player, clickedPos, clickedResult.lootItem());
-
-        NearbyScanSummary nearbySummary = scanNearbyTargets(serverPlayer, level, context.getItemInHand(), clickedPos);
-        if (nearbySummary.scannedCount() > 0) {
-            player.sendSystemMessage(
-                    Component.translatable("item.unsuspiciousblock.suspicious_reader.penetrating_summary",
-                                    nearbySummary.scannedCount(), nearbySummary.nonEmptyCount())
-                            .withStyle(style -> style.withColor(0x55FFFF))
-            );
-        }
 
         player.swing(context.getHand());
         return InteractionResult.SUCCESS;
@@ -98,31 +82,6 @@ public class SuspiciousReaderItem extends Item {
         }
 
         return new ScanResult(lootItem);
-    }
-
-    private NearbyScanSummary scanNearbyTargets(ServerPlayer player, Level level, ItemStack readerStack,
-                                                BlockPos centerPos) {
-        int radius = PenetratingScanService.getScanRadius(level.registryAccess(), readerStack);
-        if (radius <= 0) {
-            return NearbyScanSummary.EMPTY;
-        }
-
-        int scannedCount = 0;
-        int nonEmptyCount = 0;
-        for (BlockPos targetPos : PenetratingScanService.collectNearbyTargets(centerPos, radius)) {
-            BlockEntity blockEntity = level.getBlockEntity(targetPos);
-            if (!(blockEntity instanceof BrushableBlockEntity brushable)
-                    || !(blockEntity instanceof BrushableBlockEntityScanState scanState)) {
-                continue;
-            }
-
-            ScanResult result = scanBrushable(player, level, targetPos, blockEntity, brushable, scanState);
-            scannedCount++;
-            if (!result.lootItem().isEmpty()) {
-                nonEmptyCount++;
-            }
-        }
-        return new NearbyScanSummary(scannedCount, nonEmptyCount);
     }
 
     private void sendPrimaryResultMessage(Player player, BlockPos pos, ItemStack lootItem) {
@@ -165,9 +124,5 @@ public class SuspiciousReaderItem extends Item {
     }
 
     private record ScanResult(ItemStack lootItem) {
-    }
-
-    private record NearbyScanSummary(int scannedCount, int nonEmptyCount) {
-        private static final NearbyScanSummary EMPTY = new NearbyScanSummary(0, 0);
     }
 }

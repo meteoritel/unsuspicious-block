@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
+import com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmentEventAdapter;
 
 import java.util.ServiceLoader;
 
@@ -13,6 +14,7 @@ public class Services {
     public static final IPlatformHelper PLATFORM = load(IPlatformHelper.class);
     public static final INetworkHelper NETWORK = load(INetworkHelper.class);
     public static final ILootTableConfig LOOT_TABLE_CONFIG = load(ILootTableConfig.class);
+    public static final IEnchantmentEventAdapter ENCHANTMENT = load(IEnchantmentEventAdapter.class);
 
     public static <T> T load(Class<T> clazz) {
         final T loadedService = ServiceLoader.load(clazz)

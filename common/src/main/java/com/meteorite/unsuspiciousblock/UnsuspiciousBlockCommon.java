@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.VanillaAchievementHelper;
 
@@ -9,5 +10,6 @@ public class UnsuspiciousBlockCommon {
     public static void init() {
         Constants.LOG.info("UnsuspiciousBlock common init on {}", Services.PLATFORM.getPlatformName());
         AchievementManager.init(new VanillaAchievementHelper());
+        EnchantmentManager.init(Services.ENCHANTMENT);
     }
 }
