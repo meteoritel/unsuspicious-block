@@ -398,7 +398,7 @@ public class ArchaeologyJournalScreen extends Screen {
             case NAME -> Comparator
                     .comparing((TableView view) -> view.displayName().getString());
             case RARITY -> Comparator
-                    .<TableView>comparingDouble(TableView::lowestItemProbability).reversed()
+                    .comparingDouble(TableView::lowestItemProbability).reversed()
                     .thenComparing(view -> view.displayName().getString());
             case UNLOCK -> Comparator
                     .comparing((TableView view) -> !view.unlocked())

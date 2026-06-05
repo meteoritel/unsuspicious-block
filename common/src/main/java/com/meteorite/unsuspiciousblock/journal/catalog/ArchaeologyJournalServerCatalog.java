@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.journal.catalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulator;
-import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.FileToIdConverter;

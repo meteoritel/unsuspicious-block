@@ -54,10 +54,10 @@ public class JournalUnlockToast implements Toast {
 
         Font font = toastComponent.getMinecraft().font;
 
-        // 标题
-        guiGraphics.drawString(font, TITLE_TEXT, 30, 7, 0xFF4A3320, false);
-        // 描述
-        guiGraphics.drawString(font, this.description, 30, 18, 0xFF5A422C, false);
+        // 标题（白色带阴影，确保在 toast 背景上清晰可读）
+        guiGraphics.drawString(font, TITLE_TEXT, 30, 7, 0xFFFFFF, true);
+        // 描述（浅黄色带阴影）
+        guiGraphics.drawString(font, this.description, 30, 18, 0xFFFFD0, true);
 
         // 图标
         if (!this.icon.isEmpty()) {

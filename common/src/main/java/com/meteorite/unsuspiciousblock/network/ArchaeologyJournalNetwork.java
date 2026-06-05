@@ -11,12 +11,15 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -202,6 +205,19 @@ public final class ArchaeologyJournalNetwork {
     static boolean crossesCacheMeIfYouCanThreshold(int previousTotalEntryCount, int currentTotalEntryCount) {
         return previousTotalEntryCount < CACHE_ME_IF_YOU_CAN_THRESHOLD
                 && currentTotalEntryCount >= CACHE_ME_IF_YOU_CAN_THRESHOLD;
+    }
+
+    // 处理客户端同步的扫描仪扫描等级切换
+    public static void handleUpdateReaderScanLevel(UpdateReaderScanLevelPayload payload, ServerPlayer player) {
+        var stack = player.getMainHandItem();
+        if (stack.getItem() == ModItems.SUSPICIOUS_READER) {
+            SuspiciousReaderItem.setScanLevel(stack, payload.newLevel());
+            return;
+        }
+        stack = player.getOffhandItem();
+        if (stack.getItem() == ModItems.SUSPICIOUS_READER) {
+            SuspiciousReaderItem.setScanLevel(stack, payload.newLevel());
+        }
     }
 
     // 重置玩家的日志同步会话

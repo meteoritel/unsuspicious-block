@@ -27,6 +27,8 @@ public final class ArchaeologyJournalClientState {
     private static volatile ResourceLocation lastSelectedTableId;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
+    // 标记服务端状态是否已完成首次同步；首次同步时不弹 Toast，避免重进世界时重复通知
+    private static volatile boolean stateInitialized = false;
 
     private ArchaeologyJournalClientState() {
     }
@@ -40,6 +42,16 @@ public final class ArchaeologyJournalClientState {
     public static void receiveState(SyncJournalStatePayload payload) {
         ArchaeologyJournalLogLocalStore.tick();
         if (payload.state() == null) return;
+
+        if (!stateInitialized) {
+            // 首次同步：仅保存状态，不与空状态比较以避免误触发 Toast
+            ArchaeologyJournalState updated = new ArchaeologyJournalState();
+            updated.readFrom(payload.state());
+            journalState = updated;
+            stateRevision.incrementAndGet();
+            stateInitialized = true;
+            return;
+        }
 
         // 在更新前保存旧状态，用于检测新增解锁
         ArchaeologyJournalState oldState = journalState.copy();
@@ -95,6 +107,12 @@ public final class ArchaeologyJournalClientState {
 
     public static void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
         lastSelectedTableId = tableId;
+    }
+
+    // 断线时重置，使下次连入能正确处理首次同步
+    public static void resetOnDisconnect() {
+        stateInitialized = false;
+        journalState = new ArchaeologyJournalState();
     }
 
     // 比较旧状态和新状态，检测新解锁的表和物品并触发 Toast

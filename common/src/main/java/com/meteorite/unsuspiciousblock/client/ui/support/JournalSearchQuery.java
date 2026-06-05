@@ -2,10 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
-import java.util.function.Predicate;
 
 /**
  * 考古手册搜索查询解析器。
