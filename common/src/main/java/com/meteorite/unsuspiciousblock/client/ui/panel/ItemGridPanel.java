@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /** 右侧物品网格面板 */
 public final class ItemGridPanel {
@@ -33,8 +32,6 @@ public final class ItemGridPanel {
     private final List<GridEntry> items = new ArrayList<>();
     private final JournalBookBackground.BookLayout layout;
     private int page;
-    private double totalWeight;
-    private boolean approximate;
 
     public ItemGridPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -42,13 +39,11 @@ public final class ItemGridPanel {
     }
 
     // 设置当前展示的战利品表数据
-    public void setTable(List<GridItem> items, double totalWeight, boolean approximate) {
+    public void setTable(List<GridItem> items) {
         this.items.clear();
         for (GridItem item : items) {
             this.items.add(new GridEntry(item));
         }
-        this.totalWeight = totalWeight;
-        this.approximate = approximate;
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
     }
 
@@ -146,7 +141,7 @@ public final class ItemGridPanel {
 
             String nameText = item.displayName().getString();
             String countText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.acquired", item.count()).getString();
-            String probabilityText = formatProbability(item.weight(), totalWeight, approximate);
+            String probabilityText = formatProbability(item.probability());
             ScrollTextHelper.draw(guiGraphics, font, nameText,
                     textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x5A422C, textHovered, entry.scrollTicks, true);
             ScrollTextHelper.draw(guiGraphics, font, countText,
@@ -214,12 +209,11 @@ public final class ItemGridPanel {
     }
 
     // 格式化概率文字
-    public static String formatProbability(double weight, double totalWeight, boolean approximate) {
-        if (totalWeight <= 0 || weight <= 0) return "???";
-        double percent = weight * 100.0 / totalWeight;
-        String chance = String.format(Locale.ROOT, "%.2f%%", percent);
-        if (approximate) chance = "≈ " + chance;
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", chance).getString();
+    public static String formatProbability(String probability) {
+        if (probability == null || probability.equals("?")) {
+            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown").getString();
+        }
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability).getString();
     }
 
     private static final class GridEntry {
@@ -237,7 +231,7 @@ public final class ItemGridPanel {
 
     // 物品网格条目
     public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                           double weight, boolean unlocked, int count,
+                           String probability, boolean unlocked, int count,
                            LootResultSignature signature) {
         public ItemStack stack() {
             if (this.signature != null) {

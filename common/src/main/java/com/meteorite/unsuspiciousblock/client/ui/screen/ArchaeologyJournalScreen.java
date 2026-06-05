@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
@@ -17,11 +18,13 @@ import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.TooltipFlag;
 import org.jetbrains.annotations.NotNull;
@@ -41,6 +44,10 @@ public class ArchaeologyJournalScreen extends Screen {
     private final List<TableView> tableViews = new ArrayList<>();
     private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
     private int selectedIndex = -1;
+    private JournalSearchQuery currentSearch = JournalSearchQuery.EMPTY;
+    private JournalSearchQuery.SortOrder currentSortOrder = JournalSearchQuery.SortOrder.DEFAULT;
+    private EditBox searchField;
+    private Button sortButton;
 
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
@@ -125,20 +132,15 @@ public class ArchaeologyJournalScreen extends Screen {
         guiGraphics.drawString(this.font, this.title,
                 (this.width - titleWidth) / 2, this.bookLayout.bookY() + 2, 0x4A3320, false);
 
-        Component catalogTitle = Component.translatable("screen.unsuspiciousblock.archaeology_journal.catalog");
-        float catalogTitleScale = 1.125F;
-        int catalogTitleWidth = Mth.ceil(this.font.width(catalogTitle) * catalogTitleScale);
-        int catalogTitleX = this.bookLayout.leftPageX()
-                + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
-                + JournalLayout.CATALOG_X_OFFSET
-                + (JournalLayout.CATALOG_TEXTURE_WIDTH - catalogTitleWidth) / 2;
-        int catalogTitleY = this.bookLayout.leftPageY() + JournalLayout.CATALOG_TITLE_Y;
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().scale(catalogTitleScale, catalogTitleScale, 1.0F);
-        guiGraphics.drawString(this.font, catalogTitle,
-                Mth.floor(catalogTitleX / catalogTitleScale),
-                Mth.floor(catalogTitleY / catalogTitleScale), 0x5A3D23, false);
-        guiGraphics.pose().popPose();
+        // 搜索框上方的小标题（取代原放大目录标题，搜索框紧随其后）
+        Component catalogLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.catalog");
+        guiGraphics.drawString(this.font, catalogLabel,
+                this.bookLayout.leftPageX()
+                        + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
+                        + JournalLayout.CATALOG_X_OFFSET
+                        + JournalLayout.CATALOG_LEFT_PAD,
+                this.bookLayout.leftPageY() + JournalLayout.CATALOG_TITLE_Y,
+                0x5A3D23, false);
 
         if (this.catalogPanel != null) {
             this.catalogPanel.render(guiGraphics, this.font, this.selectedIndex, mouseX, mouseY);
@@ -233,6 +235,25 @@ public class ArchaeologyJournalScreen extends Screen {
         this.addRenderableWidget(this.rightPage.getArchaeologyTabButton());
         this.addRenderableWidget(this.rightPage.getLogTabButton());
 
+        // 搜索框：左侧页面目录标题下方
+        int searchX = this.bookLayout.leftPageX() + JournalLayout.CATALOG_X_OFFSET;
+        int searchY = this.bookLayout.leftPageY() + JournalLayout.SEARCH_BAR_Y;
+        this.searchField = new EditBox(this.font,
+                searchX, searchY,
+                JournalLayout.SEARCH_FIELD_WIDTH, JournalLayout.SEARCH_BAR_HEIGHT,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
+        this.searchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
+        this.searchField.setMaxLength(50);
+        this.searchField.setResponder(this::onSearchChanged);
+        this.addRenderableWidget(this.searchField);
+
+        // 排序按钮：搜索框右侧
+        int sortX = searchX + JournalLayout.SEARCH_FIELD_WIDTH + JournalLayout.SORT_BUTTON_GAP;
+        this.sortButton = this.addRenderableWidget(Button.builder(sortOrderLabel(), btn -> cycleSortOrder())
+                .pos(sortX, searchY)
+                .size(JournalLayout.SORT_BUTTON_WIDTH, JournalLayout.SEARCH_BAR_HEIGHT)
+                .build());
+
         int buttonWidth = JournalLayout.PAGE_BUTTON_WIDTH;
         int buttonGap = JournalLayout.PAGE_BUTTON_CENTER_GAP;
 
@@ -326,15 +347,30 @@ public class ArchaeologyJournalScreen extends Screen {
             TableDefinition definition = entry.getValue();
             ArchaeologyJournalState.TableProgress progress = this.state.getTable(id);
             ArchaeologyJournalLogState.TableLogHistory logHistory = this.logState.getTable(id);
-            this.tableViews.add(buildTableView(id, definition, progress, logHistory));
+            TableView view = buildTableView(id, definition, progress, logHistory);
+
+            // 应用搜索过滤
+            if (!this.currentSearch.isEmpty()) {
+                boolean matches = this.currentSearch.matchesCatalogEntry(
+                        id, view.displayName().getString(), view.unlocked());
+                // 物品级搜索也需要匹配
+                if (!matches && (this.currentSearch.mode() == JournalSearchQuery.Mode.NAME
+                        || this.currentSearch.mode() == JournalSearchQuery.Mode.RARITY)) {
+                    for (ItemView iv : view.items()) {
+                        if (this.currentSearch.matchesItem(iv.id(), iv.displayName().getString(),
+                                iv.unlocked(), iv.probability())) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                }
+                if (!matches) continue;
+            }
+            this.tableViews.add(view);
         }
-        // 目录先按解锁状态分区，分区内继续按模组来源聚类，并保持 minecraft 优先。
-        this.tableViews.sort(Comparator
-                .comparing((TableView view) -> !view.unlocked())
-                .thenComparing(view -> !"minecraft".equals(view.id().getNamespace()))
-                .thenComparing(view -> view.id().getNamespace())
-                .thenComparing(view -> view.displayName().getString())
-                .thenComparing(view -> view.id().getPath()));
+
+        // 应用排序
+        this.tableViews.sort(getSortComparator(this.currentSortOrder));
 
         this.selectedIndex = resolveSelectedIndex(selectedId, rememberedId);
         if (!this.selectionInitialized && !this.tableViews.isEmpty()) {
@@ -350,19 +386,80 @@ public class ArchaeologyJournalScreen extends Screen {
         syncButtonState();
     }
 
+    // 根据排序方式返回对应比较器
+    private Comparator<TableView> getSortComparator(JournalSearchQuery.SortOrder order) {
+        return switch (order) {
+            case DEFAULT -> Comparator
+                    .comparing((TableView view) -> !view.unlocked())
+                    .thenComparing(view -> !"minecraft".equals(view.id().getNamespace()))
+                    .thenComparing(view -> view.id().getNamespace())
+                    .thenComparing(view -> view.displayName().getString())
+                    .thenComparing(view -> view.id().getPath());
+            case NAME -> Comparator
+                    .comparing((TableView view) -> view.displayName().getString());
+            case RARITY -> Comparator
+                    .<TableView>comparingDouble(TableView::lowestItemProbability).reversed()
+                    .thenComparing(view -> view.displayName().getString());
+            case UNLOCK -> Comparator
+                    .comparing((TableView view) -> !view.unlocked())
+                    .thenComparing(view -> view.displayName().getString());
+        };
+    }
+
+    // 搜索框内容变化回调
+    private void onSearchChanged(String text) {
+        this.currentSearch = JournalSearchQuery.parse(text);
+        this.rebuildViewModels();
+    }
+
+    // 循环切换排序方式
+    private void cycleSortOrder() {
+        JournalSearchQuery.SortOrder[] orders = JournalSearchQuery.SortOrder.values();
+        int nextIndex = (this.currentSortOrder.ordinal() + 1) % orders.length;
+        this.currentSortOrder = orders[nextIndex];
+        if (this.sortButton != null) {
+            this.sortButton.setMessage(sortOrderLabel());
+        }
+        this.rebuildViewModels();
+    }
+
+    // 排序按钮标签
+    private Component sortOrderLabel() {
+        return switch (this.currentSortOrder) {
+            case DEFAULT -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.default");
+            case NAME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.name");
+            case RARITY -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.rarity");
+            case UNLOCK -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.unlock");
+        };
+    }
+
     private void updateItemGridPanel() {
         TableView selected = selectedTable();
         if (selected == null) {
-            this.rightPage.setTable(null, List.of(), 0.0, 0, 0, false,
+            this.rightPage.setTable(null, List.of(),
+                    0, 0,
                     null, null, null, List.of());
         } else {
+            // 物品级搜索过滤：NAME 和 RARITY 模式下只显示匹配的物品
+            List<ItemView> filteredItems;
+            if (!this.currentSearch.isEmpty()
+                    && (this.currentSearch.mode() == JournalSearchQuery.Mode.NAME
+                    || this.currentSearch.mode() == JournalSearchQuery.Mode.RARITY)) {
+                filteredItems = selected.items().stream()
+                        .filter(iv -> this.currentSearch.matchesItem(
+                                iv.id(), iv.displayName().getString(), iv.unlocked(), iv.probability()))
+                        .toList();
+            } else {
+                filteredItems = selected.items();
+            }
+
             List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
-            for (ItemView iv : selected.items()) {
+            for (ItemView iv : filteredItems) {
                 gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.tooltipHint(),
-                        iv.weight(), iv.unlocked(), iv.count(), iv.signature()));
+                        iv.probability(), iv.unlocked(), iv.count(), iv.signature()));
             }
             this.rightPage.setTable(selected.id(), gridItems,
-                    selected.totalWeight(), selected.parsedCount(), selected.totalCount(), selected.approximate(),
+                    selected.parsedCount(), selected.totalCount(),
                     selected.firstUnlockedGameTime(), selected.firstUnlockedDayTime(),
                     selected.firstUnlockTriggerType(), selected.logEntries());
         }
@@ -391,7 +488,7 @@ public class ArchaeologyJournalScreen extends Screen {
                 parsedCount++;
             }
             items.add(new ItemView(itemDefinition.id(), itemDefinition.displayName(), itemDefinition.tooltipHint(),
-                    itemDefinition.weight(), unlocked, count, itemDefinition.signature()));
+                    itemDefinition.probability(), unlocked, count, itemDefinition.signature()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         Long firstUnlockedGameTime = logHistory != null ? logHistory.getFirstUnlockedGameTime() : null;
@@ -402,8 +499,8 @@ public class ArchaeologyJournalScreen extends Screen {
         List<ExcavationLogEntry> logEntries = logHistory != null
                 ? List.copyOf(logHistory.getEntries())
                 : List.of();
-        return new TableView(tableId, definition.displayName(), items, definition.totalWeight(),
-                definition.items().size(), parsedCount, definition.approximate(), tableUnlocked,
+        return new TableView(tableId, definition.displayName(), items, definition.simulationCount(),
+                definition.items().size(), parsedCount, tableUnlocked,
                 firstUnlockedGameTime, firstUnlockedDayTime, firstUnlockTriggerType, logEntries);
     }
 
@@ -537,14 +634,26 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private record TableView(ResourceLocation id, Component displayName, List<ItemView> items,
-                             double totalWeight, int totalCount, int parsedCount, boolean approximate, boolean unlocked,
+                             int simulationCount, int totalCount, int parsedCount, boolean unlocked,
                              @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
                              @Nullable TriggerType firstUnlockTriggerType,
                              List<ExcavationLogEntry> logEntries) {
+
+        // 返回表中最低概率物品的比例值，用于 RARITY 排序
+        double lowestItemProbability() {
+            double lowest = 1.0;
+            for (ItemView item : items) {
+                double fraction = ProbabilityFormat.parsePercentToFraction(item.probability());
+                if (fraction >= 0 && fraction < lowest) {
+                    lowest = fraction;
+                }
+            }
+            return lowest;
+        }
     }
 
     private record ItemView(ResourceLocation id, Component displayName,
-                            @Nullable Component tooltipHint, double weight,
+                            @Nullable Component tooltipHint, String probability,
                             boolean unlocked, int count,
                             LootResultSignature signature) {
     }

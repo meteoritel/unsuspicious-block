@@ -45,11 +45,10 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 if (item.tooltipHint() != null) {
                     buf.writeUtf(Component.Serializer.toJson(item.tooltipHint(), buf.registryAccess()));
                 }
-                buf.writeDouble(item.weight());
+                buf.writeUtf(item.probability());
                 buf.writeUtf(item.signature().toStoredKey());
             }
-            buf.writeDouble(table.totalWeight());
-            buf.writeBoolean(table.approximate());
+            buf.writeVarInt(table.simulationCount());
         }
     }
 
@@ -67,16 +66,15 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 Component tooltipHint = buf.readBoolean()
                         ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess())
                         : null;
-                double weight = buf.readDouble();
+                String probability = buf.readUtf();
                 LootResultSignature signature = LootResultSignature.fromStoredKey(buf.readUtf());
                 if (signature == null) {
                     signature = LootResultSignature.plain(itemId);
                 }
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, weight, signature));
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature));
             }
-            double totalWeight = buf.readDouble();
-            boolean approximate = buf.readBoolean();
-            catalog.put(tableId, new TableDefinition(tableId, displayName, items, totalWeight, approximate));
+            int simulationCount = buf.readVarInt();
+            catalog.put(tableId, new TableDefinition(tableId, displayName, items, simulationCount));
         }
         return new SyncArchaeologyCatalogPayload(catalog);
     }

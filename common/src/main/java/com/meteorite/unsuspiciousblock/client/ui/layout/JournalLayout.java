@@ -12,11 +12,19 @@ public final class JournalLayout {
     public static final int RIGHT_PAGE_X_OFFSET = 208;
     public static final int PAGE_Y_OFFSET = 16;
 
+    // —— 搜索栏 ——
+    public static final int SEARCH_BAR_HEIGHT = 12;
+    public static final int SEARCH_BAR_TOP_PAD = 2;
+    public static final int SEARCH_FIELD_WIDTH = 108;
+    public static final int SORT_BUTTON_WIDTH = 16;
+    public static final int SORT_BUTTON_GAP = 1;
+
     // —— 左侧目录 ——
     public static final int CATALOG_ROW_HEIGHT = 20;
     public static final int CATALOG_ROW_GAP = 3;
     public static final int CATALOG_TITLE_Y = 6;
-    public static final int CATALOG_LIST_TOP = 28;
+    public static final int SEARCH_BAR_Y = CATALOG_TITLE_Y + 12; // 18，紧跟目录标题之后
+    public static final int CATALOG_LIST_TOP = SEARCH_BAR_Y + SEARCH_BAR_HEIGHT + SEARCH_BAR_TOP_PAD; // 32
     public static final int CATALOG_SUMMARY_Y = 190;
     public static final int CATALOG_PAGE_INDICATOR_Y = 208;
     public static final int CATALOG_LIST_BOTTOM = CATALOG_SUMMARY_Y - 4;

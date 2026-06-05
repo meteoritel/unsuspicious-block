@@ -57,6 +57,18 @@ public final class ArchaeologyJournalCatalog {
     private ArchaeologyJournalCatalog() {
     }
 
+    /**
+     * 判断 ItemDefinition 在解析阶段是否标记为含条件（影响模拟结果置信度）。
+     * 标记为 hasConditions 的条目如果在模拟中零出现，概率显示为 "?"。
+     */
+    public static boolean hasConditions(ItemDefinition definition) {
+        // tooltipHint 以 approximate_hint 为条件的条目被视为含条件
+        // 但 enchanted_random / enchanted_level 虽有随机性，模拟抽取能覆盖，不算条件限制
+        return definition.tooltipHint() != null
+                && definition.tooltipHint().getString().equals(
+                Component.translatable(APPROXIMATE_HINT_KEY).getString());
+    }
+
     // 从任意 ResourceManager 加载目录（客户端或服务端均可使用）
     public static Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager) {
         Map<ResourceLocation, Resource> allResources = LOOT_TABLES.listMatchingResources(resourceManager);
@@ -88,8 +100,8 @@ public final class ArchaeologyJournalCatalog {
 
     private static TableDefinition parseTable(ResourceLocation tableId, JsonElement element) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
-        boolean[] approximate = new boolean[1];
-        parseNode(element, 1.0D, items, approximate);
+        boolean[] hasConditions = new boolean[1];
+        parseNode(element, items, hasConditions);
 
         List<ItemDefinition> definitions = new ArrayList<>();
         for (ItemDefinitionBuilder builder : items.values()) {
@@ -99,18 +111,17 @@ public final class ArchaeologyJournalCatalog {
                 .comparing((ItemDefinition definition) -> definition.id().toString())
                 .thenComparing(definition -> definition.signature().toStoredKey()));
 
-        double totalWeight = definitions.stream().mapToDouble(ItemDefinition::weight).sum();
-        return new TableDefinition(tableId, resolveTableName(tableId), definitions, totalWeight, approximate[0]);
+        return new TableDefinition(tableId, resolveTableName(tableId), definitions, 0);
     }
 
-    private static void parseNode(JsonElement element, double weightMultiplier, Map<String, ItemDefinitionBuilder> items, boolean[] approximate) {
+    private static void parseNode(JsonElement element, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
         if (element == null || element.isJsonNull()) {
             return;
         }
 
         if (element.isJsonArray()) {
             for (JsonElement child : element.getAsJsonArray()) {
-                parseNode(child, weightMultiplier, items, approximate);
+                parseNode(child, items, hasConditions);
             }
             return;
         }
@@ -120,79 +131,76 @@ public final class ArchaeologyJournalCatalog {
         }
 
         JsonObject object = element.getAsJsonObject();
-        if (object.has("pools") && parseArrayIfPresent(object, "pools", weightMultiplier, items, approximate)) {
+        if (object.has("pools") && parseArrayIfPresent(object, "pools", items, hasConditions)) {
             return;
         }
 
-        if (object.has("entries") && parseArrayIfPresent(object, "entries", weightMultiplier, items, approximate)) {
+        if (object.has("entries") && parseArrayIfPresent(object, "entries", items, hasConditions)) {
             return;
         }
 
-        parseEntry(object, weightMultiplier, items, approximate);
+        parseEntry(object, items, hasConditions);
     }
 
-    private static void parseArray(JsonArray array, double weightMultiplier, Map<String, ItemDefinitionBuilder> items, boolean[] approximate) {
+    private static void parseArray(JsonArray array, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
         for (JsonElement child : array) {
-            parseNode(child, weightMultiplier, items, approximate);
+            parseNode(child, items, hasConditions);
         }
     }
 
-    private static boolean parseArrayIfPresent(JsonObject object, String key, double weightMultiplier,
-                                               Map<String, ItemDefinitionBuilder> items, boolean[] approximate) {
+    private static boolean parseArrayIfPresent(JsonObject object, String key,
+                                               Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
         if (!object.has(key) || !object.get(key).isJsonArray()) {
             return false;
         }
 
-        parseArray(object.getAsJsonArray(key), weightMultiplier, items, approximate);
+        parseArray(object.getAsJsonArray(key), items, hasConditions);
         return true;
     }
 
-    private static void parseEntry(JsonObject object, double weightMultiplier,
-                                   Map<String, ItemDefinitionBuilder> items, boolean[] approximate) {
+    private static void parseEntry(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
         String type = getString(object, "type", "");
-        double effectiveWeight = Math.max(0, getInt(object, "weight", 1)) * Math.max(0.0D, weightMultiplier);
         boolean complex = object.has("conditions") || object.has("bonus_rolls") || object.has("rolls");
 
         switch (normalizeType(type)) {
             case "item" -> {
                 if (complex) {
-                    approximate[0] = true;
+                    hasConditions[0] = true;
                 }
-                parseItem(object, effectiveWeight, items, approximate);
+                parseItem(object, items, hasConditions);
             }
             case "tag" -> {
                 if (complex) {
-                    approximate[0] = true;
+                    hasConditions[0] = true;
                 }
-                parseTag(object, effectiveWeight, items, approximate);
+                parseTag(object, items, hasConditions);
             }
             case "group", "alternatives", "sequence" -> {
-                approximate[0] = true;
-                parseArrayIfPresent(object, "children", effectiveWeight, items, approximate);
+                hasConditions[0] = true;
+                parseArrayIfPresent(object, "children", items, hasConditions);
             }
             default -> {
-                approximate[0] = true;
-                if (!parseArrayIfPresent(object, "children", effectiveWeight, items, approximate)) {
-                    parseArrayIfPresent(object, "entries", effectiveWeight, items, approximate);
+                hasConditions[0] = true;
+                if (!parseArrayIfPresent(object, "children", items, hasConditions)) {
+                    parseArrayIfPresent(object, "entries", items, hasConditions);
                 }
             }
         }
     }
 
-    private static void parseItem(JsonObject object, double weight, Map<String, ItemDefinitionBuilder> items, boolean[] approximate) {
+    private static void parseItem(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
         ResourceLocation itemId = ResourceLocation.tryParse(getString(object, "name", ""));
         if (itemId == null || BuiltInRegistries.ITEM.get(itemId) == Items.AIR) {
             return;
         }
 
-        ResolvedEntry resolved = resolveEntry(itemId, object, approximate);
+        ResolvedEntry resolved = resolveEntry(itemId, object, hasConditions);
         ItemDefinitionBuilder builder = items.computeIfAbsent(resolved.signature().toStoredKey(),
                 ignored -> createBuilder(resolved));
         builder.mergeResolved(resolved);
-        builder.addWeight(weight);
     }
 
-    private static void parseTag(JsonObject object, double weight, Map<String, ItemDefinitionBuilder> items, boolean[] approximate) {
+    private static void parseTag(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
         ResourceLocation tagId = ResourceLocation.tryParse(getString(object, "name", ""));
         if (tagId == null) {
             return;
@@ -213,26 +221,24 @@ public final class ArchaeologyJournalCatalog {
             return;
         }
 
-        double memberWeight = expand ? weight : weight / itemIds.size();
         for (ResourceLocation itemId : itemIds) {
-            ResolvedEntry resolved = resolveEntry(itemId, object, approximate);
+            ResolvedEntry resolved = resolveEntry(itemId, object, hasConditions);
             ItemDefinitionBuilder builder = items.computeIfAbsent(resolved.signature().toStoredKey(),
                     ignored -> createBuilder(resolved));
             builder.mergeResolved(resolved);
-            builder.addWeight(memberWeight);
         }
     }
 
-    private static ResolvedEntry resolveEntry(ResourceLocation baseItemId, JsonObject object, boolean[] approximate) {
+    private static ResolvedEntry resolveEntry(ResourceLocation baseItemId, JsonObject object, boolean[] hasConditions) {
         ItemStack previewStack = new ItemStack(BuiltInRegistries.ITEM.get(baseItemId));
         LootResultSignature signature = LootResultSignature.plain(baseItemId);
         @Nullable Component hint = null;
-        boolean entryApproximate = false;
+        boolean entryHasConditions = false;
 
         if (object.has("functions") && object.get("functions").isJsonArray()) {
             for (JsonElement functionElement : object.getAsJsonArray("functions")) {
                 if (!functionElement.isJsonObject()) {
-                    entryApproximate = true;
+                    entryHasConditions = true;
                     continue;
                 }
 
@@ -245,7 +251,7 @@ public final class ArchaeologyJournalCatalog {
                             previewStack = previewStack.transmuteCopy(BuiltInRegistries.ITEM.get(functionItemId));
                             signature = LootResultSignature.plain(currentItemId(previewStack));
                         } else {
-                            entryApproximate = true;
+                            entryHasConditions = true;
                         }
                     }
                     case "enchant_randomly" -> {
@@ -267,21 +273,21 @@ public final class ArchaeologyJournalCatalog {
                         if (hint == null) {
                             hint = Component.translatable(ENCHANTED_HINT_KEY);
                         }
-                        entryApproximate = true;
+                        entryHasConditions = true;
                     }
                     case "set_components" -> {
                         if (!applyExactComponents(previewStack, functionObject.get("components"))) {
-                            entryApproximate = true;
+                            entryHasConditions = true;
                         }
                     }
                     case "set_custom_data" -> {
                         if (!applyCustomData(previewStack, functionObject.get("tag"))) {
-                            entryApproximate = true;
+                            entryHasConditions = true;
                         }
                     }
                     case "set_name" -> {
                         if (!applySetName(previewStack, functionObject)) {
-                            entryApproximate = true;
+                            entryHasConditions = true;
                         }
                     }
                     default -> {
@@ -291,27 +297,27 @@ public final class ArchaeologyJournalCatalog {
                             if (hint == null) {
                                 hint = Component.translatable(ENCHANTED_HINT_KEY);
                             }
-                            entryApproximate = true;
+                            entryHasConditions = true;
                         } else if (affectsDisplayedResult(function)) {
-                            entryApproximate = true;
+                            entryHasConditions = true;
                         }
                     }
                 }
             }
         }
 
-        if (entryApproximate) {
-            approximate[0] = true;
+        if (entryHasConditions) {
+            hasConditions[0] = true;
         }
-        if (!entryApproximate && signature.type() == LootResultSignature.SignatureType.PLAIN
+        if (!entryHasConditions && signature.type() == LootResultSignature.SignatureType.PLAIN
                 && !previewStack.getComponentsPatch().isEmpty()) {
             signature = LootResultSignature.componentExact(previewStack);
-        } else if (entryApproximate && signature.type() == LootResultSignature.SignatureType.PLAIN) {
+        } else if (entryHasConditions && signature.type() == LootResultSignature.SignatureType.PLAIN) {
             signature = LootResultSignature.approximateItemOnly(currentItemId(previewStack), "function");
         }
 
         Component displayName = resolveItemDisplayName(previewStack);
-        Component tooltipHint = resolveItemTooltipHint(hint, entryApproximate && hint == null);
+        Component tooltipHint = resolveItemTooltipHint(hint, entryHasConditions && hint == null);
         return new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint, signature);
     }
 
@@ -572,7 +578,6 @@ public final class ArchaeologyJournalCatalog {
         @Nullable
         private Component tooltipHint;
         private final LootResultSignature signature;
-        private double weight;
 
         private ItemDefinitionBuilder(ResourceLocation id, Component displayName,
                                       @Nullable Component tooltipHint, LootResultSignature signature) {
@@ -593,12 +598,9 @@ public final class ArchaeologyJournalCatalog {
             this.tooltipHint = resolveMergedTooltipHint(this.signature);
         }
 
-        private void addWeight(double weight) {
-            this.weight += weight;
-        }
-
+        // 概率占位符 "?"，将在服务端模拟后替换为真实值
         private ItemDefinition build() {
-            return new ItemDefinition(this.id, this.displayName, this.tooltipHint, this.weight, this.signature);
+            return new ItemDefinition(this.id, this.displayName, this.tooltipHint, "?", this.signature);
         }
     }
 }

@@ -81,7 +81,7 @@ public final class RightPageContainer {
     }
 
     public void setTable(@Nullable ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
-                         double totalWeight, int parsedCount, int totalCount, boolean approximate,
+                         int parsedCount, int totalCount,
                          @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
                          @Nullable TriggerType firstUnlockTriggerType,
                          List<ExcavationLogEntry> logEntries) {
@@ -92,7 +92,7 @@ public final class RightPageContainer {
         LogMode savedLogMode = this.logMode;
         UUID savedSelectedLogEntryId = this.selectedLogEntryId;
 
-        this.gridPanel.setTable(items, totalWeight, approximate);
+        this.gridPanel.setTable(items);
         this.detailPanel.setData(tableId, parsedCount, totalCount, items);
         this.logPanel.setData(firstUnlockedGameTime, firstUnlockedDayTime, firstUnlockTriggerType, logEntries);
 

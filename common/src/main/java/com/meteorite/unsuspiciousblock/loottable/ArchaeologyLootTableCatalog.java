@@ -17,11 +17,11 @@ public final class ArchaeologyLootTableCatalog {
 
     /** 战利品表定义 */
     public record TableDefinition(ResourceLocation id, Component displayName, List<ItemDefinition> items,
-                                  double totalWeight, boolean approximate) {
+                                  int simulationCount) {
     }
 
     /** 战利品表物品条目定义 */
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                                 double weight, LootResultSignature signature) {
+                                 String probability, LootResultSignature signature) {
     }
 }
