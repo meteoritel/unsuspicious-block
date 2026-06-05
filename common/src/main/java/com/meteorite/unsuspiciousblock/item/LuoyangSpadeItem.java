@@ -97,21 +97,25 @@ public class LuoyangSpadeItem extends Item {
             scanState.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
         }
 
+        // inventory.add() 成功时会将 stack.count 置为 0，需在此之前保存副本用于日志记录
+        ItemStack extractedForLog = extracted.copy();
         boolean given = player.getInventory().add(extracted);
-        if (given && lootTableName != null && player instanceof ServerPlayer sp) {
-            long gameTime = level.getGameTime();
-            long dayTime = level.getDayTime();
-            ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, lootTableName,
-                    scanState.unsuspiciousblock$getPendingJournalEntry(), extracted, gameTime, dayTime);
-        }
         if (!given) {
             ItemEntity itemEntity = new ItemEntity(
                     level,
                     pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5,
-                    extracted
+                    extractedForLog
             );
             itemEntity.setDefaultPickUpDelay();
             level.addFreshEntity(itemEntity);
+        }
+
+        // 无论物品是否装入背包（背包满时掉落地面），都应记录获取数据
+        if (lootTableName != null && player instanceof ServerPlayer sp) {
+            long gameTime = level.getGameTime();
+            long dayTime = level.getDayTime();
+            ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, lootTableName,
+                    scanState.unsuspiciousblock$getPendingJournalEntry(), extractedForLog, gameTime, dayTime);
         }
 
         scanState.unsuspiciousblock$clearScanned();

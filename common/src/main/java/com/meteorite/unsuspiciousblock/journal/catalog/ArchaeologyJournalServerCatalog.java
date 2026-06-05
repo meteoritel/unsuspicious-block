@@ -101,6 +101,7 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 使缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载）
     public static void invalidate() {
+        LootProbabilitySimulator.shutdown();
         catalog.clear();
         loaded = false;
     }

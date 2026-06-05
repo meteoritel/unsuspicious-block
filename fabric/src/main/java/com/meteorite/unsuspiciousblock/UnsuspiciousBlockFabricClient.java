@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import net.fabricmc.api.ClientModInitializer;
@@ -34,6 +35,8 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
                 (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
         ClientPlayNetworking.registerGlobalReceiver(SyncJournalStatePayload.TYPE,
                 (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
+        ClientPlayNetworking.registerGlobalReceiver(SyncJournalStateIncrementalPayload.TYPE,
+                (payload, context) -> ArchaeologyJournalClientState.receiveStateIncremental(payload));
         ClientPlayNetworking.registerGlobalReceiver(SyncJournalLogPayload.TYPE,
                 (payload, context) -> ArchaeologyJournalClientState.receiveLogUpdate(payload));
         ClientPlayNetworking.registerGlobalReceiver(SyncJournalLogSnapshotPayload.TYPE,

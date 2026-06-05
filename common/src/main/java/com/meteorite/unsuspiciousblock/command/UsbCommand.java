@@ -56,7 +56,7 @@ public final class UsbCommand {
                             ServerPlayer player = requirePlayer(context);
                             ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
                             requireTable(context.getSource(), tableId);
-                            return mutateAndSync(context.getSource(), player,
+                            return mutateAndSyncFull(context.getSource(), player,
                                     state -> state.removeTable(tableId),
                                     target -> ArchaeologyJournalNetwork.clearLogsForTable(target, tableId),
                                     Component.translatable("command.unsuspiciousblock.usb.clear_table.success", tableId.toString()));
@@ -165,9 +165,30 @@ public final class UsbCommand {
                                            Consumer<ServerPlayer> afterSync,
                                            Component successMessage) throws CommandSyntaxException {
         ServerPlayer player = requirePlayer(context);
-        return mutateAndSync(context.getSource(), player, mutator, afterSync, successMessage);
+        return mutateAndSyncFull(context.getSource(), player, mutator, afterSync, successMessage);
     }
 
+    // 变更后进行全量同步（用于破坏性操作如 clear/removeTable，确保客户端状态完全一致）
+    private static int mutateAndSyncFull(CommandSourceStack source, ServerPlayer player,
+                                         Consumer<ArchaeologyJournalState> mutator,
+                                         Consumer<ServerPlayer> afterSync,
+                                         Component successMessage) {
+        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
+            source.sendFailure(Component.translatable("command.unsuspiciousblock.usb.error.state_unavailable"));
+            return 0;
+        }
+
+        ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
+        mutator.accept(state);
+        ArchaeologyJournalNetwork.syncStateFull(player);
+        if (afterSync != null) {
+            afterSync.accept(player);
+        }
+        source.sendSuccess(() -> successMessage, false);
+        return 1;
+    }
+
+    // 变更后进行增量同步（用于普通解锁操作，只发送变更的表）
     private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,
                                      Consumer<ArchaeologyJournalState> mutator,
                                      Consumer<ServerPlayer> afterSync,

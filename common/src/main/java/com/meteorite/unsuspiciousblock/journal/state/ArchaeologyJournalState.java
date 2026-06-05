@@ -8,7 +8,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 玩家考古日记的进度状态——管理战利品表的解锁与物品收集计数。
@@ -20,24 +22,76 @@ public final class ArchaeologyJournalState {
     private static final String UNLOCKED_TAG = "unlocked";
     private static final String ITEMS_TAG = "items";
     private static final String COUNT_TAG = "count";
+    private static final String REVISION_TAG = "revision";
 
     private final LinkedHashMap<ResourceLocation, TableProgress> tables = new LinkedHashMap<>();
+    // 增量同步：版本号，每次变更递增
+    private long revision;
+    // 增量同步：脏表追踪
+    private final LinkedHashSet<ResourceLocation> dirtyTables = new LinkedHashSet<>();
 
     // 清除所有表进度
     public void clear() {
         this.tables.clear();
+        this.dirtyTables.clear();
+        this.revision++;
+    }
+
+    // 获取当前版本号
+    public long getRevision() {
+        return this.revision;
+    }
+
+    // 收集并清空脏表集合，用于增量同步
+    public Set<ResourceLocation> drainDirtyTables() {
+        Set<ResourceLocation> dirty = new LinkedHashSet<>(this.dirtyTables);
+        this.dirtyTables.clear();
+        return dirty;
+    }
+
+    // 将变更的表数据写入 NBT（仅包含脏表的进度）
+    public CompoundTag writeDirtyTablesToTag(Set<ResourceLocation> dirty) {
+        CompoundTag tag = new CompoundTag();
+        for (ResourceLocation tableId : dirty) {
+            TableProgress progress = this.tables.get(tableId);
+            if (progress != null) {
+                tag.put(tableId.toString(), progress.toTag());
+            }
+        }
+        return tag;
+    }
+
+    // 从增量 NBT 合并变更的表到现有状态
+    public void mergeFromIncremental(CompoundTag incremental, long newRevision) {
+        CompoundTag tablesTag = incremental;
+        for (String key : tablesTag.getAllKeys()) {
+            ResourceLocation tableId = ResourceLocation.tryParse(key);
+            if (tableId == null) {
+                continue;
+            }
+            this.tables.put(tableId, TableProgress.fromTag(tablesTag.getCompound(key)));
+        }
+        this.revision = newRevision;
     }
 
     // 解锁指定战利品表（同时创建 TableProgress）
     public boolean unlockTable(ResourceLocation tableId) {
-        return this.getOrCreateTable(tableId).unlock();
+        boolean changed = this.getOrCreateTable(tableId).unlock();
+        if (changed) {
+            this.markDirty(tableId);
+        }
+        return changed;
     }
 
     // 解锁指定表中指定物品（表会自动解锁）
     public boolean unlockItem(ResourceLocation tableId, LootResultSignature signature) {
         TableProgress table = this.getOrCreateTable(tableId);
-        table.unlock();
-        return table.unlockItem(signature);
+        boolean tableChanged = table.unlock();
+        boolean itemChanged = table.unlockItem(signature);
+        if (tableChanged || itemChanged) {
+            this.markDirty(tableId);
+        }
+        return tableChanged || itemChanged;
     }
 
     // 批量解锁指定表中的多个物品（去重后操作）
@@ -60,6 +114,9 @@ public final class ArchaeologyJournalState {
         TableProgress table = this.getOrCreateTable(tableId);
         boolean changed = table.unlock();
         changed |= table.unlockItems(uniqueSignatures.values());
+        if (changed) {
+            this.markDirty(tableId);
+        }
         return changed;
     }
 
@@ -70,8 +127,12 @@ public final class ArchaeologyJournalState {
         }
 
         TableProgress table = this.getOrCreateTable(tableId);
-        table.unlock();
-        return table.recordItemAcquired(signature, count);
+        boolean tableChanged = table.unlock();
+        boolean itemChanged = table.recordItemAcquired(signature, count);
+        if (tableChanged || itemChanged) {
+            this.markDirty(tableId);
+        }
+        return tableChanged || itemChanged;
     }
 
     // 批量记录多个物品的获取数量
@@ -96,12 +157,21 @@ public final class ArchaeologyJournalState {
         TableProgress table = this.getOrCreateTable(tableId);
         boolean changed = table.unlock();
         changed |= table.recordItemsAcquired(normalizedCounts);
+        if (changed) {
+            this.markDirty(tableId);
+        }
         return changed;
     }
 
     // 移除指定表及其所有物品进度
     public boolean removeTable(ResourceLocation tableId) {
-        return this.tables.remove(tableId) != null;
+        TableProgress removed = this.tables.remove(tableId);
+        if (removed != null) {
+            this.dirtyTables.remove(tableId);
+            this.revision++;
+            return true;
+        }
+        return false;
     }
 
     // 检查指定表是否已解锁
@@ -147,12 +217,14 @@ public final class ArchaeologyJournalState {
         return copy;
     }
 
-    // 从另一个状态复制全部数据
+    // 从另一个状态复制全部数据（包括 revision）
     public void copyFrom(ArchaeologyJournalState other) {
         this.tables.clear();
         for (Map.Entry<ResourceLocation, TableProgress> entry : other.tables.entrySet()) {
             this.tables.put(entry.getKey(), entry.getValue().copy());
         }
+        this.revision = other.revision;
+        this.dirtyTables.clear();
     }
 
     // 序列化为 NBT（创建新 CompoundTag 并写入）
@@ -164,6 +236,7 @@ public final class ArchaeologyJournalState {
 
     // 将状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
+        tag.putLong(REVISION_TAG, this.revision);
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableProgress> entry : this.tables.entrySet()) {
             tablesTag.put(entry.getKey().toString(), entry.getValue().toTag());
@@ -174,6 +247,8 @@ public final class ArchaeologyJournalState {
     // 从 CompoundTag 反序列化恢复状态
     public void readFrom(CompoundTag tag) {
         this.clear();
+        this.revision = tag.contains(REVISION_TAG, Tag.TAG_LONG)
+                ? Math.max(0L, tag.getLong(REVISION_TAG)) : 0L;
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
             return;
         }
@@ -194,6 +269,12 @@ public final class ArchaeologyJournalState {
         ArchaeologyJournalState state = new ArchaeologyJournalState();
         state.readFrom(tag);
         return state;
+    }
+
+    // 标记指定表为脏，并递增版本号
+    private void markDirty(ResourceLocation tableId) {
+        this.dirtyTables.add(tableId);
+        this.revision++;
     }
 
     private TableProgress getOrCreateTable(ResourceLocation tableId) {

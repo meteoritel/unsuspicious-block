@@ -16,16 +16,19 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnaps
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -42,7 +45,7 @@ public final class ArchaeologyJournalNetwork {
     public static void syncOnJoin(ServerPlayer player) {
         resetLogSession(player);
         syncCatalog(player);
-        syncState(player);
+        syncStateFull(player);
     }
 
     // 向玩家同步全量战利品目录
@@ -57,12 +60,30 @@ public final class ArchaeologyJournalNetwork {
         Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(catalog));
     }
 
-    // 向玩家同步考古日记状态（进度与解锁信息）
+    // 向玩家增量同步考古日记状态（仅发送变更的表进度）
     public static void syncState(ServerPlayer player) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) return;
 
         ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
-        Services.NETWORK.sendToPlayer(player, new SyncJournalStatePayload(state.toTag()));
+        Set<ResourceLocation> dirty = state.drainDirtyTables();
+        if (dirty.isEmpty()) {
+            // 没有变更，无需发送
+            return;
+        }
+        // 增量同步：只发送变更的表
+        CompoundTag changedTag = state.writeDirtyTablesToTag(dirty);
+        Services.NETWORK.sendToPlayer(player,
+                new SyncJournalStateIncrementalPayload(state.getRevision(), changedTag));
+    }
+
+    // 向玩家全量同步考古日记状态（用于玩家加入/重连场景）
+    public static void syncStateFull(ServerPlayer player) {
+        if (!(player instanceof ArchaeologyJournalStateHolder holder)) return;
+
+        ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
+        state.drainDirtyTables(); // 清空脏标记，避免后续增量同步重复发送
+        Services.NETWORK.sendToPlayer(player,
+                new SyncJournalStatePayload(state.getRevision(), state.toTag()));
     }
 
     // 处理客户端上传的日志快照：seed 合并 → 检测成就 → 下发权威快照

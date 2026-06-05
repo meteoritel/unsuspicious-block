@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import net.minecraft.client.Minecraft;
@@ -51,11 +52,13 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("1.0");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
         registrar.playToClient(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
         registrar.playToClient(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
+        registrar.playToClient(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalClientState.receiveStateIncremental(payload));
         registrar.playToClient(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalClientState.receiveLogUpdate(payload));
         registrar.playToClient(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC,

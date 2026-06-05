@@ -52,11 +52,20 @@ public final class DetailOverlayPanel {
             this.modSource = "???";
         }
         this.unlockedItems = new ArrayList<>();
+        List<DiscoveredItemEntry> highlightedEntries = new ArrayList<>();
+        List<DiscoveredItemEntry> nonHighlightedEntries = new ArrayList<>();
         for (ItemGridPanel.GridItem item : allItems) {
             if (item.unlocked()) {
-                this.unlockedItems.add(new DiscoveredItemEntry(item));
+                DiscoveredItemEntry entry = new DiscoveredItemEntry(item);
+                if (item.highlighted()) {
+                    highlightedEntries.add(entry);
+                } else {
+                    nonHighlightedEntries.add(entry);
+                }
             }
         }
+        this.unlockedItems.addAll(highlightedEntries);
+        this.unlockedItems.addAll(nonHighlightedEntries);
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -135,8 +144,10 @@ public final class DetailOverlayPanel {
                 if (hovered) {
                     entry.scrollTicks++;
                 }
+                // 名称（搜索不匹配时变暗）
+                int nameColor = entry.highlighted ? TEXT_COLOR : MUTED_COLOR;
                 ScrollTextHelper.draw(guiGraphics, font, item.displayName().getString(),
-                        nameX, rowY + 2, nameMaxWidth, TEXT_COLOR, hovered, entry.scrollTicks, false);
+                        nameX, rowY + 2, nameMaxWidth, nameColor, hovered, entry.scrollTicks, false);
             }
             y += showCount * ITEM_ROW_HEIGHT + 6;
         }
@@ -183,11 +194,13 @@ public final class DetailOverlayPanel {
 
     private static final class DiscoveredItemEntry {
         private final ItemGridPanel.GridItem item;
+        private final boolean highlighted;
         private int scrollTicks;
         private boolean wasHovered;
 
         private DiscoveredItemEntry(ItemGridPanel.GridItem item) {
             this.item = item;
+            this.highlighted = item.highlighted();
         }
     }
 }

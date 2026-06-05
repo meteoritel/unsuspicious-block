@@ -440,23 +440,17 @@ public class ArchaeologyJournalScreen extends Screen {
                     0, 0,
                     null, null, null, List.of());
         } else {
-            // 物品级搜索过滤：NAME 和 RARITY 模式下只显示匹配的物品
-            List<ItemView> filteredItems;
-            if (!this.currentSearch.isEmpty()
-                    && (this.currentSearch.mode() == JournalSearchQuery.Mode.NAME
-                    || this.currentSearch.mode() == JournalSearchQuery.Mode.RARITY)) {
-                filteredItems = selected.items().stream()
-                        .filter(iv -> this.currentSearch.matchesItem(
-                                iv.id(), iv.displayName().getString(), iv.unlocked(), iv.probability()))
-                        .toList();
-            } else {
-                filteredItems = selected.items();
-            }
-
+            // 构建完整物品列表，搜索匹配项标记为 highlighted
             List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
-            for (ItemView iv : filteredItems) {
-                gridItems.add(new ItemGridPanel.GridItem(iv.id(), iv.displayName(), iv.tooltipHint(),
-                        iv.probability(), iv.unlocked(), iv.count(), iv.signature()));
+            for (ItemView iv : selected.items()) {
+                boolean highlighted = this.currentSearch.isEmpty()
+                        || this.currentSearch.mode() == JournalSearchQuery.Mode.NAMESPACE
+                        || this.currentSearch.mode() == JournalSearchQuery.Mode.UNLOCK
+                        || this.currentSearch.matchesItem(
+                                iv.id(), iv.displayName().getString(), iv.unlocked(), iv.probability());
+                gridItems.add(new ItemGridPanel.GridItem(
+                        iv.id(), iv.displayName(), iv.tooltipHint(),
+                        iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted));
             }
             this.rightPage.setTable(selected.id(), gridItems,
                     selected.parsedCount(), selected.totalCount(),

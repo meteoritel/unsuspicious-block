@@ -124,6 +124,9 @@ public final class ArchaeologyJournalLogState {
     }
 
     public static final class TableLogHistory {
+        // 单个表的日志条目上限
+        public static final int MAX_ENTRIES = 1024;
+
         @Nullable
         private Long firstUnlockedGameTime;
         @Nullable
@@ -188,6 +191,12 @@ public final class ArchaeologyJournalLogState {
 
         public boolean upsertEntry(ExcavationLogEntry entry) {
             ExcavationLogEntry previous = this.entries.put(entry.entryId(), entry);
+            // 超出上限时移除最旧的条目
+            while (this.entries.size() > MAX_ENTRIES) {
+                var it = this.entries.values().iterator();
+                it.next();
+                it.remove();
+            }
             return !entry.equals(previous);
         }
 

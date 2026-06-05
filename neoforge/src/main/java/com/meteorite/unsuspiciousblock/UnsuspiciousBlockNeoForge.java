@@ -105,7 +105,7 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("1.0");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
         registrar.playToServer(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalNetwork.handleUploadedLogSnapshot((ServerPlayer) context.player(), payload));
         registrar.playToServer(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC,

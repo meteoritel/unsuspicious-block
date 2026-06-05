@@ -148,6 +148,12 @@ public final class ItemGridPanel {
                     textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x71604B, textHovered, entry.scrollTicks, true);
             ScrollTextHelper.draw(guiGraphics, font, probabilityText,
                     textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x857565, textHovered, entry.scrollTicks, true);
+
+            // 搜索时不匹配：覆盖半透明遮罩降低视觉权重
+            if (!item.highlighted()) {
+                guiGraphics.fill(cellX, cellY, cellX + JournalLayout.GRID_CELL_WIDTH,
+                        cellY + JournalLayout.GRID_CELL_HEIGHT, 0x80FFFFFF);
+            }
         } else {
             // 黑色立体剪影材质
             guiGraphics.blit(UNKNOWN_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
@@ -229,10 +235,17 @@ public final class ItemGridPanel {
     public record TooltipData(ItemStack stack, @Nullable Component hint) {
     }
 
-    // 物品网格条目
+    // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）
     public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                            String probability, boolean unlocked, int count,
-                           LootResultSignature signature) {
+                           LootResultSignature signature, boolean highlighted) {
+        // 便利构造：无搜索时默认全部高亮
+        public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                        String probability, boolean unlocked, int count,
+                        LootResultSignature signature) {
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, true);
+        }
+
         public ItemStack stack() {
             if (this.signature != null) {
                 ItemStack preview = this.signature.createPreviewStack();
