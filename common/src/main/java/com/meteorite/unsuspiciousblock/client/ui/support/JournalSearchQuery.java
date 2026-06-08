@@ -142,8 +142,8 @@ public final class JournalSearchQuery {
     public enum SortOrder {
         DEFAULT("default"),
         NAME("name"),
-        RARITY("rarity"),
-        UNLOCK("unlock");
+        UNLOCK("unlock"),
+        ITEM_COUNT("item_count");
 
         private final String key;
 

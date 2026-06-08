@@ -16,8 +16,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -162,22 +164,28 @@ public final class ArchaeologyJournalClientState {
     // 比较旧状态和新状态，检测新解锁的表和物品并触发 Toast
     private static void detectAndNotifyUnlocks(ArchaeologyJournalState oldState, ArchaeologyJournalState newState) {
         Map<ResourceLocation, TableDefinition> catalog = serverCatalog;
+        List<Component> newTables = new ArrayList<>();
+        List<JournalUnlockToast.Entry> newItems = new ArrayList<>();
 
         for (Map.Entry<ResourceLocation, ArchaeologyJournalState.TableProgress> entry : newState.getTables().entrySet()) {
             ResourceLocation tableId = entry.getKey();
             ArchaeologyJournalState.TableProgress newProgress = entry.getValue();
             ArchaeologyJournalState.TableProgress oldProgress = oldState.getTable(tableId);
 
-            // 检测表的新解锁
             if (newProgress.isUnlocked() && (oldProgress == null || !oldProgress.isUnlocked())) {
-                Component tableName = resolveTableName(tableId, catalog);
-                JournalUnlockToast.addTableUnlock(tableName);
+                newTables.add(resolveTableName(tableId, catalog));
             }
 
-            // 检测物品的新解锁
             if (newProgress.isUnlocked() && oldProgress != null) {
-                checkItemUnlocks(tableId, newProgress, oldProgress, catalog);
+                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, newItems);
             }
+        }
+
+        if (!newTables.isEmpty()) {
+            JournalUnlockToast.addTableUnlocks(newTables);
+        }
+        if (!newItems.isEmpty()) {
+            JournalUnlockToast.addItemUnlocks(newItems);
         }
     }
 
@@ -186,6 +194,8 @@ public final class ArchaeologyJournalClientState {
                                                         ArchaeologyJournalState newState,
                                                         net.minecraft.nbt.CompoundTag changedTables) {
         Map<ResourceLocation, TableDefinition> catalog = serverCatalog;
+        List<Component> newTables = new ArrayList<>();
+        List<JournalUnlockToast.Entry> newItems = new ArrayList<>();
 
         for (String key : changedTables.getAllKeys()) {
             ResourceLocation tableId = ResourceLocation.tryParse(key);
@@ -196,24 +206,29 @@ public final class ArchaeologyJournalClientState {
 
             ArchaeologyJournalState.TableProgress oldProgress = oldState.getTable(tableId);
 
-            // 检测表的新解锁
             if (newProgress.isUnlocked() && (oldProgress == null || !oldProgress.isUnlocked())) {
-                Component tableName = resolveTableName(tableId, catalog);
-                JournalUnlockToast.addTableUnlock(tableName);
+                newTables.add(resolveTableName(tableId, catalog));
             }
 
-            // 检测物品的新解锁
             if (newProgress.isUnlocked() && oldProgress != null) {
-                checkItemUnlocks(tableId, newProgress, oldProgress, catalog);
+                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, newItems);
             }
+        }
+
+        if (!newTables.isEmpty()) {
+            JournalUnlockToast.addTableUnlocks(newTables);
+        }
+        if (!newItems.isEmpty()) {
+            JournalUnlockToast.addItemUnlocks(newItems);
         }
     }
 
-    // 检测单个表中物品的新解锁
-    private static void checkItemUnlocks(ResourceLocation tableId,
+    // 收集单个表中物品的新解锁
+    private static void collectItemUnlocks(ResourceLocation tableId,
                                           ArchaeologyJournalState.TableProgress newProgress,
                                           ArchaeologyJournalState.TableProgress oldProgress,
-                                          Map<ResourceLocation, TableDefinition> catalog) {
+                                          Map<ResourceLocation, TableDefinition> catalog,
+                                          List<JournalUnlockToast.Entry> out) {
         TableDefinition tableDef = catalog.get(tableId);
         for (ArchaeologyLootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : java.util.List.<ArchaeologyLootTableCatalog.ItemDefinition>of()) {
             if (newProgress.isItemUnlocked(itemDef.signature())
@@ -222,7 +237,7 @@ public final class ArchaeologyJournalClientState {
                 if (icon.isEmpty()) {
                     icon = new ItemStack(BuiltInRegistries.ITEM.get(itemDef.id()));
                 }
-                JournalUnlockToast.addItemUnlock(itemDef.displayName(), icon);
+                out.add(new JournalUnlockToast.Entry(itemDef.displayName(), icon));
             }
         }
     }

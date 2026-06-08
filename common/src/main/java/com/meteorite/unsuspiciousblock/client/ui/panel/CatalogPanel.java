@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -23,8 +24,6 @@ public final class CatalogPanel {
     private static final int LOCKED_STATE_H = 19;
     private static final int TEXT_INNER_PAD = 8;
     private static final int TEXT_Y_OFFSET = 7;
-    private static final int SCROLL_PAUSE_WIDTH = 20;
-    private static final int SCROLL_SPEED = 1;
 
     private final List<CatalogEntry> entries = new ArrayList<>();
     private final JournalBookBackground.BookLayout layout;
@@ -154,28 +153,9 @@ public final class CatalogPanel {
             textColor = selected ? 0x6E4D34 : 0x7A6247;
         }
         int textMaxWidth = width - TEXT_INNER_PAD * 2;
-        int textWidth = font.width(displayText);
-        if (textWidth <= textMaxWidth) {
-            int textX = x + (width - textWidth) / 2;
-            guiGraphics.drawString(font, displayText, textX, y + TEXT_Y_OFFSET, textColor, false);
-            return;
-        }
-
-        guiGraphics.enableScissor(x + TEXT_INNER_PAD, y, x + width - TEXT_INNER_PAD, y + rowHeight);
-        int overflow = textWidth - textMaxWidth;
-        int offset = 0;
-        if (hovered && overflow > 0) {
-            offset = (entry.scrollTicks * SCROLL_SPEED / 2) % (overflow + SCROLL_PAUSE_WIDTH * 2);
-            if (offset > overflow + SCROLL_PAUSE_WIDTH) {
-                offset = overflow + SCROLL_PAUSE_WIDTH * 2 - offset;
-            }
-            if (offset > overflow) {
-                offset = overflow;
-            }
-        }
-        int textX = x + TEXT_INNER_PAD - offset;
-        guiGraphics.drawString(font, displayText, textX, y + TEXT_Y_OFFSET, textColor, false);
-        guiGraphics.disableScissor();
+        ScrollTextHelper.draw(guiGraphics, font, displayText,
+                x + TEXT_INNER_PAD, y, y + TEXT_Y_OFFSET, textMaxWidth, JournalLayout.CATALOG_ROW_HEIGHT,
+                textColor, hovered, entry.scrollTicks, true);
     }
 
     private int itemsPerPage() {

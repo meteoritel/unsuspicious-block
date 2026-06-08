@@ -12,19 +12,20 @@ public final class JournalLayout {
     public static final int RIGHT_PAGE_X_OFFSET = 208;
     public static final int PAGE_Y_OFFSET = 16;
 
-    // —— 搜索栏 ——
-    public static final int SEARCH_BAR_HEIGHT = 12;
-    public static final int SEARCH_BAR_TOP_PAD = 2;
-    public static final int SEARCH_FIELD_WIDTH = 108;
-    public static final int SORT_BUTTON_WIDTH = 16;
-    public static final int SORT_BUTTON_GAP = 1;
+    // —— 搜索栏（收起态为图标按钮，展开态为输入框） ——
+    public static final int SEARCH_QUICK_BAR_HEIGHT = 14; // 收起态/展开态工具栏行高
+    public static final int SEARCH_ICON_SIZE = 14;      // 放大镜图标按钮尺寸 (正方形)
+    public static final int SORT_ICON_SIZE = 14;       // 排序图标按钮尺寸 (正方形)
+    public static final int SEARCH_FIELD_WIDTH = 94;   // 展开态文本框宽度（不含图标按钮）
+    public static final int SEARCH_BAR_HEIGHT = 12;    // 文本框自身高度
+    public static final int TOOLBAR_GAP = 2;           // 图标按钮之间间距
+    public static final int TOOLBAR_Y = 6;             // 工具栏距左页顶部偏移
 
     // —— 左侧目录 ——
     public static final int CATALOG_ROW_HEIGHT = 20;
     public static final int CATALOG_ROW_GAP = 3;
-    public static final int CATALOG_TITLE_Y = 6;
-    public static final int SEARCH_BAR_Y = CATALOG_TITLE_Y + 12; // 18，紧跟目录标题之后
-    public static final int CATALOG_LIST_TOP = SEARCH_BAR_Y + SEARCH_BAR_HEIGHT + SEARCH_BAR_TOP_PAD; // 32
+    // 目录列表从工具栏下方开始
+    public static final int CATALOG_LIST_TOP = TOOLBAR_Y + SEARCH_QUICK_BAR_HEIGHT + 2;
     public static final int CATALOG_SUMMARY_Y = 190;
     public static final int CATALOG_PAGE_INDICATOR_Y = 208;
     public static final int CATALOG_LIST_BOTTOM = CATALOG_SUMMARY_Y - 4;

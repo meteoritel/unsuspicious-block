@@ -1,9 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.journal.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -70,21 +70,12 @@ public final class RightPageContainer {
     }
 
     private void switchTab(Tab tab) {
-        if (this.activeTab == tab) {
-            return;
-        }
-        this.activeTab = tab;
-        this.introTabBtn.setToggled(tab == Tab.INTRO);
-        this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
-        this.logTabBtn.setToggled(tab == Tab.LOG);
-        syncPageIndicator();
+        setActiveTab(tab);
     }
 
     public void setTable(@Nullable ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
                          int parsedCount, int totalCount,
-                         @Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
-                         @Nullable TriggerType firstUnlockTriggerType,
-                         List<ExcavationLogEntry> logEntries) {
+                         @Nullable ArchaeologyEntryLogRef logRef) {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
         int archaeologyPage = this.gridPanel.getPage();
         int introPage = this.detailPanel.getPage();
@@ -94,7 +85,7 @@ public final class RightPageContainer {
 
         this.gridPanel.setTable(items);
         this.detailPanel.setData(tableId, parsedCount, totalCount, items);
-        this.logPanel.setData(firstUnlockedGameTime, firstUnlockedDayTime, firstUnlockTriggerType, logEntries);
+        this.logPanel.setData(logRef);
 
         if (sameTable) {
             this.gridPanel.setPage(archaeologyPage);

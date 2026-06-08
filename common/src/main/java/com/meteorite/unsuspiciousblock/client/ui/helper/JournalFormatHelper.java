@@ -51,7 +51,10 @@ public final class JournalFormatHelper {
         return formatTranslatedIdentifier(id, "structure");
     }
 
-    public static String formatBiomeName(ResourceLocation id) {
+    public static String formatBiomeName(@Nullable ResourceLocation id) {
+        if (id == null) {
+            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_biome").getString();
+        }
         return formatTranslatedIdentifier(id, "biome");
     }
 

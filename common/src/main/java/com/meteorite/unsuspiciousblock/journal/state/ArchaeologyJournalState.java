@@ -61,7 +61,11 @@ public final class ArchaeologyJournalState {
         return tag;
     }
 
-    // 从增量 NBT 合并变更的表到现有状态
+    /**
+     * 从增量 NBT 合并变更的表到现有状态。
+     * 采用服务端权威语义：增量数据中的条目会直接覆盖本地对应条目，
+     * 客户端不会对服务端发来的数据进行二次合并或裁剪。
+     */
     public void mergeFromIncremental(CompoundTag incremental, long newRevision) {
         CompoundTag tablesTag = incremental;
         for (String key : tablesTag.getAllKeys()) {

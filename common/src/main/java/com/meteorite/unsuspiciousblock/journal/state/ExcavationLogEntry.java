@@ -7,6 +7,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,6 +32,8 @@ public record ExcavationLogEntry(UUID entryId,
                                  long lastUpdatedDayTime,
                                  Map<String, Integer> expectedLoot,
                                  Map<String, Integer> actualLoot) {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExcavationLogEntry.class);
 
     private static final String ENTRY_ID_TAG = "entry_id";
     private static final String TRIGGER_TYPE_TAG = "trigger_type";
@@ -180,7 +184,8 @@ public record ExcavationLogEntry(UUID entryId,
         }
         try {
             return UUID.fromString(value);
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Failed to parse UUID from NBT: {}", value, e);
             return null;
         }
     }

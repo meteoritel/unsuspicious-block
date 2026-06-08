@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.journal.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
@@ -31,26 +32,20 @@ public final class LogPanel {
     private final JournalBookBackground.BookLayout layout;
     private final List<LogEntryState> entries = new ArrayList<>();
     private final PaginationState pagination = new PaginationState(this::computePageCount);
-    @Nullable
-    private Long firstUnlockedGameTime;
-    @Nullable
-    private Long firstUnlockedDayTime;
-    @Nullable
-    private TriggerType firstUnlockTriggerType;
+    // 日志数据引用——从条目传入，内部不再直接存储原始字段
+    private ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.EMPTY;
 
     public LogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
     }
 
-    public void setData(@Nullable Long firstUnlockedGameTime, @Nullable Long firstUnlockedDayTime,
-                        @Nullable TriggerType firstUnlockTriggerType,
-                        List<ExcavationLogEntry> entries) {
-        this.firstUnlockedGameTime = firstUnlockedGameTime;
-        this.firstUnlockedDayTime = firstUnlockedDayTime;
-        this.firstUnlockTriggerType = firstUnlockTriggerType;
+    // 设置日志数据，接受 ArchaeologyEntryLogRef 替代原来的 4 个独立参数
+    public void setData(@Nullable ArchaeologyEntryLogRef logRef) {
+        this.logRef = logRef != null ? logRef : ArchaeologyEntryLogRef.EMPTY;
         this.entries.clear();
 
-        List<ExcavationLogEntry> sortedEntries = new ArrayList<>(entries);
+        List<ExcavationLogEntry> rawEntries = this.logRef.logEntries();
+        List<ExcavationLogEntry> sortedEntries = new ArrayList<>(rawEntries);
         sortedEntries.sort((left, right) -> {
             int cmp = Long.compare(right.lastUpdatedGameTime(), left.lastUpdatedGameTime());
             if (cmp != 0) {
@@ -85,17 +80,17 @@ public final class LogPanel {
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.first_unlock_time"),
                 leftX, topY, LABEL_COLOR, false);
 
-        Component firstUnlockValue = this.firstUnlockedGameTime == null
+        Component firstUnlockValue = this.logRef.firstUnlockedGameTime() == null
                 ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.first_unlock_time_unknown")
                 : JournalFormatHelper.formatGameTime("screen.unsuspiciousblock.archaeology_journal.first_unlock_time_value",
-                        this.firstUnlockedGameTime,
-                        this.firstUnlockedDayTime != null ? this.firstUnlockedDayTime : this.firstUnlockedGameTime);
+                        this.logRef.firstUnlockedGameTime(),
+                        this.logRef.firstUnlockedDayTime() != null ? this.logRef.firstUnlockedDayTime() : this.logRef.firstUnlockedGameTime());
         guiGraphics.drawString(font, firstUnlockValue, leftX,
                 this.layout.rightPageY() + JournalLayout.LOG_FIRST_UNLOCK_VALUE_Y, TEXT_COLOR, false);
 
         Component firstUnlockTriggerValue = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.first_unlock_trigger_value",
-                JournalFormatHelper.formatTriggerType(this.firstUnlockTriggerType));
+                JournalFormatHelper.formatTriggerType(this.logRef.firstUnlockTriggerType()));
         guiGraphics.drawString(font, firstUnlockTriggerValue, leftX,
                 this.layout.rightPageY() + JournalLayout.LOG_FIRST_UNLOCK_TRIGGER_Y, TEXT_COLOR, false);
 
