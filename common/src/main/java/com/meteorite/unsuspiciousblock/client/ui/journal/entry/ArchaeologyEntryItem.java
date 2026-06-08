@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.journal.entry;
 
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -17,4 +18,15 @@ public record ArchaeologyEntryItem(
         boolean unlocked,
         int count,
         LootResultSignature signature
-) {}
+) implements JournalSearchQuery.ItemEntryLike {
+
+    @Override
+    public ResourceLocation itemId() {
+        return id;
+    }
+
+    @Override
+    public String itemDisplayName() {
+        return displayName.getString();
+    }
+}

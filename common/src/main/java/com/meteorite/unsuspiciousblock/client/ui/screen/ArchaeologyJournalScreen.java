@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
@@ -29,7 +30,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +43,7 @@ public class ArchaeologyJournalScreen extends Screen {
     private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
     private int selectedIndex = -1;
     private JournalSearchQuery currentSearch = JournalSearchQuery.EMPTY;
-    private JournalSearchQuery.SortOrder currentSortOrder = JournalSearchQuery.SortOrder.DEFAULT;
+    private CatalogSorter.SortOrder currentSortOrder = CatalogSorter.SortOrder.DEFAULT;
     private boolean sortDescending = false;
     private EditBox searchField;
     private IconButton searchToggleButton;
@@ -285,19 +285,19 @@ public class ArchaeologyJournalScreen extends Screen {
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
                 this.searchExpanded ? '✕' : '⌕',
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"),
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip"),
                 this::toggleSearch
         ));
 
         // 排序图标按钮
         int sortOrderX = this.searchExpanded
-                ? toolbarX + JournalLayout.SEARCH_FIELD_WIDTH + JournalLayout.TOOLBAR_GAP
+                ? toolbarX + JournalLayout.SEARCH_FIELD_WIDTH + JournalLayout.TOOLBAR_GAP + JournalLayout.SORT_ICON_SIZE
                 : toolbarX + JournalLayout.SEARCH_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
         this.sortButton = this.addRenderableWidget(new IconButton(
                 sortOrderX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
-                sortOrderIcon(),
-                sortOrderTooltip(),
+                CatalogSorter.sortOrderIcon(this.currentSortOrder),
+                CatalogSorter.sortOrderTooltip(this.currentSortOrder),
                 this::cycleSortOrder
         ));
 
@@ -306,8 +306,8 @@ public class ArchaeologyJournalScreen extends Screen {
         this.sortOrderButton = this.addRenderableWidget(new IconButton(
                 sortDirectionX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
-                sortDirectionIcon(),
-                sortDirectionTooltip(),
+                CatalogSorter.sortDirectionIcon(this.sortDescending),
+                CatalogSorter.sortDirectionTooltip(this.sortDescending),
                 this::toggleSortDirection
         ));
 
@@ -428,26 +428,16 @@ public class ArchaeologyJournalScreen extends Screen {
 
             // 应用搜索过滤
             if (!this.currentSearch.isEmpty()) {
-                boolean matches = this.currentSearch.matchesCatalogEntry(
-                        id, view.displayName().getString(), view.unlocked());
-                // 物品级搜索也需要匹配
-                if (!matches && (this.currentSearch.mode() == JournalSearchQuery.Mode.NAME
-                        || this.currentSearch.mode() == JournalSearchQuery.Mode.RARITY)) {
-                    for (ArchaeologyEntryItem iv : view.items()) {
-                        if (this.currentSearch.matchesItem(iv.id(), iv.displayName().getString(),
-                                iv.unlocked(), iv.probability())) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                }
+                boolean matches = this.currentSearch.matchesTableByItem(
+                        id, view.displayName().getString(), view.unlocked(),
+                        view.items());
                 if (!matches) continue;
             }
             this.tableViews.add(view);
         }
 
         // 应用排序
-        this.tableViews.sort(getSortComparator(this.currentSortOrder));
+        this.tableViews.sort(CatalogSorter.getComparator(this.currentSortOrder, this.sortDescending));
 
         this.selectedIndex = resolveSelectedIndex(selectedId, rememberedId);
         if (!this.selectionInitialized && !this.tableViews.isEmpty()) {
@@ -463,30 +453,7 @@ public class ArchaeologyJournalScreen extends Screen {
         syncButtonState();
     }
 
-    // 根据排序方式和方向返回对应比较器
-    private Comparator<ArchaeologyJournalEntry> getSortComparator(JournalSearchQuery.SortOrder order) {
-        Comparator<ArchaeologyJournalEntry> comparator = switch (order) {
-            case DEFAULT -> Comparator
-                    .comparing((ArchaeologyJournalEntry v) -> !"minecraft".equals(v.id().getNamespace()))
-                    .thenComparing(v -> v.id().getNamespace())
-                    .thenComparing(v -> v.displayName().getString())
-                    .thenComparing(v -> v.id().getPath());
-            case NAME -> Comparator
-                    .comparing((ArchaeologyJournalEntry v) -> v.displayName().getString());
-            case UNLOCK -> Comparator
-                    .comparing((ArchaeologyJournalEntry v) -> !v.unlocked())
-                    .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
-                    .thenComparing(v -> v.id().getNamespace())
-                    .thenComparing(v -> v.displayName().getString());
-            case ITEM_COUNT -> Comparator
-                    .comparingInt((ArchaeologyJournalEntry v) -> v.items().size()).reversed()
-                    .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
-                    .thenComparing(v -> v.id().getNamespace())
-                    .thenComparing(v -> v.displayName().getString());
-        };
-        return this.sortDescending ? comparator.reversed() : comparator;
-    }
-
+    
     // 搜索框内容变化回调
     private void onSearchChanged(String text) {
         this.currentSearch = JournalSearchQuery.parse(text);
@@ -506,12 +473,10 @@ public class ArchaeologyJournalScreen extends Screen {
 
     // 循环切换排序方式
     private void cycleSortOrder() {
-        JournalSearchQuery.SortOrder[] orders = JournalSearchQuery.SortOrder.values();
-        int nextIndex = (this.currentSortOrder.ordinal() + 1) % orders.length;
-        this.currentSortOrder = orders[nextIndex];
+        this.currentSortOrder = this.currentSortOrder.next();
         if (this.sortButton != null) {
-            this.sortButton.setIconChar(sortOrderIcon());
-            this.sortButton.setTooltip(sortOrderTooltip());
+            this.sortButton.setIconChar(CatalogSorter.sortOrderIcon(this.currentSortOrder));
+            this.sortButton.setTooltip(CatalogSorter.sortOrderTooltip(this.currentSortOrder));
         }
         this.rebuildViewModels();
     }
@@ -520,45 +485,13 @@ public class ArchaeologyJournalScreen extends Screen {
     private void toggleSortDirection() {
         this.sortDescending = !this.sortDescending;
         if (this.sortOrderButton != null) {
-            this.sortOrderButton.setIconChar(sortDirectionIcon());
-            this.sortOrderButton.setTooltip(sortDirectionTooltip());
+            this.sortOrderButton.setIconChar(CatalogSorter.sortDirectionIcon(this.sortDescending));
+            this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
         }
         this.rebuildViewModels();
     }
 
-    // 排序图标字符
-    private char sortOrderIcon() {
-        return switch (this.currentSortOrder) {
-            case DEFAULT -> '☰';     // 三横线
-            case NAME -> 'A';          // 字母
-            case UNLOCK -> '☆';        // 空心星
-            case ITEM_COUNT -> '#';    // 数量符号
-        };
-    }
-
-    // 排序方向图标字符
-    private char sortDirectionIcon() {
-        return this.sortDescending ? '↓' : '↑';
-    }
-
-    // 排序按钮 tooltip
-    private Component sortOrderTooltip() {
-        return switch (this.currentSortOrder) {
-            case DEFAULT -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.default");
-            case NAME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.name");
-            case UNLOCK -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.unlock");
-            case ITEM_COUNT -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.item_count");
-        };
-    }
-
-    // 排序方向按钮 tooltip
-    private Component sortDirectionTooltip() {
-        String key = this.sortDescending
-                ? "screen.unsuspiciousblock.archaeology_journal.sort.descending"
-                : "screen.unsuspiciousblock.archaeology_journal.sort.ascending";
-        return Component.translatable(key);
-    }
-
+    
     private void updateItemGridPanel() {
         ArchaeologyJournalEntry selected = selectedTable();
         if (selected == null) {
@@ -570,7 +503,6 @@ public class ArchaeologyJournalScreen extends Screen {
             for (ArchaeologyEntryItem iv : selected.items()) {
                 boolean highlighted = this.currentSearch.isEmpty()
                         || this.currentSearch.mode() == JournalSearchQuery.Mode.NAMESPACE
-                        || this.currentSearch.mode() == JournalSearchQuery.Mode.UNLOCK
                         || this.currentSearch.matchesItem(
                                 iv.id(), iv.displayName().getString(), iv.unlocked(), iv.probability());
                 gridItems.add(new ItemGridPanel.GridItem(

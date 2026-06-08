@@ -1,7 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
 
 import java.util.Locale;
 
@@ -10,20 +14,17 @@ import java.util.Locale;
  * <p>
  * 支持的前缀：
  * <ul>
- *   <li>{@code @} — 按名称搜索（默认）</li>
- *   <li>{@code #} — 按命名空间/模组来源搜索</li>
- *   <li>{@code $} — 按解锁状态搜索（locked / unlocked）</li>
- *   <li>{@code %} — 按稀有度/概率阈值搜索</li>
+ *   <li>无前缀 — 按战利品表名称搜索（默认）</li>
+ *   <li>{@code @} — 按命名空间/模组来源搜索战利品表</li>
+ *   <li>{@code $} — 按物品名称搜索（{@code $#} 开头则按物品标签搜索）</li>
  * </ul>
- * 无前缀时默认按名称搜索。
  */
 public final class JournalSearchQuery {
 
     public enum Mode {
-        NAME("@"),
-        NAMESPACE("#"),
-        UNLOCK("$"),
-        RARITY("%");
+        TABLE_NAME(""),      // 无前缀：按名称搜索战利品表
+        NAMESPACE("@"),      // @ 前缀：按命名空间搜索战利品表
+        ITEM_NAME("$");      // $ 前缀：按物品搜索（# 开头则为标签搜索）
 
         private final String prefix;
 
@@ -47,7 +48,7 @@ public final class JournalSearchQuery {
     }
 
     // 空查询——匹配全部
-    public static final JournalSearchQuery EMPTY = new JournalSearchQuery(Mode.NAME, "", "");
+    public static final JournalSearchQuery EMPTY = new JournalSearchQuery(Mode.TABLE_NAME, "", "");
 
     // 从输入文本解析搜索查询
     public static JournalSearchQuery parse(String input) {
@@ -59,19 +60,18 @@ public final class JournalSearchQuery {
             return EMPTY;
         }
 
-        Mode mode = Mode.NAME;
-        // 检查前缀
-        if (trimmed.length() > 1) {
-            char first = trimmed.charAt(0);
-            for (Mode m : Mode.values()) {
-                if (m.prefix().charAt(0) == first) {
-                    mode = m;
-                    trimmed = trimmed.substring(1).trim();
-                    break;
-                }
+        // 尝试匹配单字符前缀
+        Mode mode = Mode.TABLE_NAME;
+        char first = trimmed.charAt(0);
+        for (Mode m : Mode.values()) {
+            if (!m.prefix().isEmpty() && m.prefix().charAt(0) == first) {
+                mode = m;
+                trimmed = trimmed.substring(1).trim();
+                break;
             }
         }
 
+        // 仅前缀无内容 → EMPTY（匹配全部）
         if (trimmed.isEmpty()) {
             return EMPTY;
         }
@@ -94,65 +94,86 @@ public final class JournalSearchQuery {
         return this.normalizedQuery.isEmpty();
     }
 
-    // 判断目录条目是否匹配此查询
+    // 判断目录条目（战利品表）是否匹配此查询
     public boolean matchesCatalogEntry(ResourceLocation id, String displayName, boolean unlocked) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
-            case NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
+            case TABLE_NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
                     || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             case NAMESPACE -> id.getNamespace().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
-            case UNLOCK -> {
-                String q = this.normalizedQuery;
-                if (q.startsWith("unlock")) yield unlocked;
-                if (q.startsWith("lock")) yield !unlocked;
-                yield displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
-            }
-            case RARITY -> true; // 稀有度过滤在条目级处理，目录级不做过滤
+            // 物品级搜索模式需要在条目级遍历物品，目录级先全部保留
+            case ITEM_NAME -> true;
         };
     }
 
-    // 判断物品条目是否匹配此查询
+    // 判断物品条目是否匹配此查询（用于高亮等）
     public boolean matchesItem(ResourceLocation id, String displayName, boolean unlocked, String probability) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
-            case NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
+            case TABLE_NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
                     || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             case NAMESPACE -> id.getNamespace().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
-            case UNLOCK -> {
-                String q = this.normalizedQuery;
-                if (q.startsWith("unlock")) yield unlocked;
-                if (q.startsWith("lock")) yield !unlocked;
-                yield displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
-            }
-            case RARITY -> {
-                // 解析概率阈值，例如 %5 匹配概率≤5%的物品
-                double fraction = ProbabilityFormat.parsePercentToFraction(probability);
-                if (fraction < 0) yield true; // 无法解析的概率（如 "?"），不做过滤
-                try {
-                    double threshold = Double.parseDouble(this.normalizedQuery);
-                    yield fraction * 100.0 <= threshold;
-                } catch (NumberFormatException e) {
-                    yield true;
+            case ITEM_NAME -> {
+                // # 开头 → 标签搜索
+                if (this.normalizedQuery.startsWith("#")) {
+                    yield matchesByTag(id, this.normalizedQuery.substring(1));
                 }
+                yield displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
+                        || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             }
         };
     }
 
-    // 排序方式
-    public enum SortOrder {
-        DEFAULT("default"),
-        NAME("name"),
-        UNLOCK("unlock"),
-        ITEM_COUNT("item_count");
+    // 判断整个战利品表是否因含有匹配物品而匹配此查询
+    public boolean matchesTableByItem(ResourceLocation tableId, String tableDisplayName, boolean tableUnlocked,
+                                       Iterable<? extends ItemEntryLike> items) {
+        if (this.isEmpty()) return true;
+        return switch (this.mode) {
+            case TABLE_NAME, NAMESPACE -> matchesCatalogEntry(tableId, tableDisplayName, tableUnlocked);
+            case ITEM_NAME -> {
+                for (ItemEntryLike item : items) {
+                    if (matchesItem(item.itemId(), item.itemDisplayName(), item.unlocked(), item.probability())) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+        };
+    }
 
-        private final String key;
+    // 通过标签匹配物品（tagQuery 不包含 # 前缀）
+    private boolean matchesByTag(ResourceLocation itemId, String tagQuery) {
+        if (tagQuery.isEmpty()) return true;
+        Holder<Item> holder = BuiltInRegistries.ITEM.getHolder(itemId).orElse(null);
+        if (holder == null) return false;
 
-        SortOrder(String key) {
-            this.key = key;
+        // 尝试将查询解析为完整 ResourceLocation（ns:path）
+        if (tagQuery.contains(":")) {
+            try {
+                ResourceLocation tagId = ResourceLocation.parse(tagQuery);
+                TagKey<Item> tagKey = TagKey.create(Registries.ITEM, tagId);
+                return holder.is(tagKey);
+            } catch (Exception e) {
+                // 解析失败，回退到部分匹配
+            }
         }
 
-        public String key() {
-            return this.key;
+        // 部分匹配：遍历已注册标签，匹配路径包含查询的标签
+        for (TagKey<Item> tag : holder.tags().toList()) {
+            String tagPath = tag.location().getPath().toLowerCase(Locale.ROOT);
+            String tagFull = tag.location().toString().toLowerCase(Locale.ROOT);
+            if (tagPath.contains(tagQuery) || tagFull.contains(tagQuery)) {
+                return true;
+            }
         }
+        return false;
+    }
+
+    // 物品条目最小接口，用于解耦
+    public interface ItemEntryLike {
+        ResourceLocation itemId();
+        String itemDisplayName();
+        boolean unlocked();
+        String probability();
     }
 }

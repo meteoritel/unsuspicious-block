@@ -152,6 +152,7 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "Enchanted",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "Approximate",
   "screen.unsuspiciousblock.archaeology_journal.search_placeholder": "Search...",
+  "screen.unsuspiciousblock.archaeology_journal.search_tooltip": "Search Rules: No prefix = by table name | @ = by mod/namespace | $ = by item name ($#tag = by item tag)",
   "screen.unsuspiciousblock.archaeology_journal.sort.default": "Sort: Default",
   "screen.unsuspiciousblock.archaeology_journal.sort.name": "Sort: Name",
   "screen.unsuspiciousblock.archaeology_journal.sort.unlock": "Sort: Unlock Status",
