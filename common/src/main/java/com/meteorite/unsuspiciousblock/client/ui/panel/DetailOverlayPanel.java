@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** 考古信息面板 —— 玩家个人进度：进度条 + 已发现物品列表 + 模组来源 */
-public final class DetailOverlayPanel {
+public final class DetailOverlayPanel implements PagePanel {
     private static final int BAR_HEIGHT = 12;
     private static final int BAR_BG_COLOR = 0xFF555555;
     private static final int BAR_FG_COLOR = 0xFFC8A050;

@@ -29,8 +29,7 @@ public final class JournalFormatHelper {
     }
 
     public static Component formatTriggerType(@Nullable TriggerType triggerType) {
-        String name = triggerType != null ? triggerType.serializedName() : TriggerType.UNKNOWN.serializedName();
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_trigger_type." + name);
+        return (triggerType != null ? triggerType : TriggerType.UNKNOWN).displayName();
     }
 
     public static String formatBlockName(@Nullable ResourceLocation blockId) {

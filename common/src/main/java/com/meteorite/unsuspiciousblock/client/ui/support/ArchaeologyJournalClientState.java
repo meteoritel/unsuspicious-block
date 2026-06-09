@@ -17,9 +17,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -121,8 +123,15 @@ public final class ArchaeologyJournalClientState {
             return;
         }
 
-        // 保存旧状态用于 Diff
-        ArchaeologyJournalState oldState = journalState.copy();
+        // 仅复制变更表用于 Diff，避免全量拷贝
+        Set<ResourceLocation> changedIds = new HashSet<>();
+        for (String key : payload.changedTables().getAllKeys()) {
+            ResourceLocation id = ResourceLocation.tryParse(key);
+            if (id != null) {
+                changedIds.add(id);
+            }
+        }
+        ArchaeologyJournalState oldState = journalState.partialCopy(changedIds);
         journalState.mergeFromIncremental(payload.changedTables(), incomingRevision);
         stateRevision.set(incomingRevision);
 

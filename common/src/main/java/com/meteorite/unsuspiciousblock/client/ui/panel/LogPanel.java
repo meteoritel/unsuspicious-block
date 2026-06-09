@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 /** 日志列表面板——展示来源方块、结构名与创建/更新时间 */
-public final class LogPanel {
+public final class LogPanel implements PagePanel {
     private static final int LABEL_COLOR = 0x5A422C;
     private static final int TEXT_COLOR = 0x4A3320;
     private static final int MUTED_COLOR = 0x7A6247;

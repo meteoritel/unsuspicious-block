@@ -23,7 +23,17 @@ public final class ArchaeologyJournalLogSyncSession {
     private final ArchaeologyJournalLogState mirroredState = new ArchaeologyJournalLogState();
     private final ArrayList<QueuedMutation> queuedMutations = new ArrayList<>();
 
+    // 从服务端持久数据恢复日志到镜像状态（替代旧版的 reset + 客户端上传模式）
+    public void restoreFromPersisted(ArchaeologyJournalLogState persisted) {
+        this.sessionId = UUID.randomUUID();
+        this.nextSequence = 1L;
+        this.seeded = true;
+        this.mirroredState.copyFrom(persisted);
+        this.queuedMutations.clear();
+    }
+
     // 重置会话：清空 sessionId、镜像状态与待定变更队列
+    // 保留作为无 NBT 持久数据时的降级路径
     public void reset() {
         this.sessionId = null;
         this.nextSequence = 1L;
@@ -77,6 +87,29 @@ public final class ArchaeologyJournalLogSyncSession {
             mutation.apply(this.mirroredState);
         }
         this.queuedMutations.clear();
+    }
+
+    // 将客户端上传的数据合并到服务端镜像状态（服务端权威模式下的降级合并）
+    // 保留服务端已有数据，同时将客户端独有的条目补充进来
+    public void mergeFromClient(ArchaeologyJournalLogState clientState) {
+        // 使用 upsert 合并：服务端数据为主，客户端的条目被补充（不覆盖已有的）
+        for (var entry : clientState.getTables().entrySet()) {
+            ResourceLocation tableId = entry.getKey();
+            ArchaeologyJournalLogState.TableLogHistory clientHistory = entry.getValue();
+            // 合并首次解锁时间（取最小值）
+            if (clientHistory.getFirstUnlockedGameTime() != null) {
+                this.mirroredState.setFirstUnlockMetaMin(tableId,
+                        clientHistory.getFirstUnlockTriggerType(),
+                        clientHistory.getFirstUnlockedGameTime(),
+                        clientHistory.getFirstUnlockedDayTime() != null
+                                ? clientHistory.getFirstUnlockedDayTime()
+                                : clientHistory.getFirstUnlockedGameTime());
+            }
+            // 合并发掘条目
+            for (ExcavationLogEntry logEntry : clientHistory.getEntries()) {
+                this.mirroredState.upsertEntry(tableId, logEntry);
+            }
+        }
     }
 
     // 暂存首次解锁元数据变更（seeded 前排队，seeded 后直接应用）

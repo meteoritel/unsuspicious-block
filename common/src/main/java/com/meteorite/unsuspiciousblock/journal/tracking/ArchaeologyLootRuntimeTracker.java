@@ -11,7 +11,8 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.Tab
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -64,7 +65,7 @@ public final class ArchaeologyLootRuntimeTracker {
             changed |= state.unlockItem(tableId, signature);
         }
         if (changed) {
-            ArchaeologyJournalNetwork.syncState(player);
+            JournalStateHandler.syncState(player);
         }
     }
 
@@ -78,7 +79,7 @@ public final class ArchaeologyLootRuntimeTracker {
         boolean changed = state.unlockTable(tableId);
         changed |= state.unlockItems(tableId, toSignatures(itemCounts));
         if (changed) {
-            ArchaeologyJournalNetwork.syncState(player);
+            JournalStateHandler.syncState(player);
         }
     }
 
@@ -91,7 +92,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return;
         }
         unlockResolvedLoot(player, tableId, loot);
-        ArchaeologyJournalNetwork.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogHandler.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
     }
 
     // 战利品发现事件处理（批量物品）：解锁 + 记录首次发现时间
@@ -103,7 +104,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return;
         }
         unlockResolvedLoot(player, tableId, itemCounts);
-        ArchaeologyJournalNetwork.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogHandler.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
     }
 
     @Nullable
@@ -134,11 +135,12 @@ public final class ArchaeologyLootRuntimeTracker {
             return null;
         }
         ServerLevel level = player.serverLevel();
-        return new ExcavationLogEntry(UUID.randomUUID(), triggerType, sourceBlockId,
-                resolveStructureId(level, pos), resolveBiomeId(level, pos), pos,
-                Math.max(0L, gameTime), Math.max(0L, dayTime),
-                Math.max(0L, gameTime), Math.max(0L, dayTime),
-                normalizedExpectedLoot, Map.of());
+        ExcavationLogEntry.ExcavationContext context = new ExcavationLogEntry.ExcavationContext(
+                sourceBlockId, resolveStructureId(level, pos), resolveBiomeId(level, pos), pos);
+        ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
+                Math.max(0L, gameTime), Math.max(0L, dayTime));
+        return new ExcavationLogEntry(UUID.randomUUID(), triggerType, context,
+                timestamp, timestamp, normalizedExpectedLoot, Map.of());
     }
 
     @Nullable
@@ -175,7 +177,7 @@ public final class ArchaeologyLootRuntimeTracker {
 
         boolean stateChanged = state.recordItemsAcquired(tableId, toSignatureCounts(normalizedActualLoot));
         if (stateChanged) {
-            ArchaeologyJournalNetwork.syncState(player);
+            JournalStateHandler.syncState(player);
         }
 
         if (pendingEntry == null) {
@@ -183,7 +185,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
 
         ExcavationLogEntry updatedEntry = pendingEntry.withActualLootMerged(normalizedActualLoot, gameTime, dayTime);
-        ArchaeologyJournalNetwork.upsertExcavationEntry(player, tableId, updatedEntry);
+        JournalLogHandler.upsertExcavationEntry(player, tableId, updatedEntry);
         return updatedEntry;
     }
 

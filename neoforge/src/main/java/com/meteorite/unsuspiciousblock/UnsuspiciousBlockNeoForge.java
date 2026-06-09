@@ -7,6 +7,8 @@ import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import net.minecraft.core.registries.Registries;
@@ -107,9 +109,9 @@ public class UnsuspiciousBlockNeoForge {
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
         registrar.playToServer(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalNetwork.handleUploadedLogSnapshot((ServerPlayer) context.player(), payload));
+                (payload, context) -> JournalLogHandler.handleUploadedLogSnapshot((ServerPlayer) context.player(), payload));
         registrar.playToServer(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalNetwork.handleUpdateReaderScanLevel(payload, (ServerPlayer) context.player()));
+                (payload, context) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, (ServerPlayer) context.player()));
     }
 
     @SubscribeEvent

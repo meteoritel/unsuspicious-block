@@ -134,6 +134,10 @@ public final class ArchaeologyJournalLogState {
         @Nullable
         private TriggerType firstUnlockTriggerType;
         private final LinkedHashMap<UUID, ExcavationLogEntry> entries = new LinkedHashMap<>();
+        // 懒缓存：仅在 entries 修改后重建
+        private int entriesVersion = 0;
+        private int cachedEntriesVersion = -1;
+        private List<ExcavationLogEntry> cachedEntries = List.of();
 
         @Nullable
         public Long getFirstUnlockedGameTime() {
@@ -151,7 +155,11 @@ public final class ArchaeologyJournalLogState {
         }
 
         public List<ExcavationLogEntry> getEntries() {
-            return List.copyOf(this.entries.values());
+            if (this.cachedEntriesVersion != this.entriesVersion) {
+                this.cachedEntries = List.copyOf(this.entries.values());
+                this.cachedEntriesVersion = this.entriesVersion;
+            }
+            return this.cachedEntries;
         }
 
         public int getTotalEntryCount() {
@@ -197,7 +205,11 @@ public final class ArchaeologyJournalLogState {
                 it.next();
                 it.remove();
             }
-            return !entry.equals(previous);
+            boolean changed = !entry.equals(previous);
+            if (changed) {
+                this.entriesVersion++;
+            }
+            return changed;
         }
 
         public TableLogHistory copy() {

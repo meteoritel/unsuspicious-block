@@ -22,14 +22,9 @@ import java.util.UUID;
  */
 public record ExcavationLogEntry(UUID entryId,
                                  @Nullable TriggerType triggerType,
-                                 @Nullable ResourceLocation sourceBlockId,
-                                 @Nullable ResourceLocation structureId,
-                                 ResourceLocation biomeId,
-                                 BlockPos pos,
-                                 long createdGameTime,
-                                 long createdDayTime,
-                                 long lastUpdatedGameTime,
-                                 long lastUpdatedDayTime,
+                                 ExcavationLogEntry.ExcavationContext context,
+                                 ExcavationLogEntry.GameTimestamp created,
+                                 ExcavationLogEntry.GameTimestamp lastUpdated,
                                  Map<String, Integer> expectedLoot,
                                  Map<String, Integer> actualLoot) {
 
@@ -53,24 +48,58 @@ public record ExcavationLogEntry(UUID entryId,
     private static final String EXPECTED_LOOT_TAG = "expected_loot";
     private static final String ACTUAL_LOOT_TAG = "actual_loot";
 
+    /** 位置上下文：源方块、结构、生物群系、坐标 */
+    public record ExcavationContext(@Nullable ResourceLocation sourceBlockId,
+                                    @Nullable ResourceLocation structureId,
+                                    ResourceLocation biomeId,
+                                    BlockPos pos) {
+        public ExcavationContext {
+            if (biomeId == null) {
+                biomeId = ResourceLocation.withDefaultNamespace("plains");
+            }
+            if (pos == null) {
+                pos = BlockPos.ZERO;
+            }
+        }
+    }
+
+    /** 游戏时间戳：游戏刻 + 日间时间 */
+    public record GameTimestamp(long gameTime, long dayTime) {
+        public GameTimestamp {
+            if (gameTime < 0) gameTime = 0;
+            if (dayTime < 0) dayTime = 0;
+        }
+    }
+
+    // 便利访问器——保持向后兼容
+    @Nullable
+    public ResourceLocation sourceBlockId() { return context.sourceBlockId(); }
+    @Nullable
+    public ResourceLocation structureId() { return context.structureId(); }
+    public ResourceLocation biomeId() { return context.biomeId(); }
+    public BlockPos pos() { return context.pos(); }
+    public long createdGameTime() { return created.gameTime(); }
+    public long createdDayTime() { return created.dayTime(); }
+    public long lastUpdatedGameTime() { return lastUpdated.gameTime(); }
+    public long lastUpdatedDayTime() { return lastUpdated.dayTime(); }
+    /** 等同于 createdGameTime，保持旧 API 兼容 */
+    public long gameTime() { return created.gameTime(); }
+    /** 等同于 createdDayTime，保持旧 API 兼容 */
+    public long dayTime() { return created.dayTime(); }
+
     public ExcavationLogEntry {
-        if (biomeId == null) {
-            biomeId = ResourceLocation.withDefaultNamespace("plains");
+        if (context == null) {
+            context = new ExcavationContext(null, null, null, null);
         }
-        if (pos == null) {
-            pos = BlockPos.ZERO;
+        if (created == null) {
+            created = new GameTimestamp(0, 0);
         }
-
-        createdGameTime = Math.max(0L, createdGameTime);
-        createdDayTime = Math.max(0L, createdDayTime);
-        lastUpdatedGameTime = Math.max(0L, lastUpdatedGameTime);
-        lastUpdatedDayTime = Math.max(0L, lastUpdatedDayTime);
-        if (lastUpdatedGameTime < createdGameTime
-                || lastUpdatedGameTime == createdGameTime && lastUpdatedDayTime < createdDayTime) {
-            lastUpdatedGameTime = createdGameTime;
-            lastUpdatedDayTime = createdDayTime;
+        if (lastUpdated == null) {
+            lastUpdated = created;
+        } else if (lastUpdated.gameTime() < created.gameTime()
+                || lastUpdated.gameTime() == created.gameTime() && lastUpdated.dayTime() < created.dayTime()) {
+            lastUpdated = created;
         }
-
         expectedLoot = LootCounts.normalize(expectedLoot);
         actualLoot = LootCounts.normalize(actualLoot);
     }
@@ -79,9 +108,9 @@ public record ExcavationLogEntry(UUID entryId,
                                                    long updatedGameTime, long updatedDayTime) {
         LinkedHashMap<String, Integer> mergedActualLoot = new LinkedHashMap<>(this.actualLoot);
         LootCounts.mergeInto(mergedActualLoot, deltaLoot);
-        return new ExcavationLogEntry(this.entryId, this.triggerType, this.sourceBlockId, this.structureId,
-                this.biomeId, this.pos, this.createdGameTime, this.createdDayTime,
-                updatedGameTime, updatedDayTime, this.expectedLoot, mergedActualLoot);
+        return new ExcavationLogEntry(this.entryId, this.triggerType, this.context,
+                this.created, new GameTimestamp(updatedGameTime, updatedDayTime),
+                this.expectedLoot, mergedActualLoot);
     }
 
     @Nullable
@@ -93,34 +122,26 @@ public record ExcavationLogEntry(UUID entryId,
         return firstItemId(this.expectedLoot);
     }
 
-    public long gameTime() {
-        return this.createdGameTime;
-    }
-
-    public long dayTime() {
-        return this.createdDayTime;
-    }
-
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         tag.putString(ENTRY_ID_TAG, this.entryId.toString());
         if (this.triggerType != null) {
             tag.putString(TRIGGER_TYPE_TAG, this.triggerType.serializedName());
         }
-        if (this.sourceBlockId != null) {
-            tag.putString(SOURCE_BLOCK_ID_TAG, this.sourceBlockId.toString());
+        if (this.context.sourceBlockId != null) {
+            tag.putString(SOURCE_BLOCK_ID_TAG, this.context.sourceBlockId.toString());
         }
-        if (this.structureId != null) {
-            tag.putString(STRUCTURE_ID_TAG, this.structureId.toString());
+        if (this.context.structureId != null) {
+            tag.putString(STRUCTURE_ID_TAG, this.context.structureId.toString());
         }
-        tag.putString(BIOME_ID_TAG, this.biomeId.toString());
-        tag.putInt(POS_X_TAG, this.pos.getX());
-        tag.putInt(POS_Y_TAG, this.pos.getY());
-        tag.putInt(POS_Z_TAG, this.pos.getZ());
-        tag.putLong(CREATED_GAME_TIME_TAG, this.createdGameTime);
-        tag.putLong(CREATED_DAY_TIME_TAG, this.createdDayTime);
-        tag.putLong(LAST_UPDATED_GAME_TIME_TAG, this.lastUpdatedGameTime);
-        tag.putLong(LAST_UPDATED_DAY_TIME_TAG, this.lastUpdatedDayTime);
+        tag.putString(BIOME_ID_TAG, this.context.biomeId.toString());
+        tag.putInt(POS_X_TAG, this.context.pos.getX());
+        tag.putInt(POS_Y_TAG, this.context.pos.getY());
+        tag.putInt(POS_Z_TAG, this.context.pos.getZ());
+        tag.putLong(CREATED_GAME_TIME_TAG, this.created.gameTime);
+        tag.putLong(CREATED_DAY_TIME_TAG, this.created.dayTime);
+        tag.putLong(LAST_UPDATED_GAME_TIME_TAG, this.lastUpdated.gameTime);
+        tag.putLong(LAST_UPDATED_DAY_TIME_TAG, this.lastUpdated.dayTime);
         tag.put(EXPECTED_LOOT_TAG, LootCounts.writeToNbt(this.expectedLoot));
         tag.put(ACTUAL_LOOT_TAG, LootCounts.writeToNbt(this.actualLoot));
         return tag;
@@ -172,9 +193,11 @@ public record ExcavationLogEntry(UUID entryId,
         Map<String, Integer> actualLoot = tag.contains(ACTUAL_LOOT_TAG, Tag.TAG_COMPOUND)
                 ? LootCounts.readFromNbt(tag.getCompound(ACTUAL_LOOT_TAG))
                 : createLegacyLootMap(legacyItemId);
-        return new ExcavationLogEntry(entryId, triggerType, sourceBlockId, structureId, biomeId, pos,
-                createdGameTime, createdDayTime, lastUpdatedGameTime, lastUpdatedDayTime,
-                expectedLoot, actualLoot);
+
+        ExcavationContext context = new ExcavationContext(sourceBlockId, structureId, biomeId, pos);
+        GameTimestamp created = new GameTimestamp(createdGameTime, createdDayTime);
+        GameTimestamp lastUpdated = new GameTimestamp(lastUpdatedGameTime, lastUpdatedDayTime);
+        return new ExcavationLogEntry(entryId, triggerType, context, created, lastUpdated, expectedLoot, actualLoot);
     }
 
     @Nullable

@@ -13,6 +13,7 @@
     "BrushableBlockEntityMixin",
     "CompoundContainerMixin",
     "FishingHookMixin",
+    "PlayerJournalLogStateMixin",
     "PlayerJournalStateMixin",
     "RandomizableContainerBlockEntityMixin",
     "RandomizableContainerMixin",

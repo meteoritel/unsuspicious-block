@@ -128,32 +128,21 @@ public final class RightPageContainer {
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (this.activeTab == Tab.INTRO) {
-            this.detailPanel.render(guiGraphics, font, mouseX, mouseY);
-            if (this.detailPanel.pageCount() > 1) {
-                this.pageIndicator.render(guiGraphics, font);
-            }
-            return;
-        }
-
-        if (this.activeTab == Tab.ARCHAEOLOGY) {
-            this.gridPanel.render(guiGraphics, font, mouseX, mouseY);
-            this.pageIndicator.render(guiGraphics, font);
-            return;
-        }
-
-        if (this.logMode == LogMode.DETAIL) {
-            this.logDetailPanel.render(guiGraphics, font, mouseX, mouseY);
-            if (this.logDetailPanel.pageCount() > 1) {
-                this.pageIndicator.render(guiGraphics, font);
-            }
-            return;
-        }
-
-        this.logPanel.render(guiGraphics, font, mouseX, mouseY);
-        if (this.logPanel.pageCount() > 1) {
+        PagePanel panel = activePanel();
+        panel.render(guiGraphics, font, mouseX, mouseY);
+        // ARCHAEOLOGY tab always shows page indicator; others only when multi-page
+        if (this.activeTab == Tab.ARCHAEOLOGY || panel.pageCount() > 1) {
             this.pageIndicator.render(guiGraphics, font);
         }
+    }
+
+    /** 获取当前活跃的可分页面板 */
+    private PagePanel activePanel() {
+        return switch (this.activeTab) {
+            case INTRO -> this.detailPanel;
+            case ARCHAEOLOGY -> this.gridPanel;
+            case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel : this.logPanel;
+        };
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -166,13 +155,7 @@ public final class RightPageContainer {
         if (this.logTabBtn.isMouseOver(mouseX, mouseY)) {
             return true;
         }
-        return switch (this.activeTab) {
-            case INTRO -> this.detailPanel.containsMouse(mouseX, mouseY);
-            case ARCHAEOLOGY -> this.gridPanel.containsMouse(mouseX, mouseY);
-            case LOG -> this.logMode == LogMode.DETAIL
-                    ? this.logDetailPanel.containsMouse(mouseX, mouseY)
-                    : this.logPanel.containsMouse(mouseX, mouseY);
-        };
+        return activePanel().containsMouse(mouseX, mouseY);
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -216,33 +199,15 @@ public final class RightPageContainer {
     }
 
     public int pageCount() {
-        return switch (this.activeTab) {
-            case INTRO -> this.detailPanel.pageCount();
-            case ARCHAEOLOGY -> this.gridPanel.pageCount();
-            case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel.pageCount() : this.logPanel.pageCount();
-        };
+        return activePanel().pageCount();
     }
 
     public int getPage() {
-        return switch (this.activeTab) {
-            case INTRO -> this.detailPanel.getPage();
-            case ARCHAEOLOGY -> this.gridPanel.getPage();
-            case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel.getPage() : this.logPanel.getPage();
-        };
+        return activePanel().getPage();
     }
 
     public void changePage(int delta) {
-        switch (this.activeTab) {
-            case INTRO -> this.detailPanel.changePage(delta);
-            case ARCHAEOLOGY -> this.gridPanel.changePage(delta);
-            case LOG -> {
-                if (this.logMode == LogMode.DETAIL) {
-                    this.logDetailPanel.changePage(delta);
-                } else {
-                    this.logPanel.changePage(delta);
-                }
-            }
-        }
+        activePanel().changePage(delta);
         syncPageIndicator();
     }
 
@@ -262,17 +227,7 @@ public final class RightPageContainer {
     }
 
     public void setPage(int page) {
-        switch (this.activeTab) {
-            case INTRO -> this.detailPanel.setPage(page);
-            case ARCHAEOLOGY -> this.gridPanel.setPage(page);
-            case LOG -> {
-                if (this.logMode == LogMode.DETAIL) {
-                    this.logDetailPanel.setPage(page);
-                } else {
-                    this.logPanel.setPage(page);
-                }
-            }
-        }
+        activePanel().setPage(page);
         syncPageIndicator();
     }
 
@@ -286,17 +241,8 @@ public final class RightPageContainer {
     }
 
     private void syncPageIndicator() {
-        switch (this.activeTab) {
-            case INTRO -> this.pageIndicator.setPage(this.detailPanel.getPage(), this.detailPanel.pageCount());
-            case ARCHAEOLOGY -> this.pageIndicator.setPage(this.gridPanel.getPage(), this.gridPanel.pageCount());
-            case LOG -> {
-                if (this.logMode == LogMode.DETAIL) {
-                    this.pageIndicator.setPage(this.logDetailPanel.getPage(), this.logDetailPanel.pageCount());
-                } else {
-                    this.pageIndicator.setPage(this.logPanel.getPage(), this.logPanel.pageCount());
-                }
-            }
-        }
+        PagePanel panel = activePanel();
+        this.pageIndicator.setPage(panel.getPage(), panel.pageCount());
     }
 
     @Nullable

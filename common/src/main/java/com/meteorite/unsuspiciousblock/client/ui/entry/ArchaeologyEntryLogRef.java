@@ -33,7 +33,7 @@ public record ArchaeologyEntryLogRef(
                 logHistory.getFirstUnlockedGameTime(),
                 logHistory.getFirstUnlockedDayTime(),
                 logHistory.getFirstUnlockTriggerType(),
-                List.copyOf(logHistory.getEntries())
+                logHistory.getEntries()  // 已是不可变列表，无需再次 List.copyOf
         );
     }
 }

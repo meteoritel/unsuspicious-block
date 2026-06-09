@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** 右侧物品网格面板 */
-public final class ItemGridPanel {
+public final class ItemGridPanel implements PagePanel {
 
     private static final ResourceLocation UNKNOWN_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");

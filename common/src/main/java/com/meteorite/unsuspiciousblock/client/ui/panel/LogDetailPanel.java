@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /** 日志详情面板——展示单条日志的完整来源与战利品信息 */
-public final class LogDetailPanel {
+public final class LogDetailPanel implements PagePanel {
     private static final int LABEL_COLOR = 0x5A422C;
     private static final int TEXT_COLOR = 0x4A3320;
     private static final int MUTED_COLOR = 0x7A6247;
@@ -31,7 +31,11 @@ public final class LogDetailPanel {
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     @Nullable
     private ExcavationLogEntry entry;
-    private final List<IconSlot> tooltipSlots = new ArrayList<>();
+    // 缓存：避免每帧重建
+    private List<Map.Entry<String, Integer>> cachedExpectedLoot = List.of();
+    private List<Map.Entry<String, Integer>> cachedActualLoot = List.of();
+    private final List<IconSlot> renderTooltipSlots = new ArrayList<>();
+    @Nullable
     private Bounds backBounds = Bounds.EMPTY;
 
     public LogDetailPanel(JournalBookBackground.BookLayout layout) {
@@ -40,13 +44,17 @@ public final class LogDetailPanel {
 
     public void setEntry(@Nullable ExcavationLogEntry entry) {
         this.entry = entry;
-        this.tooltipSlots.clear();
+        this.cachedExpectedLoot = entry != null
+                ? renderableLootEntries(entry.expectedLoot()) : List.of();
+        this.cachedActualLoot = entry != null
+                ? renderableLootEntries(entry.actualLoot()) : List.of();
+        this.renderTooltipSlots.clear();
         this.backBounds = Bounds.EMPTY;
         this.pagination.reset();
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        this.tooltipSlots.clear();
+        this.renderTooltipSlots.clear();
 
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
@@ -72,7 +80,7 @@ public final class LogDetailPanel {
         if (!sourceStack.isEmpty()) {
             guiGraphics.renderItem(sourceStack, leftX, y);
             guiGraphics.renderItemDecorations(font, sourceStack, leftX, y);
-            this.tooltipSlots.add(new IconSlot(leftX, y, sourceStack.copy()));
+            this.renderTooltipSlots.add(new IconSlot(leftX, y, sourceStack.copy()));
             sourceTextX += ICON_SIZE + 4;
             sourceTextWidth -= ICON_SIZE + 4;
         }
@@ -124,14 +132,14 @@ public final class LogDetailPanel {
                 leftX, y, LABEL_COLOR, false);
         y += font.lineHeight + 2;
         y += renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                entry.expectedLoot(), page, rowsPerSection, iconsPerRow) + SECTION_GAP;
+                this.cachedExpectedLoot, page, rowsPerSection, iconsPerRow) + SECTION_GAP;
 
         guiGraphics.drawString(font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_actual_loot"),
                 leftX, y, LABEL_COLOR, false);
         y += font.lineHeight + 2;
         renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                entry.actualLoot(), page, rowsPerSection, iconsPerRow);
+                this.cachedActualLoot, page, rowsPerSection, iconsPerRow);
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -140,12 +148,12 @@ public final class LogDetailPanel {
     }
 
     public boolean handleClick(double mouseX, double mouseY) {
-        return this.backBounds.contains(mouseX, mouseY);
+        return this.backBounds != null && this.backBounds.contains(mouseX, mouseY);
     }
 
     @Nullable
     public ItemStack getTooltipStack(double mouseX, double mouseY) {
-        for (IconSlot slot : this.tooltipSlots) {
+        for (IconSlot slot : this.renderTooltipSlots) {
             if (slot.contains(mouseX, mouseY)) {
                 return slot.stack();
             }
@@ -169,10 +177,10 @@ public final class LogDetailPanel {
         this.pagination.setPage(page);
     }
 
+    // 渲染战利品图标，使用预缓存列表而非原始 Map
     private int renderLootIcons(GuiGraphics guiGraphics, Font font, int leftX, int topY, int width,
-                                Map<String, Integer> lootMap, int page, int rowsPerPage, int iconsPerRow) {
-        List<Map.Entry<String, Integer>> entries = renderableLootEntries(lootMap);
-        if (entries.isEmpty()) {
+                                List<Map.Entry<String, Integer>> cachedEntries, int page, int rowsPerPage, int iconsPerRow) {
+        if (cachedEntries.isEmpty()) {
             guiGraphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_loot_empty"),
                     leftX, topY, MUTED_COLOR, false);
@@ -181,12 +189,12 @@ public final class LogDetailPanel {
 
         int stride = ICON_SIZE + ICON_GAP;
         int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
-        int from = Math.min(entries.size(), page * iconsPerPage);
-        int to = Math.min(entries.size(), from + iconsPerPage);
+        int from = Math.min(cachedEntries.size(), page * iconsPerPage);
+        int to = Math.min(cachedEntries.size(), from + iconsPerPage);
         int renderedCount = 0;
         for (int i = from; i < to; i++) {
-            Map.Entry<String, Integer> entry = entries.get(i);
-            ItemStack stack = JournalFormatHelper.createLootStack(entry.getKey(), entry.getValue());
+            Map.Entry<String, Integer> lootEntry = cachedEntries.get(i);
+            ItemStack stack = JournalFormatHelper.createLootStack(lootEntry.getKey(), lootEntry.getValue());
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
@@ -195,10 +203,10 @@ public final class LogDetailPanel {
             int col = renderedCount % iconsPerRow;
             int iconX = leftX + col * stride;
             int iconY = topY + row * stride;
-            String countText = entry.getValue() > 1 ? Integer.toString(entry.getValue()) : null;
+            String countText = lootEntry.getValue() > 1 ? Integer.toString(lootEntry.getValue()) : null;
             guiGraphics.renderItem(stack, iconX, iconY);
             guiGraphics.renderItemDecorations(font, stack, iconX, iconY, countText);
-            this.tooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
+            this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
             renderedCount++;
         }
 
@@ -213,13 +221,12 @@ public final class LogDetailPanel {
         return rows * stride - ICON_GAP;
     }
 
-    private int lootPageCount(Map<String, Integer> lootMap, int iconsPerRow, int rowsPerPage) {
-        List<Map.Entry<String, Integer>> entries = renderableLootEntries(lootMap);
-        if (entries.isEmpty()) {
+    private int lootPageCount(List<Map.Entry<String, Integer>> cachedEntries, int iconsPerRow, int rowsPerPage) {
+        if (cachedEntries.isEmpty()) {
             return 1;
         }
         int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
-        return Math.max(1, (entries.size() + iconsPerPage - 1) / iconsPerPage);
+        return Math.max(1, (cachedEntries.size() + iconsPerPage - 1) / iconsPerPage);
     }
 
     private static List<Map.Entry<String, Integer>> renderableLootEntries(Map<String, Integer> lootMap) {
@@ -270,8 +277,8 @@ public final class LogDetailPanel {
         int contentWidth = this.layout.rightPageWidth() - 20;
         int iconsPerRow = iconsPerRow(contentWidth);
         int rowsPerSection = rowsPerSection(detailContentTop(lineHeight), lineHeight);
-        int expectedPages = lootPageCount(currentEntry.expectedLoot(), iconsPerRow, rowsPerSection);
-        int actualPages = lootPageCount(currentEntry.actualLoot(), iconsPerRow, rowsPerSection);
+        int expectedPages = lootPageCount(this.cachedExpectedLoot, iconsPerRow, rowsPerSection);
+        int actualPages = lootPageCount(this.cachedActualLoot, iconsPerRow, rowsPerSection);
         return Math.max(1, Math.max(expectedPages, actualPages));
     }
 

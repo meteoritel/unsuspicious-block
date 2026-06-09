@@ -30,9 +30,9 @@ public final class ArchaeologyJournalLogLocalStore {
     private static final String STORAGE_DIR = "unsuspiciousblock_journal_logs";
     private static final String STORAGE_FILE = "journal_log_state.dat";
 
-    private static ArchaeologyJournalLogState logState = new ArchaeologyJournalLogState();
+    private static volatile ArchaeologyJournalLogState logState = new ArchaeologyJournalLogState();
     @Nullable
-    private static Path loadedPath;
+    private static volatile Path loadedPath;
     @Nullable
     private static ClientPacketListener trackedConnection;
     @Nullable
@@ -41,7 +41,7 @@ public final class ArchaeologyJournalLogLocalStore {
     private static SyncJournalLogSnapshotPayload pendingSnapshot;
     private static final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private static long lastAppliedSequence;
-    private static long revision;
+    private static volatile long revision;
     private static boolean baselineUploaded;
 
     private ArchaeologyJournalLogLocalStore() {
@@ -87,7 +87,7 @@ public final class ArchaeologyJournalLogLocalStore {
         currentSessionId = payload.sessionId();
         lastAppliedSequence = payload.sequence();
         baselineUploaded = true;
-
+        saveWithRollback(null, null, 0L, false);
     }
 
     public static synchronized void applyUpdate(SyncJournalLogPayload payload) {
@@ -101,19 +101,19 @@ public final class ArchaeologyJournalLogLocalStore {
         }
 
         boolean changed = applyIncremental(logState, payload);
-        if (!changed) {
+        if (changed) {
+            currentSessionId = payload.sessionId();
+            lastAppliedSequence = payload.sequence();
+            saveWithRollback(null, null, 0L, false);
+        } else {
             if (currentSessionId == null) {
                 currentSessionId = payload.sessionId();
             }
             lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
-            return;
         }
-        currentSessionId = payload.sessionId();
-        lastAppliedSequence = payload.sequence();
-
     }
 
-    private static boolean saveWithRollback(ArchaeologyJournalLogState previousState,
+    private static boolean saveWithRollback(@Nullable ArchaeologyJournalLogState previousState,
                                             @Nullable UUID previousSessionId,
                                             long previousSequence,
                                             boolean previousBaselineUploaded) {
@@ -121,10 +121,13 @@ public final class ArchaeologyJournalLogLocalStore {
             revision++;
             return true;
         }
-        logState = previousState;
-        currentSessionId = previousSessionId;
-        lastAppliedSequence = previousSequence;
-        baselineUploaded = previousBaselineUploaded;
+        // previousState 为 null 时表示无需回滚（来自 applySnapshot/applyUpdate 的直接保存）
+        if (previousState != null) {
+            logState = previousState;
+            currentSessionId = previousSessionId;
+            lastAppliedSequence = previousSequence;
+            baselineUploaded = previousBaselineUploaded;
+        }
         return false;
     }
 

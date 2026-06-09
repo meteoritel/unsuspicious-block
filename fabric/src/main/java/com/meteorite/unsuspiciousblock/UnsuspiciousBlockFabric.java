@@ -6,6 +6,8 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
+import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
@@ -80,10 +82,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         PayloadTypeRegistry.playC2S().register(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC);
         ServerPlayNetworking.registerGlobalReceiver(UploadJournalLogSnapshotPayload.TYPE,
                 (payload, context) -> context.server().execute(
-                        () -> ArchaeologyJournalNetwork.handleUploadedLogSnapshot(context.player(), payload)));
+                        () -> JournalLogHandler.handleUploadedLogSnapshot(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(UpdateReaderScanLevelPayload.TYPE,
                 (payload, context) -> context.server().execute(
-                        () -> ArchaeologyJournalNetwork.handleUpdateReaderScanLevel(payload, context.player())));
+                        () -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, context.player())));
 
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {

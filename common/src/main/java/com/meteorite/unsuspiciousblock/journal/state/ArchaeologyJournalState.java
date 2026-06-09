@@ -221,6 +221,19 @@ public final class ArchaeologyJournalState {
         return copy;
     }
 
+    // 仅复制指定表集合的进度，用于增量 Diff
+    public ArchaeologyJournalState partialCopy(Set<ResourceLocation> tableIds) {
+        ArchaeologyJournalState partial = new ArchaeologyJournalState();
+        for (ResourceLocation id : tableIds) {
+            TableProgress progress = this.tables.get(id);
+            if (progress != null) {
+                partial.tables.put(id, progress.copy());
+            }
+        }
+        partial.revision = this.revision;
+        return partial;
+    }
+
     // 从另一个状态复制全部数据（包括 revision）
     public void copyFrom(ArchaeologyJournalState other) {
         this.tables.clear();
