@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.unsuspiciousblock.client.ui.entry.ItemEntryLike;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -169,11 +170,4 @@ public final class JournalSearchQuery {
         return false;
     }
 
-    // 物品条目最小接口，用于解耦
-    public interface ItemEntryLike {
-        ResourceLocation itemId();
-        String itemDisplayName();
-        boolean unlocked();
-        String probability();
-    }
 }

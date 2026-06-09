@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.ui.journal.entry.ArchaeologyJournalEntry;
+import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import net.minecraft.network.chat.Component;
 
 import java.util.Comparator;

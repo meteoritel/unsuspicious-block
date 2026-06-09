@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.journal.entry;
+package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;

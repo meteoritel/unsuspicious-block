@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
@@ -22,8 +21,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
+/**
+ * 考古手册客户端状态缓存。
+ * <p>
+ * 管理服务端推送的目录、玩家进度和日志数据，
+ * 并通过回调通知 UI 层解锁事件（如 Toast 弹窗）。
+ */
 public final class ArchaeologyJournalClientState {
+
+    // 解锁通知回调：表解锁通知、物品解锁通知
+    // 由平台代码注入，将状态层与 UI 层解耦
+    private static volatile Consumer<List<Component>> tableUnlockNotifier;
+    private static volatile BiConsumer<List<Component>, List<ItemStack>> itemUnlockNotifier;
     private static volatile Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
     private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
     @Nullable
@@ -36,6 +48,16 @@ public final class ArchaeologyJournalClientState {
     private static volatile long lastNotifiedRevision = -1L;
 
     private ArchaeologyJournalClientState() {
+    }
+
+    // 注册表解锁通知回调
+    public static void registerTableUnlockNotifier(Consumer<List<Component>> notifier) {
+        tableUnlockNotifier = notifier;
+    }
+
+    // 注册物品解锁通知回调
+    public static void registerItemUnlockNotifier(BiConsumer<List<Component>, List<ItemStack>> notifier) {
+        itemUnlockNotifier = notifier;
     }
 
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
@@ -161,11 +183,12 @@ public final class ArchaeologyJournalClientState {
         journalState = new ArchaeologyJournalState();
     }
 
-    // 比较旧状态和新状态，检测新解锁的表和物品并触发 Toast
+    // 比较旧状态和新状态，检测新解锁的表和物品并通知
     private static void detectAndNotifyUnlocks(ArchaeologyJournalState oldState, ArchaeologyJournalState newState) {
         Map<ResourceLocation, TableDefinition> catalog = serverCatalog;
         List<Component> newTables = new ArrayList<>();
-        List<JournalUnlockToast.Entry> newItems = new ArrayList<>();
+        List<Component> itemNames = new ArrayList<>();
+        List<ItemStack> itemIcons = new ArrayList<>();
 
         for (Map.Entry<ResourceLocation, ArchaeologyJournalState.TableProgress> entry : newState.getTables().entrySet()) {
             ResourceLocation tableId = entry.getKey();
@@ -177,25 +200,21 @@ public final class ArchaeologyJournalClientState {
             }
 
             if (newProgress.isUnlocked() && oldProgress != null) {
-                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, newItems);
+                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, itemNames, itemIcons);
             }
         }
 
-        if (!newTables.isEmpty()) {
-            JournalUnlockToast.addTableUnlocks(newTables);
-        }
-        if (!newItems.isEmpty()) {
-            JournalUnlockToast.addItemUnlocks(newItems);
-        }
+        notifyUnlocks(newTables, itemNames, itemIcons);
     }
 
-    // 仅对增量包中变更的表做 Diff 检测
+    // 仅对增量包中变更的表做 Diff 检测并通知
     private static void detectAndNotifyUnlocksForTables(ArchaeologyJournalState oldState,
                                                         ArchaeologyJournalState newState,
                                                         net.minecraft.nbt.CompoundTag changedTables) {
         Map<ResourceLocation, TableDefinition> catalog = serverCatalog;
         List<Component> newTables = new ArrayList<>();
-        List<JournalUnlockToast.Entry> newItems = new ArrayList<>();
+        List<Component> itemNames = new ArrayList<>();
+        List<ItemStack> itemIcons = new ArrayList<>();
 
         for (String key : changedTables.getAllKeys()) {
             ResourceLocation tableId = ResourceLocation.tryParse(key);
@@ -211,15 +230,22 @@ public final class ArchaeologyJournalClientState {
             }
 
             if (newProgress.isUnlocked() && oldProgress != null) {
-                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, newItems);
+                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, itemNames, itemIcons);
             }
         }
 
+        notifyUnlocks(newTables, itemNames, itemIcons);
+    }
+
+    // 通知注册的回调；若未注册则静默忽略
+    private static void notifyUnlocks(List<Component> newTables, List<Component> itemNames, List<ItemStack> itemIcons) {
         if (!newTables.isEmpty()) {
-            JournalUnlockToast.addTableUnlocks(newTables);
+            Consumer<List<Component>> tn = tableUnlockNotifier;
+            if (tn != null) tn.accept(newTables);
         }
-        if (!newItems.isEmpty()) {
-            JournalUnlockToast.addItemUnlocks(newItems);
+        if (!itemNames.isEmpty()) {
+            BiConsumer<List<Component>, List<ItemStack>> in = itemUnlockNotifier;
+            if (in != null) in.accept(itemNames, itemIcons);
         }
     }
 
@@ -228,7 +254,8 @@ public final class ArchaeologyJournalClientState {
                                           ArchaeologyJournalState.TableProgress newProgress,
                                           ArchaeologyJournalState.TableProgress oldProgress,
                                           Map<ResourceLocation, TableDefinition> catalog,
-                                          List<JournalUnlockToast.Entry> out) {
+                                          List<Component> outNames,
+                                          List<ItemStack> outIcons) {
         TableDefinition tableDef = catalog.get(tableId);
         for (ArchaeologyLootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : java.util.List.<ArchaeologyLootTableCatalog.ItemDefinition>of()) {
             if (newProgress.isItemUnlocked(itemDef.signature())
@@ -237,7 +264,8 @@ public final class ArchaeologyJournalClientState {
                 if (icon.isEmpty()) {
                     icon = new ItemStack(BuiltInRegistries.ITEM.get(itemDef.id()));
                 }
-                out.add(new JournalUnlockToast.Entry(itemDef.displayName(), icon));
+                outNames.add(itemDef.displayName());
+                outIcons.add(icon);
             }
         }
     }

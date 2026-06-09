@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.journal.entry.ArchaeologyEntryItem;
-import com.meteorite.unsuspiciousblock.client.ui.journal.entry.ArchaeologyJournalEntry;
+import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
+import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;

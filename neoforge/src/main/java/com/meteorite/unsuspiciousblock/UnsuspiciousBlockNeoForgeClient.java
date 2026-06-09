@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
+import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
@@ -15,6 +16,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncre
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -35,6 +37,15 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
+            // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
+            ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
+            ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {
+                java.util.List<JournalUnlockToast.Entry> entries = new java.util.ArrayList<>();
+                for (int i = 0; i < names.size(); i++) {
+                    entries.add(new JournalUnlockToast.Entry(names.get(i), icons.get(i)));
+                }
+                JournalUnlockToast.addItemUnlocks(entries);
+            });
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
         });

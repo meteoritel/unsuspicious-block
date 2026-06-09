@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.journal.entry.ArchaeologyEntryLogRef;
+import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.client.gui.Font;

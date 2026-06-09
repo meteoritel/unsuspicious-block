@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
+import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
@@ -29,6 +30,15 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
 
         ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
+        // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
+        ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
+        ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {
+            java.util.List<JournalUnlockToast.Entry> entries = new java.util.ArrayList<>();
+            for (int i = 0; i < names.size(); i++) {
+                entries.add(new JournalUnlockToast.Entry(names.get(i), icons.get(i)));
+            }
+            JournalUnlockToast.addItemUnlocks(entries);
+        });
         MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
         ClientPlayNetworking.registerGlobalReceiver(SyncArchaeologyCatalogPayload.TYPE,

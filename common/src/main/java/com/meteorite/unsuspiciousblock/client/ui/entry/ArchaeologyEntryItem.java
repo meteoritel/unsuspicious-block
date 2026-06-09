@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.journal.entry;
+package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
@@ -18,7 +18,7 @@ public record ArchaeologyEntryItem(
         boolean unlocked,
         int count,
         LootResultSignature signature
-) implements JournalSearchQuery.ItemEntryLike {
+) implements ItemEntryLike {
 
     @Override
     public ResourceLocation itemId() {
