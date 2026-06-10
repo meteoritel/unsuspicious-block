@@ -11,7 +11,7 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.Tab
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.journal.recording.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
@@ -92,7 +92,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return;
         }
         unlockResolvedLoot(player, tableId, loot);
-        JournalLogHandler.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogRecorder.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
     }
 
     // 战利品发现事件处理（批量物品）：解锁 + 记录首次发现时间
@@ -104,7 +104,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return;
         }
         unlockResolvedLoot(player, tableId, itemCounts);
-        JournalLogHandler.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogRecorder.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
     }
 
     @Nullable
@@ -170,22 +170,14 @@ public final class ArchaeologyLootRuntimeTracker {
             return pendingEntry;
         }
 
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return pendingEntry;
-        }
-
-        boolean stateChanged = state.recordItemsAcquired(tableId, toSignatureCounts(normalizedActualLoot));
-        if (stateChanged) {
-            JournalStateHandler.syncState(player);
-        }
-
         if (pendingEntry == null) {
+            // 仅有物品获取记录但无待定条目，只更新日记进度状态
+            JournalLogRecorder.recordItemsAcquired(player, tableId, toSignatureCounts(normalizedActualLoot));
             return null;
         }
 
         ExcavationLogEntry updatedEntry = pendingEntry.withActualLootMerged(normalizedActualLoot, gameTime, dayTime);
-        JournalLogHandler.upsertExcavationEntry(player, tableId, updatedEntry);
+        JournalLogRecorder.upsertExcavationEntry(player, tableId, updatedEntry, toSignatureCounts(normalizedActualLoot));
         return updatedEntry;
     }
 

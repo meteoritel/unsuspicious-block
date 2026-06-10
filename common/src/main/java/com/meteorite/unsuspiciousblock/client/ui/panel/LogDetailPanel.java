@@ -17,23 +17,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** 日志详情面板——展示单条日志的完整来源与战利品信息 */
+/** 日志详情面板——卡片式信息分组、合并战利品收集清单 */
 public final class LogDetailPanel implements PagePanel {
     private static final int LABEL_COLOR = 0x5A422C;
     private static final int TEXT_COLOR = 0x4A3320;
     private static final int MUTED_COLOR = 0x7A6247;
     private static final int ICON_SIZE = 16;
     private static final int ICON_GAP = 2;
-    private static final int SECTION_GAP = 6;
-    private static final int HEADER_GAP = 14;
 
     private final JournalBookBackground.BookLayout layout;
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     @Nullable
     private ExcavationLogEntry entry;
-    // 缓存：避免每帧重建
-    private List<Map.Entry<String, Integer>> cachedExpectedLoot = List.of();
-    private List<Map.Entry<String, Integer>> cachedActualLoot = List.of();
+    // 缓存：以 expectedLoot 为基准构建的合并展示列表
+    private List<LootDisplayEntry> cachedLoot = List.of();
     private final List<IconSlot> renderTooltipSlots = new ArrayList<>();
     @Nullable
     private Bounds backBounds = Bounds.EMPTY;
@@ -44,10 +41,7 @@ public final class LogDetailPanel implements PagePanel {
 
     public void setEntry(@Nullable ExcavationLogEntry entry) {
         this.entry = entry;
-        this.cachedExpectedLoot = entry != null
-                ? renderableLootEntries(entry.expectedLoot()) : List.of();
-        this.cachedActualLoot = entry != null
-                ? renderableLootEntries(entry.actualLoot()) : List.of();
+        this.cachedLoot = entry != null ? buildLootDisplay(entry) : List.of();
         this.renderTooltipSlots.clear();
         this.backBounds = Bounds.EMPTY;
         this.pagination.reset();
@@ -60,11 +54,8 @@ public final class LogDetailPanel implements PagePanel {
         int contentWidth = this.layout.rightPageWidth() - 20;
         int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
 
-        Component backText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_back_to_list");
-        this.backBounds = new Bounds(leftX, y, font.width(backText), font.lineHeight);
-        guiGraphics.drawString(font, backText, leftX, y,
-                this.backBounds.contains(mouseX, mouseY) ? LABEL_COLOR : MUTED_COLOR, false);
-        y += HEADER_GAP;
+        // 1. 返回按钮（带暖色背景）
+        y += renderBackButton(guiGraphics, font, leftX, y, mouseX, mouseY) + 4;
 
         ExcavationLogEntry entry = this.entry;
         if (entry == null) {
@@ -74,72 +65,16 @@ public final class LogDetailPanel implements PagePanel {
             return;
         }
 
-        ItemStack sourceStack = JournalFormatHelper.createSourceStack(entry.sourceBlockId());
-        int sourceTextX = leftX;
-        int sourceTextWidth = contentWidth;
-        if (!sourceStack.isEmpty()) {
-            guiGraphics.renderItem(sourceStack, leftX, y);
-            guiGraphics.renderItemDecorations(font, sourceStack, leftX, y);
-            this.renderTooltipSlots.add(new IconSlot(leftX, y, sourceStack.copy()));
-            sourceTextX += ICON_SIZE + 4;
-            sourceTextWidth -= ICON_SIZE + 4;
-        }
-        int sourceHeight = renderWrappedText(guiGraphics, font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_source_block_value",
-                        JournalFormatHelper.formatBlockName(entry.sourceBlockId())),
-                sourceTextX, y, sourceTextWidth, 2, TEXT_COLOR);
-        y += Math.max(sourceHeight, sourceStack.isEmpty() ? 0 : ICON_SIZE) + SECTION_GAP;
+        // 2. Source 卡片：来源方块 + 触发方式（合并一行）
+        y += renderSourceCard(guiGraphics, font, leftX, y, contentWidth, entry)
+                + JournalLayout.LOG_DETAIL_CARD_GAP;
 
-        y += renderWrappedText(guiGraphics, font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_trigger_type_value",
-                        JournalFormatHelper.formatTriggerType(entry.triggerType())),
-                leftX, y, contentWidth, 1, TEXT_COLOR) + SECTION_GAP;
+        // 3. Spacetime 卡片：时间/结构/群系/坐标
+        y += renderSpacetimeCard(guiGraphics, font, leftX, y, contentWidth, entry)
+                + JournalLayout.LOG_DETAIL_CARD_GAP;
 
-        guiGraphics.drawString(font,
-                JournalFormatHelper.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
-                        entry.createdGameTime(), entry.createdDayTime()),
-                leftX, y, TEXT_COLOR, false);
-        y += font.lineHeight + 2;
-
-        guiGraphics.drawString(font,
-                JournalFormatHelper.formatGameTime("screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
-                        entry.lastUpdatedGameTime(), entry.lastUpdatedDayTime()),
-                leftX, y, TEXT_COLOR, false);
-        y += font.lineHeight + SECTION_GAP;
-
-        y += renderWrappedText(guiGraphics, font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_structure_value",
-                        JournalFormatHelper.formatStructureName(entry.structureId())),
-                leftX, y, contentWidth, 2, TEXT_COLOR) + 2;
-
-        y += renderWrappedText(guiGraphics, font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_biome_value",
-                        JournalFormatHelper.formatBiomeName(entry.biomeId())),
-                leftX, y, contentWidth, 2, TEXT_COLOR) + 2;
-
-        guiGraphics.drawString(font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_position_value",
-                        entry.pos().getX(), entry.pos().getY(), entry.pos().getZ()),
-                leftX, y, TEXT_COLOR, false);
-        y += font.lineHeight + SECTION_GAP;
-
-        int rowsPerSection = rowsPerSection(y, font.lineHeight);
-        int iconsPerRow = iconsPerRow(contentWidth);
-        int page = this.pagination.getPage();
-
-        guiGraphics.drawString(font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_expected_loot"),
-                leftX, y, LABEL_COLOR, false);
-        y += font.lineHeight + 2;
-        y += renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                this.cachedExpectedLoot, page, rowsPerSection, iconsPerRow) + SECTION_GAP;
-
-        guiGraphics.drawString(font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_actual_loot"),
-                leftX, y, LABEL_COLOR, false);
-        y += font.lineHeight + 2;
-        renderLootIcons(guiGraphics, font, leftX, y, contentWidth,
-                this.cachedActualLoot, page, rowsPerSection, iconsPerRow);
+        // 4. Loot 卡片：合并收集清单
+        renderLootCard(guiGraphics, font, leftX, y, contentWidth, mouseX, mouseY);
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -177,112 +112,240 @@ public final class LogDetailPanel implements PagePanel {
         this.pagination.setPage(page);
     }
 
-    // 渲染战利品图标，使用预缓存列表而非原始 Map
-    private int renderLootIcons(GuiGraphics guiGraphics, Font font, int leftX, int topY, int width,
-                                List<Map.Entry<String, Integer>> cachedEntries, int page, int rowsPerPage, int iconsPerRow) {
-        if (cachedEntries.isEmpty()) {
-            guiGraphics.drawString(font,
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_loot_empty"),
-                    leftX, topY, MUTED_COLOR, false);
-            return font.lineHeight;
+    // —— 返回按钮 ——
+    private int renderBackButton(GuiGraphics g, Font font, int x, int y, int mouseX, int mouseY) {
+        Component text = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_back_to_list");
+        int padX = JournalLayout.LOG_DETAIL_BACK_BTN_PAD_X;
+        int padY = JournalLayout.LOG_DETAIL_BACK_BTN_PAD_Y;
+        int w = font.width(text) + padX * 2;
+        int h = font.lineHeight + padY * 2;
+
+        boolean hovered = mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+        int bgColor = hovered ? 0x30A08060 : JournalLayout.LOG_DETAIL_CARD_BG;
+        g.fill(x, y, x + w, y + h, bgColor);
+        // 底部暖色边线
+        g.fill(x, y + h - 1, x + w, y + h, JournalLayout.LOG_DETAIL_CARD_BORDER);
+        g.drawString(font, text, x + padX, y + padY,
+                hovered ? LABEL_COLOR : MUTED_COLOR, false);
+
+        this.backBounds = new Bounds(x, y, w, h);
+        return h;
+    }
+
+    // —— Source 卡片 ——
+    private int renderSourceCard(GuiGraphics g, Font font, int x, int y, int w, ExcavationLogEntry entry) {
+        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        ItemStack sourceStack = JournalFormatHelper.createSourceStack(entry.sourceBlockId());
+        int innerHeight = Math.max(font.lineHeight, sourceStack.isEmpty() ? 0 : ICON_SIZE);
+        int cardH = pad + innerHeight + pad;
+
+        drawCardBackground(g, x, y, w, cardH);
+
+        int contentY = y + pad;
+        int textX = x + pad;
+        int textWidth = w - pad * 2;
+
+        if (!sourceStack.isEmpty()) {
+            g.renderItem(sourceStack, x + pad, contentY);
+            g.renderItemDecorations(font, sourceStack, x + pad, contentY);
+            this.renderTooltipSlots.add(new IconSlot(x + pad, contentY, sourceStack.copy()));
+            textX += ICON_SIZE + 4;
+            textWidth -= ICON_SIZE + 4;
+        }
+
+        // 来源方块名 | 触发方式
+        String sourceName = JournalFormatHelper.formatBlockName(entry.sourceBlockId());
+        String triggerName = JournalFormatHelper.formatTriggerType(entry.triggerType()).getString();
+        String combined = sourceName + " | " + triggerName;
+        int lineH = renderWrappedText(g, font, Component.literal(combined),
+                textX, contentY + (innerHeight - font.lineHeight) / 2, textWidth, 1, TEXT_COLOR);
+
+        return cardH;
+    }
+
+    // —— Spacetime 卡片 ——
+    private int renderSpacetimeCard(GuiGraphics g, Font font, int x, int y, int w, ExcavationLogEntry entry) {
+        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        int lineHeight = font.lineHeight;
+        // 4 行：创建/更新时间、结构、群系、坐标
+        int cardH = pad + lineHeight + 2 + lineHeight + 2 + lineHeight + 2 + lineHeight + pad;
+
+        drawCardBackground(g, x, y, w, cardH);
+
+        int tx = x + pad;
+        int ty = y + pad;
+        int tw = w - pad * 2;
+
+        // 行1：创建时间 · 更新时间
+        Component created = JournalFormatHelper.formatGameTime(
+                "screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
+                entry.createdGameTime(), entry.createdDayTime());
+        Component updated = JournalFormatHelper.formatGameTime(
+                "screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
+                entry.lastUpdatedGameTime(), entry.lastUpdatedDayTime());
+        String timeLine = created.getString() + " \u00B7 " + updated.getString();
+        ty += renderWrappedText(g, font, Component.literal(timeLine), tx, ty, tw, 1, TEXT_COLOR) + 2;
+
+        // 行2：结构
+        ty += renderWrappedText(g, font,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_structure_value",
+                        JournalFormatHelper.formatStructureName(entry.structureId())),
+                tx, ty, tw, 1, TEXT_COLOR) + 2;
+
+        // 行3：群系
+        ty += renderWrappedText(g, font,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_biome_value",
+                        JournalFormatHelper.formatBiomeName(entry.biomeId())),
+                tx, ty, tw, 1, TEXT_COLOR) + 2;
+
+        // 行4：坐标
+        var pos = entry.pos();
+        g.drawString(font,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_position_value",
+                        pos.getX(), pos.getY(), pos.getZ()),
+                tx, ty, TEXT_COLOR, false);
+
+        return cardH;
+    }
+
+    // —— Loot 卡片 ——
+    private void renderLootCard(GuiGraphics g, Font font, int x, int y, int w, int mouseX, int mouseY) {
+        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        int lineHeight = font.lineHeight;
+
+        // 标题行：收集清单 [完成标志]
+        Component title = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_collection");
+        boolean allCompleted = isAllLootCompleted();
+        int titleWidth = font.width(title);
+        int titleY = y + pad;
+        g.drawString(font, title, x + pad, titleY, LABEL_COLOR, false);
+
+        if (allCompleted) {
+            Component badge = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_completed");
+            int badgeX = x + pad + titleWidth + 6;
+            g.drawString(font, badge, badgeX, titleY, JournalLayout.LOG_DETAIL_COMPLETION_COLOR, false);
+        }
+
+        int labelH = lineHeight + 2;
+        int gridTop = titleY + labelH;
+        int availableHeight = (this.layout.rightPageY() + this.layout.rightPageHeight()) - gridTop - 4;
+        if (availableHeight <= 0) {
+            return;
         }
 
         int stride = ICON_SIZE + ICON_GAP;
+        int iconsPerRow = Math.max(1, (w - pad * 2 + ICON_GAP) / stride);
+        int rowsPerPage = Math.max(1, availableHeight / stride);
         int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
-        int from = Math.min(cachedEntries.size(), page * iconsPerPage);
-        int to = Math.min(cachedEntries.size(), from + iconsPerPage);
-        int renderedCount = 0;
+
+        int page = this.pagination.getPage();
+        int from = Math.min(this.cachedLoot.size(), page * iconsPerPage);
+        int to = Math.min(this.cachedLoot.size(), from + iconsPerPage);
+
+        int gridX = x + pad;
         for (int i = from; i < to; i++) {
-            Map.Entry<String, Integer> lootEntry = cachedEntries.get(i);
-            ItemStack stack = JournalFormatHelper.createLootStack(lootEntry.getKey(), lootEntry.getValue());
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
+            LootDisplayEntry loot = this.cachedLoot.get(i);
+            int row = (i - from) / iconsPerRow;
+            int col = (i - from) % iconsPerRow;
+            int iconX = gridX + col * stride;
+            int iconY = gridTop + row * stride;
 
-            int row = renderedCount / iconsPerRow;
-            int col = renderedCount % iconsPerRow;
-            int iconX = leftX + col * stride;
-            int iconY = topY + row * stride;
-            String countText = lootEntry.getValue() > 1 ? Integer.toString(lootEntry.getValue()) : null;
-            guiGraphics.renderItem(stack, iconX, iconY);
-            guiGraphics.renderItemDecorations(font, stack, iconX, iconY, countText);
-            this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
-            renderedCount++;
+            ItemStack stack = loot.stack.copy();
+            stack.setCount(loot.displayCount());
+
+            // 渲染物品图标
+            g.renderItem(stack, iconX, iconY);
+            String countText = loot.displayCount() > 1 ? Integer.toString(loot.displayCount()) : null;
+            g.renderItemDecorations(font, stack, iconX, iconY, countText);
+
+            if (loot.isFullyObtained()) {
+                // 已获得：加入 tooltip
+                this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
+            } else {
+                // 未获得：覆盖 ghost 半透明遮罩
+                g.fill(iconX, iconY, iconX + ICON_SIZE, iconY + ICON_SIZE,
+                        JournalLayout.LOG_DETAIL_GHOST_OVERLAY);
+            }
         }
 
-        if (renderedCount == 0) {
-            guiGraphics.drawString(font,
+        if (this.cachedLoot.isEmpty()) {
+            g.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_loot_empty"),
-                    leftX, topY, MUTED_COLOR, false);
-            return font.lineHeight;
+                    gridX, gridTop, MUTED_COLOR, false);
         }
-
-        int rows = (renderedCount + iconsPerRow - 1) / iconsPerRow;
-        return rows * stride - ICON_GAP;
     }
 
-    private int lootPageCount(List<Map.Entry<String, Integer>> cachedEntries, int iconsPerRow, int rowsPerPage) {
-        if (cachedEntries.isEmpty()) {
-            return 1;
-        }
-        int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
-        return Math.max(1, (cachedEntries.size() + iconsPerPage - 1) / iconsPerPage);
-    }
-
-    private static List<Map.Entry<String, Integer>> renderableLootEntries(Map<String, Integer> lootMap) {
-        List<Map.Entry<String, Integer>> entries = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : JournalFormatHelper.sortedLootEntries(lootMap)) {
-            ItemStack stack = JournalFormatHelper.createLootStack(entry.getKey(), entry.getValue());
+    // —— 战利品构建 ——
+    private List<LootDisplayEntry> buildLootDisplay(ExcavationLogEntry entry) {
+        List<LootDisplayEntry> result = new ArrayList<>();
+        Map<String, Integer> expected = entry.expectedLoot();
+        Map<String, Integer> actual = entry.actualLoot();
+        for (Map.Entry<String, Integer> e : JournalFormatHelper.sortedLootEntries(expected)) {
+            String key = e.getKey();
+            int expectedCount = e.getValue();
+            int actualCount = actual.getOrDefault(key, 0);
+            ItemStack stack = JournalFormatHelper.createLootStack(key, expectedCount);
             if (stack != null && !stack.isEmpty()) {
-                entries.add(entry);
+                result.add(new LootDisplayEntry(key, expectedCount, actualCount, stack));
             }
         }
-        return entries;
+        return result;
     }
 
-    private int iconsPerRow(int width) {
-        return Math.max(1, (width + ICON_GAP) / (ICON_SIZE + ICON_GAP));
+    private boolean isAllLootCompleted() {
+        if (this.cachedLoot.isEmpty()) {
+            return false;
+        }
+        for (LootDisplayEntry loot : this.cachedLoot) {
+            if (!loot.isFullyObtained()) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    private int rowsPerSection(int topY, int lineHeight) {
-        int remainingHeight = this.layout.rightPageBottom() - topY - 4;
-        int labelHeight = lineHeight + 2;
-        int rows = (remainingHeight - labelHeight * 2 - SECTION_GAP) / ((ICON_SIZE + ICON_GAP) * 2);
-        return Math.max(1, rows);
-    }
-
-    private int detailContentTop(int lineHeight) {
-        return this.layout.rightPageY() + JournalLayout.LOG_TOP
-                + HEADER_GAP
-                + Math.max(lineHeight * 2, ICON_SIZE) + SECTION_GAP
-                + lineHeight + SECTION_GAP
-                + lineHeight + 2
-                + lineHeight + SECTION_GAP
-                + lineHeight * 2 + 2
-                + lineHeight * 2 + 2
-                + lineHeight + SECTION_GAP;
-    }
-
-    private int currentLineHeight() {
-        Font font = Minecraft.getInstance().font;
-        return font.lineHeight;
-    }
-
+    // —— 分页计算 ——
     private int computePageCount() {
-        ExcavationLogEntry currentEntry = this.entry;
-        if (currentEntry == null) {
+        if (this.entry == null || this.cachedLoot.isEmpty()) {
             return 1;
         }
-        int lineHeight = currentLineHeight();
+        Font font = Minecraft.getInstance().font;
+        int lineHeight = font.lineHeight;
         int contentWidth = this.layout.rightPageWidth() - 20;
-        int iconsPerRow = iconsPerRow(contentWidth);
-        int rowsPerSection = rowsPerSection(detailContentTop(lineHeight), lineHeight);
-        int expectedPages = lootPageCount(this.cachedExpectedLoot, iconsPerRow, rowsPerSection);
-        int actualPages = lootPageCount(this.cachedActualLoot, iconsPerRow, rowsPerSection);
-        return Math.max(1, Math.max(expectedPages, actualPages));
+
+        // 固定内容高度（与 render 中一致）
+        int backHeight = lineHeight + JournalLayout.LOG_DETAIL_BACK_BTN_PAD_Y * 2;
+        int sourceCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2 + Math.max(lineHeight, ICON_SIZE);
+        int spacetimeCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2 + lineHeight * 4 + 2 * 3;
+        int labelH = lineHeight + 2;
+        int fixedHeight = backHeight + 4
+                + sourceCardH + JournalLayout.LOG_DETAIL_CARD_GAP
+                + spacetimeCardH + JournalLayout.LOG_DETAIL_CARD_GAP
+                + labelH;
+
+        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        int gridTop = this.layout.rightPageY() + JournalLayout.LOG_TOP + fixedHeight;
+        int availableHeight = (this.layout.rightPageY() + this.layout.rightPageHeight()) - gridTop - 4;
+        if (availableHeight <= 0) {
+            return 1;
+        }
+
+        int stride = ICON_SIZE + ICON_GAP;
+        int iconsPerRow = Math.max(1, (contentWidth - pad * 2 + ICON_GAP) / stride);
+        int rowsPerPage = Math.max(1, availableHeight / stride);
+        int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
+        return Math.max(1, (this.cachedLoot.size() + iconsPerPage - 1) / iconsPerPage);
     }
 
-    private static int renderWrappedText(GuiGraphics guiGraphics, Font font, Component text,
+    // —— 卡片背景 ——
+    private static void drawCardBackground(GuiGraphics g, int x, int y, int w, int h) {
+        g.fill(x, y, x + w, y + h, JournalLayout.LOG_DETAIL_CARD_BG);
+        // 顶部 1px 暖色边框
+        g.fill(x, y, x + w, y + 1, JournalLayout.LOG_DETAIL_CARD_BORDER);
+    }
+
+    // —— 文字折行 ——
+    private static int renderWrappedText(GuiGraphics g, Font font, Component text,
                                          int x, int y, int width, int maxLines, int color) {
         if (width <= 0 || maxLines <= 0) {
             return 0;
@@ -293,9 +356,19 @@ public final class LogDetailPanel implements PagePanel {
         }
         int lineCount = Math.min(maxLines, lines.size());
         for (int i = 0; i < lineCount; i++) {
-            guiGraphics.drawString(font, lines.get(i), x, y + i * font.lineHeight, color, false);
+            g.drawString(font, lines.get(i), x, y + i * font.lineHeight, color, false);
         }
         return lineCount * font.lineHeight;
+    }
+
+    private record LootDisplayEntry(String signatureKey, int expectedCount, int actualCount, ItemStack stack) {
+        boolean isFullyObtained() {
+            return actualCount >= expectedCount;
+        }
+
+        int displayCount() {
+            return Math.max(1, Math.min(expectedCount, stack.getMaxStackSize()));
+        }
     }
 
     private record IconSlot(int x, int y, ItemStack stack) {

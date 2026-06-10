@@ -103,6 +103,7 @@ public final class RightPageContainer {
 
     public void restoreLogSelection(@Nullable UUID entryId, boolean detailMode) {
         this.selectedLogEntryId = entryId;
+        this.logPanel.setSelectedEntryId(entryId);
         ExcavationLogEntry selectedEntry = entryId != null ? this.logPanel.findEntry(entryId) : null;
         if (detailMode && selectedEntry != null) {
             this.logMode = LogMode.DETAIL;
@@ -233,6 +234,10 @@ public final class RightPageContainer {
 
     public boolean isShowingLogDetail() {
         return this.logMode == LogMode.DETAIL;
+    }
+
+    public LogPanel getLogPanel() {
+        return this.logPanel;
     }
 
     @Nullable

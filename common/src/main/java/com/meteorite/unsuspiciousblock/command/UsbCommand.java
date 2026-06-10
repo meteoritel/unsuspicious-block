@@ -6,7 +6,7 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.Tab
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.journal.recording.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -49,7 +49,7 @@ public final class UsbCommand {
         return Commands.literal("clear")
                 .executes(context -> mutateCurrentPlayer(context,
                         ArchaeologyJournalState::clear,
-                        JournalLogHandler::clearLogs,
+                        JournalLogRecorder::clearLogs,
                         Component.translatable("command.unsuspiciousblock.usb.clear.success")))
                 .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                         .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
@@ -59,7 +59,7 @@ public final class UsbCommand {
                             requireTable(context.getSource(), tableId);
                             return mutateAndSyncFull(context.getSource(), player,
                                     state -> state.removeTable(tableId),
-                                    target -> JournalLogHandler.clearLogsForTable(target, tableId),
+                                    target -> JournalLogRecorder.clearLogsForTable(target, tableId),
                                     Component.translatable("command.unsuspiciousblock.usb.clear_table.success", tableId.toString()));
                         }));
     }

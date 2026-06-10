@@ -6,8 +6,6 @@ import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ServerData;
@@ -26,6 +24,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.UUID;
 
+/**
+ * 客户端本地日志存储——管理考古日志的本地持久化和服务端同步数据的应用。
+ * 服务端权威模式：sessionId 完全由服务端下发，客户端不主动生成。
+ */
 public final class ArchaeologyJournalLogLocalStore {
     private static final String STORAGE_DIR = "unsuspiciousblock_journal_logs";
     private static final String STORAGE_FILE = "journal_log_state.dat";
@@ -42,7 +44,6 @@ public final class ArchaeologyJournalLogLocalStore {
     private static final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private static long lastAppliedSequence;
     private static volatile long revision;
-    private static boolean baselineUploaded;
 
     private ArchaeologyJournalLogLocalStore() {
     }
@@ -65,19 +66,22 @@ public final class ArchaeologyJournalLogLocalStore {
         if (loadedPath == null) {
             return;
         }
-        if (trackedConnection != null && !baselineUploaded) {
-            uploadBaseline();
-        }
         flushPending();
     }
 
+    // 接受服务端下发的全量快照——直接覆盖本地状态，设定 sessionId
     public static synchronized void applySnapshot(SyncJournalLogSnapshotPayload payload) {
-        tick();
+        // 先刷新连接状态和待定数据（不触发基线上传）
+        refreshConnection();
+        ensureLoaded();
+        flushPending();
         if (loadedPath == null) {
             queueSnapshot(payload);
             return;
         }
-        if (!shouldAcceptSnapshot(currentSessionId, lastAppliedSequence, payload)) {
+        // 服务端权威模式：接受任意 sessionId 的快照（连接切换时 sessionId 会变化）
+        // 只要 sequence 不低于当前，就接受
+        if (payload.sequence() < lastAppliedSequence) {
             return;
         }
 
@@ -86,12 +90,16 @@ public final class ArchaeologyJournalLogLocalStore {
         logState = updatedState;
         currentSessionId = payload.sessionId();
         lastAppliedSequence = payload.sequence();
-        baselineUploaded = true;
-        saveWithRollback(null, null, 0L, false);
+        revision++;
+        save();
     }
 
+    // 接受服务端下发的增量更新
     public static synchronized void applyUpdate(SyncJournalLogPayload payload) {
-        tick();
+        // 先刷新连接状态和待定数据（不触发基线上传）
+        refreshConnection();
+        ensureLoaded();
+        flushPending();
         if (loadedPath == null) {
             pendingIncrementals.add(payload);
             return;
@@ -104,31 +112,14 @@ public final class ArchaeologyJournalLogLocalStore {
         if (changed) {
             currentSessionId = payload.sessionId();
             lastAppliedSequence = payload.sequence();
-            saveWithRollback(null, null, 0L, false);
+            revision++;
+            save();
         } else {
             if (currentSessionId == null) {
                 currentSessionId = payload.sessionId();
             }
             lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
         }
-    }
-
-    private static boolean saveWithRollback(@Nullable ArchaeologyJournalLogState previousState,
-                                            @Nullable UUID previousSessionId,
-                                            long previousSequence,
-                                            boolean previousBaselineUploaded) {
-        if (save()) {
-            revision++;
-            return true;
-        }
-        // previousState 为 null 时表示无需回滚（来自 applySnapshot/applyUpdate 的直接保存）
-        if (previousState != null) {
-            logState = previousState;
-            currentSessionId = previousSessionId;
-            lastAppliedSequence = previousSequence;
-            baselineUploaded = previousBaselineUploaded;
-        }
-        return false;
     }
 
     private static void refreshConnection() {
@@ -147,7 +138,6 @@ public final class ArchaeologyJournalLogLocalStore {
         pendingSnapshot = null;
         pendingIncrementals.clear();
         lastAppliedSequence = 0L;
-        baselineUploaded = false;
     }
 
     private static void queueSnapshot(SyncJournalLogSnapshotPayload payload) {
@@ -162,73 +152,53 @@ public final class ArchaeologyJournalLogLocalStore {
         if (pendingSnapshot == null && pendingIncrementals.isEmpty()) {
             return;
         }
-        ArchaeologyJournalLogState previousState = logState.copy();
-        UUID previousSessionId = currentSessionId;
-        long previousSequence = lastAppliedSequence;
-        boolean previousBaselineUploaded = baselineUploaded;
 
-        ArchaeologyJournalLogState workingState = logState.copy();
-        UUID workingSessionId = currentSessionId;
-        long workingSequence = lastAppliedSequence;
-        boolean changed = false;
-        boolean acceptedSnapshot = false;
-        boolean acceptedIncremental = false;
-
-        if (pendingSnapshot != null && shouldAcceptSnapshot(workingSessionId, workingSequence, pendingSnapshot)) {
-            ArchaeologyJournalLogState snapshotState = new ArchaeologyJournalLogState();
-            snapshotState.readFrom(pendingSnapshot.state());
-            workingState = snapshotState;
-            workingSessionId = pendingSnapshot.sessionId();
-            workingSequence = pendingSnapshot.sequence();
-            acceptedSnapshot = true;
-            changed = true;
-        }
-
-        ArrayList<SyncJournalLogPayload> sortedIncrementals = new ArrayList<>(pendingIncrementals);
-        sortedIncrementals.sort(Comparator.comparingLong(SyncJournalLogPayload::sequence));
-        for (SyncJournalLogPayload payload : sortedIncrementals) {
-            if (!shouldAcceptUpdate(workingSessionId, workingSequence, payload)) {
-                continue;
-            }
-            workingSessionId = payload.sessionId();
-            workingSequence = payload.sequence();
-            acceptedIncremental = true;
-            if (applyIncremental(workingState, payload)) {
-                changed = true;
-            }
-        }
-
-        if (!changed) {
-            if (acceptedIncremental) {
-                currentSessionId = workingSessionId;
-                lastAppliedSequence = workingSequence;
-                baselineUploaded = previousBaselineUploaded;
+        // 服务端权威模式：只处理与当前 sessionId 匹配的待定数据
+        if (pendingSnapshot != null) {
+            // 快照总是被接受（sequence 检查已排序）
+            if (pendingSnapshot.sequence() >= lastAppliedSequence) {
+                ArchaeologyJournalLogState snapshotState = new ArchaeologyJournalLogState();
+                snapshotState.readFrom(pendingSnapshot.state());
+                logState = snapshotState;
+                currentSessionId = pendingSnapshot.sessionId();
+                lastAppliedSequence = pendingSnapshot.sequence();
+                revision++;
+                save();
             }
             pendingSnapshot = null;
-            pendingIncrementals.clear();
-            return;
         }
 
-        logState = workingState;
-        currentSessionId = workingSessionId;
-        lastAppliedSequence = workingSequence;
-        baselineUploaded = previousBaselineUploaded || acceptedSnapshot;
-        if (saveWithRollback(previousState, previousSessionId, previousSequence, previousBaselineUploaded)) {
-            pendingSnapshot = null;
+        // 处理排队的增量更新
+        if (!pendingIncrementals.isEmpty()) {
+            ArrayList<SyncJournalLogPayload> sortedIncrementals = new ArrayList<>(pendingIncrementals);
+            sortedIncrementals.sort(Comparator.comparingLong(SyncJournalLogPayload::sequence));
+            boolean anyChanged = false;
+            for (SyncJournalLogPayload payload : sortedIncrementals) {
+                if (!shouldAcceptUpdate(currentSessionId, lastAppliedSequence, payload)) {
+                    continue;
+                }
+                if (applyIncremental(logState, payload)) {
+                    currentSessionId = payload.sessionId();
+                    lastAppliedSequence = payload.sequence();
+                    anyChanged = true;
+                } else {
+                    if (currentSessionId == null) {
+                        currentSessionId = payload.sessionId();
+                    }
+                    lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
+                }
+            }
+            if (anyChanged) {
+                revision++;
+                save();
+            }
             pendingIncrementals.clear();
         }
-    }
-
-    private static boolean shouldAcceptSnapshot(@Nullable UUID sessionId, long lastSequence,
-                                                SyncJournalLogSnapshotPayload payload) {
-        if (sessionId != null && !sessionId.equals(payload.sessionId())) {
-            return false;
-        }
-        return payload.sequence() >= lastSequence;
     }
 
     private static boolean shouldAcceptUpdate(@Nullable UUID sessionId, long lastSequence,
                                               SyncJournalLogPayload payload) {
+        // sessionId 匹配检查：如果当前已有 sessionId，必须与服务端一致
         if (sessionId != null && !sessionId.equals(payload.sessionId())) {
             return false;
         }
@@ -297,17 +267,6 @@ public final class ArchaeologyJournalLogLocalStore {
             Constants.LOG.warn("读取本地考古日志失败: {}", path, e);
         }
         return state;
-    }
-
-    private static void uploadBaseline() {
-        if (loadedPath == null || trackedConnection == null || baselineUploaded) {
-            return;
-        }
-        UUID sessionId = UUID.randomUUID();
-        currentSessionId = sessionId;
-        lastAppliedSequence = 0L;
-        baselineUploaded = true;
-        Services.NETWORK.sendToServer(new UploadJournalLogSnapshotPayload(sessionId, logState.toTag()));
     }
 
     private static boolean save() {

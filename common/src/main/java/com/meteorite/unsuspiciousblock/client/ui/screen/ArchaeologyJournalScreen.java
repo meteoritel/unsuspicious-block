@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
+import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
@@ -50,6 +51,16 @@ public class ArchaeologyJournalScreen extends Screen {
     private IconButton sortButton;
     private IconButton sortOrderButton;
     private boolean searchExpanded = false;
+
+    // 日志搜索/排序状态
+    private LogSorter.SortOrder currentLogSortOrder = LogSorter.SortOrder.TIME;
+    private boolean logSortDescending = true;
+    private String logSearchText = "";
+    private boolean logSearchExpanded = false;
+    private EditBox logSearchField;
+    private IconButton logSearchToggleBtn;
+    private IconButton logSortBtn;
+    private IconButton logSortDirBtn;
 
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
@@ -97,13 +108,20 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // ESC 键关闭搜索框
-        if (this.searchExpanded && keyCode == 256) { // GLFW_KEY_ESCAPE
+        // ESC 键关闭搜索框（目录搜索或日志搜索）
+        if (this.searchExpanded && keyCode == 256) {
             this.searchExpanded = false;
             if (this.searchField != null) {
                 this.searchField.setValue("");
                 this.currentSearch = JournalSearchQuery.EMPTY;
             }
+            this.rebuildWidgets();
+            return true;
+        }
+        if (this.logSearchExpanded && keyCode == 256) {
+            this.logSearchExpanded = false;
+            this.logSearchText = "";
+            this.rightPage.getLogPanel().setSearchFilter("");
             this.rebuildWidgets();
             return true;
         }
@@ -117,6 +135,10 @@ public class ArchaeologyJournalScreen extends Screen {
         int savedCatalogPage = this.catalogPanel != null ? this.catalogPanel.getPage() : 0;
         boolean savedLogDetail = this.rightPage != null && this.rightPage.isShowingLogDetail();
         UUID savedLogEntryId = this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null;
+        LogSorter.SortOrder savedLogSortOrder = this.currentLogSortOrder;
+        boolean savedLogSortDescending = this.logSortDescending;
+        String savedLogSearchText = this.logSearchText;
+        boolean savedLogSearchExpanded = this.logSearchExpanded;
 
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
@@ -124,6 +146,14 @@ public class ArchaeologyJournalScreen extends Screen {
         // 先重新灌入当前选中表的数据，再恢复右页状态；否则新容器内的默认页码会覆盖保存的用户上下文。
         this.updateItemGridPanel();
         this.rightPage.restoreLogSelection(savedLogEntryId, savedLogDetail);
+
+        // 恢复日志搜索/排序状态
+        this.currentLogSortOrder = savedLogSortOrder;
+        this.logSortDescending = savedLogSortDescending;
+        this.logSearchText = savedLogSearchText;
+        this.logSearchExpanded = savedLogSearchExpanded;
+        this.rightPage.getLogPanel().setSortOrder(this.currentLogSortOrder, this.logSortDescending);
+        this.rightPage.getLogPanel().setSearchFilter(this.logSearchText);
 
         this.rightPage.setActiveTab(savedTab);
         this.rightPage.setPage(savedPage);
@@ -204,6 +234,23 @@ public class ArchaeologyJournalScreen extends Screen {
             guiGraphics.fill(searchBgX + 1, searchBgY + 1, searchBgX + searchBgW - 1, searchBgY + searchBgH - 1, bgColor);
         }
 
+        // 渲染日志搜索框展开态底色背景
+        boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
+                && !this.rightPage.isShowingLogDetail();
+        if (this.logSearchExpanded && this.logSearchField != null && this.logSearchField.visible) {
+            int logSearchBgX = this.logSearchField.getX() - 1;
+            int logSearchBgY = this.logSearchField.getY() - 1;
+            int logSearchBgW = this.logSearchField.getWidth() + 2;
+            int logSearchBgH = this.logSearchField.getHeight() + 2;
+            int borderColor = 0xFF8B6914;
+            int borderLight = 0xFFB8943C;
+            int bgColor = 0xFFD8C0A0;
+            guiGraphics.fill(logSearchBgX, logSearchBgY, logSearchBgX + logSearchBgW, logSearchBgY + logSearchBgH, borderColor);
+            guiGraphics.fill(logSearchBgX + 1, logSearchBgY + 1, logSearchBgX + logSearchBgW - 1, logSearchBgY + 2, borderLight);
+            guiGraphics.fill(logSearchBgX + 1, logSearchBgY + 2, logSearchBgX + 2, logSearchBgY + logSearchBgH - 1, borderLight);
+            guiGraphics.fill(logSearchBgX + 1, logSearchBgY + 1, logSearchBgX + logSearchBgW - 1, logSearchBgY + logSearchBgH - 1, bgColor);
+        }
+
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         // 排序按钮、排序方向按钮和搜索按钮的 tooltip
@@ -215,6 +262,18 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         if (this.searchToggleButton != null) {
             this.searchToggleButton.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+        // 日志工具栏 tooltip
+        if (isLogListMode) {
+            if (this.logSortBtn != null) {
+                this.logSortBtn.renderTooltip(guiGraphics, mouseX, mouseY);
+            }
+            if (this.logSortDirBtn != null) {
+                this.logSortDirBtn.renderTooltip(guiGraphics, mouseX, mouseY);
+            }
+            if (this.logSearchToggleBtn != null) {
+                this.logSearchToggleBtn.renderTooltip(guiGraphics, mouseX, mouseY);
+            }
         }
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
@@ -375,6 +434,68 @@ public class ArchaeologyJournalScreen extends Screen {
         this.catalogPanel = new CatalogPanel(this.bookLayout);
         this.catalogPanel.setEntries(buildCatalogEntries());
         this.catalogPanel.ensureIndexVisible(this.selectedIndex);
+
+        // 日志工具栏：搜索图标 + 排序图标 + 排序方向图标，右对齐于 LOG_LIST_LABEL_Y 行
+        boolean isLogTab = this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG;
+        boolean isLogListMode = isLogTab && !this.rightPage.isShowingLogDetail();
+        int logToolbarY = this.bookLayout.rightPageY() + JournalLayout.LOG_LIST_LABEL_Y
+                + (JournalLayout.LOG_SEARCH_ICON_SIZE - JournalLayout.SEARCH_QUICK_BAR_HEIGHT) / 2;
+        int logToolbarRightX = this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() - 8;
+
+        // 日志搜索切换按钮
+        this.logSearchToggleBtn = this.addRenderableWidget(new IconButton(
+                logToolbarRightX - JournalLayout.LOG_SEARCH_ICON_SIZE,
+                logToolbarY,
+                JournalLayout.LOG_SEARCH_ICON_SIZE,
+                this.logSearchExpanded ? '✕' : '⌕',
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_search_tooltip"),
+                this::toggleLogSearch));
+        this.logSearchToggleBtn.visible = isLogListMode;
+
+        // 日志排序方式按钮
+        int logSortX = logToolbarRightX - JournalLayout.LOG_SEARCH_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP
+                - JournalLayout.LOG_SORT_ICON_SIZE;
+        this.logSortBtn = this.addRenderableWidget(new IconButton(
+                logSortX, logToolbarY,
+                JournalLayout.LOG_SORT_ICON_SIZE,
+                LogSorter.sortOrderIcon(this.currentLogSortOrder),
+                LogSorter.sortOrderTooltip(this.currentLogSortOrder),
+                this::cycleLogSortOrder));
+        this.logSortBtn.visible = isLogListMode;
+
+        // 日志排序方向按钮
+        int logSortDirX = logSortX - JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP;
+        this.logSortDirBtn = this.addRenderableWidget(new IconButton(
+                logSortDirX, logToolbarY,
+                JournalLayout.LOG_SORT_ICON_SIZE,
+                LogSorter.sortDirectionIcon(this.logSortDescending),
+                LogSorter.sortDirectionTooltip(this.logSortDescending),
+                this::toggleLogSortDirection));
+        this.logSortDirBtn.visible = isLogListMode;
+
+        // 日志搜索框：展开态时显示
+        if (this.logSearchExpanded) {
+            String savedLogSearchText = this.logSearchText;
+            int logSearchFieldX = logSortDirX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_SEARCH_FIELD_WIDTH;
+            this.logSearchField = new EditBox(this.font,
+                    logSearchFieldX,
+                    logToolbarY + (JournalLayout.SEARCH_QUICK_BAR_HEIGHT - JournalLayout.LOG_SEARCH_BAR_HEIGHT) / 2,
+                    JournalLayout.LOG_SEARCH_FIELD_WIDTH,
+                    JournalLayout.LOG_SEARCH_BAR_HEIGHT,
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_search_placeholder"));
+            this.logSearchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_search_placeholder"));
+            this.logSearchField.setMaxLength(50);
+            this.logSearchField.setResponder(this::onLogSearchChanged);
+            this.logSearchField.setValue(savedLogSearchText);
+            this.logSearchField.setFocused(true);
+            this.logSearchField.visible = isLogListMode;
+            this.addRenderableWidget(this.logSearchField);
+        } else {
+            this.logSearchField = new EditBox(this.font, 0, 0, 0, 0, Component.empty());
+            this.logSearchField.setVisible(false);
+            this.logSearchField.setResponder(this::onLogSearchChanged);
+        }
+
         this.syncButtonState();
     }
 
@@ -449,6 +570,10 @@ public class ArchaeologyJournalScreen extends Screen {
             this.catalogPanel.ensureIndexVisible(this.selectedIndex);
         }
 
+        // 重新应用日志搜索/排序状态（数据变更后过滤/排序结果需要重建）
+        this.rightPage.getLogPanel().setSortOrder(this.currentLogSortOrder, this.logSortDescending);
+        this.rightPage.getLogPanel().setSearchFilter(this.logSearchText);
+
         updateItemGridPanel();
         syncButtonState();
     }
@@ -489,6 +614,42 @@ public class ArchaeologyJournalScreen extends Screen {
             this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
         }
         this.rebuildViewModels();
+    }
+
+    // 切换日志搜索框展开/收起
+    private void toggleLogSearch() {
+        this.logSearchExpanded = !this.logSearchExpanded;
+        if (!this.logSearchExpanded) {
+            this.logSearchText = "";
+            this.rightPage.getLogPanel().setSearchFilter("");
+        }
+        this.rebuildWidgets();
+    }
+
+    // 日志搜索框内容变化回调
+    private void onLogSearchChanged(String text) {
+        this.logSearchText = text;
+        this.rightPage.getLogPanel().setSearchFilter(text);
+    }
+
+    // 循环切换日志排序方式
+    private void cycleLogSortOrder() {
+        this.currentLogSortOrder = this.currentLogSortOrder.next();
+        this.rightPage.getLogPanel().setSortOrder(this.currentLogSortOrder, this.logSortDescending);
+        if (this.logSortBtn != null) {
+            this.logSortBtn.setIconChar(LogSorter.sortOrderIcon(this.currentLogSortOrder));
+            this.logSortBtn.setTooltip(LogSorter.sortOrderTooltip(this.currentLogSortOrder));
+        }
+    }
+
+    // 切换日志排序方向
+    private void toggleLogSortDirection() {
+        this.logSortDescending = !this.logSortDescending;
+        this.rightPage.getLogPanel().setSortOrder(this.currentLogSortOrder, this.logSortDescending);
+        if (this.logSortDirBtn != null) {
+            this.logSortDirBtn.setIconChar(LogSorter.sortDirectionIcon(this.logSortDescending));
+            this.logSortDirBtn.setTooltip(LogSorter.sortDirectionTooltip(this.logSortDescending));
+        }
     }
 
     
@@ -601,6 +762,23 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.itemNextButton != null) {
             this.itemNextButton.visible = hasMultipleItemPages;
             this.itemNextButton.active = hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
+        }
+
+        // 日志工具栏可见性：仅在 LOG 标签页、非详情模式且存在日志条目时显示
+        boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
+                && !this.rightPage.isShowingLogDetail();
+        boolean logHasEntries = isLogListMode && this.rightPage.getLogPanel().hasVisibleEntries();
+        if (this.logSearchToggleBtn != null) {
+            this.logSearchToggleBtn.visible = logHasEntries;
+        }
+        if (this.logSortBtn != null) {
+            this.logSortBtn.visible = logHasEntries;
+        }
+        if (this.logSortDirBtn != null) {
+            this.logSortDirBtn.visible = logHasEntries;
+        }
+        if (this.logSearchField != null && this.logSearchExpanded) {
+            this.logSearchField.visible = logHasEntries;
         }
     }
 

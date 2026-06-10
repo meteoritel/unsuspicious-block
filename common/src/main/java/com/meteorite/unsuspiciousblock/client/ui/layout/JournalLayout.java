@@ -48,12 +48,40 @@ public final class JournalLayout {
 
     // —— 右侧日志页 ——
     public static final int LOG_TOP = 28;
-    public static final int LOG_FIRST_UNLOCK_VALUE_Y = LOG_TOP + 12;
-    public static final int LOG_FIRST_UNLOCK_TRIGGER_Y = LOG_TOP + 24;
-    public static final int LOG_LIST_LABEL_Y = LOG_TOP + 40;
-    public static final int LOG_LIST_TOP = LOG_TOP + 54;
+    // "最近发掘记录"标签
+    public static final int LOG_LIST_LABEL_Y = LOG_TOP;
+    // 日志条目列表区域
+    public static final int LOG_LIST_TOP = LOG_TOP + 16;
     public static final int LOG_LIST_BOTTOM = GRID_PAGE_INDICATOR_Y - 8;
-    public static final int LOG_ROW_HEIGHT = 38;
+    public static final int LOG_ROW_HEIGHT = 28;
+    public static final int LOG_SEPARATOR_COLOR = 0x40C8B090;
+
+    // 日志条目精灵图集
+    public static final int LOG_ENTRY_TEXTURE_WIDTH = 148;
+    public static final int LOG_ENTRY_TEXTURE_HEIGHT = 78; // 3态 × 26px
+    public static final int LOG_ENTRY_STATE_HEIGHT = 26;
+
+    // 日志条目内容偏移
+    public static final int LOG_ENTRY_ICON_SIZE = 16;
+    public static final int LOG_ENTRY_ICON_GAP = 4;
+    public static final int LOG_ENTRY_TEXT_WIDTH = 124;
+
+    // 日志搜索/排序工具栏
+    public static final int LOG_SEARCH_ICON_SIZE = 14;
+    public static final int LOG_SORT_ICON_SIZE = 14;
+    public static final int LOG_SEARCH_FIELD_WIDTH = 80;
+    public static final int LOG_SEARCH_BAR_HEIGHT = 12;
+    public static final int LOG_TOOLBAR_GAP = 2;
+
+    // —— 日志详情页 ——
+    public static final int LOG_DETAIL_CARD_BG = 0x18A08060;      // 卡片暖色半透明背景
+    public static final int LOG_DETAIL_CARD_BORDER = 0x30C8B090;  // 卡片顶部边框色
+    public static final int LOG_DETAIL_GHOST_OVERLAY = 0xB06B5B45; // 未获得战利品遮罩色
+    public static final int LOG_DETAIL_BACK_BTN_PAD_X = 6;        // 返回按钮水平内边距
+    public static final int LOG_DETAIL_BACK_BTN_PAD_Y = 2;        // 返回按钮垂直内边距
+    public static final int LOG_DETAIL_CARD_PAD = 4;              // 卡片内边距
+    public static final int LOG_DETAIL_CARD_GAP = 4;              // 卡片之间间距
+    public static final int LOG_DETAIL_COMPLETION_COLOR = 0x3A8C3A; // 完成标志绿色
 
     // —— 翻页按钮 ——
     public static final int PAGE_BUTTON_WIDTH = 23;
