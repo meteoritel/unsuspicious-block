@@ -9,7 +9,6 @@ import java.util.Comparator;
  * 考古手册目录排序器。
  * <p>
  * 提供排序方式枚举、比较器构建、图标/tooltip 映射，
- * 从 ArchaeologyJournalScreen 中提取以减少 Screen 类的职责。
  */
 public final class CatalogSorter {
 

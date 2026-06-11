@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -18,9 +19,10 @@ import java.util.UUID;
 /** 右侧页面容器 —— 通过三枚书签 Tab 切换介绍信息/考古信息/日志 */
 public final class RightPageContainer {
 
-    private static final int TAB_WIDTH = 40;
-    private static final int TAB_HEIGHT = 16;
-    private static final int TAB_GAP = 2;
+    // 书签尺寸与间距
+    private static final int BOOKMARK_HEIGHT = 22;
+    private static final int BOOKMARK_GAP = 4;
+    private static final int BOOKMARK_TOP_OFFSET = 20; // 距右页顶部偏移
 
     public enum Tab { INTRO, ARCHAEOLOGY, LOG }
 
@@ -49,23 +51,27 @@ public final class RightPageContainer {
         this.logPanel = new LogPanel(layout);
         this.logDetailPanel = new LogDetailPanel(layout);
 
-        int btnY = layout.rightPageY() + 2;
-        int groupWidth = TAB_WIDTH * 3 + TAB_GAP * 2;
-        int introBtnX = layout.rightPageX() + (layout.rightPageWidth() - groupWidth) / 2;
-        int archBtnX = introBtnX + TAB_WIDTH + TAB_GAP;
-        int logBtnX = archBtnX + TAB_WIDTH + TAB_GAP;
+        // 书签附着在书本右边缘，垂直排列
+        int bookRightEdge = layout.rightPageX() + layout.rightPageWidth();
+        int startY = layout.rightPageY() + BOOKMARK_TOP_OFFSET;
 
-        this.introTabBtn = new BookmarkToggleButton(introBtnX, btnY, TAB_WIDTH, TAB_HEIGHT,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_intro"),
+        this.introTabBtn = new BookmarkToggleButton(
+                bookRightEdge, startY,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_intro")
+                        .withStyle(ChatFormatting.YELLOW),
                 () -> switchTab(Tab.INTRO));
         this.introTabBtn.setToggled(true);
 
-        this.archaeologyTabBtn = new BookmarkToggleButton(archBtnX, btnY, TAB_WIDTH, TAB_HEIGHT,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_archaeology"),
+        this.archaeologyTabBtn = new BookmarkToggleButton(
+                bookRightEdge, startY + BOOKMARK_HEIGHT + BOOKMARK_GAP,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_archaeology")
+                        .withStyle(ChatFormatting.YELLOW),
                 () -> switchTab(Tab.ARCHAEOLOGY));
 
-        this.logTabBtn = new BookmarkToggleButton(logBtnX, btnY, TAB_WIDTH, TAB_HEIGHT,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_log"),
+        this.logTabBtn = new BookmarkToggleButton(
+                bookRightEdge, startY + (BOOKMARK_HEIGHT + BOOKMARK_GAP) * 2,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_log")
+                        .withStyle(ChatFormatting.YELLOW),
                 () -> switchTab(Tab.LOG));
     }
 

@@ -4,6 +4,7 @@ package com.meteorite.unsuspiciousblock.client.ui.layout;
 public final class JournalLayout {
 
     // —— 书页纹理 ——
+    public static final int BOOK_X_SHIFT = -8; // 整体左移像素（给右侧书签留空间）
     public static final int TEXTURE_WIDTH = 384;
     public static final int TEXTURE_HEIGHT = 256;
     public static final int PAGE_WIDTH = 160;

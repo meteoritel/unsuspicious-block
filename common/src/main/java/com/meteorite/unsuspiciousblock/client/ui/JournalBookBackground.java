@@ -16,7 +16,7 @@ public final class JournalBookBackground {
 
     // 根据屏幕尺寸计算书本居中位置及各页面内容区
     public static BookLayout compute(int screenWidth, int screenHeight) {
-        int bookX = (screenWidth - JournalLayout.TEXTURE_WIDTH) / 2;
+        int bookX = (screenWidth - JournalLayout.TEXTURE_WIDTH) / 2 + JournalLayout.BOOK_X_SHIFT;
         int bookY = (screenHeight - JournalLayout.TEXTURE_HEIGHT) / 2;
         return new BookLayout(
                 bookX, bookY,
