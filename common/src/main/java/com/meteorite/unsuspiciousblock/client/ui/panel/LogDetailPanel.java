@@ -135,7 +135,7 @@ public final class LogDetailPanel implements PagePanel {
     // —— Source 卡片 ——
     private int renderSourceCard(GuiGraphics g, Font font, int x, int y, int w, ExcavationLogEntry entry) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
-        ItemStack sourceStack = JournalFormatHelper.createSourceStack(entry.sourceBlockId());
+        ItemStack sourceStack = entry.lootSource() != null ? entry.lootSource().iconItem() : ItemStack.EMPTY;
         int innerHeight = Math.max(font.lineHeight, sourceStack.isEmpty() ? 0 : ICON_SIZE);
         int cardH = pad + innerHeight + pad;
 
@@ -153,11 +153,9 @@ public final class LogDetailPanel implements PagePanel {
             textWidth -= ICON_SIZE + 4;
         }
 
-        // 来源方块名 | 触发方式
-        String sourceName = JournalFormatHelper.formatBlockName(entry.sourceBlockId());
-        String triggerName = JournalFormatHelper.formatTriggerType(entry.triggerType()).getString();
-        String combined = sourceName + " | " + triggerName;
-        int lineH = renderWrappedText(g, font, Component.literal(combined),
+        // 战利品来源名称
+        String lootSourceName = JournalFormatHelper.formatLootSource(entry.lootSource()).getString();
+        int lineH = renderWrappedText(g, font, Component.literal(lootSourceName),
                 textX, contentY + (innerHeight - font.lineHeight) / 2, textWidth, 1, TEXT_COLOR);
 
         return cardH;

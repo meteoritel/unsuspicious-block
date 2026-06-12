@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.journal.sync;
 
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -99,7 +99,7 @@ public final class ArchaeologyJournalLogSyncSession {
             // 合并首次解锁时间（取最小值）
             if (clientHistory.getFirstUnlockedGameTime() != null) {
                 this.mirroredState.setFirstUnlockMetaMin(tableId,
-                        clientHistory.getFirstUnlockTriggerType(),
+                        clientHistory.getFirstUnlockLootSource(),
                         clientHistory.getFirstUnlockedGameTime(),
                         clientHistory.getFirstUnlockedDayTime() != null
                                 ? clientHistory.getFirstUnlockedDayTime()
@@ -113,9 +113,9 @@ public final class ArchaeologyJournalLogSyncSession {
     }
 
     // 暂存首次解锁元数据变更（seeded 前排队，seeded 后直接应用）
-    public void queueFirstUnlockMeta(ResourceLocation tableId, @Nullable TriggerType triggerType,
+    public void queueFirstUnlockMeta(ResourceLocation tableId, @Nullable LootSourceType lootSource,
                                      long gameTime, long dayTime) {
-        this.queuedMutations.add(QueuedMutation.firstUnlockMeta(tableId, triggerType, gameTime, dayTime));
+        this.queuedMutations.add(QueuedMutation.firstUnlockMeta(tableId, lootSource, gameTime, dayTime));
     }
 
     // 暂存日志条目插入/更新变更
@@ -135,13 +135,13 @@ public final class ArchaeologyJournalLogSyncSession {
 
     private record QueuedMutation(Type type,
                                   @Nullable ResourceLocation tableId,
-                                  @Nullable TriggerType triggerType,
+                                  @Nullable LootSourceType lootSource,
                                   long firstUnlockedGameTime,
                                   long firstUnlockedDayTime,
                                   @Nullable ExcavationLogEntry entry) {
-        private static QueuedMutation firstUnlockMeta(ResourceLocation tableId, @Nullable TriggerType triggerType,
+        private static QueuedMutation firstUnlockMeta(ResourceLocation tableId, @Nullable LootSourceType lootSource,
                                                       long gameTime, long dayTime) {
-            return new QueuedMutation(Type.SET_FIRST_UNLOCK_META, tableId, triggerType, gameTime, dayTime, null);
+            return new QueuedMutation(Type.SET_FIRST_UNLOCK_META, tableId, lootSource, gameTime, dayTime, null);
         }
 
         private static QueuedMutation upsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
@@ -160,7 +160,7 @@ public final class ArchaeologyJournalLogSyncSession {
             switch (this.type) {
                 case SET_FIRST_UNLOCK_META -> {
                     if (this.tableId != null) {
-                        state.setFirstUnlockMetaMin(this.tableId, this.triggerType,
+                        state.setFirstUnlockMetaMin(this.tableId, this.lootSource,
                                 this.firstUnlockedGameTime, this.firstUnlockedDayTime);
                     }
                 }

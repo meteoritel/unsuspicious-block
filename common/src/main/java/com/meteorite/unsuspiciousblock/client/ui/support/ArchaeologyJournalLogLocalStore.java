@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import net.minecraft.client.Minecraft;
@@ -218,8 +218,8 @@ public final class ArchaeologyJournalLogLocalStore {
         if (payload.tableId() == null) {
             return false;
         }
-        TriggerType triggerType = payload.triggerType();
-        return state.setFirstUnlockMetaMin(payload.tableId(), triggerType, payload.gameTime(), payload.dayTime());
+        LootSourceType lootSource = payload.lootSource();
+        return state.setFirstUnlockMetaMin(payload.tableId(), lootSource, payload.gameTime(), payload.dayTime());
     }
 
     private static boolean applyUpsertEntry(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {

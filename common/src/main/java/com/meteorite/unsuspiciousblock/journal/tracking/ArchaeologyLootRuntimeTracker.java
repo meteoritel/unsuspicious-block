@@ -4,7 +4,7 @@ import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
@@ -85,32 +85,32 @@ public final class ArchaeologyLootRuntimeTracker {
 
     // 战利品发现事件处理（单物品栈）：解锁 + 记录首次发现时间
     public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
-                                        ItemStack loot, @Nullable TriggerType triggerType,
+                                        ItemStack loot, @Nullable LootSourceType lootSource,
                                         long gameTime, long dayTime) {
         ArchaeologyJournalState state = getState(player);
         if (state == null) {
             return;
         }
         unlockResolvedLoot(player, tableId, loot);
-        JournalLogRecorder.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogRecorder.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
     }
 
     // 战利品发现事件处理（批量物品）：解锁 + 记录首次发现时间
     public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
-                                        Map<String, Integer> itemCounts, @Nullable TriggerType triggerType,
+                                        Map<String, Integer> itemCounts, @Nullable LootSourceType lootSource,
                                         long gameTime, long dayTime) {
         ArchaeologyJournalState state = getState(player);
         if (state == null) {
             return;
         }
         unlockResolvedLoot(player, tableId, itemCounts);
-        JournalLogRecorder.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogRecorder.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
     }
 
     @Nullable
     // 创建待定的日志条目（从单物品栈预期战利品）
     public static ExcavationLogEntry createPendingEntry(ServerPlayer player, ResourceLocation tableId,
-                                                        TriggerType triggerType, @Nullable ResourceLocation sourceBlockId,
+                                                        LootSourceType lootSource, @Nullable ResourceLocation sourceBlockId,
                                                         BlockPos pos, ItemStack expectedLoot,
                                                         long gameTime, long dayTime) {
         if (expectedLoot.isEmpty()) {
@@ -120,13 +120,13 @@ public final class ArchaeologyLootRuntimeTracker {
         if (signature == null) {
             return null;
         }
-        return createPendingEntry(player, triggerType, sourceBlockId, pos,
+        return createPendingEntry(player, lootSource, sourceBlockId, pos,
                 Map.of(signature.toStoredKey(), expectedLoot.getCount()), gameTime, dayTime);
     }
 
     @Nullable
     // 创建待定的日志条目（从批量预期战利品，同时解析生物群系与结构）
-    public static ExcavationLogEntry createPendingEntry(ServerPlayer player, TriggerType triggerType,
+    public static ExcavationLogEntry createPendingEntry(ServerPlayer player, LootSourceType lootSource,
                                                         @Nullable ResourceLocation sourceBlockId, BlockPos pos,
                                                         Map<String, Integer> expectedLoot,
                                                         long gameTime, long dayTime) {
@@ -139,7 +139,7 @@ public final class ArchaeologyLootRuntimeTracker {
                 sourceBlockId, resolveStructureId(level, pos), resolveBiomeId(level, pos), pos);
         ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
                 Math.max(0L, gameTime), Math.max(0L, dayTime));
-        return new ExcavationLogEntry(UUID.randomUUID(), triggerType, context,
+        return new ExcavationLogEntry(UUID.randomUUID(), lootSource, context,
                 timestamp, timestamp, normalizedExpectedLoot, Map.of());
     }
 
@@ -188,13 +188,13 @@ public final class ArchaeologyLootRuntimeTracker {
                                                Map<String, Integer> itemCounts) {
         long gameTime = player.serverLevel().getGameTime();
         long dayTime = player.serverLevel().getDayTime();
-        onLootDiscovered(player, tableId, itemCounts, TriggerType.CONTAINER, gameTime, dayTime);
+        onLootDiscovered(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime);
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearTrackedLoot();
             return;
         }
         BlockPos pos = resolveContainerPos(container);
-        container.unsuspiciousblock$setPendingJournalEntry(createPendingEntry(player, TriggerType.CONTAINER,
+        container.unsuspiciousblock$setPendingJournalEntry(createPendingEntry(player, LootSourceType.LOOT_CONTAINER,
                 resolveContainerSourceBlockId(container), pos, itemCounts, gameTime, dayTime));
         container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
     }

@@ -100,11 +100,11 @@ public final class LogPanel implements PagePanel {
         if (structure.contains(lowerFilter)) {
             return true;
         }
-        String trigger = JournalFormatHelper.formatTriggerType(entry.triggerType()).getString().toLowerCase(Locale.ROOT);
-        if (trigger.contains(lowerFilter)) {
+        String lootSource = JournalFormatHelper.formatLootSource(entry.lootSource()).getString().toLowerCase(Locale.ROOT);
+        if (lootSource.contains(lowerFilter)) {
             return true;
         }
-        String source = JournalFormatHelper.formatBlockName(entry.sourceBlockId()).toLowerCase(Locale.ROOT);
+        String source = JournalFormatHelper.formatLootSource(entry.lootSource()).getString().toLowerCase(Locale.ROOT);
         if (source.contains(lowerFilter)) {
             return true;
         }
@@ -209,8 +209,8 @@ public final class LogPanel implements PagePanel {
                 JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, JournalLayout.LOG_ENTRY_STATE_HEIGHT,
                 JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, JournalLayout.LOG_ENTRY_TEXTURE_HEIGHT);
 
-        // 来源方块图标（竖直居中）
-        var sourceStack = JournalFormatHelper.createSourceStack(state.entry.sourceBlockId());
+        // 来源图标（竖直居中）
+        var sourceStack = state.entry.lootSource() != null ? state.entry.lootSource().iconItem() : net.minecraft.world.item.ItemStack.EMPTY;
         int textX = leftX;
         int textWidth = JournalLayout.LOG_ENTRY_TEXT_WIDTH;
         if (!sourceStack.isEmpty()) {

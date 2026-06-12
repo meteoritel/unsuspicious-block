@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.helper;
 
 import com.meteorite.unsuspiciousblock.util.GameTimeFormatHelper;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
@@ -28,8 +28,12 @@ public final class JournalFormatHelper {
         return Component.translatable(key, parts.day(), parts.hour(), parts.minute());
     }
 
-    public static Component formatTriggerType(@Nullable TriggerType triggerType) {
-        return (triggerType != null ? triggerType : TriggerType.UNKNOWN).displayName();
+    public static Component formatLootSource(@Nullable LootSourceType lootSource) {
+        if (lootSource != null) {
+            return lootSource.displayName();
+        }
+        // 无来源信息时显示考古作为默认
+        return LootSourceType.ARCHAEOLOGY.displayName();
     }
 
     public static String formatBlockName(@Nullable ResourceLocation blockId) {

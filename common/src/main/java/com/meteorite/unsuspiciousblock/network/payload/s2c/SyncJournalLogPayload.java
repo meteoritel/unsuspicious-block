@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -23,7 +23,9 @@ public record SyncJournalLogPayload(UUID sessionId,
                                     Action action,
                                     @Nullable ResourceLocation tableId,
                                     CompoundTag data) implements CustomPacketPayload {
-    private static final String TRIGGER_TYPE_TAG = "trigger_type";
+    private static final String LOOT_SOURCE_TAG = "loot_source";
+    @Deprecated // 向后兼容读取旧NBT
+    private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String GAME_TIME_TAG = "game_time";
     private static final String DAY_TIME_TAG = "day_time";
 
@@ -35,13 +37,13 @@ public record SyncJournalLogPayload(UUID sessionId,
 
     // 构建"设置首解锁元数据"操作包
     public static SyncJournalLogPayload setFirstUnlockMeta(UUID sessionId, long sequence, ResourceLocation tableId,
-                                                           @Nullable TriggerType triggerType,
+                                                           @Nullable LootSourceType lootSource,
                                                            long firstUnlockedGameTime, long firstUnlockedDayTime) {
         CompoundTag data = new CompoundTag();
         data.putLong(GAME_TIME_TAG, firstUnlockedGameTime);
         data.putLong(DAY_TIME_TAG, firstUnlockedDayTime);
-        if (triggerType != null) {
-            data.putString(TRIGGER_TYPE_TAG, triggerType.serializedName());
+        if (lootSource != null) {
+            data.putString(LOOT_SOURCE_TAG, lootSource.serializedName());
         }
         return new SyncJournalLogPayload(sessionId, sequence, Action.SET_FIRST_UNLOCK_META, tableId, data);
     }
@@ -67,13 +69,17 @@ public record SyncJournalLogPayload(UUID sessionId,
         return TYPE;
     }
 
-    // 从包数据中解析触发类型
+    // 从包数据中解析战利品来源类型
     @Nullable
-    public TriggerType triggerType() {
-        if (!this.data.contains(TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
-            return null;
+    public LootSourceType lootSource() {
+        if (this.data.contains(LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
+            return LootSourceType.fromSerializedName(this.data.getString(LOOT_SOURCE_TAG));
         }
-        return TriggerType.fromSerializedName(this.data.getString(TRIGGER_TYPE_TAG));
+        // 向后兼容：读取旧字段名
+        if (this.data.contains(LEGACY_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
+            return LootSourceType.fromSerializedName(this.data.getString(LEGACY_TRIGGER_TYPE_TAG));
+        }
+        return null;
     }
 
     // 从包数据中获取游戏时间（非负）

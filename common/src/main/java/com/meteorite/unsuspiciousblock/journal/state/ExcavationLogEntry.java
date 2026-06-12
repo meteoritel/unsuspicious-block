@@ -16,12 +16,12 @@ import java.util.UUID;
 
 /**
  * 单条考古日志记录——记录一次发掘事件的全部上下文。
- * 包含触发类型、源方块、位置、生物群系、所在结构、
+ * 包含战利品来源类型、位置、生物群系、所在结构、
  * 预期的战利品（expectedLoot）与实际获取的战利品（actualLoot）。
  * 支持 NBT 序列化与双向同步。
  */
 public record ExcavationLogEntry(UUID entryId,
-                                 @Nullable TriggerType triggerType,
+                                 @Nullable LootSourceType lootSource,
                                  ExcavationLogEntry.ExcavationContext context,
                                  ExcavationLogEntry.GameTimestamp created,
                                  ExcavationLogEntry.GameTimestamp lastUpdated,
@@ -31,7 +31,9 @@ public record ExcavationLogEntry(UUID entryId,
     private static final Logger LOGGER = LoggerFactory.getLogger(ExcavationLogEntry.class);
 
     private static final String ENTRY_ID_TAG = "entry_id";
-    private static final String TRIGGER_TYPE_TAG = "trigger_type";
+    private static final String LOOT_SOURCE_TAG = "loot_source";
+    @Deprecated // 向后兼容读取旧NBT
+    private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String SOURCE_BLOCK_ID_TAG = "source_block_id";
     private static final String ITEM_ID_TAG = "item_id";
     private static final String STRUCTURE_ID_TAG = "structure_id";
@@ -108,7 +110,7 @@ public record ExcavationLogEntry(UUID entryId,
                                                    long updatedGameTime, long updatedDayTime) {
         LinkedHashMap<String, Integer> mergedActualLoot = new LinkedHashMap<>(this.actualLoot);
         LootCounts.mergeInto(mergedActualLoot, deltaLoot);
-        return new ExcavationLogEntry(this.entryId, this.triggerType, this.context,
+        return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
                 this.created, new GameTimestamp(updatedGameTime, updatedDayTime),
                 this.expectedLoot, mergedActualLoot);
     }
@@ -125,8 +127,8 @@ public record ExcavationLogEntry(UUID entryId,
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         tag.putString(ENTRY_ID_TAG, this.entryId.toString());
-        if (this.triggerType != null) {
-            tag.putString(TRIGGER_TYPE_TAG, this.triggerType.serializedName());
+        if (this.lootSource != null) {
+            tag.putString(LOOT_SOURCE_TAG, this.lootSource.serializedName());
         }
         if (this.context.sourceBlockId != null) {
             tag.putString(SOURCE_BLOCK_ID_TAG, this.context.sourceBlockId.toString());
@@ -152,9 +154,13 @@ public record ExcavationLogEntry(UUID entryId,
         if (entryId == null) {
             entryId = UUID.randomUUID();
         }
-        TriggerType triggerType = tag.contains(TRIGGER_TYPE_TAG, Tag.TAG_STRING)
-                ? TriggerType.fromSerializedName(tag.getString(TRIGGER_TYPE_TAG))
-                : null;
+        // 向后兼容：优先读取新字段 loot_source，其次读取旧字段 trigger_type
+        LootSourceType lootSource = null;
+        if (tag.contains(LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
+            lootSource = LootSourceType.fromSerializedName(tag.getString(LOOT_SOURCE_TAG));
+        } else if (tag.contains(LEGACY_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
+            lootSource = LootSourceType.fromSerializedName(tag.getString(LEGACY_TRIGGER_TYPE_TAG));
+        }
         ResourceLocation sourceBlockId = tag.contains(SOURCE_BLOCK_ID_TAG, Tag.TAG_STRING)
                 ? ResourceLocation.tryParse(tag.getString(SOURCE_BLOCK_ID_TAG))
                 : null;
@@ -197,7 +203,7 @@ public record ExcavationLogEntry(UUID entryId,
         ExcavationContext context = new ExcavationContext(sourceBlockId, structureId, biomeId, pos);
         GameTimestamp created = new GameTimestamp(createdGameTime, createdDayTime);
         GameTimestamp lastUpdated = new GameTimestamp(lastUpdatedGameTime, lastUpdatedDayTime);
-        return new ExcavationLogEntry(entryId, triggerType, context, created, lastUpdated, expectedLoot, actualLoot);
+        return new ExcavationLogEntry(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot);
     }
 
     @Nullable

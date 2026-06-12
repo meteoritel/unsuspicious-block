@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
@@ -52,7 +52,7 @@ public final class JournalLogHandler {
     }
 
     // 记录表首次解锁事件（含触发类型），未 seed 时排队，已 seed 时增量同步
-    public static void recordFirstUnlock(ServerPlayer player, ResourceLocation tableId, @Nullable TriggerType triggerType,
+    public static void recordFirstUnlock(ServerPlayer player, ResourceLocation tableId, @Nullable LootSourceType lootSource,
                                          long gameTime, long dayTime) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
@@ -61,10 +61,10 @@ public final class JournalLogHandler {
         long normalizedGameTime = Math.max(0L, gameTime);
         long normalizedDayTime = Math.max(0L, dayTime);
         if (!session.isSeeded()) {
-            session.queueFirstUnlockMeta(tableId, triggerType, normalizedGameTime, normalizedDayTime);
+            session.queueFirstUnlockMeta(tableId, lootSource, normalizedGameTime, normalizedDayTime);
             return;
         }
-        if (!session.mirroredState().setFirstUnlockMetaMin(tableId, triggerType, normalizedGameTime, normalizedDayTime)) {
+        if (!session.mirroredState().setFirstUnlockMetaMin(tableId, lootSource, normalizedGameTime, normalizedDayTime)) {
             return;
         }
         syncToPersistedState(player);
@@ -74,7 +74,7 @@ public final class JournalLogHandler {
         }
         Services.NETWORK.sendToPlayer(player,
                 SyncJournalLogPayload.setFirstUnlockMeta(sessionId, session.nextSequence(), tableId,
-                        triggerType, normalizedGameTime, normalizedDayTime));
+                        lootSource, normalizedGameTime, normalizedDayTime));
     }
 
     // 插入或更新挖掘日志条目，未 seed 时排队，已 seed 时增量同步并检测成就

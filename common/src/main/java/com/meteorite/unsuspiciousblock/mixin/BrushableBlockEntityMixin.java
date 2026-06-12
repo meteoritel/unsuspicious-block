@@ -4,7 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.enchantment.archaeology.PrecisionExcavationService;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -343,12 +343,12 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                     ? this.unsuspiciousblock$brushDayTime
                     : sp.serverLevel().getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
-                    this.item, TriggerType.BRUSH, gameTime, dayTime);
+                    this.item, LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
             BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
             this.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
                     sp,
                     this.unsuspiciousblock$lootTableName,
-                    TriggerType.BRUSH,
+                    LootSourceType.ARCHAEOLOGY,
                     BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
                     blockEntity.getBlockPos(),
                     this.item,

@@ -21,7 +21,7 @@ public final class ArchaeologyJournalLogState {
     private static final String TABLES_TAG = "tables";
     private static final String FIRST_UNLOCKED_TIME_TAG = "first_unlocked_game_time";
     private static final String FIRST_UNLOCKED_DAY_TIME_TAG = "first_unlocked_day_time";
-    private static final String FIRST_UNLOCK_TRIGGER_TYPE_TAG = "first_unlock_trigger_type";
+    private static final String FIRST_UNLOCK_LOOT_SOURCE_TAG = "first_unlock_loot_source";
     private static final String ENTRIES_TAG = "entries";
 
     private final LinkedHashMap<ResourceLocation, TableLogHistory> tables = new LinkedHashMap<>();
@@ -56,9 +56,9 @@ public final class ArchaeologyJournalLogState {
     }
 
     // 设置（或保留最小）首次解锁时间元数据
-    public boolean setFirstUnlockMetaMin(ResourceLocation tableId, @Nullable TriggerType triggerType,
+    public boolean setFirstUnlockMetaMin(ResourceLocation tableId, @Nullable LootSourceType lootSource,
                                          long gameTime, long dayTime) {
-        return this.getOrCreateTable(tableId).setFirstUnlockMetaMin(triggerType, gameTime, dayTime);
+        return this.getOrCreateTable(tableId).setFirstUnlockMetaMin(lootSource, gameTime, dayTime);
     }
 
     // 插入或更新指定表中的日志条目（基于 entryId 去重）
@@ -132,7 +132,7 @@ public final class ArchaeologyJournalLogState {
         @Nullable
         private Long firstUnlockedDayTime;
         @Nullable
-        private TriggerType firstUnlockTriggerType;
+        private LootSourceType firstUnlockLootSource;
         private final LinkedHashMap<UUID, ExcavationLogEntry> entries = new LinkedHashMap<>();
         // 懒缓存：仅在 entries 修改后重建
         private int entriesVersion = 0;
@@ -150,8 +150,8 @@ public final class ArchaeologyJournalLogState {
         }
 
         @Nullable
-        public TriggerType getFirstUnlockTriggerType() {
-            return this.firstUnlockTriggerType;
+        public LootSourceType getFirstUnlockLootSource() {
+            return this.firstUnlockLootSource;
         }
 
         public List<ExcavationLogEntry> getEntries() {
@@ -170,13 +170,13 @@ public final class ArchaeologyJournalLogState {
             return this.setFirstUnlockMetaMin(null, gameTime, dayTime);
         }
 
-        public boolean setFirstUnlockMetaMin(@Nullable TriggerType triggerType, long gameTime, long dayTime) {
+        public boolean setFirstUnlockMetaMin(@Nullable LootSourceType lootSource, long gameTime, long dayTime) {
             long normalizedGameTime = Math.max(0L, gameTime);
             long normalizedDayTime = Math.max(0L, dayTime);
             if (this.firstUnlockedGameTime == null) {
                 this.firstUnlockedGameTime = normalizedGameTime;
                 this.firstUnlockedDayTime = normalizedDayTime;
-                this.firstUnlockTriggerType = triggerType;
+                this.firstUnlockLootSource = lootSource;
                 return true;
             }
 
@@ -185,13 +185,13 @@ public final class ArchaeologyJournalLogState {
                     || normalizedGameTime == this.firstUnlockedGameTime && normalizedDayTime < currentDayTime) {
                 this.firstUnlockedGameTime = normalizedGameTime;
                 this.firstUnlockedDayTime = normalizedDayTime;
-                this.firstUnlockTriggerType = triggerType;
+                this.firstUnlockLootSource = lootSource;
                 return true;
             }
 
             if (normalizedGameTime == this.firstUnlockedGameTime && normalizedDayTime == currentDayTime
-                    && this.firstUnlockTriggerType == null && triggerType != null) {
-                this.firstUnlockTriggerType = triggerType;
+                    && this.firstUnlockLootSource == null && lootSource != null) {
+                this.firstUnlockLootSource = lootSource;
                 return true;
             }
             return false;
@@ -216,7 +216,7 @@ public final class ArchaeologyJournalLogState {
             TableLogHistory copy = new TableLogHistory();
             copy.firstUnlockedGameTime = this.firstUnlockedGameTime;
             copy.firstUnlockedDayTime = this.firstUnlockedDayTime;
-            copy.firstUnlockTriggerType = this.firstUnlockTriggerType;
+            copy.firstUnlockLootSource = this.firstUnlockLootSource;
             copy.entries.putAll(this.entries);
             return copy;
         }
@@ -228,8 +228,8 @@ public final class ArchaeologyJournalLogState {
                 tag.putLong(FIRST_UNLOCKED_DAY_TIME_TAG,
                         this.firstUnlockedDayTime != null ? this.firstUnlockedDayTime : this.firstUnlockedGameTime);
             }
-            if (this.firstUnlockTriggerType != null) {
-                tag.putString(FIRST_UNLOCK_TRIGGER_TYPE_TAG, this.firstUnlockTriggerType.serializedName());
+            if (this.firstUnlockLootSource != null) {
+                tag.putString(FIRST_UNLOCK_LOOT_SOURCE_TAG, this.firstUnlockLootSource.serializedName());
             }
             ListTag entriesTag = new ListTag();
             for (ExcavationLogEntry entry : this.entries.values()) {
@@ -247,8 +247,12 @@ public final class ArchaeologyJournalLogState {
                         ? Math.max(0L, tag.getLong(FIRST_UNLOCKED_DAY_TIME_TAG))
                         : history.firstUnlockedGameTime;
             }
-            if (tag.contains(FIRST_UNLOCK_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
-                history.firstUnlockTriggerType = TriggerType.fromSerializedName(tag.getString(FIRST_UNLOCK_TRIGGER_TYPE_TAG));
+            // 向后兼容：优先读取新字段，其次读取旧字段
+            String LOOT_SOURCE_LEGACY_TAG = "first_unlock_trigger_type";
+            if (tag.contains(FIRST_UNLOCK_LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
+                history.firstUnlockLootSource = LootSourceType.fromSerializedName(tag.getString(FIRST_UNLOCK_LOOT_SOURCE_TAG));
+            } else if (tag.contains(LOOT_SOURCE_LEGACY_TAG, Tag.TAG_STRING)) {
+                history.firstUnlockLootSource = LootSourceType.fromSerializedName(tag.getString(LOOT_SOURCE_LEGACY_TAG));
             }
             if (tag.contains(ENTRIES_TAG, Tag.TAG_LIST)) {
                 ListTag entriesTag = tag.getList(ENTRIES_TAG, Tag.TAG_COMPOUND);

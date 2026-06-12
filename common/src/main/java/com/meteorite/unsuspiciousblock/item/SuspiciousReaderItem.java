@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -308,11 +308,11 @@ public class SuspiciousReaderItem extends Item {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(player, lootTableName, lootItem,
-                    TriggerType.READER, gameTime, dayTime);
+                    LootSourceType.READER, gameTime, dayTime);
             scanState.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
                     player,
                     lootTableName,
-                    TriggerType.READER,
+                    LootSourceType.READER,
                     BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
                     pos,
                     lootItem,

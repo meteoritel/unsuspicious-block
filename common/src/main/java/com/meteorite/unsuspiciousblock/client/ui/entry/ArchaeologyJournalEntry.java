@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.entry;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
@@ -61,8 +61,8 @@ public record ArchaeologyJournalEntry(
     }
 
     @Nullable
-    public TriggerType firstUnlockTriggerType() {
-        return logRef.firstUnlockTriggerType();
+    public LootSourceType firstUnlockLootSource() {
+        return logRef.firstUnlockLootSource();
     }
 
     public List<ExcavationLogEntry> logEntries() {

@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -83,11 +83,11 @@ public class LuoyangSpadeItem extends Item {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, extracted,
-                    TriggerType.SPADE, gameTime, dayTime);
+                    LootSourceType.SPADE, gameTime, dayTime);
             pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(
                     sp,
                     lootTableName,
-                    TriggerType.SPADE,
+                    LootSourceType.SPADE,
                     BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock()),
                     pos,
                     extracted,

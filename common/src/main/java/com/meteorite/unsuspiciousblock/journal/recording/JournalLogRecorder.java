@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.journal.recording;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
@@ -33,9 +33,9 @@ public final class JournalLogRecorder {
 
     // 记录表首次解锁事件（含触发类型），同时同步日记进度状态
     public static void recordFirstUnlock(ServerPlayer player, ResourceLocation tableId,
-                                         @Nullable TriggerType triggerType,
+                                         @Nullable LootSourceType lootSource,
                                          long gameTime, long dayTime) {
-        JournalLogHandler.recordFirstUnlock(player, tableId, triggerType, gameTime, dayTime);
+        JournalLogHandler.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
     }
 
     // 插入或更新挖掘日志条目，同时同步日记进度状态中已获取物品的计数

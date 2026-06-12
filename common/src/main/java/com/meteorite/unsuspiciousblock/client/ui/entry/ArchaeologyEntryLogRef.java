@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.TriggerType;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -14,7 +14,7 @@ import java.util.List;
 public record ArchaeologyEntryLogRef(
         @Nullable Long firstUnlockedGameTime,
         @Nullable Long firstUnlockedDayTime,
-        @Nullable TriggerType firstUnlockTriggerType,
+        @Nullable LootSourceType firstUnlockLootSource,
         List<ExcavationLogEntry> logEntries
 ) {
     /** 空日志引用，用于未解锁或无日志数据的情况 */
@@ -32,7 +32,7 @@ public record ArchaeologyEntryLogRef(
         return new ArchaeologyEntryLogRef(
                 logHistory.getFirstUnlockedGameTime(),
                 logHistory.getFirstUnlockedDayTime(),
-                logHistory.getFirstUnlockTriggerType(),
+                logHistory.getFirstUnlockLootSource(),
                 logHistory.getEntries()  // 已是不可变列表，无需再次 List.copyOf
         );
     }
