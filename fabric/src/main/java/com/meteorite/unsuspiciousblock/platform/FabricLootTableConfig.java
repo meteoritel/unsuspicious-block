@@ -24,9 +24,11 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final List<String> DEFAULT_PREFIXES = List.of("archaeology/", "archeology/");
     private static final int DEFAULT_MAX_LOG_ENTRIES_PER_TABLE = 1024;
-    
+    private static final long DEFAULT_TRACKING_TIMEOUT_TICKS = 6000L;
+
     private final List<String> prefixes;
     private final int maxLogEntriesPerTable;
+    private final long trackingTimeoutTicks;
 
     public FabricLootTableConfig() {
         ConfigData data = loadConfig();
@@ -34,6 +36,8 @@ public class FabricLootTableConfig implements ILootTableConfig {
                 ? data.archaeology_path_prefixes : DEFAULT_PREFIXES);
         this.maxLogEntriesPerTable = data.max_log_entries_per_table > 0
                 ? data.max_log_entries_per_table : DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
+        this.trackingTimeoutTicks = data.tracking_timeout_ticks >= 600L
+                ? data.tracking_timeout_ticks : DEFAULT_TRACKING_TIMEOUT_TICKS;
     }
 
     @Override
@@ -46,11 +50,16 @@ public class FabricLootTableConfig implements ILootTableConfig {
         return this.maxLogEntriesPerTable;
     }
 
+    @Override
+    public long getTrackingTimeoutTicks() {
+        return this.trackingTimeoutTicks;
+    }
+
     private static ConfigData loadConfig() {
         Path configPath = getConfigPath();
         if (!Files.exists(configPath)) {
             saveDefaults(configPath);
-            return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE);
+            return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
         }
 
         try (Reader reader = Files.newBufferedReader(configPath)) {
@@ -61,14 +70,14 @@ public class FabricLootTableConfig implements ILootTableConfig {
         } catch (IOException e) {
             Constants.LOG.warn("Failed to read loot table config from {}, using defaults.", configPath, e);
         }
-        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE);
+        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
     }
 
     private static void saveDefaults(Path configPath) {
         try {
             Files.createDirectories(configPath.getParent());
             try (Writer writer = Files.newBufferedWriter(configPath)) {
-                GSON.toJson(new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE), writer);
+                GSON.toJson(new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS), writer);
             }
             Constants.LOG.info("Created default loot table config at {}", configPath);
         } catch (IOException e) {
@@ -81,6 +90,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
     }
 
     private record ConfigData(List<String> archaeology_path_prefixes,
-                              int max_log_entries_per_table) {
+                              int max_log_entries_per_table,
+                              long tracking_timeout_ticks) {
     }
 }

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
@@ -45,6 +46,19 @@ public final class ArchaeologyJournalClientState {
     private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
     @Nullable
     private static volatile ResourceLocation lastSelectedTableId;
+    // 跨打开/关闭持久化的 UI 状态
+    @Nullable
+    private static volatile CatalogSorter.SortOrder lastCatalogSortOrder;
+    private static volatile boolean lastCatalogSortDescending;
+    private static volatile String lastCatalogSearchText = "";
+    @Nullable
+    private static volatile LogSorter.SortOrder lastLogSortOrder;
+    private static volatile boolean lastLogSortDescending = true;
+    private static volatile String lastLogSearchText = "";
+    @Nullable
+    private static volatile LogGrouper.GroupMode lastLogGroupMode;
+    @Nullable
+    private static volatile RightPageContainer.Tab lastRightPageTab;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
     // 客户端缓存的目录哈希，用于按需同步比对
@@ -203,6 +217,78 @@ public final class ArchaeologyJournalClientState {
 
     public static void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
         lastSelectedTableId = tableId;
+    }
+
+    // 跨打开/关闭持久化的 UI 状态存取器
+
+    @Nullable
+    public static CatalogSorter.SortOrder getLastCatalogSortOrder() {
+        return lastCatalogSortOrder;
+    }
+
+    public static void setLastCatalogSortOrder(@Nullable CatalogSorter.SortOrder order) {
+        lastCatalogSortOrder = order;
+    }
+
+    public static boolean getLastCatalogSortDescending() {
+        return lastCatalogSortDescending;
+    }
+
+    public static void setLastCatalogSortDescending(boolean descending) {
+        lastCatalogSortDescending = descending;
+    }
+
+    @Nullable
+    public static String getLastCatalogSearchText() {
+        return lastCatalogSearchText;
+    }
+
+    public static void setLastCatalogSearchText(@Nullable String text) {
+        lastCatalogSearchText = text != null ? text : "";
+    }
+
+    @Nullable
+    public static LogSorter.SortOrder getLastLogSortOrder() {
+        return lastLogSortOrder;
+    }
+
+    public static void setLastLogSortOrder(@Nullable LogSorter.SortOrder order) {
+        lastLogSortOrder = order;
+    }
+
+    public static boolean getLastLogSortDescending() {
+        return lastLogSortDescending;
+    }
+
+    public static void setLastLogSortDescending(boolean descending) {
+        lastLogSortDescending = descending;
+    }
+
+    @Nullable
+    public static String getLastLogSearchText() {
+        return lastLogSearchText;
+    }
+
+    public static void setLastLogSearchText(@Nullable String text) {
+        lastLogSearchText = text != null ? text : "";
+    }
+
+    @Nullable
+    public static LogGrouper.GroupMode getLastLogGroupMode() {
+        return lastLogGroupMode;
+    }
+
+    public static void setLastLogGroupMode(@Nullable LogGrouper.GroupMode mode) {
+        lastLogGroupMode = mode;
+    }
+
+    @Nullable
+    public static RightPageContainer.Tab getLastRightPageTab() {
+        return lastRightPageTab;
+    }
+
+    public static void setLastRightPageTab(@Nullable RightPageContainer.Tab tab) {
+        lastRightPageTab = tab;
     }
 
     // 断线时重置，使下次连入能正确处理首次同步

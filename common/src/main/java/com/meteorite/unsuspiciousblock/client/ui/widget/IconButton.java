@@ -6,11 +6,14 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
+
 /**
- * 正方形图标按钮 —— 渲染字体字符图标 + 像素风木质背景，支持 tooltip。
+ * 正方形图标按钮 —— 渲染字体字符图标 + 像素风木质背景，支持多行 tooltip。
  * 用于搜索框收起态放大镜按钮和排序方式切换按钮。
  */
 public class IconButton extends AbstractButton {
@@ -26,31 +29,43 @@ public class IconButton extends AbstractButton {
     private static final int TEXT_COLOR_HOVERED = 0xFF3D2810;
 
     private char iconChar;
-    private @Nullable Component tooltip;
+    private @Nullable List<Component> tooltipLines;
     private final Runnable onPressed;
 
     /**
-     * @param x         按钮左上角 x
-     * @param y         按钮左上角 y
-     * @param size      按钮宽高（正方形）
-     * @param iconChar  图标字符
-     * @param tooltip   悬浮提示，可为 null
-     * @param onPressed 点击回调
+     * @param x            按钮左上角 x
+     * @param y            按钮左上角 y
+     * @param size         按钮宽高（正方形）
+     * @param iconChar     图标字符
+     * @param tooltipLines 多行悬浮提示，可为 null
+     * @param onPressed    点击回调
      */
     public IconButton(int x, int y, int size, char iconChar,
-                      @Nullable Component tooltip, Runnable onPressed) {
+                      @Nullable List<Component> tooltipLines, Runnable onPressed) {
         super(x, y, size, size, Component.empty());
         this.iconChar = iconChar;
-        this.tooltip = tooltip;
+        this.tooltipLines = tooltipLines;
         this.onPressed = onPressed;
+    }
+
+    /** 便捷构造 —— 单行 tooltip */
+    public IconButton(int x, int y, int size, char iconChar,
+                      @Nullable Component tooltip, Runnable onPressed) {
+        this(x, y, size, iconChar, tooltip != null ? List.of(tooltip) : null, onPressed);
     }
 
     public void setIconChar(char iconChar) {
         this.iconChar = iconChar;
     }
 
+    /** 设置单行 tooltip（兼容便捷方法） */
     public void setTooltip(@Nullable Component tooltip) {
-        this.tooltip = tooltip;
+        this.tooltipLines = tooltip != null ? List.of(tooltip) : null;
+    }
+
+    /** 设置多行 tooltip */
+    public void setTooltipLines(@Nullable List<Component> tooltipLines) {
+        this.tooltipLines = tooltipLines;
     }
 
     @Override
@@ -94,8 +109,9 @@ public class IconButton extends AbstractButton {
 
     /** 由 Screen.render 调用，在所有 widget 之后绘制 tooltip */
     public void renderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.tooltip != null && this.isHovered()) {
-            guiGraphics.renderTooltip(Minecraft.getInstance().font, this.tooltip, mouseX, mouseY);
+        if (this.tooltipLines != null && !this.tooltipLines.isEmpty() && this.isHovered()) {
+            Font font = Minecraft.getInstance().font;
+            guiGraphics.renderTooltip(font, this.tooltipLines.stream().map(Component::getVisualOrderText).toList(), mouseX, mouseY);
         }
     }
 }

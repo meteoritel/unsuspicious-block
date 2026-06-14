@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * 为可解析战利品表的容器方块实体保存运行时追踪状态。
@@ -34,6 +35,9 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
     private static final String UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG = "unsuspiciousblock_pending_journal_entry";
 
     @Unique
+    private static final String UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG = "unsuspiciousblock_tracked_player_uuid";
+
+    @Unique
     @Nullable
     private ResourceLocation unsuspiciousblock$trackedLootTableName;
 
@@ -43,6 +47,10 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
     @Unique
     @Nullable
     private ExcavationLogEntry unsuspiciousblock$pendingJournalEntry;
+
+    @Unique
+    @Nullable
+    private UUID unsuspiciousblock$trackedPlayerUuid;
 
     // 返回当前容器关联的已追踪战利品表
     @Override
@@ -69,6 +77,23 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
             return;
         }
         this.unsuspiciousblock$pendingJournalEntry = entry;
+        this.unsuspiciousblock$markTrackingChanged();
+    }
+
+    // 返回触发战利品表解析的追踪玩家 UUID
+    @Override
+    @Nullable
+    public UUID unsuspiciousblock$getTrackedPlayerUuid() {
+        return this.unsuspiciousblock$trackedPlayerUuid;
+    }
+
+    // 设置触发战利品表解析的追踪玩家 UUID
+    @Override
+    public void unsuspiciousblock$setTrackedPlayerUuid(@Nullable UUID uuid) {
+        if (Objects.equals(this.unsuspiciousblock$trackedPlayerUuid, uuid)) {
+            return;
+        }
+        this.unsuspiciousblock$trackedPlayerUuid = uuid;
         this.unsuspiciousblock$markTrackingChanged();
     }
 
@@ -109,10 +134,6 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
             this.unsuspiciousblock$trackedLootCounts.put(signatureKey, remaining);
         } else {
             this.unsuspiciousblock$trackedLootCounts.remove(signatureKey);
-        }
-        if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
-            this.unsuspiciousblock$trackedLootTableName = null;
-            this.unsuspiciousblock$pendingJournalEntry = null;
         }
         this.unsuspiciousblock$markTrackingChanged();
         return consumed;
@@ -159,7 +180,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         this.unsuspiciousblock$markTrackingChanged();
     }
 
-    // 清空当前容器保存的战利品追踪状态
+    // 清空当前容器保存的战利品追踪状态（保留 pendingJournalEntry，由调用方在结算完成后显式清除）
     @Override
     public void unsuspiciousblock$clearTrackedLoot() {
         if (this.unsuspiciousblock$trackedLootTableName == null && this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
@@ -168,7 +189,6 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
 
         this.unsuspiciousblock$trackedLootTableName = null;
         this.unsuspiciousblock$trackedLootCounts.clear();
-        this.unsuspiciousblock$pendingJournalEntry = null;
         this.unsuspiciousblock$markTrackingChanged();
     }
 
@@ -192,6 +212,11 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         } else {
             tag.remove(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG);
         }
+        if (this.unsuspiciousblock$trackedPlayerUuid != null) {
+            tag.putUUID(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG, this.unsuspiciousblock$trackedPlayerUuid);
+        } else {
+            tag.remove(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG);
+        }
 
         if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
             tag.remove(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG);
@@ -210,6 +235,9 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         this.unsuspiciousblock$pendingJournalEntry = tag.contains(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, Tag.TAG_COMPOUND)
                 ? ExcavationLogEntry.fromTag(tag.getCompound(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG))
                 : null;
+        this.unsuspiciousblock$trackedPlayerUuid = tag.contains(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG)
+                ? tag.getUUID(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG)
+                : null;
         this.unsuspiciousblock$trackedLootCounts.clear();
         if (!tag.contains(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG, Tag.TAG_COMPOUND)) {
             if (this.unsuspiciousblock$trackedLootTableName == null) {
@@ -224,7 +252,7 @@ public abstract class RandomizableContainerBlockEntityMixin implements TrackedCo
         );
         if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
             this.unsuspiciousblock$trackedLootTableName = null;
-            this.unsuspiciousblock$pendingJournalEntry = null;
+            // pendingJournalEntry 保留：可能追踪已清空但日志尚未结算
         }
     }
 }

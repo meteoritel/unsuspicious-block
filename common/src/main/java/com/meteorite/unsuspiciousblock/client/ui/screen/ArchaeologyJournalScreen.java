@@ -15,6 +15,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
@@ -25,6 +26,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.TooltipFlag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,15 +60,67 @@ public class ArchaeologyJournalScreen extends Screen {
         super.init();
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
+
+        // 恢复上次关闭时持久化的 UI 状态
+        restorePersistedUiState();
+
         this.viewModel.reloadCatalog();
         this.viewModel.rebuildViewModels(this.rightPage, null);
         this.viewModel.initRevisions();
         this.rebuildWidgets();
     }
 
+    // 从 ClientState 恢复跨打开/关闭的 UI 状态
+    private void restorePersistedUiState() {
+        // 恢复目录工具栏状态
+        CatalogSorter.SortOrder savedCatalogSortOrder = ArchaeologyJournalClientState.getLastCatalogSortOrder();
+        if (savedCatalogSortOrder != null) {
+            this.catalogToolbar.setCurrentSortOrder(savedCatalogSortOrder);
+        }
+        this.catalogToolbar.setSortDescending(ArchaeologyJournalClientState.getLastCatalogSortDescending());
+        String savedCatalogSearchText = ArchaeologyJournalClientState.getLastCatalogSearchText();
+        if (savedCatalogSearchText != null && !savedCatalogSearchText.isEmpty()) {
+            this.catalogToolbar.setCurrentSearch(JournalSearchQuery.parse(savedCatalogSearchText));
+        }
+
+        // 恢复日志工具栏状态
+        LogSorter.SortOrder savedLogSortOrder = ArchaeologyJournalClientState.getLastLogSortOrder();
+        if (savedLogSortOrder != null) {
+            this.logToolbar.setCurrentSortOrder(savedLogSortOrder);
+        }
+        this.logToolbar.setSortDescending(ArchaeologyJournalClientState.getLastLogSortDescending());
+        String savedLogSearchText = ArchaeologyJournalClientState.getLastLogSearchText();
+        if (savedLogSearchText != null) {
+            this.logToolbar.setSearchText(savedLogSearchText);
+        }
+        LogGrouper.GroupMode savedLogGroupMode = ArchaeologyJournalClientState.getLastLogGroupMode();
+        if (savedLogGroupMode != null) {
+            this.logToolbar.setGroupMode(savedLogGroupMode);
+        }
+
+        // 恢复右侧 tab 选择
+        RightPageContainer.Tab savedTab = ArchaeologyJournalClientState.getLastRightPageTab();
+        if (savedTab != null) {
+            this.rightPage.setActiveTab(savedTab);
+        }
+    }
+
     @Override
     public void removed() {
         ArchaeologyJournalClientState.rememberLastSelectedTable(this.viewModel.selectedTableId());
+        // 持久化目录工具栏状态
+        ArchaeologyJournalClientState.setLastCatalogSortOrder(this.catalogToolbar.currentSortOrder());
+        ArchaeologyJournalClientState.setLastCatalogSortDescending(this.catalogToolbar.sortDescending());
+        ArchaeologyJournalClientState.setLastCatalogSearchText(this.catalogToolbar.currentSearch().rawQuery());
+        // 持久化日志工具栏状态
+        ArchaeologyJournalClientState.setLastLogSortOrder(this.logToolbar.currentSortOrder());
+        ArchaeologyJournalClientState.setLastLogSortDescending(this.logToolbar.sortDescending());
+        ArchaeologyJournalClientState.setLastLogSearchText(this.logToolbar.searchText());
+        ArchaeologyJournalClientState.setLastLogGroupMode(this.logToolbar.groupMode());
+        // 持久化右侧 tab 选择
+        if (this.rightPage != null) {
+            ArchaeologyJournalClientState.setLastRightPageTab(this.rightPage.getActiveTab());
+        }
         super.removed();
     }
 
@@ -77,12 +131,13 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // ESC 关闭搜索框
-        if (this.catalogToolbar.handleEsc()) {
-            return true;
-        }
-        if (this.logToolbar.handleEsc(this.rightPage)) {
-            return true;
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (this.catalogToolbar.handleEsc()) {
+                return true;
+            }
+            if (this.logToolbar.handleEsc(this.rightPage)) {
+                return true;
+            }
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
@@ -132,7 +187,8 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.setPage(savedPage);
 
         this.rebuildWidgets();
-        if (this.catalogPanel != null) {
+        // 仅在第一次 init 之后的 reposition 中恢复 catalog page，
+        if (this.catalogPanel != null && savedCatalogPage > 0) {
             this.catalogPanel.setPage(savedCatalogPage);
         }
         this.syncButtonState();
@@ -263,6 +319,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     protected void rebuildWidgets() {
+        // 重建 widget 前，同步工具栏搜索/排序状态到 ViewModel，
+        this.rebuildViewModels();
         this.clearWidgets();
 
         this.addRenderableWidget(this.rightPage.getIntroTabButton());
@@ -367,12 +425,8 @@ public class ArchaeologyJournalScreen extends Screen {
         return new JournalPageButton(x, y, isForward, onPress);
     }
 
-    // Bridge: addRenderableWidget 是 protected 泛型方法，toolbar 外部类无法直接调用。
     // 提供一个 public 方法供 toolbar 注册 widget。
-    // EditBox 和 IconButton(AbstractButton) 均继承自 AbstractWidget，
-    // 而 AbstractWidget 实现了 GuiEventListener & Renderable & NarratableEntry，
-    // 因此满足 addRenderableWidget 的泛型约束。
-    public <T extends net.minecraft.client.gui.components.AbstractWidget> T registerWidget(T widget) {
+    public <T extends AbstractWidget> T registerWidget(T widget) {
         return this.addRenderableWidget(widget);
     }
 

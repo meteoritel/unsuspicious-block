@@ -21,7 +21,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class BookmarkToggleButton extends AbstractButton {
     // 32x66 纵向三态切片：普通、悬停、选中（每态 22px 高）
-    private static final int TEXTURE_WIDTH = 32;
+    private static final int TEXTURE_WIDTH = 40;
     private static final int STATE_HEIGHT = 22;
     private static final int TEXTURE_HEIGHT = STATE_HEIGHT * 3;
     private static final ResourceLocation TEXTURE =
@@ -32,7 +32,7 @@ public class BookmarkToggleButton extends AbstractButton {
 
     // 书签显示宽度
     private static final int BOOKMARK_TAB_WIDTH = 14;      // 正常态：贴在书边缘的窄条
-    private static final int BOOKMARK_POPOUT_WIDTH = 30;   // 展开态：完整显示材质尖角（最宽 30px）
+    private static final int BOOKMARK_POPOUT_WIDTH = 38;   // 展开态：完整显示材质尖角
     private static final int BOOKMARK_HEIGHT = 22;
 
     private boolean toggled;

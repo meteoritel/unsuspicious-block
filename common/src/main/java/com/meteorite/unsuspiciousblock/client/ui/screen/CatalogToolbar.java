@@ -10,6 +10,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
+import java.util.List;
+
 /**
  * 目录工具栏管理器。
  * <p>
@@ -23,6 +25,8 @@ public class CatalogToolbar {
     private CatalogSorter.SortOrder currentSortOrder = CatalogSorter.SortOrder.DEFAULT;
     private boolean sortDescending = false;
     private boolean searchExpanded = false;
+    // 标记搜索框是否因用户点击刚被打开，需要在 createWidgets 时自动聚焦
+    private boolean searchJustOpened = false;
 
     // widget 引用
     private IconButton searchToggleButton;
@@ -88,11 +92,13 @@ public class CatalogToolbar {
     /** 切换搜索框展开/收起 */
     public void toggleSearch() {
         this.searchExpanded = !this.searchExpanded;
-        if (!this.searchExpanded && this.searchField != null) {
+        if (this.searchExpanded) {
+            this.searchJustOpened = true;
+        } else if (this.searchField != null) {
             this.searchField.setValue("");
             this.currentSearch = JournalSearchQuery.EMPTY;
         }
-        onRebuildViewModels.run();
+        onRebuildWidgets.run();
     }
 
     /** 循环切换排序方式 */
@@ -123,7 +129,7 @@ public class CatalogToolbar {
                 this.searchField.setValue("");
                 this.currentSearch = JournalSearchQuery.EMPTY;
             }
-            onRebuildViewModels.run();
+            onRebuildWidgets.run();
             return true;
         }
         return false;
@@ -145,11 +151,21 @@ public class CatalogToolbar {
                 + JournalLayout.CATALOG_X_OFFSET;
 
         // 搜索切换按钮
+        // 多行 tooltip：标题 + 各搜索规则
+        Component header = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip");
+        Component ruleTable = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_table");
+        Component ruleMod = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_mod");
+        Component ruleItem = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_item");
+        Component ruleTag = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_tag");
         this.searchToggleButton = new IconButton(
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
                 this.searchExpanded ? '✕' : '⌕',
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip"),
+                List.of(header,
+                        Component.literal("- ").append(ruleTable),
+                        Component.literal("- ").append(ruleMod),
+                        Component.literal("- ").append(ruleItem),
+                        Component.literal("- ").append(ruleTag)),
                 this::toggleSearch
         );
         screen.registerWidget(this.searchToggleButton);
@@ -181,6 +197,7 @@ public class CatalogToolbar {
         // 搜索框
         if (this.searchExpanded) {
             String savedText = this.searchField != null ? this.searchField.getValue() : "";
+            boolean hadFocus = this.searchField != null && this.searchField.isFocused();
             int searchFieldX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
             this.searchField = new EditBox(font,
                     searchFieldX, toolbarY + (JournalLayout.SEARCH_QUICK_BAR_HEIGHT - JournalLayout.SEARCH_BAR_HEIGHT) / 2,
@@ -190,7 +207,11 @@ public class CatalogToolbar {
             this.searchField.setMaxLength(50);
             this.searchField.setResponder(this::onSearchChanged);
             this.searchField.setValue(savedText);
-            this.searchField.setFocused(true);
+            // 仅在用户刚点击搜索按钮展开，或原来搜索框就有焦点时，才自动聚焦
+            if (this.searchJustOpened || hadFocus) {
+                this.searchField.setFocused(true);
+            }
+            this.searchJustOpened = false;
             screen.registerWidget(this.searchField);
         } else {
             this.searchField = new EditBox(font, 0, 0, 0, 0, Component.empty());

@@ -10,4 +10,9 @@ public interface ILootTableConfig {
     default int getMaxLogEntriesPerTable() {
         return 1024;
     }
+
+    /** 战利品箱追踪超时（游戏刻），默认 6000（5 分钟） */
+    default long getTrackingTimeoutTicks() {
+        return 6000L;
+    }
 }

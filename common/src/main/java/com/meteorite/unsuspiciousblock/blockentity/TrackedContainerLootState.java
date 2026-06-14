@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public interface TrackedContainerLootState extends Container {
     @Nullable
@@ -36,6 +37,29 @@ public interface TrackedContainerLootState extends Container {
 
     default void unsuspiciousblock$clearPendingJournalEntry() {
         this.unsuspiciousblock$setPendingJournalEntry(null);
+    }
+
+    /** 返回触发战利品表解析的追踪玩家 UUID */
+    @Nullable
+    UUID unsuspiciousblock$getTrackedPlayerUuid();
+
+    /** 设置触发战利品表解析的追踪玩家 UUID */
+    void unsuspiciousblock$setTrackedPlayerUuid(@Nullable UUID uuid);
+
+    /** 判断当前追踪是否已超时 */
+    default boolean unsuspiciousblock$isTrackingExpired(long currentGameTime, long timeoutTicks) {
+        ExcavationLogEntry pendingEntry = this.unsuspiciousblock$getPendingJournalEntry();
+        if (pendingEntry == null) {
+            return false;
+        }
+        return currentGameTime - pendingEntry.createdGameTime() > timeoutTicks;
+    }
+
+    /** 清空全部追踪状态（trackedLoot + pendingJournalEntry + trackedPlayerUuid） */
+    default void unsuspiciousblock$clearAllTrackingState() {
+        this.unsuspiciousblock$clearTrackedLoot();
+        this.unsuspiciousblock$clearPendingJournalEntry();
+        this.unsuspiciousblock$setTrackedPlayerUuid(null);
     }
 
     void unsuspiciousblock$writeTrackedLootData(CompoundTag tag);
