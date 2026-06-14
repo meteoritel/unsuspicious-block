@@ -12,10 +12,10 @@ import net.minecraft.server.level.ServerPlayer;
 public final class ArchaeologyJournalNetwork {
     private ArchaeologyJournalNetwork() {}
 
-    // 玩家加入时全量同步：从 NBT 恢复日志并下发快照 → 下发目录 → 下发状态
+    // 玩家加入时全量同步：从 NBT 恢复日志并下发快照 → 发送目录哈希（按需同步）→ 下发状态
     public static void syncOnJoin(ServerPlayer player) {
         JournalLogHandler.restoreAndSyncOnJoin(player);
-        JournalCatalogHandler.syncCatalog(player);
+        JournalCatalogHandler.syncCatalogHash(player);
         JournalStateHandler.syncStateFull(player);
     }
 }

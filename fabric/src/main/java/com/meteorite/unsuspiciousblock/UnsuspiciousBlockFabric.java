@@ -7,13 +7,16 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerC
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import net.fabricmc.api.ModInitializer;
@@ -73,6 +76,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 注册 payload
         PayloadTypeRegistry.playS2C().register(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC);
@@ -80,12 +84,16 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playC2S().register(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC);
         ServerPlayNetworking.registerGlobalReceiver(UploadJournalLogSnapshotPayload.TYPE,
                 (payload, context) -> context.server().execute(
                         () -> JournalLogHandler.handleUploadedLogSnapshot(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(UpdateReaderScanLevelPayload.TYPE,
                 (payload, context) -> context.server().execute(
                         () -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, context.player())));
+        ServerPlayNetworking.registerGlobalReceiver(RequestCatalogPayload.TYPE,
+                (payload, context) -> context.server().execute(
+                        () -> JournalCatalogHandler.handleRequestCatalog(context.player(), payload)));
 
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {

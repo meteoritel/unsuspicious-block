@@ -20,7 +20,6 @@ import java.util.UUID;
 
 /** 日志同步处理器——管理日志条目的同步、上传合并与全量快照下发 */
 public final class JournalLogHandler {
-    private static final int CACHE_ME_IF_YOU_CAN_THRESHOLD = 1024;
 
     private JournalLogHandler() {}
 
@@ -194,8 +193,9 @@ public final class JournalLogHandler {
 
     // 判断是否跨越了"缓存大师"成就门槛
     static boolean crossesCacheMeIfYouCanThreshold(int previousTotalEntryCount, int currentTotalEntryCount) {
-        return previousTotalEntryCount < CACHE_ME_IF_YOU_CAN_THRESHOLD
-                && currentTotalEntryCount >= CACHE_ME_IF_YOU_CAN_THRESHOLD;
+        int threshold = Services.LOOT_TABLE_CONFIG.getCacheMeIfYouCanThreshold();
+        return previousTotalEntryCount < threshold
+                && currentTotalEntryCount >= threshold;
     }
 
     // 获取玩家的日志同步会话（通过 mixin 接口）

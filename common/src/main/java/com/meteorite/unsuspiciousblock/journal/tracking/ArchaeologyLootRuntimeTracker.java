@@ -136,7 +136,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         ServerLevel level = player.serverLevel();
         ExcavationLogEntry.ExcavationContext context = new ExcavationLogEntry.ExcavationContext(
-                sourceBlockId, resolveStructureId(level, pos), resolveBiomeId(level, pos), pos);
+                level.dimension().location(), sourceBlockId, resolveStructureId(level, pos), resolveBiomeId(level, pos), pos);
         ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
                 Math.max(0L, gameTime), Math.max(0L, dayTime));
         return new ExcavationLogEntry(UUID.randomUUID(), lootSource, context,

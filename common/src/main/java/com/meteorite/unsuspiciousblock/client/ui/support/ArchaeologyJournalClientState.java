@@ -4,11 +4,14 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -44,6 +47,9 @@ public final class ArchaeologyJournalClientState {
     private static volatile ResourceLocation lastSelectedTableId;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
+    // 客户端缓存的目录哈希，用于按需同步比对
+    @Nullable
+    private static volatile String cachedCatalogHash;
     // 标记服务端状态是否已完成首次同步；首次同步时不弹 Toast，避免重进世界时重复通知
     private static volatile boolean stateInitialized = false;
     // 上次触发 Toast 通知的服务端版本号；仅当 incomingRevision > lastNotifiedRevision 时才重新检测
@@ -66,6 +72,20 @@ public final class ArchaeologyJournalClientState {
         ArchaeologyJournalLogLocalStore.tick();
         serverCatalog = Collections.unmodifiableMap(new LinkedHashMap<>(payload.catalog()));
         catalogRevision.incrementAndGet();
+        // 收到完整目录后，哈希由服务端下次同步时更新，此处不修改
+    }
+
+    // 收到目录哈希后与本地缓存对比，不一致时请求完整目录
+    public static void receiveCatalogHash(SyncCatalogHashPayload payload) {
+        String newHash = payload.catalogHash();
+        String localHash = cachedCatalogHash;
+        if (localHash != null && localHash.equals(newHash)) {
+            // 哈希一致，无需重新下载
+            return;
+        }
+        // 哈希不一致或首次收到，请求完整目录
+        Services.NETWORK.sendToServer(new RequestCatalogPayload());
+        cachedCatalogHash = newHash;
     }
 
     public static void receiveState(SyncJournalStatePayload payload) {
@@ -190,6 +210,7 @@ public final class ArchaeologyJournalClientState {
         stateInitialized = false;
         lastNotifiedRevision = -1L;
         journalState = new ArchaeologyJournalState();
+        cachedCatalogHash = null;
     }
 
     // 比较旧状态和新状态，检测新解锁的表和物品并通知

@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
+import com.meteorite.unsuspiciousblock.platform.Services;
+
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -95,6 +97,7 @@ public final class ArchaeologyJournalLogState {
 
     // 将日志状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
+        tag.putInt(NbtDataVersion.TAG, NbtDataVersion.CURRENT);
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableLogHistory> entry : this.tables.entrySet()) {
             tablesTag.put(entry.getKey().toString(), entry.getValue().toTag());
@@ -105,6 +108,7 @@ public final class ArchaeologyJournalLogState {
     // 从 CompoundTag 反序列化恢复日志状态
     public void readFrom(CompoundTag tag) {
         this.clear();
+        int version = NbtDataMigrator.migrateIfNeeded(tag, "ArchaeologyJournalLogState");
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
             return;
         }
@@ -124,8 +128,10 @@ public final class ArchaeologyJournalLogState {
     }
 
     public static final class TableLogHistory {
-        // 单个表的日志条目上限
-        public static final int MAX_ENTRIES = 1024;
+        // 单个表的日志条目上限，从配置读取
+        public static int getMaxEntries() {
+            return Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
+        }
 
         @Nullable
         private Long firstUnlockedGameTime;
@@ -200,7 +206,7 @@ public final class ArchaeologyJournalLogState {
         public boolean upsertEntry(ExcavationLogEntry entry) {
             ExcavationLogEntry previous = this.entries.put(entry.entryId(), entry);
             // 超出上限时移除最旧的条目
-            while (this.entries.size() > MAX_ENTRIES) {
+            while (this.entries.size() > getMaxEntries()) {
                 var it = this.entries.values().iterator();
                 it.next();
                 it.remove();

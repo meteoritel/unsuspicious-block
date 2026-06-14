@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
@@ -59,6 +60,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(ModKeyBindings.SCAN_LEVEL_CYCLE);
+        event.register(ModKeyBindings.JOURNAL_OPEN);
     }
 
     @SubscribeEvent
@@ -66,6 +68,8 @@ public final class UnsuspiciousBlockNeoForgeClient {
         var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
         registrar.playToClient(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
+        registrar.playToClient(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC,
+                (payload, context) -> ArchaeologyJournalClientState.receiveCatalogHash(payload));
         registrar.playToClient(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
                 (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
         registrar.playToClient(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,

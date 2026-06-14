@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
@@ -16,11 +17,12 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-/** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序 */
+/** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图 */
 public final class LogPanel implements PagePanel {
     private static final ResourceLocation ENTRY_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/log_entry.png");
@@ -32,9 +34,45 @@ public final class LogPanel implements PagePanel {
     private static final int MUTED_COLOR = 0x7A6247;
     private static final int SELECTED_TEXT_COLOR = 0x7B3E18;
 
+    /** 显示行：组头或条目，混合高度分页 */
+    private interface DisplayRow {
+        int height();
+    }
+
+    /** 组头行——不可点击，显示组名 + 条目数 */
+    private static final class GroupHeaderRow implements DisplayRow {
+        final String groupName;
+        final int count;
+
+        GroupHeaderRow(String groupName, int count) {
+            this.groupName = groupName;
+            this.count = count;
+        }
+
+        @Override
+        public int height() {
+            return JournalLayout.LOG_GROUP_HEADER_HEIGHT;
+        }
+    }
+
+    /** 条目行——可点击，可选中 */
+    private static final class EntryRow implements DisplayRow {
+        final LogEntryState state;
+
+        EntryRow(LogEntryState state) {
+            this.state = state;
+        }
+
+        @Override
+        public int height() {
+            return JournalLayout.LOG_ROW_HEIGHT;
+        }
+    }
+
     private final JournalBookBackground.BookLayout layout;
     private final List<LogEntryState> allEntries = new ArrayList<>();
     private final List<LogEntryState> filteredEntries = new ArrayList<>();
+    private final List<DisplayRow> displayRows = new ArrayList<>();
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     // 日志数据引用
     private ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.EMPTY;
@@ -42,6 +80,8 @@ public final class LogPanel implements PagePanel {
     private LogSorter.SortOrder sortOrder = LogSorter.SortOrder.TIME;
     private boolean sortDescending = true;
     private String searchFilter = "";
+    // 分组状态
+    private LogGrouper.GroupMode groupMode = LogGrouper.GroupMode.NONE;
     @Nullable
     private UUID selectedEntryId;
 
@@ -72,12 +112,22 @@ public final class LogPanel implements PagePanel {
         applyFilterAndSort();
     }
 
+    // 设置分组方式
+    public void setGroupMode(LogGrouper.GroupMode mode) {
+        this.groupMode = mode;
+        applyFilterAndSort();
+    }
+
+    public LogGrouper.GroupMode groupMode() {
+        return this.groupMode;
+    }
+
     // 设置选中的日志条目ID
     public void setSelectedEntryId(@Nullable UUID entryId) {
         this.selectedEntryId = entryId;
     }
 
-    // 对全部条目执行筛选和排序，结果写入 filteredEntries
+    // 对全部条目执行筛选、排序和分组，结果写入 displayRows
     private void applyFilterAndSort() {
         String lowerFilter = this.searchFilter.toLowerCase(Locale.ROOT);
         this.filteredEntries.clear();
@@ -88,10 +138,32 @@ public final class LogPanel implements PagePanel {
         }
         this.filteredEntries.sort((a, b) -> LogSorter.getComparator(this.sortOrder, this.sortDescending)
                 .compare(a.entry, b.entry));
+
+        // 构建 displayRows
+        this.displayRows.clear();
+        if (this.groupMode == LogGrouper.GroupMode.NONE) {
+            for (LogEntryState state : this.filteredEntries) {
+                this.displayRows.add(new EntryRow(state));
+            }
+        } else {
+            // 按分组键分组，保持排序后的顺序
+            LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
+            for (LogEntryState state : this.filteredEntries) {
+                String key = LogGrouper.groupKey(this.groupMode, state.entry);
+                groups.computeIfAbsent(key, k -> new ArrayList<>()).add(state);
+            }
+            for (var entry : groups.entrySet()) {
+                this.displayRows.add(new GroupHeaderRow(entry.getKey(), entry.getValue().size()));
+                for (LogEntryState state : entry.getValue()) {
+                    this.displayRows.add(new EntryRow(state));
+                }
+            }
+        }
+
         this.pagination.setPage(this.pagination.getPage());
     }
 
-    // 简单子串匹配：检查条目的结构/触发/来源/群系文本是否包含搜索词
+    // 简单子串匹配：检查条目的结构/来源/群系/维度文本是否包含搜索词
     private boolean matchesFilter(ExcavationLogEntry entry, String lowerFilter) {
         if (lowerFilter.isEmpty()) {
             return true;
@@ -104,33 +176,81 @@ public final class LogPanel implements PagePanel {
         if (lootSource.contains(lowerFilter)) {
             return true;
         }
-        String source = JournalFormatHelper.formatLootSource(entry.lootSource()).getString().toLowerCase(Locale.ROOT);
-        if (source.contains(lowerFilter)) {
+        String biome = JournalFormatHelper.formatBiomeName(entry.biomeId()).toLowerCase(Locale.ROOT);
+        if (biome.contains(lowerFilter)) {
             return true;
         }
-        String biome = JournalFormatHelper.formatBiomeName(entry.biomeId()).toLowerCase(Locale.ROOT);
-        return biome.contains(lowerFilter);
+        String dimension = JournalFormatHelper.formatDimensionName(entry.dimensionId()).toLowerCase(Locale.ROOT);
+        return dimension.contains(lowerFilter);
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         int leftX = this.layout.rightPageX() + 8;
         int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
-        if (this.filteredEntries.isEmpty()) {
+        if (this.displayRows.isEmpty()) {
             guiGraphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_empty"),
                     leftX, listStartY, MUTED_COLOR, false);
             return;
         }
 
-        int maxVisibleEntries = maxVisibleEntries();
+        // 计算当前页可见的 displayRows（混合高度）
+        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
         int page = this.pagination.getPage();
-        int from = page * maxVisibleEntries;
-        int to = Math.min(this.filteredEntries.size(), from + maxVisibleEntries);
-        for (int i = from; i < to; i++) {
-            int rowY = listStartY + (i - from) * JournalLayout.LOG_ROW_HEIGHT;
-            renderEntry(guiGraphics, font, leftX, rowY, this.filteredEntries.get(i), mouseX, mouseY);
+        int currentY = 0;
+        int rowIndex = 0;
+        int currentPage = 0;
+        int startRow = 0;
+        int endRow = 0;
+
+        // 分页：找到当前页的起始和结束行索引
+        for (int i = 0; i < this.displayRows.size(); i++) {
+            int rowHeight = this.displayRows.get(i).height();
+            if (currentY + rowHeight > availableHeight) {
+                currentPage++;
+                currentY = 0;
+            }
+            if (currentPage == page) {
+                if (startRow == 0 && currentY == 0) {
+                    startRow = i;
+                }
+                endRow = i + 1;
+            }
+            currentY += rowHeight;
+            if (currentPage > page) break;
         }
+
+        // 渲染当前页的行
+        int yOffset = 0;
+        for (int i = startRow; i < endRow && i < this.displayRows.size(); i++) {
+            DisplayRow row = this.displayRows.get(i);
+            int rowY = listStartY + yOffset;
+            if (rowY + row.height() > listStartY + availableHeight) break;
+
+            if (row instanceof GroupHeaderRow header) {
+                renderGroupHeader(guiGraphics, font, leftX, rowY, header);
+            } else if (row instanceof EntryRow entryRow) {
+                renderEntry(guiGraphics, font, leftX, rowY, entryRow.state, mouseX, mouseY);
+            }
+            yOffset += row.height();
+        }
+    }
+
+    // 渲染组头行
+    private void renderGroupHeader(GuiGraphics guiGraphics, Font font, int leftX, int rowY, GroupHeaderRow header) {
+        int bgX = leftX - 4;
+        int bgW = JournalLayout.LOG_ENTRY_TEXTURE_WIDTH;
+        int bgH = JournalLayout.LOG_GROUP_HEADER_HEIGHT;
+
+        // 绘制暖色背景条（复用详情卡片颜色）
+        guiGraphics.fill(bgX, rowY, bgX + bgW, rowY + bgH, JournalLayout.LOG_GROUP_HEADER_BG);
+        // 顶部边框线
+        guiGraphics.fill(bgX, rowY, bgX + bgW, rowY + 1, JournalLayout.LOG_GROUP_HEADER_BORDER);
+
+        // 组名文本
+        Component groupLabel = LogGrouper.groupHeader(this.groupMode, header.groupName, header.count);
+        guiGraphics.drawString(font, groupLabel, leftX + 2, rowY + 3, JournalLayout.LOG_GROUP_HEADER_COLOR, false);
     }
 
     @Override
@@ -141,23 +261,53 @@ public final class LogPanel implements PagePanel {
 
     @Nullable
     public ExcavationLogEntry handleClick(double mouseX, double mouseY) {
-        int from = this.pagination.getPage() * maxVisibleEntries();
-        int to = Math.min(this.filteredEntries.size(), from + maxVisibleEntries());
-        int leftX = this.layout.rightPageX() + 8;
-        for (int i = from; i < to; i++) {
-            int rowY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP
-                    + (i - from) * JournalLayout.LOG_ROW_HEIGHT;
-            if (mouseX >= leftX - 4 && mouseX <= leftX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
-                    && mouseY >= rowY && mouseY <= rowY + JournalLayout.LOG_ROW_HEIGHT) {
-                return this.filteredEntries.get(i).entry;
+        // 计算当前页可见行范围
+        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
+        int page = this.pagination.getPage();
+        int currentY = 0;
+        int currentPage = 0;
+        int startRow = 0;
+        int endRow = 0;
+
+        for (int i = 0; i < this.displayRows.size(); i++) {
+            int rowHeight = this.displayRows.get(i).height();
+            if (currentY + rowHeight > availableHeight) {
+                currentPage++;
+                currentY = 0;
             }
+            if (currentPage == page) {
+                if (startRow == 0 && currentY == 0) {
+                    startRow = i;
+                }
+                endRow = i + 1;
+            }
+            currentY += rowHeight;
+            if (currentPage > page) break;
+        }
+
+        int leftX = this.layout.rightPageX() + 8;
+        int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
+        int yOffset = 0;
+        for (int i = startRow; i < endRow && i < this.displayRows.size(); i++) {
+            DisplayRow row = this.displayRows.get(i);
+            int rowY = listStartY + yOffset;
+            if (rowY + row.height() > listStartY + availableHeight) break;
+
+            // 仅条目行可点击
+            if (row instanceof EntryRow entryRow) {
+                if (mouseX >= leftX - 4 && mouseX <= leftX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
+                        && mouseY >= rowY && mouseY <= rowY + JournalLayout.LOG_ROW_HEIGHT) {
+                    return entryRow.state.entry;
+                }
+            }
+            yOffset += row.height();
         }
         return null;
     }
 
     @Nullable
     public ExcavationLogEntry findEntry(UUID entryId) {
-        for (LogEntryState state : this.filteredEntries) {
+        for (LogEntryState state : this.allEntries) {
             if (state.entry.entryId().equals(entryId)) {
                 return state.entry;
             }
@@ -236,11 +386,13 @@ public final class LogPanel implements PagePanel {
         ScrollTextHelper.draw(guiGraphics, font, structureText,
                 textX, rowY + 3, structureMaxWidth, nameColor, hovered, state.scrollTicks, false);
 
-        // 行2：仅显示时间
+        // 行2：时间 · 维度
         String timeText = JournalFormatHelper.formatGameTime(
                 "screen.unsuspiciousblock.archaeology_journal.log_time_short",
                 state.entry.createdGameTime(), state.entry.createdDayTime()).getString();
-        ScrollTextHelper.draw(guiGraphics, font, timeText,
+        String dimensionText = JournalFormatHelper.formatDimensionName(state.entry.dimensionId());
+        String line2 = timeText + " \u00B7 " + dimensionText;
+        ScrollTextHelper.draw(guiGraphics, font, line2,
                 textX, rowY + 14, textWidth, MUTED_COLOR, hovered, state.scrollTicks, false);
     }
 
@@ -248,17 +400,41 @@ public final class LogPanel implements PagePanel {
         return !this.filteredEntries.isEmpty();
     }
 
+    // 计算当前可用高度内能完整显示的 displayRows（混合高度）
     private int maxVisibleEntries() {
+        return countRowsPerPage(0);
+    }
+
+    // 计算从指定 displayRow 起始索引开始，一页内能容纳的行数
+    private int countRowsPerPage(int startIndex) {
         int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
-        return availableHeight / JournalLayout.LOG_ROW_HEIGHT;
+        int count = 0;
+        int usedHeight = 0;
+        for (int i = startIndex; i < this.displayRows.size(); i++) {
+            int h = this.displayRows.get(i).height();
+            if (usedHeight + h > availableHeight) break;
+            usedHeight += h;
+            count++;
+        }
+        return count;
     }
 
     private int computePageCount() {
-        if (this.filteredEntries.isEmpty()) {
+        if (this.displayRows.isEmpty()) {
             return 1;
         }
-        int maxVisibleEntries = maxVisibleEntries();
-        return Math.max(1, (this.filteredEntries.size() + maxVisibleEntries - 1) / maxVisibleEntries);
+        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
+        int pages = 1;
+        int usedHeight = 0;
+        for (int i = 0; i < this.displayRows.size(); i++) {
+            int h = this.displayRows.get(i).height();
+            if (usedHeight + h > availableHeight) {
+                pages++;
+                usedHeight = 0;
+            }
+            usedHeight += h;
+        }
+        return pages;
     }
 
     private static final class LogEntryState {

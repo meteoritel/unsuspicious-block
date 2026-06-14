@@ -99,10 +99,39 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
+    // 缓存目录的 SHA-256 哈希（invalidate 时清除）
+    @SuppressWarnings("VolatileArrayField")
+    private static volatile String cachedCatalogHash;
+
+    // 计算整个目录内容的 SHA-256 哈希（用于按需同步比对）
+    public static String computeCatalogHash() {
+        if (!loaded) return "";
+        String cached = cachedCatalogHash;
+        if (cached != null) return cached;
+
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            // 按表的注册顺序拼接所有表 ID 和条目签名，计算整体哈希
+            for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
+                digest.update(entry.getKey().toString().getBytes(StandardCharsets.UTF_8));
+                for (ItemDefinition item : entry.getValue().items()) {
+                    digest.update(item.signature().toStoredKey().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            cached = HexFormat.of().formatHex(digest.digest());
+            cachedCatalogHash = cached;
+            return cached;
+        } catch (NoSuchAlgorithmException e) {
+            LOGGER.warn("SHA-256 算法不可用，目录哈希将返回空字符串", e);
+            return "";
+        }
+    }
+
     // 使缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载）
     public static void invalidate() {
         LootProbabilitySimulator.shutdown();
         catalog.clear();
+        cachedCatalogHash = null;
         loaded = false;
     }
 

@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
@@ -28,6 +29,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     public void onInitializeClient() {
         // 注册按键绑定
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
+        KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);
 
         ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
         // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
@@ -43,6 +45,8 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(SyncArchaeologyCatalogPayload.TYPE,
                 (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
+        ClientPlayNetworking.registerGlobalReceiver(SyncCatalogHashPayload.TYPE,
+                (payload, context) -> ArchaeologyJournalClientState.receiveCatalogHash(payload));
         ClientPlayNetworking.registerGlobalReceiver(SyncJournalStatePayload.TYPE,
                 (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
         ClientPlayNetworking.registerGlobalReceiver(SyncJournalStateIncrementalPayload.TYPE,

@@ -61,6 +61,14 @@ public final class JournalFormatHelper {
         return formatTranslatedIdentifier(id, "biome");
     }
 
+    // 格式化维度名称：对原版维度使用本地化翻译，其他维度使用 formatTranslatedIdentifier
+    public static String formatDimensionName(@Nullable ResourceLocation id) {
+        if (id == null) {
+            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_dimension").getString();
+        }
+        return formatTranslatedIdentifier(id, "dimension");
+    }
+
     public static ItemStack createSourceStack(@Nullable ResourceLocation sourceBlockId) {
         if (sourceBlockId == null) {
             return ItemStack.EMPTY;

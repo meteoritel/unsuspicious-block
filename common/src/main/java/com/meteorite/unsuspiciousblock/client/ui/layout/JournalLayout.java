@@ -67,6 +67,13 @@ public final class JournalLayout {
     public static final int LOG_ENTRY_ICON_GAP = 4;
     public static final int LOG_ENTRY_TEXT_WIDTH = 124;
 
+    // 日志分组头
+    public static final int LOG_GROUP_HEADER_HEIGHT = 14;   // 组头行高度
+    public static final int LOG_GROUP_ICON_SIZE = 14;        // 分组按钮图标尺寸
+    public static final int LOG_GROUP_HEADER_COLOR = 0x5A422C;  // 组头行文字颜色
+    public static final int LOG_GROUP_HEADER_BG = 0x18A08060;   // 组头行背景色（复用详情卡片背景）
+    public static final int LOG_GROUP_HEADER_BORDER = 0x30C8B090; // 组头行边框色（复用详情卡片边框）
+
     // 日志搜索/排序工具栏
     public static final int LOG_SEARCH_ICON_SIZE = 14;
     public static final int LOG_SORT_ICON_SIZE = 14;

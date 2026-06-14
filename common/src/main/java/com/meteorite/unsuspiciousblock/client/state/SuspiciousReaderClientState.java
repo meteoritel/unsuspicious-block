@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
@@ -20,6 +21,14 @@ public class SuspiciousReaderClientState {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || mc.screen != null) return;
+
+        // 快捷键打开考古笔记
+        if (ModKeyBindings.JOURNAL_OPEN.consumeClick()) {
+            if (player.getInventory().contains(new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL))) {
+                ArchaeologyJournalUi.openFromKeybind();
+            }
+            return;
+        }
 
         if (ModKeyBindings.SCAN_LEVEL_CYCLE.consumeClick()) {
             handleScanLevelCycle(player);

@@ -23,4 +23,9 @@ public final class ArchaeologyJournalUi {
         if (currentOpener == null) return;
         currentOpener.accept(ArchaeologyJournalClientState.getState().copy());
     }
+
+    // 从快捷键打开考古笔记 UI，逻辑与 open() 相同
+    public static void openFromKeybind() {
+        open();
+    }
 }

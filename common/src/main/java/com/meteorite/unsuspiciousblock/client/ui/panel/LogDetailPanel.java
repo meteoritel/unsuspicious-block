@@ -165,8 +165,8 @@ public final class LogDetailPanel implements PagePanel {
     private int renderSpacetimeCard(GuiGraphics g, Font font, int x, int y, int w, ExcavationLogEntry entry) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int lineHeight = font.lineHeight;
-        // 4 行：创建/更新时间、结构、群系、坐标
-        int cardH = pad + lineHeight + 2 + lineHeight + 2 + lineHeight + 2 + lineHeight + pad;
+        // 5 行：创建/更新时间、结构、群系、维度、坐标
+        int cardH = pad + lineHeight + 2 + lineHeight + 2 + lineHeight + 2 + lineHeight + 2 + lineHeight + pad;
 
         drawCardBackground(g, x, y, w, cardH);
 
@@ -196,7 +196,13 @@ public final class LogDetailPanel implements PagePanel {
                         JournalFormatHelper.formatBiomeName(entry.biomeId())),
                 tx, ty, tw, 1, TEXT_COLOR) + 2;
 
-        // 行4：坐标
+        // 行4：维度
+        ty += renderWrappedText(g, font,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_dimension_value",
+                        JournalFormatHelper.formatDimensionName(entry.dimensionId())),
+                tx, ty, tw, 1, TEXT_COLOR) + 2;
+
+        // 行5：坐标
         var pos = entry.pos();
         g.drawString(font,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_position_value",
@@ -314,7 +320,7 @@ public final class LogDetailPanel implements PagePanel {
         // 固定内容高度（与 render 中一致）
         int backHeight = lineHeight + JournalLayout.LOG_DETAIL_BACK_BTN_PAD_Y * 2;
         int sourceCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2 + Math.max(lineHeight, ICON_SIZE);
-        int spacetimeCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2 + lineHeight * 4 + 2 * 3;
+        int spacetimeCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2 + lineHeight * 5 + 2 * 4;
         int labelH = lineHeight + 2;
         int fixedHeight = backHeight + 4
                 + sourceCardH + JournalLayout.LOG_DETAIL_CARD_GAP

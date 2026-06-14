@@ -31,6 +31,7 @@ public record ExcavationLogEntry(UUID entryId,
     private static final Logger LOGGER = LoggerFactory.getLogger(ExcavationLogEntry.class);
 
     private static final String ENTRY_ID_TAG = "entry_id";
+    private static final String DIMENSION_ID_TAG = "dimension_id";
     private static final String LOOT_SOURCE_TAG = "loot_source";
     @Deprecated // 向后兼容读取旧NBT
     private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
@@ -50,12 +51,16 @@ public record ExcavationLogEntry(UUID entryId,
     private static final String EXPECTED_LOOT_TAG = "expected_loot";
     private static final String ACTUAL_LOOT_TAG = "actual_loot";
 
-    /** 位置上下文：源方块、结构、生物群系、坐标 */
-    public record ExcavationContext(@Nullable ResourceLocation sourceBlockId,
+    /** 位置上下文：维度、源方块、结构、生物群系、坐标 */
+    public record ExcavationContext(@Nullable ResourceLocation dimensionId,
+                                    @Nullable ResourceLocation sourceBlockId,
                                     @Nullable ResourceLocation structureId,
                                     ResourceLocation biomeId,
                                     BlockPos pos) {
         public ExcavationContext {
+            if (dimensionId == null) {
+                dimensionId = ResourceLocation.withDefaultNamespace("overworld");
+            }
             if (biomeId == null) {
                 biomeId = ResourceLocation.withDefaultNamespace("plains");
             }
@@ -74,6 +79,7 @@ public record ExcavationLogEntry(UUID entryId,
     }
 
     // 便利访问器——保持向后兼容
+    public ResourceLocation dimensionId() { return context.dimensionId(); }
     @Nullable
     public ResourceLocation sourceBlockId() { return context.sourceBlockId(); }
     @Nullable
@@ -91,7 +97,7 @@ public record ExcavationLogEntry(UUID entryId,
 
     public ExcavationLogEntry {
         if (context == null) {
-            context = new ExcavationContext(null, null, null, null);
+            context = new ExcavationContext(null, null, null, null, null);
         }
         if (created == null) {
             created = new GameTimestamp(0, 0);
@@ -130,6 +136,9 @@ public record ExcavationLogEntry(UUID entryId,
         if (this.lootSource != null) {
             tag.putString(LOOT_SOURCE_TAG, this.lootSource.serializedName());
         }
+        if (this.context.dimensionId != null) {
+            tag.putString(DIMENSION_ID_TAG, this.context.dimensionId.toString());
+        }
         if (this.context.sourceBlockId != null) {
             tag.putString(SOURCE_BLOCK_ID_TAG, this.context.sourceBlockId.toString());
         }
@@ -167,6 +176,9 @@ public record ExcavationLogEntry(UUID entryId,
         ResourceLocation structureId = tag.contains(STRUCTURE_ID_TAG, Tag.TAG_STRING)
                 ? ResourceLocation.tryParse(tag.getString(STRUCTURE_ID_TAG))
                 : null;
+        ResourceLocation dimensionId = tag.contains(DIMENSION_ID_TAG, Tag.TAG_STRING)
+                ? ResourceLocation.tryParse(tag.getString(DIMENSION_ID_TAG))
+                : null;
         ResourceLocation biomeId = ResourceLocation.tryParse(tag.getString(BIOME_ID_TAG));
         if (biomeId == null) {
             biomeId = ResourceLocation.withDefaultNamespace("plains");
@@ -200,7 +212,7 @@ public record ExcavationLogEntry(UUID entryId,
                 ? LootCounts.readFromNbt(tag.getCompound(ACTUAL_LOOT_TAG))
                 : createLegacyLootMap(legacyItemId);
 
-        ExcavationContext context = new ExcavationContext(sourceBlockId, structureId, biomeId, pos);
+        ExcavationContext context = new ExcavationContext(dimensionId, sourceBlockId, structureId, biomeId, pos);
         GameTimestamp created = new GameTimestamp(createdGameTime, createdDayTime);
         GameTimestamp lastUpdated = new GameTimestamp(lastUpdatedGameTime, lastUpdatedDayTime);
         return new ExcavationLogEntry(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot);

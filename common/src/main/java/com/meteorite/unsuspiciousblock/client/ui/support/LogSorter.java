@@ -18,6 +18,7 @@ public final class LogSorter {
     public enum SortOrder {
         TIME("time"),
         STRUCTURE("structure"),
+        DIMENSION("dimension"),
         SOURCE("source");
 
         private final String key;
@@ -52,6 +53,9 @@ public final class LogSorter {
             case STRUCTURE -> Comparator
                     .comparing((ExcavationLogEntry e) ->
                             JournalFormatHelper.formatStructureName(e.structureId()));
+            case DIMENSION -> Comparator
+                    .comparing((ExcavationLogEntry e) ->
+                            JournalFormatHelper.formatDimensionName(e.dimensionId()));
             case SOURCE -> Comparator
                     .comparing((ExcavationLogEntry e) ->
                             JournalFormatHelper.formatLootSource(e.lootSource()).getString());
@@ -64,6 +68,7 @@ public final class LogSorter {
         return switch (order) {
             case TIME -> 'T';
             case STRUCTURE -> 'A';
+            case DIMENSION -> 'D';
             case SOURCE -> 'S';
         };
     }
@@ -78,6 +83,7 @@ public final class LogSorter {
         return switch (order) {
             case TIME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_sort.time");
             case STRUCTURE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_sort.structure");
+            case DIMENSION -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_sort.dimension");
             case SOURCE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_sort.source");
         };
     }

@@ -253,6 +253,7 @@ public final class ArchaeologyJournalState {
 
     // 将状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
+        tag.putInt(NbtDataVersion.TAG, NbtDataVersion.CURRENT);
         tag.putLong(REVISION_TAG, this.revision);
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableProgress> entry : this.tables.entrySet()) {
@@ -264,6 +265,7 @@ public final class ArchaeologyJournalState {
     // 从 CompoundTag 反序列化恢复状态
     public void readFrom(CompoundTag tag) {
         this.clear();
+        int version = NbtDataMigrator.migrateIfNeeded(tag, "ArchaeologyJournalState");
         this.revision = tag.contains(REVISION_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(REVISION_TAG)) : 0L;
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
