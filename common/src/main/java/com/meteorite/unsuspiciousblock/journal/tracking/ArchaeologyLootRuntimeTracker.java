@@ -14,7 +14,8 @@ import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.journal.recording.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.core.Registry;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -210,8 +211,10 @@ public final class ArchaeologyLootRuntimeTracker {
             // 若容器有未结算的旧追踪条目（非超时），先将旧条目写入日志再覆盖追踪状态
             ResourceLocation oldTableId = container.unsuspiciousblock$getTrackedLootTableName();
             ExcavationLogEntry oldPendingEntry = container.unsuspiciousblock$getPendingJournalEntry();
-            JournalLogRecorder.upsertExcavationEntry(player, oldTableId, oldPendingEntry,
-                    toSignatureCounts(oldPendingEntry.actualLoot()));
+            if (oldPendingEntry != null) {
+                JournalLogRecorder.upsertExcavationEntry(player, oldTableId, oldPendingEntry,
+                        toSignatureCounts(oldPendingEntry.actualLoot()));
+            }
         }
 
         onLootDiscovered(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime);
@@ -601,23 +604,20 @@ public final class ArchaeologyLootRuntimeTracker {
     @Nullable
     private static ResourceLocation resolveStructureId(ServerLevel level, BlockPos pos) {
         StructureManager structureManager = level.structureManager();
-        Map<Structure, LongSet> structureReferences = structureManager.getAllStructuresAt(pos);
-        if (structureReferences.isEmpty()) {
-            return null;
-        }
+        // 一步获取该 chunk 内所有已解析的结构开端
+        Registry<Structure> structureRegistry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
         ResourceLocation bestMatch = null;
-        var structureRegistry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
-        for (Structure structure : structureReferences.keySet()) {
-            StructureStart structureStart = structureManager.getStructureAt(pos, structure);
-            if (!structureStart.isValid()) {
+
+        for (StructureStart start : structureManager.startsForStructure(new ChunkPos(pos), structure -> true)) {
+            if (!start.isValid() || !start.getBoundingBox().isInside(pos)) {
                 continue;
             }
-            ResourceLocation structureId = structureRegistry.getKey(structure);
-            if (structureId == null) {
+            ResourceLocation id = structureRegistry.getKey(start.getStructure());
+            if (id == null) {
                 continue;
             }
-            if (bestMatch == null || structureId.toString().compareTo(bestMatch.toString()) < 0) {
-                bestMatch = structureId;
+            if (bestMatch == null || id.toString().compareTo(bestMatch.toString()) < 0) {
+                bestMatch = id;
             }
         }
         return bestMatch;

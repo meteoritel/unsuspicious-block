@@ -46,11 +46,11 @@ public final class ArchaeologyJournalServerCatalog {
             // 1. 解析原始目录（概率字段为 "?" 占位符）
             catalog.clear();
             Map<ResourceLocation, TableDefinition> rawCatalog = ArchaeologyJournalCatalog.load(server.getResourceManager());
-
+            LOGGER.info("1. 解析原始目录（概率字段为 \"?\" 占位符）");
             // 2. 获取服务端级别用于模拟
             ServerLevel level = server.overworld();
             LootProbabilityData probabilityData = LootProbabilityData.get(level);
-
+            LOGGER.info("2. 获取服务端级别用于模拟");
             // 3. 计算每个表的 JSON 内容哈希，判断是否需要重新模拟
             Map<ResourceLocation, String> tableHashes = computeTableHashes(server.getResourceManager(), rawCatalog.keySet());
             Map<ResourceLocation, TableDefinition> tablesToSimulate = new LinkedHashMap<>();
@@ -67,12 +67,13 @@ public final class ArchaeologyJournalServerCatalog {
                     tablesToSimulate.put(tableId, entry.getValue());
                 }
             }
-
+            LOGGER.info("3. 计算每个表的 JSON 内容哈希，判断是否需要重新模拟");
             // 4. 对需要模拟的表执行模拟
             Map<ResourceLocation, TableDefinition> simulatedCatalog =
                     tablesToSimulate.isEmpty() ? Collections.emptyMap()
                             : LootProbabilitySimulator.simulate(tablesToSimulate, level);
 
+            LOGGER.info("4. 对需要模拟的表执行模拟");
             // 5. 将模拟结果写入 SavedData
             for (Map.Entry<ResourceLocation, TableDefinition> entry : simulatedCatalog.entrySet()) {
                 ResourceLocation tableId = entry.getKey();
@@ -85,17 +86,17 @@ public final class ArchaeologyJournalServerCatalog {
                 }
                 probabilityData.putSimulationResult(tableId, hash, probabilities);
             }
-
+            LOGGER.info("5. 将模拟结果写入 SavedData");
             // 6. 合并缓存与模拟结果
             catalog.clear();
             catalog.putAll(cachedResults);
             catalog.putAll(simulatedCatalog);
             loaded = true;
-            LOGGER.info("已加载 {} 个考古战利品表到服务端目录（缓存 {} 个，模拟 {} 个）。",
+            LOGGER.info("6. 已加载 {} 个考古战利品表到服务端目录（缓存 {} 个，模拟 {} 个）。",
                     catalog.size(), cachedResults.size(), simulatedCatalog.size());
             logLoadedTables();
         } catch (Exception e) {
-            LOGGER.error("加载考古战利品表目录失败。", e);
+            LOGGER.error("6. 加载考古战利品表目录失败。", e);
         }
     }
 
@@ -129,7 +130,6 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 使缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载）
     public static void invalidate() {
-        LootProbabilitySimulator.shutdown();
         catalog.clear();
         cachedCatalogHash = null;
         loaded = false;
