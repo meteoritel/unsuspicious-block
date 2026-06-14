@@ -42,13 +42,14 @@ public final class LogSorter {
     }
 
     // 根据排序方式和方向返回对应比较器
+    // comparator 统一为升序（最小值在前），descending 时反转
     public static Comparator<ExcavationLogEntry> getComparator(SortOrder order, boolean descending) {
         Comparator<ExcavationLogEntry> comparator = switch (order) {
             case TIME -> Comparator
-                    .comparingLong(ExcavationLogEntry::lastUpdatedGameTime).reversed()
-                    .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime).reversed()
-                    .thenComparingLong(ExcavationLogEntry::createdGameTime).reversed()
-                    .thenComparingLong(ExcavationLogEntry::createdDayTime).reversed()
+                    .comparingLong(ExcavationLogEntry::lastUpdatedGameTime)
+                    .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime)
+                    .thenComparingLong(ExcavationLogEntry::createdGameTime)
+                    .thenComparingLong(ExcavationLogEntry::createdDayTime)
                     .thenComparing(ExcavationLogEntry::entryId);
             case STRUCTURE -> Comparator
                     .comparing((ExcavationLogEntry e) ->
@@ -60,7 +61,7 @@ public final class LogSorter {
                     .comparing((ExcavationLogEntry e) ->
                             JournalFormatHelper.formatLootSource(e.lootSource()).getString());
         };
-        return descending ? comparator : comparator.reversed();
+        return descending ? comparator.reversed() : comparator;
     }
 
     // 排序方式图标字符

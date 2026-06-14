@@ -57,6 +57,22 @@ public class CatalogToolbar {
         return searchExpanded;
     }
 
+    public void setCurrentSortOrder(CatalogSorter.SortOrder order) {
+        this.currentSortOrder = order;
+    }
+
+    public void setSortDescending(boolean descending) {
+        this.sortDescending = descending;
+    }
+
+    public void setCurrentSearch(JournalSearchQuery search) {
+        this.currentSearch = search;
+    }
+
+    public void setSearchExpanded(boolean expanded) {
+        this.searchExpanded = expanded;
+    }
+
     public EditBox searchField() {
         return searchField;
     }
@@ -76,7 +92,7 @@ public class CatalogToolbar {
             this.searchField.setValue("");
             this.currentSearch = JournalSearchQuery.EMPTY;
         }
-        onRebuildWidgets.run();
+        onRebuildViewModels.run();
     }
 
     /** 循环切换排序方式 */
@@ -107,7 +123,7 @@ public class CatalogToolbar {
                 this.searchField.setValue("");
                 this.currentSearch = JournalSearchQuery.EMPTY;
             }
-            onRebuildWidgets.run();
+            onRebuildViewModels.run();
             return true;
         }
         return false;

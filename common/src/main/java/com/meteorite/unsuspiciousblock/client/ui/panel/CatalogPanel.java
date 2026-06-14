@@ -36,7 +36,7 @@ public final class CatalogPanel {
     public void setEntries(List<CatalogEntryData> entries) {
         this.entries.clear();
         for (CatalogEntryData entry : entries) {
-            this.entries.add(new CatalogEntry(entry.displayName(), entry.unlocked()));
+            this.entries.add(new CatalogEntry(entry.id(), entry.displayName(), entry.unlocked()));
         }
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
     }
@@ -199,12 +199,14 @@ public final class CatalogPanel {
     }
 
     private static final class CatalogEntry {
+        private final ResourceLocation id;
         private final Component displayName;
         private final boolean unlocked;
         private int scrollTicks;
         private boolean wasHovered;
 
-        private CatalogEntry(Component displayName, boolean unlocked) {
+        private CatalogEntry(ResourceLocation id, Component displayName, boolean unlocked) {
+            this.id = id;
             this.displayName = displayName;
             this.unlocked = unlocked;
         }

@@ -8,6 +8,8 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
@@ -98,6 +100,12 @@ public class ArchaeologyJournalScreen extends Screen {
         boolean savedLogSearchExpanded = this.logToolbar.searchExpanded();
         LogGrouper.GroupMode savedGroupMode = this.logToolbar.groupMode();
 
+        // 保存目录搜索/排序状态
+        CatalogSorter.SortOrder savedCatalogSortOrder = this.catalogToolbar.currentSortOrder();
+        boolean savedCatalogSortDescending = this.catalogToolbar.sortDescending();
+        JournalSearchQuery savedCatalogSearch = this.catalogToolbar.currentSearch();
+        boolean savedCatalogSearchExpanded = this.catalogToolbar.searchExpanded();
+
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
 
@@ -113,6 +121,12 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.getLogPanel().setSortOrder(this.logToolbar.currentSortOrder(), this.logToolbar.sortDescending());
         this.rightPage.getLogPanel().setSearchFilter(this.logToolbar.searchText());
         this.rightPage.getLogPanel().setGroupMode(savedGroupMode);
+
+        // 恢复目录搜索/排序状态
+        this.catalogToolbar.setCurrentSortOrder(savedCatalogSortOrder);
+        this.catalogToolbar.setSortDescending(savedCatalogSortDescending);
+        this.catalogToolbar.setCurrentSearch(savedCatalogSearch);
+        this.catalogToolbar.setSearchExpanded(savedCatalogSearchExpanded);
 
         this.rightPage.setActiveTab(savedTab);
         this.rightPage.setPage(savedPage);
@@ -135,6 +149,9 @@ public class ArchaeologyJournalScreen extends Screen {
             this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
             this.viewModel.setLogSearchText(this.logToolbar.searchText());
             this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
+            this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
+            this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
+            this.viewModel.setCurrentSearch(this.catalogToolbar.currentSearch());
             this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
             this.updateItemGridPanel();
             this.syncButtonState();
@@ -314,6 +331,10 @@ public class ArchaeologyJournalScreen extends Screen {
         this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
         this.viewModel.setLogSearchText(this.logToolbar.searchText());
         this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
+        // 同步目录工具栏状态到 ViewModel
+        this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
+        this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
+        this.viewModel.setCurrentSearch(this.catalogToolbar.currentSearch());
         this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
         updateItemGridPanel();
         syncButtonState();
