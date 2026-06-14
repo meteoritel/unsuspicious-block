@@ -14,12 +14,14 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图 */
@@ -132,7 +134,7 @@ public final class LogPanel implements PagePanel {
         String lowerFilter = this.searchFilter.toLowerCase(Locale.ROOT);
         this.filteredEntries.clear();
         for (LogEntryState state : this.allEntries) {
-            if (matchesFilter(state.entry, lowerFilter)) {
+            if (matchesFilter(state, lowerFilter)) {
                 this.filteredEntries.add(state);
             }
         }
@@ -163,25 +165,12 @@ public final class LogPanel implements PagePanel {
         this.pagination.setPage(this.pagination.getPage());
     }
 
-    // 简单子串匹配：检查条目的结构/来源/群系/维度文本是否包含搜索词
-    private boolean matchesFilter(ExcavationLogEntry entry, String lowerFilter) {
+    // 使用预计算搜索缓存进行子串匹配：结构/来源/群系/维度/物品名
+    private boolean matchesFilter(LogEntryState state, String lowerFilter) {
         if (lowerFilter.isEmpty()) {
             return true;
         }
-        String structure = JournalFormatHelper.formatStructureName(entry.structureId()).toLowerCase(Locale.ROOT);
-        if (structure.contains(lowerFilter)) {
-            return true;
-        }
-        String lootSource = JournalFormatHelper.formatLootSource(entry.lootSource()).getString().toLowerCase(Locale.ROOT);
-        if (lootSource.contains(lowerFilter)) {
-            return true;
-        }
-        String biome = JournalFormatHelper.formatBiomeName(entry.biomeId()).toLowerCase(Locale.ROOT);
-        if (biome.contains(lowerFilter)) {
-            return true;
-        }
-        String dimension = JournalFormatHelper.formatDimensionName(entry.dimensionId()).toLowerCase(Locale.ROOT);
-        return dimension.contains(lowerFilter);
+        return state.searchableText.contains(lowerFilter);
     }
 
     @Override
@@ -441,9 +430,33 @@ public final class LogPanel implements PagePanel {
         private final ExcavationLogEntry entry;
         private int scrollTicks;
         private boolean wasHovered;
+        // 预计算搜索缓存：结构+来源+群系+维度+物品名，避免每次过滤时重复解析signature
+        private final String searchableText;
 
         private LogEntryState(ExcavationLogEntry entry) {
             this.entry = entry;
+            this.searchableText = buildSearchableText(entry);
+        }
+
+        // 仅在匹配物品名时使用，主搜索走 searchableText
+        private static String buildSearchableText(ExcavationLogEntry entry) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(JournalFormatHelper.formatStructureName(entry.structureId()).toLowerCase(Locale.ROOT)).append('\0');
+            sb.append(JournalFormatHelper.formatLootSource(entry.lootSource()).getString().toLowerCase(Locale.ROOT)).append('\0');
+            sb.append(JournalFormatHelper.formatBiomeName(entry.biomeId()).toLowerCase(Locale.ROOT)).append('\0');
+            sb.append(JournalFormatHelper.formatDimensionName(entry.dimensionId()).toLowerCase(Locale.ROOT)).append('\0');
+            appendLootItemNames(entry.expectedLoot(), sb);
+            appendLootItemNames(entry.actualLoot(), sb);
+            return sb.toString();
+        }
+
+        private static void appendLootItemNames(Map<String, Integer> lootMap, StringBuilder sb) {
+            for (String signatureKey : lootMap.keySet()) {
+                ItemStack stack = JournalFormatHelper.createLootStack(signatureKey, 1);
+                if (stack != null && !stack.isEmpty()) {
+                    sb.append(stack.getHoverName().getString().toLowerCase(Locale.ROOT)).append('\0');
+                }
+            }
         }
     }
 }

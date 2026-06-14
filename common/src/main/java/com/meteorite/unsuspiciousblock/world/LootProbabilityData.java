@@ -40,7 +40,6 @@ public final class LootProbabilityData extends SavedData {
     private static final String TAG_ITEMS = "items";
     private static final String TAG_KEY = "key";
     private static final String TAG_PROBABILITY = "probability";
-    private static final String TAG_SIM_COUNT = "sim_count";
 
     private static final SavedData.Factory<LootProbabilityData> FACTORY = new SavedData.Factory<>(
             LootProbabilityData::new,

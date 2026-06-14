@@ -24,11 +24,9 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final List<String> DEFAULT_PREFIXES = List.of("archaeology/", "archeology/");
     private static final int DEFAULT_MAX_LOG_ENTRIES_PER_TABLE = 1024;
-    private static final int DEFAULT_CACHE_ME_IF_YOU_CAN_THRESHOLD = 1024;
-
+    
     private final List<String> prefixes;
     private final int maxLogEntriesPerTable;
-    private final int cacheMeIfYouCanThreshold;
 
     public FabricLootTableConfig() {
         ConfigData data = loadConfig();
@@ -36,8 +34,6 @@ public class FabricLootTableConfig implements ILootTableConfig {
                 ? data.archaeology_path_prefixes : DEFAULT_PREFIXES);
         this.maxLogEntriesPerTable = data.max_log_entries_per_table > 0
                 ? data.max_log_entries_per_table : DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
-        this.cacheMeIfYouCanThreshold = data.cache_me_if_you_can_threshold > 0
-                ? data.cache_me_if_you_can_threshold : DEFAULT_CACHE_ME_IF_YOU_CAN_THRESHOLD;
     }
 
     @Override
@@ -50,16 +46,11 @@ public class FabricLootTableConfig implements ILootTableConfig {
         return this.maxLogEntriesPerTable;
     }
 
-    @Override
-    public int getCacheMeIfYouCanThreshold() {
-        return this.cacheMeIfYouCanThreshold;
-    }
-
     private static ConfigData loadConfig() {
         Path configPath = getConfigPath();
         if (!Files.exists(configPath)) {
             saveDefaults(configPath);
-            return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_CACHE_ME_IF_YOU_CAN_THRESHOLD);
+            return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE);
         }
 
         try (Reader reader = Files.newBufferedReader(configPath)) {
@@ -70,14 +61,14 @@ public class FabricLootTableConfig implements ILootTableConfig {
         } catch (IOException e) {
             Constants.LOG.warn("Failed to read loot table config from {}, using defaults.", configPath, e);
         }
-        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_CACHE_ME_IF_YOU_CAN_THRESHOLD);
+        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE);
     }
 
     private static void saveDefaults(Path configPath) {
         try {
             Files.createDirectories(configPath.getParent());
             try (Writer writer = Files.newBufferedWriter(configPath)) {
-                GSON.toJson(new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_CACHE_ME_IF_YOU_CAN_THRESHOLD), writer);
+                GSON.toJson(new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE), writer);
             }
             Constants.LOG.info("Created default loot table config at {}", configPath);
         } catch (IOException e) {
@@ -90,7 +81,6 @@ public class FabricLootTableConfig implements ILootTableConfig {
     }
 
     private record ConfigData(List<String> archaeology_path_prefixes,
-                              int max_log_entries_per_table,
-                              int cache_me_if_you_can_threshold) {
+                              int max_log_entries_per_table) {
     }
 }

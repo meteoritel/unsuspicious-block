@@ -3,13 +3,10 @@ package com.meteorite.unsuspiciousblock.client.ui.helper;
 import com.meteorite.unsuspiciousblock.util.GameTimeFormatHelper;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -36,17 +33,6 @@ public final class JournalFormatHelper {
         return LootSourceType.ARCHAEOLOGY.displayName();
     }
 
-    public static String formatBlockName(@Nullable ResourceLocation blockId) {
-        if (blockId == null) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_source_block").getString();
-        }
-        Item item = BuiltInRegistries.ITEM.get(blockId);
-        if (item != Items.AIR || blockId.equals(ResourceLocation.withDefaultNamespace("air"))) {
-            return new ItemStack(item).getHoverName().getString();
-        }
-        return formatTranslatedIdentifier(blockId, "block");
-    }
-
     public static String formatStructureName(@Nullable ResourceLocation id) {
         if (id == null) {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_structure").getString();
@@ -67,17 +53,6 @@ public final class JournalFormatHelper {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_dimension").getString();
         }
         return formatTranslatedIdentifier(id, "dimension");
-    }
-
-    public static ItemStack createSourceStack(@Nullable ResourceLocation sourceBlockId) {
-        if (sourceBlockId == null) {
-            return ItemStack.EMPTY;
-        }
-        Item item = BuiltInRegistries.ITEM.get(sourceBlockId);
-        if (item == Items.AIR && !sourceBlockId.equals(ResourceLocation.withDefaultNamespace("air"))) {
-            return ItemStack.EMPTY;
-        }
-        return new ItemStack(item);
     }
 
     @Nullable

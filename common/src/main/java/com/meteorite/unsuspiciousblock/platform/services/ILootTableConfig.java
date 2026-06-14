@@ -10,9 +10,4 @@ public interface ILootTableConfig {
     default int getMaxLogEntriesPerTable() {
         return 1024;
     }
-
-    /** "缓存大师"成就的日志总条数门槛，默认 1024 */
-    default int getCacheMeIfYouCanThreshold() {
-        return 1024;
-    }
 }

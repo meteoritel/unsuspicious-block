@@ -191,9 +191,9 @@ public final class JournalLogHandler {
         }
     }
 
-    // 判断是否跨越了"缓存大师"成就门槛
+    // 判断是否跨越了"缓存大师"成就门槛——使用单表日志上限作为总条数门槛
     static boolean crossesCacheMeIfYouCanThreshold(int previousTotalEntryCount, int currentTotalEntryCount) {
-        int threshold = Services.LOOT_TABLE_CONFIG.getCacheMeIfYouCanThreshold();
+        int threshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
         return previousTotalEntryCount < threshold
                 && currentTotalEntryCount >= threshold;
     }
