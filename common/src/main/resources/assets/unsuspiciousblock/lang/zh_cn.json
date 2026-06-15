@@ -146,6 +146,7 @@
   "screen.unsuspiciousblock.archaeology_journal.log_actual_loot": "实际战利品",
   "screen.unsuspiciousblock.archaeology_journal.log_collection": "收集清单",
   "screen.unsuspiciousblock.archaeology_journal.log_completed": "✓ 收集完成",
+  "screen.unsuspiciousblock.archaeology_journal.log_loot_progress": "已收集 %1$d/%2$d",
   "screen.unsuspiciousblock.archaeology_journal.log_loot_empty": "暂无记录。",
   "screen.unsuspiciousblock.archaeology_journal.log_back_to_list": "← 返回列表",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_empty": "未选择日志条目。",

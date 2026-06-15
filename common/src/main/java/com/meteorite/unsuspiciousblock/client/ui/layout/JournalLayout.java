@@ -74,6 +74,10 @@ public final class JournalLayout {
     public static final int LOG_GROUP_HEADER_BG = 0x18A08060;   // 组头行背景色（复用详情卡片背景）
     public static final int LOG_GROUP_HEADER_BORDER = 0x30C8B090; // 组头行边框色（复用详情卡片边框）
 
+    // 日志列表选中态色条（强化选中识别）
+    public static final int LOG_LIST_SELECTED_BAR_COLOR = 0xC07B3E18; // 选中态左侧色条（红棕）
+    public static final int LOG_LIST_SELECTED_BAR_WIDTH = 2;          // 色条宽度
+
     // 日志搜索/排序工具栏
     public static final int LOG_SEARCH_ICON_SIZE = 14;
     public static final int LOG_SORT_ICON_SIZE = 14;
@@ -90,6 +94,21 @@ public final class JournalLayout {
     public static final int LOG_DETAIL_CARD_PAD = 4;              // 卡片内边距
     public static final int LOG_DETAIL_CARD_GAP = 4;              // 卡片之间间距
     public static final int LOG_DETAIL_COMPLETION_COLOR = 0x3A8C3A; // 完成标志绿色
+
+    // Spacetime 卡片图标键值对布局
+    public static final int LOG_DETAIL_META_ICON_SIZE = 16;       // 元信息引导图标尺寸
+    public static final int LOG_DETAIL_META_ICON_GAP = 4;         // 图标与文字间距
+    public static final int LOG_DETAIL_META_LINE_GAP = 2;         // 元信息行间距
+    public static final int LOG_DETAIL_META_ROWS = 4;             // 元信息行数（时间/结构/群系/维度·坐标）
+
+    // 战利品角标颜色
+    public static final int LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR = 0xFFB08C00; // 部分获得角标（黄褐）
+
+    // 战利品卡底部总进度条
+    public static final int LOG_DETAIL_PROGRESS_BAR_HEIGHT = 4;   // 进度条厚度
+    public static final int LOG_DETAIL_PROGRESS_BAR_BG = 0x405A422C; // 进度条底色
+    public static final int LOG_DETAIL_PROGRESS_BAR_FILL = 0xC0A08060; // 进度条前景（未完成暖棕）
+    public static final int LOG_DETAIL_PROGRESS_BAR_GAP = 4;      // 进度条与图标区/文字间距
 
     // —— 翻页按钮 ——
     public static final int PAGE_BUTTON_WIDTH = 23;

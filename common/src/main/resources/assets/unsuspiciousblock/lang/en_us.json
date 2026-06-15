@@ -147,6 +147,7 @@
   "screen.unsuspiciousblock.archaeology_journal.log_actual_loot": "Actual Loot",
   "screen.unsuspiciousblock.archaeology_journal.log_collection": "Collection Checklist",
   "screen.unsuspiciousblock.archaeology_journal.log_completed": "✓ Completed",
+  "screen.unsuspiciousblock.archaeology_journal.log_loot_progress": "Collected %1$d/%2$d",
   "screen.unsuspiciousblock.archaeology_journal.log_loot_empty": "Nothing recorded yet.",
   "screen.unsuspiciousblock.archaeology_journal.log_back_to_list": "← Back to List",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_empty": "No log entry selected.",

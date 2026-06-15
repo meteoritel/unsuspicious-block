@@ -348,6 +348,13 @@ public final class LogPanel implements PagePanel {
                 JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, JournalLayout.LOG_ENTRY_STATE_HEIGHT,
                 JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, JournalLayout.LOG_ENTRY_TEXTURE_HEIGHT);
 
+        // 选中态：左侧绘制 2px 色条，强化选中识别（贴背景左边缘）
+        if (selected) {
+            int barW = JournalLayout.LOG_LIST_SELECTED_BAR_WIDTH;
+            guiGraphics.fill(bgX, rowY + 2, bgX + barW, rowY + JournalLayout.LOG_ROW_HEIGHT - 2,
+                    JournalLayout.LOG_LIST_SELECTED_BAR_COLOR);
+        }
+
         // 来源图标（竖直居中）
         var sourceStack = state.entry.lootSource() != null ? state.entry.lootSource().iconItem() : net.minecraft.world.item.ItemStack.EMPTY;
         int textX = leftX;
