@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** 骨块在玩家破坏路径中延后消费放置标记，其他移除场景立即清理陈旧坐标。 */
@@ -34,8 +35,7 @@ public abstract class BlockMixin {
             method = "destroy(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)V",
             at = @At("TAIL")
     )
-    private void unsuspiciousblock$clearPlayerBreakingBoneBlock(LevelAccessor level, BlockPos pos, BlockState state,
-                                                                CallbackInfoReturnable<BlockState> cir) {
+    private void unsuspiciousblock$clearPlayerBreakingBoneBlock(LevelAccessor level, BlockPos pos, BlockState state, CallbackInfo ci) {
         if (!(level instanceof ServerLevel serverLevel) || !state.is(Blocks.BONE_BLOCK)) {
             return;
         }

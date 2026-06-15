@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmen
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentEffect;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentValueEffect;
-import com.meteorite.unsuspiciousblock.enchantment.framework.effect.ValueEffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import net.minecraft.core.Holder;
@@ -67,9 +66,8 @@ public final class EnchantmentManager {
             if (level <= 0) continue;
 
             ItemStack enchantedItem = findEnchantedItem(ctx.player, holder);
-            EffectContext effectCtx = new EffectContext(
-                    ctx.player, ctx.level, ctx.pos,
-                    enchantedItem, level, entry.enchantmentKey, ctx);
+            EffectContext<?> effectCtx = new EffectContext<>(
+                    ctx, enchantedItem, level, entry.enchantmentKey, null);
             entry.effect.apply(effectCtx);
         }
     }
@@ -90,9 +88,8 @@ public final class EnchantmentManager {
             if (level <= 0) continue;
 
             ItemStack enchantedItem = findEnchantedItem(ctx.player, holder);
-            ValueEffectContext<T> valueCtx = new ValueEffectContext<>(
-                    ctx.player, ctx.level, ctx.pos,
-                    enchantedItem, level, entry.enchantmentKey, currentValue);
+            EffectContext<T> valueCtx = new EffectContext<>(
+                    ctx, enchantedItem, level, entry.enchantmentKey, currentValue);
             // 类型安全：注册时 T 已由调用方约定，此处按约定类型调用
             currentValue = ((EnchantmentValueEffect<T>) entry.effect).apply(valueCtx);
         }

@@ -35,24 +35,25 @@ public final class FossilHunterEffect implements EnchantmentEffect {
             lootTableKey("gameplay/fossil_hunter/nether_bone_block");
 
     @Override
-    public void apply(EffectContext ctx) {
-        BlockState state = ctx.triggerContext().blockState;
-        BlockPos pos = ctx.pos();
+    public void apply(EffectContext<?> ctx) {
+        var triggerCtx = ctx.triggerContext();
+        BlockState state = triggerCtx.blockState;
+        BlockPos pos = triggerCtx.pos;
         // 仅骨块触发
         if (state == null || pos == null || !state.is(Blocks.BONE_BLOCK)) {
             return;
         }
 
-        ServerLevel level = ctx.level();
+        ServerLevel level = triggerCtx.level;
         // 玩家放置的骨块只清除标记，不触发额外奖励；创造模式或关闭方块掉落时也不触发
         if (PlacedBoneBlockTracker.consumePlaced(level, pos)
-                || ctx.player().isCreative()
+                || triggerCtx.player.isCreative()
                 || !level.getGameRules().getBoolean(net.minecraft.world.level.GameRules.RULE_DOBLOCKDROPS)) {
             return;
         }
 
         // 概率未命中则不额外掉落
-        if (ctx.player().getRandom().nextDouble() >= EXTRA_LOOT_CHANCE) {
+        if (triggerCtx.player.getRandom().nextDouble() >= EXTRA_LOOT_CHANCE) {
             return;
         }
 
@@ -65,17 +66,18 @@ public final class FossilHunterEffect implements EnchantmentEffect {
     }
 
     // 按当前维度解析骨块掉落表并 roll 一次
-    private List<ItemStack> rollExtraLoot(EffectContext ctx, BlockPos pos, BlockState state) {
-        ServerLevel level = ctx.level();
+    private List<ItemStack> rollExtraLoot(EffectContext<?> ctx, BlockPos pos, BlockState state) {
+        var triggerCtx = ctx.triggerContext();
+        ServerLevel level = triggerCtx.level;
         LootParams lootParams = new LootParams.Builder(level)
                 .withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(pos))
                 .withParameter(LootContextParams.BLOCK_STATE, state)
                 .withParameter(LootContextParams.TOOL, ctx.enchantedItem())
-                .withOptionalParameter(LootContextParams.THIS_ENTITY, ctx.player())
-                .withLuck(ctx.player().getLuck())
+                .withOptionalParameter(LootContextParams.THIS_ENTITY, triggerCtx.player)
+                .withLuck(triggerCtx.player.getLuck())
                 .create(LootContextParamSets.BLOCK);
         return level.getServer().reloadableRegistries().getLootTable(resolveLootTable(level))
-                .getRandomItems(lootParams, ctx.player().getRandom());
+                .getRandomItems(lootParams, triggerCtx.player.getRandom());
     }
 
     // 主世界用主世界表，其它维度用下界表

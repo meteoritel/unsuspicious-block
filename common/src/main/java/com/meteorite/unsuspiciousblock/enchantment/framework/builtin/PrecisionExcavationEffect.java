@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.enchantment.framework.builtin;
 
+import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentValueEffect;
-import com.meteorite.unsuspiciousblock.enchantment.framework.effect.ValueEffectContext;
 import net.minecraft.world.item.ItemStack;
 
 /**
@@ -9,19 +9,19 @@ import net.minecraft.world.item.ItemStack;
  * <p>
  * 实现 {@link EnchantmentValueEffect}&lt;{@link ItemStack}&gt;&gt;，
  * 由 {@link com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager#dispatchValue}
- * 调用；未命中条件时原样返回 originalValue。
+ * 调用；未命中条件时原样返回 ctx.value()。
  */
 public final class PrecisionExcavationEffect implements EnchantmentValueEffect<ItemStack> {
     private static final double DOUBLE_LOOT_CHANCE = 0.10D;
 
     @Override
-    public ItemStack apply(ValueEffectContext<ItemStack> ctx) {
-        ItemStack loot = ctx.originalValue();
+    public ItemStack apply(EffectContext<ItemStack> ctx) {
+        ItemStack loot = ctx.value();
         if (loot.isEmpty()) {
             return loot;
         }
 
-        if (ctx.player().getRandom().nextDouble() >= DOUBLE_LOOT_CHANCE) {
+        if (ctx.triggerContext().player.getRandom().nextDouble() >= DOUBLE_LOOT_CHANCE) {
             return loot;
         }
 
