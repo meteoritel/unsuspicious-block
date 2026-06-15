@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
+import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -138,7 +138,7 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
         ArchaeologyJournalServerCatalog.invalidate();
-        FossilHunterService.clearPendingPlayerBreaks();
+        PlacedBoneBlockTracker.clearPendingPlayerBreaks();
     }
 
 }

@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -30,7 +30,7 @@ public abstract class BlockBehaviourMixin {
                 || !state.is(Blocks.BONE_BLOCK)) {
             return;
         }
-        FossilHunterService.tryMovePlacedBoneBlock(serverLevel, pos);
+        PlacedBoneBlockTracker.tryMovePlaced(serverLevel, pos);
     }
 
     @Inject(
@@ -45,8 +45,8 @@ public abstract class BlockBehaviourMixin {
         }
         // 骨块非活塞移除时，清理放置标记
         if (state.is(Blocks.BONE_BLOCK) && !newState.is(Blocks.BONE_BLOCK)
-                && !FossilHunterService.isPlayerBreakingBoneBlock(serverLevel, pos)) {
-            FossilHunterService.clearPlacedBoneBlock(serverLevel, pos);
+                && !PlacedBoneBlockTracker.isPlayerBreaking(serverLevel, pos)) {
+            PlacedBoneBlockTracker.clearPlaced(serverLevel, pos);
         }
         // 追踪容器被破坏时，flush 其日志条目
         if (state.hasBlockEntity()) {

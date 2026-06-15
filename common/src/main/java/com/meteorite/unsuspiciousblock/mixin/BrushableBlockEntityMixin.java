@@ -2,7 +2,9 @@ package com.meteorite.unsuspiciousblock.mixin;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.enchantment.archaeology.PrecisionExcavationService;
+import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
+import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
+import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
@@ -335,7 +337,12 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$lootTableName != null
                 && player instanceof ServerPlayer sp) {
-            this.item = PrecisionExcavationService.tryApply(sp, this.item);
+            // 精掘翻倍：通过 framework 分发值变换效果
+            TriggerContext peCtx = TriggerContext.builder(sp, sp.serverLevel())
+                    .pos(this.unsuspiciousblock$asBlockEntity().getBlockPos())
+                    .tool(sp.getMainHandItem())
+                    .build();
+            this.item = EnchantmentManager.dispatchValue(TriggerType.BRUSH_ITEM_DROP, peCtx, this.item);
             long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
                     ? this.unsuspiciousblock$brushGameTime
                     : sp.serverLevel().getGameTime();

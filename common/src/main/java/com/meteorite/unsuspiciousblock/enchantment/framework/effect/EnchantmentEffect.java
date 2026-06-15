@@ -5,4 +5,6 @@ package com.meteorite.unsuspiciousblock.enchantment.framework.effect;
 public interface EnchantmentEffect {
     /** 执行附魔效果 */
     void apply(EffectContext ctx);
+
+
 }

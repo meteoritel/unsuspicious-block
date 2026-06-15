@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentEffect;
+import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentValueEffect;
+import com.meteorite.unsuspiciousblock.enchantment.framework.effect.ValueEffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import net.minecraft.core.Holder;
@@ -23,7 +25,11 @@ import java.util.Map;
 /** 附魔效果统一调度器——接收来自 Platform Adapter 的触发事件，查找已注册的效果组件并执行 */
 public final class EnchantmentManager {
 
-    private static final Map<TriggerType, List<Entry>> REGISTRY = new EnumMap<>(TriggerType.class);
+    // 副作用效果注册表：按触发类型分组
+    private static final Map<TriggerType, List<EffectEntry>> EFFECT_REGISTRY = new EnumMap<>(TriggerType.class);
+
+    // 值变换效果注册表：按触发类型分组（同类型按注册顺序判定，首个命中即返回）
+    private static final Map<TriggerType, List<ValueEffectEntry<?>>> VALUE_EFFECT_REGISTRY = new EnumMap<>(TriggerType.class);
 
     private EnchantmentManager() {}
 
@@ -33,23 +39,28 @@ public final class EnchantmentManager {
         Constants.LOG.info("EnchantmentManager 已初始化，适配器: {}", adapter.getClass().getSimpleName());
     }
 
-    // 注册附魔效果组件
+    // 注册副作用效果组件
     public static void register(TriggerType triggerType, ResourceKey<Enchantment> enchantmentKey,
                                 EnchantmentEffect effect) {
-        REGISTRY.computeIfAbsent(triggerType, k -> new ArrayList<>())
-                .add(new Entry(enchantmentKey, effect));
+        EFFECT_REGISTRY.computeIfAbsent(triggerType, k -> new ArrayList<>())
+                .add(new EffectEntry(enchantmentKey, effect));
     }
 
-    // 事件入口——由 Platform Adapter 调用
+    // 注册值变换效果组件
+    public static <T> void registerValueEffect(TriggerType triggerType, ResourceKey<Enchantment> enchantmentKey,
+                                               EnchantmentValueEffect<T> effect) {
+        VALUE_EFFECT_REGISTRY.computeIfAbsent(triggerType, k -> new ArrayList<>())
+                .add(new ValueEffectEntry<>(enchantmentKey, effect));
+    }
+
+    // 副作用事件入口——由 Platform Adapter 调用
     public static void dispatch(TriggerType triggerType, TriggerContext ctx) {
-        List<Entry> entries = REGISTRY.get(triggerType);
+        List<EffectEntry> entries = EFFECT_REGISTRY.get(triggerType);
         if (entries == null || entries.isEmpty()) return;
 
         RegistryAccess registryAccess = ctx.player.registryAccess();
-        for (Entry entry : entries) {
-            Holder<Enchantment> holder = registryAccess.lookupOrThrow(Registries.ENCHANTMENT)
-                    .get(entry.enchantmentKey)
-                    .orElse(null);
+        for (EffectEntry entry : entries) {
+            Holder<Enchantment> holder = lookupEnchantment(registryAccess, entry.enchantmentKey);
             if (holder == null) continue;
 
             int level = findEnchantmentLevel(ctx.player, holder);
@@ -61,6 +72,39 @@ public final class EnchantmentManager {
                     enchantedItem, level, entry.enchantmentKey, ctx);
             entry.effect.apply(effectCtx);
         }
+    }
+
+    // 值变换事件入口——由 Platform Adapter 调用，返回首个命中附魔的变换结果，未命中则返回原值
+    @SuppressWarnings("unchecked")
+    public static <T> T dispatchValue(TriggerType triggerType, TriggerContext ctx, T originalValue) {
+        List<ValueEffectEntry<?>> entries = VALUE_EFFECT_REGISTRY.get(triggerType);
+        if (entries == null || entries.isEmpty()) return originalValue;
+
+        RegistryAccess registryAccess = ctx.player.registryAccess();
+        T currentValue = originalValue;
+        for (ValueEffectEntry<?> entry : entries) {
+            Holder<Enchantment> holder = lookupEnchantment(registryAccess, entry.enchantmentKey);
+            if (holder == null) continue;
+
+            int level = findEnchantmentLevel(ctx.player, holder);
+            if (level <= 0) continue;
+
+            ItemStack enchantedItem = findEnchantedItem(ctx.player, holder);
+            ValueEffectContext<T> valueCtx = new ValueEffectContext<>(
+                    ctx.player, ctx.level, ctx.pos,
+                    enchantedItem, level, entry.enchantmentKey, currentValue);
+            // 类型安全：注册时 T 已由调用方约定，此处按约定类型调用
+            currentValue = ((EnchantmentValueEffect<T>) entry.effect).apply(valueCtx);
+        }
+        return currentValue;
+    }
+
+    // 从注册表查找附魔 Holder，缺失返回 null
+    private static Holder<Enchantment> lookupEnchantment(RegistryAccess registryAccess,
+                                                         ResourceKey<Enchantment> enchantmentKey) {
+        return registryAccess.lookupOrThrow(Registries.ENCHANTMENT)
+                .get(enchantmentKey)
+                .orElse(null);
     }
 
     // 从玩家装备栏（主手、副手、盔甲）中查找最高附魔等级
@@ -87,11 +131,11 @@ public final class EnchantmentManager {
         List<ItemStack> equipment = new ArrayList<>(6);
         equipment.add(player.getMainHandItem());
         equipment.add(player.getOffhandItem());
-        for (ItemStack armor : player.getInventory().armor) {
-            equipment.add(armor);
-        }
+        equipment.addAll(player.getInventory().armor);
         return equipment;
     }
 
-    private record Entry(ResourceKey<Enchantment> enchantmentKey, EnchantmentEffect effect) {}
+    private record EffectEntry(ResourceKey<Enchantment> enchantmentKey, EnchantmentEffect effect) {}
+
+    private record ValueEffectEntry<T>(ResourceKey<Enchantment> enchantmentKey, EnchantmentValueEffect<T> effect) {}
 }

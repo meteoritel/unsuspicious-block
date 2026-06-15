@@ -1,8 +1,11 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
-import com.meteorite.unsuspiciousblock.enchantment.fishing.FishingLootOverrideService;
+import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
+import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
+import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -38,11 +41,15 @@ public abstract class FishingHookMixin {
     )
     private ResourceKey<LootTable> unsuspiciousblock$replaceFishingLootTable(ResourceKey<LootTable> originalLootTable) {
         FishingHook fishingHook = (FishingHook) (Object) this;
-        if (!(fishingHook.level() instanceof ServerLevel serverLevel) || this.unsuspiciousblock$fishingRod.isEmpty()) {
+        if (!(fishingHook.level() instanceof ServerLevel serverLevel)
+                || !(fishingHook.getPlayerOwner() instanceof ServerPlayer sp)) {
             return originalLootTable;
         }
-        return FishingLootOverrideService.resolveLootTable(serverLevel, fishingHook,
-                this.unsuspiciousblock$fishingRod, originalLootTable);
+        TriggerContext ctx = TriggerContext.builder(sp, serverLevel)
+                .tool(this.unsuspiciousblock$fishingRod)
+                .targetEntity(fishingHook)
+                .build();
+        return EnchantmentManager.dispatchValue(TriggerType.FISHING_LOOT_TABLE_QUERY, ctx, originalLootTable);
     }
 
     // 在收杆结束后清理缓存的鱼竿引用

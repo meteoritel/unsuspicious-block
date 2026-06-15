@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
-import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
+import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -46,7 +46,7 @@ public abstract class BlockItemMixin {
         if (!state.is(Blocks.BONE_BLOCK)) {
             return false;
         }
-        FossilHunterService.markPlacedBoneBlock(level, pos);
+        PlacedBoneBlockTracker.markPlaced(level, pos);
         return true;
     }
 }

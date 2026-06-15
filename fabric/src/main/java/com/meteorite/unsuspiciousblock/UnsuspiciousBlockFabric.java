@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.enchantment.fossil.FossilHunterService;
+import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
@@ -98,7 +98,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             ArchaeologyJournalServerCatalog.invalidate();
-            FossilHunterService.clearPendingPlayerBreaks();
+            PlacedBoneBlockTracker.clearPendingPlayerBreaks();
         });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
