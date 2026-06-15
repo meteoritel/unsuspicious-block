@@ -41,15 +41,10 @@ public final class LogPanel implements PagePanel {
         int height();
     }
 
-    /** 组头行——不可点击，显示组名 + 条目数 */
-    private static final class GroupHeaderRow implements DisplayRow {
-        final String groupName;
-        final int count;
-
-        GroupHeaderRow(String groupName, int count) {
-            this.groupName = groupName;
-            this.count = count;
-        }
+    /**
+     * 组头行——不可点击，显示组名 + 条目数
+     */
+    private record GroupHeaderRow(String groupName, int count) implements DisplayRow {
 
         @Override
         public int height() {
@@ -57,13 +52,10 @@ public final class LogPanel implements PagePanel {
         }
     }
 
-    /** 条目行——可点击，可选中 */
-    private static final class EntryRow implements DisplayRow {
-        final LogEntryState state;
-
-        EntryRow(LogEntryState state) {
-            this.state = state;
-        }
+    /**
+     * 条目行——可点击，可选中
+     */
+    private record EntryRow(LogEntryState state) implements DisplayRow {
 
         @Override
         public int height() {
@@ -387,7 +379,7 @@ public final class LogPanel implements PagePanel {
                 "screen.unsuspiciousblock.archaeology_journal.log_time_short",
                 state.entry.createdGameTime(), state.entry.createdDayTime()).getString();
         String dimensionText = JournalFormatHelper.formatDimensionName(state.entry.dimensionId());
-        String line2 = timeText + " \u00B7 " + dimensionText;
+        String line2 = timeText + " · " + dimensionText;
         ScrollTextHelper.draw(guiGraphics, font, line2,
                 textX, rowY + 14, textWidth, MUTED_COLOR, hovered, state.scrollTicks, false);
     }
@@ -422,8 +414,8 @@ public final class LogPanel implements PagePanel {
         int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
         int pages = 1;
         int usedHeight = 0;
-        for (int i = 0; i < this.displayRows.size(); i++) {
-            int h = this.displayRows.get(i).height();
+        for (DisplayRow displayRow : this.displayRows) {
+            int h = displayRow.height();
             if (usedHeight + h > availableHeight) {
                 pages++;
                 usedHeight = 0;

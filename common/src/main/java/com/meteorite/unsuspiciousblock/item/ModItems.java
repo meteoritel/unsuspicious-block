@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 public class ModItems {
     // 由平台模块在注册阶段赋值
     public static SuspiciousReaderItem SUSPICIOUS_READER;
-    public static LuoyangSpadeItem LUOYANG_SPADE;
+    public static ArchaeologicalShovelItem ARCHAEOLOGY_SHOVEL;
     public static ArchaeologyJournalItem ARCHAEOLOGY_JOURNAL;
     public static SpecimenBoxItem SPECIMEN_BOX;
     public static Item ANCIENT_COIN;
@@ -26,9 +26,9 @@ public class ModItems {
             new ItemEntry("suspicious_reader",
                     ModItems::createSuspiciousReader,
                     item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
-            new ItemEntry("luoyang_spade",
-                    ModItems::createLuoyangSpade,
-                    item -> LUOYANG_SPADE = (LuoyangSpadeItem) item),
+            new ItemEntry("archaeological_shovel",
+                    ModItems::createArchaeologicalShovel,
+                    item -> ARCHAEOLOGY_SHOVEL = (ArchaeologicalShovelItem) item),
             new ItemEntry("archaeology_journal",
                     ModItems::createArchaeologyJournal,
                     item -> ARCHAEOLOGY_JOURNAL = (ArchaeologyJournalItem) item),
@@ -66,9 +66,9 @@ public class ModItems {
         return new SuspiciousReaderItem(new Item.Properties().stacksTo(1));
     }
 
-    // 创建洛阳铲实例
-    public static LuoyangSpadeItem createLuoyangSpade() {
-        return new LuoyangSpadeItem(new Item.Properties().stacksTo(1));
+    // 创建考古铲实例
+    public static ArchaeologicalShovelItem createArchaeologicalShovel() {
+        return new ArchaeologicalShovelItem(new Item.Properties().stacksTo(1));
     }
 
     // 创建考古笔记实例

@@ -86,7 +86,7 @@ public final class ArchaeologyJournalClientState {
         ArchaeologyJournalLogLocalStore.tick();
         serverCatalog = Collections.unmodifiableMap(new LinkedHashMap<>(payload.catalog()));
         catalogRevision.incrementAndGet();
-        // 收到完整目录后，哈希由服务端下次同步时更新，此处不修改
+        // 收到完整目录后，哈希由服务端下次同步时更新
     }
 
     // 收到目录哈希后与本地缓存对比，不一致时请求完整目录

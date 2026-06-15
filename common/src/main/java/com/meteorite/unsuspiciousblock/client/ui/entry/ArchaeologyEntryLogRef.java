@@ -17,7 +17,7 @@ public record ArchaeologyEntryLogRef(
         @Nullable LootSourceType firstUnlockLootSource,
         List<ExcavationLogEntry> logEntries
 ) {
-    /** 空日志引用，用于未解锁或无日志数据的情况 */
+    // 空日志引用，用于未解锁或无日志数据的情况
     public static final ArchaeologyEntryLogRef EMPTY =
             new ArchaeologyEntryLogRef(null, null, null, List.of());
 

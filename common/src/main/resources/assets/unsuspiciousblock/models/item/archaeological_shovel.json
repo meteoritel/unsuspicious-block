@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/handheld",
   "textures": {
-    "layer0": "unsuspiciousblock:item/luoyang_spade"
+    "layer0": "unsuspiciousblock:item/archaeological_shovel"
   }
 }

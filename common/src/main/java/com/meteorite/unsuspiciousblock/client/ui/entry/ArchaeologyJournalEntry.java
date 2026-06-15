@@ -2,11 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -34,41 +31,6 @@ public record ArchaeologyJournalEntry(
         // --- 日志数据引用（与条目本身解耦）---
         ArchaeologyEntryLogRef logRef
 ) {
-    /**
-     * 返回表中最低概率物品的比例值，用于 RARITY 排序。
-     */
-    public double lowestItemProbability() {
-        double lowest = 1.0;
-        for (ArchaeologyEntryItem item : items) {
-            double fraction = ProbabilityFormat.parsePercentToFraction(item.probability());
-            if (fraction >= 0 && fraction < lowest) {
-                lowest = fraction;
-            }
-        }
-        return lowest;
-    }
-
-    // --- 便利方法：从日志引用中提取常用字段 ---
-
-    @Nullable
-    public Long firstUnlockedGameTime() {
-        return logRef.firstUnlockedGameTime();
-    }
-
-    @Nullable
-    public Long firstUnlockedDayTime() {
-        return logRef.firstUnlockedDayTime();
-    }
-
-    @Nullable
-    public LootSourceType firstUnlockLootSource() {
-        return logRef.firstUnlockLootSource();
-    }
-
-    public List<ExcavationLogEntry> logEntries() {
-        return logRef.logEntries();
-    }
-
     /**
      * 从目录定义、玩家进度和日志历史构建条目视图模型。
      */

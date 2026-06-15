@@ -27,11 +27,11 @@
 
   "config.jade.plugin_unsuspiciousblock.scanned_loot": "解析战利品",
 
-  "item.unsuspiciousblock.luoyang_spade": "洛阳铲",
-  "item.unsuspiciousblock.luoyang_spade.not_suspicious": "这不是可疑方块！",
-  "item.unsuspiciousblock.luoyang_spade.not_scanned": "请先用扫描仪扫描此方块！",
-  "item.unsuspiciousblock.luoyang_spade.already_empty": "此处 (%d, %d, %d) 的可疑方块已经空了。",
-  "item.unsuspiciousblock.luoyang_spade.reflection_failed": "内部错误：无法取出战利品，请检查 mod 兼容性。",
+  "item.unsuspiciousblock.archaeological_shovel": "考古铲",
+  "item.unsuspiciousblock.archaeological_shovel.not_suspicious": "这不是可疑方块！",
+  "item.unsuspiciousblock.archaeological_shovel.not_scanned": "请先用扫描仪扫描此方块！",
+  "item.unsuspiciousblock.archaeological_shovel.already_empty": "此处 (%d, %d, %d) 的可疑方块已经空了。",
+  "item.unsuspiciousblock.archaeological_shovel.reflection_failed": "内部错误：无法取出战利品，请检查 mod 兼容性。",
 
   "item.unsuspiciousblock.archaeology_journal": "考古笔记",
   "item.unsuspiciousblock.specimen_box": "标本箱",
@@ -164,7 +164,7 @@
   "dimension.minecraft.the_nether": "下界",
   "dimension.minecraft.the_end": "末地",
   "advancement.unsuspiciousblock.cache_me_if_you_can": "Cache Me If You Can",
-  "advancement.unsuspiciousblock.cache_me_if_you_can.desc": "累计记录 1024 条考古日志",
+  "advancement.unsuspiciousblock.cache_me_if_you_can.desc": "考古日志记录到达上限",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "随机附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "%s级附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "已附魔",
@@ -181,6 +181,7 @@
   "screen.unsuspiciousblock.archaeology_journal.sort.item_count": "排序：物品数量",
   "screen.unsuspiciousblock.archaeology_journal.sort.ascending": "升序",
   "screen.unsuspiciousblock.archaeology_journal.sort.descending": "降序",
+
   "toast.unsuspiciousblock.journal_unlock.title": "笔记更新",
 
   "command.unsuspiciousblock.usb.clear.success": "你的考古笔记数据已清除。",
