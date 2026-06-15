@@ -11,12 +11,12 @@ import java.util.function.Supplier;
 public class ModItems {
     // 由平台模块在注册阶段赋值
     public static SuspiciousReaderItem SUSPICIOUS_READER;
-    public static ArchaeologicalShovelItem ARCHAEOLOGY_SHOVEL;
+    public static ArchaeologicalShovelItem ARCHAEOLOGICAL_SHOVEL;
     public static ArchaeologyJournalItem ARCHAEOLOGY_JOURNAL;
     public static SpecimenBoxItem SPECIMEN_BOX;
     public static Item ANCIENT_COIN;
     public static Item LOST_PAGE;
-    public static Item PAGE_BASE;
+    public static Item BASE_PAGE;
 
     // 物品注册清单条目，供各平台遍历注册
     public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
@@ -28,7 +28,7 @@ public class ModItems {
                     item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
             new ItemEntry("archaeological_shovel",
                     ModItems::createArchaeologicalShovel,
-                    item -> ARCHAEOLOGY_SHOVEL = (ArchaeologicalShovelItem) item),
+                    item -> ARCHAEOLOGICAL_SHOVEL = (ArchaeologicalShovelItem) item),
             new ItemEntry("archaeology_journal",
                     ModItems::createArchaeologyJournal,
                     item -> ARCHAEOLOGY_JOURNAL = (ArchaeologyJournalItem) item),
@@ -41,9 +41,9 @@ public class ModItems {
             new ItemEntry("lost_page",
                     ModItems::createLostPage,
                     item -> LOST_PAGE = item),
-            new ItemEntry("page_base",
-                    ModItems::createPageBase,
-                    item -> PAGE_BASE = item)
+            new ItemEntry("base_page",
+                    ModItems::createBasePage,
+                    item -> BASE_PAGE = item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -52,12 +52,13 @@ public class ModItems {
 
     // 创造模式物品栏中展示的物品（使用 Supplier 延迟求值，因为静态字段在注册后才被赋值）
     public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
-            () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGY_JOURNAL,
+            () -> SUSPICIOUS_READER,
+            () -> ARCHAEOLOGICAL_SHOVEL,
             () -> SPECIMEN_BOX,
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
-            () -> PAGE_BASE
+            () -> BASE_PAGE
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
@@ -92,7 +93,7 @@ public class ModItems {
     }
 
     // 创建书页基底实例
-    public static Item createPageBase() {
+    public static Item createBasePage() {
         return new Item(new Item.Properties());
     }
 }

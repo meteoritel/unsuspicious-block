@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:smithing_transform",
+  "template": { "item": "unsuspiciousblock:base_page" },
+  "base": { "item": "minecraft:book" },
+  "addition": { "item": "unsuspiciousblock:lost_page" },
+  "result": {
+    "id": "minecraft:enchanted_book",
+    "count": 1,
+    "components": {
+      "minecraft:custom_data": { "unsuspiciousblock_pending_enchant": true }
+    }
+  }
+}

@@ -19,7 +19,8 @@
     "RandomizableContainerMixin",
     "ServerPlayerJournalStateMixin",
     "ShearsItemMixin",
-    "SheepMixin"
+    "SheepMixin",
+    "SmithingMenuMixin"
   ],
   "client": [],
   "server": [],
