@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
@@ -19,13 +20,13 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePaylo
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -84,6 +85,14 @@ public final class UnsuspiciousBlockNeoForgeClient {
                 (payload, context) -> SpecimenBoxClientState.receiveView(payload));
         registrar.playToClient(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
                 (payload, context) -> HandOfCatClientState.receive(payload));
+    }
+
+    @SubscribeEvent
+    public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        // 渲染器注册可能早于 FMLCommonSetupEvent 的回写，这里先确保实体类型静态字段已回写
+        UnsuspiciousBlockNeoForge.syncEntityRefs();
+        // 遍历渲染器清单，统一注册实体渲染器
+        ModEntityRenderers.forEach(event::registerEntityRenderer);
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {

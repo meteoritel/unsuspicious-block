@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
+import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
+import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -27,14 +29,19 @@ import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class UnsuspiciousBlockFabric implements ModInitializer {
@@ -44,14 +51,30 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         UnsuspiciousBlockCommon.init();
 
         // 遍历物品注册清单，统一注册并回写静态字段
-        for (ModItems.ItemEntry entry : ModItems.REGISTRY_MANIFEST) {
+        ModItems.forEach((name, factory, setter) -> {
             Item registered = Registry.register(
                     BuiltInRegistries.ITEM,
-                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, entry.name()),
-                    entry.factory().get()
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                    factory.get()
             );
-            entry.setter().accept(registered);
-        }
+            setter.accept(registered);
+        });
+
+        // 遍历实体注册清单，统一注册类型、回写静态字段并注册默认属性
+        ModEntities.forEach(new EntityRegistrar() {
+            @Override
+            public <T extends LivingEntity> void register(String name, Supplier<EntityType<T>> factory,
+                    Consumer<EntityType<T>> setter, Supplier<AttributeSupplier.Builder> attributes) {
+                EntityType<T> type = Registry.register(
+                        BuiltInRegistries.ENTITY_TYPE,
+                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                        factory.get()
+                );
+                setter.accept(type);
+                AttributeSupplier supplier = attributes.get().build();
+                FabricDefaultAttributeRegistry.register(type, supplier);
+            }
+        });
 
         // 注册 menu
         SpecimenBoxMenu.TYPE = Registry.register(

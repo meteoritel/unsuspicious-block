@@ -10,9 +10,9 @@ public enum CatFavorAction {
     // 成功驯服一只猫
     TAME_CAT(10),
     // TODO 触发与猫一同入睡（原版行为），本轮仅预留，事件未接入
-    SLEEP_WITH_CAT(10),
+    SLEEP_WITH_CAT(20),
     // TODO 驯服的猫坐在床/箱子/燃烧的熔炉上持续 30s，本轮仅预留，事件未接入
-    SIT_ON_BLOCK(10),
+    SIT_ON_BLOCK(20),
     // TODO 在村庄中击退袭击，本轮仅预留，事件未接入
     REPEL_RAID(20);
 

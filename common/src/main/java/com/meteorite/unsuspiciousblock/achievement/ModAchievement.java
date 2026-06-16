@@ -9,13 +9,9 @@ import net.minecraft.resources.ResourceLocation;
  */
 public interface ModAchievement {
 
-    /** 成就的 advancement 路径（相对于 data/{modid}/advancements/，不含 .json 后缀） */
     String path();
-
-    /** advancement JSON 中定义的 criterion 键名 */
     String criterion();
 
-    /** 完整的 ResourceLocation 标识 */
     default ResourceLocation id() {
         return ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path());
     }

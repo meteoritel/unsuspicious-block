@@ -8,7 +8,7 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * 玩家「猫之恩惠」��持久化状态——保存 0-100 的恩惠值以及各类累积行为的冷却时间戳。
+ * 玩家「猫之恩惠」持久化状态——保存 0-100 的恩惠值以及各类累积行为的冷却时间戳。
  * 通过 mixin 附加在玩家 NBT 中持久化，仿照 ArchaeologyJournalState 的序列化范式。
  */
 public final class CatFavorState {

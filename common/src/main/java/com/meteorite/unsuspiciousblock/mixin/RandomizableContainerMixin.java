@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -74,6 +75,7 @@ public interface RandomizableContainerMixin {
     }
 
     // 为当前容器生成用于运行时匹配的签名候选；目录缺失时退回到容器现状的普通物品签名
+    @Unique
     private static List<LootResultSignature> unsuspiciousblock$collectCandidates(TrackedContainerLootState trackedContainer,
                                                                                  ResourceLocation tableId) {
         TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);

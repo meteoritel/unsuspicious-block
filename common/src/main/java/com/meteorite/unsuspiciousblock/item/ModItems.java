@@ -106,4 +106,11 @@ public class ModItems {
     public static HandOfCatItem createHandOfCat() {
         return new HandOfCatItem(new Item.Properties().stacksTo(1).rarity(net.minecraft.world.item.Rarity.EPIC));
     }
+
+    // 遍历清单，调用平台回调完成注册
+    public static void forEach(ItemRegistrar registrar) {
+        for (ItemEntry entry : REGISTRY_MANIFEST) {
+            registrar.register(entry.name(), entry.factory(), entry.setter());
+        }
+    }
 }
