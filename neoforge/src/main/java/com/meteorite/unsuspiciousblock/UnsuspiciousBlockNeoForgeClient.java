@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -16,6 +17,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
@@ -80,6 +82,8 @@ public final class UnsuspiciousBlockNeoForgeClient {
                 (payload, context) -> ArchaeologyJournalClientState.receiveLogSnapshot(payload));
         registrar.playToClient(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC,
                 (payload, context) -> SpecimenBoxClientState.receiveView(payload));
+        registrar.playToClient(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
+                (payload, context) -> HandOfCatClientState.receive(payload));
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {
@@ -91,5 +95,6 @@ public final class UnsuspiciousBlockNeoForgeClient {
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         SpecimenBoxClientState.clearAll();
         ArchaeologyJournalClientState.resetOnDisconnect();
+        HandOfCatClientState.reset();
     }
 }

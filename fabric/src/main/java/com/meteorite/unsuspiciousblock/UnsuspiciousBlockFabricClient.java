@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -16,6 +17,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -57,9 +59,12 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
                 (payload, context) -> ArchaeologyJournalClientState.receiveLogSnapshot(payload));
         ClientPlayNetworking.registerGlobalReceiver(SyncSpecimenBoxViewPayload.TYPE,
                 (payload, context) -> SpecimenBoxClientState.receiveView(payload));
+        ClientPlayNetworking.registerGlobalReceiver(SyncCatFavorPayload.TYPE,
+                (payload, context) -> HandOfCatClientState.receive(payload));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             SpecimenBoxClientState.clearAll();
             ArchaeologyJournalClientState.resetOnDisconnect();
+            HandOfCatClientState.reset();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

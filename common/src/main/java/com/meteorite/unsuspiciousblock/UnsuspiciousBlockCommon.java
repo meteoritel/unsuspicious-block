@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentEffects;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -13,5 +14,6 @@ public class UnsuspiciousBlockCommon {
         AchievementManager.init(new VanillaAchievementHelper());
         EnchantmentManager.init(Services.ENCHANTMENT);
         EnchantmentEffects.registerAll();
+        CatFavorManager.init(Services.CAT);
     }
 }

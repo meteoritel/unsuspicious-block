@@ -16,6 +16,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
@@ -82,6 +83,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC);

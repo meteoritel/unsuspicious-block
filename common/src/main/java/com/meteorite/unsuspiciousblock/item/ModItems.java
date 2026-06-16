@@ -17,6 +17,7 @@ public class ModItems {
     public static Item ANCIENT_COIN;
     public static Item LOST_PAGE;
     public static Item BASE_PAGE;
+    public static HandOfCatItem HAND_OF_CAT;
 
     // 物品注册清单条目，供各平台遍历注册
     public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
@@ -43,7 +44,10 @@ public class ModItems {
                     item -> LOST_PAGE = item),
             new ItemEntry("base_page",
                     ModItems::createBasePage,
-                    item -> BASE_PAGE = item)
+                    item -> BASE_PAGE = item),
+            new ItemEntry("hand_of_cat",
+                    ModItems::createHandOfCat,
+                    item -> HAND_OF_CAT = (HandOfCatItem) item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -58,7 +62,8 @@ public class ModItems {
             () -> SPECIMEN_BOX,
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
-            () -> BASE_PAGE
+            () -> BASE_PAGE,
+            () -> HAND_OF_CAT
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
@@ -95,5 +100,10 @@ public class ModItems {
     // 创建书页基底实例
     public static Item createBasePage() {
         return new Item(new Item.Properties());
+    }
+
+    // 创建猫之手实例
+    public static HandOfCatItem createHandOfCat() {
+        return new HandOfCatItem(new Item.Properties().stacksTo(1).rarity(net.minecraft.world.item.Rarity.EPIC));
     }
 }
