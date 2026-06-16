@@ -6,7 +6,9 @@ import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -18,6 +20,10 @@ public final class LootTableNames {
     private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.table.";
     private static final Map<ResourceLocation, NameRegistration> REGISTRATIONS = new LinkedHashMap<>();
     private static final Set<ResourceLocation> WARNED_MISSING_TRANSLATIONS = ConcurrentHashMap.newKeySet();
+
+    // 缓存上次解析的规则列表，避免每次匹配重复解析配置字符串
+    private static volatile List<String> cachedRawPatterns;
+    private static volatile List<LootTablePattern> cachedPatterns = List.of();
 
     static {
         seedVanilla("minecraft:archaeology/desert_pyramid", "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid");
@@ -43,19 +49,34 @@ public final class LootTableNames {
         registerInternal(tableId, createTranslationKey(tableId), fallbackName);
     }
 
-    // 判断该表是否属于统一考古路径前缀规则
+    // 判断该表是否命中任一配置规则（命名空间 + 路径前缀/精确）
     public static boolean isArchaeologyLootTable(ResourceLocation tableId) {
-        return hasArchaeologyPathPrefix(tableId.getPath());
-    }
-
-    // 判断 path 是否命中任一可接受的考古路径前缀
-    public static boolean hasArchaeologyPathPrefix(String path) {
-        for (String prefix : Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes()) {
-            if (path.startsWith(prefix)) {
+        for (LootTablePattern pattern : patterns()) {
+            if (pattern.matches(tableId)) {
                 return true;
             }
         }
         return false;
+    }
+
+    // 获取当前生效的匹配规则列表；配置变化时重新解析并缓存
+    private static List<LootTablePattern> patterns() {
+        List<String> rawPatterns = Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes();
+        if (rawPatterns == cachedRawPatterns) {
+            return cachedPatterns;
+        }
+
+        List<LootTablePattern> parsed = new ArrayList<>(rawPatterns.size());
+        for (String raw : rawPatterns) {
+            LootTablePattern pattern = LootTablePattern.parse(raw);
+            if (pattern != null) {
+                parsed.add(pattern);
+            }
+        }
+        List<LootTablePattern> immutable = List.copyOf(parsed);
+        cachedPatterns = immutable;
+        cachedRawPatterns = rawPatterns;
+        return immutable;
     }
 
     // 确保该战利品表已进入名称映射；若外部未显式注册，则自动生成默认 key 与 fallback 规则
@@ -122,11 +143,11 @@ public final class LootTableNames {
     }
 
     private static String createTranslationKey(ResourceLocation tableId) {
-        return KEY_PREFIX + tableId.getNamespace() + "." + normalizePathForKey(tableId.getPath());
+        return KEY_PREFIX + tableId.getNamespace() + "." + normalizePathForKey(stripArchaeologyPrefix(tableId));
     }
 
     private static String normalizePathForKey(String path) {
-        String normalized = stripArchaeologyPrefix(path)
+        String normalized = path
                 .replace('/', '_')
                 .replace('-', '_')
                 .replace('.', '_')
@@ -137,7 +158,7 @@ public final class LootTableNames {
     }
 
     private static String humanizeTablePath(ResourceLocation tableId) {
-        String normalized = stripArchaeologyPrefix(tableId.getPath())
+        String normalized = stripArchaeologyPrefix(tableId)
                 .replaceAll("[/_.-]+", " ")
                 .trim();
         if (normalized.isEmpty()) {
@@ -157,10 +178,12 @@ public final class LootTableNames {
         return builder.toString();
     }
 
-    private static String stripArchaeologyPrefix(String path) {
-        for (String prefix : Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes()) {
-            if (path.startsWith(prefix)) {
-                return path.substring(prefix.length());
+    // 按命中的规则剥离 path 前缀；精确规则保留完整 path，未命中任何规则时也保留完整 path
+    private static String stripArchaeologyPrefix(ResourceLocation tableId) {
+        String path = tableId.getPath();
+        for (LootTablePattern pattern : patterns()) {
+            if (pattern.matches(tableId)) {
+                return pattern.stripFrom(path);
             }
         }
         return path;

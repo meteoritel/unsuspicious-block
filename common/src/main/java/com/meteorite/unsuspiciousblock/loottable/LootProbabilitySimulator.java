@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalCatalog
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -64,7 +66,10 @@ public final class LootProbabilitySimulator {
                 if (lootTable == LootTable.EMPTY) {
                     tasks.add(new SimTask(tableId, rawTable, null, null));
                 } else {
-                    LootParams lootParams = paramsBuilder.create(LootContextParamSets.EMPTY);
+                    // 考古战利品表的参数集为 minecraft:archaeology（允许 ORIGIN）。
+                    // 不能用 EMPTY：原版 create() 会严格校验参数必须属于参数集的 allowed 集合，
+                    // EMPTY 不允许任何参数，导致 ORIGIN 被拒并抛出异常（NeoForge 放宽了该校验，故仅 Fabric 报错）。
+                    LootParams lootParams = paramsBuilder.create(LootContextParamSets.ARCHAEOLOGY);
                     tasks.add(new SimTask(tableId, rawTable, lootTable, lootParams));
                 }
             } catch (Exception e) {
@@ -98,16 +103,20 @@ public final class LootProbabilitySimulator {
             LootTable lootTable, LootParams lootParams) {
         List<ItemDefinition> rawItems = rawTable.items();
 
-        // 收集所有候选签名用于匹配
-        List<LootResultSignature> candidates = rawItems.stream()
-                .map(ItemDefinition::signature)
-                .toList();
+        // 候选签名（可变）：初始来自 JSON 解析，模拟期可追加 GLM/事件注入的新签名
+        List<LootResultSignature> candidates = new ArrayList<>(rawItems.size());
+        for (ItemDefinition item : rawItems) {
+            candidates.add(item.signature());
+        }
 
-        // 统计每个签名的出现次数
+        // 统计每个签名的出现次数（含模拟期发现的注入签名）
         Map<String, Integer> appearanceCounts = new LinkedHashMap<>();
         for (ItemDefinition item : rawItems) {
             appearanceCounts.put(item.signature().toStoredKey(), 0);
         }
+
+        // 模拟期发现的注入签名（JSON 中不存在，来自 GLM / LootTableEvents.MODIFY）
+        Map<String, LootResultSignature> discovered = new LinkedHashMap<>();
 
         // 模拟抽取
         for (int i = 0; i < SIMULATION_COUNT; i++) {
@@ -116,14 +125,25 @@ public final class LootProbabilitySimulator {
                 if (stack.isEmpty()) continue;
                 LootResultSignature matched = LootResultMatcher.resolve(stack, candidates);
                 if (matched != null) {
-                    String key = matched.toStoredKey();
-                    appearanceCounts.merge(key, 1, Integer::sum);
+                    appearanceCounts.merge(matched.toStoredKey(), 1, Integer::sum);
+                    continue;
                 }
+
+                // 未匹配任何已知候选：派生签名。若已是已知签名则视为歧义掉落，保守跳过不计数；
+                // 否则作为注入条目登记并计数。
+                LootResultSignature derived = deriveSignature(stack);
+                String derivedKey = derived.toStoredKey();
+                if (appearanceCounts.containsKey(derivedKey)) {
+                    continue;
+                }
+                discovered.put(derivedKey, derived);
+                candidates.add(derived);
+                appearanceCounts.put(derivedKey, 1);
             }
         }
 
         // 构建新的 ItemDefinition 列表，替换概率字段
-        List<ItemDefinition> simulatedItems = new ArrayList<>(rawItems.size());
+        List<ItemDefinition> simulatedItems = new ArrayList<>(rawItems.size() + discovered.size());
         for (ItemDefinition item : rawItems) {
             String storedKey = item.signature().toStoredKey();
             int appearances = appearanceCounts.getOrDefault(storedKey, 0);
@@ -145,7 +165,25 @@ public final class LootProbabilitySimulator {
                     probability, item.signature()));
         }
 
+        // 追加模拟期发现的注入条目
+        for (Map.Entry<String, LootResultSignature> entry : discovered.entrySet()) {
+            int appearances = appearanceCounts.getOrDefault(entry.getKey(), 0);
+            String probability = appearances == 0
+                    ? "<0.01%"
+                    : ProbabilityFormat.formatPercent((double) appearances / SIMULATION_COUNT);
+            simulatedItems.add(ArchaeologyJournalCatalog.buildDiscoveredDefinition(entry.getValue(), probability));
+        }
+
         return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), simulatedItems, SIMULATION_COUNT));
+    }
+
+    // 从运行时掉落派生用于匹配/展示的签名；附魔物折叠为近似附魔签名，其余按普通物品签名（保守，避免签名爆炸）
+    private static LootResultSignature deriveSignature(ItemStack stack) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        boolean enchanted = stack.has(DataComponents.ENCHANTMENTS)
+                || stack.has(DataComponents.STORED_ENCHANTMENTS)
+                || stack.isEnchanted();
+        return enchanted ? LootResultSignature.enchantedApprox(itemId) : LootResultSignature.plain(itemId);
     }
 
     // 模拟任务数据

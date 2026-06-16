@@ -98,6 +98,17 @@ public final class ArchaeologyJournalCatalog {
         return tables;
     }
 
+    /**
+     * 为模拟期发现的"注入条目"（GLM / LootTableEvents.MODIFY 注入，JSON 中不存在）构建 ItemDefinition。
+     * 显示名与提示从签名预览栈推导，概率由调用方传入（模拟统计或缓存恢复值）。
+     */
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability) {
+        ResourceLocation itemId = signature.itemId();
+        Component displayName = resolveMergedDisplayName(itemId, signature);
+        Component tooltipHint = resolveMergedTooltipHint(signature);
+        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature);
+    }
+
     private static TableDefinition parseTable(ResourceLocation tableId, JsonElement element) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
         boolean[] hasConditions = new boolean[1];

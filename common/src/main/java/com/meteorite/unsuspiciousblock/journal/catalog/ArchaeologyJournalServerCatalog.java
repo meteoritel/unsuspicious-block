@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.journal.catalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulator;
+import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.FileToIdConverter;
@@ -19,10 +20,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 服务端懒加载目录——在服务端解析并缓存所有考古战利品表，
@@ -144,15 +148,31 @@ public final class ArchaeologyJournalServerCatalog {
     private static TableDefinition restoreFromCache(
             TableDefinition rawTable, ResourceLocation tableId, LootProbabilityData probabilityData) {
         Map<String, String> cachedProbabilities = probabilityData.getProbabilities(tableId);
-        List<ItemDefinition> restoredItems = rawTable.items().stream()
-                .map(item -> {
-                    String cachedProb = cachedProbabilities.get(item.signature().toStoredKey());
-                    String probability = cachedProb != null ? cachedProb : item.probability();
-                    return new ItemDefinition(
-                            item.id(), item.displayName(), item.tooltipHint(),
-                            probability, item.signature());
-                })
-                .toList();
+        List<ItemDefinition> restoredItems = new ArrayList<>(cachedProbabilities.size());
+
+        // 1. 恢复 JSON 解析出的原始条目概率
+        for (ItemDefinition item : rawTable.items()) {
+            String cachedProb = cachedProbabilities.get(item.signature().toStoredKey());
+            String probability = cachedProb != null ? cachedProb : item.probability();
+            restoredItems.add(new ItemDefinition(
+                    item.id(), item.displayName(), item.tooltipHint(),
+                    probability, item.signature()));
+        }
+
+        // 2. 重建缓存中存在但 JSON 里没有的"注入条目"（GLM / LootTableEvents.MODIFY 模拟期发现）
+        Set<String> rawKeys = new HashSet<>();
+        for (ItemDefinition item : rawTable.items()) {
+            rawKeys.add(item.signature().toStoredKey());
+        }
+        for (Map.Entry<String, String> cached : cachedProbabilities.entrySet()) {
+            if (rawKeys.contains(cached.getKey())) {
+                continue;
+            }
+            LootResultSignature signature = LootResultSignature.fromStoredKey(cached.getKey());
+            if (signature != null) {
+                restoredItems.add(ArchaeologyJournalCatalog.buildDiscoveredDefinition(signature, cached.getValue()));
+            }
+        }
 
         return new TableDefinition(
                 rawTable.id(), rawTable.displayName(), restoredItems,

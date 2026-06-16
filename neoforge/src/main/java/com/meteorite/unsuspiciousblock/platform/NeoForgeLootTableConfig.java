@@ -19,7 +19,10 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
 
         builder.push("loot_table");
         ARCHAEOLOGY_PATH_PREFIXES = builder
-                .comment("考古战利品表路径前缀列表。仅具有这些前缀的战利品表会被追踪。")
+                .comment("考古战利品表匹配规则列表。仅命中这些规则的战利品表会被追踪。",
+                        "语法：<namespace>:<path> 限定命名空间，裸 <path> 匹配所有命名空间；",
+                        "path 以 / 结尾为前缀匹配（命中该前缀下所有表），否则为精确匹配（仅单个表）。",
+                        "例：minecraft:archaeology/desert_well（单表）、mymod:archaeology/（指定模组）、archaeology/（所有命名空间）。")
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
                         () -> List.of("archaeology/", "archeology/"),
