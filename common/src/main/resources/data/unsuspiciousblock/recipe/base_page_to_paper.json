@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {"item": "unsuspiciousblock:base_page"}
+  ],
+  "result": {
+    "id": "minecraft:paper",
+    "count": 1
+  }
+}

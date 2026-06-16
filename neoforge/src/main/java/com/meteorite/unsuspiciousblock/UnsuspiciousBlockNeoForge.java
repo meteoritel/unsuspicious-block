@@ -28,12 +28,15 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.common.BasicItemListing;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -41,6 +44,7 @@ import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.village.WandererTradesEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -207,6 +211,17 @@ public class UnsuspiciousBlockNeoForge {
     public void onServerStopped(ServerStoppedEvent event) {
         ArchaeologyJournalServerCatalog.invalidate();
         PlacedBoneBlockTracker.clearPendingPlayerBreaks();
+    }
+
+    @SubscribeEvent
+    public void onWandererTrades(WandererTradesEvent event) {
+        // 1 古代金币 → 5 绿宝石，最多交易 3 次
+        event.getGenericTrades().add(new BasicItemListing(
+                new ItemStack(ModItems.ANCIENT_COIN, 1),
+                ItemStack.EMPTY,
+                new ItemStack(Items.EMERALD, 5),
+                3, 0, 0.05f
+        ));
     }
 
 }

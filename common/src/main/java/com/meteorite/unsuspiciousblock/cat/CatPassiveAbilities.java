@@ -103,7 +103,7 @@ public final class CatPassiveAbilities {
             return;
         }
         // 持有物品丢失但仍在请求态：视作离开黑暗，开始淡出
-        if (state.isNightVisionRequested() && !hasHand) {
+        if (state.isNightVisionRequested()) {
             state.setNightVisionRequested(false);
             state.setNightVisionFadeTicks(NIGHT_VISION_FADE_TICKS);
         }

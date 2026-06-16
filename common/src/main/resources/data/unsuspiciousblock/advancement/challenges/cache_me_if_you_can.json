@@ -1,5 +1,5 @@
 {
-  "parent": "unsuspiciousblock:adventure/take_note_take_note",
+  "parent": "unsuspiciousblock:story/unsuspicious_minds",
   "display": {
     "icon": {
       "id": "unsuspiciousblock:archaeology_journal"

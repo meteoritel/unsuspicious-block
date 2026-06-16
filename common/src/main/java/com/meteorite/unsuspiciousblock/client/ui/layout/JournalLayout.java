@@ -42,13 +42,15 @@ public final class JournalLayout {
     public static final int GRID_CELL_WIDTH = 74;
     public static final int GRID_CELL_HEIGHT = 56;
     public static final int GRID_COLUMN_GAP = 2;
-    public static final int GRID_TOP = 28;
+    // 右页内容顶部与左页工具栏行对齐（书签已移至右边缘，顶部空间回收）
+    public static final int GRID_TOP = TOOLBAR_Y;
     public static final int GRID_LEFT_PAD = 4;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
     // —— 右侧日志页 ——
-    public static final int LOG_TOP = 28;
+    // 与右页网格内容同起点，对齐左页工具栏行
+    public static final int LOG_TOP = GRID_TOP;
     // "最近发掘记录"标签
     public static final int LOG_LIST_LABEL_Y = LOG_TOP;
     // 日志条目列表区域

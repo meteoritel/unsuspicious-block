@@ -1,18 +1,17 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    " IQ",
-    " AI",
+    " II",
+    " CI",
     "S  "
   ],
   "key": {
     "I": {"tag": "c:ingots/iron"},
-    "Q": {"item": "minecraft:quartz"},
-    "A": {"item": "unsuspiciousblock:ancient_coin"},
+    "C": {"item": "minecraft:copper_ingot"},
     "S": {"item": "minecraft:stick"}
   },
   "result": {
-    "id": "unsuspiciousblock:suspicious_reader",
+    "id": "unsuspiciousblock:archaeological_shovel",
     "count": 1
   }
 }

@@ -6,19 +6,25 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "minecraft:mud",
-          "weight": 5
+          "name": "minecraft:sniffer_egg",
+          "weight": 20
+        },
+        {
+          "type": "minecraft:item",
+          "name": "unsuspiciousblock:ancient_coin",
+          "weight": 30
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:clay_ball",
-          "weight": 3
+          "weight": 50
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:mangrove_roots",
-          "weight": 2
+          "name": "minecraft:clay_ball",
+          "weight": 1
         }
+
       ]
     }
   ]

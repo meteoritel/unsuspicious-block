@@ -1,4 +1,5 @@
 {
+  "parent": "unsuspiciousblock:adventure/penny_for_your_finds",
   "display": {
     "icon": {
       "id": "unsuspiciousblock:suspicious_reader"
@@ -9,7 +10,6 @@
     "description": {
       "translate": "advancement.unsuspiciousblock.unsuspicious_minds.desc"
     },
-    "background": "minecraft:textures/block/suspicious_sand.png",
     "frame": "task",
     "show_toast": true,
     "announce_to_chat": true,

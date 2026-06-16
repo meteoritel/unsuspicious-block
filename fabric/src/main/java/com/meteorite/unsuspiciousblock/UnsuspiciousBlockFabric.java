@@ -33,6 +33,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
+import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -43,6 +44,10 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.trading.ItemCost;
+import net.minecraft.world.item.trading.MerchantOffer;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -142,6 +147,15 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 UsbCommand.register(dispatcher));
+
+        // 流浪商人交易：1 古代金币 → 5 绿宝石，最多交易 3 次
+        TradeOfferHelper.registerWanderingTraderOffers(1, factories ->
+                factories.add((entity, random) -> new MerchantOffer(
+                        new ItemCost(ModItems.ANCIENT_COIN, 1),
+                        new ItemStack(Items.EMERALD, 5),
+                        3, 0, 0.05f
+                ))
+        );
 
         Constants.LOG.info("UnsuspiciousBlock Fabric initialized.");
     }

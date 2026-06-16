@@ -1,5 +1,4 @@
 {
-  "parent": "unsuspiciousblock:story/unsuspicious_minds",
   "display": {
     "icon": {
       "id": "unsuspiciousblock:archaeology_journal"
@@ -10,6 +9,7 @@
     "description": {
       "translate": "advancement.unsuspiciousblock.take_note_take_note.desc"
     },
+    "background": "minecraft:textures/block/suspicious_sand_0.png",
     "frame": "task",
     "show_toast": true,
     "announce_to_chat": true,

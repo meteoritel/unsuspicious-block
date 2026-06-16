@@ -42,12 +42,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
 
         // 遍历渲染器清单，统一注册实体渲染器
-        ModEntityRenderers.forEach(new EntityRendererRegistrar() {
-            @Override
-            public <T extends Entity> void register(EntityType<T> type, EntityRendererProvider<T> provider) {
-                EntityRendererRegistry.register(type, provider);
-            }
-        });
+        ModEntityRenderers.forEach(EntityRendererRegistry::register);
 
         ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
         // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗

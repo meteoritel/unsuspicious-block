@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.achievement;
 /**
  * 模组所有成就的枚举注册表。
  * 每个枚举项定义了一条成就的 advancement 路径与 criterion 键，
- * 对应的 JSON 文件位于 data/unsuspiciousblock/advancements/ 下。
+ * 对应的 JSON 文件位于 data/unsuspiciousblock/advancement/ 下。
  * <p>
  * 使用方式：{@code AchievementManager.grant(player, ModAchievements.CACHE_ME_IF_YOU_CAN);}
  */
