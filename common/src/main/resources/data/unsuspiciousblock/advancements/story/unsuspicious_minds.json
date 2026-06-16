@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:suspicious_reader"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.unsuspicious_minds"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.unsuspicious_minds.desc"
+    },
+    "background": "minecraft:textures/block/suspicious_sand.png",
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "root": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "root"
+    ]
+  ]
+}

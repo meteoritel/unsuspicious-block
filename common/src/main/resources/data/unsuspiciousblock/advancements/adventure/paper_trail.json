@@ -1,0 +1,35 @@
+{
+  "parent": "unsuspiciousblock:story/unsuspicious_minds",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:lost_page"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.paper_trail"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.paper_trail.desc"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "paper_trail": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "unsuspiciousblock:lost_page"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "paper_trail"
+    ]
+  ]
+}

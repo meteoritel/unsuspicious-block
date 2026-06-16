@@ -1,14 +1,14 @@
 {
-  "parent": "unsuspiciousblock:adventure/take_note_take_note",
+  "parent": "unsuspiciousblock:adventure/template_collector",
   "display": {
     "icon": {
-      "id": "unsuspiciousblock:archaeology_journal"
+      "id": "minecraft:brush"
     },
     "title": {
-      "translate": "advancement.unsuspiciousblock.cache_me_if_you_can"
+      "translate": "advancement.unsuspiciousblock.completionists_dust"
     },
     "description": {
-      "translate": "advancement.unsuspiciousblock.cache_me_if_you_can.desc"
+      "translate": "advancement.unsuspiciousblock.completionists_dust.desc"
     },
     "frame": "challenge",
     "show_toast": true,
@@ -16,13 +16,13 @@
     "hidden": false
   },
   "criteria": {
-    "reach_1024_entries": {
+    "completionist": {
       "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "reach_1024_entries"
+      "completionist"
     ]
   ],
   "rewards": {

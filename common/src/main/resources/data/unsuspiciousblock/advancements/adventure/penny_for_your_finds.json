@@ -1,0 +1,35 @@
+{
+  "parent": "unsuspiciousblock:story/unsuspicious_minds",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:ancient_coin"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.penny_for_your_finds"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.penny_for_your_finds.desc"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "penny": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "unsuspiciousblock:ancient_coin"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "penny"
+    ]
+  ]
+}

@@ -95,6 +95,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         unlockResolvedLoot(player, tableId, loot);
         JournalLogRecorder.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
+        ArchaeologyChallengeChecker.checkAndGrant(player, state);
     }
 
     // 战利品发现事件处理（批量物品）：解锁 + 记录首次发现时间
@@ -107,6 +108,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         unlockResolvedLoot(player, tableId, itemCounts);
         JournalLogRecorder.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
+        ArchaeologyChallengeChecker.checkAndGrant(player, state);
     }
 
     @Nullable

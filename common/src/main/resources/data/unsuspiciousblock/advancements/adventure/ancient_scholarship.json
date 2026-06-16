@@ -1,0 +1,28 @@
+{
+  "parent": "unsuspiciousblock:adventure/paper_trail",
+  "display": {
+    "icon": {
+      "id": "minecraft:enchanted_book"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.ancient_scholarship"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.ancient_scholarship.desc"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "scholar": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "scholar"
+    ]
+  ]
+}

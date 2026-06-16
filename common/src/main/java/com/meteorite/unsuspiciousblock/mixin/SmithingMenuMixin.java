@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin;
 
+import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.enchantment.EnchantedBookRoller;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerPlayer;
@@ -42,5 +44,7 @@ public abstract class SmithingMenuMixin {
         EnchantedBookRoller.roll(stack, serverPlayer.serverLevel().getRandom(),
                 serverPlayer.serverLevel().registryAccess());
         stack.remove(DataComponents.CUSTOM_DATA);
+        // 首次在锻造台合成出随机附魔书时授予「Ancient Scholarship」成就
+        AchievementManager.grantIfNotAlready(serverPlayer, ModAchievements.ANCIENT_SCHOLARSHIP);
     }
 }

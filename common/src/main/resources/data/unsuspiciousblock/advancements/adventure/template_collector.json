@@ -1,0 +1,28 @@
+{
+  "parent": "unsuspiciousblock:adventure/sherd_collector",
+  "display": {
+    "icon": {
+      "id": "minecraft:wayfinder_armor_trim_smithing_template"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.template_collector"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.template_collector.desc"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "template_collector": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "template_collector"
+    ]
+  ]
+}

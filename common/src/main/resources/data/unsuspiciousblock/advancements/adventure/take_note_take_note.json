@@ -1,0 +1,31 @@
+{
+  "parent": "unsuspiciousblock:story/unsuspicious_minds",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:archaeology_journal"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.take_note_take_note"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.take_note_take_note.desc"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "take_note": {
+      "trigger": "minecraft:recipe_crafted",
+      "conditions": {
+        "recipe_id": "unsuspiciousblock:archaeology_journal"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "take_note"
+    ]
+  ]
+}

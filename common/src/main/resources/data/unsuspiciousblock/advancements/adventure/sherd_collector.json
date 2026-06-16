@@ -1,0 +1,28 @@
+{
+  "parent": "unsuspiciousblock:story/unsuspicious_minds",
+  "display": {
+    "icon": {
+      "id": "minecraft:angler_pottery_sherd"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.sherd_collector"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.sherd_collector.desc"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "sherd_collector": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "sherd_collector"
+    ]
+  ]
+}

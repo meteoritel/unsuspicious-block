@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
@@ -302,6 +304,11 @@ public class SuspiciousReaderItem extends Item {
         brushable.unpackLootTable(player);
         ItemStack lootItem = brushable.getItem().copy();
         scanState.unsuspiciousblock$markScanned(player.getUUID());
+
+        // 首次扫描到非空可疑方块时授予「Unsuspicious Minds」成就
+        if (!lootItem.isEmpty()) {
+            AchievementManager.grantIfNotAlready(player, ModAchievements.UNSUSPICIOUS_MINDS);
+        }
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null) {
