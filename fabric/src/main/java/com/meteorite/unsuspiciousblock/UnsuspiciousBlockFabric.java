@@ -22,6 +22,9 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.CatNightVisionPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
+import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -110,6 +113,8 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         PayloadTypeRegistry.playC2S().register(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playC2S().register(CatNightVisionPayload.TYPE, CatNightVisionPayload.STREAM_CODEC);
+        PayloadTypeRegistry.playC2S().register(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC);
         ServerPlayNetworking.registerGlobalReceiver(UploadJournalLogSnapshotPayload.TYPE,
                 (payload, context) -> context.server().execute(
                         () -> JournalLogHandler.handleUploadedLogSnapshot(context.player(), payload)));
@@ -119,6 +124,12 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(RequestCatalogPayload.TYPE,
                 (payload, context) -> context.server().execute(
                         () -> JournalCatalogHandler.handleRequestCatalog(context.player(), payload)));
+        ServerPlayNetworking.registerGlobalReceiver(CatNightVisionPayload.TYPE,
+                (payload, context) -> context.server().execute(
+                        () -> CatNetworkHandler.handleNightVision(context.player(), payload)));
+        ServerPlayNetworking.registerGlobalReceiver(CatDeterrenceTogglePayload.TYPE,
+                (payload, context) -> context.server().execute(
+                        () -> CatNetworkHandler.handleDeterrenceToggle(context.player())));
 
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {

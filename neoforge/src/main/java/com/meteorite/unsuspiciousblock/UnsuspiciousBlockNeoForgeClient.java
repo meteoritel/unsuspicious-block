@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
+import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -64,6 +65,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(ModKeyBindings.SCAN_LEVEL_CYCLE);
         event.register(ModKeyBindings.JOURNAL_OPEN);
+        event.register(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
     }
 
     @SubscribeEvent
@@ -99,11 +101,13 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ArchaeologyJournalClientState.tick();
         SpecimenBoxClientState.tick();
         SuspiciousReaderClientState.tick();
+        CatHandClientState.tick();
     }
 
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         SpecimenBoxClientState.clearAll();
         ArchaeologyJournalClientState.resetOnDisconnect();
         HandOfCatClientState.reset();
+        CatHandClientState.reset();
     }
 }

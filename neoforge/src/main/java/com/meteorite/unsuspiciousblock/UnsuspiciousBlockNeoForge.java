@@ -15,6 +15,9 @@ import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.CatNightVisionPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
+import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -171,6 +174,10 @@ public class UnsuspiciousBlockNeoForge {
                 (payload, context) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, (ServerPlayer) context.player()));
         registrar.playToServer(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
                 (payload, context) -> JournalCatalogHandler.handleRequestCatalog((ServerPlayer) context.player(), payload));
+        registrar.playToServer(CatNightVisionPayload.TYPE, CatNightVisionPayload.STREAM_CODEC,
+                (payload, context) -> CatNetworkHandler.handleNightVision((ServerPlayer) context.player(), payload));
+        registrar.playToServer(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
+                (payload, context) -> CatNetworkHandler.handleDeterrenceToggle((ServerPlayer) context.player()));
     }
 
     private void registerEntityAttributes(EntityAttributeCreationEvent event) {

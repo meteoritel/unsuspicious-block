@@ -28,6 +28,14 @@ public class ModKeyBindings {
             "key.categories.unsuspiciousblock"
     );
 
+    /** 切换「猫的威慑」被动开关键，默认 G 键 */
+    public static final KeyMapping CAT_DETERRENCE_TOGGLE = new KeyMapping(
+            "key.unsuspiciousblock.cat_deterrence_toggle",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_G,
+            "key.categories.unsuspiciousblock"
+    );
+
     private ModKeyBindings() {
     }
 

@@ -94,7 +94,7 @@ public final class CatFavorManager {
     }
 
     // 从玩家实例获取猫之恩惠状态（通过 mixin 持有者接口）
-    private static CatFavorState getState(Player player) {
+    public static CatFavorState getState(Player player) {
         if (player instanceof CatFavorStateHolder holder) {
             return holder.unsuspiciousblock$getCatFavorState();
         }

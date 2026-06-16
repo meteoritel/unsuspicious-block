@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.renderer.EntityRendererRegistrar;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
+import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -38,6 +39,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         // 注册按键绑定
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);
+        KeyBindingHelper.registerKeyBinding(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
 
         // 遍历渲染器清单，统一注册实体渲染器
         ModEntityRenderers.forEach(new EntityRendererRegistrar() {
@@ -79,12 +81,14 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             SpecimenBoxClientState.clearAll();
             ArchaeologyJournalClientState.resetOnDisconnect();
             HandOfCatClientState.reset();
+            CatHandClientState.reset();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ArchaeologyJournalClientState.tick();
             SpecimenBoxClientState.tick();
             SuspiciousReaderClientState.tick();
+            CatHandClientState.tick();
         });
     }
 }
