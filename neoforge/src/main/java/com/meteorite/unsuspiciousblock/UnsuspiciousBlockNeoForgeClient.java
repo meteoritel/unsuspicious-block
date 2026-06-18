@@ -2,8 +2,10 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
+import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -11,16 +13,10 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
+import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -30,8 +26,10 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 @EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class UnsuspiciousBlockNeoForgeClient {
@@ -53,6 +51,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
             });
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
+            NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderLevelStage);
         });
     }
 
@@ -71,22 +70,20 @@ public final class UnsuspiciousBlockNeoForgeClient {
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
-        registrar.playToClient(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
-        registrar.playToClient(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveCatalogHash(payload));
-        registrar.playToClient(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
-        registrar.playToClient(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveStateIncremental(payload));
-        registrar.playToClient(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveLogUpdate(payload));
-        registrar.playToClient(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC,
-                (payload, context) -> ArchaeologyJournalClientState.receiveLogSnapshot(payload));
-        registrar.playToClient(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC,
-                (payload, context) -> SpecimenBoxClientState.receiveView(payload));
-        registrar.playToClient(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
-                (payload, context) -> HandOfCatClientState.receive(payload));
+        // 遍历 ModPayloads 客户端清单注册 S2C，避免手写重复
+        for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
+            registerS2C(registrar, s2c);
+        }
+    }
+
+    // 注册单个 S2C payload 到 NeoForge 网络注册器
+    @SuppressWarnings("unchecked")
+    private static <T extends CustomPacketPayload> void registerS2C(
+            PayloadRegistrar registrar,
+            ModPayloads.Client.S2C<?> s2cRaw) {
+        ModPayloads.Client.S2C<T> s2c = (ModPayloads.Client.S2C<T>) s2cRaw;
+        registrar.playToClient(s2c.type(), s2c.streamCodec(),
+                (payload, context) -> s2c.handler().accept(payload));
     }
 
     @SubscribeEvent
@@ -102,6 +99,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         SpecimenBoxClientState.tick();
         SuspiciousReaderClientState.tick();
         CatHandClientState.tick();
+        ReaderScanHighlightState.tick();
     }
 
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
@@ -109,5 +107,12 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ArchaeologyJournalClientState.resetOnDisconnect();
         HandOfCatClientState.reset();
         CatHandClientState.reset();
+        ReaderScanHighlightState.reset();
+    }
+
+    // 在半透明方块渲染之后绘制范围扫描高亮，实现透视效果
+    private static void onRenderLevelStage(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
+        SuspiciousReaderRangeHighlight.render(event.getPoseStack(), event.getCamera());
     }
 }

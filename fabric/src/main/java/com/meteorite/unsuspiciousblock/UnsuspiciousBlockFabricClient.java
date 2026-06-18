@@ -1,10 +1,11 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
-import com.meteorite.unsuspiciousblock.client.renderer.EntityRendererRegistrar;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
+import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -12,26 +13,18 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
+import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
-import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
@@ -56,27 +49,16 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         });
         MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
-        ClientPlayNetworking.registerGlobalReceiver(SyncArchaeologyCatalogPayload.TYPE,
-                (payload, context) -> ArchaeologyJournalClientState.receiveCatalog(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncCatalogHashPayload.TYPE,
-                (payload, context) -> ArchaeologyJournalClientState.receiveCatalogHash(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncJournalStatePayload.TYPE,
-                (payload, context) -> ArchaeologyJournalClientState.receiveState(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncJournalStateIncrementalPayload.TYPE,
-                (payload, context) -> ArchaeologyJournalClientState.receiveStateIncremental(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncJournalLogPayload.TYPE,
-                (payload, context) -> ArchaeologyJournalClientState.receiveLogUpdate(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncJournalLogSnapshotPayload.TYPE,
-                (payload, context) -> ArchaeologyJournalClientState.receiveLogSnapshot(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncSpecimenBoxViewPayload.TYPE,
-                (payload, context) -> SpecimenBoxClientState.receiveView(payload));
-        ClientPlayNetworking.registerGlobalReceiver(SyncCatFavorPayload.TYPE,
-                (payload, context) -> HandOfCatClientState.receive(payload));
+        // 注册 S2C 接收器：遍历 ModPayloads 客户端清单
+        for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
+            registerS2C(s2c);
+        }
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             SpecimenBoxClientState.clearAll();
             ArchaeologyJournalClientState.resetOnDisconnect();
             HandOfCatClientState.reset();
             CatHandClientState.reset();
+            ReaderScanHighlightState.reset();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -84,6 +66,19 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             SpecimenBoxClientState.tick();
             SuspiciousReaderClientState.tick();
             CatHandClientState.tick();
+            ReaderScanHighlightState.tick();
         });
+
+        // 半透明方块渲染之后绘制范围扫描高亮，实现透视效果
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(context ->
+                SuspiciousReaderRangeHighlight.render(context.matrixStack(), context.camera()));
+    }
+
+    // 注册 S2C 客户端接收器
+    @SuppressWarnings("unchecked")
+    private static <T extends CustomPacketPayload> void registerS2C(ModPayloads.Client.S2C<?> s2cRaw) {
+        ModPayloads.Client.S2C<T> s2c = (ModPayloads.Client.S2C<T>) s2cRaw;
+        ClientPlayNetworking.registerGlobalReceiver(s2c.type(),
+                (payload, context) -> s2c.handler().accept(payload));
     }
 }

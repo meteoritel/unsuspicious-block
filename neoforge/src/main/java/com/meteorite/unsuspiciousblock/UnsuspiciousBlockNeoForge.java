@@ -9,18 +9,11 @@ import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
-import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
-import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
-import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.CatNightVisionPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
-import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
+import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -172,16 +165,20 @@ public class UnsuspiciousBlockNeoForge {
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
-        registrar.playToServer(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC,
-                (payload, context) -> JournalLogHandler.handleUploadedLogSnapshot((ServerPlayer) context.player(), payload));
-        registrar.playToServer(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC,
-                (payload, context) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, (ServerPlayer) context.player()));
-        registrar.playToServer(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
-                (payload, context) -> JournalCatalogHandler.handleRequestCatalog((ServerPlayer) context.player(), payload));
-        registrar.playToServer(CatNightVisionPayload.TYPE, CatNightVisionPayload.STREAM_CODEC,
-                (payload, context) -> CatNetworkHandler.handleNightVision((ServerPlayer) context.player(), payload));
-        registrar.playToServer(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
-                (payload, context) -> CatNetworkHandler.handleDeterrenceToggle((ServerPlayer) context.player()));
+        // 遍历 ModPayloads 统一清单注册 C2S，避免手写重复
+        for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
+            registerC2S(registrar, c2s);
+        }
+    }
+
+    // 注册单个 C2S payload 到 NeoForge 网络注册器
+    @SuppressWarnings("unchecked")
+    private static <T extends CustomPacketPayload> void registerC2S(
+            net.neoforged.neoforge.network.registration.PayloadRegistrar registrar,
+            ModPayloads.C2S<?> c2sRaw) {
+        ModPayloads.C2S<T> c2s = (ModPayloads.C2S<T>) c2sRaw;
+        registrar.playToServer(c2s.type(), c2s.streamCodec(),
+                (payload, context) -> c2s.handler().accept((ServerPlayer) context.player(), payload));
     }
 
     private void registerEntityAttributes(EntityAttributeCreationEvent event) {

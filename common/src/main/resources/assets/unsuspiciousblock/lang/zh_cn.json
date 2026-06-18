@@ -225,5 +225,7 @@
   "command.unsuspiciousblock.usb.debug.table_list.header": "当前服务端已加载 %d 个考古战利品表：",
   "command.unsuspiciousblock.usb.debug.table_list.entry": "[%1$d] %2$s | key=%3$s | fallback=%4$s | display=%5$s",
   "command.unsuspiciousblock.usb.error.unknown_table": "未知的考古战利品表：%s",
-  "command.unsuspiciousblock.usb.error.state_unavailable": "无法访问当前玩家的考古笔记数据。"
+  "command.unsuspiciousblock.usb.error.state_unavailable": "无法访问当前玩家的考古笔记数据。",
+
+  "entity.unsuspiciousblock.ghost_cat":"幽灵猫"
 }

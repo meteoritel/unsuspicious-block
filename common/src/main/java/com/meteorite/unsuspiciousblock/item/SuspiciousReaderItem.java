@@ -6,6 +6,8 @@ import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -164,6 +166,12 @@ public class SuspiciousReaderItem extends Item {
 
     // ========== 范围扫描几何计算 ==========
 
+    // 根据点击面与扫描等级计算范围扫描立方体的中心位置
+    // 与 useOn 中的几何逻辑保持一致，供客户端高亮复用
+    public static BlockPos getRangeScanCenter(BlockPos clickedPos, Direction clickedFace, int scanLevel) {
+        return clickedPos.relative(clickedFace.getOpposite(), scanLevel);
+    }
+
     // 收集扫描范围内的所有可疑方块
     private List<BlockPos> findSuspiciousBlocks(Level level, BlockPos cubeCenter, int halfExtent) {
         List<BlockPos> result = new ArrayList<>();
@@ -200,8 +208,7 @@ public class SuspiciousReaderItem extends Item {
         if (scanLevel > 0) {
             // 计算正方体范围
             Direction faceDir = context.getClickedFace();
-            Direction extendDir = faceDir.getOpposite();
-            BlockPos cubeCenter = clickedPos.relative(extendDir, scanLevel);
+            BlockPos cubeCenter = getRangeScanCenter(clickedPos, faceDir, scanLevel);
             List<BlockPos> targets = findSuspiciousBlocks(level, cubeCenter, scanLevel);
 
             if (targets.isEmpty()) {
@@ -266,6 +273,9 @@ public class SuspiciousReaderItem extends Item {
                                 .withStyle(style -> style.withColor(0x55FF55))
                 );
             }
+
+            // 向客户端同步扫描到的可疑方块位置，用于红色描边透视显示
+            Services.NETWORK.sendToPlayer(serverPlayer, new SyncReaderScanResultPayload(targets));
 
             // 实际消耗 = 等级数 + 解析出新可疑方块数（仅1级及以上）
             if (!isCreative) {

@@ -224,5 +224,7 @@
   "command.unsuspiciousblock.usb.debug.table_list.header": "Loaded %d archaeology loot tables on the server:",
   "command.unsuspiciousblock.usb.debug.table_list.entry": "[%1$d] %2$s | key=%3$s | fallback=%4$s | display=%5$s",
   "command.unsuspiciousblock.usb.error.unknown_table": "Unknown archaeology loot table: %s",
-  "command.unsuspiciousblock.usb.error.state_unavailable": "Could not access this player's archaeology journal data."
+  "command.unsuspiciousblock.usb.error.state_unavailable": "Could not access this player's archaeology journal data.",
+
+  "entity.unsuspiciousblock.ghost_cat":"Ghost Cat"
 }

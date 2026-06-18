@@ -8,23 +8,7 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
-import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
-import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
-import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSpecimenBoxViewPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.CatNightVisionPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
-import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
+import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -37,6 +21,7 @@ import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -106,35 +91,13 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                         .build()
         );
 
-        // 注册 payload
-        PayloadTypeRegistry.playS2C().register(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playC2S().register(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playC2S().register(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playC2S().register(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playC2S().register(CatNightVisionPayload.TYPE, CatNightVisionPayload.STREAM_CODEC);
-        PayloadTypeRegistry.playC2S().register(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC);
-        ServerPlayNetworking.registerGlobalReceiver(UploadJournalLogSnapshotPayload.TYPE,
-                (payload, context) -> context.server().execute(
-                        () -> JournalLogHandler.handleUploadedLogSnapshot(context.player(), payload)));
-        ServerPlayNetworking.registerGlobalReceiver(UpdateReaderScanLevelPayload.TYPE,
-                (payload, context) -> context.server().execute(
-                        () -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, context.player())));
-        ServerPlayNetworking.registerGlobalReceiver(RequestCatalogPayload.TYPE,
-                (payload, context) -> context.server().execute(
-                        () -> JournalCatalogHandler.handleRequestCatalog(context.player(), payload)));
-        ServerPlayNetworking.registerGlobalReceiver(CatNightVisionPayload.TYPE,
-                (payload, context) -> context.server().execute(
-                        () -> CatNetworkHandler.handleNightVision(context.player(), payload)));
-        ServerPlayNetworking.registerGlobalReceiver(CatDeterrenceTogglePayload.TYPE,
-                (payload, context) -> context.server().execute(
-                        () -> CatNetworkHandler.handleDeterrenceToggle(context.player())));
+        // 注册 payload：遍历 ModPayloads 统一清单，避免手写重复
+        for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
+            registerC2S(c2s);
+        }
+        for (ModPayloads.S2CSpec<?> spec : ModPayloads.S2C_SPECS) {
+            registerS2CSpec(spec);
+        }
 
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
@@ -158,5 +121,22 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         );
 
         Constants.LOG.info("UnsuspiciousBlock Fabric initialized.");
+    }
+
+    // 注册 C2S payload 类型与服务端接收器，调度到主线程执行 handler
+    @SuppressWarnings("unchecked")
+    private static <T extends CustomPacketPayload> void registerC2S(ModPayloads.C2S<?> c2sRaw) {
+        ModPayloads.C2S<T> c2s = (ModPayloads.C2S<T>) c2sRaw;
+        PayloadTypeRegistry.playC2S().register(c2s.type(), c2s.streamCodec());
+        ServerPlayNetworking.registerGlobalReceiver(c2s.type(),
+                (payload, context) -> context.server().execute(
+                        () -> c2s.handler().accept(context.player(), payload)));
+    }
+
+    // 注册 S2C payload 类型编解码器（服务端发送需要）
+    @SuppressWarnings("unchecked")
+    private static <T extends CustomPacketPayload> void registerS2CSpec(ModPayloads.S2CSpec<?> specRaw) {
+        ModPayloads.S2CSpec<T> spec = (ModPayloads.S2CSpec<T>) specRaw;
+        PayloadTypeRegistry.playS2C().register(spec.type(), spec.streamCodec());
     }
 }
