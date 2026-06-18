@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.block;
 
 import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
 import net.minecraft.core.BlockPos;

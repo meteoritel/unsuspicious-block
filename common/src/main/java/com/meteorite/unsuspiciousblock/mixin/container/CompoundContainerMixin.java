@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.container;
 
 import com.meteorite.unsuspiciousblock.journal.tracking.CompoundContainerAccess;
 import net.minecraft.world.CompoundContainer;

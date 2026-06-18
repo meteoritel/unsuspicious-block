@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.interaction;
 
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;

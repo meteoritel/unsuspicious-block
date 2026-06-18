@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.container;
 
 import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;

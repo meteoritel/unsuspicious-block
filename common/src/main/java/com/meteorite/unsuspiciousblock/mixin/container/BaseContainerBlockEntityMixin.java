@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.container;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import net.minecraft.core.HolderLookup;

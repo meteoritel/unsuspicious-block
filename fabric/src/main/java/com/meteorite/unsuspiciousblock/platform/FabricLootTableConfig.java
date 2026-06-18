@@ -22,7 +22,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Type LIST_STRING_TYPE = new TypeToken<List<String>>() {}.getType();
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
-    private static final List<String> DEFAULT_PREFIXES = List.of("archaeology/", "archeology/");
+    private static final List<String> DEFAULT_PREFIXES = List.of("archaeology/", "archeology/", "gameplay/fishing/");
     private static final int DEFAULT_MAX_LOG_ENTRIES_PER_TABLE = 1024;
     private static final long DEFAULT_TRACKING_TIMEOUT_TICKS = 6000L;
 

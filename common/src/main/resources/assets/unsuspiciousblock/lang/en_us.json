@@ -89,6 +89,7 @@
   "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_warm": "Warm Ocean Ruin",
   "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_common": "Trail Ruins (Common)",
   "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare": "Trail Ruins (Rare)",
+  "screen.unsuspiciousblock.archaeology_journal.table.unsuspiciousblock.mud_dredging": "Mud Dredging",
 
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.chest_buried_ruins_sand": "Buried Ruins Chest (Sand)",
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.chest_catacombs_combat": "Catacombs Chest (Combat)",
@@ -168,6 +169,7 @@
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.reader": "Scan",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.spade": "Excavation",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.loot_container": "Loot Container",
+  "screen.unsuspiciousblock.archaeology_journal.loot_source_type.fishing": "Fishing",
   "screen.unsuspiciousblock.archaeology_journal.unknown_item": "Unknown Item",
   "screen.unsuspiciousblock.archaeology_journal.unknown_structure": "Unknown",
   "screen.unsuspiciousblock.archaeology_journal.unknown_biome": "Unknown Biome",

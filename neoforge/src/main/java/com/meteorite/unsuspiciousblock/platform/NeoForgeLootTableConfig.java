@@ -22,10 +22,11 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
                 .comment("考古战利品表匹配规则列表。仅命中这些规则的战利品表会被追踪。",
                         "语法：<namespace>:<path> 限定命名空间，裸 <path> 匹配所有命名空间；",
                         "path 以 / 结尾为前缀匹配（命中该前缀下所有表），否则为精确匹配（仅单个表）。",
-                        "例：minecraft:archaeology/desert_well（单表）、mymod:archaeology/（指定模组）、archaeology/（所有命名空间）。")
+                        "例：minecraft:archaeology/desert_well（单表）、mymod:archaeology/（指定模组）、archaeology/（所有命名空间）。",
+                        "默认还包含 gameplay/fishing/ 前缀，用于追踪本模组自定义钓鱼战利品表。")
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
-                        () -> List.of("archaeology/", "archeology/"),
+                        () -> List.of("archaeology/", "archeology/", "gameplay/fishing/"),
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
         builder.pop();

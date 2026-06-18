@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.journal;
 
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;

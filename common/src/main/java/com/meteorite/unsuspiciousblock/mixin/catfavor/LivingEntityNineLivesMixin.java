@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.mixin;
+package com.meteorite.unsuspiciousblock.mixin.catfavor;
 
 import com.meteorite.unsuspiciousblock.cat.CatPassiveAbilities;
 import net.minecraft.server.level.ServerPlayer;

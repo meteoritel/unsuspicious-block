@@ -22,7 +22,9 @@ public enum LootSourceType {
     SPADE("spade", "screen.unsuspiciousblock.archaeology_journal.loot_source_type.spade",
             () -> new ItemStack(Items.BRUSH)),
     LOOT_CONTAINER("loot_container", "screen.unsuspiciousblock.archaeology_journal.loot_source_type.loot_container",
-            () -> new ItemStack(Items.CHEST));
+            () -> new ItemStack(Items.CHEST)),
+    FISHING("fishing", "screen.unsuspiciousblock.archaeology_journal.loot_source_type.fishing",
+            () -> new ItemStack(Items.FISHING_ROD));
 
     private final String serializedName;
     private final String translationKey;
