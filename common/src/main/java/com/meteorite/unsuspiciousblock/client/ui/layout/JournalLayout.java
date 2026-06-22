@@ -69,6 +69,21 @@ public final class JournalLayout {
     public static final int LOG_ENTRY_ICON_GAP = 4;
     public static final int LOG_ENTRY_TEXT_WIDTH = 124;
 
+    // 日志条目复制坐标按钮（简洁自定义按钮，置于第一行右侧）
+    public static final int LOG_ENTRY_COPY_BTN_WIDTH = 14;
+    public static final int LOG_ENTRY_COPY_BTN_HEIGHT = 10;
+    public static final int LOG_ENTRY_COPY_BTN_RIGHT_PAD = 4;   // 按钮与条目背景右边缘的距离
+    public static final int LOG_ENTRY_COPY_BTN_TOP_OFFSET = 2;  // 按钮距条目顶部偏移
+    public static final int LOG_ENTRY_COPY_BTN_BG_NORMAL = 0x30A08060;
+    public static final int LOG_ENTRY_COPY_BTN_BG_HOVER = 0x60A08060;
+    public static final int LOG_ENTRY_COPY_BTN_BORDER = 0x80C8B090;
+    public static final int LOG_ENTRY_COPY_BTN_ICON_COLOR = 0xFF5A422C;
+    public static final int LOG_ENTRY_COPY_BTN_ICON_HOVER_COLOR = 0xFF7B3E18;
+
+    // 日志条目文字配色（区分优先级）
+    public static final int LOG_ENTRY_TIME_COLOR = 0x3A2A1A;       // 时间：最高优先级（深棕）
+    public static final int LOG_ENTRY_DIM_POS_COLOR = 0x7A6247;    // 维度+坐标：次要信息（暖灰棕）
+
     // 日志分组头
     public static final int LOG_GROUP_HEADER_HEIGHT = 14;   // 组头行高度
     public static final int LOG_GROUP_ICON_SIZE = 14;        // 分组按钮图标尺寸

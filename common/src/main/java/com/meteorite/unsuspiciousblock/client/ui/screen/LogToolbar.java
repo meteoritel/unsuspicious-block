@@ -4,7 +4,6 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
-import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
@@ -13,21 +12,19 @@ import net.minecraft.network.chat.Component;
 /**
  * 日志工具栏管理器。
  * <p>
- * 管理日志页面的搜索/排序/分组 widget 组及状态，
+ * 管理日志页面的搜索/排序方向/分组 widget 组及状态，
  * 与 {@link CatalogToolbar} 遵循相同的设计模式。
  */
 public class LogToolbar {
 
     // 状态
-    private LogSorter.SortOrder currentSortOrder = LogSorter.SortOrder.TIME;
     private boolean sortDescending = true;
     private String searchText = "";
     private boolean searchExpanded = false;
-    private LogGrouper.GroupMode groupMode = LogGrouper.GroupMode.NONE;
+    private LogGrouper.GroupMode groupMode = LogGrouper.GroupMode.TIME;
 
     // widget 引用
     private IconButton searchToggleBtn;
-    private IconButton sortBtn;
     private IconButton sortDirBtn;
     private IconButton groupBtn;
     private EditBox searchField;
@@ -40,14 +37,6 @@ public class LogToolbar {
     }
 
     // —— 状态访问器 ——
-
-    public LogSorter.SortOrder currentSortOrder() {
-        return currentSortOrder;
-    }
-
-    public void setCurrentSortOrder(LogSorter.SortOrder order) {
-        this.currentSortOrder = order;
-    }
 
     public boolean sortDescending() {
         return sortDescending;
@@ -89,10 +78,6 @@ public class LogToolbar {
         return searchToggleBtn;
     }
 
-    public IconButton sortBtn() {
-        return sortBtn;
-    }
-
     public IconButton sortDirBtn() {
         return sortDirBtn;
     }
@@ -119,23 +104,13 @@ public class LogToolbar {
         rightPage.getLogPanel().setSearchFilter(text);
     }
 
-    /** 循环切换日志排序方式 */
-    public void cycleSortOrder(RightPageContainer rightPage) {
-        this.currentSortOrder = this.currentSortOrder.next();
-        rightPage.getLogPanel().setSortOrder(this.currentSortOrder, this.sortDescending);
-        if (this.sortBtn != null) {
-            this.sortBtn.setIconChar(LogSorter.sortOrderIcon(this.currentSortOrder));
-            this.sortBtn.setTooltip(LogSorter.sortOrderTooltip(this.currentSortOrder));
-        }
-    }
-
     /** 切换日志排序方向 */
     public void toggleSortDirection(RightPageContainer rightPage) {
         this.sortDescending = !this.sortDescending;
-        rightPage.getLogPanel().setSortOrder(this.currentSortOrder, this.sortDescending);
+        rightPage.getLogPanel().setSortDescending(this.sortDescending);
         if (this.sortDirBtn != null) {
-            this.sortDirBtn.setIconChar(LogSorter.sortDirectionIcon(this.sortDescending));
-            this.sortDirBtn.setTooltip(LogSorter.sortDirectionTooltip(this.sortDescending));
+            this.sortDirBtn.setIconChar(sortDirectionIcon(this.sortDescending));
+            this.sortDirBtn.setTooltip(sortDirectionTooltip(this.sortDescending));
         }
     }
 
@@ -161,6 +136,19 @@ public class LogToolbar {
         return false;
     }
 
+    // —— 图标 / tooltip —— 排序方向专用，从原 LogSorter 内联
+
+    public static char sortDirectionIcon(boolean descending) {
+        return descending ? '↓' : '↑';
+    }
+
+    public static Component sortDirectionTooltip(boolean descending) {
+        String key = descending
+                ? "screen.unsuspiciousblock.archaeology_journal.sort.descending"
+                : "screen.unsuspiciousblock.archaeology_journal.sort.ascending";
+        return Component.translatable(key);
+    }
+
     // —— Widget 创建 ——
 
     /**
@@ -184,25 +172,14 @@ public class LogToolbar {
         this.searchToggleBtn.visible = isLogListMode;
         screen.registerWidget(this.searchToggleBtn);
 
-        // 排序方式按钮
-        int logSortX = logToolbarRightX - JournalLayout.LOG_SEARCH_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP
-                - JournalLayout.LOG_SORT_ICON_SIZE;
-        this.sortBtn = new IconButton(
-                logSortX, logToolbarY,
-                JournalLayout.LOG_SORT_ICON_SIZE,
-                LogSorter.sortOrderIcon(this.currentSortOrder),
-                LogSorter.sortOrderTooltip(this.currentSortOrder),
-                () -> cycleSortOrder(rightPage));
-        this.sortBtn.visible = isLogListMode;
-        screen.registerWidget(this.sortBtn);
-
         // 排序方向按钮
-        int logSortDirX = logSortX - JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP;
+        int logSortDirX = logToolbarRightX - JournalLayout.LOG_SEARCH_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP
+                - JournalLayout.LOG_SORT_ICON_SIZE;
         this.sortDirBtn = new IconButton(
                 logSortDirX, logToolbarY,
                 JournalLayout.LOG_SORT_ICON_SIZE,
-                LogSorter.sortDirectionIcon(this.sortDescending),
-                LogSorter.sortDirectionTooltip(this.sortDescending),
+                sortDirectionIcon(this.sortDescending),
+                sortDirectionTooltip(this.sortDescending),
                 () -> toggleSortDirection(rightPage));
         this.sortDirBtn.visible = isLogListMode;
         screen.registerWidget(this.sortDirBtn);
@@ -249,9 +226,6 @@ public class LogToolbar {
         if (this.searchToggleBtn != null) {
             this.searchToggleBtn.visible = visible;
         }
-        if (this.sortBtn != null) {
-            this.sortBtn.visible = visible;
-        }
         if (this.sortDirBtn != null) {
             this.sortDirBtn.visible = visible;
         }
@@ -282,9 +256,6 @@ public class LogToolbar {
 
     /** 渲染日志工具栏 tooltip */
     public void renderTooltips(net.minecraft.client.gui.GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.sortBtn != null) {
-            this.sortBtn.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
         if (this.sortDirBtn != null) {
             this.sortDirBtn.renderTooltip(guiGraphics, mouseX, mouseY);
         }

@@ -8,16 +8,17 @@ import net.minecraft.network.chat.Component;
  * 考古日志分组器。
  * <p>
  * 提供日志条目的分组方式枚举、分组键提取、图标/tooltip 映射，
- * 遵循与 {@link LogSorter} 相同的设计模式。
+ * 遵循与 {@link CatalogSorter} 相同的设计模式。
  */
 public final class LogGrouper {
 
+    // 游戏日对应的刻数（与 GameTimeFormatHelper 一致）
+    private static final long DAY_TICKS = 24000L;
+
     // 分组方式
     public enum GroupMode {
-        NONE("none"),
-        STRUCTURE("structure"),
-        DIMENSION("dimension"),
-        SOURCE("source");
+        TIME("time"),
+        DIMENSION("dimension");
 
         private final String key;
 
@@ -36,43 +37,70 @@ public final class LogGrouper {
         }
     }
 
+    // 时间区间分桶——按游戏日计算
+    public enum TimeBucket {
+        DAY_1("1d"),
+        DAY_3("3d"),
+        DAY_7("7d"),
+        DAY_30("30d"),
+        OLDER("older");
+
+        private final String key;
+
+        TimeBucket(String key) {
+            this.key = key;
+        }
+
+        public String key() {
+            return this.key;
+        }
+    }
+
     private LogGrouper() {
     }
 
+    // 根据年龄（刻）计算所属时间区间桶
+    public static TimeBucket bucketForAge(long ageTicks) {
+        long age = Math.max(0L, ageTicks);
+        if (age <= DAY_TICKS) return TimeBucket.DAY_1;
+        if (age <= DAY_TICKS * 3L) return TimeBucket.DAY_3;
+        if (age <= DAY_TICKS * 7L) return TimeBucket.DAY_7;
+        if (age <= DAY_TICKS * 30L) return TimeBucket.DAY_30;
+        return TimeBucket.OLDER;
+    }
+
     // 根据分组方式提取日志条目的分组键
-    public static String groupKey(GroupMode mode, ExcavationLogEntry entry) {
+    // referenceGameTime 仅 TIME 模式使用，用于计算时间区间桶
+    public static String groupKey(GroupMode mode, ExcavationLogEntry entry, long referenceGameTime) {
         return switch (mode) {
-            case NONE -> "";
-            case STRUCTURE -> JournalFormatHelper.formatStructureName(entry.structureId());
+            case TIME -> bucketForAge(referenceGameTime - entry.createdGameTime()).key();
             case DIMENSION -> JournalFormatHelper.formatDimensionName(entry.dimensionId());
-            case SOURCE -> JournalFormatHelper.formatLootSource(entry.lootSource()).getString();
         };
     }
 
     // 分组方式图标字符
     public static char groupModeIcon(GroupMode mode) {
         return switch (mode) {
-            case NONE -> '☐';     // 平铺（无分组）
-            case STRUCTURE -> '⊞'; // 按结构分组
-            case DIMENSION -> '◈'; // 按维度分组
-            case SOURCE -> '◆';    // 按来源分组
+            case TIME -> '⏱';       // 按时间区间分组
+            case DIMENSION -> '◈';  // 按维度分组
         };
     }
 
     // 分组方式 tooltip
     public static Component groupModeTooltip(GroupMode mode) {
         return switch (mode) {
-            case NONE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.none");
-            case STRUCTURE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.structure");
+            case TIME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.time");
             case DIMENSION -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.dimension");
-            case SOURCE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.source");
         };
     }
 
     // 组头显示名：组名 + 条目数量
-    public static Component groupHeader(GroupMode mode, String groupName, int count) {
+    public static Component groupHeader(GroupMode mode, String groupKey, int count) {
+        Component name = mode == GroupMode.TIME
+                ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.bucket." + groupKey)
+                : Component.literal(groupKey);
         return Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_group_header",
-                groupName, count);
+                name, count);
     }
 }

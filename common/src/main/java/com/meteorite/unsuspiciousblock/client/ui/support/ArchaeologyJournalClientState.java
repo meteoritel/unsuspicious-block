@@ -52,8 +52,6 @@ public final class ArchaeologyJournalClientState {
     private static volatile boolean lastCatalogSortDescending;
     private static volatile boolean lastCatalogHideLocked;
     private static volatile String lastCatalogSearchText = "";
-    @Nullable
-    private static volatile LogSorter.SortOrder lastLogSortOrder;
     private static volatile boolean lastLogSortDescending = true;
     private static volatile String lastLogSearchText = "";
     @Nullable
@@ -254,15 +252,6 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastCatalogSearchText(@Nullable String text) {
         lastCatalogSearchText = text != null ? text : "";
-    }
-
-    @Nullable
-    public static LogSorter.SortOrder getLastLogSortOrder() {
-        return lastLogSortOrder;
-    }
-
-    public static void setLastLogSortOrder(@Nullable LogSorter.SortOrder order) {
-        lastLogSortOrder = order;
     }
 
     public static boolean getLastLogSortDescending() {

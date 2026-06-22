@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -223,10 +224,21 @@ public final class RightPageContainer {
             return;
         }
         this.activeTab = tab;
+        // 切换到日志页时刷新时间分组参考刻，避免每帧重算
+        if (tab == Tab.LOG) {
+            captureReferenceGameTime();
+        }
         this.introTabBtn.setToggled(tab == Tab.INTRO);
         this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
         this.logTabBtn.setToggled(tab == Tab.LOG);
         syncPageIndicator();
+    }
+
+    // 捕获当前游戏刻作为时间分组参考，仅在切换到日志页或屏幕初始化时调用
+    public void captureReferenceGameTime() {
+        Minecraft minecraft = Minecraft.getInstance();
+        long gameTime = minecraft.level != null ? minecraft.level.getGameTime() : 0L;
+        this.logPanel.setReferenceGameTime(gameTime);
     }
 
     public Tab getActiveTab() {
@@ -266,5 +278,12 @@ public final class RightPageContainer {
             return stack != null ? new ItemGridPanel.TooltipData(stack, null) : null;
         }
         return null;
+    }
+
+    // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮），需在 super.render 之后调用
+    public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        if (this.activeTab == Tab.LOG && this.logMode == LogMode.LIST) {
+            this.logPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
+        }
     }
 }

@@ -10,7 +10,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
-import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
@@ -52,10 +51,9 @@ public class JournalViewModel {
     private boolean hideLocked = false;
 
     // 日志搜索/排序状态
-    private LogSorter.SortOrder currentLogSortOrder = LogSorter.SortOrder.TIME;
     private boolean logSortDescending = true;
     private String logSearchText = "";
-    private LogGrouper.GroupMode currentGroupMode = LogGrouper.GroupMode.NONE;
+    private LogGrouper.GroupMode currentGroupMode = LogGrouper.GroupMode.TIME;
 
     // 版本追踪
     private long lastCatalogRevision;
@@ -108,14 +106,6 @@ public class JournalViewModel {
     }
 
     // —— 日志搜索/排序访问器 ——
-
-    public LogSorter.SortOrder currentLogSortOrder() {
-        return currentLogSortOrder;
-    }
-
-    public void setCurrentLogSortOrder(LogSorter.SortOrder order) {
-        this.currentLogSortOrder = order;
-    }
 
     public boolean logSortDescending() {
         return logSortDescending;
@@ -291,7 +281,7 @@ public class JournalViewModel {
 
         // 重新应用日志搜索/排序/分组状态
         if (rightPage != null) {
-            rightPage.getLogPanel().setSortOrder(this.currentLogSortOrder, this.logSortDescending);
+            rightPage.getLogPanel().setSortDescending(this.logSortDescending);
             rightPage.getLogPanel().setSearchFilter(this.logSearchText);
             rightPage.getLogPanel().setGroupMode(this.currentGroupMode);
         }

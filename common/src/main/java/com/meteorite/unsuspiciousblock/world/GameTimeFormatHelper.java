@@ -23,11 +23,6 @@ public final class GameTimeFormatHelper {
         return new GameTimeParts(day, hour, minute);
     }
 
-    // 仅使用 gameTime 的简化版本（dayTime 与 gameTime 相同时使用）
-    public static GameTimeParts fromGameTime(long gameTime) {
-        return fromTime(gameTime, gameTime);
-    }
-
     public record GameTimeParts(int day, int hour, int minute) {
         // 格式化为零补齐的 HH:MM 时钟字符串，确保多行时间刻度对齐
         public String formattedClock() {

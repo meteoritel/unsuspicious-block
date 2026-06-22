@@ -11,7 +11,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
-import com.meteorite.unsuspiciousblock.client.ui.support.LogSorter;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -83,10 +82,6 @@ public class ArchaeologyJournalScreen extends Screen {
         }
 
         // 恢复日志工具栏状态
-        LogSorter.SortOrder savedLogSortOrder = ArchaeologyJournalClientState.getLastLogSortOrder();
-        if (savedLogSortOrder != null) {
-            this.logToolbar.setCurrentSortOrder(savedLogSortOrder);
-        }
         this.logToolbar.setSortDescending(ArchaeologyJournalClientState.getLastLogSortDescending());
         String savedLogSearchText = ArchaeologyJournalClientState.getLastLogSearchText();
         if (savedLogSearchText != null) {
@@ -113,7 +108,6 @@ public class ArchaeologyJournalScreen extends Screen {
         ArchaeologyJournalClientState.setLastCatalogHideLocked(this.catalogToolbar.hideLocked());
         ArchaeologyJournalClientState.setLastCatalogSearchText(this.catalogToolbar.currentSearch().rawQuery());
         // 持久化日志工具栏状态
-        ArchaeologyJournalClientState.setLastLogSortOrder(this.logToolbar.currentSortOrder());
         ArchaeologyJournalClientState.setLastLogSortDescending(this.logToolbar.sortDescending());
         ArchaeologyJournalClientState.setLastLogSearchText(this.logToolbar.searchText());
         ArchaeologyJournalClientState.setLastLogGroupMode(this.logToolbar.groupMode());
@@ -149,7 +143,6 @@ public class ArchaeologyJournalScreen extends Screen {
         int savedCatalogPage = this.catalogPanel != null ? this.catalogPanel.getPage() : 0;
         boolean savedLogDetail = this.rightPage != null && this.rightPage.isShowingLogDetail();
         UUID savedLogEntryId = this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null;
-        LogSorter.SortOrder savedLogSortOrder = this.logToolbar.currentSortOrder();
         boolean savedLogSortDescending = this.logToolbar.sortDescending();
         String savedLogSearchText = this.logToolbar.searchText();
         boolean savedLogSearchExpanded = this.logToolbar.searchExpanded();
@@ -169,12 +162,11 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.restoreLogSelection(savedLogEntryId, savedLogDetail);
 
         // 恢复日志搜索/排序状态
-        this.logToolbar.setCurrentSortOrder(savedLogSortOrder);
         this.logToolbar.setSortDescending(savedLogSortDescending);
         this.logToolbar.setSearchText(savedLogSearchText);
         this.logToolbar.setSearchExpanded(savedLogSearchExpanded);
         this.logToolbar.setGroupMode(savedGroupMode);
-        this.rightPage.getLogPanel().setSortOrder(this.logToolbar.currentSortOrder(), this.logToolbar.sortDescending());
+        this.rightPage.getLogPanel().setSortDescending(this.logToolbar.sortDescending());
         this.rightPage.getLogPanel().setSearchFilter(this.logToolbar.searchText());
         this.rightPage.getLogPanel().setGroupMode(savedGroupMode);
 
@@ -203,7 +195,6 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         if (this.viewModel.refreshIfNeeded()) {
-            this.viewModel.setCurrentLogSortOrder(this.logToolbar.currentSortOrder());
             this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
             this.viewModel.setLogSearchText(this.logToolbar.searchText());
             this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
@@ -270,6 +261,9 @@ public class ArchaeologyJournalScreen extends Screen {
         if (isLogListMode) {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         }
+
+        // 日志条目复制坐标按钮 tooltip
+        this.rightPage.renderTooltips(guiGraphics, this.font, mouseX, mouseY);
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
         if (tooltipData != null && !tooltipData.stack().isEmpty()) {
@@ -404,7 +398,6 @@ public class ArchaeologyJournalScreen extends Screen {
 
     private void rebuildViewModels() {
         // 同步日志工具栏状态到 ViewModel，避免 rebuildViewModels 覆盖
-        this.viewModel.setCurrentLogSortOrder(this.logToolbar.currentSortOrder());
         this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
         this.viewModel.setLogSearchText(this.logToolbar.searchText());
         this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
