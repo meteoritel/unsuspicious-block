@@ -17,21 +17,29 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 右侧物品网格面板 */
+/** 右侧物品网格面板 —— 渲染物品图标、名称、概率与数量角标，补充信息通过 tooltip 展示 */
 public final class ItemGridPanel implements PagePanel {
 
     private static final ResourceLocation UNKNOWN_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
-    private static final int ICON_SIZE = 16;
-    private static final int ICON_TOP = 4;
-    private static final int INFO_TEXT_WIDTH = JournalLayout.GRID_CELL_WIDTH;
-    private static final int NAME_TEXT_Y = 24;
-    private static final int DETAIL_TEXT_Y = 34;
-    private static final int FOOTER_TEXT_Y = 44;
+    private static final int ICON_SIZE = 18;            // 略放大的物品图标尺寸
+    private static final int UNKNOWN_TEXTURE_SIZE = 16; // 未知图标纹理原始尺寸
+    private static final int ICON_TOP = 3;              // 图标距格子顶部偏移
+    private static final int NAME_Y_OFFSET = 25;        // 物品名文字 y 偏移
+    private static final int PROB_Y_OFFSET = 37;        // 概率文字 y 偏移
+    // 物品名/数量角标颜色
+    private static final int NAME_COLOR = 0xFF3A2A1A;
+    private static final int PROB_COLOR = 0xFF8B5A2B;
+    private static final int PENDING_COLOR = 0xFF7A6247;
+    private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
+    private static final int BADGE_COLOR_ABBR = 0xFFFFC060;
 
-    private final List<GridEntry> items = new ArrayList<>();
+    private final List<GridItem> items = new ArrayList<>();
     private final JournalBookBackground.BookLayout layout;
     private int page;
+    // 每个可视格子的滚动文字状态（物品名走马灯），按 visualIndex 索引
+    private final int[] slotScrollTicks = new int[JournalLayout.GRID_ITEMS_PER_PAGE];
+    private final boolean[] slotWasHovered = new boolean[JournalLayout.GRID_ITEMS_PER_PAGE];
 
     public ItemGridPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -41,9 +49,7 @@ public final class ItemGridPanel implements PagePanel {
     // 设置当前展示的战利品表数据
     public void setTable(List<GridItem> items) {
         this.items.clear();
-        for (GridItem item : items) {
-            this.items.add(new GridEntry(item));
-        }
+        this.items.addAll(items);
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
     }
 
@@ -75,7 +81,7 @@ public final class ItemGridPanel implements PagePanel {
                 && mouseY >= layout.rightPageY() && mouseY <= layout.rightPageBottom();
     }
 
-    // 渲染物品网格（仅网格区域，不含进度/页码）
+    // 渲染物品网格（仅图标，不含进度/页码）
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         if (items.isEmpty()) {
             int leftX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
@@ -97,9 +103,16 @@ public final class ItemGridPanel implements PagePanel {
             int visualIndex = i - from;
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
-            boolean iconHovered = isMouseOverIcon(cellX, cellY, mouseX, mouseY);
-            boolean textHovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
-            renderItemCell(guiGraphics, font, cellX, cellY, items.get(i), iconHovered, textHovered);
+            boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
+            // 走马灯滚动状态：从非悬停切到悬停时重置计数，悬停期间持续累加
+            if (!slotWasHovered[visualIndex] && hovered) {
+                slotScrollTicks[visualIndex] = 0;
+            }
+            slotWasHovered[visualIndex] = hovered;
+            if (hovered) {
+                slotScrollTicks[visualIndex]++;
+            }
+            renderItemCell(guiGraphics, font, cellX, cellY, items.get(i), hovered, slotScrollTicks[visualIndex]);
         }
 
         // 行间分隔线
@@ -111,63 +124,99 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     private void renderItemCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
-                                GridEntry entry, boolean iconHovered, boolean textHovered) {
-        GridItem item = entry.item;
+                                GridItem item, boolean hovered, int scrollTicks) {
         boolean unlocked = item.unlocked();
-        int iconX = cellX + (JournalLayout.GRID_CELL_WIDTH - ICON_SIZE) / 2;
+        int cellW = JournalLayout.GRID_CELL_WIDTH;
+        int cellH = JournalLayout.GRID_CELL_HEIGHT;
+        int centerX = cellX + cellW / 2;
+        int iconX = cellX + (cellW - ICON_SIZE) / 2;
         int iconY = cellY + ICON_TOP;
 
-        if (!entry.wasHovered && textHovered) {
-            entry.scrollTicks = 0;
-        }
-        entry.wasHovered = textHovered;
-        if (textHovered) {
-            entry.scrollTicks++;
-        }
-
         // 单元格背景
-        int bgColor = unlocked ? (textHovered ? 0x22C8B090 : 0x00000000) : (textHovered ? 0x22776456 : 0x00000000);
+        int bgColor = unlocked ? (hovered ? 0x22C8B090 : 0x00000000) : (hovered ? 0x22776456 : 0x00000000);
         if (bgColor != 0) {
-            guiGraphics.fill(cellX, cellY, cellX + JournalLayout.GRID_CELL_WIDTH, cellY + JournalLayout.GRID_CELL_HEIGHT, bgColor);
+            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, bgColor);
         }
 
-        int textX = cellX;
-        if (unlocked) {
-            ItemStack stack = item.stack();
-
-            // 物品图标
-            guiGraphics.renderItem(stack, iconX, iconY);
-            guiGraphics.renderItemDecorations(font, stack, iconX, iconY);
-
-            String nameText = item.displayName().getString();
-            String countText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.acquired", item.count()).getString();
-            String probabilityText = formatProbability(item.probability());
-            ScrollTextHelper.draw(guiGraphics, font, nameText,
-                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x5A422C, textHovered, entry.scrollTicks, true);
-            ScrollTextHelper.draw(guiGraphics, font, countText,
-                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x71604B, textHovered, entry.scrollTicks, true);
-            ScrollTextHelper.draw(guiGraphics, font, probabilityText,
-                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x857565, textHovered, entry.scrollTicks, true);
-
-            // 搜索时不匹配：覆盖半透明遮罩降低视觉权重
-            if (!item.highlighted()) {
-                guiGraphics.fill(cellX, cellY, cellX + JournalLayout.GRID_CELL_WIDTH,
-                        cellY + JournalLayout.GRID_CELL_HEIGHT, 0x80FFFFFF);
-            }
-        } else {
-            // 黑色立体剪影材质
-            guiGraphics.blit(UNKNOWN_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
-
-            String nameText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_entry").getString();
-            String detailText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered").getString();
-            String footerText = Component.translatable("screen.unsuspiciousblock.archaeology_journal.pending_analysis").getString();
-            ScrollTextHelper.draw(guiGraphics, font, nameText,
-                    textX, cellY + NAME_TEXT_Y, INFO_TEXT_WIDTH, 0x6A6157, textHovered, entry.scrollTicks, true);
-            ScrollTextHelper.draw(guiGraphics, font, detailText,
-                    textX, cellY + DETAIL_TEXT_Y, INFO_TEXT_WIDTH, 0x7B7268, false, 0, true);
-            ScrollTextHelper.draw(guiGraphics, font, footerText,
-                    textX, cellY + FOOTER_TEXT_Y, INFO_TEXT_WIDTH, 0x8B8278, false, 0, true);
+        if (!unlocked) {
+            // 未解锁：渲染未知物品图标（放大到 ICON_SIZE），下方显示"未解析"
+            guiGraphics.blit(UNKNOWN_TEXTURE, iconX, iconY, ICON_SIZE, ICON_SIZE,
+                    0f, 0f, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE,
+                    UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
+            Component pendingText = Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.pending_analysis");
+            int textW = font.width(pendingText);
+            guiGraphics.drawString(font, pendingText, centerX - textW / 2,
+                    cellY + NAME_Y_OFFSET, PENDING_COLOR, false);
+            return;
         }
+
+        ItemStack stack = item.stack();
+        // 物品图标（略放大：renderItem 固定 16px，通过 pose 缩放到 ICON_SIZE）
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(iconX, iconY, 0);
+        float scale = (float) ICON_SIZE / 16f;
+        guiGraphics.pose().scale(scale, scale, 1f);
+        guiGraphics.renderItem(stack, 0, 0);
+        // 附魔光效/耐久条，传 null 禁用原版 count 显示（改由角标渲染）
+        guiGraphics.renderItemDecorations(font, stack, 0, 0, null);
+        guiGraphics.pose().popPose();
+
+        // 数量角标（图标右下角；大数模糊化为 1.2K/1.2M 等）
+        // 提升 z 到 200+，确保文字在物品图标（z=150）之上
+        if (item.count() > 0) {
+            String countText = formatCountBadge(item.count());
+            int badgeColor = item.count() >= 1000 ? BADGE_COLOR_ABBR : BADGE_COLOR_NORMAL;
+            int badgeX = iconX + ICON_SIZE - font.width(countText);
+            int badgeY = iconY + ICON_SIZE - font.lineHeight + 1;
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(0f, 0f, 200f);
+            guiGraphics.drawString(font, countText, badgeX, badgeY, badgeColor, true);
+            guiGraphics.pose().popPose();
+        }
+
+        // 物品名（悬停时走马灯滚动，与 intro/Catalog 风格一致；非悬停时居中静态）
+        int nameMaxWidth = cellW - 6;
+        ScrollTextHelper.draw(guiGraphics, font, item.displayName().getString(),
+                cellX + 3, cellY + NAME_Y_OFFSET, nameMaxWidth,
+                NAME_COLOR, hovered, scrollTicks, true);
+
+        // 概率（居中）
+        Component probComp = formatProbability(item.probability());
+        int probW = font.width(probComp);
+        guiGraphics.drawString(font, probComp, centerX - probW / 2,
+                cellY + PROB_Y_OFFSET, PROB_COLOR, false);
+
+        // 搜索不匹配：覆盖半透明遮罩降低视觉权重
+        if (!item.highlighted()) {
+            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, 0x80FFFFFF);
+        }
+    }
+
+    // 格式化数量为角标文本：<1000 原样，1K+ 用 1.2K/1.2M/1.2B 简写
+    private static String formatCountBadge(int count) {
+        if (count < 0) return "";
+        if (count < 1000) return Integer.toString(count);
+        if (count < 1_000_000) return formatOneDecimal(count / 1000.0) + "K";
+        if (count < 1_000_000_000) return formatOneDecimal(count / 1_000_000.0) + "M";
+        return formatOneDecimal(count / 1_000_000_000.0) + "B";
+    }
+
+    // 保留 1 位小数，去除整数的 .0 后缀
+    private static String formatOneDecimal(double v) {
+        String s = String.format("%.1f", v);
+        if (s.endsWith(".0")) {
+            s = s.substring(0, s.length() - 2);
+        }
+        return s;
+    }
+
+    // 格式化概率为显示用 Component
+    private static Component formatProbability(@Nullable String probability) {
+        if (probability == null || probability.equals("?")) {
+            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
+        }
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
     }
 
     @Nullable
@@ -178,15 +227,16 @@ public final class ItemGridPanel implements PagePanel {
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
 
         for (int i = from; i < to; i++) {
-            GridItem item = items.get(i).item;
+            GridItem item = items.get(i);
             if (!item.unlocked()) {
+                // 未解锁物品不显示 tooltip
                 continue;
             }
             int visualIndex = i - from;
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
-                return new TooltipData(item.stack(), item.tooltipHint());
+                return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability());
             }
         }
         return null;
@@ -207,32 +257,17 @@ public final class ItemGridPanel implements PagePanel {
                 && mouseY >= cellY && mouseY < cellY + JournalLayout.GRID_CELL_HEIGHT;
     }
 
-    private static boolean isMouseOverIcon(int cellX, int cellY, double mouseX, double mouseY) {
-        int iconX = cellX + (JournalLayout.GRID_CELL_WIDTH - ICON_SIZE) / 2;
-        int iconY = cellY + ICON_TOP;
-        return mouseX >= iconX && mouseX < iconX + ICON_SIZE
-                && mouseY >= iconY && mouseY < iconY + ICON_SIZE;
-    }
-
-    // 格式化概率文字
-    public static String formatProbability(String probability) {
-        if (probability == null || probability.equals("?")) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown").getString();
+    /**
+     * Tooltip 数据：携带物品堆叠、附魔等原版 tooltip 之外需要追加的统计信息。
+     * <p>
+     * count 为 -1 表示无获取统计（如日志详情页），不追加 "Acquired" 行；
+     * probability 为 null 时不追加 "Drop Chance" 行。
+     */
+    public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
+        // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
+        public TooltipData(ItemStack stack, @Nullable Component hint) {
+            this(stack, hint, -1, null);
         }
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability).getString();
-    }
-
-    private static final class GridEntry {
-        private final GridItem item;
-        private int scrollTicks;
-        private boolean wasHovered;
-
-        private GridEntry(GridItem item) {
-            this.item = item;
-        }
-    }
-
-    public record TooltipData(ItemStack stack, @Nullable Component hint) {
     }
 
     // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）

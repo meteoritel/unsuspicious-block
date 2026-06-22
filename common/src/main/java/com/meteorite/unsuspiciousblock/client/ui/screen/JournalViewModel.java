@@ -41,11 +41,15 @@ public class JournalViewModel {
     private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
     private int selectedIndex = -1;
     private boolean selectionInitialized;
+    // 全局战利品表统计（不受 hideLocked / 搜索过滤影响），用于底部进度显示
+    private int totalTableCount;
+    private int globalUnlockedTableCount;
 
     // 目录搜索/排序状态
     private JournalSearchQuery currentSearch = JournalSearchQuery.EMPTY;
     private CatalogSorter.SortOrder currentSortOrder = CatalogSorter.SortOrder.DEFAULT;
     private boolean sortDescending = false;
+    private boolean hideLocked = false;
 
     // 日志搜索/排序状态
     private LogSorter.SortOrder currentLogSortOrder = LogSorter.SortOrder.TIME;
@@ -93,6 +97,14 @@ public class JournalViewModel {
 
     public void setSortDescending(boolean descending) {
         this.sortDescending = descending;
+    }
+
+    public boolean hideLocked() {
+        return hideLocked;
+    }
+
+    public void setHideLocked(boolean hideLocked) {
+        this.hideLocked = hideLocked;
     }
 
     // —— 日志搜索/排序访问器 ——
@@ -165,14 +177,14 @@ public class JournalViewModel {
         return this.tableViews.get(this.selectedIndex);
     }
 
+    // 全局已解锁战利品表数量（不受 hideLocked / 搜索过滤影响）
     public int unlockedTableCount() {
-        int unlocked = 0;
-        for (ArchaeologyJournalEntry tableView : this.tableViews) {
-            if (tableView.unlocked()) {
-                unlocked++;
-            }
-        }
-        return unlocked;
+        return this.globalUnlockedTableCount;
+    }
+
+    // 全局战利品表总数（不受 hideLocked / 搜索过滤影响）
+    public int totalTableCount() {
+        return this.totalTableCount;
     }
 
     public boolean isEmpty() {
@@ -235,12 +247,23 @@ public class JournalViewModel {
                 : ArchaeologyJournalClientState.getLastSelectedTableId();
 
         this.tableViews.clear();
+        // 重新统计全局解锁进度（不受 hideLocked / 搜索过滤影响）
+        int unlockedCount = 0;
         for (Map.Entry<ResourceLocation, TableDefinition> entry : this.catalogDefinitions.entrySet()) {
             ResourceLocation id = entry.getKey();
             TableDefinition definition = entry.getValue();
             ArchaeologyJournalState.TableProgress progress = this.state.getTable(id);
             ArchaeologyJournalLogState.TableLogHistory logHistory = this.logState.getTable(id);
             ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(id, definition, progress, logHistory);
+
+            if (view.unlocked()) {
+                unlockedCount++;
+            }
+
+            // 隐藏未解锁条目（用户偏好）
+            if (this.hideLocked && !view.unlocked()) {
+                continue;
+            }
 
             // 应用搜索过滤
             if (!this.currentSearch.isEmpty()) {
@@ -250,6 +273,8 @@ public class JournalViewModel {
             }
             this.tableViews.add(view);
         }
+        this.totalTableCount = this.catalogDefinitions.size();
+        this.globalUnlockedTableCount = unlockedCount;
 
         // 应用排序
         this.tableViews.sort(CatalogSorter.getComparator(this.currentSortOrder, this.sortDescending));

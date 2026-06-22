@@ -22,8 +22,6 @@ import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.TooltipFlag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
@@ -78,6 +76,7 @@ public class ArchaeologyJournalScreen extends Screen {
             this.catalogToolbar.setCurrentSortOrder(savedCatalogSortOrder);
         }
         this.catalogToolbar.setSortDescending(ArchaeologyJournalClientState.getLastCatalogSortDescending());
+        this.catalogToolbar.setHideLocked(ArchaeologyJournalClientState.getLastCatalogHideLocked());
         String savedCatalogSearchText = ArchaeologyJournalClientState.getLastCatalogSearchText();
         if (savedCatalogSearchText != null && !savedCatalogSearchText.isEmpty()) {
             this.catalogToolbar.setCurrentSearch(JournalSearchQuery.parse(savedCatalogSearchText));
@@ -111,6 +110,7 @@ public class ArchaeologyJournalScreen extends Screen {
         // 持久化目录工具栏状态
         ArchaeologyJournalClientState.setLastCatalogSortOrder(this.catalogToolbar.currentSortOrder());
         ArchaeologyJournalClientState.setLastCatalogSortDescending(this.catalogToolbar.sortDescending());
+        ArchaeologyJournalClientState.setLastCatalogHideLocked(this.catalogToolbar.hideLocked());
         ArchaeologyJournalClientState.setLastCatalogSearchText(this.catalogToolbar.currentSearch().rawQuery());
         // 持久化日志工具栏状态
         ArchaeologyJournalClientState.setLastLogSortOrder(this.logToolbar.currentSortOrder());
@@ -160,6 +160,7 @@ public class ArchaeologyJournalScreen extends Screen {
         boolean savedCatalogSortDescending = this.catalogToolbar.sortDescending();
         JournalSearchQuery savedCatalogSearch = this.catalogToolbar.currentSearch();
         boolean savedCatalogSearchExpanded = this.catalogToolbar.searchExpanded();
+        boolean savedCatalogHideLocked = this.catalogToolbar.hideLocked();
 
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
@@ -182,6 +183,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.catalogToolbar.setSortDescending(savedCatalogSortDescending);
         this.catalogToolbar.setCurrentSearch(savedCatalogSearch);
         this.catalogToolbar.setSearchExpanded(savedCatalogSearchExpanded);
+        this.catalogToolbar.setHideLocked(savedCatalogHideLocked);
 
         this.rightPage.setActiveTab(savedTab);
         this.rightPage.setPage(savedPage);
@@ -207,6 +209,7 @@ public class ArchaeologyJournalScreen extends Screen {
             this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
             this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
             this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
+            this.viewModel.setHideLocked(this.catalogToolbar.hideLocked());
             this.viewModel.setCurrentSearch(this.catalogToolbar.currentSearch());
             this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
             this.updateItemGridPanel();
@@ -226,7 +229,7 @@ public class ArchaeologyJournalScreen extends Screen {
         if (!this.viewModel.isEmpty()) {
             Component unlockedTables = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.unlocked_tables",
-                    this.viewModel.unlockedTableCount(), this.viewModel.tableViews().size());
+                    this.viewModel.unlockedTableCount(), this.viewModel.totalTableCount());
             int unlockedTablesWidth = this.font.width(unlockedTables);
             int unlockedTablesX = this.bookLayout.leftPageX()
                     + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
@@ -270,16 +273,32 @@ public class ArchaeologyJournalScreen extends Screen {
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
         if (tooltipData != null && !tooltipData.stack().isEmpty()) {
-            if (tooltipData.hint() == null || this.minecraft == null || this.minecraft.level == null || this.minecraft.player == null) {
-                guiGraphics.renderTooltip(this.font, tooltipData.stack(), mouseX, mouseY);
-            } else {
-                List<Component> tooltipLines = new ArrayList<>(tooltipData.stack().getTooltipLines(
-                        Item.TooltipContext.of(this.minecraft.level), this.minecraft.player,
-                        this.minecraft.options.advancedItemTooltips ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL));
-                tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY));
-                guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
+            // 关闭原版物品高级 tooltip（含附魔、NBT、"6 component(s)" 等），
+            // 仅保留物品名 + 本模组追加的统计/提示信息，并按类别上色
+            List<Component> tooltipLines = new ArrayList<>();
+            tooltipLines.add(tooltipData.stack().getHoverName().copy().withStyle(ChatFormatting.WHITE));
+            if (tooltipData.count() >= 0) {
+                tooltipLines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.acquired", tooltipData.count())
+                        .copy().withStyle(ChatFormatting.GREEN));
             }
+            if (tooltipData.probability() != null) {
+                tooltipLines.add(formatProbabilityComponent(tooltipData.probability())
+                        .copy().withStyle(ChatFormatting.GOLD));
+            }
+            if (tooltipData.hint() != null) {
+                tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+            }
+            guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
         }
+    }
+
+    // 格式化概率为 tooltip Component
+    private static Component formatProbabilityComponent(String probability) {
+        if (probability == null || probability.equals("?")) {
+            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
+        }
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
     }
 
     @Override
@@ -392,6 +411,7 @@ public class ArchaeologyJournalScreen extends Screen {
         // 同步目录工具栏状态到 ViewModel
         this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
         this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
+        this.viewModel.setHideLocked(this.catalogToolbar.hideLocked());
         this.viewModel.setCurrentSearch(this.catalogToolbar.currentSearch());
         this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
         updateItemGridPanel();

@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.helper;
 
-import com.meteorite.unsuspiciousblock.util.GameTimeFormatHelper;
+import com.meteorite.unsuspiciousblock.world.GameTimeFormatHelper;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.locale.Language;
@@ -22,7 +22,7 @@ public final class JournalFormatHelper {
 
     public static Component formatGameTime(String key, long gameTime, long dayTime) {
         GameTimeFormatHelper.GameTimeParts parts = GameTimeFormatHelper.fromTime(gameTime, dayTime);
-        return Component.translatable(key, parts.day(), parts.hour(), parts.minute());
+        return Component.translatable(key, parts.day(), parts.formattedClock());
     }
 
     public static Component formatLootSource(@Nullable LootSourceType lootSource) {

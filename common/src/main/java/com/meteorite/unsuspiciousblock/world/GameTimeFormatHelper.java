@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.util;
+package com.meteorite.unsuspiciousblock.world;
 
 /**
  * 游戏时间格式化工具——将游戏刻（gameTime / dayTime）转换为可读的天 / 时 / 分。
@@ -29,5 +29,9 @@ public final class GameTimeFormatHelper {
     }
 
     public record GameTimeParts(int day, int hour, int minute) {
+        // 格式化为零补齐的 HH:MM 时钟字符串，确保多行时间刻度对齐
+        public String formattedClock() {
+            return String.format("%02d:%02d", hour, minute);
+        }
     }
 }

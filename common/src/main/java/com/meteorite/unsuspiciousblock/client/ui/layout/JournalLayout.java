@@ -17,7 +17,7 @@ public final class JournalLayout {
     public static final int SEARCH_QUICK_BAR_HEIGHT = 14; // 收起态/展开态工具栏行高
     public static final int SEARCH_ICON_SIZE = 14;      // 放大镜图标按钮尺寸 (正方形)
     public static final int SORT_ICON_SIZE = 14;       // 排序图标按钮尺寸 (正方形)
-    public static final int SEARCH_FIELD_WIDTH = 94;   // 展开态文本框宽度（不含图标按钮）
+    public static final int SEARCH_FIELD_WIDTH = 88;   // 展开态文本框宽度（不含图标按钮；缩短以为 hideLocked 按钮腾出空间）
     public static final int SEARCH_BAR_HEIGHT = 12;    // 文本框自身高度
     public static final int TOOLBAR_GAP = 2;           // 图标按钮之间间距
     public static final int TOOLBAR_Y = 6;             // 工具栏距左页顶部偏移
@@ -37,10 +37,10 @@ public final class JournalLayout {
 
     // —— 右侧网格 ——
     public static final int GRID_CELLS_PER_ROW = 2;
-    public static final int GRID_ROWS_PER_PAGE = 3;
+    public static final int GRID_ROWS_PER_PAGE = 4;
     public static final int GRID_ITEMS_PER_PAGE = GRID_CELLS_PER_ROW * GRID_ROWS_PER_PAGE;
     public static final int GRID_CELL_WIDTH = 74;
-    public static final int GRID_CELL_HEIGHT = 56;
+    public static final int GRID_CELL_HEIGHT = 48;
     public static final int GRID_COLUMN_GAP = 2;
     // 右页内容顶部与左页工具栏行对齐（书签已移至右边缘，顶部空间回收）
     public static final int GRID_TOP = TOOLBAR_Y;

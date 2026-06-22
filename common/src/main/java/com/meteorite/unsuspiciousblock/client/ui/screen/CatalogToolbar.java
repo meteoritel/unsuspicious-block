@@ -25,6 +25,7 @@ public class CatalogToolbar {
     private CatalogSorter.SortOrder currentSortOrder = CatalogSorter.SortOrder.DEFAULT;
     private boolean sortDescending = false;
     private boolean searchExpanded = false;
+    private boolean hideLocked = false;
     // 标记搜索框是否因用户点击刚被打开，需要在 createWidgets 时自动聚焦
     private boolean searchJustOpened = false;
 
@@ -32,6 +33,7 @@ public class CatalogToolbar {
     private IconButton searchToggleButton;
     private IconButton sortButton;
     private IconButton sortOrderButton;
+    private IconButton hideLockedButton;
     private EditBox searchField;
 
     // 回调
@@ -77,6 +79,14 @@ public class CatalogToolbar {
         this.searchExpanded = expanded;
     }
 
+    public boolean hideLocked() {
+        return hideLocked;
+    }
+
+    public void setHideLocked(boolean hideLocked) {
+        this.hideLocked = hideLocked;
+    }
+
     public EditBox searchField() {
         return searchField;
     }
@@ -119,6 +129,29 @@ public class CatalogToolbar {
             this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
         }
         onRebuildViewModels.run();
+    }
+
+    /** 切换是否隐藏未解锁条目 */
+    public void toggleHideLocked() {
+        this.hideLocked = !this.hideLocked;
+        if (this.hideLockedButton != null) {
+            this.hideLockedButton.setIconChar(hideLockedIcon(this.hideLocked));
+            this.hideLockedButton.setTooltip(hideLockedTooltip(this.hideLocked));
+        }
+        onRebuildViewModels.run();
+    }
+
+    // 隐藏未解锁按钮的图标字符：眼睛（显示）/ 划线眼睛（隐藏）
+    private static char hideLockedIcon(boolean hideLocked) {
+        return hideLocked ? '⊘' : '◉';
+    }
+
+    // 隐藏未解锁按钮的 tooltip
+    private static Component hideLockedTooltip(boolean hideLocked) {
+        String key = hideLocked
+                ? "screen.unsuspiciousblock.archaeology_journal.hide_locked.on"
+                : "screen.unsuspiciousblock.archaeology_journal.hide_locked.off";
+        return Component.translatable(key);
     }
 
     /** 处理 ESC 键，返回 true 表示已消费事件 */
@@ -194,6 +227,17 @@ public class CatalogToolbar {
         );
         screen.registerWidget(this.sortOrderButton);
 
+        // 隐藏未解锁条目按钮
+        int hideLockedX = sortDirectionX + JournalLayout.SORT_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
+        this.hideLockedButton = new IconButton(
+                hideLockedX, toolbarY,
+                JournalLayout.SORT_ICON_SIZE,
+                hideLockedIcon(this.hideLocked),
+                hideLockedTooltip(this.hideLocked),
+                this::toggleHideLocked
+        );
+        screen.registerWidget(this.hideLockedButton);
+
         // 搜索框
         if (this.searchExpanded) {
             String savedText = this.searchField != null ? this.searchField.getValue() : "";
@@ -247,6 +291,9 @@ public class CatalogToolbar {
         }
         if (this.searchToggleButton != null) {
             this.searchToggleButton.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+        if (this.hideLockedButton != null) {
+            this.hideLockedButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
     }
 }

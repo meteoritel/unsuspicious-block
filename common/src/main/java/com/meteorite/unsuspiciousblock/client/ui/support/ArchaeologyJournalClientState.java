@@ -50,6 +50,7 @@ public final class ArchaeologyJournalClientState {
     @Nullable
     private static volatile CatalogSorter.SortOrder lastCatalogSortOrder;
     private static volatile boolean lastCatalogSortDescending;
+    private static volatile boolean lastCatalogHideLocked;
     private static volatile String lastCatalogSearchText = "";
     @Nullable
     private static volatile LogSorter.SortOrder lastLogSortOrder;
@@ -236,6 +237,14 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastCatalogSortDescending(boolean descending) {
         lastCatalogSortDescending = descending;
+    }
+
+    public static boolean getLastCatalogHideLocked() {
+        return lastCatalogHideLocked;
+    }
+
+    public static void setLastCatalogHideLocked(boolean hideLocked) {
+        lastCatalogHideLocked = hideLocked;
     }
 
     @Nullable
