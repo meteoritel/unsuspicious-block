@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
-import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -102,8 +103,12 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             ArchaeologyJournalServerCatalog.invalidate();
-            PlacedBoneBlockTracker.clearPendingPlayerBreaks();
+            NaturalBoneBlockTracker.clearPendingPlayerBreaks();
         });
+
+        // chunk 首次生成时扫描骨块并标记为自然生成
+        ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->
+                NaturalBoneBlockTracker.scanChunk(world, chunk.getPos().x, chunk.getPos().z));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));

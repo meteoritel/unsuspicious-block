@@ -8,7 +8,6 @@
     "container.AbstractContainerMenuMixin",
     "container.BaseContainerBlockEntityMixin",
     "block.BlockBehaviourMixin",
-    "block.BlockItemMixin",
     "block.BlockMixin",
     "block.BrushableBlockEntityMixin",
     "catfavor.CatFeedMixin",
@@ -32,7 +31,8 @@
     "interaction.ShearsItemMixin",
     "interaction.SheepMixin",
     "container.SmithingMenuMixin",
-    "catfavor.TamableAnimalTameMixin"
+    "catfavor.TamableAnimalTameMixin",
+    "StructureTemplateMixin"
   ],
   "client": [],
   "server": [],

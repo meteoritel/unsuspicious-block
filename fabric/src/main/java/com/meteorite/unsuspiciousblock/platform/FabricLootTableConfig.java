@@ -20,7 +20,6 @@ import java.util.List;
 public class FabricLootTableConfig implements ILootTableConfig {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Type LIST_STRING_TYPE = new TypeToken<List<String>>() {}.getType();
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final List<String> DEFAULT_PREFIXES = List.of("archaeology/", "archeology/", "gameplay/fishing/");
     private static final int DEFAULT_MAX_LOG_ENTRIES_PER_TABLE = 1024;
@@ -89,8 +88,20 @@ public class FabricLootTableConfig implements ILootTableConfig {
         return FabricLoader.getInstance().getConfigDir().resolve(CONFIG_FILE_NAME);
     }
 
-    private record ConfigData(List<String> archaeology_path_prefixes,
-                              int max_log_entries_per_table,
-                              long tracking_timeout_ticks) {
+    private static final class ConfigData {
+        @SuppressWarnings("unused")
+        List<String> archaeology_path_prefixes;
+        @SuppressWarnings("unused")
+        int max_log_entries_per_table;
+        @SuppressWarnings("unused")
+        long tracking_timeout_ticks;
+
+        ConfigData(List<String> archaeology_path_prefixes,
+                   int max_log_entries_per_table,
+                   long tracking_timeout_ticks) {
+            this.archaeology_path_prefixes = archaeology_path_prefixes;
+            this.max_log_entries_per_table = max_log_entries_per_table;
+            this.tracking_timeout_ticks = tracking_timeout_ticks;
+        }
     }
 }

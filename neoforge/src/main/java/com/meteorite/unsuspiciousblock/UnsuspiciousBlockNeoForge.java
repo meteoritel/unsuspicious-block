@@ -3,7 +3,8 @@ package com.meteorite.unsuspiciousblock;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
-import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -14,6 +15,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -23,6 +25,7 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -35,6 +38,7 @@ import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.village.WandererTradesEvent;
@@ -126,6 +130,7 @@ public class UnsuspiciousBlockNeoForge {
         MENUS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
+        NeoForgeBoneBlockTracker.ATTACHMENT_TYPES.register(modEventBus);
 
         modEventBus.addListener(this::syncCommonItemRefs);
         modEventBus.addListener(this::registerPayloads);
@@ -207,7 +212,20 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
         ArchaeologyJournalServerCatalog.invalidate();
-        PlacedBoneBlockTracker.clearPendingPlayerBreaks();
+        NaturalBoneBlockTracker.clearPendingPlayerBreaks();
+    }
+
+    // chunk 首次生成时扫描骨块并标记为自然生成
+    @SubscribeEvent
+    public void onChunkLoad(ChunkEvent.Load event) {
+        if (!event.isNewChunk()) {
+            return;
+        }
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        ChunkAccess chunk = event.getChunk();
+        NaturalBoneBlockTracker.scanChunk(serverLevel, chunk.getPos().x, chunk.getPos().z);
     }
 
     @SubscribeEvent

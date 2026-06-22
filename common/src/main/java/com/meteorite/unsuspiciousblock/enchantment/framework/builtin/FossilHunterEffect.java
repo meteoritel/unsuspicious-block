@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.enchantment.framework.builtin;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentEffect;
-import com.meteorite.unsuspiciousblock.world.PlacedBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -24,7 +24,8 @@ import java.util.List;
 /**
  * 化石猎手附魔效果：玩家破坏自然生成的骨块时，有概率额外 roll 一份对应维度的骨块掉落表。
  * <p>
- * 玩家放置的骨块（经 {@link PlacedBoneBlockTracker} 标记）不触发额外奖励，仅消费放置标记。
+ * 自然生成的判定由 {@link NaturalBoneBlockTracker} 负责——仅 chunk 首次生成时记录的位置才视为自然生成，
+ * 玩家放置或其它模组机器放置的骨块均不触发额外奖励。
  */
 public final class FossilHunterEffect implements EnchantmentEffect {
     private static final double EXTRA_LOOT_CHANCE = 0.50D;
@@ -45,10 +46,15 @@ public final class FossilHunterEffect implements EnchantmentEffect {
         }
 
         ServerLevel level = triggerCtx.level;
-        // 玩家放置的骨块只清除标记，不触发额外奖励；创造模式或关闭方块掉落时也不触发
-        if (PlacedBoneBlockTracker.consumePlaced(level, pos)
-                || triggerCtx.player.isCreative()
+        // 先消费自然生成标记——无论是否发放奖励，被破坏的自然骨块都不应保留标记
+        boolean wasNatural = NaturalBoneBlockTracker.consumeNatural(level, pos);
+        // 创造模式或关闭方块掉落时不触发额外奖励
+        if (triggerCtx.player.isCreative()
                 || !level.getGameRules().getBoolean(net.minecraft.world.level.GameRules.RULE_DOBLOCKDROPS)) {
+            return;
+        }
+        // 非自然生成则不额外掉落
+        if (!wasNatural) {
             return;
         }
 
