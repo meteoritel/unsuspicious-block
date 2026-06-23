@@ -13,6 +13,7 @@ import net.minecraft.world.level.chunk.ImposterProtoChunk;
 import net.minecraft.world.level.chunk.storage.ChunkSerializer;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -26,15 +27,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(ChunkSerializer.class)
 public abstract class ChunkSerializerMixin {
 
+    @Unique
     private static final String TAG_NATURAL_BONE_BLOCKS =
             Constants.MOD_ID + ":natural_bone_blocks";
 
     // 取 chunk 实际承载字段的 accessor——ImposterProtoChunk 委托到 wrapped LevelChunk
+    @Unique
     private static IBoneBlockChunkAccess unsuspiciousblock$accessor(ChunkAccess chunk) {
         if (chunk instanceof ImposterProtoChunk imposter) {
-            return (IBoneBlockChunkAccess) (Object) imposter.getWrapped();
+            return (IBoneBlockChunkAccess) imposter.getWrapped();
         }
-        return (IBoneBlockChunkAccess) (Object) chunk;
+        return (IBoneBlockChunkAccess) chunk;
     }
 
     @Inject(method = "write", at = @At("TAIL"))

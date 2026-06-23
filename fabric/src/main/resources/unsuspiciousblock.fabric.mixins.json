@@ -1,13 +1,14 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.meteorite.unsuspiciousblock.mixin.chunk",
+  "package": "com.meteorite.unsuspiciousblock.mixin",
   "compatibilityLevel": "JAVA_21",
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
-    "ChunkAccessMixin",
-    "ChunkSerializerMixin",
-    "LevelChunkMixin"
+    "chunk.ChunkAccessMixin",
+    "chunk.ChunkSerializerMixin",
+    "chunk.LevelChunkMixin",
+    "interaction.SheepMixin"
   ],
   "client": [],
   "server": [],

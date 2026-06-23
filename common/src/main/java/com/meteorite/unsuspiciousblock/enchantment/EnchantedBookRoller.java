@@ -42,10 +42,10 @@ public final class EnchantedBookRoller {
         ItemEnchantments.Mutable result = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
 
         float roll = random.nextFloat();
-        if (roll < 0.30f) {
+        if (roll < 0.20f) {
             // 情况(1)：单一附魔——随机一种本模组附魔
             applyRandomModEnchantment(result, lookup, random);
-        } else if (roll < 0.60f) {
+        } else if (roll < 0.50f) {
             // 情况(2)：多重——先一种本模组附魔，再叠加 10-20 经验等级的原版随机附魔
             applyRandomModEnchantment(result, lookup, random);
             applyVanillaRandom(result, lookup, random, 10 + random.nextInt(11));

@@ -18,6 +18,7 @@ public class FabricEnchantmentEventAdapter implements IEnchantmentEventAdapter {
                 TriggerContext ctx = TriggerContext.builder(sp, sp.serverLevel())
                         .pos(pos)
                         .blockState(state)
+                        .tool(sp.getMainHandItem())
                         .build();
                 EnchantmentManager.dispatch(TriggerType.BLOCK_BREAK, ctx);
             }

@@ -65,7 +65,7 @@ public final class EnchantmentManager {
             int level = findEnchantmentLevel(ctx.player, holder);
             if (level <= 0) continue;
 
-            ItemStack enchantedItem = findEnchantedItem(ctx.player, holder);
+            ItemStack enchantedItem = findEnchantedItem(ctx);
             EffectContext<?> effectCtx = new EffectContext<>(
                     ctx, enchantedItem, level, entry.enchantmentKey, null);
             entry.effect.apply(effectCtx);
@@ -87,7 +87,7 @@ public final class EnchantmentManager {
             int level = findEnchantmentLevel(ctx.player, holder);
             if (level <= 0) continue;
 
-            ItemStack enchantedItem = findEnchantedItem(ctx.player, holder);
+            ItemStack enchantedItem = findEnchantedItem(ctx);
             EffectContext<T> valueCtx = new EffectContext<>(
                     ctx, enchantedItem, level, entry.enchantmentKey, currentValue);
             // 类型安全：注册时 T 已由调用方约定，此处按约定类型调用
@@ -104,32 +104,17 @@ public final class EnchantmentManager {
                 .orElse(null);
     }
 
-    // 从玩家装备栏（主手、副手、盔甲）中查找最高附魔等级
+    // 按附魔定义中的 slots 语义统计玩家装备上的最高附魔等级
     private static int findEnchantmentLevel(ServerPlayer player, Holder<Enchantment> enchantment) {
-        int maxLevel = 0;
-        for (ItemStack stack : iterableEquipment(player)) {
-            int level = EnchantmentHelper.getItemEnchantmentLevel(enchantment, stack);
-            if (level > maxLevel) maxLevel = level;
-        }
-        return maxLevel;
+        return EnchantmentHelper.getEnchantmentLevel(enchantment, player);
     }
 
-    // 查找带有指定附魔的装备物品
-    private static ItemStack findEnchantedItem(ServerPlayer player, Holder<Enchantment> enchantment) {
-        for (ItemStack stack : iterableEquipment(player)) {
-            if (EnchantmentHelper.getItemEnchantmentLevel(enchantment, stack) > 0) {
-                return stack;
-            }
+    // 查找触发本次效果的附魔物品——优先使用触发上下文中的实际工具，退化到主手物品
+    private static ItemStack findEnchantedItem(TriggerContext ctx) {
+        if (ctx.tool != null && !ctx.tool.isEmpty()) {
+            return ctx.tool;
         }
-        return ItemStack.EMPTY;
-    }
-
-    private static Iterable<ItemStack> iterableEquipment(ServerPlayer player) {
-        List<ItemStack> equipment = new ArrayList<>(6);
-        equipment.add(player.getMainHandItem());
-        equipment.add(player.getOffhandItem());
-        equipment.addAll(player.getInventory().armor);
-        return equipment;
+        return ctx.player.getMainHandItem();
     }
 
     private record EffectEntry(ResourceKey<Enchantment> enchantmentKey, EnchantmentEffect effect) {}

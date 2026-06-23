@@ -28,8 +28,6 @@
     "container.RandomizableContainerMixin",
     "catfavor.ServerPlayerCatFavorStateMixin",
     "journal.ServerPlayerJournalStateMixin",
-    "interaction.ShearsItemMixin",
-    "interaction.SheepMixin",
     "container.SmithingMenuMixin",
     "catfavor.TamableAnimalTameMixin",
     "StructureTemplateMixin"

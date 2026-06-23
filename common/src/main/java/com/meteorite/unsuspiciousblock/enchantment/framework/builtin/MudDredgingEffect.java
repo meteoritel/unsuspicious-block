@@ -15,7 +15,7 @@ import net.minecraft.world.level.storage.loot.LootTable;
 import java.util.Set;
 
 /**
- * 淤泥 dredging 附魔效果：钓鱼收杆时概率将原版战利品表替换为自定义沼泽掉落表。
+ * 泥地打捞 附魔效果：钓鱼收杆时概率将原版战利品表替换为自定义沼泽掉落表。
  * <p>
  * 实现 {@link EnchantmentValueEffect}&lt;{@link ResourceKey}&lt;{@link LootTable}&gt;&gt;，
  * 由 {@link com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager#dispatchValue}

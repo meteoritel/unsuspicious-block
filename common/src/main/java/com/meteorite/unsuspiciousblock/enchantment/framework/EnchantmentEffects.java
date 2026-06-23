@@ -24,9 +24,6 @@ public final class EnchantmentEffects {
         // textile_recovery：剪羊毛（副作用）
         EnchantmentManager.register(TriggerType.ENTITY_SHEAR, ModEnchantments.TEXTILE_RECOVERY,
                 new TextileRecoveryEffect());
-        // textile_recovery：剪树叶（副作用）
-        EnchantmentManager.register(TriggerType.TOOL_MINE_BLOCK, ModEnchantments.TEXTILE_RECOVERY,
-                new TextileRecoveryEffect());
 
         // mud_dredging：钓鱼换表（值变换）
         EnchantmentManager.registerValueEffect(TriggerType.FISHING_LOOT_TABLE_QUERY,
