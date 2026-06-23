@@ -393,6 +393,10 @@ public class ArchaeologyJournalScreen extends Screen {
         boolean isLogListMode = isLogTab && !this.rightPage.isShowingLogDetail();
         this.logToolbar.createWidgets(this, this.bookLayout, this.font, isLogListMode, this.rightPage);
 
+        // 日志详情页返回按钮（IconButton）
+        this.rightPage.getLogDetailPanel().createBackButton(this::registerWidget,
+                () -> this.rightPage.restoreLogSelection(null, false));
+
         this.syncButtonState();
     }
 
@@ -471,6 +475,15 @@ public class ArchaeologyJournalScreen extends Screen {
                 && !this.rightPage.isShowingLogDetail();
         boolean logHasEntries = isLogListMode && this.rightPage.getLogPanel().hasVisibleEntries();
         this.logToolbar.syncVisibility(isLogListMode, logHasEntries);
+
+        // 日志详情页返回按钮可见性：仅在日志详情模式下显示
+        boolean isLogDetailMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
+                && this.rightPage.isShowingLogDetail();
+        var backBtn = this.rightPage.getLogDetailPanel().getBackButton();
+        if (backBtn != null) {
+            backBtn.visible = isLogDetailMode;
+            backBtn.active = isLogDetailMode;
+        }
     }
 
     private static final class JournalPageButton extends PageButton {

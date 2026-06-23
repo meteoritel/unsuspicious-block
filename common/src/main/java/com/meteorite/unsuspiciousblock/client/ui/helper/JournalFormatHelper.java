@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.helper;
 import com.meteorite.unsuspiciousblock.world.GameTimeFormatHelper;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -38,6 +39,30 @@ public final class JournalFormatHelper {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_structure").getString();
         }
         return formatTranslatedIdentifier(id, "structure");
+    }
+
+    /**
+     * 结构信息三级降级解析：
+     * 1. structureId 非空 → 结构名
+     * 2. structureId 为空但 tableId 为考古战利品表 → 战利品表展示名（对应 feature，如沙漠水井）
+     * 3. 均为空 → 未知
+     * 返回 StructureInfo 包含展示名、是否为 feature 降级、是否为未知。
+     */
+    public static StructureInfo formatStructureOrFeature(@Nullable ResourceLocation structureId,
+                                                         @Nullable ResourceLocation tableId) {
+        if (structureId != null) {
+            return new StructureInfo(formatStructureName(structureId), false, false);
+        }
+        if (tableId != null && LootTableNames.isArchaeologyLootTable(tableId)) {
+            return new StructureInfo(LootTableNames.resolveDisplayName(tableId).getString(), true, false);
+        }
+        return new StructureInfo(
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_structure").getString(),
+                false, true);
+    }
+
+    /** 结构信息解析结果：展示名 + 是否为 feature 降级 + 是否为未知 */
+    public record StructureInfo(String displayName, boolean isFeature, boolean isUnknown) {
     }
 
     public static String formatBiomeName(@Nullable ResourceLocation id) {

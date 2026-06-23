@@ -114,11 +114,11 @@ public final class RightPageContainer {
         ExcavationLogEntry selectedEntry = entryId != null ? this.logPanel.findEntry(entryId) : null;
         if (detailMode && selectedEntry != null) {
             this.logMode = LogMode.DETAIL;
-            this.logDetailPanel.setEntry(selectedEntry);
+            this.logDetailPanel.setEntry(selectedEntry, this.currentTableId);
         } else {
             this.logMode = LogMode.LIST;
             this.selectedLogEntryId = null;
-            this.logDetailPanel.setEntry(null);
+            this.logDetailPanel.setEntry(null, null);
         }
         syncPageIndicator();
     }
@@ -183,8 +183,8 @@ public final class RightPageContainer {
             return false;
         }
         if (this.logMode == LogMode.DETAIL) {
+            // 返回按钮由 IconButton widget 处理；这里仅处理复制坐标按钮点击
             if (this.logDetailPanel.handleClick(mouseX, mouseY)) {
-                restoreLogSelection(null, false);
                 return true;
             }
             return false;
@@ -195,7 +195,7 @@ public final class RightPageContainer {
         }
         this.selectedLogEntryId = clickedEntry.entryId();
         this.logMode = LogMode.DETAIL;
-        this.logDetailPanel.setEntry(clickedEntry);
+        this.logDetailPanel.setEntry(clickedEntry, this.currentTableId);
         syncPageIndicator();
         return true;
     }
@@ -258,6 +258,10 @@ public final class RightPageContainer {
         return this.logPanel;
     }
 
+    public LogDetailPanel getLogDetailPanel() {
+        return this.logDetailPanel;
+    }
+
     @Nullable
     public UUID getSelectedLogEntryId() {
         return this.selectedLogEntryId;
@@ -280,10 +284,12 @@ public final class RightPageContainer {
         return null;
     }
 
-    // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮），需在 super.render 之后调用
+    // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮、返回按钮、详情页复制按钮），需在 super.render 之后调用
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         if (this.activeTab == Tab.LOG && this.logMode == LogMode.LIST) {
             this.logPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
+        } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
+            this.logDetailPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
         }
     }
 }

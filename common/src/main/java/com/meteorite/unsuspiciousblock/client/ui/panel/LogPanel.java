@@ -8,8 +8,8 @@ import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -316,9 +316,9 @@ public final class LogPanel implements PagePanel {
             if (row instanceof EntryRow(LogEntryState state)) {
                 if (mouseX >= leftX - 4 && mouseX <= leftX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
                         && mouseY >= rowY && mouseY <= rowY + JournalLayout.LOG_ROW_HEIGHT) {
-                    // 优先判定复制坐标按钮命中：命中则复制 /tp @p x y z 到剪贴板，不进入详情
+                    // 优先判定复制坐标按钮命中：命中则复制传送指令到剪贴板，不进入详情
                     if (isCopyButtonHit(leftX - 4, rowY, mouseX, mouseY)) {
-                        copyTeleportCommand(state.entry);
+                        CopyCoordinateButton.copyCommand(state.entry);
                         return null;
                     }
                     return state.entry;
@@ -332,26 +332,9 @@ public final class LogPanel implements PagePanel {
     // 判定鼠标是否落在某条目的复制坐标按钮上
     private static boolean isCopyButtonHit(int bgX, int rowY, double mouseX, double mouseY) {
         int btnX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
-                - JournalLayout.LOG_ENTRY_COPY_BTN_WIDTH - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD;
+                - CopyCoordinateButton.WIDTH - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD;
         int btnY = rowY + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET;
-        return mouseX >= btnX && mouseX <= btnX + JournalLayout.LOG_ENTRY_COPY_BTN_WIDTH
-                && mouseY >= btnY && mouseY <= btnY + JournalLayout.LOG_ENTRY_COPY_BTN_HEIGHT;
-    }
-
-    // 复制 /tp @p x y z 到玩家剪贴板，播放 UI 按钮音效并通过 actionbar 反馈
-    private static void copyTeleportCommand(ExcavationLogEntry entry) {
-        var pos = entry.pos();
-        String command = String.format("/tp @p %d %d %d", pos.getX(), pos.getY(), pos.getZ());
-        Minecraft minecraft = Minecraft.getInstance();
-        minecraft.keyboardHandler.setClipboard(command);
-        // 播放原版 UI 按钮点击音效，给玩家明确的操作反馈
-        minecraft.getSoundManager().play(
-                net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
-                        net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
-        if (minecraft.player != null) {
-            minecraft.player.displayClientMessage(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_success", command), true);
-        }
+        return CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
     }
 
     @Nullable
@@ -429,11 +412,10 @@ public final class LogPanel implements PagePanel {
 
         // 复制坐标按钮：第一行右侧
         int btnX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
-                - JournalLayout.LOG_ENTRY_COPY_BTN_WIDTH - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD;
+                - CopyCoordinateButton.WIDTH - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD;
         int btnY = rowY + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET;
-        boolean btnHovered = mouseX >= btnX && mouseX <= btnX + JournalLayout.LOG_ENTRY_COPY_BTN_WIDTH
-                && mouseY >= btnY && mouseY <= btnY + JournalLayout.LOG_ENTRY_COPY_BTN_HEIGHT;
-        renderCopyButton(guiGraphics, btnX, btnY, btnHovered);
+        boolean btnHovered = CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
+        CopyCoordinateButton.render(guiGraphics, btnX, btnY, btnHovered);
         if (btnHovered) {
             this.copyBtnHoverX = btnX;
         }
@@ -447,7 +429,7 @@ public final class LogPanel implements PagePanel {
         ScrollTextHelper.draw(guiGraphics, font, timeText,
                 textX, rowY + 3, timeMaxWidth, timeColor, hovered, state.scrollTicks, false);
 
-        // 行2：维度名称（x,y,z）—— 不再显示结构名（与战利品表名重复）
+        // 行2：维度名称（x,y,z）
         var pos = state.entry.pos();
         String dimensionText = JournalFormatHelper.formatDimensionName(state.entry.dimensionId());
         String posText = String.format("(%d,%d,%d)", pos.getX(), pos.getY(), pos.getZ());
@@ -456,40 +438,12 @@ public final class LogPanel implements PagePanel {
                 textX, rowY + 14, textWidth, JournalLayout.LOG_ENTRY_DIM_POS_COLOR, hovered, state.scrollTicks, false);
     }
 
-    // 绘制简洁的复制坐标按钮：圆角矩形背景 + 两重叠方块图标
-    private void renderCopyButton(GuiGraphics guiGraphics, int btnX, int btnY, boolean hovered) {
-        int w = JournalLayout.LOG_ENTRY_COPY_BTN_WIDTH;
-        int h = JournalLayout.LOG_ENTRY_COPY_BTN_HEIGHT;
-        int bg = hovered ? JournalLayout.LOG_ENTRY_COPY_BTN_BG_HOVER : JournalLayout.LOG_ENTRY_COPY_BTN_BG_NORMAL;
-        guiGraphics.fill(btnX, btnY, btnX + w, btnY + h, bg);
-        // 边框（4 条 1px 线）
-        guiGraphics.fill(btnX, btnY, btnX + w, btnY + 1, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        guiGraphics.fill(btnX, btnY + h - 1, btnX + w, btnY + h, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        guiGraphics.fill(btnX, btnY, btnX + 1, btnY + h, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        guiGraphics.fill(btnX + w - 1, btnY, btnX + w, btnY + h, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        // 图标：两个重叠的方块轮廓（复制符号）
-        int iconColor = hovered ? JournalLayout.LOG_ENTRY_COPY_BTN_ICON_HOVER_COLOR
-                : JournalLayout.LOG_ENTRY_COPY_BTN_ICON_COLOR;
-        drawSquareOutline(guiGraphics, btnX + 3, btnY + 2, 5, iconColor);
-        drawSquareOutline(guiGraphics, btnX + 6, btnY + 3, 5, iconColor);
-    }
-
-    // 绘制 1px 描边的正方形：size 为边长（含描边）
-    private static void drawSquareOutline(GuiGraphics guiGraphics, int x, int y, int size, int color) {
-        guiGraphics.fill(x, y, x + size, y + 1, color);            // top
-        guiGraphics.fill(x, y + size - 1, x + size, y + size, color); // bottom
-        guiGraphics.fill(x, y, x + 1, y + size, color);            // left
-        guiGraphics.fill(x + size - 1, y, x + size, y + size, color); // right
-    }
-
     // 渲染复制按钮的悬停 tooltip（由外部在 super.render 之后调用，确保位于最上层）
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         if (this.copyBtnHoverX == COPY_BTN_HOVER_NONE) {
             return;
         }
-        Component tooltip = Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_tooltip");
-        guiGraphics.renderTooltip(font, tooltip, mouseX, mouseY);
+        CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
     }
 
     public boolean hasVisibleEntries() {

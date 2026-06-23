@@ -4,8 +4,10 @@ import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -35,10 +37,30 @@ public final class SuspiciousReaderRangeHighlight {
     private static final float SCAN_B = 0.15F;
     private static final float SCAN_A = 0.7F;
 
+    // 自定义无深度测试的线条 RenderType：用于扫描结果红框透视（穿透墙壁可见）。
+    // 直接调用 RenderSystem.disableDepthTest() 无效——RenderType.lines() 在 endBatch
+    // 时会通过 setupRenderState() 重新启用深度测试覆盖手动禁用，故必须用自定义 RenderType。
+    // 由于 RenderType.create(...) 为包级私有，这里通过 public 构造器创建匿名子类：
+    // setup 阶段复用 lines() 的全部状态（着色器、线宽、混合等），再禁用深度测试。
+    private static final RenderType NO_DEPTH_LINES = new RenderType(
+            "unsuspicious_no_depth_lines",
+            DefaultVertexFormat.POSITION_COLOR_NORMAL,
+            VertexFormat.Mode.LINES,
+            256,
+            false,
+            false,
+            () -> {
+                RenderType.lines().setupRenderState();
+                RenderSystem.disableDepthTest();
+            },
+            RenderType.lines()::clearRenderState
+    ) {
+    };
+
     private SuspiciousReaderRangeHighlight() {
     }
 
-    // 在世界渲染阶段绘制范围扫描立方体边框（按住 Shift 时）与扫描结果红色描边，禁用深度测试实现透视
+    // 在世界渲染阶段绘制范围扫描立方体边框（按住 Shift 时，常规深度测试）与扫描结果红色描边（透视，穿透墙壁可见）
     public static void render(PoseStack poseStack, Camera camera) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
@@ -46,22 +68,19 @@ public final class SuspiciousReaderRangeHighlight {
 
         Vec3 camPos = camera.getPosition();
         MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-        VertexConsumer consumer = bufferSource.getBuffer(RenderType.lines());
-        boolean drewAny = false;
 
-        // 1. 范围框预览：仅按住 Shift 且手持范围模式扫描仪、准星对准方块时显示
+        // 1. 范围框预览：仅按住 Shift 且手持范围模式扫描仪、准星对准方块时显示（无需透视，使用默认 lines()）
         if (player.isShiftKeyDown()) {
-            drewAny |= renderRangeBox(poseStack, consumer, player, mc, camPos);
+            VertexConsumer linesConsumer = bufferSource.getBuffer(RenderType.lines());
+            if (renderRangeBox(poseStack, linesConsumer, player, mc, camPos)) {
+                bufferSource.endBatch(RenderType.lines());
+            }
         }
 
-        // 2. 扫描结果红色描边：基于客户端缓存的可疑方块列表（闪烁阶段可能返回空）
-        drewAny |= renderScanResults(poseStack, consumer, camPos);
-
-        if (drewAny) {
-            // 透视效果：禁用深度测试，让边框可透过墙壁可见
-            RenderSystem.disableDepthTest();
-            bufferSource.endBatch(RenderType.lines());
-            RenderSystem.enableDepthTest();
+        // 2. 扫描结果红色描边：使用无深度测试 RenderType 实现透视（闪烁阶段可能返回空）
+        VertexConsumer noDepthConsumer = bufferSource.getBuffer(NO_DEPTH_LINES);
+        if (renderScanResults(poseStack, noDepthConsumer, camPos)) {
+            bufferSource.endBatch(NO_DEPTH_LINES);
         }
     }
 

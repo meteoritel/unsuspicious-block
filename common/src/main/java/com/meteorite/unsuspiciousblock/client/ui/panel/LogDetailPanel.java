@@ -5,69 +5,59 @@ import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
+import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
-/** 日志详情面板——图标键值对元信息卡片、增强型战利品收集清单（角标+总进度条） */
+/** 日志详情面板——标签值元信息卡片、增强型战利品收集清单（角标+总进度条） */
 public final class LogDetailPanel implements PagePanel {
-    private static final int LABEL_COLOR = 0x5A422C;
-    private static final int TEXT_COLOR = 0x4A3320;
-    private static final int MUTED_COLOR = 0x7A6247;
-    private static final int ICON_SIZE = 16;
+    private static final int ICON_SIZE = 20;
     private static final int ICON_GAP = 2;
-
-    // Spacetime 卡片引导图标（原版物品，贴合古卷主题，避免 Unicode 兼容问题）
-    // 懒加载：避免类静态初始化时注册表未就绪
-    private static ItemStack clockIcon() {
-        return iconOf("clock");
-    }
-    private static ItemStack compassIcon() {
-        return iconOf("compass");
-    }
-    private static ItemStack saplingIcon() {
-        return iconOf("oak_sapling");
-    }
-    private static ItemStack eyeIcon() {
-        return iconOf("ender_eye");
-    }
-
-    // 通过注册表解析原版物品图标，失败时返回 EMPTY
-    private static ItemStack iconOf(String path) {
-        var item = net.minecraft.core.registries.BuiltInRegistries.ITEM
-                .get(ResourceLocation.withDefaultNamespace(path));
-        return new ItemStack(item);
-    }
+    private static final int LABEL_GAP = JournalLayout.LOG_DETAIL_META_LABEL_GAP;
 
     private final JournalBookBackground.BookLayout layout;
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     @Nullable
     private ExcavationLogEntry entry;
+    @Nullable
+    private ResourceLocation tableId;
     // 缓存：以 expectedLoot 为基准构建的合并展示列表
     private List<LootDisplayEntry> cachedLoot = List.of();
     // 战利品整体进度统计（角标/进度条用）
     private int totalLootCount;
     private int obtainedLootCount;
     private final List<IconSlot> renderTooltipSlots = new ArrayList<>();
+    // 复制坐标按钮命中盒与悬停状态（缓存最近一帧，用于点击判定与 tooltip）
     @Nullable
-    private Bounds backBounds = Bounds.EMPTY;
+    private Bounds copyBtnBounds = Bounds.EMPTY;
+    private boolean copyBtnHovered;
+    // 返回列表按钮（IconButton widget，由外部 screen 注册）
+    @Nullable
+    private IconButton backButton;
+    // 元信息行悬停追踪：用于文字超宽滚动
+    private int hoveredMetaRow = -1;
+    private final int[] metaRowScrollTicks = new int[JournalLayout.LOG_DETAIL_META_ROWS];
 
     public LogDetailPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
     }
 
-    public void setEntry(@Nullable ExcavationLogEntry entry) {
+    public void setEntry(@Nullable ExcavationLogEntry entry, @Nullable ResourceLocation tableId) {
         this.entry = entry;
+        this.tableId = tableId;
         this.cachedLoot = entry != null ? buildLootDisplay(entry) : List.of();
         this.totalLootCount = this.cachedLoot.size();
         this.obtainedLootCount = 0;
@@ -77,38 +67,58 @@ public final class LogDetailPanel implements PagePanel {
             }
         }
         this.renderTooltipSlots.clear();
-        this.backBounds = Bounds.EMPTY;
+        this.copyBtnBounds = Bounds.EMPTY;
+        this.copyBtnHovered = false;
+        this.hoveredMetaRow = -1;
+        Arrays.fill(this.metaRowScrollTicks, 0);
         this.pagination.reset();
+    }
+
+    // 创建并注册返回列表按钮（IconButton），由外部 screen.rebuildWidgets 调用
+    // registrar：将 widget 注册到 screen 的回调，避免 panel 包直接依赖 screen 包
+    public void createBackButton(Consumer<IconButton> registrar, Runnable onBack) {
+        int leftX = this.layout.rightPageX() + 8;
+        int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
+        Component tooltip = Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.log_back_to_list");
+        this.backButton = new IconButton(
+                leftX, y,
+                JournalLayout.LOG_DETAIL_BACK_BTN_SIZE,
+                '←',
+                tooltip,
+                onBack);
+        registrar.accept(this.backButton);
+    }
+
+    @Nullable
+    public IconButton getBackButton() {
+        return this.backButton;
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         this.renderTooltipSlots.clear();
+        this.copyBtnHovered = false;
 
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
-        int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
-
-        // 1. 返回按钮（带暖色背景）
-        y += renderBackButton(guiGraphics, font, leftX, y, mouseX, mouseY) + 4;
+        // 返回按钮由 IconButton widget 渲染，这里仅占位
+        int y = this.layout.rightPageY() + JournalLayout.LOG_TOP
+                + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
 
         ExcavationLogEntry entry = this.entry;
         if (entry == null) {
             guiGraphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_empty"),
-                    leftX, y, MUTED_COLOR, false);
+                    leftX, y, JournalLayout.LOG_DETAIL_UNKNOWN_COLOR, false);
             return;
         }
 
-        // 2. Source 卡片：来源方块 + 触发方式（合并一行）
-        y += renderSourceCard(guiGraphics, font, leftX, y, contentWidth, entry)
+        // 1. Spacetime 卡片：时间/结构/群系/坐标
+        y += renderSpacetimeCard(guiGraphics, font, leftX, y, contentWidth, entry, mouseX, mouseY)
                 + JournalLayout.LOG_DETAIL_CARD_GAP;
 
-        // 3. Spacetime 卡片：时间/结构/群系/坐标
-        y += renderSpacetimeCard(guiGraphics, font, leftX, y, contentWidth, entry)
-                + JournalLayout.LOG_DETAIL_CARD_GAP;
-
-        // 4. Loot 卡片：合并收集清单
-        renderLootCard(guiGraphics, font, leftX, y, contentWidth, mouseX, mouseY);
+        // 2. Loot 卡片：合并收集清单
+        renderLootCard(guiGraphics, font, leftX, y, contentWidth);
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
@@ -116,8 +126,13 @@ public final class LogDetailPanel implements PagePanel {
                 && mouseY >= this.layout.rightPageY() && mouseY <= this.layout.rightPageBottom();
     }
 
+    // 仅处理复制坐标按钮点击；返回按钮由 IconButton widget 自行处理
     public boolean handleClick(double mouseX, double mouseY) {
-        return this.backBounds != null && this.backBounds.contains(mouseX, mouseY);
+        if (this.copyBtnBounds != null && this.copyBtnBounds.contains(mouseX, mouseY) && this.entry != null) {
+            CopyCoordinateButton.copyCommand(this.entry);
+            return true;
+        }
+        return false;
     }
 
     @Nullable
@@ -146,134 +161,147 @@ public final class LogDetailPanel implements PagePanel {
         this.pagination.setPage(page);
     }
 
-    // —— 返回按钮 ——
-    private int renderBackButton(GuiGraphics g, Font font, int x, int y, int mouseX, int mouseY) {
-        Component text = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_back_to_list");
-        int padX = JournalLayout.LOG_DETAIL_BACK_BTN_PAD_X;
-        int padY = JournalLayout.LOG_DETAIL_BACK_BTN_PAD_Y;
-        int w = font.width(text) + padX * 2;
-        int h = font.lineHeight + padY * 2;
-
-        boolean hovered = mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
-        int bgColor = hovered ? 0x30A08060 : JournalLayout.LOG_DETAIL_CARD_BG;
-        g.fill(x, y, x + w, y + h, bgColor);
-        // 底部暖色边线
-        g.fill(x, y + h - 1, x + w, y + h, JournalLayout.LOG_DETAIL_CARD_BORDER);
-        g.drawString(font, text, x + padX, y + padY,
-                hovered ? LABEL_COLOR : MUTED_COLOR, false);
-
-        this.backBounds = new Bounds(x, y, w, h);
-        return h;
-    }
-
-    // —— Source 卡片 ——
-    private int renderSourceCard(GuiGraphics g, Font font, int x, int y, int w, ExcavationLogEntry entry) {
-        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
-        ItemStack sourceStack = entry.lootSource() != null ? entry.lootSource().iconItem() : ItemStack.EMPTY;
-        int innerHeight = Math.max(font.lineHeight, sourceStack.isEmpty() ? 0 : ICON_SIZE);
-        int cardH = pad + innerHeight + pad;
-
-        drawCardBackground(g, x, y, w, cardH);
-
-        int contentY = y + pad;
-        int textX = x + pad;
-        int textWidth = w - pad * 2;
-
-        if (!sourceStack.isEmpty()) {
-            g.renderItem(sourceStack, x + pad, contentY);
-            g.renderItemDecorations(font, sourceStack, x + pad, contentY);
-            this.renderTooltipSlots.add(new IconSlot(x + pad, contentY, sourceStack.copy()));
-            textX += ICON_SIZE + 4;
-            textWidth -= ICON_SIZE + 4;
+    // 渲染返回按钮 tooltip + 复制坐标按钮 tooltip（由外部在 super.render 之后调用）
+    public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        if (this.backButton != null && this.backButton.visible) {
+            this.backButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
-
-        // 战利品来源名称
-        String lootSourceName = JournalFormatHelper.formatLootSource(entry.lootSource()).getString();
-        int lineH = renderWrappedText(g, font, Component.literal(lootSourceName),
-                textX, contentY + (innerHeight - font.lineHeight) / 2, textWidth, 1, TEXT_COLOR);
-
-        return cardH;
+        if (this.copyBtnHovered) {
+            CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
+        }
     }
 
-    // —— Spacetime 卡片：图标键值对，4 行结构化布局 ——
-    private int renderSpacetimeCard(GuiGraphics g, Font font, int x, int y, int w, ExcavationLogEntry entry) {
+    // —— Spacetime 卡片：标签+值文字布局，6 行 ——
+    private int renderSpacetimeCard(GuiGraphics g, Font font, int x, int y, int w,
+                                    ExcavationLogEntry entry, int mouseX, int mouseY) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int lineHeight = font.lineHeight;
-        int metaIconSize = JournalLayout.LOG_DETAIL_META_ICON_SIZE;
         int lineGap = JournalLayout.LOG_DETAIL_META_LINE_GAP;
-        int rowHeight = metaIconSize;
-        // 4 行：时间 / 结构 / 群系 / 维度·坐标
-        int cardH = pad + rowHeight * 4 + lineGap * 3 + pad;
+        int rows = JournalLayout.LOG_DETAIL_META_ROWS;
+        int cardH = pad + lineHeight * rows + lineGap * (rows - 1) + pad;
 
         drawCardBackground(g, x, y, w, cardH);
 
-        int ix = x + pad;                  // 图标 X
-        int tx = x + pad + metaIconSize + JournalLayout.LOG_DETAIL_META_ICON_GAP; // 文字 X
-        int tw = w - pad * 2 - metaIconSize - JournalLayout.LOG_DETAIL_META_ICON_GAP;
-        int ty = y + pad + (rowHeight - lineHeight) / 2; // 文字基线 Y（图标竖直居中）
+        // 预解析各行标签与值
+        Component createdLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_created_label");
+        Component updatedLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_updated_label");
+        Component biomeLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_biome_label");
+        Component dimensionLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_dimension_label");
+        Component coordsLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_coords_label");
 
-        // 行1：clock 图标 + 创建→更新时间范围
-        String createdTime = JournalFormatHelper.formatGameTime(
-                "screen.unsuspiciousblock.archaeology_journal.log_created_time_value",
+        // 结构信息三级降级：structure → feature(table) → unknown
+        JournalFormatHelper.StructureInfo structInfo =
+                JournalFormatHelper.formatStructureOrFeature(entry.structureId(), this.tableId);
+        Component structLabel = structInfo.isFeature()
+                ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_feature_label")
+                : Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_detail_structure_label");
+
+        String createdValue = JournalFormatHelper.formatGameTime(
+                "screen.unsuspiciousblock.archaeology_journal.log_time_short",
                 entry.createdGameTime(), entry.createdDayTime()).getString();
-        String updatedTime = JournalFormatHelper.formatGameTime(
-                "screen.unsuspiciousblock.archaeology_journal.log_updated_time_value",
+        String updatedValue = JournalFormatHelper.formatGameTime(
+                "screen.unsuspiciousblock.archaeology_journal.log_time_short",
                 entry.lastUpdatedGameTime(), entry.lastUpdatedDayTime()).getString();
-        boolean sameTime = entry.createdGameTime() == entry.lastUpdatedGameTime()
-                && entry.createdDayTime() == entry.lastUpdatedDayTime();
-        String timeLine = sameTime ? createdTime : createdTime + " → " + updatedTime;
-        drawMetaRow(g, font, clockIcon(), ix, ty, metaIconSize, timeLine, tx, tw, TEXT_COLOR);
-        ty += rowHeight + lineGap;
-
-        // 行2：compass 图标 + 结构（标签 + 值）
-        ty += drawLabelValueRow(g, font, compassIcon(), ix, ty, metaIconSize,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_structure_value",
-                        JournalFormatHelper.formatStructureName(entry.structureId())),
-                tx, tw, rowHeight) + lineGap;
-
-        // 行3：sapling 图标 + 群系（标签 + 值）
-        ty += drawLabelValueRow(g, font, saplingIcon(), ix, ty, metaIconSize,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_biome_value",
-                        JournalFormatHelper.formatBiomeName(entry.biomeId())),
-                tx, tw, rowHeight) + lineGap;
-
-        // 行4：ender_eye 图标 + 维度 · 坐标（合并一行）
-        String dimensionText = JournalFormatHelper.formatDimensionName(entry.dimensionId());
+        String biomeValue = JournalFormatHelper.formatBiomeName(entry.biomeId());
+        String dimValue = JournalFormatHelper.formatDimensionName(entry.dimensionId());
         var pos = entry.pos();
-        String dimPosLine = dimensionText + " · (" + pos.getX() + "," + pos.getY() + "," + pos.getZ() + ")";
-        drawMetaRow(g, font, eyeIcon(), ix, ty, metaIconSize, dimPosLine, tx, tw, TEXT_COLOR);
+        String coordsValue = pos.getX() + " " + pos.getY() + " " + pos.getZ();
+
+        // 动态计算标签列宽度：取所有标签的最大宽度，保证值列对齐
+        int labelWidth = maxWidth(font, createdLabel, updatedLabel, structLabel, biomeLabel, dimensionLabel, coordsLabel);
+        int valueX = x + pad + labelWidth + LABEL_GAP;
+        int copyBtnW = CopyCoordinateButton.WIDTH;
+        int copyBtnH = CopyCoordinateButton.HEIGHT;
+        // 最后一行需为复制按钮预留空间
+        int valueW = w - pad * 2 - labelWidth - LABEL_GAP;
+        int lastRowValueW = valueW - copyBtnW - LABEL_GAP;
+
+        int ty = y + pad;
+        int rowFullWidth = w - pad * 2;
+
+        // 重置悬停追踪（每帧重新检测）
+        int prevHovered = this.hoveredMetaRow;
+        this.hoveredMetaRow = -1;
+
+        // 行1：创建时间
+        ty += drawMetaRow(g, font, 0, createdLabel.getString(), createdValue,
+                x + pad, ty, valueX, valueW, rowFullWidth,
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+
+        // 行2：更新时间
+        ty += drawMetaRow(g, font, 1, updatedLabel.getString(), updatedValue,
+                x + pad, ty, valueX, valueW, rowFullWidth,
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+
+        // 行3：结构/特征/未知（未知时降低视觉权重）
+        int structColor = structInfo.isUnknown()
+                ? JournalLayout.LOG_DETAIL_UNKNOWN_COLOR
+                : JournalLayout.LOG_DETAIL_VALUE_COLOR;
+        ty += drawMetaRow(g, font, 2, structLabel.getString(), structInfo.displayName(),
+                x + pad, ty, valueX, valueW, rowFullWidth,
+                structColor, mouseX, mouseY, prevHovered) + lineGap;
+
+        // 行4：群系
+        ty += drawMetaRow(g, font, 3, biomeLabel.getString(), biomeValue,
+                x + pad, ty, valueX, valueW, rowFullWidth,
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+
+        // 行5：维度
+        ty += drawMetaRow(g, font, 4, dimensionLabel.getString(), dimValue,
+                x + pad, ty, valueX, valueW, rowFullWidth,
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+
+        // 行6：坐标 + 复制按钮（放在坐标行最右侧）
+        drawMetaRow(g, font, 5, coordsLabel.getString(), coordsValue,
+                x + pad, ty, valueX, lastRowValueW, rowFullWidth,
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered);
+        // 渲染复制按钮（竖直居中于行内）
+        int btnX = valueX + lastRowValueW + LABEL_GAP;
+        int btnY = ty;
+        boolean btnHovered = CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
+        CopyCoordinateButton.render(g, btnX, btnY, btnHovered);
+        this.copyBtnBounds = new Bounds(btnX, btnY, copyBtnW, copyBtnH);
+        this.copyBtnHovered = btnHovered;
 
         return cardH;
     }
 
-    // 绘制单行元信息：图标 + 纯文本（文字超宽滚动）
-    private static void drawMetaRow(GuiGraphics g, Font font, ItemStack icon, int iconX, int textY,
-                                    int iconSize, String text, int textX, int textWidth, int color) {
-        if (!icon.isEmpty()) {
-            // 图标相对文字基线竖直居中（iconSize=16 略大于 lineHeight≈9，向下偏移）
-            int iconY = textY + (font.lineHeight - iconSize) / 2 + 1;
-            g.renderItem(icon, iconX, iconY);
+    // 绘制单行元信息：标签（固定宽度，次要色）+ 值（剩余宽度，主要色，超宽滚动）
+    private int drawMetaRow(GuiGraphics g, Font font, int rowIndex, String label, String value,
+                            int rowX, int rowY, int valueX, int valueW, int rowFullWidth,
+                            int valueColor, int mouseX, int mouseY, int prevHovered) {
+        int rowH = font.lineHeight;
+
+        // 检测当前行是否被悬停（行高度 = lineHeight，但适当放宽垂直判定范围以提升体验）
+        boolean hovered = mouseX >= rowX && mouseX < rowX + rowFullWidth
+                && mouseY >= rowY - 1 && mouseY < rowY + rowH + 1;
+        if (hovered) {
+            this.hoveredMetaRow = rowIndex;
+            if (prevHovered != rowIndex) {
+                this.metaRowScrollTicks[rowIndex] = 0;
+            }
+            this.metaRowScrollTicks[rowIndex]++;
         }
-        // 文字不滚动（详情卡片紧凑，超宽极少，按需截断足够）
-        ScrollTextHelper.draw(g, font, text, textX, textY, textWidth, color, false, 0, false);
+
+        // 标签：次要色，左对齐于标签列
+        g.drawString(font, label, rowX, rowY, JournalLayout.LOG_DETAIL_LABEL_COLOR, false);
+        // 值：主要色，超宽时悬停滚动
+        ScrollTextHelper.draw(g, font, value, valueX, rowY, valueW, valueColor,
+                hovered, this.metaRowScrollTicks[rowIndex], false);
+        return rowH;
     }
 
-    // 绘制标签+值行（标签用 MUTED，值用 TEXT 颜色层次）
-    // 这里值本身是 i18n 模板（如 "结构：%s"），直接按 TEXT_COLOR 渲染，超宽滚动
-    private static int drawLabelValueRow(GuiGraphics g, Font font, ItemStack icon, int iconX, int textY,
-                                         int iconSize, Component text, int textX, int textWidth, int rowHeight) {
-        if (!icon.isEmpty()) {
-            int iconY = textY + (font.lineHeight - iconSize) / 2 + 1;
-            g.renderItem(icon, iconX, iconY);
-            g.renderItemDecorations(font, icon, iconX, iconY);
+    // 计算多个 Component 的最大文字宽度
+    private static int maxWidth(Font font, Component... components) {
+        int max = 0;
+        for (Component c : components) {
+            max = Math.max(max, font.width(c));
         }
-        String plain = text.getString();
-        ScrollTextHelper.draw(g, font, plain, textX, textY, textWidth, TEXT_COLOR, false, 0, false);
-        return rowHeight;
+        return max;
     }
 
     // —— Loot 卡片：增强型图标网格（角标）+ 底部总进度条 ——
-    private void renderLootCard(GuiGraphics g, Font font, int x, int y, int w, int mouseX, int mouseY) {
+    private void renderLootCard(GuiGraphics g, Font font, int x, int y, int w) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int lineHeight = font.lineHeight;
         int stride = ICON_SIZE + ICON_GAP;
@@ -281,38 +309,51 @@ public final class LogDetailPanel implements PagePanel {
         // 标题行：收集清单 [完成标志]
         Component title = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_collection");
         boolean allCompleted = isAllLootCompleted();
-        int titleWidth = font.width(title);
         int titleY = y + pad;
-        g.drawString(font, title, x + pad, titleY, LABEL_COLOR, false);
 
-        if (allCompleted) {
-            Component badge = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_completed");
-            int badgeX = x + pad + titleWidth + 6;
-            g.drawString(font, badge, badgeX, titleY, JournalLayout.LOG_DETAIL_COMPLETION_COLOR, false);
-        }
-
-        int labelH = lineHeight + 2;
-        int gridTop = titleY + labelH;
-
-        // 底部进度条预留高度（进度条 + 间距 + 文字行）
+        // 底部进度条预留高度（进度条 + 间距 + 卡片底内边距）
         int progressBarH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
         int progressGap = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP;
-        int progressTextH = this.cachedLoot.isEmpty() ? 0 : lineHeight;
-        int bottomReserve = this.cachedLoot.isEmpty() ? 0 : (progressTextH + progressGap + progressBarH + progressGap);
+        int bottomReserve = this.cachedLoot.isEmpty() ? 0 : (progressGap + progressBarH + pad);
 
-        int availableHeight = (this.layout.rightPageY() + this.layout.rightPageHeight()) - gridTop - 4 - bottomReserve;
-        if (availableHeight <= 0) {
-            return;
-        }
+        int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
+        int availableHeight = pageBottom - titleY - bottomReserve;
+        // 标题行高 + 标题与网格的额外间距
+        int labelH = lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
+        int gridTop = titleY + labelH;
+        int gridAvailable = Math.max(0, availableHeight - labelH);
 
         int iconsPerRow = Math.max(1, (w - pad * 2 + ICON_GAP) / stride);
-        int rowsPerPage = Math.max(1, availableHeight / stride);
+        int rowsPerPage = Math.max(1, gridAvailable / stride);
         int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
 
         int page = this.pagination.getPage();
         int from = Math.min(this.cachedLoot.size(), page * iconsPerPage);
         int to = Math.min(this.cachedLoot.size(), from + iconsPerPage);
 
+        // 计算卡片总高度（用于绘制卡片背景）
+        int gridHeight = this.cachedLoot.isEmpty() ? 0 : gridAvailable;
+        int cardH = pad + labelH + gridHeight + bottomReserve;
+
+        // 绘制卡片背景，明确区域边界
+        drawCardBackground(g, x, y, w, cardH);
+
+        // 绘制标题
+        g.drawString(font, title, x + pad, titleY, JournalLayout.LOG_DETAIL_LABEL_COLOR, false);
+        if (allCompleted) {
+            Component badge = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_completed");
+            int badgeX = x + pad + font.width(title) + 6;
+            g.drawString(font, badge, badgeX, titleY, JournalLayout.LOG_DETAIL_COMPLETION_COLOR, false);
+        }
+
+        if (this.cachedLoot.isEmpty()) {
+            g.drawString(font,
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_loot_empty"),
+                    x + pad, gridTop, JournalLayout.LOG_DETAIL_UNKNOWN_COLOR, false);
+            return;
+        }
+
+        // 渲染图标网格
         int gridX = x + pad;
         for (int i = from; i < to; i++) {
             LootDisplayEntry loot = this.cachedLoot.get(i);
@@ -321,83 +362,91 @@ public final class LogDetailPanel implements PagePanel {
             int iconX = gridX + col * stride;
             int iconY = gridTop + row * stride;
 
-            ItemStack stack = loot.stack.copy();
-            stack.setCount(loot.displayCount());
+            // 不再使用原版数量角标，所有角标改为自定义绘制
+            ItemStack stack = loot.stack().copy();
 
-            // 渲染物品图标
-            g.renderItem(stack, iconX, iconY);
-            String countText = loot.displayCount() > 1 ? Integer.toString(loot.displayCount()) : null;
-            g.renderItemDecorations(font, stack, iconX, iconY, countText);
+            float scale = (float) ICON_SIZE / 16;
+            g.pose().pushPose();
+            g.pose().translate(iconX, iconY, 0);
+            g.pose().scale(scale, scale, 1.0f);
+            g.renderItem(stack, 0, 0);
+            g.pose().popPose();
+            // 刷新物品渲染缓冲，确保后续角标/遮罩绘制在物品之上
+            g.flush();
 
-            if (loot.isFullyObtained()) {
-                // 完全获得：右上角绿色 ✓ 角标 + 加入 tooltip
-                drawBadge(g, font, iconX, iconY, "✓", JournalLayout.LOG_DETAIL_COMPLETION_COLOR);
-                this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
-            } else if (loot.actualCount() > 0) {
-                // 部分获得：右上角黄色 actual/expected 角标 + 加入 tooltip
-                drawBadge(g, font, iconX, iconY,
-                        loot.actualCount() + "/" + loot.expectedCount(),
-                        JournalLayout.LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR);
-                this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
-            } else {
-                // 未获得：覆盖 ghost 半透明遮罩
+            int actual = loot.actualCount();
+            int expected = loot.expectedCount();
+            if (actual == 0) {
+                // 状态(1)：已解析 未获得——半透明遮罩呈现幽灵虚影，不显示数量角标
                 g.fill(iconX, iconY, iconX + ICON_SIZE, iconY + ICON_SIZE,
                         JournalLayout.LOG_DETAIL_GHOST_OVERLAY);
+            } else if (loot.isFullyObtained()) {
+                // 状态(3)：已解析 全部获得——仅显示期望总数，绿色
+                drawBadge(g, font, iconX, iconY, String.valueOf(expected),
+                        JournalLayout.LOG_DETAIL_LOOT_BADGE_FULL_COLOR);
+            } else {
+                // 状态(2)：已解析 未全部获得——显示 n/m，棕黄色
+                drawBadge(g, font, iconX, iconY, actual + "/" + expected,
+                        JournalLayout.LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR);
             }
+            this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
         }
 
-        if (this.cachedLoot.isEmpty()) {
-            g.drawString(font,
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_loot_empty"),
-                    gridX, gridTop, MUTED_COLOR, false);
-            return;
-        }
-
-        // 底部进度条 + 文字（紧贴右页底部）
-        int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
-        int barY = pageBottom - progressBarH;
-        int textY = barY - progressGap - lineHeight;
+        // 底部进度条 + 文字（文字直接渲染在进度条本体上）
         int barWidth = w - pad * 2;
         int barX = x + pad;
-        drawProgressBar(g, font, barX, barY, barWidth, textY, this.obtainedLootCount, this.totalLootCount);
+        int barY = pageBottom - progressBarH - pad;
+        drawProgressBar(g, font, barX, barY, barWidth, this.obtainedLootCount, this.totalLootCount);
     }
 
-    // 绘制物品角标（右上角小字符，带深色描边背景便于辨识）
+    // 绘制物品角标（右下角，z=200 确保位于物品图标图层之上）
     private static void drawBadge(GuiGraphics g, Font font, int iconX, int iconY, String text, int color) {
-        // 右上角偏移：图标16px，角标贴右上
         int badgeX = iconX + ICON_SIZE - font.width(text);
-        int badgeY = iconY - 2;
-        // 深色描边（四向偏移）提升浅色背景可读性
+        int badgeY = iconY + ICON_SIZE - font.lineHeight;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 200);
+        // 黑色描边（八向偏移）提升任何背景下的可读性
         g.drawString(font, text, badgeX - 1, badgeY, 0xFF000000, false);
         g.drawString(font, text, badgeX + 1, badgeY, 0xFF000000, false);
         g.drawString(font, text, badgeX, badgeY - 1, 0xFF000000, false);
         g.drawString(font, text, badgeX, badgeY + 1, 0xFF000000, false);
+        g.drawString(font, text, badgeX - 1, badgeY - 1, 0xFF000000, false);
+        g.drawString(font, text, badgeX + 1, badgeY - 1, 0xFF000000, false);
+        g.drawString(font, text, badgeX - 1, badgeY + 1, 0xFF000000, false);
+        g.drawString(font, text, badgeX + 1, badgeY + 1, 0xFF000000, false);
+        // 主文字
         g.drawString(font, text, badgeX, badgeY, color, false);
+        g.pose().popPose();
     }
 
-    // 绘制底部总进度条 + "已收集 X/Y" 文本
+    // 绘制底部总进度条，"Collected X/Y" 文字直接渲染在进度条本体上（居中，白色带阴影）
     private static void drawProgressBar(GuiGraphics g, Font font, int x, int y, int width,
-                                        int textY, int obtained, int total) {
+                                        int obtained, int total) {
         if (total <= 0) {
             return;
         }
         int barH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
-        // 进度文字（右对齐，颜色随完成度变化）
-        Component progressText = Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.log_loot_progress", obtained, total);
         boolean allDone = obtained >= total;
-        int textColor = allDone ? JournalLayout.LOG_DETAIL_COMPLETION_COLOR : MUTED_COLOR;
-        int textWidth = font.width(progressText);
-        g.drawString(font, progressText, x + width - textWidth, textY, textColor, false);
 
-        // 进度条底色
+        // 进度条底色（不透明，清晰可见）
         g.fill(x, y, x + width, y + barH, JournalLayout.LOG_DETAIL_PROGRESS_BAR_BG);
         // 进度条前景（完成时用绿色，否则暖棕）
         int fillWidth = (int) ((long) width * obtained / total);
-        int fillColor = allDone ? JournalLayout.LOG_DETAIL_COMPLETION_COLOR : JournalLayout.LOG_DETAIL_PROGRESS_BAR_FILL;
+        int fillColor = allDone
+                ? JournalLayout.LOG_DETAIL_COMPLETION_COLOR
+                : JournalLayout.LOG_DETAIL_PROGRESS_BAR_FILL;
         if (fillWidth > 0) {
             g.fill(x, y, x + fillWidth, y + barH, fillColor);
         }
+
+        // "Collected X/Y" 文字居中渲染在进度条本体上
+        Component progressText = Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.log_loot_progress", obtained, total);
+        int textWidth = font.width(progressText);
+        int textX = x + (width - textWidth) / 2;
+        int textY = y + (barH - font.lineHeight + 1) / 2;
+        g.drawString(font, progressText, textX, textY,
+                JournalLayout.LOG_DETAIL_PROGRESS_BAR_TEXT, true);
     }
 
     // —— 战利品构建 ——
@@ -439,35 +488,39 @@ public final class LogDetailPanel implements PagePanel {
         int contentWidth = this.layout.rightPageWidth() - 20;
 
         // 固定内容高度（与 render 中一致）
-        int backHeight = lineHeight + JournalLayout.LOG_DETAIL_BACK_BTN_PAD_Y * 2;
-        int sourceCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2 + ICON_SIZE;
-        // Spacetime 卡片：4 行图标键值对（行高=max(图标16, lineHeight) + 行间距）
-        int metaRowH = JournalLayout.LOG_DETAIL_META_ICON_SIZE;
-        int spacetimeCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2
-                + metaRowH * JournalLayout.LOG_DETAIL_META_ROWS
-                + JournalLayout.LOG_DETAIL_META_LINE_GAP * (JournalLayout.LOG_DETAIL_META_ROWS - 1);
-        int labelH = lineHeight + 2;
-        int fixedHeight = backHeight + 4
-                + sourceCardH + JournalLayout.LOG_DETAIL_CARD_GAP
-                + spacetimeCardH + JournalLayout.LOG_DETAIL_CARD_GAP
-                + labelH;
+        int fixedHeight = getFixedHeight(lineHeight);
 
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int gridTop = this.layout.rightPageY() + JournalLayout.LOG_TOP + fixedHeight;
-        // 底部进度条预留（与 render 一致）
+        int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
         int progressBarH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
         int progressGap = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP;
-        int bottomReserve = lineHeight + progressGap + progressBarH + progressGap;
-        int availableHeight = (this.layout.rightPageY() + this.layout.rightPageHeight()) - gridTop - 4 - bottomReserve;
-        if (availableHeight <= 0) {
+        int bottomReserve = progressGap + progressBarH + pad;
+        int gridAvailable = Math.max(0, (pageBottom - bottomReserve) - gridTop);
+        if (gridAvailable <= 0) {
             return 1;
         }
 
         int stride = ICON_SIZE + ICON_GAP;
         int iconsPerRow = Math.max(1, (contentWidth - pad * 2 + ICON_GAP) / stride);
-        int rowsPerPage = Math.max(1, availableHeight / stride);
+        int rowsPerPage = Math.max(1, gridAvailable / stride);
         int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
         return Math.max(1, (this.cachedLoot.size() + iconsPerPage - 1) / iconsPerPage);
+    }
+
+    private static int getFixedHeight(int lineHeight) {
+        int backHeight = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
+        // Spacetime 卡片：6 行文字（行高 = lineHeight + 行间距）
+        int spacetimeCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2
+                + lineHeight * JournalLayout.LOG_DETAIL_META_ROWS
+                + JournalLayout.LOG_DETAIL_META_LINE_GAP * (JournalLayout.LOG_DETAIL_META_ROWS - 1);
+        // 标题行高 + 标题与网格的额外间距
+        int labelH = lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
+        int progressBarH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
+        int progressGap = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP;
+        int bottomReserve = progressGap + progressBarH + JournalLayout.LOG_DETAIL_CARD_PAD;
+        return backHeight + spacetimeCardH + JournalLayout.LOG_DETAIL_CARD_GAP
+                + JournalLayout.LOG_DETAIL_CARD_PAD + labelH + bottomReserve;
     }
 
     // —— 卡片背景 ——
@@ -477,30 +530,9 @@ public final class LogDetailPanel implements PagePanel {
         g.fill(x, y, x + w, y + 1, JournalLayout.LOG_DETAIL_CARD_BORDER);
     }
 
-    // —— 文字折行 ——
-    private static int renderWrappedText(GuiGraphics g, Font font, Component text,
-                                         int x, int y, int width, int maxLines, int color) {
-        if (width <= 0 || maxLines <= 0) {
-            return 0;
-        }
-        List<FormattedCharSequence> lines = font.split(text, width);
-        if (lines.isEmpty()) {
-            return 0;
-        }
-        int lineCount = Math.min(maxLines, lines.size());
-        for (int i = 0; i < lineCount; i++) {
-            g.drawString(font, lines.get(i), x, y + i * font.lineHeight, color, false);
-        }
-        return lineCount * font.lineHeight;
-    }
-
     private record LootDisplayEntry(String signatureKey, int expectedCount, int actualCount, ItemStack stack) {
         boolean isFullyObtained() {
             return actualCount >= expectedCount;
-        }
-
-        int displayCount() {
-            return Math.max(1, Math.min(expectedCount, stack.getMaxStackSize()));
         }
     }
 
