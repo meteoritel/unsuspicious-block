@@ -5,14 +5,14 @@
   "supported_items": "minecraft:brush",
   "primary_items": "minecraft:brush",
   "weight": 2,
-  "max_level": 1,
+  "max_level": 3,
   "min_cost": {
     "base": 15,
-    "per_level_above_first": 0
+    "per_level_above_first": 9
   },
   "max_cost": {
     "base": 60,
-    "per_level_above_first": 0
+    "per_level_above_first": 9
   },
   "anvil_cost": 4,
   "slots": [

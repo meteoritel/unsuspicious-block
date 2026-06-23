@@ -6,25 +6,39 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "minecraft:sniffer_egg",
-          "weight": 20
+          "name": "minecraft:sniffer_egg"
         },
         {
           "type": "minecraft:item",
-          "name": "unsuspiciousblock:ancient_coin",
-          "weight": 30
+          "name": "unsuspiciousblock:ancient_coin"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "name": "unsuspiciousblock:usb/random_pottery_sherd"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "name": "unsuspiciousblock:usb/random_armor_trim"
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:clay_ball",
-          "weight": 50
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": {"type": "minecraft:uniform", "min": 25, "max": 30}
+            }
+          ]
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:clay_ball",
-          "weight": 1
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "minecraft:enchant_randomly"
+            }
+          ]
         }
-
       ]
     }
   ]

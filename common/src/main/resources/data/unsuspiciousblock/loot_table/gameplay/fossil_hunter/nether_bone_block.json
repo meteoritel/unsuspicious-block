@@ -6,8 +6,33 @@
       "entries": [
         {
           "type": "minecraft:item",
+          "name": "minecraft:bone",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {"type": "minecraft:uniform", "min": 1, "max": 3}
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:bone_meal",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {"type": "minecraft:uniform", "min": 1, "max": 2}
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
           "name": "minecraft:quartz",
-          "weight": 6,
           "functions": [
             {
               "function": "minecraft:apply_bonus",
@@ -19,7 +44,6 @@
         {
           "type": "minecraft:item",
           "name": "minecraft:glowstone_dust",
-          "weight": 5,
           "functions": [
             {
               "function": "minecraft:set_count",
@@ -30,7 +54,6 @@
         {
           "type": "minecraft:item",
           "name": "minecraft:gold_nugget",
-          "weight": 5,
           "functions": [
             {
               "function": "minecraft:set_count",
@@ -41,21 +64,37 @@
         {
           "type": "minecraft:item",
           "name": "minecraft:blaze_powder",
-          "weight": 3
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {"type": "minecraft:uniform", "min": 1, "max": 2}
+            }
+          ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:magma_cream",
-          "weight": 3
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {"type": "minecraft:uniform", "min": 1, "max": 2}
+            }
+          ]
         }
       ]
     },
+
     {
       "rolls": 1,
       "entries": [
         {
           "type": "minecraft:empty",
           "weight": 10
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:ender_eye",
+          "weight": 3
         },
         {
           "type": "minecraft:item",

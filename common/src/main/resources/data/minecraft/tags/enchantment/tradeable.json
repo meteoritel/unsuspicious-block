@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "unsuspiciousblock:precision_excavation",
+    "unsuspiciousblock:mud_dredging",
+    "unsuspiciousblock:textile_recovery"
+  ]
+}

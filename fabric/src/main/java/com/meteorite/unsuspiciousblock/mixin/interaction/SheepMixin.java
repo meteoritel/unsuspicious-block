@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Fabric 平台绵羊剪毛触发入口——HEAD 注入 {@link Sheep#mobInteract}，
+ * Fabric 平台绵羊剪毛触发入口——HEAD 注入 {Sheep#mobInteract}，
  * 在原版剪毛逻辑执行前 dispatch {@link TriggerType#ENTITY_SHEAR}。
  * <p>
  * 仅 Fabric 需要：NeoForge 的 ShearsItem.interactLivingEntity 经 IShearable patch

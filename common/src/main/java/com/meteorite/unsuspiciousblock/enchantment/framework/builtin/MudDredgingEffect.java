@@ -9,10 +9,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.storage.loot.LootTable;
-
-import java.util.Set;
 
 /**
  * 泥地打捞 附魔效果：钓鱼收杆时概率将原版战利品表替换为自定义沼泽掉落表。
@@ -20,6 +17,8 @@ import java.util.Set;
  * 实现 {@link EnchantmentValueEffect}&lt;{@link ResourceKey}&lt;{@link LootTable}&gt;&gt;，
  * 由 {@link com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager#dispatchValue}
  * 调用；未命中条件时原样返回 ctx.value()。
+ * <p>
+ * 概率模型：每级 10%（满级 3 级 = 30%）；处于注册名 path 包含 "swamp" 的群系时额外 +10%。
  */
 public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceKey<LootTable>> {
     public static final ResourceKey<LootTable> MUD_DREDGING_LOOT_TABLE =
@@ -28,7 +27,7 @@ public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceK
 
     private static final double CHANCE_PER_LEVEL = 0.10D;
     private static final double BONUS_CHANCE = 0.10D;
-    private static final Set<ResourceKey<Biome>> BONUS_BIOMES = Set.of(Biomes.SWAMP, Biomes.MANGROVE_SWAMP);
+    private static final String SWAMP_BIOME_PATH_MARKER = "swamp";
 
     @Override
     public ResourceKey<LootTable> apply(EffectContext<ResourceKey<LootTable>> ctx) {
@@ -39,7 +38,7 @@ public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceK
         }
 
         double chance = ctx.enchantmentLevel() * CHANCE_PER_LEVEL;
-        if (isBonusBiome(triggerCtx, hook)) {
+        if (isSwampBiome(triggerCtx, hook)) {
             chance += BONUS_CHANCE;
         }
 
@@ -48,15 +47,12 @@ public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceK
                 : ctx.value();
     }
 
-    // 检查是否在奖励群系中钓鱼
-    private boolean isBonusBiome(TriggerContext triggerCtx, FishingHook hook) {
-        var biome = triggerCtx.level.getBiome(hook.blockPosition());
-        for (ResourceKey<Biome> bonusBiome : BONUS_BIOMES) {
-            if (biome.is(bonusBiome)) {
-                return true;
-            }
-        }
-        return false;
+    // 检查当前群系注册名 path 是否包含 "swamp"，兼容原版与 mod 添加的沼泽群系
+    private boolean isSwampBiome(TriggerContext triggerCtx, FishingHook hook) {
+        return triggerCtx.level.getBiome(hook.blockPosition())
+                .unwrapKey()
+                .map(key -> key.location().getPath().contains(SWAMP_BIOME_PATH_MARKER))
+                .orElse(false);
     }
 
 }

@@ -19,6 +19,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -31,6 +32,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -95,6 +98,10 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
     @Unique
     private long unsuspiciousblock$brushDayTime = -1L;
+
+    // 精掘翻倍产生的额外战利品——在 dropContent 时一并发弹出
+    @Unique
+    private List<ItemStack> unsuspiciousblock$extraDrops = List.of();
 
     // ========== 扫描状态 NBT ========== //
     // 将扫描状态写入方块实体 NBT
@@ -273,9 +280,24 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$brushDayTime = -1L;
     }
 
-    // 在可疑方块真正掉出物品时记录获得次数并写入日志
+    // 在可疑方块真正掉出物品时弹出精掘翻倍的额外副本，并记录获得次数写入日志
     @Inject(method = "dropContent", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushItemDrop(Player player, CallbackInfo ci) {
+        // 精掘翻倍：先弹出额外战利品副本
+        if (!this.unsuspiciousblock$extraDrops.isEmpty()) {
+            BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
+            Level level = blockEntity.getLevel();
+            BlockPos pos = blockEntity.getBlockPos();
+            if (level != null) {
+                for (ItemStack extra : this.unsuspiciousblock$extraDrops) {
+                    if (!extra.isEmpty()) {
+                        Block.popResource(level, pos, extra);
+                    }
+                }
+            }
+            this.unsuspiciousblock$extraDrops = List.of();
+        }
+
         if (this.unsuspiciousblock$lootTableName == null || !(player instanceof ServerPlayer sp) || this.item.isEmpty()) {
             return;
         }
@@ -337,12 +359,19 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$lootTableName != null
                 && player instanceof ServerPlayer sp) {
-            // 精掘翻倍：通过 framework 分发值变换效果
+            // 精掘翻倍：通过 framework 分发值变换效果，返回值为战利品列表
             TriggerContext peCtx = TriggerContext.builder(sp, sp.serverLevel())
                     .pos(this.unsuspiciousblock$asBlockEntity().getBlockPos())
                     .tool(sp.getMainHandItem())
                     .build();
-            this.item = EnchantmentManager.dispatchValue(TriggerType.BRUSH_ITEM_DROP, peCtx, this.item);
+            List<ItemStack> drops = EnchantmentManager.dispatchValue(
+                    TriggerType.BRUSH_ITEM_DROP, peCtx, List.of(this.item));
+            if (!drops.isEmpty()) {
+                this.item = drops.getFirst();
+                if (drops.size() > 1) {
+                    this.unsuspiciousblock$extraDrops = new ArrayList<>(drops.subList(1, drops.size()));
+                }
+            }
             long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
                     ? this.unsuspiciousblock$brushGameTime
                     : sp.serverLevel().getGameTime();
@@ -379,6 +408,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$lootTableParsed = false;
         this.unsuspiciousblock$pendingJournalEntry = null;
         this.unsuspiciousblock$lootTableParsedThisCall = false;
+        this.unsuspiciousblock$extraDrops = List.of();
         if (hadLootTableState) {
             this.unsuspiciousblock$syncBlockEntity();
         }
