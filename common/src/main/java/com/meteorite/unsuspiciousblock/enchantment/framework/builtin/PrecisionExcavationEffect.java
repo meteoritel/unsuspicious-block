@@ -34,7 +34,6 @@ public final class PrecisionExcavationEffect implements EnchantmentValueEffect<L
         }
 
         if (ctx.triggerContext().player.getRandom().nextDouble() >= CHANCE_PER_LEVEL[level - 1]) {
-            Constants.LOG.info("没有抽中翻倍");
             return original;
         }
 
@@ -44,7 +43,6 @@ public final class PrecisionExcavationEffect implements EnchantmentValueEffect<L
             doubled.add(stack);
             doubled.add(stack.copy());
         }
-        Constants.LOG.info("考古战利品翻倍");
         return doubled;
     }
 }

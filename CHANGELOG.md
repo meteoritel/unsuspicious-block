@@ -12,45 +12,88 @@
 
 ### 新增
 
-#### 考古手册新增「日志」标签页
-- 考古手册新增「日志」标签页，完整记录玩家每次考古相关事件
+#### 考古手册「日志」标签页
+- 新增「日志」标签页，完整记录玩家每次考古相关事件
 
-#### 配置文件自定义追踪的战利品表
-- 追踪战利品表调整为可配置，支持 `namespace:path` 精确匹配与 `path/`批量匹配。详见配置注释（neoforge）或配置目录（fabric）下的 `README_CN.txt` / `README_EN.txt`。
-- 添加对考古、战利品箱、钓鱼行为的日志支持，玩家可以自行在配置文件中添加对特定战利品表的追踪
+#### 可自定义追踪的战利品表
+- 追踪战利品表现支持通过配置文件自定义，支持 `namespace:path` 精确匹配与 `path/`前缀批量匹配。详见配置说明请参考 `README_CN.txt` / `README_EN.txt`（NeoForge 下位于配置注释，Fabric 下位于配置目录）。
+- 新增对考古、战利品箱、钓鱼行为的日志支持，玩家可在配置文件中自由添加需要追踪的战利品表。
 
 #### 自动生成翻译键与缺失翻译键导出
-- **缺失翻译键自动导出**：运行期检测到考古手册中存在未本地化的战利品表名时，会自动将缺失的翻译键追加写入游戏目录下 `usb_miss_key/missing_keys.json`，value 预填战利品表清洗名称，便于直接修改后合并回模组语言文件。
-  - **如何为配置中新添加的战利品表补全翻译**：
+- **缺失翻译键自动导出**：运行时检测到考古手册中存在未本地化的战利品表名时，会自动将缺失翻译键追加写入游戏目录下的 `usb_miss_key/missing_keys.json`，value 预填为战利品表的清洗名称，方便直接修改后合并回模组语言文件。
+  - **为配置中新添加的战利品表补全翻译的步骤**：
     1. 在配置文件 `unsuspiciousblock.json` 的 `archaeology_path_prefixes` 中添加目标表规则（如 `mymod:archaeology/`），重载游戏；
     2. 进入游戏世界，触发考古手册目录加载（打开手册或执行 `/usb debug table_list`）；
-    3. 查看游戏目录下 `usb_miss_key/missing_keys.json`，其中已自动列出所有缺失的翻译键及预填名称；
-    4. 将该文件中的键值对合并到模组的 `en_us.json` 与 `zh_cn.json`，并把 value 修改为正式翻译后即完成。
+    3. 查看 `usb_miss_key/missing_keys.json`，其中已自动列出所有缺失的翻译键及预填名称；
+    4. 将该文件中的键值对合并到模组的 en_us.json 与 zh_cn.json，并将 value 修改为正式翻译即可。
 
 #### 新增 4 种附魔
-- **化石猎手**（Fossil Hunter）：附魔于化石猎手工具，最高 1 级。破坏自然生成的骨块时，有 50% 概率额外 roll 一份对应维度的骨块掉落表；玩家放置的骨块不触发。
-- **织物采集**（Textile Recovery）：附魔于剪刀，最高 1 级。剪羊毛时有 15% 概率额外掉落 1~2 根线。
-- **泥地打捞**（Mud Dredging）：附魔于钓鱼竿，最高 3 级。在开放水域钓鱼收杆时，每级 10% 概率（满级 30%）将原版战利品表替换为自定义沼泽掉落表；处于注册名包含 "swamp" 的群系时额外 +10% 概率。
-- **精掘**（Precision Excavation）：附魔于刷子，最高 3 级。刷拭可疑方块时按概率（1 级 16% / 2 级 36% / 3 级 60%）使战利品翻倍。
+- **化石猎手**（Fossil Hunter）：最高 1 级，适用于镐子。破坏自然生成的骨块时，有 50% 概率额外 roll 一份对应维度的骨块掉落表；玩家放置的骨块不触发此效果。
+- **织物采集**（Textile Recovery）：最高 1 级，适用于剪刀。剪羊毛时有 30% 概率额外掉落 1~2 根线。
+- **泥地打捞**（Mud Dredging）：最高 3 级，适用于钓鱼竿。在开放水域钓鱼收杆时，每级提供 10% 概率（满级 30%）将原版战利品表替换为自定义沼泽掉落表；若当前群系注册名包含 "swamp"，额外提升 10% 概率。
+- **精掘**（Precision Excavation）：最高 3 级，适用于刷子。刷拭可疑方块时，按等级概率（1 级 16% / 2 级 36% / 3 级 60%）使战利品翻倍。
 
 #### 新增 4 种物品
-- **考古铲**（Archaeological Shovel）：考古专用工具，可垂直挖掘3格，不会破坏可疑方块及其支撑。挖沙子时有小概率挖出古代金币。
-- **古代金币**（Ancient Coin）：可在古迹废墟战利品中发现。可为可疑扫描仪充能。
-- **失落书页**（Lost Page）：可在古迹废墟稀有战利品中发现。与基页、书本一起在锻造台合成附魔书。
-- **基页**（Base Page）：合成材料物品。
+- **考古铲**（Archaeological Shovel）：铁铲等级工具，可一次垂直挖掘 3 格，不会破坏可疑方块及其支撑方块。挖掘沙子时小概率产出古代金币。
+- **古代金币**（Ancient Coin）：可在古迹废墟战利品中发现，用于为可疑扫描仪充能。
+- **失落书页**（Lost Page）：可在古迹废墟稀有战利品中发现，与基页和书本在锻造台中合成附魔书。
+- **基页**（Base Page）：合成材料。
 
 #### 新增一系列调试用的指令
 - 本模组指令以 `/usb `开头，均需要op权限。
 
 ### 修改
 
-#### 考古手册 —— 战利品概率
-- 战利品概率的解析重构为使用10000次模拟抽取获得近似值，首次启动服务端可能需要几秒钟时间进行计算
-- 注意，部分战利品需要特定条件才能获得，概率显示仅供参考
+#### 考古手册
+- 战利品概率展示现改为基于 10000 次模拟抽取获得的近似值，首次启动服务端时可能需要数秒进行计算。
+- 注意：部分战利品需满足特定条件方可获得，概率显示仅供参考。
 
 #### 可疑扫描仪
-- 重构配方与纹理
-- 新增范围模式，默认按V键切换扫描范围，shift蹲下显示扫描范围
-- 范围模式下消耗能量，自动消耗背包中的古代金币充能
+- 重制配方与纹理。
+- 新增范围模式，默认按 V 键切换扫描范围，潜行时显示扫描范围边界。
+- 范围模式下会消耗能量，并可自动消耗背包中的古代金币进行充能。
 
-#### 一系列 UI 优化
+## [1.2.0]
+
+### Added
+
+#### Archaeology Handbook – "Log" Tab
+- Added a **"Log"** tab that fully records every archaeology-related event for the player.
+
+#### Customizable Trackable Loot Tables
+- Loot table tracking now supports configuration via config file, with `namespace:path` exact matching and `path/` prefix batch matching. For detailed configuration instructions, refer to `README_CN.txt` / `README_EN.txt` (under NeoForge, located in config comments; under Fabric, in the config directory).
+- Added logging support for archaeology, loot chests, and fishing. Players can freely add loot tables to track in the config file.
+
+#### Automatic Translation Key Generation & Missing Key Export
+- **Auto-export of missing translation keys**: At runtime, when the Archaeology Handbook detects unlocalized loot table names, missing keys are automatically appended to `usb_miss_key/missing_keys.json` in the game directory, with the value pre-filled as the cleaned name of the loot table for easy modification and merging back into the mod's language files.
+  - **Steps to complete translations for newly added loot tables in the config**:
+    1. Add the target table rule (e.g., `mymod:archaeology/`) to `archaeology_path_prefixes` in `unsuspiciousblock.json`, then reload the game.
+    2. Enter the game world and trigger the Archaeology Handbook catalogue load (open the handbook or run `/usb debug table_list`).
+    3. Check `usb_miss_key/missing_keys.json` – all missing translation keys with pre-filled names are listed.
+    4. Merge the key-value pairs from that file into the mod's `en_us.json` and `zh_cn.json`, and change the values to the final translations.
+
+#### 4 New Enchantments
+- **Fossil Hunter**: Max level 1, applicable to pickaxes. When breaking naturally generated bone blocks, has a 50% chance to additionally roll the bone block drop table for the corresponding dimension. Does not trigger on player-placed bone blocks.
+- **Textile Recovery**: Max level 1, applicable to shears. When shearing sheep, has a 30% chance to drop 1–2 extra string.
+- **Mud Dredging**: Max level 3, applicable to fishing rods. When reeling in while fishing in open water, each level provides a 10% chance (30% at max level) to replace the vanilla loot table with a custom swamp drop table. If the current biome registry name contains "swamp", the chance is increased by an additional 10%.
+- **Precision Excavation**: Max level 3, applicable to brushes. When brushing suspicious blocks, has a per-level chance (Level 1: 16% / Level 2: 36% / Level 3: 60%) to double the loot.
+
+#### 4 New Items
+- **Archaeological Shovel**: Iron shovel-tier tool that can dig 3 blocks vertically in one go. Does not destroy suspicious blocks or their supporting blocks. When digging sand, has a small chance to yield Ancient Coins.
+- **Ancient Coin**: Can be found in trail ruins loot. Used to recharge the Suspicious Scanner.
+- **Lost Page**: Can be found in trail ruins rare loot. Combined with a Base Page and a Book in a smithing table to craft an Enchanted Book.
+- **Base Page**: Crafting material.
+
+#### New Debug Commands
+- All mod commands are prefixed with `/usb ` and require operator permissions.
+
+### Changed
+
+#### Archaeology Handbook
+- Loot probability display is now based on approximate values from 10,000 simulated draws. The first startup on the server side may take a few seconds to compute.
+- Note: Some loot requires specific conditions to be obtained; the displayed probabilities are for reference only.
+
+#### Suspicious Scanner
+- Recipe and texture reworked.
+- Added a range mode, default toggle key is V. While sneaking, the scanning range boundary is displayed.
+- Range mode consumes energy and can automatically consume Ancient Coins from the inventory for recharging.

@@ -467,10 +467,6 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 dayTime
         ));
 
-        if (!this.item.isEmpty()) {
-            Constants.LOG.debug("刷子刷物品刚露头");
-        }
-
         this.unsuspiciousblock$syncBlockEntity();
     }
 
