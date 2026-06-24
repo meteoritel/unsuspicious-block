@@ -3,6 +3,8 @@ package com.meteorite.unsuspiciousblock.platform;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.fabricmc.loader.api.FabricLoader;
 
+import java.nio.file.Path;
+
 /** Fabric 平台实现 */
 public class FabricPlatformHelper implements IPlatformHelper {
 
@@ -27,5 +29,10 @@ public class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public boolean isDevelopmentEnvironment() {
         return FabricLoader.getInstance().isDevelopmentEnvironment();
+    }
+
+    @Override
+    public Path getGameDir() {
+        return FabricLoader.getInstance().getGameDir();
     }
 }

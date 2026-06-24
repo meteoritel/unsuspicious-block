@@ -25,15 +25,6 @@ public final class LootTableNames {
     private static volatile List<String> cachedRawPatterns;
     private static volatile List<LootTablePattern> cachedPatterns = List.of();
 
-    static {
-        seedVanilla("minecraft:archaeology/desert_pyramid", "screen.unsuspiciousblock.archaeology_journal.table.desert_pyramid");
-        seedVanilla("minecraft:archaeology/desert_well", "screen.unsuspiciousblock.archaeology_journal.table.desert_well");
-        seedVanilla("minecraft:archaeology/ocean_ruin_cold", "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_cold");
-        seedVanilla("minecraft:archaeology/ocean_ruin_warm", "screen.unsuspiciousblock.archaeology_journal.table.ocean_ruin_warm");
-        seedVanilla("minecraft:archaeology/trail_ruins_common", "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_common");
-        seedVanilla("minecraft:archaeology/trail_ruins_rare", "screen.unsuspiciousblock.archaeology_journal.table.trail_ruins_rare");
-    }
-
     private LootTableNames() {
     }
 
@@ -111,20 +102,21 @@ public final class LootTableNames {
         return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
-    private static void seedVanilla(String tableId, String translationKey) {
-        ResourceLocation id = ResourceLocation.tryParse(tableId);
-        if (id == null) {
-            throw new IllegalStateException("Invalid archaeology loot table id: " + tableId);
-        }
-        registerInternal(id, translationKey, null);
-    }
-
     private static void warnMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
-        if (Language.getInstance().has(translationKey) || !WARNED_MISSING_TRANSLATIONS.add(tableId)) {
+        if (Language.getInstance().has(translationKey)) {
+            return;
+        }
+        // 仅在 record 成功后才标记为已警告，避免瞬时 I/O 失败导致该 tableId 永久放弃重试
+        if (!WARNED_MISSING_TRANSLATIONS.add(tableId)) {
             return;
         }
         Constants.LOG.warn("Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
                 tableId, fallbackName, translationKey);
+        // 将缺失 key 追加写入游戏目录下的 usb_miss_key/missing_keys.json，便于补全本地化
+        if (!MissingTranslationKeyExporter.record(translationKey, fallbackName)) {
+            // 写入失败，撤销标记以便下次调用可重试
+            WARNED_MISSING_TRANSLATIONS.remove(tableId);
+        }
     }
 
     private static void registerInternal(ResourceLocation tableId, String translationKey, String fallbackName) {
@@ -143,7 +135,8 @@ public final class LootTableNames {
     }
 
     private static String createTranslationKey(ResourceLocation tableId) {
-        return KEY_PREFIX + tableId.getNamespace() + "." + normalizePathForKey(stripArchaeologyPrefix(tableId));
+        // 保留完整 path（含 archaeology 前缀），避免不同前缀下的同名表产生 key 冲突
+        return KEY_PREFIX + tableId.getNamespace() + "." + normalizePathForKey(tableId.getPath());
     }
 
     private static String normalizePathForKey(String path) {

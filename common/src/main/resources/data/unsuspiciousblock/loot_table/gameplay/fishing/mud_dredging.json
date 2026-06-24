@@ -13,6 +13,10 @@
           "name": "unsuspiciousblock:ancient_coin"
         },
         {
+          "type": "minecraft:item",
+          "name": "minecraft:enchanted_golden_apple"
+        },
+        {
           "type": "minecraft:loot_table",
           "value": "unsuspiciousblock:usb/random_pottery_sherd"
         },

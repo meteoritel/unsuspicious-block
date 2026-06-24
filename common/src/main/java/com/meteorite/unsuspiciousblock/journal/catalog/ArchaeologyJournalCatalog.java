@@ -84,7 +84,11 @@ public final class ArchaeologyJournalCatalog {
 
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (Map.Entry<ResourceLocation, Resource> entry : orderedResources) {
-            LootTableNames.ensureRegistered(entry.getKey());
+            ResourceLocation tableId = entry.getKey();
+            LootTableNames.ensureRegistered(tableId);
+            // 提前触发缺失 key 导出，与 JSON 解析解耦——翻译 key 仅由 tableId 派生，
+            // 即使后续 JSON 解析失败（模组表常见自定义 entry/condition），缺失 key 仍能被记录
+            LootTableNames.resolveDisplayName(tableId);
             try (BufferedReader reader = entry.getValue().openAsReader()) {
                 JsonElement element = JsonParser.parseReader(reader);
                 TableDefinition definition = parseTable(entry.getKey(), element, resourceManager, new LinkedHashSet<>());

@@ -121,7 +121,7 @@ public final class UsbCommand {
     // 调试子指令
     private static LiteralArgumentBuilder<CommandSourceStack> buildDebugSubcommand() {
         return Commands.literal("debug")
-                .then(Commands.literal("list_table")
+                .then(Commands.literal("table_list")
                         .executes(context -> sendTableList(context.getSource())));
     }
 
@@ -160,9 +160,10 @@ public final class UsbCommand {
         for (TableDefinition table : catalog.values()) {
             int lineIndex = index++;
             ResourceLocation tableId = table.id();
+            // 调试命令也触发缺失 key 导出，作为 catalog 加载失败时的手动补救手段
+            String displayName = LootTableNames.resolveDisplayName(tableId).getString();
             String translationKey = LootTableNames.translationKey(tableId);
             String fallbackName = LootTableNames.fallbackName(tableId);
-            String displayName = table.displayName().getString();
             source.sendSuccess(() -> Component.translatable(
                     "command.unsuspiciousblock.usb.debug.table_list.entry",
                     lineIndex,

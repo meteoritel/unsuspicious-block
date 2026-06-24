@@ -19,25 +19,36 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
 
         builder.push("loot_table");
         ARCHAEOLOGY_PATH_PREFIXES = builder
-                .comment("考古战利品表匹配规则列表。仅命中这些规则的战利品表会被追踪。",
-                        "语法：<namespace>:<path> 限定命名空间，裸 <path> 匹配所有命名空间；",
-                        "path 以 / 结尾为前缀匹配（命中该前缀下所有表），否则为精确匹配（仅单个表）。",
-                        "例：minecraft:archaeology/desert_well（单表）、mymod:archaeology/（指定模组）、archaeology/（所有命名空间）。",
-                        "默认还包含 gameplay/fishing/ 前缀，用于追踪本模组自定义钓鱼战利品表。")
+                .comment("需要追踪的战利品表匹配规则列表。",
+                        "语法：[命名空间:路径]。指定命名空间时仅匹配该命名空间，省略时匹配所有命名空间。",
+                        "路径以 / 结尾表示前缀匹配（命中该前缀下所有表），否则为精确匹配（仅命中单个表）。",
+                        "例：minecraft:archaeology/desert_well -> 单表、unsuspiciousblock:archaeology/ -> 指定模组、archaeology/ -> 所有命名空间。",
+                        "默认包含 archaeology/ 与 gameplay/fishing/ 前缀，以及本模组的 gameplay/fossil_hunter/ 前缀。",
+                        "",
+                        "List of loot table matching rules to track.",
+                        "Syntax: [namespace:path]. With namespace, only that namespace is matched; without, all namespaces.",
+                        "Path ending with / is a prefix match (all tables under that prefix); otherwise an exact match (single table).",
+                        "e.g. minecraft:archaeology/desert_well (single), unsuspiciousblock:archaeology/ (specific mod), archaeology/ (all namespaces).",
+                        "Defaults include archaeology/, gameplay/fishing/, and the mod's own gameplay/fossil_hunter/ prefix.")
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
-                        () -> List.of("archaeology/", "archeology/", "gameplay/fishing/"),
+                        () -> List.of("archaeology/", "archeology/", "gameplay/fishing/",
+                                "unsuspiciousblock:gameplay/fossil_hunter/"),
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
         builder.pop();
 
         builder.push("journal");
         MAX_LOG_ENTRIES_PER_TABLE = builder
-                .comment("单张战利品表的日志条目上限。超过上限时自动移除最旧的条目。")
+                .comment("单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。取值范围 64–4096。",
+                        "",
+                        "Max log entries kept per loot table. Oldest entries are dropped when exceeded. Range 64–4096.")
                 .translation("unsuspiciousblock.configgui.journal.max_log_entries_per_table")
                 .defineInRange("max_log_entries_per_table", 1024, 64, 4096);
         TRACKING_TIMEOUT_TICKS = builder
-                .comment("战利品箱追踪超时（游戏刻），超时后自动结算并清除追踪状态。默认 6000（5 分钟）。")
+                .comment("战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。取值范围 600–60000。",
+                        "",
+                        "Loot container tracking timeout (ticks). Auto-settles and clears tracking state on expiry. Range 600–60000.")
                 .translation("unsuspiciousblock.configgui.journal.tracking_timeout_ticks")
                 .defineInRange("tracking_timeout_ticks", 6000L, 600L, 60000L);
         builder.pop();

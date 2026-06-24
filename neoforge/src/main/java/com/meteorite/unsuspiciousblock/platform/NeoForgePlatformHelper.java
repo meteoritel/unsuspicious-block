@@ -3,6 +3,9 @@ package com.meteorite.unsuspiciousblock.platform;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
+import net.neoforged.fml.loading.FMLPaths;
+
+import java.nio.file.Path;
 
 /** NeoForge 平台实现 */
 public class NeoForgePlatformHelper implements IPlatformHelper {
@@ -28,5 +31,10 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public boolean isDevelopmentEnvironment() {
         return !FMLLoader.isProduction();
+    }
+
+    @Override
+    public Path getGameDir() {
+        return FMLPaths.GAMEDIR.get();
     }
 }
