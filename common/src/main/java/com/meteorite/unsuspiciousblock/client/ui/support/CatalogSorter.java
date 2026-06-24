@@ -45,6 +45,7 @@ public final class CatalogSorter {
             case DEFAULT -> Comparator
                     .comparing((ArchaeologyJournalEntry v) -> !"minecraft".equals(v.id().getNamespace()))
                     .thenComparing(v -> v.id().getNamespace())
+                    .thenComparing(ArchaeologyJournalEntry::type)
                     .thenComparing(v -> v.displayName().getString())
                     .thenComparing(v -> v.id().getPath());
             case NAME -> Comparator

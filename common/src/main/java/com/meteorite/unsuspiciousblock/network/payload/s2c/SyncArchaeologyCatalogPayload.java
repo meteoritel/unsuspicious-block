@@ -37,6 +37,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             buf.writeResourceLocation(entry.getKey());
             TableDefinition table = entry.getValue();
             buf.writeUtf(Component.Serializer.toJson(table.displayName(), buf.registryAccess()));
+            buf.writeUtf(table.type());
             buf.writeVarInt(table.items().size());
             for (ItemDefinition item : table.items()) {
                 buf.writeResourceLocation(item.id());
@@ -58,6 +59,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
         for (int i = 0; i < tableCount; i++) {
             ResourceLocation tableId = buf.readResourceLocation();
             Component displayName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+            String type = buf.readUtf();
             int itemCount = buf.readVarInt();
             List<ItemDefinition> items = new ArrayList<>();
             for (int j = 0; j < itemCount; j++) {
@@ -74,7 +76,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature));
             }
             int simulationCount = buf.readVarInt();
-            catalog.put(tableId, new TableDefinition(tableId, displayName, items, simulationCount));
+            catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));
         }
         return new SyncArchaeologyCatalogPayload(catalog);
     }

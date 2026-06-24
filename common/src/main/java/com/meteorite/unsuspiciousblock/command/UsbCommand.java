@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerC
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.recording.JournalLogRecorder;
+import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -20,6 +21,7 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.Map;
@@ -41,6 +43,7 @@ public final class UsbCommand {
                 .then(buildClearSubcommand())
                 .then(buildUnlockTableSubcommand())
                 .then(buildUnlockItemSubcommand())
+                .then(buildFlushTableSubcommand())
                 .then(buildDebugSubcommand()));
     }
 
@@ -118,8 +121,23 @@ public final class UsbCommand {
     // 调试子指令
     private static LiteralArgumentBuilder<CommandSourceStack> buildDebugSubcommand() {
         return Commands.literal("debug")
-                .then(Commands.literal("table_list")
+                .then(Commands.literal("list_table")
                         .executes(context -> sendTableList(context.getSource())));
+    }
+
+    // 强制清空概率缓存，重新加载并重新模拟所有跟踪的战利品表
+    private static LiteralArgumentBuilder<CommandSourceStack> buildFlushTableSubcommand() {
+        return Commands.literal("flush_table")
+                .executes(context -> flushTables(context.getSource()));
+    }
+
+    private static int flushTables(CommandSourceStack source) {
+        MinecraftServer server = source.getServer();
+        JournalCatalogHandler.forceFlushCatalog(server);
+        int tableCount = ArchaeologyJournalServerCatalog.getCatalog().size();
+        source.sendSuccess(() -> Component.translatable(
+                "command.unsuspiciousblock.usb.flush_table.success", tableCount), false);
+        return tableCount;
     }
 
     private static void unlockTableItems(ArchaeologyJournalState state, ResourceLocation tableId, TableDefinition table) {

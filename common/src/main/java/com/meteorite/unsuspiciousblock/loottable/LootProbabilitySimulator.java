@@ -4,16 +4,13 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalCatalog
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
-import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
-import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSet;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -48,10 +45,6 @@ public final class LootProbabilitySimulator {
      */
     public static Map<ResourceLocation, TableDefinition> simulate(
             Map<ResourceLocation, TableDefinition> rawCatalog, ServerLevel level) {
-        LootParams.Builder paramsBuilder = new LootParams.Builder(level)
-                .withParameter(LootContextParams.ORIGIN, Vec3.ZERO)
-                .withLuck(0.0F);
-
         // 预收集 LootTable 引用和 LootParams
         List<SimTask> tasks = new ArrayList<>(rawCatalog.size());
         for (Map.Entry<ResourceLocation, TableDefinition> entry : rawCatalog.entrySet()) {
@@ -66,8 +59,10 @@ public final class LootProbabilitySimulator {
                 if (lootTable == LootTable.EMPTY) {
                     tasks.add(new SimTask(tableId, rawTable, null, null));
                 } else {
-                    // 考古战利品表的参数集为 minecraft:archaeology（允许 ORIGIN）。
-                    LootParams lootParams = paramsBuilder.create(LootContextParamSets.ARCHAEOLOGY);
+                    // 按战利品表声明的 paramSet 动态构建 LootParams；
+                    // 若 required 参数无法全部满足，LootContextParamFiller 内部回退到宽松 paramSet
+                    LootContextParamSet paramSet = lootTable.getParamSet();
+                    LootParams lootParams = LootContextParamFiller.createForSimulation(level, paramSet);
                     tasks.add(new SimTask(tableId, rawTable, lootTable, lootParams));
                 }
             } catch (Exception e) {
@@ -172,15 +167,13 @@ public final class LootProbabilitySimulator {
             simulatedItems.add(ArchaeologyJournalCatalog.buildDiscoveredDefinition(entry.getValue(), probability));
         }
 
-        return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), simulatedItems, SIMULATION_COUNT));
+        return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(), simulatedItems, SIMULATION_COUNT));
     }
 
     // 从运行时掉落派生用于匹配/展示的签名；附魔物折叠为近似附魔签名，其余按普通物品签名（保守，避免签名爆炸）
     private static LootResultSignature deriveSignature(ItemStack stack) {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        boolean enchanted = stack.has(DataComponents.ENCHANTMENTS)
-                || stack.has(DataComponents.STORED_ENCHANTMENTS)
-                || stack.isEnchanted();
+        boolean enchanted = LootResultSignature.isActuallyEnchanted(stack);
         return enchanted ? LootResultSignature.enchantedApprox(itemId) : LootResultSignature.plain(itemId);
     }
 

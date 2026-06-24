@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -47,6 +48,17 @@ public final class JournalCatalogHandler {
 
     /** 数据包重载时使缓存失效并重新同步目录哈希给所有在线玩家 */
     public static void onDataPackReload(MinecraftServer server) {
+        ArchaeologyJournalServerCatalog.invalidate();
+        ArchaeologyJournalServerCatalog.ensureLoaded(server);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            syncCatalogHash(player);
+        }
+    }
+
+    /** 强制清空概率缓存并重新加载+重新模拟所有跟踪表，然后同步哈希给所有在线玩家 */
+    public static void forceFlushCatalog(MinecraftServer server) {
+        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
+        probabilityData.clear();
         ArchaeologyJournalServerCatalog.invalidate();
         ArchaeologyJournalServerCatalog.ensureLoaded(server);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {

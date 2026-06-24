@@ -188,6 +188,7 @@ public class CatalogToolbar {
         Component header = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip");
         Component ruleTable = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_table");
         Component ruleMod = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_mod");
+        Component ruleType = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_type");
         Component ruleItem = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_item");
         Component ruleTag = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_tag");
         this.searchToggleButton = new IconButton(
@@ -197,6 +198,7 @@ public class CatalogToolbar {
                 List.of(header,
                         Component.literal("- ").append(ruleTable),
                         Component.literal("- ").append(ruleMod),
+                        Component.literal("- ").append(ruleType),
                         Component.literal("- ").append(ruleItem),
                         Component.literal("- ").append(ruleTag)),
                 this::toggleSearch

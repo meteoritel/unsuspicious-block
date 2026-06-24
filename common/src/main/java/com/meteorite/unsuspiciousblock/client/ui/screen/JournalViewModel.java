@@ -249,7 +249,7 @@ public class JournalViewModel {
             // 应用搜索过滤
             if (!this.currentSearch.isEmpty()) {
                 boolean matches = this.currentSearch.matchesTableByItem(
-                        id, view.displayName().getString(), view.unlocked(), view.items());
+                        id, view.displayName().getString(), view.type(), view.items());
                 if (!matches) continue;
             }
             this.tableViews.add(view);
@@ -289,10 +289,10 @@ public class JournalViewModel {
 
         List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
         for (ArchaeologyEntryItem iv : selected.items()) {
-            boolean highlighted = this.currentSearch.isEmpty()
-                    || this.currentSearch.mode() == JournalSearchQuery.Mode.NAMESPACE
+            // 仅物品级搜索（$ 前缀）才启用网格遮罩；表级搜索（名称/@/%）不影响物品高亮
+            boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
                     || this.currentSearch.matchesItem(
-                            iv.id(), iv.displayName().getString(), iv.unlocked(), iv.probability());
+                            iv.id(), iv.displayName().getString());
             gridItems.add(new ItemGridPanel.GridItem(
                     iv.id(), iv.displayName(), iv.tooltipHint(),
                     iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted));

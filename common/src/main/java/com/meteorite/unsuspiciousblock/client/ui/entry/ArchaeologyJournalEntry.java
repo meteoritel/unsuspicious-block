@@ -20,6 +20,8 @@ public record ArchaeologyJournalEntry(
         // --- 基础标识 ---
         ResourceLocation id,
         Component displayName,
+        // 战利品表声明的 type（如 minecraft:archaeology），用于目录按类型聚类排序
+        String type,
 
         // --- 考古信息（右侧 Archaeology tab + Intro tab 共用）---
         List<ArchaeologyEntryItem> items,
@@ -56,7 +58,7 @@ public record ArchaeologyJournalEntry(
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.from(logHistory);
-        return new ArchaeologyJournalEntry(tableId, definition.displayName(), items,
+        return new ArchaeologyJournalEntry(tableId, definition.displayName(), definition.type(), items,
                 definition.simulationCount(), definition.items().size(), parsedCount, tableUnlocked, logRef);
     }
 }

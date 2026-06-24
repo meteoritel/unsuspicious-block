@@ -39,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 考古战利品表目录——客户端侧 JSON 解析器。
@@ -86,7 +87,7 @@ public final class ArchaeologyJournalCatalog {
             LootTableNames.ensureRegistered(entry.getKey());
             try (BufferedReader reader = entry.getValue().openAsReader()) {
                 JsonElement element = JsonParser.parseReader(reader);
-                TableDefinition definition = parseTable(entry.getKey(), element);
+                TableDefinition definition = parseTable(entry.getKey(), element, resourceManager, new LinkedHashSet<>());
                 if (!definition.items().isEmpty()) {
                     tables.put(entry.getKey(), definition);
                 }
@@ -109,10 +110,11 @@ public final class ArchaeologyJournalCatalog {
         return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature);
     }
 
-    private static TableDefinition parseTable(ResourceLocation tableId, JsonElement element) {
+    private static TableDefinition parseTable(ResourceLocation tableId, JsonElement element,
+                                              ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
         boolean[] hasConditions = new boolean[1];
-        parseNode(element, items, hasConditions);
+        parseNode(element, items, hasConditions, resourceManager, expandingStack);
 
         List<ItemDefinition> definitions = new ArrayList<>();
         for (ItemDefinitionBuilder builder : items.values()) {
@@ -122,17 +124,28 @@ public final class ArchaeologyJournalCatalog {
                 .comparing((ItemDefinition definition) -> definition.id().toString())
                 .thenComparing(definition -> definition.signature().toStoredKey()));
 
-        return new TableDefinition(tableId, resolveTableName(tableId), definitions, 0);
+        // 读取战利品表声明的 type（如 minecraft:archaeology / minecraft:fishing / minecraft:generic），
+        // 用于目录排序时按类型聚类；缺失时视为空串，排序时排在最后
+        String type = "";
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            if (object.has("type") && object.get("type").isJsonPrimitive()) {
+                type = object.get("type").getAsString();
+            }
+        }
+
+        return new TableDefinition(tableId, resolveTableName(tableId), type, definitions, 0);
     }
 
-    private static void parseNode(JsonElement element, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
+    private static void parseNode(JsonElement element, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                                  ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         if (element == null || element.isJsonNull()) {
             return;
         }
 
         if (element.isJsonArray()) {
             for (JsonElement child : element.getAsJsonArray()) {
-                parseNode(child, items, hasConditions);
+                parseNode(child, items, hasConditions, resourceManager, expandingStack);
             }
             return;
         }
@@ -142,34 +155,37 @@ public final class ArchaeologyJournalCatalog {
         }
 
         JsonObject object = element.getAsJsonObject();
-        if (object.has("pools") && parseArrayIfPresent(object, "pools", items, hasConditions)) {
+        if (object.has("pools") && parseArrayIfPresent(object, "pools", items, hasConditions, resourceManager, expandingStack)) {
             return;
         }
 
-        if (object.has("entries") && parseArrayIfPresent(object, "entries", items, hasConditions)) {
+        if (object.has("entries") && parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack)) {
             return;
         }
 
-        parseEntry(object, items, hasConditions);
+        parseEntry(object, items, hasConditions, resourceManager, expandingStack);
     }
 
-    private static void parseArray(JsonArray array, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
+    private static void parseArray(JsonArray array, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                                   ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         for (JsonElement child : array) {
-            parseNode(child, items, hasConditions);
+            parseNode(child, items, hasConditions, resourceManager, expandingStack);
         }
     }
 
     private static boolean parseArrayIfPresent(JsonObject object, String key,
-                                               Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
+                                               Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                                               ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         if (!object.has(key) || !object.get(key).isJsonArray()) {
             return false;
         }
 
-        parseArray(object.getAsJsonArray(key), items, hasConditions);
+        parseArray(object.getAsJsonArray(key), items, hasConditions, resourceManager, expandingStack);
         return true;
     }
 
-    private static void parseEntry(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
+    private static void parseEntry(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                                   ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         String type = getString(object, "type", "");
         boolean complex = object.has("conditions") || object.has("bonus_rolls") || object.has("rolls");
 
@@ -186,16 +202,47 @@ public final class ArchaeologyJournalCatalog {
                 }
                 parseTag(object, items, hasConditions);
             }
+            case "loot_table" -> {
+                hasConditions[0] = true;
+                expandLootTableReference(object, items, hasConditions, resourceManager, expandingStack);
+            }
             case "group", "alternatives", "sequence" -> {
                 hasConditions[0] = true;
-                parseArrayIfPresent(object, "children", items, hasConditions);
+                parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack);
             }
             default -> {
                 hasConditions[0] = true;
-                if (!parseArrayIfPresent(object, "children", items, hasConditions)) {
-                    parseArrayIfPresent(object, "entries", items, hasConditions);
+                if (!parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack)) {
+                    parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack);
                 }
             }
+        }
+    }
+
+    // 展开 minecraft:loot_table 类型 entry 引用的表，将其条目合并进当前目录。
+    // 1.21.1 使用 "value" 字段；兼容旧格式 "name"。
+    private static void expandLootTableReference(JsonObject object, Map<String, ItemDefinitionBuilder> items,
+                                                 boolean[] hasConditions, ResourceManager resourceManager,
+                                                 Set<ResourceLocation> expandingStack) {
+        String rawId = object.has("value") ? object.get("value").getAsString() : getString(object, "name", "");
+        ResourceLocation referencedId = ResourceLocation.tryParse(rawId);
+        if (referencedId == null) {
+            LOGGER.warn("loot_table 引用缺少 value/name 字段，跳过展开");
+            return;
+        }
+        if (expandingStack.contains(referencedId)) {
+            LOGGER.warn("检测到 loot_table 循环引用 {}，跳过展开", referencedId);
+            return;
+        }
+
+        ResourceLocation filePath = LOOT_TABLES.idToFile(referencedId);
+        try (BufferedReader reader = resourceManager.openAsReader(filePath)) {
+            JsonElement referencedElement = JsonParser.parseReader(reader);
+            expandingStack.add(referencedId);
+            parseNode(referencedElement, items, hasConditions, resourceManager, expandingStack);
+            expandingStack.remove(referencedId);
+        } catch (IOException | RuntimeException exception) {
+            LOGGER.warn("展开 loot_table 引用 {} 失败", referencedId, exception);
         }
     }
 
@@ -268,15 +315,12 @@ public final class ArchaeologyJournalCatalog {
                     case "enchant_randomly" -> {
                         previewStack = promoteBookPreviewIfNeeded(previewStack);
                         signature = LootResultSignature.enchantedApprox(currentItemId(previewStack));
-                        hint = Component.translatable(RANDOM_HINT_KEY);
+                        hint = Component.translatable(ENCHANTED_HINT_KEY);
                     }
                     case "enchant_with_levels" -> {
                         previewStack = promoteBookPreviewIfNeeded(previewStack);
-                        String levelInfo = parseLevelInfo(functionObject.get("levels"));
                         signature = LootResultSignature.enchantedApprox(currentItemId(previewStack));
-                        hint = levelInfo != null
-                                ? Component.translatable(LEVEL_HINT_KEY, levelInfo)
-                                : Component.translatable(RANDOM_HINT_KEY);
+                        hint = Component.translatable(ENCHANTED_HINT_KEY);
                     }
                     case "set_enchantments" -> {
                         previewStack = promoteBookPreviewIfNeeded(previewStack);

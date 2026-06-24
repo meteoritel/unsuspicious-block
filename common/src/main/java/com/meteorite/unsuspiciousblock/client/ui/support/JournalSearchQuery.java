@@ -17,6 +17,7 @@ import java.util.Locale;
  * <ul>
  *   <li>无前缀 — 按战利品表名称搜索（默认）</li>
  *   <li>{@code @} — 按命名空间/模组来源搜索战利品表</li>
+ *   <li>{@code %} — 按战利品表类型搜索（如 {@code %archaeology} 匹配 {@code minecraft:archaeology}）</li>
  *   <li>{@code $} — 按物品名称搜索（{@code $#} 开头则按物品标签搜索）</li>
  * </ul>
  */
@@ -25,6 +26,7 @@ public final class JournalSearchQuery {
     public enum Mode {
         TABLE_NAME(""),      // 无前缀：按名称搜索战利品表
         NAMESPACE("@"),      // @ 前缀：按命名空间搜索战利品表
+        TYPE("%"),           // % 前缀：按战利品表类型搜索
         ITEM_NAME("$");      // $ 前缀：按物品搜索（# 开头则为标签搜索）
 
         private final String prefix;
@@ -87,33 +89,31 @@ public final class JournalSearchQuery {
         return this.rawQuery;
     }
 
-    public String normalizedQuery() {
-        return this.normalizedQuery;
-    }
-
     public boolean isEmpty() {
         return this.normalizedQuery.isEmpty();
     }
 
     // 判断目录条目（战利品表）是否匹配此查询
-    public boolean matchesCatalogEntry(ResourceLocation id, String displayName, boolean unlocked) {
+    public boolean matchesCatalogEntry(ResourceLocation id, String displayName, String type) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
             case TABLE_NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
                     || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             case NAMESPACE -> id.getNamespace().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
+            case TYPE -> type.toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             // 物品级搜索模式需要在条目级遍历物品，目录级先全部保留
             case ITEM_NAME -> true;
         };
     }
 
     // 判断物品条目是否匹配此查询（用于高亮等）
-    public boolean matchesItem(ResourceLocation id, String displayName, boolean unlocked, String probability) {
+    public boolean matchesItem(ResourceLocation id, String displayName) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
             case TABLE_NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
                     || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             case NAMESPACE -> id.getNamespace().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
+            case TYPE -> true;
             case ITEM_NAME -> {
                 // # 开头 → 标签搜索
                 if (this.normalizedQuery.startsWith("#")) {
@@ -126,14 +126,14 @@ public final class JournalSearchQuery {
     }
 
     // 判断整个战利品表是否因含有匹配物品而匹配此查询
-    public boolean matchesTableByItem(ResourceLocation tableId, String tableDisplayName, boolean tableUnlocked,
-                                       Iterable<? extends ItemEntryLike> items) {
+    public boolean matchesTableByItem(ResourceLocation tableId, String tableDisplayName,
+                                      String type, Iterable<? extends ItemEntryLike> items) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
-            case TABLE_NAME, NAMESPACE -> matchesCatalogEntry(tableId, tableDisplayName, tableUnlocked);
+            case TABLE_NAME, NAMESPACE, TYPE -> matchesCatalogEntry(tableId, tableDisplayName, type);
             case ITEM_NAME -> {
                 for (ItemEntryLike item : items) {
-                    if (matchesItem(item.itemId(), item.itemDisplayName(), item.unlocked(), item.probability())) {
+                    if (matchesItem(item.itemId(), item.itemDisplayName())) {
                         yield true;
                     }
                 }

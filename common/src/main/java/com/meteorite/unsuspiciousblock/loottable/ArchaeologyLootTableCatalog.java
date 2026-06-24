@@ -16,8 +16,8 @@ public final class ArchaeologyLootTableCatalog {
     }
 
     /** 战利品表定义 */
-    public record TableDefinition(ResourceLocation id, Component displayName, List<ItemDefinition> items,
-                                  int simulationCount) {
+    public record TableDefinition(ResourceLocation id, Component displayName, String type,
+                                  List<ItemDefinition> items, int simulationCount) {
     }
 
     /** 战利品表物品条目定义 */

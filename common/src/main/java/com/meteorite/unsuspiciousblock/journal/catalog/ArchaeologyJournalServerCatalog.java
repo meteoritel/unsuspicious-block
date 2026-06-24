@@ -175,7 +175,7 @@ public final class ArchaeologyJournalServerCatalog {
         }
 
         return new TableDefinition(
-                rawTable.id(), rawTable.displayName(), restoredItems,
+                rawTable.id(), rawTable.displayName(), rawTable.type(), restoredItems,
                 LootProbabilitySimulator.getSimulationCount());
     }
 

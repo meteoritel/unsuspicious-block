@@ -187,9 +187,9 @@ public final class ItemGridPanel implements PagePanel {
         guiGraphics.drawString(font, probComp, centerX - probW / 2,
                 cellY + PROB_Y_OFFSET, PROB_COLOR, false);
 
-        // 搜索不匹配：覆盖半透明遮罩降低视觉权重
+        // 搜索不匹配：覆盖半透明灰色遮罩降低视觉权重
         if (!item.highlighted()) {
-            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, 0x80FFFFFF);
+            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, 0x80808080);
         }
     }
 

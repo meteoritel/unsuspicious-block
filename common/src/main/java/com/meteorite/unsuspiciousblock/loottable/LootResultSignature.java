@@ -8,6 +8,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
@@ -101,6 +102,16 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
         return this.type == SignatureType.ENCHANTED_RANDOM
                 || this.type == SignatureType.ENCHANTED_LEVEL
                 || this.type == SignatureType.ENCHANTED_APPROX;
+    }
+
+    // 判断 stack 是否实际带有附魔（非空 ENCHANTMENTS 或 STORED_ENCHANTMENTS）。
+    // 不能用 stack.has(ENCHANTMENTS)，因为工具/武器默认带有空的 ENCHANTMENTS 组件，has() 会误返回 true。
+    public static boolean isActuallyEnchanted(ItemStack stack) {
+        if (stack.isEnchanted()) {
+            return true;
+        }
+        ItemEnchantments stored = stack.get(DataComponents.STORED_ENCHANTMENTS);
+        return stored != null && !stored.isEmpty();
     }
 
     // 根据签名重建用于 UI 展示或精确匹配的预览物品

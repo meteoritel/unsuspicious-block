@@ -14,11 +14,11 @@
         },
         {
           "type": "minecraft:loot_table",
-          "name": "unsuspiciousblock:usb/random_pottery_sherd"
+          "value": "unsuspiciousblock:usb/random_pottery_sherd"
         },
         {
           "type": "minecraft:loot_table",
-          "name": "unsuspiciousblock:usb/random_armor_trim"
+          "value": "unsuspiciousblock:usb/random_armor_trim"
         },
         {
           "type": "minecraft:item",

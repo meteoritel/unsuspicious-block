@@ -135,6 +135,12 @@ public final class LootProbabilityData extends SavedData {
         return entries.containsKey(tableId);
     }
 
+    // 清空全部概率缓存（强制下次加载时重新模拟所有表）
+    public void clear() {
+        entries.clear();
+        setDirty();
+    }
+
     /** 单个战利品表的概率数据条目 */
     public record TableProbabilityEntry(String hash, Map<String, String> probabilities) {
     }

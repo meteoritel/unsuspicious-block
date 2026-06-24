@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.loottable;
 
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -58,9 +57,7 @@ public final class LootResultMatcher {
 
         return switch (signature.type()) {
             case COMPONENT_EXACT -> matchesExactComponents(stack, signature);
-            case ENCHANTED_RANDOM, ENCHANTED_LEVEL, ENCHANTED_APPROX -> stack.has(DataComponents.ENCHANTMENTS)
-                    || stack.has(DataComponents.STORED_ENCHANTMENTS)
-                    || stack.isEnchanted();
+            case ENCHANTED_RANDOM, ENCHANTED_LEVEL, ENCHANTED_APPROX -> LootResultSignature.isActuallyEnchanted(stack);
             case PLAIN, APPROX_ITEM_ONLY -> true;
         };
     }
