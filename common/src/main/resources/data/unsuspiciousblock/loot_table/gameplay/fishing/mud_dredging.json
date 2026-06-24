@@ -25,12 +25,16 @@
           "value": "unsuspiciousblock:usb/random_armor_trim"
         },
         {
+          "type": "minecraft:loot_table",
+          "value": "unsuspiciousblock:usb/random_music_disc"
+        },
+        {
           "type": "minecraft:item",
           "name": "minecraft:book",
           "functions": [
             {
               "function": "minecraft:enchant_with_levels",
-              "levels": {"type": "minecraft:uniform", "min": 25, "max": 30}
+              "levels": {"type": "minecraft:uniform", "min": 20, "max": 30}
             }
           ]
         },
@@ -40,6 +44,24 @@
           "functions": [
             {
               "function": "minecraft:enchant_randomly"
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:mangrove_propagule"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tnt"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:golden_axe",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 30
             }
           ]
         }

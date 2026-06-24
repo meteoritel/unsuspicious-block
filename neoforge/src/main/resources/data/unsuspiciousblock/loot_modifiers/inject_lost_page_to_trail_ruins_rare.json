@@ -1,0 +1,11 @@
+{
+  "type": "unsuspiciousblock:add_item",
+  "conditions": [
+    {
+      "condition": "neoforge:loot_table_id",
+      "loot_table_id": "minecraft:archaeology/trail_ruins_rare"
+    }
+  ],
+  "item": "unsuspiciousblock:lost_page",
+  "chance": 0.10
+}

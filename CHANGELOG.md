@@ -16,20 +16,18 @@
 考古手册新增「日志」标签页，完整记录玩家每次考古相关事件：
 
 - **追踪来源**：目前可追踪刷拭考古、战利品容器、钓鱼共 3 种来源；每条日志记录维度、群系、所属结构/地物、精确坐标、创建/更新时间以及「期望 vs 实际收集」的物品清单。
-- **详情页**：点击条目进入详情页，含「时空信息」卡片（创建/更新时间、结构、群系、维度、坐标）与「收集清单」网格——未收集灰显、部分收集显示数量徽章、完全收集显示绿色徽章，底部附带「已收集 X/Y」进度条与完成徽章。
 - **复制坐标按钮**：列表条目与详情页均提供一键复制，复制内容为 `/execute as @s in <维度> run tp @s x y+1 z`
-- **服务端权威同步**：日志数据存储于玩家 NBT，玩家上线时服务端下发完整快照，后续增量同步；客户端可上传快照用于离线后对账；增量同步触发解锁 Toast。
 - **配置项**：`journal.max_log_entries_per_table`（默认 1024，范围 64–4096，超出自动淘汰最旧）、`journal.tracking_timeout_ticks`（默认 6000 ticks / 5 分钟）、`loot_table.archaeology_path_prefixes`（控制追踪的战利品表范围）。
 
 #### 配置文件自定义追踪的战利品表
-前追踪战利品表为可配置，支持 `命名空间:路径` 精确匹配与 `路径/`批量匹配。详见配置注释（neoforge）或配置目录（fabric）下的 `README_CN.txt` / `README_EN.txt`。
+前追踪战利品表调整为可配置，支持 `命名空间:路径` 精确匹配与 `路径/`批量匹配。详见配置注释（neoforge）或配置目录（fabric）下的 `README_CN.txt` / `README_EN.txt`。
 
 #### 自动生成翻译键与缺失翻译键导出
-- **缺失翻译键自动导出**：运行期检测到考古手册中存在未本地化的战利品表名时，会自动将缺失的翻译键追加写入游戏目录下 `usb_miss_key/missing_keys.json`，value 预填 fallback 显示名，便于直接修改后合并回模组语言文件。
+- **缺失翻译键自动导出**：运行期检测到考古手册中存在未本地化的战利品表名时，会自动将缺失的翻译键追加写入游戏目录下 `usb_miss_key/missing_keys.json`，value 预填战利品表清洗名称，便于直接修改后合并回模组语言文件。
   - **如何为配置中新添加的战利品表补全翻译**：
     1. 在配置文件 `unsuspiciousblock.json` 的 `archaeology_path_prefixes` 中添加目标表规则（如 `mymod:archaeology/`），重载游戏；
     2. 进入游戏世界，触发考古手册目录加载（打开手册或执行 `/usb debug table_list`）；
-    3. 查看游戏目录下 `usb_miss_key/missing_keys.json`，其中已自动列出所有缺失的翻译键（格式为 `screen.unsuspiciousblock.archaeology_journal.table.<命名空间>.<归一化路径>`）及预填的 fallback 名称；
+    3. 查看游戏目录下 `usb_miss_key/missing_keys.json`，其中已自动列出所有缺失的翻译键及预填名称；
     4. 将该文件中的键值对合并到模组的 `en_us.json` 与 `zh_cn.json`，并把 value 修改为正式翻译后即完成。
 
 #### 新增 4 种附魔
