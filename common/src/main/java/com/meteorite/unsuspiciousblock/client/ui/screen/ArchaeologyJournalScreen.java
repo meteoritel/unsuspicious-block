@@ -83,10 +83,6 @@ public class ArchaeologyJournalScreen extends Screen {
 
         // 恢复日志工具栏状态
         this.logToolbar.setSortDescending(ArchaeologyJournalClientState.getLastLogSortDescending());
-        String savedLogSearchText = ArchaeologyJournalClientState.getLastLogSearchText();
-        if (savedLogSearchText != null) {
-            this.logToolbar.setSearchText(savedLogSearchText);
-        }
         LogGrouper.GroupMode savedLogGroupMode = ArchaeologyJournalClientState.getLastLogGroupMode();
         if (savedLogGroupMode != null) {
             this.logToolbar.setGroupMode(savedLogGroupMode);
@@ -109,7 +105,6 @@ public class ArchaeologyJournalScreen extends Screen {
         ArchaeologyJournalClientState.setLastCatalogSearchText(this.catalogToolbar.currentSearch().rawQuery());
         // 持久化日志工具栏状态
         ArchaeologyJournalClientState.setLastLogSortDescending(this.logToolbar.sortDescending());
-        ArchaeologyJournalClientState.setLastLogSearchText(this.logToolbar.searchText());
         ArchaeologyJournalClientState.setLastLogGroupMode(this.logToolbar.groupMode());
         // 持久化右侧 tab 选择
         if (this.rightPage != null) {
@@ -129,9 +124,6 @@ public class ArchaeologyJournalScreen extends Screen {
             if (this.catalogToolbar.handleEsc()) {
                 return true;
             }
-            if (this.logToolbar.handleEsc(this.rightPage)) {
-                return true;
-            }
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
@@ -144,8 +136,6 @@ public class ArchaeologyJournalScreen extends Screen {
         boolean savedLogDetail = this.rightPage != null && this.rightPage.isShowingLogDetail();
         UUID savedLogEntryId = this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null;
         boolean savedLogSortDescending = this.logToolbar.sortDescending();
-        String savedLogSearchText = this.logToolbar.searchText();
-        boolean savedLogSearchExpanded = this.logToolbar.searchExpanded();
         LogGrouper.GroupMode savedGroupMode = this.logToolbar.groupMode();
 
         // 保存目录搜索/排序状态
@@ -161,13 +151,10 @@ public class ArchaeologyJournalScreen extends Screen {
         this.updateItemGridPanel();
         this.rightPage.restoreLogSelection(savedLogEntryId, savedLogDetail);
 
-        // 恢复日志搜索/排序状态
+        // 恢复日志排序状态
         this.logToolbar.setSortDescending(savedLogSortDescending);
-        this.logToolbar.setSearchText(savedLogSearchText);
-        this.logToolbar.setSearchExpanded(savedLogSearchExpanded);
         this.logToolbar.setGroupMode(savedGroupMode);
         this.rightPage.getLogPanel().setSortDescending(this.logToolbar.sortDescending());
-        this.rightPage.getLogPanel().setSearchFilter(this.logToolbar.searchText());
         this.rightPage.getLogPanel().setGroupMode(savedGroupMode);
 
         // 恢复目录搜索/排序状态
@@ -196,7 +183,6 @@ public class ArchaeologyJournalScreen extends Screen {
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         if (this.viewModel.refreshIfNeeded()) {
             this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
-            this.viewModel.setLogSearchText(this.logToolbar.searchText());
             this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
             this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
             this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
@@ -250,14 +236,12 @@ public class ArchaeologyJournalScreen extends Screen {
         // 渲染搜索框背景
         this.catalogToolbar.renderSearchBackground(guiGraphics);
 
-        boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
-                && !this.rightPage.isShowingLogDetail();
-        this.logToolbar.renderSearchBackground(guiGraphics, isLogListMode);
-
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         // 工具栏 tooltip
         this.catalogToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
+        boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
+                && !this.rightPage.isShowingLogDetail();
         if (isLogListMode) {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         }
@@ -403,7 +387,6 @@ public class ArchaeologyJournalScreen extends Screen {
     private void rebuildViewModels() {
         // 同步日志工具栏状态到 ViewModel，避免 rebuildViewModels 覆盖
         this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
-        this.viewModel.setLogSearchText(this.logToolbar.searchText());
         this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
         // 同步目录工具栏状态到 ViewModel
         this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());

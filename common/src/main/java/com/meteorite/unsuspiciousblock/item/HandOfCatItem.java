@@ -27,6 +27,10 @@ public class HandOfCatItem extends Item {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        // WIP 标识：物品仍在开发中
+        tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.wip")
+                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+
         int favor = HandOfCatClientState.getCachedFavor();
         // 恩惠值
         tooltipLines.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip_favor",

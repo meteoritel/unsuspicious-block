@@ -67,8 +67,6 @@ public final class LootProbabilitySimulator {
                     tasks.add(new SimTask(tableId, rawTable, null, null));
                 } else {
                     // 考古战利品表的参数集为 minecraft:archaeology（允许 ORIGIN）。
-                    // 不能用 EMPTY：原版 create() 会严格校验参数必须属于参数集的 allowed 集合，
-                    // EMPTY 不允许任何参数，导致 ORIGIN 被拒并抛出异常（NeoForge 放宽了该校验，故仅 Fabric 报错）。
                     LootParams lootParams = paramsBuilder.create(LootContextParamSets.ARCHAEOLOGY);
                     tasks.add(new SimTask(tableId, rawTable, lootTable, lootParams));
                 }

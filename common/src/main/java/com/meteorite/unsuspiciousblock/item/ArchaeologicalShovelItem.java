@@ -222,11 +222,11 @@ public class ArchaeologicalShovelItem extends ShovelItem {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, extracted,
-                    LootSourceType.SPADE, gameTime, dayTime);
+                    LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
             pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(
                     sp,
                     lootTableName,
-                    LootSourceType.SPADE,
+                    LootSourceType.ARCHAEOLOGY,
                     BuiltInRegistries.BLOCK.getKey(brushable.getBlockState().getBlock()),
                     pos,
                     extracted,

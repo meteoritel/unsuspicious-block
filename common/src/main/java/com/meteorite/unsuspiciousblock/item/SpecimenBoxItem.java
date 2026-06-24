@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -9,8 +10,11 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 /**
  * 标本箱物品——右键打开标本箱菜单。
@@ -19,6 +23,15 @@ import org.jetbrains.annotations.NotNull;
 public class SpecimenBoxItem extends Item {
     public SpecimenBoxItem(Properties properties) {
         super(properties);
+    }
+
+    @Override
+    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
+                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        // WIP 标识：物品仍在开发中
+        tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.wip")
+                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+        super.appendHoverText(stack, context, tooltipLines, flag);
     }
 
     @Override

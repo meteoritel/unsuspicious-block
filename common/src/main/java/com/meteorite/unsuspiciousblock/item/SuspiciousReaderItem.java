@@ -73,6 +73,12 @@ public class SuspiciousReaderItem extends Item {
         tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_energy",
                 energy, MAX_ENERGY).withStyle(ChatFormatting.GRAY));
 
+        // 按键切换提示：按键绑定名以青色高亮，便于识别
+        Component keybind = Component.keybind("key.unsuspiciousblock.scan_level_cycle")
+                .withStyle(ChatFormatting.AQUA);
+        tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_switch_mode", keybind)
+                .withStyle(ChatFormatting.DARK_GRAY));
+
         super.appendHoverText(stack, context, tooltipLines, flag);
     }
 
@@ -325,11 +331,11 @@ public class SuspiciousReaderItem extends Item {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             ArchaeologyLootRuntimeTracker.onLootDiscovered(player, lootTableName, lootItem,
-                    LootSourceType.READER, gameTime, dayTime);
+                    LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
             scanState.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
                     player,
                     lootTableName,
-                    LootSourceType.READER,
+                    LootSourceType.ARCHAEOLOGY,
                     BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
                     pos,
                     lootItem,

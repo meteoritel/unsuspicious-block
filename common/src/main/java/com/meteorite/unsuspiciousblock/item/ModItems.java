@@ -59,10 +59,10 @@ public class ModItems {
             () -> ARCHAEOLOGY_JOURNAL,
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
-            () -> SPECIMEN_BOX,
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
             () -> BASE_PAGE,
+            () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
     );
 

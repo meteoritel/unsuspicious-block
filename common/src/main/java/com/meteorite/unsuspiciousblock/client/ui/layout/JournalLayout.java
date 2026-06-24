@@ -94,11 +94,8 @@ public final class JournalLayout {
     public static final int LOG_LIST_SELECTED_BAR_COLOR = 0xC07B3E18; // 选中态左侧色条（红棕）
     public static final int LOG_LIST_SELECTED_BAR_WIDTH = 2;          // 色条宽度
 
-    // 日志搜索/排序工具栏
-    public static final int LOG_SEARCH_ICON_SIZE = 14;
+    // 日志排序工具栏
     public static final int LOG_SORT_ICON_SIZE = 14;
-    public static final int LOG_SEARCH_FIELD_WIDTH = 80;
-    public static final int LOG_SEARCH_BAR_HEIGHT = 12;
     public static final int LOG_TOOLBAR_GAP = 2;
 
     // —— 日志详情页 ——

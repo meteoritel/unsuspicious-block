@@ -53,7 +53,6 @@ public final class ArchaeologyJournalClientState {
     private static volatile boolean lastCatalogHideLocked;
     private static volatile String lastCatalogSearchText = "";
     private static volatile boolean lastLogSortDescending = true;
-    private static volatile String lastLogSearchText = "";
     @Nullable
     private static volatile LogGrouper.GroupMode lastLogGroupMode;
     @Nullable
@@ -260,15 +259,6 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastLogSortDescending(boolean descending) {
         lastLogSortDescending = descending;
-    }
-
-    @Nullable
-    public static String getLastLogSearchText() {
-        return lastLogSearchText;
-    }
-
-    public static void setLastLogSearchText(@Nullable String text) {
-        lastLogSearchText = text != null ? text : "";
     }
 
     @Nullable

@@ -18,7 +18,8 @@ public final class LogGrouper {
     // 分组方式
     public enum GroupMode {
         TIME("time"),
-        DIMENSION("dimension");
+        DIMENSION("dimension"),
+        BIOME("biome");
 
         private final String key;
 
@@ -75,6 +76,7 @@ public final class LogGrouper {
         return switch (mode) {
             case TIME -> bucketForAge(referenceGameTime - entry.createdGameTime()).key();
             case DIMENSION -> JournalFormatHelper.formatDimensionName(entry.dimensionId());
+            case BIOME -> JournalFormatHelper.formatBiomeName(entry.biomeId());
         };
     }
 
@@ -83,6 +85,7 @@ public final class LogGrouper {
         return switch (mode) {
             case TIME -> '⏱';       // 按时间区间分组
             case DIMENSION -> '◈';  // 按维度分组
+            case BIOME -> '❀';      // 按群系分组
         };
     }
 
@@ -91,6 +94,7 @@ public final class LogGrouper {
         return switch (mode) {
             case TIME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.time");
             case DIMENSION -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.dimension");
+            case BIOME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.biome");
         };
     }
 

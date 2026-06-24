@@ -14,15 +14,12 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 /** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图 */
@@ -75,7 +72,6 @@ public final class LogPanel implements PagePanel {
     private ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.EMPTY;
     // 排序方向：true=降序（最新在前），false=升序（最旧在前）
     private boolean sortDescending = true;
-    private String searchFilter = "";
     // 分组状态——默认按时间区间分组
     private LogGrouper.GroupMode groupMode = LogGrouper.GroupMode.TIME;
     // 时间分组参考刻：仅在玩家切换到日志页时刷新一次，避免每帧重算
@@ -103,12 +99,6 @@ public final class LogPanel implements PagePanel {
         applyFilterAndSort();
     }
 
-    // 设置搜索过滤文本
-    public void setSearchFilter(String filter) {
-        this.searchFilter = filter;
-        applyFilterAndSort();
-    }
-
     // 设置分组方式
     public void setGroupMode(LogGrouper.GroupMode mode) {
         this.groupMode = mode;
@@ -130,15 +120,10 @@ public final class LogPanel implements PagePanel {
         this.selectedEntryId = entryId;
     }
 
-    // 对全部条目执行筛选、排序和分组，结果写入 displayRows
+    // 对全部条目执行排序和分组，结果写入 displayRows
     private void applyFilterAndSort() {
-        String lowerFilter = this.searchFilter.toLowerCase(Locale.ROOT);
         this.filteredEntries.clear();
-        for (LogEntryState state : this.allEntries) {
-            if (matchesFilter(state, lowerFilter)) {
-                this.filteredEntries.add(state);
-            }
-        }
+        this.filteredEntries.addAll(this.allEntries);
         // 时间排序：按 lastUpdated → created 优先级比较；降序时反转
         Comparator<LogEntryState> cmp = Comparator
                 .comparingLong((LogEntryState s) -> s.entry.lastUpdatedGameTime())
@@ -176,7 +161,7 @@ public final class LogPanel implements PagePanel {
                 }
             }
         } else {
-            // 维度分组：按数据顺序聚合
+            // 维度/群系分组：按数据顺序聚合
             LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
             for (LogEntryState state : this.filteredEntries) {
                 String key = LogGrouper.groupKey(this.groupMode, state.entry, this.referenceGameTime);
@@ -191,14 +176,6 @@ public final class LogPanel implements PagePanel {
         }
 
         this.pagination.setPage(this.pagination.getPage());
-    }
-
-    // 使用预计算搜索缓存进行子串匹配：结构/来源/群系/维度/物品名
-    private boolean matchesFilter(LogEntryState state, String lowerFilter) {
-        if (lowerFilter.isEmpty()) {
-            return true;
-        }
-        return state.searchableText.contains(lowerFilter);
     }
 
     @Override
@@ -472,33 +449,9 @@ public final class LogPanel implements PagePanel {
         private final ExcavationLogEntry entry;
         private int scrollTicks;
         private boolean wasHovered;
-        // 预计算搜索缓存：结构+来源+群系+维度+物品名，避免每次过滤时重复解析signature
-        private final String searchableText;
 
         private LogEntryState(ExcavationLogEntry entry) {
             this.entry = entry;
-            this.searchableText = buildSearchableText(entry);
-        }
-
-        // 仅在匹配物品名时使用，主搜索走 searchableText
-        private static String buildSearchableText(ExcavationLogEntry entry) {
-            StringBuilder sb = new StringBuilder();
-            sb.append(JournalFormatHelper.formatStructureName(entry.structureId()).toLowerCase(Locale.ROOT)).append('\0');
-            sb.append(JournalFormatHelper.formatLootSource(entry.lootSource()).getString().toLowerCase(Locale.ROOT)).append('\0');
-            sb.append(JournalFormatHelper.formatBiomeName(entry.biomeId()).toLowerCase(Locale.ROOT)).append('\0');
-            sb.append(JournalFormatHelper.formatDimensionName(entry.dimensionId()).toLowerCase(Locale.ROOT)).append('\0');
-            appendLootItemNames(entry.expectedLoot(), sb);
-            appendLootItemNames(entry.actualLoot(), sb);
-            return sb.toString();
-        }
-
-        private static void appendLootItemNames(Map<String, Integer> lootMap, StringBuilder sb) {
-            for (String signatureKey : lootMap.keySet()) {
-                ItemStack stack = JournalFormatHelper.createLootStack(signatureKey, 1);
-                if (stack != null && !stack.isEmpty()) {
-                    sb.append(stack.getHoverName().getString().toLowerCase(Locale.ROOT)).append('\0');
-                }
-            }
         }
     }
 }
