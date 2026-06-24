@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.loot;
 
 import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.loottable.LootInjection;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.loot.v3.LootTableSource;
 import net.minecraft.core.HolderLookup;

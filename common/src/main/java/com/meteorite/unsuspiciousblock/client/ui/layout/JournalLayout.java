@@ -101,7 +101,6 @@ public final class JournalLayout {
     // —— 日志详情页 ——
     public static final int LOG_DETAIL_CARD_BG = 0x28A08060;      // 卡片暖色半透明背景
     public static final int LOG_DETAIL_CARD_BORDER = 0x50C8B090;  // 卡片顶部边框色
-    public static final int LOG_DETAIL_GHOST_OVERLAY = 0xB06B5B45; // 未获得战利品遮罩色
     public static final int LOG_DETAIL_BACK_BTN_SIZE = 14;        // 返回按钮（IconButton）尺寸
     public static final int LOG_DETAIL_CARD_PAD = 4;              // 卡片内边距
     public static final int LOG_DETAIL_CARD_GAP = 4;              // 卡片之间间距

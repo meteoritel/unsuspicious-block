@@ -95,8 +95,8 @@
   "screen.unsuspiciousblock.archaeology_journal.table.minecraft.gameplay_fishing_junk": "Fishing(Junk)",
   "screen.unsuspiciousblock.archaeology_journal.table.minecraft.gameplay_fishing_treasure": "Fishing(Treasure)",
   "screen.unsuspiciousblock.archaeology_journal.table.unsuspiciousblock.gameplay_fishing_mud_dredging": "Mud Dredging",
-  "screen.unsuspiciousblock.archaeology_journal.table.unsuspiciousblock.fossil_hunter_nether_bone_block": "Fossil Hunter (Nether)",
-  "screen.unsuspiciousblock.archaeology_journal.table.unsuspiciousblock.fossil_hunter_overworld_bone_block": "Fossil Hunter (Overworld)",
+  "screen.unsuspiciousblock.archaeology_journal.table.unsuspiciousblock.gameplay_fossil_hunter_nether_bone_block": "Fossil Hunter (Nether)",
+  "screen.unsuspiciousblock.archaeology_journal.table.unsuspiciousblock.gameplay_fossil_hunter_overworld_bone_block": "Fossil Hunter (Overworld)",
 
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.archeology_chest_buried_ruins_sand": "Buried Ruins Chest (Sand)",
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.archeology_chest_catacombs_combat": "Catacombs Chest (Combat)",

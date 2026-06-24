@@ -13,10 +13,12 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,33 +73,16 @@ public class JournalViewModel {
     }
 
     // —— 目录搜索/排序访问器 ——
-
-    public JournalSearchQuery currentSearch() {
-        return currentSearch;
-    }
-
     public void setCurrentSearch(JournalSearchQuery search) {
         this.currentSearch = search;
-    }
-
-    public CatalogSorter.SortOrder currentSortOrder() {
-        return currentSortOrder;
     }
 
     public void setCurrentSortOrder(CatalogSorter.SortOrder order) {
         this.currentSortOrder = order;
     }
 
-    public boolean sortDescending() {
-        return sortDescending;
-    }
-
     public void setSortDescending(boolean descending) {
         this.sortDescending = descending;
-    }
-
-    public boolean hideLocked() {
-        return hideLocked;
     }
 
     public void setHideLocked(boolean hideLocked) {
@@ -106,16 +91,8 @@ public class JournalViewModel {
 
     // —— 日志排序访问器 ——
 
-    public boolean logSortDescending() {
-        return logSortDescending;
-    }
-
     public void setLogSortDescending(boolean descending) {
         this.logSortDescending = descending;
-    }
-
-    public LogGrouper.GroupMode currentGroupMode() {
-        return currentGroupMode;
     }
 
     public void setCurrentGroupMode(LogGrouper.GroupMode mode) {
@@ -134,14 +111,6 @@ public class JournalViewModel {
 
     public void setSelectedIndex(int index) {
         this.selectedIndex = index;
-    }
-
-    public boolean selectionInitialized() {
-        return selectionInitialized;
-    }
-
-    public void setSelectionInitialized(boolean initialized) {
-        this.selectionInitialized = initialized;
     }
 
     @Nullable
@@ -297,11 +266,23 @@ public class JournalViewModel {
                     iv.id(), iv.displayName(), iv.tooltipHint(),
                     iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted));
         }
+        // 按概率从大到小排序；概率无法解析（"?"）或 10000 次模拟未掉落（"<0.01%"）一律排到最后
+        gridItems.sort(Comparator.comparingDouble(JournalViewModel::gridItemSortKey).reversed());
         return new BuildGridResult(
                 selected.id(), gridItems,
                 selected.parsedCount(), selected.totalCount(),
                 selected.logRef()
         );
+    }
+
+    // 网格物品排序键：返回概率比例值（0~1），用于从大到小排序。
+    // 概率无法解析（null/"?"）或 10000 次模拟未掉落（"<0.01%"）统一返回 -1.0，排序时落在末尾。
+    private static double gridItemSortKey(ItemGridPanel.GridItem item) {
+        String prob = item.probability();
+        if (prob == null || prob.equals("?") || prob.equals("<0.01%")) {
+            return -1.0;
+        }
+        return ProbabilityFormat.parsePercentToFraction(prob);
     }
 
     public List<CatalogPanel.CatalogEntryData> buildCatalogEntries() {

@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -365,21 +366,27 @@ public final class LogDetailPanel implements PagePanel {
             // 不再使用原版数量角标，所有角标改为自定义绘制
             ItemStack stack = loot.stack().copy();
 
+            int actual = loot.actualCount();
+            int expected = loot.expectedCount();
+
+            // 状态(1)：已解析 未获得——以低透明度渲染物品贴图呈现幽灵虚影，不再覆盖遮罩
+            if (actual == 0) {
+                RenderSystem.enableBlend();
+                RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.35F);
+            }
+
             float scale = (float) ICON_SIZE / 16;
             g.pose().pushPose();
             g.pose().translate(iconX, iconY, 0);
             g.pose().scale(scale, scale, 1.0f);
             g.renderItem(stack, 0, 0);
             g.pose().popPose();
-            // 刷新物品渲染缓冲，确保后续角标/遮罩绘制在物品之上
+            // 刷新物品渲染缓冲，确保后续角标绘制在物品之上
             g.flush();
 
-            int actual = loot.actualCount();
-            int expected = loot.expectedCount();
             if (actual == 0) {
-                // 状态(1)：已解析 未获得——半透明遮罩呈现幽灵虚影，不显示数量角标
-                g.fill(iconX, iconY, iconX + ICON_SIZE, iconY + ICON_SIZE,
-                        JournalLayout.LOG_DETAIL_GHOST_OVERLAY);
+                RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+                RenderSystem.disableBlend();
             } else if (loot.isFullyObtained()) {
                 // 状态(3)：已解析 全部获得——显示实际获得数量（精掘翻倍后 actual 可能大于 expected），绿色
                 drawBadge(g, font, iconX, iconY, String.valueOf(actual),

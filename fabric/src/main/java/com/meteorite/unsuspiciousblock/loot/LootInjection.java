@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loot;
 
 import net.minecraft.resources.ResourceLocation;
 
@@ -15,7 +15,7 @@ public final class LootInjection {
 
     // 古迹废墟（普通）——原版考古战利品表
     public static final ResourceLocation TRAIL_RUINS_COMMON_ID =
-            ResourceLocation.parse("minecraft:archaeology/trail_ruins");
+            ResourceLocation.parse("minecraft:archaeology/trail_ruins_common");
 
     // 古迹废墟（稀有）——原版考古战利品表
     public static final ResourceLocation TRAIL_RUINS_RARE_ID =

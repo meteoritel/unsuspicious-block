@@ -89,7 +89,7 @@
       "entries": [
         {
           "type": "minecraft:empty",
-          "weight": 10
+          "weight": 12
         },
         {
           "type": "minecraft:item",
@@ -99,7 +99,7 @@
         {
           "type": "minecraft:item",
           "name": "minecraft:netherite_scrap",
-          "weight": 4,
+          "weight": 1,
           "functions": [
             {
               "function": "minecraft:apply_bonus",
@@ -111,6 +111,11 @@
         {
           "type": "minecraft:item",
           "name": "minecraft:netherite_upgrade_smithing_template",
+          "weight": 2
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:wither_skeleton_skull",
           "weight": 2
         },
         {

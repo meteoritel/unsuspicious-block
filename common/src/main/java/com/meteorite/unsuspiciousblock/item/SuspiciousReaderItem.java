@@ -218,15 +218,12 @@ public class SuspiciousReaderItem extends Item {
             List<BlockPos> targets = findSuspiciousBlocks(level, cubeCenter, scanLevel);
 
             // 基础消耗 = 等级数（范围模式启动即计费，无论是否扫到可疑方块）
-            int baseCost = scanLevel;
-
             if (targets.isEmpty()) {
-                // 范围内没有可疑方块：仍需消耗等级数能量（范围模式启动即计费）
                 if (!isCreative) {
                     int energy = getEnergyOrDefault(stack);
-                    if (energy < baseCost) {
-                        energy = tryRecharge(stack, player, baseCost);
-                        if (energy < baseCost) {
+                    if (energy < scanLevel) {
+                        energy = tryRecharge(stack, player, scanLevel);
+                        if (energy < scanLevel) {
                             player.sendSystemMessage(
                                     Component.translatable("item.unsuspiciousblock.suspicious_reader.no_coins")
                                             .withStyle(style -> style.withColor(0xFF5555))
@@ -234,7 +231,7 @@ public class SuspiciousReaderItem extends Item {
                             return InteractionResult.FAIL;
                         }
                     }
-                    setEnergy(stack, Math.max(0, energy - baseCost));
+                    setEnergy(stack, Math.max(0, energy - scanLevel));
                 }
                 player.sendSystemMessage(
                         Component.translatable("item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range")
@@ -252,7 +249,7 @@ public class SuspiciousReaderItem extends Item {
                     unscannedCount++;
                 }
             }
-            int totalCost = baseCost + unscannedCount;
+            int totalCost = scanLevel + unscannedCount;
 
             // 检查/补充能量
             if (!isCreative) {
@@ -300,7 +297,7 @@ public class SuspiciousReaderItem extends Item {
 
             // 实际消耗 = 等级数 + 解析出新可疑方块数（仅1级及以上）
             if (!isCreative) {
-                int actualCost = baseCost + newScanned;
+                int actualCost = scanLevel + newScanned;
                 int energy = getEnergyOrDefault(stack);
                 setEnergy(stack, Math.max(0, energy - actualCost));
             }
