@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.enchantment.framework.builtin;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.effect.EnchantmentValueEffect;
 import net.minecraft.world.item.ItemStack;

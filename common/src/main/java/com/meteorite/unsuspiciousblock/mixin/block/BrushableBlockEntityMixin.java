@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.mixin.block;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
