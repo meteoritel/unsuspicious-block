@@ -16,7 +16,7 @@ import net.minecraft.world.level.block.Block;
  * 在原版剪毛逻辑执行前触发。
  */
 public final class TextileRecoveryEffect implements EnchantmentEffect {
-    private static final double EXTRA_STRING_CHANCE = 0.15D;
+    private static final double EXTRA_STRING_CHANCE = 0.3D;
     private static final int EXTRA_STRING_MIN = 1;
     private static final int EXTRA_STRING_MAX = 2;
 
