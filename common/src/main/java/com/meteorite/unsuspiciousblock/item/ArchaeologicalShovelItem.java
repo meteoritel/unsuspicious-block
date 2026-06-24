@@ -42,8 +42,8 @@ import org.jetbrains.annotations.NotNull;
  */
 public class ArchaeologicalShovelItem extends ShovelItem {
 
-    // 向下连挖时，原始方块之外额外挖掘的方块数（原块 + 3 = 共 4 格）
-    private static final int EXTRA_DIG_DEPTH = 3;
+    // 向下连挖时，原始方块之外额外挖掘的方块数（原块 + 2 = 共 3 格）
+    private static final int EXTRA_DIG_DEPTH = 2;
     // 挖掘沙 / 砾石掉落古代金币的概率
     private static final float ANCIENT_COIN_CHANCE = 0.003F;
 

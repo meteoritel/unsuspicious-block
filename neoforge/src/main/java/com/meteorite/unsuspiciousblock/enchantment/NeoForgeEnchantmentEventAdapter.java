@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmen
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -34,6 +35,8 @@ public class NeoForgeEnchantmentEventAdapter implements IEnchantmentEventAdapter
     }
 
     // 玩家右键绵羊剪羊毛——在 NeoForge 的 ShearsItem.interactLivingEntity 走 IShearable 路径之前触发
+    // PlayerInteractEvent.EntityInteract 会对手部逐个触发（main → off），需避免双手都持剪刀时双重 dispatch：
+    // 原版 useEntity 链路优先用主手，主手为剪刀时副手不会真正执行剪毛，故副手事件在主手已是剪刀时应跳过
     @SubscribeEvent
     public void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (!(event.getEntity() instanceof ServerPlayer sp)) {
@@ -44,6 +47,9 @@ public class NeoForgeEnchantmentEventAdapter implements IEnchantmentEventAdapter
         }
         ItemStack stack = event.getItemStack();
         if (!stack.is(Items.SHEARS)) {
+            return;
+        }
+        if (event.getHand() == InteractionHand.OFF_HAND && sp.getMainHandItem().is(Items.SHEARS)) {
             return;
         }
         TriggerContext ctx = TriggerContext.builder(sp, sp.serverLevel())

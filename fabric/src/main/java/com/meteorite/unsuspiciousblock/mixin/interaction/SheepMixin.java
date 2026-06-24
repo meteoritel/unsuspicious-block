@@ -34,6 +34,11 @@ public abstract class SheepMixin {
         if (!stack.is(Items.SHEARS) || !sheep.readyForShearing()) {
             return;
         }
+        // 原版 useEntity 链路优先用主手；主手为剪刀时副手不会真正执行剪毛，故副手事件在主手已是剪刀时应跳过，
+        // 避免双手都持剪刀时 dispatch 两次导致 TextileRecoveryEffect 独立概率掉两份线
+        if (hand == InteractionHand.OFF_HAND && player.getMainHandItem().is(Items.SHEARS)) {
+            return;
+        }
         if (!(player instanceof ServerPlayer sp) || !(sheep.level() instanceof ServerLevel serverLevel)) {
             return;
         }

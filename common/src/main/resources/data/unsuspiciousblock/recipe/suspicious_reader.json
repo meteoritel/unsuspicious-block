@@ -1,15 +1,17 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    " IQ",
-    " AI",
-    "S  "
+    "AGA",
+    "IEI",
+    "RQR"
   ],
   "key": {
-    "I": {"tag": "c:ingots/iron"},
-    "Q": {"item": "minecraft:quartz"},
     "A": {"item": "unsuspiciousblock:ancient_coin"},
-    "S": {"item": "minecraft:stick"}
+    "G": {"tag": "c:glass_panes"},
+    "I": {"tag": "c:ingots/iron"},
+    "E": {"item": "minecraft:ender_pearl"},
+    "R": {"item": "minecraft:redstone"},
+    "Q": {"item": "minecraft:quartz"}
   },
   "result": {
     "id": "unsuspiciousblock:suspicious_reader",

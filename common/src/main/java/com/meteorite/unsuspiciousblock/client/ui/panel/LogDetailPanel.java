@@ -381,8 +381,8 @@ public final class LogDetailPanel implements PagePanel {
                 g.fill(iconX, iconY, iconX + ICON_SIZE, iconY + ICON_SIZE,
                         JournalLayout.LOG_DETAIL_GHOST_OVERLAY);
             } else if (loot.isFullyObtained()) {
-                // 状态(3)：已解析 全部获得——仅显示期望总数，绿色
-                drawBadge(g, font, iconX, iconY, String.valueOf(expected),
+                // 状态(3)：已解析 全部获得——显示实际获得数量（精掘翻倍后 actual 可能大于 expected），绿色
+                drawBadge(g, font, iconX, iconY, String.valueOf(actual),
                         JournalLayout.LOG_DETAIL_LOOT_BADGE_FULL_COLOR);
             } else {
                 // 状态(2)：已解析 未全部获得——显示 n/m，棕黄色

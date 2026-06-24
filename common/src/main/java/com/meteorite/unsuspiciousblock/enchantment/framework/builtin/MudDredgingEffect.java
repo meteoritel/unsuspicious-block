@@ -17,7 +17,7 @@ import net.minecraft.world.level.storage.loot.LootTable;
  * 由 {@link com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager#dispatchValue}
  * 调用；未命中条件时原样返回 ctx.value()。
  * <p>
- * 概率模型：每级 10%（满级 3 级 = 30%）；处于注册名 path 包含 "swamp" 的群系时额外 +10%。
+ * 概率模型：每级 10%（满级 3 级 = 30%）；处于注册名 path 包含 "swamp" 的群系时额外 +15%。
  */
 public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceKey<LootTable>> {
     public static final ResourceKey<LootTable> MUD_DREDGING_LOOT_TABLE =
@@ -25,7 +25,7 @@ public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceK
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging"));
 
     private static final double CHANCE_PER_LEVEL = 0.10D;
-    private static final double BONUS_CHANCE = 0.10D;
+    private static final double BONUS_CHANCE = 0.15D;
     private static final String SWAMP_BIOME_PATH_MARKER = "swamp";
 
     @Override

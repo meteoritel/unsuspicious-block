@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -16,13 +17,16 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.minecraft.world.level.storage.loot.LootTable;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -65,6 +69,11 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Shadow
     private ItemStack item;
 
+    // 刷拭命中方向——原版 dropContent 依据此字段计算物品弹出位置
+    @Shadow
+    @Nullable
+    private Direction hitDirection;
+
     // ========== 扫描状态字段 ========== //
     @Unique
     private boolean unsuspiciousblock$scanned;
@@ -98,6 +107,10 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
     @Unique
     private long unsuspiciousblock$brushDayTime = -1L;
+
+    // HEAD 阶段扫描玩家双手缓存"正在使用的刷子"，供精掘翻倍查询附魔等级
+    @Unique
+    private ItemStack unsuspiciousblock$brushTool = ItemStack.EMPTY;
 
     // 精掘翻倍产生的额外战利品——在 dropContent 时一并发弹出
     @Unique
@@ -166,6 +179,19 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @SuppressWarnings("DataFlowIssue")
     private BlockEntity unsuspiciousblock$asBlockEntity() {
         return (BlockEntity) (Object) this;
+    }
+
+    // 计算精掘翻倍后的总追踪物品——this.item 与 extraDrops 中相同物品的计数合并
+    // 用于考古笔记日志记录，确保日志数量反映翻倍后的实际获取量而非原始数量
+    @Unique
+    private ItemStack unsuspiciousblock$computeTotalTrackedItem() {
+        ItemStack total = this.item.copy();
+        for (ItemStack extra : this.unsuspiciousblock$extraDrops) {
+            if (!extra.isEmpty() && ItemStack.isSameItemSameComponents(total, extra)) {
+                total.grow(extra.getCount());
+            }
+        }
+        return total;
     }
 
     // 将状态变化同步回方块实体并通知区块更新
@@ -264,12 +290,22 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     }
 
     // ========== Mixin 注入 ========== //
-    // 在刷拭开始时记录本次刷拭与时间信息
+    // 在刷拭开始时记录本次刷拭与时间信息，并缓存实际使用的刷子
     @Inject(method = "brush", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushStart(long gameTime, Player player, net.minecraft.core.Direction direction, CallbackInfoReturnable<Boolean> cir) {
         this.unsuspiciousblock$brushContext = true;
         this.unsuspiciousblock$brushGameTime = gameTime;
         this.unsuspiciousblock$brushDayTime = player.level().getDayTime();
+        // brush() 签名不携带 ItemStack，此处扫描双手确定实际使用的刷子：
+        // 主手优先——原版 BrushItem.useOn 用 context.getItemInHand() 调用 brush()，
+        // 若玩家副手持刷，主手为空或非刷子时，使用副手刷子
+        ItemStack mainHand = player.getMainHandItem();
+        if (mainHand.is(Items.BRUSH)) {
+            this.unsuspiciousblock$brushTool = mainHand;
+        } else {
+            ItemStack offHand = player.getOffhandItem();
+            this.unsuspiciousblock$brushTool = offHand.is(Items.BRUSH) ? offHand : ItemStack.EMPTY;
+        }
     }
 
     // 在刷拭结束时清理本次刷拭信息
@@ -278,20 +314,53 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$brushContext = false;
         this.unsuspiciousblock$brushGameTime = -1L;
         this.unsuspiciousblock$brushDayTime = -1L;
+        this.unsuspiciousblock$brushTool = ItemStack.EMPTY;
     }
 
-    // 在可疑方块真正掉出物品时弹出精掘翻倍的额外副本，并记录获得次数写入日志
+    // 在可疑方块真正掉出物品时抽取精掘翻倍，弹出额外副本，并记录获得次数写入日志
     @Inject(method = "dropContent", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushItemDrop(Player player, CallbackInfo ci) {
+        // 精掘翻倍：在刷子刷出物品时抽取一次，决定当前物品是否翻倍
+        // 时序在记录考古笔记物品数量之前，确保日志期望值保留原战利品表结果，实际值按翻倍后总数结算
+        if (this.unsuspiciousblock$lootTableName != null && player instanceof ServerPlayer sp && !this.item.isEmpty()) {
+            BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
+            TriggerContext peCtx = TriggerContext.builder(sp, sp.serverLevel())
+                    .pos(blockEntity.getBlockPos())
+                    .tool(this.unsuspiciousblock$brushTool)
+                    .build();
+            List<ItemStack> drops = EnchantmentManager.dispatchValue(
+                    TriggerType.BRUSH_ITEM_DROP, peCtx, List.of(this.item));
+            if (!drops.isEmpty()) {
+                this.item = drops.getFirst();
+                if (drops.size() > 1) {
+                    this.unsuspiciousblock$extraDrops = new ArrayList<>(drops.subList(1, drops.size()));
+                }
+            }
+        }
+
+        // 先计算翻倍后的总追踪物品——extraDrops 清空后无法再计算
+        ItemStack totalTrackedItem = this.unsuspiciousblock$computeTotalTrackedItem();
+
         // 精掘翻倍：先弹出额外战利品副本
         if (!this.unsuspiciousblock$extraDrops.isEmpty()) {
             BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
             Level level = blockEntity.getLevel();
             BlockPos pos = blockEntity.getBlockPos();
             if (level != null) {
+                // 原版 dropContent 的位置公式：方块在 hitDirection 方向外偏移 1 格的中心
+                double d0 = EntityType.ITEM.getWidth();
+                double d1 = 1.0 - d0;
+                double d2 = d0 / 2.0;
+                Direction direction = Objects.requireNonNullElse(this.hitDirection, Direction.UP);
+                BlockPos blockpos = pos.relative(direction, 1);
+                double d3 = (double) blockpos.getX() + 0.5 * d1 + d2;
+                double d4 = (double) blockpos.getY() + 0.5 + (double) (EntityType.ITEM.getHeight() / 2.0F);
+                double d5 = (double) blockpos.getZ() + 0.5 * d1 + d2;
                 for (ItemStack extra : this.unsuspiciousblock$extraDrops) {
                     if (!extra.isEmpty()) {
-                        Block.popResource(level, pos, extra);
+                        ItemEntity itemEntity = new ItemEntity(level, d3, d4, d5, extra.copy());
+                        itemEntity.setDeltaMovement(Vec3.ZERO);
+                        level.addFreshEntity(itemEntity);
                     }
                 }
             }
@@ -308,8 +377,9 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
                 ? this.unsuspiciousblock$brushDayTime
                 : sp.serverLevel().getDayTime();
+        // 使用翻倍后的总计数结算待定日志条目，确保考古手册日志的 actualLoot 反映翻倍后的实际获取量
         ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, this.unsuspiciousblock$lootTableName,
-                this.unsuspiciousblock$pendingJournalEntry, this.item, gameTime, dayTime);
+                this.unsuspiciousblock$pendingJournalEntry, totalTrackedItem, gameTime, dayTime);
         this.unsuspiciousblock$setPendingJournalEntry(null);
     }
 
@@ -351,49 +421,54 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // 在战利品表解析后同步考古笔记状态并刷新方块实体
     @Inject(method = "unpackLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$syncLootTableState(Player player, CallbackInfo ci) {
-        if (!this.unsuspiciousblock$lootTableParsedThisCall) {
+        // parsedThisCall=true 表示本次实际解析了战利品表（this.lootTable 原先非 null，原版 roll 后置 null）
+        // 原版 brush() 每个 tick 都调用 unpackLootTable，但只有首次调用实际 roll 战利品，后续都是空操作
+        boolean parsedThisCall = this.unsuspiciousblock$lootTableParsedThisCall;
+        this.unsuspiciousblock$lootTableParsedThisCall = false;
+
+        // 仅在实际生成战利品时处理——避免刷拭过程中每次空调用都重复 dispatch 精掘
+        if (!parsedThisCall) {
             return;
         }
 
-        this.unsuspiciousblock$lootTableParsedThisCall = false;
+        // 仅在刷拭上下文中处理精掘与日志——扫描仪路径由 SuspiciousReaderItem 自行处理追踪
+        if (!this.unsuspiciousblock$brushContext || this.unsuspiciousblock$lootTableName == null
+                || !(player instanceof ServerPlayer sp) || this.item.isEmpty()) {
+            this.unsuspiciousblock$syncBlockEntity();
+            return;
+        }
 
-        if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$lootTableName != null
-                && player instanceof ServerPlayer sp) {
-            // 精掘翻倍：通过 framework 分发值变换效果，返回值为战利品列表
-            TriggerContext peCtx = TriggerContext.builder(sp, sp.serverLevel())
-                    .pos(this.unsuspiciousblock$asBlockEntity().getBlockPos())
-                    .tool(sp.getMainHandItem())
-                    .build();
-            List<ItemStack> drops = EnchantmentManager.dispatchValue(
-                    TriggerType.BRUSH_ITEM_DROP, peCtx, List.of(this.item));
-            if (!drops.isEmpty()) {
-                this.item = drops.getFirst();
-                if (drops.size() > 1) {
-                    this.unsuspiciousblock$extraDrops = new ArrayList<>(drops.subList(1, drops.size()));
-                }
-            }
-            long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
-                    ? this.unsuspiciousblock$brushGameTime
-                    : sp.serverLevel().getGameTime();
-            long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
-                    ? this.unsuspiciousblock$brushDayTime
-                    : sp.serverLevel().getDayTime();
-            ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
-                    this.item, LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
-            BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-            this.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
-                    sp,
-                    this.unsuspiciousblock$lootTableName,
-                    LootSourceType.ARCHAEOLOGY,
-                    BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
-                    blockEntity.getBlockPos(),
-                    this.item,
-                    gameTime,
-                    dayTime
-            ));
-            if (!this.item.isEmpty()) {
-                Constants.LOG.debug("刷子刷物品刚露头");
-            }
+        // 记录战利品表原始解析结果（翻倍前），作为考古日志的期望值
+        ItemStack originalItem = this.item.copy();
+
+        long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
+                ? this.unsuspiciousblock$brushGameTime
+                : sp.serverLevel().getGameTime();
+        long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
+                ? this.unsuspiciousblock$brushDayTime
+                : sp.serverLevel().getDayTime();
+
+        // 首次发现记录使用原始战利品——解锁与首次发现时间基于战利品表结果
+        ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
+                originalItem, LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
+
+        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
+
+        // 创建待定日志条目，期望值 = 原始战利品表结果（翻倍前）
+        // 精掘翻倍在 dropContent 时抽取，actualLoot 按翻倍后总数结算
+        this.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
+                sp,
+                this.unsuspiciousblock$lootTableName,
+                LootSourceType.ARCHAEOLOGY,
+                BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
+                blockEntity.getBlockPos(),
+                originalItem,
+                gameTime,
+                dayTime
+        ));
+
+        if (!this.item.isEmpty()) {
+            Constants.LOG.debug("刷子刷物品刚露头");
         }
 
         this.unsuspiciousblock$syncBlockEntity();

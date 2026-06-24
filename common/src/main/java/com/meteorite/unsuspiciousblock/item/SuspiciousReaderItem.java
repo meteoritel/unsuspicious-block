@@ -217,8 +217,25 @@ public class SuspiciousReaderItem extends Item {
             BlockPos cubeCenter = getRangeScanCenter(clickedPos, faceDir, scanLevel);
             List<BlockPos> targets = findSuspiciousBlocks(level, cubeCenter, scanLevel);
 
+            // 基础消耗 = 等级数（范围模式启动即计费，无论是否扫到可疑方块）
+            int baseCost = scanLevel;
+
             if (targets.isEmpty()) {
-                // 范围内没有可疑方块
+                // 范围内没有可疑方块：仍需消耗等级数能量（范围模式启动即计费）
+                if (!isCreative) {
+                    int energy = getEnergyOrDefault(stack);
+                    if (energy < baseCost) {
+                        energy = tryRecharge(stack, player, baseCost);
+                        if (energy < baseCost) {
+                            player.sendSystemMessage(
+                                    Component.translatable("item.unsuspiciousblock.suspicious_reader.no_coins")
+                                            .withStyle(style -> style.withColor(0xFF5555))
+                            );
+                            return InteractionResult.FAIL;
+                        }
+                    }
+                    setEnergy(stack, Math.max(0, energy - baseCost));
+                }
                 player.sendSystemMessage(
                         Component.translatable("item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range")
                                 .withStyle(style -> style.withColor(0xFF5555))
@@ -226,8 +243,6 @@ public class SuspiciousReaderItem extends Item {
                 return InteractionResult.FAIL;
             }
 
-            // 基础消耗 = 等级数（即使有些方块已被扫描过）
-            int baseCost = scanLevel;
             // 计算未扫描的可疑方块数（仅未扫描的才消耗额外能量）
             int unscannedCount = 0;
             for (BlockPos pos : targets) {

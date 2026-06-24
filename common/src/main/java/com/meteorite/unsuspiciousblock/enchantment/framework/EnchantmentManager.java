@@ -11,7 +11,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
@@ -62,7 +61,7 @@ public final class EnchantmentManager {
             Holder<Enchantment> holder = lookupEnchantment(registryAccess, entry.enchantmentKey);
             if (holder == null) continue;
 
-            int level = findEnchantmentLevel(ctx.player, holder);
+            int level = findEnchantmentLevel(ctx, holder);
             if (level <= 0) continue;
 
             ItemStack enchantedItem = findEnchantedItem(ctx);
@@ -84,7 +83,7 @@ public final class EnchantmentManager {
             Holder<Enchantment> holder = lookupEnchantment(registryAccess, entry.enchantmentKey);
             if (holder == null) continue;
 
-            int level = findEnchantmentLevel(ctx.player, holder);
+            int level = findEnchantmentLevel(ctx, holder);
             if (level <= 0) continue;
 
             ItemStack enchantedItem = findEnchantedItem(ctx);
@@ -104,17 +103,19 @@ public final class EnchantmentManager {
                 .orElse(null);
     }
 
-    // 按附魔定义中的 slots 语义统计玩家装备上的最高附魔等级
-    private static int findEnchantmentLevel(ServerPlayer player, Holder<Enchantment> enchantment) {
-        return EnchantmentHelper.getEnchantmentLevel(enchantment, player);
+    // 查询触发工具上的附魔等级——必须由触发上下文显式提供"正在使用的工具"
+    private static int findEnchantmentLevel(TriggerContext ctx, Holder<Enchantment> enchantment) {
+        ItemStack tool = ctx.tool;
+        if (tool == null || tool.isEmpty()) {
+            return 0;
+        }
+        return EnchantmentHelper.getItemEnchantmentLevel(enchantment, tool);
     }
 
-    // 查找触发本次效果的附魔物品——优先使用触发上下文中的实际工具，退化到主手物品
+    // 查找触发本次效果的附魔物品——必须由触发上下文显式提供"正在使用的工具"
     private static ItemStack findEnchantedItem(TriggerContext ctx) {
-        if (ctx.tool != null && !ctx.tool.isEmpty()) {
-            return ctx.tool;
-        }
-        return ctx.player.getMainHandItem();
+        ItemStack tool = ctx.tool;
+        return tool != null && !tool.isEmpty() ? tool : ItemStack.EMPTY;
     }
 
     private record EffectEntry(ResourceKey<Enchantment> enchantmentKey, EnchantmentEffect effect) {}
