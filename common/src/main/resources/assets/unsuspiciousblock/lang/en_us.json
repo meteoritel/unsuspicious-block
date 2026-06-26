@@ -245,5 +245,13 @@
   "command.unsuspiciousblock.usb.error.unknown_table": "Unknown archaeology loot table: %s",
   "command.unsuspiciousblock.usb.error.state_unavailable": "Could not access this player's archaeology journal data.",
 
+  "command.unsuspiciousblock.usb.ghost_cat.spawn.success": "Spawned Ghost Cat (eid=%s).",
+  "command.unsuspiciousblock.usb.ghost_cat.info.summary": "Ghost Cat eid=%1$s | pos=(%2$s, %3$s, %4$s) | phase=%5$s | phaseTicks=%6$d | totalTicks=%7$d | behavior=%8$s | target=%9$s | hasGift=%10$s | dist=%11$s",
+  "command.unsuspiciousblock.usb.ghost_cat.discard.success": "Removed Ghost Cat (eid=%s).",
+  "command.unsuspiciousblock.usb.ghost_cat.phase.success": "Forced Ghost Cat (eid=%1$s) phase to %2$s.",
+  "command.unsuspiciousblock.usb.ghost_cat.error.spawn_failed": "Failed to spawn Ghost Cat.",
+  "command.unsuspiciousblock.usb.ghost_cat.error.not_found": "No Ghost Cat nearby.",
+  "command.unsuspiciousblock.usb.ghost_cat.error.unknown_phase": "Unknown phase: %s (valid: manifest/approach/greet/deliver/dissipate)",
+
   "entity.unsuspiciousblock.ghost_cat":"Ghost Cat"
 }

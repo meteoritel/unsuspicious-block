@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.cat;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.entity.GhostCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
+import com.meteorite.unsuspiciousblock.entity.ai.ghost.MorningGiftBehavior;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -45,7 +46,10 @@ public final class CatGiftService {
         double y = owner.getY();
         double z = owner.getZ() + (random.nextInt(7) - 3);
         ghost.moveTo(x, y, z, random.nextFloat() * 360.0F, 0.0F);
-        ghost.assignGift(owner.getUUID(), GHOST_GIFT_LOOT_TABLE);
+        // 记录召唤 Y 作为穿墙位移底部夹紧基准，防止掉到基岩层
+        ghost.freezeSpawnY();
+        // 注入晨礼行为策略，阶段机将驱动显现→接近→致意→赠礼→消散全流程
+        ghost.assignBehavior(new MorningGiftBehavior(owner.getUUID(), GHOST_GIFT_LOOT_TABLE));
         level.addFreshEntity(ghost);
     }
 }

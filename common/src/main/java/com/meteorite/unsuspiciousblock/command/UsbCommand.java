@@ -45,6 +45,8 @@ public final class UsbCommand {
                 .then(buildUnlockItemSubcommand())
                 .then(buildFlushTableSubcommand())
                 .then(buildDebugSubcommand()));
+        // 幽灵猫调试子指令树（/usb ghost_cat ...）独立注册，便于实机测试阶段机与行为策略
+        GhostCatDebugCommand.register(dispatcher);
     }
 
     // 清空玩家考古数据

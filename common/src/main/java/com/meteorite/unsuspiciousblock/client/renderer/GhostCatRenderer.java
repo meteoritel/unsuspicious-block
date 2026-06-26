@@ -24,8 +24,12 @@ import org.jetbrains.annotations.NotNull;
  */
 public class GhostCatRenderer extends MobRenderer<GhostCat, CatModel<GhostCat>> {
 
-    // 灵体色调：淡蓝青色，alpha 约 0.6
-    private static final int GHOST_TINT = FastColor.ARGB32.color(153, 170, 221, 255);
+    // 灵体色调：淡蓝青色（RGB 分量），alpha 由实体阶段动态决定
+    private static final int GHOST_R = 170;
+    private static final int GHOST_G = 221;
+    private static final int GHOST_B = 255;
+    // 满阶段 alpha（约 0.6）
+    private static final int GHOST_ALPHA_BASE = 153;
     private static final float HOVER_SPEED = 0.15F;
     private static final float HOVER_AMPLITUDE = 0.08F;
 
@@ -80,8 +84,11 @@ public class GhostCatRenderer extends MobRenderer<GhostCat, CatModel<GhostCat>> 
         float hover = Mth.sin((entity.tickCount + partialTicks) * HOVER_SPEED) * HOVER_AMPLITUDE;
         poseStack.translate(0.0F, hover, 0.0F);
 
-        // 使用满亮度并叠加灵体色调
-        MultiBufferSource tintedSource = new GhostlyBufferSource(bufferSource, GHOST_TINT);
+        // 显现/消散阶段 alpha 渐入渐出，由实体阶段机驱动
+        float alphaProgress = entity.getAlphaProgress(partialTicks);
+        int tint = FastColor.ARGB32.color(
+                (int) (GHOST_ALPHA_BASE * alphaProgress), GHOST_R, GHOST_G, GHOST_B);
+        MultiBufferSource tintedSource = new GhostlyBufferSource(bufferSource, tint);
         super.render(entity, entityYaw, partialTicks, poseStack, tintedSource, 15728880);
         poseStack.popPose();
     }

@@ -247,5 +247,13 @@
   "command.unsuspiciousblock.usb.error.unknown_table": "未知的考古战利品表：%s",
   "command.unsuspiciousblock.usb.error.state_unavailable": "无法访问当前玩家的考古笔记数据。",
 
+  "command.unsuspiciousblock.usb.ghost_cat.spawn.success": "已召唤幽灵猫 (eid=%s)。",
+  "command.unsuspiciousblock.usb.ghost_cat.info.summary": "幽灵猫 eid=%1$s | 坐标=(%2$s, %3$s, %4$s) | 阶段=%5$s | 阶段tick=%6$d | 总tick=%7$d | behavior=%8$s | 目标=%9$s | 有礼物=%10$s | 距离=%11$s",
+  "command.unsuspiciousblock.usb.ghost_cat.discard.success": "已移除幽灵猫 (eid=%s)。",
+  "command.unsuspiciousblock.usb.ghost_cat.phase.success": "已将幽灵猫 (eid=%1$s) 阶段强制切换为 %2$s。",
+  "command.unsuspiciousblock.usb.ghost_cat.error.spawn_failed": "召唤幽灵猫失败。",
+  "command.unsuspiciousblock.usb.ghost_cat.error.not_found": "附近没有幽灵猫。",
+  "command.unsuspiciousblock.usb.ghost_cat.error.unknown_phase": "未知阶段：%s（可选：manifest/approach/greet/deliver/dissipate）",
+
   "entity.unsuspiciousblock.ghost_cat":"幽灵猫"
 }
