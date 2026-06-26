@@ -8,6 +8,7 @@
     "chunk.ChunkAccessMixin",
     "chunk.ChunkSerializerMixin",
     "chunk.LevelChunkMixin",
+    "container.AnvilMenuMixin",
     "interaction.SheepMixin"
   ],
   "client": [],

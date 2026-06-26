@@ -9,7 +9,7 @@
   "item.unsuspiciousblock.suspicious_reader.scan_mode_2": "5x5x5",
   "item.unsuspiciousblock.suspicious_reader.scan_mode_3": "7x7x7",
   "item.unsuspiciousblock.suspicious_reader.no_energy": "能量不足！",
-  "item.unsuspiciousblock.suspicious_reader.no_coins": "古代硬币不足！",
+  "item.unsuspiciousblock.suspicious_reader.no_coins": "古代金币不足！",
   "item.unsuspiciousblock.suspicious_reader.coin_consumed": "消耗 %s 枚古代金币补充能量",
   "item.unsuspiciousblock.suspicious_reader.area_result": "范围扫描: 发现 %s 个可疑方块",
   "item.unsuspiciousblock.suspicious_reader.tooltip_scan_level": "扫描等级: %s",
@@ -18,6 +18,9 @@
   "tooltip.unsuspiciousblock.wip": "[WIP] 此物品仍在开发中。",
   "item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range": "扫描范围内没有可疑方块。",
   "item.unsuspiciousblock.suspicious_reader.already_scanned": "(%d, %d, %d) 已被解析过",
+  "item.unsuspiciousblock.suspicious_reader.charge_full": "能量已满，无需充能。",
+  "item.unsuspiciousblock.suspicious_reader.charge_waste_hint": "已消耗 %s/%s 能量，硬币将部分浪费。shift+双击右键空气强制充能。",
+  "item.unsuspiciousblock.suspicious_reader.charge_forced": "强制充能：消耗 1 枚古代金币。",
 
   "key.unsuspiciousblock.scan_level_cycle": "切换扫描等级",
   "key.unsuspiciousblock.open_journal": "打开考古笔记",

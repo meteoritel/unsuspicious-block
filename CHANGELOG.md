@@ -53,8 +53,6 @@
 - 新增范围模式，默认按 V 键切换扫描范围，潜行时显示扫描范围边界。
 - 范围模式下会消耗能量，并可自动消耗背包中的古代金币进行充能。
 
-## [1.2.0]
-
 ### Added
 
 #### Archaeology Handbook – "Log" Tab
@@ -97,3 +95,24 @@
 - Recipe and texture reworked.
 - Added a range mode, default toggle key is V. While sneaking, the scanning range boundary is displayed.
 - Range mode consumes energy and can automatically consume Ancient Coins from the inventory for recharging.
+
+## [1.2.1]
+
+### 新增
+
+#### 可疑扫描仪 shift+右键空气充能
+- 手持可疑扫描仪时，shift+右键空气可使用背包中的古代金币补充能量，每枚金币恢复 256 点能量。
+- **浪费保护机制**：当已消耗能量不足一枚金币的充能值时，首次 shift+右键会提示浪费风险；在 1 秒内再次 shift+右键则强制消耗金币充能，避免误操作浪费。
+- 创造模式下不消耗金币（可通过调试开关 `DEBUG_FORCE_ENERGY_COST` 强制消耗）。
+
+#### 古代金币铁砧修复
+- 古代金币现在可用于铁砧修复带耐久物品，每枚金币修复目标物品 25% 最大耐久（与原版同类材料修复一致）。
+- 同步支持原版铁砧重命名逻辑。
+- 兼容性策略：仅在原版或其他 mod 未产生铁砧结果时介入，避免冲突。
+
+### 变化
+
+#### 附魔调整
+- **泥地打捞**（Mud Dredging）：附魔权重从 2 降至 1，降低其在附魔台中出现的概率。
+
+### 修复

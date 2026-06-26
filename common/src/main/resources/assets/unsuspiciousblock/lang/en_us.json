@@ -22,6 +22,9 @@
   "tooltip.unsuspiciousblock.wip": "[WIP] This item is still under development.",
   "item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range": "No suspicious blocks found in scan range.",
   "item.unsuspiciousblock.suspicious_reader.already_scanned": "(%d, %d, %d) already scanned",
+  "item.unsuspiciousblock.suspicious_reader.charge_full": "Energy is already full.",
+  "item.unsuspiciousblock.suspicious_reader.charge_waste_hint": "Consumed %s/%s energy; a coin would be partially wasted. Shift+right-click air again to force recharge.",
+  "item.unsuspiciousblock.suspicious_reader.charge_forced": "Forced recharge: consumed 1 Ancient Coin.",
 
   "key.unsuspiciousblock.scan_level_cycle": "Cycle Scan Level",
   "key.unsuspiciousblock.open_journal": "Open Archaeology Journal",

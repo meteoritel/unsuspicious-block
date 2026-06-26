@@ -13,12 +13,14 @@ import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.mojang.serialization.MapCodec;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.StringUtil;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -38,6 +40,8 @@ import net.neoforged.neoforge.common.BasicItemListing;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.neoforge.event.AnvilUpdateEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -248,6 +252,57 @@ public class UnsuspiciousBlockNeoForge {
                 new ItemStack(Items.EMERALD, 5),
                 3, 0, 0.05f
         ));
+    }
+
+    // 古代金币铁砧修复：低优先级监听，让其他 mod 先处理；仅在结果为空时介入。
+    // 每枚金币修复目标物品 25% 最大耐久（与原版同类材料修复一致），并同步原版重命名逻辑。
+    @SubscribeEvent(priority = EventPriority.LOW)
+    public void onAnvilUpdate(AnvilUpdateEvent event) {
+        if (!event.getOutput().isEmpty()) {
+            return;
+        }
+        ItemStack left = event.getLeft();
+        ItemStack right = event.getRight();
+        if (!right.is(ModItems.ANCIENT_COIN)) {
+            return;
+        }
+        if (!left.isDamageableItem() || left.getDamageValue() <= 0) {
+            return;
+        }
+
+        ItemStack result = left.copy();
+        // 每枚金币修复 1/4 最大耐久；maxDamage 至少为 1 以免除零
+        int repairPerCoin = Math.max(1, result.getMaxDamage() / 4);
+        int remaining = result.getDamageValue();
+        int coinsUsed = 0;
+        while (remaining > 0 && coinsUsed < right.getCount()) {
+            remaining -= repairPerCoin;
+            coinsUsed++;
+        }
+        result.setDamageValue(Math.max(0, remaining));
+
+        // 同步重命名：原版 AnvilMenu#createResult 在 onAnvilChange 返回 false 后跳过命名处理，
+        // 故此处需自行复用原版命名规则——非空且不同的名称设为 CUSTOM_NAME，空名称清除现有 CUSTOM_NAME
+        int renameCost = 0;
+        String name = event.getName();
+        if (name != null && !StringUtil.isBlank(name)) {
+            if (!name.equals(left.getHoverName().getString())) {
+                result.set(DataComponents.CUSTOM_NAME, Component.literal(name));
+                renameCost = 1;
+            }
+        } else if (name != null && left.has(DataComponents.CUSTOM_NAME)) {
+            // 用户清空名称栏 → 移除自定义名
+            result.remove(DataComponents.CUSTOM_NAME);
+            renameCost = 1;
+        }
+
+        // 等价原版同类材料修复：base = 左右修复成本之和，每枚金币 +1，重命名 +1
+        int baseCost = left.getOrDefault(DataComponents.REPAIR_COST, 0)
+                + right.getOrDefault(DataComponents.REPAIR_COST, 0);
+        event.setOutput(result);
+        event.setCost(baseCost + coinsUsed + renameCost);
+        // materialCost 默认 0 会消耗整堆金币，必须显式设为实际消耗数
+        event.setMaterialCost(coinsUsed);
     }
 
 }
