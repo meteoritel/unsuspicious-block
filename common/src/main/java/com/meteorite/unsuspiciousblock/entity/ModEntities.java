@@ -14,27 +14,28 @@ import java.util.function.Supplier;
  */
 public class ModEntities {
 
-    public static EntityType<GhostCat> GHOST_CAT;
+    // 平台侧在注册时回写为 Supplier，运行时通过 .get() 取 EntityType，永不为 null
+    public static Supplier<EntityType<GhostCat>> GHOST_CAT;
 
     /**
      * 实体注册清单条目
      *
      * @param name       实体资源名
      * @param factory    实体类型工厂（延迟创建，避免类加载顺序问题）
-     * @param setter     注册后回写 common 静态字段
+     * @param setter     注册后回写 common 静态字段（Supplier 形式，消除平台回写时机差异）
      * @param attributes 默认属性工厂（仅 LivingEntity 需要）
      */
     public record EntityEntry<T extends LivingEntity>(
             String name,
             Supplier<EntityType<T>> factory,
-            Consumer<EntityType<T>> setter,
+            Consumer<Supplier<EntityType<T>>> setter,
             Supplier<AttributeSupplier.Builder> attributes){}
 
     // 实体注册清单——新增实体只需在此添加一行
     public static final List<EntityEntry<?>> REGISTRY_MANIFEST = List.of(
             new EntityEntry<>("ghost_cat",
                     ModEntities::createGhostCatType,
-                    type -> GHOST_CAT = type,
+                    supplier -> GHOST_CAT = supplier,
                     GhostCat::createAttributes)
     );
 

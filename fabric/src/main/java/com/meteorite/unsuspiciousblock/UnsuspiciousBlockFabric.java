@@ -58,17 +58,18 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             setter.accept(registered);
         });
 
-        // 遍历实体注册清单，统一注册类型、回写静态字段并注册默认属性
+        // 遍历实体注册清单，统一注册类型、回写 Supplier 并注册默认属性
         ModEntities.forEach(new EntityRegistrar() {
             @Override
             public <T extends LivingEntity> void register(String name, Supplier<EntityType<T>> factory,
-                    Consumer<EntityType<T>> setter, Supplier<AttributeSupplier.Builder> attributes) {
+                    Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
                 EntityType<T> type = Registry.register(
                         BuiltInRegistries.ENTITY_TYPE,
                         ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
                         factory.get()
                 );
-                setter.accept(type);
+                // 包装为不可变 Supplier，与 NeoForge 的 DeferredHolder 行为对齐
+                setter.accept(() -> type);
                 AttributeSupplier supplier = attributes.get().build();
                 FabricDefaultAttributeRegistry.register(type, supplier);
             }

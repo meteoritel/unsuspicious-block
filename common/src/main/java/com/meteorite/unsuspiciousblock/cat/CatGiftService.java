@@ -33,10 +33,10 @@ public final class CatGiftService {
         if (!CatPassiveAbilities.canSummonAncientGift(owner)) {
             return;
         }
-        if (!(owner.level() instanceof ServerLevel level) || ModEntities.GHOST_CAT == null) {
+        if (!(owner.level() instanceof ServerLevel level)) {
             return;
         }
-        GhostCat ghost = ModEntities.GHOST_CAT.create(level);
+        GhostCat ghost = ModEntities.GHOST_CAT.get().create(level);
         if (ghost == null) {
             return;
         }

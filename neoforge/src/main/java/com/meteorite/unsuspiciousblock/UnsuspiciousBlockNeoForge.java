@@ -91,16 +91,10 @@ public class UnsuspiciousBlockNeoForge {
         });
     }
 
-    /** 存储 (DeferredHolder, Consumer, Supplier<AttributeSupplier.Builder>) 对，泛型化以消除强制转换 */
+    /** 存储 (DeferredHolder, 属性工厂) 对，泛型化以消除强制转换 */
     private record EntitySyncEntry<T extends LivingEntity>(
             DeferredHolder<EntityType<?>, EntityType<T>> deferred,
-            Consumer<EntityType<T>> setter,
             Supplier<AttributeSupplier.Builder> attributes) {
-
-        // 回写 common 静态字段
-        void writeback() {
-            setter.accept(deferred.get());
-        }
 
         // 注册实体默认属性
         void putAttributes(EntityAttributeCreationEvent event) {
@@ -114,9 +108,11 @@ public class UnsuspiciousBlockNeoForge {
         ModEntities.forEach(new EntityRegistrar() {
             @Override
             public <T extends LivingEntity> void register(String name, Supplier<EntityType<T>> factory,
-                    Consumer<EntityType<T>> setter, Supplier<AttributeSupplier.Builder> attributes) {
+                    Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
                 DeferredHolder<EntityType<?>, EntityType<T>> deferred = ENTITY_TYPES.register(name, factory);
-                ENTITY_SYNC_LIST.add(new EntitySyncEntry<>(deferred, setter, attributes));
+                // DeferredHolder 本身即 Supplier，直接回写，无需等待 FMLCommonSetupEvent
+                setter.accept(deferred);
+                ENTITY_SYNC_LIST.add(new EntitySyncEntry<>(deferred, attributes));
             }
         });
     }
@@ -161,22 +157,8 @@ public class UnsuspiciousBlockNeoForge {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
             }
-            syncEntityRefs();
             SpecimenBoxMenu.TYPE = SPECIMEN_BOX_MENU.get();
         });
-    }
-
-    /**
-     * 回写实体类型静态字段。
-     * <p>
-     * 幂等操作：DeferredHolder 在 RegisterEvent 阶段即已绑定，因此本方法可在
-     * 渲染器注册（EntityRenderersEvent.RegisterRenderers）前提前调用，避免渲染器
-     * 注册早于 FMLCommonSetupEvent 回写而取到 null 实体类型。
-     */
-    public static void syncEntityRefs() {
-        for (EntitySyncEntry<?> entry : ENTITY_SYNC_LIST) {
-            entry.writeback();
-        }
     }
 
     public static MenuType<SpecimenBoxMenu> specimenBoxMenu() {

@@ -88,9 +88,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        // 渲染器注册可能早于 FMLCommonSetupEvent 的回写，这里先确保实体类型静态字段已回写
-        UnsuspiciousBlockNeoForge.syncEntityRefs();
-        // 遍历渲染器清单，统一注册实体渲染器
+        // 实体类型 Supplier 已在 mod 构造器静态块中回写，此处直接遍历渲染器清单注册
         ModEntityRenderers.forEach(event::registerEntityRenderer);
     }
 

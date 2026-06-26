@@ -18,7 +18,7 @@ import net.minecraft.world.level.block.Block;
 public final class TextileRecoveryEffect implements EnchantmentEffect {
     private static final double EXTRA_STRING_CHANCE = 0.3D;
     private static final int EXTRA_STRING_MIN = 1;
-    private static final int EXTRA_STRING_MAX = 2;
+    private static final int EXTRA_STRING_MAX = 3;
 
     @Override
     public void apply(EffectContext<?> ctx) {
