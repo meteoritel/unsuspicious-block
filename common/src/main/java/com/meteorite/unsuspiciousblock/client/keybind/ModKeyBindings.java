@@ -20,11 +20,11 @@ public class ModKeyBindings {
             "key.categories.unsuspiciousblock"
     );
 
-    /** 打开考古手册键，默认 J 键 */
+    /** 打开考古手册键，默认 C 键 */
     public static final KeyMapping JOURNAL_OPEN = new KeyMapping(
             "key.unsuspiciousblock.open_journal",
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_J,
+            GLFW.GLFW_KEY_C,
             "key.categories.unsuspiciousblock"
     );
 
