@@ -8,11 +8,21 @@ repositories {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
     }
+    // Curios API maven 仓库（仅 neoforge 端可选联动）
+    maven {
+        name = "Curios"
+        url = "https://maven.theillusivec4.top/"
+    }
 }
 
 dependencies {
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     runtimeOnly "maven.modrinth:jade:15.10.5+neoforge"
+
+    // Curios API：compileOnly 引用 API，runtimeOnly 供本地运行测试
+    // 发布时不强制玩家安装 Curios，仅在存在时启用联动功能
+    compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}:api"
+    runtimeOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
 }
 
 neoForge {

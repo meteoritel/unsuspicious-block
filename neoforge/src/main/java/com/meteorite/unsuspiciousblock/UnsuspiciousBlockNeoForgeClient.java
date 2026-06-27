@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
+import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
@@ -93,6 +94,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {
+        ArchaeologyJournalKeyHandler.tick();
         ArchaeologyJournalClientState.tick();
         SpecimenBoxClientState.tick();
         SuspiciousReaderClientState.tick();

@@ -30,5 +30,12 @@ description = '''${description}'''
     ordering = "NONE"
     side = "BOTH"
 
+[[dependencies.${mod_id}]]
+    modId = "curios"
+    type = "optional"
+    versionRange = "[9.5,)"
+    ordering = "NONE"
+    side = "BOTH"
+
 [[mixins]]
 config = "${mod_id}.mixins.json"

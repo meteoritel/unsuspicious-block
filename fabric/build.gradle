@@ -8,6 +8,15 @@ repositories {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
     }
+    // Trinkets 依赖的两个 maven 仓库（TerraformersMC + Ladysnake）
+    maven {
+        name = "TerraformersMC"
+        url = "https://maven.terraformersmc.com/"
+    }
+    maven {
+        name = "Ladysnake Libs"
+        url = "https://maven.ladysnake.org/releases"
+    }
 }
 
 dependencies {
@@ -20,6 +29,11 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
     modCompileOnly "maven.modrinth:jade:15.10.5+fabric"
     modRuntimeOnly "maven.modrinth:jade:15.10.5+fabric"
+
+    // Trinkets：可选联动，仅编译期引用 API，运行时由玩家自行安装
+    modCompileOnly "dev.emi:trinkets:${trinkets_version}"
+    // 本地运行测试时自动拉取 trinkets 及其传递依赖（CCA）
+    modRuntimeOnly "dev.emi:trinkets:${trinkets_version}"
 }
 
 loom {

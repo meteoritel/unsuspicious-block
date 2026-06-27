@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
-import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
@@ -11,7 +10,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
-/** 客户端状态：处理按键切换扫描等级、action bar 提示 */
+/** 客户端状态：处理可疑扫描仪按键切换扫描等级、action bar 提示 */
 public class SuspiciousReaderClientState {
 
     private SuspiciousReaderClientState() {
@@ -21,14 +20,6 @@ public class SuspiciousReaderClientState {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || mc.screen != null) return;
-
-        // 快捷键打开考古笔记
-        if (ModKeyBindings.JOURNAL_OPEN.consumeClick()) {
-            if (player.getInventory().contains(new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL))) {
-                ArchaeologyJournalUi.openFromKeybind();
-            }
-            return;
-        }
 
         if (ModKeyBindings.SCAN_LEVEL_CYCLE.consumeClick()) {
             handleScanLevelCycle(player);

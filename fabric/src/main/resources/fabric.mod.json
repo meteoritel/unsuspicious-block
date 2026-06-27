@@ -35,5 +35,8 @@
     },
     "suggests": {
         "jade": "*"
+    },
+    "recommends": {
+        "trinkets": ">=3.10.0"
     }
 }

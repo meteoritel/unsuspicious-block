@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter;
+import com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
@@ -15,6 +16,7 @@ public class Services {
 
     public static final IPlatformHelper PLATFORM = load(IPlatformHelper.class);
     public static final INetworkHelper NETWORK = load(INetworkHelper.class);
+    public static final IAccessoryHelper ACCESSORY = load(IAccessoryHelper.class);
     public static final ILootTableConfig LOOT_TABLE_CONFIG = load(ILootTableConfig.class);
     public static final IEnchantmentEventAdapter ENCHANTMENT = load(IEnchantmentEventAdapter.class);
     public static final ICatEventAdapter CAT = load(ICatEventAdapter.class);
