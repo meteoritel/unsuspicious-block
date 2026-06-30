@@ -1,0 +1,5 @@
+{
+  "amount": 1,
+  "icon": "trinkets:gui/slots/charm",
+  "validator_predicates": ["trinkets:tag"]
+}
