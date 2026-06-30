@@ -44,6 +44,7 @@
   "item.unsuspiciousblock.ancient_coin": "古代金币",
   "item.unsuspiciousblock.lost_page": "失落书页",
   "item.unsuspiciousblock.base_page": "基页",
+  "item.unsuspiciousblock.eye_of_cat": "猫之瞳",
   "item.unsuspiciousblock.hand_of_cat": "猫之手",
   "item.unsuspiciousblock.hand_of_cat.tooltip_favor": "猫之恩惠：%s/%s",
   "item.unsuspiciousblock.hand_of_cat.tooltip_abilities": "猫王国的庇护：",
@@ -255,5 +256,8 @@
   "command.unsuspiciousblock.usb.ghost_cat.error.not_found": "附近没有幽灵猫。",
   "command.unsuspiciousblock.usb.ghost_cat.error.unknown_phase": "未知阶段：%s（可选：manifest/approach/greet/deliver/dissipate）",
 
-  "entity.unsuspiciousblock.ghost_cat":"幽灵猫"
+  "entity.unsuspiciousblock.ghost_cat":"幽灵猫",
+
+  "unsuspiciousblock.container.enchant.reveal.header": "附魔候选：",
+  "unsuspiciousblock.container.enchant.reveal.empty": "无候选"
 }

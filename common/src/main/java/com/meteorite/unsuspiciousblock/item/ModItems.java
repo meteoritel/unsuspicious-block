@@ -17,6 +17,7 @@ public class ModItems {
     public static Item ANCIENT_COIN;
     public static Item LOST_PAGE;
     public static Item BASE_PAGE;
+    public static Item EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
 
     // 物品注册清单条目，供各平台遍历注册
@@ -45,6 +46,9 @@ public class ModItems {
             new ItemEntry("base_page",
                     ModItems::createBasePage,
                     item -> BASE_PAGE = item),
+            new ItemEntry("eye_of_cat",
+                    ModItems::createEyeOfCat,
+                    item -> EYE_OF_CAT = item),
             new ItemEntry("hand_of_cat",
                     ModItems::createHandOfCat,
                     item -> HAND_OF_CAT = (HandOfCatItem) item)
@@ -62,6 +66,7 @@ public class ModItems {
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
             () -> BASE_PAGE,
+            () -> EYE_OF_CAT,
             () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
     );
@@ -100,6 +105,11 @@ public class ModItems {
     // 创建书页基底实例
     public static Item createBasePage() {
         return new Item(new Item.Properties());
+    }
+
+    // 创建猫之瞳实例——持有者开启附魔台时可窥见完整附魔候选
+    public static Item createEyeOfCat() {
+        return new Item(new Item.Properties().rarity(net.minecraft.world.item.Rarity.UNCOMMON));
     }
 
     // 创建猫之手实例

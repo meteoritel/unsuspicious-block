@@ -10,6 +10,7 @@
     "block.BlockBehaviourMixin",
     "block.BlockMixin",
     "block.BrushableBlockEntityMixin",
+    "enchantment.EnchantmentMenuMixin",
     "catfavor.CatFeedMixin",
     "catfavor.CatRelaxOnOwnerGoalMixin",
     "catfavor.CatSitOnBlockGoalMixin",
@@ -32,7 +33,9 @@
     "catfavor.TamableAnimalTameMixin",
     "StructureTemplateMixin"
   ],
-  "client": [],
+  "client": [
+    "client.EnchantmentScreenMixin"
+  ],
   "server": [],
   "injectors": {
     "defaultRequire": 1

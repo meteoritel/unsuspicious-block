@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.network;
 
 import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
+import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
@@ -16,6 +17,7 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnaps
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncEnchantmentRevealListPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
@@ -81,7 +83,8 @@ public final class ModPayloads {
             new S2CSpec<>(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC),
             new S2CSpec<>(SyncSpecimenBoxViewPayload.TYPE, SyncSpecimenBoxViewPayload.STREAM_CODEC),
             new S2CSpec<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC)
+            new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC)
     );
 
     /**
@@ -119,7 +122,9 @@ public final class ModPayloads {
                 new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
                         HandOfCatClientState::receive),
                 new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
-                        payload -> ReaderScanHighlightState.receive(payload.scannedBlocks()))
+                        payload -> ReaderScanHighlightState.receive(payload.scannedBlocks())),
+                new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
+                        EnchantmentRevealClientState::receive)
         );
     }
 }

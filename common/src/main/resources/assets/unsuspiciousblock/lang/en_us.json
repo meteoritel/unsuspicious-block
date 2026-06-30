@@ -46,6 +46,7 @@
   "item.unsuspiciousblock.ancient_coin": "Ancient Coin",
   "item.unsuspiciousblock.lost_page": "Lost Page",
   "item.unsuspiciousblock.base_page": "Base Page",
+  "item.unsuspiciousblock.eye_of_cat": "Eye of Cat",
   "item.unsuspiciousblock.hand_of_cat": "Hand of Cat",
   "item.unsuspiciousblock.hand_of_cat.tooltip_favor": "Cat's Favor: %s/%s",
   "item.unsuspiciousblock.hand_of_cat.tooltip_abilities": "Blessings of the Cat Kingdom:",
@@ -253,5 +254,8 @@
   "command.unsuspiciousblock.usb.ghost_cat.error.not_found": "No Ghost Cat nearby.",
   "command.unsuspiciousblock.usb.ghost_cat.error.unknown_phase": "Unknown phase: %s (valid: manifest/approach/greet/deliver/dissipate)",
 
-  "entity.unsuspiciousblock.ghost_cat":"Ghost Cat"
+  "entity.unsuspiciousblock.ghost_cat":"Ghost Cat",
+
+  "unsuspiciousblock.container.enchant.reveal.header": "Enchantment Candidates:",
+  "unsuspiciousblock.container.enchant.reveal.empty": "No candidates"
 }

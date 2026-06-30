@@ -108,6 +108,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         HandOfCatClientState.reset();
         CatHandClientState.reset();
         ReaderScanHighlightState.reset();
+        com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }
 
     // 在半透明方块渲染之后绘制范围扫描高亮，实现透视效果

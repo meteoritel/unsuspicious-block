@@ -60,6 +60,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             HandOfCatClientState.reset();
             CatHandClientState.reset();
             ReaderScanHighlightState.reset();
+            com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

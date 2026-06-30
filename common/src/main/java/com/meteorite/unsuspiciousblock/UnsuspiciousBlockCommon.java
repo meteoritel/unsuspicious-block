@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentEffects;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
+import com.meteorite.unsuspiciousblock.enchantment.reveal.EnchantmentRevealConditions;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.VanillaAchievementHelper;
 
@@ -14,6 +15,8 @@ public class UnsuspiciousBlockCommon {
         AchievementManager.init(new VanillaAchievementHelper());
         EnchantmentManager.init(Services.ENCHANTMENT);
         EnchantmentEffects.registerAll();
+        // 注册附魔揭示内建条件（服务端评估，决定是否下发完整候选列表）
+        EnchantmentRevealConditions.register();
         CatFavorManager.init(Services.CAT);
     }
 }
