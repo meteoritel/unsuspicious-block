@@ -54,7 +54,7 @@ public abstract class EnchantmentScreenMixin extends AbstractContainerScreen<Enc
             GuiGraphics guiGraphics, Font font, List<Component> original, int mouseX, int mouseY,
             Operation<Void> originalOp) {
         EnchantmentMenu menu = this.menu;
-        // 1. 反推 hover 的 slot 索引（与 EnchantmentScreen.render 中的命中判定一致）
+        // 1. 反推 hover 的 slot 索引
         int hoverSlot = -1;
         for (int s = 0; s < 3; s++) {
             if (menu.costs[s] > 0 && menu.enchantClue[s] >= 0
@@ -88,6 +88,9 @@ public abstract class EnchantmentScreenMixin extends AbstractContainerScreen<Enc
         List<Component> lines = new ArrayList<>();
         lines.add(Component.translatable("unsuspiciousblock.container.enchant.reveal.header")
                 .withStyle(ChatFormatting.WHITE));
+        // 原版同步到客户端的候选（enchantClue/levelClue 对应条目）排在候选列表第一行
+        MutableComponent selectedName = null;
+        List<MutableComponent> otherNames = new ArrayList<>();
         for (SyncEnchantmentRevealListPayload.Entry entry : synced) {
             Optional<Holder.Reference<Enchantment>> holder = registry
                     .registryOrThrow(Registries.ENCHANTMENT)
@@ -101,8 +104,16 @@ public abstract class EnchantmentScreenMixin extends AbstractContainerScreen<Enc
                     && inst.enchantment.equals(clueHolder.get())
                     && inst.level == clueLevel;
             name.withStyle(selected ? ChatFormatting.GOLD : ChatFormatting.GRAY);
-            lines.add(name);
+            if (selected) {
+                selectedName = name;
+            } else {
+                otherNames.add(name);
+            }
         }
+        if (selectedName != null) {
+            lines.add(selectedName);
+        }
+        lines.addAll(otherNames);
         // 跳过原版 line 0（clue 行），保留 EMPTY 分隔行与 lapis/level 要求行
         if (original.size() > 1) {
             lines.addAll(original.subList(1, original.size()));
