@@ -13,12 +13,16 @@
           "name": "unsuspiciousblock:ancient_coin"
         },
         {
-          "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:usb/random_pottery_sherd"
+          "type": "minecraft:item",
+          "name": "minecraft:enchanted_golden_apple"
         },
         {
-          "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:usb/random_armor_trim"
+          "type": "minecraft:item",
+          "name": "minecraft:mangrove_propagule"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:sculk_catalyst"
         },
         {
           "type": "minecraft:loot_table",
@@ -30,17 +34,18 @@
           "functions": [
             {
               "function": "minecraft:enchant_with_levels",
-              "levels": {"type": "minecraft:uniform", "min": 10, "max": 25}
+              "levels": {"type": "minecraft:uniform", "min": 20, "max": 30}
             }
           ]
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:mangrove_propagule"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:tnt"
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "minecraft:enchant_randomly"
+            }
+          ]
         },
         {
           "type": "minecraft:item",
@@ -51,6 +56,10 @@
               "levels": 30
             }
           ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "value": "unsuspiciousblock:usb/random_potion"
         }
       ]
     }

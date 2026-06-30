@@ -18,11 +18,19 @@ import net.minecraft.world.level.storage.loot.LootTable;
  * 调用；未命中条件时原样返回 ctx.value()。
  * <p>
  * 概率模型：每级 10%（满级 3 级 = 30%）；处于注册名 path 包含 "swamp" 的群系时额外 +15%。
+ * <p>
+ * 战利品表分流：沼泽群系命中概率检定时使用 {@link #MUD_DREDGING_SWAMP_LOOT_TABLE}（更丰厚），
+ * 其余命中场景使用 {@link #MUD_DREDGING_LOOT_TABLE}（基础表）。
  */
 public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceKey<LootTable>> {
     public static final ResourceKey<LootTable> MUD_DREDGING_LOOT_TABLE =
             ResourceKey.create(Registries.LOOT_TABLE,
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging"));
+
+    // 沼泽群系专属（更丰厚）战利品表
+    public static final ResourceKey<LootTable> MUD_DREDGING_SWAMP_LOOT_TABLE =
+            ResourceKey.create(Registries.LOOT_TABLE,
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging_swamp"));
 
     private static final double CHANCE_PER_LEVEL = 0.10D;
     private static final double BONUS_CHANCE = 0.15D;
@@ -36,14 +44,17 @@ public final class MudDredgingEffect implements EnchantmentValueEffect<ResourceK
             return ctx.value();
         }
 
+        boolean swamp = isSwampBiome(triggerCtx, hook);
         double chance = ctx.enchantmentLevel() * CHANCE_PER_LEVEL;
-        if (isSwampBiome(triggerCtx, hook)) {
+        if (swamp) {
             chance += BONUS_CHANCE;
         }
 
-        return triggerCtx.player.getRandom().nextDouble() < Math.min(1.0D, chance)
-                ? MUD_DREDGING_LOOT_TABLE
-                : ctx.value();
+        if (triggerCtx.player.getRandom().nextDouble() >= Math.min(1.0D, chance)) {
+            return ctx.value();
+        }
+        // 命中后按群系分流：沼泽用更丰厚的专属表，其余用基础表
+        return swamp ? MUD_DREDGING_SWAMP_LOOT_TABLE : MUD_DREDGING_LOOT_TABLE;
     }
 
     // 检查当前群系注册名 path 是否包含 "swamp"，兼容原版与 mod 添加的沼泽群系
