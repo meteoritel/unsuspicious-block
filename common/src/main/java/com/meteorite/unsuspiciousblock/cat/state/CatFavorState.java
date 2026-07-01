@@ -38,10 +38,8 @@ public final class CatFavorState {
     // ========== 瞬态运行时状态（不序列化，重生后重置） ==========
     // 上一 tick 是否拥有「村庄英雄」效果，用于击退袭击的上升沿检测
     private transient boolean hadHeroEffect;
-    // 客户端是否请求开启夜视（环境亮度低于阈值）
-    private transient boolean nightVisionRequested;
-    // 夜视淡出倒计时（tick）：亮度恢复后延迟移除夜视
-    private transient int nightVisionFadeTicks;
+    // 夜视分级检测冷却倒计时（tick）：空闲态 1s 侦测，激活态 5s 刷新
+    private transient int nightVisionCheckCooldown;
     // 猫之九命无敌窗口的截止游戏时间（gameTime tick），此前免疫所有伤害
     private transient long nineLivesInvulnUntil;
     // 缓存的能力位掩码（由 CatPassiveAbilities 每 tick 计算，供 mixin 廉价查询）
@@ -139,20 +137,12 @@ public final class CatFavorState {
         this.hadHeroEffect = value;
     }
 
-    public boolean isNightVisionRequested() {
-        return this.nightVisionRequested;
+    public int getNightVisionCheckCooldown() {
+        return this.nightVisionCheckCooldown;
     }
 
-    public void setNightVisionRequested(boolean value) {
-        this.nightVisionRequested = value;
-    }
-
-    public int getNightVisionFadeTicks() {
-        return this.nightVisionFadeTicks;
-    }
-
-    public void setNightVisionFadeTicks(int ticks) {
-        this.nightVisionFadeTicks = ticks;
+    public void setNightVisionCheckCooldown(int ticks) {
+        this.nightVisionCheckCooldown = ticks;
     }
 
     public long getNineLivesInvulnUntil() {
@@ -179,8 +169,7 @@ public final class CatFavorState {
         this.nineLivesCount = 0;
         this.lightStepPressurePrevented = true;
         this.hadHeroEffect = false;
-        this.nightVisionRequested = false;
-        this.nightVisionFadeTicks = 0;
+        this.nightVisionCheckCooldown = 0;
         this.nineLivesInvulnUntil = 0L;
         this.abilityMask = 0;
     }

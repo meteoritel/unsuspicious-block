@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.cat;
 
-import com.meteorite.unsuspiciousblock.network.payload.c2s.CatNightVisionPayload;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -8,11 +7,6 @@ import net.minecraft.server.level.ServerPlayer;
 public final class CatNetworkHandler {
 
     private CatNetworkHandler() {
-    }
-
-    // 处理夜视开关请求
-    public static void handleNightVision(ServerPlayer player, CatNightVisionPayload payload) {
-        CatPassiveAbilities.onNightVisionRequest(player, payload.active());
     }
 
     // 处理「猫的威慑」开关切换，并向玩家反馈当前状态

@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.mixin.catfavor;
 
 import com.meteorite.unsuspiciousblock.cat.CatPassiveAbilities;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.levelgen.PhantomSpawner;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

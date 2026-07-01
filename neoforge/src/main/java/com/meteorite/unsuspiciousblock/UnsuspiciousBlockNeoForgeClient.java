@@ -60,10 +60,10 @@ public final class UnsuspiciousBlockNeoForgeClient {
         });
     }
 
-    @SubscribeEvent
-    public static void registerScreens(RegisterMenuScreensEvent event) {
-        event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
-    }
+//    @SubscribeEvent
+//    public static void registerScreens(RegisterMenuScreensEvent event) {
+//        event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+//    }
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
@@ -111,7 +111,6 @@ public final class UnsuspiciousBlockNeoForgeClient {
         SpecimenBoxClientState.clearAll();
         ArchaeologyJournalClientState.resetOnDisconnect();
         HandOfCatClientState.reset();
-        CatHandClientState.reset();
         ReaderScanHighlightState.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }

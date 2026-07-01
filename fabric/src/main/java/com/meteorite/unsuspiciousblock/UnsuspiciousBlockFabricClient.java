@@ -51,7 +51,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             }
             JournalUnlockToast.addItemUnlocks(entries);
         });
-        MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+        // MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
         // 注册 S2C 接收器：遍历 ModPayloads 客户端清单
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
@@ -61,7 +61,6 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             SpecimenBoxClientState.clearAll();
             ArchaeologyJournalClientState.resetOnDisconnect();
             HandOfCatClientState.reset();
-            CatHandClientState.reset();
             ReaderScanHighlightState.reset();
             com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
         });

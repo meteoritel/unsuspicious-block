@@ -20,9 +20,6 @@ import net.minecraft.world.item.trading.MerchantOffer;
  */
 public final class CatPassiveAbilities {
 
-    // ========== 恩惠阈值 ==========
-    // 阈值与本地化键统一由 CatFavorAbility 枚举管理，此处不再重复定义常量
-
     // ========== 能力位掩码（缓存在玩家状态中，供 mixin 免库存扫描查询） ==========
     public static final int FLAG_DETERRENCE = 1;
     public static final int FLAG_LIGHT_STEP_TRAMPLE = 1 << 1;
@@ -35,10 +32,15 @@ public final class CatPassiveAbilities {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "cat_step");
     private static final double STEP_BONUS = 0.65;
 
-    // 夜视刷新时长（tick）：足够长以避免画面闪烁
-    private static final int NIGHT_VISION_REFRESH_TICKS = 220;
-    // 离开黑暗后夜视淡出延迟（tick）：2 秒
-    private static final int NIGHT_VISION_FADE_TICKS = 40;
+    // 「猫的眼」夜视：服务端分级检测，降低高频亮度查询开销
+    // 触发夜视的亮度阈值（环境亮度低于此值视为黑暗）
+    private static final int DARKNESS_THRESHOLD = 7;
+    // 夜视持续时长（tick）：16 秒，刷新窗口留足余量避免画面闪烁
+    private static final int NIGHT_VISION_DURATION = 320;
+    // 空闲态检查间隔（tick）：1 秒一次，用于侦测进入黑暗
+    private static final int NIGHT_VISION_CHECK_IDLE = 20;
+    // 激活态刷新间隔（tick）：5 秒一次，已授予夜视后续期刷新
+    private static final int NIGHT_VISION_CHECK_ACTIVE = 100;
 
     // 九命无敌窗口（tick）：5 秒
     public static final int NINE_LIVES_INVULN_TICKS = 100;
@@ -102,28 +104,26 @@ public final class CatPassiveAbilities {
         }
     }
 
-    // 「猫的眼」夜视：黑暗中持续刷新，离开黑暗 2 秒后移除
+    // 「猫的眼」夜视：服务端分级检测亮度
+    // 空闲态每 1s 侦测一次进入黑暗；激活后每 5s 刷新一次夜视，刷新时若条件不再满足则回到空闲态
     private static void updateNightVision(ServerPlayer player, CatFavorState state,
                                           boolean hasHand, int favor) {
-        boolean wantNightVision = state.isNightVisionRequested() && hasHand && CatFavorAbility.CAT_EYE.isUnlockedAt(favor);
-        if (wantNightVision) {
-            state.setNightVisionFadeTicks(0);
-            player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION,
-                    NIGHT_VISION_REFRESH_TICKS, 0, true, false, false));
+        int cooldown = state.getNightVisionCheckCooldown();
+        if (cooldown > 0) {
+            state.setNightVisionCheckCooldown(cooldown - 1);
             return;
         }
-        // 持有物品或恩惠不足但仍在请求态：视作离开黑暗，开始淡出
-        if (state.isNightVisionRequested()) {
-            state.setNightVisionRequested(false);
-            state.setNightVisionFadeTicks(NIGHT_VISION_FADE_TICKS);
-        }
-        int fade = state.getNightVisionFadeTicks();
-        if (fade > 0) {
-            fade--;
-            state.setNightVisionFadeTicks(fade);
-            if (fade == 0) {
-                player.removeEffect(MobEffects.NIGHT_VISION);
-            }
+        boolean eligible = hasHand
+                && CatFavorAbility.CAT_EYE.isUnlockedAt(favor)
+                && player.level().getMaxLocalRawBrightness(player.blockPosition()) < DARKNESS_THRESHOLD;
+        if (eligible) {
+            // 授予/刷新 16s 夜视；MC 仅在新时长更长时覆盖，剩余约 20tick 时刷新到 120tick 平滑续期
+            player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION,
+                    NIGHT_VISION_DURATION, 0, true, false, false));
+            state.setNightVisionCheckCooldown(NIGHT_VISION_CHECK_ACTIVE - 1);
+        } else {
+            // 条件不满足：不再续期，夜视自然过期；回到空闲态高频侦测
+            state.setNightVisionCheckCooldown(NIGHT_VISION_CHECK_IDLE - 1);
         }
     }
 
@@ -146,21 +146,6 @@ public final class CatPassiveAbilities {
     }
 
     // ========== 客户端请求处理（C2S） ==========
-
-    // 处理夜视开关请求：active=true 进入黑暗请求夜视；false 离开黑暗开始淡出
-    public static void onNightVisionRequest(ServerPlayer player, boolean active) {
-        CatFavorState state = CatFavorManager.getState(player);
-        if (state == null) {
-            return;
-        }
-        if (active) {
-            state.setNightVisionRequested(true);
-            state.setNightVisionFadeTicks(0);
-        } else {
-            state.setNightVisionRequested(false);
-            state.setNightVisionFadeTicks(NIGHT_VISION_FADE_TICKS);
-        }
-    }
 
     // 处理「猫的威慑」开关切换，返回切换后是否已关闭
     public static boolean onDeterrenceToggle(ServerPlayer player) {

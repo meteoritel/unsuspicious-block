@@ -19,7 +19,7 @@ public abstract class EntityBlockTriggerMixin {
 
     @Inject(method = "isIgnoringBlockTriggers", at = @At("RETURN"), cancellable = true)
     private void unsuspiciousblock$lightStepIgnoreTriggers(CallbackInfoReturnable<Boolean> cir) {
-        if ((Object) this instanceof Player player
+        if ((Entity) (Object) this instanceof Player player
                 && CatPassiveAbilities.hasLightStepPressurePlateIgnored(player)) {
             cir.setReturnValue(true);
         }
