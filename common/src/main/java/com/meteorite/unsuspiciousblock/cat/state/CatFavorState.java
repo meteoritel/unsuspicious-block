@@ -67,7 +67,7 @@ public final class CatFavorState {
         if (last == null) {
             return true;
         }
-        return gameTime - last >= CatFavorAction.COOLDOWN_TICKS;
+        return gameTime - last >= action.cooldownTicks();
     }
 
     // 记录指定行为在给定游戏时间被触发（刷新冷却起点）

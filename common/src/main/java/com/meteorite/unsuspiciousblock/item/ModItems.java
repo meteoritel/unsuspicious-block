@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Rarity;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -67,7 +68,7 @@ public class ModItems {
             () -> LOST_PAGE,
             () -> BASE_PAGE,
             () -> EYE_OF_CAT,
-            () -> SPECIMEN_BOX,
+            // () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
     );
 
@@ -109,12 +110,12 @@ public class ModItems {
 
     // 创建猫之瞳实例——持有者开启附魔台时可窥见完整附魔候选
     public static Item createEyeOfCat() {
-        return new Item(new Item.Properties().rarity(net.minecraft.world.item.Rarity.UNCOMMON));
+        return new Item(new Item.Properties().rarity(Rarity.UNCOMMON));
     }
 
     // 创建猫之手实例
     public static HandOfCatItem createHandOfCat() {
-        return new HandOfCatItem(new Item.Properties().stacksTo(1).rarity(net.minecraft.world.item.Rarity.EPIC));
+        return new HandOfCatItem(new Item.Properties().stacksTo(1).rarity(Rarity.EPIC));
     }
 
     // 遍历清单，调用平台回调完成注册

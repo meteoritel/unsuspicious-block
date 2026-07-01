@@ -24,6 +24,7 @@ import java.util.Optional;
  * 绘制目录面板、3x3 逻辑槽位网格、分页按钮与玩家物品栏。
  * 所有用户操作通过 sendMenuButton() 回传服务端处理。
  */
+@Deprecated
 public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> {
     private static final ResourceLocation MAIN_PANEL_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/specimen_box_main_panel.png");

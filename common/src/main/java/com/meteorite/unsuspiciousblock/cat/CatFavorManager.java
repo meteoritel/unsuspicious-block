@@ -16,10 +16,6 @@ import net.minecraft.world.item.ItemStack;
  * 所有累积/惩罚逻辑均为服务端权威，变更后通过 S2C 包同步给客户端供 tooltip 显示。
  */
 public final class CatFavorManager {
-    // 玩家每次死亡的恩惠惩罚（无冷却）
-    private static final int DEATH_PENALTY = 10;
-    // 玩家每次杀死猫的恩惠惩罚（无冷却）
-    private static final int KILL_CAT_PENALTY = 50;
 
     private CatFavorManager() {
     }
@@ -37,7 +33,7 @@ public final class CatFavorManager {
      * 仅当玩家背包中存在「猫之手」且该行为已过冷却时生效。
      */
     public static void tryAccumulate(ServerPlayer player, CatFavorAction action) {
-        if (player == null || !hasHandOfCatInInventory(player)) {
+        if (player == null || action.isPenalty() || !hasHandOfCatInInventory(player)) {
             return;
         }
         CatFavorState state = getState(player);
@@ -57,25 +53,36 @@ public final class CatFavorManager {
 
     // ========== 惩罚行为（无冷却，不要求持有猫之手） ==========
 
+    // 击打猫：恩惠 -5
+    public static void onHitCat(ServerPlayer player) {
+        applyPenalty(player, CatFavorAction.HIT_CAT);
+    }
+
+    // 玩家所属的驯服猫死亡：恩惠 -10
+    public static void onOwnCatDeath(ServerPlayer player) {
+        applyPenalty(player, CatFavorAction.OWN_CAT_DEATH);
+    }
+
     // 玩家死亡：恩惠 -10
     public static void onPlayerDeath(ServerPlayer player) {
-        applyPenalty(player, DEATH_PENALTY);
+        applyPenalty(player, CatFavorAction.PLAYER_DEATH);
     }
 
     // 玩家杀死猫：恩惠 -50
     public static void onKillCat(ServerPlayer player) {
-        applyPenalty(player, KILL_CAT_PENALTY);
+        applyPenalty(player, CatFavorAction.KILL_CAT);
     }
 
-    private static void applyPenalty(ServerPlayer player, int penalty) {
-        if (player == null) {
+    // 统一应用惩罚：直接扣减恩惠（不校验持有物与冷却）
+    private static void applyPenalty(ServerPlayer player, CatFavorAction action) {
+        if (player == null || !action.isPenalty()) {
             return;
         }
         CatFavorState state = getState(player);
         if (state == null) {
             return;
         }
-        if (state.addFavor(-penalty)) {
+        if (state.addFavor(action.favorDelta())) {
             sync(player);
         }
     }
