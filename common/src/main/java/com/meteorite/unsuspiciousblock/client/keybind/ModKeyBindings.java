@@ -28,11 +28,19 @@ public class ModKeyBindings {
             "key.categories.unsuspiciousblock"
     );
 
-    /** 切换「猫的威慑」被动开关键，默认 G 键 */
+    /** 切换「猫的威慑」被动开关键，默认未绑定（可在控制设置中自行绑定） */
     public static final KeyMapping CAT_DETERRENCE_TOGGLE = new KeyMapping(
             "key.unsuspiciousblock.cat_deterrence_toggle",
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_G,
+            GLFW.GLFW_KEY_UNKNOWN,
+            "key.categories.unsuspiciousblock"
+    );
+
+    /** 切换「轻步」压力板触发开关，默认未绑定（可在控制设置中自行绑定） */
+    public static final KeyMapping CAT_LIGHT_STEP_TOGGLE = new KeyMapping(
+            "key.unsuspiciousblock.cat_light_step_toggle",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_UNKNOWN,
             "key.categories.unsuspiciousblock"
     );
 

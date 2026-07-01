@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
@@ -22,6 +23,7 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -34,6 +36,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
+        KeyBindingHelper.registerKeyBinding(ModKeyBindings.CAT_LIGHT_STEP_TOGGLE);
 
         // 遍历渲染器清单，统一注册实体渲染器
         ModEntityRenderers.forEach(EntityRendererRegistry::register);
@@ -75,6 +78,9 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         // 半透明方块渲染之后绘制范围扫描高亮，实现透视效果
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context ->
                 SuspiciousReaderRangeHighlight.render(context.matrixStack(), context.camera()));
+
+        // 注册猫之恩惠快捷栏 HUD
+        HudRenderCallback.EVENT.register((guiGraphics, tickCounter) -> CatFavorHud.render(guiGraphics));
     }
 
     // 注册 S2C 客户端接收器

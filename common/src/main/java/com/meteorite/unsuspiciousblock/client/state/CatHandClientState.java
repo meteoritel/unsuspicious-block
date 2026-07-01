@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.state;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatNightVisionPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.Minecraft;
@@ -41,6 +42,11 @@ public final class CatHandClientState {
         // 威慑开关按键：发送切换请求
         while (ModKeyBindings.CAT_DETERRENCE_TOGGLE.consumeClick()) {
             Services.NETWORK.sendToServer(CatDeterrenceTogglePayload.INSTANCE);
+        }
+
+        // 轻步压力板开关按键：发送切换请求
+        while (ModKeyBindings.CAT_LIGHT_STEP_TOGGLE.consumeClick()) {
+            Services.NETWORK.sendToServer(CatLightStepTogglePayload.INSTANCE);
         }
 
         // 夜视亮度监测：背包无猫之手时不监测，若此前处于黑暗态则通知服务端淡出

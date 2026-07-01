@@ -95,9 +95,15 @@ public final class CatFavorManager {
         return state == null ? 0 : state.getFavor();
     }
 
-    // 向客户端同步当前恩惠值，供物品 tooltip 显示
+    // 获取玩家当前九命命数（无状态时返回 0）
+    public static int getNineLivesCount(ServerPlayer player) {
+        CatFavorState state = getState(player);
+        return state == null ? 0 : state.getNineLivesCount();
+    }
+
+    // 向客户端同步当前恩惠值与命数，供物品 tooltip 与 HUD 显示
     public static void sync(ServerPlayer player) {
-        Services.NETWORK.sendToPlayer(player, new SyncCatFavorPayload(getFavor(player)));
+        Services.NETWORK.sendToPlayer(player, new SyncCatFavorPayload(getFavor(player), getNineLivesCount(player)));
     }
 
     // 从玩家实例获取猫之恩惠状态（通过 mixin 持有者接口）

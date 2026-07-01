@@ -2,12 +2,14 @@ package com.meteorite.unsuspiciousblock.cat;
 
 import com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.animal.Cat;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 /**
@@ -60,6 +62,16 @@ public class NeoForgeCatEventAdapter implements ICatEventAdapter {
     public void onPlayerTick(PlayerTickEvent.Post event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             CatPassiveAbilities.serverTick(player);
+        }
+    }
+
+    // 玩家右键村民/流浪商人：在原版打开交易 GUI 之前应用古国往礼折扣
+    // 事件在 villager 自身交互逻辑之前触发，修改 offers 后原版会发送修改后的 offers 给客户端
+    @SubscribeEvent
+    public void onInteractEntity(PlayerInteractEvent.EntityInteract event) {
+        if (event.getEntity() instanceof ServerPlayer serverPlayer
+                && event.getTarget() instanceof AbstractVillager villager) {
+            CatPassiveAbilities.tryApplyTradeDiscount(serverPlayer, villager);
         }
     }
 }

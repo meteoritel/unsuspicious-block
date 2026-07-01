@@ -19,11 +19,12 @@ public abstract class LivingEntityNineLivesMixin {
 
     @Inject(method = "checkTotemDeathProtection", at = @At("RETURN"), cancellable = true)
     private void unsuspiciousblock$nineLives(DamageSource source, CallbackInfoReturnable<Boolean> cir) {
-        // 图腾已生效则不再触发九命
+        // 图腾已生效则不再触发
         if (cir.getReturnValueZ()) {
             return;
         }
-        if ((Object) this instanceof ServerPlayer player && CatPassiveAbilities.canTriggerNineLives(player)) {
+        if ((LivingEntity) (Object) this instanceof ServerPlayer player
+                && CatPassiveAbilities.canTriggerNineLives(player)) {
             CatPassiveAbilities.triggerNineLives(player);
             cir.setReturnValue(true);
         }

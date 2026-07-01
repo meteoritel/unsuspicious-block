@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
@@ -17,6 +18,7 @@ import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -27,6 +29,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -53,6 +56,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderLevelStage);
+            NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderGui);
         });
     }
 
@@ -66,6 +70,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         event.register(ModKeyBindings.SCAN_LEVEL_CYCLE);
         event.register(ModKeyBindings.JOURNAL_OPEN);
         event.register(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
+        event.register(ModKeyBindings.CAT_LIGHT_STEP_TOGGLE);
     }
 
     @SubscribeEvent
@@ -115,5 +120,11 @@ public final class UnsuspiciousBlockNeoForgeClient {
     private static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
         SuspiciousReaderRangeHighlight.render(event.getPoseStack(), event.getCamera());
+    }
+
+    // 渲染猫之恩惠快捷栏 HUD
+    private static void onRenderGui(RenderGuiEvent.Post event) {
+        GuiGraphics gui = event.getGuiGraphics();
+        CatFavorHud.render(gui);
     }
 }

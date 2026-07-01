@@ -23,4 +23,13 @@ public final class CatNetworkHandler {
                 : "message.unsuspiciousblock.cat_deterrence.on";
         player.displayClientMessage(Component.translatable(key), true);
     }
+
+    // 处理「轻步」压力板开关切换，并向玩家反馈当前状态
+    public static void handleLightStepToggle(ServerPlayer player) {
+        boolean prevented = CatPassiveAbilities.onLightStepToggle(player);
+        String key = prevented
+                ? "message.unsuspiciousblock.cat_light_step.on"
+                : "message.unsuspiciousblock.cat_light_step.off";
+        player.displayClientMessage(Component.translatable(key), true);
+    }
 }

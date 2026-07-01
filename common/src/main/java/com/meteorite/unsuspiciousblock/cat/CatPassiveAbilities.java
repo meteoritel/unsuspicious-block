@@ -9,25 +9,26 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.trading.MerchantOffer;
 
 /**
  * 猫之手被动能力中枢——服务端每玩家每 tick 评估恩惠阈值派生的各项被动能力，
  * 集中处理：属性修饰符增减（步伐）、能力位掩码缓存（供 mixin 廉价查询）、
- * 夜视刷新/淡出、击退袭击上升沿检测。所有判定均为服务端权威。
+ * 夜视刷新/淡出、击退袭击上升沿检测、九命授予与触发。所有判定均为服务端权威。
  */
 public final class CatPassiveAbilities {
 
     // ========== 恩惠阈值 ==========
-    public static final int DETERRENCE_THRESHOLD = 20;
-    public static final int STEP_THRESHOLD = 40;
-    public static final int SOFT_PAWS_THRESHOLD = 60;
-    public static final int ANCIENT_GIFT_THRESHOLD = 80;
-    public static final int NINE_LIVES_THRESHOLD = 100;
+    // 阈值与本地化键统一由 CatFavorAbility 枚举管理，此处不再重复定义常量
 
     // ========== 能力位掩码（缓存在玩家状态中，供 mixin 免库存扫描查询） ==========
     public static final int FLAG_DETERRENCE = 1;
-    public static final int FLAG_SOFT_PAWS = 1 << 1;
+    public static final int FLAG_LIGHT_STEP_TRAMPLE = 1 << 1;
+    public static final int FLAG_LIGHT_STEP_NO_PRESSURE = 1 << 2;
+    public static final int FLAG_CAT_COMPANION = 1 << 3;
+    public static final int FLAG_SOFT_PAWS = 1 << 4;
 
     // 「猫的步伐」步高修饰符：基础 0.6 + 0.65 ≈ 1.25 格
     private static final ResourceLocation STEP_MODIFIER_ID =
@@ -43,8 +44,6 @@ public final class CatPassiveAbilities {
     public static final int NINE_LIVES_INVULN_TICKS = 100;
     // 九命增益持续（tick）：15 秒
     public static final int NINE_LIVES_BUFF_TICKS = 300;
-    // 九命触发后恩惠回落值
-    public static final int NINE_LIVES_RESET_FAVOR = 50;
 
     private CatPassiveAbilities() {
     }
@@ -59,19 +58,29 @@ public final class CatPassiveAbilities {
         int favor = state.getFavor();
 
         updateAbilityMask(state, hasHand, favor);
-        updateStepHeight(player, hasHand && favor >= STEP_THRESHOLD);
-        updateNightVision(player, state, hasHand);
+        updateStepHeight(player, hasHand && favor >= CatFavorAbility.SOFT_PAWS.threshold());
+        updateNightVision(player, state, hasHand, favor);
         detectRaidVictory(player, state);
+        grantNineLivesOnCap(state, player, hasHand, favor);
     }
 
     // 计算并缓存能力位掩码（仅缓存供高频 mixin 查询的能力）
     private static void updateAbilityMask(CatFavorState state, boolean hasHand, int favor) {
         int mask = 0;
         if (hasHand) {
-            if (favor >= DETERRENCE_THRESHOLD && !state.isDeterrenceDisabled()) {
+            if (CatFavorAbility.DETERRENCE.isUnlockedAt(favor) && !state.isDeterrenceDisabled()) {
                 mask |= FLAG_DETERRENCE;
             }
-            if (favor >= SOFT_PAWS_THRESHOLD) {
+            if (CatFavorAbility.LIGHT_STEP.isUnlockedAt(favor)) {
+                mask |= FLAG_LIGHT_STEP_TRAMPLE;
+                if (state.isLightStepPressurePrevented()) {
+                    mask |= FLAG_LIGHT_STEP_NO_PRESSURE;
+                }
+            }
+            if (CatFavorAbility.CAT_COMPANION.isUnlockedAt(favor)) {
+                mask |= FLAG_CAT_COMPANION;
+            }
+            if (CatFavorAbility.SOFT_PAWS.isUnlockedAt(favor)) {
                 mask |= FLAG_SOFT_PAWS;
             }
         }
@@ -94,15 +103,16 @@ public final class CatPassiveAbilities {
     }
 
     // 「猫的眼」夜视：黑暗中持续刷新，离开黑暗 2 秒后移除
-    private static void updateNightVision(ServerPlayer player, CatFavorState state, boolean hasHand) {
-        boolean wantNightVision = state.isNightVisionRequested() && hasHand;
+    private static void updateNightVision(ServerPlayer player, CatFavorState state,
+                                          boolean hasHand, int favor) {
+        boolean wantNightVision = state.isNightVisionRequested() && hasHand && CatFavorAbility.CAT_EYE.isUnlockedAt(favor);
         if (wantNightVision) {
             state.setNightVisionFadeTicks(0);
             player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION,
                     NIGHT_VISION_REFRESH_TICKS, 0, true, false, false));
             return;
         }
-        // 持有物品丢失但仍在请求态：视作离开黑暗，开始淡出
+        // 持有物品或恩惠不足但仍在请求态：视作离开黑暗，开始淡出
         if (state.isNightVisionRequested()) {
             state.setNightVisionRequested(false);
             state.setNightVisionFadeTicks(NIGHT_VISION_FADE_TICKS);
@@ -124,6 +134,15 @@ public final class CatPassiveAbilities {
             CatFavorManager.tryAccumulate(player, CatFavorAction.REPEL_RAID);
         }
         state.setHadHeroEffect(hasHero);
+    }
+
+    // 「猫之九命」授予：恩惠首次封顶时给予 1 命；封顶后入睡加命在 CatRelaxOnOwnerGoalMixin 处理
+    private static void grantNineLivesOnCap(CatFavorState state, ServerPlayer player, boolean hasHand, int favor) {
+        if (hasHand && CatFavorAbility.NINE_LIVES.isUnlockedAt(favor) && state.getNineLivesCount() == 0) {
+            state.setNineLivesCount(1);
+            // 同步给客户端（HUD/tooltip 需要显示新命数）
+            CatFavorManager.sync(player);
+        }
     }
 
     // ========== 客户端请求处理（C2S） ==========
@@ -152,6 +171,19 @@ public final class CatPassiveAbilities {
         return state.toggleDeterrence();
     }
 
+    // 处理「轻步」压力板开关切换，返回切换后是否阻止压力板触发
+    public static boolean onLightStepToggle(ServerPlayer player) {
+        CatFavorState state = CatFavorManager.getState(player);
+        if (state == null) {
+            return true;
+        }
+        boolean prevented = state.toggleLightStepPressure();
+        // 立即刷新位掩码
+        boolean hasHand = CatFavorManager.hasHandOfCatInInventory(player);
+        updateAbilityMask(state, hasHand, state.getFavor());
+        return prevented;
+    }
+
     // ========== 供 mixin 查询的能力判定 ==========
 
     // 苦力怕是否应惧怕该玩家（猫的威慑，favor≥20 且未关闭）
@@ -160,7 +192,25 @@ public final class CatPassiveAbilities {
         return state != null && (state.getAbilityMask() & FLAG_DETERRENCE) != 0;
     }
 
-    // 玩家是否拥有柔软肉垫（favor≥60）
+    // 玩家是否拥有轻步（favor≥35），用于耕地不退化
+    public static boolean hasLightStep(Player player) {
+        CatFavorState state = CatFavorManager.getState(player);
+        return state != null && (state.getAbilityMask() & FLAG_LIGHT_STEP_TRAMPLE) != 0;
+    }
+
+    // 玩家是否应忽略压力板/绊线（favor≥35 且开关启用）
+    public static boolean hasLightStepPressurePlateIgnored(Player player) {
+        CatFavorState state = CatFavorManager.getState(player);
+        return state != null && (state.getAbilityMask() & FLAG_LIGHT_STEP_NO_PRESSURE) != 0;
+    }
+
+    // 玩家是否拥有猫的陪伴（favor≥50），幻翼不再以此玩家为目标
+    public static boolean hasCatCompanion(Player player) {
+        CatFavorState state = CatFavorManager.getState(player);
+        return state != null && (state.getAbilityMask() & FLAG_CAT_COMPANION) != 0;
+    }
+
+    // 玩家是否拥有柔软肉垫（favor≥70），用于摔落减伤
     public static boolean hasSoftPaws(Player player) {
         CatFavorState state = CatFavorManager.getState(player);
         return state != null && (state.getAbilityMask() & FLAG_SOFT_PAWS) != 0;
@@ -175,33 +225,62 @@ public final class CatPassiveAbilities {
         return player.level().getGameTime() < state.getNineLivesInvulnUntil();
     }
 
-    // 玩家是否满足古国往礼条件（favor≥80，鲜见路径，直接校验）
+    // 玩家是否满足古国往礼条件（favor≥90，鲜见路径，直接校验）
     public static boolean canSummonAncientGift(Player player) {
         if (!CatFavorManager.hasHandOfCatInInventory(player)) {
             return false;
         }
         CatFavorState state = CatFavorManager.getState(player);
-        return state != null && state.getFavor() >= ANCIENT_GIFT_THRESHOLD;
+        return state != null && CatFavorAbility.ANCIENT_GIFT.isUnlockedAt(state.getFavor());
     }
 
-    // 玩家是否满足猫之九命条件（favor=100，鲜见路径，直接校验）
+    // 玩家是否满足古国往礼交易折扣条件（favor≥90）
+    public static boolean hasTradeDiscount(Player player) {
+        if (!CatFavorManager.hasHandOfCatInInventory(player)) {
+            return false;
+        }
+        CatFavorState state = CatFavorManager.getState(player);
+        return state != null && CatFavorAbility.ANCIENT_GIFT.isUnlockedAt(state.getFavor());
+    }
+
+    /**
+     * 对村民/流浪商人的交易应用古国往礼折扣（打八折）。
+     * 每次交互时先重置 specialPriceDiff 再应用，避免累积污染村民持久状态。
+     * 须在 villager 发送 offers 给客户端之前调用（即玩家右键交互事件中）。
+     */
+    public static void tryApplyTradeDiscount(ServerPlayer player, AbstractVillager villager) {
+        if (!hasTradeDiscount(player)) {
+            return;
+        }
+        for (MerchantOffer offer : villager.getOffers()) {
+            // 先重置，确保从干净状态开始（避免上次未清理的折扣累积）
+            offer.resetSpecialPriceDiff();
+            int baseCount = offer.getBaseCostA().getCount();
+            // 打八折：减去 20%，最低减 1 兜底
+            int discount = Math.max(1, (int) Math.floor(baseCount * 0.2));
+            offer.addToSpecialPriceDiff(-discount);
+        }
+    }
+
+    // 玩家是否可触发猫之九命（持有猫之手且命数>0）
     public static boolean canTriggerNineLives(Player player) {
         if (!CatFavorManager.hasHandOfCatInInventory(player)) {
             return false;
         }
         CatFavorState state = CatFavorManager.getState(player);
-        return state != null && state.getFavor() >= NINE_LIVES_THRESHOLD;
+        return state != null && state.getNineLivesCount() > 0;
     }
 
     // ========== 猫之九命执行 ==========
 
     /**
-     * 触发猫之九命：满血复活、5 秒无敌、力量 II + 速度 II 15 秒、恩惠回落至 50。
-     * 调用方需先确认图腾未触发且玩家满足 favor=100 条件。
+     * 触发猫之九命：满血复活、5 秒无敌、力量 II + 速度 II 15 秒。
+     * 消耗一条命；若消耗后命数归零，恩惠值清空。
+     * 调用方需先确认图腾未触发且玩家满足条件。
      */
     public static void triggerNineLives(ServerPlayer player) {
         CatFavorState state = CatFavorManager.getState(player);
-        if (state == null) {
+        if (state == null || !state.consumeOneLife()) {
             return;
         }
         player.setHealth(player.getMaxHealth());
@@ -210,7 +289,28 @@ public final class CatPassiveAbilities {
         state.setNineLivesInvulnUntil(now + NINE_LIVES_INVULN_TICKS);
         player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, NINE_LIVES_BUFF_TICKS, 1, true, true, true));
         player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, NINE_LIVES_BUFF_TICKS, 1, true, true, true));
-        state.setFavor(NINE_LIVES_RESET_FAVOR);
+        // 最后一条命消失时恩惠清空
+        if (state.getNineLivesCount() == 0) {
+            state.setFavor(0);
+        }
         CatFavorManager.sync(player);
+    }
+
+    // 满恩惠时与猫一同入睡：增加一条命（上限 9），返回是否成功增加
+    public static boolean tryAddLifeOnSleep(ServerPlayer player) {
+        CatFavorState state = CatFavorManager.getState(player);
+        if (state == null) {
+            return false;
+        }
+        if (!CatFavorManager.hasHandOfCatInInventory(player)
+                || !CatFavorAbility.NINE_LIVES.isUnlockedAt(state.getFavor())) {
+            return false;
+        }
+        if (state.getNineLivesCount() >= 9) {
+            return false;
+        }
+        state.addOneLife();
+        CatFavorManager.sync(player);
+        return true;
     }
 }

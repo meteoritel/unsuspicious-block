@@ -3,8 +3,11 @@ package com.meteorite.unsuspiciousblock.cat;
 import com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.animal.Cat;
 
 /**
@@ -49,6 +52,17 @@ public class FabricCatEventAdapter implements ICatEventAdapter {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 CatPassiveAbilities.serverTick(player);
             }
+        });
+
+        // 玩家右键村民/流浪商人：在原版打开交易 GUI 之前应用古国往礼折扣
+        // 返回 PASS 让原版交互逻辑继续执行，从而将修改后的 offers 发送给客户端
+        UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (!world.isClientSide
+                    && player instanceof ServerPlayer serverPlayer
+                    && entity instanceof AbstractVillager villager) {
+                CatPassiveAbilities.tryApplyTradeDiscount(serverPlayer, villager);
+            }
+            return InteractionResult.PASS;
         });
     }
 }

@@ -47,6 +47,8 @@ public final class UsbCommand {
                 .then(buildDebugSubcommand()));
         // 幽灵猫调试子指令树（/usb ghost_cat ...）独立注册，便于实机测试阶段机与行为策略
         GhostCatDebugCommand.register(dispatcher);
+        // 猫之恩惠调试子指令树（/usb favor add/set <amount>）独立注册，便于实机测试阈值能力
+        CatFavorDebugCommand.register(dispatcher);
     }
 
     // 清空玩家考古数据

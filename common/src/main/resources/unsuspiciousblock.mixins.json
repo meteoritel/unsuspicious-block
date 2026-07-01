@@ -21,6 +21,8 @@
     "interaction.FishingHookMixin",
     "catfavor.LivingEntityFallDamageMixin",
     "catfavor.LivingEntityNineLivesMixin",
+    "catfavor.PhantomSpawnerMixin",
+    "catfavor.PhantomTargetGoalMixin",
     "catfavor.PlayerCatFavorStateMixin",
     "catfavor.PlayerHurtInvulnMixin",
     "journal.PlayerJournalLogStateMixin",

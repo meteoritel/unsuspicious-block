@@ -19,6 +19,8 @@ public final class CatFavorState {
     private static final String FAVOR_TAG = "favor";
     private static final String COOLDOWNS_TAG = "cooldowns";
     private static final String DETERRENCE_DISABLED_TAG = "deterrence_disabled";
+    private static final String NINE_LIVES_COUNT_TAG = "nine_lives_count";
+    private static final String LIGHT_STEP_PRESSURE_PREVENTED_TAG = "light_step_pressure_prevented";
 
     // 当前恩惠值（0-100）
     private int favor;
@@ -28,6 +30,10 @@ public final class CatFavorState {
     // ========== 持久化的玩家偏好 ==========
     // 是否手动关闭了「猫的威慑」被动（持久化，随重生保留）
     private boolean deterrenceDisabled;
+    // 猫之九命：当前累积的额外命数（0-9）
+    private int nineLivesCount;
+    // 轻步压力板开关：true = 不触发压力板/绊线（默认启用，持久化）
+    private boolean lightStepPressurePrevented = true;
 
     // ========== 瞬态运行时状态（不序列化，重生后重置） ==========
     // 上一 tick 是否拥有「村庄英雄」效果，用于击退袭击的上升沿检测
@@ -86,6 +92,44 @@ public final class CatFavorState {
         return this.deterrenceDisabled;
     }
 
+    // ========== 猫之九命命数（持久化） ==========
+    public int getNineLivesCount() {
+        return this.nineLivesCount;
+    }
+
+    // 设置命数，自动 clamp 到 0-9
+    public void setNineLivesCount(int value) {
+        this.nineLivesCount = Math.max(0, Math.min(9, value));
+    }
+
+    // 增加一条命（上限 9）
+    public void addOneLife() {
+        if (this.nineLivesCount < 9) {
+            this.nineLivesCount++;
+        }
+    }
+
+    // 消耗一条命，返回是否消耗成功（命数>0 时才可消耗）
+    public boolean consumeOneLife() {
+        if (this.nineLivesCount <= 0) {
+            return false;
+        }
+        this.nineLivesCount--;
+        return true;
+    }
+
+    // ========== 轻步压力板开关（持久化） ==========
+    // 是否阻止触发压力板/绊线（true = 阻止，默认启用）
+    public boolean isLightStepPressurePrevented() {
+        return this.lightStepPressurePrevented;
+    }
+
+    // 翻转轻步压力板开关，返回翻转后是否阻止
+    public boolean toggleLightStepPressure() {
+        this.lightStepPressurePrevented = !this.lightStepPressurePrevented;
+        return this.lightStepPressurePrevented;
+    }
+
     // ========== 瞬态状态访问 ==========
     public boolean hadHeroEffect() {
         return this.hadHeroEffect;
@@ -132,6 +176,8 @@ public final class CatFavorState {
         this.favor = MIN_FAVOR;
         this.lastTriggerGameTime.clear();
         this.deterrenceDisabled = false;
+        this.nineLivesCount = 0;
+        this.lightStepPressurePrevented = true;
         this.hadHeroEffect = false;
         this.nightVisionRequested = false;
         this.nightVisionFadeTicks = 0;
@@ -146,6 +192,8 @@ public final class CatFavorState {
         this.lastTriggerGameTime.putAll(other.lastTriggerGameTime);
         // 持久化偏好跟随重生；瞬态运行时状态不拷贝
         this.deterrenceDisabled = other.deterrenceDisabled;
+        this.nineLivesCount = other.nineLivesCount;
+        this.lightStepPressurePrevented = other.lightStepPressurePrevented;
     }
 
     // 序列化为 NBT
@@ -158,6 +206,8 @@ public final class CatFavorState {
         }
         tag.put(COOLDOWNS_TAG, cooldowns);
         tag.putBoolean(DETERRENCE_DISABLED_TAG, this.deterrenceDisabled);
+        tag.putInt(NINE_LIVES_COUNT_TAG, this.nineLivesCount);
+        tag.putBoolean(LIGHT_STEP_PRESSURE_PREVENTED_TAG, this.lightStepPressurePrevented);
         return tag;
     }
 
@@ -166,6 +216,14 @@ public final class CatFavorState {
         this.clear();
         this.favor = Math.max(MIN_FAVOR, Math.min(MAX_FAVOR, tag.getInt(FAVOR_TAG)));
         this.deterrenceDisabled = tag.getBoolean(DETERRENCE_DISABLED_TAG);
+        if (tag.contains(NINE_LIVES_COUNT_TAG, Tag.TAG_INT)) {
+            this.nineLivesCount = Math.max(0, Math.min(9, tag.getInt(NINE_LIVES_COUNT_TAG)));
+        }
+        if (tag.contains(LIGHT_STEP_PRESSURE_PREVENTED_TAG, Tag.TAG_BYTE)) {
+            this.lightStepPressurePrevented = tag.getBoolean(LIGHT_STEP_PRESSURE_PREVENTED_TAG);
+        } else {
+            this.lightStepPressurePrevented = true;
+        }
         if (tag.contains(COOLDOWNS_TAG, Tag.TAG_COMPOUND)) {
             CompoundTag cooldowns = tag.getCompound(COOLDOWNS_TAG);
             for (String key : cooldowns.getAllKeys()) {
