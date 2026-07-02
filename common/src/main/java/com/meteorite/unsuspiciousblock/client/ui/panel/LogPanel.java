@@ -41,6 +41,39 @@ public final class LogPanel implements PagePanel {
         int height();
     }
 
+    /** 行索引区间 [start, end) */
+    private record IntRange(int start, int end) {
+    }
+
+    /** 计算指定页码下可见行索引区间 [start, end) */
+    private IntRange computeVisibleRows(int page) {
+        if (this.displayRows.isEmpty()) {
+            return new IntRange(0, 0);
+        }
+        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
+        int currentY = 0;
+        int currentPage = 0;
+        int startRow = 0;
+        int endRow = 0;
+
+        for (int i = 0; i < this.displayRows.size(); i++) {
+            int rowHeight = this.displayRows.get(i).height();
+            if (currentY + rowHeight > availableHeight) {
+                currentPage++;
+                currentY = 0;
+            }
+            if (currentPage == page) {
+                if (startRow == 0 && currentY == 0) {
+                    startRow = i;
+                }
+                endRow = i + 1;
+            }
+            currentY += rowHeight;
+            if (currentPage > page) break;
+        }
+        return new IntRange(startRow, endRow);
+    }
+
     /**
      * 组头行——不可点击，显示组名 + 条目数
      */
@@ -109,10 +142,6 @@ public final class LogPanel implements PagePanel {
     public void setReferenceGameTime(long gameTime) {
         this.referenceGameTime = gameTime;
         applyFilterAndSort();
-    }
-
-    public LogGrouper.GroupMode groupMode() {
-        return this.groupMode;
     }
 
     // 设置选中的日志条目 ID
@@ -193,33 +222,11 @@ public final class LogPanel implements PagePanel {
 
         // 计算当前页可见的 displayRows（混合高度）
         int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
-        int page = this.pagination.getPage();
-        int currentY = 0;
-        int rowIndex = 0;
-        int currentPage = 0;
-        int startRow = 0;
-        int endRow = 0;
-
-        // 分页：找到当前页的起始和结束行索引
-        for (int i = 0; i < this.displayRows.size(); i++) {
-            int rowHeight = this.displayRows.get(i).height();
-            if (currentY + rowHeight > availableHeight) {
-                currentPage++;
-                currentY = 0;
-            }
-            if (currentPage == page) {
-                if (startRow == 0 && currentY == 0) {
-                    startRow = i;
-                }
-                endRow = i + 1;
-            }
-            currentY += rowHeight;
-            if (currentPage > page) break;
-        }
+        IntRange visible = computeVisibleRows(this.pagination.getPage());
 
         // 渲染当前页的行
         int yOffset = 0;
-        for (int i = startRow; i < endRow && i < this.displayRows.size(); i++) {
+        for (int i = visible.start(); i < visible.end() && i < this.displayRows.size(); i++) {
             DisplayRow row = this.displayRows.get(i);
             int rowY = listStartY + yOffset;
             if (rowY + row.height() > listStartY + availableHeight) break;
@@ -259,32 +266,12 @@ public final class LogPanel implements PagePanel {
     public ExcavationLogEntry handleClick(double mouseX, double mouseY) {
         // 计算当前页可见行范围
         int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
-        int page = this.pagination.getPage();
-        int currentY = 0;
-        int currentPage = 0;
-        int startRow = 0;
-        int endRow = 0;
-
-        for (int i = 0; i < this.displayRows.size(); i++) {
-            int rowHeight = this.displayRows.get(i).height();
-            if (currentY + rowHeight > availableHeight) {
-                currentPage++;
-                currentY = 0;
-            }
-            if (currentPage == page) {
-                if (startRow == 0 && currentY == 0) {
-                    startRow = i;
-                }
-                endRow = i + 1;
-            }
-            currentY += rowHeight;
-            if (currentPage > page) break;
-        }
+        IntRange visible = computeVisibleRows(this.pagination.getPage());
 
         int leftX = this.layout.rightPageX() + 8;
         int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
         int yOffset = 0;
-        for (int i = startRow; i < endRow && i < this.displayRows.size(); i++) {
+        for (int i = visible.start(); i < visible.end() && i < this.displayRows.size(); i++) {
             DisplayRow row = this.displayRows.get(i);
             int rowY = listStartY + yOffset;
             if (rowY + row.height() > listStartY + availableHeight) break;

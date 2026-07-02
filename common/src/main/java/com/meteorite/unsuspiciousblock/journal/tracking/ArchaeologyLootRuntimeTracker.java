@@ -8,10 +8,10 @@ import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.journal.recording.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.Registry;
@@ -68,6 +68,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         if (changed) {
             JournalStateHandler.syncState(player);
+            triggerPrioritySimulation(tableId);
         }
     }
 
@@ -82,6 +83,16 @@ public final class ArchaeologyLootRuntimeTracker {
         changed |= state.unlockItems(tableId, toSignatures(itemCounts));
         if (changed) {
             JournalStateHandler.syncState(player);
+            triggerPrioritySimulation(tableId);
+        }
+    }
+
+    // 解锁触发：若该表尚未纳入概率缓存，向后台工作线程插队模拟
+    private static void triggerPrioritySimulation(ResourceLocation tableId) {
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker == null) return;
+        if (!ArchaeologyJournalServerCatalog.hasSimulatedData(tableId)) {
+            worker.enqueuePriority(tableId);
         }
     }
 

@@ -274,12 +274,6 @@ public final class ItemGridPanel implements PagePanel {
     public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                            String probability, boolean unlocked, int count,
                            LootResultSignature signature, boolean highlighted) {
-        // 便利构造：无搜索时默认全部高亮
-        public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                        String probability, boolean unlocked, int count,
-                        LootResultSignature signature) {
-            this(id, displayName, tooltipHint, probability, unlocked, count, signature, true);
-        }
 
         public ItemStack stack() {
             if (this.signature != null) {

@@ -1,9 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin.block;
 
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
-import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
-import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
+import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
@@ -16,8 +14,6 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -25,7 +21,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.minecraft.world.level.storage.loot.LootTable;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -35,8 +30,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -111,10 +104,6 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Unique
     private ItemStack unsuspiciousblock$brushTool = ItemStack.EMPTY;
 
-    // 精掘翻倍产生的额外战利品——在 dropContent 时一并发弹出
-    @Unique
-    private List<ItemStack> unsuspiciousblock$extraDrops = List.of();
-
     // ========== 扫描状态 NBT ========== //
     // 将扫描状态写入方块实体 NBT
     @Unique
@@ -178,19 +167,6 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @SuppressWarnings("DataFlowIssue")
     private BlockEntity unsuspiciousblock$asBlockEntity() {
         return (BlockEntity) (Object) this;
-    }
-
-    // 计算精掘翻倍后的总追踪物品——this.item 与 extraDrops 中相同物品的计数合并
-    // 用于考古笔记日志记录，确保日志数量反映翻倍后的实际获取量而非原始数量
-    @Unique
-    private ItemStack unsuspiciousblock$computeTotalTrackedItem() {
-        ItemStack total = this.item.copy();
-        for (ItemStack extra : this.unsuspiciousblock$extraDrops) {
-            if (!extra.isEmpty() && ItemStack.isSameItemSameComponents(total, extra)) {
-                total.grow(extra.getCount());
-            }
-        }
-        return total;
     }
 
     // 将状态变化同步回方块实体并通知区块更新
@@ -319,66 +295,29 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // 在可疑方块真正掉出物品时抽取精掘翻倍，弹出额外副本，并记录获得次数写入日志
     @Inject(method = "dropContent", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushItemDrop(Player player, CallbackInfo ci) {
-        // 精掘翻倍：在刷子刷出物品时抽取一次，决定当前物品是否翻倍
-        // 时序在记录考古笔记物品数量之前，确保日志期望值保留原战利品表结果，实际值按翻倍后总数结算
-        if (this.unsuspiciousblock$lootTableName != null && player instanceof ServerPlayer sp && !this.item.isEmpty()) {
-            BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-            TriggerContext peCtx = TriggerContext.builder(sp, sp.serverLevel())
-                    .pos(blockEntity.getBlockPos())
-                    .tool(this.unsuspiciousblock$brushTool)
-                    .build();
-            List<ItemStack> drops = EnchantmentManager.dispatchValue(
-                    TriggerType.BRUSH_ITEM_DROP, peCtx, List.of(this.item));
-            if (!drops.isEmpty()) {
-                this.item = drops.getFirst();
-                if (drops.size() > 1) {
-                    this.unsuspiciousblock$extraDrops = new ArrayList<>(drops.subList(1, drops.size()));
-                }
-            }
-        }
-
-        // 先计算翻倍后的总追踪物品——extraDrops 清空后无法再计算
-        ItemStack totalTrackedItem = this.unsuspiciousblock$computeTotalTrackedItem();
-
-        // 精掘翻倍：先弹出额外战利品副本
-        if (!this.unsuspiciousblock$extraDrops.isEmpty()) {
-            BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-            Level level = blockEntity.getLevel();
-            BlockPos pos = blockEntity.getBlockPos();
-            if (level != null) {
-                // 原版 dropContent 的位置公式：方块在 hitDirection 方向外偏移 1 格的中心
-                double d0 = EntityType.ITEM.getWidth();
-                double d1 = 1.0 - d0;
-                double d2 = d0 / 2.0;
-                Direction direction = Objects.requireNonNullElse(this.hitDirection, Direction.UP);
-                BlockPos blockpos = pos.relative(direction, 1);
-                double d3 = (double) blockpos.getX() + 0.5 * d1 + d2;
-                double d4 = (double) blockpos.getY() + 0.5 + (double) (EntityType.ITEM.getHeight() / 2.0F);
-                double d5 = (double) blockpos.getZ() + 0.5 * d1 + d2;
-                for (ItemStack extra : this.unsuspiciousblock$extraDrops) {
-                    if (!extra.isEmpty()) {
-                        ItemEntity itemEntity = new ItemEntity(level, d3, d4, d5, extra.copy());
-                        itemEntity.setDeltaMovement(Vec3.ZERO);
-                        level.addFreshEntity(itemEntity);
-                    }
-                }
-            }
-            this.unsuspiciousblock$extraDrops = List.of();
-        }
-
-        if (this.unsuspiciousblock$lootTableName == null || !(player instanceof ServerPlayer sp) || this.item.isEmpty()) {
+        // 仅在服务端、且有战利品表、且物品非空时走完整精掘+日志流程
+        if (this.unsuspiciousblock$lootTableName == null
+                || !(player instanceof ServerPlayer sp)
+                || this.item.isEmpty()) {
             return;
         }
 
-        long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
-                ? this.unsuspiciousblock$brushGameTime
-                : sp.serverLevel().getGameTime();
-        long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
-                ? this.unsuspiciousblock$brushDayTime
-                : sp.serverLevel().getDayTime();
-        // 使用翻倍后的总计数结算待定日志条目，确保考古手册日志的 actualLoot 反映翻倍后的实际获取量
-        ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, this.unsuspiciousblock$lootTableName,
-                this.unsuspiciousblock$pendingJournalEntry, totalTrackedItem, gameTime, dayTime);
+        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
+        Level level = blockEntity.getLevel();
+        BrushableLootDropHelper.DropContext ctx = new BrushableLootDropHelper.DropContext(
+                sp, blockEntity.getBlockPos(), level, this.hitDirection,
+                this.unsuspiciousblock$brushTool,
+                this.unsuspiciousblock$brushGameTime, this.unsuspiciousblock$brushDayTime,
+                this.unsuspiciousblock$lootTableName, this.unsuspiciousblock$pendingJournalEntry);
+
+        // 精掘翻倍：dispatch 后更新主物品，额外副本由 helper 弹出
+        BrushableLootDropHelper.DropResult result =
+                BrushableLootDropHelper.rollBrushItemDrop(ctx, this.item);
+        this.item = result.rolledItem();
+        BrushableLootDropHelper.spawnExtraDrops(ctx, result.extraDrops());
+
+        // 使用翻倍后的总计数结算待定日志条目
+        BrushableLootDropHelper.settleJournal(ctx, result.totalTrackedItem());
         this.unsuspiciousblock$setPendingJournalEntry(null);
     }
 
@@ -478,7 +417,6 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$lootTableParsed = false;
         this.unsuspiciousblock$pendingJournalEntry = null;
         this.unsuspiciousblock$lootTableParsedThisCall = false;
-        this.unsuspiciousblock$extraDrops = List.of();
         if (hadLootTableState) {
             this.unsuspiciousblock$syncBlockEntity();
         }

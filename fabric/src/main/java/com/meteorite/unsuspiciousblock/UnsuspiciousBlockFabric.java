@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loot.FabricLootTableInjection;
+import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
@@ -14,6 +15,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -105,11 +107,19 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             registerS2CSpec(spec);
         }
 
-        ServerLifecycleEvents.SERVER_STARTED.register(ArchaeologyJournalServerCatalog::ensureLoaded);
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            LootProbabilitySimulationWorker.start(server);
+            ArchaeologyJournalServerCatalog.ensureLoaded(server);
+        });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            LootProbabilitySimulationWorker.stop();
             ArchaeologyJournalServerCatalog.invalidate();
             NaturalBoneBlockTracker.clearPendingPlayerBreaks();
         });
+
+        // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
+        ServerTickEvents.END_SERVER_TICK.register(server ->
+                LootProbabilitySimulationWorker.tickIfPresent(server));
 
         // chunk 首次生成时扫描骨块并标记为自然生成
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->

@@ -8,10 +8,13 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
@@ -67,6 +70,10 @@ public final class ModPayloads {
                     (player, payload) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, player)),
             new C2S<>(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
                     JournalCatalogHandler::handleRequestCatalog),
+            new C2S<>(RequestJournalStateFullPayload.TYPE, RequestJournalStateFullPayload.STREAM_CODEC,
+                    JournalStateHandler::handleRequestFull),
+            new C2S<>(RequestJournalLogSnapshotPayload.TYPE, RequestJournalLogSnapshotPayload.STREAM_CODEC,
+                    JournalLogHandler::handleRequestSnapshot),
             new C2S<>(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
                     (player, payload) -> CatNetworkHandler.handleDeterrenceToggle(player)),
             new C2S<>(CatLightStepTogglePayload.TYPE, CatLightStepTogglePayload.STREAM_CODEC,

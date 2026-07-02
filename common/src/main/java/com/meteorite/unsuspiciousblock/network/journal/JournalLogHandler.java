@@ -164,6 +164,18 @@ public final class JournalLogHandler {
                 new SyncJournalLogSnapshotPayload(sessionId, session.lastSequence(), session.mirroredState().toTag()));
     }
 
+    // 处理客户端主动请求的日志快照重同步（sessionId 不匹配恢复路径）
+    public static void handleRequestSnapshot(ServerPlayer player,
+                                             com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload payload) {
+        ArchaeologyJournalLogSyncSession session = getLogSession(player);
+        if (session == null || !session.isSeeded()) {
+            // 会话未 seeded 时无法下发快照，先尝试从持久数据恢复
+            restoreAndSyncOnJoin(player);
+            return;
+        }
+        syncLogSnapshot(player);
+    }
+
     // 玩家加入时从 NBT 恢复日志状态并下发快照（服务端权威模式）
     public static void restoreAndSyncOnJoin(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);

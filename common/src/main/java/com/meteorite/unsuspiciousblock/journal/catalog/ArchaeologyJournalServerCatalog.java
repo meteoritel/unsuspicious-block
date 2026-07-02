@@ -3,13 +3,17 @@ package com.meteorite.unsuspiciousblock.journal.catalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulator;
+import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.slf4j.Logger;
@@ -19,88 +23,152 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collections;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 服务端懒加载目录——在服务端解析并缓存所有考古战利品表，
- * 然后通过模拟抽取替换概率占位符为真实概率。
- * 在数据包重载或服务器启动时懒加载，通过 ensureLoaded / invalidate 控制生命周期。
+ * 服务端目录——解析所有考古战利品表，按需通过后台工作线程填充概率。
+ * <p>
+ * 生命周期：
+ * <ul>
+ *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，解析原始目录 + 从 SavedData 恢复已缓存表 +
+ *       将未缓存表入队后台模拟。立即返回，catalog 会随模拟完成渐进填充。</li>
+ *   <li>{@link #commitSimulatedTable(LootProbabilitySimulator.SimResult, MinecraftServer)}：由工作器在主线程调用，
+ *       将单表模拟结果写入 catalog 与 SavedData，并广播哈希给在线玩家。</li>
+ *   <li>{@link #invalidate()}：清空内存目录与哈希缓存，下次 ensureLoaded 重新解析。</li>
+ * </ul>
+ * <p>
+ * 线程安全：{@link #catalog} 与 {@link #rawCatalog} 使用 ConcurrentHashMap，
+ * 读路径（getCatalog/getRawTable）无锁；写路径仅在主线程发生（ensureLoaded / commitSimulatedTable）。
  */
 public final class ArchaeologyJournalServerCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
-    private static final Map<ResourceLocation, TableDefinition> catalog = new LinkedHashMap<>();
-    private static boolean loaded;
+
+    /** 已填充概率的目录（随模拟完成渐进增长） */
+    private static final Map<ResourceLocation, TableDefinition> catalog = new ConcurrentHashMap<>();
+    /** 原始目录（概率为 "?" 占位符），ensureLoaded 后填充，供 worker 查询 */
+    private static final Map<ResourceLocation, TableDefinition> rawCatalog = new ConcurrentHashMap<>();
+    /** 每个 tableId 对应的 JSON 内容哈希，用于判断是否需要重新模拟 */
+    private static final Map<ResourceLocation, String> tableHashes = new ConcurrentHashMap<>();
+    private static volatile boolean loaded;
 
     private ArchaeologyJournalServerCatalog() {
     }
 
-    // 确保服务端目录已加载（懒加载，只加载一次）
+    /**
+     * 非阻塞加载：解析原始目录 → 从 SavedData 恢复缓存 → 未缓存表入队后台模拟。
+     * 调用后 catalog 立即可用（仅含缓存表），未缓存表的概率为 "?" 占位符，
+     * 后台模拟完成后渐进填充。
+     */
     public static void ensureLoaded(MinecraftServer server) {
         if (loaded) return;
 
         try {
-            // 1. 解析原始目录（概率字段为 "?" 占位符）
+            rawCatalog.clear();
             catalog.clear();
-            Map<ResourceLocation, TableDefinition> rawCatalog = ArchaeologyJournalCatalog.load(server.getResourceManager());
-            LOGGER.info("1. 解析原始目录（概率字段为 \"?\" 占位符）");
-            // 2. 获取服务端级别用于模拟
+            tableHashes.clear();
+            cachedCatalogHash = null;
+
+            // 1. 解析原始目录（概率字段为 "?" 占位符）
+            Map<ResourceLocation, TableDefinition> parsed =
+                    ArchaeologyJournalCatalog.load(server.getResourceManager());
+            rawCatalog.putAll(parsed);
+            LOGGER.info("解析到 {} 个考古战利品表原始目录", parsed.size());
+
+            // 2. 计算每个表的 JSON 内容哈希
+            tableHashes.putAll(computeTableHashes(server.getResourceManager(), parsed.keySet()));
+
+            // 3. 从 SavedData 恢复已缓存表
             ServerLevel level = server.overworld();
             LootProbabilityData probabilityData = LootProbabilityData.get(level);
-            LOGGER.info("2. 获取服务端级别用于模拟");
-            // 3. 计算每个表的 JSON 内容哈希，判断是否需要重新模拟
-            Map<ResourceLocation, String> tableHashes = computeTableHashes(server.getResourceManager(), rawCatalog.keySet());
-            Map<ResourceLocation, TableDefinition> tablesToSimulate = new LinkedHashMap<>();
-            Map<ResourceLocation, TableDefinition> cachedResults = new LinkedHashMap<>();
+            List<ResourceLocation> uncached = new ArrayList<>();
 
-            for (Map.Entry<ResourceLocation, TableDefinition> entry : rawCatalog.entrySet()) {
+            for (Map.Entry<ResourceLocation, TableDefinition> entry : parsed.entrySet()) {
                 ResourceLocation tableId = entry.getKey();
                 String hash = tableHashes.getOrDefault(tableId, "");
 
                 if (!probabilityData.needsResimulation(tableId, hash) && probabilityData.hasData(tableId)) {
-                    // 使用缓存的概率数据替换占位符
-                    cachedResults.put(tableId, restoreFromCache(entry.getValue(), tableId, probabilityData));
+                    catalog.put(tableId, restoreFromCache(entry.getValue(), tableId, probabilityData));
                 } else {
-                    tablesToSimulate.put(tableId, entry.getValue());
+                    uncached.add(tableId);
                 }
             }
-            LOGGER.info("3. 计算每个表的 JSON 内容哈希，判断是否需要重新模拟");
-            // 4. 对需要模拟的表执行模拟
-            Map<ResourceLocation, TableDefinition> simulatedCatalog =
-                    tablesToSimulate.isEmpty() ? Collections.emptyMap()
-                            : LootProbabilitySimulator.simulate(tablesToSimulate, level);
+            LOGGER.info("从缓存恢复 {} 个表，{} 个待模拟", catalog.size(), uncached.size());
 
-            LOGGER.info("4. 对需要模拟的表执行模拟");
-            // 5. 将模拟结果写入 SavedData
-            for (Map.Entry<ResourceLocation, TableDefinition> entry : simulatedCatalog.entrySet()) {
-                ResourceLocation tableId = entry.getKey();
-                TableDefinition table = entry.getValue();
-                String hash = tableHashes.getOrDefault(tableId, "");
-
-                Map<String, String> probabilities = new LinkedHashMap<>();
-                for (ItemDefinition item : table.items()) {
-                    probabilities.put(item.signature().toStoredKey(), item.probability());
-                }
-                probabilityData.putSimulationResult(tableId, hash, probabilities);
-            }
-            LOGGER.info("5. 将模拟结果写入 SavedData");
-            // 6. 合并缓存与模拟结果
-            catalog.clear();
-            catalog.putAll(cachedResults);
-            catalog.putAll(simulatedCatalog);
             loaded = true;
-            LOGGER.info("6. 已加载 {} 个考古战利品表到服务端目录（缓存 {} 个，模拟 {} 个）。",
-                    catalog.size(), cachedResults.size(), simulatedCatalog.size());
-            logLoadedTables();
+
+            // 4. 未缓存表入队后台模拟
+            if (!uncached.isEmpty()) {
+                LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+                if (worker != null) {
+                    worker.enqueueBatch(uncached);
+                } else {
+                    // 工作线程未启动（异常情况）：回退到主线程同步模拟，避免功能缺失
+                    LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个表", uncached.size());
+                    simulateSynchronously(server, uncached);
+                }
+            }
         } catch (Exception e) {
-            LOGGER.error("6. 加载考古战利品表目录失败。", e);
+            LOGGER.error("加载考古战利品表目录失败", e);
+            loaded = true;
+        }
+    }
+
+    // 同步回退模拟（仅在 worker 未启动时使用）
+    private static void simulateSynchronously(MinecraftServer server, List<ResourceLocation> tableIds) {
+        ServerLevel level = server.overworld();
+        LootProbabilityData probabilityData = LootProbabilityData.get(level);
+        for (ResourceLocation tableId : tableIds) {
+            TableDefinition rawTable = rawCatalog.get(tableId);
+            if (rawTable == null) continue;
+            LootProbabilitySimulator.SimResult result = LootProbabilitySimulator.simulateOne(tableId, rawTable, level);
+            commitSimulatedTable(result, probabilityData);
+        }
+        broadcastCatalogHash(server);
+    }
+
+    /**
+     * 由工作器在主线程调用：提交单表模拟结果到 catalog 与 SavedData，并广播哈希。
+     */
+    public static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, MinecraftServer server) {
+        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
+        commitSimulatedTable(result, probabilityData);
+        broadcastCatalogHash(server);
+    }
+
+    // 实际提交逻辑（不广播，供同步回退批量调用）
+    private static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, LootProbabilityData probabilityData) {
+        ResourceLocation tableId = result.tableId();
+        TableDefinition table = result.result();
+        String hash = tableHashes.getOrDefault(tableId, "");
+
+        // 写入 SavedData
+        Map<String, String> probabilities = new LinkedHashMap<>();
+        for (ItemDefinition item : table.items()) {
+            probabilities.put(item.signature().toStoredKey(), item.probability());
+        }
+        probabilityData.putSimulationResult(tableId, hash, probabilities);
+
+        // 写入 catalog，失效哈希缓存
+        catalog.put(tableId, table);
+        cachedCatalogHash = null;
+    }
+
+    /** 向所有在线玩家广播目录哈希，客户端比对不一致时会主动请求全量目录 */
+    public static void broadcastCatalogHash(MinecraftServer server) {
+        String hash = computeCatalogHash();
+        if (hash.isEmpty()) return;
+        SyncCatalogHashPayload payload = new SyncCatalogHashPayload(hash);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Services.NETWORK.sendToPlayer(player, payload);
         }
     }
 
@@ -116,7 +184,6 @@ public final class ArchaeologyJournalServerCatalog {
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            // 按表的注册顺序拼接所有表 ID 和条目签名，计算整体哈希
             for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
                 digest.update(entry.getKey().toString().getBytes(StandardCharsets.UTF_8));
                 for (ItemDefinition item : entry.getValue().items()) {
@@ -132,16 +199,38 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    // 使缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载）
+    /** 使内存缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载） */
     public static void invalidate() {
         catalog.clear();
+        rawCatalog.clear();
+        tableHashes.clear();
         cachedCatalogHash = null;
         loaded = false;
     }
 
-    // 获取缓存目录的只读视图
+    /** 获取已填充目录的只读视图 */
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         return Collections.unmodifiableMap(catalog);
+    }
+
+    /** 获取原始表定义（概率为占位符），供工作线程模拟时查询 */
+    public static TableDefinition getRawTable(ResourceLocation tableId) {
+        return rawCatalog.get(tableId);
+    }
+
+    /** 原始目录中的表总数（已 ensureLoaded 后可用） */
+    public static int getRawCatalogCount() {
+        return rawCatalog.size();
+    }
+
+    /** 判断指定表是否已有模拟结果（catalog 或 SavedData 任一命中即可） */
+    public static boolean hasSimulatedData(ResourceLocation tableId) {
+        return catalog.containsKey(tableId);
+    }
+
+    /** 当前是否已加载完成（注意：已加载不等于所有表已模拟，仅表示初始解析完成） */
+    public static boolean isLoaded() {
+        return loaded;
     }
 
     // 从 SavedData 恢复概率到原始目录定义中
@@ -214,13 +303,5 @@ public final class ArchaeologyJournalServerCatalog {
             }
         }
         return hashes;
-    }
-
-    private static void logLoadedTables() {
-        for (TableDefinition table : catalog.values()) {
-            ResourceLocation tableId = table.id();
-            LOGGER.debug("考古战利品表: {} | items={} | simCount={}",
-                    tableId, table.items().size(), table.simulationCount());
-        }
     }
 }

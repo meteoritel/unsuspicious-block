@@ -37,4 +37,10 @@ public final class JournalStateHandler {
         Services.NETWORK.sendToPlayer(player,
                 new SyncJournalStatePayload(state.getRevision(), state.toTag()));
     }
+
+    // 处理客户端主动请求的全量重同步（revision 间隙恢复路径）
+    public static void handleRequestFull(ServerPlayer player,
+                                         com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload payload) {
+        syncStateFull(player);
+    }
 }

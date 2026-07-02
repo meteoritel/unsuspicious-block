@@ -1,11 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
@@ -66,6 +68,10 @@ public final class ArchaeologyJournalClientState {
     private static volatile boolean stateInitialized = false;
     // 上次触发 Toast 通知的服务端版本号；仅当 incomingRevision > lastNotifiedRevision 时才重新检测
     private static volatile long lastNotifiedRevision = -1L;
+    // 全量重同步请求限流时间戳（ms），防止极端场景下请求风暴
+    private static volatile long lastFullStateRequestMs = 0L;
+    // 重同步请求最小间隔
+    private static final long RESYNC_COOLDOWN_MS = 2000L;
 
     private ArchaeologyJournalClientState() {
     }
@@ -146,12 +152,22 @@ public final class ArchaeologyJournalClientState {
         long incomingRevision = payload.revision();
 
         if (!stateInitialized) {
-            // 增量包到达但尚未完成首次全量同步，忽略
+            // 增量包到达但尚未完成首次全量同步，主动请求全量重同步
+            requestFullStateWithCooldown();
             return;
         }
 
         // 版本号相同或更旧，跳过
         if (incomingRevision <= lastNotifiedRevision) {
+            return;
+        }
+
+        // 间隙检测：incomingRevision 应严格等于 lastNotifiedRevision + 1
+        // 若大于，说明中间有增量包丢失或被跳过，本地状态已不一致，需请求全量重同步
+        if (incomingRevision > lastNotifiedRevision + 1) {
+            Constants.LOG.warn("检测到考古进度 revision 间隙: 期望 {}, 收到 {}, 请求全量重同步",
+                    lastNotifiedRevision + 1, incomingRevision);
+            requestFullStateWithCooldown();
             return;
         }
 
@@ -170,6 +186,16 @@ public final class ArchaeologyJournalClientState {
         // 仅对变更的表做 Diff 检测
         detectAndNotifyUnlocksForTables(oldState, journalState, payload.changedTables());
         lastNotifiedRevision = incomingRevision;
+    }
+
+    // 请求全量重同步（带限流），用于 revision 间隙或增量先于全量到达的恢复路径
+    private static void requestFullStateWithCooldown() {
+        long now = System.currentTimeMillis();
+        if (now - lastFullStateRequestMs < RESYNC_COOLDOWN_MS) {
+            return;
+        }
+        lastFullStateRequestMs = now;
+        Services.NETWORK.sendToServer(new RequestJournalStateFullPayload());
     }
 
     public static void receiveLogUpdate(SyncJournalLogPayload payload) {

@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.network.journal;
 
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
@@ -46,23 +47,31 @@ public final class JournalCatalogHandler {
         syncFullCatalog(player);
     }
 
-    /** 数据包重载时使缓存失效并重新同步目录哈希给所有在线玩家 */
+    /** 数据包重载：暂停 worker → 失效内存目录 → 重新解析入队 → 恢复 worker → 同步哈希 */
     public static void onDataPackReload(MinecraftServer server) {
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker != null) worker.pauseForReload();
         ArchaeologyJournalServerCatalog.invalidate();
         ArchaeologyJournalServerCatalog.ensureLoaded(server);
+        if (worker != null) worker.resumeAfterReload();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             syncCatalogHash(player);
         }
     }
 
-    /** 强制清空概率缓存并重新加载+重新模拟所有跟踪表，然后同步哈希给所有在线玩家 */
+    /**
+     * 强制清空概率缓存并重新模拟所有表（异步语义）。
+     * 清空 SavedData + 内存目录 → 重新解析原始目录 → 全部表入队后台模拟。
+     * 玩家会随模拟完成渐进收到哈希更新。
+     */
     public static void forceFlushCatalog(MinecraftServer server) {
         LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
         probabilityData.clear();
+
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker != null) worker.clearQueue();
+
         ArchaeologyJournalServerCatalog.invalidate();
         ArchaeologyJournalServerCatalog.ensureLoaded(server);
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            syncCatalogHash(player);
-        }
     }
 }

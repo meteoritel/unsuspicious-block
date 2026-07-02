@@ -36,59 +36,38 @@ public final class LootProbabilitySimulator {
     }
 
     /**
-     * 对目录中每个战利品表顺序执行模拟抽取，将 ItemDefinition 中的概率占位符 "?" 替换为真实概率。
+     * 对单个战利品表执行模拟抽取，将 ItemDefinition 中的概率占位符 "?" 替换为真实概率。
      * hasConditions 的条目如果模拟零出现，概率设为 "?"；否则按实际出现次数计算。
+     * <p>
+     * 线程安全说明：本方法会触碰 {@code level} 关联的 LegacyRandomSource，
+     * {@link net.minecraft.util.ThreadingDetector} 会检测跨线程访问，因此
+     * <b>必须在主线程调用</b>。由 {@link LootProbabilitySimulationWorker#tick} 在
+     * 服务端 tick 末尾分片驱动。
      *
-     * @param rawCatalog 原始目录（概率字段为 "?" 占位符）
-     * @param level      服务端级别，用于构建 LootParams
-     * @return 新的目录 Map，概率字段已替换为模拟结果
+     * @param tableId  战利品表 id
+     * @param rawTable 原始表定义（概率字段为 "?" 占位符）
+     * @param level    服务端级别，用于构建 LootParams
+     * @return 模拟结果（包含 tableId 与填充了概率的 TableDefinition）
      */
-    public static Map<ResourceLocation, TableDefinition> simulate(
-            Map<ResourceLocation, TableDefinition> rawCatalog, ServerLevel level) {
-        // 预收集 LootTable 引用和 LootParams
-        List<SimTask> tasks = new ArrayList<>(rawCatalog.size());
-        for (Map.Entry<ResourceLocation, TableDefinition> entry : rawCatalog.entrySet()) {
-            ResourceLocation tableId = entry.getKey();
-            TableDefinition rawTable = entry.getValue();
-
-            try {
-                LootTable lootTable = level.getServer().reloadableRegistries()
-                        .getLootTable(net.minecraft.resources.ResourceKey.create(
-                                net.minecraft.core.registries.Registries.LOOT_TABLE, tableId));
-                // 空表或内置空表直接跳过，保留原始
-                if (lootTable == LootTable.EMPTY) {
-                    tasks.add(new SimTask(tableId, rawTable, null, null));
-                } else {
-                    // 按战利品表声明的 paramSet 动态构建 LootParams；
-                    // 若 required 参数无法全部满足，LootContextParamFiller 内部回退到宽松 paramSet
-                    LootContextParamSet paramSet = lootTable.getParamSet();
-                    LootParams lootParams = LootContextParamFiller.createForSimulation(level, paramSet);
-                    tasks.add(new SimTask(tableId, rawTable, lootTable, lootParams));
-                }
-            } catch (Exception e) {
-                LOGGER.warn("准备战利品表 {} 时出错，保留原始占位符", tableId, e);
-                tasks.add(new SimTask(tableId, rawTable, null, null));
+    public static SimResult simulateOne(
+            ResourceLocation tableId, TableDefinition rawTable, ServerLevel level) {
+        try {
+            LootTable lootTable = level.getServer().reloadableRegistries()
+                    .getLootTable(net.minecraft.resources.ResourceKey.create(
+                            net.minecraft.core.registries.Registries.LOOT_TABLE, tableId));
+            // 空表或内置空表直接返回原始
+            if (lootTable == LootTable.EMPTY) {
+                return new SimResult(tableId, rawTable);
             }
+            // 按战利品表声明的 paramSet 动态构建 LootParams；
+            // 若 required 参数无法全部满足，LootContextParamFiller 内部回退到宽松 paramSet
+            LootContextParamSet paramSet = lootTable.getParamSet();
+            LootParams lootParams = LootContextParamFiller.createForSimulation(level, paramSet);
+            return simulateTable(tableId, rawTable, lootTable, lootParams);
+        } catch (Exception e) {
+            LOGGER.warn("模拟战利品表 {} 时出错，保留原始占位符", tableId, e);
+            return new SimResult(tableId, rawTable);
         }
-
-        // 顺序模拟每个表（LootTable 内部的 LegacyRandomSource 非线程安全）
-        Map<ResourceLocation, TableDefinition> result = new LinkedHashMap<>();
-        for (SimTask task : tasks) {
-            try {
-                if (task.lootTable == null) {
-                    result.put(task.tableId, task.rawTable);
-                } else {
-                    SimResult sr = simulateTable(task.tableId, task.rawTable, task.lootTable, task.lootParams);
-                    result.put(sr.tableId, sr.result);
-                }
-            } catch (Exception e) {
-                LOGGER.warn("模拟战利品表 {} 时出错，保留原始占位符", task.tableId, e);
-                result.put(task.tableId, task.rawTable);
-            }
-        }
-
-        LOGGER.info("已完成 {} 个考古战利品表的概率模拟", result.size());
-        return result;
     }
 
     private static SimResult simulateTable(
@@ -177,12 +156,7 @@ public final class LootProbabilitySimulator {
         return enchanted ? LootResultSignature.enchantedApprox(itemId) : LootResultSignature.plain(itemId);
     }
 
-    // 模拟任务数据
-    private record SimTask(ResourceLocation tableId, TableDefinition rawTable,
-                           LootTable lootTable, LootParams lootParams) {
-    }
-
-    // 模拟结果数据
-    private record SimResult(ResourceLocation tableId, TableDefinition result) {
+    // 模拟结果数据（供 worker 在主线程提交时携带）
+    public record SimResult(ResourceLocation tableId, TableDefinition result) {
     }
 }

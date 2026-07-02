@@ -19,14 +19,6 @@ public final class ScrollTextHelper {
                 color, hovered, scrollTicks, centered);
     }
 
-    // 绘制可滚动文字，指定裁切高度
-    public static void draw(GuiGraphics guiGraphics, Font font, String text,
-                            int x, int y, int maxWidth, int scissorHeight, int color,
-                            boolean hovered, int scrollTicks, boolean centered) {
-        draw(guiGraphics, font, text, x, y, y, maxWidth, scissorHeight,
-                color, hovered, scrollTicks, centered);
-    }
-
     // 绘制可滚动文字，分别指定裁切区域和文字绘制 Y 坐标
     public static void draw(GuiGraphics guiGraphics, Font font, String text,
                             int scissorX, int scissorY, int drawY, int maxWidth, int scissorHeight,

@@ -4,8 +4,10 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ServerData;
@@ -44,6 +46,10 @@ public final class ArchaeologyJournalLogLocalStore {
     private static final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private static long lastAppliedSequence;
     private static volatile long revision;
+    // 日志快照重同步请求限流时间戳（ms），防止极端场景下请求风暴
+    private static long lastSnapshotRequestMs;
+    // 重同步请求最小间隔
+    private static final long RESYNC_COOLDOWN_MS = 2000L;
 
     private ArchaeologyJournalLogLocalStore() {
     }
@@ -104,7 +110,13 @@ public final class ArchaeologyJournalLogLocalStore {
             pendingIncrementals.add(payload);
             return;
         }
-        if (!shouldAcceptUpdate(currentSessionId, lastAppliedSequence, payload)) {
+        // sessionId 不匹配（currentSessionId 非空且与服务端不一致）→ 会话失效，请求快照重同步
+        if (currentSessionId != null && !currentSessionId.equals(payload.sessionId())) {
+            requestLogSnapshotWithCooldown();
+            return;
+        }
+        // sequence 过期或重复 → 静默跳过（正常情况）
+        if (payload.sequence() <= lastAppliedSequence) {
             return;
         }
 
@@ -138,6 +150,21 @@ public final class ArchaeologyJournalLogLocalStore {
         pendingSnapshot = null;
         pendingIncrementals.clear();
         lastAppliedSequence = 0L;
+    }
+
+    // 请求日志快照重同步（带限流），用于 sessionId 不匹配时的恢复路径
+    // 清除本地 sessionId 后向服务端请求全新快照，使客户端重新对齐服务端权威状态
+    private static void requestLogSnapshotWithCooldown() {
+        long now = System.currentTimeMillis();
+        if (now - lastSnapshotRequestMs < RESYNC_COOLDOWN_MS) {
+            return;
+        }
+        lastSnapshotRequestMs = now;
+        // 清除旧会话状态，允许后续快照重建基线
+        currentSessionId = null;
+        lastAppliedSequence = 0L;
+        pendingIncrementals.clear();
+        Services.NETWORK.sendToServer(new RequestJournalLogSnapshotPayload());
     }
 
     private static void queueSnapshot(SyncJournalLogSnapshotPayload payload) {

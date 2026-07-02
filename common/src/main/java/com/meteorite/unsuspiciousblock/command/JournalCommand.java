@@ -3,10 +3,11 @@ package com.meteorite.unsuspiciousblock.command;
 import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.journal.recording.JournalLogRecorder;
+import com.meteorite.unsuspiciousblock.journal.tracking.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -118,7 +119,7 @@ public final class JournalCommand {
     // reload：强制清空概率缓存，重新加载并重新模拟所有跟踪的战利品表
     private static LiteralArgumentBuilder<CommandSourceStack> buildReloadSubcommand() {
         return Commands.literal("reload")
-                .executes(context -> flushTables(context.getSource()));
+                .executes(context -> flushTablesWithFeedback(context.getSource()));
     }
 
     // list：列出所有已加载的考古战利品表
@@ -127,13 +128,59 @@ public final class JournalCommand {
                 .executes(context -> sendTableList(context.getSource()));
     }
 
-    private static int flushTables(CommandSourceStack source) {
+    // reload/flush：清空缓存 + 异步重新模拟，并向执行玩家逐条发送进度
+    private static int flushTablesWithFeedback(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
+        ServerPlayer player = source.getPlayer();
+
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker == null) {
+            // 工作线程未启动（异常情况）：回退到无反馈的同步 flush
+            JournalCatalogHandler.forceFlushCatalog(server);
+            int tableCount = ArchaeologyJournalServerCatalog.getCatalog().size();
+            source.sendSuccess(() -> Component.translatable(
+                    "command.unsuspiciousblock.usb.journal.reload.success", tableCount), false);
+            return tableCount;
+        }
+
+        // 暂停 worker，避免 flush 入队后立刻消费导致 total 未就绪时回调触发
+        worker.pauseForReload();
+
+        final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger(0);
+        final java.util.concurrent.atomic.AtomicInteger total = new java.util.concurrent.atomic.AtomicInteger(0);
+        final java.util.UUID playerId = player != null ? player.getUUID() : null;
+
+        worker.setProgressListener(new LootProbabilitySimulationWorker.ProgressListener() {
+            @Override
+            public void onTableSimulated(ResourceLocation tableId, TableDefinition result) {
+                int idx = done.incrementAndGet();
+                if (playerId == null) return;
+                ServerPlayer p = server.getPlayerList().getPlayer(playerId);
+                if (p == null) return;
+                String displayName = LootTableNames.resolveDisplayName(tableId).getString();
+                p.sendSystemMessage(Component.translatable(
+                        "command.unsuspiciousblock.usb.journal.reload.progress",
+                        idx, total.get(), tableId.toString(), displayName));
+                // 全部完成时发送完成消息并清除回调
+                if (idx >= total.get()) {
+                    p.sendSystemMessage(Component.translatable(
+                            "command.unsuspiciousblock.usb.journal.reload.complete", idx));
+                    LootProbabilitySimulationWorker w = LootProbabilitySimulationWorker.get();
+                    if (w != null) w.setProgressListener(null);
+                }
+            }
+        });
+
+        // 执行 flush：清空缓存 + 重新解析 + 入队（worker 已暂停，不会消费）
         JournalCatalogHandler.forceFlushCatalog(server);
-        int tableCount = ArchaeologyJournalServerCatalog.getCatalog().size();
+        total.set(ArchaeologyJournalServerCatalog.getRawCatalogCount());
+
+        // 恢复 worker 消费
+        worker.resumeAfterReload();
+
         source.sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.journal.reload.success", tableCount), false);
-        return tableCount;
+                "command.unsuspiciousblock.usb.journal.reload.started", total.get()), false);
+        return total.get();
     }
 
     private static void unlockTableItems(ArchaeologyJournalState state, ResourceLocation tableId, TableDefinition table) {

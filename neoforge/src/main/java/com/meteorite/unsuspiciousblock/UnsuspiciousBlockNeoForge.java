@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
@@ -203,13 +204,21 @@ public class UnsuspiciousBlockNeoForge {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
+        LootProbabilitySimulationWorker.start(event.getServer());
         ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
+        LootProbabilitySimulationWorker.stop();
         ArchaeologyJournalServerCatalog.invalidate();
         NaturalBoneBlockTracker.clearPendingPlayerBreaks();
+    }
+
+    // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
+    @SubscribeEvent
+    public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
     }
 
     // chunk 首次生成时扫描骨块并标记为自然生成
