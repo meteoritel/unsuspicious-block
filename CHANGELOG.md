@@ -116,4 +116,25 @@
 - **泥地打捞**（Mud Dredging）：附魔权重从 2 降至 1，降低其在附魔台中出现的概率。
 - **织物采集**（Textile Recovery）：概率提升到30%，掉落线修改为随机1-3根。
 
+#### 调试指令统一为子系统分组结构
+- 全部调试指令仍以 `/usb` 开头，需要 op 权限 2。现按子系统分为三棵子树：`journal`（考古笔记）、`ghost_cat`（幽灵猫）、`favor`（猫之恩惠）。
+- **考古笔记 `/usb journal ...`**
+  - `clear [table_id]`：清空玩家考古笔记数据。无参清空全部，指定 `table_id` 仅清除该表数据。
+  - `unlock table [table_id]`：解锁考古战利品表。无参解锁全部，指定 `table_id` 仅解锁该表。
+  - `unlock item [table_id]`：解锁考古物品条目。无参解锁全部表中的全部物品，指定 `table_id` 仅解锁该表中的全部物品。
+  - `reload`：强制清空概率缓存，重新加载并重新模拟所有跟踪的战利品表概率（原 `flush_table`）。
+  - `list`：列出当前服务端已加载的所有考古战利品表及其翻译键、显示名等信息（原 `debug table_list`）。
+- **幽灵猫 `/usb ghost_cat ...`**
+  - `spawn`：在玩家附近召唤一只幽灵猫，并直接注入晨礼行为（目标=自己，跳过恩惠检查）。
+  - `info`：输出距离最近的幽灵猫运行时状态（坐标、阶段、tick、行为、目标、是否携带礼物等）。
+  - `phase <阶段名>`：强制切换最近幽灵猫的阶段。可选阶段：`manifest` / `approach` / `greet` / `deliver` / `dissipate`。
+  - `discard`：立即移除距离最近的幽灵猫。
+- **猫之恩惠 `/usb favor ...`**
+  - `add <amount>`：在当前恩惠值基础上增减指定量（可为负，自动 clamp 到 0-100），并同步到客户端。
+  - `set <amount>`：直接设置恩惠值（仅允许 0-100），并同步到客户端。
+  - `get`：查询当前恩惠值（新增）。
+  - `reset`：重置整个猫之恩惠状态（包括恩惠值、九命计数、能力开关等派生状态，新增）。
+- 调试指令不保留旧路径别名，旧指令 `/usb clear`、`/usb unlock_table`、`/usb unlock_item`、`/usb flush_table`、`/usb debug table_list` 已分别迁移至上述 `journal` 子树对应路径。
+
+
 ### 修复

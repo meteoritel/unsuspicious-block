@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.entity.GhostCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.entity.ai.ghost.GhostCatPhase;
 import com.meteorite.unsuspiciousblock.entity.ai.ghost.MorningGiftBehavior;
-import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -17,7 +16,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.inventory.EnchantmentMenu;
 import net.minecraft.world.phys.AABB;
 
 import java.util.Comparator;
@@ -42,9 +40,9 @@ public final class GhostCatDebugCommand {
     private GhostCatDebugCommand() {
     }
 
-    // 注册 /usb ghost_cat ... 子指令树
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("ghost_cat")
+    // 构建 ghost_cat 子树
+    public static LiteralArgumentBuilder<CommandSourceStack> build() {
+        return Commands.literal("ghost_cat")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("spawn")
                         .executes(GhostCatDebugCommand::spawnNearPlayer))
@@ -56,7 +54,6 @@ public final class GhostCatDebugCommand {
                         .then(Commands.argument(PHASE_ARG, StringArgumentType.word())
                                 .suggests(GhostCatDebugCommand::suggestPhases)
                                 .executes(GhostCatDebugCommand::forcePhase)));
-        dispatcher.register(Commands.literal("usb").then(root));
     }
 
     // ========== 子指令实现 ==========
