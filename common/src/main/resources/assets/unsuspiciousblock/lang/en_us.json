@@ -282,6 +282,7 @@
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "Could not access this player's cat favor data.",
 
   "entity.unsuspiciousblock.ghost_cat":"Ghost Cat",
+  "entity.unsuspiciousblock.soul_lantern_pet":"Soul Lantern Pet",
 
   "unsuspiciousblock.container.enchant.reveal.header": "Enchantment Candidates:",
   "unsuspiciousblock.container.enchant.reveal.empty": "No candidates"

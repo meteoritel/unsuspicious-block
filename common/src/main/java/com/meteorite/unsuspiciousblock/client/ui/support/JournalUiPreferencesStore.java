@@ -189,26 +189,37 @@ public final class JournalUiPreferencesStore {
     // 从 ClientState 内存字段抓取快照
     private static CompoundTag snapshotFromClientState() {
         CompoundTag tag = new CompoundTag();
-        if (ArchaeologyJournalClientState.getLastSelectedTableId() != null) {
-            tag.putString("lastSelectedTable", ArchaeologyJournalClientState.getLastSelectedTableId().toString());
+        // 各 getter 背后是 volatile 字段，必须先用局部变量捕获单次快照再判空，
+        // 避免「判空时读到非 null、取值时读到 null」的竞态 NPE
+        ResourceLocation lastSelectedTableId = ArchaeologyJournalClientState.getLastSelectedTableId();
+        if (lastSelectedTableId != null) {
+            tag.putString("lastSelectedTable", lastSelectedTableId.toString());
         }
-        if (ArchaeologyJournalClientState.getLastCatalogSortOrder() != null) {
-            tag.putString("lastCatalogSortOrder", ArchaeologyJournalClientState.getLastCatalogSortOrder().name());
+        CatalogSorter.SortOrder lastCatalogSortOrder = ArchaeologyJournalClientState.getLastCatalogSortOrder();
+        if (lastCatalogSortOrder != null) {
+            tag.putString("lastCatalogSortOrder", lastCatalogSortOrder.name());
         }
         tag.putBoolean("lastCatalogSortDescending", ArchaeologyJournalClientState.getLastCatalogSortDescending());
         tag.putBoolean("lastCatalogHideLocked", ArchaeologyJournalClientState.getLastCatalogHideLocked());
-        tag.putString("lastCatalogSearchText", ArchaeologyJournalClientState.getLastCatalogSearchText());
-        tag.putBoolean("lastLogSortDescending", ArchaeologyJournalClientState.getLastLogSortDescending());
-        if (ArchaeologyJournalClientState.getLastLogGroupMode() != null) {
-            tag.putString("lastLogGroupMode", ArchaeologyJournalClientState.getLastLogGroupMode().name());
+        String lastCatalogSearchText = ArchaeologyJournalClientState.getLastCatalogSearchText();
+        if (lastCatalogSearchText != null) {
+            tag.putString("lastCatalogSearchText", lastCatalogSearchText);
         }
-        if (ArchaeologyJournalClientState.getLastRightPageTab() != null) {
-            tag.putString("lastRightPageTab", ArchaeologyJournalClientState.getLastRightPageTab().name());
+        tag.putBoolean("lastLogSortDescending", ArchaeologyJournalClientState.getLastLogSortDescending());
+        LogGrouper.GroupMode lastLogGroupMode = ArchaeologyJournalClientState.getLastLogGroupMode();
+        if (lastLogGroupMode != null) {
+            tag.putString("lastLogGroupMode", lastLogGroupMode.name());
+        }
+        RightPageContainer.Tab lastRightPageTab = ArchaeologyJournalClientState.getLastRightPageTab();
+        if (lastRightPageTab != null) {
+            tag.putString("lastRightPageTab", lastRightPageTab.name());
         }
         // 收藏集合
         var favoritesList = new net.minecraft.nbt.ListTag();
         for (ResourceLocation id : ArchaeologyJournalClientState.snapshotFavorites()) {
-            favoritesList.add(net.minecraft.nbt.StringTag.valueOf(id.toString()));
+            if (id != null) {
+                favoritesList.add(net.minecraft.nbt.StringTag.valueOf(id.toString()));
+            }
         }
         tag.put("favorites", favoritesList);
         return tag;

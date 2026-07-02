@@ -284,6 +284,7 @@
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "无法访问当前玩家的猫之恩惠数据。",
 
   "entity.unsuspiciousblock.ghost_cat":"幽灵猫",
+  "entity.unsuspiciousblock.soul_lantern_pet":"灵魂提灯宠物",
 
   "unsuspiciousblock.container.enchant.reveal.header": "附魔候选：",
   "unsuspiciousblock.container.enchant.reveal.empty": "无候选"

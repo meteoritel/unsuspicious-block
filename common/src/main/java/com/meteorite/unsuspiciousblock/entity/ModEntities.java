@@ -16,6 +16,7 @@ public class ModEntities {
 
     // 平台侧在注册时回写为 Supplier，运行时通过 .get() 取 EntityType，永不为 null
     public static Supplier<EntityType<GhostCat>> GHOST_CAT;
+    public static Supplier<EntityType<LanternPet>> LANTERN_PET;
 
     /**
      * 实体注册清单条目
@@ -36,7 +37,11 @@ public class ModEntities {
             new EntityEntry<>("ghost_cat",
                     ModEntities::createGhostCatType,
                     supplier -> GHOST_CAT = supplier,
-                    GhostCat::createAttributes)
+                    GhostCat::createAttributes),
+            new EntityEntry<>("soul_lantern_pet",
+                    ModEntities::createLanternPetType,
+                    supplier -> LANTERN_PET = supplier,
+                    LanternPet::createAttributes)
     );
 
     // 遍历清单，调用平台回调完成注册
@@ -57,5 +62,13 @@ public class ModEntities {
                 .eyeHeight(0.35f)
                 .clientTrackingRange(8)
                 .build("ghost_cat");
+    }
+
+    public static EntityType<LanternPet> createLanternPetType() {
+        return EntityType.Builder.of(LanternPet::new, MobCategory.CREATURE)
+                .sized(0.5f, 0.5f)
+                .eyeHeight(0.4f)
+                .clientTrackingRange(8)
+                .build("soul_lantern_pet");
     }
 }
