@@ -165,8 +165,7 @@ public final class JournalLogHandler {
     }
 
     // 处理客户端主动请求的日志快照重同步（sessionId 不匹配恢复路径）
-    public static void handleRequestSnapshot(ServerPlayer player,
-                                             com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload payload) {
+    public static void handleRequestSnapshot(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null || !session.isSeeded()) {
             // 会话未 seeded 时无法下发快照，先尝试从持久数据恢复
@@ -193,14 +192,6 @@ public final class JournalLogHandler {
 
         // 下发日志快照给客户端
         syncLogSnapshot(player);
-    }
-
-    // 重置玩家的日志同步会话
-    public static void resetLogSession(ServerPlayer player) {
-        ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session != null) {
-            session.reset();
-        }
     }
 
     // 判断是否跨越了"缓存大师"成就门槛——使用单表日志上限作为总条数门槛

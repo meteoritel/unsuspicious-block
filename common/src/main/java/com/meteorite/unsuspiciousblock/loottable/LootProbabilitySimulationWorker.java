@@ -51,7 +51,7 @@ public final class LootProbabilitySimulationWorker {
     }
 
     /** 创建并注册单例（服务端启动时调用） */
-    public static void start(MinecraftServer server) {
+    public static void start() {
         if (instance != null) {
             LOGGER.warn("模拟工作器已在运行，忽略重复 start 调用");
             return;

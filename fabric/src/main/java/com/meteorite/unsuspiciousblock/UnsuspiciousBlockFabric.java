@@ -108,7 +108,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         }
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            LootProbabilitySimulationWorker.start(server);
+            LootProbabilitySimulationWorker.start();
             ArchaeologyJournalServerCatalog.ensureLoaded(server);
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
@@ -118,8 +118,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         });
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
-        ServerTickEvents.END_SERVER_TICK.register(server ->
-                LootProbabilitySimulationWorker.tickIfPresent(server));
+        ServerTickEvents.END_SERVER_TICK.register(LootProbabilitySimulationWorker::tickIfPresent);
 
         // chunk 首次生成时扫描骨块并标记为自然生成
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->

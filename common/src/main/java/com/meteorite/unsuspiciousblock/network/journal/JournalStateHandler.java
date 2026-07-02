@@ -39,8 +39,7 @@ public final class JournalStateHandler {
     }
 
     // 处理客户端主动请求的全量重同步（revision 间隙恢复路径）
-    public static void handleRequestFull(ServerPlayer player,
-                                         com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload payload) {
+    public static void handleRequestFull(ServerPlayer player) {
         syncStateFull(player);
     }
 }

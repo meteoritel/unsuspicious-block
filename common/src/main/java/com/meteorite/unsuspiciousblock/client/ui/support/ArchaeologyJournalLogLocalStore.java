@@ -45,7 +45,7 @@ public final class ArchaeologyJournalLogLocalStore {
     private static SyncJournalLogSnapshotPayload pendingSnapshot;
     private static final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private static long lastAppliedSequence;
-    private static volatile long revision;
+    private static long revision;
     // 日志快照重同步请求限流时间戳（ms），防止极端场景下请求风暴
     private static long lastSnapshotRequestMs;
     // 重同步请求最小间隔
@@ -297,17 +297,18 @@ public final class ArchaeologyJournalLogLocalStore {
     }
 
     private static boolean save() {
-        if (loadedPath == null) {
+        Path path = loadedPath;
+        if (path == null) {
             return false;
         }
         try {
-            Files.createDirectories(loadedPath.getParent());
-            try (OutputStream outputStream = Files.newOutputStream(loadedPath)) {
+            Files.createDirectories(path.getParent());
+            try (OutputStream outputStream = Files.newOutputStream(path)) {
                 NbtIo.writeCompressed(logState.toTag(), outputStream);
             }
             return true;
         } catch (IOException e) {
-            Constants.LOG.warn("保存本地考古日志失败: {}", loadedPath, e);
+            Constants.LOG.warn("保存本地考古日志失败: {}", path, e);
             return false;
         }
     }

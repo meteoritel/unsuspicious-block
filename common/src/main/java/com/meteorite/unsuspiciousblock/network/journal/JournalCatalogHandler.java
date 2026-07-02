@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.network.journal;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -43,7 +42,7 @@ public final class JournalCatalogHandler {
     }
 
     // 处理客户端请求完整目录
-    public static void handleRequestCatalog(ServerPlayer player, RequestCatalogPayload payload) {
+    public static void handleRequestCatalog(ServerPlayer player) {
         syncFullCatalog(player);
     }
 

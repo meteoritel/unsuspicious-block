@@ -162,9 +162,9 @@ public class UnsuspiciousBlockNeoForge {
         });
     }
 
-    public static MenuType<SpecimenBoxMenu> specimenBoxMenu() {
-        return SPECIMEN_BOX_MENU.get();
-    }
+//    public static MenuType<SpecimenBoxMenu> specimenBoxMenu() {
+//        return SPECIMEN_BOX_MENU.get();
+//    }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
@@ -204,7 +204,7 @@ public class UnsuspiciousBlockNeoForge {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
-        LootProbabilitySimulationWorker.start(event.getServer());
+        LootProbabilitySimulationWorker.start();
         ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
     }
 
