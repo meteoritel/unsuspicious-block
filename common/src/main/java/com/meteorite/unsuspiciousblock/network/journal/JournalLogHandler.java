@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.network.journal;
 
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogLegacyAccess;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
@@ -12,7 +12,10 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnaps
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.world.JournalLogSavedData;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
@@ -175,20 +178,34 @@ public final class JournalLogHandler {
         syncLogSnapshot(player);
     }
 
-    // 玩家加入时从 NBT 恢复日志状态并下发快照（服务端权威模式）
+    // 玩家加入时从 SavedData 恢复日志状态并下发快照（服务端权威模式）
     public static void restoreAndSyncOnJoin(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
             return;
         }
 
-        // 从玩家 NBT 持久数据恢复日志到镜像状态
-        if (player instanceof ArchaeologyJournalLogStateHolder holder) {
-            ArchaeologyJournalLogState persisted = holder.unsuspiciousblock$getArchaeologyJournalLogState();
-            session.restoreFromPersisted(persisted);
-        } else {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
             session.reset();
+            syncLogSnapshot(player);
+            return;
         }
+
+        JournalLogSavedData savedData = JournalLogSavedData.get(server.overworld());
+        // 一次性迁移：若玩家 NBT 中残留旧版日志 tag，消费并迁移到 SavedData
+        if (player instanceof ArchaeologyJournalLogLegacyAccess access) {
+            CompoundTag legacy = access.unsuspiciousblock$consumeLegacyJournalLogTag();
+            if (legacy != null) {
+                ArchaeologyJournalLogState migrated = new ArchaeologyJournalLogState();
+                migrated.readFrom(legacy);
+                savedData.putForPlayer(player.getUUID(), migrated);
+            }
+        }
+
+        // 从 SavedData 恢复日志到镜像状态
+        ArchaeologyJournalLogState persisted = savedData.getForPlayer(player.getUUID());
+        session.restoreFromPersisted(persisted);
 
         // 下发日志快照给客户端
         syncLogSnapshot(player);
@@ -209,13 +226,18 @@ public final class JournalLogHandler {
         return null;
     }
 
-    // 将 session 镜像状态同步回玩家 NBT 持久状态，确保自动保存时写入最新数据
+    // 将 session 镜像状态同步回 SavedData 持久状态，确保世界保存时写入最新数据
     private static void syncToPersistedState(ServerPlayer player) {
-        if (player instanceof ArchaeologyJournalLogStateHolder holder) {
-            ArchaeologyJournalLogSyncSession session = getLogSession(player);
-            if (session != null && session.isSeeded()) {
-                holder.unsuspiciousblock$getArchaeologyJournalLogState().copyFrom(session.mirroredState());
-            }
+        ArchaeologyJournalLogSyncSession session = getLogSession(player);
+        if (session == null || !session.isSeeded()) {
+            return;
         }
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return;
+        }
+        JournalLogSavedData savedData = JournalLogSavedData.get(server.overworld());
+        savedData.getForPlayer(player.getUUID()).copyFrom(session.mirroredState());
+        savedData.markDirty();
     }
 }

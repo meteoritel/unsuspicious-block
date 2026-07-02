@@ -150,24 +150,21 @@ public final class JournalCommand {
         final java.util.concurrent.atomic.AtomicInteger total = new java.util.concurrent.atomic.AtomicInteger(0);
         final java.util.UUID playerId = player != null ? player.getUUID() : null;
 
-        worker.setProgressListener(new LootProbabilitySimulationWorker.ProgressListener() {
-            @Override
-            public void onTableSimulated(ResourceLocation tableId, TableDefinition result) {
-                int idx = done.incrementAndGet();
-                if (playerId == null) return;
-                ServerPlayer p = server.getPlayerList().getPlayer(playerId);
-                if (p == null) return;
-                String displayName = LootTableNames.resolveDisplayName(tableId).getString();
+        worker.setProgressListener((tableId, result) -> {
+            int idx = done.incrementAndGet();
+            if (playerId == null) return;
+            ServerPlayer p = server.getPlayerList().getPlayer(playerId);
+            if (p == null) return;
+            String displayName = LootTableNames.resolveDisplayName(tableId).getString();
+            p.sendSystemMessage(Component.translatable(
+                    "command.unsuspiciousblock.usb.journal.reload.progress",
+                    idx, total.get(), tableId.toString(), displayName));
+            // 全部完成时发送完成消息并清除回调
+            if (idx >= total.get()) {
                 p.sendSystemMessage(Component.translatable(
-                        "command.unsuspiciousblock.usb.journal.reload.progress",
-                        idx, total.get(), tableId.toString(), displayName));
-                // 全部完成时发送完成消息并清除回调
-                if (idx >= total.get()) {
-                    p.sendSystemMessage(Component.translatable(
-                            "command.unsuspiciousblock.usb.journal.reload.complete", idx));
-                    LootProbabilitySimulationWorker w = LootProbabilitySimulationWorker.get();
-                    if (w != null) w.setProgressListener(null);
-                }
+                        "command.unsuspiciousblock.usb.journal.reload.complete", idx));
+                LootProbabilitySimulationWorker w = LootProbabilitySimulationWorker.get();
+                if (w != null) w.setProgressListener(null);
             }
         });
 

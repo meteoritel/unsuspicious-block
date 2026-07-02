@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.mixin.journal;
 
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogStateHolder;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogLegacyAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.entity.player.Player;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,36 +12,35 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * 为玩家实体附加考古日志状态并负责存档。
- * 日志数据持久化到玩家 NBT，服务端成为日志数据的权威来源。
+ * 旧版考古日志 NBT 迁移 mixin——仅负责读取并暂存旧版玩家 NBT 中的日志数据。
+ * 不再向玩家 NBT 写回日志数据（持久化已迁移到 JournalLogSavedData）。
+ * 暂存的旧版 tag 会在玩家登录时由 JournalLogHandler 消费并迁移到 SavedData，
+ * 之后由于 addAdditionalSaveData 不再注入，旧 tag 自然从玩家 NBT 中剥离。
  */
 @Mixin(Player.class)
-public abstract class PlayerJournalLogStateMixin implements ArchaeologyJournalLogStateHolder {
+public abstract class PlayerJournalLogStateMixin implements ArchaeologyJournalLogLegacyAccess {
     @Unique
-    private static final String UNSUSPICIOUSBLOCK_JOURNAL_LOG_TAG = "unsuspiciousblock_archaeology_journal_log";
+    private static final String UNSUSPICIOUSBLOCK_LEGACY_JOURNAL_LOG_TAG = "unsuspiciousblock_archaeology_journal_log";
 
+    // 暂存从旧版 NBT 读取的日志 tag，等待登录时消费
     @Unique
-    private final ArchaeologyJournalLogState unsuspiciousblock$journalLogState = new ArchaeologyJournalLogState();
+    @Nullable
+    private CompoundTag unsuspiciousblock$pendingLegacyLogTag;
 
-    // 返回挂载在玩家身上的考古日志状态
+    // 消费并返回暂存的旧版日志 tag
     @Override
-    public ArchaeologyJournalLogState unsuspiciousblock$getArchaeologyJournalLogState() {
-        return this.unsuspiciousblock$journalLogState;
+    @Nullable
+    public CompoundTag unsuspiciousblock$consumeLegacyJournalLogTag() {
+        CompoundTag tag = this.unsuspiciousblock$pendingLegacyLogTag;
+        this.unsuspiciousblock$pendingLegacyLogTag = null;
+        return tag;
     }
 
-    // 在玩家保存附加数据时写入考古日志状态
-    @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
-    private void unsuspiciousblock$saveJournalLogState(CompoundTag tag, CallbackInfo ci) {
-        tag.put(UNSUSPICIOUSBLOCK_JOURNAL_LOG_TAG, this.unsuspiciousblock$journalLogState.toTag());
-    }
-
-    // 在玩家读取附加数据时恢复考古日志状态
+    // 读取旧版 NBT tag 暂存，等待登录时迁移到 SavedData
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
-    private void unsuspiciousblock$loadJournalLogState(CompoundTag tag, CallbackInfo ci) {
-        if (!tag.contains(UNSUSPICIOUSBLOCK_JOURNAL_LOG_TAG, Tag.TAG_COMPOUND)) {
-            this.unsuspiciousblock$journalLogState.clear();
-            return;
+    private void unsuspiciousblock$loadLegacyJournalLogTag(CompoundTag tag, CallbackInfo ci) {
+        if (tag.contains(UNSUSPICIOUSBLOCK_LEGACY_JOURNAL_LOG_TAG, Tag.TAG_COMPOUND)) {
+            this.unsuspiciousblock$pendingLegacyLogTag = tag.getCompound(UNSUSPICIOUSBLOCK_LEGACY_JOURNAL_LOG_TAG);
         }
-        this.unsuspiciousblock$journalLogState.readFrom(tag.getCompound(UNSUSPICIOUSBLOCK_JOURNAL_LOG_TAG));
     }
 }
