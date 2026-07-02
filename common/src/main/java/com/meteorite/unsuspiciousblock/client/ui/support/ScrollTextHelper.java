@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.helper;
+package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;

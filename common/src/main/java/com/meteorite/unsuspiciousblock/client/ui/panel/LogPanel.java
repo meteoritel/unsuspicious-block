@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
-import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;

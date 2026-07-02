@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.helper;
+package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.world.GameTimeFormatHelper;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;

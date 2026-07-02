@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.helper.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;

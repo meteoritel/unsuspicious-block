@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.ui.helper.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.network.chat.Component;
 
