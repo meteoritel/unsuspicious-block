@@ -26,7 +26,8 @@ public record ExcavationLogEntry(UUID entryId,
                                  ExcavationLogEntry.GameTimestamp created,
                                  ExcavationLogEntry.GameTimestamp lastUpdated,
                                  Map<String, Integer> expectedLoot,
-                                 Map<String, Integer> actualLoot) {
+                                 Map<String, Integer> actualLoot,
+                                 String note) {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ExcavationLogEntry.class);
 
@@ -50,6 +51,7 @@ public record ExcavationLogEntry(UUID entryId,
     private static final String LAST_UPDATED_DAY_TIME_TAG = "last_updated_day_time";
     private static final String EXPECTED_LOOT_TAG = "expected_loot";
     private static final String ACTUAL_LOOT_TAG = "actual_loot";
+    private static final String NOTE_TAG = "note";
 
     /** 位置上下文：维度、源方块、结构、生物群系、坐标 */
     public record ExcavationContext(@Nullable ResourceLocation dimensionId,
@@ -110,6 +112,32 @@ public record ExcavationLogEntry(UUID entryId,
         }
         expectedLoot = LootCounts.normalize(expectedLoot);
         actualLoot = LootCounts.normalize(actualLoot);
+        if (note == null) {
+            note = "";
+        }
+    }
+
+    // 省略 note 参数的便利构造器，默认无备注
+    public ExcavationLogEntry(UUID entryId,
+                              @Nullable LootSourceType lootSource,
+                              ExcavationLogEntry.ExcavationContext context,
+                              ExcavationLogEntry.GameTimestamp created,
+                              ExcavationLogEntry.GameTimestamp lastUpdated,
+                              Map<String, Integer> expectedLoot,
+                              Map<String, Integer> actualLoot) {
+        this(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot, "");
+    }
+
+    /** 是否存在备注内容 */
+    public boolean hasNote() {
+        return note != null && !note.isEmpty();
+    }
+
+    // 返回带有新备注的副本，其他字段保持不变
+    public ExcavationLogEntry withNote(String newNote) {
+        return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
+                this.created, this.lastUpdated,
+                this.expectedLoot, this.actualLoot, newNote == null ? "" : newNote);
     }
 
     public ExcavationLogEntry withActualLootMerged(Map<String, Integer> deltaLoot,
@@ -118,7 +146,7 @@ public record ExcavationLogEntry(UUID entryId,
         LootCounts.mergeInto(mergedActualLoot, deltaLoot);
         return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
                 this.created, new GameTimestamp(updatedGameTime, updatedDayTime),
-                this.expectedLoot, mergedActualLoot);
+                this.expectedLoot, mergedActualLoot, this.note);
     }
 
     @Nullable
@@ -155,6 +183,9 @@ public record ExcavationLogEntry(UUID entryId,
         tag.putLong(LAST_UPDATED_DAY_TIME_TAG, this.lastUpdated.dayTime);
         tag.put(EXPECTED_LOOT_TAG, LootCounts.writeToNbt(this.expectedLoot));
         tag.put(ACTUAL_LOOT_TAG, LootCounts.writeToNbt(this.actualLoot));
+        if (this.note != null && !this.note.isEmpty()) {
+            tag.putString(NOTE_TAG, this.note);
+        }
         return tag;
     }
 
@@ -211,11 +242,12 @@ public record ExcavationLogEntry(UUID entryId,
         Map<String, Integer> actualLoot = tag.contains(ACTUAL_LOOT_TAG, Tag.TAG_COMPOUND)
                 ? LootCounts.readFromNbt(tag.getCompound(ACTUAL_LOOT_TAG))
                 : createLegacyLootMap(legacyItemId);
+        String note = tag.contains(NOTE_TAG, Tag.TAG_STRING) ? tag.getString(NOTE_TAG) : "";
 
         ExcavationContext context = new ExcavationContext(dimensionId, sourceBlockId, structureId, biomeId, pos);
         GameTimestamp created = new GameTimestamp(createdGameTime, createdDayTime);
         GameTimestamp lastUpdated = new GameTimestamp(lastUpdatedGameTime, lastUpdatedDayTime);
-        return new ExcavationLogEntry(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot);
+        return new ExcavationLogEntry(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot, note);
     }
 
     @Nullable

@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
@@ -151,6 +152,59 @@ public final class JournalLogHandler {
         long sequence = session.nextSequence();
         Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.clearTable(sessionId, sequence, tableId));
         syncLogSnapshot(player);
+    }
+
+    // 处理客户端发来的备注更新请求：定位条目并写入新备注，然后增量同步给客户端
+    public static void handleUpdateNote(ServerPlayer player, UpdateJournalLogNotePayload payload) {
+        ArchaeologyJournalLogSyncSession session = getLogSession(player);
+        if (session == null || !session.isSeeded()) {
+            return;
+        }
+        ArchaeologyJournalLogState.TableLogHistory table = session.mirroredState().getTable(payload.tableId());
+        if (table == null) {
+            return;
+        }
+        UUID entryId = payload.entryId();
+        ExcavationLogEntry existing = null;
+        for (ExcavationLogEntry entry : table.getEntries()) {
+            if (entry.entryId().equals(entryId)) {
+                existing = entry;
+                break;
+            }
+        }
+        if (existing == null) {
+            return;
+        }
+        // 服务端二次校验：截断过长内容，移除控制字符
+        String sanitized = sanitizeNote(payload.note());
+        if (sanitized.equals(existing.note())) {
+            return;
+        }
+        ExcavationLogEntry updated = existing.withNote(sanitized);
+        // LinkedHashMap.put 已有 key 保留原插入位置，不会触发重排
+        session.mirroredState().upsertEntry(payload.tableId(), updated);
+        syncToPersistedState(player);
+        UUID sessionId = session.getSessionId();
+        if (sessionId == null) {
+            return;
+        }
+        Services.NETWORK.sendToPlayer(player,
+                SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), payload.tableId(), updated.toTag()));
+    }
+
+    // 备注文本清洗：去控制字符、限长 500
+    private static String sanitizeNote(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length() && sb.length() < 500; i++) {
+            char c = raw.charAt(i);
+            if (c == '\n' || c == '\r' || c == '\t' || c >= ' ') {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /** 向玩家下发当前日志全量快照 */

@@ -205,11 +205,16 @@ public final class ArchaeologyJournalLogState {
 
         public boolean upsertEntry(ExcavationLogEntry entry) {
             ExcavationLogEntry previous = this.entries.put(entry.entryId(), entry);
-            // 超出上限时移除最旧的条目
-            while (this.entries.size() > getMaxEntries()) {
+            // 超出上限时移除最旧的条目；已备注的条目受保护，跳过不删
+            if (this.entries.size() > getMaxEntries()) {
                 var it = this.entries.values().iterator();
-                it.next();
-                it.remove();
+                while (it.hasNext() && this.entries.size() > getMaxEntries()) {
+                    ExcavationLogEntry candidate = it.next();
+                    if (candidate.hasNote()) {
+                        continue;
+                    }
+                    it.remove();
+                }
             }
             boolean changed = !entry.equals(previous);
             if (changed) {

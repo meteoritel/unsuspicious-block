@@ -48,6 +48,9 @@ public final class LogDetailPanel implements PagePanel {
     // 返回列表按钮（IconButton widget，由外部 screen 注册）
     @Nullable
     private IconButton backButton;
+    // 备注编辑按钮（IconButton widget，由外部 screen 注册）
+    @Nullable
+    private IconButton noteButton;
     // 元信息行悬停追踪：用于文字超宽滚动
     private int hoveredMetaRow = -1;
     private final int[] metaRowScrollTicks = new int[JournalLayout.LOG_DETAIL_META_ROWS];
@@ -91,9 +94,42 @@ public final class LogDetailPanel implements PagePanel {
         registrar.accept(this.backButton);
     }
 
+    // 创建并注册备注编辑按钮（IconButton），紧邻返回按钮右侧
+    public void createNoteButton(Consumer<IconButton> registrar, Runnable onNoteClick) {
+        int leftX = this.layout.rightPageX() + 8;
+        int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
+        int btnSize = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE;
+        // 紧邻返回按钮右侧，间隔 2px
+        int btnX = leftX + btnSize + 2;
+        Component tooltip = Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.log_note_button_tooltip");
+        this.noteButton = new IconButton(
+                btnX, y,
+                btnSize,
+                '✎',
+                tooltip,
+                onNoteClick);
+        registrar.accept(this.noteButton);
+    }
+
     @Nullable
     public IconButton getBackButton() {
         return this.backButton;
+    }
+
+    @Nullable
+    public IconButton getNoteButton() {
+        return this.noteButton;
+    }
+
+    @Nullable
+    public ExcavationLogEntry getEntry() {
+        return this.entry;
+    }
+
+    @Nullable
+    public ResourceLocation getTableId() {
+        return this.tableId;
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
@@ -162,10 +198,13 @@ public final class LogDetailPanel implements PagePanel {
         this.pagination.setPage(page);
     }
 
-    // 渲染返回按钮 tooltip + 复制坐标按钮 tooltip（由外部在 super.render 之后调用）
+    // 渲染返回按钮 tooltip + 备注按钮 tooltip + 复制坐标按钮 tooltip（由外部在 super.render 之后调用）
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         if (this.backButton != null && this.backButton.visible) {
             this.backButton.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+        if (this.noteButton != null && this.noteButton.visible) {
+            this.noteButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
         if (this.copyBtnHovered) {
             CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);

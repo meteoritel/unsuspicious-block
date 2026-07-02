@@ -82,6 +82,7 @@ public final class JournalLayout {
     // 日志条目文字配色（区分优先级）
     public static final int LOG_ENTRY_TIME_COLOR = 0x3A2A1A;       // 时间：最高优先级（深棕）
     public static final int LOG_ENTRY_DIM_POS_COLOR = 0x7A6247;    // 维度+坐标：次要信息（暖灰棕）
+    public static final int LOG_ENTRY_NOTE_BADGE_COLOR = 0xFF7B3E18; // 已备注标记颜色（红棕，醒目）
 
     // 日志分组头
     public static final int LOG_GROUP_HEADER_HEIGHT = 14;   // 组头行高度

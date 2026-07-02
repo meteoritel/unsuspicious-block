@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图 */
@@ -35,6 +36,9 @@ public final class LogPanel implements PagePanel {
     // 复制坐标按钮命中盒（缓存最近一帧的悬停按钮位置，用于 tooltip 渲染与点击判定）
     private static final int COPY_BTN_HOVER_NONE = -1;
     private int copyBtnHoverX = COPY_BTN_HOVER_NONE;
+    // 当前帧悬停的条目（用于备注 tooltip 渲染），每帧 render 时重置
+    @Nullable
+    private LogEntryState hoveredEntryState;
 
     /** 显示行：组头或条目，混合高度分页 */
     private interface DisplayRow {
@@ -189,6 +193,22 @@ public final class LogPanel implements PagePanel {
                     this.displayRows.add(new EntryRow(state));
                 }
             }
+        } else if (this.groupMode == LogGrouper.GroupMode.NOTED) {
+            // 已备注分组：固定 "已备注" 在前、"未备注" 在后
+            LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
+            groups.put("yes", new ArrayList<>());
+            groups.put("no", new ArrayList<>());
+            for (LogEntryState state : this.filteredEntries) {
+                String key = LogGrouper.groupKey(this.groupMode, state.entry, this.referenceGameTime);
+                groups.computeIfAbsent(key, k -> new ArrayList<>()).add(state);
+            }
+            for (var entry : groups.entrySet()) {
+                if (entry.getValue().isEmpty()) continue;
+                this.displayRows.add(new GroupHeaderRow(entry.getKey(), entry.getValue().size()));
+                for (LogEntryState state : entry.getValue()) {
+                    this.displayRows.add(new EntryRow(state));
+                }
+            }
         } else {
             // 维度/群系分组：按数据顺序聚合
             LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
@@ -213,6 +233,7 @@ public final class LogPanel implements PagePanel {
         int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
         // 重置按钮悬停缓存（在 renderEntry 中重新填充）
         this.copyBtnHoverX = COPY_BTN_HOVER_NONE;
+        this.hoveredEntryState = null;
         if (this.displayRows.isEmpty()) {
             guiGraphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_empty"),
@@ -344,6 +365,7 @@ public final class LogPanel implements PagePanel {
         state.wasHovered = hovered;
         if (hovered) {
             state.scrollTicks++;
+            this.hoveredEntryState = state;
         }
 
         // 绘制圆角纹理背景：normal/hovered/selected
@@ -400,14 +422,38 @@ public final class LogPanel implements PagePanel {
         String line2 = dimensionText + " " + posText;
         ScrollTextHelper.draw(guiGraphics, font, line2,
                 textX, rowY + 14, textWidth, JournalLayout.LOG_ENTRY_DIM_POS_COLOR, hovered, state.scrollTicks, false);
+
+        // 已备注标记：右下角绘制小铅笔字符
+        if (state.entry.hasNote()) {
+            String badge = "✎";
+            int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - font.width(badge) - 3;
+            int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
+            guiGraphics.drawString(font, badge, badgeX, badgeY, JournalLayout.LOG_ENTRY_NOTE_BADGE_COLOR, false);
+        }
     }
 
-    // 渲染复制按钮的悬停 tooltip（由外部在 super.render 之后调用，确保位于最上层）
+    // 渲染复制按钮与备注的悬停 tooltip（由外部在 super.render 之后调用，确保位于最上层）
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (this.copyBtnHoverX == COPY_BTN_HOVER_NONE) {
+        // 优先渲染复制按钮 tooltip（命中按钮时）
+        if (this.copyBtnHoverX != COPY_BTN_HOVER_NONE) {
+            CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
             return;
         }
-        CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
+        // 其次渲染备注内容 tooltip（悬停在已备注条目上时）
+        if (this.hoveredEntryState != null && this.hoveredEntryState.entry.hasNote()) {
+            List<Component> lines = new ArrayList<>();
+            lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_tooltip_title"));
+            // 按换行符拆分备注正文，保持玩家书写格式
+            String note = this.hoveredEntryState.entry.note();
+            for (String rawLine : note.split("\n", -1)) {
+                if (rawLine.isEmpty()) {
+                    lines.add(Component.literal(" "));
+                } else {
+                    lines.add(Component.literal(rawLine));
+                }
+            }
+            guiGraphics.renderTooltip(font, lines, Optional.empty(), mouseX, mouseY);
+        }
     }
 
     public boolean hasVisibleEntries() {

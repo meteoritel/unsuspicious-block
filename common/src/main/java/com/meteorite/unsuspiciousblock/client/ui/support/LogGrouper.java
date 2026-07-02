@@ -18,7 +18,8 @@ public final class LogGrouper {
     public enum GroupMode {
         TIME("time"),
         DIMENSION("dimension"),
-        BIOME("biome");
+        BIOME("biome"),
+        NOTED("noted");
 
         private final String key;
 
@@ -76,6 +77,7 @@ public final class LogGrouper {
             case TIME -> bucketForAge(referenceGameTime - entry.createdGameTime()).key();
             case DIMENSION -> JournalFormatHelper.formatDimensionName(entry.dimensionId());
             case BIOME -> JournalFormatHelper.formatBiomeName(entry.biomeId());
+            case NOTED -> entry.hasNote() ? "yes" : "no";
         };
     }
 
@@ -85,6 +87,7 @@ public final class LogGrouper {
             case TIME -> '⏱';       // 按时间区间分组
             case DIMENSION -> '◈';  // 按维度分组
             case BIOME -> '❀';      // 按群系分组
+            case NOTED -> '✎';      // 按是否已备注分组
         };
     }
 
@@ -94,14 +97,17 @@ public final class LogGrouper {
             case TIME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.time");
             case DIMENSION -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.dimension");
             case BIOME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.biome");
+            case NOTED -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.noted");
         };
     }
 
     // 组头显示名：组名 + 条目数量
     public static Component groupHeader(GroupMode mode, String groupKey, int count) {
-        Component name = mode == GroupMode.TIME
-                ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.bucket." + groupKey)
-                : Component.literal(groupKey);
+        Component name = switch (mode) {
+            case TIME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.bucket." + groupKey);
+            case NOTED -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_group.noted." + groupKey);
+            default -> Component.literal(groupKey);
+        };
         return Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_group_header",
                 name, count);

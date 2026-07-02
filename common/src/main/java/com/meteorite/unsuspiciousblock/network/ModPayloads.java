@@ -15,6 +15,7 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePay
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
@@ -74,6 +75,8 @@ public final class ModPayloads {
                     (player, payload) -> JournalStateHandler.handleRequestFull(player)),
             new C2S<>(RequestJournalLogSnapshotPayload.TYPE, RequestJournalLogSnapshotPayload.STREAM_CODEC,
                     (player, payload) -> JournalLogHandler.handleRequestSnapshot(player)),
+            new C2S<>(UpdateJournalLogNotePayload.TYPE, UpdateJournalLogNotePayload.STREAM_CODEC,
+                    JournalLogHandler::handleUpdateNote),
             new C2S<>(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
                     (player, payload) -> CatNetworkHandler.handleDeterrenceToggle(player)),
             new C2S<>(CatLightStepTogglePayload.TYPE, CatLightStepTogglePayload.STREAM_CODEC,

@@ -396,6 +396,9 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.getLogDetailPanel().createBackButton(this::registerWidget,
                 () -> this.rightPage.restoreLogSelection(null, false));
 
+        // 日志详情页备注编辑按钮（IconButton）
+        this.rightPage.getLogDetailPanel().createNoteButton(this::registerWidget, this::openNoteEditor);
+
         // 书页外右上角帮助按钮（?），悬停展示使用提示
         int helpX = Math.min(this.width - JournalLayout.HELP_BUTTON_SIZE,
                 this.bookLayout.bookX() + JournalLayout.TEXTURE_WIDTH + JournalLayout.HELP_BUTTON_GAP);
@@ -504,6 +507,23 @@ public class ArchaeologyJournalScreen extends Screen {
             backBtn.visible = isLogDetailMode;
             backBtn.active = isLogDetailMode;
         }
+        // 备注按钮可见性：跟随返回按钮（详情模式下才显示）
+        var noteBtn = this.rightPage.getLogDetailPanel().getNoteButton();
+        if (noteBtn != null) {
+            noteBtn.visible = isLogDetailMode;
+            noteBtn.active = isLogDetailMode;
+        }
+    }
+
+    // 打开备注编辑子界面：取出当前详情页的 entry + tableId
+    private void openNoteEditor() {
+        var detail = this.rightPage.getLogDetailPanel();
+        var entry = detail.getEntry();
+        var tableId = detail.getTableId();
+        if (entry == null || tableId == null) {
+            return;
+        }
+        this.minecraft.setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
     }
 
     private static final class JournalPageButton extends PageButton {
