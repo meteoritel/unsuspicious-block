@@ -135,5 +135,10 @@ public final class JournalLayout {
     public static final int PAGE_BUTTON_HEIGHT = 13;
     public static final int PAGE_BUTTON_CENTER_GAP = 32;
 
+    // —— 帮助按钮（书页外右上角问号） ——
+    public static final int HELP_BUTTON_SIZE = 14;
+    public static final int HELP_BUTTON_GAP = -2;        // 与书页右边缘的间距
+    public static final int HELP_BUTTON_Y_OFFSET = 10;   // 距书页顶部向下偏移
+
     private JournalLayout() {}
 }

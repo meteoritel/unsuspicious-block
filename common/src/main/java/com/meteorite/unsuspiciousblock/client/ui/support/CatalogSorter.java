@@ -17,7 +17,8 @@ public final class CatalogSorter {
         DEFAULT("default"),
         NAME("name"),
         UNLOCK("unlock"),
-        ITEM_COUNT("item_count");
+        ITEM_COUNT("item_count"),
+        FAVORITE("favorite");
 
         private final String key;
 
@@ -60,6 +61,11 @@ public final class CatalogSorter {
                     .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
                     .thenComparing(v -> v.id().getNamespace())
                     .thenComparing(v -> v.displayName().getString());
+            case FAVORITE -> Comparator
+                    .comparing((ArchaeologyJournalEntry v) -> !v.favorite())
+                    .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
+                    .thenComparing(v -> v.id().getNamespace())
+                    .thenComparing(v -> v.displayName().getString());
         };
         return descending ? comparator.reversed() : comparator;
     }
@@ -71,6 +77,7 @@ public final class CatalogSorter {
             case NAME -> 'A';
             case UNLOCK -> '☆';
             case ITEM_COUNT -> '#';
+            case FAVORITE -> '★';
         };
     }
 
@@ -86,6 +93,7 @@ public final class CatalogSorter {
             case NAME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.name");
             case UNLOCK -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.unlock");
             case ITEM_COUNT -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.item_count");
+            case FAVORITE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.favorite");
         };
     }
 

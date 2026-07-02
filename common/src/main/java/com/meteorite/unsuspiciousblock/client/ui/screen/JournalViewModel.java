@@ -288,7 +288,7 @@ public class JournalViewModel {
     public List<CatalogPanel.CatalogEntryData> buildCatalogEntries() {
         List<CatalogPanel.CatalogEntryData> catalogEntries = new ArrayList<>();
         for (ArchaeologyJournalEntry tv : this.tableViews) {
-            catalogEntries.add(new CatalogPanel.CatalogEntryData(tv.id(), tv.displayName(), tv.unlocked()));
+            catalogEntries.add(new CatalogPanel.CatalogEntryData(tv.id(), tv.displayName(), tv.unlocked(), tv.favorite()));
         }
         return catalogEntries;
     }

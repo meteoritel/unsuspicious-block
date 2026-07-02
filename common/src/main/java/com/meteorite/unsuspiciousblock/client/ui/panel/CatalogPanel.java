@@ -24,6 +24,9 @@ public final class CatalogPanel {
     private static final int LOCKED_STATE_H = 19;
     private static final int TEXT_INNER_PAD = 8;
     private static final int TEXT_Y_OFFSET = 7;
+    // 收藏星标渲染参数
+    private static final int FAVORITE_STAR_RIGHT_PAD = 4;
+    private static final int FAVORITE_STAR_COLOR = 0xFFC8A014;
 
     private final List<CatalogEntry> entries = new ArrayList<>();
     private final JournalBookBackground.BookLayout layout;
@@ -36,7 +39,7 @@ public final class CatalogPanel {
     public void setEntries(List<CatalogEntryData> entries) {
         this.entries.clear();
         for (CatalogEntryData entry : entries) {
-            this.entries.add(new CatalogEntry(entry.id(), entry.displayName(), entry.unlocked()));
+            this.entries.add(new CatalogEntry(entry.id(), entry.displayName(), entry.unlocked(), entry.favorite()));
         }
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
     }
@@ -152,10 +155,20 @@ public final class CatalogPanel {
         } else {
             textColor = selected ? 0x6E4D34 : 0x7A6247;
         }
-        int textMaxWidth = width - TEXT_INNER_PAD * 2;
+        // 收藏条目右侧预留给星标的空间，避免长名滚动遮挡星标
+        int textMaxWidth = width - TEXT_INNER_PAD * 2 - (entry.favorite ? 10 : 0);
         ScrollTextHelper.draw(guiGraphics, font, displayText,
                 x + TEXT_INNER_PAD, y, y + TEXT_Y_OFFSET, textMaxWidth, JournalLayout.CATALOG_ROW_HEIGHT,
                 textColor, hovered, entry.scrollTicks, true);
+
+        // 收藏星标：仅对已收藏条目绘制
+        if (entry.favorite) {
+            String star = "★";
+            int starWidth = font.width(star);
+            int starX = x + width - starWidth - FAVORITE_STAR_RIGHT_PAD;
+            int starY = y + (rowHeight - 8) / 2;
+            guiGraphics.drawString(font, star, starX, starY, FAVORITE_STAR_COLOR, false);
+        }
     }
 
     private int itemsPerPage() {
@@ -195,20 +208,22 @@ public final class CatalogPanel {
         return JournalLayout.CATALOG_TEXTURE_WIDTH;
     }
 
-    public record CatalogEntryData(ResourceLocation id, Component displayName, boolean unlocked) {
+    public record CatalogEntryData(ResourceLocation id, Component displayName, boolean unlocked, boolean favorite) {
     }
 
     private static final class CatalogEntry {
         private final ResourceLocation id;
         private final Component displayName;
         private final boolean unlocked;
+        private final boolean favorite;
         private int scrollTicks;
         private boolean wasHovered;
 
-        private CatalogEntry(ResourceLocation id, Component displayName, boolean unlocked) {
+        private CatalogEntry(ResourceLocation id, Component displayName, boolean unlocked, boolean favorite) {
             this.id = id;
             this.displayName = displayName;
             this.unlocked = unlocked;
+            this.favorite = favorite;
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
@@ -29,6 +30,8 @@ public record ArchaeologyJournalEntry(
         int totalCount,
         int parsedCount,
         boolean unlocked,
+        // 用户是否收藏该表（客户端偏好）
+        boolean favorite,
 
         // --- 日志数据引用（与条目本身解耦）---
         ArchaeologyEntryLogRef logRef
@@ -57,8 +60,9 @@ public record ArchaeologyJournalEntry(
                     itemDefinition.signature()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
+        boolean favorite = ArchaeologyJournalClientState.isFavorite(tableId);
         ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.from(logHistory);
         return new ArchaeologyJournalEntry(tableId, definition.displayName(), definition.type(), items,
-                definition.simulationCount(), definition.items().size(), parsedCount, tableUnlocked, logRef);
+                definition.simulationCount(), definition.items().size(), parsedCount, tableUnlocked, favorite, logRef);
     }
 }

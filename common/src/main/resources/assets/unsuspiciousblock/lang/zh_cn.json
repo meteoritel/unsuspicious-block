@@ -241,10 +241,15 @@
   "screen.unsuspiciousblock.archaeology_journal.sort.name": "排序：名称",
   "screen.unsuspiciousblock.archaeology_journal.sort.unlock": "排序：解锁状态",
   "screen.unsuspiciousblock.archaeology_journal.sort.item_count": "排序：物品数量",
+  "screen.unsuspiciousblock.archaeology_journal.sort.favorite": "排序：收藏优先",
   "screen.unsuspiciousblock.archaeology_journal.sort.ascending": "升序",
   "screen.unsuspiciousblock.archaeology_journal.sort.descending": "降序",
   "screen.unsuspiciousblock.archaeology_journal.hide_locked.on": "隐藏未解锁：开",
   "screen.unsuspiciousblock.archaeology_journal.hide_locked.off": "隐藏未解锁：关",
+  "screen.unsuspiciousblock.archaeology_journal.help_tooltip.title": "使用提示",
+  "screen.unsuspiciousblock.archaeology_journal.help_tooltip.favorite": "Shift+点击条目可收藏/取消收藏",
+  "screen.unsuspiciousblock.archaeology_journal.help_tooltip.probability": "概率为模拟近似值，仅供参考",
+  "screen.unsuspiciousblock.archaeology_journal.help_tooltip.sort": "点击工具栏图标可切换排序方式",
 
   "toast.unsuspiciousblock.journal_unlock.title": "笔记更新",
 

@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
+import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -41,6 +42,8 @@ public class ArchaeologyJournalScreen extends Screen {
     private Button catalogNextButton;
     private Button itemPrevButton;
     private Button itemNextButton;
+    // 书页外左上角帮助按钮
+    private IconButton helpButton;
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
@@ -243,6 +246,11 @@ public class ArchaeologyJournalScreen extends Screen {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         }
 
+        // 帮助按钮 tooltip
+        if (this.helpButton != null) {
+            this.helpButton.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+
         // 日志条目复制坐标按钮 tooltip
         this.rightPage.renderTooltips(guiGraphics, this.font, mouseX, mouseY);
 
@@ -285,7 +293,17 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.catalogPanel != null && this.catalogPanel.containsMouse(mouseX, mouseY)) {
             int clickedIndex = this.catalogPanel.handleClick(mouseX, mouseY);
             if (clickedIndex >= 0) {
-                setSelectedIndex(clickedIndex);
+                if (hasShiftDown()) {
+                    // Shift+点击：切换收藏状态，消费点击避免触发选中/翻页
+                    List<com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry> views = this.viewModel.tableViews();
+                    if (clickedIndex < views.size()) {
+                        ResourceLocation id = views.get(clickedIndex).id();
+                        ArchaeologyJournalClientState.toggleFavorite(id);
+                        this.rebuildViewModels();
+                    }
+                } else {
+                    setSelectedIndex(clickedIndex);
+                }
             }
             return true;
         }
@@ -378,7 +396,29 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.getLogDetailPanel().createBackButton(this::registerWidget,
                 () -> this.rightPage.restoreLogSelection(null, false));
 
+        // 书页外右上角帮助按钮（?），悬停展示使用提示
+        int helpX = Math.min(this.width - JournalLayout.HELP_BUTTON_SIZE,
+                this.bookLayout.bookX() + JournalLayout.TEXTURE_WIDTH + JournalLayout.HELP_BUTTON_GAP);
+        int helpY = this.bookLayout.bookY() + JournalLayout.HELP_BUTTON_Y_OFFSET;
+        this.helpButton = this.addRenderableWidget(new IconButton(
+                helpX, helpY,
+                JournalLayout.HELP_BUTTON_SIZE,
+                '?',
+                buildHelpTooltip(),
+                () -> {}
+        ));
+
         this.syncButtonState();
+    }
+
+    // 构建帮助按钮的多行 tooltip
+    private static java.util.List<Component> buildHelpTooltip() {
+        return java.util.List.of(
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.title"),
+                Component.literal("- ").append(Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.favorite")),
+                Component.literal("- ").append(Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.probability")),
+                Component.literal("- ").append(Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.sort"))
+        );
     }
 
     private void rebuildViewModels() {

@@ -59,6 +59,10 @@ public final class ArchaeologyJournalClientState {
     private static volatile LogGrouper.GroupMode lastLogGroupMode;
     @Nullable
     private static volatile RightPageContainer.Tab lastRightPageTab;
+    // 用户收藏的战利品表集合（客户端偏好，不随服务端状态重置）
+    private static volatile Set<ResourceLocation> favorites = Collections.emptySet();
+    // 加载持久化文件时临时抑制 markDirty，避免加载即触发回写
+    private static volatile boolean persistenceSuppress;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
     // 客户端缓存的目录哈希，用于按需同步比对
@@ -208,6 +212,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void tick() {
         ArchaeologyJournalLogLocalStore.tick();
+        JournalUiPreferencesStore.tick();
     }
 
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
@@ -241,6 +246,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
         lastSelectedTableId = tableId;
+        markDirtyIfTracking();
     }
 
     // 跨打开/关闭持久化的 UI 状态存取器
@@ -252,6 +258,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastCatalogSortOrder(@Nullable CatalogSorter.SortOrder order) {
         lastCatalogSortOrder = order;
+        markDirtyIfTracking();
     }
 
     public static boolean getLastCatalogSortDescending() {
@@ -260,6 +267,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastCatalogSortDescending(boolean descending) {
         lastCatalogSortDescending = descending;
+        markDirtyIfTracking();
     }
 
     public static boolean getLastCatalogHideLocked() {
@@ -268,6 +276,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastCatalogHideLocked(boolean hideLocked) {
         lastCatalogHideLocked = hideLocked;
+        markDirtyIfTracking();
     }
 
     @Nullable
@@ -277,6 +286,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastCatalogSearchText(@Nullable String text) {
         lastCatalogSearchText = text != null ? text : "";
+        markDirtyIfTracking();
     }
 
     public static boolean getLastLogSortDescending() {
@@ -285,6 +295,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastLogSortDescending(boolean descending) {
         lastLogSortDescending = descending;
+        markDirtyIfTracking();
     }
 
     @Nullable
@@ -294,6 +305,7 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastLogGroupMode(@Nullable LogGrouper.GroupMode mode) {
         lastLogGroupMode = mode;
+        markDirtyIfTracking();
     }
 
     @Nullable
@@ -303,10 +315,50 @@ public final class ArchaeologyJournalClientState {
 
     public static void setLastRightPageTab(@Nullable RightPageContainer.Tab tab) {
         lastRightPageTab = tab;
+        markDirtyIfTracking();
+    }
+
+    // —— 收藏集合访问器 ——
+    public static boolean isFavorite(ResourceLocation id) {
+        return favorites.contains(id);
+    }
+
+    // 切换某个战利品表的收藏状态
+    public static void toggleFavorite(ResourceLocation id) {
+        Set<ResourceLocation> copy = new HashSet<>(favorites);
+        if (!copy.add(id)) {
+            copy.remove(id);
+        }
+        favorites = Collections.unmodifiableSet(copy);
+        markDirtyIfTracking();
+    }
+
+    // 由 JournalUiPreferencesStore 加载后批量替换收藏集合（不触发二次回写）
+    public static void replaceFavorites(Set<ResourceLocation> newFavorites) {
+        favorites = Collections.unmodifiableSet(new HashSet<>(newFavorites));
+    }
+
+    // 供 JournalUiPreferencesStore 序列化快照使用
+    static Set<ResourceLocation> snapshotFavorites() {
+        return favorites;
+    }
+
+    // 加载持久化文件时由 store 调用，抑制 markDirty 回写
+    static void setPersistenceSuppress(boolean suppress) {
+        persistenceSuppress = suppress;
+    }
+
+    // 修改 UI 偏好后标记 store 待刷盘
+    private static void markDirtyIfTracking() {
+        if (!persistenceSuppress) {
+            JournalUiPreferencesStore.markDirty();
+        }
     }
 
     // 断线时重置，使下次连入能正确处理首次同步
     public static void resetOnDisconnect() {
+        // 先把未刷盘的 UI 偏好落盘，避免退出世界时丢失最近修改
+        JournalUiPreferencesStore.flushIfDirty();
         stateInitialized = false;
         lastNotifiedRevision = -1L;
         journalState = new ArchaeologyJournalState();
