@@ -296,5 +296,21 @@
   "entity.unsuspiciousblock.soul_lantern_pet":"灵魂提灯宠物",
 
   "unsuspiciousblock.container.enchant.reveal.header": "附魔候选：",
-  "unsuspiciousblock.container.enchant.reveal.empty": "无候选"
+  "unsuspiciousblock.container.enchant.reveal.empty": "无候选",
+
+  "unsuspiciousblock.container.anvil.reveal.header": "铁砧预览",
+  "unsuspiciousblock.container.anvil.reveal.prior_work": "基础惩罚: %s",
+  "unsuspiciousblock.container.anvil.reveal.enchant_cost": "附魔费用: %s",
+  "unsuspiciousblock.container.anvil.reveal.repair_cost": "修复费用: %s",
+  "unsuspiciousblock.container.anvil.reveal.rename": "重命名: %s",
+  "unsuspiciousblock.container.anvil.reveal.incompatible": "不兼容: %s",
+  "unsuspiciousblock.container.anvil.reveal.other": "其他: %s",
+  "unsuspiciousblock.container.anvil.reveal.total": "总计: %s",
+  "unsuspiciousblock.container.anvil.reveal.repair_cost_change": "惩罚值: %s → %s",
+  "unsuspiciousblock.container.anvil.reveal.enchant_changes": "附魔变动:",
+  "unsuspiciousblock.container.anvil.reveal.change_rejected_incompatible": "(互斥)",
+  "unsuspiciousblock.container.anvil.reveal.change_rejected_unsupported": "(不适用)",
+  "unsuspiciousblock.container.anvil.reveal.too_expensive": "过于昂贵！",
+  "unsuspiciousblock.container.anvil.reveal.no_result": "无可用操作",
+  "unsuspiciousblock.container.anvil.reveal.rename_only": "仅重命名"
 }

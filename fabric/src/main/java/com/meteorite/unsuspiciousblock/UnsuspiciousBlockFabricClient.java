@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock;
 
+import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
@@ -17,6 +18,7 @@ import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -77,6 +79,10 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
 
         // 注册猫之恩惠快捷栏 HUD
         HudRenderCallback.EVENT.register((guiGraphics, tickCounter) -> CatFavorHud.render(guiGraphics));
+
+        // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
+        ItemTooltipCallback.EVENT.register((stack, context, type, lines) ->
+                AnvilBreakdownTooltipAppender.appendIfApplicable(stack, lines));
     }
 
     // 注册 S2C 客户端接收器

@@ -294,5 +294,21 @@
   "entity.unsuspiciousblock.soul_lantern_pet":"Soul Lantern Pet",
 
   "unsuspiciousblock.container.enchant.reveal.header": "Enchantment Candidates:",
-  "unsuspiciousblock.container.enchant.reveal.empty": "No candidates"
+  "unsuspiciousblock.container.enchant.reveal.empty": "No candidates",
+
+  "unsuspiciousblock.container.anvil.reveal.header": "Anvil Preview",
+  "unsuspiciousblock.container.anvil.reveal.prior_work": "Prior Work: %s",
+  "unsuspiciousblock.container.anvil.reveal.enchant_cost": "Enchantment: %s",
+  "unsuspiciousblock.container.anvil.reveal.repair_cost": "Repair: %s",
+  "unsuspiciousblock.container.anvil.reveal.rename": "Rename: %s",
+  "unsuspiciousblock.container.anvil.reveal.incompatible": "Incompatible: %s",
+  "unsuspiciousblock.container.anvil.reveal.other": "Other: %s",
+  "unsuspiciousblock.container.anvil.reveal.total": "Total: %s",
+  "unsuspiciousblock.container.anvil.reveal.repair_cost_change": "Penalty: %s → %s",
+  "unsuspiciousblock.container.anvil.reveal.enchant_changes": "Enchantment Changes:",
+  "unsuspiciousblock.container.anvil.reveal.change_rejected_incompatible": "(incompatible)",
+  "unsuspiciousblock.container.anvil.reveal.change_rejected_unsupported": "(unsupported)",
+  "unsuspiciousblock.container.anvil.reveal.too_expensive": "Too Expensive!",
+  "unsuspiciousblock.container.anvil.reveal.no_result": "No Available Operation",
+  "unsuspiciousblock.container.anvil.reveal.rename_only": "Rename Only"
 }

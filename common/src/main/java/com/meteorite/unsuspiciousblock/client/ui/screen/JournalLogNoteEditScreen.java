@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -83,12 +84,14 @@ public class JournalLogNoteEditScreen extends Screen {
     private void onSave() {
         String value = this.editBox.getValue();
         Services.NETWORK.sendToServer(new UpdateJournalLogNotePayload(this.tableId, this.entryId, value));
-        this.minecraft.setScreen(this.parent);
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(this.parent);
     }
 
     // 取消：直接返回父界面
     private void onCancel() {
-        this.minecraft.setScreen(this.parent);
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(this.parent);
     }
 
     @Override
@@ -104,7 +107,8 @@ public class JournalLogNoteEditScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // ESC 返回父界面（与原版 Screen 行为一致）
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-            this.minecraft.setScreen(this.parent);
+            Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(this.parent);
             return true;
         }
         if (this.editBox.keyPressed(keyCode, scanCode, modifiers)) {

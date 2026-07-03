@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock;
 
+import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
@@ -29,6 +30,7 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -54,6 +56,10 @@ public final class UnsuspiciousBlockNeoForgeClient {
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderLevelStage);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderGui);
+            // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
+            // 注意 ItemTooltipEvent 用 getToolTip()（历史拼写），返回可变列表可直接追加
+            NeoForge.EVENT_BUS.addListener((ItemTooltipEvent tooltipEvent) ->
+                    AnvilBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip()));
         });
     }
 

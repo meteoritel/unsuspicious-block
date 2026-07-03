@@ -26,6 +26,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 public class ArchaeologyJournalScreen extends Screen {
@@ -523,7 +524,8 @@ public class ArchaeologyJournalScreen extends Screen {
         if (entry == null || tableId == null) {
             return;
         }
-        this.minecraft.setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
     }
 
     private static final class JournalPageButton extends PageButton {
