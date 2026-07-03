@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图 */
 public final class LogPanel implements PagePanel {
@@ -39,6 +41,12 @@ public final class LogPanel implements PagePanel {
     // 当前帧悬停的条目（用于备注 tooltip 渲染），每帧 render 时重置
     @Nullable
     private LogEntryState hoveredEntryState;
+    // 当前帧悬停备注图标的条目（用于编辑入口 tooltip 渲染），每帧 render 时重置
+    @Nullable
+    private LogEntryState noteBadgeHoveredEntry;
+    // 备注图标点击回调（由外部 screen 设置，打开备注编辑界面）
+    @Nullable
+    private Consumer<ExcavationLogEntry> noteClickHandler;
 
     /** 显示行：组头或条目，混合高度分页 */
     private interface DisplayRow {
@@ -153,6 +161,11 @@ public final class LogPanel implements PagePanel {
         this.selectedEntryId = entryId;
     }
 
+    // 设置备注图标点击回调（列表页点击铅笔图标时触发，打开备注编辑界面）
+    public void setNoteClickHandler(@Nullable Consumer<ExcavationLogEntry> handler) {
+        this.noteClickHandler = handler;
+    }
+
     // 对全部条目执行排序和分组，结果写入 displayRows
     private void applyFilterAndSort() {
         this.filteredEntries.clear();
@@ -234,6 +247,7 @@ public final class LogPanel implements PagePanel {
         // 重置按钮悬停缓存（在 renderEntry 中重新填充）
         this.copyBtnHoverX = COPY_BTN_HOVER_NONE;
         this.hoveredEntryState = null;
+        this.noteBadgeHoveredEntry = null;
         if (this.displayRows.isEmpty()) {
             guiGraphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_empty"),
@@ -306,6 +320,12 @@ public final class LogPanel implements PagePanel {
                         CopyCoordinateButton.copyCommand(state.entry);
                         return null;
                     }
+                    // 其次判定备注图标命中：打开备注编辑界面，不进入详情
+                    if (state.entry.hasNote() && this.noteClickHandler != null
+                            && isNoteBadgeHit(leftX - 4, rowY, mouseX, mouseY)) {
+                        this.noteClickHandler.accept(state.entry);
+                        return null;
+                    }
                     return state.entry;
                 }
             }
@@ -320,6 +340,20 @@ public final class LogPanel implements PagePanel {
                 - CopyCoordinateButton.WIDTH - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD;
         int btnY = rowY + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET;
         return CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
+    }
+
+    // 判定鼠标是否落在某条目的备注图标上（命中盒比字符略大，提升可点击性）
+    private static boolean isNoteBadgeHit(int bgX, int rowY, double mouseX, double mouseY) {
+        Font font = Minecraft.getInstance().font;
+        String badge = "✎";
+        int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - font.width(badge) - 3;
+        int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
+        int hitX = badgeX - 3;
+        int hitY = badgeY - 2;
+        int hitW = font.width(badge) + 6;
+        int hitH = font.lineHeight + 3;
+        return mouseX >= hitX && mouseX <= hitX + hitW
+                && mouseY >= hitY && mouseY <= hitY + hitH;
     }
 
     @Nullable
@@ -423,12 +457,27 @@ public final class LogPanel implements PagePanel {
         ScrollTextHelper.draw(guiGraphics, font, line2,
                 textX, rowY + 14, textWidth, JournalLayout.LOG_ENTRY_DIM_POS_COLOR, hovered, state.scrollTicks, false);
 
-        // 已备注标记：右下角绘制小铅笔字符
+        // 已备注标记：右下角绘制小铅笔字符，悬停时高亮提示可点击编辑
         if (state.entry.hasNote()) {
             String badge = "✎";
             int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - font.width(badge) - 3;
             int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
-            guiGraphics.drawString(font, badge, badgeX, badgeY, JournalLayout.LOG_ENTRY_NOTE_BADGE_COLOR, false);
+            boolean badgeHovered = isNoteBadgeHit(bgX, rowY, mouseX, mouseY);
+            if (badgeHovered) {
+                // 半透明背景 + 暖橙字符，提示可点击
+                int hitX = badgeX - 3;
+                int hitY = badgeY - 2;
+                int hitW = font.width(badge) + 6;
+                int hitH = font.lineHeight + 3;
+                guiGraphics.fill(hitX, hitY, hitX + hitW, hitY + hitH,
+                        JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);
+                guiGraphics.drawString(font, badge, badgeX, badgeY,
+                        JournalLayout.LOG_ENTRY_NOTE_BADGE_HOVER_COLOR, false);
+                this.noteBadgeHoveredEntry = state;
+            } else {
+                guiGraphics.drawString(font, badge, badgeX, badgeY,
+                        JournalLayout.LOG_ENTRY_NOTE_BADGE_COLOR, false);
+            }
         }
     }
 
@@ -439,7 +488,14 @@ public final class LogPanel implements PagePanel {
             CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
             return;
         }
-        // 其次渲染备注内容 tooltip（悬停在已备注条目上时）
+        // 其次渲染备注图标编辑提示（悬停铅笔图标时，提示可点击编辑）
+        if (this.noteBadgeHoveredEntry != null) {
+            guiGraphics.renderTooltip(font,
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip"),
+                    mouseX, mouseY);
+            return;
+        }
+        // 最后渲染备注内容 tooltip（悬停已备注条目其他区域时）
         if (this.hoveredEntryState != null && this.hoveredEntryState.entry.hasNote()) {
             List<Component> lines = new ArrayList<>();
             lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_tooltip_title"));

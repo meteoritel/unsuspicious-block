@@ -195,6 +195,7 @@
   "screen.unsuspiciousblock.archaeology_journal.log_note_save": "Save",
   "screen.unsuspiciousblock.archaeology_journal.log_note_cancel": "Cancel",
   "screen.unsuspiciousblock.archaeology_journal.log_note_tooltip_title": "Note:",
+  "screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip": "Click to edit note",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_empty": "No log entry selected.",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_created_label": "Created",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_updated_label": "Updated",

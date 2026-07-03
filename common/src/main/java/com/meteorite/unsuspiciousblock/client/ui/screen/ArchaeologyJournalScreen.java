@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -412,6 +413,9 @@ public class ArchaeologyJournalScreen extends Screen {
                 () -> {}
         ));
 
+        // 日志列表页备注图标点击回调：直接打开备注编辑界面，无需进入详情页
+        this.rightPage.getLogPanel().setNoteClickHandler(this::openNoteEditorForEntry);
+
         this.syncButtonState();
     }
 
@@ -522,6 +526,16 @@ public class ArchaeologyJournalScreen extends Screen {
         var entry = detail.getEntry();
         var tableId = detail.getTableId();
         if (entry == null || tableId == null) {
+            return;
+        }
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
+    }
+
+    // 从日志列表页备注图标直接打开编辑界面（不经过详情页）
+    private void openNoteEditorForEntry(ExcavationLogEntry entry) {
+        ResourceLocation tableId = this.viewModel.selectedTableId();
+        if (tableId == null) {
             return;
         }
         Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")

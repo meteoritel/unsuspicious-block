@@ -195,6 +195,7 @@
   "screen.unsuspiciousblock.archaeology_journal.log_note_save": "保存",
   "screen.unsuspiciousblock.archaeology_journal.log_note_cancel": "取消",
   "screen.unsuspiciousblock.archaeology_journal.log_note_tooltip_title": "备注：",
+  "screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip": "点击编辑备注",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_empty": "未选择日志条目。",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_created_label": "创建",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_updated_label": "更新",

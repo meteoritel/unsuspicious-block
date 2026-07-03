@@ -23,11 +23,6 @@ import java.util.List;
  *   <li>触发 tooltip 的物品栈 == 铁砧结果槽物品栈（引用相等）</li>
  * </ol>
  *
- * <p>引用比较的依据：{@link net.minecraft.client.gui.screens.inventory.AbstractContainerScreen#renderTooltip}
- * 内部通过 {@code hoveredSlot.getItem()} 获取 ItemStack 并传入 {@code ItemStack.getTooltipLines}，
- * 事件回调收到的 stack 与结果槽物品是同一引用，故引用比较可可靠区分 hover 槽位，无需访问
- * protected 的 {@code hoveredSlot} 字段。
- *
  * <p>分解计算完全在客户端进行（见 {@link AnvilBreakdownCalculator}），无网络同步开销。
  */
 public final class AnvilBreakdownTooltipAppender {

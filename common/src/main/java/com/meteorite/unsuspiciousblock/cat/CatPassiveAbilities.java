@@ -34,7 +34,7 @@ public final class CatPassiveAbilities {
 
     // 「猫的眼」夜视：服务端分级检测，降低高频亮度查询开销
     // 触发夜视的亮度阈值（环境亮度低于此值视为黑暗）
-    private static final int DARKNESS_THRESHOLD = 7;
+    private static final int DARKNESS_THRESHOLD = 9;
     // 夜视持续时长（tick）：16 秒，刷新窗口留足余量避免画面闪烁
     private static final int NIGHT_VISION_DURATION = 320;
     // 空闲态检查间隔（tick）：1 秒一次，用于侦测进入黑暗
