@@ -4,47 +4,41 @@ import com.meteorite.unsuspiciousblock.entity.LanternPet;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
-import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.entity.MobRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 灵魂提灯宠物渲染器 —— 直接绘制原版灵魂灯笼方块模型作为实体外观。
+ * 灵魂提灯宠物渲染器 —— 使用自定义 LanternPetModel 渲染精致飞行提灯
  * <p>
- * 实体本身不携带贴图文件（复用方块图集），通过 {@link BlockRenderDispatcher#renderSingleBlock}
- * 把当前 soul_lantern 状态烘焙渲染为实体。叠加正弦上下浮动与朝运动方向轻微倾斜，
- * 让宠物在悬停时也保持灵动感。
+ * 保留原有上下浮动与朝向旋转逻辑，贴图改为独立实体贴图。
+ * 灯笼自发光 15 级光照，不显示名称牌。
  */
-public class LanternPetRenderer extends EntityRenderer<LanternPet> {
+public class LanternPetRenderer extends MobRenderer<LanternPet, LanternPetModel> {
 
     private static final float BOB_SPEED = 0.15F;
     private static final float BOB_AMPLITUDE = 0.08F;
     private static final float MODEL_SCALE = 0.7F;
-    // 提灯悬挂点偏移：让方块底部悬在实体坐标下方
+    // 提灯悬挂点偏移：让模型底部悬在实体坐标下方
     private static final float VERTICAL_OFFSET = -0.3F;
 
-    private final BlockRenderDispatcher blockRenderer;
-    private final BlockState soulLanternState;
+    private static final ResourceLocation TEXTURE =
+            ResourceLocation.fromNamespaceAndPath("unsuspiciousblock",
+                    "textures/entity/soul_lantern_pet.png");
 
     public LanternPetRenderer(EntityRendererProvider.Context ctx) {
-        super(ctx);
-        this.blockRenderer = ctx.getBlockRenderDispatcher();
-        this.soulLanternState = Blocks.SOUL_LANTERN.defaultBlockState();
-        this.shadowRadius = 0.3F;
+        super(ctx, new LanternPetModel(ctx.bakeLayer(LanternPetModel.LAYER_LOCATION)), 0.3F);
+        // TODO: 玻璃半透明 RenderLayer（用 entityTranslucent 渲染玻璃面，骨架保持 cutout，营造透明玻璃质感）
+        // TODO: 火苗 emissive 发光层（叠加满光照自发光贴图，强化灵魂火苗的发光视觉）
+        // TODO: 灵魂粒子拖尾 RenderLayer（移动时在模型后方追加 SOUL 粒子拖尾，与实体粒子联动）
     }
 
     @Override
     public @NotNull ResourceLocation getTextureLocation(@NotNull LanternPet entity) {
-        // 复用方块图集；实际渲染走 BlockRenderDispatcher，不依赖本贴图
-        return InventoryMenu.BLOCK_ATLAS;
+        return TEXTURE;
     }
 
     @Override
@@ -57,26 +51,15 @@ public class LanternPetRenderer extends EntityRenderer<LanternPet> {
         float bob = Mth.sin((entity.tickCount + partialTicks) * BOB_SPEED) * BOB_AMPLITUDE;
         poseStack.translate(0.0F, bob + VERTICAL_OFFSET, 0.0F);
 
-        // 朝向：跟随实体 yRot 旋转，xRot 微倾以表现飞行姿态
+        // 朝向：跟随实体 yRot 旋转
         float yRot = Mth.lerp(partialTicks, entity.yRotO, entity.getYRot());
-        float xRot = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot()) * 0.3F;
         poseStack.mulPose(Axis.YP.rotationDegrees(180.0F - yRot));
-        poseStack.mulPose(Axis.XP.rotationDegrees(xRot));
 
-        // 缩放：将方块渲染为略小于原版灯笼尺寸
+        // 缩放：将模型渲染为略小于原版灯笼尺寸
         poseStack.scale(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
 
-        // 灯笼方块原点居中
-        poseStack.translate(-0.5F, 0.0F, -0.5F);
-
-        // 渲染灵魂灯笼方块模型；使用 translucent 类型让灵魂火苗贴图正常透出
-        int packedOverlay = OverlayTexture.NO_OVERLAY;
-        this.blockRenderer.renderSingleBlock(
-                this.soulLanternState, poseStack, bufferSource,
-                packedLight, packedOverlay);
-
-        poseStack.popPose();
         super.render(entity, entityYaw, partialTicks, poseStack, bufferSource, packedLight);
+        poseStack.popPose();
     }
 
     @Override

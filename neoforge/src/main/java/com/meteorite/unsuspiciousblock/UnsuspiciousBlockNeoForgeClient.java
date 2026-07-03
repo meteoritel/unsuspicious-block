@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppende
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
+import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
@@ -99,6 +100,12 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         // 实体类型 Supplier 已在 mod 构造器静态块中回写，此处直接遍历渲染器清单注册
         ModEntityRenderers.forEach(event::registerEntityRenderer);
+    }
+
+    @SubscribeEvent
+    public static void registerLayerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
+        // 遍历模型层清单，统一注册 LayerDefinition（须在渲染器烘焙前完成）
+        ModModelLayers.forEach(event::registerLayerDefinition);
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {

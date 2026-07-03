@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppende
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
+import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
@@ -22,6 +23,7 @@ import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
@@ -39,6 +41,11 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
 
         // 遍历渲染器清单，统一注册实体渲染器
         ModEntityRenderers.forEach(EntityRendererRegistry::register);
+
+        // 遍历模型层清单，统一注册 LayerDefinition
+        // fabric 用 TexturedModelDataProvider 函数式接口，通过 supplier::get 桥接
+        ModModelLayers.forEach((location, supplier) ->
+                EntityModelLayerRegistry.registerModelLayer(location, supplier::get));
 
         ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
         // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗

@@ -66,8 +66,8 @@ public class ModEntities {
 
     public static EntityType<LanternPet> createLanternPetType() {
         return EntityType.Builder.of(LanternPet::new, MobCategory.CREATURE)
-                .sized(0.5f, 0.5f)
-                .eyeHeight(0.4f)
+                .sized(0.6f, 0.9f)
+                .eyeHeight(0.5f)
                 .clientTrackingRange(8)
                 .build("soul_lantern_pet");
     }
