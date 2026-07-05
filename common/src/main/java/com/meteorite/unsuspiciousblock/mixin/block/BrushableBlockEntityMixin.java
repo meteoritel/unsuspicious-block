@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -387,7 +388,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
                 : sp.serverLevel().getDayTime();
 
         // 首次发现记录使用原始战利品——解锁与首次发现时间基于战利品表结果
-        ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, this.unsuspiciousblock$lootTableName,
+        LootTrackingEvents.publish(sp, this.unsuspiciousblock$lootTableName,
                 originalItem, LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
 
         BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();

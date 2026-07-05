@@ -29,6 +29,7 @@ import java.util.UUID;
 /**
  * 考古战利品运行时追踪器——服务端核心业务逻辑入口。
  * 负责：战利品解锁、日志条目创建与更新、签名解析与转换。
+ * 战利品发现事件由 {@link com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents} 发布，
  * 容器追踪生命周期由 {@link ContainerTrackingService} 承载，
  * 菜单快照机制由 {@link MenuTrackingSnapshotService} 承载。
  */
@@ -76,32 +77,6 @@ public final class ArchaeologyLootRuntimeTracker {
         if (!ArchaeologyJournalServerCatalog.hasSimulatedData(tableId)) {
             worker.enqueuePriority(tableId);
         }
-    }
-
-    // 战利品发现事件处理（单物品栈）：解锁 + 记录首次发现时间
-    public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
-                                        ItemStack loot, @Nullable LootSourceType lootSource,
-                                        long gameTime, long dayTime) {
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return;
-        }
-        unlockResolvedLoot(player, tableId, loot);
-        JournalLogRecorder.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
-        ArchaeologyChallengeChecker.checkAndGrant(player, state);
-    }
-
-    // 战利品发现事件处理（批量物品）：解锁 + 记录首次发现时间
-    public static void onLootDiscovered(ServerPlayer player, ResourceLocation tableId,
-                                        Map<String, Integer> itemCounts, @Nullable LootSourceType lootSource,
-                                        long gameTime, long dayTime) {
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return;
-        }
-        unlockResolvedLoot(player, tableId, itemCounts);
-        JournalLogRecorder.recordFirstUnlock(player, tableId, lootSource, gameTime, dayTime);
-        ArchaeologyChallengeChecker.checkAndGrant(player, state);
     }
 
     @Nullable

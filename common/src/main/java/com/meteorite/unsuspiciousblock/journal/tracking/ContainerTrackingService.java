@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.journal.tracking;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -63,7 +64,7 @@ public final class ContainerTrackingService {
             }
         }
 
-        ArchaeologyLootRuntimeTracker.onLootDiscovered(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime);
+        LootTrackingEvents.publish(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime);
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearAllTrackingState();
             return;

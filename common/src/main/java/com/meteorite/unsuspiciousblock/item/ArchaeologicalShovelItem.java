@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -221,7 +222,7 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         if (lootTableName != null && player instanceof ServerPlayer sp && pendingEntry == null) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
-            ArchaeologyLootRuntimeTracker.onLootDiscovered(sp, lootTableName, extracted,
+            LootTrackingEvents.publish(sp, lootTableName, extracted,
                     LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
             pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(
                     sp,

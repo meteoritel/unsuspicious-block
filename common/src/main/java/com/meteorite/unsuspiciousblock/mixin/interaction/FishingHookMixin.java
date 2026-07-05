@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.resources.ResourceKey;
@@ -28,7 +28,7 @@ import java.util.List;
 
 /**
  * 在钓鱼收杆流程中替换原版战利品表，并将本模组解析出的钓鱼战利品表
- * 通过 {@link ArchaeologyLootRuntimeTracker} 写入考古笔记追踪流程。
+ * 通过 {@link LootTrackingEvents} 发布为战利品发现事件，进入考古笔记追踪流程。
  */
 @Mixin(FishingHook.class)
 public abstract class FishingHookMixin {
@@ -115,7 +115,7 @@ public abstract class FishingHookMixin {
             long gameTime = serverLevel.getGameTime();
             long dayTime = serverLevel.getDayTime();
             for (ItemStack stack : this.unsuspiciousblock$capturedFishingLoot) {
-                ArchaeologyLootRuntimeTracker.onLootDiscovered(player, tableId, stack,
+                LootTrackingEvents.publish(player, tableId, stack,
                         LootSourceType.FISHING, gameTime, dayTime);
             }
         }

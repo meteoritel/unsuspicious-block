@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -444,7 +445,7 @@ public class SuspiciousReaderItem extends Item {
         if (lootTableName != null) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
-            ArchaeologyLootRuntimeTracker.onLootDiscovered(player, lootTableName, lootItem,
+            LootTrackingEvents.publish(player, lootTableName, lootItem,
                     LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
             scanState.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
                     player,
