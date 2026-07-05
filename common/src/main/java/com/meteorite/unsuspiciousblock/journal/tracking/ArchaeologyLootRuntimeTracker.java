@@ -14,24 +14,15 @@ import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import net.minecraft.core.Registry;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.StructureManager;
-import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.levelgen.structure.Structure;
-import net.minecraft.world.level.levelgen.structure.StructureStart;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -151,7 +142,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         ServerLevel level = player.serverLevel();
         ExcavationLogEntry.ExcavationContext context = new ExcavationLogEntry.ExcavationContext(
-                level.dimension().location(), sourceBlockId, resolveStructureId(level, pos), resolveBiomeId(level, pos), pos);
+                level.dimension().location(), sourceBlockId, WorldContextResolver.resolveStructureId(level, pos), WorldContextResolver.resolveBiomeId(level, pos), pos);
         ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
                 Math.max(0L, gameTime), Math.max(0L, dayTime));
         return new ExcavationLogEntry(UUID.randomUUID(), lootSource, context,
@@ -235,17 +226,11 @@ public final class ArchaeologyLootRuntimeTracker {
             container.unsuspiciousblock$clearAllTrackingState();
             return;
         }
-        BlockPos pos = resolveContainerPos(container);
+        BlockPos pos = WorldContextResolver.resolveContainerPos(container);
         container.unsuspiciousblock$setPendingJournalEntry(createPendingEntry(player, LootSourceType.LOOT_CONTAINER,
-                resolveContainerSourceBlockId(container), pos, itemCounts, gameTime, dayTime));
+                WorldContextResolver.resolveContainerSourceBlockId(container), pos, itemCounts, gameTime, dayTime));
         container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
         container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
-    }
-
-    @Nullable
-    // 捕获容器菜单打开前的快照（记录追踪容器与玩家物品栏/光标中相关物品的计数）
-    public static MenuTrackingSnapshot captureMenuTrackingSnapshot(ServerPlayer player, Collection<Container> rootContainers) {
-        return captureMenuTrackingSnapshot(player, rootContainers, ItemStack.EMPTY);
     }
 
     @Nullable
@@ -280,11 +265,6 @@ public final class ArchaeologyLootRuntimeTracker {
         return new MenuTrackingSnapshot(trackedContainers,
                 capturePlayerInventoryCounts(player.getInventory(), trackedSignatures.values()),
                 beforeCarriedCounts);
-    }
-
-    // 应用容器菜单快照核对：计算增量 → 更新日志条目，返回 true 表示有更新被应用
-    public static boolean applyMenuTrackingSnapshot(ServerPlayer player, MenuTrackingSnapshot snapshot) {
-        return applyMenuTrackingSnapshot(player, snapshot, ItemStack.EMPTY);
     }
 
     // 应用容器菜单快照核对，同时检查光标物品，返回 true 表示有更新被应用
@@ -591,67 +571,12 @@ public final class ArchaeologyLootRuntimeTracker {
         return Map.of(signature.toStoredKey(), stack.getCount());
     }
 
-
-    private static BlockPos resolveContainerPos(TrackedContainerLootState container) {
-        if (container instanceof BlockEntity blockEntity) {
-            return blockEntity.getBlockPos();
-        }
-        return BlockPos.ZERO;
-    }
-
-    @Nullable
-    private static ResourceLocation resolveContainerSourceBlockId(TrackedContainerLootState container) {
-        if (container instanceof BlockEntity blockEntity) {
-            return BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
-        }
-        return null;
-    }
-
-    private static ResourceLocation resolveBiomeId(ServerLevel level, BlockPos pos) {
-        Holder<Biome> biomeHolder = level.getBiome(pos);
-        return biomeHolder.unwrapKey()
-                .map(ResourceKey::location)
-                .orElse(ResourceLocation.withDefaultNamespace("plains"));
-    }
-
-    @Nullable
-    private static ResourceLocation resolveStructureId(ServerLevel level, BlockPos pos) {
-        StructureManager structureManager = level.structureManager();
-        // 一步获取该 chunk 内所有已解析的结构开端
-        Registry<Structure> structureRegistry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
-        ResourceLocation bestMatch = null;
-
-        for (StructureStart start : structureManager.startsForStructure(new ChunkPos(pos), structure -> true)) {
-            if (!start.isValid() || !start.getBoundingBox().isInside(pos)) {
-                continue;
-            }
-            ResourceLocation id = structureRegistry.getKey(start.getStructure());
-            if (id == null) {
-                continue;
-            }
-            if (bestMatch == null || id.toString().compareTo(bestMatch.toString()) < 0) {
-                bestMatch = id;
-            }
-        }
-        return bestMatch;
-    }
-
     @Nullable
     private static ArchaeologyJournalState getState(ServerPlayer player) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
             return null;
         }
         return holder.unsuspiciousblock$getArchaeologyJournalState();
-    }
-
-    public record MenuTrackingSnapshot(List<TrackedContainerLootState> trackedContainers,
-                                       Map<String, Integer> beforeInventoryCounts,
-                                       Map<String, Integer> beforeCarriedCounts) {
-        public MenuTrackingSnapshot {
-            trackedContainers = List.copyOf(trackedContainers);
-            beforeInventoryCounts = Map.copyOf(beforeInventoryCounts);
-            beforeCarriedCounts = Map.copyOf(beforeCarriedCounts);
-        }
     }
 
     private record ContainerLootUpdate(ResourceLocation tableId,

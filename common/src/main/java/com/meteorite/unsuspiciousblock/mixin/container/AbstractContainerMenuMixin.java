@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin.container;
 
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.MenuTrackingSnapshot;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -35,7 +36,7 @@ public abstract class AbstractContainerMenuMixin {
 
     @Unique
     @Nullable
-    private ArchaeologyLootRuntimeTracker.MenuTrackingSnapshot unsuspiciousblock$menuTrackingSnapshot;
+    private MenuTrackingSnapshot unsuspiciousblock$menuTrackingSnapshot;
 
     // 在点击处理前记录玩家背包与光标中相关物品的快照
     @Inject(method = "clicked", at = @At("HEAD"))
