@@ -6,7 +6,7 @@ import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.ContainerTrackingService;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -69,7 +69,7 @@ public interface RandomizableContainerMixin {
         }
 
         List<LootResultSignature> candidates = unsuspiciousblock$collectCandidates(trackedContainer, tableId);
-        ArchaeologyLootRuntimeTracker.onContainerLootResolved(sp, trackedContainer,
+        ContainerTrackingService.onContainerLootResolved(sp, trackedContainer,
                 tableId,
                 trackedContainer.unsuspiciousblock$collectContainerItemCounts(candidates));
     }

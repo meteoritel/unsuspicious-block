@@ -1,7 +1,8 @@
 package com.meteorite.unsuspiciousblock.mixin.container;
 
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.ContainerTrackingService;
 import com.meteorite.unsuspiciousblock.journal.tracking.MenuTrackingSnapshot;
+import com.meteorite.unsuspiciousblock.journal.tracking.MenuTrackingSnapshotService;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -45,7 +46,7 @@ public abstract class AbstractContainerMenuMixin {
             return;
         }
 
-        this.unsuspiciousblock$menuTrackingSnapshot = ArchaeologyLootRuntimeTracker.captureMenuTrackingSnapshot(sp,
+        this.unsuspiciousblock$menuTrackingSnapshot = MenuTrackingSnapshotService.captureMenuTrackingSnapshot(sp,
                 this.unsuspiciousblock$collectRootContainers(), this.getCarried());
     }
 
@@ -57,7 +58,7 @@ public abstract class AbstractContainerMenuMixin {
         }
 
         if (player instanceof ServerPlayer sp) {
-            if (ArchaeologyLootRuntimeTracker.applyMenuTrackingSnapshot(sp, this.unsuspiciousblock$menuTrackingSnapshot, this.getCarried())) {
+            if (MenuTrackingSnapshotService.applyMenuTrackingSnapshot(sp, this.unsuspiciousblock$menuTrackingSnapshot, this.getCarried())) {
                 this.unsuspiciousblock$menuTrackingSnapshot = null;
             }
         } else {
@@ -76,12 +77,12 @@ public abstract class AbstractContainerMenuMixin {
         // 若快照仍存在（物品在光标上但未被 click TAIL 结算），此时 vanilla removed() 已将光标物品放入物品栏
         // 重新应用快照，光标应已空，增量体现在背包中
         if (this.unsuspiciousblock$menuTrackingSnapshot != null) {
-            ArchaeologyLootRuntimeTracker.applyMenuTrackingSnapshot(sp, this.unsuspiciousblock$menuTrackingSnapshot, ItemStack.EMPTY);
+            MenuTrackingSnapshotService.applyMenuTrackingSnapshot(sp, this.unsuspiciousblock$menuTrackingSnapshot, ItemStack.EMPTY);
             this.unsuspiciousblock$menuTrackingSnapshot = null;
         }
 
         // 校正容器追踪数据（结算残留待定条目后清理）
-        ArchaeologyLootRuntimeTracker.reconcileTrackedContainers(sp, this.unsuspiciousblock$collectRootContainers());
+        ContainerTrackingService.reconcileTrackedContainers(sp, this.unsuspiciousblock$collectRootContainers());
     }
 
     // 收集当前菜单关联的根容器，供运行时追踪统一处理

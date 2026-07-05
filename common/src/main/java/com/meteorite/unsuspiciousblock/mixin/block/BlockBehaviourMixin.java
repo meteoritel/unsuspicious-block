@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.mixin.block;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.ContainerTrackingService;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -38,7 +38,7 @@ public abstract class BlockBehaviourMixin {
         if (state.hasBlockEntity()) {
             BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof TrackedContainerLootState) {
-                ArchaeologyLootRuntimeTracker.onContainerBlockDestroyed(serverLevel, pos);
+                ContainerTrackingService.onContainerBlockDestroyed(serverLevel, pos);
             }
         }
     }

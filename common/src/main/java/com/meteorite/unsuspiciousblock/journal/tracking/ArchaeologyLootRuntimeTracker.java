@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.journal.tracking;
 
-import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
@@ -13,33 +12,25 @@ import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.Container;
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /**
  * 考古战利品运行时追踪器——服务端核心业务逻辑入口。
- * 负责：战利品解锁、日志条目创建与更新、容器物品追踪与核对。
- * 通过 captureMenuTrackingSnapshot / applyMenuTrackingSnapshot 实现
- * "打开容器前快照 → 打开容器后核对" 的两阶段追踪模式。
+ * 负责：战利品解锁、日志条目创建与更新、签名解析与转换。
+ * 容器追踪生命周期由 {@link ContainerTrackingService} 承载，
+ * 菜单快照机制由 {@link MenuTrackingSnapshotService} 承载。
  */
 public final class ArchaeologyLootRuntimeTracker {
     private ArchaeologyLootRuntimeTracker() {
@@ -187,190 +178,6 @@ public final class ArchaeologyLootRuntimeTracker {
         return updatedEntry;
     }
 
-    // 容器战利品确认处理：结算旧条目（如有）→ 解锁物品 + 创建待定日志条目 + 记录追踪状态
-    // 仅第一个触发解析的玩家会创建追踪，后续玩家跳过
-    public static void onContainerLootResolved(ServerPlayer player,
-                                               TrackedContainerLootState container,
-                                               ResourceLocation tableId,
-                                               Map<String, Integer> itemCounts) {
-        long gameTime = player.serverLevel().getGameTime();
-        long dayTime = player.serverLevel().getDayTime();
-        long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
-
-        // 多玩家并发安全：若追踪玩家 UUID 已存在且不是当前玩家，跳过
-        UUID trackedPlayerUuid = container.unsuspiciousblock$getTrackedPlayerUuid();
-        if (trackedPlayerUuid != null && !trackedPlayerUuid.equals(player.getUUID())) {
-            // 超时检查：即使不是当前玩家，也要检查是否需要清理过期追踪
-            if (container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
-                flushTrackingToJournal(player, container);
-            }
-            return;
-        }
-
-        // 超时检查：若追踪已超时，先 flush 旧条目再创建新追踪
-        if (trackedPlayerUuid == null && container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
-            flushTrackingToJournal(player, container);
-        } else if (container.unsuspiciousblock$getPendingJournalEntry() != null
-                && container.unsuspiciousblock$getTrackedLootTableName() != null) {
-            // 若容器有未结算的旧追踪条目（非超时），先将旧条目写入日志再覆盖追踪状态
-            ResourceLocation oldTableId = container.unsuspiciousblock$getTrackedLootTableName();
-            ExcavationLogEntry oldPendingEntry = container.unsuspiciousblock$getPendingJournalEntry();
-            if (oldPendingEntry != null) {
-                JournalLogRecorder.upsertExcavationEntry(player, oldTableId, oldPendingEntry,
-                        toSignatureCounts(oldPendingEntry.actualLoot()));
-            }
-        }
-
-        onLootDiscovered(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime);
-        if (itemCounts.isEmpty()) {
-            container.unsuspiciousblock$clearAllTrackingState();
-            return;
-        }
-        BlockPos pos = WorldContextResolver.resolveContainerPos(container);
-        container.unsuspiciousblock$setPendingJournalEntry(createPendingEntry(player, LootSourceType.LOOT_CONTAINER,
-                WorldContextResolver.resolveContainerSourceBlockId(container), pos, itemCounts, gameTime, dayTime));
-        container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
-        container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
-    }
-
-    @Nullable
-    // 捕获容器菜单操作前的快照，同时记录光标上的追踪物品
-    // 仅收集当前玩家拥有的追踪容器，超时的容器先 flush
-    public static MenuTrackingSnapshot captureMenuTrackingSnapshot(ServerPlayer player, Collection<Container> rootContainers, ItemStack carriedItem) {
-        long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
-
-        List<TrackedContainerLootState> trackedContainers = collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks);
-        if (trackedContainers.isEmpty()) {
-            return null;
-        }
-
-        LinkedHashMap<String, LootResultSignature> trackedSignatures = new LinkedHashMap<>();
-        for (TrackedContainerLootState trackedContainer : trackedContainers) {
-            for (Map.Entry<String, Integer> entry : trackedContainer.unsuspiciousblock$getTrackedLootCounts().entrySet()) {
-                if (entry.getValue() <= 0) {
-                    continue;
-                }
-                LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
-                if (signature != null) {
-                    trackedSignatures.putIfAbsent(signature.toStoredKey(), signature);
-                }
-            }
-        }
-        if (trackedSignatures.isEmpty()) {
-            return null;
-        }
-
-        Map<String, Integer> beforeCarriedCounts = resolveItemCounts(carriedItem, trackedSignatures.values());
-        return new MenuTrackingSnapshot(trackedContainers,
-                capturePlayerInventoryCounts(player.getInventory(), trackedSignatures.values()),
-                beforeCarriedCounts);
-    }
-
-    // 应用容器菜单快照核对，同时检查光标物品，返回 true 表示有更新被应用
-    public static boolean applyMenuTrackingSnapshot(ServerPlayer player, MenuTrackingSnapshot snapshot, ItemStack afterCarriedItem) {
-        List<LootResultSignature> signatures = new ArrayList<>();
-        for (String signatureKey : snapshot.beforeInventoryCounts().keySet()) {
-            LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
-            if (signature != null) {
-                signatures.add(signature);
-            }
-        }
-
-        // 计算背包增量
-        Map<String, Integer> afterInventoryCounts = capturePlayerInventoryCounts(player.getInventory(), signatures);
-        // 计算光标增量：afterCarried - beforeCarried
-        Map<String, Integer> afterCarriedCounts = resolveItemCounts(afterCarriedItem, signatures);
-
-        LinkedHashMap<TrackedContainerLootState, ContainerLootUpdate> updates = new LinkedHashMap<>();
-        // 遍历所有追踪签名，计算（背包增量 + 光标增量）
-        LinkedHashMap<String, Integer> allSignatureKeys = new LinkedHashMap<>();
-        for (LootResultSignature sig : signatures) {
-            allSignatureKeys.put(sig.toStoredKey(), 0);
-        }
-        for (String signatureKey : allSignatureKeys.keySet()) {
-            int beforeInv = snapshot.beforeInventoryCounts().getOrDefault(signatureKey, 0);
-            int afterInv = afterInventoryCounts.getOrDefault(signatureKey, 0);
-            int invDelta = afterInv - beforeInv;
-
-            int beforeCarried = snapshot.beforeCarriedCounts().getOrDefault(signatureKey, 0);
-            int afterCarried = afterCarriedCounts.getOrDefault(signatureKey, 0);
-            int carriedDelta = afterCarried - beforeCarried;
-
-            int totalDelta = invDelta + carriedDelta;
-            if (totalDelta <= 0) {
-                continue;
-            }
-
-            int remaining = totalDelta;
-            for (TrackedContainerLootState trackedContainer : snapshot.trackedContainers()) {
-                ResourceLocation tableId = trackedContainer.unsuspiciousblock$getTrackedLootTableName();
-                if (tableId == null) {
-                    continue;
-                }
-
-                int consumed = trackedContainer.unsuspiciousblock$consumeTrackedLoot(signatureKey, remaining);
-                if (consumed <= 0) {
-                    continue;
-                }
-
-                ContainerLootUpdate update = updates.computeIfAbsent(trackedContainer,
-                        ignored -> new ContainerLootUpdate(tableId));
-                update.actualLoot().merge(signatureKey, consumed, Integer::sum);
-                remaining -= consumed;
-                if (remaining <= 0) {
-                    break;
-                }
-            }
-        }
-
-        if (updates.isEmpty()) {
-            return false;
-        }
-
-        long gameTime = player.serverLevel().getGameTime();
-        long dayTime = player.serverLevel().getDayTime();
-        for (Map.Entry<TrackedContainerLootState, ContainerLootUpdate> entry : updates.entrySet()) {
-            TrackedContainerLootState trackedContainer = entry.getKey();
-            ContainerLootUpdate update = entry.getValue();
-            ExcavationLogEntry updatedEntry = applyPendingLoot(player, update.tableId(),
-                    trackedContainer.unsuspiciousblock$getPendingJournalEntry(),
-                    update.actualLoot(), gameTime, dayTime);
-            if (trackedContainer.unsuspiciousblock$hasTrackedLoot()) {
-                trackedContainer.unsuspiciousblock$setPendingJournalEntry(updatedEntry);
-            } else {
-                // 追踪已全部结算，清除容器的完整追踪状态
-                trackedContainer.unsuspiciousblock$clearAllTrackingState();
-            }
-        }
-        return true;
-    }
-
-    // 核对容器追踪状态：清理已过期或已标记移除的追踪，并结算残留的待定日志条目
-    // 仅处理当前玩家拥有的追踪容器，超时的先 flush
-    public static void reconcileTrackedContainers(ServerPlayer player, Collection<Container> rootContainers) {
-        long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
-
-        for (TrackedContainerLootState trackedContainer : collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks)) {
-            // reconcile 前获取旧条目和 tableId
-            ExcavationLogEntry pendingEntry = trackedContainer.unsuspiciousblock$getPendingJournalEntry();
-            ResourceLocation tableId = trackedContainer.unsuspiciousblock$getTrackedLootTableName();
-
-            trackedContainer.unsuspiciousblock$reconcileTrackedLoot();
-
-            // reconcile 后若追踪状态已清空但有残留的 pendingJournalEntry，将旧条目写入日志并清除
-            if (!trackedContainer.unsuspiciousblock$hasTrackedLoot() && pendingEntry != null) {
-                if (tableId != null) {
-                    ServerPlayer recipient = resolveTrackingPlayer(player, trackedContainer);
-                    JournalLogRecorder.upsertExcavationEntry(recipient, tableId, pendingEntry,
-                            toSignatureCounts(pendingEntry.actualLoot()));
-                }
-                trackedContainer.unsuspiciousblock$clearAllTrackingState();
-            }
-        }
-    }
-
     @Nullable
     // 解析物品栈在指定战利品表中匹配的签名
     public static LootResultSignature resolveSignature(ResourceLocation tableId, ItemStack stack) {
@@ -432,157 +239,11 @@ public final class ArchaeologyLootRuntimeTracker {
         return signatureCounts;
     }
 
-    private static List<TrackedContainerLootState> collectTrackedContainers(Collection<Container> rootContainers) {
-        List<TrackedContainerLootState> trackedContainers = new ArrayList<>();
-        Set<Container> visitedContainers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Set<TrackedContainerLootState> visitedTrackedContainers = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Container rootContainer : rootContainers) {
-            collectTrackedContainers(rootContainer, visitedContainers, visitedTrackedContainers, trackedContainers);
-        }
-        return trackedContainers;
-    }
-
-    // 仅收集当前玩家拥有的追踪容器；超时的追踪先 flush 后移除
-    private static List<TrackedContainerLootState> collectOwnTrackedContainers(ServerPlayer player,
-                                                                               Collection<Container> rootContainers,
-                                                                               long currentGameTime,
-                                                                               long timeoutTicks) {
-        List<TrackedContainerLootState> allTracked = collectTrackedContainers(rootContainers);
-        List<TrackedContainerLootState> result = new ArrayList<>();
-        UUID playerUuid = player.getUUID();
-        for (TrackedContainerLootState tracked : allTracked) {
-            UUID owner = tracked.unsuspiciousblock$getTrackedPlayerUuid();
-            // 超时：先 flush 再移除，不参与本次快照
-            if (tracked.unsuspiciousblock$isTrackingExpired(currentGameTime, timeoutTicks)) {
-                flushTrackingToJournal(player, tracked);
-                continue;
-            }
-            // 仅当前玩家拥有的追踪容器参与
-            if (owner != null && !owner.equals(playerUuid)) {
-                continue;
-            }
-            result.add(tracked);
-        }
-        return result;
-    }
-
-    private static void collectTrackedContainers(Container container,
-                                                 Set<Container> visitedContainers,
-                                                 Set<TrackedContainerLootState> visitedTrackedContainers,
-                                                 List<TrackedContainerLootState> trackedContainers) {
-        if (!visitedContainers.add(container)) {
-            return;
-        }
-
-        if (container instanceof TrackedContainerLootState trackedContainer
-                && trackedContainer.unsuspiciousblock$hasTrackedLoot()
-                && visitedTrackedContainers.add(trackedContainer)) {
-            trackedContainers.add(trackedContainer);
-        }
-
-        if (container instanceof CompoundContainerAccess access) {
-            collectTrackedContainers(access.unsuspiciousblock$getFirstContainer(),
-                    visitedContainers, visitedTrackedContainers, trackedContainers);
-            collectTrackedContainers(access.unsuspiciousblock$getSecondContainer(),
-                    visitedContainers, visitedTrackedContainers, trackedContainers);
-        }
-    }
-
-    // flush 追踪容器的待定日志条目到日志系统，然后清除完整追踪状态
-    public static void flushTrackingToJournal(ServerPlayer fallbackPlayer, TrackedContainerLootState container) {
-        ExcavationLogEntry pendingEntry = container.unsuspiciousblock$getPendingJournalEntry();
-        ResourceLocation tableId = container.unsuspiciousblock$getTrackedLootTableName();
-        if (pendingEntry != null && tableId != null) {
-            ServerPlayer recipient = resolveTrackingPlayer(fallbackPlayer, container);
-            JournalLogRecorder.upsertExcavationEntry(recipient, tableId, pendingEntry,
-                    toSignatureCounts(pendingEntry.actualLoot()));
-        }
-        container.unsuspiciousblock$clearAllTrackingState();
-    }
-
-    // 解析追踪容器的日志接收者：优先追踪玩家 UUID 对应的在线玩家，回退到当前操作玩家
-    private static ServerPlayer resolveTrackingPlayer(ServerPlayer fallbackPlayer, TrackedContainerLootState container) {
-        UUID trackedUuid = container.unsuspiciousblock$getTrackedPlayerUuid();
-        if (trackedUuid != null) {
-            var trackedPlayer = fallbackPlayer.server.getPlayerList().getPlayer(trackedUuid);
-            if (trackedPlayer != null) {
-                return trackedPlayer;
-            }
-        }
-        return fallbackPlayer;
-    }
-
-    // 容器方块被破坏时 flush 其追踪状态
-    public static void onContainerBlockDestroyed(ServerLevel level, BlockPos pos) {
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (!(blockEntity instanceof TrackedContainerLootState trackedContainer)) {
-            return;
-        }
-        if (!trackedContainer.unsuspiciousblock$hasTrackedLoot()
-                && trackedContainer.unsuspiciousblock$getPendingJournalEntry() == null) {
-            return;
-        }
-        // 尝试按追踪玩家 UUID 查找在线玩家，若离线则使用 null 作为回退（放弃该条目）
-        UUID trackedUuid = trackedContainer.unsuspiciousblock$getTrackedPlayerUuid();
-        ServerPlayer recipient = null;
-        if (trackedUuid != null) {
-            recipient = level.getServer().getPlayerList().getPlayer(trackedUuid);
-        }
-        if (recipient == null) {
-            // 追踪玩家不在线，无法写入日志，清除追踪状态
-            trackedContainer.unsuspiciousblock$clearAllTrackingState();
-            return;
-        }
-        flushTrackingToJournal(recipient, trackedContainer);
-    }
-
-    private static Map<String, Integer> capturePlayerInventoryCounts(Inventory inventory, Collection<LootResultSignature> trackedSignatures) {
-        List<LootResultSignature> candidates = new ArrayList<>(trackedSignatures);
-        LinkedHashMap<String, Integer> itemCounts = new LinkedHashMap<>();
-        for (LootResultSignature signature : candidates) {
-            itemCounts.put(signature.toStoredKey(), 0);
-        }
-
-        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack.isEmpty()) {
-                continue;
-            }
-
-            LootResultSignature signature = LootResultMatcher.resolve(stack, candidates);
-            if (signature == null) {
-                continue;
-            }
-            itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
-        }
-        return itemCounts;
-    }
-
-    // 解析单个物品栈在追踪签名中的匹配计数
-    private static Map<String, Integer> resolveItemCounts(ItemStack stack, Collection<LootResultSignature> trackedSignatures) {
-        if (stack.isEmpty() || trackedSignatures.isEmpty()) {
-            return Map.of();
-        }
-        List<LootResultSignature> candidates = new ArrayList<>(trackedSignatures);
-        LootResultSignature signature = LootResultMatcher.resolve(stack, candidates);
-        if (signature == null) {
-            return Map.of();
-        }
-        return Map.of(signature.toStoredKey(), stack.getCount());
-    }
-
     @Nullable
     private static ArchaeologyJournalState getState(ServerPlayer player) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
             return null;
         }
         return holder.unsuspiciousblock$getArchaeologyJournalState();
-    }
-
-    private record ContainerLootUpdate(ResourceLocation tableId,
-                                       LinkedHashMap<String, Integer> actualLoot) {
-        private ContainerLootUpdate(ResourceLocation tableId) {
-            this(tableId, new LinkedHashMap<>());
-        }
     }
 }
