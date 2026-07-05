@@ -89,17 +89,19 @@ public final class CatPassiveAbilities {
         state.setAbilityMask(mask);
     }
 
-    // 「猫的步伐」：幂等增减步高属性修饰符
+    // 「猫的步伐」：幂等增减步高属性修饰符；按住shift潜行时不应用，避免影响从方块边缘下落
     private static void updateStepHeight(ServerPlayer player, boolean want) {
         AttributeInstance instance = player.getAttribute(Attributes.STEP_HEIGHT);
         if (instance == null) {
             return;
         }
+        // 按住shift潜行时不应用步高，保留从方块边缘潜行下落的能力
+        boolean effectiveWant = want && !player.isShiftKeyDown();
         boolean has = instance.getModifier(STEP_MODIFIER_ID) != null;
-        if (want && !has) {
+        if (effectiveWant && !has) {
             instance.addTransientModifier(new AttributeModifier(
                     STEP_MODIFIER_ID, STEP_BONUS, AttributeModifier.Operation.ADD_VALUE));
-        } else if (!want && has) {
+        } else if (!effectiveWant && has) {
             instance.removeModifier(STEP_MODIFIER_ID);
         }
     }
