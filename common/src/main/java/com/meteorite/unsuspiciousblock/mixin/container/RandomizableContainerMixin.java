@@ -6,16 +6,23 @@ import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ContainerTrackingService;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.RandomizableContainer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.storage.loot.LootTable;
 
 import java.util.ArrayList;
@@ -33,29 +40,54 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(RandomizableContainer.class)
 public interface RandomizableContainerMixin {
 
-    // 在解析前捕获本次容器将要使用的战利品表标识
+    // 在解析前捕获本次容器将要使用的战利品表标识，并 push 追踪上下文（若命中追踪规则）
     @Inject(method = "unpackLootTable", at = @At("HEAD"))
     private void unsuspiciousblock$captureLootTable(Player player,
                                                     CallbackInfo ci,
-                                                    @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable) {
+                                                    @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable,
+                                                    @Share("ctxPushed") LocalRef<Boolean> ctxPushed) {
         ResourceLocation tableId = null;
-        if (player instanceof ServerPlayer) {
+        ctxPushed.set(false);
+        if (player instanceof ServerPlayer sp) {
             RandomizableContainer container = (RandomizableContainer) this;
             Level level = container.getLevel();
             ResourceKey<LootTable> lootTable = container.getLootTable();
             if (lootTable != null && level != null && !level.isClientSide() && level.getServer() != null) {
                 tableId = lootTable.location();
             }
+            // 命中追踪规则时 push 上下文，使 NestedLootTableMixin 自动捕获嵌套子表
+            if (tableId != null && LootTableNames.isArchaeologyLootTable(tableId) && level instanceof ServerLevel serverLevel) {
+                // 容器位置与源方块：方块容器有 BlockEntity 位置，非方块容器回退到 ZERO / null
+                BlockPos pos = BlockPos.ZERO;
+                ResourceLocation sourceBlockId = null;
+                if (container instanceof BlockEntity blockEntity) {
+                    pos = blockEntity.getBlockPos();
+                    sourceBlockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
+                }
+                LootTrackingContext ctx = LootTrackingContext.root(
+                        sp, tableId, LootSourceType.LOOT_CONTAINER,
+                        serverLevel.getGameTime(), serverLevel.getDayTime(), pos, sourceBlockId);
+                LootTrackingContextHolder.push(ctx);
+                ctxPushed.set(true);
+            }
         }
 
         capturedLootTable.set(tableId);
     }
 
-    // 在解析后根据容器实际生成的物品更新运行时追踪状态
+    // 在解析后根据容器实际生成的物品更新运行时追踪状态，并 pop 追踪上下文
     @Inject(method = "unpackLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$trackResolvedLoot(Player player,
                                                      CallbackInfo ci,
-                                                     @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable) {
+                                                     @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable,
+                                                     @Share("ctxPushed") LocalRef<Boolean> ctxPushed) {
+        // pop 追踪上下文（若 push 了）；try-finally 语义——unpackLootTable 内部异常时 TAIL 不触发，
+        // 但下次 HEAD 会先重置 ctxPushed，且主线程串行调用不会跨容器泄漏
+        if (Boolean.TRUE.equals(ctxPushed.get())) {
+            LootTrackingContextHolder.pop();
+            ctxPushed.set(false);
+        }
+
         if (!(player instanceof ServerPlayer sp)) {
             return;
         }

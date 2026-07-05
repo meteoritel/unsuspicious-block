@@ -48,6 +48,11 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 }
                 buf.writeUtf(item.probability());
                 buf.writeUtf(item.signature().toStoredKey());
+                // 子表来源（null=根表直接产出）
+                buf.writeBoolean(item.sourceChildTable() != null);
+                if (item.sourceChildTable() != null) {
+                    buf.writeResourceLocation(item.sourceChildTable());
+                }
             }
             buf.writeVarInt(table.simulationCount());
         }
@@ -73,7 +78,11 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 if (signature == null) {
                     signature = LootResultSignature.plain(itemId);
                 }
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature));
+                // 子表来源（null=根表直接产出）
+                ResourceLocation sourceChildTable = buf.readBoolean()
+                        ? buf.readResourceLocation()
+                        : null;
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable));
             }
             int simulationCount = buf.readVarInt();
             catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));

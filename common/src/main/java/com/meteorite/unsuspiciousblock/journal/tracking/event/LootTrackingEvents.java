@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,6 +27,9 @@ import java.util.function.Consumer;
  * 5 个追踪入口（考古 mixin / 扫描仪 / 考古铲 / 钓鱼 mixin / 容器追踪服务）通过 {@link #publish} 发布事件，
  * 由 {@link LootTrackingBootstrap} 注册的内建订阅者统一处理解锁、记录、成就检查三条副作用。
  * <p>
+ * 嵌套表场景下，{@link com.meteorite.unsuspiciousblock.mixin.interaction.NestedLootTableMixin} 通过
+ * {@link LootTrackingContext} 派生子上下文并调用 ctx 重载 publish，使 tableStack 携带完整链路。
+ * <p>
  * 仅在服务端主线程调用，{@code SUBSCRIBERS} 列表初始化后只读，无需同步。
  */
 public final class LootTrackingEvents {
@@ -40,7 +44,7 @@ public final class LootTrackingEvents {
         SUBSCRIBERS.sort(Comparator.comparingInt(Subscriber::priority));
     }
 
-    // 单栈便利发布：内部调用 resolveSignature 转为 1-entry map；state 为 null 时静默返回
+    // 单栈便利发布（兼容旧调用方）：rootTableId=tableId, tableStack=[tableId]；state 为 null 时静默返回
     public static void publish(ServerPlayer player, ResourceLocation tableId,
                                ItemStack stack, LootSourceType lootSource,
                                long gameTime, long dayTime) {
@@ -57,7 +61,7 @@ public final class LootTrackingEvents {
         dispatch(new LootDiscoveredEvent(player, tableId, lootSource, gameTime, dayTime, itemCounts, state));
     }
 
-    // 批量发布：直接传递 signature storedKey → count 映射；state 为 null 时静默返回
+    // 批量发布（兼容旧调用方）：rootTableId=tableId, tableStack=[tableId]；state 为 null 时静默返回
     public static void publish(ServerPlayer player, ResourceLocation tableId,
                                Map<String, Integer> itemCounts, LootSourceType lootSource,
                                long gameTime, long dayTime) {
@@ -66,6 +70,35 @@ public final class LootTrackingEvents {
             return;
         }
         dispatch(new LootDiscoveredEvent(player, tableId, lootSource, gameTime, dayTime, itemCounts, state));
+    }
+
+    // 单栈发布（携带追踪上下文）：rootTableId 与 tableStack 取自 ctx；签名解析锚定 rootTableId
+    public static void publish(LootTrackingContext ctx, ItemStack stack) {
+        ArchaeologyJournalState state = resolveState(ctx.player());
+        if (state == null) {
+            return;
+        }
+
+        ResourceLocation currentTableId = ctx.currentTableId();
+        Map<String, Integer> itemCounts = new HashMap<>();
+        LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(ctx.rootTableId(), stack);
+        if (signature != null) {
+            itemCounts.put(signature.toStoredKey(), stack.getCount());
+        }
+        dispatch(new LootDiscoveredEvent(ctx.player(), ctx.rootTableId(), currentTableId, ctx.tableStack(),
+                ctx.lootSource(), ctx.gameTime(), ctx.dayTime(), itemCounts, ctx.pos(), ctx.sourceBlockId(), state));
+    }
+
+    // 批量发布（携带追踪上下文）：rootTableId 与 tableStack 取自 ctx；签名解析锚定 rootTableId
+    public static void publish(LootTrackingContext ctx, Map<String, Integer> itemCounts) {
+        ArchaeologyJournalState state = resolveState(ctx.player());
+        if (state == null) {
+            return;
+        }
+
+        ResourceLocation currentTableId = ctx.currentTableId();
+        dispatch(new LootDiscoveredEvent(ctx.player(), ctx.rootTableId(), currentTableId, ctx.tableStack(),
+                ctx.lootSource(), ctx.gameTime(), ctx.dayTime(), itemCounts, ctx.pos(), ctx.sourceBlockId(), state));
     }
 
     // 按 priority 顺序同步通知所有订阅者

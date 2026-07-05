@@ -118,7 +118,7 @@ public final class ArchaeologyJournalCatalog {
                                               ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
         boolean[] hasConditions = new boolean[1];
-        parseNode(element, items, hasConditions, resourceManager, expandingStack);
+        parseNode(element, items, hasConditions, resourceManager, expandingStack, null);
 
         List<ItemDefinition> definitions = new ArrayList<>();
         for (ItemDefinitionBuilder builder : items.values()) {
@@ -141,15 +141,17 @@ public final class ArchaeologyJournalCatalog {
         return new TableDefinition(tableId, resolveTableName(tableId), type, definitions, 0);
     }
 
+    // sourceChildTable：当前解析路径所属的子表 ID（null=根表直接产出）；递归展开 loot_table 引用时透传给 builder
     private static void parseNode(JsonElement element, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                                  ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
+                                  ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                                  @Nullable ResourceLocation sourceChildTable) {
         if (element == null || element.isJsonNull()) {
             return;
         }
 
         if (element.isJsonArray()) {
             for (JsonElement child : element.getAsJsonArray()) {
-                parseNode(child, items, hasConditions, resourceManager, expandingStack);
+                parseNode(child, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
             }
             return;
         }
@@ -159,37 +161,40 @@ public final class ArchaeologyJournalCatalog {
         }
 
         JsonObject object = element.getAsJsonObject();
-        if (object.has("pools") && parseArrayIfPresent(object, "pools", items, hasConditions, resourceManager, expandingStack)) {
+        if (object.has("pools") && parseArrayIfPresent(object, "pools", items, hasConditions, resourceManager, expandingStack, sourceChildTable)) {
             return;
         }
 
-        if (object.has("entries") && parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack)) {
+        if (object.has("entries") && parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack, sourceChildTable)) {
             return;
         }
 
-        parseEntry(object, items, hasConditions, resourceManager, expandingStack);
+        parseEntry(object, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
     }
 
     private static void parseArray(JsonArray array, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                                   ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
+                                   ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                                   @Nullable ResourceLocation sourceChildTable) {
         for (JsonElement child : array) {
-            parseNode(child, items, hasConditions, resourceManager, expandingStack);
+            parseNode(child, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
         }
     }
 
     private static boolean parseArrayIfPresent(JsonObject object, String key,
                                                Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                                               ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
+                                               ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                                               @Nullable ResourceLocation sourceChildTable) {
         if (!object.has(key) || !object.get(key).isJsonArray()) {
             return false;
         }
 
-        parseArray(object.getAsJsonArray(key), items, hasConditions, resourceManager, expandingStack);
+        parseArray(object.getAsJsonArray(key), items, hasConditions, resourceManager, expandingStack, sourceChildTable);
         return true;
     }
 
     private static void parseEntry(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                                   ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
+                                   ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                                   @Nullable ResourceLocation sourceChildTable) {
         String type = getString(object, "type", "");
         boolean complex = object.has("conditions") || object.has("bonus_rolls") || object.has("rolls");
 
@@ -198,26 +203,26 @@ public final class ArchaeologyJournalCatalog {
                 if (complex) {
                     hasConditions[0] = true;
                 }
-                parseItem(object, items, hasConditions);
+                parseItem(object, items, hasConditions, sourceChildTable);
             }
             case "tag" -> {
                 if (complex) {
                     hasConditions[0] = true;
                 }
-                parseTag(object, items, hasConditions);
+                parseTag(object, items, hasConditions, sourceChildTable);
             }
             case "loot_table" -> {
                 hasConditions[0] = true;
-                expandLootTableReference(object, items, hasConditions, resourceManager, expandingStack);
+                expandLootTableReference(object, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
             }
             case "group", "alternatives", "sequence" -> {
                 hasConditions[0] = true;
-                parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack);
+                parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack, sourceChildTable);
             }
             default -> {
                 hasConditions[0] = true;
-                if (!parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack)) {
-                    parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack);
+                if (!parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack, sourceChildTable)) {
+                    parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack, sourceChildTable);
                 }
             }
         }
@@ -225,9 +230,11 @@ public final class ArchaeologyJournalCatalog {
 
     // 展开 minecraft:loot_table 类型 entry 引用的表，将其条目合并进当前目录。
     // 1.21.1 使用 "value" 字段；兼容旧格式 "name"。
+    // 展开后的条目 sourceChildTable 为 referencedId（子表 ID），标识物品来自该子表。
     private static void expandLootTableReference(JsonObject object, Map<String, ItemDefinitionBuilder> items,
                                                  boolean[] hasConditions, ResourceManager resourceManager,
-                                                 Set<ResourceLocation> expandingStack) {
+                                                 Set<ResourceLocation> expandingStack,
+                                                 @Nullable ResourceLocation sourceChildTable) {
         String rawId = object.has("value") ? object.get("value").getAsString() : getString(object, "name", "");
         ResourceLocation referencedId = ResourceLocation.tryParse(rawId);
         if (referencedId == null) {
@@ -243,14 +250,16 @@ public final class ArchaeologyJournalCatalog {
         try (BufferedReader reader = resourceManager.openAsReader(filePath)) {
             JsonElement referencedElement = JsonParser.parseReader(reader);
             expandingStack.add(referencedId);
-            parseNode(referencedElement, items, hasConditions, resourceManager, expandingStack);
+            // 展开子表时，sourceChildTable 更新为 referencedId，标识子表条目
+            parseNode(referencedElement, items, hasConditions, resourceManager, expandingStack, referencedId);
             expandingStack.remove(referencedId);
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("展开 loot_table 引用 {} 失败", referencedId, exception);
         }
     }
 
-    private static void parseItem(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
+    private static void parseItem(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                                  @Nullable ResourceLocation sourceChildTable) {
         ResourceLocation itemId = ResourceLocation.tryParse(getString(object, "name", ""));
         if (itemId == null || BuiltInRegistries.ITEM.get(itemId) == Items.AIR) {
             return;
@@ -258,11 +267,12 @@ public final class ArchaeologyJournalCatalog {
 
         ResolvedEntry resolved = resolveEntry(itemId, object, hasConditions);
         ItemDefinitionBuilder builder = items.computeIfAbsent(resolved.signature().toStoredKey(),
-                ignored -> createBuilder(resolved));
+                ignored -> createBuilder(resolved, sourceChildTable));
         builder.mergeResolved(resolved);
     }
 
-    private static void parseTag(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions) {
+    private static void parseTag(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                                 @Nullable ResourceLocation sourceChildTable) {
         ResourceLocation tagId = ResourceLocation.tryParse(getString(object, "name", ""));
         if (tagId == null) {
             return;
@@ -286,7 +296,7 @@ public final class ArchaeologyJournalCatalog {
         for (ResourceLocation itemId : itemIds) {
             ResolvedEntry resolved = resolveEntry(itemId, object, hasConditions);
             ItemDefinitionBuilder builder = items.computeIfAbsent(resolved.signature().toStoredKey(),
-                    ignored -> createBuilder(resolved));
+                    ignored -> createBuilder(resolved, sourceChildTable));
             builder.mergeResolved(resolved);
         }
     }
@@ -565,8 +575,10 @@ public final class ArchaeologyJournalCatalog {
         };
     }
 
-    private static ItemDefinitionBuilder createBuilder(ResolvedEntry resolved) {
-        return new ItemDefinitionBuilder(resolved.itemId(), resolved.displayName(), resolved.tooltipHint(), resolved.signature());
+    private static ItemDefinitionBuilder createBuilder(ResolvedEntry resolved,
+                                                       @Nullable ResourceLocation sourceChildTable) {
+        return new ItemDefinitionBuilder(resolved.itemId(), resolved.displayName(), resolved.tooltipHint(),
+                resolved.signature(), sourceChildTable);
     }
 
     private static Component resolveMergedDisplayName(ResourceLocation itemId, LootResultSignature signature) {
@@ -637,13 +649,17 @@ public final class ArchaeologyJournalCatalog {
         @Nullable
         private Component tooltipHint;
         private final LootResultSignature signature;
+        @Nullable
+        private final ResourceLocation sourceChildTable;
 
         private ItemDefinitionBuilder(ResourceLocation id, Component displayName,
-                                      @Nullable Component tooltipHint, LootResultSignature signature) {
+                                      @Nullable Component tooltipHint, LootResultSignature signature,
+                                      @Nullable ResourceLocation sourceChildTable) {
             this.id = id;
             this.displayName = displayName;
             this.tooltipHint = tooltipHint;
             this.signature = signature;
+            this.sourceChildTable = sourceChildTable;
         }
 
         private void mergeResolved(ResolvedEntry resolved) {
@@ -659,7 +675,7 @@ public final class ArchaeologyJournalCatalog {
 
         // 概率占位符 "?"，将在服务端模拟后替换为真实值
         private ItemDefinition build() {
-            return new ItemDefinition(this.id, this.displayName, this.tooltipHint, "?", this.signature);
+            return new ItemDefinition(this.id, this.displayName, this.tooltipHint, "?", this.signature, this.sourceChildTable);
         }
     }
 }

@@ -236,7 +236,8 @@ public final class ItemGridPanel implements PagePanel {
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
-                return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability());
+                return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability(),
+                        item.sourceChildTable());
             }
         }
         return null;
@@ -263,17 +264,31 @@ public final class ItemGridPanel implements PagePanel {
      * count 为 -1 表示无获取统计（如日志详情页），不追加 "Acquired" 行；
      * probability 为 null 时不追加 "Drop Chance" 行。
      */
-    public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
+    public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
+                              @Nullable ResourceLocation sourceChildTable) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
-            this(stack, hint, -1, null);
+            this(stack, hint, -1, null, null);
+        }
+
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
+        public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
+            this(stack, hint, count, probability, null);
         }
     }
 
     // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）
     public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                            String probability, boolean unlocked, int count,
-                           LootResultSignature signature, boolean highlighted) {
+                           LootResultSignature signature, boolean highlighted,
+                           @Nullable ResourceLocation sourceChildTable) {
+
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
+        public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                        String probability, boolean unlocked, int count,
+                        LootResultSignature signature, boolean highlighted) {
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted, null);
+        }
 
         public ItemStack stack() {
             if (this.signature != null) {

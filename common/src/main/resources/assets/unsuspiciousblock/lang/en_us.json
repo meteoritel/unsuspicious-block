@@ -98,6 +98,7 @@
   "screen.unsuspiciousblock.archaeology_journal.probability": "Chance %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_unknown": "Chance ?",
   "screen.unsuspiciousblock.archaeology_journal.acquired": "Acquired: %d",
+  "screen.unsuspiciousblock.archaeology_journal.from_child_table": "From: %s",
   "screen.unsuspiciousblock.archaeology_journal.weight": "Weight: %s",
   "screen.unsuspiciousblock.archaeology_journal.progress_items": "Parsed %d/%d items",
   "screen.unsuspiciousblock.archaeology_journal.mod_source": "Mod Source",

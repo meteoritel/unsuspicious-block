@@ -1,13 +1,13 @@
 package com.meteorite.unsuspiciousblock.mixin.interaction;
 
-import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -23,19 +23,20 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * 在钓鱼收杆流程中替换原版战利品表，并将本模组解析出的钓鱼战利品表
- * 通过 {@link LootTrackingEvents} 发布为战利品发现事件，进入考古笔记追踪流程。
+ * 在钓鱼收杆流程中替换原版战利品表，并向 {@link LootTrackingContextHolder} 压入追踪上下文，
+ * 使 {@link NestedLootTableMixin} 自动捕获钓鱼主表内部 fish/junk/treasure 子表物品。
+ * <p>
+ * 主表 {@code minecraft:gameplay/fishing} 本身不产生物品（仅 NestedLootTable 容器），
+ * 所有物品由子表产出并由子表 Mixin 发布事件；本 Mixin 不再直接 publish，
+ * 仅负责上下文生命周期管理（HEAD push / RETURN pop）。
  */
 @Mixin(FishingHook.class)
 public abstract class FishingHookMixin {
     @Unique
     private ItemStack unsuspiciousblock$fishingRod = ItemStack.EMPTY;
 
-    // 本次收杆最终解析出的钓鱼战利品表标识；仅服务端有效
+    // 本次收杆解析出的钓鱼战利品表标识；仅服务端有效
     @Unique
     @Nullable
     private ResourceLocation unsuspiciousblock$resolvedFishingTable;
@@ -45,20 +46,24 @@ public abstract class FishingHookMixin {
     @Nullable
     private ServerPlayer unsuspiciousblock$fishingPlayer;
 
-    // 本次收杆从 LootTable.getRandomItems 收集到的物品列表
+    // 标记本次收杆是否已 push 追踪上下文，RETURN 时据此 pop
     @Unique
-    private final List<ItemStack> unsuspiciousblock$capturedFishingLoot = new ArrayList<>();
+    private boolean unsuspiciousblock$ctxPushed;
 
-    // 在收杆开始时缓存本次使用的鱼竿
+    // 在收杆开始时缓存本次使用的鱼竿并重置上下文状态
     @Inject(method = "retrieve", at = @At("HEAD"))
     private void unsuspiciousblock$captureFishingRod(ItemStack fishingRod, CallbackInfoReturnable<Integer> cir) {
         this.unsuspiciousblock$fishingRod = fishingRod;
         this.unsuspiciousblock$resolvedFishingTable = null;
         this.unsuspiciousblock$fishingPlayer = null;
-        this.unsuspiciousblock$capturedFishingLoot.clear();
+        // 异常恢复：上次 retrieve 异常未清理时强制 pop，避免上下文泄漏
+        if (this.unsuspiciousblock$ctxPushed) {
+            LootTrackingContextHolder.pop();
+            this.unsuspiciousblock$ctxPushed = false;
+        }
     }
 
-    // 在原版查询战利品表参数时改写为本模组解析出的目标表
+    // 在原版查询战利品表参数时改写为本模组解析出的目标表，并 push 追踪上下文
     @ModifyArg(
             method = "retrieve",
             at = @At(
@@ -78,51 +83,31 @@ public abstract class FishingHookMixin {
                 .targetEntity(fishingHook)
                 .build();
         ResourceKey<LootTable> resolved = EnchantmentManager.dispatchValue(TriggerType.FISHING_LOOT_TABLE_QUERY, ctx, originalLootTable);
-        // 仅当解析出的表命中追踪规则时记录上下文，避免为未追踪表（如原版主表）写入无意义日志
+        // 仅当解析出的表命中追踪规则时记录上下文并 push，避免为未追踪表写入无意义状态
         if (LootTableNames.isArchaeologyLootTable(resolved.location())) {
             this.unsuspiciousblock$resolvedFishingTable = resolved.location();
             this.unsuspiciousblock$fishingPlayer = sp;
+            long gameTime = serverLevel.getGameTime();
+            long dayTime = serverLevel.getDayTime();
+            // 钓鱼位置取鱼漂位置（物品实际生成的位置）
+            BlockPos pos = fishingHook.blockPosition();
+            LootTrackingContext trackingCtx = LootTrackingContext.root(
+                    sp, resolved.location(), LootSourceType.FISHING, gameTime, dayTime, pos, null);
+            LootTrackingContextHolder.push(trackingCtx);
+            this.unsuspiciousblock$ctxPushed = true;
         }
         return resolved;
     }
 
-    // 拦截 getRandomItems 返回的物品列表，复制副本供 RETURN 阶段统一调度追踪器
-    @ModifyExpressionValue(
-            method = "retrieve",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/world/level/storage/loot/LootTable;getRandomItems(Lnet/minecraft/world/level/storage/loot/LootParams;)Lit/unimi/dsi/fastutil/objects/ObjectArrayList;"
-            )
-    )
-    private ObjectArrayList<ItemStack> unsuspiciousblock$captureFishingLootItems(ObjectArrayList<ItemStack> original) {
-        if (this.unsuspiciousblock$resolvedFishingTable != null && this.unsuspiciousblock$fishingPlayer != null) {
-            for (ItemStack stack : original) {
-                if (!stack.isEmpty()) {
-                    this.unsuspiciousblock$capturedFishingLoot.add(stack);
-                }
-            }
-        }
-        return original;
-    }
-
-    // 在收杆结束后将本次钓鱼战利品写入考古笔记追踪流程，并清理缓存字段
+    // 在收杆结束后 pop 追踪上下文并清理缓存字段
     @Inject(method = "retrieve", at = @At("RETURN"))
-    private void unsuspiciousblock$trackFishingLootAndClear(ItemStack fishingRod, CallbackInfoReturnable<Integer> cir) {
-        ResourceLocation tableId = this.unsuspiciousblock$resolvedFishingTable;
-        ServerPlayer player = this.unsuspiciousblock$fishingPlayer;
-        if (tableId != null && player != null && !this.unsuspiciousblock$capturedFishingLoot.isEmpty()) {
-            ServerLevel serverLevel = (ServerLevel) ((FishingHook) (Object) this).level();
-            long gameTime = serverLevel.getGameTime();
-            long dayTime = serverLevel.getDayTime();
-            for (ItemStack stack : this.unsuspiciousblock$capturedFishingLoot) {
-                LootTrackingEvents.publish(player, tableId, stack,
-                        LootSourceType.FISHING, gameTime, dayTime);
-            }
+    private void unsuspiciousblock$popTrackingContext(ItemStack fishingRod, CallbackInfoReturnable<Integer> cir) {
+        if (this.unsuspiciousblock$ctxPushed) {
+            LootTrackingContextHolder.pop();
+            this.unsuspiciousblock$ctxPushed = false;
         }
-
         this.unsuspiciousblock$resolvedFishingTable = null;
         this.unsuspiciousblock$fishingPlayer = null;
-        this.unsuspiciousblock$capturedFishingLoot.clear();
         this.unsuspiciousblock$fishingRod = ItemStack.EMPTY;
     }
 }

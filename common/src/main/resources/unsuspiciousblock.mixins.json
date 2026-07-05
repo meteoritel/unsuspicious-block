@@ -19,6 +19,7 @@
     "catfavor.EntityBlockTriggerMixin",
     "catfavor.FarmBlockTrampleMixin",
     "interaction.FishingHookMixin",
+    "interaction.NestedLootTableMixin",
     "catfavor.LivingEntityFallDamageMixin",
     "catfavor.LivingEntityNineLivesMixin",
     "catfavor.PhantomSpawnerMixin",

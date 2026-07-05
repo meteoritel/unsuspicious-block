@@ -98,6 +98,7 @@
   "screen.unsuspiciousblock.archaeology_journal.probability": "概率 %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_unknown": "概率 ?",
   "screen.unsuspiciousblock.archaeology_journal.acquired": "获得: %d次",
+  "screen.unsuspiciousblock.archaeology_journal.from_child_table": "来自: %s",
   "screen.unsuspiciousblock.archaeology_journal.weight": "权重: %s",
   "screen.unsuspiciousblock.archaeology_journal.progress_items": "已解析 %d/%d 种物品",
   "screen.unsuspiciousblock.archaeology_journal.mod_source": "模组来源",

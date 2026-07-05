@@ -22,6 +22,12 @@ public final class ArchaeologyLootTableCatalog {
 
     /** 战利品表物品条目定义 */
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                                 String probability, LootResultSignature signature) {
+                                 String probability, LootResultSignature signature,
+                                 @Nullable ResourceLocation sourceChildTable) {
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null（根表直接产出）
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              String probability, LootResultSignature signature) {
+            this(id, displayName, tooltipHint, probability, signature, null);
+        }
     }
 }

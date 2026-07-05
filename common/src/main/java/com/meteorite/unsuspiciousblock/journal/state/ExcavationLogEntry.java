@@ -4,13 +4,17 @@ import com.meteorite.unsuspiciousblock.loottable.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -18,6 +22,7 @@ import java.util.UUID;
  * 单条考古日志记录——记录一次发掘事件的全部上下文。
  * 包含战利品来源类型、位置、生物群系、所在结构、
  * 预期的战利品（expectedLoot）与实际获取的战利品（actualLoot）。
+ * {@code tableStack} 记录嵌套战利品表的完整链路（根表→子表→...），缺失时视为单层。
  * 支持 NBT 序列化与双向同步。
  */
 public record ExcavationLogEntry(UUID entryId,
@@ -27,7 +32,8 @@ public record ExcavationLogEntry(UUID entryId,
                                  ExcavationLogEntry.GameTimestamp lastUpdated,
                                  Map<String, Integer> expectedLoot,
                                  Map<String, Integer> actualLoot,
-                                 String note) {
+                                 String note,
+                                 @Nullable List<ResourceLocation> tableStack) {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ExcavationLogEntry.class);
 
@@ -52,6 +58,7 @@ public record ExcavationLogEntry(UUID entryId,
     private static final String EXPECTED_LOOT_TAG = "expected_loot";
     private static final String ACTUAL_LOOT_TAG = "actual_loot";
     private static final String NOTE_TAG = "note";
+    private static final String TABLE_STACK_TAG = "table_stack";
 
     /** 位置上下文：维度、源方块、结构、生物群系、坐标 */
     public record ExcavationContext(@Nullable ResourceLocation dimensionId,
@@ -115,9 +122,25 @@ public record ExcavationLogEntry(UUID entryId,
         if (note == null) {
             note = "";
         }
+        // tableStack 保持 null 或不可变副本
+        if (tableStack != null) {
+            tableStack = List.copyOf(tableStack);
+        }
     }
 
-    // 省略 note 参数的便利构造器，默认无备注
+    // 省略 tableStack 参数的便利构造器（向后兼容），tableStack 默认 null
+    public ExcavationLogEntry(UUID entryId,
+                              @Nullable LootSourceType lootSource,
+                              ExcavationLogEntry.ExcavationContext context,
+                              ExcavationLogEntry.GameTimestamp created,
+                              ExcavationLogEntry.GameTimestamp lastUpdated,
+                              Map<String, Integer> expectedLoot,
+                              Map<String, Integer> actualLoot,
+                              String note) {
+        this(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot, note, null);
+    }
+
+    // 省略 note 与 tableStack 参数的便利构造器（向后兼容）
     public ExcavationLogEntry(UUID entryId,
                               @Nullable LootSourceType lootSource,
                               ExcavationLogEntry.ExcavationContext context,
@@ -125,7 +148,7 @@ public record ExcavationLogEntry(UUID entryId,
                               ExcavationLogEntry.GameTimestamp lastUpdated,
                               Map<String, Integer> expectedLoot,
                               Map<String, Integer> actualLoot) {
-        this(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot, "");
+        this(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot, "", null);
     }
 
     /** 是否存在备注内容 */
@@ -137,7 +160,14 @@ public record ExcavationLogEntry(UUID entryId,
     public ExcavationLogEntry withNote(String newNote) {
         return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
                 this.created, this.lastUpdated,
-                this.expectedLoot, this.actualLoot, newNote == null ? "" : newNote);
+                this.expectedLoot, this.actualLoot, newNote == null ? "" : newNote, this.tableStack);
+    }
+
+    // 返回带有新 tableStack 的副本，其他字段保持不变
+    public ExcavationLogEntry withTableStack(@Nullable List<ResourceLocation> newTableStack) {
+        return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
+                this.created, this.lastUpdated,
+                this.expectedLoot, this.actualLoot, this.note, newTableStack);
     }
 
     public ExcavationLogEntry withActualLootMerged(Map<String, Integer> deltaLoot,
@@ -146,7 +176,7 @@ public record ExcavationLogEntry(UUID entryId,
         LootCounts.mergeInto(mergedActualLoot, deltaLoot);
         return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
                 this.created, new GameTimestamp(updatedGameTime, updatedDayTime),
-                this.expectedLoot, mergedActualLoot, this.note);
+                this.expectedLoot, mergedActualLoot, this.note, this.tableStack);
     }
 
     @Nullable
@@ -185,6 +215,14 @@ public record ExcavationLogEntry(UUID entryId,
         tag.put(ACTUAL_LOOT_TAG, LootCounts.writeToNbt(this.actualLoot));
         if (this.note != null && !this.note.isEmpty()) {
             tag.putString(NOTE_TAG, this.note);
+        }
+        // tableStack 非空时写入 ListTag<String>；缺失时 fromTag 返回 null（向后兼容旧 NBT）
+        if (this.tableStack != null && !this.tableStack.isEmpty()) {
+            ListTag stackTag = new ListTag();
+            for (ResourceLocation tableId : this.tableStack) {
+                stackTag.add(StringTag.valueOf(tableId.toString()));
+            }
+            tag.put(TABLE_STACK_TAG, stackTag);
         }
         return tag;
     }
@@ -244,10 +282,29 @@ public record ExcavationLogEntry(UUID entryId,
                 : createLegacyLootMap(legacyItemId);
         String note = tag.contains(NOTE_TAG, Tag.TAG_STRING) ? tag.getString(NOTE_TAG) : "";
 
+        // tableStack：向后兼容，缺失时返回 null（视为单层根表）
+        List<ResourceLocation> tableStack = null;
+        if (tag.contains(TABLE_STACK_TAG, Tag.TAG_LIST)) {
+            ListTag stackTag = tag.getList(TABLE_STACK_TAG, Tag.TAG_STRING);
+            if (!stackTag.isEmpty()) {
+                tableStack = new ArrayList<>(stackTag.size());
+                for (int i = 0; i < stackTag.size(); i++) {
+                    ResourceLocation tableId = ResourceLocation.tryParse(stackTag.getString(i));
+                    if (tableId != null) {
+                        tableStack.add(tableId);
+                    }
+                }
+                if (tableStack.isEmpty()) {
+                    tableStack = null;
+                }
+            }
+        }
+
         ExcavationContext context = new ExcavationContext(dimensionId, sourceBlockId, structureId, biomeId, pos);
         GameTimestamp created = new GameTimestamp(createdGameTime, createdDayTime);
         GameTimestamp lastUpdated = new GameTimestamp(lastUpdatedGameTime, lastUpdatedDayTime);
-        return new ExcavationLogEntry(entryId, lootSource, context, created, lastUpdated, expectedLoot, actualLoot, note);
+        return new ExcavationLogEntry(entryId, lootSource, context, created, lastUpdated,
+                expectedLoot, actualLoot, note, tableStack);
     }
 
     @Nullable

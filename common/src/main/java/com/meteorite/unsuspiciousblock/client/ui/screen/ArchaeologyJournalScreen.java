@@ -13,6 +13,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -273,6 +274,13 @@ public class ArchaeologyJournalScreen extends Screen {
             }
             if (tooltipData.hint() != null) {
                 tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+            }
+            // 子表来源标注：物品来自嵌套子表时追加"来自：子表名"行
+            if (tooltipData.sourceChildTable() != null) {
+                Component childTableName = LootTableNames.resolveDisplayName(tooltipData.sourceChildTable());
+                tooltipLines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
+                        .copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
             }
             guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
         }

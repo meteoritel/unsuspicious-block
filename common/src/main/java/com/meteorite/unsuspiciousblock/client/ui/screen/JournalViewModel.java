@@ -264,10 +264,15 @@ public class JournalViewModel {
                             iv.id(), iv.displayName().getString());
             gridItems.add(new ItemGridPanel.GridItem(
                     iv.id(), iv.displayName(), iv.tooltipHint(),
-                    iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted));
+                    iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
+                    iv.sourceChildTable()));
         }
-        // 按概率从大到小排序；概率无法解析（"?"）或 10000 次模拟未掉落（"<0.01%"）一律排到最后
-        gridItems.sort(Comparator.comparingDouble(JournalViewModel::gridItemSortKey).reversed());
+        // 排序：先按表来源（根表 null 优先；子表按 ResourceLocation 字典序升序），再按概率降序
+        // 注：用取负实现概率降序，避免整体 reversed() 同时反转 nullsFirst 与字典序
+        gridItems.sort(Comparator
+                .comparing(ItemGridPanel.GridItem::sourceChildTable,
+                        Comparator.nullsFirst(Comparator.comparing(rl -> rl.toString())))
+                .thenComparingDouble(value -> -JournalViewModel.gridItemSortKey(value)));
         return new BuildGridResult(
                 selected.id(), gridItems,
                 selected.parsedCount(), selected.totalCount(),

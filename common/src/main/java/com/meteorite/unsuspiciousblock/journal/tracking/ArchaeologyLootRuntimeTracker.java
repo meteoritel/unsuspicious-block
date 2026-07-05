@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
 /**
  * 考古战利品运行时追踪器——服务端核心业务逻辑入口。
  * 负责：战利品解锁、日志条目创建与更新、签名解析与转换。
@@ -67,6 +66,81 @@ public final class ArchaeologyLootRuntimeTracker {
         if (changed) {
             JournalStateHandler.syncState(player);
             triggerPrioritySimulation(tableId);
+        }
+    }
+
+    // 多表解锁：签名解析锚定 signatureAnchor（通常=rootTableId），同一份签名应用到 tableIds 中所有在 catalog 中的表
+    // 用于嵌套表场景：一次发现同时解锁根表与子表（若两者都在 catalog 中）
+    // recordItemCounts=true 时同时记录物品获取计数（钓鱼场景，无待定日志条目机制）；
+    // recordItemCounts=false 时仅解锁，物品计数由待定日志条目机制（applyPendingLoot/flushTrackingToJournal）负责
+    public static void unlockResolvedLootMultiTable(ServerPlayer player, List<ResourceLocation> tableIds,
+                                                    ResourceLocation signatureAnchor,
+                                                    Map<String, Integer> itemCounts,
+                                                    boolean recordItemCounts) {
+        ArchaeologyJournalState state = getState(player);
+        if (state == null) {
+            return;
+        }
+
+        List<LootResultSignature> signatures = toSignatures(itemCounts);
+        Map<LootResultSignature, Integer> signatureCounts = recordItemCounts
+                ? toSignatureCounts(itemCounts)
+                : Map.of();
+        boolean changed = false;
+        for (ResourceLocation tableId : tableIds) {
+            if (!isTableInCatalog(tableId)) {
+                // 子表不在 catalog：跳过 unlockTable，不强制解锁未注册的表
+                continue;
+            }
+            boolean tableChanged = state.unlockTable(tableId);
+            tableChanged |= state.unlockItems(tableId, signatures);
+            if (recordItemCounts && !signatureCounts.isEmpty()) {
+                tableChanged |= state.recordItemsAcquired(tableId, signatureCounts);
+            }
+            changed |= tableChanged;
+        }
+        if (changed) {
+            JournalStateHandler.syncState(player);
+            // 仅对锚定表触发模拟（通常为根表，避免重复入队）
+            triggerPrioritySimulation(signatureAnchor);
+        }
+    }
+
+    // 判断指定表是否已在 catalog 中注册
+    private static boolean isTableInCatalog(ResourceLocation tableId) {
+        return ArchaeologyJournalServerCatalog.getCatalog().containsKey(tableId);
+    }
+
+    // 为钓鱼/开箱等无待定日志条目机制的追踪入口创建并 upsert ExcavationLogEntry。
+    // 遍历 tableStack 对每个在 catalog 中的表 upsert 同一条日志（同 entryId 关联多个表）。
+    // 物品计数已由 onUnlock 中的 recordItemsAcquired 负责，此处 acquiredSignatures 传 null 不重复记录。
+    public static void recordExcavationEntryMultiTable(ServerPlayer player,
+                                                       List<ResourceLocation> tableStack,
+                                                       LootSourceType lootSource,
+                                                       long gameTime, long dayTime,
+                                                       Map<String, Integer> itemCounts,
+                                                       BlockPos pos,
+                                                       @Nullable ResourceLocation sourceBlockId) {
+        Map<String, Integer> normalizedLoot = LootCounts.normalize(itemCounts);
+        if (normalizedLoot.isEmpty()) {
+            return;
+        }
+        ServerLevel level = player.serverLevel();
+        ExcavationLogEntry.ExcavationContext context = new ExcavationLogEntry.ExcavationContext(
+                level.dimension().location(), sourceBlockId,
+                WorldContextResolver.resolveStructureId(level, pos),
+                WorldContextResolver.resolveBiomeId(level, pos), pos);
+        ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
+                Math.max(0L, gameTime), Math.max(0L, dayTime));
+        // 钓鱼/开箱场景无"期望值 vs 实际值"差异，expectedLoot = actualLoot = normalizedLoot
+        ExcavationLogEntry entry = new ExcavationLogEntry(UUID.randomUUID(), lootSource, context,
+                timestamp, timestamp, normalizedLoot, normalizedLoot, "", tableStack);
+        // 遍历 tableStack，对每个在 catalog 中的表 upsert 日志条目
+        for (ResourceLocation tableId : tableStack) {
+            if (!isTableInCatalog(tableId)) {
+                continue;
+            }
+            JournalLogRecorder.upsertExcavationEntry(player, tableId, entry, null);
         }
     }
 

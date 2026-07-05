@@ -245,7 +245,7 @@ public final class ArchaeologyJournalServerCatalog {
             String probability = cachedProb != null ? cachedProb : item.probability();
             restoredItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature()));
+                    probability, item.signature(), item.sourceChildTable()));
         }
 
         // 2. 重建缓存中存在但 JSON 里没有的"注入条目"（GLM / LootTableEvents.MODIFY 模拟期发现）
