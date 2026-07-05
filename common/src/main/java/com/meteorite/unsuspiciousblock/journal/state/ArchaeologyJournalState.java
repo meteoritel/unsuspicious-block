@@ -25,7 +25,8 @@ public final class ArchaeologyJournalState {
     private static final String REVISION_TAG = "revision";
 
     private final LinkedHashMap<ResourceLocation, TableProgress> tables = new LinkedHashMap<>();
-    // 增量同步：版本号，每次变更递增
+    // 增量同步：版本号，每次发送增量包时递增（由 drainDirtyTables 触发）
+    // clear/removeTable 等全量重置操作也会 +1，对应全量同步
     private long revision;
     // 增量同步：脏表追踪
     private final LinkedHashSet<ResourceLocation> dirtyTables = new LinkedHashSet<>();
@@ -43,9 +44,15 @@ public final class ArchaeologyJournalState {
     }
 
     // 收集并清空脏表集合，用于增量同步
+    // 若存在脏表，递增 revision，保证一次增量同步只 +1
+    // 这样一次业务操作内多次 markDirty 不会让 revision 跳跃，
+    // 客户端的间隙检测（incomingRevision > lastNotifiedRevision + 1）才具有真实意义
     public Set<ResourceLocation> drainDirtyTables() {
         Set<ResourceLocation> dirty = new LinkedHashSet<>(this.dirtyTables);
         this.dirtyTables.clear();
+        if (!dirty.isEmpty()) {
+            this.revision++;
+        }
         return dirty;
     }
 
@@ -66,8 +73,7 @@ public final class ArchaeologyJournalState {
      * 采用服务端权威语义：增量数据中的条目会直接覆盖本地对应条目，
      * 客户端不会对服务端发来的数据进行二次合并或裁剪。
      */
-    public void mergeFromIncremental(CompoundTag incremental, long newRevision) {
-        CompoundTag tablesTag = incremental;
+    public void mergeFromIncremental(CompoundTag tablesTag, long newRevision) {
         for (String key : tablesTag.getAllKeys()) {
             ResourceLocation tableId = ResourceLocation.tryParse(key);
             if (tableId == null) {
@@ -122,21 +128,6 @@ public final class ArchaeologyJournalState {
             this.markDirty(tableId);
         }
         return changed;
-    }
-
-    // 记录单个物品的获取数量
-    public boolean recordItemAcquired(ResourceLocation tableId, LootResultSignature signature, int count) {
-        if (count <= 0) {
-            return false;
-        }
-
-        TableProgress table = this.getOrCreateTable(tableId);
-        boolean tableChanged = table.unlock();
-        boolean itemChanged = table.recordItemAcquired(signature, count);
-        if (tableChanged || itemChanged) {
-            this.markDirty(tableId);
-        }
-        return tableChanged || itemChanged;
     }
 
     // 批量记录多个物品的获取数量
@@ -201,19 +192,6 @@ public final class ArchaeologyJournalState {
         return this.tables.get(tableId);
     }
 
-    @Nullable
-    // 获取指定表中某物品的进度（不存在返回 null）
-    public ItemProgress getItemProgress(ResourceLocation tableId, LootResultSignature signature) {
-        TableProgress table = this.tables.get(tableId);
-        return table != null ? table.getItemProgress(signature) : null;
-    }
-
-    // 获取指定表中某物品的收集数量
-    public int getItemCount(ResourceLocation tableId, LootResultSignature signature) {
-        TableProgress table = this.tables.get(tableId);
-        return table != null ? table.getItemCount(signature) : 0;
-    }
-
     // 深度复制整个状态
     public ArchaeologyJournalState copy() {
         ArchaeologyJournalState copy = new ArchaeologyJournalState();
@@ -265,7 +243,6 @@ public final class ArchaeologyJournalState {
     // 从 CompoundTag 反序列化恢复状态
     public void readFrom(CompoundTag tag) {
         this.clear();
-        int version = NbtDataMigrator.migrateIfNeeded(tag, "ArchaeologyJournalState");
         this.revision = tag.contains(REVISION_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(REVISION_TAG)) : 0L;
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
@@ -283,17 +260,11 @@ public final class ArchaeologyJournalState {
         }
     }
 
-    // 静态工厂：从 CompoundTag 创建新的状态实例
-    public static ArchaeologyJournalState fromTag(CompoundTag tag) {
-        ArchaeologyJournalState state = new ArchaeologyJournalState();
-        state.readFrom(tag);
-        return state;
-    }
-
-    // 标记指定表为脏，并递增版本号
+    // 标记指定表为脏
+    // 注意：不在此处递增 revision，revision 统一由 drainDirtyTables 在发送增量包时递增，
+    // 保证一次同步对应一次 revision +1
     private void markDirty(ResourceLocation tableId) {
         this.dirtyTables.add(tableId);
-        this.revision++;
     }
 
     private TableProgress getOrCreateTable(ResourceLocation tableId) {
@@ -450,10 +421,6 @@ public final class ArchaeologyJournalState {
 
             this.unlocked = true;
             return true;
-        }
-
-        public boolean incrementCount() {
-            return this.incrementCount(1);
         }
 
         public boolean incrementCount(int amount) {
