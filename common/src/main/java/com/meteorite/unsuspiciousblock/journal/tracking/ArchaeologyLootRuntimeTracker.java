@@ -36,39 +36,6 @@ public final class ArchaeologyLootRuntimeTracker {
     private ArchaeologyLootRuntimeTracker() {
     }
 
-    // 将单个物品栈标记为已解锁（解析签名后处理）
-    public static void unlockResolvedLoot(ServerPlayer player, ResourceLocation tableId, ItemStack stack) {
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return;
-        }
-
-        boolean changed = state.unlockTable(tableId);
-        LootResultSignature signature = resolveSignature(tableId, stack);
-        if (signature != null) {
-            changed |= state.unlockItem(tableId, signature);
-        }
-        if (changed) {
-            JournalStateHandler.syncState(player);
-            triggerPrioritySimulation(tableId);
-        }
-    }
-
-    // 将多个物品按签名批量标记为已解锁
-    public static void unlockResolvedLoot(ServerPlayer player, ResourceLocation tableId, Map<String, Integer> itemCounts) {
-        ArchaeologyJournalState state = getState(player);
-        if (state == null) {
-            return;
-        }
-
-        boolean changed = state.unlockTable(tableId);
-        changed |= state.unlockItems(tableId, toSignatures(itemCounts));
-        if (changed) {
-            JournalStateHandler.syncState(player);
-            triggerPrioritySimulation(tableId);
-        }
-    }
-
     // 多表解锁：签名解析锚定 signatureAnchor（通常=rootTableId），同一份签名应用到 tableIds 中所有在 catalog 中的表
     // 用于嵌套表场景：一次发现同时解锁根表与子表（若两者都在 catalog 中）
     // recordItemCounts=true 时同时记录物品获取计数（钓鱼场景，无待定日志条目机制）；

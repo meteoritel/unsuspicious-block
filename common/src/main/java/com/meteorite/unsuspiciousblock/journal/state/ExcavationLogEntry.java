@@ -90,8 +90,6 @@ public record ExcavationLogEntry(UUID entryId,
     // 便利访问器——保持向后兼容
     public ResourceLocation dimensionId() { return context.dimensionId(); }
     @Nullable
-    public ResourceLocation sourceBlockId() { return context.sourceBlockId(); }
-    @Nullable
     public ResourceLocation structureId() { return context.structureId(); }
     public ResourceLocation biomeId() { return context.biomeId(); }
     public BlockPos pos() { return context.pos(); }

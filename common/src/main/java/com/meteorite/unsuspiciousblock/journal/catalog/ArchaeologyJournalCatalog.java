@@ -50,8 +50,6 @@ public final class ArchaeologyJournalCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
     private static final ResourceLocation BOOK_ID = ResourceLocation.fromNamespaceAndPath("minecraft", "book");
-    private static final String RANDOM_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random";
-    private static final String LEVEL_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level";
     private static final String ENCHANTED_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted";
     private static final String APPROXIMATE_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate";
 
@@ -213,7 +211,7 @@ public final class ArchaeologyJournalCatalog {
             }
             case "loot_table" -> {
                 hasConditions[0] = true;
-                expandLootTableReference(object, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+                expandLootTableReference(object, items, hasConditions, resourceManager, expandingStack);
             }
             case "group", "alternatives", "sequence" -> {
                 hasConditions[0] = true;
@@ -233,8 +231,7 @@ public final class ArchaeologyJournalCatalog {
     // 展开后的条目 sourceChildTable 为 referencedId（子表 ID），标识物品来自该子表。
     private static void expandLootTableReference(JsonObject object, Map<String, ItemDefinitionBuilder> items,
                                                  boolean[] hasConditions, ResourceManager resourceManager,
-                                                 Set<ResourceLocation> expandingStack,
-                                                 @Nullable ResourceLocation sourceChildTable) {
+                                                 Set<ResourceLocation> expandingStack) {
         String rawId = object.has("value") ? object.get("value").getAsString() : getString(object, "name", "");
         ResourceLocation referencedId = ResourceLocation.tryParse(rawId);
         if (referencedId == null) {
@@ -278,7 +275,6 @@ public final class ArchaeologyJournalCatalog {
             return;
         }
 
-        boolean expand = getBoolean(object, "expand", false);
         LinkedHashSet<ResourceLocation> itemIds = new LinkedHashSet<>();
         TagKey<Item> tagKey = TagKey.create(Registries.ITEM, tagId);
         for (Holder<Item> holder : BuiltInRegistries.ITEM.getTagOrEmpty(tagKey)) {
@@ -326,12 +322,7 @@ public final class ArchaeologyJournalCatalog {
                             entryHasConditions = true;
                         }
                     }
-                    case "enchant_randomly" -> {
-                        previewStack = promoteBookPreviewIfNeeded(previewStack);
-                        signature = LootResultSignature.enchantedApprox(currentItemId(previewStack));
-                        hint = Component.translatable(ENCHANTED_HINT_KEY);
-                    }
-                    case "enchant_with_levels" -> {
+                    case "enchant_randomly", "enchant_with_levels" -> {
                         previewStack = promoteBookPreviewIfNeeded(previewStack);
                         signature = LootResultSignature.enchantedApprox(currentItemId(previewStack));
                         hint = Component.translatable(ENCHANTED_HINT_KEY);
@@ -474,92 +465,6 @@ public final class ArchaeologyJournalCatalog {
         return ResourceLocation.tryParse(getString(functionObject, "name", ""));
     }
 
-    @Nullable
-    private static String parseLevelInfo(@Nullable JsonElement element) {
-        if (element == null || element.isJsonNull()) {
-            return null;
-        }
-        if (element.isJsonPrimitive()) {
-            return element.getAsString();
-        }
-        if (!element.isJsonObject()) {
-            return null;
-        }
-
-        JsonObject object = element.getAsJsonObject();
-        String min = parseProviderEndpoint(object, "min");
-        String max = parseProviderEndpoint(object, "max");
-        if (min == null && max == null) {
-            Integer exactValue = parseExactIntValue(element);
-            return exactValue != null ? exactValue.toString() : null;
-        }
-        if (min == null) {
-            return max;
-        }
-        if (max == null || min.equals(max)) {
-            return min;
-        }
-        return min + "-" + max;
-    }
-
-    @Nullable
-    private static String parseProviderEndpoint(JsonObject object, String key) {
-        if (!object.has(key)) {
-            return null;
-        }
-        JsonElement element = object.get(key);
-        if (element == null || element.isJsonNull()) {
-            return null;
-        }
-        if (element.isJsonPrimitive()) {
-            return element.getAsString();
-        }
-        if (!element.isJsonObject()) {
-            return null;
-        }
-
-        JsonObject provider = element.getAsJsonObject();
-        if (provider.has("value")) {
-            return provider.get("value").getAsString();
-        }
-        if (provider.has("min") && provider.has("max")
-                && provider.get("min").isJsonPrimitive() && provider.get("max").isJsonPrimitive()) {
-            String min = provider.get("min").getAsString();
-            String max = provider.get("max").getAsString();
-            return min.equals(max) ? min : min + "-" + max;
-        }
-        return null;
-    }
-
-    @Nullable
-    private static Integer parseExactIntValue(@Nullable JsonElement element) {
-        if (element == null || element.isJsonNull()) {
-            return null;
-        }
-        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
-            return element.getAsInt();
-        }
-        if (!element.isJsonObject()) {
-            return null;
-        }
-
-        JsonObject object = element.getAsJsonObject();
-        if (object.has("value")) {
-            return parseExactIntValue(object.get("value"));
-        }
-        if (object.has("type") && normalizeType(getString(object, "type", "")).equals("constant") && object.has("value")) {
-            return parseExactIntValue(object.get("value"));
-        }
-        if (object.has("min") && object.has("max")) {
-            Integer min = parseExactIntValue(object.get("min"));
-            Integer max = parseExactIntValue(object.get("max"));
-            if (min != null && min.equals(max)) {
-                return min;
-            }
-        }
-        return null;
-    }
-
 
     private static boolean isEnchantLikeFunction(String function) {
         return function.contains("enchant");
@@ -629,14 +534,6 @@ public final class ArchaeologyJournalCatalog {
 
     private static String getString(JsonObject object, String key, String fallback) {
         return object.has(key) ? object.get(key).getAsString() : fallback;
-    }
-
-    private static int getInt(JsonObject object, String key, int fallback) {
-        return object.has(key) ? object.get(key).getAsInt() : fallback;
-    }
-
-    private static boolean getBoolean(JsonObject object, String key, boolean fallback) {
-        return object.has(key) && object.get(key).isJsonPrimitive() ? object.get(key).getAsBoolean() : fallback;
     }
 
     private record ResolvedEntry(ResourceLocation itemId, Component displayName,
