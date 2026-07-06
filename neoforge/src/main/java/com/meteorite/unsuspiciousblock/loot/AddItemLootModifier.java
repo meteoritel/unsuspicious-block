@@ -14,10 +14,15 @@ import net.neoforged.neoforge.common.loot.LootModifier;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 全局战利品修改器——按指定概率将单个物品追加到目标战利品表生成结果。
+ * 全局战利品修改器——按指定概率将目标物品替换进考古战利品表生成结果。
  * <p>
  * 配合 {@code neoforge:loot_table_id} condition 精准匹配目标表，
  * 触发判定使用 {@link LootContext#getRandom()}，确保与原版战利品随机性一致。
+ * <p>
+ * 考古战利品表（如 {@code minecraft:archaeology/trail_ruins_rare}）只允许产出 1 个物品：
+ * {@link net.minecraft.world.level.block.entity.BrushableBlockEntity} 在物品数 &gt; 1 时
+ * 仅保留首个并丢弃其余。因此本修改器采用"替换"语义——触发时清空原版结果并放入目标物品，
+ * 确保注入物品可被实际获得。
  */
 public class AddItemLootModifier extends LootModifier {
 
@@ -42,6 +47,8 @@ public class AddItemLootModifier extends LootModifier {
     @Override
     protected @NotNull ObjectArrayList<ItemStack> doApply(@NotNull ObjectArrayList<ItemStack> generatedLoot, LootContext context) {
         if (context.getRandom().nextFloat() < chance) {
+            // 考古表只允许 1 个物品：清空原版结果后放入目标物品，避免被 BrushableBlockEntity 丢弃
+            generatedLoot.clear();
             generatedLoot.add(new ItemStack(item));
         }
         return generatedLoot;

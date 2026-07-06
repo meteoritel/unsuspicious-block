@@ -6,7 +6,8 @@ import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.loot.FabricLootTableInjection;
+import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootInjectors;
+import com.meteorite.unsuspiciousblock.loot.FabricArchaeologyLootInjector;
 import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -47,8 +48,8 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
     public void onInitialize() {
         UnsuspiciousBlockCommon.init();
 
-        // 向原版古迹废墟战利品表注入 ancient_coin / lost_page
-        FabricLootTableInjection.register();
+        // 注册 Fabric 端考古战利品注入器（mixin 与概率模拟器共用，NeoForge 端通过 GLM 实现等价语义）
+        ArchaeologyLootInjectors.register(FabricArchaeologyLootInjector.INSTANCE);
 
         // 遍历物品注册清单，统一注册并回写静态字段
         ModItems.forEach((name, factory, setter) -> {

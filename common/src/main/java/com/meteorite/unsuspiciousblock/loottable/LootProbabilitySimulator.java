@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -93,6 +94,9 @@ public final class LootProbabilitySimulator {
         // 模拟抽取
         for (int i = 0; i < SIMULATION_COUNT; i++) {
             List<ItemStack> drops = lootTable.getRandomItems(lootParams);
+            // Fabric 端注入器在模拟期显式调用，确保模组物品被纳入概率统计与签名派生；
+            // NeoForge 端注入由 GLM 在 getRandomItems 内部完成，此处注入器为空实现
+            ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, RandomSource.create(i));
             for (ItemStack stack : drops) {
                 if (stack.isEmpty()) continue;
                 LootResultSignature matched = LootResultMatcher.resolve(stack, candidates);

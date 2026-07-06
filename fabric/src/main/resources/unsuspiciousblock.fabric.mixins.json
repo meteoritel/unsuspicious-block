@@ -9,6 +9,7 @@
     "chunk.ChunkSerializerMixin",
     "chunk.LevelChunkMixin",
     "container.AnvilMenuMixin",
+    "interaction.BrushableBlockEntityMixin",
     "interaction.SheepMixin"
   ],
   "client": [],

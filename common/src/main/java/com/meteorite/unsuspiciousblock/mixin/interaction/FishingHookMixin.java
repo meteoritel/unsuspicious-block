@@ -36,16 +36,6 @@ public abstract class FishingHookMixin {
     @Unique
     private ItemStack unsuspiciousblock$fishingRod = ItemStack.EMPTY;
 
-    // 本次收杆解析出的钓鱼战利品表标识；仅服务端有效
-    @Unique
-    @Nullable
-    private ResourceLocation unsuspiciousblock$resolvedFishingTable;
-
-    // 本次收杆触发的服务端玩家；用于在 RETURN 时调用追踪器
-    @Unique
-    @Nullable
-    private ServerPlayer unsuspiciousblock$fishingPlayer;
-
     // 标记本次收杆是否已 push 追踪上下文，RETURN 时据此 pop
     @Unique
     private boolean unsuspiciousblock$ctxPushed;
@@ -54,8 +44,6 @@ public abstract class FishingHookMixin {
     @Inject(method = "retrieve", at = @At("HEAD"))
     private void unsuspiciousblock$captureFishingRod(ItemStack fishingRod, CallbackInfoReturnable<Integer> cir) {
         this.unsuspiciousblock$fishingRod = fishingRod;
-        this.unsuspiciousblock$resolvedFishingTable = null;
-        this.unsuspiciousblock$fishingPlayer = null;
         // 异常恢复：上次 retrieve 异常未清理时强制 pop，避免上下文泄漏
         if (this.unsuspiciousblock$ctxPushed) {
             LootTrackingContextHolder.pop();
@@ -85,8 +73,6 @@ public abstract class FishingHookMixin {
         ResourceKey<LootTable> resolved = EnchantmentManager.dispatchValue(TriggerType.FISHING_LOOT_TABLE_QUERY, ctx, originalLootTable);
         // 仅当解析出的表命中追踪规则时记录上下文并 push，避免为未追踪表写入无意义状态
         if (LootTableNames.isArchaeologyLootTable(resolved.location())) {
-            this.unsuspiciousblock$resolvedFishingTable = resolved.location();
-            this.unsuspiciousblock$fishingPlayer = sp;
             long gameTime = serverLevel.getGameTime();
             long dayTime = serverLevel.getDayTime();
             // 钓鱼位置取鱼漂位置（物品实际生成的位置）
@@ -106,8 +92,6 @@ public abstract class FishingHookMixin {
             LootTrackingContextHolder.pop();
             this.unsuspiciousblock$ctxPushed = false;
         }
-        this.unsuspiciousblock$resolvedFishingTable = null;
-        this.unsuspiciousblock$fishingPlayer = null;
         this.unsuspiciousblock$fishingRod = ItemStack.EMPTY;
     }
 }

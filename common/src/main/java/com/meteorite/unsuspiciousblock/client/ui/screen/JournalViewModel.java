@@ -271,7 +271,7 @@ public class JournalViewModel {
         // 注：用取负实现概率降序，避免整体 reversed() 同时反转 nullsFirst 与字典序
         gridItems.sort(Comparator
                 .comparing(ItemGridPanel.GridItem::sourceChildTable,
-                        Comparator.nullsFirst(Comparator.comparing(rl -> rl.toString())))
+                        Comparator.nullsFirst(Comparator.comparing(String::valueOf)))
                 .thenComparingDouble(value -> -JournalViewModel.gridItemSortKey(value)));
         return new BuildGridResult(
                 selected.id(), gridItems,
