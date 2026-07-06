@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
@@ -149,6 +150,9 @@ public class UnsuspiciousBlockNeoForge {
         modEventBus.addListener(this::registerEntityAttributes);
 
         NeoForge.EVENT_BUS.register(this);
+
+        // 注册 NeoForge 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
+        NeoForgeInventoryPresenceAdapter.register();
 
         Constants.LOG.info("UnsuspiciousBlock NeoForge initialized.");
     }

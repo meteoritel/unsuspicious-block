@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootInjectors;
@@ -50,6 +51,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 注册 Fabric 端考古战利品注入器（mixin 与概率模拟器共用，NeoForge 端通过 GLM 实现等价语义）
         ArchaeologyLootInjectors.register(FabricArchaeologyLootInjector.INSTANCE);
+
+        // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
+        FabricInventoryPresenceAdapter.register();
 
         // 遍历物品注册清单，统一注册并回写静态字段
         ModItems.forEach((name, factory, setter) -> {

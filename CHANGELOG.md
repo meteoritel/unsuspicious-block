@@ -96,14 +96,13 @@
 - Added a range mode, default toggle key is V. While sneaking, the scanning range boundary is displayed.
 - Range mode consumes energy and can automatically consume Ancient Coins from the inventory for recharging.
 
-## [1.2.1]
+## [1.3.0]
 
 ### 新增
 
 #### 可疑扫描仪 shift+右键空气充能
 - 手持可疑扫描仪时，shift+右键空气可使用背包中的古代金币补充能量，每枚金币恢复 256 点能量。
 - **浪费保护机制**：当已消耗能量不足一枚金币的充能值时，首次 shift+右键会提示浪费风险；在 1 秒内再次 shift+右键则强制消耗金币充能，避免误操作浪费。
-- 创造模式下不消耗金币（可通过调试开关 `DEBUG_FORCE_ENERGY_COST` 强制消耗）。
 
 #### 古代金币铁砧修复
 - 古代金币现在可用于铁砧修复带耐久物品，每枚金币修复目标物品 25% 最大耐久（与原版同类材料修复一致）。

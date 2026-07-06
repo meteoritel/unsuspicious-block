@@ -11,6 +11,7 @@
     "block.BlockMixin",
     "block.BrushableBlockEntityMixin",
     "enchantment.EnchantmentMenuMixin",
+    "inventory.PlayerPresenceStateMixin",
     "catfavor.CatFeedMixin",
     "catfavor.CatRelaxOnOwnerGoalMixin",
     "catfavor.CatSitOnBlockGoalMixin",

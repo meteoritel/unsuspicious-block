@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
+import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AnvilScreen;
@@ -57,6 +58,6 @@ public final class AnvilBreakdownTooltipAppender {
         if (ModItems.EYE_OF_CAT == null) {
             return false;
         }
-        return player.getInventory().contains(new ItemStack(ModItems.EYE_OF_CAT));
+        return InventoryPresenceRegistry.isPresent(player, ModItems.EYE_OF_CAT);
     }
 }

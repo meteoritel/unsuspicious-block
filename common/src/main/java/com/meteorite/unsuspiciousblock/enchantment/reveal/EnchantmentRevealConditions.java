@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.enchantment.reveal;
 
+import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.world.item.ItemStack;
 
@@ -25,7 +26,7 @@ public final class EnchantmentRevealConditions {
             if (ModItems.EYE_OF_CAT == null) {
                 return false;
             }
-            return player.getInventory().contains(new ItemStack(ModItems.EYE_OF_CAT));
+            return InventoryPresenceRegistry.isPresent(player, ModItems.EYE_OF_CAT);
         });
     }
 }

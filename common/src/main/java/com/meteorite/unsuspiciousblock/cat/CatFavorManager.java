@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorStateHolder;
+import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -114,17 +115,11 @@ public final class CatFavorManager {
         return null;
     }
 
-    // 检查玩家背包中是否存在「猫之手」
+    // 检查玩家背包（含饰品栏/容器）中是否存在「猫之手」
     public static boolean hasHandOfCatInInventory(Player player) {
         if (ModItems.HAND_OF_CAT == null) {
             return false;
         }
-        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (stack.getItem() == ModItems.HAND_OF_CAT) {
-                return true;
-            }
-        }
-        return false;
+        return InventoryPresenceRegistry.isPresent(player, ModItems.HAND_OF_CAT);
     }
 }

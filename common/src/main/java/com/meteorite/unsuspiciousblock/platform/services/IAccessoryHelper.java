@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.platform.services;
 
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 
 /**
  * 饰品栏查询 SPI——平台中立接口。
@@ -11,4 +12,7 @@ public interface IAccessoryHelper {
 
     // 判断玩家是否在饰品栏中装备了考古手册；未安装饰品模组时返回 false
     boolean isJournalEquipped(Player player);
+
+    // 判断玩家饰品栏是否装备了指定物品；未安装饰品模组时返回 false
+    boolean isPresent(Player player, Item item);
 }

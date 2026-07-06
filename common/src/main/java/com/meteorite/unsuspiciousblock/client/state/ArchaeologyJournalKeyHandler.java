@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.state;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
+import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.Minecraft;
@@ -21,8 +22,7 @@ public final class ArchaeologyJournalKeyHandler {
 
         // 快捷键打开考古笔记：物品栏或饰品栏任一含手册均可触发
         if (ModKeyBindings.JOURNAL_OPEN.consumeClick()) {
-            boolean hasJournal = player.getInventory().contains(new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL))
-                    || Services.ACCESSORY.isJournalEquipped(player);
+            boolean hasJournal = InventoryPresenceRegistry.isPresent(player, ModItems.ARCHAEOLOGY_JOURNAL);
             if (hasJournal) {
                 ArchaeologyJournalUi.openFromKeybind();
             }
