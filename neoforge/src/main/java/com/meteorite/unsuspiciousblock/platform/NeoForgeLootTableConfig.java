@@ -23,17 +23,15 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
                         "语法：[命名空间:路径]。指定命名空间时仅匹配该命名空间，省略时匹配所有命名空间。",
                         "路径以 / 结尾表示前缀匹配（命中该前缀下所有表），否则为精确匹配（仅命中单个表）。",
                         "例：minecraft:archaeology/desert_well -> 单表、unsuspiciousblock:archaeology/ -> 指定模组、archaeology/ -> 所有命名空间。",
-                        "默认包含 archaeology/ 与 gameplay/fishing/ 前缀，以及本模组的 gameplay/fossil_hunter/ 前缀。",
                         "",
                         "List of loot table matching rules to track.",
                         "Syntax: [namespace:path]. With namespace, only that namespace is matched; without, all namespaces.",
                         "Path ending with / is a prefix match (all tables under that prefix); otherwise an exact match (single table).",
-                        "e.g. minecraft:archaeology/desert_well (single), unsuspiciousblock:archaeology/ (specific mod), archaeology/ (all namespaces).",
-                        "Defaults include archaeology/, gameplay/fishing/, and the mod's own gameplay/fossil_hunter/ prefix.")
+                        "e.g. minecraft:archaeology/desert_well (single), unsuspiciousblock:archaeology/ (specific mod), archaeology/ (all namespaces).")
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
-                        () -> List.of("archaeology/", "archeology/", "gameplay/fishing/",
-                                "unsuspiciousblock:gameplay/fossil_hunter/"),
+                        () -> List.of("archaeology/", "archeology/", "minecraft:gameplay/fishing",
+                                "unsuspiciousblock:gameplay/fossil_hunter/", "gameplay/fishing/"),
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
         builder.pop();

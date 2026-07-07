@@ -23,7 +23,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final String README_CN_FILE_NAME = "README_CN.txt";
     private static final String README_EN_FILE_NAME = "README_EN.txt";
     private static final List<String> DEFAULT_PREFIXES = List.of(
-            "archaeology/", "archeology/", "gameplay/fishing/",
+            "archaeology/", "archeology/", "gameplay/fishing/", "minecraft:gameplay/fishing",
             "unsuspiciousblock:gameplay/fossil_hunter/");
 
     private final List<String> prefixes;

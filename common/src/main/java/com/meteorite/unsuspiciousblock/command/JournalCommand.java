@@ -200,8 +200,8 @@ public final class JournalCommand {
         for (TableDefinition table : catalog.values()) {
             int lineIndex = index++;
             ResourceLocation tableId = table.id();
-            // 调试命令也触发缺失 key 导出，作为 catalog 加载失败时的手动补救手段
-            String displayName = LootTableNames.resolveDisplayName(tableId).getString();
+            // 调试命令强制重新检索缺失 key 并写盘，作为 catalog 加载失败时的手动补救手段
+            String displayName = LootTableNames.forceResolveDisplayName(tableId).getString();
             String translationKey = LootTableNames.translationKey(tableId);
             String fallbackName = LootTableNames.fallbackName(tableId);
             source.sendSuccess(() -> Component.translatable(

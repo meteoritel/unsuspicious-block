@@ -102,6 +102,15 @@ public final class LootTableNames {
         return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
+    // 强制重新检索缺失 key 并写盘，忽略 WARNED_MISSING_TRANSLATIONS 缓存；仅供调试命令手动补救使用
+    public static Component forceResolveDisplayName(ResourceLocation tableId) {
+        validateArchaeologyTableId(tableId);
+        String translationKey = translationKey(tableId);
+        String fallbackName = fallbackName(tableId);
+        forceMissingTranslation(tableId, translationKey, fallbackName);
+        return Component.translatableWithFallback(translationKey, fallbackName);
+    }
+
     private static void warnMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
         if (Language.getInstance().has(translationKey)) {
             return;
@@ -110,13 +119,23 @@ public final class LootTableNames {
         if (!WARNED_MISSING_TRANSLATIONS.add(tableId)) {
             return;
         }
-        Constants.LOG.warn("Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
+        Constants.LOG.warn("[auto] Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
                 tableId, fallbackName, translationKey);
         // 将缺失 key 追加写入游戏目录下的 usb_miss_key/missing_keys.json，便于补全本地化
         if (!MissingTranslationKeyExporter.record(translationKey, fallbackName)) {
             // 写入失败，撤销标记以便下次调用可重试
             WARNED_MISSING_TRANSLATIONS.remove(tableId);
         }
+    }
+
+    // 强制版本：绕过 WARNED_MISSING_TRANSLATIONS 缓存，每次调用都尝试写盘
+    private static void forceMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
+        if (Language.getInstance().has(translationKey)) {
+            return;
+        }
+        Constants.LOG.warn("[force] Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
+                tableId, fallbackName, translationKey);
+        MissingTranslationKeyExporter.record(translationKey, fallbackName);
     }
 
     private static void registerInternal(ResourceLocation tableId, String translationKey, String fallbackName) {

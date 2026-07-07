@@ -34,18 +34,16 @@ public final class MissingTranslationKeyExporter {
     private MissingTranslationKeyExporter() {
     }
 
-    // 记录一个缺失的 key；已存在则保留原值不覆盖，新 key 追加到文件末尾。
-    // 返回 true 表示成功写入或 key 已存在；返回 false 表示因 I/O 失败未写入，调用方应允许后续重试
+    // 记录一个缺失的 key；无论是否已存在都使用最新值覆盖，确保文件内容随调用保持最新。
+    // 返回 true 表示成功写入；返回 false 表示因 I/O 失败未写入，调用方应允许后续重试
     static boolean record(String translationKey, String fallbackValue) {
         synchronized (WRITE_LOCK) {
             try {
                 Path file = resolveExportFile();
                 Map<String, String> data = loadExisting(file);
-                // 已存在的 key 保留玩家可能已修改的值，避免覆盖；仅在新增时才写盘，避免无谓 I/O
-                boolean changed = data.putIfAbsent(translationKey, fallbackValue) == null;
-                if (changed) {
-                    save(file, data);
-                }
+                // 始终使用最新值覆盖，避免已存在的 key 因旧值滞留而无法更新
+                data.put(translationKey, fallbackValue);
+                save(file, data);
                 return true;
             } catch (IOException e) {
                 Constants.LOG.warn("Failed to export missing translation key '{}' to {}", translationKey, EXPORT_FILE_NAME, e);

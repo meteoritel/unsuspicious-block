@@ -18,7 +18,7 @@ public class ModItems {
     public static Item ANCIENT_COIN;
     public static Item LOST_PAGE;
     public static Item BASE_PAGE;
-    public static Item EYE_OF_CAT;
+    public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
 
     // 物品注册清单条目，供各平台遍历注册
@@ -49,7 +49,7 @@ public class ModItems {
                     item -> BASE_PAGE = item),
             new ItemEntry("eye_of_cat",
                     ModItems::createEyeOfCat,
-                    item -> EYE_OF_CAT = item),
+                    item -> EYE_OF_CAT = (EyeOfCatItem) item),
             new ItemEntry("hand_of_cat",
                     ModItems::createHandOfCat,
                     item -> HAND_OF_CAT = (HandOfCatItem) item)
@@ -109,8 +109,8 @@ public class ModItems {
     }
 
     // 创建猫之瞳实例——持有者开启附魔台时可窥见完整附魔候选
-    public static Item createEyeOfCat() {
-        return new Item(new Item.Properties().rarity(Rarity.UNCOMMON));
+    public static EyeOfCatItem createEyeOfCat() {
+        return new EyeOfCatItem(new Item.Properties().stacksTo(1).rarity(Rarity.UNCOMMON));
     }
 
     // 创建猫之手实例

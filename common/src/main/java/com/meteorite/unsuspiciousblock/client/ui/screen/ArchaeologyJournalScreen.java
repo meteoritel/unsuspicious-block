@@ -275,8 +275,9 @@ public class ArchaeologyJournalScreen extends Screen {
             if (tooltipData.hint() != null) {
                 tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
             }
-            // 子表来源标注：物品来自嵌套子表时追加"来自：子表名"行
-            if (tooltipData.sourceChildTable() != null) {
+            // 子表来源标注：仅当子表本身也是已追踪的考古表时才显示，避免空指针
+            if (tooltipData.sourceChildTable() != null
+                    && LootTableNames.isArchaeologyLootTable(tooltipData.sourceChildTable())) {
                 Component childTableName = LootTableNames.resolveDisplayName(tooltipData.sourceChildTable());
                 tooltipLines.add(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
