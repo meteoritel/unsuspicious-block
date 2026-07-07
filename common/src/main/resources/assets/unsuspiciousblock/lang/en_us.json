@@ -312,5 +312,7 @@
   "unsuspiciousblock.container.anvil.reveal.change_rejected_unsupported": "(unsupported)",
   "unsuspiciousblock.container.anvil.reveal.too_expensive": "Too Expensive!",
   "unsuspiciousblock.container.anvil.reveal.no_result": "No Available Operation",
-  "unsuspiciousblock.container.anvil.reveal.rename_only": "Rename Only"
+  "unsuspiciousblock.container.anvil.reveal.rename_only": "Rename Only",
+  "curios.identifier.journal": "Archaeology Journal",
+  "trinkets.slot.charm.charm": "Charm"
 }

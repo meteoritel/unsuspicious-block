@@ -314,5 +314,7 @@
   "unsuspiciousblock.container.anvil.reveal.change_rejected_unsupported": "(不适用)",
   "unsuspiciousblock.container.anvil.reveal.too_expensive": "过于昂贵！",
   "unsuspiciousblock.container.anvil.reveal.no_result": "无可用操作",
-  "unsuspiciousblock.container.anvil.reveal.rename_only": "仅重命名"
+  "unsuspiciousblock.container.anvil.reveal.rename_only": "仅重命名",
+  "curios.identifier.journal": "考古笔记",
+  "trinkets.slot.charm.charm": "护符"
 }
