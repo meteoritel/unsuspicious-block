@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
+import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
@@ -59,8 +60,10 @@ public final class UnsuspiciousBlockNeoForgeClient {
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderGui);
             // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
             // 注意 ItemTooltipEvent 用 getToolTip()（历史拼写），返回可变列表可直接追加
-            NeoForge.EVENT_BUS.addListener((ItemTooltipEvent tooltipEvent) ->
-                    AnvilBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip()));
+            NeoForge.EVENT_BUS.addListener((ItemTooltipEvent tooltipEvent) -> {
+                AnvilBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip());
+                GrindstoneBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip());
+            });
         });
     }
 

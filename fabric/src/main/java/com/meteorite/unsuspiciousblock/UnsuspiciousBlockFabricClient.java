@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
+import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
@@ -88,8 +89,10 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register((guiGraphics, tickCounter) -> CatFavorHud.render(guiGraphics));
 
         // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
-        ItemTooltipCallback.EVENT.register((stack, context, type, lines) ->
-                AnvilBreakdownTooltipAppender.appendIfApplicable(stack, lines));
+        ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
+            AnvilBreakdownTooltipAppender.appendIfApplicable(stack, lines);
+            GrindstoneBreakdownTooltipAppender.appendIfApplicable(stack, lines);
+        });
     }
 
     // 注册 S2C 客户端接收器
