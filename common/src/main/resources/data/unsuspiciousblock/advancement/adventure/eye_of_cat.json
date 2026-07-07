@@ -1,0 +1,35 @@
+{
+  "parent": "unsuspiciousblock:adventure/take_note_take_note",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:eye_of_cat"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.eye_of_cat"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.eye_of_cat.desc"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "eye_of_cat": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "unsuspiciousblock:eye_of_cat"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "eye_of_cat"
+    ]
+  ]
+}

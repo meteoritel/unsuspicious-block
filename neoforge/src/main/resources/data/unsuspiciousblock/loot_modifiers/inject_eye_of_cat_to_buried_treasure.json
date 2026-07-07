@@ -1,0 +1,12 @@
+{
+  "type": "unsuspiciousblock:inject_item",
+  "conditions": [
+    {
+      "condition": "neoforge:loot_table_id",
+      "loot_table_id": "minecraft:chests/buried_treasure"
+    }
+  ],
+  "item": "unsuspiciousblock:eye_of_cat",
+  "count": 1,
+  "chance": 1.0
+}

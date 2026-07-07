@@ -374,6 +374,10 @@ public final class ArchaeologyJournalClientState {
 
         for (Map.Entry<ResourceLocation, ArchaeologyJournalState.TableProgress> entry : newState.getTables().entrySet()) {
             ResourceLocation tableId = entry.getKey();
+            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古手册中显示）弹出通知
+            if (!catalog.containsKey(tableId)) {
+                continue;
+            }
             ArchaeologyJournalState.TableProgress newProgress = entry.getValue();
             ArchaeologyJournalState.TableProgress oldProgress = oldState.getTable(tableId);
 
@@ -401,6 +405,10 @@ public final class ArchaeologyJournalClientState {
         for (String key : changedTables.getAllKeys()) {
             ResourceLocation tableId = ResourceLocation.tryParse(key);
             if (tableId == null) continue;
+            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古手册中显示）弹出通知
+            if (!catalog.containsKey(tableId)) {
+                continue;
+            }
 
             ArchaeologyJournalState.TableProgress newProgress = newState.getTable(tableId);
             if (newProgress == null) continue;

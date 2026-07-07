@@ -118,16 +118,6 @@ public class JournalUnlockToast implements Toast {
         toastComponent.addToast(newToast);
     }
 
-    // 便捷方法：添加单条表解锁 Toast
-    public static void addTableUnlock(Component tableName) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(TABLE_TOKEN);
-            toast.addEntry(new Entry(tableName, ItemStack.EMPTY));
-            addOrMerge(mc.getToasts(), toast);
-        }
-    }
-
     // 便捷方法：批量添加多条表解锁 Toast
     public static void addTableUnlocks(List<Component> tableNames) {
         if (tableNames.isEmpty()) return;
@@ -137,16 +127,6 @@ public class JournalUnlockToast implements Toast {
             for (Component name : tableNames) {
                 toast.addEntry(new Entry(name, ItemStack.EMPTY));
             }
-            addOrMerge(mc.getToasts(), toast);
-        }
-    }
-
-    // 便捷方法：添加单条物品解锁 Toast
-    public static void addItemUnlock(Component itemName, ItemStack icon) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN);
-            toast.addEntry(new Entry(itemName, icon));
             addOrMerge(mc.getToasts(), toast);
         }
     }
