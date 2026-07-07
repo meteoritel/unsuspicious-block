@@ -8,63 +8,63 @@
           "type": "minecraft:item",
           "name": "minecraft:potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:long_water_breathing"}
+            {"function": "minecraft:set_potion", "id": "minecraft:long_water_breathing"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:long_night_vision"}
+            {"function": "minecraft:set_potion", "id": "minecraft:long_night_vision"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:strong_healing"}
+            {"function": "minecraft:set_potion", "id": "minecraft:strong_healing"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:strong_regeneration"}
+            {"function": "minecraft:set_potion", "id": "minecraft:strong_regeneration"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:strong_swiftness"}
+            {"function": "minecraft:set_potion", "id": "minecraft:strong_swiftness"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:strong_strength"}
+            {"function": "minecraft:set_potion", "id": "minecraft:strong_strength"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:splash_potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:strong_poison"}
+            {"function": "minecraft:set_potion", "id": "minecraft:strong_poison"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:splash_potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:long_slowness"}
+            {"function": "minecraft:set_potion", "id": "minecraft:long_slowness"}
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:splash_potion",
           "functions": [
-            {"function": "minecraft:set_potion", "potion": "minecraft:long_weakness"}
+            {"function": "minecraft:set_potion", "id": "minecraft:long_weakness"}
           ]
         }
       ]
