@@ -79,7 +79,7 @@ public final class JournalCommand {
                                 for (ResourceLocation tableId : catalog.keySet()) {
                                     state.unlockTable(tableId);
                                 }
-                            }, null, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.table.all.success", catalog.size()));
+                            }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.table.all.success", catalog.size()));
                         })
                         .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                                 .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
@@ -89,7 +89,6 @@ public final class JournalCommand {
                                     requireTable(context.getSource(), tableId);
                                     return mutateAndSync(context.getSource(), player,
                                             state -> state.unlockTable(tableId),
-                                            null,
                                             Component.translatable("command.unsuspiciousblock.usb.journal.unlock.table.success", tableId.toString()));
                                 })))
                 .then(Commands.literal("item")
@@ -101,7 +100,7 @@ public final class JournalCommand {
                                 for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
                                     unlockTableItems(state, entry.getKey(), entry.getValue());
                                 }
-                            }, null, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.all.success", itemCount, catalog.size()));
+                            }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.all.success", itemCount, catalog.size()));
                         })
                         .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                                 .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
@@ -111,7 +110,6 @@ public final class JournalCommand {
                                     TableDefinition table = requireTable(context.getSource(), tableId);
                                     return mutateAndSync(context.getSource(), player,
                                             state -> unlockTableItems(state, tableId, table),
-                                            null,
                                             Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.success", tableId.toString(), table.items().size()));
                                 })));
     }
@@ -251,7 +249,6 @@ public final class JournalCommand {
     // 变更后进行增量同步（用于普通解锁操作，只发送变更的表）
     private static int mutateAndSync(CommandSourceStack source, ServerPlayer player,
                                      Consumer<ArchaeologyJournalState> mutator,
-                                     Consumer<ServerPlayer> afterSync,
                                      Component successMessage) {
         if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
             source.sendFailure(Component.translatable("command.unsuspiciousblock.usb.journal.error.state_unavailable"));
@@ -261,9 +258,6 @@ public final class JournalCommand {
         ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
         mutator.accept(state);
         JournalStateHandler.syncState(player);
-        if (afterSync != null) {
-            afterSync.accept(player);
-        }
         source.sendSuccess(() -> successMessage, false);
         return 1;
     }

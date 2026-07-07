@@ -130,11 +130,6 @@ public class FabricLootTableConfig implements ILootTableConfig {
                       - 省略命名空间时匹配所有命名空间，例如：
                           archaeology/                         匹配任意命名空间下 archaeology/ 前缀的所有表
                     路径以 / 结尾为前缀匹配（命中该前缀下所有表），否则为精确匹配（仅命中单个表）。
-                    默认值：
-                      "archaeology/"
-                      "archeology/"
-                      "gameplay/fishing/"
-                      "unsuspiciousblock:gameplay/fossil_hunter/"
 
                 max_log_entries_per_table
                     单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。
@@ -168,11 +163,6 @@ public class FabricLootTableConfig implements ILootTableConfig {
                           archaeology/                         all tables under the archaeology/ prefix in any namespace
                     Path ending with / is a prefix match (all tables under that prefix);
                     otherwise an exact match (single table).
-                    Defaults:
-                      "archaeology/"
-                      "archeology/"
-                      "gameplay/fishing/"
-                      "unsuspiciousblock:gameplay/fossil_hunter/"
 
                 max_log_entries_per_table
                     Max log entries kept per loot table. Oldest entries are dropped when exceeded.

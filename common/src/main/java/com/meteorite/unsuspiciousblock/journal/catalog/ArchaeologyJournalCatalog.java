@@ -27,6 +27,8 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.Potion;
+import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.component.CustomData;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -350,6 +352,13 @@ public final class ArchaeologyJournalCatalog {
                             entryHasConditions = true;
                         }
                     }
+                    case "set_potion" -> {
+                        // 解析 id 字段为 Holder<Potion> 并写入 POTION_CONTENTS 组件，
+                        // 让预览栈能展示正确药水名，签名随后升级为 COMPONENT_EXACT 以精确匹配药水种类
+                        if (!applyPotionContents(previewStack, functionObject.get("id"))) {
+                            entryHasConditions = true;
+                        }
+                    }
                     default -> {
                         if (isEnchantLikeFunction(function)) {
                             previewStack = promoteBookPreviewIfNeeded(previewStack);
@@ -455,6 +464,21 @@ public final class ArchaeologyJournalCatalog {
         };
     }
 
+    // 解析 set_potion 函数的 id 字段为 Holder<Potion>，写入 POTION_CONTENTS 组件；与原版 SetPotionFunction.run 行为一致
+    private static boolean applyPotionContents(ItemStack previewStack, @Nullable JsonElement idElement) {
+        if (idElement == null || idElement.isJsonNull()) {
+            return false;
+        }
+        Holder<Potion> potionHolder = Potion.CODEC.parse(JsonOps.INSTANCE, idElement)
+                .result()
+                .orElse(null);
+        if (potionHolder == null) {
+            return false;
+        }
+        previewStack.set(DataComponents.POTION_CONTENTS, new PotionContents(potionHolder));
+        return true;
+    }
+
 
     @Nullable
     private static ResourceLocation parseFunctionItemId(JsonObject functionObject) {
@@ -473,7 +497,7 @@ public final class ArchaeologyJournalCatalog {
     private static boolean affectsDisplayedResult(String function) {
         return switch (function) {
             case "copy_components", "set_lore", "set_nbt", "copy_custom_data", "set_damage",
-                    "set_potion", "set_instrument", "set_fireworks", "set_firework_explosion",
+                    "set_instrument", "set_fireworks", "set_firework_explosion",
                     "set_banner_pattern", "set_book_cover", "set_written_book_pages",
                     "set_writable_book_pages", "toggle_tooltips", "set_custom_model_data" -> true;
             default -> false;
