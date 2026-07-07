@@ -54,15 +54,15 @@ public final class ArchaeologyChallengeChecker {
 
         // 集齐陶片 / 样板：穷举固定物品集合判定
         if (needSherd && allCollected(state, POTTERY_SHERDS)) {
-            AchievementManager.grant(player, ModAchievements.SHERD_COLLECTOR);
+            AchievementManager.grantIfNotAlready(player, ModAchievements.SHERD_COLLECTOR);
         }
         if (needTemplate && allCollected(state, TRIM_TEMPLATES)) {
-            AchievementManager.grant(player, ModAchievements.TEMPLATE_COLLECTOR);
+            AchievementManager.grantIfNotAlready(player, ModAchievements.TEMPLATE_COLLECTOR);
         }
 
         // 全图鉴：要求解锁所有原版考古战利品表且表中每件物品都至少获得一次
         if (needCompletionist && isFullCatalogUnlocked(state)) {
-            AchievementManager.grant(player, ModAchievements.COMPLETIONISTS_DUST);
+            AchievementManager.grantIfNotAlready(player, ModAchievements.COMPLETIONISTS_DUST);
         }
     }
 

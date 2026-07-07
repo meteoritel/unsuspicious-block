@@ -236,7 +236,7 @@
   "advancement.unsuspiciousblock.completionists_dust": "Completionist's Dust",
   "advancement.unsuspiciousblock.completionists_dust.desc": "解锁所有原版考古战利品表，并集齐其中每一件战利品。",
   "advancement.unsuspiciousblock.cache_me_if_you_can": "Cache Me If You Can",
-  "advancement.unsuspiciousblock.cache_me_if_you_can.desc": "考古日志记录到达上限。",
+  "advancement.unsuspiciousblock.cache_me_if_you_can.desc": "任意单张战利品表的日志条目数达到上限。",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "随机附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "%s级附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "已附魔",

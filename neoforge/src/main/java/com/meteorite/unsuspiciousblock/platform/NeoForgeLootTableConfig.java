@@ -40,17 +40,31 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
 
         builder.push("journal");
         MAX_LOG_ENTRIES_PER_TABLE = builder
-                .comment("单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。取值范围 64–4096。",
+                .comment("单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。取值范围 "
+                        + ILootTableConfig.MIN_MAX_LOG_ENTRIES_PER_TABLE + "–" + ILootTableConfig.MAX_MAX_LOG_ENTRIES_PER_TABLE
+                        + "。默认 " + ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE + "。",
                         "",
-                        "Max log entries kept per loot table. Oldest entries are dropped when exceeded. Range 64–4096.")
+                        "Max log entries kept per loot table. Oldest entries are dropped when exceeded. Range "
+                        + ILootTableConfig.MIN_MAX_LOG_ENTRIES_PER_TABLE + "–" + ILootTableConfig.MAX_MAX_LOG_ENTRIES_PER_TABLE
+                        + ". Default " + ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE + ".")
                 .translation("unsuspiciousblock.configgui.journal.max_log_entries_per_table")
-                .defineInRange("max_log_entries_per_table", 1024, 64, 4096);
+                .defineInRange("max_log_entries_per_table",
+                        ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
+                        ILootTableConfig.MIN_MAX_LOG_ENTRIES_PER_TABLE,
+                        ILootTableConfig.MAX_MAX_LOG_ENTRIES_PER_TABLE);
         TRACKING_TIMEOUT_TICKS = builder
-                .comment("战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。取值范围 600–60000。",
+                .comment("战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。取值范围 "
+                        + ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS + "–" + ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS
+                        + "。",
                         "",
-                        "Loot container tracking timeout (ticks). Auto-settles and clears tracking state on expiry. Range 600–60000.")
+                        "Loot container tracking timeout (ticks). Auto-settles and clears tracking state on expiry. Range "
+                        + ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS + "–" + ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS
+                        + ".")
                 .translation("unsuspiciousblock.configgui.journal.tracking_timeout_ticks")
-                .defineInRange("tracking_timeout_ticks", 6000L, 600L, 60000L);
+                .defineInRange("tracking_timeout_ticks",
+                        ILootTableConfig.DEFAULT_TRACKING_TIMEOUT_TICKS,
+                        ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS,
+                        ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS);
         builder.pop();
 
         CONFIG_SPEC = builder.build();

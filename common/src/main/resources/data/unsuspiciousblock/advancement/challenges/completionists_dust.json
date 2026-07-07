@@ -1,5 +1,5 @@
 {
-  "parent": "unsuspiciousblock:adventure/template_collector",
+  "parent": "unsuspiciousblock:adventure/take_note_take_note",
   "display": {
     "icon": {
       "id": "minecraft:brush"

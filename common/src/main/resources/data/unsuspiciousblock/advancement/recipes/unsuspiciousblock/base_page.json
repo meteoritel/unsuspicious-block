@@ -1,12 +1,12 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_pitcher_pod": {
+    "has_pitcher_plant": {
       "trigger": "minecraft:inventory_changed",
       "conditions": {
         "items": [
           {
-            "items": "minecraft:pitcher_pod"
+            "items": "minecraft:pitcher_plant"
           }
         ]
       }
@@ -20,7 +20,7 @@
   },
   "requirements": [
     [
-      "has_pitcher_pod",
+      "has_pitcher_plant",
       "has_the_recipe"
     ]
   ],

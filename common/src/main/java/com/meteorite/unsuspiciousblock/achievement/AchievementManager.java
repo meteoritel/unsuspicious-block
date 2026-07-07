@@ -47,12 +47,4 @@ public final class AchievementManager {
         grant(player, achievement);
         return true;
     }
-
-    // 撤销成就
-    public static void revoke(ServerPlayer player, ModAchievement achievement) {
-        if (helper == null) {
-            return;
-        }
-        helper.revoke(player, achievement);
-    }
 }

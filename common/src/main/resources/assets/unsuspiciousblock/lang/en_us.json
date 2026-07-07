@@ -235,7 +235,7 @@
   "advancement.unsuspiciousblock.completionists_dust": "Completionist's Dust",
   "advancement.unsuspiciousblock.completionists_dust.desc": "Unlock every vanilla archaeology loot table and obtain each of their items at least once.",
   "advancement.unsuspiciousblock.cache_me_if_you_can": "Cache Me If You Can",
-  "advancement.unsuspiciousblock.cache_me_if_you_can.desc": "Record archaeology log entries reach the upper limit.",
+  "advancement.unsuspiciousblock.cache_me_if_you_can.desc": "Fill a single loot table's log to its maximum capacity.",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "Random Enchant",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "Level %s Enchant",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "Enchanted",

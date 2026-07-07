@@ -37,7 +37,6 @@ public final class JournalLogHandler {
         }
         ArchaeologyJournalLogState uploadedState = new ArchaeologyJournalLogState();
         uploadedState.readFrom(payload.state());
-        int uploadedEntryCount = uploadedState.getTotalEntryCount();
         if (!session.isSeeded()) {
             // 降级路径：旧版客户端或无持久数据时，从客户端上传建立初始状态
             session.seedFromClient(payload.sessionId(), uploadedState);
@@ -47,9 +46,9 @@ public final class JournalLogHandler {
             session.mergeFromClient(uploadedState);
             syncToPersistedState(player);
         }
-        int mirroredEntryCount = session.mirroredState().getTotalEntryCount();
-        if (crossesCacheMeIfYouCanThreshold(uploadedEntryCount, mirroredEntryCount)) {
-            AchievementManager.grant(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
+        // 合并后检查是否有任意单表条目数达到上限
+        if (anyTableReachedThreshold(session.mirroredState())) {
+            AchievementManager.grantIfNotAlready(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
         }
         syncLogSnapshot(player);
     }
@@ -90,14 +89,17 @@ public final class JournalLogHandler {
             session.queueUpsertEntry(tableId, entry);
             return;
         }
-        int previousTotalEntryCount = session.mirroredState().getTotalEntryCount();
+        // 记录该表 upsert 前的条目数，用于判断是否跨越上限阈值
+        ArchaeologyJournalLogState.TableLogHistory table = session.mirroredState().getTable(tableId);
+        int previousTableEntryCount = table != null ? table.getTotalEntryCount() : 0;
         if (!session.mirroredState().upsertEntry(tableId, entry)) {
             return;
         }
         syncToPersistedState(player);
-        int currentTotalEntryCount = session.mirroredState().getTotalEntryCount();
-        if (crossesCacheMeIfYouCanThreshold(previousTotalEntryCount, currentTotalEntryCount)) {
-            AchievementManager.grant(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
+        table = session.mirroredState().getTable(tableId);
+        int currentTableEntryCount = table != null ? table.getTotalEntryCount() : 0;
+        if (crossesCacheMeIfYouCanThreshold(previousTableEntryCount, currentTableEntryCount)) {
+            AchievementManager.grantIfNotAlready(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
         }
         UUID sessionId = session.getSessionId();
         if (sessionId == null) {
@@ -265,11 +267,22 @@ public final class JournalLogHandler {
         syncLogSnapshot(player);
     }
 
-    // 判断是否跨越了"缓存大师"成就门槛——使用单表日志上限作为总条数门槛
-    static boolean crossesCacheMeIfYouCanThreshold(int previousTotalEntryCount, int currentTotalEntryCount) {
+    // 判断单表条目数是否跨越了"缓存大师"成就门槛——即达到单表日志条目上限
+    static boolean crossesCacheMeIfYouCanThreshold(int previousEntryCount, int currentEntryCount) {
         int threshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
-        return previousTotalEntryCount < threshold
-                && currentTotalEntryCount >= threshold;
+        return previousEntryCount < threshold
+                && currentEntryCount >= threshold;
+    }
+
+    // 判断状态中是否有任意单表条目数已达到上限（用于快照合并后的成就检查）
+    private static boolean anyTableReachedThreshold(ArchaeologyJournalLogState state) {
+        int threshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
+        for (ArchaeologyJournalLogState.TableLogHistory table : state.getTables().values()) {
+            if (table.getTotalEntryCount() >= threshold) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 获取玩家的日志同步会话（通过 mixin 接口）

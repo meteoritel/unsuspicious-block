@@ -25,8 +25,6 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final List<String> DEFAULT_PREFIXES = List.of(
             "archaeology/", "archeology/", "gameplay/fishing/",
             "unsuspiciousblock:gameplay/fossil_hunter/");
-    private static final int DEFAULT_MAX_LOG_ENTRIES_PER_TABLE = 1024;
-    private static final long DEFAULT_TRACKING_TIMEOUT_TICKS = 6000L;
 
     private final List<String> prefixes;
     private final int maxLogEntriesPerTable;
@@ -36,10 +34,8 @@ public class FabricLootTableConfig implements ILootTableConfig {
         ConfigData data = loadConfig();
         this.prefixes = new ArrayList<>(data.archaeology_path_prefixes != null && !data.archaeology_path_prefixes.isEmpty()
                 ? data.archaeology_path_prefixes : DEFAULT_PREFIXES);
-        this.maxLogEntriesPerTable = data.max_log_entries_per_table > 0
-                ? data.max_log_entries_per_table : DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
-        this.trackingTimeoutTicks = data.tracking_timeout_ticks >= 600L
-                ? data.tracking_timeout_ticks : DEFAULT_TRACKING_TIMEOUT_TICKS;
+        this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
+        this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
     }
 
     @Override
@@ -55,6 +51,17 @@ public class FabricLootTableConfig implements ILootTableConfig {
     @Override
     public long getTrackingTimeoutTicks() {
         return this.trackingTimeoutTicks;
+    }
+
+    // 将配置值钳制到合法范围 [MIN, MAX]，越界时回退默认值，与 NeoForge 端 defineInRange 行为一致
+    private static int clampLogEntries(int raw) {
+        return raw >= MIN_MAX_LOG_ENTRIES_PER_TABLE && raw <= MAX_MAX_LOG_ENTRIES_PER_TABLE
+                ? raw : DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
+    }
+
+    private static long clampTrackingTimeout(long raw) {
+        return raw >= MIN_TRACKING_TIMEOUT_TICKS && raw <= MAX_TRACKING_TIMEOUT_TICKS
+                ? raw : DEFAULT_TRACKING_TIMEOUT_TICKS;
     }
 
     private static ConfigData loadConfig() {
@@ -131,7 +138,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
 
                 max_log_entries_per_table
                     单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。
-                    取值范围：64 – 4096。默认 1024。
+                    取值范围：64 – 4096。默认 512。
 
                 tracking_timeout_ticks
                     战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。
@@ -169,7 +176,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
 
                 max_log_entries_per_table
                     Max log entries kept per loot table. Oldest entries are dropped when exceeded.
-                    Range: 64 – 4096. Default 1024.
+                    Range: 64 – 4096. Default 512.
 
                 tracking_timeout_ticks
                     Loot container tracking timeout (ticks). Auto-settles and clears tracking state on expiry.

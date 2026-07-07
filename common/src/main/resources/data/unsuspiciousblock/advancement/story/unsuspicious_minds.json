@@ -16,13 +16,13 @@
     "hidden": false
   },
   "criteria": {
-    "root": {
+    "scanned": {
       "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "root"
+      "scanned"
     ]
   ]
 }

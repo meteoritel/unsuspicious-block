@@ -16,13 +16,13 @@
     "hidden": false
   },
   "criteria": {
-    "reach_1024_entries": {
+    "reach_table_limit": {
       "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "reach_1024_entries"
+      "reach_table_limit"
     ]
   ],
   "rewards": {
