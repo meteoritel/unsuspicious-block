@@ -50,6 +50,8 @@ loom {
             setConfigName('Fabric Client')
             ideConfigGenerated(true)
             runDir('runs/client')
+            // 固定开发环境玩家身份，避免每次启动 UUID 随机导致玩家数据/调试状态丢失
+            programArgs.addAll('--username', 'Dev', '--uuid', '12345678-1234-1234-1234-123456789abc')
         }
         server {
             server()
