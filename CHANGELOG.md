@@ -144,7 +144,7 @@
 - 修复了钓鱼战利品表无法正常追踪的问题。
 - 修复了药水类物品无法正常解析的问题。
 - 修复了注入古迹废墟的考古战利品无法正常获取的问题。
-- 修复了基础配方中误用 `pitcher_pod` 的问题（现已改用 `pitcher_plant`）。
+- 修复了基页配方中误用 `pitcher_pod` 的问题（现已改用 `pitcher_plant`）。
 
 ### Added
 
@@ -161,10 +161,10 @@
 - Logs now have an annotation feature; annotated logs will not be automatically destroyed.
 
 #### Nested Loot Table Tracking
-- Support for tracking nested loot tables has been added, with sub-table sources now labelled (only effective when the sub-table is also being tracked). This fix should resolve the issue from the previous version where fishing loot tables could not be tracked.
+- Support for tracking nested loot tables has been added, with sub-table sources now labeled (only effective when the sub-table is also being tracked). This fix should resolve the issue from the previous version where fishing loot tables could not be tracked.
 
-#### Cat's Eye
-- New item "Cat's Eye", found in buried treasure loot. When equipped in the charm slot or carried in the inventory, activates the following abilities:
+#### Eye Of Cat
+- New item "Eye Of Cat", found in buried treasure loot. When equipped in the charm slot or carried in the inventory, activates the following abilities:
   - **Enchantment Candidate Reveal**: Displays the full list of enchantment candidates in the enchantment table interface.
   - **Anvil Cost Breakdown**: Adds a tooltip with a cost breakdown when hovering over items in the anvil interface.
   - **Grindstone Operation Breakdown**: Adds a tooltip with an operation preview when hovering over items in the grindstone interface.
@@ -175,12 +175,12 @@
 ### Changed
 
 #### Enchantment Adjustments
-- **Mud Salvage**: Enchantment weight reduced from 2 to 1 to lower its appearance rate in the enchantment table; when triggered in swamp biomes, it now diverts to a dedicated loot table (with better rewards).
-- **Fabric Harvesting**: Changed to always drop 1–3 string (random quantity).
-- **Precise Excavation**: Probability model changed from a hardcoded array to a formula-based calculation. Adjusted probabilities per level: Level 1: 16% → 28%, Level 2: 36% → 44%, Level 3 remains 60%. The level cap constraint has also been removed.
+- **Mud Dredging**: Enchantment weight reduced from 2 to 1 to lower its appearance rate in the enchantment table; when triggered in swamp biomes, it now diverts to a dedicated loot table (with better rewards).
+- **Textile Recovery**: Changed to always drop 1–3 string (random quantity).
+- **Precision Excavation**: Probability model changed from a hardcoded array to a formula-based calculation. Adjusted probabilities per level: Level 1: 16% → 28%, Level 2: 36% → 44%, Level 3 remains 60%. 
 
 #### Commands Unified into Subsystem Group Structure
-- All commands still start with `/usb` and require OP permission level 2. They are now restructured into sub-trees per subsystem. Currently, the `journal` (archaeology notes) subsystem is implemented.
+- All commands still start with `/usb` and require OP permission level 2. They are now restructured into subtrees per subsystem. Currently, the `journal` (archaeology journal) subsystem is implemented.
 - **Archaeology Journal `/usb journal ...`**
   - `clear [table_id]`: Clears the player's archaeology journal data. Without arguments, clears all data; with `table_id`, clears only that loot table's data.
   - `unlock table [table_id]`: Unlocks an archaeology loot table. Without arguments, unlocks all tables; with `table_id`, unlocks only that table.
@@ -192,4 +192,4 @@
 - Fixed an issue where fishing loot tables could not be tracked properly.
 - Fixed an issue where potion items could not be parsed correctly.
 - Fixed an issue where archaeology loot injected into trail ruins could not be obtained properly.
-- Fixed a mistake in the base recipe that used `pitcher_pod` (now correctly uses `pitcher_plant`).
+- Fixed a mistake in the base page recipe that used `pitcher_pod` (now correctly uses `pitcher_plant`).
