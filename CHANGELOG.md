@@ -100,52 +100,96 @@
 
 ### 新增
 
-#### 可疑扫描仪 shift+右键空气充能
-- 手持可疑扫描仪时，shift+右键空气可使用背包中的古代金币补充能量，每枚金币恢复 256 点能量。
-- 浪费保护机制：当已消耗能量不足一枚金币的充能值时，首次 shift+右键会提示浪费风险；在 1 秒内再次 shift+右键则强制消耗金币充能，避免误操作浪费。
+#### 可疑扫描仪：Shift + 右键空气充能
+- 手持可疑扫描仪时，Shift + 右键点击空气可使用背包中的古代金币补充能量，每枚金币恢复 256 点能量。
+- 浪费保护机制：当剩余可充能量不足一枚金币的充能值时，首次 Shift + 右键会提示浪费风险；若在 1 秒内再次 Shift + 右键，则强制消耗金币进行充能，以避免误操作导致资源浪费。
 
 #### 古代金币铁砧修复
-- 古代金币现在可用于铁砧修复带耐久物品，每枚金币修复目标物品 25% 最大耐久。
-- 由古代金币进行修复不会累加附魔惩罚。
+- 古代金币现可用于铁砧修复带耐久值的物品，每枚金币修复目标物品最大耐久的 25%。
+- 使用古代金币进行修复不会累加附魔惩罚。
 
-#### 考古手册的收藏功能与日志备注
-- 现在可以 shift 点击收藏战利品表了；
-- 日志增加了备注功能，被备注的日志将不会被自动销毁
+#### 考古手册收藏功能与日志备注
+- 现支持通过 Shift + 点击收藏战利品表。
+- 日志新增备注功能，被备注的日志将不会被自动销毁。
 
-#### 嵌套战利品表的追踪
-- 现在支持嵌套战利品表追踪与子表来源标注（仅当子表也同时被追踪时生效），这应该会修复上个版本钓鱼表无法追踪的bug
+#### 嵌套战利品表追踪
+- 现支持嵌套战利品表的追踪，并标注子表来源（仅当子表同时处于追踪状态时生效）。此修复应解决上个版本中钓鱼战利品表无法追踪的问题。
 
 #### 猫之瞳
-- 新增物品「猫之瞳」，可在埋藏的宝藏战利品中发现，装备在护符槽或携带在背包中时激活以下能力：
-- **附魔候选揭示**：在附魔台界面揭示完整附魔候选列表，不再需要逐级尝试。
-- **铁砧成本分解**：在铁砧界面悬停物品时追加成本分解 tooltip。
-- **砂轮操作分解**：在砂轮界面悬停物品时追加操作预览 tooltip。
+- 新增物品「猫之瞳」，可在埋藏的宝藏战利品中发现。装备于护符槽或携带在背包中时，激活以下能力：
+  - **附魔候选揭示**：在附魔台界面中展示完整的附魔候选列表。
+  - **铁砧成本分解**：在铁砧界面中悬停物品时，追加成本分解提示框。
+  - **砂轮操作分解**：在砂轮界面中悬停物品时，追加操作预览提示框。
+
+#### 饰品
+- 新增与饰品栏的联动支持：NeoForge 端使用 Curios API，Fabric 端使用 Trinkets。
 
 ### 变化
 
 #### 附魔调整
-- **泥地打捞**（Mud Dredging）：附魔权重从 2 降至 1，降低其在附魔台中出现的概率。
-- **织物采集**（Textile Recovery）：修改为百分百随机掉落1-3根线。
+- **泥地打捞**：附魔权重从 2 降至 1，以降低其在附魔台中的出现概率；在沼泽群系中触发后，将分流至专属战利品表（奖励更丰厚）。
+- **织物采集**：修改为必定掉落 1～3 根线（随机数量）。
+- **精准发掘**：概率模型从硬编码数组改为公式计算。各等级概率调整为：1 级 16% → 28%，2 级 36% → 44%，3 级保持 60% 不变，同时移除了等级上限约束。
 
 #### 调试指令统一为子系统分组结构
-- 全部调试指令仍以 `/usb` 开头，需要 op 权限 2。现按子系统分为三棵子树：`journal`（考古笔记）、`ghost_cat`（幽灵猫）、`favor`（猫之恩惠）。
+- 所有调试指令仍以 `/usb` 开头，需要 OP 权限等级 2。现按子系统重构为子树结构，当前已实现 `journal`（考古笔记）子系统。
 - **考古笔记 `/usb journal ...`**
-  - `clear [table_id]`：清空玩家考古笔记数据。无参清空全部，指定 `table_id` 仅清除该表数据。
-  - `unlock table [table_id]`：解锁考古战利品表。无参解锁全部，指定 `table_id` 仅解锁该表。
-  - `unlock item [table_id]`：解锁考古物品条目。无参解锁全部表中的全部物品，指定 `table_id` 仅解锁该表中的全部物品。
-  - `reload`：强制清空概率缓存，重新加载并重新模拟所有跟踪的战利品表概率
-  - `list`：列出当前服务端已加载的所有考古战利品表及其翻译键、显示名等信息
-- **幽灵猫 `/usb ghost_cat ...`** [开发中]
-  - `spawn`：在玩家附近召唤一只幽灵猫，并直接注入晨礼行为（目标=自己，跳过恩惠检查）。
-  - `info`：输出距离最近的幽灵猫运行时状态（坐标、阶段、tick、行为、目标、是否携带礼物等）。
-  - `phase <阶段名>`：强制切换最近幽灵猫的阶段。可选阶段：`manifest` / `approach` / `greet` / `deliver` / `dissipate`。
-  - `discard`：立即移除距离最近的幽灵猫。
-- **猫之恩惠 `/usb favor ...`** [开发中]
-  - `add <amount>`：在当前恩惠值基础上增减指定量（可为负，自动 clamp 到 0-100），并同步到客户端。
-  - `set <amount>`：直接设置恩惠值（仅允许 0-100），并同步到客户端。
-  - `get`：查询当前恩惠值（新增）。
-  - `reset`：重置整个猫之恩惠状态（包括恩惠值、九命计数、能力开关等派生状态，新增）。
+  - `clear [table_id]`：清空玩家考古笔记数据。不带参数时清空全部数据；指定 `table_id` 则仅清除该战利品表的数据。
+  - `unlock table [table_id]`：解锁考古战利品表。不带参数时解锁全部表；指定 `table_id` 则仅解锁该表。
+  - `unlock item [table_id]`：解锁考古物品条目。不带参数时解锁全部表中的所有物品；指定 `table_id` 则仅解锁该表中的全部物品。
+  - `reload`：强制清空概率缓存，重新加载并重新模拟所有被追踪的战利品表概率。
+  - `list`：列出当前服务端已加载的所有考古战利品表，包含其翻译键、显示名称等信息。
 
 ### 修复
-- 修复了钓鱼战利品表无法正常追踪的 bug
-- 修复了药水类物品无法正常解析的 bug
+- 修复了钓鱼战利品表无法正常追踪的问题。
+- 修复了药水类物品无法正常解析的问题。
+- 修复了注入古迹废墟的考古战利品无法正常获取的问题。
+- 修复了基础配方中误用 `pitcher_pod` 的问题（现已改用 `pitcher_plant`）。
+
+### Added
+
+#### Suspicious Reader: Shift + Right-click Air Charging
+- While holding the Suspicious Reader, Shift + right-clicking in air consumes Ancient Coins from your inventory to recharge energy, with each coin restoring 256 energy.
+- Waste protection: When the remaining rechargeable energy is less than one coin's worth, the first Shift + right-click warns of potential waste; if Shift + right-click is performed again within 1 second, the coin is forcibly consumed to charge, preventing accidental resource waste.
+
+#### Ancient Coin Anvil Repair
+- Ancient Coins can now be used on an anvil to repair items with durability, with each coin restoring 25% of the target item's maximum durability.
+- Repairing with Ancient Coins does not accumulate enchantment penalties.
+
+#### Archaeology Journal Collection Feature and Log Annotations
+- Shift + clicking now supports collecting loot tables.
+- Logs now have an annotation feature; annotated logs will not be automatically destroyed.
+
+#### Nested Loot Table Tracking
+- Support for tracking nested loot tables has been added, with sub-table sources now labelled (only effective when the sub-table is also being tracked). This fix should resolve the issue from the previous version where fishing loot tables could not be tracked.
+
+#### Cat's Eye
+- New item "Cat's Eye", found in buried treasure loot. When equipped in the charm slot or carried in the inventory, activates the following abilities:
+  - **Enchantment Candidate Reveal**: Displays the full list of enchantment candidates in the enchantment table interface.
+  - **Anvil Cost Breakdown**: Adds a tooltip with a cost breakdown when hovering over items in the anvil interface.
+  - **Grindstone Operation Breakdown**: Adds a tooltip with an operation preview when hovering over items in the grindstone interface.
+
+#### Trinket
+- Added compatibility with trinket slots: NeoForge uses Curios API, Fabric uses Trinkets Mod.
+
+### Changed
+
+#### Enchantment Adjustments
+- **Mud Salvage**: Enchantment weight reduced from 2 to 1 to lower its appearance rate in the enchantment table; when triggered in swamp biomes, it now diverts to a dedicated loot table (with better rewards).
+- **Fabric Harvesting**: Changed to always drop 1–3 string (random quantity).
+- **Precise Excavation**: Probability model changed from a hardcoded array to a formula-based calculation. Adjusted probabilities per level: Level 1: 16% → 28%, Level 2: 36% → 44%, Level 3 remains 60%. The level cap constraint has also been removed.
+
+#### Commands Unified into Subsystem Group Structure
+- All commands still start with `/usb` and require OP permission level 2. They are now restructured into sub-trees per subsystem. Currently, the `journal` (archaeology notes) subsystem is implemented.
+- **Archaeology Journal `/usb journal ...`**
+  - `clear [table_id]`: Clears the player's archaeology journal data. Without arguments, clears all data; with `table_id`, clears only that loot table's data.
+  - `unlock table [table_id]`: Unlocks an archaeology loot table. Without arguments, unlocks all tables; with `table_id`, unlocks only that table.
+  - `unlock item [table_id]`: Unlocks archaeology item entries. Without arguments, unlocks all items in all tables; with `table_id`, unlocks all items in that table only.
+  - `reload`: Forcefully clears probability caches, reloads and re-simulates probabilities for all tracked loot tables.
+  - `list`: Lists all archaeology loot tables currently loaded on the server, including their translation keys, display names, and other info.
+
+### Fixed
+- Fixed an issue where fishing loot tables could not be tracked properly.
+- Fixed an issue where potion items could not be parsed correctly.
+- Fixed an issue where archaeology loot injected into trail ruins could not be obtained properly.
+- Fixed a mistake in the base recipe that used `pitcher_pod` (now correctly uses `pitcher_plant`).
