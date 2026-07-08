@@ -162,12 +162,19 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     private void syncCommonItemRefs(FMLCommonSetupEvent event) {
+        // MenuType 同步回写：RegisterMenuScreensEvent 可能在 enqueueWork 任务执行前触发，
+        // 同步执行确保运行时 TYPE 就绪；客户端注册 Screen 时另有 getter 兜底
+        SpecimenBoxMenu.TYPE = SPECIMEN_BOX_MENU.get();
         event.enqueueWork(() -> {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
             }
-            SpecimenBoxMenu.TYPE = SPECIMEN_BOX_MENU.get();
         });
+    }
+
+    // 供客户端在 RegisterMenuScreensEvent 时获取 MenuType，避免 enqueueWork 时序问题
+    public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
+        return SPECIMEN_BOX_MENU.get();
     }
 
 //    public static MenuType<SpecimenBoxMenu> specimenBoxMenu() {

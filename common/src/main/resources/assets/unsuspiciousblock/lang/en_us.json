@@ -44,6 +44,7 @@
 
   "item.unsuspiciousblock.archaeology_journal": "Archaeology Journal",
   "item.unsuspiciousblock.specimen_box": "Specimen Box",
+  "item.unsuspiciousblock.specimen_box.tooltip_desc": "Place inventory-active items (e.g. Hand of Cat, Eye of Cat) inside; their effects work while the box is in your inventory or curio slot",
   "item.unsuspiciousblock.ancient_coin": "Ancient Coin",
   "item.unsuspiciousblock.lost_page": "Lost Page",
   "item.unsuspiciousblock.base_page": "Base Page",
@@ -55,6 +56,7 @@
   "item.unsuspiciousblock.eye_of_cat.tooltip.anvil_breakdown": "Anvil Cost Breakdown",
   "item.unsuspiciousblock.eye_of_cat.tooltip.grindstone_breakdown": "Grindstone Operation Preview",
   "item.unsuspiciousblock.hand_of_cat": "Hand of Cat",
+  "item.unsuspiciousblock.hand_of_cat.tooltip_wip": "[WIP] This item is still in development; effects may change",
   "item.unsuspiciousblock.hand_of_cat.tooltip_favor": "Cat's Favor: %s/%s",
   "item.unsuspiciousblock.hand_of_cat.tooltip_lives": "Remaining Lives: %s/9",
   "item.unsuspiciousblock.hand_of_cat.tooltip_detail_hint": "Hold Shift for details",
@@ -84,8 +86,6 @@
   "enchantment.unsuspiciousblock.fossil_hunter": "Fossil Hunter",
   "screen.unsuspiciousblock.archaeology_journal.title": "Archaeology Journal",
   "screen.unsuspiciousblock.specimen_box.title": "Specimen Box",
-  "screen.unsuspiciousblock.specimen_box.empty": "No unlocked tables.",
-  "screen.unsuspiciousblock.specimen_box.stored": "Stored: %d",
   "screen.unsuspiciousblock.archaeology_journal.catalog": "Catalog",
   "screen.unsuspiciousblock.archaeology_journal.entries": "Entries",
   "screen.unsuspiciousblock.archaeology_journal.empty": "No records yet.",
@@ -334,5 +334,7 @@
   "unsuspiciousblock.container.grindstone.reveal.durability_change": "Durability: %s → %s",
   "unsuspiciousblock.container.grindstone.reveal.book_transform": "Enchanted Book → Book",
   "curios.identifier.journal": "Archaeology Journal",
-  "trinkets.slot.charm.charm": "Charm"
+  "curios.identifier.trinkets": "Trinket",
+  "trinkets.slot.charm.charm": "Charm",
+  "trinkets.slot.trinket.trinket": "Trinket"
 }

@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.hud;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
+import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.Util;
@@ -11,7 +12,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 
 /**
  * 猫之恩惠快捷栏 HUD——在快捷栏左侧渲染猫爪图标与恩惠值/九命命数，
@@ -107,17 +107,11 @@ public final class CatFavorHud {
         gui.pose().popPose();
     }
 
-    // 客户端侧检查背包是否存在猫之手
+    // 客户端侧检查背包（含标本箱等便携容器与饰品栏）是否存在猫之手
     private static boolean hasHandOfCat(LocalPlayer player) {
         if (ModItems.HAND_OF_CAT == null) {
             return false;
         }
-        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (stack.getItem() == ModItems.HAND_OF_CAT) {
-                return true;
-            }
-        }
-        return false;
+        return InventoryPresenceRegistry.isPresent(player, ModItems.HAND_OF_CAT);
     }
 }

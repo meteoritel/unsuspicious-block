@@ -49,7 +49,17 @@ public final class InventoryPresenceRegistry {
                 return true;
             }
         }
-        return Services.ACCESSORY.isPresent(player, item);
+        // 饰品栏：遍历所有已装备物品栈，递归扫描便携容器内物品
+        for (ItemStack stack : Services.ACCESSORY.streamEquippedStacks(player).toList()) {
+            if (stack.getItem() == item) {
+                return true;
+            }
+            if (stack.getItem() instanceof PortableContainer pc
+                    && pc.getContents(stack).anyMatch(s -> s.getItem() == item)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 注册 trigger：物品 → 回调
@@ -111,10 +121,19 @@ public final class InventoryPresenceRegistry {
                 });
             }
         }
-        // 饰品栏：逐个 trigger 物品查询（trigger 通常很少，可接受）
-        for (Item triggerItem : TRIGGERS.keySet()) {
-            if (Services.ACCESSORY.isPresent(player, triggerItem)) {
-                present.add(triggerItem);
+        // 饰品栏：遍历所有已装备物品栈，递归扫描便携容器中的 trigger 物品
+        for (ItemStack stack : Services.ACCESSORY.streamEquippedStacks(player).toList()) {
+            Item it = stack.getItem();
+            if (TRIGGERS.containsKey(it)) {
+                present.add(it);
+            }
+            if (it instanceof PortableContainer pc) {
+                pc.getContents(stack).forEach(s -> {
+                    Item inner = s.getItem();
+                    if (TRIGGERS.containsKey(inner)) {
+                        present.add(inner);
+                    }
+                });
             }
         }
         return present;

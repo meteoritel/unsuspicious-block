@@ -14,10 +14,11 @@ import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
@@ -29,6 +30,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
@@ -58,14 +60,14 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             }
             JournalUnlockToast.addItemUnlocks(entries);
         });
-        // MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+        // 注册标本箱界面（漏斗贴图）
+        MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
         // 注册 S2C 接收器：遍历 ModPayloads 客户端清单
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
             registerS2C(s2c);
         }
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            SpecimenBoxClientState.clearAll();
             ArchaeologyJournalClientState.resetOnDisconnect();
             HandOfCatClientState.reset();
             ReaderScanHighlightState.reset();
@@ -75,7 +77,6 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ArchaeologyJournalKeyHandler.tick();
             ArchaeologyJournalClientState.tick();
-            SpecimenBoxClientState.tick();
             SuspiciousReaderClientState.tick();
             CatHandClientState.tick();
             ReaderScanHighlightState.tick();

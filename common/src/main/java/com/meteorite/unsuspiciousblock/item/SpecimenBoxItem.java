@@ -1,7 +1,9 @@
 package com.meteorite.unsuspiciousblock.item;
 
+import com.meteorite.unsuspiciousblock.inventory.PortableContainer;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -11,27 +13,27 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
- * 标本箱物品——右键打开标本箱菜单。
- * 服务端创建并打开 SpecimenBoxMenu（含隐藏后端容器）
+ * 标本箱物品--便携容器，放在背包或饰品栏中时内部物品的"背包生效"功能正常触发。
+ * 右键打开 5 格容器 GUI（暂用漏斗贴图）。实现 PortableContainer 供 InventoryPresenceRegistry 递归扫描。
  */
-public class SpecimenBoxItem extends Item {
+public class SpecimenBoxItem extends Item implements PortableContainer {
     public SpecimenBoxItem(Properties properties) {
         super(properties);
     }
 
     @Override
-    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
-                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        // WIP 标识：物品仍在开发中
-        tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.wip")
-                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
-        super.appendHoverText(stack, context, tooltipLines, flag);
+    public Stream<ItemStack> getContents(ItemStack container) {
+        // 返回盒内非空物品流，供 InventoryPresenceRegistry 递归扫描
+        return container.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY)
+                .nonEmptyStream();
     }
 
     @Override
@@ -44,5 +46,17 @@ public class SpecimenBoxItem extends Item {
                     Component.translatable("screen.unsuspiciousblock.specimen_box.title")));
         }
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+    }
+
+    @Override
+    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
+                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        // WIP 标识：物品仍在开发中
+        tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.wip")
+                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+        // 功能说明
+        tooltipLines.add(Component.translatable("item.unsuspiciousblock.specimen_box.tooltip_desc")
+                .withStyle(ChatFormatting.GRAY));
+        super.appendHoverText(stack, context, tooltipLines, flag);
     }
 }

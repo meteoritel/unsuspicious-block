@@ -1,8 +1,10 @@
 package com.meteorite.unsuspiciousblock.item;
 
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
+import net.minecraft.world.item.component.ItemContainerContents;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -68,7 +70,7 @@ public class ModItems {
             () -> LOST_PAGE,
             () -> BASE_PAGE,
             () -> EYE_OF_CAT,
-            // () -> SPECIMEN_BOX,
+            () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
     );
 
@@ -88,9 +90,11 @@ public class ModItems {
         return new ArchaeologyJournalItem(new Item.Properties().stacksTo(1));
     }
 
-    // 创建标本箱实例
+    // 创建标本箱实例--默认 5 格容器组件
     public static SpecimenBoxItem createSpecimenBox() {
-        return new SpecimenBoxItem(new Item.Properties().stacksTo(1));
+        return new SpecimenBoxItem(new Item.Properties()
+                .stacksTo(1)
+                .component(DataComponents.CONTAINER, ItemContainerContents.EMPTY));
     }
 
     // 创建古代金币实例

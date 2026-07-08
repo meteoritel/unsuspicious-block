@@ -14,12 +14,14 @@ import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.SpecimenBoxClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -67,10 +69,13 @@ public final class UnsuspiciousBlockNeoForgeClient {
         });
     }
 
-//    @SubscribeEvent
-//    public static void registerScreens(RegisterMenuScreensEvent event) {
-//        event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
-//    }
+    @SubscribeEvent
+    public static void registerScreens(RegisterMenuScreensEvent event) {
+        // 直接从 DeferredHolder 获取 MenuType：FMLCommonSetupEvent 的 enqueueWork 可能尚未执行，
+        // 此时 SpecimenBoxMenu.TYPE 静态字段可能为 null，直接用会导致注册失败
+        SpecimenBoxMenu.TYPE = UnsuspiciousBlockNeoForge.getSpecimenBoxMenuType();
+        event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+    }
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
@@ -114,14 +119,12 @@ public final class UnsuspiciousBlockNeoForgeClient {
     private static void onClientTick(ClientTickEvent.Post event) {
         ArchaeologyJournalKeyHandler.tick();
         ArchaeologyJournalClientState.tick();
-        SpecimenBoxClientState.tick();
         SuspiciousReaderClientState.tick();
         CatHandClientState.tick();
         ReaderScanHighlightState.tick();
     }
 
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
-        SpecimenBoxClientState.clearAll();
         ArchaeologyJournalClientState.resetOnDisconnect();
         HandOfCatClientState.reset();
         ReaderScanHighlightState.reset();

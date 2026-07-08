@@ -30,6 +30,10 @@ public class HandOfCatItem extends Item {
         int favor = HandOfCatClientState.getCachedFavor();
         int lives = HandOfCatClientState.getCachedNineLivesCount();
 
+        // WIP 警示标识
+        tooltipLines.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip_wip")
+                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+
         // 简要信息：恩惠值
         tooltipLines.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip_favor",
                 favor, CatFavorAbility.NINE_LIVES.threshold()).withStyle(ChatFormatting.GOLD));

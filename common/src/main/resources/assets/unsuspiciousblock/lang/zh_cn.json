@@ -42,17 +42,19 @@
 
   "item.unsuspiciousblock.archaeology_journal": "考古笔记",
   "item.unsuspiciousblock.specimen_box": "标本箱",
+  "item.unsuspiciousblock.specimen_box.tooltip_desc": "放入背包生效类物品（如猫之手、猫之瞳），标本箱在背包或饰品栏中时其功能正常触发",
   "item.unsuspiciousblock.ancient_coin": "古代金币",
   "item.unsuspiciousblock.lost_page": "失落书页",
   "item.unsuspiciousblock.base_page": "基页",
   "item.unsuspiciousblock.eye_of_cat": "猫之瞳",
-  "item.unsuspiciousblock.eye_of_cat.tooltip_hint": "猫的瞳孔中流转着魔咒的微光。",
+  "item.unsuspiciousblock.eye_of_cat.tooltip_hint": "瞳孔中流转着魔咒的微光。",
   "item.unsuspiciousblock.eye_of_cat.tooltip_detail_hint": "按住 Shift 查看能力",
-  "item.unsuspiciousblock.eye_of_cat.tooltip_abilities": "持有此物品时",
+  "item.unsuspiciousblock.eye_of_cat.tooltip_abilities": "持有此物品时展示：",
   "item.unsuspiciousblock.eye_of_cat.tooltip.enchant_reveal": "附魔候选揭示",
   "item.unsuspiciousblock.eye_of_cat.tooltip.anvil_breakdown": "铁砧成本分解",
   "item.unsuspiciousblock.eye_of_cat.tooltip.grindstone_breakdown": "砂轮操作分解",
   "item.unsuspiciousblock.hand_of_cat": "猫之手",
+  "item.unsuspiciousblock.hand_of_cat.tooltip_wip": "[WIP] 该物品仍在开发中，效果可能变更",
   "item.unsuspiciousblock.hand_of_cat.tooltip_favor": "猫之恩惠：%s/%s",
   "item.unsuspiciousblock.hand_of_cat.tooltip_lives": "残存命数：%s/9",
   "item.unsuspiciousblock.hand_of_cat.tooltip_detail_hint": "按住 Shift 查看详情",
@@ -84,8 +86,6 @@
 
   "screen.unsuspiciousblock.archaeology_journal.title": "考古笔记",
   "screen.unsuspiciousblock.specimen_box.title": "标本箱",
-  "screen.unsuspiciousblock.specimen_box.empty": "尚未解锁任何战利品表。",
-  "screen.unsuspiciousblock.specimen_box.stored": "存放：%d",
   "screen.unsuspiciousblock.archaeology_journal.catalog": "目录",
   "screen.unsuspiciousblock.archaeology_journal.entries": "条目",
   "screen.unsuspiciousblock.archaeology_journal.empty": "尚无记录。",
@@ -336,5 +336,7 @@
   "unsuspiciousblock.container.grindstone.reveal.durability_change": "耐久: %s → %s",
   "unsuspiciousblock.container.grindstone.reveal.book_transform": "附魔书 → 书",
   "curios.identifier.journal": "考古笔记",
-  "trinkets.slot.charm.charm": "护符"
+  "curios.identifier.trinkets": "饰品",
+  "trinkets.slot.charm.charm": "护符",
+  "trinkets.slot.trinket.trinket": "饰品"
 }
