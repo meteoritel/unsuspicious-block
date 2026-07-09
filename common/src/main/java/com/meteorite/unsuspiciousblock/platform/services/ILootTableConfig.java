@@ -15,6 +15,12 @@ public interface ILootTableConfig {
     long MAX_TRACKING_TIMEOUT_TICKS = 60000L;
     long DEFAULT_TRACKING_TIMEOUT_TICKS = 6000L;
 
+    // 默认追踪前缀列表--两端共享，确保重置行为一致
+    List<String> DEFAULT_ARCHAEOLOGY_PATH_PREFIXES = List.of(
+            "archaeology/", "archeology/", "gameplay/fishing/",
+            "minecraft:gameplay/fishing", "unsuspiciousblock:gameplay/fossil_hunter/"
+    );
+
     List<String> getArchaeologyPathPrefixes();
 
     /** 单表日志条目上限，默认 512 */

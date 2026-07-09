@@ -8,7 +8,9 @@
         "${mod_author}"
     ],
     "contact": {
-        "sources": ""
+        "sources": "https://github.com/meteoritel/unsuspicious-block",
+        "issues": "https://github.com/meteoritel/unsuspicious-block/issues",
+        "homepage": "https://github.com/meteoritel/unsuspicious-block"
     },
     "license": "${license}",
     "environment": "*",
@@ -21,6 +23,9 @@
         ],
         "jade": [
             "com.meteorite.unsuspiciousblock.plugin.jade.JadePlugin"
+        ],
+        "modmenu": [
+            "com.meteorite.unsuspiciousblock.modmenu.ModMenuIntegration"
         ]
     },
     "mixins": [
@@ -37,6 +42,7 @@
         "jade": "*"
     },
     "recommends": {
-        "trinkets": ">=3.10.0"
+        "trinkets": ">=3.10.0",
+        "modmenu": ">=11.0.4"
     }
 }

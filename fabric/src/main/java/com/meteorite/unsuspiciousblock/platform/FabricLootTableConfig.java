@@ -22,13 +22,11 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final String README_CN_FILE_NAME = "README_CN.txt";
     private static final String README_EN_FILE_NAME = "README_EN.txt";
-    private static final List<String> DEFAULT_PREFIXES = List.of(
-            "archaeology/", "archeology/", "gameplay/fishing/", "minecraft:gameplay/fishing",
-            "unsuspiciousblock:gameplay/fossil_hunter/");
+    private static final List<String> DEFAULT_PREFIXES = ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES;
 
     private final List<String> prefixes;
-    private final int maxLogEntriesPerTable;
-    private final long trackingTimeoutTicks;
+    private int maxLogEntriesPerTable;
+    private long trackingTimeoutTicks;
 
     public FabricLootTableConfig() {
         ConfigData data = loadConfig();
@@ -51,6 +49,32 @@ public class FabricLootTableConfig implements ILootTableConfig {
     @Override
     public long getTrackingTimeoutTicks() {
         return this.trackingTimeoutTicks;
+    }
+
+    /**
+     * 保存配置到磁盘并同步更新内存缓存
+     * 由 ModMenu 配置界面调用，传入玩家编辑后的原始值，方法内部完成清洗与钳制
+     */
+    public void save(List<String> rawPrefixes, int rawMaxLogEntries, long rawTrackingTimeoutTicks) {
+        List<String> cleanedPrefixes = new ArrayList<>();
+        for (String s : rawPrefixes) {
+            if (s == null) continue;
+            String trimmed = s.trim();
+            if (!trimmed.isEmpty() && !cleanedPrefixes.contains(trimmed)) {
+                cleanedPrefixes.add(trimmed);
+            }
+        }
+        int clampedLog = clampLogEntries(rawMaxLogEntries);
+        long clampedTimeout = clampTrackingTimeout(rawTrackingTimeoutTicks);
+
+        this.prefixes.clear();
+        this.prefixes.addAll(cleanedPrefixes);
+        this.maxLogEntriesPerTable = clampedLog;
+        this.trackingTimeoutTicks = clampedTimeout;
+
+        saveToFile(getConfigPath(), new ConfigData(cleanedPrefixes, clampedLog, clampedTimeout));
+        Constants.LOG.info("Updated loot table config via ModMenu: {} prefixes, maxLog={}, timeout={}",
+                cleanedPrefixes.size(), clampedLog, clampedTimeout);
     }
 
     // 将配置值钳制到合法范围 [MIN, MAX]，越界时回退默认值，与 NeoForge 端 defineInRange 行为一致
@@ -86,14 +110,19 @@ public class FabricLootTableConfig implements ILootTableConfig {
     }
 
     private static void saveDefaults(Path configPath) {
+        saveToFile(configPath, new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS));
+        Constants.LOG.info("Created default loot table config at {}", configPath);
+    }
+
+    // 统一的文件写入逻辑，供 saveDefaults 与运行时 save 共用
+    private static void saveToFile(Path configPath, ConfigData data) {
         try {
             Files.createDirectories(configPath.getParent());
             try (Writer writer = Files.newBufferedWriter(configPath)) {
-                GSON.toJson(new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS), writer);
+                GSON.toJson(data, writer);
             }
-            Constants.LOG.info("Created default loot table config at {}", configPath);
         } catch (IOException e) {
-            Constants.LOG.warn("Failed to create default loot table config at {}", configPath, e);
+            Constants.LOG.warn("Failed to write loot table config to {}", configPath, e);
         }
     }
 

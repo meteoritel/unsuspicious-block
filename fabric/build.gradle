@@ -34,6 +34,10 @@ dependencies {
     modCompileOnly "dev.emi:trinkets:${trinkets_version}"
     // 本地运行测试时自动拉取 trinkets 及其传递依赖（CCA）
     modRuntimeOnly "dev.emi:trinkets:${trinkets_version}"
+
+    // ModMenu：可选联动，编译期引用 API，开发环境运行时拉取以便测试配置界面
+    modCompileOnly "com.terraformersmc:modmenu:${modmenu_version}"
+    modRuntimeOnly "com.terraformersmc:modmenu:${modmenu_version}"
 }
 
 loom {
