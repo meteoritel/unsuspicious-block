@@ -15,6 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -178,6 +179,14 @@ public class ArchaeologicalShovelItem extends ShovelItem {
 
         // 可疑方块：取出已扫描的战利品
         if (be instanceof BrushableBlockEntity brushable && be instanceof BrushableBlockEntityScanState scanState) {
+            // 主手考古铲 + 副手扫描仪：若目标方块未被当前玩家扫描，让位给副手扫描仪优先触发
+            Player player = context.getPlayer();
+            if (context.getHand() == InteractionHand.MAIN_HAND
+                    && player != null
+                    && player.getItemInHand(InteractionHand.OFF_HAND).getItem() == ModItems.SUSPICIOUS_READER
+                    && !scanState.unsuspiciousblock$isScanner(player.getUUID())) {
+                return InteractionResult.PASS;
+            }
             return extractFromSuspicious(context, level, pos, brushable, scanState);
         }
 

@@ -11,6 +11,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
+import java.util.Objects;
 
 /** ModMenu 配置界面--可视化编辑战利品表追踪配置的三项参数 */
 public class ModMenuConfigScreen extends Screen {
@@ -108,10 +109,10 @@ public class ModMenuConfigScreen extends Screen {
             }
         }
 
-        int maxLog = parseIntOrDefault(maxLogEntriesBox.getValue(),
-                ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE);
-        long timeout = parseLongOrDefault(trackingTimeoutBox.getValue(),
-                ILootTableConfig.DEFAULT_TRACKING_TIMEOUT_TICKS);
+        int maxLog = parseIntOrDefault(maxLogEntriesBox.getValue()
+        );
+        long timeout = parseLongOrDefault(trackingTimeoutBox.getValue()
+        );
 
         if (Services.LOOT_TABLE_CONFIG instanceof FabricLootTableConfig fabricConfig) {
             fabricConfig.save(prefixes, maxLog, timeout);
@@ -119,25 +120,25 @@ public class ModMenuConfigScreen extends Screen {
         this.onClose();
     }
 
-    private static int parseIntOrDefault(String s, int defaultValue) {
+    private static int parseIntOrDefault(String s) {
         try {
             return Integer.parseInt(s.trim());
         } catch (NumberFormatException e) {
-            return defaultValue;
+            return ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
         }
     }
 
-    private static long parseLongOrDefault(String s, long defaultValue) {
+    private static long parseLongOrDefault(String s) {
         try {
             return Long.parseLong(s.trim());
         } catch (NumberFormatException e) {
-            return defaultValue;
+            return ILootTableConfig.DEFAULT_TRACKING_TIMEOUT_TICKS;
         }
     }
 
     @Override
     public void onClose() {
-        this.minecraft.setScreen(parent);
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active").setScreen(parent);
     }
 
     @Override

@@ -209,13 +209,27 @@ public class SuspiciousReaderItem extends Item {
     public @NotNull InteractionResult useOn(UseOnContext context) {
         Level level = context.getLevel();
         Player player = context.getPlayer();
+        BlockPos clickedPos = context.getClickedPos();
+
+        // 主手扫描仪 + 副手考古铲：点击已扫描的可疑方块时，让位给副手考古铲取出战利品
+        // 必须在客户端早返回之前判定--客户端须返回 PASS 才会触发原版流程尝试副手；
+        if (context.getHand() == InteractionHand.MAIN_HAND
+                && player != null
+                && player.getItemInHand(InteractionHand.OFF_HAND).getItem() == ModItems.ARCHAEOLOGICAL_SHOVEL) {
+            BlockEntity be = level.getBlockEntity(clickedPos);
+            if (be instanceof BrushableBlockEntity
+                    && be instanceof BrushableBlockEntityScanState scanState
+                    && scanState.unsuspiciousblock$isScanner(player.getUUID())) {
+                return InteractionResult.PASS;
+            }
+        }
+
         if (level.isClientSide() || !(player instanceof ServerPlayer serverPlayer)) {
             return InteractionResult.SUCCESS;
         }
 
         ItemStack stack = context.getItemInHand();
         int scanLevel = getScanLevel(stack);
-        BlockPos clickedPos = context.getClickedPos();
         boolean isCreative = player.isCreative() && !DEBUG_FORCE_ENERGY_COST;
 
         // 范围模式（1-3级）：允许点击任意方块
