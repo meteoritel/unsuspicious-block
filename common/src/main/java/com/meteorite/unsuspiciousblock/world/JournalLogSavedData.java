@@ -20,7 +20,11 @@ import java.util.UUID;
  * 考古日志持久化数据——按玩家 UUID 索引存储各玩家的 ArchaeologyJournalLogState。
  * <p>
  * 存储位置：overworld 的 data 目录下，文件名 {@value #FILE_NAME}。
- * 数据流：登录时从本类读取作为 session 镜像源；每次变更后由 JournalLogHandler 深拷贝回本类并 setDirty。
+ * 数据流：登录时从本类读取状态并交给 session(共享引用)；每次变更后由 JournalLogHandler
+ * 通过 {@link #putForPlayer} 确保引用已注册并 setDirty，无需全量深拷贝。
+ * <p>
+ * 不变式：玩家在线时，本类持有的状态对象与 {@code ArchaeologyJournalLogSyncSession.mirroredState}
+ * 为同一引用，因此对 session 镜像的修改即等同于修改持久化数据。
  * <p>
  * 取代旧的 PlayerJournalLogStateMixin 玩家 NBT 持久化方案，避免玩家 NBT 因日志条目过多而膨胀。
  */
@@ -80,7 +84,9 @@ public final class JournalLogSavedData extends SavedData {
         return playerStates.computeIfAbsent(uuid, ignored -> new ArchaeologyJournalLogState());
     }
 
-    // 直接替换指定玩家的日志状态（用于一次性迁移）
+    // 设置指定玩家的日志状态引用（不拷贝）
+    // 用于:登录迁移、以及 session.mirroredState 的高频同步
+    // 调用方需保证 state 不会被外部突变(如 session.reset 会替换引用而非清空原对象)
     public void putForPlayer(UUID uuid, ArchaeologyJournalLogState state) {
         playerStates.put(uuid, state);
         setDirty();

@@ -294,6 +294,8 @@ public final class JournalLogHandler {
     }
 
     // 将 session 镜像状态同步回 SavedData 持久状态，确保世界保存时写入最新数据
+    // 优化:session.mirroredState 与 SavedData 共享同一引用(由 restoreFromPersisted 建立),
+    // 此处只需确保引用已注册并标记脏数据,无需全量深拷贝
     private static void syncToPersistedState(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null || !session.isSeeded()) {
@@ -304,7 +306,7 @@ public final class JournalLogHandler {
             return;
         }
         JournalLogSavedData savedData = JournalLogSavedData.get(server.overworld());
-        savedData.getForPlayer(player.getUUID()).copyFrom(session.mirroredState());
-        savedData.markDirty();
+        // putForPlayer 直接存储引用(同对象覆盖时无副作用),并触发 setDirty
+        savedData.putForPlayer(player.getUUID(), session.mirroredState());
     }
 }

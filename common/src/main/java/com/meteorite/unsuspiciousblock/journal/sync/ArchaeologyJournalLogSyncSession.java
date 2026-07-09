@@ -20,34 +20,41 @@ public final class ArchaeologyJournalLogSyncSession {
     private UUID sessionId;
     private long nextSequence = 1L;
     private boolean seeded;
-    private final ArchaeologyJournalLogState mirroredState = new ArchaeologyJournalLogState();
+    // 镜像状态:正常流程下与 JournalLogSavedData 中对应玩家的状态对象为同一引用
+    // 因此对 mirroredState 的修改即等同于修改持久化数据,只需 setDirty 无需深拷贝
+    private ArchaeologyJournalLogState mirroredState = new ArchaeologyJournalLogState();
     private final ArrayList<QueuedMutation> queuedMutations = new ArrayList<>();
 
     // 从服务端持久数据恢复日志到镜像状态（替代旧版的 reset + 客户端上传模式）
+    // 直接引用 SavedData 中的状态对象,消除登录时的全量深拷贝
+    // 不变式:调用后 session.mirroredState 与 SavedData 持有同一引用
     public void restoreFromPersisted(ArchaeologyJournalLogState persisted) {
         this.sessionId = UUID.randomUUID();
         this.nextSequence = 1L;
         this.seeded = true;
-        this.mirroredState.copyFrom(persisted);
+        this.mirroredState = persisted;
         this.queuedMutations.clear();
     }
 
     // 重置会话：清空 sessionId、镜像状态与待定变更队列
     // 保留作为无 NBT 持久数据时的降级路径
+    // 注意:用新空对象替换而非 clear 当前对象,避免若当前对象被 SavedData 持有会误清空持久化数据
     public void reset() {
         this.sessionId = null;
         this.nextSequence = 1L;
         this.seeded = false;
-        this.mirroredState.clear();
+        this.mirroredState = new ArchaeologyJournalLogState();
         this.queuedMutations.clear();
     }
 
     // 从另一个会话复制全部数据（用于玩家重生后的状态迁移）
+    // 镜像状态采用引用接管而非深拷贝:旧 session 随旧玩家实体销毁,
+    // 新 session 接管 mirroredState 引用,保持与 SavedData 的同一性不变式
     public void copyFrom(ArchaeologyJournalLogSyncSession other) {
         this.sessionId = other.sessionId;
         this.nextSequence = other.nextSequence;
         this.seeded = other.seeded;
-        this.mirroredState.copyFrom(other.mirroredState);
+        this.mirroredState = other.mirroredState;
         this.queuedMutations.clear();
         this.queuedMutations.addAll(other.queuedMutations);
     }
