@@ -26,6 +26,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -91,7 +92,8 @@ public final class ModPayloads {
             new S2CSpec<>(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC),
             new S2CSpec<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC),
             new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC)
+            new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC),
+            new S2CSpec<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC)
     );
 
     /**
@@ -129,7 +131,9 @@ public final class ModPayloads {
                 new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
                         payload -> ReaderScanHighlightState.receive(payload.scannedBlocks())),
                 new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
-                        EnchantmentRevealClientState::receive)
+                        EnchantmentRevealClientState::receive),
+                new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,
+                        ArchaeologyJournalClientState::receiveTableCompletionReward)
         );
     }
 }

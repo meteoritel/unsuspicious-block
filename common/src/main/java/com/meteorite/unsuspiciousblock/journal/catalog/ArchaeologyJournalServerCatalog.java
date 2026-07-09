@@ -213,6 +213,12 @@ public final class ArchaeologyJournalServerCatalog {
         return Collections.unmodifiableMap(catalog);
     }
 
+    /** 获取原始目录的只读视图（概率为 "?" 占位符，但物品列表完整）。
+     *  ensureLoaded 后立即可用，不受渐进模拟影响；供成就判定等需要完整表集合的场景使用 */
+    public static Map<ResourceLocation, TableDefinition> getRawCatalog() {
+        return Collections.unmodifiableMap(rawCatalog);
+    }
+
     /** 获取原始表定义（概率为占位符），供工作线程模拟时查询 */
     public static TableDefinition getRawTable(ResourceLocation tableId) {
         return rawCatalog.get(tableId);

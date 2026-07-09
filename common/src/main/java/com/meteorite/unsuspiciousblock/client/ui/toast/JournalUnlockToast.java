@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
+import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -28,11 +29,14 @@ public class JournalUnlockToast implements Toast {
     private static final long ROTATION_INTERVAL = 500L;
     // Toast 总展示时间（毫秒），到期后即使还有条目也会消失
     private static final long DISPLAY_TIME = 5000L;
-    private static final Component TITLE_TEXT =
+    private static final Component TABLE_UNLOCK_TITLE =
             Component.translatable("toast.unsuspiciousblock.journal_unlock.title");
+    private static final Component COMPLETION_TITLE =
+            Component.translatable("toast.unsuspiciousblock.journal_completion.title");
 
     private final Queue<Entry> entries = new ArrayDeque<>();
     private final Object token;
+    private final Component title;
     private long startTime = -1L;
     private long lastRotationTime = -1L;
 
@@ -40,8 +44,9 @@ public class JournalUnlockToast implements Toast {
     public record Entry(Component description, ItemStack icon) {
     }
 
-    private JournalUnlockToast(Object token) {
+    private JournalUnlockToast(Object token, Component title) {
         this.token = token;
+        this.title = title;
     }
 
     /**
@@ -77,7 +82,7 @@ public class JournalUnlockToast implements Toast {
         Font font = toastComponent.getMinecraft().font;
 
         // 标题
-        guiGraphics.drawString(font, TITLE_TEXT, 30, 7, 0xFFFFFF, true);
+        guiGraphics.drawString(font, this.title, 30, 7, 0xFFFFFF, true);
         // 描述
         guiGraphics.drawString(font, current.description(), 30, 18, 0xFFFFD0, true);
 
@@ -123,7 +128,7 @@ public class JournalUnlockToast implements Toast {
         if (tableNames.isEmpty()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(TABLE_TOKEN);
+            JournalUnlockToast toast = new JournalUnlockToast(TABLE_TOKEN, TABLE_UNLOCK_TITLE);
             for (Component name : tableNames) {
                 toast.addEntry(new Entry(name, ItemStack.EMPTY));
             }
@@ -136,7 +141,7 @@ public class JournalUnlockToast implements Toast {
         if (itemEntries.isEmpty()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN);
+            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN, TABLE_UNLOCK_TITLE);
             for (Entry entry : itemEntries) {
                 toast.addEntry(entry);
             }
@@ -144,7 +149,20 @@ public class JournalUnlockToast implements Toast {
         }
     }
 
+    // 便捷方法：添加战利品表 100% 完成 Toast，图标为古代金币
+    public static void addTableCompletion(Component tableName) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        JournalUnlockToast toast = new JournalUnlockToast(COMPLETION_TOKEN, COMPLETION_TITLE);
+        ItemStack icon = ModItems.ANCIENT_COIN != null
+                ? new ItemStack(ModItems.ANCIENT_COIN)
+                : ItemStack.EMPTY;
+        toast.addEntry(new Entry(tableName, icon));
+        addOrMerge(mc.getToasts(), toast);
+    }
+
     // Token 常量：同一类型只有一个 Toast 实例
     private static final String TABLE_TOKEN = "journal_table_unlocks";
     private static final String ITEM_TOKEN = "journal_item_unlocks";
+    private static final String COMPLETION_TOKEN = "journal_table_completion";
 }

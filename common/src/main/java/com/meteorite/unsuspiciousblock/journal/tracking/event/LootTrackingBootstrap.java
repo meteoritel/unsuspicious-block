@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.journal.tracking.event;
 
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyChallengeChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.JournalCompletionRewardChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 
@@ -28,6 +29,7 @@ public final class LootTrackingBootstrap {
         LootTrackingEvents.register(200, LootTrackingBootstrap::onRecordFirstUnlock);
         LootTrackingEvents.register(250, LootTrackingBootstrap::onRecordExcavationEntry);
         LootTrackingEvents.register(300, LootTrackingBootstrap::onCheckChallenge);
+        LootTrackingEvents.register(350, LootTrackingBootstrap::onCheckCompletionReward);
     }
 
     // 解锁订阅者：遍历 tableStack 对每个在 catalog 中的表更新解锁状态并触发概率模拟
@@ -62,5 +64,11 @@ public final class LootTrackingBootstrap {
     // 成就检查订阅者：核对考古收集类成就（依赖 state 已被解锁订阅者更新）
     private static void onCheckChallenge(LootDiscoveredEvent event) {
         ArchaeologyChallengeChecker.checkAndGrant(event.player(), event.state());
+    }
+
+    // 完成奖励订阅者：检测 100% 完成的表，发放古代金币并通知客户端弹 Toast
+    private static void onCheckCompletionReward(LootDiscoveredEvent event) {
+        JournalCompletionRewardChecker.checkAndReward(
+                event.player(), event.state(), event.tableStack());
     }
 }

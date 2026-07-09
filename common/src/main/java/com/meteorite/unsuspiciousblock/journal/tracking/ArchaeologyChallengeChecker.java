@@ -5,21 +5,26 @@ import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState.TableProgress;
+import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.Set;
 
 /***
  * 考古收集类成就检测器——在战利品解锁后核对玩家的考古日记进度，
- * 判定是否达成「集齐陶片 / 集齐样板 / 全图鉴」并授予对应成就。
+ * 判定是否达成「集齐陶片 / 集齐样板 / 原版考古表全图鉴」并授予对应成就。
  * <p>
- * 原版考古陶片与纹饰样板数量固定，故采用穷举固定物品集合的判定方式，
- * 无需遍历完整目录；全图鉴成就因本就要求全表全物品，仍遍历服务端目录。
+ * 原版考古陶片与纹饰样板数量固定，故采用穷举固定物品集合的判定方式；
+ * 全图鉴成就仅要求原版考古战利品表（minecraft:archaeology/ 前缀）全部解锁，
+ * 基于 rawCatalog 判定以避免渐进模拟导致的范围不稳定。
+ * <p>
+ * 提供两个入口：事件触发时 {@link #checkAndGrant} 实时检测；玩家加入时 {@link #checkAndGrantAll} 补发检测。
  */
 public final class ArchaeologyChallengeChecker {
 
@@ -66,6 +71,15 @@ public final class ArchaeologyChallengeChecker {
         }
     }
 
+    // 补发入口：玩家加入世界时全量检测三项成就，避免 catalog 未就绪或事件漏触发时遗漏授予
+    public static void checkAndGrantAll(ServerPlayer player) {
+        ArchaeologyJournalState state = getState(player);
+        if (state == null) {
+            return;
+        }
+        checkAndGrant(player, state);
+    }
+
     // 判断给定物品集合是否已在玩家日志中全部解锁
     private static boolean allCollected(ArchaeologyJournalState state, Set<ResourceLocation> itemIds) {
         for (ResourceLocation itemId : itemIds) {
@@ -87,24 +101,33 @@ public final class ArchaeologyChallengeChecker {
         return false;
     }
 
-    // 判断服务端目录中所有表及其全部物品是否都已解锁
+    // 判断原版考古战利品表（minecraft:archaeology/ 前缀）及其全部物品是否都已解锁。
+    // 使用 rawCatalog（启动即完整）确定判定范围，避免渐进加载的 catalog 导致范围不稳定。
     private static boolean isFullCatalogUnlocked(ArchaeologyJournalState state) {
-        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
-        if (catalog.isEmpty()) {
-            return false;
-        }
-        for (TableDefinition table : catalog.values()) {
-            ResourceLocation tableId = table.id();
-            if (!state.isTableUnlocked(tableId)) {
+        Map<ResourceLocation, TableDefinition> rawCatalog = ArchaeologyJournalServerCatalog.getRawCatalog();
+        boolean anyVanillaTable = false;
+        for (TableDefinition table : rawCatalog.values()) {
+            if (!isVanillaArchaeologyTable(table.id())) {
+                continue;
+            }
+            anyVanillaTable = true;
+            if (!state.isTableUnlocked(table.id())) {
                 return false;
             }
             for (ItemDefinition item : table.items()) {
-                if (!state.isItemUnlocked(tableId, item.signature())) {
+                if (!state.isItemUnlocked(table.id(), item.signature())) {
                     return false;
                 }
             }
         }
-        return true;
+        // 至少存在一张原版考古表且全部解锁才算达标，避免 rawCatalog 为空时误判
+        return anyVanillaTable;
+    }
+
+    // 判断是否为原版考古战利品表：仅匹配 minecraft 命名空间下 archaeology/ 路径前缀
+    private static boolean isVanillaArchaeologyTable(ResourceLocation tableId) {
+        return "minecraft".equals(tableId.getNamespace())
+                && tableId.getPath().startsWith("archaeology/");
     }
 
     private static ResourceLocation sherd(String name) {
@@ -113,5 +136,13 @@ public final class ArchaeologyChallengeChecker {
 
     private static ResourceLocation template(String name) {
         return ResourceLocation.withDefaultNamespace(name + "_armor_trim_smithing_template");
+    }
+
+    @Nullable
+    private static ArchaeologyJournalState getState(ServerPlayer player) {
+        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
+            return null;
+        }
+        return holder.unsuspiciousblock$getArchaeologyJournalState();
     }
 }

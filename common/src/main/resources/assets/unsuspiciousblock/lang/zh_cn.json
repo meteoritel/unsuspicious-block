@@ -273,6 +273,7 @@
   "screen.unsuspiciousblock.archaeology_journal.help_tooltip.sort": "点击工具栏图标可切换排序方式",
 
   "toast.unsuspiciousblock.journal_unlock.title": "笔记更新",
+  "toast.unsuspiciousblock.journal_completion.title": "考古手册完成",
 
   "command.unsuspiciousblock.usb.journal.clear.success": "你的考古笔记数据已清除。",
   "command.unsuspiciousblock.usb.journal.clear_table.success": "已清除考古战利品表 %s 的笔记数据。",

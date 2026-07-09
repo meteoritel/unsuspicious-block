@@ -23,6 +23,7 @@ public final class ArchaeologyJournalState {
     private static final String ITEMS_TAG = "items";
     private static final String COUNT_TAG = "count";
     private static final String REVISION_TAG = "revision";
+    private static final String COMPLETION_REWARD_CLAIMED_TAG = "completion_reward_claimed";
 
     private final LinkedHashMap<ResourceLocation, TableProgress> tables = new LinkedHashMap<>();
     // 增量同步：版本号，每次发送增量包时递增（由 drainDirtyTables 触发）
@@ -169,6 +170,18 @@ public final class ArchaeologyJournalState {
         return false;
     }
 
+    // 标记指定表的 100% 完成奖励已发放，返回是否为首次标记（true=本次 newly claimed）
+    // 若表不存在或已标记过，返回 false；调用方据此决定是否发放奖励
+    public boolean claimCompletionReward(ResourceLocation tableId) {
+        TableProgress table = this.tables.get(tableId);
+        if (table == null || table.isCompletionRewardClaimed()) {
+            return false;
+        }
+        table.setCompletionRewardClaimed(true);
+        this.markDirty(tableId);
+        return true;
+    }
+
     // 检查指定表是否已解锁
     public boolean isTableUnlocked(ResourceLocation tableId) {
         TableProgress table = this.tables.get(tableId);
@@ -273,10 +286,21 @@ public final class ArchaeologyJournalState {
 
     public static final class TableProgress {
         private boolean unlocked;
+        // 该表的 100% 完成奖励是否已发放；clear/removeTable 会移除整个 TableProgress 从而重置此标记
+        private boolean completionRewardClaimed;
         private final LinkedHashMap<String, ItemProgress> items = new LinkedHashMap<>();
 
         public boolean isUnlocked() {
             return this.unlocked;
+        }
+
+        // 该表的 100% 完成奖励是否已发放
+        public boolean isCompletionRewardClaimed() {
+            return this.completionRewardClaimed;
+        }
+
+        public void setCompletionRewardClaimed(boolean claimed) {
+            this.completionRewardClaimed = claimed;
         }
 
         @Nullable
@@ -354,12 +378,13 @@ public final class ArchaeologyJournalState {
         }
 
         public boolean isEmpty() {
-            return !this.unlocked && this.items.isEmpty();
+            return !this.unlocked && !this.completionRewardClaimed && this.items.isEmpty();
         }
 
         public TableProgress copy() {
             TableProgress copy = new TableProgress();
             copy.unlocked = this.unlocked;
+            copy.completionRewardClaimed = this.completionRewardClaimed;
             for (Map.Entry<String, ItemProgress> entry : this.items.entrySet()) {
                 copy.items.put(entry.getKey(), entry.getValue().copy());
             }
@@ -369,6 +394,9 @@ public final class ArchaeologyJournalState {
         public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean(UNLOCKED_TAG, this.unlocked);
+            if (this.completionRewardClaimed) {
+                tag.putBoolean(COMPLETION_REWARD_CLAIMED_TAG, true);
+            }
 
             CompoundTag itemsTag = new CompoundTag();
             for (Map.Entry<String, ItemProgress> entry : this.items.entrySet()) {
@@ -381,6 +409,7 @@ public final class ArchaeologyJournalState {
         public static TableProgress fromTag(CompoundTag tag) {
             TableProgress progress = new TableProgress();
             progress.unlocked = tag.getBoolean(UNLOCKED_TAG);
+            progress.completionRewardClaimed = tag.getBoolean(COMPLETION_REWARD_CLAIMED_TAG);
 
             if (tag.contains(ITEMS_TAG, Tag.TAG_COMPOUND)) {
                 CompoundTag itemsTag = tag.getCompound(ITEMS_TAG);

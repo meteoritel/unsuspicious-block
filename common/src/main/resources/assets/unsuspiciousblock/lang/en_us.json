@@ -271,6 +271,7 @@
   "screen.unsuspiciousblock.archaeology_journal.help_tooltip.probability": "Probabilities are simulated approximations, for reference only",
   "screen.unsuspiciousblock.archaeology_journal.help_tooltip.sort": "Click toolbar icons to switch sort mode",
   "toast.unsuspiciousblock.journal_unlock.title": "Journal Updated",
+  "toast.unsuspiciousblock.journal_completion.title": "Journal Completed",
 
   "command.unsuspiciousblock.usb.journal.clear.success": "Your archaeology journal data has been cleared.",
   "command.unsuspiciousblock.usb.journal.clear_table.success": "Cleared archaeology journal data for loot table %s.",

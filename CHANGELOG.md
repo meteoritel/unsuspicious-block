@@ -193,3 +193,13 @@
 - Fixed an issue where potion items could not be parsed correctly.
 - Fixed an issue where archaeology loot injected into trail ruins could not be obtained properly.
 - Fixed a mistake in the base page recipe that used `pitcher_pod` (now correctly uses `pitcher_plant`).
+
+## [1.4.0]
+
+### 新增
+- 完善之前未完成的标本箱功能
+
+### 变化
+
+
+### 修复

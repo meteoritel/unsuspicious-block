@@ -14,6 +14,8 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
+import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -208,6 +210,15 @@ public final class ArchaeologyJournalClientState {
 
     public static void receiveLogSnapshot(SyncJournalLogSnapshotPayload payload) {
         ArchaeologyJournalLogLocalStore.applySnapshot(payload);
+    }
+
+    // 收到服务端的 100% 完成奖励通知：解析表名并弹 Toast
+    public static void receiveTableCompletionReward(NotifyTableCompletionRewardPayload payload) {
+        ResourceLocation tableId = payload.tableId();
+        TableDefinition def = serverCatalog.get(tableId);
+        Component tableName = def != null ? def.displayName()
+                : Component.literal(tableId.getPath());
+        JournalUnlockToast.addTableCompletion(tableName);
     }
 
     public static void tick() {
