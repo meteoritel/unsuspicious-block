@@ -209,7 +209,7 @@
   "screen.unsuspiciousblock.archaeology_journal.log_detail_created_label": "创建",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_updated_label": "更新",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_structure_label": "结构",
-  "screen.unsuspiciousblock.archaeology_journal.log_detail_feature_label": "地物",
+  "screen.unsuspiciousblock.archaeology_journal.log_detail_feature_label": "来源",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_biome_label": "群系",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_dimension_label": "维度",
   "screen.unsuspiciousblock.archaeology_journal.log_detail_coords_label": "坐标",
