@@ -1,4 +1,5 @@
 {
+  "effect.unsuspiciousblock.cat_favor": "猫之恩惠",
   "item.unsuspiciousblock.suspicious_reader": "可疑解析仪",
   "item.unsuspiciousblock.suspicious_reader.not_suspicious": "这不是一个可疑方块。",
   "item.unsuspiciousblock.suspicious_reader.result_header": "[可疑解析仪]",

@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
+import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
@@ -131,10 +132,11 @@ public final class UnsuspiciousBlockNeoForgeClient {
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }
 
-    // 在半透明方块渲染之后绘制范围扫描高亮，实现透视效果
+    // 在半透明方块渲染之后绘制范围扫描高亮与猫之恩惠保护罩，实现透视效果
     private static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
         SuspiciousReaderRangeHighlight.render(event.getPoseStack(), event.getCamera());
+        CatFavorShieldRenderer.render(event.getPoseStack(), event.getCamera());
     }
 
     // 渲染猫之恩惠快捷栏 HUD

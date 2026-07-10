@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
+import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
@@ -16,6 +17,7 @@ import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.mojang.serialization.MapCodec;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -24,6 +26,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.StringUtil;
+import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -68,6 +71,8 @@ public class UnsuspiciousBlockNeoForge {
 
     private static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(Constants.MOD_ID);
+    private static final DeferredRegister<MobEffect> EFFECTS =
+            DeferredRegister.create(Registries.MOB_EFFECT, Constants.MOD_ID);
     private static final DeferredRegister<MenuType<?>> MENUS =
             DeferredRegister.create(Registries.MENU, Constants.MOD_ID);
     private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
@@ -94,6 +99,14 @@ public class UnsuspiciousBlockNeoForge {
         ModItems.forEach((name, factory, setter) -> {
             DeferredItem<Item> deferred = ITEMS.register(name, factory);
             ITEM_SYNC_LIST.add(new ItemSyncEntry(deferred, setter));
+        });
+    }
+
+    static {
+        // 效果注册：DeferredHolder 即 Holder<MobEffect>，直接回写供 common 代码引用
+        ModEffects.forEach((name, factory, setter) -> {
+            Holder<MobEffect> holder = EFFECTS.register(name, factory);
+            setter.accept(holder);
         });
     }
 
@@ -143,6 +156,7 @@ public class UnsuspiciousBlockNeoForge {
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC);
 
         ITEMS.register(modEventBus);
+        EFFECTS.register(modEventBus);
         MENUS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
@@ -176,10 +190,6 @@ public class UnsuspiciousBlockNeoForge {
     public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
         return SPECIMEN_BOX_MENU.get();
     }
-
-//    public static MenuType<SpecimenBoxMenu> specimenBoxMenu() {
-//        return SPECIMEN_BOX_MENU.get();
-//    }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");

@@ -1,6 +1,8 @@
 {
   "itemGroup.unsuspiciousblock.main": "Unsuspicious Block",
 
+  "effect.unsuspiciousblock.cat_favor": "Cat's Favor",
+
   "config.jade.plugin_unsuspiciousblock.scanned_loot": "Scanned Loot",
 
   "unsuspiciousblock.config.title": "Unsuspicious Block Config",

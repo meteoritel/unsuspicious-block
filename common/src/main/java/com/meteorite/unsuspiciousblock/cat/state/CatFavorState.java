@@ -40,8 +40,6 @@ public final class CatFavorState {
     private transient boolean hadHeroEffect;
     // 夜视分级检测冷却倒计时（tick）：空闲态 1s 侦测，激活态 5s 刷新
     private transient int nightVisionCheckCooldown;
-    // 猫之九命无敌窗口的截止游戏时间（gameTime tick），此前免疫所有伤害
-    private transient long nineLivesInvulnUntil;
     // 缓存的能力位掩码（由 CatPassiveAbilities 每 tick 计算，供 mixin 廉价查询）
     private transient int abilityMask;
 
@@ -145,14 +143,6 @@ public final class CatFavorState {
         this.nightVisionCheckCooldown = ticks;
     }
 
-    public long getNineLivesInvulnUntil() {
-        return this.nineLivesInvulnUntil;
-    }
-
-    public void setNineLivesInvulnUntil(long gameTime) {
-        this.nineLivesInvulnUntil = gameTime;
-    }
-
     public int getAbilityMask() {
         return this.abilityMask;
     }
@@ -170,7 +160,6 @@ public final class CatFavorState {
         this.lightStepPressurePrevented = true;
         this.hadHeroEffect = false;
         this.nightVisionCheckCooldown = 0;
-        this.nineLivesInvulnUntil = 0L;
         this.abilityMask = 0;
     }
 

@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
+import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -25,11 +26,15 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
+import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -84,6 +89,15 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 AttributeSupplier supplier = attributes.get().build();
                 FabricDefaultAttributeRegistry.register(type, supplier);
             }
+        });
+
+        // 遍历效果注册清单，统一注册并回写 Holder 供 common 代码引用
+        ModEffects.forEach((name, factory, setter) -> {
+            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
+            Registry.register(BuiltInRegistries.MOB_EFFECT, rl, factory.get());
+            Holder<MobEffect> holder = BuiltInRegistries.MOB_EFFECT.getHolder(
+                    ResourceKey.create(Registries.MOB_EFFECT, rl)).orElseThrow();
+            setter.accept(holder);
         });
 
         // 注册 menu

@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.cat;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
+import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -42,8 +43,8 @@ public final class CatPassiveAbilities {
     // 激活态刷新间隔（tick）：5 秒一次，已授予夜视后续期刷新
     private static final int NIGHT_VISION_CHECK_ACTIVE = 100;
 
-    // 九命无敌窗口（tick）：5 秒
-    public static final int NINE_LIVES_INVULN_TICKS = 100;
+    // 九命无敌窗口（tick）= 猫之恩惠 buff 时长：15 秒
+    public static final int NINE_LIVES_INVULN_TICKS = 300;
     // 九命增益持续（tick）：15 秒
     public static final int NINE_LIVES_BUFF_TICKS = 300;
 
@@ -203,13 +204,9 @@ public final class CatPassiveAbilities {
         return state != null && (state.getAbilityMask() & FLAG_SOFT_PAWS) != 0;
     }
 
-    // 玩家当前是否处于猫之九命无敌窗口
+    // 玩家当前是否处于猫之九命无敌窗口（由「猫之恩惠」buff 驱动）
     public static boolean isNineLivesInvulnerable(Player player) {
-        CatFavorState state = CatFavorManager.getState(player);
-        if (state == null) {
-            return false;
-        }
-        return player.level().getGameTime() < state.getNineLivesInvulnUntil();
+        return player.hasEffect(ModEffects.CAT_FAVOR);
     }
 
     // 玩家是否满足古国往礼条件（favor≥90，鲜见路径，直接校验）
@@ -261,8 +258,8 @@ public final class CatPassiveAbilities {
     // ========== 猫之九命执行 ==========
 
     /**
-     * 触发猫之九命：满血复活、5 秒无敌、力量 II + 速度 II 15 秒。
-     * 消耗一条命；若消耗后命数归零，恩惠值清空。
+     * 触发猫之九命：满血复活、授予「猫之恩惠」buff（15 秒无敌，虚空除外）、
+     * 力量 II + 速度 II 15 秒。消耗一条命；若消耗后命数归零，恩惠值清空。
      * 调用方需先确认图腾未触发且玩家满足条件。
      */
     public static void triggerNineLives(ServerPlayer player) {
@@ -272,8 +269,9 @@ public final class CatPassiveAbilities {
         }
         player.setHealth(player.getMaxHealth());
         player.removeAllEffects();
-        long now = player.level().getGameTime();
-        state.setNineLivesInvulnUntil(now + NINE_LIVES_INVULN_TICKS);
+        // 猫之恩惠：15s 无敌窗口（须在 removeAllEffects 之后授予，否则会被清除）
+        player.addEffect(new MobEffectInstance(ModEffects.CAT_FAVOR,
+                NINE_LIVES_INVULN_TICKS, 0, true, true, true));
         player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, NINE_LIVES_BUFF_TICKS, 1, true, true, true));
         player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, NINE_LIVES_BUFF_TICKS, 1, true, true, true));
         // 最后一条命消失时恩惠清空

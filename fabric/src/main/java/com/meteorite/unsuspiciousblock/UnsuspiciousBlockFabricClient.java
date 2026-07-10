@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
+import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
@@ -82,9 +83,11 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             ReaderScanHighlightState.tick();
         });
 
-        // 半透明方块渲染之后绘制范围扫描高亮，实现透视效果
-        WorldRenderEvents.AFTER_TRANSLUCENT.register(context ->
-                SuspiciousReaderRangeHighlight.render(context.matrixStack(), context.camera()));
+        // 半透明方块渲染之后绘制范围扫描高亮与猫之恩惠保护罩，实现透视效果
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
+            SuspiciousReaderRangeHighlight.render(context.matrixStack(), context.camera());
+            CatFavorShieldRenderer.render(context.matrixStack(), context.camera());
+        });
 
         // 注册猫之恩惠快捷栏 HUD
         HudRenderCallback.EVENT.register((guiGraphics, tickCounter) -> CatFavorHud.render(guiGraphics));
