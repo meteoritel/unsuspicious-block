@@ -30,7 +30,8 @@
     },
     "mixins": [
         "unsuspiciousblock.mixins.json",
-        "unsuspiciousblock.fabric.mixins.json"
+        "unsuspiciousblock.fabric.mixins.json",
+        "unsuspiciousblock.lootr.mixins.json"
     ],
     "depends": {
         "fabricloader": ">=${fabric_loader_version}",
@@ -39,7 +40,8 @@
         "java": ">=${java_version}"
     },
     "suggests": {
-        "jade": "*"
+        "jade": "*",
+        "lootr": "*"
     },
     "recommends": {
         "trinkets": ">=3.10.0",

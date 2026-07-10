@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -36,6 +37,18 @@ public final class ContainerTrackingService {
                                                TrackedContainerLootState container,
                                                ResourceLocation tableId,
                                                Map<String, Integer> itemCounts) {
+        onContainerLootResolved(player, container, tableId, itemCounts,
+                WorldContextResolver.resolveContainerPos(container),
+                WorldContextResolver.resolveContainerSourceBlockId(container));
+    }
+
+    // 带显式位置与源方块的重载，供非 BlockEntity 容器（如 Lootr 的 LootrInventory）使用
+    public static void onContainerLootResolved(ServerPlayer player,
+                                               TrackedContainerLootState container,
+                                               ResourceLocation tableId,
+                                               Map<String, Integer> itemCounts,
+                                               BlockPos pos,
+                                               @Nullable ResourceLocation sourceBlockId) {
         long gameTime = player.serverLevel().getGameTime();
         long dayTime = player.serverLevel().getDayTime();
         long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
@@ -69,9 +82,8 @@ public final class ContainerTrackingService {
             container.unsuspiciousblock$clearAllTrackingState();
             return;
         }
-        BlockPos pos = WorldContextResolver.resolveContainerPos(container);
         container.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(player, LootSourceType.LOOT_CONTAINER,
-                WorldContextResolver.resolveContainerSourceBlockId(container), pos, itemCounts, gameTime, dayTime));
+                sourceBlockId, pos, itemCounts, gameTime, dayTime));
         container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
         container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
     }

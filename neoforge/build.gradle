@@ -23,6 +23,10 @@ dependencies {
     // 发布时不强制玩家安装 Curios，仅在存在时启用联动功能
     compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}:api"
     runtimeOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
+
+    // Lootr：neoforge 端 compileOnly 引用 API，runtimeOnly 供本地运行测试
+    compileOnly "maven.modrinth:lootr:${lootr_version}"
+    runtimeOnly "maven.modrinth:lootr:${lootr_version}"
 }
 
 neoForge {

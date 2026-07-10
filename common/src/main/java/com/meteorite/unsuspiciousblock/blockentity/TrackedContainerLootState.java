@@ -26,7 +26,41 @@ public interface TrackedContainerLootState extends Container {
 
     int unsuspiciousblock$consumeTrackedLoot(String signatureKey, int amount);
 
-    void unsuspiciousblock$reconcileTrackedLoot();
+    // 根据容器当前物品重新校正尚未结算的追踪数量
+    default void unsuspiciousblock$reconcileTrackedLoot() {
+        ResourceLocation tableName = this.unsuspiciousblock$getTrackedLootTableName();
+        Map<String, Integer> trackedCounts = this.unsuspiciousblock$getTrackedLootCounts();
+        if (tableName == null || trackedCounts.isEmpty()) {
+            return;
+        }
+
+        List<LootResultSignature> candidates = new ArrayList<>();
+        for (String signatureKey : trackedCounts.keySet()) {
+            LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
+            if (signature != null) {
+                candidates.add(signature);
+            }
+        }
+        if (candidates.isEmpty()) {
+            this.unsuspiciousblock$clearTrackedLoot();
+            return;
+        }
+
+        Map<String, Integer> currentCounts = this.unsuspiciousblock$collectContainerItemCounts(candidates);
+        LinkedHashMap<String, Integer> reconciled = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : trackedCounts.entrySet()) {
+            int remaining = Math.min(entry.getValue(), currentCounts.getOrDefault(entry.getKey(), 0));
+            if (remaining > 0) {
+                reconciled.put(entry.getKey(), remaining);
+            }
+        }
+
+        if (reconciled.isEmpty()) {
+            this.unsuspiciousblock$clearTrackedLoot();
+        } else {
+            this.unsuspiciousblock$setTrackedLoot(tableName, reconciled);
+        }
+    }
 
     void unsuspiciousblock$clearTrackedLoot();
 
