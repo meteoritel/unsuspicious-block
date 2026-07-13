@@ -359,5 +359,7 @@
   "curios.identifier.journal": "Archaeology Journal",
   "curios.identifier.trinkets": "Trinket",
   "trinkets.slot.charm.charm": "Charm",
-  "trinkets.slot.trinket.trinket": "Trinket"
+  "trinkets.slot.trinket.trinket": "Trinket",
+
+  "sounds.unsuspiciousblock.suspicious_reader_scan": "Suspicious Reader scans"
 }

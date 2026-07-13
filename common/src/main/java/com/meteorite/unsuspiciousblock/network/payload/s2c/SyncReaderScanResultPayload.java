@@ -11,11 +11,14 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 服务端→客户端：范围扫描完成后同步被扫描到的可疑方块位置，供客户端红色描边渲染 */
-public record SyncReaderScanResultPayload(List<BlockPos> scannedBlocks) implements CustomPacketPayload {
+/** 服务端->客户端：范围扫描完成后同步被扫描到的方块位置，供客户端描边渲染。
+ *  <p>suspiciousBlocks 为可疑方块（红色描边），lootContainers 为含战利品表的容器（紫色描边，仅高亮不解析）。 */
+public record SyncReaderScanResultPayload(List<BlockPos> suspiciousBlocks,
+                                          List<BlockPos> lootContainers) implements CustomPacketPayload {
 
     public SyncReaderScanResultPayload {
-        scannedBlocks = List.copyOf(scannedBlocks);
+        suspiciousBlocks = List.copyOf(suspiciousBlocks);
+        lootContainers = List.copyOf(lootContainers);
     }
 
     public static final Type<SyncReaderScanResultPayload> TYPE =
@@ -24,18 +27,27 @@ public record SyncReaderScanResultPayload(List<BlockPos> scannedBlocks) implemen
     public static final StreamCodec<RegistryFriendlyByteBuf, SyncReaderScanResultPayload> STREAM_CODEC =
             StreamCodec.of(
                     (buf, payload) -> {
-                        buf.writeVarInt(payload.scannedBlocks.size());
-                        for (BlockPos pos : payload.scannedBlocks) {
+                        buf.writeVarInt(payload.suspiciousBlocks.size());
+                        for (BlockPos pos : payload.suspiciousBlocks) {
+                            BlockPos.STREAM_CODEC.encode(buf, pos);
+                        }
+                        buf.writeVarInt(payload.lootContainers.size());
+                        for (BlockPos pos : payload.lootContainers) {
                             BlockPos.STREAM_CODEC.encode(buf, pos);
                         }
                     },
                     buf -> {
-                        int size = buf.readVarInt();
-                        List<BlockPos> list = new ArrayList<>(size);
-                        for (int i = 0; i < size; i++) {
-                            list.add(BlockPos.STREAM_CODEC.decode(buf));
+                        int suspiciousSize = buf.readVarInt();
+                        List<BlockPos> suspicious = new ArrayList<>(suspiciousSize);
+                        for (int i = 0; i < suspiciousSize; i++) {
+                            suspicious.add(BlockPos.STREAM_CODEC.decode(buf));
                         }
-                        return new SyncReaderScanResultPayload(list);
+                        int lootSize = buf.readVarInt();
+                        List<BlockPos> loot = new ArrayList<>(lootSize);
+                        for (int i = 0; i < lootSize; i++) {
+                            loot.add(BlockPos.STREAM_CODEC.decode(buf));
+                        }
+                        return new SyncReaderScanResultPayload(suspicious, loot);
                     }
             );
 

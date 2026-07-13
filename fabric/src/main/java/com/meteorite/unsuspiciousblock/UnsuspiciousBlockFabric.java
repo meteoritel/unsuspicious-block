@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
+import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -34,6 +35,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -97,6 +99,15 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             Registry.register(BuiltInRegistries.MOB_EFFECT, rl, factory.get());
             Holder<MobEffect> holder = BuiltInRegistries.MOB_EFFECT.getHolder(
                     ResourceKey.create(Registries.MOB_EFFECT, rl)).orElseThrow();
+            setter.accept(holder);
+        });
+
+        // 遍历声音注册清单，统一注册并回写 Holder 供 common 代码引用
+        ModSounds.forEach((name, setter) -> {
+            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
+            Registry.register(BuiltInRegistries.SOUND_EVENT, rl, SoundEvent.createVariableRangeEvent(rl));
+            Holder<SoundEvent> holder = BuiltInRegistries.SOUND_EVENT.getHolder(
+                    ResourceKey.create(Registries.SOUND_EVENT, rl)).orElseThrow();
             setter.accept(holder);
         });
 

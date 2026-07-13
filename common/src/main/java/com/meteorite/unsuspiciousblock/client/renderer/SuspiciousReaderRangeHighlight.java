@@ -31,11 +31,17 @@ public final class SuspiciousReaderRangeHighlight {
     private static final float RANGE_B = 0.25F;
     private static final float RANGE_A = 0.6F;
 
-    // 扫描结果描边：警示红色
+    // 可疑方块描边：警示红色
     private static final float SCAN_R = 1.0F;
     private static final float SCAN_G = 0.15F;
     private static final float SCAN_B = 0.15F;
     private static final float SCAN_A = 0.7F;
+
+    // 战利品容器描边：神秘紫色（与可疑方块红色、范围框金色均区分明显）
+    private static final float LOOT_R = 0.7F;
+    private static final float LOOT_G = 0.3F;
+    private static final float LOOT_B = 1.0F;
+    private static final float LOOT_A = 0.7F;
 
     // 自定义无深度测试的线条 RenderType：用于扫描结果红框透视（穿透墙壁可见）。
     // 直接调用 RenderSystem.disableDepthTest() 无效——RenderType.lines() 在 endBatch
@@ -111,17 +117,26 @@ public final class SuspiciousReaderRangeHighlight {
         return true;
     }
 
-    // 绘制扫描到的可疑方块红色描边，返回是否实际绘制
+    // 绘制扫描到的高亮方块描边：可疑方块红色、战利品容器紫色，返回是否实际绘制
     private static boolean renderScanResults(PoseStack poseStack, VertexConsumer consumer, Vec3 camPos) {
-        List<BlockPos> blocks = ReaderScanHighlightState.getRenderBlocks();
-        if (blocks.isEmpty()) return false;
-        for (BlockPos pos : blocks) {
+        boolean rendered = false;
+        // 可疑方块：红色描边
+        for (BlockPos pos : ReaderScanHighlightState.getRenderSuspiciousBlocks()) {
             LevelRenderer.renderLineBox(poseStack, consumer,
                     pos.getX() - camPos.x, pos.getY() - camPos.y, pos.getZ() - camPos.z,
                     pos.getX() + 1 - camPos.x, pos.getY() + 1 - camPos.y, pos.getZ() + 1 - camPos.z,
                     SCAN_R, SCAN_G, SCAN_B, SCAN_A);
+            rendered = true;
         }
-        return true;
+        // 战利品容器：紫色描边（仅高亮，不解析）
+        for (BlockPos pos : ReaderScanHighlightState.getRenderLootContainers()) {
+            LevelRenderer.renderLineBox(poseStack, consumer,
+                    pos.getX() - camPos.x, pos.getY() - camPos.y, pos.getZ() - camPos.z,
+                    pos.getX() + 1 - camPos.x, pos.getY() + 1 - camPos.y, pos.getZ() + 1 - camPos.z,
+                    LOOT_R, LOOT_G, LOOT_B, LOOT_A);
+            rendered = true;
+        }
+        return rendered;
     }
 
     // 从主手/副手获取可疑解析仪

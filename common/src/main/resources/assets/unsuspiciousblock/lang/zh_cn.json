@@ -360,5 +360,7 @@
   "curios.identifier.journal": "考古笔记",
   "curios.identifier.trinkets": "饰品",
   "trinkets.slot.charm.charm": "护符",
-  "trinkets.slot.trinket.trinket": "饰品"
+  "trinkets.slot.trinket.trinket": "饰品",
+
+  "sounds.unsuspiciousblock.suspicious_reader_scan": "可疑解析仪扫描"
 }

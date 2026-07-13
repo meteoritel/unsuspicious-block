@@ -129,7 +129,7 @@ public final class ModPayloads {
                 new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
                         HandOfCatClientState::receive),
                 new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
-                        payload -> ReaderScanHighlightState.receive(payload.scannedBlocks())),
+                        payload -> ReaderScanHighlightState.receive(payload.suspiciousBlocks(), payload.lootContainers())),
                 new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
                         EnchantmentRevealClientState::receive),
                 new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,

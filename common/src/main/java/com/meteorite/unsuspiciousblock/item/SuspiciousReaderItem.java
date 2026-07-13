@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -17,9 +18,11 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.RandomizableContainer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -186,21 +189,26 @@ public class SuspiciousReaderItem extends Item {
         return clickedPos.relative(clickedFace.getOpposite(), scanLevel);
     }
 
-    // 收集扫描范围内的所有可疑方块
-    private List<BlockPos> findSuspiciousBlocks(Level level, BlockPos cubeCenter, int halfExtent) {
-        List<BlockPos> result = new ArrayList<>();
+    // 收集扫描范围内的所有可疑方块与含战利品表的容器
+    private ScanTargets findScanTargets(Level level, BlockPos cubeCenter, int halfExtent) {
+        List<BlockPos> suspicious = new ArrayList<>();
+        List<BlockPos> lootContainers = new ArrayList<>();
         for (int dx = -halfExtent; dx <= halfExtent; dx++) {
             for (int dy = -halfExtent; dy <= halfExtent; dy++) {
                 for (int dz = -halfExtent; dz <= halfExtent; dz++) {
                     BlockPos pos = cubeCenter.offset(dx, dy, dz);
                     BlockEntity be = level.getBlockEntity(pos);
                     if (be instanceof BrushableBlockEntity && be instanceof BrushableBlockEntityScanState) {
-                        result.add(pos);
+                        suspicious.add(pos);
+                    } else if (be instanceof RandomizableContainer container
+                            && container.getLootTable() != null) {
+                        // 仅检测是否绑定了战利品表，不调用 unpackLootTable（会清空 lootTable 字段导致容器状态改变）
+                        lootContainers.add(pos);
                     }
                 }
             }
         }
-        return result;
+        return new ScanTargets(suspicious, lootContainers);
     }
 
     // ========== 核心交互逻辑 ==========
@@ -237,10 +245,12 @@ public class SuspiciousReaderItem extends Item {
             // 计算正方体范围
             Direction faceDir = context.getClickedFace();
             BlockPos cubeCenter = getRangeScanCenter(clickedPos, faceDir, scanLevel);
-            List<BlockPos> targets = findSuspiciousBlocks(level, cubeCenter, scanLevel);
+            ScanTargets scanTargets = findScanTargets(level, cubeCenter, scanLevel);
+            List<BlockPos> targets = scanTargets.suspicious();
+            List<BlockPos> lootContainers = scanTargets.lootContainers();
 
-            // 基础消耗 = 等级数（范围模式启动即计费，无论是否扫到可疑方块）
-            if (targets.isEmpty()) {
+            // 基础消耗 = 等级数（范围模式启动即计费，无论是否扫到可疑方块或战利品容器）
+            if (targets.isEmpty() && lootContainers.isEmpty()) {
                 if (!isCreative) {
                     int energy = getEnergyOrDefault(stack);
                     if (energy < scanLevel) {
@@ -314,8 +324,8 @@ public class SuspiciousReaderItem extends Item {
                 );
             }
 
-            // 向客户端同步扫描到的可疑方块位置，用于红色描边透视显示
-            Services.NETWORK.sendToPlayer(serverPlayer, new SyncReaderScanResultPayload(targets));
+            // 向客户端同步扫描到的高亮方块位置（可疑方块 + 战利品容器），用于描边透视显示
+            Services.NETWORK.sendToPlayer(serverPlayer, new SyncReaderScanResultPayload(targets, lootContainers));
 
             // 实际消耗 = 等级数 + 解析出新可疑方块数（仅1级及以上）
             if (!isCreative) {
@@ -324,6 +334,9 @@ public class SuspiciousReaderItem extends Item {
                 setEnergy(stack, Math.max(0, energy - actualCost));
             }
 
+            // 播放扫描音效
+            level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(),
+                    SoundSource.PLAYERS, 1.0F, 1.0F);
             player.swing(context.getHand());
             return InteractionResult.SUCCESS;
         }
@@ -345,6 +358,9 @@ public class SuspiciousReaderItem extends Item {
         ScanResult result = scanBrushable(serverPlayer, level, clickedPos, blockEntity, brushable, scanState);
         sendPrimaryResultMessage(player, clickedPos, result.lootItem(), alreadyScanned);
 
+        // 播放扫描音效
+        level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(),
+                SoundSource.PLAYERS, 1.0F, 1.0F);
         player.swing(context.getHand());
         return InteractionResult.SUCCESS;
     }
@@ -526,5 +542,9 @@ public class SuspiciousReaderItem extends Item {
     }
 
     private record ScanResult(ItemStack lootItem) {
+    }
+
+    // 范围扫描结果分类：可疑方块与含战利品表的容器
+    private record ScanTargets(List<BlockPos> suspicious, List<BlockPos> lootContainers) {
     }
 }

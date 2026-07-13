@@ -1,0 +1,11 @@
+{
+  "suspicious_reader_scan": {
+    "subtitle": "sounds.unsuspiciousblock.suspicious_reader_scan",
+    "sounds": [
+      {
+        "name": "unsuspiciousblock:suspicious_reader_scan",
+        "stream": false
+      }
+    ]
+  }
+}
