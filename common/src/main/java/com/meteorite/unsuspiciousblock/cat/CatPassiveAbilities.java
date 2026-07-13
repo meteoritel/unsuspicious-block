@@ -45,8 +45,6 @@ public final class CatPassiveAbilities {
 
     // 九命无敌窗口（tick）= 猫之恩惠 buff 时长：15 秒
     public static final int NINE_LIVES_INVULN_TICKS = 300;
-    // 九命增益持续（tick）：15 秒
-    public static final int NINE_LIVES_BUFF_TICKS = 300;
 
     private CatPassiveAbilities() {
     }
@@ -258,8 +256,8 @@ public final class CatPassiveAbilities {
     // ========== 猫之九命执行 ==========
 
     /**
-     * 触发猫之九命：满血复活、授予「猫之恩惠」buff（15 秒无敌，虚空除外）、
-     * 力量 II + 速度 II 15 秒。消耗一条命；若消耗后命数归零，恩惠值清空。
+     * 触发猫之九命：满血复活、授予「猫之恩惠」buff（15 秒无敌 + 力量 II + 速度 II，虚空除外）。
+     * 消耗一条命；若消耗后命数归零，恩惠值清空。
      * 调用方需先确认图腾未触发且玩家满足条件。
      */
     public static void triggerNineLives(ServerPlayer player) {
@@ -269,11 +267,9 @@ public final class CatPassiveAbilities {
         }
         player.setHealth(player.getMaxHealth());
         player.removeAllEffects();
-        // 猫之恩惠：15s 无敌窗口（须在 removeAllEffects 之后授予，否则会被清除）
+        // 猫之恩惠：15s 无敌窗口 + 力量 II + 速度 II（须在 removeAllEffects 之后授予，否则会被清除）
         player.addEffect(new MobEffectInstance(ModEffects.CAT_FAVOR,
                 NINE_LIVES_INVULN_TICKS, 0, true, true, true));
-        player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, NINE_LIVES_BUFF_TICKS, 1, true, true, true));
-        player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, NINE_LIVES_BUFF_TICKS, 1, true, true, true));
         // 最后一条命消失时恩惠清空
         if (state.getNineLivesCount() == 0) {
             state.setFavor(0);
