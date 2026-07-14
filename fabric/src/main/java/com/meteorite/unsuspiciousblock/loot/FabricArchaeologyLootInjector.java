@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.loot;
 
 import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootInjector;
+import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjector;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.Item;

@@ -6,7 +6,7 @@ import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;

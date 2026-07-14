@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin.interaction;
 
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootInjectors;
+import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;

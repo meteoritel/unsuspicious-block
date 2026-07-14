@@ -361,5 +361,24 @@
   "trinkets.slot.charm.charm": "Charm",
   "trinkets.slot.trinket.trinket": "Trinket",
 
-  "sounds.unsuspiciousblock.suspicious_reader_scan": "Suspicious Reader scans"
+  "sounds.unsuspiciousblock.suspicious_reader_scan": "Suspicious Reader scans",
+
+  "screen.unsuspiciousblock.archaeology_journal.conditions_header": "Conditions:",
+  "screen.unsuspiciousblock.archaeology_journal.condition.random_chance": "Random chance: %s%%",
+  "screen.unsuspiciousblock.archaeology_journal.condition.random_chance_with_enchanted_bonus": "Random chance (base): %s%%",
+  "screen.unsuspiciousblock.archaeology_journal.condition.survives_explosion": "Must survive explosion",
+  "screen.unsuspiciousblock.archaeology_journal.condition.match_tool": "Requires specific tool",
+  "screen.unsuspiciousblock.archaeology_journal.condition.block_state_property": "Requires specific block state",
+  "screen.unsuspiciousblock.archaeology_journal.condition.location_check": "Requires specific location",
+  "screen.unsuspiciousblock.archaeology_journal.condition.time_check": "Requires specific time of day",
+  "screen.unsuspiciousblock.archaeology_journal.condition.value_check": "Requires value in range",
+  "screen.unsuspiciousblock.archaeology_journal.condition.weather_check": "Requires specific weather",
+  "screen.unsuspiciousblock.archaeology_journal.condition.table_bonus": "Affected by enchantment level",
+  "screen.unsuspiciousblock.archaeology_journal.condition.enchantment_active_check": "Requires active enchantment",
+  "screen.unsuspiciousblock.archaeology_journal.condition.inverted": "NOT: %s",
+  "screen.unsuspiciousblock.archaeology_journal.condition.any_of": "Any of",
+  "screen.unsuspiciousblock.archaeology_journal.condition.all_of": "All of",
+  "screen.unsuspiciousblock.archaeology_journal.condition.reference": "Referenced: %s",
+  "screen.unsuspiciousblock.archaeology_journal.condition.and": "and",
+  "screen.unsuspiciousblock.archaeology_journal.condition.or": "or"
 }

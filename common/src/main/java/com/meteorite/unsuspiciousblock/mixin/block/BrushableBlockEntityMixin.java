@@ -7,7 +7,7 @@ import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import net.minecraft.core.BlockPos;

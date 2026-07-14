@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loottable.injection;
 
 /**
  * 考古战利品注入器注册器——平台在初始化时注册各自的实现。

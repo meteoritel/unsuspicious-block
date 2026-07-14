@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loottable.signature;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;

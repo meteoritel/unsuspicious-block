@@ -362,5 +362,24 @@
   "trinkets.slot.charm.charm": "护符",
   "trinkets.slot.trinket.trinket": "饰品",
 
-  "sounds.unsuspiciousblock.suspicious_reader_scan": "可疑解析仪扫描"
+  "sounds.unsuspiciousblock.suspicious_reader_scan": "可疑解析仪扫描",
+
+  "screen.unsuspiciousblock.archaeology_journal.conditions_header": "条件:",
+  "screen.unsuspiciousblock.archaeology_journal.condition.random_chance": "随机概率: %s%%",
+  "screen.unsuspiciousblock.archaeology_journal.condition.random_chance_with_enchanted_bonus": "随机概率 (基础): %s%%",
+  "screen.unsuspiciousblock.archaeology_journal.condition.survives_explosion": "需在爆炸中存活",
+  "screen.unsuspiciousblock.archaeology_journal.condition.match_tool": "需要特定工具",
+  "screen.unsuspiciousblock.archaeology_journal.condition.block_state_property": "需要特定方块状态",
+  "screen.unsuspiciousblock.archaeology_journal.condition.location_check": "需要特定位置/生物群系",
+  "screen.unsuspiciousblock.archaeology_journal.condition.time_check": "需要特定时间段",
+  "screen.unsuspiciousblock.archaeology_journal.condition.value_check": "需要值在范围内",
+  "screen.unsuspiciousblock.archaeology_journal.condition.weather_check": "需要特定天气",
+  "screen.unsuspiciousblock.archaeology_journal.condition.table_bonus": "受附魔等级影响",
+  "screen.unsuspiciousblock.archaeology_journal.condition.enchantment_active_check": "需要激活特定附魔",
+  "screen.unsuspiciousblock.archaeology_journal.condition.inverted": "非: %s",
+  "screen.unsuspiciousblock.archaeology_journal.condition.any_of": "任一满足",
+  "screen.unsuspiciousblock.archaeology_journal.condition.all_of": "全部满足",
+  "screen.unsuspiciousblock.archaeology_journal.condition.reference": "引用: %s",
+  "screen.unsuspiciousblock.archaeology_journal.condition.and": "且",
+  "screen.unsuspiciousblock.archaeology_journal.condition.or": "或"
 }

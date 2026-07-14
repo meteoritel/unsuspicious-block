@@ -1,9 +1,10 @@
 package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
@@ -53,6 +54,16 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 if (item.sourceChildTable() != null) {
                     buf.writeResourceLocation(item.sourceChildTable());
                 }
+                // conditions
+                buf.writeVarInt(item.conditions().size());
+                for (LootConditionInfo info : item.conditions()) {
+                    buf.writeUtf(info.conditionType());
+                    buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
+                    buf.writeBoolean(info.probability() != null);
+                    if (info.probability() != null) {
+                        buf.writeFloat(info.probability());
+                    }
+                }
             }
             buf.writeVarInt(table.simulationCount());
         }
@@ -82,7 +93,16 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 ResourceLocation sourceChildTable = buf.readBoolean()
                         ? buf.readResourceLocation()
                         : null;
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable));
+                // conditions
+                int conditionCount = buf.readVarInt();
+                List<LootConditionInfo> conditions = new ArrayList<>(conditionCount);
+                for (int k = 0; k < conditionCount; k++) {
+                    String conditionType = buf.readUtf();
+                    Component desc = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+                    Float prob = buf.readBoolean() ? buf.readFloat() : null;
+                    conditions.add(new LootConditionInfo(conditionType, desc, prob));
+                }
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable, conditions));
             }
             int simulationCount = buf.readVarInt();
             catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));

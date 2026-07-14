@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loottable.catalog;
 
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;

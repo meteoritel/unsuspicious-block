@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.loottable.LootResultMatcher;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;

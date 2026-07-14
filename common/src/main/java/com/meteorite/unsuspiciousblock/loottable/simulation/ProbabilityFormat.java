@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import java.math.BigDecimal;
 import java.math.MathContext;

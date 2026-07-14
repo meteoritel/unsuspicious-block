@@ -13,7 +13,8 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -274,6 +275,15 @@ public class ArchaeologyJournalScreen extends Screen {
             }
             if (tooltipData.hint() != null) {
                 tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+            }
+            // 条件信息
+            if (!tooltipData.conditions().isEmpty()) {
+                tooltipLines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.conditions_header")
+                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+                for (LootConditionInfo condition : tooltipData.conditions()) {
+                    tooltipLines.add(condition.description().copy().withStyle(ChatFormatting.GRAY));
+                }
             }
             // 子表来源标注：仅当子表本身也是已追踪的考古表时才显示，避免空指针
             if (tooltipData.sourceChildTable() != null

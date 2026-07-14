@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.world.GameTimeFormatHelper;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;

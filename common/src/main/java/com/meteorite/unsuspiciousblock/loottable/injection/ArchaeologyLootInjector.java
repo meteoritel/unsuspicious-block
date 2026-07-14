@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loottable.injection;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;

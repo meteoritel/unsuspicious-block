@@ -4,7 +4,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -237,7 +238,7 @@ public final class ItemGridPanel implements PagePanel {
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
                 return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability(),
-                        item.sourceChildTable());
+                        item.sourceChildTable(), item.conditions());
             }
         }
         return null;
@@ -265,15 +266,22 @@ public final class ItemGridPanel implements PagePanel {
      * probability 为 null 时不追加 "Drop Chance" 行。
      */
     public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
-                              @Nullable ResourceLocation sourceChildTable) {
+                              @Nullable ResourceLocation sourceChildTable,
+                              List<LootConditionInfo> conditions) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
-            this(stack, hint, -1, null, null);
+            this(stack, hint, -1, null, null, List.of());
         }
 
         // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
         public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
-            this(stack, hint, count, probability, null);
+            this(stack, hint, count, probability, null, List.of());
+        }
+
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空
+        public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
+                          @Nullable ResourceLocation sourceChildTable) {
+            this(stack, hint, count, probability, sourceChildTable, List.of());
         }
     }
 
@@ -281,13 +289,22 @@ public final class ItemGridPanel implements PagePanel {
     public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                            String probability, boolean unlocked, int count,
                            LootResultSignature signature, boolean highlighted,
-                           @Nullable ResourceLocation sourceChildTable) {
+                           @Nullable ResourceLocation sourceChildTable,
+                           List<LootConditionInfo> conditions) {
 
         // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
         public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                         String probability, boolean unlocked, int count,
                         LootResultSignature signature, boolean highlighted) {
-            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted, null);
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted, null, List.of());
+        }
+
+        // 兼容旧调用方的便利构造器：sourceChildTable + conditions
+        public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                        String probability, boolean unlocked, int count,
+                        LootResultSignature signature, boolean highlighted,
+                        @Nullable ResourceLocation sourceChildTable) {
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted, sourceChildTable, List.of());
         }
 
         public ItemStack stack() {

@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;

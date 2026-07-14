@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.loottable;
+package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.mojang.authlib.GameProfile;
 import net.minecraft.server.MinecraftServer;

@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.mixin.compat.lootr;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.loottable.LootCounts;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import noobanidus.mods.lootr.common.data.LootrInventory;

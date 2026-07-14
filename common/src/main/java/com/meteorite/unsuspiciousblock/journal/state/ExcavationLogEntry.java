@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
-import com.meteorite.unsuspiciousblock.loottable.LootCounts;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;

@@ -1,9 +1,12 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * 考古条目中的单个物品视图模型。
@@ -18,7 +21,8 @@ public record ArchaeologyEntryItem(
         boolean unlocked,
         int count,
         LootResultSignature signature,
-        @Nullable ResourceLocation sourceChildTable
+        @Nullable ResourceLocation sourceChildTable,
+        List<LootConditionInfo> conditions
 ) implements ItemEntryLike {
 
     @Override

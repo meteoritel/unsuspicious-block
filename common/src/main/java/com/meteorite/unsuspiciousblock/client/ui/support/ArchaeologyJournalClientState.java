@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
@@ -458,7 +458,7 @@ public final class ArchaeologyJournalClientState {
                                           List<Component> outNames,
                                           List<ItemStack> outIcons) {
         TableDefinition tableDef = catalog.get(tableId);
-        for (ArchaeologyLootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : java.util.List.<ArchaeologyLootTableCatalog.ItemDefinition>of()) {
+        for (LootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : java.util.List.<LootTableCatalog.ItemDefinition>of()) {
             if (newProgress.isItemUnlocked(itemDef.signature())
                     && !oldProgress.isItemUnlocked(itemDef.signature())) {
                 ItemStack icon = itemDef.signature().createPreviewStack();

@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulator;
-import com.meteorite.unsuspiciousblock.loottable.LootProbabilitySimulationWorker;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
+import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;

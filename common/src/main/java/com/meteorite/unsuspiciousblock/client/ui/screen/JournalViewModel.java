@@ -12,8 +12,8 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.ProbabilityFormat;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -265,7 +265,7 @@ public class JournalViewModel {
             gridItems.add(new ItemGridPanel.GridItem(
                     iv.id(), iv.displayName(), iv.tooltipHint(),
                     iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
-                    iv.sourceChildTable()));
+                    iv.sourceChildTable(), iv.conditions()));
         }
         // 排序：先按表来源（根表 null 优先；子表按 ResourceLocation 字典序升序），再按概率降序
         // 注：用取负实现概率降序，避免整体 reversed() 同时反转 nullsFirst 与字典序

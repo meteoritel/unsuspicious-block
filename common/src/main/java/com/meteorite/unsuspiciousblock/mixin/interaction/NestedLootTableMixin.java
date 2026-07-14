@@ -6,8 +6,8 @@ import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTr
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
-import com.meteorite.unsuspiciousblock.loottable.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.mojang.datafixers.util.Either;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
