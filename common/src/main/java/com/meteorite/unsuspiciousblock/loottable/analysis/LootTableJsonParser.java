@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
@@ -101,7 +102,8 @@ public final class LootTableJsonParser {
                                        ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
         boolean[] hasConditions = new boolean[1];
-        parseNode(element, items, hasConditions, resourceManager, expandingStack, null);
+        ParseContext ctx = new ParseContext(items, hasConditions, resourceManager, expandingStack, null);
+        parseNode(element, ctx);
 
         List<ItemDefinition> definitions = new ArrayList<>();
         for (ItemDefinitionBuilder builder : items.values()) {
@@ -122,16 +124,14 @@ public final class LootTableJsonParser {
         return new TableDefinition(tableId, tableNameResolver.apply(tableId), type, definitions, 0);
     }
 
-    private void parseNode(JsonElement element, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                           ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
-                           @Nullable ResourceLocation sourceChildTable) {
+    private void parseNode(JsonElement element, ParseContext ctx) {
         if (element == null || element.isJsonNull()) {
             return;
         }
 
         if (element.isJsonArray()) {
             for (JsonElement child : element.getAsJsonArray()) {
-                parseNode(child, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+                parseNode(child, ctx);
             }
             return;
         }
@@ -141,41 +141,34 @@ public final class LootTableJsonParser {
         }
 
         JsonObject object = element.getAsJsonObject();
-        if (object.has("pools") && parseArrayIfPresent(object, "pools", items, hasConditions, resourceManager, expandingStack, sourceChildTable)) {
+        if (object.has("pools") && parseArrayIfPresent(object, "pools", ctx)) {
             return;
         }
 
-        if (object.has("entries") && parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack, sourceChildTable)) {
+        if (object.has("entries") && parseArrayIfPresent(object, "entries", ctx)) {
             return;
         }
 
-        parseEntry(object, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+        parseEntry(object, ctx);
     }
 
-    private void parseArray(JsonArray array, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                            ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
-                            @Nullable ResourceLocation sourceChildTable) {
+    private void parseArray(JsonArray array, ParseContext ctx) {
         for (JsonElement child : array) {
-            parseNode(child, items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+            parseNode(child, ctx);
         }
     }
 
-    private boolean parseArrayIfPresent(JsonObject object, String key,
-                                        Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                                        ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
-                                        @Nullable ResourceLocation sourceChildTable) {
+    private boolean parseArrayIfPresent(JsonObject object, String key, ParseContext ctx) {
         if (!object.has(key) || !object.get(key).isJsonArray()) {
             return false;
         }
 
-        parseArray(object.getAsJsonArray(key), items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+        parseArray(object.getAsJsonArray(key), ctx);
         return true;
     }
 
-    private void parseEntry(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                            ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
-                            @Nullable ResourceLocation sourceChildTable) {
-        String type = getString(object, "type", "");
+    private void parseEntry(JsonObject object, ParseContext ctx) {
+        String type = LootParseUtil.getString(object, "type", "");
 
         // 分析 conditions 数组
         List<LootConditionInfo> entryConditions = List.of();
@@ -188,31 +181,31 @@ public final class LootTableJsonParser {
                 || object.has("bonus_rolls")
                 || (object.has("rolls") && !isFixedRolls(object));
 
-        switch (normalizeType(type)) {
+        switch (LootParseUtil.normalizeType(type)) {
             case "item" -> {
                 if (hasUncertainty) {
-                    hasConditions[0] = true;
+                    ctx.hasConditions[0] = true;
                 }
-                parseItem(object, items, hasConditions, sourceChildTable, entryConditions);
+                parseItem(object, ctx, entryConditions);
             }
             case "tag" -> {
                 if (hasUncertainty) {
-                    hasConditions[0] = true;
+                    ctx.hasConditions[0] = true;
                 }
-                parseTag(object, items, hasConditions, sourceChildTable, entryConditions);
+                parseTag(object, ctx, entryConditions);
             }
             case "loot_table" -> {
-                hasConditions[0] = true;
-                expandLootTableReference(object, items, hasConditions, resourceManager, expandingStack);
+                ctx.hasConditions[0] = true;
+                expandLootTableReference(object, ctx);
             }
             case "group", "alternatives", "sequence" -> {
-                hasConditions[0] = true;
-                parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+                ctx.hasConditions[0] = true;
+                parseArrayIfPresent(object, "children", ctx);
             }
             default -> {
-                hasConditions[0] = true;
-                if (!parseArrayIfPresent(object, "children", items, hasConditions, resourceManager, expandingStack, sourceChildTable)) {
-                    parseArrayIfPresent(object, "entries", items, hasConditions, resourceManager, expandingStack, sourceChildTable);
+                ctx.hasConditions[0] = true;
+                if (!parseArrayIfPresent(object, "children", ctx)) {
+                    parseArrayIfPresent(object, "entries", ctx);
                 }
             }
         }
@@ -239,47 +232,46 @@ public final class LootTableJsonParser {
         return false;
     }
 
-    private void expandLootTableReference(JsonObject object, Map<String, ItemDefinitionBuilder> items,
-                                          boolean[] hasConditions, ResourceManager resourceManager,
-                                          Set<ResourceLocation> expandingStack) {
-        String rawId = object.has("value") ? object.get("value").getAsString() : getString(object, "name", "");
+    private void expandLootTableReference(JsonObject object, ParseContext ctx) {
+        String rawId = object.has("value") ? object.get("value").getAsString() : LootParseUtil.getString(object, "name", "");
         ResourceLocation referencedId = ResourceLocation.tryParse(rawId);
         if (referencedId == null) {
             LOGGER.warn("loot_table 引用缺少 value/name 字段，跳过展开");
             return;
         }
-        if (expandingStack.contains(referencedId)) {
+        if (ctx.expandingStack.contains(referencedId)) {
             LOGGER.warn("检测到 loot_table 循环引用 {}，跳过展开", referencedId);
             return;
         }
 
         ResourceLocation filePath = LOOT_TABLES.idToFile(referencedId);
-        try (BufferedReader reader = resourceManager.openAsReader(filePath)) {
+        try (BufferedReader reader = ctx.resourceManager.openAsReader(filePath)) {
             JsonElement referencedElement = JsonParser.parseReader(reader);
-            expandingStack.add(referencedId);
-            parseNode(referencedElement, items, hasConditions, resourceManager, expandingStack, referencedId);
-            expandingStack.remove(referencedId);
+            ctx.expandingStack.add(referencedId);
+            ResourceLocation previousSource = ctx.sourceChildTable;
+            ctx.sourceChildTable = referencedId;
+            parseNode(referencedElement, ctx);
+            ctx.sourceChildTable = previousSource;
+            ctx.expandingStack.remove(referencedId);
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("展开 loot_table 引用 {} 失败", referencedId, exception);
         }
     }
 
-    private void parseItem(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                           @Nullable ResourceLocation sourceChildTable, List<LootConditionInfo> entryConditions) {
-        ResourceLocation itemId = ResourceLocation.tryParse(getString(object, "name", ""));
+    private void parseItem(JsonObject object, ParseContext ctx, List<LootConditionInfo> entryConditions) {
+        ResourceLocation itemId = ResourceLocation.tryParse(LootParseUtil.getString(object, "name", ""));
         if (itemId == null || BuiltInRegistries.ITEM.get(itemId) == Items.AIR) {
             return;
         }
 
-        ResolvedEntry resolved = resolveEntry(itemId, object, hasConditions, entryConditions);
-        ItemDefinitionBuilder builder = items.computeIfAbsent(resolved.signature().toStoredKey(),
-                ignored -> createBuilder(resolved, sourceChildTable));
+        ResolvedEntry resolved = resolveEntry(itemId, object, ctx.hasConditions, entryConditions);
+        ItemDefinitionBuilder builder = ctx.items.computeIfAbsent(resolved.signature().toStoredKey(),
+                ignored -> createBuilder(resolved, ctx.sourceChildTable));
         builder.mergeResolved(resolved);
     }
 
-    private void parseTag(JsonObject object, Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                          @Nullable ResourceLocation sourceChildTable, List<LootConditionInfo> entryConditions) {
-        ResourceLocation tagId = ResourceLocation.tryParse(getString(object, "name", ""));
+    private void parseTag(JsonObject object, ParseContext ctx, List<LootConditionInfo> entryConditions) {
+        ResourceLocation tagId = ResourceLocation.tryParse(LootParseUtil.getString(object, "name", ""));
         if (tagId == null) {
             return;
         }
@@ -299,9 +291,9 @@ public final class LootTableJsonParser {
         }
 
         for (ResourceLocation itemId : itemIds) {
-            ResolvedEntry resolved = resolveEntry(itemId, object, hasConditions, entryConditions);
-            ItemDefinitionBuilder builder = items.computeIfAbsent(resolved.signature().toStoredKey(),
-                    ignored -> createBuilder(resolved, sourceChildTable));
+            ResolvedEntry resolved = resolveEntry(itemId, object, ctx.hasConditions, entryConditions);
+            ItemDefinitionBuilder builder = ctx.items.computeIfAbsent(resolved.signature().toStoredKey(),
+                    ignored -> createBuilder(resolved, ctx.sourceChildTable));
             builder.mergeResolved(resolved);
         }
     }
@@ -322,7 +314,7 @@ public final class LootTableJsonParser {
                 }
 
                 JsonObject functionObject = functionElement.getAsJsonObject();
-                String functionName = normalizeType(getString(functionObject, "function", ""));
+                String functionName = LootParseUtil.normalizeType(LootParseUtil.getString(functionObject, "function", ""));
                 LootFunctionHandler handler = LootFunctionHandlers.get(functionName);
 
                 if (handler != null) {
@@ -381,25 +373,6 @@ public final class LootTableJsonParser {
                 resolved.signature(), sourceChildTable, resolved.conditions());
     }
 
-    private static Component resolveMergedDisplayName(ResourceLocation itemId, LootResultSignature signature) {
-        ItemStack previewStack = signature.createPreviewStack();
-        if (previewStack.isEmpty()) {
-            previewStack = new ItemStack(BuiltInRegistries.ITEM.get(itemId));
-        }
-        return resolveItemDisplayName(previewStack);
-    }
-
-    @Nullable
-    private static Component resolveMergedTooltipHint(LootResultSignature signature) {
-        if (signature.isEnchantedVariant()) {
-            return Component.translatable(ENCHANTED_HINT_KEY);
-        }
-        if (signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY) {
-            return Component.translatable(APPROXIMATE_HINT_KEY);
-        }
-        return null;
-    }
-
     private static Component resolveItemDisplayName(ItemStack previewStack) {
         return previewStack.isEmpty()
                 ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.unknown_entry")
@@ -414,19 +387,27 @@ public final class LootTableJsonParser {
         return showApproximate ? Component.translatable(APPROXIMATE_HINT_KEY) : null;
     }
 
-    static String normalizeType(String type) {
-        if (type == null || type.isEmpty()) {
-            return "";
-        }
-        int colonIndex = type.indexOf(':');
-        return colonIndex >= 0 ? type.substring(colonIndex + 1) : type;
-    }
-
-    private static String getString(JsonObject object, String key, String fallback) {
-        return object.has(key) ? object.get(key).getAsString() : fallback;
-    }
-
     // ==================== 内部类型 ====================
+
+    /** 解析上下文——将原本分散传递的 5 个可变参数聚合为单一对象，改善方法签名可读性 */
+    private static final class ParseContext {
+        final Map<String, ItemDefinitionBuilder> items;
+        final boolean[] hasConditions;
+        final ResourceManager resourceManager;
+        final Set<ResourceLocation> expandingStack;
+        @Nullable
+        ResourceLocation sourceChildTable;
+
+        ParseContext(Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
+                     ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                     @Nullable ResourceLocation sourceChildTable) {
+            this.items = items;
+            this.hasConditions = hasConditions;
+            this.resourceManager = resourceManager;
+            this.expandingStack = expandingStack;
+            this.sourceChildTable = sourceChildTable;
+        }
+    }
 
     private record ResolvedEntry(ResourceLocation itemId, Component displayName,
                                  @Nullable Component tooltipHint, LootResultSignature signature,
@@ -457,13 +438,13 @@ public final class LootTableJsonParser {
 
         private void mergeResolved(ResolvedEntry resolved) {
             if (!this.displayName.getString().equals(resolved.displayName().getString())) {
-                this.displayName = resolveMergedDisplayName(this.id, this.signature);
+                this.displayName = LootTableCatalog.resolveMergedDisplayName(this.id, this.signature);
             }
             if (this.tooltipHint == null ? resolved.tooltipHint() == null
                     : this.tooltipHint.getString().equals(resolved.tooltipHint() != null ? resolved.tooltipHint().getString() : null)) {
                 return;
             }
-            this.tooltipHint = resolveMergedTooltipHint(this.signature);
+            this.tooltipHint = LootTableCatalog.resolveMergedTooltipHint(this.signature);
         }
 
         private ItemDefinition build() {

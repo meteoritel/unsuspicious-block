@@ -95,7 +95,7 @@ public final class LootConditionHandlers {
                 continue;
             }
             JsonObject conditionJson = element.getAsJsonObject();
-            String conditionType = normalizeType(getString(conditionJson, "condition", ""));
+            String conditionType = LootParseUtil.normalizeType(LootParseUtil.getString(conditionJson, "condition", ""));
             LootConditionHandler handler = get(conditionType);
             if (handler != null) {
                 LootConditionInfo info = handler.analyze(conditionJson);
@@ -108,18 +108,6 @@ public final class LootConditionHandlers {
     }
 
     // ==================== 共享工具方法 ====================
-
-    private static String normalizeType(String type) {
-        if (type == null || type.isEmpty()) {
-            return "";
-        }
-        int colonIndex = type.indexOf(':');
-        return colonIndex >= 0 ? type.substring(colonIndex + 1) : type;
-    }
-
-    private static String getString(JsonObject object, String key, String fallback) {
-        return object.has(key) ? object.get(key).getAsString() : fallback;
-    }
 
     /**
      * 判断给定的条件信息列表是否引入不确定性。
@@ -252,7 +240,7 @@ public final class LootConditionHandlers {
                 return null;
             }
             JsonObject termObj = termElement.getAsJsonObject();
-            String childType = normalizeType(getString(termObj, "condition", ""));
+            String childType = LootParseUtil.normalizeType(LootParseUtil.getString(termObj, "condition", ""));
             LootConditionHandler childHandler = get(childType);
             if (childHandler == null) {
                 return null;
@@ -340,7 +328,7 @@ public final class LootConditionHandlers {
         @Override
         @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
-            String name = getString(conditionJson, "name", "?");
+            String name = LootParseUtil.getString(conditionJson, "name", "?");
             return new LootConditionInfo("reference",
                     Component.translatable(I18N_PREFIX + "reference", name),
                     null);

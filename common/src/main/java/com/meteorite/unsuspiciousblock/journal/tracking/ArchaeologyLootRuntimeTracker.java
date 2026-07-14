@@ -116,7 +116,10 @@ public final class ArchaeologyLootRuntimeTracker {
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if (worker == null) return;
         if (!ArchaeologyJournalServerCatalog.hasSimulatedData(tableId)) {
-            worker.enqueuePriority(tableId);
+            TableDefinition rawTable = ArchaeologyJournalServerCatalog.getRawTable(tableId);
+            if (rawTable != null) {
+                worker.enqueuePriority(tableId, rawTable);
+            }
         }
     }
 

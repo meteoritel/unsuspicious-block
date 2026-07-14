@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
-import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalCatalog;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
@@ -129,7 +129,7 @@ public final class LootProbabilitySimulator {
 
             String probability;
             if (appearances == 0) {
-                if (ArchaeologyJournalCatalog.hasConditions(item)) {
+                if (item.hasConditions()) {
                     probability = "?";
                 } else {
                     probability = "<0.01%";
@@ -141,7 +141,7 @@ public final class LootProbabilitySimulator {
 
             simulatedItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature(), item.sourceChildTable()));
+                    probability, item.signature(), item.sourceChildTable(), item.conditions()));
         }
 
         // 追加模拟期发现的注入条目
@@ -150,7 +150,7 @@ public final class LootProbabilitySimulator {
             String probability = appearances == 0
                     ? "<0.01%"
                     : ProbabilityFormat.formatPercent((double) appearances / SIMULATION_COUNT);
-            simulatedItems.add(ArchaeologyJournalCatalog.buildDiscoveredDefinition(entry.getValue(), probability));
+            simulatedItems.add(LootTableCatalog.buildDiscoveredDefinition(entry.getValue(), probability));
         }
 
         return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(), simulatedItems, SIMULATION_COUNT));

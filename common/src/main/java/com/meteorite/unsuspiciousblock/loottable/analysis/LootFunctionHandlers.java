@@ -39,6 +39,20 @@ public final class LootFunctionHandlers {
     private static final Map<String, LootFunctionHandler> REGISTRY = new LinkedHashMap<>();
     private static final ResourceLocation BOOK_ID = ResourceLocation.fromNamespaceAndPath("minecraft", "book");
 
+    /** 返回 null 且 addsRandomness=true 的通用 handler，用于无法静态求值的 function */
+    private static final LootFunctionHandler NULL_RANDOM = new LootFunctionHandler() {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null;
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    };
+
     static {
         // 类别 A：完整静态处理
         register("set_item", new SetItemHandler());
@@ -63,34 +77,34 @@ public final class LootFunctionHandlers {
         register("set_ominous_bottle_amplifier", new SetOminousBottleAmplifierHandler());
 
         // 类别 D：影响结果但无法静态求值
-        register("copy_components", new CopyComponentsHandler());
-        register("copy_custom_data", new CopyCustomDataHandler());
-        register("copy_name", new CopyNameHandler());
-        register("copy_state", new CopyStateHandler());
-        register("set_instrument", new SetInstrumentHandler());
-        register("set_fireworks", new SetFireworksHandler());
-        register("set_firework_explosion", new SetFireworkExplosionHandler());
-        register("set_banner_pattern", new SetBannerPatternHandler());
-        register("set_book_cover", new SetBookCoverHandler());
-        register("set_written_book_pages", new SetWrittenBookPagesHandler());
-        register("set_writable_book_pages", new SetWritableBookPagesHandler());
-        register("fill_player_head", new FillPlayerHeadHandler());
-        register("set_stew_effect", new SetStewEffectHandler());
-        register("exploration_map", new ExplorationMapHandler());
-        register("furnace_smelt", new FurnaceSmeltHandler());
-        register("set_contents", new SetContentsHandler());
-        register("modify_contents", new ModifyContentsHandler());
-        register("set_loot_table", new SetLootTableHandler());
+        register("copy_components", NULL_RANDOM);
+        register("copy_custom_data", NULL_RANDOM);
+        register("copy_name", NULL_RANDOM);
+        register("copy_state", NULL_RANDOM);
+        register("set_instrument", NULL_RANDOM);
+        register("set_fireworks", NULL_RANDOM);
+        register("set_firework_explosion", NULL_RANDOM);
+        register("set_banner_pattern", NULL_RANDOM);
+        register("set_book_cover", NULL_RANDOM);
+        register("set_written_book_pages", NULL_RANDOM);
+        register("set_writable_book_pages", NULL_RANDOM);
+        register("fill_player_head", NULL_RANDOM);
+        register("set_stew_effect", NULL_RANDOM);
+        register("exploration_map", NULL_RANDOM);
+        register("furnace_smelt", NULL_RANDOM);
+        register("set_contents", NULL_RANDOM);
+        register("modify_contents", NULL_RANDOM);
+        register("set_loot_table", NULL_RANDOM);
 
         // 类别 E：数量/概率类
-        register("limit_count", new LimitCountHandler());
-        register("apply_bonus", new ApplyBonusHandler());
-        register("explosion_decay", new ExplosionDecayHandler());
+        register("limit_count", NULL_RANDOM);
+        register("apply_bonus", NULL_RANDOM);
+        register("explosion_decay", NULL_RANDOM);
 
         // 类别 F：元函数
-        register("filtered", new FilteredHandler());
-        register("reference", new ReferenceHandler());
-        register("sequence", new SequenceHandler());
+        register("filtered", NULL_RANDOM);
+        register("reference", NULL_RANDOM);
+        register("sequence", NULL_RANDOM);
     }
 
     private LootFunctionHandlers() {
@@ -138,15 +152,11 @@ public final class LootFunctionHandlers {
 
     @Nullable
     private static ResourceLocation parseFunctionItemId(JsonObject functionObject) {
-        ResourceLocation itemId = ResourceLocation.tryParse(getString(functionObject, "item", ""));
+        ResourceLocation itemId = ResourceLocation.tryParse(LootParseUtil.getString(functionObject, "item", ""));
         if (itemId != null) {
             return itemId;
         }
-        return ResourceLocation.tryParse(getString(functionObject, "name", ""));
-    }
-
-    private static String getString(JsonObject object, String key, String fallback) {
-        return object.has(key) ? object.get(key).getAsString() : fallback;
+        return ResourceLocation.tryParse(LootParseUtil.getString(functionObject, "name", ""));
     }
 
     // ==================== 类别 A：完整静态处理 ====================
@@ -246,7 +256,7 @@ public final class LootFunctionHandlers {
             if (component == null) {
                 return null;
             }
-            String target = getString(functionJson, "target", "custom_name");
+            String target = LootParseUtil.getString(functionJson, "target", "custom_name");
             return switch (target) {
                 case "custom_name" -> {
                     previewStack.set(DataComponents.CUSTOM_NAME, component);
@@ -456,13 +466,9 @@ public final class LootFunctionHandlers {
             }
             List<Component> loreList = new ArrayList<>();
             for (JsonElement element : loreElement.getAsJsonArray()) {
-                Component component = ComponentSerialization.CODEC
+                ComponentSerialization.CODEC
                         .parse(JsonOps.INSTANCE, element)
-                        .result()
-                        .orElse(null);
-                if (component != null) {
-                    loreList.add(component);
-                }
+                        .result().ifPresent(loreList::add);
             }
             if (!loreList.isEmpty()) {
                 previewStack.set(DataComponents.LORE, new ItemLore(loreList));
@@ -525,323 +531,4 @@ public final class LootFunctionHandlers {
         }
     }
 
-    // ==================== 类别 D：影响结果但无法静态求值 ====================
-
-    private static final class CopyComponentsHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
-
-    private static final class CopyCustomDataHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class CopyNameHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class CopyStateHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetInstrumentHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetFireworksHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetFireworkExplosionHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetBannerPatternHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetBookCoverHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetWrittenBookPagesHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetWritableBookPagesHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class FillPlayerHeadHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetStewEffectHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class ExplorationMapHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    /** 处理 furnace_smelt：尝试查找烧炼产物，否则标记条件 */
-    private static final class FurnaceSmeltHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            // 烧炼配方需要服务端 RecipeManager，静态解析阶段无法获取
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetContentsHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class ModifyContentsHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SetLootTableHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    // ==================== 类别 E：数量/概率类 ====================
-
-    private static final class LimitCountHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class ApplyBonusHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class ExplosionDecayHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    // ==================== 类别 F：元函数 ====================
-
-    private static final class FilteredHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class ReferenceHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-
-    private static final class SequenceHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
-    }
-}

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
@@ -109,7 +110,16 @@ public final class ArchaeologyJournalServerCatalog {
             if (!uncached.isEmpty()) {
                 LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
                 if (worker != null) {
-                    worker.enqueueBatch(uncached);
+                    worker.setResultHandler((result, srv) -> commitSimulatedTable(result, srv));
+                    // 构建仅含未缓存表的子 map
+                    Map<ResourceLocation, TableDefinition> uncachedMap = new LinkedHashMap<>();
+                    for (ResourceLocation id : uncached) {
+                        TableDefinition raw = rawCatalog.get(id);
+                        if (raw != null) {
+                            uncachedMap.put(id, raw);
+                        }
+                    }
+                    worker.enqueueBatch(uncachedMap);
                 } else {
                     // 工作线程未启动（异常情况）：回退到主线程同步模拟，避免功能缺失
                     LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个表", uncached.size());
@@ -251,7 +261,7 @@ public final class ArchaeologyJournalServerCatalog {
             String probability = cachedProb != null ? cachedProb : item.probability();
             restoredItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature(), item.sourceChildTable()));
+                    probability, item.signature(), item.sourceChildTable(), item.conditions()));
         }
 
         // 2. 重建缓存中存在但 JSON 里没有的"注入条目"（GLM / LootTableEvents.MODIFY 模拟期发现）
@@ -265,7 +275,7 @@ public final class ArchaeologyJournalServerCatalog {
             }
             LootResultSignature signature = LootResultSignature.fromStoredKey(cached.getKey());
             if (signature != null) {
-                restoredItems.add(ArchaeologyJournalCatalog.buildDiscoveredDefinition(signature, cached.getValue()));
+                restoredItems.add(LootTableCatalog.buildDiscoveredDefinition(signature, cached.getValue()));
             }
         }
 

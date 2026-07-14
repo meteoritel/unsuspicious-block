@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
-import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
@@ -9,9 +8,9 @@ import net.minecraft.server.level.ServerLevel;
 import org.slf4j.Logger;
 
 import java.util.ArrayDeque;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -44,6 +43,8 @@ public final class LootProbabilitySimulationWorker {
     /** 已入队去重集合，避免同一表重复入队 */
     private final Set<ResourceLocation> enqueued = new HashSet<>();
     private volatile boolean paused = false;
+    /** 模拟结果回调（由调用方设置，如写入目录、广播等） */
+    private volatile ResultHandler resultHandler;
     /** 调试用进度回调（由 /usb journal reload 设置），可能为 null */
     private volatile ProgressListener progressListener;
 
@@ -79,28 +80,24 @@ public final class LootProbabilitySimulationWorker {
 
     /**
      * 批量入队（低优先级，启动填充用）。
-     * 仅入队 rawCatalog 中存在的表。
+     * 调用方需自行提供 raw table 定义。
      */
-    public void enqueueBatch(Collection<ResourceLocation> tableIds) {
-        if (tableIds.isEmpty()) return;
-        for (ResourceLocation tableId : tableIds) {
+    public void enqueueBatch(Map<ResourceLocation, TableDefinition> tables) {
+        if (tables.isEmpty()) return;
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : tables.entrySet()) {
+            ResourceLocation tableId = entry.getKey();
             if (enqueued.contains(tableId)) continue;
-            TableDefinition rawTable = ArchaeologyJournalServerCatalog.getRawTable(tableId);
-            if (rawTable == null) continue;
             enqueued.add(tableId);
-            lowQueue.addLast(new SimTask(tableId, rawTable));
+            lowQueue.addLast(new SimTask(tableId, entry.getValue()));
         }
     }
 
     /**
      * 单表插队入队（高优先级，玩家解锁触发）。
-     * 已在队列或已完成则跳过。
+     * 调用方需自行检查是否已有模拟数据，并提供 raw table 定义。
      */
-    public void enqueuePriority(ResourceLocation tableId) {
+    public void enqueuePriority(ResourceLocation tableId, TableDefinition rawTable) {
         if (enqueued.contains(tableId)) return;
-        if (ArchaeologyJournalServerCatalog.hasSimulatedData(tableId)) return;
-        TableDefinition rawTable = ArchaeologyJournalServerCatalog.getRawTable(tableId);
-        if (rawTable == null) return;
         enqueued.add(tableId);
         highQueue.addLast(new SimTask(tableId, rawTable));
     }
@@ -120,6 +117,11 @@ public final class LootProbabilitySimulationWorker {
     /** 恢复消费（数据包重载完成后调用） */
     public void resumeAfterReload() {
         paused = false;
+    }
+
+    /** 设置模拟结果回调 */
+    public void setResultHandler(ResultHandler handler) {
+        this.resultHandler = handler;
     }
 
     /** 设置调试用进度回调 */
@@ -149,7 +151,10 @@ public final class LootProbabilitySimulationWorker {
         try {
             LootProbabilitySimulator.SimResult result =
                     LootProbabilitySimulator.simulateOne(task.tableId, task.rawTable, level);
-            ArchaeologyJournalServerCatalog.commitSimulatedTable(result, server);
+            ResultHandler handler = this.resultHandler;
+            if (handler != null) {
+                handler.handle(result, server);
+            }
             long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
             LOGGER.info("已完成战利品表 {} 的概率模拟，耗时 {}ms，剩余队列 {}",
                     task.tableId, elapsedMs, enqueued.size() - 1);
@@ -166,6 +171,12 @@ public final class LootProbabilitySimulationWorker {
 
     /** 队列任务 */
     private record SimTask(ResourceLocation tableId, TableDefinition rawTable) {
+    }
+
+    /** 模拟结果回调（在主线程调用） */
+    @FunctionalInterface
+    public interface ResultHandler {
+        void handle(LootProbabilitySimulator.SimResult result, MinecraftServer server);
     }
 
     /** 调试用进度回调（在主线程调用） */
