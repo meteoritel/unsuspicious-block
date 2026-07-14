@@ -13,7 +13,6 @@ import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -46,12 +45,12 @@ public final class JournalCompletionRewardChecker {
 
     // 补发入口：玩家加入世界时全量扫描所有追踪表，补发历史漏发的完成奖励
     public static void checkAndRewardAll(ServerPlayer player) {
-        ArchaeologyJournalState state = getState(player);
+        ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return;
         }
         // 快照 catalog keySet，避免扫描期间 catalog 变更引发并发问题
-        for (ResourceLocation tableId : ArchaeologyJournalServerCatalog.getCatalog().keySet()) {
+        for (ResourceLocation tableId : List.copyOf(ArchaeologyJournalServerCatalog.getCatalog().keySet())) {
             tryReward(player, state, tableId);
         }
     }
@@ -92,13 +91,5 @@ public final class JournalCompletionRewardChecker {
         if (!player.getInventory().add(coin)) {
             player.drop(coin, false);
         }
-    }
-
-    @Nullable
-    private static ArchaeologyJournalState getState(ServerPlayer player) {
-        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
-            return null;
-        }
-        return holder.unsuspiciousblock$getArchaeologyJournalState();
     }
 }

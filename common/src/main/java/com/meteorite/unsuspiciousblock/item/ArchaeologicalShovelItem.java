@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
@@ -227,23 +226,13 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         brushable.setChanged();
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        ExcavationLogEntry pendingEntry = scanState.unsuspiciousblock$getPendingJournalEntry();
-        if (lootTableName != null && player instanceof ServerPlayer sp && pendingEntry == null) {
+        if (lootTableName != null && player instanceof ServerPlayer sp
+                && scanState.unsuspiciousblock$getPendingJournalEntry() == null) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             LootTrackingEvents.publish(sp, lootTableName, extracted,
-                    LootSourceType.ARCHAEOLOGY, gameTime, dayTime);
-            pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(
-                    sp,
-                    lootTableName,
-                    LootSourceType.ARCHAEOLOGY,
-                    BuiltInRegistries.BLOCK.getKey(brushable.getBlockState().getBlock()),
-                    pos,
-                    extracted,
-                    gameTime,
-                    dayTime
-            );
-            scanState.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
+                    LootSourceType.ARCHAEOLOGY, gameTime, dayTime,
+                    scanState::unsuspiciousblock$setPendingJournalEntry);
         }
 
         // inventory.add() 成功时会将 stack.count 置为 0，需在此之前保存副本用于日志记录

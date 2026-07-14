@@ -77,15 +77,16 @@ public final class ContainerTrackingService {
             }
         }
 
-        LootTrackingEvents.publish(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime);
+        LootTrackingEvents.publish(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime,
+                pendingEntry -> {
+                    container.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
+                    container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
+                    container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
+                });
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearAllTrackingState();
             return;
         }
-        container.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(player, LootSourceType.LOOT_CONTAINER,
-                sourceBlockId, pos, itemCounts, gameTime, dayTime));
-        container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
-        container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
     }
 
     // 核对容器追踪状态：清理已过期或已标记移除的追踪，并结算残留的待定日志条目

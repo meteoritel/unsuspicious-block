@@ -25,8 +25,8 @@ dependencies {
     runtimeOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
 
     // Lootr：neoforge 端 compileOnly 引用 API，runtimeOnly 供本地运行测试
-    //compileOnly "maven.modrinth:lootr:${lootr_version}"
-    //runtimeOnly "maven.modrinth:lootr:${lootr_version}"
+    compileOnly "maven.modrinth:lootr:${lootr_version}"
+    runtimeOnly "maven.modrinth:lootr:${lootr_version}"
 }
 
 neoForge {

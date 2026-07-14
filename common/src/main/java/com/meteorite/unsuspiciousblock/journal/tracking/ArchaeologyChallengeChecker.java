@@ -11,7 +11,6 @@ import com.meteorite.unsuspiciousblock.loottable.ArchaeologyLootTableCatalog.Tab
 import com.meteorite.unsuspiciousblock.loottable.LootResultSignature;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.Set;
@@ -73,7 +72,7 @@ public final class ArchaeologyChallengeChecker {
 
     // 补发入口：玩家加入世界时全量检测三项成就，避免 catalog 未就绪或事件漏触发时遗漏授予
     public static void checkAndGrantAll(ServerPlayer player) {
-        ArchaeologyJournalState state = getState(player);
+        ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return;
         }
@@ -136,13 +135,5 @@ public final class ArchaeologyChallengeChecker {
 
     private static ResourceLocation template(String name) {
         return ResourceLocation.withDefaultNamespace(name + "_armor_trim_smithing_template");
-    }
-
-    @Nullable
-    private static ArchaeologyJournalState getState(ServerPlayer player) {
-        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
-            return null;
-        }
-        return holder.unsuspiciousblock$getArchaeologyJournalState();
     }
 }

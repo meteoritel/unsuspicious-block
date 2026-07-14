@@ -44,7 +44,7 @@ public final class ArchaeologyLootRuntimeTracker {
                                                     ResourceLocation signatureAnchor,
                                                     Map<String, Integer> itemCounts,
                                                     boolean recordItemCounts) {
-        ArchaeologyJournalState state = getState(player);
+        ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return;
         }
@@ -255,11 +255,4 @@ public final class ArchaeologyLootRuntimeTracker {
         return signatureCounts;
     }
 
-    @Nullable
-    private static ArchaeologyJournalState getState(ServerPlayer player) {
-        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
-            return null;
-        }
-        return holder.unsuspiciousblock$getArchaeologyJournalState();
     }
-}

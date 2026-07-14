@@ -59,6 +59,8 @@ public abstract class DefaultLootFillerMixin {
                                                     @Share("ctxPushed") LocalRef<Boolean> ctxPushed) {
         capturedLootTable.set(null);
         ctxPushed.set(false);
+        // 异常恢复：上次 unpackLootTable 异常时 TAIL 未触发 pop，清理残留上下文
+        LootTrackingContextHolder.clear();
 
         if (!(player instanceof ServerPlayer sp)) {
             return;

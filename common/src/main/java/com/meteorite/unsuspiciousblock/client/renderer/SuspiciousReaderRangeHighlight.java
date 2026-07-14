@@ -21,8 +21,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.List;
-
 /** 可疑解析仪——范围扫描框预览与扫描结果红色描边的透视渲染（仅客户端） */
 public final class SuspiciousReaderRangeHighlight {
     // 范围框：与解析仪主题色一致的金色

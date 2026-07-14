@@ -69,7 +69,7 @@ public final class JournalLogRecorder {
     // 将签名计数 Map 同步到日记进度状态，返回是否有变更
     private static boolean syncItemAcquiredState(ServerPlayer player, ResourceLocation tableId,
                                                  Map<LootResultSignature, Integer> signatureCounts) {
-        ArchaeologyJournalState state = getState(player);
+        ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return false;
         }
@@ -78,13 +78,5 @@ public final class JournalLogRecorder {
             JournalStateHandler.syncState(player);
         }
         return changed;
-    }
-
-    @Nullable
-    private static ArchaeologyJournalState getState(ServerPlayer player) {
-        if (!(player instanceof ArchaeologyJournalStateHolder holder)) {
-            return null;
-        }
-        return holder.unsuspiciousblock$getArchaeologyJournalState();
     }
 }

@@ -4,7 +4,6 @@ import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState
 import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
@@ -354,6 +353,8 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     private void unsuspiciousblock$captureLootTableName(Player player, CallbackInfo ci,
                                                         @Share("ctxPushed") LocalRef<Boolean> ctxPushed) {
         ctxPushed.set(false);
+        // 异常恢复：上次 unpackLootTable 异常时 TAIL 未触发 pop，清理残留上下文
+        LootTrackingContextHolder.clear();
         this.unsuspiciousblock$lootTableParsedThisCall = false;
         Level level = this.unsuspiciousblock$asBlockEntity().getLevel();
         if (this.lootTable == null || level == null || level.isClientSide() || level.getServer() == null) {
@@ -425,24 +426,13 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         // 首次发现记录使用原始战利品——解锁与首次发现时间基于战利品表结果
         // 注：刷拭场景下根表物品通过此 publish 发布；若根表为嵌套表，子表物品由 NestedLootTableMixin 自动发布
+        // 待定日志条目由 onRecordExcavationEntry 订阅者通过 consumer 回传
         LootTrackingContext publishCtx = LootTrackingContext.root(
                 sp, this.unsuspiciousblock$lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime,
                 blockEntity.getBlockPos(),
                 BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
-        LootTrackingEvents.publish(publishCtx, originalItem);
-
-        // 创建待定日志条目，期望值 = 原始战利品表结果（翻倍前）
-        // 精掘翻倍在 dropContent 时抽取，actualLoot 按翻倍后总数结算
-        this.unsuspiciousblock$setPendingJournalEntry(ArchaeologyLootRuntimeTracker.createPendingEntry(
-                sp,
-                this.unsuspiciousblock$lootTableName,
-                LootSourceType.ARCHAEOLOGY,
-                BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()),
-                blockEntity.getBlockPos(),
-                originalItem,
-                gameTime,
-                dayTime
-        ));
+        LootTrackingEvents.publish(publishCtx, originalItem,
+                this::unsuspiciousblock$setPendingJournalEntry);
 
         this.unsuspiciousblock$syncBlockEntity();
     }

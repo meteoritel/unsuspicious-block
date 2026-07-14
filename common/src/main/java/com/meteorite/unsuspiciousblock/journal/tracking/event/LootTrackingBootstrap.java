@@ -1,10 +1,13 @@
 package com.meteorite.unsuspiciousblock.journal.tracking.event;
 
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyChallengeChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalCompletionRewardChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalLogRecorder;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+
+import java.util.function.Consumer;
 
 /**
  * 战利品发现事件订阅者注册入口。
@@ -13,7 +16,8 @@ import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
  * <ol>
  *   <li>priority 100：调用 {@link ArchaeologyLootRuntimeTracker#unlockResolvedLootMultiTable} 解锁日记状态</li>
  *   <li>priority 200：调用 {@link JournalLogRecorder#recordFirstUnlock} 记录首次发现元数据</li>
- *   <li>priority 250：调用 {@link ArchaeologyLootRuntimeTracker#recordExcavationEntryMultiTable} 创建日志条目（仅钓鱼场景）</li>
+ *   <li>priority 250：调用 {@link ArchaeologyLootRuntimeTracker#recordExcavationEntryMultiTable} 创建日志条目（FISHING）；
+ *       非 FISHING 通过 pendingEntryConsumer 回传待定日志条目</li>
  *   <li>priority 300：调用 {@link ArchaeologyChallengeChecker#checkAndGrant} 检查并授予考古成就</li>
  * </ol>
  * 解锁必须先于成就检查——后者读取的 state 必须反映本次解锁。
@@ -48,17 +52,29 @@ public final class LootTrackingBootstrap {
                 event.gameTime(), event.dayTime());
     }
 
-    // 日志条目创建订阅者：仅钓鱼场景创建 ExcavationLogEntry（无待定日志条目机制）
-    // 考古刷拭（ARCHAEOLOGY）由 createPendingEntry + applyPendingLoot 负责日志条目创建
-    // 开箱（LOOT_CONTAINER）由 createPendingEntry + flushTrackingToJournal 负责日志条目创建
+    // 日志条目创建订阅者：FISHING 直接创建最终日志条目；非 FISHING 通过 pendingEntryConsumer 回传待定条目
+    // consumer 为 null 时（NestedLootTableMixin 子表捕获场景）跳过待定条目创建
     private static void onRecordExcavationEntry(LootDiscoveredEvent event) {
-        if (event.lootSource() != LootSourceType.FISHING) {
+        if (event.lootSource() == LootSourceType.FISHING) {
+            // FISHING：直接创建最终日志条目（无待定日志条目机制）
+            ArchaeologyLootRuntimeTracker.recordExcavationEntryMultiTable(
+                    event.player(), event.tableStack(), event.lootSource(),
+                    event.gameTime(), event.dayTime(), event.itemCounts(),
+                    event.pos(), event.sourceBlockId());
             return;
         }
-        ArchaeologyLootRuntimeTracker.recordExcavationEntryMultiTable(
-                event.player(), event.tableStack(), event.lootSource(),
-                event.gameTime(), event.dayTime(), event.itemCounts(),
-                event.pos(), event.sourceBlockId());
+
+        // 非 FISHING（ARCHAEOLOGY / LOOT_CONTAINER）：通过 consumer 回传待定条目
+        Consumer<ExcavationLogEntry> consumer = event.pendingEntryConsumer();
+        if (consumer != null) {
+            ExcavationLogEntry pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(
+                    event.player(), event.lootSource(), event.sourceBlockId(), event.pos(),
+                    event.itemCounts(), event.gameTime(), event.dayTime());
+            if (pendingEntry != null) {
+                consumer.accept(pendingEntry);
+            }
+        }
+        // consumer == null（NestedLootTableMixin 子表捕获）：no-op
     }
 
     // 成就检查订阅者：核对考古收集类成就（依赖 state 已被解锁订阅者更新）

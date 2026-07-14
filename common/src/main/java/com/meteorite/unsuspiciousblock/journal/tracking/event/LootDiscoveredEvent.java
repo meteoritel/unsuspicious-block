@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.tracking.event;
 
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -9,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 战利品发现事件。
@@ -33,12 +35,14 @@ public record LootDiscoveredEvent(ServerPlayer player, ResourceLocation rootTabl
                                   List<ResourceLocation> tableStack, LootSourceType lootSource,
                                   long gameTime, long dayTime, Map<String, Integer> itemCounts,
                                   BlockPos pos, @Nullable ResourceLocation sourceBlockId,
-                                  @Nullable ArchaeologyJournalState state) {
+                                  @Nullable ArchaeologyJournalState state,
+                                  @Nullable Consumer<ExcavationLogEntry> pendingEntryConsumer) {
     public LootDiscoveredEvent(ServerPlayer player, ResourceLocation rootTableId, ResourceLocation tableId,
                                List<ResourceLocation> tableStack, LootSourceType lootSource,
                                long gameTime, long dayTime, Map<String, Integer> itemCounts,
                                BlockPos pos, @Nullable ResourceLocation sourceBlockId,
-                               @Nullable ArchaeologyJournalState state) {
+                               @Nullable ArchaeologyJournalState state,
+                               @Nullable Consumer<ExcavationLogEntry> pendingEntryConsumer) {
         this.player = player;
         this.rootTableId = rootTableId;
         this.tableId = tableId;
@@ -50,6 +54,7 @@ public record LootDiscoveredEvent(ServerPlayer player, ResourceLocation rootTabl
         this.pos = pos == null ? BlockPos.ZERO : pos;
         this.sourceBlockId = sourceBlockId;
         this.state = state;
+        this.pendingEntryConsumer = pendingEntryConsumer;
     }
 
     // 兼容旧调用方的便利构造器：rootTableId=tableId, tableStack=[tableId], pos=ZERO, sourceBlockId=null
@@ -57,6 +62,15 @@ public record LootDiscoveredEvent(ServerPlayer player, ResourceLocation rootTabl
                                long gameTime, long dayTime, Map<String, Integer> itemCounts,
                                @Nullable ArchaeologyJournalState state) {
         this(player, tableId, tableId, List.of(tableId), lootSource, gameTime, dayTime, itemCounts,
-                BlockPos.ZERO, null, state);
+                BlockPos.ZERO, null, state, null);
+    }
+
+    // 兼容旧调用方的便利构造器（带 pendingEntryConsumer）：rootTableId=tableId, tableStack=[tableId], pos=ZERO, sourceBlockId=null
+    public LootDiscoveredEvent(ServerPlayer player, ResourceLocation tableId, LootSourceType lootSource,
+                               long gameTime, long dayTime, Map<String, Integer> itemCounts,
+                               @Nullable ArchaeologyJournalState state,
+                               @Nullable Consumer<ExcavationLogEntry> pendingEntryConsumer) {
+        this(player, tableId, tableId, List.of(tableId), lootSource, gameTime, dayTime, itemCounts,
+                BlockPos.ZERO, null, state, pendingEntryConsumer);
     }
 }
