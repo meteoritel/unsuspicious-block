@@ -128,7 +128,6 @@ public final class LootConditionHandlers {
     /** 处理 random_chance：读取 chance 字段，设置概率值 */
     private static final class RandomChanceHandler implements LootConditionHandler {
         @Override
-        @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
             float chance = 1.0f;
             if (conditionJson.has("chance") && conditionJson.get("chance").isJsonPrimitive()) {
@@ -148,7 +147,6 @@ public final class LootConditionHandlers {
     /** 处理 random_chance_with_enchanted_bonus：读取基础概率，附魔加成不可静态确定 */
     private static final class RandomChanceWithEnchantedBonusHandler implements LootConditionHandler {
         @Override
-        @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
             float baseChance = 1.0f;
             if (conditionJson.has("unenchanted_chance") && conditionJson.get("unenchanted_chance").isJsonPrimitive()) {
@@ -173,7 +171,6 @@ public final class LootConditionHandlers {
     /** 处理 survives_explosion：考古模拟中爆炸半径为 0，始终满足 */
     private static final class SurvivesExplosionHandler implements LootConditionHandler {
         @Override
-        @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
             return new LootConditionInfo("survives_explosion",
                     Component.translatable(I18N_PREFIX + "survives_explosion"),
@@ -186,29 +183,23 @@ public final class LootConditionHandlers {
         }
     }
 
-    /** 通用简单描述 handler：仅提供本地化描述，不解析具体参数 */
-    private static final class SimpleDescriptionHandler implements LootConditionHandler {
-        private final String key;
-        private final boolean uncertain;
-
-        SimpleDescriptionHandler(String key, boolean uncertain) {
-            this.key = key;
-            this.uncertain = uncertain;
-        }
+    /**
+     * 通用简单描述 handler：仅提供本地化描述，不解析具体参数
+     */
+        private record SimpleDescriptionHandler(String key, boolean uncertain) implements LootConditionHandler {
 
         @Override
-        @Nullable
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            return new LootConditionInfo(this.key,
-                    Component.translatable(I18N_PREFIX + this.key),
-                    null);
-        }
+            public LootConditionInfo analyze(JsonObject conditionJson) {
+                return new LootConditionInfo(this.key,
+                        Component.translatable(I18N_PREFIX + this.key),
+                        null);
+            }
 
-        @Override
-        public boolean addsUncertainty() {
-            return this.uncertain;
+            @Override
+            public boolean addsUncertainty() {
+                return this.uncertain;
+            }
         }
-    }
 
     // ==================== 类别 C：纯运行时 ====================
 
@@ -326,7 +317,6 @@ public final class LootConditionHandlers {
     /** 处理 reference：引用外部条件，无法静态解析 */
     private static final class ReferenceHandler implements LootConditionHandler {
         @Override
-        @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
             String name = LootParseUtil.getString(conditionJson, "name", "?");
             return new LootConditionInfo("reference",

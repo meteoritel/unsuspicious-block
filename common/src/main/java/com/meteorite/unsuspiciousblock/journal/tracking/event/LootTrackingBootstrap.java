@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyChallengeChec
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalCompletionRewardChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalLogRecorder;
-import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 
 import java.util.function.Consumer;
 
