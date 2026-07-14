@@ -57,14 +57,6 @@ public record LootDiscoveredEvent(ServerPlayer player, ResourceLocation rootTabl
         this.pendingEntryConsumer = pendingEntryConsumer;
     }
 
-    // 兼容旧调用方的便利构造器：rootTableId=tableId, tableStack=[tableId], pos=ZERO, sourceBlockId=null
-    public LootDiscoveredEvent(ServerPlayer player, ResourceLocation tableId, LootSourceType lootSource,
-                               long gameTime, long dayTime, Map<String, Integer> itemCounts,
-                               @Nullable ArchaeologyJournalState state) {
-        this(player, tableId, tableId, List.of(tableId), lootSource, gameTime, dayTime, itemCounts,
-                BlockPos.ZERO, null, state, null);
-    }
-
     // 兼容旧调用方的便利构造器（带 pendingEntryConsumer）：rootTableId=tableId, tableStack=[tableId], pos=ZERO, sourceBlockId=null
     public LootDiscoveredEvent(ServerPlayer player, ResourceLocation tableId, LootSourceType lootSource,
                                long gameTime, long dayTime, Map<String, Integer> itemCounts,

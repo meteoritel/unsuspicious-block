@@ -240,7 +240,7 @@ public final class ArchaeologyJournalLogState {
                         this.firstUnlockedDayTime != null ? this.firstUnlockedDayTime : this.firstUnlockedGameTime);
             }
             if (this.firstUnlockLootSource != null) {
-                tag.putString(FIRST_UNLOCK_LOOT_SOURCE_TAG, this.firstUnlockLootSource.serializedName());
+                tag.putString(FIRST_UNLOCK_LOOT_SOURCE_TAG, this.firstUnlockLootSource.id().toString());
             }
             ListTag entriesTag = new ListTag();
             for (ExcavationLogEntry entry : this.entries.values()) {
@@ -259,11 +259,12 @@ public final class ArchaeologyJournalLogState {
                         : history.firstUnlockedGameTime;
             }
             // 向后兼容：优先读取新字段，其次读取旧字段
+            @Deprecated // 将于 1.5.0 移除
             String LOOT_SOURCE_LEGACY_TAG = "first_unlock_trigger_type";
             if (tag.contains(FIRST_UNLOCK_LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
-                history.firstUnlockLootSource = LootSourceType.fromSerializedName(tag.getString(FIRST_UNLOCK_LOOT_SOURCE_TAG));
+                history.firstUnlockLootSource = LootSourceType.fromId(tag.getString(FIRST_UNLOCK_LOOT_SOURCE_TAG));
             } else if (tag.contains(LOOT_SOURCE_LEGACY_TAG, Tag.TAG_STRING)) {
-                history.firstUnlockLootSource = LootSourceType.fromSerializedName(tag.getString(LOOT_SOURCE_LEGACY_TAG));
+                history.firstUnlockLootSource = LootSourceType.fromId(tag.getString(LOOT_SOURCE_LEGACY_TAG));
             }
             if (tag.contains(ENTRIES_TAG, Tag.TAG_LIST)) {
                 ListTag entriesTag = tag.getList(ENTRIES_TAG, Tag.TAG_COMPOUND);

@@ -40,16 +40,19 @@ public record ExcavationLogEntry(UUID entryId,
     private static final String ENTRY_ID_TAG = "entry_id";
     private static final String DIMENSION_ID_TAG = "dimension_id";
     private static final String LOOT_SOURCE_TAG = "loot_source";
-    @Deprecated // 向后兼容读取旧NBT
+    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
     private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String SOURCE_BLOCK_ID_TAG = "source_block_id";
+    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
     private static final String ITEM_ID_TAG = "item_id";
     private static final String STRUCTURE_ID_TAG = "structure_id";
     private static final String BIOME_ID_TAG = "biome_id";
     private static final String POS_X_TAG = "pos_x";
     private static final String POS_Y_TAG = "pos_y";
     private static final String POS_Z_TAG = "pos_z";
+    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
     private static final String GAME_TIME_TAG = "game_time";
+    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
     private static final String DAY_TIME_TAG = "day_time";
     private static final String CREATED_GAME_TIME_TAG = "created_game_time";
     private static final String CREATED_DAY_TIME_TAG = "created_day_time";
@@ -190,7 +193,7 @@ public record ExcavationLogEntry(UUID entryId,
         CompoundTag tag = new CompoundTag();
         tag.putString(ENTRY_ID_TAG, this.entryId.toString());
         if (this.lootSource != null) {
-            tag.putString(LOOT_SOURCE_TAG, this.lootSource.serializedName());
+            tag.putString(LOOT_SOURCE_TAG, this.lootSource.id().toString());
         }
         if (this.context.dimensionId != null) {
             tag.putString(DIMENSION_ID_TAG, this.context.dimensionId.toString());
@@ -233,9 +236,9 @@ public record ExcavationLogEntry(UUID entryId,
         // 向后兼容：优先读取新字段 loot_source，其次读取旧字段 trigger_type
         LootSourceType lootSource = null;
         if (tag.contains(LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
-            lootSource = LootSourceType.fromSerializedName(tag.getString(LOOT_SOURCE_TAG));
+            lootSource = LootSourceType.fromId(tag.getString(LOOT_SOURCE_TAG));
         } else if (tag.contains(LEGACY_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
-            lootSource = LootSourceType.fromSerializedName(tag.getString(LEGACY_TRIGGER_TYPE_TAG));
+            lootSource = LootSourceType.fromId(tag.getString(LEGACY_TRIGGER_TYPE_TAG));
         }
         ResourceLocation sourceBlockId = tag.contains(SOURCE_BLOCK_ID_TAG, Tag.TAG_STRING)
                 ? ResourceLocation.tryParse(tag.getString(SOURCE_BLOCK_ID_TAG))
@@ -318,6 +321,7 @@ public record ExcavationLogEntry(UUID entryId,
         }
     }
 
+    @Deprecated // 向后兼容读取旧NBT（item_id 字段），将于 1.5.0 移除
     private static Map<String, Integer> createLegacyLootMap(@Nullable ResourceLocation itemId) {
         if (itemId == null) {
             return Map.of();

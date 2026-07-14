@@ -27,8 +27,10 @@ import org.slf4j.LoggerFactory;
 public final class NbtDataMigrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(NbtDataMigrator.class);
 
-    // 旧字段名常量（仅迁移时使用）
+    // 旧字段名常量（仅迁移时使用，将于 1.5.0 移除）
+    @Deprecated
     private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
+    @Deprecated
     private static final String LEGACY_FIRST_UNLOCK_TRIGGER_TYPE_TAG = "first_unlock_trigger_type";
 
     private NbtDataMigrator() {

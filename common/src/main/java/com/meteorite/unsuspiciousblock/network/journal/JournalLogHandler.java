@@ -249,7 +249,7 @@ public final class JournalLogHandler {
         }
 
         JournalLogSavedData savedData = JournalLogSavedData.get(server.overworld());
-        // 一次性迁移：若玩家 NBT 中残留旧版日志 tag，消费并迁移到 SavedData
+        // 一次性迁移：若玩家 NBT 中残留旧版日志 tag，消费并迁移到 SavedData（将于 1.5.0 移除）
         if (player instanceof ArchaeologyJournalLogLegacyAccess access) {
             CompoundTag legacy = access.unsuspiciousblock$consumeLegacyJournalLogTag();
             if (legacy != null) {

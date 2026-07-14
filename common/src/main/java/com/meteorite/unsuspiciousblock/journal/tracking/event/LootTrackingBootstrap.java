@@ -39,7 +39,7 @@ public final class LootTrackingBootstrap {
     // 解锁订阅者：遍历 tableStack 对每个在 catalog 中的表更新解锁状态并触发概率模拟
     // 钓鱼场景（FISHING）同时记录物品获取计数；考古/开箱场景由待定日志条目机制负责计数
     private static void onUnlock(LootDiscoveredEvent event) {
-        boolean recordItemCounts = event.lootSource() == LootSourceType.FISHING;
+        boolean recordItemCounts = event.lootSource().isDirectLogCreation();
         ArchaeologyLootRuntimeTracker.unlockResolvedLootMultiTable(
                 event.player(), event.tableStack(), event.rootTableId(), event.itemCounts(),
                 recordItemCounts);
@@ -55,8 +55,8 @@ public final class LootTrackingBootstrap {
     // 日志条目创建订阅者：FISHING 直接创建最终日志条目；非 FISHING 通过 pendingEntryConsumer 回传待定条目
     // consumer 为 null 时（NestedLootTableMixin 子表捕获场景）跳过待定条目创建
     private static void onRecordExcavationEntry(LootDiscoveredEvent event) {
-        if (event.lootSource() == LootSourceType.FISHING) {
-            // FISHING：直接创建最终日志条目（无待定日志条目机制）
+        if (event.lootSource().isDirectLogCreation()) {
+            // 直接创建最终日志条目（无待定日志条目机制）
             ArchaeologyLootRuntimeTracker.recordExcavationEntryMultiTable(
                     event.player(), event.tableStack(), event.lootSource(),
                     event.gameTime(), event.dayTime(), event.itemCounts(),
@@ -64,7 +64,7 @@ public final class LootTrackingBootstrap {
             return;
         }
 
-        // 非 FISHING（ARCHAEOLOGY / LOOT_CONTAINER）：通过 consumer 回传待定条目
+        // 延迟来源（ARCHAEOLOGY / LOOT_CONTAINER 等）：通过 consumer 回传待定条目
         Consumer<ExcavationLogEntry> consumer = event.pendingEntryConsumer();
         if (consumer != null) {
             ExcavationLogEntry pendingEntry = ArchaeologyLootRuntimeTracker.createPendingEntry(

@@ -1,45 +1,83 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * 日志条目的战利品来源类型。
+ * 日志条目的战利品来源类型——替代旧版 enum 的类 + 注册表模式。
  * <p>
- * 描述战利品是通过何种途径获得的，取代旧的 TriggerType 枚举。
- * 序列化时使用 {@link #serializedName}，旧格式自动兼容：
- * "brush"/"reader"/"spade" → ARCHAEOLOGY, "container" → LOOT_CONTAINER, "unknown" → null。
+ * 外部模组可通过 {@link #register} 注册自定义来源类型，突破 enum 的封闭限制。
+ * 每个类型携带 {@code directLogCreation} 行为属性，决定战利品表解析时是否直接创建最终日志条目
+ * （不再在事件管线中硬编码 {@code == FISHING} 身份比较）。
+ * <p>
+ * 序列化使用 {@link ResourceLocation} 格式（如 {@code unsuspiciousblock:archaeology}），
+ * {@link #fromId} 兼容旧格式简单字符串（{@code "archaeology"}、{@code "brush"} 等）。
  */
-public enum LootSourceType {
-    ARCHAEOLOGY("archaeology", "screen.unsuspiciousblock.archaeology_journal.loot_source_type.archaeology",
-            () -> new ItemStack(Items.BRUSH)),
-    LOOT_CONTAINER("loot_container", "screen.unsuspiciousblock.archaeology_journal.loot_source_type.loot_container",
-            () -> new ItemStack(Items.CHEST)),
-    FISHING("fishing", "screen.unsuspiciousblock.archaeology_journal.loot_source_type.fishing",
-            () -> new ItemStack(Items.FISHING_ROD));
+public final class LootSourceType {
+    private static final Map<ResourceLocation, LootSourceType> REGISTRY = new LinkedHashMap<>();
 
-    private final String serializedName;
-    private final String translationKey;
+    // 内建常量
+    public static final LootSourceType ARCHAEOLOGY = register(
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "archaeology"),
+            Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.archaeology"),
+            () -> new ItemStack(Items.BRUSH),
+            false);
+
+    public static final LootSourceType LOOT_CONTAINER = register(
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "loot_container"),
+            Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.loot_container"),
+            () -> new ItemStack(Items.CHEST),
+            false);
+
+    public static final LootSourceType FISHING = register(
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "fishing"),
+            Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.fishing"),
+            () -> new ItemStack(Items.FISHING_ROD),
+            true);
+
+    private final ResourceLocation id;
+    private final Component displayName;
     private final Supplier<ItemStack> iconItem;
+    private final boolean directLogCreation;
 
-    LootSourceType(String serializedName, String translationKey, Supplier<ItemStack> iconItem) {
-        this.serializedName = serializedName;
-        this.translationKey = translationKey;
-        this.iconItem = iconItem;
+    private LootSourceType(ResourceLocation id, Component displayName, Supplier<ItemStack> iconItem,
+                           boolean directLogCreation) {
+        this.id = Objects.requireNonNull(id, "id");
+        this.displayName = Objects.requireNonNull(displayName, "displayName");
+        this.iconItem = Objects.requireNonNull(iconItem, "iconItem");
+        this.directLogCreation = directLogCreation;
     }
 
-    // 返回枚举的序列化名称
-    public String serializedName() {
-        return this.serializedName;
+    // 注册新的来源类型；若 id 已存在则返回已注册的实例（幂等）
+    public static LootSourceType register(ResourceLocation id, Component displayName,
+                                          Supplier<ItemStack> iconItem, boolean directLogCreation) {
+        LootSourceType existing = REGISTRY.get(id);
+        if (existing != null) {
+            return existing;
+        }
+        LootSourceType type = new LootSourceType(id, displayName, iconItem, directLogCreation);
+        REGISTRY.put(id, type);
+        return type;
+    }
+
+    // 返回唯一标识符（如 unsuspiciousblock:archaeology）
+    public ResourceLocation id() {
+        return this.id;
     }
 
     // 返回本地化显示名
     public Component displayName() {
-        return Component.translatable(this.translationKey);
+        return this.displayName;
     }
 
     // 返回图标物品栈
@@ -47,28 +85,59 @@ public enum LootSourceType {
         return this.iconItem.get();
     }
 
-    // 根据序列化名称反序列化枚举值
-    // 兼容旧格式：brush/reader/spade→ARCHAEOLOGY, container→LOOT_CONTAINER, unknown→null
+    // 战利品表解析时是否直接创建最终日志条目（无待定条目机制）
+    public boolean isDirectLogCreation() {
+        return this.directLogCreation;
+    }
+
+    // 返回注册表只读视图
+    public static Map<ResourceLocation, LootSourceType> registry() {
+        return Collections.unmodifiableMap(REGISTRY);
+    }
+
+    // 根据字符串 id 反序列化；兼容旧格式简单名（如 "archaeology"、"brush" 等）
     @Nullable
-    public static LootSourceType fromSerializedName(String name) {
-        // 向后兼容旧序列化名
-        switch (name) {
-            case "brush":
-            case "reader":
-            case "spade":
-                return ARCHAEOLOGY;
-            case "container":
-                return LOOT_CONTAINER;
-            case "unknown":
-                return null;
-            default:
-                break;
+    public static LootSourceType fromId(String id) {
+        if (id == null || id.isEmpty()) {
+            return null;
         }
-        for (LootSourceType value : values()) {
-            if (value.serializedName.equals(name)) {
-                return value;
+        // 新格式：ResourceLocation 字符串
+        ResourceLocation rl = ResourceLocation.tryParse(id);
+        if (rl != null) {
+            LootSourceType type = REGISTRY.get(rl);
+            if (type != null) {
+                return type;
             }
         }
-        return null;
+        // 向后兼容旧格式简单名
+        return fromLegacyName(id);
+    }
+
+    @Deprecated // 将于 1.5.0 移除
+    @Nullable
+    private static LootSourceType fromLegacyName(String name) {
+        return switch (name) {
+            case "archaeology", "brush", "reader", "spade" -> ARCHAEOLOGY;
+            case "loot_container", "container" -> LOOT_CONTAINER;
+            case "fishing" -> FISHING;
+            default -> null;
+        };
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof LootSourceType that)) return false;
+        return this.id.equals(that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return this.id.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "LootSourceType{" + this.id + '}';
     }
 }

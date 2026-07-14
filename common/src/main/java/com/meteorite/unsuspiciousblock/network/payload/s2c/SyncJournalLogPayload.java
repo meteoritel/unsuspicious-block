@@ -24,7 +24,7 @@ public record SyncJournalLogPayload(UUID sessionId,
                                     @Nullable ResourceLocation tableId,
                                     CompoundTag data) implements CustomPacketPayload {
     private static final String LOOT_SOURCE_TAG = "loot_source";
-    @Deprecated // 向后兼容读取旧NBT
+    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
     private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String GAME_TIME_TAG = "game_time";
     private static final String DAY_TIME_TAG = "day_time";
@@ -43,7 +43,7 @@ public record SyncJournalLogPayload(UUID sessionId,
         data.putLong(GAME_TIME_TAG, firstUnlockedGameTime);
         data.putLong(DAY_TIME_TAG, firstUnlockedDayTime);
         if (lootSource != null) {
-            data.putString(LOOT_SOURCE_TAG, lootSource.serializedName());
+            data.putString(LOOT_SOURCE_TAG, lootSource.id().toString());
         }
         return new SyncJournalLogPayload(sessionId, sequence, Action.SET_FIRST_UNLOCK_META, tableId, data);
     }
@@ -73,11 +73,11 @@ public record SyncJournalLogPayload(UUID sessionId,
     @Nullable
     public LootSourceType lootSource() {
         if (this.data.contains(LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
-            return LootSourceType.fromSerializedName(this.data.getString(LOOT_SOURCE_TAG));
+            return LootSourceType.fromId(this.data.getString(LOOT_SOURCE_TAG));
         }
         // 向后兼容：读取旧字段名
         if (this.data.contains(LEGACY_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
-            return LootSourceType.fromSerializedName(this.data.getString(LEGACY_TRIGGER_TYPE_TAG));
+            return LootSourceType.fromId(this.data.getString(LEGACY_TRIGGER_TYPE_TAG));
         }
         return null;
     }
