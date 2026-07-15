@@ -13,6 +13,7 @@ import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.Potion;
@@ -82,23 +83,23 @@ public final class LootFunctionHandlers {
         register("copy_name", NULL_RANDOM);
         register("copy_state", NULL_RANDOM);
         register("set_instrument", NULL_RANDOM);
-        register("set_fireworks", NULL_RANDOM);
+        register("set_fireworks", new SetFireworksHandler());
         register("set_firework_explosion", NULL_RANDOM);
         register("set_banner_pattern", NULL_RANDOM);
-        register("set_book_cover", NULL_RANDOM);
+        register("set_book_cover", new SetBookCoverHandler());
         register("set_written_book_pages", NULL_RANDOM);
         register("set_writable_book_pages", NULL_RANDOM);
-        register("fill_player_head", NULL_RANDOM);
-        register("set_stew_effect", NULL_RANDOM);
-        register("exploration_map", NULL_RANDOM);
+        register("fill_player_head", new FillPlayerHeadHandler());
+        register("set_stew_effect", new SetStewEffectHandler());
+        register("exploration_map", new ExplorationMapHandler());
         register("furnace_smelt", NULL_RANDOM);
         register("set_contents", NULL_RANDOM);
         register("modify_contents", NULL_RANDOM);
         register("set_loot_table", NULL_RANDOM);
 
         // 类别 E：数量/概率类
-        register("limit_count", NULL_RANDOM);
-        register("apply_bonus", NULL_RANDOM);
+        register("limit_count", new LimitCountHandler());
+        register("apply_bonus", new ApplyBonusHandler());
         register("explosion_decay", NULL_RANDOM);
 
         // 类别 F：元函数
@@ -577,6 +578,262 @@ public final class LootFunctionHandlers {
         @Override
         public boolean addsRandomness() {
             return false;
+        }
+    }
+
+    // ==================== 类别 D/E：新增谓词解析 handler ====================
+
+    /** 处理 apply_bonus：展示附魔加成公式类型 */
+    private static final class ApplyBonusHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // 取决于工具上的附魔等级，无法静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            ResourceLocation enchantmentId = ResourceLocation.tryParse(
+                    LootParseUtil.getString(functionJson, "enchantment", ""));
+            // 1.21.1 附魔为数据驱动注册表，通过翻译键获取展示名
+            Component enchantmentName = enchantmentId != null
+                    ? Component.translatable("enchantment." + enchantmentId.getNamespace() + "." + enchantmentId.getPath())
+                    : Component.literal("?");
+
+            String formula = LootParseUtil.getString(functionJson, "formula", "");
+            String formulaType = LootParseUtil.normalizeType(formula);
+            Component formulaName = Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.formula." + formulaType);
+
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.apply_bonus",
+                    enchantmentName, formulaName);
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    }
+
+    /** 处理 limit_count：展示数量限制范围 */
+    private static final class LimitCountHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // 取决于上下文中的当前数量，无法静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            JsonElement limitElement = functionJson.get("limit");
+            if (limitElement == null || !limitElement.isJsonObject()) {
+                return null;
+            }
+            JsonObject limitObj = limitElement.getAsJsonObject();
+            boolean hasMin = limitObj.has("min") && limitObj.get("min").isJsonPrimitive();
+            boolean hasMax = limitObj.has("max") && limitObj.get("max").isJsonPrimitive();
+
+            if (hasMin && hasMax) {
+                int min = limitObj.get("min").getAsInt();
+                int max = limitObj.get("max").getAsInt();
+                if (min == max) {
+                    return Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_exact", min);
+                }
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count", min, max);
+            } else if (hasMax) {
+                int max = limitObj.get("max").getAsInt();
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_max", max);
+            } else if (hasMin) {
+                int min = limitObj.get("min").getAsInt();
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_min", min);
+            }
+            return null;
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    }
+
+    /** 处理 fill_player_head：展示玩家头颅来源 */
+    private static final class FillPlayerHeadHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // 取决于实体上下文，无法静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.fill_player_head");
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    }
+
+    /** 处理 set_stew_effect：展示炖菜效果列表 */
+    private static final class SetStewEffectHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // effect duration 可能为范围，无法完全静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            JsonElement effectsElement = functionJson.get("effects");
+            if (effectsElement == null || !effectsElement.isJsonArray()) {
+                return null;
+            }
+            List<Component> effectNames = new ArrayList<>();
+            for (JsonElement effectElement : effectsElement.getAsJsonArray()) {
+                if (!effectElement.isJsonObject()) continue;
+                JsonObject effectObj = effectElement.getAsJsonObject();
+                ResourceLocation effectId = ResourceLocation.tryParse(
+                        LootParseUtil.getString(effectObj, "type", ""));
+                if (effectId != null) {
+                    MobEffect effect = BuiltInRegistries.MOB_EFFECT.get(effectId);
+                    if (effect != null) {
+                        effectNames.add(effect.getDisplayName());
+                    }
+                }
+            }
+            if (effectNames.isEmpty()) return null;
+            Component joined = effectNames.getFirst();
+            for (int i = 1; i < effectNames.size(); i++) {
+                joined = Component.literal("").append(joined).append("，").append(effectNames.get(i));
+            }
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.set_stew_effect", joined);
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    }
+
+    /** 处理 exploration_map：展示探索地图目的地 */
+    private static final class ExplorationMapHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // 取决于世界生成，无法静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            String destination = LootParseUtil.getString(functionJson, "destination", "");
+            if (destination.isEmpty()) {
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map_default");
+            }
+            // 取结构标签路径最后一段作为展示名
+            String tagPath = destination.contains(":") ? destination.substring(destination.indexOf(':') + 1) : destination;
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map", tagPath);
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    }
+
+    /** 处理 set_fireworks：展示烟花飞行时间 */
+    private static final class SetFireworksHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // explosions 数组具随机性，无法完全静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            if (functionJson.has("flight_duration")
+                    && functionJson.get("flight_duration").isJsonPrimitive()) {
+                int duration = functionJson.get("flight_duration").getAsInt();
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_fireworks_flight", duration);
+            }
+            return null;
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
+        }
+    }
+
+    /** 处理 set_book_cover：展示成书标题与作者 */
+    private static final class SetBookCoverHandler implements LootFunctionHandler {
+        @Override
+        @Nullable
+        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+            return null; // 涉及 Filterable 字符串解析，暂不静态求值
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            String title = extractBookTextField(functionJson, "title");
+            String author = null;
+            if (functionJson.has("author") && functionJson.get("author").isJsonPrimitive()) {
+                author = functionJson.get("author").getAsString();
+            }
+
+            if (title != null && author != null) {
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover",
+                        title, author);
+            } else if (title != null) {
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_title_only",
+                        title);
+            } else if (author != null) {
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_author_only",
+                        author);
+            }
+            return null;
+        }
+
+        // 提取书的文本字段：支持普通字符串或 Filterable 对象 {"raw": "..."}
+        @Nullable
+        private static String extractBookTextField(JsonObject functionJson, String key) {
+            JsonElement element = functionJson.get(key);
+            if (element == null) return null;
+            if (element.isJsonPrimitive()) {
+                return element.getAsString();
+            }
+            if (element.isJsonObject()) {
+                JsonObject obj = element.getAsJsonObject();
+                if (obj.has("raw") && obj.get("raw").isJsonPrimitive()) {
+                    return obj.get("raw").getAsString();
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public boolean addsRandomness() {
+            return true;
         }
     }
 
