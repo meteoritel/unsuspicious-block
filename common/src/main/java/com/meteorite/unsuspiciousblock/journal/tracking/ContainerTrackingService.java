@@ -49,6 +49,17 @@ public final class ContainerTrackingService {
                                                Map<String, Integer> itemCounts,
                                                BlockPos pos,
                                                @Nullable ResourceLocation sourceBlockId) {
+        onContainerLootResolved(player, container, tableId, itemCounts, pos, sourceBlockId, LootSourceType.LOOT_CONTAINER);
+    }
+
+    // 带显式来源类型的重载，供 Lootr 可疑方块等非标准容器使用
+    public static void onContainerLootResolved(ServerPlayer player,
+                                               TrackedContainerLootState container,
+                                               ResourceLocation tableId,
+                                               Map<String, Integer> itemCounts,
+                                               BlockPos pos,
+                                               @Nullable ResourceLocation sourceBlockId,
+                                               LootSourceType sourceType) {
         long gameTime = player.serverLevel().getGameTime();
         long dayTime = player.serverLevel().getDayTime();
         long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
@@ -77,7 +88,7 @@ public final class ContainerTrackingService {
             }
         }
 
-        LootTrackingEvents.publish(player, tableId, itemCounts, LootSourceType.LOOT_CONTAINER, gameTime, dayTime,
+        LootTrackingEvents.publish(player, tableId, itemCounts, sourceType, gameTime, dayTime,
                 pendingEntry -> {
                     container.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
                     container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
