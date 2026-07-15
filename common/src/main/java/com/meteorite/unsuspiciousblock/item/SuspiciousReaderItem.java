@@ -30,7 +30,6 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -197,7 +196,7 @@ public class SuspiciousReaderItem extends Item {
                 for (int dz = -halfExtent; dz <= halfExtent; dz++) {
                     BlockPos pos = cubeCenter.offset(dx, dy, dz);
                     BlockEntity be = level.getBlockEntity(pos);
-                    if (be instanceof BrushableBlockEntity && be instanceof BrushableBlockEntityScanState) {
+                    if (be instanceof BrushableBlockEntityScanState) {
                         suspicious.add(pos);
                     } else if (be instanceof RandomizableContainer container
                             && container.getLootTable() != null) {
@@ -224,8 +223,7 @@ public class SuspiciousReaderItem extends Item {
                 && player != null
                 && player.getItemInHand(InteractionHand.OFF_HAND).getItem() == ModItems.ARCHAEOLOGICAL_SHOVEL) {
             BlockEntity be = level.getBlockEntity(clickedPos);
-            if (be instanceof BrushableBlockEntity
-                    && be instanceof BrushableBlockEntityScanState scanState
+            if (be instanceof BrushableBlockEntityScanState scanState
                     && scanState.unsuspiciousblock$isScanner(player.getUUID())) {
                 return InteractionResult.PASS;
             }
@@ -302,11 +300,10 @@ public class SuspiciousReaderItem extends Item {
             int newScanned = 0;
             for (BlockPos pos : targets) {
                 BlockEntity be = level.getBlockEntity(pos);
-                if (be instanceof BrushableBlockEntity targetBrushable
-                        && be instanceof BrushableBlockEntityScanState targetScanState) {
+                if (be instanceof BrushableBlockEntityScanState targetScanState) {
                     // 已被同一玩家扫描过的方块仍显示结果，但不消耗额外能量
                     boolean alreadyScanned = targetScanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
-                    ScanResult result = scanBrushable(serverPlayer, level, pos, be, targetBrushable, targetScanState);
+                    ScanResult result = scanBrushable(serverPlayer, level, pos, be, targetScanState);
                     sendPrimaryResultMessage(player, pos, result.lootItem(), alreadyScanned);
                     actualScanned++;
                     if (!alreadyScanned) {
@@ -343,8 +340,7 @@ public class SuspiciousReaderItem extends Item {
         // ===== 单方块模式（0级）：必须点击可疑方块 =====
 
         BlockEntity blockEntity = level.getBlockEntity(clickedPos);
-        if (!(blockEntity instanceof BrushableBlockEntity brushable)
-                || !(blockEntity instanceof BrushableBlockEntityScanState scanState)) {
+        if (!(blockEntity instanceof BrushableBlockEntityScanState scanState)) {
             player.sendSystemMessage(
                     Component.translatable("item.unsuspiciousblock.suspicious_reader.not_suspicious")
                             .withStyle(style -> style.withColor(0xFF5555))
@@ -354,7 +350,7 @@ public class SuspiciousReaderItem extends Item {
 
         // 单方块模式免费（能量消耗为 0）
         boolean alreadyScanned = scanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
-        ScanResult result = scanBrushable(serverPlayer, level, clickedPos, blockEntity, brushable, scanState);
+        ScanResult result = scanBrushable(serverPlayer, level, clickedPos, blockEntity, scanState);
         sendPrimaryResultMessage(player, clickedPos, result.lootItem(), alreadyScanned);
 
         // 播放扫描音效
@@ -460,9 +456,8 @@ public class SuspiciousReaderItem extends Item {
     }
 
     private ScanResult scanBrushable(ServerPlayer player, Level level, BlockPos pos, BlockEntity blockEntity,
-                                      BrushableBlockEntity brushable, BrushableBlockEntityScanState scanState) {
-        brushable.unpackLootTable(player);
-        ItemStack lootItem = brushable.getItem().copy();
+                                      BrushableBlockEntityScanState scanState) {
+        ItemStack lootItem = scanState.unsuspiciousblock$resolveAndGetLoot(player);
         scanState.unsuspiciousblock$markScanned(player.getUUID());
 
         // 首次扫描到非空可疑方块时授予「Unsuspicious Minds」成就

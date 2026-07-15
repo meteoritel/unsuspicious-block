@@ -21,9 +21,14 @@ dependencies {
     commonResources project(path: ':common', configuration: 'commonResources')
 }
 
+def lootrCompat = project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true
+
 tasks.named('compileJava', JavaCompile) {
     dependsOn(configurations.commonJava)
     source(configurations.commonJava)
+    if (!lootrCompat) {
+        exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+    }
 }
 
 processResources {
@@ -34,11 +39,17 @@ processResources {
 tasks.named('javadoc', Javadoc).configure {
     dependsOn(configurations.commonJava)
     source(configurations.commonJava)
+    if (!lootrCompat) {
+        exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+    }
 }
 
 tasks.named('sourcesJar', Jar) {
     dependsOn(configurations.commonJava)
     from(configurations.commonJava)
+    if (!lootrCompat) {
+        exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+    }
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)
 }

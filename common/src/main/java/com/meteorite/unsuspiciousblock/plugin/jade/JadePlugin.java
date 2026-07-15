@@ -8,7 +8,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.BrushableBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import snownee.jade.api.*;
 import snownee.jade.api.config.IPluginConfig;
 import snownee.jade.api.ui.IElementHelper;
@@ -30,11 +29,10 @@ public class JadePlugin implements IWailaPlugin {
         @Override
         public void appendTooltip(ITooltip tooltip, BlockAccessor accessor, IPluginConfig config) {
             BlockEntity blockEntity = accessor.getBlockEntity();
-            if (!(blockEntity instanceof BrushableBlockEntity brushable)) {
+            if (!(blockEntity instanceof BrushableBlockEntityScanState scanState)) {
                 return;
             }
 
-            BrushableBlockEntityScanState scanState = (BrushableBlockEntityScanState) brushable;
             if (!scanState.unsuspiciousblock$isScanned()) {
                 return;
             }
@@ -44,7 +42,7 @@ public class JadePlugin implements IWailaPlugin {
                 return;
             }
 
-            ItemStack stack = brushable.getItem();
+            ItemStack stack = scanState.unsuspiciousblock$getItem();
 
             if (stack.isEmpty()) {
                 tooltip.add(

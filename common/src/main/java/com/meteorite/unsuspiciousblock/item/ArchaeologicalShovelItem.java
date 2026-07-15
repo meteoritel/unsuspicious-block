@@ -30,7 +30,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.NotNull;
 
@@ -136,12 +135,12 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         }
 
         // 保护可疑方块本身
-        if (level.getBlockEntity(pos) instanceof BrushableBlockEntity) {
+        if (level.getBlockEntity(pos) instanceof BrushableBlockEntityScanState) {
             return false;
         }
 
         // 保护可疑方块下方的支撑方块（移除后可疑沙 / 砾石会掉落而丢失战利品）
-        if (level.getBlockEntity(pos.above()) instanceof BrushableBlockEntity) {
+        if (level.getBlockEntity(pos.above()) instanceof BrushableBlockEntityScanState) {
             return false;
         }
 
@@ -177,7 +176,7 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         BlockEntity be = level.getBlockEntity(pos);
 
         // 可疑方块：取出已扫描的战利品
-        if (be instanceof BrushableBlockEntity brushable && be instanceof BrushableBlockEntityScanState scanState) {
+        if (be instanceof BrushableBlockEntityScanState scanState) {
             // 主手考古铲 + 副手扫描仪：若目标方块未被当前玩家扫描，让位给副手扫描仪优先触发
             Player player = context.getPlayer();
             if (context.getHand() == InteractionHand.MAIN_HAND
@@ -186,7 +185,7 @@ public class ArchaeologicalShovelItem extends ShovelItem {
                     && !scanState.unsuspiciousblock$isScanner(player.getUUID())) {
                 return InteractionResult.PASS;
             }
-            return extractFromSuspicious(context, level, pos, brushable, scanState);
+            return extractFromSuspicious(context, level, pos, scanState);
         }
 
         // 非可疑方块：执行原版铲子行为（铲出路径 / 熄灭篝火）
@@ -195,7 +194,6 @@ public class ArchaeologicalShovelItem extends ShovelItem {
 
     // 从已扫描的可疑方块中取出战利品
     private InteractionResult extractFromSuspicious(UseOnContext context, Level level, BlockPos pos,
-                                                    BrushableBlockEntity brushable,
                                                     BrushableBlockEntityScanState scanState) {
         Player player = context.getPlayer();
         if (level.isClientSide() || player == null) {
@@ -223,7 +221,7 @@ public class ArchaeologicalShovelItem extends ShovelItem {
 
         ItemStack extracted = lootItem.copy();
         scanState.unsuspiciousblock$setItem(ItemStack.EMPTY);
-        brushable.setChanged();
+        scanState.unsuspiciousblock$markBlockEntityChanged();
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && player instanceof ServerPlayer sp

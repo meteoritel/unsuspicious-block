@@ -270,6 +270,19 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$syncBlockEntity();
     }
 
+    // 解析战利品表并返回生成的物品——委托给原版 unpackLootTable
+    @Override
+    public ItemStack unsuspiciousblock$resolveAndGetLoot(Player player) {
+        ((BrushableBlockEntity) (Object) this).unpackLootTable(player);
+        return this.item.copy();
+    }
+
+    // 标记方块实体已变更并同步到客户端
+    @Override
+    public void unsuspiciousblock$markBlockEntityChanged() {
+        this.unsuspiciousblock$syncBlockEntity();
+    }
+
     // ========== Mixin 注入 ========== //
     // 在刷拭开始时记录本次刷拭与时间信息，并缓存实际使用的刷子
     @Inject(method = "brush", at = @At("HEAD"))
