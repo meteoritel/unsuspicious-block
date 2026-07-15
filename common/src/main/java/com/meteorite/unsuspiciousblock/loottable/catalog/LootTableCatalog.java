@@ -29,24 +29,33 @@ public final class LootTableCatalog {
                                  String probability, LootResultSignature signature,
                                  @Nullable ResourceLocation sourceChildTable,
                                  List<LootConditionInfo> conditions,
+                                 List<LootConditionInfo> parentTableConditions,
                                  boolean injected) {
-        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空，injected 默认 false
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空，parentTableConditions 默认空，injected 默认 false
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature) {
-            this(id, displayName, tooltipHint, probability, signature, null, List.of(), false);
+            this(id, displayName, tooltipHint, probability, signature, null, List.of(), List.of(), false);
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature,
                               @Nullable ResourceLocation sourceChildTable) {
-            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, List.of(), false);
+            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, List.of(), List.of(), false);
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature,
                               @Nullable ResourceLocation sourceChildTable,
                               List<LootConditionInfo> conditions) {
-            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, conditions, false);
+            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, conditions, List.of(), false);
+        }
+
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              String probability, LootResultSignature signature,
+                              @Nullable ResourceLocation sourceChildTable,
+                              List<LootConditionInfo> conditions,
+                              boolean injected) {
+            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, conditions, List.of(), injected);
         }
 
         /**
@@ -76,7 +85,7 @@ public final class LootTableCatalog {
         ResourceLocation itemId = signature.itemId();
         Component displayName = resolveMergedDisplayName(itemId, signature);
         Component tooltipHint = resolveMergedTooltipHint(signature);
-        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, null, List.of(), injected);
+        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, null, List.of(), List.of(), injected);
     }
 
     /**

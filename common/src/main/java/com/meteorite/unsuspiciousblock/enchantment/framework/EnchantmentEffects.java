@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.enchantment.framework;
 
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import com.meteorite.unsuspiciousblock.enchantment.framework.builtin.FossilHunterEffect;
-import com.meteorite.unsuspiciousblock.enchantment.framework.builtin.MudDredgingEffect;
 import com.meteorite.unsuspiciousblock.enchantment.framework.builtin.PrecisionExcavationEffect;
 import com.meteorite.unsuspiciousblock.enchantment.framework.builtin.TextileRecoveryEffect;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
@@ -24,10 +23,6 @@ public final class EnchantmentEffects {
         // textile_recovery：剪羊毛（副作用）
         EnchantmentManager.register(TriggerType.ENTITY_SHEAR, ModEnchantments.TEXTILE_RECOVERY,
                 new TextileRecoveryEffect());
-
-        // mud_dredging：钓鱼换表（值变换）
-        EnchantmentManager.registerValueEffect(TriggerType.FISHING_LOOT_TABLE_QUERY,
-                ModEnchantments.MUD_DREDGING, new MudDredgingEffect());
 
         // precision_excavation：刷子翻倍（值变换）
         EnchantmentManager.registerValueEffect(TriggerType.BRUSH_ITEM_DROP,

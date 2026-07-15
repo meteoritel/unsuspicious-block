@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
+import com.meteorite.unsuspiciousblock.loot.FishingLootModifier;
 import com.meteorite.unsuspiciousblock.loot.InjectItemLootModifier;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -93,6 +94,9 @@ public class UnsuspiciousBlockNeoForge {
     // 埋藏宝藏注入猫之瞳（临时方案，未来会更改到自定义结构中）
     private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> INJECT_ITEM =
             LOOT_MODIFIERS.register("inject_item", () -> InjectItemLootModifier.CODEC);
+    // 泥地打捞钓鱼战利品注入——运行时检查附魔、群系与概率，追加 mud_dredging 表物品
+    private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> FISHING_LOOT =
+            LOOT_MODIFIERS.register("fishing_loot", () -> FishingLootModifier.CODEC);
     private static final DeferredHolder<MenuType<?>, MenuType<SpecimenBoxMenu>> SPECIMEN_BOX_MENU =
             MENUS.register("specimen_box", () -> IMenuTypeExtension.create((containerId, inventory, extraData) ->
                     new SpecimenBoxMenu(containerId, inventory)));

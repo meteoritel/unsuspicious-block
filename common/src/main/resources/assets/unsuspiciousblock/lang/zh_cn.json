@@ -124,6 +124,8 @@
   "screen.unsuspiciousblock.archaeology_journal.too_small": "窗口太小。",
   "screen.unsuspiciousblock.archaeology_journal.probability": "概率 %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_unknown": "概率 ?",
+  "screen.unsuspiciousblock.archaeology_journal.probability_uncertain": "概率 不确定",
+  "screen.unsuspiciousblock.archaeology_journal.probability_uncertain_approx": "概率 不确定 — 近似物品",
   "screen.unsuspiciousblock.archaeology_journal.acquired": "获得: %d次",
   "screen.unsuspiciousblock.archaeology_journal.from_child_table": "来自: %s",
   "screen.unsuspiciousblock.archaeology_journal.weight": "权重: %s",
@@ -271,7 +273,9 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "随机附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "%s级附魔",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "已附魔",
-  "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "未完全解析",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "近似物品",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range": "数量: %s-%s",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.set_damage_range": "耐久: %s%%-%s%%",
   "screen.unsuspiciousblock.archaeology_journal.search_placeholder": "搜索...",
   "screen.unsuspiciousblock.archaeology_journal.search_tooltip": "搜索规则",
   "screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_table": "无前缀 = 按表名搜索",
@@ -365,12 +369,14 @@
   "sounds.unsuspiciousblock.suspicious_reader_scan": "可疑解析仪扫描",
 
   "screen.unsuspiciousblock.archaeology_journal.conditions_header": "条件:",
+  "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header": "子表条件:",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance": "随机概率: %s%%",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance_with_enchanted_bonus": "随机概率 (基础): %s%%",
   "screen.unsuspiciousblock.archaeology_journal.condition.survives_explosion": "需在爆炸中存活",
   "screen.unsuspiciousblock.archaeology_journal.condition.match_tool": "需要特定工具",
   "screen.unsuspiciousblock.archaeology_journal.condition.block_state_property": "需要特定方块状态",
   "screen.unsuspiciousblock.archaeology_journal.condition.location_check": "需要特定位置/生物群系",
+  "screen.unsuspiciousblock.archaeology_journal.condition.location_check_biomes": "群系: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.time_check": "需要特定时间段",
   "screen.unsuspiciousblock.archaeology_journal.condition.value_check": "需要值在范围内",
   "screen.unsuspiciousblock.archaeology_journal.condition.weather_check": "需要特定天气",
@@ -382,5 +388,7 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.reference": "引用: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.and": "且",
   "screen.unsuspiciousblock.archaeology_journal.condition.or": "或",
-  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 外部模组注入"
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_open_water": "开阔水域",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_not_open_water": "非开阔水域",
+  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 模组联动"
 }

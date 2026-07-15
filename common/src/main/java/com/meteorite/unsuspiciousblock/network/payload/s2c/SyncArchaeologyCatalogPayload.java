@@ -59,6 +59,11 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 for (LootConditionInfo info : item.conditions()) {
                     encodeConditionInfo(buf, info);
                 }
+                // parentTableConditions（子表条目条件，递归编码）
+                buf.writeVarInt(item.parentTableConditions().size());
+                for (LootConditionInfo info : item.parentTableConditions()) {
+                    encodeConditionInfo(buf, info);
+                }
                 // 外部注入标记
                 buf.writeBoolean(item.injected());
             }
@@ -96,8 +101,14 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 for (int k = 0; k < conditionCount; k++) {
                     conditions.add(decodeConditionInfo(buf));
                 }
+                // parentTableConditions（子表条目条件，递归解码）
+                int parentConditionCount = buf.readVarInt();
+                List<LootConditionInfo> parentTableConditions = new ArrayList<>(parentConditionCount);
+                for (int k = 0; k < parentConditionCount; k++) {
+                    parentTableConditions.add(decodeConditionInfo(buf));
+                }
                 boolean injected = buf.readBoolean();
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable, conditions, injected));
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable, conditions, parentTableConditions, injected));
             }
             int simulationCount = buf.readVarInt();
             catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));

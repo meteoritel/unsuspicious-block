@@ -402,6 +402,32 @@ public final class LootFunctionHandlers {
         }
 
         @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            JsonElement countElement = functionJson.get("count");
+            if (countElement == null || !countElement.isJsonObject()) {
+                return null;
+            }
+            JsonObject countObj = countElement.getAsJsonObject();
+            int min, max;
+            if (countObj.has("min") && countObj.has("max")) {
+                min = countObj.get("min").getAsInt();
+                max = countObj.get("max").getAsInt();
+            } else if (countObj.has("n")) {
+                // binomial 分布：0 到 n
+                min = 0;
+                max = countObj.get("n").getAsInt();
+            } else {
+                return null;
+            }
+            if (min == max) {
+                return null;
+            }
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range", min, max);
+        }
+
+        @Override
         public boolean addsRandomness() {
             return false;
         }
@@ -425,6 +451,29 @@ public final class LootFunctionHandlers {
                 return previewStack;
             }
             return null;
+        }
+
+        @Override
+        @Nullable
+        public Component describeHint(JsonObject functionJson) {
+            JsonElement damageElement = functionJson.get("damage");
+            if (damageElement == null || !damageElement.isJsonObject()) {
+                return null;
+            }
+            JsonObject damageObj = damageElement.getAsJsonObject();
+            float min, max;
+            if (damageObj.has("min") && damageObj.has("max")) {
+                min = damageObj.get("min").getAsFloat();
+                max = damageObj.get("max").getAsFloat();
+            } else {
+                return null;
+            }
+            if (min == max) {
+                return null;
+            }
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.set_damage_range",
+                    Math.round(min * 100), Math.round(max * 100));
         }
 
         @Override

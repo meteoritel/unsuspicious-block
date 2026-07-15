@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerC
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loot.BuriedTreasureLootInjection;
 import com.meteorite.unsuspiciousblock.loot.FabricArchaeologyLootInjector;
+import com.meteorite.unsuspiciousblock.loot.FishingLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -62,6 +63,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 注册埋藏宝藏战利品注入（临时方案，未来会更改到自定义结构中）
         BuriedTreasureLootInjection.register();
+
+        // 注册泥地打捞钓鱼战利品注入——向原版钓鱼表追加 mud_dredging 池
+        FishingLootInjection.register();
 
         // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
         FabricInventoryPresenceAdapter.register();

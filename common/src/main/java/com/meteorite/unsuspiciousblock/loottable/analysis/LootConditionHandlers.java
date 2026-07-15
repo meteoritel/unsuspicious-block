@@ -4,6 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -32,7 +34,7 @@ public final class LootConditionHandlers {
         register("survives_explosion", new SurvivesExplosionHandler());
         register("match_tool", new SimpleDescriptionHandler("match_tool", false));
         register("block_state_property", new SimpleDescriptionHandler("block_state_property", false));
-        register("location_check", new SimpleDescriptionHandler("location_check", false));
+        register("location_check", new LocationCheckHandler());
         register("time_check", new SimpleDescriptionHandler("time_check", false));
         register("value_check", new SimpleDescriptionHandler("value_check", false));
         register("weather_check", new SimpleDescriptionHandler("weather_check", true));
@@ -40,7 +42,7 @@ public final class LootConditionHandlers {
         register("enchantment_active_check", new SimpleDescriptionHandler("enchantment_active_check", true));
 
         // 类别 C：纯运行时
-        register("entity_properties", RuntimeOnlyHandler.INSTANCE);
+        register("entity_properties", new EntityPropertiesHandler());
         register("killed_by_player", RuntimeOnlyHandler.INSTANCE);
         register("entity_scores", RuntimeOnlyHandler.INSTANCE);
         register("damage_source_properties", RuntimeOnlyHandler.INSTANCE);
@@ -242,6 +244,72 @@ public final class LootConditionHandlers {
         }
     }
 
+    /** 处理 location_check：解析 predicate.biomes 字段，展示群系名称 */
+    private static final class LocationCheckHandler implements LootConditionHandler {
+        @Override
+        @Nullable
+        public LootConditionInfo analyze(JsonObject conditionJson) {
+            List<Component> biomeNames = extractBiomeNames(conditionJson);
+            if (biomeNames.isEmpty()) {
+                return new LootConditionInfo("location_check",
+                        Component.translatable(I18N_PREFIX + "location_check"), null);
+            }
+            Component joined = joinComponents(biomeNames);
+            return new LootConditionInfo("location_check",
+                    Component.translatable(I18N_PREFIX + "location_check_biomes", joined), null);
+        }
+
+        private List<Component> extractBiomeNames(JsonObject conditionJson) {
+            if (!conditionJson.has("predicate") || !conditionJson.get("predicate").isJsonObject()) {
+                return List.of();
+            }
+            JsonObject predicate = conditionJson.getAsJsonObject("predicate");
+            if (!predicate.has("biomes")) {
+                return List.of();
+            }
+            JsonElement biomesElement = predicate.get("biomes");
+            List<String> rawIds = new ArrayList<>();
+            if (biomesElement.isJsonPrimitive()) {
+                rawIds.add(biomesElement.getAsString());
+            } else if (biomesElement.isJsonArray()) {
+                for (JsonElement elem : biomesElement.getAsJsonArray()) {
+                    if (elem.isJsonPrimitive()) {
+                        rawIds.add(elem.getAsString());
+                    }
+                }
+            }
+            List<Component> names = new ArrayList<>();
+            for (String raw : rawIds) {
+                if (raw.startsWith("#")) {
+                    ResourceLocation rl = ResourceLocation.tryParse(raw.substring(1));
+                    if (rl != null) {
+                        names.add(Component.literal("#" + rl.getPath()));
+                    }
+                } else {
+                    ResourceLocation rl = ResourceLocation.tryParse(raw);
+                    if (rl != null) {
+                        names.add(Component.translatable("biome." + rl.getNamespace() + "." + rl.getPath()));
+                    }
+                }
+            }
+            return names;
+        }
+
+        private static Component joinComponents(List<Component> components) {
+            if (components.isEmpty()) return Component.empty();
+            Component result = components.getFirst();
+            for (int i = 1; i < components.size(); i++) {
+                result = Component.literal("").append(result).append(", ").append(components.get(i));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean addsUncertainty() {
+            return false;
+        }
+    }
+
     // ==================== 类别 C：纯运行时 ====================
 
     /** 纯运行时条件：analyze 始终返回 null */
@@ -251,6 +319,43 @@ public final class LootConditionHandlers {
         @Override
         @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
+            return null;
+        }
+
+        @Override
+        public boolean addsUncertainty() {
+            return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.RUNTIME;
+        }
+    }
+
+    /** 处理 entity_properties：解析 type_specific 中的已知谓词（如 fishing_hook 的 in_open_water） */
+    private static final class EntityPropertiesHandler implements LootConditionHandler {
+        @Override
+        @Nullable
+        public LootConditionInfo analyze(JsonObject conditionJson) {
+            if (!conditionJson.has("predicate") || !conditionJson.get("predicate").isJsonObject()) {
+                return null;
+            }
+            JsonObject predicate = conditionJson.getAsJsonObject("predicate");
+            if (!predicate.has("type_specific") || !predicate.get("type_specific").isJsonObject()) {
+                return null;
+            }
+            JsonObject typeSpecific = predicate.getAsJsonObject("type_specific");
+            String specificType = LootParseUtil.normalizeType(LootParseUtil.getString(typeSpecific, "type", ""));
+            if ("fishing_hook".equals(specificType) && typeSpecific.has("in_open_water")
+                    && typeSpecific.get("in_open_water").isJsonPrimitive()) {
+                boolean inOpenWater = typeSpecific.get("in_open_water").getAsBoolean();
+                String key = inOpenWater ? I18N_PREFIX + "entity_properties_fishing_open_water"
+                        : I18N_PREFIX + "entity_properties_fishing_not_open_water";
+                return new LootConditionInfo("entity_properties",
+                        Component.translatable(key), null);
+            }
+            // 其他 type_specific 类型暂不解析，回退为纯运行时
             return null;
         }
 

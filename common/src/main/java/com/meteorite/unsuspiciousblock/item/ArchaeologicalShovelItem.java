@@ -7,7 +7,6 @@ import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTr
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;

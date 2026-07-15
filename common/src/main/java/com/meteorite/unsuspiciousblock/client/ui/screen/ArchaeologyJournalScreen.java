@@ -271,11 +271,34 @@ public class ArchaeologyJournalScreen extends Screen {
                         .copy().withStyle(ChatFormatting.GREEN));
             }
             if (tooltipData.probability() != null) {
-                tooltipLines.add(formatProbabilityComponent(tooltipData.probability())
-                        .copy().withStyle(ChatFormatting.GOLD));
+                boolean probUncertain = tooltipData.probability().equals("?");
+                boolean hintIsApprox = tooltipData.hint() != null && tooltipData.hint().getString().equals(
+                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
+                ChatFormatting probColor = switch (tooltipData.uncertaintyLevel()) {
+                    case PROBABILISTIC -> ChatFormatting.GOLD;
+                    case RUNTIME -> ChatFormatting.RED;
+                    default -> ChatFormatting.GOLD;
+                };
+                if (probUncertain && hintIsApprox) {
+                    tooltipLines.add(Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.probability_uncertain_approx")
+                            .copy().withStyle(probColor));
+                } else if (probUncertain) {
+                    tooltipLines.add(Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.probability_uncertain")
+                            .copy().withStyle(probColor));
+                } else {
+                    tooltipLines.add(formatProbabilityComponent(tooltipData.probability())
+                            .copy().withStyle(probColor));
+                }
             }
             if (tooltipData.hint() != null) {
-                tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.DARK_GREEN, ChatFormatting.ITALIC));
+                boolean probUncertain = tooltipData.probability() != null && tooltipData.probability().equals("?");
+                boolean hintIsApprox = tooltipData.hint().getString().equals(
+                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
+                if (!(probUncertain && hintIsApprox)) {
+                    tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.DARK_GREEN, ChatFormatting.ITALIC));
+                }
             }
             // 外部注入标记
             if (tooltipData.injected()) {
@@ -289,6 +312,13 @@ public class ArchaeologyJournalScreen extends Screen {
                         "screen.unsuspiciousblock.archaeology_journal.conditions_header")
                         .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
                 appendConditionTree(tooltipLines, tooltipData.conditions(), "");
+            }
+            // 子表条件（来自 loot_table 引用条目的 conditions，如钓鱼宝藏表的开阔水域要求）
+            if (!tooltipData.parentTableConditions().isEmpty()) {
+                tooltipLines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")
+                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+                appendConditionTree(tooltipLines, tooltipData.parentTableConditions(), "");
             }
             // 子表来源标注：仅当子表本身也是已追踪的考古表时才显示，避免空指针
             if (tooltipData.sourceChildTable() != null

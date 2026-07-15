@@ -125,6 +125,8 @@
   "screen.unsuspiciousblock.archaeology_journal.too_small": "Window too small.",
   "screen.unsuspiciousblock.archaeology_journal.probability": "Chance %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_unknown": "Chance ?",
+  "screen.unsuspiciousblock.archaeology_journal.probability_uncertain": "Chance Uncertain",
+  "screen.unsuspiciousblock.archaeology_journal.probability_uncertain_approx": "Chance Uncertain — Approx. Result",
   "screen.unsuspiciousblock.archaeology_journal.acquired": "Acquired: %d",
   "screen.unsuspiciousblock.archaeology_journal.from_child_table": "From: %s",
   "screen.unsuspiciousblock.archaeology_journal.weight": "Weight: %s",
@@ -271,7 +273,9 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_random": "Random Enchant",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted_level": "Level %s Enchant",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted": "Enchanted",
-  "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "Approximate",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate": "Approx. Result",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range": "Count: %s-%s",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.set_damage_range": "Durability: %s%%-%s%%",
   "screen.unsuspiciousblock.archaeology_journal.search_placeholder": "Search...",
   "screen.unsuspiciousblock.archaeology_journal.search_tooltip": "Search Rules",
   "screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_table": "No prefix = by table name",
@@ -364,12 +368,14 @@
   "sounds.unsuspiciousblock.suspicious_reader_scan": "Suspicious Reader scans",
 
   "screen.unsuspiciousblock.archaeology_journal.conditions_header": "Conditions:",
+  "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header": "Child Table Conditions:",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance": "Random chance: %s%%",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance_with_enchanted_bonus": "Random chance (base): %s%%",
   "screen.unsuspiciousblock.archaeology_journal.condition.survives_explosion": "Must survive explosion",
   "screen.unsuspiciousblock.archaeology_journal.condition.match_tool": "Requires specific tool",
   "screen.unsuspiciousblock.archaeology_journal.condition.block_state_property": "Requires specific block state",
   "screen.unsuspiciousblock.archaeology_journal.condition.location_check": "Requires specific location",
+  "screen.unsuspiciousblock.archaeology_journal.condition.location_check_biomes": "Biome: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.time_check": "Requires specific time of day",
   "screen.unsuspiciousblock.archaeology_journal.condition.value_check": "Requires value in range",
   "screen.unsuspiciousblock.archaeology_journal.condition.weather_check": "Requires specific weather",
@@ -381,5 +387,7 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.reference": "Referenced: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.and": "and",
   "screen.unsuspiciousblock.archaeology_journal.condition.or": "or",
-  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: External mod injection"
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_open_water": "Open Water",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_not_open_water": "Not Open Water",
+  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: Mod Integration"
 }

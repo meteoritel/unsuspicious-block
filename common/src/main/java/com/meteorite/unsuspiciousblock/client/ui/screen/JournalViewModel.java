@@ -272,7 +272,8 @@ public class JournalViewModel {
                     gridItems.add(new ItemGridPanel.GridItem(
                             iv.id(), iv.displayName(), iv.tooltipHint(),
                             iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
-                            iv.sourceChildTable(), iv.conditions(), iv.injected(), uncertaintyLevel));
+                            iv.sourceChildTable(), iv.conditions(), iv.parentTableConditions(),
+                            iv.injected(), uncertaintyLevel));
         }
         // 排序：先按表来源（根表 null 优先；子表按 ResourceLocation 字典序升序），再按概率降序
         // 注：用取负实现概率降序，避免整体 reversed() 同时反转 nullsFirst 与字典序

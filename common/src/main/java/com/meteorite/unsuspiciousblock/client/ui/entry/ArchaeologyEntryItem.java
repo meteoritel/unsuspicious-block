@@ -24,6 +24,7 @@ public record ArchaeologyEntryItem(
         LootResultSignature signature,
         @Nullable ResourceLocation sourceChildTable,
         List<LootConditionInfo> conditions,
+        List<LootConditionInfo> parentTableConditions,
         boolean injected
 ) implements ItemEntryLike {
 

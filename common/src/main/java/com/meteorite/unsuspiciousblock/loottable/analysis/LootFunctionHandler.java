@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.loottable.analysis;
 
 import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -43,4 +44,14 @@ public interface LootFunctionHandler {
      * @return true 表示结果不可静态确定
      */
     boolean addsRandomness();
+
+    /**
+     * 当 {@link #apply} 返回 null 时，提供人类可读的提示来描述该 function 的效果范围。
+     * 例如 set_count 的范围 "1-3"，set_damage 的范围 "0-90%"。
+     * 返回 null 表示无额外提示（使用默认的"近似物品"）。
+     */
+    @Nullable
+    default Component describeHint(JsonObject functionJson) {
+        return null;
+    }
 }
