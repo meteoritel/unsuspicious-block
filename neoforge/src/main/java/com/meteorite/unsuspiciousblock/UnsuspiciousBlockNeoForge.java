@@ -18,6 +18,7 @@ import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.mojang.serialization.MapCodec;
+import org.spongepowered.asm.mixin.Mixins;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -42,6 +43,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -166,6 +168,12 @@ public class UnsuspiciousBlockNeoForge {
                     .build());
 
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
+        // 条件注册 Lootr 兼容 Mixin：仅在 Lootr 已安装时注册
+        if (ModList.get().isLoaded("lootr")) {
+            Constants.LOG.info("[UnsuspiciousBlock] Lootr detected, registering Lootr compat mixins.");
+            Mixins.addConfiguration("unsuspiciousblock.lootr.mixins.json");
+        }
+
         UnsuspiciousBlockCommon.init();
 
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC);

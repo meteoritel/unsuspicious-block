@@ -21,4 +21,10 @@ public interface IPlatformHelper {
 
     // 获取游戏运行目录（即 .minecraft 所在目录），用于存放运行期产物
     Path getGameDir();
+
+    // 获取指定模组的版本号，若未安装或无法获取则返回 null
+    @org.jetbrains.annotations.Nullable
+    default String getModVersion(String modId) {
+        return null;
+    }
 }

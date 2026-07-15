@@ -21,6 +21,9 @@
         "client": [
             "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricClient"
         ],
+        "preLaunch": [
+            "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricPreLaunch"
+        ],
         "jade": [
             "com.meteorite.unsuspiciousblock.plugin.jade.JadePlugin"
         ],
@@ -30,8 +33,7 @@
     },
     "mixins": [
         "unsuspiciousblock.mixins.json",
-        "unsuspiciousblock.fabric.mixins.json",
-        "unsuspiciousblock.lootr.mixins.json"
+        "unsuspiciousblock.fabric.mixins.json"
     ],
     "depends": {
         "fabricloader": ">=${fabric_loader_version}",
@@ -40,11 +42,11 @@
         "java": ">=${java_version}"
     },
     "suggests": {
-        "jade": "*",
-        "lootr": "*"
+        "jade": "*"
     },
     "recommends": {
         "trinkets": ">=3.10.0",
-        "modmenu": ">=11.0.4"
+        "modmenu": ">=11.0.4",
+        "lootr": ">=1.11.37.121"
     }
 }

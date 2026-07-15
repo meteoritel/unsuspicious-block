@@ -96,7 +96,6 @@ public final class ContainerTrackingService {
                 });
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearAllTrackingState();
-            return;
         }
     }
 

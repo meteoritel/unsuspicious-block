@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.fabricmc.loader.api.FabricLoader;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
@@ -34,5 +35,13 @@ public class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public Path getGameDir() {
         return FabricLoader.getInstance().getGameDir();
+    }
+
+    @Override
+    @Nullable
+    public String getModVersion(String modId) {
+        return FabricLoader.getInstance().getModContainer(modId)
+                .map(c -> c.getMetadata().getVersion().getFriendlyString())
+                .orElse(null);
     }
 }

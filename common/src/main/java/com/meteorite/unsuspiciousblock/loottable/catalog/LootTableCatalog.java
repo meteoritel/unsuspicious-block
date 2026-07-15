@@ -80,13 +80,6 @@ public final class LootTableCatalog {
     }
 
     /**
-     * 为模拟期发现的"注入条目"构建 ItemDefinition（默认 injected=false，兼容旧调用）。
-     */
-    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability) {
-        return buildDiscoveredDefinition(signature, probability, false);
-    }
-
-    /**
      * 根据签名解析合并后的展示名（取预览栈的 hoverName）。
      */
     public static Component resolveMergedDisplayName(ResourceLocation itemId, LootResultSignature signature) {

@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.FMLPaths;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
@@ -36,5 +37,13 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public Path getGameDir() {
         return FMLPaths.GAMEDIR.get();
+    }
+
+    @Override
+    @Nullable
+    public String getModVersion(String modId) {
+        return ModList.get().getModContainerById(modId)
+                .map(c -> c.getModInfo().getVersion().toString())
+                .orElse(null);
     }
 }

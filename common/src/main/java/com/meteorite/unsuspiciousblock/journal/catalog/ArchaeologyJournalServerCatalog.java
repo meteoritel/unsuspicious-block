@@ -110,7 +110,7 @@ public final class ArchaeologyJournalServerCatalog {
             if (!uncached.isEmpty()) {
                 LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
                 if (worker != null) {
-                    worker.setResultHandler((result, srv) -> commitSimulatedTable(result, srv));
+                    worker.setResultHandler(ArchaeologyJournalServerCatalog::commitSimulatedTable);
                     // 构建仅含未缓存表的子 map
                     Map<ResourceLocation, TableDefinition> uncachedMap = new LinkedHashMap<>();
                     for (ResourceLocation id : uncached) {
@@ -242,11 +242,6 @@ public final class ArchaeologyJournalServerCatalog {
     /** 判断指定表是否已有模拟结果（catalog 或 SavedData 任一命中即可） */
     public static boolean hasSimulatedData(ResourceLocation tableId) {
         return catalog.containsKey(tableId);
-    }
-
-    /** 当前是否已加载完成（注意：已加载不等于所有表已模拟，仅表示初始解析完成） */
-    public static boolean isLoaded() {
-        return loaded;
     }
 
     // 从 SavedData 恢复概率到原始目录定义中

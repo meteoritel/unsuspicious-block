@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
-import com.meteorite.unsuspiciousblock.compat.LootrVersionChecker;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentEffects;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.enchantment.reveal.EnchantmentRevealConditions;
@@ -14,8 +13,6 @@ import com.meteorite.unsuspiciousblock.platform.VanillaAchievementHelper;
 public class UnsuspiciousBlockCommon {
     public static void init() {
         Constants.LOG.info("UnsuspiciousBlockCommon init on {}", Services.PLATFORM.getPlatformName());
-        // Lootr 版本检测与警告（若安装的 Lootr 版本低于联动目标版本则记录警告）
-        LootrVersionChecker.warnIfVersionTooLow();
         AchievementManager.init(new VanillaAchievementHelper());
         EnchantmentManager.init(Services.ENCHANTMENT);
         EnchantmentEffects.registerAll();

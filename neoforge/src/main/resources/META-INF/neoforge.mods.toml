@@ -42,12 +42,9 @@ description = '''${description}'''
 [[dependencies.${mod_id}]]
     modId = "lootr"
     type = "optional"
-    versionRange = "[1.11,)"
+    versionRange = "[1.11.37.121,)"
     ordering = "NONE"
     side = "BOTH"
 
 [[mixins]]
 config = "${mod_id}.mixins.json"
-
-[[mixins]]
-config = "${mod_id}.lootr.mixins.json"

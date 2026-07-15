@@ -50,7 +50,7 @@ import java.util.List;
 public abstract class DefaultLootFillerMixin {
 
     // 在解析前捕获本次容器将要使用的战利品表标识，并 push 追踪上下文（若命中追踪规则）
-    @Inject(method = "unpackLootTable", at = @At("HEAD"), remap = false)
+    @Inject(method = "unpackLootTable", at = @At("HEAD"), remap = false, require = 0)
     private void unsuspiciousblock$captureLootTable(ILootrInfoProvider provider, Player player, Container inventory,
                                                     CallbackInfo ci,
                                                     @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable,
@@ -108,7 +108,7 @@ public abstract class DefaultLootFillerMixin {
     }
 
     // 在解析后根据容器实际生成的物品更新运行时追踪状态，并 pop 追踪上下文
-    @Inject(method = "unpackLootTable", at = @At("TAIL"), remap = false)
+    @Inject(method = "unpackLootTable", at = @At("TAIL"), remap = false, require = 0)
     private void unsuspiciousblock$trackResolvedLoot(ILootrInfoProvider provider, Player player, Container inventory,
                                                      CallbackInfo ci,
                                                      @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable,
