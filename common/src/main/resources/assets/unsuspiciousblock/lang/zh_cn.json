@@ -381,5 +381,6 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.all_of": "全部满足",
   "screen.unsuspiciousblock.archaeology_journal.condition.reference": "引用: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.and": "且",
-  "screen.unsuspiciousblock.archaeology_journal.condition.or": "或"
+  "screen.unsuspiciousblock.archaeology_journal.condition.or": "或",
+  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 外部模组注入"
 }

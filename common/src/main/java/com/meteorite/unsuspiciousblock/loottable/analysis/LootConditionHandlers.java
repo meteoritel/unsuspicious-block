@@ -83,6 +83,32 @@ public final class LootConditionHandlers {
     }
 
     /**
+     * 计算条件列表的整体不确定性等级。
+     * 取所有条件中最高级别；若 hasUnknownFunction 为 true 则直接返回 RUNTIME。
+     *
+     * @param conditions         条件信息列表
+     * @param hasUnknownFunction 是否有未知 function（无法静态求值）
+     * @return 整体不确定性等级
+     */
+    public static LootConditionHandler.UncertaintyLevel computeUncertaintyLevel(
+            List<LootConditionInfo> conditions, boolean hasUnknownFunction) {
+        if (hasUnknownFunction) {
+            return LootConditionHandler.UncertaintyLevel.RUNTIME;
+        }
+        LootConditionHandler.UncertaintyLevel maxLevel = LootConditionHandler.UncertaintyLevel.NONE;
+        for (LootConditionInfo info : conditions) {
+            LootConditionHandler handler = get(info.conditionType());
+            if (handler != null) {
+                LootConditionHandler.UncertaintyLevel level = handler.uncertaintyLevel();
+                if (level.ordinal() > maxLevel.ordinal()) {
+                    maxLevel = level;
+                }
+            }
+        }
+        return maxLevel;
+    }
+
+    /**
      * 批量分析入口：遍历 conditions 数组，对每个条件调用对应 handler 的 analyze。
      *
      * @param conditionsArray entry 的 "conditions" JSON 数组
@@ -142,6 +168,11 @@ public final class LootConditionHandlers {
         public boolean addsUncertainty() {
             return true;
         }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
+        }
     }
 
     /** 处理 random_chance_with_enchanted_bonus：读取基础概率，附魔加成不可静态确定 */
@@ -163,6 +194,11 @@ public final class LootConditionHandlers {
         @Override
         public boolean addsUncertainty() {
             return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
         }
     }
 
@@ -186,20 +222,25 @@ public final class LootConditionHandlers {
     /**
      * 通用简单描述 handler：仅提供本地化描述，不解析具体参数
      */
-        private record SimpleDescriptionHandler(String key, boolean uncertain) implements LootConditionHandler {
+    private record SimpleDescriptionHandler(String key, boolean uncertain) implements LootConditionHandler {
 
         @Override
-            public LootConditionInfo analyze(JsonObject conditionJson) {
-                return new LootConditionInfo(this.key,
-                        Component.translatable(I18N_PREFIX + this.key),
-                        null);
-            }
-
-            @Override
-            public boolean addsUncertainty() {
-                return this.uncertain;
-            }
+        public LootConditionInfo analyze(JsonObject conditionJson) {
+            return new LootConditionInfo(this.key,
+                    Component.translatable(I18N_PREFIX + this.key),
+                    null);
         }
+
+        @Override
+        public boolean addsUncertainty() {
+            return this.uncertain;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return this.uncertain ? UncertaintyLevel.PROBABILISTIC : UncertaintyLevel.NONE;
+        }
+    }
 
     // ==================== 类别 C：纯运行时 ====================
 
@@ -216,6 +257,11 @@ public final class LootConditionHandlers {
         @Override
         public boolean addsUncertainty() {
             return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.RUNTIME;
         }
     }
 
@@ -242,12 +288,18 @@ public final class LootConditionHandlers {
             }
             return new LootConditionInfo("inverted",
                     Component.translatable(I18N_PREFIX + "inverted", childInfo.description()),
-                    null);
+                    null,
+                    List.of(childInfo));
         }
 
         @Override
         public boolean addsUncertainty() {
             return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
         }
     }
 
@@ -263,14 +315,18 @@ public final class LootConditionHandlers {
             if (children.isEmpty()) {
                 return null;
             }
-            // 构建 "任一: {子条件描述}" 的复合描述
             Component desc = buildCompositeDescription("any_of", children);
-            return new LootConditionInfo("any_of", desc, null);
+            return new LootConditionInfo("any_of", desc, null, children);
         }
 
         @Override
         public boolean addsUncertainty() {
             return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
         }
     }
 
@@ -287,12 +343,17 @@ public final class LootConditionHandlers {
                 return null;
             }
             Component desc = buildCompositeDescription("all_of", children);
-            return new LootConditionInfo("all_of", desc, null);
+            return new LootConditionInfo("all_of", desc, null, children);
         }
 
         @Override
         public boolean addsUncertainty() {
             return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
         }
     }
 
@@ -327,6 +388,11 @@ public final class LootConditionHandlers {
         @Override
         public boolean addsUncertainty() {
             return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.RUNTIME;
         }
     }
 }

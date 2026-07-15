@@ -380,5 +380,6 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.all_of": "All of",
   "screen.unsuspiciousblock.archaeology_journal.condition.reference": "Referenced: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.and": "and",
-  "screen.unsuspiciousblock.archaeology_journal.condition.or": "or"
+  "screen.unsuspiciousblock.archaeology_journal.condition.or": "or",
+  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: External mod injection"
 }

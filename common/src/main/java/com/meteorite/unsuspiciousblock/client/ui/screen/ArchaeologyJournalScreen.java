@@ -14,6 +14,7 @@ import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -274,16 +275,20 @@ public class ArchaeologyJournalScreen extends Screen {
                         .copy().withStyle(ChatFormatting.GOLD));
             }
             if (tooltipData.hint() != null) {
-                tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+                tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.DARK_GREEN, ChatFormatting.ITALIC));
             }
-            // 条件信息
+            // 外部注入标记
+            if (tooltipData.injected()) {
+                tooltipLines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.injected_loot")
+                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
+            }
+            // 条件信息（树形结构，递归渲染）
             if (!tooltipData.conditions().isEmpty()) {
                 tooltipLines.add(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.conditions_header")
                         .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
-                for (LootConditionInfo condition : tooltipData.conditions()) {
-                    tooltipLines.add(condition.description().copy().withStyle(ChatFormatting.GRAY));
-                }
+                appendConditionTree(tooltipLines, tooltipData.conditions(), "");
             }
             // 子表来源标注：仅当子表本身也是已追踪的考古表时才显示，避免空指针
             if (tooltipData.sourceChildTable() != null
@@ -291,7 +296,7 @@ public class ArchaeologyJournalScreen extends Screen {
                 Component childTableName = LootTableNames.resolveDisplayName(tooltipData.sourceChildTable());
                 tooltipLines.add(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
-                        .copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
             }
             guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
         }
@@ -303,6 +308,35 @@ public class ArchaeologyJournalScreen extends Screen {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
         }
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
+    }
+
+    // 递归渲染条件树到 tooltip 行列表
+    private static void appendConditionTree(List<Component> lines, List<LootConditionInfo> conditions, String prefix) {
+        for (int i = 0; i < conditions.size(); i++) {
+            LootConditionInfo info = conditions.get(i);
+            boolean isLast = i == conditions.size() - 1;
+            String branch = isLast ? "└─ " : "├─ ";
+            String childPrefix = isLast ? "   " : "│  ";
+
+            ChatFormatting color = getConditionColor(info.conditionType());
+            String text = prefix + branch + info.description().getString();
+            lines.add(Component.literal(text).withStyle(color));
+
+            if (!info.children().isEmpty()) {
+                appendConditionTree(lines, info.children(), prefix + childPrefix);
+            }
+        }
+    }
+
+    // 根据条件类型返回对应颜色（不使用灰色）
+    private static ChatFormatting getConditionColor(String conditionType) {
+        var handler = LootConditionHandlers.get(conditionType);
+        if (handler == null) return ChatFormatting.WHITE;
+        return switch (handler.uncertaintyLevel()) {
+            case NONE -> ChatFormatting.GREEN;
+            case PROBABILISTIC -> ChatFormatting.GOLD;
+            case RUNTIME -> ChatFormatting.RED;
+        };
     }
 
     @Override

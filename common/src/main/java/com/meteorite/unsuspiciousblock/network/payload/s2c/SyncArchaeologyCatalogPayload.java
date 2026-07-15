@@ -54,16 +54,13 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 if (item.sourceChildTable() != null) {
                     buf.writeResourceLocation(item.sourceChildTable());
                 }
-                // conditions
+                // conditions（含树形 children，递归编码）
                 buf.writeVarInt(item.conditions().size());
                 for (LootConditionInfo info : item.conditions()) {
-                    buf.writeUtf(info.conditionType());
-                    buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
-                    buf.writeBoolean(info.probability() != null);
-                    if (info.probability() != null) {
-                        buf.writeFloat(info.probability());
-                    }
+                    encodeConditionInfo(buf, info);
                 }
+                // 外部注入标记
+                buf.writeBoolean(item.injected());
             }
             buf.writeVarInt(table.simulationCount());
         }
@@ -93,20 +90,45 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 ResourceLocation sourceChildTable = buf.readBoolean()
                         ? buf.readResourceLocation()
                         : null;
-                // conditions
+                // conditions（含树形 children，递归解码）
                 int conditionCount = buf.readVarInt();
                 List<LootConditionInfo> conditions = new ArrayList<>(conditionCount);
                 for (int k = 0; k < conditionCount; k++) {
-                    String conditionType = buf.readUtf();
-                    Component desc = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
-                    Float prob = buf.readBoolean() ? buf.readFloat() : null;
-                    conditions.add(new LootConditionInfo(conditionType, desc, prob));
+                    conditions.add(decodeConditionInfo(buf));
                 }
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable, conditions));
+                boolean injected = buf.readBoolean();
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable, conditions, injected));
             }
             int simulationCount = buf.readVarInt();
             catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));
         }
         return new SyncArchaeologyCatalogPayload(catalog);
+    }
+
+    // 递归编码单个 LootConditionInfo（含 children）
+    private static void encodeConditionInfo(RegistryFriendlyByteBuf buf, LootConditionInfo info) {
+        buf.writeUtf(info.conditionType());
+        buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
+        buf.writeBoolean(info.probability() != null);
+        if (info.probability() != null) {
+            buf.writeFloat(info.probability());
+        }
+        buf.writeVarInt(info.children().size());
+        for (LootConditionInfo child : info.children()) {
+            encodeConditionInfo(buf, child);
+        }
+    }
+
+    // 递归解码单个 LootConditionInfo（含 children）
+    private static LootConditionInfo decodeConditionInfo(RegistryFriendlyByteBuf buf) {
+        String conditionType = buf.readUtf();
+        Component desc = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+        Float prob = buf.readBoolean() ? buf.readFloat() : null;
+        int childCount = buf.readVarInt();
+        List<LootConditionInfo> children = new ArrayList<>(childCount);
+        for (int i = 0; i < childCount; i++) {
+            children.add(decodeConditionInfo(buf));
+        }
+        return new LootConditionInfo(conditionType, desc, prob, children);
     }
 }

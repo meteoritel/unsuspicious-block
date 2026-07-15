@@ -12,8 +12,11 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -262,10 +265,14 @@ public class JournalViewModel {
             boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
                     || this.currentSearch.matchesItem(
                             iv.id(), iv.displayName().getString());
-            gridItems.add(new ItemGridPanel.GridItem(
-                    iv.id(), iv.displayName(), iv.tooltipHint(),
-                    iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
-                    iv.sourceChildTable(), iv.conditions()));
+            LootConditionHandler.UncertaintyLevel uncertaintyLevel = LootConditionHandlers
+                        .computeUncertaintyLevel(iv.conditions(), iv.tooltipHint() != null
+                                && iv.tooltipHint().getString().equals(
+                                Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString()));
+                    gridItems.add(new ItemGridPanel.GridItem(
+                            iv.id(), iv.displayName(), iv.tooltipHint(),
+                            iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
+                            iv.sourceChildTable(), iv.conditions(), iv.injected(), uncertaintyLevel));
         }
         // 排序：先按表来源（根表 null 优先；子表按 ResourceLocation 字典序升序），再按概率降序
         // 注：用取负实现概率降序，避免整体 reversed() 同时反转 nullsFirst 与字典序

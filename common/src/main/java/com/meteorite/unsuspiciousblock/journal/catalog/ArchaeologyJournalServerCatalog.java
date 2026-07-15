@@ -275,7 +275,7 @@ public final class ArchaeologyJournalServerCatalog {
             }
             LootResultSignature signature = LootResultSignature.fromStoredKey(cached.getKey());
             if (signature != null) {
-                restoredItems.add(LootTableCatalog.buildDiscoveredDefinition(signature, cached.getValue()));
+                restoredItems.add(LootTableCatalog.buildDiscoveredDefinition(signature, cached.getValue(), true));
             }
         }
 

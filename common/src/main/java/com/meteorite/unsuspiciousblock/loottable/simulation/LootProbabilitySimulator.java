@@ -150,7 +150,7 @@ public final class LootProbabilitySimulator {
             String probability = appearances == 0
                     ? "<0.01%"
                     : ProbabilityFormat.formatPercent((double) appearances / SIMULATION_COUNT);
-            simulatedItems.add(LootTableCatalog.buildDiscoveredDefinition(entry.getValue(), probability));
+            simulatedItems.add(LootTableCatalog.buildDiscoveredDefinition(entry.getValue(), probability, true));
         }
 
         return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(), simulatedItems, SIMULATION_COUNT));

@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.client.gui.Font;
@@ -31,6 +32,8 @@ public final class ItemGridPanel implements PagePanel {
     // 物品名/数量角标颜色
     private static final int NAME_COLOR = 0xFF3A2A1A;
     private static final int PROB_COLOR = 0xFF8B5A2B;
+    private static final int PROB_COLOR_PROBABILISTIC = 0xFFC8A014; // 金色——有概率型条件
+    private static final int PROB_COLOR_RUNTIME = 0xFFC06040;       // 橙红色——有运行时条件
     private static final int PENDING_COLOR = 0xFF7A6247;
     private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
     private static final int BADGE_COLOR_ABBR = 0xFFFFC060;
@@ -182,11 +185,16 @@ public final class ItemGridPanel implements PagePanel {
                 cellX + 3, cellY + NAME_Y_OFFSET, nameMaxWidth,
                 NAME_COLOR, hovered, scrollTicks, true);
 
-        // 概率（居中）
+        // 概率（居中，颜色根据不确定性等级区分）
         Component probComp = formatProbability(item.probability());
         int probW = font.width(probComp);
+        int probColor = switch (item.uncertaintyLevel()) {
+            case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
+            case RUNTIME -> PROB_COLOR_RUNTIME;
+            default -> PROB_COLOR;
+        };
         guiGraphics.drawString(font, probComp, centerX - probW / 2,
-                cellY + PROB_Y_OFFSET, PROB_COLOR, false);
+                cellY + PROB_Y_OFFSET, probColor, false);
 
         // 搜索不匹配：覆盖半透明灰色遮罩降低视觉权重
         if (!item.highlighted()) {
@@ -238,7 +246,7 @@ public final class ItemGridPanel implements PagePanel {
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
                 return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability(),
-                        item.sourceChildTable(), item.conditions());
+                        item.sourceChildTable(), item.conditions(), item.injected(), item.uncertaintyLevel());
             }
         }
         return null;
@@ -267,21 +275,30 @@ public final class ItemGridPanel implements PagePanel {
      */
     public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
                               @Nullable ResourceLocation sourceChildTable,
-                              List<LootConditionInfo> conditions) {
+                              List<LootConditionInfo> conditions,
+                              boolean injected,
+                              LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
-            this(stack, hint, -1, null, null, List.of());
+            this(stack, hint, -1, null, null, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
         }
 
         // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
         public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
-            this(stack, hint, count, probability, null, List.of());
+            this(stack, hint, count, probability, null, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
         }
 
         // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空
         public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
                           @Nullable ResourceLocation sourceChildTable) {
-            this(stack, hint, count, probability, sourceChildTable, List.of());
+            this(stack, hint, count, probability, sourceChildTable, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
+        }
+
+        // 兼容旧调用方的便利构造器：sourceChildTable + conditions
+        public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
+                          @Nullable ResourceLocation sourceChildTable,
+                          List<LootConditionInfo> conditions) {
+            this(stack, hint, count, probability, sourceChildTable, conditions, false, LootConditionHandler.UncertaintyLevel.NONE);
         }
     }
 
@@ -290,13 +307,16 @@ public final class ItemGridPanel implements PagePanel {
                            String probability, boolean unlocked, int count,
                            LootResultSignature signature, boolean highlighted,
                            @Nullable ResourceLocation sourceChildTable,
-                           List<LootConditionInfo> conditions) {
+                           List<LootConditionInfo> conditions,
+                           boolean injected,
+                           LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
 
-        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空，injected 默认 false
         public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                         String probability, boolean unlocked, int count,
                         LootResultSignature signature, boolean highlighted) {
-            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted, null, List.of());
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted,
+                    null, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
         }
 
         // 兼容旧调用方的便利构造器：sourceChildTable + conditions
@@ -304,7 +324,18 @@ public final class ItemGridPanel implements PagePanel {
                         String probability, boolean unlocked, int count,
                         LootResultSignature signature, boolean highlighted,
                         @Nullable ResourceLocation sourceChildTable) {
-            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted, sourceChildTable, List.of());
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted,
+                    sourceChildTable, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
+        }
+
+        // 兼容旧调用方的便利构造器：sourceChildTable + conditions + injected
+        public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                        String probability, boolean unlocked, int count,
+                        LootResultSignature signature, boolean highlighted,
+                        @Nullable ResourceLocation sourceChildTable,
+                        List<LootConditionInfo> conditions) {
+            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted,
+                    sourceChildTable, conditions, false, LootConditionHandler.UncertaintyLevel.NONE);
         }
 
         public ItemStack stack() {

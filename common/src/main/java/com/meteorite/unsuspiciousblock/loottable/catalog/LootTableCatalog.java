@@ -28,17 +28,25 @@ public final class LootTableCatalog {
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                                  String probability, LootResultSignature signature,
                                  @Nullable ResourceLocation sourceChildTable,
-                                 List<LootConditionInfo> conditions) {
-        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空
+                                 List<LootConditionInfo> conditions,
+                                 boolean injected) {
+        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空，injected 默认 false
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature) {
-            this(id, displayName, tooltipHint, probability, signature, null, List.of());
+            this(id, displayName, tooltipHint, probability, signature, null, List.of(), false);
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature,
                               @Nullable ResourceLocation sourceChildTable) {
-            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, List.of());
+            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, List.of(), false);
+        }
+
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              String probability, LootResultSignature signature,
+                              @Nullable ResourceLocation sourceChildTable,
+                              List<LootConditionInfo> conditions) {
+            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, conditions, false);
         }
 
         /**
@@ -63,11 +71,19 @@ public final class LootTableCatalog {
     /**
      * 为模拟期发现的"注入条目"（GLM / LootTableEvents.MODIFY 注入，JSON 中不存在）构建 ItemDefinition。
      */
-    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability) {
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability,
+                                                         boolean injected) {
         ResourceLocation itemId = signature.itemId();
         Component displayName = resolveMergedDisplayName(itemId, signature);
         Component tooltipHint = resolveMergedTooltipHint(signature);
-        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature);
+        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, null, List.of(), injected);
+    }
+
+    /**
+     * 为模拟期发现的"注入条目"构建 ItemDefinition（默认 injected=false，兼容旧调用）。
+     */
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability) {
+        return buildDiscoveredDefinition(signature, probability, false);
     }
 
     /**
