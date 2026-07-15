@@ -1,18 +1,27 @@
 package com.meteorite.unsuspiciousblock.loottable.condition;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.storage.loot.LootContext;
+import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * 泥地打捞战利品条件——运行时检查玩家钓鱼竿是否拥有泥地打捞附魔，并按群系与等级计算概率。
@@ -32,14 +41,28 @@ public record MudDredgingCondition(boolean swamp) implements LootItemCondition, 
                     Codec.BOOL.optionalFieldOf("swamp", false).forGetter(MudDredgingCondition::swamp)
             ).apply(inst, MudDredgingCondition::new));
 
-    private static final double CHANCE_PER_LEVEL = 0.10D;
-    private static final double SWAMP_BONUS = 0.15D;
-    private static final String SWAMP_BIOME_PATH_MARKER = "swamp";
+    // 泥地打捞概率常量
+    public static final double CHANCE_PER_LEVEL = 0.10D;
+    public static final double SWAMP_BONUS = 0.15D;
+    public static final String SWAMP_BIOME_PATH_MARKER = "swamp";
+
+    // 泥地打捞战利品表 Key
+    public static final ResourceKey<LootTable> MUD_DREDGING =
+            ResourceKey.create(Registries.LOOT_TABLE,
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging"));
+    public static final ResourceKey<LootTable> MUD_DREDGING_SWAMP =
+            ResourceKey.create(Registries.LOOT_TABLE,
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging_swamp"));
 
     @Override
     public boolean test(LootContext context) {
-        // 获取玩家实体
-        if (!(context.getParamOrNull(LootContextParams.THIS_ENTITY) instanceof Player player)) {
+        // 钓鱼战利品上下文中 THIS_ENTITY 是 FishingHook 实体，需通过 getPlayerOwner() 获取玩家
+        Entity entity = context.getParamOrNull(LootContextParams.THIS_ENTITY);
+        if (!(entity instanceof FishingHook hook)) {
+            return false;
+        }
+        Player player = hook.getPlayerOwner();
+        if (player == null) {
             return false;
         }
         // 获取钓鱼竿
@@ -48,8 +71,8 @@ public record MudDredgingCondition(boolean swamp) implements LootItemCondition, 
             return false;
         }
         // 检查泥地打捞附魔等级
-        int level = tool.getEnchantments().getLevel(
-                context.getLevel().holderLookup(Registries.ENCHANTMENT)
+        int level = tool.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY)
+                .getLevel(context.getLevel().holderLookup(Registries.ENCHANTMENT)
                         .getOrThrow(ModEnchantments.MUD_DREDGING));
         if (level <= 0) {
             return false;
@@ -74,16 +97,21 @@ public record MudDredgingCondition(boolean swamp) implements LootItemCondition, 
         if (isSwamp) {
             chance += SWAMP_BONUS;
         }
-        return context.getRandom().nextDouble() < Math.min(1.0D, chance);
+        boolean passed = context.getRandom().nextDouble() < Math.min(1.0D, chance);
+        if (passed) {
+            Constants.LOG.debug("[MudDredging] 触发泥地打捞: player={}, level={}, swamp={}, chance={}",
+                    player.getName().getString(), level, isSwamp, String.format("%.0f%%", Math.min(1.0D, chance) * 100));
+        }
+        return passed;
     }
 
     @Override
-    public LootItemConditionType getType() {
-        return ModLootConditions.MUD_DREDGING.get();
+    public @NotNull LootItemConditionType getType() {
+        return ModLootConditions.mudDredging();
     }
 
     @Override
-    public LootItemCondition build() {
+    public @NotNull LootItemCondition build() {
         return this;
     }
 }

@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -247,7 +246,6 @@ public final class LootConditionHandlers {
     /** 处理 location_check：解析 predicate.biomes 字段，展示群系名称 */
     private static final class LocationCheckHandler implements LootConditionHandler {
         @Override
-        @Nullable
         public LootConditionInfo analyze(JsonObject conditionJson) {
             List<Component> biomeNames = extractBiomeNames(conditionJson);
             if (biomeNames.isEmpty()) {

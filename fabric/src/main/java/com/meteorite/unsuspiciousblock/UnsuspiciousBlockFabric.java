@@ -13,6 +13,7 @@ import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInject
 import com.meteorite.unsuspiciousblock.loot.BuriedTreasureLootInjection;
 import com.meteorite.unsuspiciousblock.loot.FabricArchaeologyLootInjector;
 import com.meteorite.unsuspiciousblock.loot.FishingLootInjection;
+import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
@@ -48,6 +49,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -56,6 +58,13 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // 注册自定义战利品条件类型（Fabric 端直接 Registry.register，在 common init 前完成）
+        LootItemConditionType mudDredgingType = Registry.register(
+                BuiltInRegistries.LOOT_CONDITION_TYPE,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "mud_dredging"),
+                new LootItemConditionType(ModLootConditions.MUD_DREDGING_CODEC));
+        ModLootConditions.setMudDredgingType(() -> mudDredgingType);
+
         UnsuspiciousBlockCommon.init();
 
         // 注册 Fabric 端考古战利品注入器（mixin 与概率模拟器共用，NeoForge 端通过 GLM 实现等价语义）

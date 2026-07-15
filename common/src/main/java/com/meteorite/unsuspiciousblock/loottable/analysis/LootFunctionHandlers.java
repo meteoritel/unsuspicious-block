@@ -592,7 +592,6 @@ public final class LootFunctionHandlers {
         }
 
         @Override
-        @Nullable
         public Component describeHint(JsonObject functionJson) {
             ResourceLocation enchantmentId = ResourceLocation.tryParse(
                     LootParseUtil.getString(functionJson, "enchantment", ""));
@@ -672,7 +671,6 @@ public final class LootFunctionHandlers {
         }
 
         @Override
-        @Nullable
         public Component describeHint(JsonObject functionJson) {
             return Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.item_hint.fill_player_head");
@@ -736,7 +734,6 @@ public final class LootFunctionHandlers {
         }
 
         @Override
-        @Nullable
         public Component describeHint(JsonObject functionJson) {
             String destination = LootParseUtil.getString(functionJson, "destination", "");
             if (destination.isEmpty()) {

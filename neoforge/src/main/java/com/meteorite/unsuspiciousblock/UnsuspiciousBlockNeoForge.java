@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
 import com.meteorite.unsuspiciousblock.loot.FishingLootModifier;
 import com.meteorite.unsuspiciousblock.loot.InjectItemLootModifier;
+import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
@@ -41,6 +42,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -85,6 +87,12 @@ public class UnsuspiciousBlockNeoForge {
             DeferredRegister.create(Registries.MENU, Constants.MOD_ID);
     private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(BuiltInRegistries.ENTITY_TYPE, Constants.MOD_ID);
+
+    // 自定义战利品条件类型注册——NeoForge 使用 DeferredRegister，避免 Registry is already frozen
+    private static final DeferredRegister<LootItemConditionType> LOOT_CONDITIONS =
+            DeferredRegister.create(Registries.LOOT_CONDITION_TYPE, Constants.MOD_ID);
+    private static final DeferredHolder<LootItemConditionType, LootItemConditionType> MUD_DREDGING_TYPE =
+            LOOT_CONDITIONS.register("mud_dredging", () -> new LootItemConditionType(ModLootConditions.MUD_DREDGING_CODEC));
 
     // 全局战利品修改器序列化器注册——add_item 类型供 JSON 文件引用
     private static final DeferredRegister<MapCodec<? extends IGlobalLootModifier>> LOOT_MODIFIERS =
@@ -178,6 +186,9 @@ public class UnsuspiciousBlockNeoForge {
             Mixins.addConfiguration("unsuspiciousblock.lootr.mixins.json");
         }
 
+        // 在 common init 前设置平台注册的 LootItemConditionType，供 MudDredgingCondition 运行时使用
+        ModLootConditions.setMudDredgingType(MUD_DREDGING_TYPE);
+
         UnsuspiciousBlockCommon.init();
 
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC);
@@ -190,6 +201,7 @@ public class UnsuspiciousBlockNeoForge {
         CREATIVE_MODE_TABS.register(modEventBus);
         NeoForgeBoneBlockTracker.ATTACHMENT_TYPES.register(modEventBus);
         LOOT_MODIFIERS.register(modEventBus);
+        LOOT_CONDITIONS.register(modEventBus);
 
         modEventBus.addListener(this::syncCommonItemRefs);
         modEventBus.addListener(this::registerPayloads);

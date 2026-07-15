@@ -1,37 +1,32 @@
 package com.meteorite.unsuspiciousblock.loottable.condition;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.mojang.serialization.MapCodec;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 
 import java.util.function.Supplier;
 
 /**
- * 模组战利品条件类型注册中心——集中管理所有自定义 {@link LootItemConditionType}。
+ * 模组战利品条件类型注册中心——暴露 codec 并持有平台注册后的 {@link LootItemConditionType}。
+ * <p>
+ * 实际注册由平台代码完成：NeoForge 使用 {@code DeferredRegister}，
+ * Fabric 使用 {@code Registry.register()}。
  */
 public final class ModLootConditions {
 
-    // 泥地打捞附魔条件——检查玩家钓鱼竿附魔、群系与概率
-    public static final Supplier<LootItemConditionType> MUD_DREDGING = register(
-            "mud_dredging", MudDredgingCondition.CODEC);
+    public static final MapCodec<MudDredgingCondition> MUD_DREDGING_CODEC = MudDredgingCondition.CODEC;
+
+    private static Supplier<LootItemConditionType> mudDredgingType;
 
     private ModLootConditions() {
     }
 
-    // 重置注册状态（供测试或重载场景使用）
-    public static void register() {
-        // 类加载时已通过静态字段注册；方法体保留以支持显式调用
+    /** 由平台代码在注册完成后调用，设置已注册的类型持有者 */
+    public static void setMudDredgingType(Supplier<LootItemConditionType> type) {
+        mudDredgingType = type;
     }
 
-    private static Supplier<LootItemConditionType> register(String name, MapCodec<? extends LootItemCondition> codec) {
-        LootItemConditionType type = Registry.register(
-                BuiltInRegistries.LOOT_CONDITION_TYPE,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-                new LootItemConditionType(codec));
-        return () -> type;
+    /** 获取已注册的泥地打捞战利品条件类型 */
+    public static LootItemConditionType mudDredging() {
+        return mudDredgingType.get();
     }
 }
