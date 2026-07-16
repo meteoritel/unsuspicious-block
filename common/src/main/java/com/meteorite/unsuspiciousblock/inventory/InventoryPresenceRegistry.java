@@ -6,6 +6,8 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +30,8 @@ import java.util.Set;
  * trigger 接口留给未来静态状态的物品（如便携容器内的物品）使用。
  */
 public final class InventoryPresenceRegistry {
+    private static final Logger LOGGER = LoggerFactory.getLogger(InventoryPresenceRegistry.class);
+
     private InventoryPresenceRegistry() {}
 
     // trigger 注册表：Item → 回调
@@ -145,6 +149,7 @@ public final class InventoryPresenceRegistry {
             return holder.unsuspiciousblock$getPresentTriggerItems();
         }
         // mixin 未注册时的兜底（不应发生）：返回临时集合，diff 机制失效但不崩溃
+        LOGGER.warn("PlayerPresenceStateHolder mixin 未应用到 {}，背包存在 diff 机制将失效", player.getName().getString());
         return new HashSet<>();
     }
 }

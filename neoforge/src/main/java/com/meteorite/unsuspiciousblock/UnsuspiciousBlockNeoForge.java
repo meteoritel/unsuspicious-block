@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.plugin.curio.SpecimenBoxCurio;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
@@ -68,6 +69,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
+import top.theillusivec4.curios.api.CuriosApi;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -222,6 +224,11 @@ public class UnsuspiciousBlockNeoForge {
         event.enqueueWork(() -> {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
+            }
+            // 标本箱 Curios 代理注册：Curios 安装时将标本箱注册为 ICurioItem，
+            // 使其在饰品槽中时能将内部物品模拟为独立饰品
+            if (ModList.get().isLoaded("curios")) {
+                CuriosApi.registerCurio(ModItems.SPECIMEN_BOX, new SpecimenBoxCurio());
             }
         });
     }
