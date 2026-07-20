@@ -9,26 +9,23 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
+import com.meteorite.unsuspiciousblock.client.ui.widget.JournalPageButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -53,8 +50,8 @@ public class ArchaeologyJournalScreen extends Screen {
     public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
         this.viewModel = new JournalViewModel(state);
-        this.catalogToolbar = new CatalogToolbar(this::rebuildWidgets, this::rebuildViewModels);
-        this.logToolbar = new LogToolbar(this::rebuildWidgets);
+        this.catalogToolbar = new CatalogToolbar(this::rebuildWidgets);
+        this.logToolbar = new LogToolbar();
     }
 
     @Override
@@ -135,47 +132,34 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     protected void repositionElements() {
-        RightPageContainer.Tab savedTab = this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO;
-        int savedPage = this.rightPage != null ? this.rightPage.getPage() : 0;
-        int savedCatalogPage = this.catalogPanel != null ? this.catalogPanel.getPage() : 0;
-        boolean savedLogDetail = this.rightPage != null && this.rightPage.isShowingLogDetail();
-        UUID savedLogEntryId = this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null;
-        boolean savedLogSortDescending = this.logToolbar.sortDescending();
-        LogGrouper.GroupMode savedGroupMode = this.logToolbar.groupMode();
-
-        // 保存目录搜索/排序状态
-        CatalogSorter.SortOrder savedCatalogSortOrder = this.catalogToolbar.currentSortOrder();
-        boolean savedCatalogSortDescending = this.catalogToolbar.sortDescending();
-        JournalSearchQuery savedCatalogSearch = this.catalogToolbar.currentSearch();
-        boolean savedCatalogSearchExpanded = this.catalogToolbar.searchExpanded();
-        boolean savedCatalogHideLocked = this.catalogToolbar.hideLocked();
+        UiStateSnapshot snapshot = captureUiState();
 
         this.bookLayout = JournalBookBackground.compute(this.width, this.height);
         this.rightPage = new RightPageContainer(this.bookLayout);
 
         this.updateItemGridPanel();
-        this.rightPage.restoreLogSelection(savedLogEntryId, savedLogDetail);
+        this.rightPage.restoreLogSelection(snapshot.logEntryId(), snapshot.logDetail());
 
         // 恢复日志排序状态
-        this.logToolbar.setSortDescending(savedLogSortDescending);
-        this.logToolbar.setGroupMode(savedGroupMode);
+        this.logToolbar.setSortDescending(snapshot.logSortDescending());
+        this.logToolbar.setGroupMode(snapshot.groupMode());
         this.rightPage.getLogPanel().setSortDescending(this.logToolbar.sortDescending());
-        this.rightPage.getLogPanel().setGroupMode(savedGroupMode);
+        this.rightPage.getLogPanel().setGroupMode(snapshot.groupMode());
 
         // 恢复目录搜索/排序状态
-        this.catalogToolbar.setCurrentSortOrder(savedCatalogSortOrder);
-        this.catalogToolbar.setSortDescending(savedCatalogSortDescending);
-        this.catalogToolbar.setCurrentSearch(savedCatalogSearch);
-        this.catalogToolbar.setSearchExpanded(savedCatalogSearchExpanded);
-        this.catalogToolbar.setHideLocked(savedCatalogHideLocked);
+        this.catalogToolbar.setCurrentSortOrder(snapshot.catalogSortOrder());
+        this.catalogToolbar.setSortDescending(snapshot.catalogSortDescending());
+        this.catalogToolbar.setCurrentSearch(snapshot.catalogSearch());
+        this.catalogToolbar.setSearchExpanded(snapshot.catalogSearchExpanded());
+        this.catalogToolbar.setHideLocked(snapshot.catalogHideLocked());
 
-        this.rightPage.setActiveTab(savedTab);
-        this.rightPage.setPage(savedPage);
+        this.rightPage.setActiveTab(snapshot.tab());
+        this.rightPage.setPage(snapshot.rightPagePage());
 
         this.rebuildWidgets();
         // 仅在第一次 init 之后的 reposition 中恢复 catalog page，
-        if (this.catalogPanel != null && savedCatalogPage > 0) {
-            this.catalogPanel.setPage(savedCatalogPage);
+        if (this.catalogPanel != null && snapshot.catalogPage() > 0) {
+            this.catalogPanel.setPage(snapshot.catalogPage());
         }
         this.syncButtonState();
     }
@@ -186,6 +170,18 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        refreshAndSync();
+        JournalBookBackground.render(guiGraphics, this.bookLayout);
+        renderTitle(guiGraphics);
+        renderCatalogArea(guiGraphics, mouseX, mouseY);
+        this.rightPage.render(guiGraphics, this.font, mouseX, mouseY);
+        this.catalogToolbar.renderSearchBackground(guiGraphics);
+        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderOverlays(guiGraphics, mouseX, mouseY);
+    }
+
+    // 检测服务端数据变更并按需刷新
+    private void refreshAndSync() {
         if (this.viewModel.refreshIfNeeded()) {
             this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
             this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
@@ -197,13 +193,17 @@ public class ArchaeologyJournalScreen extends Screen {
             this.updateItemGridPanel();
             this.syncButtonState();
         }
+    }
 
-        JournalBookBackground.render(guiGraphics, this.bookLayout);
-
+    // 渲染标题
+    private void renderTitle(GuiGraphics guiGraphics) {
         int titleWidth = this.font.width(this.title);
         guiGraphics.drawString(this.font, this.title,
                 (this.width - titleWidth) / 2, this.bookLayout.bookY() + 2, 0x4A3320, false);
+    }
 
+    // 渲染左侧目录区域（目录面板、解锁进度、翻页指示器、空状态）
+    private void renderCatalogArea(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (this.catalogPanel != null) {
             this.catalogPanel.render(guiGraphics, this.font, this.viewModel.selectedIndex(), mouseX, mouseY);
         }
@@ -235,15 +235,10 @@ public class ArchaeologyJournalScreen extends Screen {
                             + JournalLayout.CATALOG_LEFT_PAD,
                     this.bookLayout.leftPageY() + JournalLayout.CATALOG_LIST_TOP, 0x7A6247, false);
         }
+    }
 
-        this.rightPage.render(guiGraphics, this.font, mouseX, mouseY);
-
-        // 渲染搜索框背景
-        this.catalogToolbar.renderSearchBackground(guiGraphics);
-
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-
-        // 工具栏 tooltip
+    // 渲染所有叠加层 tooltip（工具栏、帮助按钮、日志条目、物品网格）
+    private void renderOverlays(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         this.catalogToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
                 && !this.rightPage.isShowingLogDetail();
@@ -251,122 +246,17 @@ public class ArchaeologyJournalScreen extends Screen {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         }
 
-        // 帮助按钮 tooltip
         if (this.helpButton != null) {
             this.helpButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
 
-        // 日志条目复制坐标按钮 tooltip
         this.rightPage.renderTooltips(guiGraphics, this.font, mouseX, mouseY);
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
         if (tooltipData != null && !tooltipData.stack().isEmpty()) {
-            // 关闭原版物品高级 tooltip（含附魔、NBT、"6 component(s)" 等），
-            // 仅保留物品名 + 本模组追加的统计/提示信息，并按类别上色
-            List<Component> tooltipLines = new ArrayList<>();
-            tooltipLines.add(tooltipData.stack().getHoverName().copy().withStyle(ChatFormatting.WHITE));
-            if (tooltipData.count() >= 0) {
-                tooltipLines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.acquired", tooltipData.count())
-                        .copy().withStyle(ChatFormatting.GREEN));
-            }
-            if (tooltipData.probability() != null) {
-                boolean probUncertain = tooltipData.probability().equals("?");
-                boolean hintIsApprox = tooltipData.hint() != null && tooltipData.hint().getString().equals(
-                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
-                ChatFormatting probColor = switch (tooltipData.uncertaintyLevel()) {
-                    case PROBABILISTIC -> ChatFormatting.GOLD;
-                    case RUNTIME -> ChatFormatting.RED;
-                    default -> ChatFormatting.GOLD;
-                };
-                if (probUncertain && hintIsApprox) {
-                    tooltipLines.add(Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.probability_uncertain_approx")
-                            .copy().withStyle(probColor));
-                } else if (probUncertain) {
-                    tooltipLines.add(Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.probability_uncertain")
-                            .copy().withStyle(probColor));
-                } else {
-                    tooltipLines.add(formatProbabilityComponent(tooltipData.probability())
-                            .copy().withStyle(probColor));
-                }
-            }
-            if (tooltipData.hint() != null) {
-                boolean probUncertain = tooltipData.probability() != null && tooltipData.probability().equals("?");
-                boolean hintIsApprox = tooltipData.hint().getString().equals(
-                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
-                if (!(probUncertain && hintIsApprox)) {
-                    tooltipLines.add(tooltipData.hint().copy().withStyle(ChatFormatting.DARK_GREEN, ChatFormatting.ITALIC));
-                }
-            }
-            // 外部注入标记
-            if (tooltipData.injected()) {
-                tooltipLines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.injected_loot")
-                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
-            }
-            // 条件信息（树形结构，递归渲染）
-            if (!tooltipData.conditions().isEmpty()) {
-                tooltipLines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.conditions_header")
-                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
-                appendConditionTree(tooltipLines, tooltipData.conditions(), "");
-            }
-            // 子表条件（来自 loot_table 引用条目的 conditions，如钓鱼宝藏表的开阔水域要求）
-            if (!tooltipData.parentTableConditions().isEmpty()) {
-                tooltipLines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")
-                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
-                appendConditionTree(tooltipLines, tooltipData.parentTableConditions(), "");
-            }
-            // 子表来源标注：仅当子表本身也是已追踪的考古表时才显示，避免空指针
-            if (tooltipData.sourceChildTable() != null
-                    && LootTableNames.isArchaeologyLootTable(tooltipData.sourceChildTable())) {
-                Component childTableName = LootTableNames.resolveDisplayName(tooltipData.sourceChildTable());
-                tooltipLines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
-                        .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
-            }
+            List<Component> tooltipLines = JournalTooltipBuilder.build(tooltipData);
             guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
         }
-    }
-
-    // 格式化概率为 tooltip Component
-    private static Component formatProbabilityComponent(String probability) {
-        if (probability == null || probability.equals("?")) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
-        }
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
-    }
-
-    // 递归渲染条件树到 tooltip 行列表
-    private static void appendConditionTree(List<Component> lines, List<LootConditionInfo> conditions, String prefix) {
-        for (int i = 0; i < conditions.size(); i++) {
-            LootConditionInfo info = conditions.get(i);
-            boolean isLast = i == conditions.size() - 1;
-            String branch = isLast ? "└─ " : "├─ ";
-            String childPrefix = isLast ? "   " : "│  ";
-
-            ChatFormatting color = getConditionColor(info.conditionType());
-            String text = prefix + branch + info.description().getString();
-            lines.add(Component.literal(text).withStyle(color));
-
-            if (!info.children().isEmpty()) {
-                appendConditionTree(lines, info.children(), prefix + childPrefix);
-            }
-        }
-    }
-
-    // 根据条件类型返回对应颜色（不使用灰色）
-    private static ChatFormatting getConditionColor(ResourceLocation conditionType) {
-        var handler = LootConditionHandlers.get(conditionType);
-        if (handler == null) return ChatFormatting.WHITE;
-        return switch (handler.uncertaintyLevel()) {
-            case NONE -> ChatFormatting.GREEN;
-            case PROBABILISTIC -> ChatFormatting.GOLD;
-            case RUNTIME -> ChatFormatting.RED;
-        };
     }
 
     @Override
@@ -549,7 +439,7 @@ public class ArchaeologyJournalScreen extends Screen {
         syncButtonState();
     }
 
-    private PageButton createPageButton(int x, int y, boolean isForward, Button.OnPress onPress) {
+    private JournalPageButton createPageButton(int x, int y, boolean isForward, Button.OnPress onPress) {
         return new JournalPageButton(x, y, isForward, onPress);
     }
 
@@ -561,25 +451,17 @@ public class ArchaeologyJournalScreen extends Screen {
     private void syncButtonState() {
         boolean hasMultipleCatalogPages = this.catalogPanel != null && !this.viewModel.isEmpty()
                 && this.catalogPanel.pageCount() > 1;
-        if (this.catalogPrevButton != null) {
-            this.catalogPrevButton.visible = hasMultipleCatalogPages;
-            this.catalogPrevButton.active = hasMultipleCatalogPages && this.catalogPanel.getPage() > 0;
-        }
-        if (this.catalogNextButton != null) {
-            this.catalogNextButton.visible = hasMultipleCatalogPages;
-            this.catalogNextButton.active = hasMultipleCatalogPages
-                    && this.catalogPanel.getPage() < this.catalogPanel.pageCount() - 1;
-        }
+        applyButtonState(this.catalogPrevButton, hasMultipleCatalogPages,
+                hasMultipleCatalogPages && this.catalogPanel != null && this.catalogPanel.getPage() > 0);
+        applyButtonState(this.catalogNextButton, hasMultipleCatalogPages,
+                hasMultipleCatalogPages && this.catalogPanel != null
+                        && this.catalogPanel.getPage() < this.catalogPanel.pageCount() - 1);
 
         boolean hasMultipleItemPages = this.rightPage.pageCount() > 1;
-        if (this.itemPrevButton != null) {
-            this.itemPrevButton.visible = hasMultipleItemPages;
-            this.itemPrevButton.active = hasMultipleItemPages && this.rightPage.getPage() > 0;
-        }
-        if (this.itemNextButton != null) {
-            this.itemNextButton.visible = hasMultipleItemPages;
-            this.itemNextButton.active = hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1;
-        }
+        applyButtonState(this.itemPrevButton, hasMultipleItemPages,
+                hasMultipleItemPages && this.rightPage.getPage() > 0);
+        applyButtonState(this.itemNextButton, hasMultipleItemPages,
+                hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1);
 
         // 日志工具栏可见性
         boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
@@ -587,19 +469,17 @@ public class ArchaeologyJournalScreen extends Screen {
         boolean logHasEntries = isLogListMode && this.rightPage.getLogPanel().hasVisibleEntries();
         this.logToolbar.syncVisibility(isLogListMode, logHasEntries);
 
-        // 日志详情页返回按钮可见性：仅在日志详情模式下显示
+        // 日志详情页返回/备注按钮可见性
         boolean isLogDetailMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
                 && this.rightPage.isShowingLogDetail();
-        var backBtn = this.rightPage.getLogDetailPanel().getBackButton();
-        if (backBtn != null) {
-            backBtn.visible = isLogDetailMode;
-            backBtn.active = isLogDetailMode;
-        }
-        // 备注按钮可见性：跟随返回按钮（详情模式下才显示）
-        var noteBtn = this.rightPage.getLogDetailPanel().getNoteButton();
-        if (noteBtn != null) {
-            noteBtn.visible = isLogDetailMode;
-            noteBtn.active = isLogDetailMode;
+        applyButtonState(this.rightPage.getLogDetailPanel().getBackButton(), isLogDetailMode, isLogDetailMode);
+        applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode, isLogDetailMode);
+    }
+
+    private static void applyButtonState(@Nullable AbstractWidget btn, boolean visible, boolean active) {
+        if (btn != null) {
+            btn.visible = visible;
+            btn.active = active;
         }
     }
 
@@ -625,28 +505,38 @@ public class ArchaeologyJournalScreen extends Screen {
                 .setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
     }
 
-    private static final class JournalPageButton extends PageButton {
-        private static final ResourceLocation PAGE_FORWARD_HIGHLIGHTED_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_forward_highlighted");
-        private static final ResourceLocation PAGE_FORWARD_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_forward");
-        private static final ResourceLocation PAGE_BACKWARD_HIGHLIGHTED_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_backward_highlighted");
-        private static final ResourceLocation PAGE_BACKWARD_SPRITE = ResourceLocation.withDefaultNamespace("widget/page_backward");
-
-        private final boolean isForward;
-
-        private JournalPageButton(int x, int y, boolean isForward, Button.OnPress onPress) {
-            super(x, y, isForward, onPress, true);
-            this.isForward = isForward;
-        }
-
-        @Override
-        public void renderWidget(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-            ResourceLocation sprite;
-            if (this.isForward) {
-                sprite = this.active && this.isHovered() ? PAGE_FORWARD_HIGHLIGHTED_SPRITE : PAGE_FORWARD_SPRITE;
-            } else {
-                sprite = this.active && this.isHovered() ? PAGE_BACKWARD_HIGHLIGHTED_SPRITE : PAGE_BACKWARD_SPRITE;
-            }
-            guiGraphics.blitSprite(sprite, this.getX(), this.getY(), JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT);
-        }
+    // 捕获当前 UI 状态快照，用于窗口 resize 后恢复
+    private UiStateSnapshot captureUiState() {
+        return new UiStateSnapshot(
+                this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO,
+                this.rightPage != null ? this.rightPage.getPage() : 0,
+                this.catalogPanel != null ? this.catalogPanel.getPage() : 0,
+                this.rightPage != null && this.rightPage.isShowingLogDetail(),
+                this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null,
+                this.logToolbar.sortDescending(),
+                this.logToolbar.groupMode(),
+                this.catalogToolbar.currentSortOrder(),
+                this.catalogToolbar.sortDescending(),
+                this.catalogToolbar.currentSearch(),
+                this.catalogToolbar.searchExpanded(),
+                this.catalogToolbar.hideLocked()
+        );
     }
-}
+
+    // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态
+    private record UiStateSnapshot(
+            RightPageContainer.Tab tab,
+            int rightPagePage,
+            int catalogPage,
+            boolean logDetail,
+            @Nullable UUID logEntryId,
+            boolean logSortDescending,
+            LogGrouper.GroupMode groupMode,
+            CatalogSorter.SortOrder catalogSortOrder,
+            boolean catalogSortDescending,
+            JournalSearchQuery catalogSearch,
+            boolean catalogSearchExpanded,
+            boolean catalogHideLocked
+    ) {}
+
+    }

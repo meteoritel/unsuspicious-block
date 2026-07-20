@@ -37,12 +37,10 @@ public class CatalogToolbar {
     private EditBox searchField;
 
     // 回调
-    private final Runnable onRebuildWidgets;
-    private final Runnable onRebuildViewModels;
+    private final Runnable onConfigChanged;
 
-    public CatalogToolbar(Runnable onRebuildWidgets, Runnable onRebuildViewModels) {
-        this.onRebuildWidgets = onRebuildWidgets;
-        this.onRebuildViewModels = onRebuildViewModels;
+    public CatalogToolbar(Runnable onConfigChanged) {
+        this.onConfigChanged = onConfigChanged;
     }
 
     // —— 状态访问器 ——
@@ -96,7 +94,7 @@ public class CatalogToolbar {
     /** 搜索框内容变化 */
     public void onSearchChanged(String text) {
         this.currentSearch = JournalSearchQuery.parse(text);
-        onRebuildViewModels.run();
+        onConfigChanged.run();
     }
 
     /** 切换搜索框展开/收起 */
@@ -108,7 +106,7 @@ public class CatalogToolbar {
             this.searchField.setValue("");
             this.currentSearch = JournalSearchQuery.EMPTY;
         }
-        onRebuildWidgets.run();
+        onConfigChanged.run();
     }
 
     /** 循环切换排序方式 */
@@ -118,7 +116,7 @@ public class CatalogToolbar {
             this.sortButton.setIconChar(CatalogSorter.sortOrderIcon(this.currentSortOrder));
             this.sortButton.setTooltip(CatalogSorter.sortOrderTooltip(this.currentSortOrder));
         }
-        onRebuildViewModels.run();
+        onConfigChanged.run();
     }
 
     /** 切换正序/倒序 */
@@ -128,7 +126,7 @@ public class CatalogToolbar {
             this.sortOrderButton.setIconChar(CatalogSorter.sortDirectionIcon(this.sortDescending));
             this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
         }
-        onRebuildViewModels.run();
+        onConfigChanged.run();
     }
 
     /** 切换是否隐藏未解锁条目 */
@@ -138,7 +136,7 @@ public class CatalogToolbar {
             this.hideLockedButton.setIconChar(hideLockedIcon(this.hideLocked));
             this.hideLockedButton.setTooltip(hideLockedTooltip(this.hideLocked));
         }
-        onRebuildViewModels.run();
+        onConfigChanged.run();
     }
 
     // 隐藏未解锁按钮的图标字符：眼睛（显示）/ 划线眼睛（隐藏）
@@ -162,7 +160,7 @@ public class CatalogToolbar {
                 this.searchField.setValue("");
                 this.currentSearch = JournalSearchQuery.EMPTY;
             }
-            onRebuildWidgets.run();
+            onConfigChanged.run();
             return true;
         }
         return false;

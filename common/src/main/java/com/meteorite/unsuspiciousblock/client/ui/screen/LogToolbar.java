@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -24,11 +25,7 @@ public class LogToolbar {
     private IconButton sortDirBtn;
     private IconButton groupBtn;
 
-    // 回调
-    private final Runnable onRebuildWidgets;
-
-    public LogToolbar(Runnable onRebuildWidgets) {
-        this.onRebuildWidgets = onRebuildWidgets;
+    public LogToolbar() {
     }
 
     // —— 状态访问器 ——
@@ -47,14 +44,6 @@ public class LogToolbar {
 
     public void setGroupMode(LogGrouper.GroupMode mode) {
         this.groupMode = mode;
-    }
-
-    public IconButton sortDirBtn() {
-        return sortDirBtn;
-    }
-
-    public IconButton groupBtn() {
-        return groupBtn;
     }
 
     // —— 事件处理 ——
@@ -140,7 +129,7 @@ public class LogToolbar {
     }
 
     /** 渲染日志工具栏 tooltip */
-    public void renderTooltips(net.minecraft.client.gui.GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    public void renderTooltips(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (this.sortDirBtn != null) {
             this.sortDirBtn.renderTooltip(guiGraphics, mouseX, mouseY);
         }
