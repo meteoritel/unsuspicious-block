@@ -265,20 +265,28 @@ public class JournalViewModel {
             boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
                     || this.currentSearch.matchesItem(
                             iv.id(), iv.displayName().getString());
-            LootConditionHandler.UncertaintyLevel uncertaintyLevel = LootConditionHandlers
-                        .computeUncertaintyLevel(iv.conditions(), iv.tooltipHint() != null
-                                && iv.tooltipHint().getString().equals(
-                                Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString()));
-                    gridItems.add(new ItemGridPanel.GridItem(
-                            iv.id(), iv.displayName(), iv.tooltipHint(),
-                            iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
-                            iv.sourceChildTable(), iv.conditions(), iv.parentTableConditions(),
-                            iv.injected(), uncertaintyLevel));
+            boolean hasApproximateResult = iv.tooltipHint() != null
+                    && iv.tooltipHint().getString().equals(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
+            LootConditionHandler.UncertaintyLevel uncertaintyLevel = hasApproximateResult
+                    ? LootConditionHandler.UncertaintyLevel.RUNTIME
+                    : LootConditionHandler.UncertaintyLevel.NONE;
+            for (var path : iv.acquisitionPaths()) {
+                LootConditionHandler.UncertaintyLevel pathLevel = LootConditionHandlers
+                        .computeUncertaintyLevel(path.allConditions(), false);
+                if (pathLevel.ordinal() > uncertaintyLevel.ordinal()) {
+                    uncertaintyLevel = pathLevel;
+                }
+            }
+            gridItems.add(new ItemGridPanel.GridItem(
+                    iv.id(), iv.displayName(), iv.tooltipHint(),
+                    iv.probability(), iv.unlocked(), iv.count(), iv.signature(), highlighted,
+                    iv.acquisitionPaths(), iv.injected(), uncertaintyLevel));
         }
         // 排序：先按表来源（根表 null 优先；子表按 ResourceLocation 字典序升序），再按概率降序
         // 注：用取负实现概率降序，避免整体 reversed() 同时反转 nullsFirst 与字典序
         gridItems.sort(Comparator
-                .comparing(ItemGridPanel.GridItem::sourceChildTable,
+                .comparing(ItemGridPanel.GridItem::primarySourceChildTable,
                         Comparator.nullsFirst(Comparator.comparing(String::valueOf)))
                 .thenComparingDouble(value -> -JournalViewModel.gridItemSortKey(value)));
         return new BuildGridResult(

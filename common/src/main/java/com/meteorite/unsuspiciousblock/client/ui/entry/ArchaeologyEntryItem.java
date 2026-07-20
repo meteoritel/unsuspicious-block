@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -22,9 +22,7 @@ public record ArchaeologyEntryItem(
         boolean unlocked,
         int count,
         LootResultSignature signature,
-        @Nullable ResourceLocation sourceChildTable,
-        List<LootConditionInfo> conditions,
-        List<LootConditionInfo> parentTableConditions,
+        List<LootAcquisitionPath> acquisitionPaths,
         boolean injected
 ) implements ItemEntryLike {
 
@@ -36,5 +34,17 @@ public record ArchaeologyEntryItem(
     @Override
     public String itemDisplayName() {
         return displayName.getString();
+    }
+
+    @Nullable
+    public ResourceLocation primarySourceChildTable() {
+        if (this.acquisitionPaths.stream().anyMatch(path -> path.sourceChildTable() == null)) {
+            return null;
+        }
+        return this.acquisitionPaths.stream()
+                .map(LootAcquisitionPath::sourceChildTable)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 }

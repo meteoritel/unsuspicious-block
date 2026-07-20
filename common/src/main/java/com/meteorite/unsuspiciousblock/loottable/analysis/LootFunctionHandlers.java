@@ -8,6 +8,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.Potion;
@@ -178,13 +179,30 @@ public final class LootFunctionHandlers {
     @Nullable
     @SuppressWarnings("unchecked")
     private static <T> T reflectField(Object obj, String fieldName) {
-        try {
-            Field field = obj.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return (T) field.get(obj);
-        } catch (Exception e) {
-            return null;
+        Class<?> type = obj.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return (T) field.get(obj);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                return null;
+            }
         }
+        return null;
+    }
+
+    /**
+     * 将反射字段安全转换为目标类型，同时兼容原版 Codec 使用的 Optional 字段。
+     */
+    @Nullable
+    static <T> T unwrapFieldValue(@Nullable Object fieldValue, Class<T> expectedType) {
+        Object value = fieldValue instanceof Optional<?> optional
+                ? optional.orElse(null)
+                : fieldValue;
+        return expectedType.isInstance(value) ? expectedType.cast(value) : null;
     }
 
     // ==================== 共享工具方法 ====================
@@ -288,11 +306,12 @@ public final class LootFunctionHandlers {
             if (!(function instanceof SetNameFunction)) {
                 return null;
             }
-            Component component = reflectField(function, "name");
+            Component component = unwrapFieldValue(reflectField(function, "name"), Component.class);
             if (component == null) {
                 return previewStack;
             }
-            SetNameFunction.Target target = reflectField(function, "target");
+            SetNameFunction.Target target = unwrapFieldValue(
+                    reflectField(function, "target"), SetNameFunction.Target.class);
             if (target == null) {
                 return previewStack;
             }
@@ -422,7 +441,12 @@ public final class LootFunctionHandlers {
             }
             NumberProvider value = reflectField(function, "value");
             if (value instanceof ConstantValue(float value1)) {
-                previewStack.setCount(Math.round(value1));
+                Boolean add = reflectField(function, "add");
+                if (Boolean.TRUE.equals(add)) {
+                    previewStack.grow(Math.round(value1));
+                } else {
+                    previewStack.setCount(Math.round(value1));
+                }
                 return previewStack;
             }
             return null;
@@ -469,8 +493,13 @@ public final class LootFunctionHandlers {
             if (damage instanceof ConstantValue(float value)) {
                 int maxDamage = previewStack.getMaxDamage();
                 if (maxDamage > 0) {
-                    float fraction = value / maxDamage;
-                    previewStack.setDamageValue(Math.round(fraction * maxDamage));
+                    float remainingDurability = 1.0F - (float) previewStack.getDamageValue() / maxDamage;
+                    Boolean add = reflectField(function, "add");
+                    float resultDurability = Boolean.TRUE.equals(add)
+                            ? remainingDurability + value
+                            : value;
+                    previewStack.setDamageValue(Mth.floor(
+                            (1.0F - Mth.clamp(resultDurability, 0.0F, 1.0F)) * maxDamage));
                 }
                 return previewStack;
             }

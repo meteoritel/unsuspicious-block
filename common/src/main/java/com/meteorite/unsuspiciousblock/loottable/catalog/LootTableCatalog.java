@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -24,38 +25,112 @@ public final class LootTableCatalog {
                                   List<ItemDefinition> items, int simulationCount) {
     }
 
+    /**
+     * 单个物品结果的获取路径。
+     * entryConditions 属于物品条目本身，inheritedConditions 来自 pool、组合 entry 或战利品表引用。
+     */
+    public record LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                      List<LootConditionInfo> entryConditions,
+                                      List<LootConditionInfo> inheritedConditions) {
+        public LootAcquisitionPath {
+            entryConditions = List.copyOf(entryConditions);
+            inheritedConditions = List.copyOf(inheritedConditions);
+        }
+
+        public boolean hasConditions() {
+            return !this.entryConditions.isEmpty() || !this.inheritedConditions.isEmpty();
+        }
+
+        public List<LootConditionInfo> allConditions() {
+            if (this.entryConditions.isEmpty()) {
+                return this.inheritedConditions;
+            }
+            if (this.inheritedConditions.isEmpty()) {
+                return this.entryConditions;
+            }
+            List<LootConditionInfo> result = new ArrayList<>(
+                    this.entryConditions.size() + this.inheritedConditions.size());
+            result.addAll(this.inheritedConditions);
+            result.addAll(this.entryConditions);
+            return List.copyOf(result);
+        }
+    }
+
     /** 战利品表物品条目定义 */
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                                  String probability, LootResultSignature signature,
-                                 @Nullable ResourceLocation sourceChildTable,
-                                 List<LootConditionInfo> conditions,
-                                 List<LootConditionInfo> parentTableConditions,
+                                 List<LootAcquisitionPath> acquisitionPaths,
                                  boolean injected) {
-        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空，parentTableConditions 默认空，injected 默认 false
+        public ItemDefinition {
+            acquisitionPaths = List.copyOf(acquisitionPaths);
+        }
+
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                              String probability, LootResultSignature signature) {
-            this(id, displayName, tooltipHint, probability, signature, null, List.of(), List.of(), false);
+                               String probability, LootResultSignature signature) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    List.of(new LootAcquisitionPath(null, List.of(), List.of())), false);
+        }
+
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                               String probability, LootResultSignature signature,
+                               @Nullable ResourceLocation sourceChildTable) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    List.of(new LootAcquisitionPath(sourceChildTable, List.of(), List.of())), false);
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature,
-                              @Nullable ResourceLocation sourceChildTable) {
-            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, List.of(), List.of(), false);
+                               @Nullable ResourceLocation sourceChildTable,
+                               List<LootConditionInfo> conditions) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    List.of(new LootAcquisitionPath(sourceChildTable, conditions, List.of())), false);
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature,
-                              @Nullable ResourceLocation sourceChildTable,
-                              List<LootConditionInfo> conditions) {
-            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, conditions, List.of(), false);
+                               @Nullable ResourceLocation sourceChildTable,
+                               List<LootConditionInfo> conditions,
+                               boolean injected) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    List.of(new LootAcquisitionPath(sourceChildTable, conditions, List.of())), injected);
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               String probability, LootResultSignature signature,
                               @Nullable ResourceLocation sourceChildTable,
                               List<LootConditionInfo> conditions,
+                              List<LootConditionInfo> inheritedConditions,
                               boolean injected) {
-            this(id, displayName, tooltipHint, probability, signature, sourceChildTable, conditions, List.of(), injected);
+            this(id, displayName, tooltipHint, probability, signature,
+                    List.of(new LootAcquisitionPath(sourceChildTable, conditions, inheritedConditions)), injected);
+        }
+
+        @Nullable
+        public ResourceLocation sourceChildTable() {
+            if (this.acquisitionPaths.isEmpty()) {
+                return null;
+            }
+            ResourceLocation source = this.acquisitionPaths.getFirst().sourceChildTable();
+            for (LootAcquisitionPath path : this.acquisitionPaths) {
+                if (!java.util.Objects.equals(source, path.sourceChildTable())) {
+                    return null;
+                }
+            }
+            return source;
+        }
+
+        public List<LootConditionInfo> conditions() {
+            return this.acquisitionPaths.stream()
+                    .flatMap(path -> path.entryConditions().stream())
+                    .distinct()
+                    .toList();
+        }
+
+        public List<LootConditionInfo> parentTableConditions() {
+            return this.acquisitionPaths.stream()
+                    .flatMap(path -> path.inheritedConditions().stream())
+                    .distinct()
+                    .toList();
         }
 
         /**
@@ -63,8 +138,10 @@ public final class LootTableCatalog {
          * 条件包括：有静态条件分析结果、或 tooltipHint 为近似提示。
          */
         public boolean hasConditions() {
-            if (!this.conditions.isEmpty()) {
-                return true;
+            for (LootAcquisitionPath path : this.acquisitionPaths) {
+                if (path.hasConditions()) {
+                    return true;
+                }
             }
             return this.tooltipHint != null
                     && this.tooltipHint.getString().equals(
@@ -85,7 +162,7 @@ public final class LootTableCatalog {
         ResourceLocation itemId = signature.itemId();
         Component displayName = resolveMergedDisplayName(itemId, signature);
         Component tooltipHint = resolveMergedTooltipHint(signature);
-        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, null, List.of(), List.of(), injected);
+        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, List.of(), injected);
     }
 
     /**

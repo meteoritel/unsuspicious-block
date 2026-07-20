@@ -141,8 +141,7 @@ public final class LootProbabilitySimulator {
 
             simulatedItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature(), item.sourceChildTable(), item.conditions(),
-                    item.parentTableConditions(), false));
+                    probability, item.signature(), item.acquisitionPaths(), false));
         }
 
         // 追加模拟期发现的注入条目

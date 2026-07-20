@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -89,30 +90,7 @@ public final class JournalTooltipBuilder {
                     .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
         }
 
-        // 条件信息（树形结构，递归渲染）
-        if (!data.conditions().isEmpty()) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.conditions_header")
-                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
-            appendConditionTree(lines, data.conditions(), "");
-        }
-
-        // 子表条件（来自 loot_table 引用条目的 conditions）
-        if (!data.parentTableConditions().isEmpty()) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")
-                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
-            appendConditionTree(lines, data.parentTableConditions(), "");
-        }
-
-        // 子表来源标注
-        if (data.sourceChildTable() != null
-                && LootTableNames.isArchaeologyLootTable(data.sourceChildTable())) {
-            Component childTableName = LootTableNames.resolveDisplayName(data.sourceChildTable());
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
-                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
-        }
+        appendAcquisitionPaths(lines, data.acquisitionPaths());
 
         return lines;
     }
@@ -123,6 +101,60 @@ public final class JournalTooltipBuilder {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
         }
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
+    }
+
+    private static void appendAcquisitionPaths(List<Component> lines, List<LootAcquisitionPath> paths) {
+        if (paths.isEmpty()) {
+            return;
+        }
+        if (paths.size() == 1) {
+            appendSinglePath(lines, paths.getFirst());
+            return;
+        }
+
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_header")
+                .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+        for (int i = 0; i < paths.size(); i++) {
+            LootAcquisitionPath path = paths.get(i);
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.acquisition_path", i + 1)
+                    .copy().withStyle(ChatFormatting.AQUA));
+            if (path.hasConditions()) {
+                appendConditionTree(lines, path.allConditions(), "  ");
+            } else if (path.sourceChildTable() == null) {
+                lines.add(Component.literal("  ").append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.acquisition_path_unconditional"))
+                        .withStyle(ChatFormatting.GREEN));
+            }
+            appendSourceTable(lines, path.sourceChildTable(), "  ");
+        }
+    }
+
+    private static void appendSinglePath(List<Component> lines, LootAcquisitionPath path) {
+        if (!path.entryConditions().isEmpty()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.conditions_header")
+                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+            appendConditionTree(lines, path.entryConditions(), "");
+        }
+        if (!path.inheritedConditions().isEmpty()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.inherited_conditions_header")
+                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+            appendConditionTree(lines, path.inheritedConditions(), "");
+        }
+        appendSourceTable(lines, path.sourceChildTable(), "");
+    }
+
+    private static void appendSourceTable(List<Component> lines, ResourceLocation sourceChildTable, String prefix) {
+        if (sourceChildTable == null || !LootTableNames.isArchaeologyLootTable(sourceChildTable)) {
+            return;
+        }
+        Component childTableName = LootTableNames.resolveDisplayName(sourceChildTable);
+        lines.add(Component.literal(prefix).append(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName))
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
     }
 
     // 递归渲染条件树到 tooltip 行列表

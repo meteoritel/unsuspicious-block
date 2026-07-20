@@ -57,8 +57,7 @@ public record ArchaeologyJournalEntry(
             }
             items.add(new ArchaeologyEntryItem(itemDefinition.id(), itemDefinition.displayName(),
                     itemDefinition.tooltipHint(), itemDefinition.probability(), unlocked, count,
-                    itemDefinition.signature(), itemDefinition.sourceChildTable(),
-                    itemDefinition.conditions(), itemDefinition.parentTableConditions(),
+                    itemDefinition.signature(), itemDefinition.acquisitionPaths(),
                     itemDefinition.injected()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();

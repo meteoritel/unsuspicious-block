@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.network.payload.s2c;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -49,20 +50,14 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 }
                 buf.writeUtf(item.probability());
                 buf.writeUtf(item.signature().toStoredKey());
-                // 子表来源（null=根表直接产出）
-                buf.writeBoolean(item.sourceChildTable() != null);
-                if (item.sourceChildTable() != null) {
-                    buf.writeResourceLocation(item.sourceChildTable());
-                }
-                // conditions（含树形 children，递归编码）
-                buf.writeVarInt(item.conditions().size());
-                for (LootConditionInfo info : item.conditions()) {
-                    encodeConditionInfo(buf, info);
-                }
-                // parentTableConditions（子表条目条件，递归编码）
-                buf.writeVarInt(item.parentTableConditions().size());
-                for (LootConditionInfo info : item.parentTableConditions()) {
-                    encodeConditionInfo(buf, info);
+                buf.writeVarInt(item.acquisitionPaths().size());
+                for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                    buf.writeBoolean(path.sourceChildTable() != null);
+                    if (path.sourceChildTable() != null) {
+                        buf.writeResourceLocation(path.sourceChildTable());
+                    }
+                    encodeConditionList(buf, path.entryConditions());
+                    encodeConditionList(buf, path.inheritedConditions());
                 }
                 // 外部注入标记
                 buf.writeBoolean(item.injected());
@@ -91,24 +86,20 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 if (signature == null) {
                     signature = LootResultSignature.plain(itemId);
                 }
-                // 子表来源（null=根表直接产出）
-                ResourceLocation sourceChildTable = buf.readBoolean()
-                        ? buf.readResourceLocation()
-                        : null;
-                // conditions（含树形 children，递归解码）
-                int conditionCount = buf.readVarInt();
-                List<LootConditionInfo> conditions = new ArrayList<>(conditionCount);
-                for (int k = 0; k < conditionCount; k++) {
-                    conditions.add(decodeConditionInfo(buf));
-                }
-                // parentTableConditions（子表条目条件，递归解码）
-                int parentConditionCount = buf.readVarInt();
-                List<LootConditionInfo> parentTableConditions = new ArrayList<>(parentConditionCount);
-                for (int k = 0; k < parentConditionCount; k++) {
-                    parentTableConditions.add(decodeConditionInfo(buf));
+                int pathCount = buf.readVarInt();
+                List<LootAcquisitionPath> acquisitionPaths = new ArrayList<>(pathCount);
+                for (int k = 0; k < pathCount; k++) {
+                    ResourceLocation sourceChildTable = buf.readBoolean()
+                            ? buf.readResourceLocation()
+                            : null;
+                    List<LootConditionInfo> entryConditions = decodeConditionList(buf);
+                    List<LootConditionInfo> inheritedConditions = decodeConditionList(buf);
+                    acquisitionPaths.add(new LootAcquisitionPath(
+                            sourceChildTable, entryConditions, inheritedConditions));
                 }
                 boolean injected = buf.readBoolean();
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability, signature, sourceChildTable, conditions, parentTableConditions, injected));
+                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability,
+                        signature, acquisitionPaths, injected));
             }
             int simulationCount = buf.readVarInt();
             catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));
@@ -128,6 +119,22 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
         for (LootConditionInfo child : info.children()) {
             encodeConditionInfo(buf, child);
         }
+    }
+
+    private static void encodeConditionList(RegistryFriendlyByteBuf buf, List<LootConditionInfo> conditions) {
+        buf.writeVarInt(conditions.size());
+        for (LootConditionInfo condition : conditions) {
+            encodeConditionInfo(buf, condition);
+        }
+    }
+
+    private static List<LootConditionInfo> decodeConditionList(RegistryFriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        List<LootConditionInfo> conditions = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            conditions.add(decodeConditionInfo(buf));
+        }
+        return conditions;
     }
 
     // 递归解码单个 LootConditionInfo（含 children）

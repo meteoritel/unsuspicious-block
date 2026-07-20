@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.loottable.analysis;
 
 import net.minecraft.advancements.critereon.EntityPredicate;
 import net.minecraft.advancements.critereon.EntitySubPredicate;
+import net.minecraft.advancements.critereon.FishingHookPredicate;
 import net.minecraft.advancements.critereon.LocationPredicate;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -60,9 +61,9 @@ public final class LootConditionHandlers {
 
         // 类别 C：纯运行时
         register("entity_properties", new EntityPropertiesHandler());
-        register("killed_by_player", RuntimeOnlyHandler.INSTANCE);
-        register("entity_scores", RuntimeOnlyHandler.INSTANCE);
-        register("damage_source_properties", RuntimeOnlyHandler.INSTANCE);
+        register("killed_by_player", runtimeDesc("killed_by_player"));
+        register("entity_scores", runtimeDesc("entity_scores"));
+        register("damage_source_properties", runtimeDesc("damage_source_properties"));
 
         // 类别 D：组合条件
         register("inverted", new InvertedHandler());
@@ -125,15 +126,26 @@ public final class LootConditionHandlers {
         }
         LootConditionHandler.UncertaintyLevel maxLevel = LootConditionHandler.UncertaintyLevel.NONE;
         for (LootConditionInfo info : conditions) {
-            LootConditionHandler handler = get(info.conditionType());
-            if (handler != null) {
-                LootConditionHandler.UncertaintyLevel level = handler.uncertaintyLevel();
-                if (level.ordinal() > maxLevel.ordinal()) {
-                    maxLevel = level;
-                }
+            LootConditionHandler.UncertaintyLevel level = uncertaintyLevelOf(info);
+            if (level.ordinal() > maxLevel.ordinal()) {
+                maxLevel = level;
             }
         }
         return maxLevel;
+    }
+
+    private static LootConditionHandler.UncertaintyLevel uncertaintyLevelOf(LootConditionInfo info) {
+        LootConditionHandler handler = get(info.conditionType());
+        LootConditionHandler.UncertaintyLevel level = handler != null
+                ? handler.uncertaintyLevel()
+                : LootConditionHandler.UncertaintyLevel.RUNTIME;
+        for (LootConditionInfo child : info.children()) {
+            LootConditionHandler.UncertaintyLevel childLevel = uncertaintyLevelOf(child);
+            if (childLevel.ordinal() > level.ordinal()) {
+                level = childLevel;
+            }
+        }
+        return level;
     }
 
     /**
@@ -145,16 +157,27 @@ public final class LootConditionHandlers {
     public static List<LootConditionInfo> analyzeAll(List<LootItemCondition> conditions) {
         List<LootConditionInfo> results = new ArrayList<>();
         for (LootItemCondition condition : conditions) {
+            if (condition == null) {
+                results.add(fallbackInfo(null));
+                continue;
+            }
             ResourceLocation conditionId = BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(condition.getType());
             LootConditionHandler handler = get(conditionId);
             if (handler != null) {
-                LootConditionInfo info = handler.analyze(condition);
+                LootConditionInfo info;
+                try {
+                    info = handler.analyze(condition);
+                } catch (RuntimeException exception) {
+                    info = fallbackInfo(conditionId);
+                }
                 if (info != null) {
                     results.add(info);
+                } else {
+                    results.add(fallbackInfo(conditionId));
                 }
             } else if (conditionId != null) {
                 // 两级 fallback：未知条件生成通用描述
-                results.add(generateFallbackInfo(conditionId));
+                results.add(fallbackInfo(conditionId));
             }
         }
         return results;
@@ -168,7 +191,7 @@ public final class LootConditionHandlers {
     public static boolean hasAnyUncertainty(List<LootConditionInfo> conditions) {
         for (LootConditionInfo info : conditions) {
             LootConditionHandler handler = get(info.conditionType());
-            if (handler != null && handler.addsUncertainty()) {
+            if (handler == null || handler.addsUncertainty()) {
                 return true;
             }
         }
@@ -176,10 +199,12 @@ public final class LootConditionHandlers {
     }
 
     /** 为未知条件生成通用 fallback 描述 */
-    private static LootConditionInfo generateFallbackInfo(ResourceLocation conditionId) {
-        return new LootConditionInfo(conditionId,
-                Component.translatable(I18N_FALLBACK_PREFIX
-                        + conditionId.getNamespace() + "." + conditionId.getPath()),
+    static LootConditionInfo fallbackInfo(@Nullable ResourceLocation conditionId) {
+        ResourceLocation resolvedId = conditionId != null
+                ? conditionId
+                : ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "unknown");
+        return new LootConditionInfo(resolvedId,
+                Component.translatable(I18N_FALLBACK_PREFIX + "unknown", resolvedId.toString()),
                 null);
     }
 
@@ -194,13 +219,19 @@ public final class LootConditionHandlers {
     @Nullable
     @SuppressWarnings("unchecked")
     private static <T> T reflectField(Object obj) {
-        try {
-            Field field = obj.getClass().getDeclaredField("terms");
-            field.setAccessible(true);
-            return (T) field.get(obj);
-        } catch (Exception e) {
-            return null;
+        Class<?> type = obj.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField("terms");
+                field.setAccessible(true);
+                return (T) field.get(obj);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                return null;
+            }
         }
+        return null;
     }
 
     // ==================== 通用简单描述 handler 工厂 ====================
@@ -222,6 +253,26 @@ public final class LootConditionHandlers {
             @Override
             public UncertaintyLevel uncertaintyLevel() {
                 return uncertain ? UncertaintyLevel.PROBABILISTIC : UncertaintyLevel.NONE;
+            }
+        };
+    }
+
+    private static LootConditionHandler runtimeDesc(String i18nKey) {
+        return new LootConditionHandler() {
+            @Override
+            public LootConditionInfo analyze(LootItemCondition condition) {
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + i18nKey), null);
+            }
+
+            @Override
+            public boolean addsUncertainty() {
+                return true;
+            }
+
+            @Override
+            public UncertaintyLevel uncertaintyLevel() {
+                return UncertaintyLevel.RUNTIME;
             }
         };
     }
@@ -328,7 +379,7 @@ public final class LootConditionHandlers {
             List<Component> names = new ArrayList<>();
             biomeSet.unwrap().ifLeft(tag -> {
                 // 标签引用
-                names.add(Component.literal("#" + tag.location().getPath()));
+                names.add(Component.literal("#" + tag.location()));
             }).ifRight(directHolders -> {
                 for (Holder<Biome> holder : directHolders) {
                     holder.unwrapKey().ifPresent(key -> {
@@ -357,27 +408,6 @@ public final class LootConditionHandlers {
 
     // ==================== 类别 C：纯运行时 ====================
 
-    /** 纯运行时条件：analyze 始终返回 null */
-    private static final class RuntimeOnlyHandler implements LootConditionHandler {
-        static final RuntimeOnlyHandler INSTANCE = new RuntimeOnlyHandler();
-
-        @Override
-        @Nullable
-        public LootConditionInfo analyze(LootItemCondition condition) {
-            return null;
-        }
-
-        @Override
-        public boolean addsUncertainty() {
-            return true;
-        }
-
-        @Override
-        public UncertaintyLevel uncertaintyLevel() {
-            return UncertaintyLevel.RUNTIME;
-        }
-    }
-
     /** 处理 entity_properties：解析 type_specific 中的已知谓词（如 fishing_hook 的 in_open_water） */
     private static final class EntityPropertiesHandler implements LootConditionHandler {
         @Override
@@ -388,27 +418,33 @@ public final class LootConditionHandlers {
             }
             Optional<EntityPredicate> predicate = entityCondition.predicate();
             if (predicate.isEmpty()) {
-                return null;
+                return genericInfo(condition);
             }
             EntityPredicate entityPred = predicate.get();
             Optional<EntitySubPredicate> subPredicate = entityPred.subPredicate();
             if (subPredicate.isEmpty()) {
-                return null;
+                return genericInfo(condition);
             }
-            // 通过 subPredicate 的 codec key 判断类型
-            ResourceLocation subType = BuiltInRegistries.ENTITY_SUB_PREDICATE_TYPE.getKey(
-                    subPredicate.get().codec());
-            if (subType == null) {
-                return null;
-            }
-            // 仅处理 fishing_hook 子谓词
-            if ("fishing_hook".equals(subType.getPath()) && "minecraft".equals(subType.getNamespace())) {
-                // FishingHookPredicate 有 inOpenWater 字段，通过反射或直接访问
-                // 由于无法直接访问具体类型，此处回退为通用描述
+            EntitySubPredicate sub = subPredicate.get();
+            // 使用 instanceof 判断具体子谓词类型，读取对应字段
+            if (sub instanceof FishingHookPredicate fishingHook) {
+                String key;
+                if (fishingHook.inOpenWater().isPresent()) {
+                    key = fishingHook.inOpenWater().get()
+                            ? "entity_properties_fishing_open_water"
+                            : "entity_properties_fishing_not_open_water";
+                } else {
+                    key = "entity_properties_fishing";
+                }
                 return new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + "entity_properties_fishing"), null);
+                        Component.translatable(I18N_PREFIX + key), null);
             }
-            return null;
+            return genericInfo(condition);
+        }
+
+        private LootConditionInfo genericInfo(LootItemCondition condition) {
+            return new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "entity_properties"), null);
         }
 
         @Override
@@ -435,11 +471,14 @@ public final class LootConditionHandlers {
             ResourceLocation childId = BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(term.getType());
             LootConditionHandler childHandler = get(childId);
             if (childHandler == null) {
-                return null;
+                LootConditionInfo childInfo = fallbackInfo(childId);
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "inverted", childInfo.description()),
+                        null, List.of(childInfo));
             }
             LootConditionInfo childInfo = childHandler.analyze(term);
             if (childInfo == null) {
-                return null;
+                childInfo = fallbackInfo(childId);
             }
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "inverted", childInfo.description()),
@@ -472,8 +511,8 @@ public final class LootConditionHandlers {
             if (children.isEmpty()) {
                 return null;
             }
-            Component desc = buildCompositeDescription("any_of", children);
-            return new LootConditionInfo(keyOf(condition), desc, null, children);
+            return new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "any_of"), null, children);
         }
 
         @Override
@@ -501,8 +540,8 @@ public final class LootConditionHandlers {
             if (children.isEmpty()) {
                 return null;
             }
-            Component desc = buildCompositeDescription("all_of", children);
-            return new LootConditionInfo(keyOf(condition), desc, null, children);
+            return new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "all_of"), null, children);
         }
 
         @Override
@@ -514,21 +553,6 @@ public final class LootConditionHandlers {
         public UncertaintyLevel uncertaintyLevel() {
             return UncertaintyLevel.PROBABILISTIC;
         }
-    }
-
-    /** 构建组合条件的描述文本 */
-    private static Component buildCompositeDescription(String typeKey, List<LootConditionInfo> children) {
-        Component header = Component.translatable(I18N_PREFIX + typeKey);
-        String separator = typeKey.equals("any_of") ? "  " + Component.translatable(I18N_PREFIX + "or").getString() + " "
-                : "  " + Component.translatable(I18N_PREFIX + "and").getString() + " ";
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < children.size(); i++) {
-            if (i > 0) {
-                builder.append(separator);
-            }
-            builder.append(children.get(i).description().getString());
-        }
-        return Component.literal(header.getString() + ": " + builder);
     }
 
     // ==================== 类别 E：引用 ====================

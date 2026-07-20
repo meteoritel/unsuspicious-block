@@ -6,15 +6,19 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.logging.LogUtils;
+import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.FileToIdConverter;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -72,7 +76,9 @@ public final class LootTableJsonParser {
     /**
      * 从 ResourceManager 加载所有匹配 filter 的战利品表。
      */
-    public Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager) {
+    public Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager,
+                                                       HolderLookup.Provider registries) {
+        DynamicOps<JsonElement> lootOps = RegistryOps.create(JsonOps.INSTANCE, registries);
         Map<ResourceLocation, Resource> allResources = LOOT_TABLES.listMatchingResources(resourceManager);
         List<Map.Entry<ResourceLocation, Resource>> orderedResources = new ArrayList<>();
         for (Map.Entry<ResourceLocation, Resource> entry : allResources.entrySet()) {
@@ -88,7 +94,8 @@ public final class LootTableJsonParser {
             ResourceLocation tableId = entry.getKey();
             try (BufferedReader reader = entry.getValue().openAsReader()) {
                 JsonElement element = JsonParser.parseReader(reader);
-                TableDefinition definition = parseTable(tableId, element, resourceManager, new LinkedHashSet<>());
+                TableDefinition definition = parseTable(tableId, element, resourceManager,
+                        new LinkedHashSet<>(), lootOps);
                 if (!definition.items().isEmpty()) {
                     tables.put(tableId, definition);
                 }
@@ -103,10 +110,11 @@ public final class LootTableJsonParser {
     // ==================== 解析核心 ====================
 
     private TableDefinition parseTable(ResourceLocation tableId, JsonElement element,
-                                       ResourceManager resourceManager, Set<ResourceLocation> expandingStack) {
+                                       ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                                       DynamicOps<JsonElement> lootOps) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
-        boolean[] hasConditions = new boolean[1];
-        ParseContext ctx = new ParseContext(items, hasConditions, resourceManager, expandingStack, null, List.of());
+        ParseContext ctx = new ParseContext(items, resourceManager, expandingStack,
+                lootOps, null, List.of(), List.of());
         parseNode(element, ctx);
 
         List<ItemDefinition> definitions = new ArrayList<>();
@@ -145,11 +153,30 @@ public final class LootTableJsonParser {
         }
 
         JsonObject object = element.getAsJsonObject();
-        if (object.has("pools") && parseArrayIfPresent(object, "pools", ctx)) {
+        if (object.has("pools") && object.get("pools").isJsonArray()) {
+            List<JsonElement> previousFunctions = ctx.inheritedFunctions;
+            try {
+                ctx.inheritedFunctions = prependFunctions(previousFunctions, object);
+                parseArray(object.getAsJsonArray("pools"), ctx);
+            } finally {
+                ctx.inheritedFunctions = previousFunctions;
+            }
             return;
         }
 
-        if (object.has("entries") && parseArrayIfPresent(object, "entries", ctx)) {
+        // 处理 entries：先捕获 pool 级别的 conditions，临时合并到 parentTableConditions
+        if (object.has("entries") && object.get("entries").isJsonArray()) {
+            List<LootConditionInfo> poolConditions = parseConditions(object, ctx.lootOps);
+            List<LootConditionInfo> previousParentConditions = ctx.parentTableConditions;
+            List<JsonElement> previousFunctions = ctx.inheritedFunctions;
+            try {
+                pushInheritedConditions(ctx, poolConditions);
+                ctx.inheritedFunctions = prependFunctions(previousFunctions, object);
+                parseArray(object.getAsJsonArray("entries"), ctx);
+            } finally {
+                ctx.parentTableConditions = previousParentConditions;
+                ctx.inheritedFunctions = previousFunctions;
+            }
             return;
         }
 
@@ -175,71 +202,104 @@ public final class LootTableJsonParser {
         String type = LootParseUtil.getString(object, "type", "");
 
         // 分析 conditions 数组——使用原版 Codec 解析为类型化对象
-        List<LootConditionInfo> entryConditions = List.of();
-        if (object.has("conditions") && object.get("conditions").isJsonArray()) {
-            List<LootItemCondition> parsedConditions = new ArrayList<>();
-            for (JsonElement element : object.getAsJsonArray("conditions")) {
-                LootItemCondition.DIRECT_CODEC.parse(JsonOps.INSTANCE, element)
-                        .result()
-                        .ifPresent(parsedConditions::add);
-            }
-            entryConditions = LootConditionHandlers.analyzeAll(parsedConditions);
-        }
-
-        // 判断是否引入不确定性
-        boolean hasUncertainty = LootConditionHandlers.hasAnyUncertainty(entryConditions)
-                || object.has("bonus_rolls")
-                || (object.has("rolls") && !isFixedRolls(object));
+        List<LootConditionInfo> entryConditions = parseConditions(object, ctx.lootOps);
 
         switch (LootParseUtil.normalizeType(type)) {
-            case "item" -> {
-                if (hasUncertainty) {
-                    ctx.hasConditions[0] = true;
-                }
-                parseItem(object, ctx, entryConditions);
-            }
-            case "tag" -> {
-                if (hasUncertainty) {
-                    ctx.hasConditions[0] = true;
-                }
-                parseTag(object, ctx, entryConditions);
-            }
+            case "item" -> parseItem(object, ctx, entryConditions);
+            case "tag" -> parseTag(object, ctx, entryConditions);
             case "loot_table" -> {
-                ctx.hasConditions[0] = true;
                 expandLootTableReference(object, ctx, entryConditions);
             }
             case "group", "alternatives", "sequence" -> {
-                ctx.hasConditions[0] = true;
-                parseArrayIfPresent(object, "children", ctx);
+                parseChildrenWithInheritedConditions(object, ctx, entryConditions);
             }
             default -> {
-                ctx.hasConditions[0] = true;
-                if (!parseArrayIfPresent(object, "children", ctx)) {
-                    parseArrayIfPresent(object, "entries", ctx);
+                List<LootConditionInfo> previousParentConditions = pushInheritedConditions(ctx, entryConditions);
+                try {
+                    if (!parseArrayIfPresent(object, "children", ctx)) {
+                        parseArrayIfPresent(object, "entries", ctx);
+                    }
+                } finally {
+                    ctx.parentTableConditions = previousParentConditions;
                 }
             }
         }
     }
 
-    // 判断 rolls 是否为固定值（非范围/非随机）
-    private static boolean isFixedRolls(JsonObject object) {
-        JsonElement rollsElement = object.get("rolls");
-        if (rollsElement == null) {
-            return false;
+    private void parseChildrenWithInheritedConditions(JsonObject object, ParseContext ctx,
+                                                       List<LootConditionInfo> entryConditions) {
+        List<LootConditionInfo> previousParentConditions = pushInheritedConditions(ctx, entryConditions);
+        try {
+            parseArrayIfPresent(object, "children", ctx);
+        } finally {
+            ctx.parentTableConditions = previousParentConditions;
         }
-        if (rollsElement.isJsonPrimitive() && rollsElement.getAsJsonPrimitive().isNumber()) {
-            return true;
+    }
+
+    // 从 JSON 对象中解析 conditions 数组，返回可读的条件信息列表
+    private static List<LootConditionInfo> parseConditions(JsonObject object, DynamicOps<JsonElement> lootOps) {
+        if (!object.has("conditions") || !object.get("conditions").isJsonArray()) {
+            return List.of();
         }
-        // 若为对象（如 {"min": 1, "max": 1}），检查 min==max
-        if (rollsElement.isJsonObject()) {
-            JsonObject rollsObj = rollsElement.getAsJsonObject();
-            if (rollsObj.has("min") && rollsObj.has("max")
-                    && rollsObj.get("min").isJsonPrimitive()
-                    && rollsObj.get("max").isJsonPrimitive()) {
-                return rollsObj.get("min").getAsInt() == rollsObj.get("max").getAsInt();
+        List<LootItemCondition> parsedConditions = new ArrayList<>();
+        for (JsonElement element : object.getAsJsonArray("conditions")) {
+            var result = LootItemCondition.DIRECT_CODEC.parse(lootOps, element);
+            result.result().ifPresentOrElse(
+                    parsedConditions::add,
+                    () -> {
+                        ResourceLocation conditionId = extractTypeId(element, "condition");
+                        String conditionType = conditionId != null ? conditionId.toString() : "<unknown>";
+                        LOGGER.warn("解析战利品条件失败: condition={}, error={}",
+                                conditionType, result.error().map(Object::toString).orElse("unknown"));
+                        parsedConditions.add(null);
+                    });
+        }
+        List<LootConditionInfo> conditions = new ArrayList<>();
+        int parsedIndex = 0;
+        for (JsonElement element : object.getAsJsonArray("conditions")) {
+            LootItemCondition condition = parsedConditions.get(parsedIndex++);
+            if (condition != null) {
+                conditions.addAll(LootConditionHandlers.analyzeAll(List.of(condition)));
+            } else {
+                conditions.add(LootConditionHandlers.fallbackInfo(extractTypeId(element, "condition")));
             }
         }
-        return false;
+        return conditions;
+    }
+
+    @Nullable
+    private static ResourceLocation extractTypeId(JsonElement element, String fieldName) {
+        if (!element.isJsonObject()) {
+            return null;
+        }
+        JsonElement typeElement = element.getAsJsonObject().get(fieldName);
+        if (typeElement == null || !typeElement.isJsonPrimitive()
+                || !typeElement.getAsJsonPrimitive().isString()) {
+            return null;
+        }
+        return ResourceLocation.tryParse(typeElement.getAsString());
+    }
+
+    private static List<LootConditionInfo> pushInheritedConditions(ParseContext ctx,
+                                                                    List<LootConditionInfo> conditions) {
+        List<LootConditionInfo> previousConditions = ctx.parentTableConditions;
+        if (!conditions.isEmpty()) {
+            List<LootConditionInfo> merged = new ArrayList<>(previousConditions);
+            merged.addAll(conditions);
+            ctx.parentTableConditions = List.copyOf(merged);
+        }
+        return previousConditions;
+    }
+
+    private static List<JsonElement> prependFunctions(List<JsonElement> inheritedFunctions, JsonObject object) {
+        if (!object.has("functions") || !object.get("functions").isJsonArray()) {
+            return inheritedFunctions;
+        }
+        List<JsonElement> functions = new ArrayList<>(
+                inheritedFunctions.size() + object.getAsJsonArray("functions").size());
+        object.getAsJsonArray("functions").forEach(functions::add);
+        functions.addAll(inheritedFunctions);
+        return List.copyOf(functions);
     }
 
     private void expandLootTableReference(JsonObject object, ParseContext ctx,
@@ -260,18 +320,19 @@ public final class LootTableJsonParser {
             JsonElement referencedElement = JsonParser.parseReader(reader);
             ctx.expandingStack.add(referencedId);
             ResourceLocation previousSource = ctx.sourceChildTable;
-            ctx.sourceChildTable = referencedId;
-            // 将当前 loot_table 条目的条件追加到父条件列表，子表内物品继承这些条件
             List<LootConditionInfo> previousParentConditions = ctx.parentTableConditions;
-            if (!entryConditions.isEmpty()) {
-                List<LootConditionInfo> merged = new ArrayList<>(previousParentConditions);
-                merged.addAll(entryConditions);
-                ctx.parentTableConditions = merged;
+            List<JsonElement> previousFunctions = ctx.inheritedFunctions;
+            try {
+                ctx.sourceChildTable = referencedId;
+                pushInheritedConditions(ctx, entryConditions);
+                ctx.inheritedFunctions = prependFunctions(previousFunctions, object);
+                parseNode(referencedElement, ctx);
+            } finally {
+                ctx.parentTableConditions = previousParentConditions;
+                ctx.inheritedFunctions = previousFunctions;
+                ctx.sourceChildTable = previousSource;
+                ctx.expandingStack.remove(referencedId);
             }
-            parseNode(referencedElement, ctx);
-            ctx.parentTableConditions = previousParentConditions;
-            ctx.sourceChildTable = previousSource;
-            ctx.expandingStack.remove(referencedId);
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("展开 loot_table 引用 {} 失败", referencedId, exception);
         }
@@ -283,10 +344,10 @@ public final class LootTableJsonParser {
             return;
         }
 
-        ResolvedEntry resolved = resolveEntry(itemId, object, ctx.hasConditions, entryConditions);
+        ResolvedEntry resolved = resolveEntry(itemId, object, ctx, entryConditions);
         ItemDefinitionBuilder builder = ctx.items.computeIfAbsent(resolved.signature().toStoredKey(),
-                ignored -> createBuilder(resolved, ctx.sourceChildTable, ctx.parentTableConditions));
-        builder.mergeResolved(resolved);
+                ignored -> createBuilder(resolved));
+        builder.mergeResolved(resolved, createPath(resolved, ctx));
     }
 
     private void parseTag(JsonObject object, ParseContext ctx, List<LootConditionInfo> entryConditions) {
@@ -310,35 +371,47 @@ public final class LootTableJsonParser {
         }
 
         for (ResourceLocation itemId : itemIds) {
-            ResolvedEntry resolved = resolveEntry(itemId, object, ctx.hasConditions, entryConditions);
+            ResolvedEntry resolved = resolveEntry(itemId, object, ctx, entryConditions);
             ItemDefinitionBuilder builder = ctx.items.computeIfAbsent(resolved.signature().toStoredKey(),
-                    ignored -> createBuilder(resolved, ctx.sourceChildTable, ctx.parentTableConditions));
-            builder.mergeResolved(resolved);
+                    ignored -> createBuilder(resolved));
+            builder.mergeResolved(resolved, createPath(resolved, ctx));
         }
     }
 
     // ==================== Function 解析 ====================
 
-    private ResolvedEntry resolveEntry(ResourceLocation baseItemId, JsonObject object, boolean[] hasConditions,
+    private ResolvedEntry resolveEntry(ResourceLocation baseItemId, JsonObject object, ParseContext ctx,
                                        List<LootConditionInfo> entryConditions) {
         ItemStack previewStack = new ItemStack(BuiltInRegistries.ITEM.get(baseItemId));
         LootResultSignature signature = LootResultSignature.plain(baseItemId);
         boolean entryHasConditions = !entryConditions.isEmpty();
+        List<LootConditionInfo> resolvedConditions = new ArrayList<>(entryConditions);
         List<Component> functionHints = new ArrayList<>();
 
-        if (object.has("functions") && object.get("functions").isJsonArray()) {
-            for (JsonElement functionElement : object.getAsJsonArray("functions")) {
+        List<JsonElement> functions = prependFunctions(ctx.inheritedFunctions, object);
+        if (!functions.isEmpty()) {
+            for (JsonElement functionElement : functions) {
                 if (!functionElement.isJsonObject()) {
                     entryHasConditions = true;
                     continue;
                 }
 
+                List<LootConditionInfo> functionConditions = parseConditions(
+                        functionElement.getAsJsonObject(), ctx.lootOps);
+                if (!functionConditions.isEmpty()) {
+                    entryHasConditions = true;
+                    resolvedConditions.addAll(functionConditions);
+                }
+
                 // 使用原版 Codec 解析 function
-                LootItemFunction function = LootItemFunctions.TYPED_CODEC
-                        .parse(JsonOps.INSTANCE, functionElement)
-                        .result().orElse(null);
+                var decodeResult = LootItemFunctions.TYPED_CODEC.parse(ctx.lootOps, functionElement);
+                LootItemFunction function = decodeResult.result().orElse(null);
                 if (function == null) {
                     entryHasConditions = true;
+                    functionHints.add(unknownFunctionHint(extractTypeId(functionElement, "function")));
+                    LOGGER.warn("解析战利品函数失败: function={}, error={}",
+                            String.valueOf(extractTypeId(functionElement, "function")),
+                            decodeResult.error().map(Object::toString).orElse("unknown"));
                     continue;
                 }
 
@@ -346,26 +419,47 @@ public final class LootTableJsonParser {
                 LootFunctionHandler handler = LootFunctionHandlers.get(functionId);
 
                 if (handler != null) {
-                    ItemStack result = handler.apply(previewStack, function);
-                    if (result != null) {
-                        previewStack = result;
-                    } else {
-                        entryHasConditions = true;
-                        Component hint = handler.describeHint(function);
-                        if (hint != null) {
-                            functionHints.add(hint);
+                    try {
+                        if (!functionConditions.isEmpty()) {
+                            Component hint = handler.describeHint(function);
+                            if (hint != null) {
+                                functionHints.add(hint);
+                            }
+                            continue;
                         }
-                    }
-                    LootResultSignature derived = handler.deriveSignature(previewStack, currentItemId(previewStack));
-                    if (derived != null) {
-                        signature = derived;
-                    }
-                    if (handler.addsRandomness()) {
+                        ItemStack candidateStack = previewStack.copy();
+                        ItemStack result = handler.apply(candidateStack, function);
+                        if (result != null) {
+                            previewStack = result;
+                        } else {
+                            entryHasConditions = true;
+                            Component hint = handler.describeHint(function);
+                            if (hint != null) {
+                                functionHints.add(hint);
+                            }
+                        }
+                        LootResultSignature derived = handler.deriveSignature(
+                                previewStack, currentItemId(previewStack));
+                        if (derived != null) {
+                            signature = derived;
+                        }
+                        if (handler.addsRandomness()) {
+                            entryHasConditions = true;
+                        }
+                    } catch (RuntimeException exception) {
                         entryHasConditions = true;
+                        functionHints.add(unknownFunctionHint(functionId));
+                        if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
+                            String functionName = functionId != null ? functionId.toString() : "unknown";
+                            signature = LootResultSignature.approximateItemOnly(
+                                    currentItemId(previewStack), "handler_error:" + functionName);
+                        }
+                        LOGGER.warn("应用战利品函数处理器失败: function={}", functionId, exception);
                     }
                 } else {
                     // 未知 function：标记为条件 + 近似签名
                     entryHasConditions = true;
+                    functionHints.add(unknownFunctionHint(functionId));
                     if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
                         String functionName = functionId != null ? functionId.toString() : "unknown";
                         signature = LootResultSignature.approximateItemOnly(
@@ -375,9 +469,6 @@ public final class LootTableJsonParser {
             }
         }
 
-        if (entryHasConditions) {
-            hasConditions[0] = true;
-        }
         if (!entryHasConditions && signature.type() == LootResultSignature.SignatureType.PLAIN
                 && !previewStack.getComponentsPatch().isEmpty()) {
             signature = LootResultSignature.componentExact(previewStack);
@@ -394,7 +485,8 @@ public final class LootTableJsonParser {
         } else {
             tooltipHint = resolveItemTooltipHint(entryHasConditions);
         }
-        return new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint, signature, entryConditions);
+        return new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint, signature,
+                List.copyOf(resolvedConditions));
     }
 
     // ==================== 工具方法 ====================
@@ -403,11 +495,13 @@ public final class LootTableJsonParser {
         return BuiltInRegistries.ITEM.getKey(stack.getItem());
     }
 
-    private static ItemDefinitionBuilder createBuilder(ResolvedEntry resolved,
-                                                       @Nullable ResourceLocation sourceChildTable,
-                                                       List<LootConditionInfo> parentTableConditions) {
+    private static ItemDefinitionBuilder createBuilder(ResolvedEntry resolved) {
         return new ItemDefinitionBuilder(resolved.itemId(), resolved.displayName(), resolved.tooltipHint(),
-                resolved.signature(), sourceChildTable, resolved.conditions(), parentTableConditions);
+                resolved.signature());
+    }
+
+    private static LootAcquisitionPath createPath(ResolvedEntry resolved, ParseContext ctx) {
+        return new LootAcquisitionPath(ctx.sourceChildTable, resolved.conditions(), ctx.parentTableConditions);
     }
 
     private static Component resolveItemDisplayName(ItemStack previewStack) {
@@ -426,9 +520,18 @@ public final class LootTableJsonParser {
         if (hints.isEmpty()) return Component.empty();
         Component result = hints.getFirst();
         for (int i = 1; i < hints.size(); i++) {
-            result = Component.literal("").append(result).append("，").append(hints.get(i));
+            result = Component.literal("").append(result)
+                    .append(Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.item_hint.separator"))
+                    .append(hints.get(i));
         }
         return result;
+    }
+
+    private static Component unknownFunctionHint(@Nullable ResourceLocation functionId) {
+        return Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.item_hint.unknown_function",
+                functionId != null ? functionId.toString() : "?");
     }
 
     // ==================== 内部类型 ====================
@@ -436,23 +539,27 @@ public final class LootTableJsonParser {
     /** 解析上下文——将原本分散传递的 5 个可变参数聚合为单一对象，改善方法签名可读性 */
     private static final class ParseContext {
         final Map<String, ItemDefinitionBuilder> items;
-        final boolean[] hasConditions;
         final ResourceManager resourceManager;
         final Set<ResourceLocation> expandingStack;
+        final DynamicOps<JsonElement> lootOps;
         @Nullable
         ResourceLocation sourceChildTable;
         List<LootConditionInfo> parentTableConditions;
+        List<JsonElement> inheritedFunctions;
 
-        ParseContext(Map<String, ItemDefinitionBuilder> items, boolean[] hasConditions,
-                     ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+        ParseContext(Map<String, ItemDefinitionBuilder> items, ResourceManager resourceManager,
+                     Set<ResourceLocation> expandingStack,
+                     DynamicOps<JsonElement> lootOps,
                      @Nullable ResourceLocation sourceChildTable,
-                     List<LootConditionInfo> parentTableConditions) {
+                     List<LootConditionInfo> parentTableConditions,
+                     List<JsonElement> inheritedFunctions) {
             this.items = items;
-            this.hasConditions = hasConditions;
             this.resourceManager = resourceManager;
             this.expandingStack = expandingStack;
+            this.lootOps = lootOps;
             this.sourceChildTable = sourceChildTable;
             this.parentTableConditions = parentTableConditions;
+            this.inheritedFunctions = inheritedFunctions;
         }
     }
 
@@ -467,26 +574,20 @@ public final class LootTableJsonParser {
         @Nullable
         private Component tooltipHint;
         private final LootResultSignature signature;
-        @Nullable
-        private final ResourceLocation sourceChildTable;
-        private final List<LootConditionInfo> conditions;
-        private final List<LootConditionInfo> parentTableConditions;
+        private final List<LootAcquisitionPath> acquisitionPaths = new ArrayList<>();
 
         private ItemDefinitionBuilder(ResourceLocation id, Component displayName,
-                                      @Nullable Component tooltipHint, LootResultSignature signature,
-                                      @Nullable ResourceLocation sourceChildTable,
-                                      List<LootConditionInfo> conditions,
-                                      List<LootConditionInfo> parentTableConditions) {
+                                      @Nullable Component tooltipHint, LootResultSignature signature) {
             this.id = id;
             this.displayName = displayName;
             this.tooltipHint = tooltipHint;
             this.signature = signature;
-            this.sourceChildTable = sourceChildTable;
-            this.conditions = List.copyOf(conditions);
-            this.parentTableConditions = List.copyOf(parentTableConditions);
         }
 
-        private void mergeResolved(ResolvedEntry resolved) {
+        private void mergeResolved(ResolvedEntry resolved, LootAcquisitionPath acquisitionPath) {
+            if (!this.acquisitionPaths.contains(acquisitionPath)) {
+                this.acquisitionPaths.add(acquisitionPath);
+            }
             if (!this.displayName.getString().equals(resolved.displayName().getString())) {
                 this.displayName = LootTableCatalog.resolveMergedDisplayName(this.id, this.signature);
             }
@@ -499,7 +600,7 @@ public final class LootTableJsonParser {
 
         private ItemDefinition build() {
             return new ItemDefinition(this.id, this.displayName, this.tooltipHint, "?",
-                    this.signature, this.sourceChildTable, this.conditions, this.parentTableConditions, false);
+                    this.signature, this.acquisitionPaths, false);
         }
     }
 }

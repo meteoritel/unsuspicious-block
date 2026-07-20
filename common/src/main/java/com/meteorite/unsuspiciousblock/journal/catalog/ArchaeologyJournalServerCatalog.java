@@ -1,8 +1,13 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
@@ -26,6 +31,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -52,6 +58,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ArchaeologyJournalServerCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v2";
 
     /** 已填充概率的目录（随模拟完成渐进增长） */
     private static final Map<ResourceLocation, TableDefinition> catalog = new ConcurrentHashMap<>();
@@ -80,7 +87,7 @@ public final class ArchaeologyJournalServerCatalog {
 
             // 1. 解析原始目录（概率字段为 "?" 占位符）
             Map<ResourceLocation, TableDefinition> parsed =
-                    ArchaeologyJournalCatalog.load(server.getResourceManager());
+                    ArchaeologyJournalCatalog.load(server.getResourceManager(), server.registryAccess());
             rawCatalog.putAll(parsed);
             LOGGER.info("解析到 {} 个考古战利品表原始目录", parsed.size());
 
@@ -194,10 +201,30 @@ public final class ArchaeologyJournalServerCatalog {
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
-                digest.update(entry.getKey().toString().getBytes(StandardCharsets.UTF_8));
-                for (ItemDefinition item : entry.getValue().items()) {
-                    digest.update(item.signature().toStoredKey().getBytes(StandardCharsets.UTF_8));
+            List<TableDefinition> tables = catalog.values().stream()
+                    .sorted(Comparator.comparing(table -> table.id().toString()))
+                    .toList();
+            for (TableDefinition table : tables) {
+                updateDigest(digest, table.id().toString());
+                updateDigest(digest, table.displayName().toString());
+                updateDigest(digest, table.type());
+                updateDigest(digest, Integer.toString(table.simulationCount()));
+                List<ItemDefinition> items = table.items().stream()
+                        .sorted(Comparator.comparing(item -> item.signature().toStoredKey()))
+                        .toList();
+                for (ItemDefinition item : items) {
+                    updateDigest(digest, item.id().toString());
+                    updateDigest(digest, item.displayName().toString());
+                    updateDigest(digest, item.tooltipHint() != null ? item.tooltipHint().toString() : "");
+                    updateDigest(digest, item.probability());
+                    updateDigest(digest, item.signature().toStoredKey());
+                    updateDigest(digest, Boolean.toString(item.injected()));
+                    for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                        updateDigest(digest, path.sourceChildTable() != null
+                                ? path.sourceChildTable().toString() : "");
+                        updateConditionListDigest(digest, path.entryConditions());
+                        updateConditionListDigest(digest, path.inheritedConditions());
+                    }
                 }
             }
             cached = HexFormat.of().formatHex(digest.digest());
@@ -207,6 +234,22 @@ public final class ArchaeologyJournalServerCatalog {
             LOGGER.warn("SHA-256 算法不可用，目录哈希将返回空字符串", e);
             return "";
         }
+    }
+
+    private static void updateConditionListDigest(MessageDigest digest, List<LootConditionInfo> conditions) {
+        updateDigest(digest, Integer.toString(conditions.size()));
+        for (LootConditionInfo condition : conditions) {
+            updateDigest(digest, condition.conditionType().toString());
+            updateDigest(digest, condition.description().toString());
+            updateDigest(digest, condition.probability() != null
+                    ? Float.toString(condition.probability()) : "");
+            updateConditionListDigest(digest, condition.children());
+        }
+    }
+
+    private static void updateDigest(MessageDigest digest, String value) {
+        digest.update(value.getBytes(StandardCharsets.UTF_8));
+        digest.update((byte) 0);
     }
 
     /** 使内存缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载） */
@@ -256,7 +299,7 @@ public final class ArchaeologyJournalServerCatalog {
             String probability = cachedProb != null ? cachedProb : item.probability();
             restoredItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature(), item.sourceChildTable(), item.conditions()));
+                    probability, item.signature(), item.acquisitionPaths(), item.injected()));
         }
 
         // 2. 重建缓存中存在但 JSON 里没有的"注入条目"（GLM / LootTableEvents.MODIFY 模拟期发现）
@@ -295,24 +338,78 @@ public final class ArchaeologyJournalServerCatalog {
         }
 
         for (ResourceLocation tableId : tableIds) {
-            ResourceLocation filePath = LOOT_TABLES.idToFile(tableId);
             try {
                 digest.reset();
-                // 遍历资源栈（含数据包覆盖层），拼接所有层内容做哈希
-                for (Resource resource : resourceManager.getResourceStack(filePath)) {
-                    try (BufferedReader reader = resource.openAsReader()) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            digest.update(line.getBytes(StandardCharsets.UTF_8));
-                        }
-                    }
-                }
+                updateDigest(digest, SIMULATION_CACHE_VERSION);
+                updateDigest(digest, Integer.toString(LootProbabilitySimulator.getSimulationCount()));
+                updateTableResourceDigest(resourceManager, tableId, digest, new HashSet<>());
                 hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
                 LOGGER.warn("计算战利品表 {} 哈希失败，将触发重新模拟", tableId, e);
                 hashes.put(tableId, "");
             }
         }
         return hashes;
+    }
+
+    private static void updateTableResourceDigest(ResourceManager resourceManager, ResourceLocation tableId,
+                                                  MessageDigest digest, Set<ResourceLocation> visited)
+            throws IOException {
+        if (!visited.add(tableId)) {
+            return;
+        }
+        updateDigest(digest, tableId.toString());
+        ResourceLocation filePath = LOOT_TABLES.idToFile(tableId);
+        for (Resource resource : resourceManager.getResourceStack(filePath)) {
+            StringBuilder json = new StringBuilder();
+            try (BufferedReader reader = resource.openAsReader()) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    json.append(line).append('\n');
+                }
+            }
+            String content = json.toString();
+            updateDigest(digest, content);
+            collectReferencedTables(JsonParser.parseString(content), resourceManager, digest, visited);
+        }
+    }
+
+    private static void collectReferencedTables(JsonElement element, ResourceManager resourceManager,
+                                                MessageDigest digest, Set<ResourceLocation> visited)
+            throws IOException {
+        if (element == null || element.isJsonNull()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) {
+                collectReferencedTables(child, resourceManager, digest, visited);
+            }
+            return;
+        }
+        if (!element.isJsonObject()) {
+            return;
+        }
+
+        JsonObject object = element.getAsJsonObject();
+        JsonElement typeElement = object.get("type");
+        if (typeElement != null && typeElement.isJsonPrimitive()
+                && typeElement.getAsJsonPrimitive().isString()
+                && isLootTableEntry(typeElement.getAsString())) {
+            JsonElement valueElement = object.has("value") ? object.get("value") : object.get("name");
+            if (valueElement != null && valueElement.isJsonPrimitive()
+                    && valueElement.getAsJsonPrimitive().isString()) {
+                ResourceLocation referencedId = ResourceLocation.tryParse(valueElement.getAsString());
+                if (referencedId != null) {
+                    updateTableResourceDigest(resourceManager, referencedId, digest, visited);
+                }
+            }
+        }
+        for (Map.Entry<String, JsonElement> child : object.entrySet()) {
+            collectReferencedTables(child.getValue(), resourceManager, digest, visited);
+        }
+    }
+
+    private static boolean isLootTableEntry(String type) {
+        return type.equals("loot_table") || type.equals("minecraft:loot_table");
     }
 }

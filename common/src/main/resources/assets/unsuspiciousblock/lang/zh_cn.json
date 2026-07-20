@@ -291,6 +291,8 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover": "成书: %s / %s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_title_only": "成书: %s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_author_only": "成书作者: %s",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.unknown_function": "未知函数：%s",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.separator": "，",
   "screen.unsuspiciousblock.archaeology_journal.formula.binomial_with_bonus_count": "二项分布加成",
   "screen.unsuspiciousblock.archaeology_journal.formula.ore_drops": "矿石掉落加成",
   "screen.unsuspiciousblock.archaeology_journal.formula.uniform_bonus_count": "均匀加成",
@@ -387,6 +389,10 @@
   "sounds.unsuspiciousblock.suspicious_reader_scan": "可疑解析仪扫描",
 
   "screen.unsuspiciousblock.archaeology_journal.conditions_header": "条件:",
+  "screen.unsuspiciousblock.archaeology_journal.inherited_conditions_header": "继承条件：",
+  "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_header": "获取方式：",
+  "screen.unsuspiciousblock.archaeology_journal.acquisition_path": "方式 %s",
+  "screen.unsuspiciousblock.archaeology_journal.acquisition_path_unconditional": "无额外条件",
   "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header": "子表条件:",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance": "随机概率: %s%%",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance_with_enchanted_bonus": "随机概率 (基础): %s%%",
@@ -406,7 +412,13 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.reference": "引用: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.and": "且",
   "screen.unsuspiciousblock.archaeology_journal.condition.or": "或",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing": "钓鱼条件",
   "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_open_water": "开阔水域",
   "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_not_open_water": "非开阔水域",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties": "需要满足实体状态",
+  "screen.unsuspiciousblock.archaeology_journal.condition.killed_by_player": "需要由玩家击杀",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_scores": "需要满足实体计分条件",
+  "screen.unsuspiciousblock.archaeology_journal.condition.damage_source_properties": "需要匹配伤害来源",
+  "screen.unsuspiciousblock.archaeology_journal.condition.unknown": "未知条件：%s",
   "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 模组联动"
 }

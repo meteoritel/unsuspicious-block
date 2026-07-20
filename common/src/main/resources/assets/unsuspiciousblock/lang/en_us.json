@@ -291,6 +291,8 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover": "Book: %s / %s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_title_only": "Book: %s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_author_only": "Author: %s",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.unknown_function": "Unknown function: %s",
+  "screen.unsuspiciousblock.archaeology_journal.item_hint.separator": ", ",
   "screen.unsuspiciousblock.archaeology_journal.formula.binomial_with_bonus_count": "Binomial Bonus",
   "screen.unsuspiciousblock.archaeology_journal.formula.ore_drops": "Ore Drops Bonus",
   "screen.unsuspiciousblock.archaeology_journal.formula.uniform_bonus_count": "Uniform Bonus",
@@ -386,6 +388,10 @@
   "sounds.unsuspiciousblock.suspicious_reader_scan": "Suspicious Reader scans",
 
   "screen.unsuspiciousblock.archaeology_journal.conditions_header": "Conditions:",
+  "screen.unsuspiciousblock.archaeology_journal.inherited_conditions_header": "Inherited conditions:",
+  "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_header": "Ways to obtain:",
+  "screen.unsuspiciousblock.archaeology_journal.acquisition_path": "Way %s",
+  "screen.unsuspiciousblock.archaeology_journal.acquisition_path_unconditional": "No additional conditions",
   "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header": "Child Table Conditions:",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance": "Random chance: %s%%",
   "screen.unsuspiciousblock.archaeology_journal.condition.random_chance_with_enchanted_bonus": "Random chance (base): %s%%",
@@ -405,7 +411,13 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.reference": "Referenced: %s",
   "screen.unsuspiciousblock.archaeology_journal.condition.and": "and",
   "screen.unsuspiciousblock.archaeology_journal.condition.or": "or",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing": "Fishing Condition",
   "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_open_water": "Open Water",
   "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties_fishing_not_open_water": "Not Open Water",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_properties": "Requires entity state",
+  "screen.unsuspiciousblock.archaeology_journal.condition.killed_by_player": "Requires a player kill",
+  "screen.unsuspiciousblock.archaeology_journal.condition.entity_scores": "Requires entity score values",
+  "screen.unsuspiciousblock.archaeology_journal.condition.damage_source_properties": "Requires a matching damage source",
+  "screen.unsuspiciousblock.archaeology_journal.condition.unknown": "Unknown condition: %s",
   "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: Mod Integration"
 }
