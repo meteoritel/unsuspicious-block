@@ -1,19 +1,13 @@
 package com.meteorite.unsuspiciousblock.loottable.analysis;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
-import com.mojang.serialization.JsonOps;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.Potion;
@@ -21,13 +15,38 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
+import net.minecraft.world.level.storage.loot.functions.SetComponentsFunction;
+import net.minecraft.world.level.storage.loot.functions.SetCustomDataFunction;
+import net.minecraft.world.level.storage.loot.functions.SetItemCountFunction;
+import net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction;
+import net.minecraft.world.level.storage.loot.functions.SetItemFunction;
+import net.minecraft.world.level.storage.loot.functions.SetNameFunction;
+import net.minecraft.world.level.storage.loot.functions.SetPotionFunction;
+import net.minecraft.world.level.storage.loot.functions.SetCustomModelDataFunction;
+import net.minecraft.world.level.storage.loot.functions.SetLoreFunction;
+import net.minecraft.world.level.storage.loot.functions.SetOminousBottleAmplifierFunction;
+import net.minecraft.world.level.storage.loot.functions.SetBookCoverFunction;
+import net.minecraft.world.level.storage.loot.functions.SetFireworksFunction;
+import net.minecraft.world.level.storage.loot.functions.SetStewEffectFunction;
+import net.minecraft.world.level.storage.loot.functions.ExplorationMapFunction;
+import net.minecraft.world.level.storage.loot.functions.ApplyBonusCount;
+import net.minecraft.world.level.storage.loot.functions.LimitCount;
+import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
+import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
+import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
+import net.minecraft.world.level.storage.loot.IntRange;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import net.minecraft.world.effect.MobEffect;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 战利品函数处理器注册表——管理所有已知 loot function 的静态解析逻辑。
@@ -37,14 +56,14 @@ import java.util.Map;
  * 未知 function 在查询时返回 null，由调用方标记为条件 + 近似签名。
  */
 public final class LootFunctionHandlers {
-    private static final Map<String, LootFunctionHandler> REGISTRY = new LinkedHashMap<>();
+    private static final Map<ResourceLocation, LootFunctionHandler> REGISTRY = new LinkedHashMap<>();
     private static final ResourceLocation BOOK_ID = ResourceLocation.fromNamespaceAndPath("minecraft", "book");
 
     /** 返回 null 且 addsRandomness=true 的通用 handler，用于无法静态求值的 function */
     private static final LootFunctionHandler NULL_RANDOM = new LootFunctionHandler() {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return null;
         }
 
@@ -113,28 +132,59 @@ public final class LootFunctionHandlers {
 
     /**
      * 注册自定义 loot function 处理器。
-     * 若已存在同名 handler 则覆盖（允许模组替换默认行为）。
+     *
+     * @param functionPath function 注册名（如 "set_count"，不含 "minecraft:" 前缀）
      */
-    public static void register(String functionName, LootFunctionHandler handler) {
-        REGISTRY.put(functionName, handler);
+    public static void register(String functionPath, LootFunctionHandler handler) {
+        REGISTRY.put(ResourceLocation.fromNamespaceAndPath("minecraft", functionPath), handler);
+    }
+
+    /**
+     * 以完整 ResourceLocation 注册自定义 loot function 处理器。
+     */
+    public static void register(ResourceLocation functionId, LootFunctionHandler handler) {
+        REGISTRY.put(functionId, handler);
     }
 
     /**
      * 获取指定 function 的处理器。
      *
-     * @param functionName 已去除命名空间前缀的 function 名（如 "set_count"）
+     * @param functionId function 的完整注册表 key
      * @return 对应的 handler；未注册时返回 null
      */
     @Nullable
-    public static LootFunctionHandler get(String functionName) {
-        return REGISTRY.get(functionName);
+    public static LootFunctionHandler get(ResourceLocation functionId) {
+        return REGISTRY.get(functionId);
     }
 
     /**
      * 获取注册表只读视图。
      */
-    public static Map<String, LootFunctionHandler> registry() {
+    public static Map<ResourceLocation, LootFunctionHandler> registry() {
         return Collections.unmodifiableMap(REGISTRY);
+    }
+
+    /** 根据 function 对象推导其注册表 key */
+    static ResourceLocation keyOf(LootItemFunction function) {
+        return BuiltInRegistries.LOOT_FUNCTION_TYPE.getKey(function.getType());
+    }
+
+    // ==================== 反射工具 ====================
+
+    /**
+     * 通过反射读取原版类的 package-private 字段。
+     * 仅用于静态分析，不修改对象状态。
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    private static <T> T reflectField(Object obj, String fieldName) {
+        try {
+            Field field = obj.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return (T) field.get(obj);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ==================== 共享工具方法 ====================
@@ -143,21 +193,11 @@ public final class LootFunctionHandlers {
         return BuiltInRegistries.ITEM.getKey(stack.getItem());
     }
 
-    // 若预览栈为普通书，返回升级后的附魔书；否则返回原栈
     private static ItemStack promoteBookPreviewIfNeeded(ItemStack stack) {
         if (BOOK_ID.equals(itemIdOf(stack))) {
             return stack.transmuteCopy(Items.ENCHANTED_BOOK);
         }
         return stack;
-    }
-
-    @Nullable
-    private static ResourceLocation parseFunctionItemId(JsonObject functionObject) {
-        ResourceLocation itemId = ResourceLocation.tryParse(LootParseUtil.getString(functionObject, "item", ""));
-        if (itemId != null) {
-            return itemId;
-        }
-        return ResourceLocation.tryParse(LootParseUtil.getString(functionObject, "name", ""));
     }
 
     // ==================== 类别 A：完整静态处理 ====================
@@ -166,10 +206,17 @@ public final class LootFunctionHandlers {
     private static final class SetItemHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            ResourceLocation functionItemId = parseFunctionItemId(functionJson);
-            if (functionItemId != null && BuiltInRegistries.ITEM.get(functionItemId) != Items.AIR) {
-                return previewStack.transmuteCopy(BuiltInRegistries.ITEM.get(functionItemId));
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetItemFunction)) {
+                return null;
+            }
+            Object itemHolderRaw = reflectField(function, "item");
+            if (!(itemHolderRaw instanceof Holder<?> itemHolder)) {
+                return null;
+            }
+            ResourceLocation itemId = itemHolder.unwrapKey().map(ResourceKey::location).orElse(null);
+            if (itemId != null && BuiltInRegistries.ITEM.get(itemId) != Items.AIR) {
+                return previewStack.transmuteCopy(BuiltInRegistries.ITEM.get(itemId));
             }
             return null;
         }
@@ -189,14 +236,11 @@ public final class LootFunctionHandlers {
     private static final class SetComponentsHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement element = functionJson.get("components");
-            if (element == null || element.isJsonNull()) {
-                return previewStack;
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetComponentsFunction)) {
+                return null;
             }
-            DataComponentPatch patch = DataComponentPatch.CODEC.parse(JsonOps.INSTANCE, element)
-                    .result()
-                    .orElse(null);
+            DataComponentPatch patch = reflectField(function, "components");
             if (patch == null) {
                 return null;
             }
@@ -218,16 +262,13 @@ public final class LootFunctionHandlers {
     private static final class SetCustomDataHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement element = functionJson.get("tag");
-            if (element == null || element.isJsonNull()) {
-                return previewStack;
-            }
-            CompoundTag tag = TagParser.LENIENT_CODEC.parse(JsonOps.INSTANCE, element)
-                    .result()
-                    .orElse(null);
-            if (tag == null) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetCustomDataFunction)) {
                 return null;
+            }
+            CompoundTag tag = reflectField(function, "tag");
+            if (tag == null) {
+                return previewStack;
             }
             CustomData.update(DataComponents.CUSTOM_DATA, previewStack, data -> data.merge(tag));
             return previewStack;
@@ -243,31 +284,27 @@ public final class LootFunctionHandlers {
     private static final class SetNameHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            if (functionJson.has("entity")) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetNameFunction)) {
                 return null;
             }
-            JsonElement nameElement = functionJson.get("name");
-            if (nameElement == null || nameElement.isJsonNull()) {
+            Component component = reflectField(function, "name");
+            if (component == null) {
                 return previewStack;
             }
-            Component component = ComponentSerialization.CODEC.parse(JsonOps.INSTANCE, nameElement)
-                    .result()
-                    .orElse(null);
-            if (component == null) {
-                return null;
+            SetNameFunction.Target target = reflectField(function, "target");
+            if (target == null) {
+                return previewStack;
             }
-            String target = LootParseUtil.getString(functionJson, "target", "custom_name");
             return switch (target) {
-                case "custom_name" -> {
+                case CUSTOM_NAME -> {
                     previewStack.set(DataComponents.CUSTOM_NAME, component);
                     yield previewStack;
                 }
-                case "item_name" -> {
+                case ITEM_NAME -> {
                     previewStack.set(DataComponents.ITEM_NAME, component);
                     yield previewStack;
                 }
-                default -> null;
             };
         }
 
@@ -281,14 +318,11 @@ public final class LootFunctionHandlers {
     private static final class SetPotionHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement idElement = functionJson.get("id");
-            if (idElement == null || idElement.isJsonNull()) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetPotionFunction)) {
                 return null;
             }
-            Holder<Potion> potionHolder = Potion.CODEC.parse(JsonOps.INSTANCE, idElement)
-                    .result()
-                    .orElse(null);
+            Holder<Potion> potionHolder = reflectField(function, "potion");
             if (potionHolder == null) {
                 return null;
             }
@@ -304,11 +338,10 @@ public final class LootFunctionHandlers {
 
     // ==================== 类别 B：附魔类 ====================
 
-    /** 处理 enchant_randomly：随机附魔 */
     private static final class EnchantRandomlyHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return promoteBookPreviewIfNeeded(previewStack);
         }
 
@@ -323,11 +356,10 @@ public final class LootFunctionHandlers {
         }
     }
 
-    /** 处理 enchant_with_levels：等级附魔 */
     private static final class EnchantWithLevelsHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return promoteBookPreviewIfNeeded(previewStack);
         }
 
@@ -342,11 +374,10 @@ public final class LootFunctionHandlers {
         }
     }
 
-    /** 处理 set_enchantments：设置附魔（含随机性） */
     private static final class SetEnchantmentsHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return promoteBookPreviewIfNeeded(previewStack);
         }
 
@@ -361,11 +392,10 @@ public final class LootFunctionHandlers {
         }
     }
 
-    /** 处理 enchanted_count_increase：附魔等级影响数量（此前被 isEnchantLikeFunction 启发式捕获） */
     private static final class EnchantedCountIncreaseHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return promoteBookPreviewIfNeeded(previewStack);
         }
 
@@ -382,50 +412,43 @@ public final class LootFunctionHandlers {
 
     // ==================== 类别 C：可部分静态处理 ====================
 
-    /**
-     * 处理 set_count：设置物品数量。
-     * 若 count 为固定值则直接应用；若为范围则返回 null（标记条件）。
-     */
+    /** 处理 set_count：若 count 为固定值则直接应用；若为范围则返回 null */
     private static final class SetCountHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement countElement = functionJson.get("count");
-            if (countElement == null) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetItemCountFunction)) {
                 return null;
             }
-            if (countElement.isJsonPrimitive() && countElement.getAsJsonPrimitive().isNumber()) {
-                previewStack.setCount(countElement.getAsInt());
+            NumberProvider value = reflectField(function, "value");
+            if (value instanceof ConstantValue(float value1)) {
+                previewStack.setCount(Math.round(value1));
                 return previewStack;
             }
-            // count 为范围对象（min/max），无法静态确定
             return null;
         }
 
         @Override
         @Nullable
-        public Component describeHint(JsonObject functionJson) {
-            JsonElement countElement = functionJson.get("count");
-            if (countElement == null || !countElement.isJsonObject()) {
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof SetItemCountFunction)) {
                 return null;
             }
-            JsonObject countObj = countElement.getAsJsonObject();
-            int min, max;
-            if (countObj.has("min") && countObj.has("max")) {
-                min = countObj.get("min").getAsInt();
-                max = countObj.get("max").getAsInt();
-            } else if (countObj.has("n")) {
-                // binomial 分布：0 到 n
-                min = 0;
-                max = countObj.get("n").getAsInt();
-            } else {
-                return null;
+            NumberProvider value = reflectField(function, "value");
+            if (value instanceof UniformGenerator uniform) {
+                NumberProvider min = reflectField(uniform, "min");
+                NumberProvider max = reflectField(uniform, "max");
+                if (min instanceof ConstantValue(float value1) && max instanceof ConstantValue(float value2)) {
+                    int minInt = Math.round(value1);
+                    int maxInt = Math.round(value2);
+                    if (minInt == maxInt) {
+                        return null;
+                    }
+                    return Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range", minInt, maxInt);
+                }
             }
-            if (min == max) {
-                return null;
-            }
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range", min, max);
+            return null;
         }
 
         @Override
@@ -438,15 +461,15 @@ public final class LootFunctionHandlers {
     private static final class SetDamageHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement damageElement = functionJson.get("damage");
-            if (damageElement == null) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetItemDamageFunction)) {
                 return null;
             }
-            if (damageElement.isJsonPrimitive() && damageElement.getAsJsonPrimitive().isNumber()) {
+            NumberProvider damage = reflectField(function, "damage");
+            if (damage instanceof ConstantValue(float value)) {
                 int maxDamage = previewStack.getMaxDamage();
                 if (maxDamage > 0) {
-                    float fraction = damageElement.getAsFloat() / maxDamage;
+                    float fraction = value / maxDamage;
                     previewStack.setDamageValue(Math.round(fraction * maxDamage));
                 }
                 return previewStack;
@@ -456,25 +479,24 @@ public final class LootFunctionHandlers {
 
         @Override
         @Nullable
-        public Component describeHint(JsonObject functionJson) {
-            JsonElement damageElement = functionJson.get("damage");
-            if (damageElement == null || !damageElement.isJsonObject()) {
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof SetItemDamageFunction)) {
                 return null;
             }
-            JsonObject damageObj = damageElement.getAsJsonObject();
-            float min, max;
-            if (damageObj.has("min") && damageObj.has("max")) {
-                min = damageObj.get("min").getAsFloat();
-                max = damageObj.get("max").getAsFloat();
-            } else {
-                return null;
+            NumberProvider damage = reflectField(function, "damage");
+            if (damage instanceof UniformGenerator uniform) {
+                NumberProvider min = reflectField(uniform, "min");
+                NumberProvider max = reflectField(uniform, "max");
+                if (min instanceof ConstantValue(float minFloat) && max instanceof ConstantValue(float maxFloat)) {
+                    if (minFloat == maxFloat) {
+                        return null;
+                    }
+                    return Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.item_hint.set_damage_range",
+                            Math.round(minFloat * 100), Math.round(maxFloat * 100));
+                }
             }
-            if (min == max) {
-                return null;
-            }
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.item_hint.set_damage_range",
-                    Math.round(min * 100), Math.round(max * 100));
+            return null;
         }
 
         @Override
@@ -487,15 +509,16 @@ public final class LootFunctionHandlers {
     private static final class SetCustomModelDataHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement valueElement = functionJson.get("value");
-            if (valueElement != null && valueElement.isJsonPrimitive()
-                    && valueElement.getAsJsonPrimitive().isNumber()) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetCustomModelDataFunction)) {
+                return null;
+            }
+            NumberProvider value = reflectField(function, "value");
+            if (value instanceof ConstantValue(float value1)) {
                 previewStack.set(DataComponents.CUSTOM_MODEL_DATA,
-                        new CustomModelData(valueElement.getAsInt()));
+                        new CustomModelData(Math.round(value1)));
                 return previewStack;
             }
-            // 颜色数组或字符串等复杂值，无法静态确定
             return null;
         }
 
@@ -509,18 +532,12 @@ public final class LootFunctionHandlers {
     private static final class SetLoreHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement loreElement = functionJson.get("lore");
-            if (loreElement == null || !loreElement.isJsonArray()) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetLoreFunction)) {
                 return null;
             }
-            List<Component> loreList = new ArrayList<>();
-            for (JsonElement element : loreElement.getAsJsonArray()) {
-                ComponentSerialization.CODEC
-                        .parse(JsonOps.INSTANCE, element)
-                        .result().ifPresent(loreList::add);
-            }
-            if (!loreList.isEmpty()) {
+            List<Component> loreList = reflectField(function, "lore");
+            if (loreList != null && !loreList.isEmpty()) {
                 previewStack.set(DataComponents.LORE, new ItemLore(loreList));
                 return previewStack;
             }
@@ -537,7 +554,7 @@ public final class LootFunctionHandlers {
     private static final class SetAttributesHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return null;
         }
 
@@ -551,7 +568,7 @@ public final class LootFunctionHandlers {
     private static final class ToggleTooltipsHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             return previewStack;
         }
 
@@ -565,11 +582,13 @@ public final class LootFunctionHandlers {
     private static final class SetOminousBottleAmplifierHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            JsonElement amplifierElement = functionJson.get("amplifier");
-            if (amplifierElement != null && amplifierElement.isJsonPrimitive()
-                    && amplifierElement.getAsJsonPrimitive().isNumber()) {
-                previewStack.set(DataComponents.OMINOUS_BOTTLE_AMPLIFIER, amplifierElement.getAsInt());
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            if (!(function instanceof SetOminousBottleAmplifierFunction)) {
+                return null;
+            }
+            NumberProvider amplifier = reflectField(function, "amplifierGenerator");
+            if (amplifier instanceof ConstantValue(float value)) {
+                previewStack.set(DataComponents.OMINOUS_BOTTLE_AMPLIFIER, Math.round(value));
                 return previewStack;
             }
             return null;
@@ -587,21 +606,41 @@ public final class LootFunctionHandlers {
     private static final class ApplyBonusHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // 取决于工具上的附魔等级，无法静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
-        public Component describeHint(JsonObject functionJson) {
-            ResourceLocation enchantmentId = ResourceLocation.tryParse(
-                    LootParseUtil.getString(functionJson, "enchantment", ""));
-            // 1.21.1 附魔为数据驱动注册表，通过翻译键获取展示名
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof ApplyBonusCount)) {
+                return null;
+            }
+            Holder<net.minecraft.world.item.enchantment.Enchantment> enchantmentHolder = reflectField(function, "enchantment");
+            ResourceLocation enchantmentId = enchantmentHolder != null
+                    ? enchantmentHolder.unwrapKey().map(ResourceKey::location).orElse(null)
+                    : null;
             Component enchantmentName = enchantmentId != null
                     ? Component.translatable("enchantment." + enchantmentId.getNamespace() + "." + enchantmentId.getPath())
                     : Component.literal("?");
 
-            String formula = LootParseUtil.getString(functionJson, "formula", "");
-            String formulaType = LootParseUtil.normalizeType(formula);
+            // 通过反射获取 formula 内部字段
+            Object formula = reflectField(function, "formula");
+            String formulaType = "unknown";
+            if (formula != null) {
+                // formula 实现了 Formula 接口，其 getType() 返回 FormulaType
+                try {
+                    java.lang.reflect.Method getType = formula.getClass().getMethod("getType");
+                    Object formulaTypeObj = getType.invoke(formula);
+                    if (formulaTypeObj != null) {
+                        ResourceLocation typeId = BuiltInRegistries.LOOT_NUMBER_PROVIDER_TYPE.getKey(
+                                    (net.minecraft.world.level.storage.loot.providers.number.LootNumberProviderType) formulaTypeObj);
+                        if (typeId != null) {
+                            formulaType = typeId.getPath();
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
             Component formulaName = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.formula." + formulaType);
 
@@ -620,38 +659,39 @@ public final class LootFunctionHandlers {
     private static final class LimitCountHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // 取决于上下文中的当前数量，无法静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
         @Nullable
-        public Component describeHint(JsonObject functionJson) {
-            JsonElement limitElement = functionJson.get("limit");
-            if (limitElement == null || !limitElement.isJsonObject()) {
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof LimitCount)) {
                 return null;
             }
-            JsonObject limitObj = limitElement.getAsJsonObject();
-            boolean hasMin = limitObj.has("min") && limitObj.get("min").isJsonPrimitive();
-            boolean hasMax = limitObj.has("max") && limitObj.get("max").isJsonPrimitive();
+            IntRange limiter = reflectField(function, "limiter");
+            if (limiter == null) {
+                return null;
+            }
+            NumberProvider min = reflectField(limiter, "min");
+            NumberProvider max = reflectField(limiter, "max");
 
-            if (hasMin && hasMax) {
-                int min = limitObj.get("min").getAsInt();
-                int max = limitObj.get("max").getAsInt();
-                if (min == max) {
+            Integer minVal = (min instanceof ConstantValue(float value)) ? Math.round(value) : null;
+            Integer maxVal = (max instanceof ConstantValue(float value)) ? Math.round(value) : null;
+
+            if (minVal != null && maxVal != null) {
+                if (minVal.equals(maxVal)) {
                     return Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_exact", min);
+                            "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_exact", minVal);
                 }
                 return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count", min, max);
-            } else if (hasMax) {
-                int max = limitObj.get("max").getAsInt();
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count", minVal, maxVal);
+            } else if (maxVal != null) {
                 return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_max", max);
-            } else if (hasMin) {
-                int min = limitObj.get("min").getAsInt();
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_max", maxVal);
+            } else if (minVal != null) {
                 return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_min", min);
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_min", minVal);
             }
             return null;
         }
@@ -666,12 +706,12 @@ public final class LootFunctionHandlers {
     private static final class FillPlayerHeadHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // 取决于实体上下文，无法静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
-        public Component describeHint(JsonObject functionJson) {
+        public Component describeHint(LootItemFunction function) {
             return Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.item_hint.fill_player_head");
         }
@@ -686,28 +726,26 @@ public final class LootFunctionHandlers {
     private static final class SetStewEffectHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // effect duration 可能为范围，无法完全静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
         @Nullable
-        public Component describeHint(JsonObject functionJson) {
-            JsonElement effectsElement = functionJson.get("effects");
-            if (effectsElement == null || !effectsElement.isJsonArray()) {
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof SetStewEffectFunction)) {
+                return null;
+            }
+            List<?> effects = reflectField(function, "effects");
+            if (effects == null || effects.isEmpty()) {
                 return null;
             }
             List<Component> effectNames = new ArrayList<>();
-            for (JsonElement effectElement : effectsElement.getAsJsonArray()) {
-                if (!effectElement.isJsonObject()) continue;
-                JsonObject effectObj = effectElement.getAsJsonObject();
-                ResourceLocation effectId = ResourceLocation.tryParse(
-                        LootParseUtil.getString(effectObj, "type", ""));
-                if (effectId != null) {
-                    MobEffect effect = BuiltInRegistries.MOB_EFFECT.get(effectId);
-                    if (effect != null) {
-                        effectNames.add(effect.getDisplayName());
-                    }
+            for (Object entry : effects) {
+                Holder<MobEffect> effectHolder = reflectField(entry, "effect");
+                if (effectHolder != null) {
+                    MobEffect effect = effectHolder.value();
+                    effectNames.add(effect.getDisplayName());
                 }
             }
             if (effectNames.isEmpty()) return null;
@@ -729,21 +767,32 @@ public final class LootFunctionHandlers {
     private static final class ExplorationMapHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // 取决于世界生成，无法静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
-        public Component describeHint(JsonObject functionJson) {
-            String destination = LootParseUtil.getString(functionJson, "destination", "");
-            if (destination.isEmpty()) {
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof ExplorationMapFunction)) {
+                return null;
+            }
+            // destination 是 ResourceKey<MapDecorationType>，通过反射获取
+            Object destination = reflectField(function, "destination");
+            if (destination == null) {
                 return Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map_default");
             }
-            // 取结构标签路径最后一段作为展示名
-            String tagPath = destination.contains(":") ? destination.substring(destination.indexOf(':') + 1) : destination;
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map", tagPath);
+            // ResourceKey 有 location() 方法
+            try {
+                java.lang.reflect.Method locationMethod = destination.getClass().getMethod("location");
+                ResourceLocation loc = (ResourceLocation) locationMethod.invoke(destination);
+                String tagPath = loc.getPath();
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map", tagPath);
+            } catch (Exception e) {
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map_default");
+            }
         }
 
         @Override
@@ -756,16 +805,19 @@ public final class LootFunctionHandlers {
     private static final class SetFireworksHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // explosions 数组具随机性，无法完全静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
         @Nullable
-        public Component describeHint(JsonObject functionJson) {
-            if (functionJson.has("flight_duration")
-                    && functionJson.get("flight_duration").isJsonPrimitive()) {
-                int duration = functionJson.get("flight_duration").getAsInt();
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof SetFireworksFunction)) {
+                return null;
+            }
+            NumberProvider flightDuration = reflectField(function, "flightDuration");
+            if (flightDuration instanceof ConstantValue(float value)) {
+                int duration = Math.round(value);
                 return Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.item_hint.set_fireworks_flight", duration);
             }
@@ -782,17 +834,34 @@ public final class LootFunctionHandlers {
     private static final class SetBookCoverHandler implements LootFunctionHandler {
         @Override
         @Nullable
-        public ItemStack apply(ItemStack previewStack, JsonObject functionJson) {
-            return null; // 涉及 Filterable 字符串解析，暂不静态求值
+        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+            return null;
         }
 
         @Override
         @Nullable
-        public Component describeHint(JsonObject functionJson) {
-            String title = extractBookTextField(functionJson, "title");
+        public Component describeHint(LootItemFunction function) {
+            if (!(function instanceof SetBookCoverFunction)) {
+                return null;
+            }
+            // title 是 Filterable<String>，author 是 Optional<String>
+            Object titleObj = reflectField(function, "title");
+            String title = null;
+            if (titleObj != null) {
+                // Filterable 有 raw() 方法
+                try {
+                    java.lang.reflect.Method rawMethod = titleObj.getClass().getMethod("raw");
+                    Object raw = rawMethod.invoke(titleObj);
+                    if (raw instanceof String s) {
+                        title = s;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
             String author = null;
-            if (functionJson.has("author") && functionJson.get("author").isJsonPrimitive()) {
-                author = functionJson.get("author").getAsString();
+            Object authorRaw = reflectField(function, "author");
+            if (authorRaw instanceof Optional<?> opt) {
+                author = (String) opt.orElse(null);
             }
 
             if (title != null && author != null) {
@@ -811,27 +880,9 @@ public final class LootFunctionHandlers {
             return null;
         }
 
-        // 提取书的文本字段：支持普通字符串或 Filterable 对象 {"raw": "..."}
-        @Nullable
-        private static String extractBookTextField(JsonObject functionJson, String key) {
-            JsonElement element = functionJson.get(key);
-            if (element == null) return null;
-            if (element.isJsonPrimitive()) {
-                return element.getAsString();
-            }
-            if (element.isJsonObject()) {
-                JsonObject obj = element.getAsJsonObject();
-                if (obj.has("raw") && obj.get("raw").isJsonPrimitive()) {
-                    return obj.get("raw").getAsString();
-                }
-            }
-            return null;
-        }
-
         @Override
         public boolean addsRandomness() {
             return true;
         }
     }
-
-    }
+}

@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDe
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.logging.LogUtils;
+import com.mojang.serialization.JsonOps;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -21,6 +22,9 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
+import net.minecraft.world.level.storage.loot.functions.LootItemFunctions;
+import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -170,10 +174,16 @@ public final class LootTableJsonParser {
     private void parseEntry(JsonObject object, ParseContext ctx) {
         String type = LootParseUtil.getString(object, "type", "");
 
-        // 分析 conditions 数组
+        // 分析 conditions 数组——使用原版 Codec 解析为类型化对象
         List<LootConditionInfo> entryConditions = List.of();
         if (object.has("conditions") && object.get("conditions").isJsonArray()) {
-            entryConditions = LootConditionHandlers.analyzeAll(object.getAsJsonArray("conditions"));
+            List<LootItemCondition> parsedConditions = new ArrayList<>();
+            for (JsonElement element : object.getAsJsonArray("conditions")) {
+                LootItemCondition.DIRECT_CODEC.parse(JsonOps.INSTANCE, element)
+                        .result()
+                        .ifPresent(parsedConditions::add);
+            }
+            entryConditions = LootConditionHandlers.analyzeAll(parsedConditions);
         }
 
         // 判断是否引入不确定性
@@ -323,17 +333,25 @@ public final class LootTableJsonParser {
                     continue;
                 }
 
-                JsonObject functionObject = functionElement.getAsJsonObject();
-                String functionName = LootParseUtil.normalizeType(LootParseUtil.getString(functionObject, "function", ""));
-                LootFunctionHandler handler = LootFunctionHandlers.get(functionName);
+                // 使用原版 Codec 解析 function
+                LootItemFunction function = LootItemFunctions.TYPED_CODEC
+                        .parse(JsonOps.INSTANCE, functionElement)
+                        .result().orElse(null);
+                if (function == null) {
+                    entryHasConditions = true;
+                    continue;
+                }
+
+                ResourceLocation functionId = BuiltInRegistries.LOOT_FUNCTION_TYPE.getKey(function.getType());
+                LootFunctionHandler handler = LootFunctionHandlers.get(functionId);
 
                 if (handler != null) {
-                    ItemStack result = handler.apply(previewStack, functionObject);
+                    ItemStack result = handler.apply(previewStack, function);
                     if (result != null) {
                         previewStack = result;
                     } else {
                         entryHasConditions = true;
-                        Component hint = handler.describeHint(functionObject);
+                        Component hint = handler.describeHint(function);
                         if (hint != null) {
                             functionHints.add(hint);
                         }
@@ -346,8 +364,10 @@ public final class LootTableJsonParser {
                         entryHasConditions = true;
                     }
                 } else {
+                    // 未知 function：标记为条件 + 近似签名
                     entryHasConditions = true;
                     if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
+                        String functionName = functionId != null ? functionId.toString() : "unknown";
                         signature = LootResultSignature.approximateItemOnly(
                                 currentItemId(previewStack), "unknown_function:" + functionName);
                     }
@@ -372,7 +392,7 @@ public final class LootTableJsonParser {
         } else if (!functionHints.isEmpty()) {
             tooltipHint = joinFunctionHints(functionHints);
         } else {
-            tooltipHint = resolveItemTooltipHint(null, entryHasConditions);
+            tooltipHint = resolveItemTooltipHint(entryHasConditions);
         }
         return new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint, signature, entryConditions);
     }
@@ -397,10 +417,7 @@ public final class LootTableJsonParser {
     }
 
     @Nullable
-    private static Component resolveItemTooltipHint(@Nullable Component hint, boolean showApproximate) {
-        if (hint != null) {
-            return hint;
-        }
+    private static Component resolveItemTooltipHint(boolean showApproximate) {
         return showApproximate ? Component.translatable(APPROXIMATE_HINT_KEY) : null;
     }
 
@@ -453,7 +470,7 @@ public final class LootTableJsonParser {
         @Nullable
         private final ResourceLocation sourceChildTable;
         private final List<LootConditionInfo> conditions;
-        private List<LootConditionInfo> parentTableConditions;
+        private final List<LootConditionInfo> parentTableConditions;
 
         private ItemDefinitionBuilder(ResourceLocation id, Component displayName,
                                       @Nullable Component tooltipHint, LootResultSignature signature,

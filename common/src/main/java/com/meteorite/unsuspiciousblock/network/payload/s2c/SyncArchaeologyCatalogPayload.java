@@ -118,7 +118,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
 
     // 递归编码单个 LootConditionInfo（含 children）
     private static void encodeConditionInfo(RegistryFriendlyByteBuf buf, LootConditionInfo info) {
-        buf.writeUtf(info.conditionType());
+        buf.writeResourceLocation(info.conditionType());
         buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
         buf.writeBoolean(info.probability() != null);
         if (info.probability() != null) {
@@ -132,7 +132,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
 
     // 递归解码单个 LootConditionInfo（含 children）
     private static LootConditionInfo decodeConditionInfo(RegistryFriendlyByteBuf buf) {
-        String conditionType = buf.readUtf();
+        ResourceLocation conditionType = buf.readResourceLocation();
         Component desc = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
         Float prob = buf.readBoolean() ? buf.readFloat() : null;
         int childCount = buf.readVarInt();

@@ -1,17 +1,34 @@
 package com.meteorite.unsuspiciousblock.loottable.analysis;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import net.minecraft.advancements.critereon.EntityPredicate;
+import net.minecraft.advancements.critereon.EntitySubPredicate;
+import net.minecraft.advancements.critereon.LocationPredicate;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.storage.loot.predicates.AllOfCondition;
+import net.minecraft.world.level.storage.loot.predicates.AnyOfCondition;
+import net.minecraft.world.level.storage.loot.predicates.ConditionReference;
+import net.minecraft.world.level.storage.loot.predicates.InvertedLootItemCondition;
+import net.minecraft.world.level.storage.loot.predicates.LocationCheck;
+import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
+import net.minecraft.world.level.storage.loot.predicates.LootItemEntityPropertyCondition;
+import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceCondition;
+import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceWithEnchantedBonusCondition;
+import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
+import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 战利品条件处理器注册表——管理所有已知 loot condition 的静态分析逻辑。
@@ -21,8 +38,9 @@ import java.util.Map;
  * 设计模式与 {@link LootFunctionHandlers} 一致。
  */
 public final class LootConditionHandlers {
-    private static final Map<String, LootConditionHandler> REGISTRY = new LinkedHashMap<>();
+    private static final Map<ResourceLocation, LootConditionHandler> REGISTRY = new LinkedHashMap<>();
     private static final String I18N_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
+    private static final String I18N_FALLBACK_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
 
     static {
         // 类别 A：概率型条件
@@ -31,14 +49,14 @@ public final class LootConditionHandlers {
 
         // 类别 B：可静态描述，无概率值
         register("survives_explosion", new SurvivesExplosionHandler());
-        register("match_tool", new SimpleDescriptionHandler("match_tool", false));
-        register("block_state_property", new SimpleDescriptionHandler("block_state_property", false));
+        register("match_tool", simpleDesc("match_tool", false));
+        register("block_state_property", simpleDesc("block_state_property", false));
         register("location_check", new LocationCheckHandler());
-        register("time_check", new SimpleDescriptionHandler("time_check", false));
-        register("value_check", new SimpleDescriptionHandler("value_check", false));
-        register("weather_check", new SimpleDescriptionHandler("weather_check", true));
-        register("table_bonus", new SimpleDescriptionHandler("table_bonus", true));
-        register("enchantment_active_check", new SimpleDescriptionHandler("enchantment_active_check", true));
+        register("time_check", simpleDesc("time_check", false));
+        register("value_check", simpleDesc("value_check", false));
+        register("weather_check", simpleDesc("weather_check", true));
+        register("table_bonus", simpleDesc("table_bonus", true));
+        register("enchantment_active_check", simpleDesc("enchantment_active_check", true));
 
         // 类别 C：纯运行时
         register("entity_properties", new EntityPropertiesHandler());
@@ -60,26 +78,35 @@ public final class LootConditionHandlers {
 
     /**
      * 注册自定义条件处理器。若已存在同名 handler 则覆盖。
+     *
+     * @param conditionPath 条件注册名（如 "random_chance"，不含 "minecraft:" 前缀）
      */
-    public static void register(String conditionName, LootConditionHandler handler) {
-        REGISTRY.put(conditionName, handler);
+    public static void register(String conditionPath, LootConditionHandler handler) {
+        REGISTRY.put(ResourceLocation.fromNamespaceAndPath("minecraft", conditionPath), handler);
+    }
+
+    /**
+     * 以完整 ResourceLocation 注册自定义条件处理器。
+     */
+    public static void register(ResourceLocation conditionId, LootConditionHandler handler) {
+        REGISTRY.put(conditionId, handler);
     }
 
     /**
      * 获取指定条件的处理器。
      *
-     * @param conditionName 已去除命名空间前缀的条件名（如 "weather_check"）
+     * @param conditionId 条件的完整注册表 key
      * @return 对应的 handler；未注册时返回 null
      */
     @Nullable
-    public static LootConditionHandler get(String conditionName) {
-        return REGISTRY.get(conditionName);
+    public static LootConditionHandler get(ResourceLocation conditionId) {
+        return REGISTRY.get(conditionId);
     }
 
     /**
      * 获取注册表只读视图。
      */
-    public static Map<String, LootConditionHandler> registry() {
+    public static Map<ResourceLocation, LootConditionHandler> registry() {
         return Collections.unmodifiableMap(REGISTRY);
     }
 
@@ -110,25 +137,24 @@ public final class LootConditionHandlers {
     }
 
     /**
-     * 批量分析入口：遍历 conditions 数组，对每个条件调用对应 handler 的 analyze。
+     * 批量分析入口：遍历已通过 Codec 解析的条件列表，对每个条件调用对应 handler 的 analyze。
      *
-     * @param conditionsArray entry 的 "conditions" JSON 数组
+     * @param conditions 通过 {@link LootItemCondition#DIRECT_CODEC} 解析后的条件列表
      * @return 非空条件信息列表（纯运行时条件返回 null，不纳入结果）
      */
-    public static List<LootConditionInfo> analyzeAll(JsonArray conditionsArray) {
+    public static List<LootConditionInfo> analyzeAll(List<LootItemCondition> conditions) {
         List<LootConditionInfo> results = new ArrayList<>();
-        for (JsonElement element : conditionsArray) {
-            if (!element.isJsonObject()) {
-                continue;
-            }
-            JsonObject conditionJson = element.getAsJsonObject();
-            String conditionType = LootParseUtil.normalizeType(LootParseUtil.getString(conditionJson, "condition", ""));
-            LootConditionHandler handler = get(conditionType);
+        for (LootItemCondition condition : conditions) {
+            ResourceLocation conditionId = BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(condition.getType());
+            LootConditionHandler handler = get(conditionId);
             if (handler != null) {
-                LootConditionInfo info = handler.analyze(conditionJson);
+                LootConditionInfo info = handler.analyze(condition);
                 if (info != null) {
                     results.add(info);
                 }
+            } else if (conditionId != null) {
+                // 两级 fallback：未知条件生成通用描述
+                results.add(generateFallbackInfo(conditionId));
             }
         }
         return results;
@@ -138,7 +164,6 @@ public final class LootConditionHandlers {
 
     /**
      * 判断给定的条件信息列表是否引入不确定性。
-     * 遍历每个条件，通过注册表查找其 handler 的 addsUncertainty()。
      */
     public static boolean hasAnyUncertainty(List<LootConditionInfo> conditions) {
         for (LootConditionInfo info : conditions) {
@@ -150,17 +175,70 @@ public final class LootConditionHandlers {
         return false;
     }
 
+    /** 为未知条件生成通用 fallback 描述 */
+    private static LootConditionInfo generateFallbackInfo(ResourceLocation conditionId) {
+        return new LootConditionInfo(conditionId,
+                Component.translatable(I18N_FALLBACK_PREFIX
+                        + conditionId.getNamespace() + "." + conditionId.getPath()),
+                null);
+    }
+
+    /** 根据条件对象推导其注册表 key */
+    static ResourceLocation keyOf(LootItemCondition condition) {
+        return BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(condition.getType());
+    }
+
+    /**
+     * 通过反射读取原版类的 package-private 字段。
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    private static <T> T reflectField(Object obj) {
+        try {
+            Field field = obj.getClass().getDeclaredField("terms");
+            field.setAccessible(true);
+            return (T) field.get(obj);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ==================== 通用简单描述 handler 工厂 ====================
+
+    private static LootConditionHandler simpleDesc(String i18nKey, boolean uncertain) {
+        return new LootConditionHandler() {
+            @Override
+            public LootConditionInfo analyze(LootItemCondition condition) {
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + i18nKey),
+                        null);
+            }
+
+            @Override
+            public boolean addsUncertainty() {
+                return uncertain;
+            }
+
+            @Override
+            public UncertaintyLevel uncertaintyLevel() {
+                return uncertain ? UncertaintyLevel.PROBABILISTIC : UncertaintyLevel.NONE;
+            }
+        };
+    }
+
     // ==================== 类别 A：概率型条件 ====================
 
-    /** 处理 random_chance：读取 chance 字段，设置概率值 */
+    /** 处理 random_chance：从 NumberProvider 提取常量概率值 */
     private static final class RandomChanceHandler implements LootConditionHandler {
         @Override
-        public LootConditionInfo analyze(JsonObject conditionJson) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
             float chance = 1.0f;
-            if (conditionJson.has("chance") && conditionJson.get("chance").isJsonPrimitive()) {
-                chance = conditionJson.get("chance").getAsFloat();
+            if (condition instanceof LootItemRandomChanceCondition(NumberProvider chance1)) {
+                if (chance1 instanceof ConstantValue(float value)) {
+                    chance = value;
+                }
             }
-            return new LootConditionInfo("random_chance",
+            return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "random_chance", Math.round(chance * 100)),
                     chance);
         }
@@ -176,17 +254,15 @@ public final class LootConditionHandlers {
         }
     }
 
-    /** 处理 random_chance_with_enchanted_bonus：读取基础概率，附魔加成不可静态确定 */
+    /** 处理 random_chance_with_enchanted_bonus：读取基础概率 */
     private static final class RandomChanceWithEnchantedBonusHandler implements LootConditionHandler {
         @Override
-        public LootConditionInfo analyze(JsonObject conditionJson) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
             float baseChance = 1.0f;
-            if (conditionJson.has("unenchanted_chance") && conditionJson.get("unenchanted_chance").isJsonPrimitive()) {
-                baseChance = conditionJson.get("unenchanted_chance").getAsFloat();
-            } else if (conditionJson.has("chance") && conditionJson.get("chance").isJsonPrimitive()) {
-                baseChance = conditionJson.get("chance").getAsFloat();
+            if (condition instanceof LootItemRandomChanceWithEnchantedBonusCondition c) {
+                baseChance = c.unenchantedChance();
             }
-            return new LootConditionInfo("random_chance_with_enchanted_bonus",
+            return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "random_chance_with_enchanted_bonus",
                             Math.round(baseChance * 100)),
                     baseChance);
@@ -208,8 +284,8 @@ public final class LootConditionHandlers {
     /** 处理 survives_explosion：考古模拟中爆炸半径为 0，始终满足 */
     private static final class SurvivesExplosionHandler implements LootConditionHandler {
         @Override
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            return new LootConditionInfo("survives_explosion",
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "survives_explosion"),
                     null);
         }
@@ -220,76 +296,47 @@ public final class LootConditionHandlers {
         }
     }
 
-    /**
-     * 通用简单描述 handler：仅提供本地化描述，不解析具体参数
-     */
-    private record SimpleDescriptionHandler(String key, boolean uncertain) implements LootConditionHandler {
-
-        @Override
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            return new LootConditionInfo(this.key,
-                    Component.translatable(I18N_PREFIX + this.key),
-                    null);
-        }
-
-        @Override
-        public boolean addsUncertainty() {
-            return this.uncertain;
-        }
-
-        @Override
-        public UncertaintyLevel uncertaintyLevel() {
-            return this.uncertain ? UncertaintyLevel.PROBABILISTIC : UncertaintyLevel.NONE;
-        }
-    }
-
     /** 处理 location_check：解析 predicate.biomes 字段，展示群系名称 */
     private static final class LocationCheckHandler implements LootConditionHandler {
         @Override
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            List<Component> biomeNames = extractBiomeNames(conditionJson);
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof LocationCheck locationCheck)) {
+                return null;
+            }
+            Optional<LocationPredicate> predicate = locationCheck.predicate();
+            if (predicate.isEmpty()) {
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "location_check"), null);
+            }
+            LocationPredicate locPred = predicate.get();
+            Optional<HolderSet<Biome>> biomes = locPred.biomes();
+            if (biomes.isEmpty()) {
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "location_check"), null);
+            }
+            List<Component> biomeNames = extractBiomeNames(biomes.get());
             if (biomeNames.isEmpty()) {
-                return new LootConditionInfo("location_check",
+                return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "location_check"), null);
             }
             Component joined = joinComponents(biomeNames);
-            return new LootConditionInfo("location_check",
+            return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "location_check_biomes", joined), null);
         }
 
-        private List<Component> extractBiomeNames(JsonObject conditionJson) {
-            if (!conditionJson.has("predicate") || !conditionJson.get("predicate").isJsonObject()) {
-                return List.of();
-            }
-            JsonObject predicate = conditionJson.getAsJsonObject("predicate");
-            if (!predicate.has("biomes")) {
-                return List.of();
-            }
-            JsonElement biomesElement = predicate.get("biomes");
-            List<String> rawIds = new ArrayList<>();
-            if (biomesElement.isJsonPrimitive()) {
-                rawIds.add(biomesElement.getAsString());
-            } else if (biomesElement.isJsonArray()) {
-                for (JsonElement elem : biomesElement.getAsJsonArray()) {
-                    if (elem.isJsonPrimitive()) {
-                        rawIds.add(elem.getAsString());
-                    }
-                }
-            }
+        private List<Component> extractBiomeNames(HolderSet<Biome> biomeSet) {
             List<Component> names = new ArrayList<>();
-            for (String raw : rawIds) {
-                if (raw.startsWith("#")) {
-                    ResourceLocation rl = ResourceLocation.tryParse(raw.substring(1));
-                    if (rl != null) {
-                        names.add(Component.literal("#" + rl.getPath()));
-                    }
-                } else {
-                    ResourceLocation rl = ResourceLocation.tryParse(raw);
-                    if (rl != null) {
+            biomeSet.unwrap().ifLeft(tag -> {
+                // 标签引用
+                names.add(Component.literal("#" + tag.location().getPath()));
+            }).ifRight(directHolders -> {
+                for (Holder<Biome> holder : directHolders) {
+                    holder.unwrapKey().ifPresent(key -> {
+                        ResourceLocation rl = key.location();
                         names.add(Component.translatable("biome." + rl.getNamespace() + "." + rl.getPath()));
-                    }
+                    });
                 }
-            }
+            });
             return names;
         }
 
@@ -316,7 +363,7 @@ public final class LootConditionHandlers {
 
         @Override
         @Nullable
-        public LootConditionInfo analyze(JsonObject conditionJson) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
             return null;
         }
 
@@ -335,25 +382,32 @@ public final class LootConditionHandlers {
     private static final class EntityPropertiesHandler implements LootConditionHandler {
         @Override
         @Nullable
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            if (!conditionJson.has("predicate") || !conditionJson.get("predicate").isJsonObject()) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof LootItemEntityPropertyCondition entityCondition)) {
                 return null;
             }
-            JsonObject predicate = conditionJson.getAsJsonObject("predicate");
-            if (!predicate.has("type_specific") || !predicate.get("type_specific").isJsonObject()) {
+            Optional<EntityPredicate> predicate = entityCondition.predicate();
+            if (predicate.isEmpty()) {
                 return null;
             }
-            JsonObject typeSpecific = predicate.getAsJsonObject("type_specific");
-            String specificType = LootParseUtil.normalizeType(LootParseUtil.getString(typeSpecific, "type", ""));
-            if ("fishing_hook".equals(specificType) && typeSpecific.has("in_open_water")
-                    && typeSpecific.get("in_open_water").isJsonPrimitive()) {
-                boolean inOpenWater = typeSpecific.get("in_open_water").getAsBoolean();
-                String key = inOpenWater ? I18N_PREFIX + "entity_properties_fishing_open_water"
-                        : I18N_PREFIX + "entity_properties_fishing_not_open_water";
-                return new LootConditionInfo("entity_properties",
-                        Component.translatable(key), null);
+            EntityPredicate entityPred = predicate.get();
+            Optional<EntitySubPredicate> subPredicate = entityPred.subPredicate();
+            if (subPredicate.isEmpty()) {
+                return null;
             }
-            // 其他 type_specific 类型暂不解析，回退为纯运行时
+            // 通过 subPredicate 的 codec key 判断类型
+            ResourceLocation subType = BuiltInRegistries.ENTITY_SUB_PREDICATE_TYPE.getKey(
+                    subPredicate.get().codec());
+            if (subType == null) {
+                return null;
+            }
+            // 仅处理 fishing_hook 子谓词
+            if ("fishing_hook".equals(subType.getPath()) && "minecraft".equals(subType.getNamespace())) {
+                // FishingHookPredicate 有 inOpenWater 字段，通过反射或直接访问
+                // 由于无法直接访问具体类型，此处回退为通用描述
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "entity_properties_fishing"), null);
+            }
             return null;
         }
 
@@ -374,22 +428,20 @@ public final class LootConditionHandlers {
     private static final class InvertedHandler implements LootConditionHandler {
         @Override
         @Nullable
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            JsonElement termElement = conditionJson.get("term");
-            if (termElement == null || !termElement.isJsonObject()) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof InvertedLootItemCondition(LootItemCondition term))) {
                 return null;
             }
-            JsonObject termObj = termElement.getAsJsonObject();
-            String childType = LootParseUtil.normalizeType(LootParseUtil.getString(termObj, "condition", ""));
-            LootConditionHandler childHandler = get(childType);
+            ResourceLocation childId = BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(term.getType());
+            LootConditionHandler childHandler = get(childId);
             if (childHandler == null) {
                 return null;
             }
-            LootConditionInfo childInfo = childHandler.analyze(termObj);
+            LootConditionInfo childInfo = childHandler.analyze(term);
             if (childInfo == null) {
                 return null;
             }
-            return new LootConditionInfo("inverted",
+            return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "inverted", childInfo.description()),
                     null,
                     List.of(childInfo));
@@ -410,16 +462,18 @@ public final class LootConditionHandlers {
     private static final class AnyOfHandler implements LootConditionHandler {
         @Override
         @Nullable
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            if (!conditionJson.has("terms") || !conditionJson.get("terms").isJsonArray()) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof AnyOfCondition anyOf)) {
                 return null;
             }
-            List<LootConditionInfo> children = analyzeAll(conditionJson.getAsJsonArray("terms"));
+            List<LootItemCondition> terms = reflectField(anyOf);
+            if (terms == null) return null;
+            List<LootConditionInfo> children = analyzeAll(terms);
             if (children.isEmpty()) {
                 return null;
             }
             Component desc = buildCompositeDescription("any_of", children);
-            return new LootConditionInfo("any_of", desc, null, children);
+            return new LootConditionInfo(keyOf(condition), desc, null, children);
         }
 
         @Override
@@ -437,16 +491,18 @@ public final class LootConditionHandlers {
     private static final class AllOfHandler implements LootConditionHandler {
         @Override
         @Nullable
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            if (!conditionJson.has("terms") || !conditionJson.get("terms").isJsonArray()) {
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof AllOfCondition allOf)) {
                 return null;
             }
-            List<LootConditionInfo> children = analyzeAll(conditionJson.getAsJsonArray("terms"));
+            List<LootItemCondition> terms = reflectField(allOf);
+            if (terms == null) return null;
+            List<LootConditionInfo> children = analyzeAll(terms);
             if (children.isEmpty()) {
                 return null;
             }
             Component desc = buildCompositeDescription("all_of", children);
-            return new LootConditionInfo("all_of", desc, null, children);
+            return new LootConditionInfo(keyOf(condition), desc, null, children);
         }
 
         @Override
@@ -463,7 +519,6 @@ public final class LootConditionHandlers {
     /** 构建组合条件的描述文本 */
     private static Component buildCompositeDescription(String typeKey, List<LootConditionInfo> children) {
         Component header = Component.translatable(I18N_PREFIX + typeKey);
-        // 将子条件描述拼接为 "X 且 Y 且 Z" 或 "X 或 Y 或 Z"
         String separator = typeKey.equals("any_of") ? "  " + Component.translatable(I18N_PREFIX + "or").getString() + " "
                 : "  " + Component.translatable(I18N_PREFIX + "and").getString() + " ";
         StringBuilder builder = new StringBuilder();
@@ -481,9 +536,12 @@ public final class LootConditionHandlers {
     /** 处理 reference：引用外部条件，无法静态解析 */
     private static final class ReferenceHandler implements LootConditionHandler {
         @Override
-        public LootConditionInfo analyze(JsonObject conditionJson) {
-            String name = LootParseUtil.getString(conditionJson, "name", "?");
-            return new LootConditionInfo("reference",
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            String name = "?";
+            if (condition instanceof ConditionReference(net.minecraft.resources.ResourceKey<LootItemCondition> name1)) {
+                name = name1.location().toString();
+            }
+            return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "reference", name),
                     null);
         }

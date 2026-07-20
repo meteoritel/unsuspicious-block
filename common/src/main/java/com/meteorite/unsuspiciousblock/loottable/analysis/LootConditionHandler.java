@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.loottable.analysis;
 
-import com.google.gson.JsonObject;
+import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -25,13 +25,13 @@ public interface LootConditionHandler {
     }
 
     /**
-     * 尝试静态分析条件 JSON。
+     * 尝试静态分析条件。
      *
-     * @param conditionJson 该条件的 JSON 对象（含 "condition" 字段）
+     * @param condition 通过 {@link LootItemCondition#DIRECT_CODEC} 解析后的类型化条件对象
      * @return 条件分析结果；返回 null 表示纯运行时条件，无法静态描述
      */
     @Nullable
-    LootConditionInfo analyze(JsonObject conditionJson);
+    LootConditionInfo analyze(LootItemCondition condition);
 
     /**
      * 该条件是否引入不确定性（影响模拟结果置信度）。

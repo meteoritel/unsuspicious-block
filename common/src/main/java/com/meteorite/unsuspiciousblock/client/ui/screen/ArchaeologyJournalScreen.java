@@ -359,7 +359,7 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     // 根据条件类型返回对应颜色（不使用灰色）
-    private static ChatFormatting getConditionColor(String conditionType) {
+    private static ChatFormatting getConditionColor(ResourceLocation conditionType) {
         var handler = LootConditionHandlers.get(conditionType);
         if (handler == null) return ChatFormatting.WHITE;
         return switch (handler.uncertaintyLevel()) {

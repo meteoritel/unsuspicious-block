@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.analysis;
 
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -14,14 +15,14 @@ import java.util.List;
  * children 支持树形结构，用于组合条件（all_of/any_of/inverted）的嵌套展示。
  */
 public record LootConditionInfo(
-        String conditionType,
+        ResourceLocation conditionType,
         Component description,
         @Nullable Float probability,
         List<LootConditionInfo> children
 ) {
     public LootConditionInfo {
-        if (conditionType == null || conditionType.isBlank()) {
-            throw new IllegalArgumentException("conditionType must not be blank");
+        if (conditionType == null) {
+            throw new IllegalArgumentException("conditionType must not be null");
         }
         if (description == null) {
             throw new IllegalArgumentException("description must not be null");
@@ -32,7 +33,7 @@ public record LootConditionInfo(
     }
 
     // 兼容旧调用方：无 children
-    public LootConditionInfo(String conditionType, Component description, @Nullable Float probability) {
+    public LootConditionInfo(ResourceLocation conditionType, Component description, @Nullable Float probability) {
         this(conditionType, description, probability, List.of());
     }
 }
