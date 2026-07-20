@@ -38,6 +38,8 @@
     "StructureTemplateMixin"
   ],
   "client": [
+    "client.AbstractContainerScreenAccessor",
+    "client.MouseHandlerScrollMixin",
     "client.EnchantmentScreenMixin"
   ],
   "server": [],

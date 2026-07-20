@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.inventory.PortableContainer;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -51,12 +52,29 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        // WIP 标识：物品仍在开发中
-        tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.wip")
-                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
         // 功能说明
         tooltipLines.add(Component.translatable("item.unsuspiciousblock.specimen_box.tooltip_desc")
                 .withStyle(ChatFormatting.GRAY));
+
+        // 显示容器内容
+        ItemContainerContents contents = stack.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY);
+        NonNullList<ItemStack> allItems = NonNullList.createWithCapacity(SpecimenBoxMenu.CONTAINER_SIZE);
+        contents.copyInto(allItems);
+
+        List<ItemStack> nonEmpty = allItems.stream().filter(s -> !s.isEmpty()).toList();
+        if (nonEmpty.isEmpty()) {
+            tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.specimen_box.empty")
+                    .withStyle(ChatFormatting.GRAY));
+        } else {
+            tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.specimen_box.contains")
+                    .withStyle(ChatFormatting.GRAY));
+            for (ItemStack inner : nonEmpty) {
+                tooltipLines.add(Component.literal("  ")
+                        .append(inner.getHoverName())
+                        .append(Component.literal(" x" + inner.getCount())
+                                .withStyle(ChatFormatting.GRAY)));
+            }
+        }
         super.appendHoverText(stack, context, tooltipLines, flag);
     }
 }

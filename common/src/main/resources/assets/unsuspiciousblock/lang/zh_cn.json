@@ -64,6 +64,8 @@
   "item.unsuspiciousblock.archaeology_journal": "考古笔记",
   "item.unsuspiciousblock.specimen_box": "标本箱",
   "item.unsuspiciousblock.specimen_box.tooltip_desc": "放入背包生效类物品（如猫之手、猫之瞳），标本箱在背包或饰品栏中时其功能正常触发",
+  "tooltip.unsuspiciousblock.specimen_box.empty": "空",
+  "tooltip.unsuspiciousblock.specimen_box.contains": "内含:",
   "item.unsuspiciousblock.ancient_coin": "古代金币",
   "item.unsuspiciousblock.lost_page": "失落书页",
   "item.unsuspiciousblock.base_page": "基页",

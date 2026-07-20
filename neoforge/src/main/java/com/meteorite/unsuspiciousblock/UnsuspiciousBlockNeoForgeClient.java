@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHigh
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
+import com.meteorite.unsuspiciousblock.client.state.SpecimenBoxScrollState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
@@ -129,6 +130,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ArchaeologyJournalClientState.resetOnDisconnect();
         HandOfCatClientState.reset();
         ReaderScanHighlightState.reset();
+        SpecimenBoxScrollState.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }
 

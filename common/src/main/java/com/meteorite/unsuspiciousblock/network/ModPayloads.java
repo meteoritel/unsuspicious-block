@@ -14,6 +14,7 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePay
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.SpecimenBoxScrollPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
@@ -27,6 +28,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncre
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxQuickInteraction;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -79,7 +81,10 @@ public final class ModPayloads {
             new C2S<>(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
                     (player, payload) -> CatNetworkHandler.handleDeterrenceToggle(player)),
             new C2S<>(CatLightStepTogglePayload.TYPE, CatLightStepTogglePayload.STREAM_CODEC,
-                    (player, payload) -> CatNetworkHandler.handleLightStepToggle(player))
+                    (player, payload) -> CatNetworkHandler.handleLightStepToggle(player)),
+            new C2S<>(SpecimenBoxScrollPayload.TYPE, SpecimenBoxScrollPayload.STREAM_CODEC,
+                    (player, payload) -> SpecimenBoxQuickInteraction.handleScroll(
+                            player, payload.selectedInnerSlot()))
     );
 
     /** S2C payload 类型列表（仅 type + streamCodec，供服务端注册编解码器，Fabric 需要） */

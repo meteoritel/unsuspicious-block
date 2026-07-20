@@ -67,6 +67,8 @@
   "item.unsuspiciousblock.archaeology_journal": "Archaeology Journal",
   "item.unsuspiciousblock.specimen_box": "Specimen Box",
   "item.unsuspiciousblock.specimen_box.tooltip_desc": "Place inventory-active items (e.g. Hand of Cat, Eye of Cat) inside; their effects work while the box is in your inventory or curio slot",
+  "tooltip.unsuspiciousblock.specimen_box.empty": "Empty",
+  "tooltip.unsuspiciousblock.specimen_box.contains": "Contains:",
   "item.unsuspiciousblock.ancient_coin": "Ancient Coin",
   "item.unsuspiciousblock.lost_page": "Lost Page",
   "item.unsuspiciousblock.base_page": "Base Page",
