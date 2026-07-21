@@ -27,25 +27,23 @@ public final class JournalLogHandler {
 
     private JournalLogHandler() {}
 
-    // 处理客户端上传的日志快照：
-    // - session 未 seeded（降级路径）：seed 合并 → 检测成就 → 下发权威快照
-    // - session 已 seeded（服务端权威模式）：合并客户端数据到服务端镜像，以保留断线期间的条目
+    // 处理客户端上传的日志快照：仅供未 seeded 的旧数据降级迁移使用
+    // 服务端权威会话不读取客户端快照，避免旧缓存覆盖服务端记录
     public static void handleUploadedLogSnapshot(ServerPlayer player, UploadJournalLogSnapshotPayload payload) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null) {
             return;
         }
+        if (session.isSeeded()) {
+            syncLogSnapshot(player);
+            return;
+        }
+
         ArchaeologyJournalLogState uploadedState = new ArchaeologyJournalLogState();
         uploadedState.readFrom(payload.state());
-        if (!session.isSeeded()) {
-            // 降级路径：旧版客户端或无持久数据时，从客户端上传建立初始状态
-            session.seedFromClient(payload.sessionId(), uploadedState);
-            syncToPersistedState(player);
-        } else {
-            // 服务端权威模式：合并客户端数据，保留断线期间的条目
-            session.mergeFromClient(uploadedState);
-            syncToPersistedState(player);
-        }
+        // 降级路径：旧版客户端或无持久数据时，从客户端上传建立初始状态
+        session.seedFromClient(payload.sessionId(), uploadedState);
+        syncToPersistedState(player);
         // 合并后检查是否有任意单表条目数达到上限
         if (anyTableReachedThreshold(session.mirroredState())) {
             AchievementManager.grantIfNotAlready(player, ModAchievements.CACHE_ME_IF_YOU_CAN);

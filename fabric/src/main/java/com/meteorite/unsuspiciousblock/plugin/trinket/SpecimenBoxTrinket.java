@@ -51,11 +51,6 @@ public final class SpecimenBoxTrinket implements Trinket {
     }
 
     @Override
-    public boolean canEquip(ItemStack stack, SlotReference slotReference, LivingEntity entity) {
-        return true;
-    }
-
-    @Override
     public boolean canUnequip(ItemStack stack, SlotReference slotReference, LivingEntity entity) {
         return true;
     }

@@ -12,6 +12,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * 战利品概率模拟主线程 tick 驱动器。
@@ -45,6 +46,8 @@ public final class LootProbabilitySimulationWorker {
     private volatile boolean paused = false;
     /** 模拟结果回调（由调用方设置，如写入目录、广播等） */
     private volatile ResultHandler resultHandler;
+    /** 当前队列全部处理完毕后的回调 */
+    private volatile Consumer<MinecraftServer> queueDrainedHandler;
     /** 调试用进度回调（由 /usb journal reload 设置），可能为 null */
     private volatile ProgressListener progressListener;
 
@@ -124,6 +127,11 @@ public final class LootProbabilitySimulationWorker {
         this.resultHandler = handler;
     }
 
+    /** 设置队列排空回调，用于合并一批模拟产生的后续操作 */
+    public void setQueueDrainedHandler(Consumer<MinecraftServer> handler) {
+        this.queueDrainedHandler = handler;
+    }
+
     /** 设置调试用进度回调 */
     public void setProgressListener(ProgressListener listener) {
         this.progressListener = listener;
@@ -135,14 +143,22 @@ public final class LootProbabilitySimulationWorker {
      */
     public void tick(MinecraftServer server) {
         if (paused) return;
+        boolean processed = false;
         ServerLevel level = server.overworld();
         for (int i = 0; i < MAX_TABLES_PER_TICK; i++) {
             SimTask task = highQueue.pollFirst();
             if (task == null) {
                 task = lowQueue.pollFirst();
             }
-            if (task == null) return;
+            if (task == null) break;
             process(server, level, task);
+            processed = true;
+        }
+        if (processed && highQueue.isEmpty() && lowQueue.isEmpty()) {
+            Consumer<MinecraftServer> handler = this.queueDrainedHandler;
+            if (handler != null) {
+                handler.accept(server);
+            }
         }
     }
 

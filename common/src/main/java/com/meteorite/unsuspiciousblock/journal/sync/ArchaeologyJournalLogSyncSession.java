@@ -11,9 +11,9 @@ import java.util.UUID;
 
 /**
  * 考古日志同步会话——管理服务端与客户端之间的日志状态同步。
- * 使用 "客户端先上传全量 → 服务端镜像 → 后续增量同步" 的两阶段策略。
- * 在客户端尚未上传前（seeded = false），暂存变更到 queuedMutations 队列，
- * 待 seedFromClient 后回放到 mirroredState。
+ * 正常流程由服务端持久数据建立镜像并向客户端下发快照。
+ * 未建立服务端镜像时（seeded = false）暂存变更到 queuedMutations 队列，
+ * 旧数据降级迁移完成后再回放到 mirroredState。
  */
 public final class ArchaeologyJournalLogSyncSession {
     @Nullable
@@ -96,10 +96,8 @@ public final class ArchaeologyJournalLogSyncSession {
         this.queuedMutations.clear();
     }
 
-    // 将客户端上传的数据合并到服务端镜像状态（服务端权威模式下的降级合并）
-    // 保留服务端已有数据，同时将客户端独有的条目补充进来
+    // 将客户端上传的数据补充到服务端镜像状态；相同 entryId 始终保留服务端版本
     public void mergeFromClient(ArchaeologyJournalLogState clientState) {
-        // 使用 upsert 合并：服务端数据为主，客户端的条目被补充（不覆盖已有的）
         for (var entry : clientState.getTables().entrySet()) {
             ResourceLocation tableId = entry.getKey();
             ArchaeologyJournalLogState.TableLogHistory clientHistory = entry.getValue();
@@ -114,7 +112,9 @@ public final class ArchaeologyJournalLogSyncSession {
             }
             // 合并发掘条目
             for (ExcavationLogEntry logEntry : clientHistory.getEntries()) {
-                this.mirroredState.upsertEntry(tableId, logEntry);
+                if (!this.mirroredState.containsEntry(tableId, logEntry.entryId())) {
+                    this.mirroredState.upsertEntry(tableId, logEntry);
+                }
             }
         }
     }

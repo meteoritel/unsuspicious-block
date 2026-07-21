@@ -54,7 +54,10 @@ public final class JournalCatalogHandler {
     /** 数据包重载：暂停 worker → 失效内存目录 → 重新解析入队 → 恢复 worker → 同步哈希 */
     public static void onDataPackReload(MinecraftServer server) {
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker != null) worker.pauseForReload();
+        if (worker != null) {
+            worker.pauseForReload();
+            worker.clearQueue();
+        }
         ArchaeologyJournalServerCatalog.invalidate();
         ArchaeologyJournalServerCatalog.ensureLoaded(server);
         if (worker != null) worker.resumeAfterReload();

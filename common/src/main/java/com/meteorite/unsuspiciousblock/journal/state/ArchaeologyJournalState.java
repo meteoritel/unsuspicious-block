@@ -299,7 +299,7 @@ public final class ArchaeologyJournalState {
             return this.completionRewardClaimed;
         }
 
-        public void setCompletionRewardClaimed(boolean claimed) {
+        private void setCompletionRewardClaimed(boolean claimed) {
             this.completionRewardClaimed = claimed;
         }
 
@@ -321,7 +321,7 @@ public final class ArchaeologyJournalState {
             return item != null && item.isUnlocked() ? item.getCount() : 0;
         }
 
-        public boolean unlock() {
+        private boolean unlock() {
             if (this.unlocked) {
                 return false;
             }
@@ -330,11 +330,11 @@ public final class ArchaeologyJournalState {
             return true;
         }
 
-        public boolean unlockItem(LootResultSignature signature) {
+        private boolean unlockItem(LootResultSignature signature) {
             return this.getOrCreateItem(signature).unlock();
         }
 
-        public boolean unlockItems(Iterable<LootResultSignature> signatures) {
+        private boolean unlockItems(Iterable<LootResultSignature> signatures) {
             if (signatures == null) {
                 return false;
             }
@@ -349,7 +349,7 @@ public final class ArchaeologyJournalState {
             return changed;
         }
 
-        public boolean recordItemAcquired(LootResultSignature signature, int count) {
+        private boolean recordItemAcquired(LootResultSignature signature, int count) {
             if (count <= 0) {
                 return false;
             }
@@ -360,7 +360,7 @@ public final class ArchaeologyJournalState {
             return changed;
         }
 
-        public boolean recordItemsAcquired(Map<LootResultSignature, Integer> counts) {
+        private boolean recordItemsAcquired(Map<LootResultSignature, Integer> counts) {
             if (counts == null) {
                 return false;
             }
@@ -443,7 +443,7 @@ public final class ArchaeologyJournalState {
             return this.count;
         }
 
-        public boolean unlock() {
+        private boolean unlock() {
             if (this.unlocked) {
                 return false;
             }
@@ -452,7 +452,7 @@ public final class ArchaeologyJournalState {
             return true;
         }
 
-        public boolean incrementCount(int amount) {
+        private boolean incrementCount(int amount) {
             if (amount <= 0) {
                 return false;
             }

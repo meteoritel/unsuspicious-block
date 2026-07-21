@@ -73,9 +73,9 @@ public final class ArchaeologyLootRuntimeTracker {
         }
     }
 
-    // 判断指定表是否已在 catalog 中注册
+    // 判断指定表是否已被原始目录收录；概率模拟是否完成不应影响追踪资格
     private static boolean isTableInCatalog(ResourceLocation tableId) {
-        return ArchaeologyJournalServerCatalog.getCatalog().containsKey(tableId);
+        return ArchaeologyJournalServerCatalog.getRawCatalog().containsKey(tableId);
     }
 
     // 为钓鱼/开箱等无待定日志条目机制的追踪入口创建并 upsert ExcavationLogEntry。
@@ -205,6 +205,9 @@ public final class ArchaeologyLootRuntimeTracker {
         }
 
         TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
+        if (table == null) {
+            table = ArchaeologyJournalServerCatalog.getRawTable(tableId);
+        }
         if (table == null || table.items().isEmpty()) {
             return LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem()));
         }

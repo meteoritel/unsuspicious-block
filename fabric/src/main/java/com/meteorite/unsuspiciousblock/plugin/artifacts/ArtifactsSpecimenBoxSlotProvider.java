@@ -52,8 +52,7 @@ public final class ArtifactsSpecimenBoxSlotProvider
                     }
                     NonNullList<ItemStack> innerItems = SpecimenBoxContents.read(equipped);
                     NonNullList<ItemStack> previous = SpecimenBoxContents.copy(innerItems);
-                    for (int innerSlot = 0; innerSlot < innerItems.size(); innerSlot++) {
-                        ItemStack inner = innerItems.get(innerSlot);
+                    for (ItemStack inner : innerItems) {
                         if (!inner.isEmpty() && !inner.is(ModItems.SPECIMEN_BOX)
                                 && TrinketSlotResolver.isValid(inner, trinkets, entity)) {
                             result = reducer.apply(inner, result);

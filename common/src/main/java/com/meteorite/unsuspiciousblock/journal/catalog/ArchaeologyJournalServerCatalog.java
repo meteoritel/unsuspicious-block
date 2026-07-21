@@ -41,14 +41,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 服务端目录——解析所有考古战利品表，按需通过后台工作线程填充概率。
+ * 服务端目录——解析所有考古战利品表，按需通过主线程 tick 工作器填充概率。
  * <p>
  * 生命周期：
  * <ul>
  *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，解析原始目录 + 从 SavedData 恢复已缓存表 +
- *       将未缓存表入队后台模拟。立即返回，catalog 会随模拟完成渐进填充。</li>
+ *       将未缓存表入队分 tick 模拟。立即返回，catalog 会随模拟完成渐进填充。</li>
  *   <li>{@link #commitSimulatedTable(LootProbabilitySimulator.SimResult, MinecraftServer)}：由工作器在主线程调用，
- *       将单表模拟结果写入 catalog 与 SavedData，并广播哈希给在线玩家。</li>
+ *       将单表模拟结果写入 catalog 与 SavedData；整批任务结束后统一广播哈希。</li>
  *   <li>{@link #invalidate()}：清空内存目录与哈希缓存，下次 ensureLoaded 重新解析。</li>
  * </ul>
  * <p>
@@ -92,7 +92,7 @@ public final class ArchaeologyJournalServerCatalog {
             LOGGER.info("解析到 {} 个考古战利品表原始目录", parsed.size());
 
             // 2. 计算每个表的 JSON 内容哈希
-            tableHashes.putAll(computeTableHashes(server.getResourceManager(), parsed.keySet()));
+            tableHashes.putAll(computeTableHashes(server.getResourceManager(), parsed));
 
             // 3. 从 SavedData 恢复已缓存表
             ServerLevel level = server.overworld();
@@ -113,11 +113,12 @@ public final class ArchaeologyJournalServerCatalog {
 
             loaded = true;
 
-            // 4. 未缓存表入队后台模拟
+            // 4. 未缓存表入队分 tick 模拟
             if (!uncached.isEmpty()) {
                 LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
                 if (worker != null) {
                     worker.setResultHandler(ArchaeologyJournalServerCatalog::commitSimulatedTable);
+                    worker.setQueueDrainedHandler(ArchaeologyJournalServerCatalog::broadcastCatalogHash);
                     // 构建仅含未缓存表的子 map
                     Map<ResourceLocation, TableDefinition> uncachedMap = new LinkedHashMap<>();
                     for (ResourceLocation id : uncached) {
@@ -158,7 +159,6 @@ public final class ArchaeologyJournalServerCatalog {
     public static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, MinecraftServer server) {
         LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
         commitSimulatedTable(result, probabilityData);
-        broadcastCatalogHash(server);
     }
 
     // 实际提交逻辑（不广播，供同步回退批量调用）
@@ -324,25 +324,27 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 对每个表的 JSON 资源内容计算 SHA-256 哈希
     private static Map<ResourceLocation, String> computeTableHashes(
-            ResourceManager resourceManager, Iterable<ResourceLocation> tableIds) {
+            ResourceManager resourceManager, Map<ResourceLocation, TableDefinition> tables) {
         Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
         MessageDigest digest;
         try {
             digest = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             LOGGER.warn("SHA-256 算法不可用，所有表将触发重新模拟", e);
-            for (ResourceLocation tableId : tableIds) {
+            for (ResourceLocation tableId : tables.keySet()) {
                 hashes.put(tableId, "");
             }
             return hashes;
         }
 
-        for (ResourceLocation tableId : tableIds) {
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : tables.entrySet()) {
+            ResourceLocation tableId = entry.getKey();
             try {
                 digest.reset();
                 updateDigest(digest, SIMULATION_CACHE_VERSION);
                 updateDigest(digest, Integer.toString(LootProbabilitySimulator.getSimulationCount()));
                 updateTableResourceDigest(resourceManager, tableId, digest, new HashSet<>());
+                updateRawDefinitionDigest(digest, entry.getValue());
                 hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
             } catch (IOException | RuntimeException e) {
                 LOGGER.warn("计算战利品表 {} 哈希失败，将触发重新模拟", tableId, e);
@@ -350,6 +352,19 @@ public final class ArchaeologyJournalServerCatalog {
             }
         }
         return hashes;
+    }
+
+    // 将解析后的物品签名纳入哈希，覆盖 loot table 中 item tag 成员变化等间接依赖
+    private static void updateRawDefinitionDigest(MessageDigest digest, TableDefinition table) {
+        List<ItemDefinition> items = table.items().stream()
+                .sorted(Comparator.comparing(item -> item.signature().toStoredKey()))
+                .toList();
+        updateDigest(digest, Integer.toString(items.size()));
+        for (ItemDefinition item : items) {
+            updateDigest(digest, item.signature().toStoredKey());
+            updateDigest(digest, item.id().toString());
+            updateDigest(digest, Boolean.toString(item.injected()));
+        }
     }
 
     private static void updateTableResourceDigest(ResourceManager resourceManager, ResourceLocation tableId,

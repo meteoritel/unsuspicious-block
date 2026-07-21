@@ -51,9 +51,7 @@ public final class JournalLogRecorder {
     // 仅更新日记进度状态中的已获取物品计数（不更新日志条目）
     public static void recordItemsAcquired(ServerPlayer player, ResourceLocation tableId,
                                            Map<LootResultSignature, Integer> signatureCounts) {
-        if (syncItemAcquiredState(player, tableId, signatureCounts)) {
-            JournalStateHandler.syncState(player);
-        }
+        syncItemAcquiredState(player, tableId, signatureCounts);
     }
 
     // 清空全部日志

@@ -68,6 +68,12 @@ public final class ArchaeologyJournalLogState {
         return this.getOrCreateTable(tableId).upsertEntry(entry);
     }
 
+    // 检查指定表中是否已存在日志条目
+    public boolean containsEntry(ResourceLocation tableId, UUID entryId) {
+        TableLogHistory history = this.tables.get(tableId);
+        return history != null && history.containsEntry(entryId);
+    }
+
     // 移除指定表及其所有日志条目
     public boolean removeTable(ResourceLocation tableId) {
         return this.tables.remove(tableId) != null;
@@ -172,11 +178,11 @@ public final class ArchaeologyJournalLogState {
             return this.entries.size();
         }
 
-        public boolean setFirstUnlockedTimeMin(long gameTime, long dayTime) {
-            return this.setFirstUnlockMetaMin(null, gameTime, dayTime);
+        public boolean containsEntry(UUID entryId) {
+            return entryId != null && this.entries.containsKey(entryId);
         }
 
-        public boolean setFirstUnlockMetaMin(@Nullable LootSourceType lootSource, long gameTime, long dayTime) {
+        private boolean setFirstUnlockMetaMin(@Nullable LootSourceType lootSource, long gameTime, long dayTime) {
             long normalizedGameTime = Math.max(0L, gameTime);
             long normalizedDayTime = Math.max(0L, dayTime);
             if (this.firstUnlockedGameTime == null) {
@@ -203,24 +209,28 @@ public final class ArchaeologyJournalLogState {
             return false;
         }
 
-        public boolean upsertEntry(ExcavationLogEntry entry) {
+        private boolean upsertEntry(ExcavationLogEntry entry) {
             ExcavationLogEntry previous = this.entries.put(entry.entryId(), entry);
-            // 超出上限时移除最旧的条目；已备注的条目受保护，跳过不删
-            if (this.entries.size() > getMaxEntries()) {
-                var it = this.entries.values().iterator();
-                while (it.hasNext() && this.entries.size() > getMaxEntries()) {
-                    ExcavationLogEntry candidate = it.next();
-                    if (candidate.hasNote()) {
-                        continue;
-                    }
-                    it.remove();
-                }
+            // 仅新增条目触发淘汰。清空备注会让旧条目恢复资格，下一次新增时参与淘汰。
+            if (previous == null) {
+                this.trimEntriesToLimit();
             }
             boolean changed = !entry.equals(previous);
             if (changed) {
                 this.entriesVersion++;
             }
             return changed;
+        }
+
+        // 超出上限时移除最旧的无备注条目；带备注条目始终受保护
+        private void trimEntriesToLimit() {
+            var it = this.entries.values().iterator();
+            while (it.hasNext() && this.entries.size() > getMaxEntries()) {
+                ExcavationLogEntry candidate = it.next();
+                if (!candidate.hasNote()) {
+                    it.remove();
+                }
+            }
         }
 
         public TableLogHistory copy() {
