@@ -81,7 +81,14 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     // 添加 5 格容器槽位
     private void addContainerSlots() {
         for (int i = 0; i < CONTAINER_SIZE; i++) {
-            this.addSlot(new Slot(this.container, i, CONTAINER_X + i * 18, CONTAINER_Y));
+            this.addSlot(new Slot(this.container, i,
+                    CONTAINER_X + i * 18, CONTAINER_Y) {
+                @Override
+                public boolean mayPlace(@NotNull ItemStack stack) {
+                    // 禁止标本箱嵌套，避免递归容器造成无法取出的物品。
+                    return !stack.is(ModItems.SPECIMEN_BOX);
+                }
+            });
         }
     }
 

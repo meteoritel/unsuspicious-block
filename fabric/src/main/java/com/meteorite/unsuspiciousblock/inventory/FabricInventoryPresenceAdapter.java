@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.inventory;
 
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxQuickInteraction;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,7 +26,6 @@ public final class FabricInventoryPresenceAdapter {
         // 玩家下线：清理 diff 状态（mixin 字段随 Player 对象回收，此处显式清理保险）
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             InventoryPresenceRegistry.clearPlayer(handler.player);
-            SpecimenBoxQuickInteraction.clearPlayer(handler.player);
         });
     }
 }

@@ -102,8 +102,7 @@ public class CatalogToolbar {
         this.searchExpanded = !this.searchExpanded;
         if (this.searchExpanded) {
             this.searchJustOpened = true;
-        } else if (this.searchField != null) {
-            this.searchField.setValue("");
+        } else {
             this.currentSearch = JournalSearchQuery.EMPTY;
         }
         onConfigChanged.run();
@@ -156,10 +155,7 @@ public class CatalogToolbar {
     public boolean handleEsc() {
         if (this.searchExpanded) {
             this.searchExpanded = false;
-            if (this.searchField != null) {
-                this.searchField.setValue("");
-                this.currentSearch = JournalSearchQuery.EMPTY;
-            }
+            this.currentSearch = JournalSearchQuery.EMPTY;
             onConfigChanged.run();
             return true;
         }
@@ -240,7 +236,7 @@ public class CatalogToolbar {
 
         // 搜索框
         if (this.searchExpanded) {
-            String savedText = this.searchField != null ? this.searchField.getValue() : "";
+            String savedText = this.currentSearch.rawQuery();
             boolean hadFocus = this.searchField != null && this.searchField.isFocused();
             int searchFieldX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
             this.searchField = new EditBox(font,
@@ -249,8 +245,9 @@ public class CatalogToolbar {
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
             this.searchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
             this.searchField.setMaxLength(50);
-            this.searchField.setResponder(this::onSearchChanged);
+            // 初始化值会同步触发 responder，必须在绑定回调前恢复文本，避免重建递归
             this.searchField.setValue(savedText);
+            this.searchField.setResponder(this::onSearchChanged);
             // 仅在用户刚点击搜索按钮展开，或原来搜索框就有焦点时，才自动聚焦
             if (this.searchJustOpened || hadFocus) {
                 this.searchField.setFocused(true);

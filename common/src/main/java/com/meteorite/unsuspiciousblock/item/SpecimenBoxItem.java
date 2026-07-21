@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.inventory.PortableContainer;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -13,17 +13,17 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.component.ItemContainerContents;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
  * 标本箱物品--便携容器，放在背包或饰品栏中时内部物品的"背包生效"功能正常触发。
- * 右键打开 5 格容器 GUI（暂用漏斗贴图）。实现 PortableContainer 供 InventoryPresenceRegistry 递归扫描。
+ * 右键打开 5 格容器 GUI。实现 PortableContainer 供 InventoryPresenceRegistry 递归扫描。
  */
 public class SpecimenBoxItem extends Item implements PortableContainer {
     public SpecimenBoxItem(Properties properties) {
@@ -50,31 +50,12 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
     }
 
     @Override
-    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
-                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        // 功能说明
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.specimen_box.tooltip_desc")
-                .withStyle(ChatFormatting.GRAY));
-
-        // 显示容器内容
-        ItemContainerContents contents = stack.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY);
-        NonNullList<ItemStack> allItems = NonNullList.createWithCapacity(SpecimenBoxMenu.CONTAINER_SIZE);
-        contents.copyInto(allItems);
-
-        List<ItemStack> nonEmpty = allItems.stream().filter(s -> !s.isEmpty()).toList();
-        if (nonEmpty.isEmpty()) {
-            tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.specimen_box.empty")
-                    .withStyle(ChatFormatting.GRAY));
-        } else {
-            tooltipLines.add(Component.translatable("tooltip.unsuspiciousblock.specimen_box.contains")
-                    .withStyle(ChatFormatting.GRAY));
-            for (ItemStack inner : nonEmpty) {
-                tooltipLines.add(Component.literal("  ")
-                        .append(inner.getHoverName())
-                        .append(Component.literal(" x" + inner.getCount())
-                                .withStyle(ChatFormatting.GRAY)));
-            }
-        }
-        super.appendHoverText(stack, context, tooltipLines, flag);
+    public Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
+        ItemContainerContents contents = stack.getOrDefault(
+                DataComponents.CONTAINER, ItemContainerContents.EMPTY);
+        NonNullList<ItemStack> items = NonNullList.withSize(
+                SpecimenBoxMenu.CONTAINER_SIZE, ItemStack.EMPTY);
+        contents.copyInto(items);
+        return Optional.of(new SpecimenBoxTooltip(items));
     }
 }

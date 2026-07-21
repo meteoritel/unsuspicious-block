@@ -10,17 +10,18 @@ import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHigh
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
-import com.meteorite.unsuspiciousblock.client.state.SpecimenBoxScrollState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
@@ -30,6 +31,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.TooltipComponentCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -64,6 +66,10 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         });
         // 注册标本箱界面（漏斗贴图）
         MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+        TooltipComponentCallback.EVENT.register(component ->
+                component instanceof SpecimenBoxTooltip tooltip
+                        ? new ClientSpecimenBoxTooltip(tooltip)
+                        : null);
 
         // 注册 S2C 接收器：遍历 ModPayloads 客户端清单
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
@@ -73,7 +79,6 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             ArchaeologyJournalClientState.resetOnDisconnect();
             HandOfCatClientState.reset();
             ReaderScanHighlightState.reset();
-            SpecimenBoxScrollState.reset();
             com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
         });
 

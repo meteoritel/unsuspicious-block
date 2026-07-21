@@ -37,6 +37,7 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
@@ -53,7 +54,6 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.BasicItemListing;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.event.AnvilUpdateEvent;
@@ -108,8 +108,8 @@ public class UnsuspiciousBlockNeoForge {
     private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> FISHING_LOOT =
             LOOT_MODIFIERS.register("fishing_loot", () -> FishingLootModifier.CODEC);
     private static final DeferredHolder<MenuType<?>, MenuType<SpecimenBoxMenu>> SPECIMEN_BOX_MENU =
-            MENUS.register("specimen_box", () -> IMenuTypeExtension.create((containerId, inventory, extraData) ->
-                    new SpecimenBoxMenu(containerId, inventory)));
+            MENUS.register("specimen_box", () ->
+                    new MenuType<>(SpecimenBoxMenu::new, FeatureFlags.DEFAULT_FLAGS));
 
     /** 存储 (DeferredItem, Consumer<Item>) 对，供 FMLCommonSetupEvent 中回写 */
     private record ItemSyncEntry(DeferredItem<Item> deferred, Consumer<Item> setter) {}

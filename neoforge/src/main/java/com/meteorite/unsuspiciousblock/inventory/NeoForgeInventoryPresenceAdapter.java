@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.inventory;
 
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxQuickInteraction;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -36,7 +35,6 @@ public final class NeoForgeInventoryPresenceAdapter {
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             InventoryPresenceRegistry.clearPlayer(player);
-            SpecimenBoxQuickInteraction.clearPlayer(player);
         }
     }
 }

@@ -10,20 +10,22 @@ import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHigh
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
-import com.meteorite.unsuspiciousblock.client.state.SpecimenBoxScrollState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterClientTooltipComponentFactoriesEvent;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -80,6 +82,11 @@ public final class UnsuspiciousBlockNeoForgeClient {
     }
 
     @SubscribeEvent
+    public static void registerTooltipComponents(RegisterClientTooltipComponentFactoriesEvent event) {
+        event.register(SpecimenBoxTooltip.class, ClientSpecimenBoxTooltip::new);
+    }
+
+    @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(ModKeyBindings.SCAN_LEVEL_CYCLE);
         event.register(ModKeyBindings.JOURNAL_OPEN);
@@ -130,7 +137,6 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ArchaeologyJournalClientState.resetOnDisconnect();
         HandOfCatClientState.reset();
         ReaderScanHighlightState.reset();
-        SpecimenBoxScrollState.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }
 

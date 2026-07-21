@@ -1,17 +1,14 @@
 package com.meteorite.unsuspiciousblock.mixin.container;
 
-import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.tracking.ContainerTrackingService;
 import com.meteorite.unsuspiciousblock.journal.tracking.MenuTrackingSnapshot;
 import com.meteorite.unsuspiciousblock.journal.tracking.MenuTrackingSnapshotService;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxQuickInteraction;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -44,41 +41,6 @@ public abstract class AbstractContainerMenuMixin {
     @Unique
     @Nullable
     private MenuTrackingSnapshot unsuspiciousblock$menuTrackingSnapshot;
-
-    // 拦截标本箱快速交互：右键取出 / 左键放入
-    @Inject(method = "clicked", at = @At("HEAD"), cancellable = true)
-    private void unsuspiciousblock$handleSpecimenBoxQuickInteraction(int slotId, int button,
-                                                                      ClickType clickType, Player player,
-                                                                      CallbackInfo ci) {
-        if (!(player instanceof ServerPlayer serverPlayer)) return;
-        if (player.getAbilities().instabuild) return;
-        // 仅物品栏界面生效，避免干扰其他容器
-        if (!((AbstractContainerMenu) (Object) this instanceof InventoryMenu)) return;
-
-        Slot slot = this.slots.get(slotId);
-        if (slot == null || !slot.hasItem()) return;
-        if (!slot.getItem().is(ModItems.SPECIMEN_BOX)) return;
-
-        if (clickType == ClickType.PICKUP) {
-            ItemStack carried = this.getCarried();
-            if (button == 0 && !carried.isEmpty()) {
-                // 左键 + 手持物品 → 整组放入
-                if (SpecimenBoxQuickInteraction.tryInsert((AbstractContainerMenu) (Object) this, slot, serverPlayer, carried.getCount())) {
-                    ci.cancel();
-                }
-            } else if (button == 1 && !carried.isEmpty()) {
-                // 右键 + 手持物品 → 放入 1 个
-                if (SpecimenBoxQuickInteraction.tryInsert((AbstractContainerMenu) (Object) this, slot, serverPlayer, 1)) {
-                    ci.cancel();
-                }
-            } else if (button == 1 && carried.isEmpty()) {
-                // 右键 + 空手 → 取出最后/选中物品
-                if (SpecimenBoxQuickInteraction.tryExtract((AbstractContainerMenu) (Object) this, slot, serverPlayer)) {
-                    ci.cancel();
-                }
-            }
-        }
-    }
 
     // 在点击处理前记录玩家背包与光标中相关物品的快照
     @Inject(method = "clicked", at = @At("HEAD"))

@@ -144,8 +144,8 @@ public class SpecimenBoxCurio implements ICurioItem {
 
     @Override
     public boolean canEquipFromUse(SlotContext slotContext, ItemStack stack) {
-        // 标本箱本身始终允许右键装备
-        return true;
+        // 右键保留给标本箱 GUI；仍可在 Curios 界面中手动装备。
+        return false;
     }
 
 //    @Override
