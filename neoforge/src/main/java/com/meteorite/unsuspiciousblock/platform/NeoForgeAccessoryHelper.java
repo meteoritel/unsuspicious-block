@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
 import top.theillusivec4.curios.api.CuriosApi;
 
 import java.util.stream.IntStream;
@@ -36,7 +35,7 @@ public final class NeoForgeAccessoryHelper implements IAccessoryHelper {
     @Override
     public Stream<ItemStack> streamEquippedStacks(Player player) {
         // Curios 未安装时直接返回空流，不引用 CuriosApi 静态成员
-        if (!ModList.get().isLoaded("curios")) {
+        if (!Services.PLATFORM.isModLoaded("curios")) {
             return Stream.empty();
         }
         return CuriosApi.getCuriosInventory(player)

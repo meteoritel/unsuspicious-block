@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.platform;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper;
 import dev.emi.trinkets.api.TrinketsApi;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -36,7 +35,7 @@ public final class FabricAccessoryHelper implements IAccessoryHelper {
     @Override
     public Stream<ItemStack> streamEquippedStacks(Player player) {
         // Trinkets 未安装时直接返回空流，不引用 TrinketsApi 静态成员
-        if (!FabricLoader.getInstance().isModLoaded("trinkets")) {
+        if (!Services.PLATFORM.isModLoaded("trinkets")) {
             return Stream.empty();
         }
         return TrinketsApi.getTrinketComponent(player)

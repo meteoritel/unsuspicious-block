@@ -21,6 +21,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimul
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.serialization.MapCodec;
 import org.spongepowered.asm.mixin.Mixins;
 import net.minecraft.core.Holder;
@@ -49,7 +50,6 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -184,7 +184,7 @@ public class UnsuspiciousBlockNeoForge {
 
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
         // 条件注册 Lootr 兼容 Mixin：仅在 Lootr 已安装时注册
-        if (ModList.get().isLoaded("lootr")) {
+        if (Services.PLATFORM.isModLoaded("lootr")) {
             Constants.LOG.info("[UnsuspiciousBlock] Lootr detected, registering Lootr compat mixins.");
             Mixins.addConfiguration("unsuspiciousblock.lootr.mixins.json");
         }
@@ -227,9 +227,9 @@ public class UnsuspiciousBlockNeoForge {
             }
             // 标本箱 Curios 代理注册：Curios 安装时将标本箱注册为 ICurioItem，
             // 使其在饰品槽中时能将内部物品模拟为独立饰品
-            if (ModList.get().isLoaded("curios")) {
+            if (Services.PLATFORM.isModLoaded("curios")) {
                 SpecimenBoxCurio.Lifecycle lifecycle = SpecimenBoxCurio.Lifecycle.NONE;
-                if (ModList.get().isLoaded("artifacts")) {
+                if (Services.PLATFORM.isModLoaded("artifacts")) {
                     lifecycle = ArtifactsSpecimenBoxSlotProvider.register();
                 }
                 CuriosApi.registerCurio(ModItems.SPECIMEN_BOX, new SpecimenBoxCurio(lifecycle));

@@ -18,6 +18,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimul
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.plugin.artifacts.ArtifactsSpecimenBoxSlotProvider;
 import com.meteorite.unsuspiciousblock.plugin.trinket.SpecimenBoxTrinket;
 import net.fabricmc.api.ModInitializer;
@@ -31,7 +32,6 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
-import net.fabricmc.loader.api.FabricLoader;
 import dev.emi.trinkets.api.TrinketsApi;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -94,9 +94,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         });
 
         // Trinkets 为可选联动：注册标本箱代理，并在 Artifacts 存在时接入其装备扫描。
-        if (FabricLoader.getInstance().isModLoaded("trinkets")) {
+        if (Services.PLATFORM.isModLoaded("trinkets")) {
             SpecimenBoxTrinket.Lifecycle lifecycle = SpecimenBoxTrinket.Lifecycle.NONE;
-            if (FabricLoader.getInstance().isModLoaded("artifacts")) {
+            if (Services.PLATFORM.isModLoaded("artifacts")) {
                 lifecycle = ArtifactsSpecimenBoxSlotProvider.register();
             }
             TrinketsApi.registerTrinket(ModItems.SPECIMEN_BOX, new SpecimenBoxTrinket(lifecycle));
