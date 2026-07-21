@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.plugin.curio.SpecimenBoxCurio;
+import com.meteorite.unsuspiciousblock.plugin.artifacts.ArtifactsSpecimenBoxSlotProvider;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
@@ -187,7 +188,6 @@ public class UnsuspiciousBlockNeoForge {
             Constants.LOG.info("[UnsuspiciousBlock] Lootr detected, registering Lootr compat mixins.");
             Mixins.addConfiguration("unsuspiciousblock.lootr.mixins.json");
         }
-
         // 在 common init 前设置平台注册的 LootItemConditionType，供 MudDredgingCondition 运行时使用
         ModLootConditions.setMudDredgingType(MUD_DREDGING_TYPE);
 
@@ -228,7 +228,11 @@ public class UnsuspiciousBlockNeoForge {
             // 标本箱 Curios 代理注册：Curios 安装时将标本箱注册为 ICurioItem，
             // 使其在饰品槽中时能将内部物品模拟为独立饰品
             if (ModList.get().isLoaded("curios")) {
-                CuriosApi.registerCurio(ModItems.SPECIMEN_BOX, new SpecimenBoxCurio());
+                SpecimenBoxCurio.Lifecycle lifecycle = SpecimenBoxCurio.Lifecycle.NONE;
+                if (ModList.get().isLoaded("artifacts")) {
+                    lifecycle = ArtifactsSpecimenBoxSlotProvider.register();
+                }
+                CuriosApi.registerCurio(ModItems.SPECIMEN_BOX, new SpecimenBoxCurio(lifecycle));
             }
         });
     }

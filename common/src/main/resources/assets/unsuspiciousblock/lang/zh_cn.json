@@ -381,7 +381,6 @@
   "unsuspiciousblock.container.grindstone.reveal.repair_cost_change": "惩罚值: %s → %s",
   "unsuspiciousblock.container.grindstone.reveal.durability_change": "耐久: %s → %s",
   "unsuspiciousblock.container.grindstone.reveal.book_transform": "附魔书 → 书",
-  "curios.identifier.journal": "考古笔记",
   "curios.identifier.trinkets": "饰品",
   "trinkets.slot.charm.charm": "护符",
   "trinkets.slot.trinket.trinket": "饰品",

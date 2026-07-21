@@ -24,6 +24,9 @@ dependencies {
     compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}:api"
     runtimeOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
 
+    // Artifacts：仅编译其装备 provider API，运行时仍保持可选联动
+    compileOnly "maven.modrinth:artifacts:${artifacts_version}"
+
     // Lootr：neoforge 端 compileOnly 引用 API，runtimeOnly 供本地运行测试
     if (project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true) {
         compileOnly "maven.modrinth:lootr:${lootr_version}"

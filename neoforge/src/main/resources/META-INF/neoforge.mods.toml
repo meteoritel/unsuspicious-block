@@ -40,6 +40,13 @@ description = '''${description}'''
     side = "BOTH"
 
 [[dependencies.${mod_id}]]
+    modId = "artifacts"
+    type = "optional"
+    versionRange = "[13.2,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.${mod_id}]]
     modId = "lootr"
     type = "optional"
     versionRange = "[1.11.37.121,)"

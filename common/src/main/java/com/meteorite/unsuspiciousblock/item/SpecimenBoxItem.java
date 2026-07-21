@@ -50,7 +50,7 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
     }
 
     @Override
-    public Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
+    public @NotNull Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
         ItemContainerContents contents = stack.getOrDefault(
                 DataComponents.CONTAINER, ItemContainerContents.EMPTY);
         NonNullList<ItemStack> items = NonNullList.withSize(

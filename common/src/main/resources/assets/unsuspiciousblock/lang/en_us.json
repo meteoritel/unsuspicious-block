@@ -380,7 +380,6 @@
   "unsuspiciousblock.container.grindstone.reveal.repair_cost_change": "Penalty: %s → %s",
   "unsuspiciousblock.container.grindstone.reveal.durability_change": "Durability: %s → %s",
   "unsuspiciousblock.container.grindstone.reveal.book_transform": "Enchanted Book → Book",
-  "curios.identifier.journal": "Archaeology Journal",
   "curios.identifier.trinkets": "Trinket",
   "trinkets.slot.charm.charm": "Charm",
   "trinkets.slot.trinket.trinket": "Trinket",

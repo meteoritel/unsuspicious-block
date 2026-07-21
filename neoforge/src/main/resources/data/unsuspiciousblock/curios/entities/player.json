@@ -1,4 +1,4 @@
 {
   "entities": ["minecraft:player"],
-  "slots": ["journal", "trinkets"]
+  "slots": ["trinkets"]
 }

@@ -24,8 +24,7 @@ public final class FabricInventoryPresenceAdapter {
             }
         });
         // 玩家下线：清理 diff 状态（mixin 字段随 Player 对象回收，此处显式清理保险）
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            InventoryPresenceRegistry.clearPlayer(handler.player);
-        });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                InventoryPresenceRegistry.clearPlayer(handler.player));
     }
 }
