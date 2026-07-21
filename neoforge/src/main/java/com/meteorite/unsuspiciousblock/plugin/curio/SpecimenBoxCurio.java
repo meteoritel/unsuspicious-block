@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.plugin.curio;
 
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Multimap;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxContents;
 import net.minecraft.core.Holder;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;

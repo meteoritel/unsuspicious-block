@@ -46,6 +46,7 @@
     },
     "recommends": {
         "trinkets": ">=3.10.0",
+        "artifacts": ">=13.1.0",
         "modmenu": ">=11.0.4",
         "lootr": ">=1.11.37.121"
     }

@@ -1,6 +1,5 @@
-package com.meteorite.unsuspiciousblock.plugin.curio;
+package com.meteorite.unsuspiciousblock.specimen;
 
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
@@ -9,7 +8,7 @@ import net.minecraft.world.item.component.ItemContainerContents;
 import java.util.List;
 
 /**
- * NeoForge 饰品适配层共用的标本箱内容读写工具。
+ * 各平台饰品适配层共用的标本箱内容读写工具。
  */
 public final class SpecimenBoxContents {
 
@@ -33,7 +32,7 @@ public final class SpecimenBoxContents {
         return result;
     }
 
-    // 仅在内容实际改变时更新组件，避免每次能力查询都触发同步。
+    // 仅在内容实际改变时更新组件，避免每次饰品查询都触发同步。
     public static void writeIfChanged(ItemStack boxStack, List<ItemStack> previous,
                                       NonNullList<ItemStack> current) {
         if (!sameItems(previous, current)) {

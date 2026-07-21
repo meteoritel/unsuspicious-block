@@ -1,4 +1,7 @@
 {
   "replace": false,
-  "values": ["unsuspiciousblock:specimen_box"]
+  "values": [
+    "unsuspiciousblock:archaeology_journal",
+    "unsuspiciousblock:specimen_box"
+  ]
 }
