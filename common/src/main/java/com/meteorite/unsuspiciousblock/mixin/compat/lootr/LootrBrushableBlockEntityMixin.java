@@ -1,24 +1,26 @@
 package com.meteorite.unsuspiciousblock.mixin.compat.lootr;
 
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
+import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
-import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
-import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import noobanidus.mods.lootr.common.api.LootrAPI;
+import noobanidus.mods.lootr.common.api.data.ILootrInfoProvider;
+import noobanidus.mods.lootr.common.api.data.inventory.ILootrInventory;
 import noobanidus.mods.lootr.common.block.entity.LootrBrushableBlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -40,7 +42,8 @@ import java.util.UUID;
  * 战利品表状态与日志追踪字段。
  */
 @Mixin(value = LootrBrushableBlockEntity.class, remap = false)
-public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEntityScanState {
+public abstract class LootrBrushableBlockEntityMixin
+        implements BrushableBlockEntityScanState, LootrBrushableTrackingAccess {
 
     // ========== NBT 键 ========== //
     @Unique
@@ -64,7 +67,8 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
     private ResourceKey<LootTable> lootTable;
 
     @Shadow
-    private long lootTableSeed;
+    @Nullable
+    private Direction hitDirection;
 
     // ========== 扫描状态字段 ========== //
     @Unique
@@ -86,10 +90,23 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
     @Unique
     private ItemStack unsuspiciousblock$storedItem = ItemStack.EMPTY;
 
+    @Unique
+    @Nullable
+    private ILootrInventory unsuspiciousblock$scanInventory;
+
     // ========== 日志追踪字段 ========== //
     @Unique
     @Nullable
     private ExcavationLogEntry unsuspiciousblock$pendingJournalEntry;
+
+    @Unique
+    private long unsuspiciousblock$brushGameTime = -1L;
+
+    @Unique
+    private long unsuspiciousblock$brushDayTime = -1L;
+
+    @Unique
+    private ItemStack unsuspiciousblock$brushTool = ItemStack.EMPTY;
 
     // ========== 辅助方法 ========== //
 
@@ -112,6 +129,31 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
             var state = level.getBlockState(pos);
             level.sendBlockUpdated(pos, state, state, 3);
         }
+    }
+
+    // 按扫描玩家 UUID 找回 Lootr 的持久化每玩家库存，支持服务端重启后继续用考古铲提取
+    @Unique
+    @Nullable
+    private ILootrInventory unsuspiciousblock$getScanInventory() {
+        if (this.unsuspiciousblock$scanInventory != null) {
+            return this.unsuspiciousblock$scanInventory;
+        }
+        if (!this.unsuspiciousblock$scanned || this.unsuspiciousblock$scannerUuid == null) {
+            return null;
+        }
+
+        Level level = this.unsuspiciousblock$asBlockEntity().getLevel();
+        if (level == null || level.isClientSide() || level.getServer() == null) {
+            return null;
+        }
+        ServerPlayer scanner = level.getServer().getPlayerList().getPlayer(this.unsuspiciousblock$scannerUuid);
+        if (scanner == null) {
+            return null;
+        }
+
+        this.unsuspiciousblock$scanInventory = LootrAPI.getInventory(
+                (ILootrInfoProvider) (Object) this, scanner);
+        return this.unsuspiciousblock$scanInventory;
     }
 
     // ========== 扫描状态 NBT ========== //
@@ -192,6 +234,8 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
         this.unsuspiciousblock$scanned = false;
         this.unsuspiciousblock$scannerUuid = null;
         this.unsuspiciousblock$pendingJournalEntry = null;
+        this.unsuspiciousblock$scanInventory = null;
+        this.unsuspiciousblock$storedItem = ItemStack.EMPTY;
         this.unsuspiciousblock$syncBlockEntity();
     }
 
@@ -221,12 +265,24 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
 
     @Override
     public ItemStack unsuspiciousblock$getItem() {
-        return this.unsuspiciousblock$storedItem;
+        ILootrInventory inventory = this.unsuspiciousblock$getScanInventory();
+        if (inventory != null) {
+            this.unsuspiciousblock$storedItem = inventory.getItem(0).copy();
+        }
+        return this.unsuspiciousblock$storedItem.copy();
     }
 
     @Override
     public void unsuspiciousblock$setItem(ItemStack stack) {
-        this.unsuspiciousblock$storedItem = stack;
+        this.unsuspiciousblock$storedItem = stack.copy();
+
+        ILootrInventory inventory = this.unsuspiciousblock$getScanInventory();
+        if (inventory != null) {
+            inventory.setItem(0, stack.copy());
+            if (inventory instanceof TrackedContainerLootState trackedContainer && stack.isEmpty()) {
+                trackedContainer.unsuspiciousblock$clearAllTrackingState();
+            }
+        }
     }
 
     // ========== 日志追踪接口实现 ========== //
@@ -248,7 +304,7 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
 
     // ========== 战利品表解析 ========== //
 
-    // 解析战利品表并返回生成的物品——使用原版 fill() 掷出战利品表
+    // 读取 Lootr 为当前玩家维护的真实库存，避免扫描后正常刷拭再次生成一份战利品
     @Override
     public ItemStack unsuspiciousblock$resolveAndGetLoot(Player player) {
         if (!(player instanceof ServerPlayer sp)) {
@@ -257,33 +313,26 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
 
         BlockEntity be = this.unsuspiciousblock$asBlockEntity();
         Level level = be.getLevel();
-        if (level == null || level.isClientSide() || !(level instanceof ServerLevel serverLevel)) {
+        if (level == null || level.isClientSide()) {
             return ItemStack.EMPTY;
         }
 
-        if (this.lootTable == null) {
+        ILootrInventory inventory = LootrAPI.getInventory(
+                (ILootrInfoProvider) (Object) this, sp);
+        if (inventory == null) {
             return ItemStack.EMPTY;
         }
 
-        LootTable table = serverLevel.getServer().reloadableRegistries().getLootTable(this.lootTable);
-        if (table == LootTable.EMPTY) {
-            return ItemStack.EMPTY;
+        this.unsuspiciousblock$scanInventory = inventory;
+        this.unsuspiciousblock$storedItem = inventory.getItem(0).copy();
+        if (this.lootTable != null) {
+            this.unsuspiciousblock$recordResolvedLootTable(this.lootTable.location());
         }
 
-        // 记录战利品表标识，供扫描仪 publish 日志用
-        this.unsuspiciousblock$lootTableName = this.lootTable.location();
-        this.unsuspiciousblock$lootTableParsed = true;
-
-        LootParams params = new LootParams.Builder(serverLevel)
-                .withParameter(LootContextParams.ORIGIN, be.getBlockPos().getCenter())
-                .withParameter(LootContextParams.THIS_ENTITY, player)
-                .withLuck(player.getLuck())
-                .create(LootContextParamSets.CHEST);
-
-        SimpleContainer tempContainer = new SimpleContainer(1);
-        table.fill(tempContainer, params, this.lootTableSeed);
-
-        this.unsuspiciousblock$storedItem = tempContainer.getItem(0).copy();
+        // 扫描仪会在返回后创建方块级待定日志，清除 filler 创建的菜单型临时追踪，避免重复结算
+        if (inventory instanceof TrackedContainerLootState trackedContainer) {
+            trackedContainer.unsuspiciousblock$clearAllTrackingState();
+        }
         return this.unsuspiciousblock$storedItem.copy();
     }
 
@@ -291,6 +340,83 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
     @Override
     public void unsuspiciousblock$markBlockEntityChanged() {
         this.unsuspiciousblock$syncBlockEntity();
+    }
+
+    // 接收 DefaultBrushableLootFiller 已完成解析的表标识
+    @Override
+    public void unsuspiciousblock$recordResolvedLootTable(ResourceLocation tableId) {
+        if (tableId.equals(this.unsuspiciousblock$lootTableName) && this.unsuspiciousblock$lootTableParsed) {
+            return;
+        }
+        this.unsuspiciousblock$lootTableName = tableId;
+        this.unsuspiciousblock$lootTableParsed = true;
+        this.unsuspiciousblock$syncBlockEntity();
+    }
+
+    // 缓存本次刷拭使用的时间与工具，供最终掉落时执行精掘附魔
+    @Inject(method = "IBrushable$brush", at = @At("HEAD"))
+    private void unsuspiciousblock$onBrushStart(
+            long gameTime, Player player, Direction direction,
+            CallbackInfoReturnable<Boolean> cir) {
+        this.unsuspiciousblock$brushGameTime = gameTime;
+        this.unsuspiciousblock$brushDayTime = player.level().getDayTime();
+        ItemStack mainHand = player.getMainHandItem();
+        if (mainHand.is(Items.BRUSH)) {
+            this.unsuspiciousblock$brushTool = mainHand;
+        } else {
+            ItemStack offHand = player.getOffhandItem();
+            this.unsuspiciousblock$brushTool = offHand.is(Items.BRUSH) ? offHand : ItemStack.EMPTY;
+        }
+    }
+
+    // 单次刷拭调用结束后清理临时上下文；最终掉落发生在 RETURN 之前
+    @Inject(method = "IBrushable$brush", at = @At("RETURN"))
+    private void unsuspiciousblock$onBrushEnd(
+            long gameTime, Player player, Direction direction,
+            CallbackInfoReturnable<Boolean> cir) {
+        this.unsuspiciousblock$brushGameTime = -1L;
+        this.unsuspiciousblock$brushDayTime = -1L;
+        this.unsuspiciousblock$brushTool = ItemStack.EMPTY;
+    }
+
+    // Lootr 已从每玩家库存取出物品后，在返回给掉落流程前应用精掘并结算对应玩家日志
+    @Inject(method = "popItem", at = @At("RETURN"), cancellable = true)
+    private void unsuspiciousblock$processBrushDrop(
+            Player player, CallbackInfoReturnable<ItemStack> cir) {
+        ItemStack originalItem = cir.getReturnValue();
+        if (!(player instanceof ServerPlayer serverPlayer) || originalItem.isEmpty()) {
+            return;
+        }
+
+        ILootrInventory inventory = LootrAPI.getInventory(
+                (ILootrInfoProvider) (Object) this, serverPlayer);
+
+        TrackedContainerLootState trackedContainer = inventory instanceof TrackedContainerLootState tracked
+                ? tracked
+                : null;
+        ResourceLocation tableId = trackedContainer == null
+                ? this.unsuspiciousblock$lootTableName
+                : trackedContainer.unsuspiciousblock$getTrackedLootTableName();
+        ExcavationLogEntry pendingEntry = trackedContainer == null
+                ? this.unsuspiciousblock$pendingJournalEntry
+                : trackedContainer.unsuspiciousblock$getPendingJournalEntry();
+
+        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
+        BrushableLootDropHelper.DropContext context = new BrushableLootDropHelper.DropContext(
+                serverPlayer, blockEntity.getBlockPos(), blockEntity.getLevel(), this.hitDirection,
+                this.unsuspiciousblock$brushTool,
+                this.unsuspiciousblock$brushGameTime, this.unsuspiciousblock$brushDayTime,
+                tableId, pendingEntry);
+        BrushableLootDropHelper.DropResult result =
+                BrushableLootDropHelper.rollBrushItemDrop(context, originalItem);
+        BrushableLootDropHelper.spawnExtraDrops(context, result.extraDrops());
+        BrushableLootDropHelper.settleJournal(context, result.totalTrackedItem());
+
+        if (trackedContainer != null) {
+            trackedContainer.unsuspiciousblock$clearAllTrackingState();
+        }
+        this.unsuspiciousblock$pendingJournalEntry = null;
+        cir.setReturnValue(result.rolledItem());
     }
 
     // ========== NBT 持久化注入 ========== //
@@ -311,5 +437,16 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
     private void unsuspiciousblock$appendExtraDataToUpdateTag(HolderLookup.Provider registries, CallbackInfoReturnable<CompoundTag> cir) {
         this.unsuspiciousblock$writeScanData(cir.getReturnValue());
         this.unsuspiciousblock$writeLootTableData(cir.getReturnValue());
+    }
+
+    // Lootr 为方块设置新表时清除上一轮扫描与解析缓存
+    @Inject(method = "setLootTableInternal", at = @At("TAIL"))
+    private void unsuspiciousblock$clearResolvedState(
+            ResourceKey<LootTable> table, long seed, CallbackInfo ci) {
+        this.unsuspiciousblock$lootTableName = null;
+        this.unsuspiciousblock$lootTableParsed = false;
+        this.unsuspiciousblock$pendingJournalEntry = null;
+        this.unsuspiciousblock$scanInventory = null;
+        this.unsuspiciousblock$storedItem = ItemStack.EMPTY;
     }
 }

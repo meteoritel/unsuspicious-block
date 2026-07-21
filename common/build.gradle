@@ -59,6 +59,10 @@ if (!lootrCompat) {
     tasks.named('sourcesJar', Jar) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
     }
+    tasks.named('processResources', ProcessResources) {
+        exclude 'unsuspiciousblock.lootr.mixins.json'
+        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
+    }
 }
 
 sourceSets {

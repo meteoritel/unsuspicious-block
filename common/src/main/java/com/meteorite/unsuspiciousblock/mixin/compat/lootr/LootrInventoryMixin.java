@@ -3,12 +3,17 @@ package com.meteorite.unsuspiciousblock.mixin.compat.lootr;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import noobanidus.mods.lootr.common.data.LootrInventory;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,11 +25,22 @@ import java.util.UUID;
  * <p>
  * Lootr 打开菜单时以 {@link LootrInventory} 为容器，而非原版 BlockEntity。
  * 本 Mixin 使其实现 {@link TrackedContainerLootState}，让菜单核对阶段能自然找到追踪状态。
- * <p>
- * 追踪状态为运行时瞬态：不持久化到 LootrSavedData（writeTrackedLootData/readTrackedLootData 为空操作）。
+ * 追踪状态随 LootrInventory 一同写入 LootrSavedData，确保重启后仍能继续核对未取走的物品。
  */
-@Mixin(LootrInventory.class)
+@Mixin(value = LootrInventory.class, remap = false)
 public abstract class LootrInventoryMixin implements TrackedContainerLootState {
+
+    @Unique
+    private static final String UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG = "unsuspiciousblock_tracked_loot_table";
+
+    @Unique
+    private static final String UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG = "unsuspiciousblock_tracked_loot_items";
+
+    @Unique
+    private static final String UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG = "unsuspiciousblock_pending_journal_entry";
+
+    @Unique
+    private static final String UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG = "unsuspiciousblock_tracked_player_uuid";
 
     @Unique
     @Nullable
@@ -140,21 +156,69 @@ public abstract class LootrInventoryMixin implements TrackedContainerLootState {
         this.unsuspiciousblock$markTrackingChanged();
     }
 
-    // 标记追踪状态已变化--LootrInventory 非 BlockEntity，追踪状态为瞬态，无需触发持久化
+    // 标记 LootrSavedData 为 dirty，使追踪字段与库存物品一同落盘
     @Unique
     private void unsuspiciousblock$markTrackingChanged() {
-        // no-op：追踪状态不持久化到 LootrSavedData
+        ((LootrInventory) (Object) this).setChanged();
     }
 
-    // 追踪状态不持久化（瞬态），写入为空操作
+    // 将追踪状态附加到 LootrInventory 自身的存档 CompoundTag
     @Override
     public void unsuspiciousblock$writeTrackedLootData(CompoundTag tag) {
-        // no-op
+        if (this.unsuspiciousblock$trackedLootTableName != null) {
+            tag.putString(UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG,
+                    this.unsuspiciousblock$trackedLootTableName.toString());
+        } else {
+            tag.remove(UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG);
+        }
+        if (this.unsuspiciousblock$pendingJournalEntry != null) {
+            tag.put(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG,
+                    this.unsuspiciousblock$pendingJournalEntry.toTag());
+        } else {
+            tag.remove(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG);
+        }
+        if (this.unsuspiciousblock$trackedPlayerUuid != null) {
+            tag.putUUID(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG, this.unsuspiciousblock$trackedPlayerUuid);
+        } else {
+            tag.remove(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG);
+        }
+        if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
+            tag.remove(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG);
+        } else {
+            tag.put(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG,
+                    LootCounts.writeToNbt(this.unsuspiciousblock$trackedLootCounts));
+        }
     }
 
-    // 追踪状态不持久化（瞬态），读取为空操作
+    // 从 LootrInventory 存档中恢复追踪状态，并丢弃不完整的 table/count 组合
     @Override
     public void unsuspiciousblock$readTrackedLootData(CompoundTag tag) {
-        // no-op
+        this.unsuspiciousblock$trackedLootTableName = tag.contains(
+                UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG, Tag.TAG_STRING)
+                ? ResourceLocation.tryParse(tag.getString(UNSUSPICIOUSBLOCK_TRACKED_LOOT_TABLE_TAG))
+                : null;
+        this.unsuspiciousblock$pendingJournalEntry = tag.contains(
+                UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, Tag.TAG_COMPOUND)
+                ? ExcavationLogEntry.fromTag(tag.getCompound(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG))
+                : null;
+        this.unsuspiciousblock$trackedPlayerUuid = tag.contains(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG)
+                ? tag.getUUID(UNSUSPICIOUSBLOCK_TRACKED_PLAYER_UUID_TAG)
+                : null;
+
+        this.unsuspiciousblock$trackedLootCounts.clear();
+        if (tag.contains(UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG, Tag.TAG_COMPOUND)) {
+            this.unsuspiciousblock$trackedLootCounts.putAll(LootCounts.normalize(
+                    LootCounts.readFromNbt(tag, UNSUSPICIOUSBLOCK_TRACKED_LOOT_ITEMS_TAG)));
+        }
+        if (this.unsuspiciousblock$trackedLootCounts.isEmpty()) {
+            this.unsuspiciousblock$trackedLootTableName = null;
+        }
+    }
+
+    // Lootr 保存库存物品后，将本模组追踪字段写入同一个 CompoundTag
+    @Inject(method = "saveToTag", at = @At("RETURN"))
+    private void unsuspiciousblock$appendTrackingData(
+            HolderLookup.Provider registries, CallbackInfoReturnable<CompoundTag> cir) {
+        this.unsuspiciousblock$writeTrackedLootData(cir.getReturnValue());
     }
 }

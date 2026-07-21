@@ -34,6 +34,10 @@ tasks.named('compileJava', JavaCompile) {
 processResources {
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)
+    if (!lootrCompat) {
+        exclude 'unsuspiciousblock.lootr.mixins.json'
+        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
+    }
 }
 
 tasks.named('javadoc', Javadoc).configure {
