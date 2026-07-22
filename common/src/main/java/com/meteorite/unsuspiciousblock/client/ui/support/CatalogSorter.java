@@ -70,22 +70,6 @@ public final class CatalogSorter {
         return descending ? comparator.reversed() : comparator;
     }
 
-    // 排序方式图标字符
-    public static char sortOrderIcon(SortOrder order) {
-        return switch (order) {
-            case DEFAULT -> '☰';
-            case NAME -> 'A';
-            case UNLOCK -> '☆';
-            case ITEM_COUNT -> '#';
-            case FAVORITE -> '★';
-        };
-    }
-
-    // 排序方向图标字符
-    public static char sortDirectionIcon(boolean descending) {
-        return descending ? '↓' : '↑';
-    }
-
     // 排序方式 tooltip
     public static Component sortOrderTooltip(SortOrder order) {
         return switch (order) {

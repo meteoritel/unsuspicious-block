@@ -89,6 +89,10 @@ public class CatalogToolbar {
         return searchField;
     }
 
+    public boolean isSearchFocused() {
+        return this.searchExpanded && this.searchField != null && this.searchField.isFocused();
+    }
+
     // —— 事件处理 ——
 
     /** 搜索框内容变化 */
@@ -112,7 +116,7 @@ public class CatalogToolbar {
     public void cycleSortOrder() {
         this.currentSortOrder = this.currentSortOrder.next();
         if (this.sortButton != null) {
-            this.sortButton.setIconChar(CatalogSorter.sortOrderIcon(this.currentSortOrder));
+            this.sortButton.setIcon(sortOrderIcon(this.currentSortOrder));
             this.sortButton.setTooltip(CatalogSorter.sortOrderTooltip(this.currentSortOrder));
         }
         onConfigChanged.run();
@@ -122,7 +126,7 @@ public class CatalogToolbar {
     public void toggleSortDirection() {
         this.sortDescending = !this.sortDescending;
         if (this.sortOrderButton != null) {
-            this.sortOrderButton.setIconChar(CatalogSorter.sortDirectionIcon(this.sortDescending));
+            this.sortOrderButton.setIcon(sortDirectionIcon(this.sortDescending));
             this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
         }
         onConfigChanged.run();
@@ -132,15 +136,29 @@ public class CatalogToolbar {
     public void toggleHideLocked() {
         this.hideLocked = !this.hideLocked;
         if (this.hideLockedButton != null) {
-            this.hideLockedButton.setIconChar(hideLockedIcon(this.hideLocked));
+            this.hideLockedButton.setIcon(hideLockedIcon(this.hideLocked));
             this.hideLockedButton.setTooltip(hideLockedTooltip(this.hideLocked));
         }
         onConfigChanged.run();
     }
 
-    // 隐藏未解锁按钮的图标字符：眼睛（显示）/ 划线眼睛（隐藏）
-    private static char hideLockedIcon(boolean hideLocked) {
-        return hideLocked ? '⊘' : '◉';
+    private static IconButton.Icon sortOrderIcon(CatalogSorter.SortOrder order) {
+        return switch (order) {
+            case DEFAULT -> IconButton.Icon.SORT_DEFAULT;
+            case NAME -> IconButton.Icon.SORT_NAME;
+            case UNLOCK -> IconButton.Icon.SORT_UNLOCK;
+            case ITEM_COUNT -> IconButton.Icon.SORT_ITEM_COUNT;
+            case FAVORITE -> IconButton.Icon.SORT_FAVORITE;
+        };
+    }
+
+    private static IconButton.Icon sortDirectionIcon(boolean descending) {
+        return descending ? IconButton.Icon.ARROW_DOWN : IconButton.Icon.ARROW_UP;
+    }
+
+    // 眼睛表示正在显示未解锁条目，划线眼睛表示正在隐藏
+    private static IconButton.Icon hideLockedIcon(boolean hideLocked) {
+        return hideLocked ? IconButton.Icon.HIDE_LOCKED : IconButton.Icon.SHOW_LOCKED;
     }
 
     // 隐藏未解锁按钮的 tooltip
@@ -188,7 +206,7 @@ public class CatalogToolbar {
         this.searchToggleButton = new IconButton(
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
-                this.searchExpanded ? '✕' : '⌕',
+                this.searchExpanded ? IconButton.Icon.CLOSE : IconButton.Icon.SEARCH,
                 List.of(header,
                         Component.literal("- ").append(ruleTable),
                         Component.literal("- ").append(ruleMod),
@@ -206,7 +224,7 @@ public class CatalogToolbar {
         this.sortButton = new IconButton(
                 sortOrderX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
-                CatalogSorter.sortOrderIcon(this.currentSortOrder),
+                sortOrderIcon(this.currentSortOrder),
                 CatalogSorter.sortOrderTooltip(this.currentSortOrder),
                 this::cycleSortOrder
         );
@@ -217,7 +235,7 @@ public class CatalogToolbar {
         this.sortOrderButton = new IconButton(
                 sortDirectionX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
-                CatalogSorter.sortDirectionIcon(this.sortDescending),
+                sortDirectionIcon(this.sortDescending),
                 CatalogSorter.sortDirectionTooltip(this.sortDescending),
                 this::toggleSortDirection
         );

@@ -11,29 +11,19 @@ public final class ScrollTextHelper {
     private ScrollTextHelper() {
     }
 
-    // 绘制可滚动文字，默认使用 font.lineHeight + 1 作为裁切高度
     public static void draw(GuiGraphics guiGraphics, Font font, String text,
                             int x, int y, int maxWidth, int color,
                             boolean hovered, int scrollTicks, boolean centered) {
-        draw(guiGraphics, font, text, x, y, y, maxWidth, font.lineHeight + 1,
-                color, hovered, scrollTicks, centered);
-    }
-
-    // 绘制可滚动文字，分别指定裁切区域和文字绘制 Y 坐标
-    public static void draw(GuiGraphics guiGraphics, Font font, String text,
-                            int scissorX, int scissorY, int drawY, int maxWidth, int scissorHeight,
-                            int color, boolean hovered, int scrollTicks, boolean centered) {
         if (maxWidth <= 0) {
             return;
         }
         int textWidth = font.width(text);
         if (textWidth <= maxWidth) {
-            int drawX = centered ? scissorX + (maxWidth - textWidth) / 2 : scissorX;
-            guiGraphics.drawString(font, text, drawX, drawY, color, false);
+            int drawX = centered ? x + (maxWidth - textWidth) / 2 : x;
+            guiGraphics.drawString(font, text, drawX, y, color, false);
             return;
         }
 
-        guiGraphics.enableScissor(scissorX, scissorY, scissorX + maxWidth, scissorY + scissorHeight);
         int overflow = textWidth - maxWidth;
         int offset = 0;
         if (hovered) {
@@ -47,7 +37,17 @@ public final class ScrollTextHelper {
             }
             offset = rawOffset;
         }
-        guiGraphics.drawString(font, text, scissorX - offset, drawY, color, false);
-        guiGraphics.disableScissor();
+
+        // 整体 UI 缩放时 GuiGraphics 的 scissor 坐标不会跟随 PoseStack，
+        // 改为按字符宽度截取可见窗口，避免超长文字被完整裁掉。
+        String visibleText;
+        if (offset >= overflow) {
+            visibleText = font.plainSubstrByWidth(text, maxWidth, true);
+        } else {
+            String skippedPrefix = font.plainSubstrByWidth(text, offset);
+            String remaining = text.substring(skippedPrefix.length());
+            visibleText = font.plainSubstrByWidth(remaining, maxWidth);
+        }
+        guiGraphics.drawString(font, visibleText, x, y, color, false);
     }
 }

@@ -24,14 +24,17 @@ public final class DetailOverlayPanel implements PagePanel {
     private static final int LABEL_COLOR = 0x5A422C;
     private static final int MUTED_COLOR = 0x7A6247;
     private static final int ITEM_ROW_HEIGHT = 16;
-    private static final int FOOTER_HEIGHT = 50;
-    private static final int MOD_SOURCE_TOP_OFFSET = 44;
+    private static final int FOOTER_HEIGHT = 32;
+    private static final int MOD_SOURCE_TOP_OFFSET = 26;
+    private static final int MOD_SOURCE_LABEL_GAP = 4;
 
     private final JournalBookBackground.BookLayout layout;
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     private int parsedCount;
     private int totalCount;
     private String modSource;
+    private int modSourceScrollTicks;
+    private boolean modSourceWasHovered;
     private List<DiscoveredItemEntry> unlockedItems = List.of();
 
     public DetailOverlayPanel(JournalBookBackground.BookLayout layout) {
@@ -51,6 +54,8 @@ public final class DetailOverlayPanel implements PagePanel {
         } else {
             this.modSource = "???";
         }
+        this.modSourceScrollTicks = 0;
+        this.modSourceWasHovered = false;
         this.unlockedItems = new ArrayList<>();
         List<DiscoveredItemEntry> highlightedEntries = new ArrayList<>();
         List<DiscoveredItemEntry> nonHighlightedEntries = new ArrayList<>();
@@ -156,7 +161,20 @@ public final class DetailOverlayPanel implements PagePanel {
         y = Math.max(y, this.layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
         Component modLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.mod_source");
         guiGraphics.drawString(font, modLabel, leftX, y, LABEL_COLOR, false);
-        guiGraphics.drawString(font, this.modSource, leftX, y + 12, TEXT_COLOR, false);
+        int sourceX = leftX + font.width(modLabel) + MOD_SOURCE_LABEL_GAP;
+        int sourceWidth = Math.max(0, contentWidth - font.width(modLabel) - MOD_SOURCE_LABEL_GAP);
+        boolean sourceHovered = mouseX >= sourceX && mouseX < sourceX + sourceWidth
+                && mouseY >= y && mouseY < y + font.lineHeight + 1;
+        if (!this.modSourceWasHovered && sourceHovered) {
+            this.modSourceScrollTicks = 0;
+        }
+        this.modSourceWasHovered = sourceHovered;
+        if (sourceHovered) {
+            this.modSourceScrollTicks++;
+        }
+        ScrollTextHelper.draw(guiGraphics, font, this.modSource,
+                sourceX, y, sourceWidth, TEXT_COLOR,
+                sourceHovered, this.modSourceScrollTicks, false);
     }
 
     public int pageCount() {

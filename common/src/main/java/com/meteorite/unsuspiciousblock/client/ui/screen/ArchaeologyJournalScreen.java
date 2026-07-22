@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.PageIndicator;
@@ -28,6 +29,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 public class ArchaeologyJournalScreen extends Screen {
@@ -36,6 +38,7 @@ public class ArchaeologyJournalScreen extends Screen {
     private final CatalogToolbar catalogToolbar;
     private final LogToolbar logToolbar;
 
+    private JournalViewport viewport;
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
@@ -57,7 +60,8 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        this.bookLayout = JournalBookBackground.compute(this.width, this.height);
+        this.viewport = JournalViewport.compute(this.width, this.height);
+        this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
         this.rightPage = new RightPageContainer(this.bookLayout);
 
         // 恢复上次关闭时持久化的 UI 状态
@@ -127,14 +131,46 @@ public class ArchaeologyJournalScreen extends Screen {
                 return true;
             }
         }
+        if (!this.catalogToolbar.isSearchFocused() && handleCatalogNavigation(keyCode)) {
+            return true;
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    // 方向键与 WASD 共同控制目录选择；左右键按页移动
+    private boolean handleCatalogNavigation(int keyCode) {
+        if (this.catalogPanel == null || this.viewModel.tableViews().isEmpty()) {
+            return false;
+        }
+        return switch (keyCode) {
+            case GLFW.GLFW_KEY_UP, GLFW.GLFW_KEY_W -> moveCatalogSelection(-1);
+            case GLFW.GLFW_KEY_DOWN, GLFW.GLFW_KEY_S -> moveCatalogSelection(1);
+            case GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_A -> moveCatalogPage(-1);
+            case GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_D -> moveCatalogPage(1);
+            default -> false;
+        };
+    }
+
+    private boolean moveCatalogSelection(int delta) {
+        int currentIndex = this.viewModel.selectedIndex();
+        setSelectedIndex(currentIndex < 0 ? 0 : currentIndex + delta);
+        return true;
+    }
+
+    private boolean moveCatalogPage(int delta) {
+        int targetIndex = this.catalogPanel.moveSelectionPage(this.viewModel.selectedIndex(), delta);
+        if (targetIndex >= 0) {
+            setSelectedIndex(targetIndex);
+        }
+        return true;
     }
 
     @Override
     protected void repositionElements() {
         UiStateSnapshot snapshot = captureUiState();
 
-        this.bookLayout = JournalBookBackground.compute(this.width, this.height);
+        this.viewport = JournalViewport.compute(this.width, this.height);
+        this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
         this.rightPage = new RightPageContainer(this.bookLayout);
 
         this.updateItemGridPanel();
@@ -170,14 +206,21 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        refreshAndSync();
-        JournalBookBackground.render(guiGraphics, this.bookLayout);
-        renderTitle(guiGraphics);
-        renderCatalogArea(guiGraphics, mouseX, mouseY);
-        this.rightPage.render(guiGraphics, this.font, mouseX, mouseY);
-        this.catalogToolbar.renderSearchBackground(guiGraphics);
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-        renderOverlays(guiGraphics, mouseX, mouseY);
+        int logicalMouseX = (int) this.viewport.toLogicalX(mouseX);
+        int logicalMouseY = (int) this.viewport.toLogicalY(mouseY);
+        this.viewport.push(guiGraphics);
+        try {
+            refreshAndSync();
+            JournalBookBackground.render(guiGraphics, this.bookLayout);
+            renderTitle(guiGraphics);
+            renderCatalogArea(guiGraphics, logicalMouseX, logicalMouseY);
+            this.rightPage.render(guiGraphics, this.font, logicalMouseX, logicalMouseY);
+            this.catalogToolbar.renderSearchBackground(guiGraphics);
+            super.render(guiGraphics, logicalMouseX, logicalMouseY, partialTick);
+            renderOverlays(guiGraphics, logicalMouseX, logicalMouseY);
+        } finally {
+            this.viewport.pop(guiGraphics);
+        }
     }
 
     // 检测服务端数据变更并按需刷新
@@ -199,7 +242,8 @@ public class ArchaeologyJournalScreen extends Screen {
     private void renderTitle(GuiGraphics guiGraphics) {
         int titleWidth = this.font.width(this.title);
         guiGraphics.drawString(this.font, this.title,
-                (this.width - titleWidth) / 2, this.bookLayout.bookY() + 2, 0x4A3320, false);
+                (this.viewport.logicalWidth() - titleWidth) / 2,
+                this.bookLayout.bookY() + 2, 0x4A3320, false);
     }
 
     // 渲染左侧目录区域（目录面板、解锁进度、翻页指示器、空状态）
@@ -253,14 +297,21 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.renderTooltips(guiGraphics, this.font, mouseX, mouseY);
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
-        if (tooltipData != null && !tooltipData.stack().isEmpty()) {
+        if (tooltipData != null) {
             List<Component> tooltipLines = JournalTooltipBuilder.build(tooltipData);
-            guiGraphics.renderTooltip(this.font, tooltipLines, tooltipData.stack().getTooltipImage(), mouseX, mouseY);
+            if (tooltipData.discovered() && !tooltipData.stack().isEmpty()) {
+                guiGraphics.renderTooltip(this.font, tooltipLines,
+                        tooltipData.stack().getTooltipImage(), mouseX, mouseY);
+            } else {
+                guiGraphics.renderTooltip(this.font, tooltipLines, Optional.empty(), mouseX, mouseY);
+            }
         }
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        mouseX = this.viewport.toLogicalX(mouseX);
+        mouseY = this.viewport.toLogicalY(mouseY);
         if (super.mouseClicked(mouseX, mouseY, button)) {
             syncButtonState();
             return true;
@@ -291,6 +342,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        mouseX = this.viewport.toLogicalX(mouseX);
+        mouseY = this.viewport.toLogicalY(mouseY);
         if (this.catalogPanel != null && this.catalogPanel.containsMouse(mouseX, mouseY)) {
             this.catalogPanel.mouseScrolled(scrollY);
             this.syncButtonState();
@@ -302,6 +355,20 @@ public class ArchaeologyJournalScreen extends Screen {
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        return super.mouseReleased(
+                this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button,
+                                double dragX, double dragY) {
+        return super.mouseDragged(
+                this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button,
+                this.viewport.toLogicalDistance(dragX), this.viewport.toLogicalDistance(dragY));
     }
 
     @Override
@@ -375,7 +442,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage.getLogDetailPanel().createNoteButton(this::registerWidget, this::openNoteEditor);
 
         // 书页外右上角帮助按钮（?），悬停展示使用提示
-        int helpX = Math.min(this.width - JournalLayout.HELP_BUTTON_SIZE,
+        int helpX = Math.min(this.viewport.logicalWidth() - JournalLayout.HELP_BUTTON_SIZE,
                 this.bookLayout.bookX() + JournalLayout.TEXTURE_WIDTH + JournalLayout.HELP_BUTTON_GAP);
         int helpY = this.bookLayout.bookY() + JournalLayout.HELP_BUTTON_Y_OFFSET;
         this.helpButton = this.addRenderableWidget(new IconButton(

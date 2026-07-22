@@ -186,7 +186,7 @@ public final class ItemGridPanel implements PagePanel {
                 NAME_COLOR, hovered, scrollTicks, true);
 
         // 概率（居中，颜色根据不确定性等级区分）
-        Component probComp = formatProbability(item.probability());
+        Component probComp = formatProbability(item.probability(), item.uncertaintyLevel());
         int probW = font.width(probComp);
         int probColor = switch (item.uncertaintyLevel()) {
             case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
@@ -221,11 +221,23 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     // 格式化概率为显示用 Component
-    private static Component formatProbability(@Nullable String probability) {
+    private static Component formatProbability(@Nullable String probability,
+                                               LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
         if (probability == null || probability.equals("?")) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
+            if (uncertaintyLevel != LootConditionHandler.UncertaintyLevel.NONE) {
+                return Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_conditional");
+            }
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_unknown_short");
         }
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
+        return switch (uncertaintyLevel) {
+            case PROBABILISTIC -> Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_estimated_short", probability);
+            case RUNTIME -> Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional_short", probability);
+            default -> Component.literal(probability);
+        };
     }
 
     @Nullable
@@ -237,17 +249,16 @@ public final class ItemGridPanel implements PagePanel {
 
         for (int i = from; i < to; i++) {
             GridItem item = items.get(i);
-            if (!item.unlocked()) {
-                // 未解锁物品不显示 tooltip
-                continue;
-            }
             int visualIndex = i - from;
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
+                if (!item.unlocked()) {
+                    return new TooltipData(ItemStack.EMPTY, null, -1, item.probability(),
+                            item.acquisitionPaths(), item.injected(), item.uncertaintyLevel(), false);
+                }
                 return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability(),
-                        item.acquisitionPaths(),
-                        item.injected(), item.uncertaintyLevel());
+                        item.acquisitionPaths(), item.injected(), item.uncertaintyLevel(), true);
             }
         }
         return null;
@@ -273,19 +284,23 @@ public final class ItemGridPanel implements PagePanel {
      * <p>
      * count 为 -1 表示无获取统计（如日志详情页），不追加 "Acquired" 行；
      * probability 为 null 时不追加 "Drop Chance" 行。
+     * discovered=false 时不携带真实物品身份，仅展示未发现状态与获取条件。
      */
     public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
                                List<LootAcquisitionPath> acquisitionPaths,
                                boolean injected,
-                              LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
+                               LootConditionHandler.UncertaintyLevel uncertaintyLevel,
+                               boolean discovered) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
-            this(stack, hint, -1, null, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
+            this(stack, hint, -1, null, List.of(), false,
+                    LootConditionHandler.UncertaintyLevel.NONE, true);
         }
 
         // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
         public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
-            this(stack, hint, count, probability, List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
+            this(stack, hint, count, probability, List.of(), false,
+                    LootConditionHandler.UncertaintyLevel.NONE, true);
         }
     }
 

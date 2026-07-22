@@ -15,8 +15,8 @@ public final class JournalLayout {
 
     // —— 搜索栏（收起态为图标按钮，展开态为输入框） ——
     public static final int SEARCH_QUICK_BAR_HEIGHT = 14; // 收起态/展开态工具栏行高
-    public static final int SEARCH_ICON_SIZE = 14;      // 放大镜图标按钮尺寸 (正方形)
-    public static final int SORT_ICON_SIZE = 14;       // 排序图标按钮尺寸 (正方形)
+    public static final int SEARCH_ICON_SIZE = 16;      // 放大镜图标按钮尺寸 (正方形)
+    public static final int SORT_ICON_SIZE = 16;       // 排序图标按钮尺寸 (正方形)
     public static final int SEARCH_FIELD_WIDTH = 88;   // 展开态文本框宽度（不含图标按钮；缩短以为 hideLocked 按钮腾出空间）
     public static final int SEARCH_BAR_HEIGHT = 12;    // 文本框自身高度
     public static final int TOOLBAR_GAP = 2;           // 图标按钮之间间距

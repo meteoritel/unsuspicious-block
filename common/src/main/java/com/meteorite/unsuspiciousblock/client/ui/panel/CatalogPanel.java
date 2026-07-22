@@ -77,6 +77,17 @@ public final class CatalogPanel {
         this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
     }
 
+    // 按页移动选中项，并尽量保持其在页面内的行位置
+    public int moveSelectionPage(int selectedIndex, int pageDelta) {
+        if (this.entries.isEmpty()) {
+            return -1;
+        }
+        int perPage = itemsPerPage();
+        int row = selectedIndex >= 0 ? selectedIndex % perPage : 0;
+        changePage(pageDelta);
+        return Math.min(this.entries.size() - 1, this.page * perPage + row);
+    }
+
     public int handleClick(double mouseX, double mouseY) {
         int from = this.page * itemsPerPage();
         int to = Math.min(entries.size(), from + itemsPerPage());
@@ -158,7 +169,7 @@ public final class CatalogPanel {
         // 收藏条目右侧预留给星标的空间，避免长名滚动遮挡星标
         int textMaxWidth = width - TEXT_INNER_PAD * 2 - (entry.favorite ? 10 : 0);
         ScrollTextHelper.draw(guiGraphics, font, displayText,
-                x + TEXT_INNER_PAD, y, y + TEXT_Y_OFFSET, textMaxWidth, JournalLayout.CATALOG_ROW_HEIGHT,
+                x + TEXT_INNER_PAD, y + TEXT_Y_OFFSET, textMaxWidth,
                 textColor, hovered, entry.scrollTicks, true);
 
         // 收藏星标：仅对已收藏条目绘制

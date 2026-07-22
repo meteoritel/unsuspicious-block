@@ -1,11 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.ui.widget;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,10 +15,39 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * 正方形图标按钮 —— 渲染字体字符图标 + 像素风木质背景，支持多行 tooltip。
- * 用于搜索框收起态放大镜按钮和排序方式切换按钮。
+ * 正方形图标按钮 —— 渲染像素图标或字体字符图标 + 像素风木质背景，支持多行 tooltip。
  */
 public class IconButton extends AbstractButton {
+
+    /** 尺寸统一的内置像素图标，避免不同字体字符出现大小和基线差异。 */
+    public enum Icon {
+        SEARCH(0),
+        CLOSE(1),
+        SORT_DEFAULT(2),
+        SORT_NAME(3),
+        SORT_UNLOCK(4),
+        SORT_ITEM_COUNT(5),
+        SORT_FAVORITE(6),
+        ARROW_UP(7),
+        ARROW_DOWN(8),
+        SHOW_LOCKED(9),
+        HIDE_LOCKED(10);
+
+        private final int atlasIndex;
+
+        Icon(int atlasIndex) {
+            this.atlasIndex = atlasIndex;
+        }
+
+        private int atlasIndex() {
+            return this.atlasIndex;
+        }
+    }
+
+    private static final ResourceLocation ICON_ATLAS = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/journal_icon_atlas.png");
+    private static final int ICON_ATLAS_CELL_SIZE = 16;
+    private static final int ICON_ATLAS_WIDTH = ICON_ATLAS_CELL_SIZE * Icon.values().length;
 
     // 像素风木质边框颜色
     private static final int BORDER_COLOR = 0xFF8B6914;
@@ -29,6 +60,7 @@ public class IconButton extends AbstractButton {
     private static final int TEXT_COLOR_HOVERED = 0xFF3D2810;
 
     private char iconChar;
+    private @Nullable Icon icon;
     private @Nullable List<Component> tooltipLines;
     private final Runnable onPressed;
 
@@ -48,24 +80,46 @@ public class IconButton extends AbstractButton {
         this.onPressed = onPressed;
     }
 
+    /** 使用统一像素图标的构造器。 */
+    public IconButton(int x, int y, int size, Icon icon,
+                      @Nullable List<Component> tooltipLines, Runnable onPressed) {
+        super(x, y, size, size, firstTooltipLine(tooltipLines));
+        this.icon = icon;
+        this.tooltipLines = tooltipLines;
+        this.onPressed = onPressed;
+    }
+
     /** 便捷构造 —— 单行 tooltip */
     public IconButton(int x, int y, int size, char iconChar,
                       @Nullable Component tooltip, Runnable onPressed) {
         this(x, y, size, iconChar, tooltip != null ? List.of(tooltip) : null, onPressed);
     }
 
+    /** 使用统一像素图标的便捷构造器。 */
+    public IconButton(int x, int y, int size, Icon icon,
+                      @Nullable Component tooltip, Runnable onPressed) {
+        this(x, y, size, icon, tooltip != null ? List.of(tooltip) : null, onPressed);
+    }
+
     public void setIconChar(char iconChar) {
         this.iconChar = iconChar;
+        this.icon = null;
+    }
+
+    public void setIcon(Icon icon) {
+        this.icon = icon;
     }
 
     /** 设置单行 tooltip（兼容便捷方法） */
     public void setTooltip(@Nullable Component tooltip) {
         this.tooltipLines = tooltip != null ? List.of(tooltip) : null;
+        this.setMessage(tooltip != null ? tooltip : Component.empty());
     }
 
     /** 设置多行 tooltip */
     public void setTooltipLines(@Nullable List<Component> tooltipLines) {
         this.tooltipLines = tooltipLines;
+        this.setMessage(firstTooltipLine(tooltipLines));
     }
 
     @Override
@@ -97,14 +151,26 @@ public class IconButton extends AbstractButton {
         int bg = hovered ? BG_HOVERED : BG_NORMAL;
         guiGraphics.fill(x + 1, y + 1, x + w - 1, y + h - 1, bg);
 
-        // 图标字符居中
-        Font font = Minecraft.getInstance().font;
-        String text = String.valueOf(iconChar);
-        int textWidth = font.width(text);
-        int textX = x + (w - textWidth) / 2;
-        int textY = y + (h - 8) / 2;
         int textColor = hovered ? TEXT_COLOR_HOVERED : TEXT_COLOR_NORMAL;
-        guiGraphics.drawString(font, text, textX, textY, textColor, false);
+        if (this.icon != null) {
+            int iconX = x + (w - ICON_ATLAS_CELL_SIZE) / 2;
+            int iconY = y + (h - ICON_ATLAS_CELL_SIZE) / 2;
+            guiGraphics.blit(ICON_ATLAS, iconX, iconY,
+                    this.icon.atlasIndex() * ICON_ATLAS_CELL_SIZE, 0,
+                    ICON_ATLAS_CELL_SIZE, ICON_ATLAS_CELL_SIZE,
+                    ICON_ATLAS_WIDTH, ICON_ATLAS_CELL_SIZE);
+        } else {
+            Font font = Minecraft.getInstance().font;
+            String text = String.valueOf(iconChar);
+            int textWidth = font.width(text);
+            int textX = x + (w - textWidth) / 2;
+            int textY = y + (h - 8) / 2;
+            guiGraphics.drawString(font, text, textX, textY, textColor, false);
+        }
+    }
+
+    private static Component firstTooltipLine(@Nullable List<Component> tooltipLines) {
+        return tooltipLines != null && !tooltipLines.isEmpty() ? tooltipLines.getFirst() : Component.empty();
     }
 
     /** 由 Screen.render 调用，在所有 widget 之后绘制 tooltip */
