@@ -17,11 +17,13 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,29 +38,24 @@ public final class ArchaeologyLootRuntimeTracker {
     private ArchaeologyLootRuntimeTracker() {
     }
 
-    // 多表解锁：签名解析锚定 signatureAnchor（通常=rootTableId），同一份签名应用到 tableIds 中所有在 catalog 中的表
-    // 用于嵌套表场景：一次发现同时解锁根表与子表（若两者都在 catalog 中）
-    // recordItemCounts=true 时同时记录物品获取计数（钓鱼场景，无待定日志条目机制）；
-    // recordItemCounts=false 时仅解锁，物品计数由待定日志条目机制（applyPendingLoot/flushTrackingToJournal）负责
-    public static void unlockResolvedLootMultiTable(ServerPlayer player, List<ResourceLocation> tableIds,
-                                                    ResourceLocation signatureAnchor,
-                                                    Map<String, Integer> itemCounts,
-                                                    boolean recordItemCounts) {
+    // 一次性应用聚合会话中每个表的发现结果；根表计数已由 LootSession 使用最终结果校正
+    public static void unlockSession(LootSession.Commit commit, boolean recordItemCounts) {
+        ServerPlayer player = commit.rootContext().player();
         ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return;
         }
 
-        List<LootResultSignature> signatures = toSignatures(itemCounts);
-        Map<LootResultSignature, Integer> signatureCounts = recordItemCounts
-                ? toSignatureCounts(itemCounts)
-                : Map.of();
         boolean changed = false;
-        for (ResourceLocation tableId : tableIds) {
-            if (!isTableInCatalog(tableId)) {
-                // 子表不在 catalog：跳过 unlockTable，不强制解锁未注册的表
+        for (Map.Entry<ResourceLocation, Map<String, Integer>> discovery : commit.discoveredLoot().entrySet()) {
+            ResourceLocation tableId = discovery.getKey();
+            if (!ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
                 continue;
             }
+            List<LootResultSignature> signatures = toSignatures(discovery.getValue());
+            Map<LootResultSignature, Integer> signatureCounts = recordItemCounts
+                    ? toSignatureCounts(discovery.getValue())
+                    : Map.of();
             boolean tableChanged = state.unlockTable(tableId);
             tableChanged |= state.unlockItems(tableId, signatures);
             if (recordItemCounts && !signatureCounts.isEmpty()) {
@@ -68,47 +65,28 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         if (changed) {
             JournalStateHandler.syncState(player);
-            // 仅对锚定表触发模拟（通常为根表，避免重复入队）
-            triggerPrioritySimulation(signatureAnchor);
+            triggerPrioritySimulation(commit.rootContext().rootTableId());
         }
     }
 
-    // 判断指定表是否已被原始目录收录；概率模拟是否完成不应影响追踪资格
-    private static boolean isTableInCatalog(ResourceLocation tableId) {
-        return ArchaeologyJournalServerCatalog.getRawCatalog().containsKey(tableId);
-    }
-
-    // 为钓鱼/开箱等无待定日志条目机制的追踪入口创建并 upsert ExcavationLogEntry。
-    // 遍历 tableStack 对每个在 catalog 中的表 upsert 同一条日志（同 entryId 关联多个表）。
-    // 物品计数已由 onUnlock 中的 recordItemsAcquired 负责，此处 acquiredSignatures 传 null 不重复记录。
-    public static void recordExcavationEntryMultiTable(ServerPlayer player,
-                                                       List<ResourceLocation> tableStack,
-                                                       LootSourceType lootSource,
-                                                       long gameTime, long dayTime,
-                                                       Map<String, Integer> itemCounts,
-                                                       BlockPos pos,
-                                                       @Nullable ResourceLocation sourceBlockId) {
-        Map<String, Integer> normalizedLoot = LootCounts.normalize(itemCounts);
+    // 为立即结算的会话创建最终日志；物品获得计数已在 unlockSession 中批量更新
+    public static void recordCompletedSession(LootSession.Commit commit) {
+        Map<String, Integer> normalizedLoot = LootCounts.normalize(commit.finalItemCounts());
         if (normalizedLoot.isEmpty()) {
             return;
         }
+        LootTrackingContext trackingContext = commit.rootContext();
+        ServerPlayer player = trackingContext.player();
         ServerLevel level = player.serverLevel();
         ExcavationLogEntry.ExcavationContext context = new ExcavationLogEntry.ExcavationContext(
-                level.dimension().location(), sourceBlockId,
-                WorldContextResolver.resolveStructureId(level, pos),
-                WorldContextResolver.resolveBiomeId(level, pos), pos);
+                level.dimension().location(), trackingContext.sourceBlockId(),
+                WorldContextResolver.resolveStructureId(level, trackingContext.pos()),
+                WorldContextResolver.resolveBiomeId(level, trackingContext.pos()), trackingContext.pos());
         ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
-                Math.max(0L, gameTime), Math.max(0L, dayTime));
-        // 钓鱼/开箱场景无"期望值 vs 实际值"差异，expectedLoot = actualLoot = normalizedLoot
-        ExcavationLogEntry entry = new ExcavationLogEntry(UUID.randomUUID(), lootSource, context,
-                timestamp, timestamp, normalizedLoot, normalizedLoot, "", tableStack);
-        // 遍历 tableStack，对每个在 catalog 中的表 upsert 日志条目
-        for (ResourceLocation tableId : tableStack) {
-            if (!isTableInCatalog(tableId)) {
-                continue;
-            }
-            JournalLogRecorder.upsertExcavationEntry(player, tableId, entry, null);
-        }
+                Math.max(0L, trackingContext.gameTime()), Math.max(0L, trackingContext.dayTime()));
+        ExcavationLogEntry entry = new ExcavationLogEntry(UUID.randomUUID(), trackingContext.lootSource(), context,
+                timestamp, timestamp, normalizedLoot, normalizedLoot, "", commit.tableStack());
+        upsertForTrackedTables(player, trackingContext.rootTableId(), entry, null);
     }
 
     // 解锁触发：若该表尚未纳入概率缓存，向后台工作线程插队模拟
@@ -124,28 +102,19 @@ public final class ArchaeologyLootRuntimeTracker {
     }
 
     @Nullable
-    // 创建待定的日志条目（从单物品栈预期战利品）
-    public static ExcavationLogEntry createPendingEntry(ServerPlayer player, ResourceLocation tableId,
-                                                        LootSourceType lootSource, @Nullable ResourceLocation sourceBlockId,
-                                                        BlockPos pos, ItemStack expectedLoot,
-                                                        long gameTime, long dayTime) {
-        if (expectedLoot.isEmpty()) {
-            return null;
-        }
-        LootResultSignature signature = resolveSignature(tableId, expectedLoot);
-        if (signature == null) {
-            return null;
-        }
-        return createPendingEntry(player, lootSource, sourceBlockId, pos,
-                Map.of(signature.toStoredKey(), expectedLoot.getCount()), gameTime, dayTime);
+    // 从聚合会话创建待定日志，保留本次发现的完整表链路
+    public static ExcavationLogEntry createPendingEntry(LootSession.Commit commit) {
+        LootTrackingContext context = commit.rootContext();
+        return createPendingEntry(context.player(), context.lootSource(), context.sourceBlockId(), context.pos(),
+                commit.finalItemCounts(), context.gameTime(), context.dayTime(), commit.tableStack());
     }
 
     @Nullable
-    // 创建待定的日志条目（从批量预期战利品，同时解析生物群系与结构）
-    public static ExcavationLogEntry createPendingEntry(ServerPlayer player, LootSourceType lootSource,
-                                                        @Nullable ResourceLocation sourceBlockId, BlockPos pos,
-                                                        Map<String, Integer> expectedLoot,
-                                                        long gameTime, long dayTime) {
+    private static ExcavationLogEntry createPendingEntry(ServerPlayer player, LootSourceType lootSource,
+                                                         @Nullable ResourceLocation sourceBlockId, BlockPos pos,
+                                                         Map<String, Integer> expectedLoot,
+                                                         long gameTime, long dayTime,
+                                                         @Nullable List<ResourceLocation> tableStack) {
         Map<String, Integer> normalizedExpectedLoot = LootCounts.normalize(expectedLoot);
         if (normalizedExpectedLoot.isEmpty()) {
             return null;
@@ -156,7 +125,7 @@ public final class ArchaeologyLootRuntimeTracker {
         ExcavationLogEntry.GameTimestamp timestamp = new ExcavationLogEntry.GameTimestamp(
                 Math.max(0L, gameTime), Math.max(0L, dayTime));
         return new ExcavationLogEntry(UUID.randomUUID(), lootSource, context,
-                timestamp, timestamp, normalizedExpectedLoot, Map.of());
+                timestamp, timestamp, normalizedExpectedLoot, Map.of(), "", tableStack);
     }
 
     @Nullable
@@ -193,8 +162,32 @@ public final class ArchaeologyLootRuntimeTracker {
         }
 
         ExcavationLogEntry updatedEntry = pendingEntry.withActualLootMerged(normalizedActualLoot, gameTime, dayTime);
-        JournalLogRecorder.upsertExcavationEntry(player, tableId, updatedEntry, toSignatureCounts(normalizedActualLoot));
+        upsertForTrackedTables(player, tableId, updatedEntry, toSignatureCounts(normalizedActualLoot));
         return updatedEntry;
+    }
+
+    // 仅将待定条目的当前状态写入日志；实际获得计数已在 applyPendingLoot 的增量阶段处理
+    public static void finalizePendingEntry(ServerPlayer player, ResourceLocation tableId,
+                                            @Nullable ExcavationLogEntry pendingEntry) {
+        if (pendingEntry != null) {
+            upsertForTrackedTables(player, tableId, pendingEntry, null);
+        }
+    }
+
+    // 将同一条聚合日志写入根表及本次实际发现的所有已追踪子表
+    private static void upsertForTrackedTables(ServerPlayer player, ResourceLocation fallbackTableId,
+                                               ExcavationLogEntry entry,
+                                               @Nullable Map<LootResultSignature, Integer> acquiredSignatures) {
+        LinkedHashSet<ResourceLocation> tableIds = new LinkedHashSet<>();
+        tableIds.add(fallbackTableId);
+        if (entry.tableStack() != null) {
+            tableIds.addAll(entry.tableStack());
+        }
+        for (ResourceLocation tableId : tableIds) {
+            if (ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
+                JournalLogRecorder.upsertExcavationEntry(player, tableId, entry, acquiredSignatures);
+            }
+        }
     }
 
     @Nullable
@@ -204,10 +197,7 @@ public final class ArchaeologyLootRuntimeTracker {
             return null;
         }
 
-        TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
-        if (table == null) {
-            table = ArchaeologyJournalServerCatalog.getRawTable(tableId);
-        }
+        TableDefinition table = resolveTableDefinition(tableId);
         if (table == null || table.items().isEmpty()) {
             return LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem()));
         }
@@ -217,6 +207,31 @@ public final class ArchaeologyLootRuntimeTracker {
             candidates.add(item.signature());
         }
         return LootResultMatcher.resolve(stack, candidates);
+    }
+
+    // 获取容器物品匹配候选；目录签名优先，容器现状的普通签名用于补充运行时注入物品
+    public static List<LootResultSignature> resolveCandidateSignatures(ResourceLocation tableId, Container container) {
+        LinkedHashSet<LootResultSignature> candidates = new LinkedHashSet<>();
+        TableDefinition table = resolveTableDefinition(tableId);
+        if (table != null && !table.items().isEmpty()) {
+            for (ItemDefinition item : table.items()) {
+                candidates.add(item.signature());
+            }
+        }
+
+        for (int slot = 0; slot < container.getContainerSize(); slot++) {
+            ItemStack stack = container.getItem(slot);
+            if (!stack.isEmpty()) {
+                candidates.add(LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem())));
+            }
+        }
+        return List.copyOf(candidates);
+    }
+
+    @Nullable
+    private static TableDefinition resolveTableDefinition(ResourceLocation tableId) {
+        TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
+        return table != null ? table : ArchaeologyJournalServerCatalog.getRawTable(tableId);
     }
 
     static List<LootResultSignature> toSignatures(Map<String, Integer> itemCounts) {
@@ -260,5 +275,4 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         return signatureCounts;
     }
-
-    }
+}

@@ -4,9 +4,11 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
+import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
 import com.meteorite.unsuspiciousblock.loottable.condition.MudDredgingCondition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.serialization.MapCodec;
@@ -113,6 +115,7 @@ public class FishingLootModifier extends LootModifier {
                 sp, tableKey.location(), LootSourceType.FISHING,
                 context.getLevel().getGameTime(), context.getLevel().getDayTime(),
                 pos, null);
+        LootSession lootSession = new LootSession(trackingCtx);
 
         // 包装 Consumer 以捕获 mud_dredging 表直接产出的物品
         List<ItemStack> captured = new ArrayList<>();
@@ -124,8 +127,7 @@ public class FishingLootModifier extends LootModifier {
         };
 
         int before = generatedLoot.size();
-        LootTrackingContextHolder.push(trackingCtx);
-        try {
+        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(lootSession, trackingCtx)) {
             // 使用 LootParams 新建上下文，避免复用原 context 导致 GLM 无限递归
             LootParams mudParams = new LootParams.Builder(context.getLevel())
                     .withParameter(LootContextParams.ORIGIN, origin)
@@ -134,11 +136,9 @@ public class FishingLootModifier extends LootModifier {
                     .withLuck(context.getLuck())
                     .create(LootContextParamSets.FISHING);
             lootTable.getRandomItems(mudParams, wrappedConsumer);
-        } finally {
-            LootTrackingContextHolder.pop();
         }
 
-        // 发布直接产出的物品追踪事件（嵌套子表物品由 NestedLootTableMixin 自动发布）
+        // 提交最终物品；嵌套子表物品已由 NestedLootTableMixin 汇入同一会话
         Map<String, Integer> itemCounts = new HashMap<>();
         for (ItemStack stack : captured) {
             LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(
@@ -148,7 +148,7 @@ public class FishingLootModifier extends LootModifier {
             }
         }
         if (!itemCounts.isEmpty()) {
-            LootTrackingEvents.publish(trackingCtx, itemCounts);
+            LootTrackingEvents.submit(lootSession, itemCounts, LootSettlementStrategies.immediate());
         }
 
         Constants.LOG.debug("[MudDredging] GLM 追加战利品: player={}, level={}, swamp={}, table={}, added={}",

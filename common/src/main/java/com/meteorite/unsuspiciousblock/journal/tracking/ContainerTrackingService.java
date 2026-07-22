@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
+import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -33,35 +33,13 @@ public final class ContainerTrackingService {
 
     // 容器战利品确认处理：结算旧条目（如有）→ 解锁物品 + 创建待定日志条目 + 记录追踪状态
     // 仅第一个触发解析的玩家会创建追踪，后续玩家跳过
+    // 容器生成完成后提交聚合会话，并把待定结算状态绑定到容器
     public static void onContainerLootResolved(ServerPlayer player,
                                                TrackedContainerLootState container,
-                                               ResourceLocation tableId,
+                                               LootSession lootSession,
                                                Map<String, Integer> itemCounts) {
-        onContainerLootResolved(player, container, tableId, itemCounts,
-                WorldContextResolver.resolveContainerPos(container),
-                WorldContextResolver.resolveContainerSourceBlockId(container));
-    }
-
-    // 带显式位置与源方块的重载，供非 BlockEntity 容器（如 Lootr 的 LootrInventory）使用
-    public static void onContainerLootResolved(ServerPlayer player,
-                                               TrackedContainerLootState container,
-                                               ResourceLocation tableId,
-                                               Map<String, Integer> itemCounts,
-                                               BlockPos pos,
-                                               @Nullable ResourceLocation sourceBlockId) {
-        onContainerLootResolved(player, container, tableId, itemCounts, pos, sourceBlockId, LootSourceType.LOOT_CONTAINER);
-    }
-
-    // 带显式来源类型的重载，供 Lootr 可疑方块等非标准容器使用
-    public static void onContainerLootResolved(ServerPlayer player,
-                                               TrackedContainerLootState container,
-                                               ResourceLocation tableId,
-                                               Map<String, Integer> itemCounts,
-                                               BlockPos pos,
-                                               @Nullable ResourceLocation sourceBlockId,
-                                               LootSourceType sourceType) {
+        ResourceLocation tableId = lootSession.rootContext().rootTableId();
         long gameTime = player.serverLevel().getGameTime();
-        long dayTime = player.serverLevel().getDayTime();
         long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
 
         // 多玩家并发安全：若追踪玩家 UUID 已存在且不是当前玩家，跳过
@@ -82,18 +60,15 @@ public final class ContainerTrackingService {
             // 若容器有未结算的旧追踪条目（非超时），先将旧条目写入日志再覆盖追踪状态
             ResourceLocation oldTableId = container.unsuspiciousblock$getTrackedLootTableName();
             ExcavationLogEntry oldPendingEntry = container.unsuspiciousblock$getPendingJournalEntry();
-            if (oldPendingEntry != null) {
-                JournalLogRecorder.upsertExcavationEntry(player, oldTableId, oldPendingEntry,
-                        ArchaeologyLootRuntimeTracker.toSignatureCounts(oldPendingEntry.actualLoot()));
-            }
+            ArchaeologyLootRuntimeTracker.finalizePendingEntry(player, oldTableId, oldPendingEntry);
         }
 
-        LootTrackingEvents.publish(player, tableId, itemCounts, sourceType, gameTime, dayTime,
-                pendingEntry -> {
+        LootTrackingEvents.submit(lootSession, itemCounts,
+                LootSettlementStrategies.deferred(pendingEntry -> {
                     container.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
                     container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
                     container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
-                });
+                }));
         if (itemCounts.isEmpty()) {
             container.unsuspiciousblock$clearAllTrackingState();
         }
@@ -116,8 +91,7 @@ public final class ContainerTrackingService {
             if (!trackedContainer.unsuspiciousblock$hasTrackedLoot() && pendingEntry != null) {
                 if (tableId != null) {
                     ServerPlayer recipient = resolveTrackingPlayer(player, trackedContainer);
-                    JournalLogRecorder.upsertExcavationEntry(recipient, tableId, pendingEntry,
-                            ArchaeologyLootRuntimeTracker.toSignatureCounts(pendingEntry.actualLoot()));
+                    ArchaeologyLootRuntimeTracker.finalizePendingEntry(recipient, tableId, pendingEntry);
                 }
                 trackedContainer.unsuspiciousblock$clearAllTrackingState();
             }
@@ -130,8 +104,7 @@ public final class ContainerTrackingService {
         ResourceLocation tableId = container.unsuspiciousblock$getTrackedLootTableName();
         if (pendingEntry != null && tableId != null) {
             ServerPlayer recipient = resolveTrackingPlayer(fallbackPlayer, container);
-            JournalLogRecorder.upsertExcavationEntry(recipient, tableId, pendingEntry,
-                    ArchaeologyLootRuntimeTracker.toSignatureCounts(pendingEntry.actualLoot()));
+            ArchaeologyLootRuntimeTracker.finalizePendingEntry(recipient, tableId, pendingEntry);
         }
         container.unsuspiciousblock$clearAllTrackingState();
     }

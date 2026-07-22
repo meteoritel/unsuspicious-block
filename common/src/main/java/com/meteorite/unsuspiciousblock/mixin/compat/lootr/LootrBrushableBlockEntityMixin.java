@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState
 import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.plugin.lootr.LootrBrushableTrackingAccess;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -395,11 +396,19 @@ public abstract class LootrBrushableBlockEntityMixin
                 ? tracked
                 : null;
         ResourceLocation tableId = trackedContainer == null
-                ? this.unsuspiciousblock$lootTableName
+                ? null
                 : trackedContainer.unsuspiciousblock$getTrackedLootTableName();
         ExcavationLogEntry pendingEntry = trackedContainer == null
-                ? this.unsuspiciousblock$pendingJournalEntry
+                ? null
                 : trackedContainer.unsuspiciousblock$getPendingJournalEntry();
+
+        // 扫描会清除 Lootr 库存的临时追踪状态，实际刷取时需回退到扫描者对应的方块级待定日志
+        if (tableId == null) {
+            tableId = this.unsuspiciousblock$lootTableName;
+        }
+        if (pendingEntry == null && this.unsuspiciousblock$isScanner(serverPlayer.getUUID())) {
+            pendingEntry = this.unsuspiciousblock$pendingJournalEntry;
+        }
 
         BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
         BrushableLootDropHelper.DropContext context = new BrushableLootDropHelper.DropContext(

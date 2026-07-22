@@ -17,8 +17,7 @@ import java.util.function.Supplier;
  * 日志条目的战利品来源类型——替代旧版 enum 的类 + 注册表模式。
  * <p>
  * 外部模组可通过 {@link #register} 注册自定义来源类型，突破 enum 的封闭限制。
- * 每个类型携带 {@code directLogCreation} 行为属性，决定战利品表解析时是否直接创建最终日志条目
- * （不再在事件管线中硬编码 {@code == FISHING} 身份比较）。
+ * 日志结算行为由 {@code LootSettlementStrategy} 在每次会话提交时决定，来源类型只负责展示与序列化。
  * <p>
  * 序列化使用 {@link ResourceLocation} 格式（如 {@code unsuspiciousblock:archaeology}），
  * {@link #fromId} 兼容旧格式简单字符串（{@code "archaeology"}、{@code "brush"} 等）。
@@ -85,7 +84,8 @@ public final class LootSourceType {
         return this.iconItem.get();
     }
 
-    // 战利品表解析时是否直接创建最终日志条目（无待定条目机制）
+    // 旧版结算提示；新代码应在提交 LootSession 时显式选择 LootSettlementStrategy
+    @Deprecated
     public boolean isDirectLogCreation() {
         return this.directLogCreation;
     }

@@ -4,8 +4,11 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
+import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
+import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
@@ -13,6 +16,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -468,9 +472,11 @@ public class SuspiciousReaderItem extends Item {
         if (lootTableName != null) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
-            LootTrackingEvents.publish(player, lootTableName, lootItem,
-                    LootSourceType.ARCHAEOLOGY, gameTime, dayTime,
-                    scanState::unsuspiciousblock$setPendingJournalEntry);
+            LootTrackingContext context = LootTrackingContext.root(
+                    player, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
+                    BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
+            LootTrackingEvents.submit(new LootSession(context), lootItem,
+                    LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
         }
 
         return new ScanResult(lootItem);

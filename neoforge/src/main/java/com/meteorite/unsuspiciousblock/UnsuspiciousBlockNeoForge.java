@@ -23,7 +23,6 @@ import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.serialization.MapCodec;
-import org.spongepowered.asm.mixin.Mixins;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -183,11 +182,6 @@ public class UnsuspiciousBlockNeoForge {
                     .build());
 
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
-        // 条件注册 Lootr 兼容 Mixin：仅在 Lootr 已安装时注册
-        if (Services.PLATFORM.isModLoaded("lootr")) {
-            Constants.LOG.info("[UnsuspiciousBlock] Lootr detected, registering Lootr compat mixins.");
-            Mixins.addConfiguration("unsuspiciousblock.lootr.mixins.json");
-        }
         // 在 common init 前设置平台注册的 LootItemConditionType，供 MudDredgingCondition 运行时使用
         ModLootConditions.setMudDredgingType(MUD_DREDGING_TYPE);
 

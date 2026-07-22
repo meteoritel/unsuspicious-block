@@ -2,12 +2,12 @@ package com.meteorite.unsuspiciousblock.mixin.interaction;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
-import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.mojang.datafixers.util.Either;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -28,19 +28,18 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * 拦截 NestedLootTable 的物品生成，在追踪上下文激活时自动捕获嵌套子表物品并发布追踪事件。
+ * 拦截 NestedLootTable 的物品生成，在追踪上下文激活时自动捕获嵌套子表物品。
  * <p>
  * 原版部分战利品表（如 {@code minecraft:gameplay/fishing}）通过 {@link NestedLootTable}
  * 引用子表（fish/junk/treasure）。各追踪入口（钓鱼 / 开箱 / 考古刷拭等）在调用
- * {@code LootTable.getRandomItems} 前向 {@link LootTrackingContextHolder} 压入上下文，
+ * {@code LootTable.getRandomItems} 前通过 {@link LootTrackingContextHolder} 建立上下文作用域，
  * 本 Mixin 读取上下文并在子表 {@code getRandomItemsRaw} 调用处包装 Consumer 收集物品，
- * 通过 {@link LootTrackingEvents} 发布携带完整 tableStack 链路的事件。
+ * 将结果汇入当前 {@link LootSession}，由根入口在生成完成后统一提交。
  * <p>
  * 上下文为空时（如模拟器主线程模拟、非追踪场景）直接透传，零开销。
  * 仅处理 ResourceKey 引用的子表；内联表无独立 ID 不参与追踪。
  * <p>
- * 批量发布：一次子表 {@code getRandomItemsRaw} 调用收集的所有物品合并为单次 publish，
- * 使订阅者创建一条日志条目（"一次嵌套表发现 = 一条 ExcavationLogEntry"）。
+ * 同一次子表 {@code getRandomItemsRaw} 调用收集的物品会先按签名合并，再追加到当前会话。
  */
 @Mixin(NestedLootTable.class)
 public abstract class NestedLootTableMixin {
@@ -68,13 +67,14 @@ public abstract class NestedLootTableMixin {
 
         // 读取追踪上下文；为空（模拟器 / 非追踪场景）直接透传
         LootTrackingContext ctx = LootTrackingContextHolder.current();
-        if (ctx == null) {
+        LootSession session = LootTrackingContextHolder.currentSession();
+        if (ctx == null || session == null) {
             original.call(lootTable, lootContext, consumer);
             return;
         }
 
         // 子表必须命中追踪规则，避免误捕无关嵌套表（如非考古路径的 loot_table 引用）
-        if (!LootTableNames.isArchaeologyLootTable(childTableId)
+        if (!ArchaeologyJournalServerCatalog.isTrackedTable(childTableId)
                 && !childTableId.equals(ctx.rootTableId())) {
             original.call(lootTable, lootContext, consumer);
             return;
@@ -82,7 +82,6 @@ public abstract class NestedLootTableMixin {
 
         // 派生子上下文并压栈；包装 Consumer 收集子表物品
         LootTrackingContext childCtx = ctx.descend(childTableId);
-        LootTrackingContextHolder.push(childCtx);
         List<ItemStack> captured = new ArrayList<>();
         Consumer<ItemStack> wrappedConsumer = stack -> {
             if (!stack.isEmpty()) {
@@ -90,17 +89,14 @@ public abstract class NestedLootTableMixin {
             }
             consumer.accept(stack);
         };
-        try {
+        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(childCtx)) {
             original.call(lootTable, lootContext, wrappedConsumer);
-        } finally {
-            LootTrackingContextHolder.pop();
         }
 
         if (captured.isEmpty()) {
             return;
         }
-        // 批量发布：将本次子表收集的所有物品按签名合并为单次 publish，
-        // 使订阅者创建一条日志条目（"一次嵌套表发现 = 一条 ExcavationLogEntry"）
+        // 将本次子表收集的所有物品按签名合并后追加到当前会话
         Map<String, Integer> itemCounts = new HashMap<>();
         for (ItemStack stack : captured) {
             LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(childCtx.rootTableId(), stack);
@@ -109,7 +105,7 @@ public abstract class NestedLootTableMixin {
             }
         }
         if (!itemCounts.isEmpty()) {
-            LootTrackingEvents.publish(childCtx, itemCounts);
+            session.capture(childCtx, itemCounts);
         }
     }
 }

@@ -277,6 +277,11 @@ public final class ArchaeologyJournalServerCatalog {
         return rawCatalog.get(tableId);
     }
 
+    // 判断指定表是否已被当前服务端的原始目录收录；不受概率模拟进度影响
+    public static boolean isTrackedTable(ResourceLocation tableId) {
+        return rawCatalog.containsKey(tableId);
+    }
+
     /** 原始目录中的表总数（已 ensureLoaded 后可用） */
     public static int getRawCatalogCount() {
         return rawCatalog.size();

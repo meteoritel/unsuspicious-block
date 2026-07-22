@@ -4,9 +4,13 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
+import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -227,9 +231,11 @@ public class ArchaeologicalShovelItem extends ShovelItem {
                 && scanState.unsuspiciousblock$getPendingJournalEntry() == null) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
-            LootTrackingEvents.publish(sp, lootTableName, extracted,
-                    LootSourceType.ARCHAEOLOGY, gameTime, dayTime,
-                    scanState::unsuspiciousblock$setPendingJournalEntry);
+            LootTrackingContext trackingContext = LootTrackingContext.root(
+                    sp, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
+                    BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()));
+            LootTrackingEvents.submit(new LootSession(trackingContext), extracted,
+                    LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
         }
 
         // inventory.add() 成功时会将 stack.count 置为 0，需在此之前保存副本用于日志记录

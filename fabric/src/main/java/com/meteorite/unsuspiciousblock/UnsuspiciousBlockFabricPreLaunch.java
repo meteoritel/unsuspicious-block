@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.Mixins;
  * <p>
  * PreLaunchEntrypoint 在 Mixin 处理之前调用，此时平台服务已可用于 Mod 加载检测。
  * <p>
- * NeoForge 端对应逻辑在 {@code UnsuspiciousBlockNeoForge} 构造函数中。
+ * NeoForge 端通过 neoforge.mods.toml 的 requiredMods 条件在加载器阶段注册。
  */
 public class UnsuspiciousBlockFabricPreLaunch implements PreLaunchEntrypoint {
 

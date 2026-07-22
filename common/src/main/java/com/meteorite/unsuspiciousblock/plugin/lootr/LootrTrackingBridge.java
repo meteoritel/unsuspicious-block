@@ -3,12 +3,11 @@ package com.meteorite.unsuspiciousblock.plugin.lootr;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.ContainerTrackingService;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -18,15 +17,12 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.storage.loot.LootTable;
 import noobanidus.mods.lootr.common.api.data.ILootrInfoProvider;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -51,7 +47,7 @@ public final class LootrTrackingBridge {
         }
 
         ResourceLocation tableId = lootTableKey.location();
-        if (!LootTableNames.isArchaeologyLootTable(tableId)) {
+        if (!ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
             return null;
         }
 
@@ -64,21 +60,14 @@ public final class LootrTrackingBridge {
         LootTrackingContext context = LootTrackingContext.root(
                 serverPlayer, tableId, sourceType,
                 serverLevel.getGameTime(), serverLevel.getDayTime(), pos, sourceBlockId);
-        return new Session(serverPlayer, tableId, pos, sourceBlockId, sourceType, context);
+        return new Session(serverPlayer, tableId, context, new LootSession(context));
     }
 
-    // 仅在真正执行 loot roll 时压入上下文
-    public static void open(@Nullable Session session) {
-        if (session != null) {
-            LootTrackingContextHolder.push(session.context());
-        }
-    }
-
-    // 弹出 open 压入的上下文；应在 finally 中调用
-    public static void close(@Nullable Session session) {
-        if (session != null) {
-            LootTrackingContextHolder.pop();
-        }
+    // 为 Lootr 的实际 loot roll 建立异常安全的追踪作用域
+    public static LootTrackingContextHolder.Scope openScope(@Nullable Session session) {
+        return session == null
+                ? LootTrackingContextHolder.open(null)
+                : LootTrackingContextHolder.open(session.lootSession(), session.context());
     }
 
     // 将 Lootr 实际生成的每玩家库存提交到容器追踪服务
@@ -87,45 +76,17 @@ public final class LootrTrackingBridge {
             return;
         }
 
-        List<LootResultSignature> candidates = collectCandidates(trackedContainer, session.tableId());
+        List<LootResultSignature> candidates = ArchaeologyLootRuntimeTracker.resolveCandidateSignatures(
+                session.tableId(), trackedContainer);
         ContainerTrackingService.onContainerLootResolved(
-                session.player(), trackedContainer, session.tableId(),
-                trackedContainer.unsuspiciousblock$collectContainerItemCounts(candidates),
-                session.pos(), session.sourceBlockId(), session.sourceType());
-    }
-
-    // 优先使用目录中的完整签名；目录缺失时退回到库存内的普通物品签名
-    private static List<LootResultSignature> collectCandidates(TrackedContainerLootState container,
-                                                                ResourceLocation tableId) {
-        TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
-        if (table != null && !table.items().isEmpty()) {
-            List<LootResultSignature> candidates = new ArrayList<>();
-            for (ItemDefinition item : table.items()) {
-                candidates.add(item.signature());
-            }
-            return candidates;
-        }
-
-        LinkedHashSet<ResourceLocation> fallbackItems = new LinkedHashSet<>();
-        for (int slot = 0; slot < container.getContainerSize(); slot++) {
-            ItemStack stack = container.getItem(slot);
-            if (!stack.isEmpty()) {
-                fallbackItems.add(BuiltInRegistries.ITEM.getKey(stack.getItem()));
-            }
-        }
-
-        List<LootResultSignature> candidates = new ArrayList<>();
-        for (ResourceLocation itemId : fallbackItems) {
-            candidates.add(LootResultSignature.plain(itemId));
-        }
-        return candidates;
+                session.player(), trackedContainer, session.lootSession(),
+                trackedContainer.unsuspiciousblock$collectContainerItemCounts(candidates));
     }
 
     /**
      * 单次 Lootr 战利品生成所需的不可变追踪信息。
      */
-    public record Session(ServerPlayer player, ResourceLocation tableId, BlockPos pos,
-                   @Nullable ResourceLocation sourceBlockId, LootSourceType sourceType,
-                   LootTrackingContext context) {
+    public record Session(ServerPlayer player, ResourceLocation tableId,
+                          LootTrackingContext context, LootSession lootSession) {
     }
 }

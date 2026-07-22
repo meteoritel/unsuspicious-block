@@ -1,15 +1,20 @@
 package com.meteorite.unsuspiciousblock.mixin.block;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Share;
+import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.llamalad7.mixinextras.sugar.Share;
-import com.llamalad7.mixinextras.sugar.ref.LocalRef;
+import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -26,6 +31,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
+import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -361,13 +367,13 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$writeLootTableData(cir.getReturnValue());
     }
 
-    // 在战利品表解析前捕获本次可疑方块使用的表标识，并 push 追踪上下文（若命中追踪规则）
+    // 在战利品表解析前捕获本次可疑方块使用的表标识与追踪上下文
     @Inject(method = "unpackLootTable", at = @At("HEAD"))
     private void unsuspiciousblock$captureLootTableName(Player player, CallbackInfo ci,
-                                                        @Share("ctxPushed") LocalRef<Boolean> ctxPushed) {
-        ctxPushed.set(false);
-        // 异常恢复：上次 unpackLootTable 异常时 TAIL 未触发 pop，清理残留上下文
-        LootTrackingContextHolder.clear();
+                                                        @Share("trackingContext") LocalRef<LootTrackingContext> trackingContext,
+                                                        @Share("lootSession") LocalRef<LootSession> lootSession) {
+        trackingContext.set(null);
+        lootSession.set(null);
         this.unsuspiciousblock$lootTableParsedThisCall = false;
         Level level = this.unsuspiciousblock$asBlockEntity().getLevel();
         if (this.lootTable == null || level == null || level.isClientSide() || level.getServer() == null) {
@@ -378,8 +384,8 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$lootTableParsed = true;
         this.unsuspiciousblock$lootTableParsedThisCall = true;
 
-        // 命中追踪规则时 push 上下文，使 NestedLootTableMixin 自动捕获嵌套子表
-        if (LootTableNames.isArchaeologyLootTable(this.unsuspiciousblock$lootTableName)
+        // 命中追踪规则时准备上下文，由 getRandomItems 调用点建立异常安全的作用域
+        if (ArchaeologyJournalServerCatalog.isTrackedTable(this.unsuspiciousblock$lootTableName)
                 && player instanceof ServerPlayer sp
                 && level instanceof ServerLevel serverLevel) {
             long gameTime = this.unsuspiciousblock$brushContext && this.unsuspiciousblock$brushGameTime >= 0L
@@ -391,24 +397,35 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
             BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
             BlockPos pos = blockEntity.getBlockPos();
             ResourceLocation sourceBlockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
-            LootTrackingContext ctx = LootTrackingContext.root(
+            LootTrackingContext context = LootTrackingContext.root(
                     sp, this.unsuspiciousblock$lootTableName, LootSourceType.ARCHAEOLOGY,
                     gameTime, dayTime, pos, sourceBlockId);
-            LootTrackingContextHolder.push(ctx);
-            ctxPushed.set(true);
+            trackingContext.set(context);
+            lootSession.set(new LootSession(context));
         }
     }
 
-    // 在战利品表解析后同步考古笔记状态并刷新方块实体，pop 追踪上下文
+    // 仅在 LootTable.getRandomItems 执行期间激活上下文，异常时由 Scope 自动恢复栈
+    @WrapOperation(
+            method = "unpackLootTable",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/storage/loot/LootTable;getRandomItems(Lnet/minecraft/world/level/storage/loot/LootParams;J)Lit/unimi/dsi/fastutil/objects/ObjectArrayList;")
+    )
+    private ObjectArrayList<ItemStack> unsuspiciousblock$scopeLootRoll(
+            LootTable lootTable, LootParams lootParams, long seed,
+            Operation<ObjectArrayList<ItemStack>> original,
+            @Share("trackingContext") LocalRef<LootTrackingContext> trackingContext,
+            @Share("lootSession") LocalRef<LootSession> lootSession) {
+        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(
+                lootSession.get(), trackingContext.get())) {
+            return original.call(lootTable, lootParams, seed);
+        }
+    }
+
+    // 在战利品表解析后同步考古笔记状态并刷新方块实体
     @Inject(method = "unpackLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$syncLootTableState(Player player, CallbackInfo ci,
-                                                       @Share("ctxPushed") LocalRef<Boolean> ctxPushed) {
-        // pop 追踪上下文（若 push 了）——必须在所有 return 之前执行
-        if (Boolean.TRUE.equals(ctxPushed.get())) {
-            LootTrackingContextHolder.pop();
-            ctxPushed.set(false);
-        }
-
+                                                      @Share("lootSession") LocalRef<LootSession> lootSession) {
         // parsedThisCall=true 表示本次实际解析了战利品表（this.lootTable 原先非 null，原版 roll 后置 null）
         // 原版 brush() 每个 tick 都调用 unpackLootTable，但只有首次调用实际 roll 战利品，后续都是空操作
         boolean parsedThisCall = this.unsuspiciousblock$lootTableParsedThisCall;
@@ -428,24 +445,11 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         // 记录战利品表原始解析结果（翻倍前），作为考古日志的期望值
         ItemStack originalItem = this.item.copy();
-        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-
-        long gameTime = this.unsuspiciousblock$brushGameTime >= 0L
-                ? this.unsuspiciousblock$brushGameTime
-                : sp.serverLevel().getGameTime();
-        long dayTime = this.unsuspiciousblock$brushDayTime >= 0L
-                ? this.unsuspiciousblock$brushDayTime
-                : sp.serverLevel().getDayTime();
-
-        // 首次发现记录使用原始战利品——解锁与首次发现时间基于战利品表结果
-        // 注：刷拭场景下根表物品通过此 publish 发布；若根表为嵌套表，子表物品由 NestedLootTableMixin 自动发布
-        // 待定日志条目由 onRecordExcavationEntry 订阅者通过 consumer 回传
-        LootTrackingContext publishCtx = LootTrackingContext.root(
-                sp, this.unsuspiciousblock$lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime,
-                blockEntity.getBlockPos(),
-                BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
-        LootTrackingEvents.publish(publishCtx, originalItem,
-                this::unsuspiciousblock$setPendingJournalEntry);
+        LootSession session = lootSession.get();
+        if (session != null) {
+            LootTrackingEvents.submit(session, originalItem,
+                    LootSettlementStrategies.deferred(this::unsuspiciousblock$setPendingJournalEntry));
+        }
 
         this.unsuspiciousblock$syncBlockEntity();
     }
