@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.inventory.PortableContainer;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -13,12 +14,14 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.stream.Stream;
 
 /**
@@ -28,6 +31,14 @@ import java.util.stream.Stream;
 public class SpecimenBoxItem extends Item implements PortableContainer {
     public SpecimenBoxItem(Properties properties) {
         super(properties);
+    }
+
+    @Override
+    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
+                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        tooltipLines.add(Component.translatable("item.unsuspiciousblock.specimen_box.tooltip_desc")
+                .withStyle(ChatFormatting.GRAY));
+        super.appendHoverText(stack, context, tooltipLines, flag);
     }
 
     @Override

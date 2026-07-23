@@ -1,0 +1,12 @@
+{
+  "type": "unsuspiciousblock:inject_item",
+  "conditions": [
+    {
+      "condition": "neoforge:loot_table_id",
+      "loot_table_id": "minecraft:chests/village/village_weaponsmith"
+    }
+  ],
+  "item": "unsuspiciousblock:specimen_box",
+  "count": 1,
+  "chance": 0.3
+}

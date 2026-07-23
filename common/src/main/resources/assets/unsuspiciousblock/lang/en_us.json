@@ -40,6 +40,7 @@
   "item.unsuspiciousblock.suspicious_reader.area_result": "Area scan: %s suspicious blocks found",
   "item.unsuspiciousblock.suspicious_reader.tooltip_scan_level": "Scan Level: %s",
   "item.unsuspiciousblock.suspicious_reader.tooltip_energy": "Energy: %s/%s",
+  "item.unsuspiciousblock.suspicious_reader.tooltip_recharge": "Sneak-right-click to recharge with an Ancient Coin",
   "item.unsuspiciousblock.suspicious_reader.tooltip_switch_mode": "Press [%s] to switch scan mode",
   "tooltip.unsuspiciousblock.wip": "[WIP] This item is still under development.",
   "item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range": "No suspicious blocks found in scan range.",
@@ -59,6 +60,7 @@
   "item.unsuspiciousblock.suspicious_reader.jade_contains_unknown": "§7Unknown item: %s §r×%d",
 
   "item.unsuspiciousblock.archaeological_shovel": "Archaeological Shovel",
+  "item.unsuspiciousblock.archaeological_shovel.tooltip_extract": "Right-click a scanned suspicious block to extract its loot",
   "item.unsuspiciousblock.archaeological_shovel.not_suspicious": "This is not a suspicious block!",
   "item.unsuspiciousblock.archaeological_shovel.not_scanned": "Scan this block with the Suspicious Reader first!",
   "item.unsuspiciousblock.archaeological_shovel.already_empty": "The suspicious block at (%d, %d, %d) is already empty.",
@@ -66,7 +68,7 @@
 
   "item.unsuspiciousblock.archaeology_journal": "Archaeology Journal",
   "item.unsuspiciousblock.specimen_box": "Specimen Box",
-  "item.unsuspiciousblock.specimen_box.tooltip_desc": "Place inventory-active items (e.g. Hand of Cat, Eye of Cat) inside; their effects work while the box is in your inventory or curio slot",
+  "item.unsuspiciousblock.specimen_box.tooltip_desc": "Right-click to open; stored carry effects stay active",
   "tooltip.unsuspiciousblock.specimen_box.empty": "Empty",
   "tooltip.unsuspiciousblock.specimen_box.contains": "Contains:",
   "item.unsuspiciousblock.ancient_coin": "Ancient Coin",

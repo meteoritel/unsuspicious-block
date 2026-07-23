@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -27,6 +28,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ShovelItem;
 import net.minecraft.world.item.Tier;
 import net.minecraft.world.item.Tiers;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.Level;
@@ -35,6 +37,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 /***
  * 考古铲——兼具铲子的全部挖掘功能，并附带以下特性：
@@ -87,6 +91,15 @@ public class ArchaeologicalShovelItem extends ShovelItem {
 
     public ArchaeologicalShovelItem(Properties properties) {
         super(TIER, properties);
+    }
+
+    @Override
+    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
+                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        tooltipLines.add(Component.translatable(
+                        "item.unsuspiciousblock.archaeological_shovel.tooltip_extract")
+                .withStyle(ChatFormatting.GRAY));
+        super.appendHoverText(stack, context, tooltipLines, flag);
     }
 
     // ========== 挖掘行为 ==========

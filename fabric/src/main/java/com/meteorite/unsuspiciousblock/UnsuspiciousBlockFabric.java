@@ -13,6 +13,7 @@ import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInject
 import com.meteorite.unsuspiciousblock.loot.BuriedTreasureLootInjection;
 import com.meteorite.unsuspiciousblock.loot.FabricArchaeologyLootInjector;
 import com.meteorite.unsuspiciousblock.loot.FishingLootInjection;
+import com.meteorite.unsuspiciousblock.loot.VillageWeaponsmithLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
@@ -79,6 +80,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 注册泥地打捞钓鱼战利品注入——向原版钓鱼表追加 mud_dredging 池
         FishingLootInjection.register();
+
+        // 注册村庄铁匠铺标本箱战利品注入：30% 概率生成 1 个
+        VillageWeaponsmithLootInjection.register();
 
         // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
         FabricInventoryPresenceAdapter.register();

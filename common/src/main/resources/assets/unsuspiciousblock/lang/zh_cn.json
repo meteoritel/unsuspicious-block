@@ -15,6 +15,7 @@
   "item.unsuspiciousblock.suspicious_reader.area_result": "范围扫描: 发现 %s 个可疑方块",
   "item.unsuspiciousblock.suspicious_reader.tooltip_scan_level": "扫描等级: %s",
   "item.unsuspiciousblock.suspicious_reader.tooltip_energy": "能量: %s/%s",
+  "item.unsuspiciousblock.suspicious_reader.tooltip_recharge": "潜行右键消耗古代金币充能",
   "item.unsuspiciousblock.suspicious_reader.tooltip_switch_mode": "按 [%s] 切换扫描模式",
   "tooltip.unsuspiciousblock.wip": "[WIP] 此物品仍在开发中。",
   "item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range": "扫描范围内没有可疑方块。",
@@ -56,6 +57,7 @@
   "unsuspiciousblock.configgui.journal.tracking_timeout_ticks.tooltip": "战利品箱追踪超时。超时后自动结算并清除追踪状态。",
 
   "item.unsuspiciousblock.archaeological_shovel": "考古铲",
+  "item.unsuspiciousblock.archaeological_shovel.tooltip_extract": "右键已扫描的可疑方块取出战利品",
   "item.unsuspiciousblock.archaeological_shovel.not_suspicious": "这不是可疑方块！",
   "item.unsuspiciousblock.archaeological_shovel.not_scanned": "请先用扫描仪扫描此方块！",
   "item.unsuspiciousblock.archaeological_shovel.already_empty": "此处 (%d, %d, %d) 的可疑方块已经空了。",
@@ -63,7 +65,7 @@
 
   "item.unsuspiciousblock.archaeology_journal": "考古笔记",
   "item.unsuspiciousblock.specimen_box": "标本箱",
-  "item.unsuspiciousblock.specimen_box.tooltip_desc": "放入背包生效类物品（如猫之手、猫之瞳），标本箱在背包或饰品栏中时其功能正常触发",
+  "item.unsuspiciousblock.specimen_box.tooltip_desc": "右键打开；箱内物品可随身生效",
   "tooltip.unsuspiciousblock.specimen_box.empty": "空",
   "tooltip.unsuspiciousblock.specimen_box.contains": "内含:",
   "item.unsuspiciousblock.ancient_coin": "古代金币",

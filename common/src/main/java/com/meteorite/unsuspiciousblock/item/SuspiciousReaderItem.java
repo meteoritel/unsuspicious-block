@@ -84,6 +84,8 @@ public class SuspiciousReaderItem extends Item {
                 Component.translatable(modeKey)).withStyle(ChatFormatting.GRAY));
         tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_energy",
                 energy, MAX_ENERGY).withStyle(ChatFormatting.GRAY));
+        tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_recharge")
+                .withStyle(ChatFormatting.DARK_GRAY));
 
         // 按键切换提示：按键绑定名以青色高亮，便于识别
         Component keybind = Component.keybind("key.unsuspiciousblock.scan_level_cycle")

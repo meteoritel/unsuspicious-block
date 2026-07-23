@@ -32,6 +32,7 @@ import net.minecraft.world.level.storage.loot.LootTable;
 
 import java.util.List;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -117,7 +118,7 @@ public interface RandomizableContainerMixin {
                                                      CallbackInfo ci,
                                                      @Share("capturedLootTable") LocalRef<ResourceLocation> capturedLootTable,
                                                      @Share("lootSession") LocalRef<LootSession> lootSession) {
-        if ((Object) this instanceof DecoratedPotBlockEntity) {
+        if (this instanceof DecoratedPotBlockEntity) {
             return;
         }
         if (!(this instanceof TrackedContainerLootState trackedContainer)) {
@@ -141,6 +142,7 @@ public interface RandomizableContainerMixin {
     }
 
     // 陶罐的原版解析调用不传玩家；仅在 32 格内选择最近玩家，普通无玩家容器不参与追踪
+    @Unique
     private static ServerPlayer unsuspiciousblock$resolveDecoratedPotPlayer(
             RandomizableContainer container, Level level) {
         if (!(container instanceof DecoratedPotBlockEntity pot)
