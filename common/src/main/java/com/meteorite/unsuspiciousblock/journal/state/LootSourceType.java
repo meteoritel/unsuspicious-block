@@ -44,6 +44,18 @@ public final class LootSourceType {
             () -> new ItemStack(Items.FISHING_ROD),
             true);
 
+    public static final LootSourceType FOSSIL_HUNTER = register(
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "fossil_hunter"),
+            Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.fossil_hunter"),
+            () -> new ItemStack(Items.BONE),
+            true);
+
+    public static final LootSourceType DECORATED_POT = register(
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "decorated_pot"),
+            Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.decorated_pot"),
+            () -> new ItemStack(Items.DECORATED_POT),
+            true);
+
     private final ResourceLocation id;
     private final Component displayName;
     private final Supplier<ItemStack> iconItem;
@@ -120,6 +132,8 @@ public final class LootSourceType {
             case "archaeology", "brush", "reader", "spade" -> ARCHAEOLOGY;
             case "loot_container", "container" -> LOOT_CONTAINER;
             case "fishing" -> FISHING;
+            case "fossil_hunter" -> FOSSIL_HUNTER;
+            case "decorated_pot", "pot" -> DECORATED_POT;
             default -> null;
         };
     }

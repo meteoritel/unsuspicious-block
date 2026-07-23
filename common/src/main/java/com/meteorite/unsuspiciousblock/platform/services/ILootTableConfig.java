@@ -18,7 +18,8 @@ public interface ILootTableConfig {
     // 默认追踪前缀列表--两端共享，确保重置行为一致
     List<String> DEFAULT_ARCHAEOLOGY_PATH_PREFIXES = List.of(
             "archaeology/", "archeology/", "gameplay/fishing/",
-            "minecraft:gameplay/fishing", "unsuspiciousblock:gameplay/fossil_hunter/"
+            "minecraft:gameplay/fishing", "pots/",
+            "unsuspiciousblock:gameplay/fossil_hunter/"
     );
 
     List<String> getArchaeologyPathPrefixes();

@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * 为容器方块实体的基础存档流程补充追踪数据读写。
+ * 为普通容器的存档流程补充追踪数据读写。
  */
 @Mixin(BaseContainerBlockEntity.class)
 public abstract class BaseContainerBlockEntityMixin {

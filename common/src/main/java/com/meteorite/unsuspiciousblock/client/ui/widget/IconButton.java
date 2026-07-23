@@ -8,7 +8,6 @@ import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.FormattedCharSequence;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -89,7 +88,7 @@ public class IconButton extends AbstractButton {
     }
 
     /** 使用统一像素图标的构造器。 */
-    public IconButton(int x, int y, int size, Icon icon,
+    public IconButton(int x, int y, int size, @Nullable Icon icon,
                       @Nullable List<Component> tooltipLines, Runnable onPressed) {
         super(x, y, size, size, firstTooltipLine(tooltipLines));
         this.icon = icon;
@@ -114,7 +113,7 @@ public class IconButton extends AbstractButton {
         this.icon = null;
     }
 
-    public void setIcon(Icon icon) {
+    public void setIcon(@Nullable Icon icon) {
         this.icon = icon;
     }
 

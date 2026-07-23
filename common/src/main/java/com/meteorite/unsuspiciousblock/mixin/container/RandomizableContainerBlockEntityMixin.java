@@ -18,7 +18,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 为可解析战利品表的容器方块实体保存运行时追踪状态。
+ * 为普通随机容器保存运行时追踪状态。
  */
 @Mixin(RandomizableContainerBlockEntity.class)
 public abstract class RandomizableContainerBlockEntityMixin implements TrackedContainerLootState {

@@ -7,9 +7,11 @@
   "mixins": [
     "container.AbstractContainerMenuMixin",
     "container.BaseContainerBlockEntityMixin",
+    "container.DecoratedPotLootStateMixin",
     "block.BlockBehaviourMixin",
     "block.BlockMixin",
     "block.BrushableBlockEntityMixin",
+    "block.DecoratedPotBlockMixin",
     "enchantment.EnchantmentMenuMixin",
     "inventory.PlayerPresenceStateMixin",
     "catfavor.CatFeedMixin",

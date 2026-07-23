@@ -31,7 +31,7 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
                         () -> List.of("archaeology/", "archeology/", "minecraft:gameplay/fishing",
-                                "unsuspiciousblock:gameplay/fossil_hunter/", "gameplay/fishing/"),
+                                "pots/", "unsuspiciousblock:gameplay/fossil_hunter/", "gameplay/fishing/"),
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
         builder.pop();
