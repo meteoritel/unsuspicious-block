@@ -52,12 +52,17 @@ def lootrCompat = project.hasProperty('lootr_compat') ? project.lootr_compat.toB
 if (!lootrCompat) {
     tasks.named('compileJava', JavaCompile) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
     }
     tasks.named('javadoc', Javadoc) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
     }
     tasks.named('sourcesJar', Jar) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
+        exclude 'unsuspiciousblock.lootr.mixins.json'
+        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
     }
     tasks.named('processResources', ProcessResources) {
         exclude 'unsuspiciousblock.lootr.mixins.json'

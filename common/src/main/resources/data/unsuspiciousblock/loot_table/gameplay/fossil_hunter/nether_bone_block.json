@@ -10,118 +10,228 @@
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 1, "max": 3}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 2,
+                "max": 6
+              }
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
         {
           "type": "minecraft:item",
           "name": "minecraft:bone_meal",
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 1, "max": 2}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 4,
+                "max": 8
+              }
             }
           ]
         }
       ]
     },
-
     {
-      "rolls": 1,
+      "rolls": 2,
       "entries": [
         {
           "type": "minecraft:item",
           "name": "minecraft:quartz",
+          "weight": 5,
           "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 3,
+                "max": 7
+              }
+            },
             {
               "function": "minecraft:apply_bonus",
               "enchantment": "minecraft:fortune",
               "formula": "minecraft:ore_drops"
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:glowstone_dust",
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 1, "max": 3}
             }
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:gold_nugget",
+          "weight": 4,
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 2, "max": 5}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 8,
+                "max": 16
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:glowstone_dust",
+          "weight": 3,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 4,
+                "max": 8
+              }
             }
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:blaze_powder",
+          "weight": 2,
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 1, "max": 2}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 2,
+                "max": 4
+              }
             }
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:magma_cream",
+          "weight": 1,
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 1, "max": 2}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 1,
+                "max": 2
+              }
             }
           ]
         }
       ]
     },
-
     {
       "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:random_chance",
+          "chance": 0.4
+        }
+      ],
       "entries": [
         {
-          "type": "minecraft:empty",
-          "weight": 12
-        },
+          "type": "minecraft:item",
+          "name": "minecraft:gold_ingot",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 2,
+                "max": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:random_chance",
+          "chance": 0.15
+        }
+      ],
+      "entries": [
         {
           "type": "minecraft:item",
-          "name": "minecraft:ender_eye",
-          "weight": 3
-        },
+          "name": "unsuspiciousblock:lost_page"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:random_chance",
+          "chance": 0.35
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "unsuspiciousblock:ancient_coin",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 1,
+                "max": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:random_chance",
+          "chance": 0.35
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:tag",
+          "name": "unsuspiciousblock:fossil_hunter_relics",
+          "expand": true
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:random_chance",
+          "chance": 0.08
+        }
+      ],
+      "entries": [
         {
           "type": "minecraft:item",
           "name": "minecraft:netherite_scrap",
-          "weight": 1,
           "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 1,
+                "max": 2
+              }
+            },
             {
               "function": "minecraft:apply_bonus",
               "enchantment": "minecraft:fortune",
               "formula": "minecraft:ore_drops"
             }
           ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:netherite_upgrade_smithing_template",
-          "weight": 2
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:wither_skeleton_skull",
-          "weight": 2
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:nether_star",
-          "weight": 1
         }
       ]
     }

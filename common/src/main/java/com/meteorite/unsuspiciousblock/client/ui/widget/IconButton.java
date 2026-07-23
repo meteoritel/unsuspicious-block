@@ -21,33 +21,41 @@ public class IconButton extends AbstractButton {
 
     /** 尺寸统一的内置像素图标，避免不同字体字符出现大小和基线差异。 */
     public enum Icon {
-        SEARCH(0),
-        CLOSE(1),
-        SORT_DEFAULT(2),
-        SORT_NAME(3),
-        SORT_UNLOCK(4),
-        SORT_ITEM_COUNT(5),
-        SORT_FAVORITE(6),
-        ARROW_UP(7),
-        ARROW_DOWN(8),
-        SHOW_LOCKED(9),
-        HIDE_LOCKED(10);
+        ARROW_UP(0, 0),
+        ARROW_DOWN(1, 0),
+        SHOW_LOCKED(2, 0),
+        HIDE_LOCKED(3, 0),
+        SEARCH(4, 0),
+        CLOSE(5, 0),
+        SORT_DEFAULT(0, 1),
+        SORT_NAME(1, 1),
+        SORT_ITEM_COUNT(2, 1),
+        SORT_FAVORITE(3, 1),
+        SORT_UNLOCK(4, 1),
+        SORT_UPDATE_TIME(5, 1);
 
-        private final int atlasIndex;
+        private final int atlasColumn;
+        private final int atlasRow;
 
-        Icon(int atlasIndex) {
-            this.atlasIndex = atlasIndex;
+        Icon(int atlasColumn, int atlasRow) {
+            this.atlasColumn = atlasColumn;
+            this.atlasRow = atlasRow;
         }
 
-        private int atlasIndex() {
-            return this.atlasIndex;
+        private int atlasX() {
+            return this.atlasColumn * ICON_ATLAS_CELL_SIZE;
+        }
+
+        private int atlasY() {
+            return this.atlasRow * ICON_ATLAS_CELL_SIZE;
         }
     }
 
     private static final ResourceLocation ICON_ATLAS = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/journal_icon_atlas.png");
-    private static final int ICON_ATLAS_CELL_SIZE = 16;
-    private static final int ICON_ATLAS_WIDTH = ICON_ATLAS_CELL_SIZE * Icon.values().length;
+            Constants.MOD_ID, "textures/gui/toolbar_icons.png");
+    private static final int ICON_ATLAS_CELL_SIZE = 9;
+    private static final int ICON_ATLAS_WIDTH = 81;
+    private static final int ICON_ATLAS_HEIGHT = 18;
 
     // 像素风木质边框颜色
     private static final int BORDER_COLOR = 0xFF8B6914;
@@ -156,9 +164,9 @@ public class IconButton extends AbstractButton {
             int iconX = x + (w - ICON_ATLAS_CELL_SIZE) / 2;
             int iconY = y + (h - ICON_ATLAS_CELL_SIZE) / 2;
             guiGraphics.blit(ICON_ATLAS, iconX, iconY,
-                    this.icon.atlasIndex() * ICON_ATLAS_CELL_SIZE, 0,
+                    this.icon.atlasX(), this.icon.atlasY(),
                     ICON_ATLAS_CELL_SIZE, ICON_ATLAS_CELL_SIZE,
-                    ICON_ATLAS_WIDTH, ICON_ATLAS_CELL_SIZE);
+                    ICON_ATLAS_WIDTH, ICON_ATLAS_HEIGHT);
         } else {
             Font font = Minecraft.getInstance().font;
             String text = String.valueOf(iconChar);

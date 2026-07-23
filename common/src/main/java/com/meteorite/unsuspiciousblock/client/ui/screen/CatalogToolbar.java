@@ -149,6 +149,7 @@ public class CatalogToolbar {
             case UNLOCK -> IconButton.Icon.SORT_UNLOCK;
             case ITEM_COUNT -> IconButton.Icon.SORT_ITEM_COUNT;
             case FAVORITE -> IconButton.Icon.SORT_FAVORITE;
+            case UPDATE_TIME -> IconButton.Icon.SORT_UPDATE_TIME;
         };
     }
 

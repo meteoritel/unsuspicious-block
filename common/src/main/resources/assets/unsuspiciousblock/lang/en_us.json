@@ -314,6 +314,7 @@
   "screen.unsuspiciousblock.archaeology_journal.sort.unlock": "Sort mode: Unlock status (click to change)",
   "screen.unsuspiciousblock.archaeology_journal.sort.item_count": "Sort mode: Item count (click to change)",
   "screen.unsuspiciousblock.archaeology_journal.sort.favorite": "Sort mode: Favorites first (click to change)",
+  "screen.unsuspiciousblock.archaeology_journal.sort.update_time": "Sort mode: Update time (click to change)",
   "screen.unsuspiciousblock.archaeology_journal.sort.ascending": "Sort direction: Ascending (click to change)",
   "screen.unsuspiciousblock.archaeology_journal.sort.descending": "Sort direction: Descending (click to change)",
   "screen.unsuspiciousblock.archaeology_journal.hide_locked.on": "Locked entries: Hidden (click to show)",

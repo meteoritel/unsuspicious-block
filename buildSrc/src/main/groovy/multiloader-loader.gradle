@@ -28,6 +28,7 @@ tasks.named('compileJava', JavaCompile) {
     source(configurations.commonJava)
     if (!lootrCompat) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
     }
 }
 
@@ -45,6 +46,7 @@ tasks.named('javadoc', Javadoc).configure {
     source(configurations.commonJava)
     if (!lootrCompat) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
     }
 }
 
@@ -53,6 +55,9 @@ tasks.named('sourcesJar', Jar) {
     from(configurations.commonJava)
     if (!lootrCompat) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
+        exclude 'unsuspiciousblock.lootr.mixins.json'
+        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
     }
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
+import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.network.chat.Component;
 
 import java.util.Comparator;
@@ -18,7 +19,8 @@ public final class CatalogSorter {
         NAME("name"),
         UNLOCK("unlock"),
         ITEM_COUNT("item_count"),
-        FAVORITE("favorite");
+        FAVORITE("favorite"),
+        UPDATE_TIME("update_time");
 
         private final String key;
 
@@ -66,6 +68,14 @@ public final class CatalogSorter {
                     .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
                     .thenComparing(v -> v.id().getNamespace())
                     .thenComparing(v -> v.displayName().getString());
+            case UPDATE_TIME -> Comparator
+                    .comparing((ArchaeologyJournalEntry v) -> v.logRef().latestUpdateTimestamp(),
+                            Comparator.nullsLast(Comparator
+                                    .comparingLong(ExcavationLogEntry.GameTimestamp::gameTime)
+                                    .thenComparingLong(ExcavationLogEntry.GameTimestamp::dayTime)))
+                    .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
+                    .thenComparing(v -> v.id().getNamespace())
+                    .thenComparing(v -> v.displayName().getString());
         };
         return descending ? comparator.reversed() : comparator;
     }
@@ -78,6 +88,7 @@ public final class CatalogSorter {
             case UNLOCK -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.unlock");
             case ITEM_COUNT -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.item_count");
             case FAVORITE -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.favorite");
+            case UPDATE_TIME -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.sort.update_time");
         };
     }
 

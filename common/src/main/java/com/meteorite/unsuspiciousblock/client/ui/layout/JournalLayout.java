@@ -24,9 +24,9 @@ public final class JournalLayout {
 
     // —— 左侧目录 ——
     public static final int CATALOG_ROW_HEIGHT = 20;
-    public static final int CATALOG_ROW_GAP = 3;
+    public static final int CATALOG_ROW_GAP = 1;
     // 目录列表从工具栏下方开始
-    public static final int CATALOG_LIST_TOP = TOOLBAR_Y + SEARCH_QUICK_BAR_HEIGHT + 2;
+    public static final int CATALOG_LIST_TOP = TOOLBAR_Y + SEARCH_QUICK_BAR_HEIGHT + 4;
     public static final int CATALOG_SUMMARY_Y = 190;
     public static final int CATALOG_PAGE_INDICATOR_Y = 208;
     public static final int CATALOG_LIST_BOTTOM = CATALOG_SUMMARY_Y - 4;
