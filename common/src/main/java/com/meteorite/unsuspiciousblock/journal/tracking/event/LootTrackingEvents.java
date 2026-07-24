@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTr
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategy;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -42,11 +43,8 @@ public final class LootTrackingEvents {
     public static void submit(LootSession session, ItemStack stack, LootSettlementStrategy settlementStrategy) {
         LinkedHashMap<String, Integer> itemCounts = new LinkedHashMap<>();
         if (!stack.isEmpty()) {
-            LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(
-                    session.rootContext().rootTableId(), stack);
-            if (signature != null) {
-                itemCounts.put(signature.toStoredKey(), stack.getCount());
-            }
+            LootResultSignature signature = resolveFinalSignature(session, stack);
+            itemCounts.put(signature.toStoredKey(), stack.getCount());
         }
         submit(session, itemCounts, settlementStrategy);
     }
@@ -59,11 +57,8 @@ public final class LootTrackingEvents {
             if (stack.isEmpty()) {
                 continue;
             }
-            LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(
-                    session.rootContext().rootTableId(), stack);
-            if (signature != null) {
-                itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
-            }
+            LootResultSignature signature = resolveFinalSignature(session, stack);
+            itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
         }
         submit(session, itemCounts, settlementStrategy);
     }
@@ -81,6 +76,17 @@ public final class LootTrackingEvents {
             return;
         }
         dispatch(new LootDiscoveredEvent(commit, state, settlementStrategy));
+    }
+
+    // Fabric 等平台可能在运行时向根表注入嵌套表，最终物品需同时尝试实际发现的子表目录
+    private static LootResultSignature resolveFinalSignature(LootSession session, ItemStack stack) {
+        for (ResourceLocation tableId : session.discoveredTableIds()) {
+            LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(tableId, stack);
+            if (signature != null) {
+                return signature;
+            }
+        }
+        return LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem()));
     }
 
     // 按 priority 顺序同步通知所有订阅者

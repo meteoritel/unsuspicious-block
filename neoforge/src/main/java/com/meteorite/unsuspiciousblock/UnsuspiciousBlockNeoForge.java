@@ -7,8 +7,6 @@ import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.plugin.curio.SpecimenBoxCurio;
-import com.meteorite.unsuspiciousblock.plugin.artifacts.ArtifactsSpecimenBoxSlotProvider;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
@@ -21,6 +19,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimul
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.Holder;
@@ -69,7 +68,6 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
-import top.theillusivec4.curios.api.CuriosApi;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -219,14 +217,11 @@ public class UnsuspiciousBlockNeoForge {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
             }
-            // 标本箱 Curios 代理注册：Curios 安装时将标本箱注册为 ICurioItem，
-            // 使其在饰品槽中时能将内部物品模拟为独立饰品
+            // 通过反射跨越可选依赖边界，避免主入口在 Curios 缺失时解析其 API。
             if (Services.PLATFORM.isModLoaded("curios")) {
-                SpecimenBoxCurio.Lifecycle lifecycle = SpecimenBoxCurio.Lifecycle.NONE;
-                if (Services.PLATFORM.isModLoaded("artifacts")) {
-                    lifecycle = ArtifactsSpecimenBoxSlotProvider.register();
-                }
-                CuriosApi.registerCurio(ModItems.SPECIMEN_BOX, new SpecimenBoxCurio(lifecycle));
+                OptionalModIntegration.instantiate(
+                        "com.meteorite.unsuspiciousblock.plugin.curio.NeoForgeCuriosIntegration",
+                        Runnable.class).run();
             }
         });
     }

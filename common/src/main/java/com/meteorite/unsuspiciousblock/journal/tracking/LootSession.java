@@ -78,6 +78,11 @@ public final class LootSession {
         return this.rootContext;
     }
 
+    // 返回本次会话实际发现的表，供最终结果按根表和嵌套表依次解析签名
+    public List<ResourceLocation> discoveredTableIds() {
+        return List.copyOf(this.discoveredTables);
+    }
+
     // 子表候选以根入口最终结果为上限，过滤掉被 loot filter 移除或替换的物品
     private static Map<String, Integer> reconcileWithFinal(Map<String, Integer> captured,
                                                            Map<String, Integer> finalItemCounts) {

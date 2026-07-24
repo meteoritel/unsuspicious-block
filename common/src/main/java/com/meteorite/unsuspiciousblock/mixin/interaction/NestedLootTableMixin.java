@@ -99,7 +99,8 @@ public abstract class NestedLootTableMixin {
         // 将本次子表收集的所有物品按签名合并后追加到当前会话
         Map<String, Integer> itemCounts = new HashMap<>();
         for (ItemStack stack : captured) {
-            LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(childCtx.rootTableId(), stack);
+            LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(
+                    childCtx.currentTableId(), stack);
             if (signature != null) {
                 itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
             }

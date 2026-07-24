@@ -204,9 +204,9 @@
 - 标本箱现有 30% 概率出现在村庄铁匠铺的战利品箱中。
 
 #### 考古手册与战利品追踪
-- 新增战利品表 100% 完成奖励：当一张被追踪的战利品表中全部物品都至少解锁一次时，发放 1 枚古代金币并弹出 Toast 提示。每张表的奖励仅发放一次，通过持久化标记去重。
+- 新增战利品表 100% 完成奖励：当一张被追踪的战利品表中全部物品都至少解锁一次时，发放 1 枚古代金币并弹出 Toast 提示。每张表的奖励仅发放一次.
 - 新增陶罐战利品与「化石猎手」额外掉落追踪，默认追踪范围加入原版 `pots/` 战利品表。
-- 新增 Lootr 联动：支持追踪 Lootr 容器和可疑方块、扫描或提取 Lootr 可疑方块，并持久化尚未取走物品的追踪状态。
+- 新增 Lootr 联动（**仅 NeoForge 端**）：支持追踪 Lootr 容器和可疑方块、扫描或提取 Lootr 可疑方块，并持久化尚未取走物品的追踪状态。
 - 考古手册现可展示物品的多种获取路径、继承条件和战利品函数效果，并按概率型或运行时条件区分提示；外部模组注入的战利品也会显示来源标记。
 - 目录新增按更新时间排序，支持 WASD、方向键和左右键导航；现在未解锁的物品也可查看获取条件。
 
@@ -226,3 +226,34 @@
 - 修复考古手册目录哈希、客户端同步和模拟期间追踪回退问题，避免旧缓存覆盖服务端记录、数据包重载残留任务或目录尚未模拟完成时漏记战利品。
 - 修复考古手册在界面缩放时的文字裁切，以及重建搜索框时可能发生的递归响应问题。
 - 禁止标本箱嵌套自身，避免递归容器导致物品无法取出。
+
+### Added
+
+#### Specimen Box
+- Reworked the Specimen Box into a 5-slot portable container: right-click to open, with item preview in the tooltip. Items inside the box take effect when it is in the backpack or a trinket slot.
+- The Specimen Box can now be equipped as a trinket: NeoForge uses Curios, Fabric uses Trinkets, with added Artifacts integration.
+- The Specimen Box now has a 30% chance to appear in village weaponsmith loot chests.
+
+#### Archaeology Journal & Loot Tracking
+- Added 100% completion reward: when all items in a tracked loot table have been unlocked at least once, the player receives 1 Ancient Coin and a Toast notification. Each table's reward is granted only once.
+- Added decorated pot loot and "Fossil Hunter" bonus drop tracking; vanilla `pots/` loot tables are now tracked by default.
+- Added Lootr integration (**Only in Neoforge**): supports tracking Lootr containers and suspicious blocks, scanning/extracting Lootr suspicious blocks, and persisting tracking state for items not yet taken.
+- The Archaeology Journal now displays multiple acquisition paths, inheritance conditions, and loot function effects for items, with hints differentiated by probability-based or runtime conditions. Loot injected by external mods is also marked with source labels.
+- The catalogue now supports sorting by last update time, with WASD, arrow key, and left/right key navigation. Unlocked items can now be previewed for their acquisition conditions before being discovered.
+
+#### Configuration & Scanning
+- Both Fabric and NeoForge now have graphical config screens; Fabric also supports opening and hot-reloading config via Mod Menu.
+- The Suspicious Reader's range mode now detects containers with loot tables, highlighted with a purple outline to distinguish them from suspicious blocks.
+
+### Changed
+- Refactored "Mud Dredging" trigger logic and adjusted swamp loot table rewards — it now grants bonus loot instead of replacing the original loot.
+- Adjusted "Fossil Hunter" Overworld and Nether bone block loot tables, redistributed drop pools, and added Artifacts trinkets.
+
+### Fixed
+- Fixed a world generation freeze on the Fabric side.
+- Corrected the "Completionist's Dust" advancement criteria: now only requires full item unlock for the 6 vanilla archaeology loot tables (`minecraft:archaeology/` prefix).
+- Fixed "Mud Dredging" condition registration and fisher player identification errors that prevented the effect from triggering, and completed its nested loot tracking.
+- Fixed interaction priority when the Archaeological Shovel and Suspicious Reader are held in main/off-hand: unscanned blocks are now scanned first, and scanned blocks are looted first.
+- Fixed Archaeology Journal catalogue hash issues, client sync, and simulation-period tracking rollback — prevents stale cache from overwriting server records, leftover tasks after datapack reload, and missed loot during catalogue simulation.
+- Fixed Archaeology Journal text clipping at UI scaling, and a potential recursive response issue when rebuilding the search box.
+- Prevented the Specimen Box from nesting itself, avoiding recursive containers that make items unretrievable.

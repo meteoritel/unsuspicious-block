@@ -22,7 +22,7 @@ repositories {
     // Trinkets 依赖的两个 maven 仓库（TerraformersMC + Ladysnake）
     maven {
         name = "TerraformersMC"
-        url = "https://maven.terraformersmc.com/"
+        url = "https://maven.terraformersmc.com/releases/"
     }
     maven {
         name = "Ladysnake Libs"
@@ -46,7 +46,7 @@ dependencies {
     // 本地运行测试时自动拉取 trinkets 及其传递依赖（CCA）
     modRuntimeOnly "dev.emi:trinkets:${trinkets_version}"
 
-    // Artifacts：使用 common 装备 provider API；NeoForge jar 仅作为 Mojang mappings 编译来源
+    // Artifacts：仅使用 NeoForge jar 作为 Mojang mappings 编译来源；运行测试由 mods 目录提供完整 Fabric JAR
     compileOnly "maven.modrinth:artifacts:${artifacts_version}"
 
     // ModMenu：可选联动，编译期引用 API，开发环境运行时拉取以便测试配置界面
@@ -102,7 +102,7 @@ if (!lootrCompat) {
             def metadataFile = destinationDir.toPath().resolve('fabric.mod.json').toFile()
             def metadata = new groovy.json.JsonSlurper().parse(metadataFile)
             metadata.entrypoints.remove('preLaunch')
-            metadata.recommends.remove('lootr')
+            metadata.suggests.remove('lootr')
             metadataFile.text = groovy.json.JsonOutput.prettyPrint(
                     groovy.json.JsonOutput.toJson(metadata)) + System.lineSeparator()
         }
