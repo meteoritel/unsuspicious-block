@@ -3,6 +3,8 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
+def lootrCompat = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
+
 repositories {
     maven {
         name = "Modrinth"
@@ -28,7 +30,7 @@ dependencies {
     compileOnly "maven.modrinth:artifacts:${artifacts_version}"
 
     // Lootr：neoforge 端 compileOnly 引用 API，runtimeOnly 供本地运行测试
-    if (project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true) {
+    if (lootrCompat) {
         compileOnly "maven.modrinth:lootr:${lootr_version}"
         runtimeOnly "maven.modrinth:lootr:${lootr_version}"
     }

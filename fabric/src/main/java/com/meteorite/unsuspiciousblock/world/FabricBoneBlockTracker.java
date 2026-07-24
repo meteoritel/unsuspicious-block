@@ -15,29 +15,34 @@ public final class FabricBoneBlockTracker implements IBoneBlockTracker {
 
     @Override
     public boolean isNatural(ServerLevel level, BlockPos pos) {
-        LongOpenHashSet set = accessor(level, pos).unsuspiciousblock_getNaturalBoneBlocks();
+        LongOpenHashSet set = accessor(level.getChunk(pos)).unsuspiciousblock_getNaturalBoneBlocks();
         return set != null && set.contains(pos.asLong());
     }
 
     @Override
     public void markNatural(ServerLevel level, BlockPos pos) {
-        LongOpenHashSet set = accessor(level, pos).unsuspiciousblock_getOrCreateNaturalBoneBlocks();
+        markNatural(level.getChunk(pos), pos);
+    }
+
+    @Override
+    public void markNatural(ChunkAccess chunk, BlockPos pos) {
+        LongOpenHashSet set = accessor(chunk).unsuspiciousblock_getOrCreateNaturalBoneBlocks();
         if (set.add(pos.asLong())) {
-            level.getChunk(pos).setUnsaved(true);
+            chunk.setUnsaved(true);
         }
     }
 
     @Override
     public void clearNatural(ServerLevel level, BlockPos pos) {
-        LongOpenHashSet set = accessor(level, pos).unsuspiciousblock_getNaturalBoneBlocks();
+        ChunkAccess chunk = level.getChunk(pos);
+        LongOpenHashSet set = accessor(chunk).unsuspiciousblock_getNaturalBoneBlocks();
         if (set != null && set.remove(pos.asLong())) {
-            level.getChunk(pos).setUnsaved(true);
+            chunk.setUnsaved(true);
         }
     }
 
-    // 取目标 chunk 的 mixin accessor——ChunkAccess 的所有子类（ProtoChunk/LevelChunk/ImposterProtoChunk）都被注入字段
-    private static IBoneBlockChunkAccess accessor(ServerLevel level, BlockPos pos) {
-        ChunkAccess chunk = level.getChunk(pos);
+    // 取目标 chunk 的 mixin accessor，ChunkAccess 的所有子类都被注入字段
+    private static IBoneBlockChunkAccess accessor(ChunkAccess chunk) {
         return (IBoneBlockChunkAccess) (Object) chunk;
     }
 

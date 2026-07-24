@@ -46,16 +46,9 @@ description = '''${description}'''
     ordering = "NONE"
     side = "BOTH"
 
-[[dependencies.${mod_id}]]
-    modId = "lootr"
-    type = "optional"
-    versionRange = "[1.11.37.121,)"
-    ordering = "NONE"
-    side = "BOTH"
+${lootr_neoforge_dependency}
 
 [[mixins]]
 config = "${mod_id}.mixins.json"
 
-[[mixins]]
-config = "${mod_id}.lootr.mixins.json"
-requiredMods = ["lootr"]
+${lootr_neoforge_mixin}

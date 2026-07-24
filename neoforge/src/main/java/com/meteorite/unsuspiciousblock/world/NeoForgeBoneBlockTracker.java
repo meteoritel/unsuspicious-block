@@ -43,9 +43,14 @@ public final class NeoForgeBoneBlockTracker implements IBoneBlockTracker {
 
     @Override
     public void markNatural(ServerLevel level, BlockPos pos) {
-        LongOpenHashSet set = getOrCreateData(level, pos);
+        markNatural(chunkOf(level, pos), pos);
+    }
+
+    @Override
+    public void markNatural(ChunkAccess chunk, BlockPos pos) {
+        LongOpenHashSet set = chunk.getData(NATURAL_BONE_BLOCKS.get());
         if (set.add(pos.asLong())) {
-            chunkOf(level, pos).setUnsaved(true);
+            chunk.setUnsaved(true);
         }
     }
 
@@ -59,12 +64,6 @@ public final class NeoForgeBoneBlockTracker implements IBoneBlockTracker {
 
     // 读取指定位置所在 chunk 的 attachment，未初始化时返回 null
     private static LongOpenHashSet getData(ServerLevel level, BlockPos pos) {
-        ChunkAccess chunk = level.getChunk(pos);
-        return chunk.getData(NATURAL_BONE_BLOCKS.get());
-    }
-
-    // 读取或创建指定位置所在 chunk 的 attachment
-    private static LongOpenHashSet getOrCreateData(ServerLevel level, BlockPos pos) {
         ChunkAccess chunk = level.getChunk(pos);
         return chunk.getData(NATURAL_BONE_BLOCKS.get());
     }

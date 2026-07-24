@@ -301,7 +301,7 @@ public class UnsuspiciousBlockNeoForge {
             return;
         }
         ChunkAccess chunk = event.getChunk();
-        NaturalBoneBlockTracker.scanChunk(serverLevel, chunk.getPos().x, chunk.getPos().z);
+        NaturalBoneBlockTracker.scanChunk(chunk);
     }
 
     @SubscribeEvent

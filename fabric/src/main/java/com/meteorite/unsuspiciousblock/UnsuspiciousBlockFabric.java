@@ -184,9 +184,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
         ServerTickEvents.END_SERVER_TICK.register(LootProbabilitySimulationWorker::tickIfPresent);
 
-        // chunk 首次生成时扫描骨块并标记为自然生成
+        // 直接扫描事件提供的 chunk，避免其进入 chunk map 前重新触发生成
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->
-                NaturalBoneBlockTracker.scanChunk(world, chunk.getPos().x, chunk.getPos().z));
+                NaturalBoneBlockTracker.scanChunk(chunk));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));

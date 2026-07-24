@@ -23,6 +23,10 @@ repositories {
     }
 }
 
+def lootrCompatFabric = project.hasProperty('lootr_compat_fabric') ? project.lootr_compat_fabric.toBoolean() : true
+def lootrCompatNeoForge = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
+def lootrCompat = lootrCompatFabric || lootrCompatNeoForge
+
 dependencies {
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
     // IMixinConfigPlugin 依赖 ASM ClassNode，mixin 0.8.5 未传递暴露，需显式声明
@@ -34,7 +38,7 @@ dependencies {
     // Jade API (common API classes are the same across platforms)
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     // Lootr API（Modrinth maven，neoforge 平台 jar，common API 类与 fabric 端一致）
-    if (project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true) {
+    if (lootrCompat) {
         compileOnly "maven.modrinth:lootr:${lootr_version}"
     }
 
@@ -48,7 +52,6 @@ tasks.named('test', Test) {
     useJUnitPlatform()
 }
 
-def lootrCompat = project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true
 if (!lootrCompat) {
     tasks.named('compileJava', JavaCompile) {
         exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'

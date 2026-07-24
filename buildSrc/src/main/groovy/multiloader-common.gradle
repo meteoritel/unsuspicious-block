@@ -89,6 +89,19 @@ jar {
     }
 }
 
+def lootrCompatNeoForge = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
+def lootrNeoForgeDependency = lootrCompatNeoForge ? """[[dependencies.${mod_id}]]
+    modId = "lootr"
+    type = "optional"
+    versionRange = "[1.11.37.121,)"
+    ordering = "NONE"
+    side = "BOTH"
+""" : ''
+def lootrNeoForgeMixin = lootrCompatNeoForge ? """[[mixins]]
+config = "${mod_id}.lootr.mixins.json"
+requiredMods = ["lootr"]
+""" : ''
+
 processResources {
     var expandProps = [
             'version'                      : version,
@@ -105,7 +118,9 @@ processResources {
             'neoforge_version'             : neoforge_version,
             'neoforge_loader_version_range': neoforge_loader_version_range,
             'credits'                      : credits,
-            'java_version'                 : java_version
+            'java_version'                 : java_version,
+            'lootr_neoforge_dependency'    : lootrNeoForgeDependency,
+            'lootr_neoforge_mixin'         : lootrNeoForgeMixin
     ]
 
     filesMatching(['pack.mcmeta', 'fabric.mod.json', 'META-INF/neoforge.mods.toml', '*.mixins.json']) {

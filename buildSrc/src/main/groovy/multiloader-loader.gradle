@@ -21,7 +21,8 @@ dependencies {
     commonResources project(path: ':common', configuration: 'commonResources')
 }
 
-def lootrCompat = project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true
+def lootrCompatProperty = project.name == 'fabric' ? 'lootr_compat_fabric' : 'lootr_compat_neoforge'
+def lootrCompat = project.hasProperty(lootrCompatProperty) ? project.property(lootrCompatProperty).toBoolean() : true
 
 tasks.named('compileJava', JavaCompile) {
     dependsOn(configurations.commonJava)

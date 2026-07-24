@@ -3,6 +3,17 @@ plugins {
     id 'fabric-loom'
 }
 
+def lootrCompat = project.hasProperty('lootr_compat_fabric') ? project.lootr_compat_fabric.toBoolean() : true
+
+configurations {
+    // Lootr 使用比本项目更新的 Loom 构建，交由 Fabric Loader 在开发运行时完成 remap。
+    lootrFabricRuntime {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+}
+
 repositories {
     maven {
         name = "Modrinth"
@@ -42,13 +53,12 @@ dependencies {
     modCompileOnly "com.terraformersmc:modmenu:${modmenu_version}"
     modRuntimeOnly "com.terraformersmc:modmenu:${modmenu_version}"
 
-    // Lootr：fabric 端 compileOnly 引用 neoforge jar（named mappings，与项目映射一致）
-    // 不使用 modCompileOnly：Lootr jar 由 Loom 1.14+ 构建，项目 Loom 1.8 无法 remap
-    // neoforge jar 中的 common API 类与 fabric jar 相同，仅编译期引用
-    if (project.hasProperty('lootr_compat') ? project.lootr_compat.toBoolean() : true) {
+    // Lootr：编译期使用 NeoForge 的 Mojang mappings JAR，开发运行时加载对应的 Fabric JAR。
+    // Fabric 文件需使用 Modrinth version id；语义版本坐标默认解析到 NeoForge 文件。
+    if (lootrCompat) {
         compileOnly "maven.modrinth:lootr:${lootr_version}"
+        lootrFabricRuntime "maven.modrinth:lootr:${lootr_fabric_version_id}"
     }
-    // 开发环境运行时需手动将 Lootr fabric jar 放入 runs/client/mods 目录
 }
 
 loom {
@@ -73,6 +83,28 @@ loom {
             setConfigName('Fabric Server')
             ideConfigGenerated(true)
             runDir('runs/server')
+        }
+    }
+}
+
+if (lootrCompat) {
+    tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
+        doFirst {
+            systemProperty 'fabric.addMods', configurations.lootrFabricRuntime.singleFile.absolutePath
+        }
+    }
+}
+
+if (!lootrCompat) {
+    tasks.named('processResources') {
+        inputs.property('lootrCompatFabric', lootrCompat)
+        doLast {
+            def metadataFile = destinationDir.toPath().resolve('fabric.mod.json').toFile()
+            def metadata = new groovy.json.JsonSlurper().parse(metadataFile)
+            metadata.entrypoints.remove('preLaunch')
+            metadata.recommends.remove('lootr')
+            metadataFile.text = groovy.json.JsonOutput.prettyPrint(
+                    groovy.json.JsonOutput.toJson(metadata)) + System.lineSeparator()
         }
     }
 }

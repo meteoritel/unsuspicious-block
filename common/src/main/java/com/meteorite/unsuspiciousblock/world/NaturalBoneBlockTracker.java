@@ -51,11 +51,10 @@ public final class NaturalBoneBlockTracker {
         return true;
     }
 
-    // 扫描指定 chunk 中的所有骨块，全部标记为自然生成
-    public static void scanChunk(ServerLevel level, int chunkX, int chunkZ) {
-        ChunkAccess chunk = level.getChunk(chunkX, chunkZ);
+    // 直接扫描并写入已知 chunk，生成事件调用此重载时不会重新进入 chunk 获取流程
+    public static void scanChunk(ChunkAccess chunk) {
         chunk.findBlocks(NaturalBoneBlockTracker::isBoneBlock,
-                (pos, state) -> Services.BONE_BLOCK_TRACKER.markNatural(level, pos));
+                (pos, state) -> Services.BONE_BLOCK_TRACKER.markNatural(chunk, pos));
     }
 
     // 扫描指定 bounding box 内的骨块，全部标记为自然生成——用于结构生成监听
