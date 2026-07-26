@@ -20,7 +20,7 @@ Replace the placeholder below with: ![Unsuspicious Block overview](../image/read
 | Minecraft | 1.21.1 |
 | Loader | Fabric 0.17.0+ / NeoForge 21.1.195+ |
 | Java | 21 |
-| Current version | 1.4.0 |
+| Current version | 1.4.1-bug_fix |
 | Multiplayer | Install on both client and server |
 | License | MIT |
 

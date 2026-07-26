@@ -22,7 +22,10 @@ import org.slf4j.LoggerFactory;
  * 通过条件读取（先读新字段、缺失时回退读旧字段）实现了零停机兼容。
  * 本类作为集中入口，未来若需要更复杂的迁移（如字段重命名、结构重组），
  * 可在此处统一管理。
+ *
+ * @deprecated 临时版本迁移兼容层，计划在 1.5.0 移除
  */
+@Deprecated(forRemoval = true, since = "1.4.1-bug_fix")
 public final class NbtDataMigrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(NbtDataMigrator.class);
 

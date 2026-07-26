@@ -15,7 +15,10 @@ import java.util.Map;
 
 /**
  * 将历史玩家进度中的回退签名迁移为当前目录使用的规范签名。
+ *
+ * @deprecated 临时版本迁移兼容层，计划在 1.5.0 移除
  */
+@Deprecated(forRemoval = true, since = "1.4.1-bug_fix")
 public final class JournalProgressSignatureMigrator {
     private JournalProgressSignatureMigrator() {
     }

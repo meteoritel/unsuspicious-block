@@ -32,6 +32,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 考古笔记主界面。
+ */
 public class ArchaeologyJournalScreen extends Screen {
 
     private final JournalViewModel viewModel;
@@ -130,6 +133,12 @@ public class ArchaeologyJournalScreen extends Screen {
             if (this.catalogToolbar.handleEsc()) {
                 return true;
             }
+        }
+        if (!this.catalogToolbar.isSearchFocused()
+                && this.minecraft != null
+                && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+            this.onClose();
+            return true;
         }
         if (!this.catalogToolbar.isSearchFocused() && handleCatalogNavigation(keyCode)) {
             return true;
