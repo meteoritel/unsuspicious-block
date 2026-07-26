@@ -15,7 +15,7 @@ public record ArchaeologyEntryLogRef(
         @Nullable Long firstUnlockedGameTime,
         @Nullable Long firstUnlockedDayTime,
         @Nullable LootSourceType firstUnlockLootSource,
-        @Nullable ExcavationLogEntry.GameTimestamp latestUpdateTimestamp,
+        @Nullable ExcavationLogEntry.GameTimestamp latestLogUpdateTimestamp,
         List<ExcavationLogEntry> logEntries
 ) {
     // 空日志引用，用于未解锁或无日志数据的情况
@@ -37,21 +37,15 @@ public record ArchaeologyEntryLogRef(
                 firstUnlockedGameTime,
                 firstUnlockedDayTime,
                 logHistory.getFirstUnlockLootSource(),
-                latestUpdateTimestamp(firstUnlockedGameTime, firstUnlockedDayTime, entries),
+                latestLogUpdateTimestamp(entries),
                 entries  // 已是不可变列表，无需再次 List.copyOf
         );
     }
 
-    // 计算目录“更新时间”排序键：优先使用最新日志更新时间，无日志时回退到首次解锁时间。
+    // 计算目录“更新时间”排序键：只取当前表全部日志中最大的最后更新时间。
     @Nullable
-    private static ExcavationLogEntry.GameTimestamp latestUpdateTimestamp(@Nullable Long firstUnlockedGameTime,
-                                                                          @Nullable Long firstUnlockedDayTime,
-                                                                          List<ExcavationLogEntry> entries) {
-        ExcavationLogEntry.GameTimestamp latest = firstUnlockedGameTime != null
-                ? new ExcavationLogEntry.GameTimestamp(firstUnlockedGameTime,
-                firstUnlockedDayTime != null ? firstUnlockedDayTime : firstUnlockedGameTime)
-                : null;
-
+    private static ExcavationLogEntry.GameTimestamp latestLogUpdateTimestamp(List<ExcavationLogEntry> entries) {
+        ExcavationLogEntry.GameTimestamp latest = null;
         for (ExcavationLogEntry entry : entries) {
             ExcavationLogEntry.GameTimestamp candidate = entry.lastUpdated();
             if (isAfter(candidate, latest)) {

@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  *
  * @deprecated 临时版本迁移兼容层，计划在 1.5.0 移除
  */
-@Deprecated(forRemoval = true, since = "1.4.1-bug_fix")
+@Deprecated(since = "1.5.0")
 public final class NbtDataMigrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(NbtDataMigrator.class);
 

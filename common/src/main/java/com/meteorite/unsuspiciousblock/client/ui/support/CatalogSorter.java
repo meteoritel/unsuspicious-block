@@ -68,16 +68,25 @@ public final class CatalogSorter {
                     .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
                     .thenComparing(v -> v.id().getNamespace())
                     .thenComparing(v -> v.displayName().getString());
-            case UPDATE_TIME -> Comparator
-                    .comparing((ArchaeologyJournalEntry v) -> v.logRef().latestUpdateTimestamp(),
-                            Comparator.nullsLast(Comparator
-                                    .comparingLong(ExcavationLogEntry.GameTimestamp::gameTime)
-                                    .thenComparingLong(ExcavationLogEntry.GameTimestamp::dayTime)))
-                    .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
-                    .thenComparing(v -> v.id().getNamespace())
-                    .thenComparing(v -> v.displayName().getString());
+            case UPDATE_TIME -> updateTimeComparator(descending);
         };
-        return descending ? comparator.reversed() : comparator;
+        return descending && order != SortOrder.UPDATE_TIME ? comparator.reversed() : comparator;
+    }
+
+    // 更新时间正倒序只反转有效时间戳；无日志条目始终排在有日志条目之后。
+    private static Comparator<ArchaeologyJournalEntry> updateTimeComparator(boolean descending) {
+        Comparator<ExcavationLogEntry.GameTimestamp> timestampComparator = Comparator
+                .comparingLong(ExcavationLogEntry.GameTimestamp::gameTime)
+                .thenComparingLong(ExcavationLogEntry.GameTimestamp::dayTime);
+        if (descending) {
+            timestampComparator = timestampComparator.reversed();
+        }
+        return Comparator
+                .comparing((ArchaeologyJournalEntry entry) -> entry.logRef().latestLogUpdateTimestamp(),
+                        Comparator.nullsLast(timestampComparator))
+                .thenComparing(entry -> !"minecraft".equals(entry.id().getNamespace()))
+                .thenComparing(entry -> entry.id().getNamespace())
+                .thenComparing(entry -> entry.displayName().getString());
     }
 
     // 排序方式 tooltip
