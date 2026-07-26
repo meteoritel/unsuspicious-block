@@ -263,7 +263,9 @@
 ### 修复
 - 修复 NeoForge 端 Lootr 联动因 Mixin 注入目标不匹配而在打开战利品容器时崩溃的问题。
 - 修复 Lootr 与普通容器的日志物品记录和考古笔记统计使用不同签名，导致“已发现”和“已获得”状态不更新的问题；旧存档中的无歧义记录会在登录时自动迁移。
+- 修复考古笔记按时间排序选项不生效的问题。
 
 ### Fixed
 - Fixed a NeoForge Lootr integration crash caused by a mismatched Mixin injection target when opening loot containers.
 - Fixed Lootr and vanilla containers using different signatures for log entries and Archaeology Journal statistics, which prevented discovered and acquired states from updating. Unambiguous legacy records are migrated automatically on login.
+- Fixed the bug where the chronological sorting option for archaeology journal does not work.
