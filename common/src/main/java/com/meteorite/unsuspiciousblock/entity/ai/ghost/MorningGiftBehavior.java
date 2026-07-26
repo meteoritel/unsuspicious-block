@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.entity.ai.ghost;
 
+import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.entity.GhostCat;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.ResourceKey;
@@ -7,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -126,9 +128,14 @@ public class MorningGiftBehavior implements GhostCatBehavior {
                 .withParameter(LootContextParams.ORIGIN, cat.position())
                 .withParameter(LootContextParams.THIS_ENTITY, cat)
                 .create(LootContextParamSets.GIFT);
+        boolean delivered = false;
         for (ItemStack stack : table.getRandomItems(params)) {
             level.addFreshEntity(new ItemEntity(level,
                     cat.getX(), cat.getY() + 0.3, cat.getZ(), stack));
+            delivered = true;
+        }
+        if (delivered && level.getPlayerByUUID(this.targetUuid) instanceof ServerPlayer player) {
+            CatFavorManager.onMessengerGiftDelivered(player);
         }
         level.playSound(null, cat.getX(), cat.getY(), cat.getZ(),
                 SoundEvents.BELL_BLOCK, SoundSource.NEUTRAL, 0.5F, 1.3F);

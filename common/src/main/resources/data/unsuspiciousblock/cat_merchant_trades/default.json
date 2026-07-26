@@ -1,0 +1,100 @@
+[
+  {
+    "pool": "earning",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "tag": "unsuspiciousblock:cat_merchant/fishes", "count": 30 },
+    "sell": { "item": "unsuspiciousblock:ancient_coin", "count": 1 }
+  },
+  {
+    "pool": "earning",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "item": "minecraft:string", "count": 32 },
+    "sell": { "item": "unsuspiciousblock:ancient_coin", "count": 1 }
+  },
+  {
+    "pool": "earning",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "item": "minecraft:rabbit_hide", "count": 16 },
+    "sell": { "item": "unsuspiciousblock:ancient_coin", "count": 1 }
+  },
+  {
+    "pool": "earning",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "item": "minecraft:phantom_membrane", "count": 8 },
+    "sell": { "item": "unsuspiciousblock:ancient_coin", "count": 1 }
+  },
+  {
+    "pool": "regular",
+    "weight": 10,
+    "max_uses": 4,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 1 },
+    "sell": { "item": "minecraft:phantom_membrane", "count": 3 }
+  },
+  {
+    "pool": "regular",
+    "weight": 10,
+    "max_uses": 3,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 1 },
+    "sell": { "item": "minecraft:rabbit_foot", "count": 2 }
+  },
+  {
+    "pool": "regular",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 2 },
+    "sell": { "item": "minecraft:name_tag", "count": 1 }
+  },
+  {
+    "pool": "regular",
+    "weight": 10,
+    "max_uses": 4,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 1 },
+    "sell": { "item": "minecraft:experience_bottle", "count": 4 }
+  },
+  {
+    "pool": "regular",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 2 },
+    "sell": { "item": "unsuspiciousblock:lost_page", "count": 1 }
+  },
+  {
+    "pool": "regular",
+    "weight": 10,
+    "max_uses": 2,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 2 },
+    "sell": { "tag": "unsuspiciousblock:random/pottery_sherds", "count": 1 }
+  },
+  {
+    "pool": "rare",
+    "weight": 10,
+    "max_uses": 1,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 4 },
+    "sell": { "tag": "unsuspiciousblock:random/music_discs", "count": 1 }
+  },
+  {
+    "pool": "rare",
+    "weight": 10,
+    "max_uses": 1,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 5 },
+    "sell": { "tag": "unsuspiciousblock:random/armor_trim_templates", "count": 1 }
+  },
+  {
+    "pool": "rare",
+    "weight": 10,
+    "max_uses": 1,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 3 },
+    "sell": { "item": "minecraft:diamond", "count": 1 }
+  },
+  {
+    "pool": "rare",
+    "weight": 10,
+    "max_uses": 1,
+    "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 4 },
+    "sell": { "item": "minecraft:music_disc_cat", "count": 1 }
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "#c:foods/raw_fish", "required": false },
+    "minecraft:cod",
+    "minecraft:salmon"
+  ]
+}

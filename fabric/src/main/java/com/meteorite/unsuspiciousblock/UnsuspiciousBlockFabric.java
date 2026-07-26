@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
+import com.meteorite.unsuspiciousblock.cat.merchant.CatMerchantSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
@@ -178,7 +179,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         });
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
-        ServerTickEvents.END_SERVER_TICK.register(LootProbabilitySimulationWorker::tickIfPresent);
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            LootProbabilitySimulationWorker.tickIfPresent(server);
+            CatMerchantSpawner.tick(server);
+        });
 
         // 直接扫描事件提供的 chunk，避免其进入 chunk map 前重新触发生成
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->

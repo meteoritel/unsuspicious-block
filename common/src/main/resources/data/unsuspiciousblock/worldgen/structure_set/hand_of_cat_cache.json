@@ -1,0 +1,15 @@
+{
+  "structures": [
+    {
+      "structure": "unsuspiciousblock:hand_of_cat_cache",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "salt": 194782135,
+    "spacing": 32,
+    "separation": 8,
+    "spread_type": "linear"
+  }
+}

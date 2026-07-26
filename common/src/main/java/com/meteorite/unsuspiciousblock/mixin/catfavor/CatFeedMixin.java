@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.mixin.catfavor;
 
-import com.meteorite.unsuspiciousblock.cat.CatFavorAction;
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -19,11 +18,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Cat.class)
 public abstract class CatFeedMixin {
 
-    // 喂食时累积恩惠（服务端权威，由 Manager 校验持有猫之手与冷却）
+    // 延迟结算喂食；若同次交互成功驯服，驯服入口会取消该奖励。
     @Inject(method = "usePlayerItem", at = @At("HEAD"))
     private void unsuspiciousblock$onFeed(Player player, InteractionHand hand, ItemStack stack, CallbackInfo ci) {
         if (player instanceof ServerPlayer serverPlayer) {
-            CatFavorManager.tryAccumulate(serverPlayer, CatFavorAction.FEED_CAT);
+            CatFavorManager.queueFeedReward(serverPlayer);
         }
     }
 }

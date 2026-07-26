@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 猫之九命无敌窗口——触发九命后由「猫之恩惠」buff 驱动 15 秒内免疫所有伤害（虚空伤害除外）。
+ * 猫之九命无敌窗口——触发后 2 秒内免疫所有伤害，虚空伤害除外。
  * 注入 Player.hurt，在 buff 存在期间取消伤害结算。
  */
 @Mixin(Player.class)

@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "#c:pottery_sherds", "required": false },
+    "#minecraft:decorated_pot_sherds"
+  ]
+}

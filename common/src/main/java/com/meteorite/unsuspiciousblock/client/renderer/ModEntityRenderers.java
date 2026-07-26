@@ -30,6 +30,8 @@ public class ModEntityRenderers {
     // GHOST_CAT 本身已是 Supplier，二次包装为 lambda 以延迟类加载顺序下的字段读取
     public static final List<RendererEntry<?>> REGISTRY_MANIFEST = List.of(
             new RendererEntry<>(() -> ModEntities.GHOST_CAT.get(), GhostCatRenderer::new),
+            new RendererEntry<>(() -> ModEntities.SWORDSMAN_CAT.get(), SwordsmanCatRenderer::new),
+            new RendererEntry<>(() -> ModEntities.CAT_MERCHANT.get(), CatMerchantRenderer::new),
             new RendererEntry<>(() -> ModEntities.LANTERN_PET.get(), LanternPetRenderer::new)
     );
 

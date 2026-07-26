@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.entity.GhostCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.entity.ai.ghost.MorningGiftBehavior;
+import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -37,6 +38,15 @@ public final class CatGiftService {
         if (!(owner.level() instanceof ServerLevel level)) {
             return;
         }
+        CatFavorState state = CatFavorManager.getState(owner);
+        if (state == null) {
+            return;
+        }
+        if (state.getActiveMessengerUuid() != null
+                && level.getEntity(state.getActiveMessengerUuid()) instanceof GhostCat existing
+                && !existing.isRemoved()) {
+            return;
+        }
         GhostCat ghost = ModEntities.GHOST_CAT.get().create(level);
         if (ghost == null) {
             return;
@@ -51,5 +61,6 @@ public final class CatGiftService {
         // 注入晨礼行为策略，阶段机将驱动显现→接近→致意→赠礼→消散全流程
         ghost.assignBehavior(new MorningGiftBehavior(owner.getUUID(), GHOST_GIFT_LOOT_TABLE));
         level.addFreshEntity(ghost);
+        state.setActiveMessengerUuid(ghost.getUUID());
     }
 }

@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.mixin.catfavor;
 import com.meteorite.unsuspiciousblock.cat.CatFavorAction;
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.cat.CatGiftService;
-import com.meteorite.unsuspiciousblock.cat.CatPassiveAbilities;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.player.Player;
@@ -28,13 +27,11 @@ public abstract class CatRelaxOnOwnerGoalMixin {
     @org.spongepowered.asm.mixin.Final
     private Cat cat;
 
-    // 猫开始上床相伴主人入睡：累积恩惠；若恩惠已封顶则额外增加一条九命
+    // 猫开始上床相伴主人入睡：每次睡眠只由独立冷却结算一次羁绊。
     @Inject(method = "start", at = @At("TAIL"))
     private void unsuspiciousblock$onStartRelax(CallbackInfo ci) {
         if (this.ownerPlayer instanceof ServerPlayer serverPlayer) {
             CatFavorManager.tryAccumulate(serverPlayer, CatFavorAction.SLEEP_WITH_CAT);
-            // 恩惠封顶后与猫入睡增加一条命（上限 9）
-            CatPassiveAbilities.tryAddLifeOnSleep(serverPlayer);
         }
     }
 

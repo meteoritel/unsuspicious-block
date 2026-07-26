@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * 猫的陪伴（恩惠≥50）——幻翼不再以该玩家作为索敌目标。
+ * 猫之威慑——幻翼不再以该玩家作为索敌目标。
  * 注入 Phantom$PhantomAttackPlayerTargetGoal 的 canUse / canContinueToUse，
  * 重定向 canAttack 调用：若目标玩家拥有猫的陪伴，则视为不可攻击，
  * 幻翼不会锁定该玩家，已锁定的也会因 canContinueToUse 返回 false 而放弃。
@@ -22,7 +22,7 @@ public abstract class PhantomTargetGoalMixin {
             target = "Lnet/minecraft/world/entity/monster/Phantom;canAttack(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/ai/targeting/TargetingConditions;)Z"))
     private boolean unsuspiciousblock$skipCatCompanion(Phantom phantom, LivingEntity target,
                                                        TargetingConditions conditions) {
-        if (target instanceof Player player && CatPassiveAbilities.hasCatCompanion(player)) {
+        if (target instanceof Player player && CatPassiveAbilities.hasPhantomDeterrence(player)) {
             return false;
         }
         return phantom.canAttack(target, conditions);

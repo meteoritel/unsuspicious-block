@@ -44,18 +44,29 @@ public abstract class CatSitOnBlockGoalMixin extends MoveToBlockGoal {
     // 本次坐定是否已发放恩惠
     @Unique
     private boolean unsuspiciousblock$awarded;
+    // 开始连续坐定时主人是否位于猫周围 7 格内。
+    @Unique
+    private boolean unsuspiciousblock$ownerNearbyAtStart;
 
     // 每 tick 统计坐定时长，达标且未发放时为主人累积恩惠
     @Inject(method = "tick", at = @At("TAIL"))
     private void unsuspiciousblock$trackSitting(CallbackInfo ci) {
         if (!this.isReachedTarget()) {
             this.unsuspiciousblock$sitTicks = 0;
+            this.unsuspiciousblock$ownerNearbyAtStart = false;
             return;
+        }
+        if (this.unsuspiciousblock$sitTicks == 0) {
+            LivingEntity owner = this.cat.getOwner();
+            this.unsuspiciousblock$ownerNearbyAtStart = owner instanceof ServerPlayer serverPlayer
+                    && serverPlayer.distanceToSqr(this.cat) <= 49.0;
         }
         this.unsuspiciousblock$sitTicks++;
         if (this.unsuspiciousblock$sitTicks >= UNSUSPICIOUSBLOCK_SIT_REQUIRED_TICKS && !this.unsuspiciousblock$awarded) {
             LivingEntity owner = this.cat.getOwner();
-            if (owner instanceof ServerPlayer serverPlayer) {
+            if (this.unsuspiciousblock$ownerNearbyAtStart
+                    && owner instanceof ServerPlayer serverPlayer
+                    && serverPlayer.distanceToSqr(this.cat) <= 49.0) {
                 CatFavorManager.tryAccumulate(serverPlayer, CatFavorAction.SIT_ON_BLOCK);
             }
             this.unsuspiciousblock$awarded = true;
@@ -67,5 +78,6 @@ public abstract class CatSitOnBlockGoalMixin extends MoveToBlockGoal {
     private void unsuspiciousblock$resetSitting(CallbackInfo ci) {
         this.unsuspiciousblock$sitTicks = 0;
         this.unsuspiciousblock$awarded = false;
+        this.unsuspiciousblock$ownerNearbyAtStart = false;
     }
 }

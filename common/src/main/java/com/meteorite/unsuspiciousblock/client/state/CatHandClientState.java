@@ -10,7 +10,7 @@ import net.minecraft.client.player.LocalPlayer;
 /**
  * 猫之手客户端状态——客户端每 tick 处理能力开关按键请求：
  * 1) 「猫的威慑」开关按键；
- * 2) 「轻步」压力板开关按键。
+ * 2) 「轻步」总开关按键。
  * 「猫的眼」夜视由服务端自主分级检测亮度，客户端不再参与。
  * 所有能力的最终生效与校验均在服务端完成。
  */
@@ -31,7 +31,7 @@ public final class CatHandClientState {
             Services.NETWORK.sendToServer(CatDeterrenceTogglePayload.INSTANCE);
         }
 
-        // 轻步压力板开关按键：发送切换请求
+        // 轻步总开关按键：发送切换请求
         while (ModKeyBindings.CAT_LIGHT_STEP_TOGGLE.consumeClick()) {
             Services.NETWORK.sendToServer(CatLightStepTogglePayload.INSTANCE);
         }

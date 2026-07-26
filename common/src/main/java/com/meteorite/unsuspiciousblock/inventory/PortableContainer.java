@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.inventory;
 
 import net.minecraft.world.item.ItemStack;
 
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -13,4 +15,10 @@ import java.util.stream.Stream;
 public interface PortableContainer {
     // 返回容器内物品流；实现应从容器 ItemStack 的数据组件中读取内容
     Stream<ItemStack> getContents(ItemStack container);
+
+    // 修改第一层中首个匹配物品；实现必须把修改后的内容写回父物品。
+    default boolean mutateFirst(ItemStack container, Predicate<ItemStack> predicate,
+                                Consumer<ItemStack> mutator) {
+        return false;
+    }
 }

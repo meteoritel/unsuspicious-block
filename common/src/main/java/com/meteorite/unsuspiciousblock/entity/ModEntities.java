@@ -16,6 +16,8 @@ public class ModEntities {
 
     // 平台侧在注册时回写为 Supplier，运行时通过 .get() 取 EntityType，永不为 null
     public static Supplier<EntityType<GhostCat>> GHOST_CAT;
+    public static Supplier<EntityType<SwordsmanCat>> SWORDSMAN_CAT;
+    public static Supplier<EntityType<MerchantCat>> CAT_MERCHANT;
     public static Supplier<EntityType<LanternPet>> LANTERN_PET;
 
     /**
@@ -38,6 +40,14 @@ public class ModEntities {
                     ModEntities::createGhostCatType,
                     supplier -> GHOST_CAT = supplier,
                     GhostCat::createAttributes),
+            new EntityEntry<>("swordsman_cat",
+                    ModEntities::createSwordsmanCatType,
+                    supplier -> SWORDSMAN_CAT = supplier,
+                    SwordsmanCat::createAttributes),
+            new EntityEntry<>("cat_merchant",
+                    ModEntities::createCatMerchantType,
+                    supplier -> CAT_MERCHANT = supplier,
+                    MerchantCat::createAttributes),
             new EntityEntry<>("soul_lantern_pet",
                     ModEntities::createLanternPetType,
                     supplier -> LANTERN_PET = supplier,
@@ -70,5 +80,21 @@ public class ModEntities {
                 .eyeHeight(0.5f)
                 .clientTrackingRange(8)
                 .build("soul_lantern_pet");
+    }
+
+    public static EntityType<SwordsmanCat> createSwordsmanCatType() {
+        return EntityType.Builder.of(SwordsmanCat::new, MobCategory.CREATURE)
+                .sized(0.6f, 0.7f)
+                .eyeHeight(0.35f)
+                .clientTrackingRange(8)
+                .build("swordsman_cat");
+    }
+
+    public static EntityType<MerchantCat> createCatMerchantType() {
+        return EntityType.Builder.of(MerchantCat::new, MobCategory.CREATURE)
+                .sized(0.6f, 0.7f)
+                .eyeHeight(0.35f)
+                .clientTrackingRange(8)
+                .build("cat_merchant");
     }
 }

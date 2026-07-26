@@ -13,6 +13,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * 统一背包存在查询与 trigger 调度器。
@@ -64,6 +66,59 @@ public final class InventoryPresenceRegistry {
             }
         }
         return false;
+    }
+
+    // 查询个人携带范围内是否存在满足条件的物品栈。
+    public static boolean containsMatching(Player player, Predicate<ItemStack> predicate) {
+        Inventory inventory = player.getInventory();
+        for (int index = 0; index < inventory.getContainerSize(); index++) {
+            if (matchesCarriedStack(inventory.getItem(index), predicate)) {
+                return true;
+            }
+        }
+        return Services.ACCESSORY.streamEquippedStacks(player)
+                .anyMatch(stack -> matchesCarriedStack(stack, predicate));
+    }
+
+    // 修改个人携带范围内首个满足条件的物品栈，包含便携容器第一层。
+    public static boolean mutateFirst(Player player, Predicate<ItemStack> predicate,
+                                      Consumer<ItemStack> mutator) {
+        Inventory inventory = player.getInventory();
+        for (int index = 0; index < inventory.getContainerSize(); index++) {
+            if (mutateCarriedStack(inventory.getItem(index), predicate, mutator)) {
+                return true;
+            }
+        }
+        for (ItemStack stack : Services.ACCESSORY.streamEquippedStacks(player).toList()) {
+            if (mutateCarriedStack(stack, predicate, mutator)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesCarriedStack(ItemStack stack, Predicate<ItemStack> predicate) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        if (predicate.test(stack)) {
+            return true;
+        }
+        return stack.getItem() instanceof PortableContainer container
+                && container.getContents(stack).anyMatch(predicate);
+    }
+
+    private static boolean mutateCarriedStack(ItemStack stack, Predicate<ItemStack> predicate,
+                                              Consumer<ItemStack> mutator) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        if (predicate.test(stack)) {
+            mutator.accept(stack);
+            return true;
+        }
+        return stack.getItem() instanceof PortableContainer container
+                && container.mutateFirst(stack, predicate, mutator);
     }
 
     // 注册 trigger：物品 → 回调

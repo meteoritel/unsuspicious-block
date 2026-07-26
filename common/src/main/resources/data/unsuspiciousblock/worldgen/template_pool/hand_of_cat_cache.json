@@ -1,0 +1,15 @@
+{
+  "name": "unsuspiciousblock:hand_of_cat_cache",
+  "fallback": "minecraft:empty",
+  "elements": [
+    {
+      "weight": 1,
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "location": "unsuspiciousblock:hand_of_cat_cache",
+        "processors": "minecraft:empty",
+        "projection": "rigid"
+      }
+    }
+  ]
+}

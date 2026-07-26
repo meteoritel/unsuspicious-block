@@ -1,12 +1,12 @@
 package com.meteorite.unsuspiciousblock.cat;
 
 /**
- * 猫之恩惠的行为类型——统一管理累积行为与惩罚行为。
- * 累积行为需持有猫之手且受独立冷却约束；惩罚行为不要求持有猫之手、无冷却。
+ * 猫族羁绊行为类型——统一管理正向行为、负向行为与独立冷却。
+ * 关系建立后正向行为不要求携带猫之手；负向行为无冷却。
  * 各行为通过 mixin 或平台事件触发，由 CatFavorManager 统一处理。
  */
 public enum CatFavorAction {
-    // ========== 累积行为（需持有猫之手，独立冷却） ==========
+    // ========== 正向行为（关系建立后生效，独立冷却） ==========
     // 喂食猫（野猫或驯服的猫）
     FEED_CAT(5, 12000L, false),
     // 成功驯服一只猫
@@ -14,7 +14,7 @@ public enum CatFavorAction {
     // 触发与猫一同入睡（原版行为：驯服的猫在主人睡觉时上床相伴）
     SLEEP_WITH_CAT(20, 6000L, false),
     // 驯服的猫坐在床/箱子/燃烧的熔炉上持续 30s 不被打断
-    SIT_ON_BLOCK(20, 12000L, false),
+    SIT_ON_BLOCK(10, 24000L, false),
     // 在村庄中击退袭击（获得「村庄英雄」效果时触发）
     REPEL_RAID(20, 12000L, false),
 
@@ -23,8 +23,6 @@ public enum CatFavorAction {
     HIT_CAT(-5, 0L, true),
     // 玩家所属的驯服猫死亡
     OWN_CAT_DEATH(-10, 0L, true),
-    // 玩家自身死亡
-    PLAYER_DEATH(-10, 0L, true),
     // 玩家杀死猫（任意猫，含野猫与他人驯服猫）
     KILL_CAT(-50, 0L, true);
 

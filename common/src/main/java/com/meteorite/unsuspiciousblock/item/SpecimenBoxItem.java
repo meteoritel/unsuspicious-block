@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.inventory.PortableContainer;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxContents;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.minecraft.ChatFormatting;
@@ -22,6 +23,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -46,6 +49,21 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
         // 返回盒内非空物品流，供 InventoryPresenceRegistry 递归扫描
         return container.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY)
                 .nonEmptyStream();
+    }
+
+    @Override
+    public boolean mutateFirst(ItemStack container, Predicate<ItemStack> predicate,
+                               Consumer<ItemStack> mutator) {
+        NonNullList<ItemStack> contents = SpecimenBoxContents.read(container);
+        NonNullList<ItemStack> previous = SpecimenBoxContents.copy(contents);
+        for (ItemStack stack : contents) {
+            if (!stack.isEmpty() && predicate.test(stack)) {
+                mutator.accept(stack);
+                SpecimenBoxContents.writeIfChanged(container, previous, contents);
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

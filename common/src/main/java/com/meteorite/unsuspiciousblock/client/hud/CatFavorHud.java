@@ -1,9 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.hud;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
+import com.meteorite.unsuspiciousblock.item.HandOfCatItem;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.Util;
@@ -49,7 +51,7 @@ public final class CatFavorHud {
             return;
         }
         // 仅当背包存在猫之手时显示
-        if (!hasHandOfCat(player)) {
+        if (!HandOfCatClientState.isRelationshipEstablished() || !hasOwnedHandOfCat(player)) {
             return;
         }
         int favor = HandOfCatClientState.getCachedFavor();
@@ -61,8 +63,14 @@ public final class CatFavorHud {
         int iconX = hotbarLeft - OFFSET_FROM_HOTBAR;
         int iconY = hotbarTop + 3;
 
-        // 猫爪图标本体
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        CatBondStage stage = CatBondStage.fromBond(favor);
+        int stageColor = stage.hudColor();
+        float red = ((stageColor >> 16) & 0xFF) / 255.0F;
+        float green = ((stageColor >> 8) & 0xFF) / 255.0F;
+        float blue = (stageColor & 0xFF) / 255.0F;
+
+        // 猫爪图标与数值使用当前关系阶段配色。
+        RenderSystem.setShaderColor(red, green, blue, 1.0F);
         gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
 
         // 封顶时叠加紫色呼吸 tint——纹理自身 alpha 作蒙版，无需操作 framebuffer
@@ -72,7 +80,7 @@ public final class CatFavorHud {
             float breath = 0.5F + 0.25F * (float) Math.sin(millis / 350.0);
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
-            RenderSystem.setShaderColor(0.75F, 0.55F, 1.0F, breath);
+            RenderSystem.setShaderColor(red, green, blue, breath);
             gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
             // 复位颜色与混合状态，避免污染后续渲染
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
@@ -80,10 +88,10 @@ public final class CatFavorHud {
         }
 
         Font font = minecraft.font;
-        // 恩惠值（金色，显示在图标左侧，右对齐到 iconX - TEXT_GAP）
+        // 羁绊值显示在图标左侧，颜色与当前阶段一致。
         String favorText = String.valueOf(favor);
         int favorWidth = font.width(favorText);
-        gui.drawString(font, favorText, iconX - TEXT_GAP - favorWidth, iconY + 1, 0xFFFFD700, true);
+        gui.drawString(font, favorText, iconX - TEXT_GAP - favorWidth, iconY + 1, stageColor, true);
 
         // 九命命数角标（青色，显示在图标右下角，半尺寸缩放）
         if (lives > 0) {
@@ -108,10 +116,12 @@ public final class CatFavorHud {
     }
 
     // 客户端侧检查背包（含标本箱等便携容器与饰品栏）是否存在猫之手
-    private static boolean hasHandOfCat(LocalPlayer player) {
+    private static boolean hasOwnedHandOfCat(LocalPlayer player) {
         if (ModItems.HAND_OF_CAT == null) {
             return false;
         }
-        return InventoryPresenceRegistry.isPresent(player, ModItems.HAND_OF_CAT);
+        return InventoryPresenceRegistry.containsMatching(player,
+                stack -> stack.getItem() == ModItems.HAND_OF_CAT
+                        && HandOfCatItem.isBoundTo(stack, player.getUUID()));
     }
 }

@@ -7,12 +7,11 @@ package com.meteorite.unsuspiciousblock.cat;
  * 枚举声明顺序即 tooltip 展示顺序（由低阈值到高阈值）。
  */
 public enum CatFavorAbility {
-    CAT_EYE(5, "cat_eye"),
+    CAT_EYE(0, "cat_eye"),
     DETERRENCE(20, "deterrence"),
-    LIGHT_STEP(35, "light_step"),
-    CAT_COMPANION(50, "cat_companion"),
-    SOFT_PAWS(70, "soft_paws"),
-    ANCIENT_GIFT(90, "ancient_gift"),
+    LIGHT_STEP(40, "light_step"),
+    SOFT_PAWS(60, "soft_paws"),
+    ANCIENT_GIFT(80, "ancient_gift"),
     NINE_LIVES(100, "nine_lives");
 
     private static final String KEY_PREFIX = "item.unsuspiciousblock.hand_of_cat.ability.";

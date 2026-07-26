@@ -22,6 +22,7 @@ public abstract class TamableAnimalTameMixin {
     @Inject(method = "tame", at = @At("TAIL"))
     private void unsuspiciousblock$onTame(Player player, CallbackInfo ci) {
         if ((Object) this instanceof Cat && player instanceof ServerPlayer serverPlayer) {
+            CatFavorManager.cancelPendingFeedReward(serverPlayer);
             CatFavorManager.tryAccumulate(serverPlayer, CatFavorAction.TAME_CAT);
         }
     }

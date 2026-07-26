@@ -10,7 +10,7 @@ import java.util.function.Supplier;
 /** 模组效果--效果实例由各平台分别创建注册，Holder 回写至静态字段供 common 代码引用 */
 public class ModEffects {
 
-    // 猫之恩惠：九命触发的 15s 无敌窗口（正面 buff）
+    // 猫之九命：触发后的 2 秒纯无敌窗口标记。
     public static Holder<MobEffect> CAT_FAVOR;
 
     // 效果注册清单条目，供各平台遍历注册

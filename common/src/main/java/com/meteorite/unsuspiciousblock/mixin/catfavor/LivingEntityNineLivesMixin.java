@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.mixin.catfavor;
 import com.meteorite.unsuspiciousblock.cat.CatPassiveAbilities;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -23,9 +24,12 @@ public abstract class LivingEntityNineLivesMixin {
         if (cir.getReturnValueZ()) {
             return;
         }
+        if (source.is(DamageTypes.FELL_OUT_OF_WORLD)) {
+            return;
+        }
         if ((LivingEntity) (Object) this instanceof ServerPlayer player
                 && CatPassiveAbilities.canTriggerNineLives(player)) {
-            CatPassiveAbilities.triggerNineLives(player);
+            CatPassiveAbilities.triggerNineLives(player, source);
             cir.setReturnValue(true);
         }
     }

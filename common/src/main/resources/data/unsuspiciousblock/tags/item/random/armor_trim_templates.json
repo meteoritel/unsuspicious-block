@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "#c:smithing_templates/armor_trims", "required": false },
+    "#minecraft:trim_templates"
+  ]
+}

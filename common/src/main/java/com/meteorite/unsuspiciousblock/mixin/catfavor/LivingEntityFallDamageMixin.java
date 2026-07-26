@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 柔软肉垫（恩惠≥70）——免疫 80% 的摔落伤害。
+ * 柔软肉垫（猫族羁绊至少 60）——减少 80% 的摔落伤害。
  * 注入 LivingEntity.getDamageAfterMagicAbsorb 的返回处，在原版摔落保护
  * （附魔、抗性等）结算之后再对剩余伤害 ×0.2，仅保留 20%。
  */
