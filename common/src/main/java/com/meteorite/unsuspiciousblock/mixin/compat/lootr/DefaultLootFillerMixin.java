@@ -13,7 +13,6 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import noobanidus.mods.lootr.common.api.data.DefaultLootFiller;
 import noobanidus.mods.lootr.common.api.data.ILootrInfoProvider;
-import noobanidus.mods.lootr.common.api.data.LootFiller;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -39,10 +38,10 @@ public abstract class DefaultLootFillerMixin {
     @WrapOperation(
             method = "unpackLootTable",
             at = @At(value = "INVOKE",
-                    target = "Lnoobanidus/mods/lootr/common/api/data/LootFiller;fill(Lnoobanidus/mods/lootr/common/api/data/ILootrInfoProvider;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/world/level/storage/loot/LootTable;Lnet/minecraft/world/Container;Lnet/minecraft/world/level/storage/loot/LootParams;J)V")
+                    target = "Lnoobanidus/mods/lootr/common/api/data/DefaultLootFiller;fill(Lnoobanidus/mods/lootr/common/api/data/ILootrInfoProvider;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/world/level/storage/loot/LootTable;Lnet/minecraft/world/Container;Lnet/minecraft/world/level/storage/loot/LootParams;J)V")
     )
     private void unsuspiciousblock$scopeLootRoll(
-            LootFiller filler, ILootrInfoProvider provider, Player player,
+            DefaultLootFiller filler, ILootrInfoProvider provider, Player player,
             ResourceKey<LootTable> tableKey, LootTable lootTable, Container inventory,
             LootParams lootParams, long seed, Operation<Void> original,
             @Share("lootrTrackingSession") LocalRef<LootrTrackingBridge.Session> sessionRef) {

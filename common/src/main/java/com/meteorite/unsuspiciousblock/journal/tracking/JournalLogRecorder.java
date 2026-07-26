@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.LinkedHashSet;
 import java.util.Map;
 
 /**
@@ -42,9 +43,36 @@ public final class JournalLogRecorder {
     public static void upsertExcavationEntry(ServerPlayer player, ResourceLocation tableId,
                                              ExcavationLogEntry entry,
                                              @Nullable Map<LootResultSignature, Integer> acquiredSignatures) {
-        JournalLogHandler.upsertExcavationEntry(player, tableId, entry);
-        if (acquiredSignatures != null && !acquiredSignatures.isEmpty()) {
-            syncItemAcquiredState(player, tableId, acquiredSignatures);
+        Map<ResourceLocation, Map<LootResultSignature, Integer>> acquiredByTable =
+                acquiredSignatures == null || acquiredSignatures.isEmpty()
+                        ? Map.of()
+                        : Map.of(tableId, acquiredSignatures);
+        upsertExcavationEntries(player, java.util.List.of(tableId), entry, acquiredByTable);
+    }
+
+    // 批量写入同一聚合日志，并在全部表计数更新后只发送一次进度增量
+    public static void upsertExcavationEntries(
+            ServerPlayer player, Iterable<ResourceLocation> tableIds, ExcavationLogEntry entry,
+            Map<ResourceLocation, Map<LootResultSignature, Integer>> acquiredByTable) {
+        LinkedHashSet<ResourceLocation> uniqueTableIds = new LinkedHashSet<>();
+        tableIds.forEach(uniqueTableIds::add);
+
+        ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
+        boolean stateChanged = false;
+        if (state != null && acquiredByTable != null && !acquiredByTable.isEmpty()) {
+            for (ResourceLocation tableId : uniqueTableIds) {
+                Map<LootResultSignature, Integer> counts = acquiredByTable.get(tableId);
+                if (counts != null && !counts.isEmpty()) {
+                    stateChanged |= state.recordItemsAcquired(tableId, counts);
+                }
+            }
+        }
+
+        for (ResourceLocation tableId : uniqueTableIds) {
+            JournalLogHandler.upsertExcavationEntry(player, tableId, entry);
+        }
+        if (stateChanged) {
+            JournalStateHandler.syncState(player);
         }
     }
 

@@ -6,9 +6,11 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -157,6 +159,20 @@ public final class ArchaeologyJournalState {
             this.markDirty(tableId);
         }
         return changed;
+    }
+
+    // 将历史进度签名迁移到目录规范签名，并合并目标位置已有的解锁状态与数量
+    public boolean remapItemSignature(ResourceLocation tableId, LootResultSignature source,
+                                      LootResultSignature target) {
+        if (source == null || target == null || source.equals(target)) {
+            return false;
+        }
+        TableProgress table = this.tables.get(tableId);
+        if (table == null || !table.remapItemSignature(source, target)) {
+            return false;
+        }
+        this.markDirty(tableId);
+        return true;
     }
 
     // 移除指定表及其所有物品进度
@@ -321,6 +337,18 @@ public final class ArchaeologyJournalState {
             return item != null && item.isUnlocked() ? item.getCount() : 0;
         }
 
+        // 返回当前表已保存的全部物品签名快照，供目录迁移与一致性检查使用
+        public List<LootResultSignature> getItemSignatures() {
+            List<LootResultSignature> signatures = new ArrayList<>();
+            for (String key : this.items.keySet()) {
+                LootResultSignature signature = LootResultSignature.fromStoredKey(key);
+                if (signature != null) {
+                    signatures.add(signature);
+                }
+            }
+            return List.copyOf(signatures);
+        }
+
         private boolean unlock() {
             if (this.unlocked) {
                 return false;
@@ -375,6 +403,16 @@ public final class ArchaeologyJournalState {
                 changed |= this.recordItemAcquired(signature, count);
             }
             return changed;
+        }
+
+        private boolean remapItemSignature(LootResultSignature source, LootResultSignature target) {
+            ItemProgress sourceProgress = this.items.remove(source.toStoredKey());
+            if (sourceProgress == null) {
+                return false;
+            }
+            this.items.computeIfAbsent(target.toStoredKey(), ignored -> new ItemProgress())
+                    .mergeFrom(sourceProgress);
+            return true;
         }
 
         public boolean isEmpty() {
@@ -459,6 +497,12 @@ public final class ArchaeologyJournalState {
 
             this.count += amount;
             return true;
+        }
+
+        private void mergeFrom(ItemProgress other) {
+            this.unlocked |= other.unlocked;
+            long mergedCount = (long) this.count + other.count;
+            this.count = (int) Math.min(Integer.MAX_VALUE, mergedCount);
         }
 
         public ItemProgress copy() {

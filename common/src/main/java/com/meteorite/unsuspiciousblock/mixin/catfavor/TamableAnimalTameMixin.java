@@ -21,7 +21,7 @@ public abstract class TamableAnimalTameMixin {
     // 驯服完成时累积恩惠（仅猫，服务端权威，由 Manager 校验持有猫之手与冷却）
     @Inject(method = "tame", at = @At("TAIL"))
     private void unsuspiciousblock$onTame(Player player, CallbackInfo ci) {
-        if ((Object) this instanceof Cat && player instanceof ServerPlayer serverPlayer) {
+        if ((TamableAnimal) (Object) this instanceof Cat && player instanceof ServerPlayer serverPlayer) {
             CatFavorManager.cancelPendingFeedReward(serverPlayer);
             CatFavorManager.tryAccumulate(serverPlayer, CatFavorAction.TAME_CAT);
         }

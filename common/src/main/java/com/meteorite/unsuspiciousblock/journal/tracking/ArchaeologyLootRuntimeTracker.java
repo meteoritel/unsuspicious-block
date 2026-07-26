@@ -157,7 +157,8 @@ public final class ArchaeologyLootRuntimeTracker {
 
         if (pendingEntry == null) {
             // 仅有物品获取记录但无待定条目，只更新日记进度状态
-            JournalLogRecorder.recordItemsAcquired(player, tableId, toSignatureCounts(normalizedActualLoot));
+            JournalLogRecorder.recordItemsAcquired(player, tableId,
+                    canonicalizeSignatureCounts(tableId, toSignatureCounts(normalizedActualLoot)));
             return null;
         }
 
@@ -183,11 +184,19 @@ public final class ArchaeologyLootRuntimeTracker {
         if (entry.tableStack() != null) {
             tableIds.addAll(entry.tableStack());
         }
+        LinkedHashMap<ResourceLocation, Map<LootResultSignature, Integer>> acquiredByTable =
+                new LinkedHashMap<>();
+        LinkedHashSet<ResourceLocation> trackedTableIds = new LinkedHashSet<>();
         for (ResourceLocation tableId : tableIds) {
             if (ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
-                JournalLogRecorder.upsertExcavationEntry(player, tableId, entry, acquiredSignatures);
+                trackedTableIds.add(tableId);
+                if (acquiredSignatures != null && !acquiredSignatures.isEmpty()) {
+                    acquiredByTable.put(tableId,
+                            canonicalizeSignatureCounts(tableId, acquiredSignatures));
+                }
             }
         }
+        JournalLogRecorder.upsertExcavationEntries(player, trackedTableIds, entry, acquiredByTable);
     }
 
     @Nullable
@@ -212,20 +221,63 @@ public final class ArchaeologyLootRuntimeTracker {
     // 获取容器物品匹配候选；目录签名优先，容器现状的普通签名用于补充运行时注入物品
     public static List<LootResultSignature> resolveCandidateSignatures(ResourceLocation tableId, Container container) {
         LinkedHashSet<LootResultSignature> candidates = new LinkedHashSet<>();
+        List<LootResultSignature> catalogCandidates = new ArrayList<>();
         TableDefinition table = resolveTableDefinition(tableId);
         if (table != null && !table.items().isEmpty()) {
             for (ItemDefinition item : table.items()) {
-                candidates.add(item.signature());
+                catalogCandidates.add(item.signature());
             }
+            candidates.addAll(catalogCandidates);
         }
 
         for (int slot = 0; slot < container.getContainerSize(); slot++) {
             ItemStack stack = container.getItem(slot);
-            if (!stack.isEmpty()) {
+            if (!stack.isEmpty() && catalogCandidates.stream()
+                    .noneMatch(candidate -> LootResultMatcher.matches(stack, candidate))) {
                 candidates.add(LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem())));
             }
         }
         return List.copyOf(candidates);
+    }
+
+    // 将历史或其他表产生的签名安全映射为指定表的规范签名；存在歧义时保留原签名
+    public static LootResultSignature canonicalizeSignature(ResourceLocation tableId,
+                                                              LootResultSignature signature) {
+        TableDefinition table = resolveTableDefinition(tableId);
+        if (table == null || table.items().isEmpty()) {
+            return signature;
+        }
+
+        LinkedHashSet<LootResultSignature> matchingItem = new LinkedHashSet<>();
+        for (ItemDefinition item : table.items()) {
+            LootResultSignature candidate = item.signature();
+            if (candidate.equals(signature)) {
+                return signature;
+            }
+            if (candidate.itemId().equals(signature.itemId())) {
+                matchingItem.add(candidate);
+            }
+        }
+        return matchingItem.size() == 1 ? matchingItem.getFirst() : signature;
+    }
+
+    // 按目标表规范化获取计数，供多表日志与累计统计共享同一签名边界
+    public static Map<LootResultSignature, Integer> canonicalizeSignatureCounts(
+            ResourceLocation tableId, Map<LootResultSignature, Integer> counts) {
+        if (counts == null || counts.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<LootResultSignature, Integer> canonical = new LinkedHashMap<>();
+        for (Map.Entry<LootResultSignature, Integer> entry : counts.entrySet()) {
+            LootResultSignature signature = entry.getKey();
+            Integer count = entry.getValue();
+            if (signature == null || count == null || count <= 0) {
+                continue;
+            }
+            LootResultSignature resolved = canonicalizeSignature(tableId, signature);
+            canonical.merge(resolved, count, Integer::sum);
+        }
+        return canonical;
     }
 
     @Nullable

@@ -6,6 +6,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * 支持任意 Tag 成员作为第一项输入的交易报价。
@@ -30,12 +31,12 @@ public class TaggedMerchantOffer extends MerchantOffer {
     }
 
     @Override
-    public boolean satisfiedBy(ItemStack first, ItemStack second) {
+    public boolean satisfiedBy(ItemStack first, @NotNull ItemStack second) {
         return first.is(this.acceptedTag) && first.getCount() >= this.acceptedCount && second.isEmpty();
     }
 
     @Override
-    public boolean take(ItemStack first, ItemStack second) {
+    public boolean take(@NotNull ItemStack first, @NotNull ItemStack second) {
         if (!this.satisfiedBy(first, second)) {
             return false;
         }
