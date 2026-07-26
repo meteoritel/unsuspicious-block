@@ -38,3 +38,5 @@ common/src/test
 common/logs
 report
 wiki
+/CONTEXT.md
+/docs/adr/

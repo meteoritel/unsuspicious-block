@@ -19,6 +19,7 @@ import java.util.Set;
  * 持久化部分委托给 {@link IBoneBlockTracker} 平台服务；玩家破坏路径中的延迟消费状态
  * （{@link PendingPlayerBreak}）仅存在于内存中，用于在方块移除事件与附魔效果触发之间
  * 保持标记不被过早清除。
+ * TODO 审查活塞移动骨块后标记是否被移除，是否有必要加入区块载入时核查标记处是否还存在骨块
  */
 public final class NaturalBoneBlockTracker {
     // 玩家破坏路径中的骨块坐标，用于延迟清除自然生成标记
