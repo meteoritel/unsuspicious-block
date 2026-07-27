@@ -28,6 +28,8 @@ public class CatalogToolbar {
     private boolean hideLocked = false;
     // 标记搜索框是否因用户点击刚被打开，需要在 createWidgets 时自动聚焦
     private boolean searchJustOpened = false;
+    private int horizontalOffset;
+    private int expandedSearchFieldWidth = JournalLayout.SEARCH_FIELD_WIDTH;
 
     // widget 引用
     private IconButton searchToggleButton;
@@ -172,13 +174,36 @@ public class CatalogToolbar {
 
     /** 处理 ESC 键，返回 true 表示已消费事件 */
     public boolean handleEsc() {
-        if (this.searchExpanded) {
-            this.searchExpanded = false;
-            this.currentSearch = JournalSearchQuery.EMPTY;
-            onConfigChanged.run();
-            return true;
-        }
         return false;
+    }
+
+    public void setSortingEnabled(boolean enabled) {
+        boolean visible = enabled && !this.searchExpanded;
+        if (this.sortButton != null) {
+            this.sortButton.active = visible;
+            this.sortButton.visible = visible;
+        }
+        if (this.sortOrderButton != null) {
+            this.sortOrderButton.active = visible;
+            this.sortOrderButton.visible = visible;
+        }
+    }
+
+    public void setHorizontalOffset(int horizontalOffset) {
+        this.horizontalOffset = horizontalOffset;
+    }
+
+    public void setExpandedSearchFieldWidth(int expandedSearchFieldWidth) {
+        this.expandedSearchFieldWidth = Math.max(1, expandedSearchFieldWidth);
+    }
+
+    public void setCategoryHomeMode(boolean categoryHome) {
+        setSortingEnabled(!categoryHome);
+        if (this.hideLockedButton != null) {
+            boolean visible = !categoryHome && !this.searchExpanded;
+            this.hideLockedButton.active = visible;
+            this.hideLockedButton.visible = visible;
+        }
     }
 
     // —— Widget 创建 ——
@@ -194,7 +219,7 @@ public class CatalogToolbar {
         int toolbarY = bookLayout.leftPageY() + JournalLayout.TOOLBAR_Y;
         int toolbarX = bookLayout.leftPageX()
                 + (bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
-                + JournalLayout.CATALOG_X_OFFSET;
+                + JournalLayout.CATALOG_X_OFFSET + this.horizontalOffset;
 
         // 搜索切换按钮
         // 多行 tooltip：标题 + 各搜索规则
@@ -220,7 +245,7 @@ public class CatalogToolbar {
 
         // 排序图标按钮
         int sortOrderX = this.searchExpanded
-                ? toolbarX + JournalLayout.SEARCH_FIELD_WIDTH + JournalLayout.TOOLBAR_GAP + JournalLayout.SORT_ICON_SIZE
+                ? toolbarX + JournalLayout.SEARCH_ICON_SIZE + this.expandedSearchFieldWidth + JournalLayout.TOOLBAR_GAP
                 : toolbarX + JournalLayout.SEARCH_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
         this.sortButton = new IconButton(
                 sortOrderX, toolbarY,
@@ -260,7 +285,7 @@ public class CatalogToolbar {
             int searchFieldX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
             this.searchField = new EditBox(font,
                     searchFieldX, toolbarY + (JournalLayout.SEARCH_QUICK_BAR_HEIGHT - JournalLayout.SEARCH_BAR_HEIGHT) / 2,
-                    JournalLayout.SEARCH_FIELD_WIDTH, JournalLayout.SEARCH_BAR_HEIGHT,
+                    this.expandedSearchFieldWidth, JournalLayout.SEARCH_BAR_HEIGHT,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
             this.searchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
             this.searchField.setMaxLength(50);
@@ -299,16 +324,16 @@ public class CatalogToolbar {
 
     /** 渲染工具栏 tooltip */
     public void renderTooltips(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.sortButton != null) {
+        if (this.sortButton != null && this.sortButton.visible) {
             this.sortButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
-        if (this.sortOrderButton != null) {
+        if (this.sortOrderButton != null && this.sortOrderButton.visible) {
             this.sortOrderButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
-        if (this.searchToggleButton != null) {
+        if (this.searchToggleButton != null && this.searchToggleButton.visible) {
             this.searchToggleButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
-        if (this.hideLockedButton != null) {
+        if (this.hideLockedButton != null && this.hideLockedButton.visible) {
             this.hideLockedButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
     }

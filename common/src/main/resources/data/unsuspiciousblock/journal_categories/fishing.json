@@ -1,0 +1,9 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.fishing",
+  "fallback": "Fishing & Dredging",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.fishing.description",
+  "description_fallback": "Loot obtained through fishing and dredging.",
+  "icon": "minecraft:fishing_rod",
+  "order": 30,
+  "types": ["minecraft:fishing"]
+}

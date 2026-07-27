@@ -43,7 +43,8 @@ public final class JournalCatalogHandler {
         // 若不拷贝，主线程 worker 并发 put 会导致 ConcurrentHashMap 的 size() 与迭代器不一致
         // （encode 先写 size 再遍历，并发 put 会让迭代器多出一个条目，客户端解码后剩余字节 → "bytes extra"）
         Map<ResourceLocation, TableDefinition> snapshot = new LinkedHashMap<>(catalog);
-        Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(snapshot));
+        Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(
+                snapshot, ArchaeologyJournalServerCatalog.getCatalogStructure()));
     }
 
     // 处理客户端请求完整目录

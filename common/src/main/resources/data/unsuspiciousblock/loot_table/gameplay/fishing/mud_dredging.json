@@ -13,16 +13,19 @@
           "name": "unsuspiciousblock:ancient_coin"
         },
         {
-          "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:usb/random_pottery_sherd"
+          "type": "minecraft:tag",
+          "name": "unsuspiciousblock:random/pottery_sherds",
+          "expand": true
         },
         {
-          "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:usb/random_armor_trim"
+          "type": "minecraft:tag",
+          "name": "unsuspiciousblock:random/armor_trim_templates",
+          "expand": true
         },
         {
-          "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:usb/random_music_disc"
+          "type": "minecraft:tag",
+          "name": "unsuspiciousblock:random/music_discs",
+          "expand": true
         },
         {
           "type": "minecraft:item",

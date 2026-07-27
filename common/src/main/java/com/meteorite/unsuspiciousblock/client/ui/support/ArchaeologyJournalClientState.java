@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
@@ -47,6 +48,7 @@ public final class ArchaeologyJournalClientState {
     private static volatile Consumer<List<Component>> tableUnlockNotifier;
     private static volatile BiConsumer<List<Component>, List<ItemStack>> itemUnlockNotifier;
     private static volatile Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
+    private static volatile CatalogStructure catalogStructure = CatalogStructure.empty();
     private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
     @Nullable
     private static volatile ResourceLocation lastSelectedTableId;
@@ -56,6 +58,13 @@ public final class ArchaeologyJournalClientState {
     private static volatile boolean lastCatalogSortDescending;
     private static volatile boolean lastCatalogHideLocked;
     private static volatile String lastCatalogSearchText = "";
+    private static volatile boolean lastDirectoryHome = true;
+    @Nullable
+    private static volatile ResourceLocation lastDirectoryCategory;
+    private static volatile Set<ResourceLocation> expandedDirectoryTables = Collections.emptySet();
+    private static volatile int lastDirectoryPage;
+    private static volatile int lastCategoryFocus;
+    private static final Map<ResourceLocation, ResourceLocation> categorySelections = new LinkedHashMap<>();
     private static volatile boolean lastLogSortDescending = true;
     @Nullable
     private static volatile LogGrouper.GroupMode lastLogGroupMode;
@@ -95,6 +104,7 @@ public final class ArchaeologyJournalClientState {
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
         ArchaeologyJournalLogLocalStore.tick();
         serverCatalog = Collections.unmodifiableMap(new LinkedHashMap<>(payload.catalog()));
+        catalogStructure = payload.structure();
         catalogRevision.incrementAndGet();
         // 收到完整目录后，哈希由服务端下次同步时更新
     }
@@ -230,6 +240,10 @@ public final class ArchaeologyJournalClientState {
         return serverCatalog;
     }
 
+    public static CatalogStructure getCatalogStructure() {
+        return catalogStructure;
+    }
+
     public static long getCatalogRevision() {
         return catalogRevision.get();
     }
@@ -298,6 +312,46 @@ public final class ArchaeologyJournalClientState {
     public static void setLastCatalogSearchText(@Nullable String text) {
         lastCatalogSearchText = text != null ? text : "";
         markDirtyIfTracking();
+    }
+
+    public static boolean isLastDirectoryHome() {
+        return lastDirectoryHome;
+    }
+
+    @Nullable
+    public static ResourceLocation getLastDirectoryCategory() {
+        return lastDirectoryCategory;
+    }
+
+    public static Set<ResourceLocation> getExpandedDirectoryTables() {
+        return expandedDirectoryTables;
+    }
+
+    // 目录层级状态仅在当前客户端运行期间保存，不写入偏好文件。
+    public static void rememberDirectoryState(boolean home, @Nullable ResourceLocation category,
+                                              Set<ResourceLocation> expanded, int page, int categoryFocus) {
+        lastDirectoryHome = home;
+        lastDirectoryCategory = category;
+        expandedDirectoryTables = Set.copyOf(expanded);
+        lastDirectoryPage = Math.max(0, page);
+        lastCategoryFocus = Math.max(0, categoryFocus);
+    }
+
+    public static int getLastDirectoryPage() {
+        return lastDirectoryPage;
+    }
+
+    public static int getLastCategoryFocus() {
+        return lastCategoryFocus;
+    }
+
+    @Nullable
+    public static ResourceLocation getCategorySelection(ResourceLocation categoryId) {
+        return categorySelections.get(categoryId);
+    }
+
+    public static void rememberCategorySelection(ResourceLocation categoryId, ResourceLocation tableId) {
+        categorySelections.put(categoryId, tableId);
     }
 
     public static boolean getLastLogSortDescending() {

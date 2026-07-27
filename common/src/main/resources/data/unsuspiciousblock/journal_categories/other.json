@@ -1,0 +1,9 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.other",
+  "fallback": "Other",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.other.description",
+  "description_fallback": "Tracked loot tables without a dedicated category.",
+  "icon": "minecraft:book",
+  "order": 1000,
+  "types": []
+}

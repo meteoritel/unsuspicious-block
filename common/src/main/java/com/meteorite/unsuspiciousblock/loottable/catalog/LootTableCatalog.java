@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 战利品表目录数据记录——TableDefinition 与 ItemDefinition 为跨模块共享的基础类型，
@@ -22,7 +23,41 @@ public final class LootTableCatalog {
 
     /** 战利品表定义 */
     public record TableDefinition(ResourceLocation id, Component displayName, String type,
-                                  List<ItemDefinition> items, int simulationCount) {
+                                  List<ItemDefinition> items, int simulationCount,
+                                  List<ResourceLocation> childTables) {
+        public TableDefinition {
+            items = List.copyOf(items);
+            childTables = List.copyOf(childTables);
+        }
+
+        public TableDefinition(ResourceLocation id, Component displayName, String type,
+                               List<ItemDefinition> items, int simulationCount) {
+            this(id, displayName, type, items, simulationCount, List.of());
+        }
+
+        public TableDefinition withChildTables(List<ResourceLocation> children) {
+            return new TableDefinition(this.id, this.displayName, this.type, this.items,
+                    this.simulationCount, children);
+        }
+    }
+
+    /** 目录分类定义——由服务端 Data Pack 加载并同步给客户端。 */
+    public record CatalogCategoryDefinition(ResourceLocation id, String translationKey, String fallbackName,
+                                            String descriptionKey, String descriptionFallback,
+                                            ResourceLocation iconItem, int order) {
+    }
+
+    /** 目录层级与分类元数据。 */
+    public record CatalogStructure(List<CatalogCategoryDefinition> categories,
+                                   Map<ResourceLocation, ResourceLocation> rootCategories) {
+        public CatalogStructure {
+            categories = List.copyOf(categories);
+            rootCategories = Map.copyOf(rootCategories);
+        }
+
+        public static CatalogStructure empty() {
+            return new CatalogStructure(List.of(), Map.of());
+        }
     }
 
     /**

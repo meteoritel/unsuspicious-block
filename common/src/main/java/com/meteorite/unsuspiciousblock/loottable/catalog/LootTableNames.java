@@ -72,20 +72,17 @@ public final class LootTableNames {
 
     // 确保该战利品表已进入名称映射；若外部未显式注册，则自动生成默认 key 与 fallback 规则
     public static void ensureRegistered(ResourceLocation tableId) {
-        validateArchaeologyTableId(tableId);
         REGISTRATIONS.computeIfAbsent(tableId, id -> new NameRegistration(createTranslationKey(id), null));
     }
 
     // 获取该战利品表当前会使用的本地化 key
     public static String translationKey(ResourceLocation tableId) {
-        validateArchaeologyTableId(tableId);
         NameRegistration registration = REGISTRATIONS.get(tableId);
         return registration != null ? registration.translationKey() : createTranslationKey(tableId);
     }
 
     // 获取该战利品表当前会使用的 fallback 展示名
     public static String fallbackName(ResourceLocation tableId) {
-        validateArchaeologyTableId(tableId);
         NameRegistration registration = REGISTRATIONS.get(tableId);
         if (registration != null && hasText(registration.fallbackName())) {
             return registration.fallbackName();
@@ -95,7 +92,6 @@ public final class LootTableNames {
 
     // 解析最终展示名：优先走规则 key，本地化缺失时退回 fallback 名称
     public static Component resolveDisplayName(ResourceLocation tableId) {
-        validateArchaeologyTableId(tableId);
         String translationKey = translationKey(tableId);
         String fallbackName = fallbackName(tableId);
         warnMissingTranslation(tableId, translationKey, fallbackName);
@@ -104,7 +100,6 @@ public final class LootTableNames {
 
     // 强制重新检索缺失 key 并写盘，忽略 WARNED_MISSING_TRANSLATIONS 缓存；仅供调试命令手动补救使用
     public static Component forceResolveDisplayName(ResourceLocation tableId) {
-        validateArchaeologyTableId(tableId);
         String translationKey = translationKey(tableId);
         String fallbackName = fallbackName(tableId);
         forceMissingTranslation(tableId, translationKey, fallbackName);

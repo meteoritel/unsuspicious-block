@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.loottable.analysis;
 
+import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -53,5 +54,11 @@ public interface LootFunctionHandler {
     @Nullable
     default Component describeHint(LootItemFunction function) {
         return null;
+    }
+
+    // 需要读取 Codec 未公开字段时，优先从原始 JSON 提取稳定的结构化信息。
+    @Nullable
+    default Component describeHint(LootItemFunction function, JsonObject source) {
+        return describeHint(function);
     }
 }

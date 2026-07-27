@@ -1,0 +1,17 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.fossils",
+  "fallback": "Fossil Gathering",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.fossils.description",
+  "description_fallback": "Loot uncovered with the Fossil Hunter enchantment.",
+  "icon": "minecraft:bone_block",
+  "order": 50,
+  "types": [],
+  "special_rules": [
+    {
+      "type": "minecraft:block",
+      "namespaces": ["unsuspiciousblock"],
+      "path_prefixes": ["gameplay/fossil_hunter/"],
+      "priority": 100
+    }
+  ]
+}

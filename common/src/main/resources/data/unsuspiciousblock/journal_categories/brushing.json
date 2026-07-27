@@ -1,0 +1,9 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.brushing",
+  "fallback": "Brushing",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.brushing.description",
+  "description_fallback": "Loot discovered by brushing suspicious blocks.",
+  "icon": "minecraft:brush",
+  "order": 10,
+  "types": ["minecraft:archaeology"]
+}

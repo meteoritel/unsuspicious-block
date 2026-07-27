@@ -153,7 +153,8 @@ public final class LootProbabilitySimulator {
             simulatedItems.add(LootTableCatalog.buildDiscoveredDefinition(entry.getValue(), probability, true));
         }
 
-        return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(), simulatedItems, SIMULATION_COUNT));
+        return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(),
+                simulatedItems, SIMULATION_COUNT, rawTable.childTables()));
     }
 
     // 从运行时掉落派生用于匹配/展示的签名；附魔物折叠为近似附魔签名，其余按普通物品签名（保守，避免签名爆炸）

@@ -93,6 +93,11 @@ public final class JournalSearchQuery {
         return this.normalizedQuery.isEmpty();
     }
 
+    // 锁定条目只允许通过完整战利品表 ID 精确命中，避免搜索泄露名称或物品。
+    public boolean matchesLockedTableId(ResourceLocation id) {
+        return this.mode == Mode.TABLE_NAME && id.toString().equals(this.normalizedQuery);
+    }
+
     // 判断目录条目（战利品表）是否匹配此查询
     public boolean matchesCatalogEntry(ResourceLocation id, String displayName, String type) {
         if (this.isEmpty()) return true;

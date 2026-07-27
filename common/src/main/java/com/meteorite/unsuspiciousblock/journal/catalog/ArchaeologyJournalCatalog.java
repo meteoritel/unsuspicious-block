@@ -1,45 +1,169 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableJsonParser;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * 考古战利品表目录——考古笔记专用的薄包装层。
- * <p>
- * 核心解析逻辑委托给 {@link LootTableJsonParser}，本类仅负责：
- * <ul>
- *   <li>以考古表过滤规则（{@link LootTableNames#isArchaeologyLootTable}）构造解析器</li>
- *   <li>加载后触发缺失翻译 key 导出</li>
- * </ul>
+ * 考古手册目录加载器——构建收录闭包、引用层级与基于 type 的目录分类。
  */
 public final class ArchaeologyJournalCatalog {
-
-    private static final LootTableJsonParser PARSER = new LootTableJsonParser(
-            LootTableNames::isArchaeologyLootTable,
-            LootTableNames::resolveDisplayName
-    );
+    private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
 
     private ArchaeologyJournalCatalog() {
     }
 
-    /**
-     * 从 ResourceManager 加载考古战利品表目录。
-     * 委托 {@link LootTableJsonParser} 进行通用解析，并对每个表触发缺失翻译 key 导出。
-     */
-    public static Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager,
-                                                               HolderLookup.Provider registries) {
-        Map<ResourceLocation, TableDefinition> tables = PARSER.load(resourceManager, registries);
-        // 触发缺失 key 导出——翻译 key 仅由 tableId 派生，与 JSON 解析成功与否无关
-        for (ResourceLocation tableId : tables.keySet()) {
-            LootTableNames.ensureRegistered(tableId);
-            LootTableNames.resolveDisplayName(tableId);
+    public static LoadResult load(ResourceManager resourceManager, HolderLookup.Provider registries) {
+        Map<ResourceLocation, Resource> resources = LOOT_TABLES.listMatchingResources(resourceManager);
+        Map<ResourceLocation, List<ResourceLocation>> graph = buildReferenceGraph(resources);
+        Set<ResourceLocation> explicitlyTrackedTables = new LinkedHashSet<>();
+        for (ResourceLocation tableId : graph.keySet()) {
+            if (LootTableNames.isArchaeologyLootTable(tableId)) explicitlyTrackedTables.add(tableId);
         }
-        return tables;
+
+        Set<ResourceLocation> initialClosure = collectReachable(explicitlyTrackedTables, graph, Set.of());
+        Set<ResourceLocation> cycleTables = findCycleTables(initialClosure, graph);
+        Set<ResourceLocation> validClosure = collectReachable(explicitlyTrackedTables, graph, cycleTables);
+
+        LootTableJsonParser parser = new LootTableJsonParser(
+                validClosure::contains, LootTableNames::resolveDisplayName, cycleTables);
+        Map<ResourceLocation, TableDefinition> parsed = parser.load(resourceManager, registries);
+
+        LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : parsed.entrySet()) {
+            List<ResourceLocation> children = graph.getOrDefault(entry.getKey(), List.of()).stream()
+                    .filter(parsed::containsKey)
+                    .toList();
+            tables.put(entry.getKey(), entry.getValue().withChildTables(children));
+            LootTableNames.ensureRegistered(entry.getKey());
+            LootTableNames.resolveDisplayName(entry.getKey());
+        }
+
+        JournalCategoryLoader.CategorySet categories = JournalCategoryLoader.load(resourceManager);
+        LinkedHashMap<ResourceLocation, ResourceLocation> rootCategories = new LinkedHashMap<>();
+        for (ResourceLocation tableId : explicitlyTrackedTables) {
+            TableDefinition table = tables.get(tableId);
+            if (table == null) continue;
+            rootCategories.put(table.id(), categories.classify(table.id(), table.type()));
+        }
+        CatalogStructure structure = new CatalogStructure(categories.definitions(), rootCategories);
+        return new LoadResult(Map.copyOf(tables), structure);
+    }
+
+    private static Map<ResourceLocation, List<ResourceLocation>> buildReferenceGraph(
+            Map<ResourceLocation, Resource> resources) {
+        LinkedHashMap<ResourceLocation, List<ResourceLocation>> graph = new LinkedHashMap<>();
+        for (Map.Entry<ResourceLocation, Resource> entry : resources.entrySet()) {
+            ResourceLocation tableId = LOOT_TABLES.fileToId(entry.getKey());
+            LinkedHashSet<ResourceLocation> references = new LinkedHashSet<>();
+            try (Reader reader = entry.getValue().openAsReader()) {
+                collectDirectReferences(JsonParser.parseReader(reader), references);
+            } catch (Exception exception) {
+                Constants.LOG.warn("读取战利品表引用关系失败 {}", tableId, exception);
+            }
+            graph.put(tableId, List.copyOf(references));
+        }
+        return graph;
+    }
+
+    private static void collectDirectReferences(JsonElement element, Set<ResourceLocation> output) {
+        if (element == null || element.isJsonNull()) return;
+        if (element.isJsonArray()) {
+            element.getAsJsonArray().forEach(child -> collectDirectReferences(child, output));
+            return;
+        }
+        if (!element.isJsonObject()) return;
+        JsonObject object = element.getAsJsonObject();
+        if (object.has("type") && object.get("type").isJsonPrimitive()) {
+            String type = object.get("type").getAsString();
+            if (type.equals("loot_table") || type.equals("minecraft:loot_table")) {
+                JsonElement idElement = object.has("value") ? object.get("value") : object.get("name");
+                if (idElement != null && idElement.isJsonPrimitive()) {
+                    ResourceLocation id = ResourceLocation.tryParse(idElement.getAsString());
+                    if (id != null) output.add(id);
+                }
+                return;
+            }
+        }
+        object.entrySet().forEach(entry -> collectDirectReferences(entry.getValue(), output));
+    }
+
+    private static Set<ResourceLocation> collectReachable(Set<ResourceLocation> roots,
+                                                           Map<ResourceLocation, List<ResourceLocation>> graph,
+                                                           Set<ResourceLocation> excluded) {
+        LinkedHashSet<ResourceLocation> result = new LinkedHashSet<>();
+        ArrayList<ResourceLocation> queue = new ArrayList<>(roots);
+        for (int index = 0; index < queue.size(); index++) {
+            ResourceLocation current = queue.get(index);
+            if (excluded.contains(current) || !graph.containsKey(current) || !result.add(current)) continue;
+            for (ResourceLocation child : graph.getOrDefault(current, List.of())) {
+                if (!excluded.contains(child)) queue.add(child);
+            }
+        }
+        return result;
+    }
+
+    private static Set<ResourceLocation> findCycleTables(Set<ResourceLocation> nodes,
+                                                          Map<ResourceLocation, List<ResourceLocation>> graph) {
+        Map<ResourceLocation, VisitState> states = new HashMap<>();
+        List<ResourceLocation> stack = new ArrayList<>();
+        Set<ResourceLocation> cycleTables = new HashSet<>();
+        Set<String> reported = new HashSet<>();
+        for (ResourceLocation node : nodes) {
+            if (!states.containsKey(node)) dfsCycles(node, nodes, graph, states, stack, cycleTables, reported);
+        }
+        return cycleTables;
+    }
+
+    private static void dfsCycles(ResourceLocation node, Set<ResourceLocation> nodes,
+                                  Map<ResourceLocation, List<ResourceLocation>> graph,
+                                  Map<ResourceLocation, VisitState> states, List<ResourceLocation> stack,
+                                  Set<ResourceLocation> cycleTables, Set<String> reported) {
+        states.put(node, VisitState.VISITING);
+        stack.add(node);
+        for (ResourceLocation child : graph.getOrDefault(node, List.of())) {
+            if (!nodes.contains(child)) continue;
+            VisitState state = states.get(child);
+            if (state == VisitState.VISITING) {
+                int start = stack.indexOf(child);
+                List<ResourceLocation> cycle = new ArrayList<>(stack.subList(start, stack.size()));
+                cycleTables.addAll(cycle);
+                cycle.add(child);
+                String signature = cycle.toString();
+                if (reported.add(signature)) Constants.LOG.warn("检测到战利品表循环引用，排除闭环: {}", cycle);
+            } else if (state == null) {
+                dfsCycles(child, nodes, graph, states, stack, cycleTables, reported);
+            }
+        }
+        stack.removeLast();
+        states.put(node, VisitState.VISITED);
+    }
+
+    public record LoadResult(Map<ResourceLocation, TableDefinition> tables, CatalogStructure structure) {
+    }
+
+    private enum VisitState {
+        VISITING,
+        VISITED
     }
 }

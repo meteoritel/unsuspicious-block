@@ -640,7 +640,7 @@ public final class LootFunctionHandlers {
         }
 
         @Override
-        public Component describeHint(LootItemFunction function) {
+        public Component describeHint(LootItemFunction function, com.google.gson.JsonObject source) {
             if (!(function instanceof ApplyBonusCount)) {
                 return null;
             }
@@ -652,23 +652,11 @@ public final class LootFunctionHandlers {
                     ? Component.translatable("enchantment." + enchantmentId.getNamespace() + "." + enchantmentId.getPath())
                     : Component.literal("?");
 
-            // 通过反射获取 formula 内部字段
-            Object formula = reflectField(function, "formula");
             String formulaType = "unknown";
-            if (formula != null) {
-                // formula 实现了 Formula 接口，其 getType() 返回 FormulaType
-                try {
-                    java.lang.reflect.Method getType = formula.getClass().getMethod("getType");
-                    Object formulaTypeObj = getType.invoke(formula);
-                    if (formulaTypeObj != null) {
-                        ResourceLocation typeId = BuiltInRegistries.LOOT_NUMBER_PROVIDER_TYPE.getKey(
-                                    (net.minecraft.world.level.storage.loot.providers.number.LootNumberProviderType) formulaTypeObj);
-                        if (typeId != null) {
-                            formulaType = typeId.getPath();
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
+            ResourceLocation formulaId = ResourceLocation.tryParse(
+                    LootParseUtil.getString(source, "formula", ""));
+            if (formulaId != null) {
+                formulaType = formulaId.getPath();
             }
             Component formulaName = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.formula." + formulaType);

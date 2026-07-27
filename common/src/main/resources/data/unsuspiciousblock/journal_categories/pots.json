@@ -1,0 +1,16 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.pots",
+  "fallback": "Pots",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.pots.description",
+  "description_fallback": "Loot stored in decorated pots.",
+  "icon": "minecraft:decorated_pot",
+  "order": 40,
+  "types": [],
+  "special_rules": [
+    {
+      "type": "minecraft:chest",
+      "path_prefixes": ["pots/"],
+      "priority": 100
+    }
+  ]
+}

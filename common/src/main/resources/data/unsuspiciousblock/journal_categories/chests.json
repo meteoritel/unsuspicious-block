@@ -1,0 +1,9 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.chests",
+  "fallback": "Ruins Chests",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.chests.description",
+  "description_fallback": "Container loot found in ruins and structures.",
+  "icon": "minecraft:chest",
+  "order": 20,
+  "types": ["minecraft:chest"]
+}

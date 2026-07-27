@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
@@ -66,6 +67,7 @@ public final class ArchaeologyJournalServerCatalog {
     private static final Map<ResourceLocation, TableDefinition> rawCatalog = new ConcurrentHashMap<>();
     /** 每个 tableId 对应的 JSON 内容哈希，用于判断是否需要重新模拟 */
     private static final Map<ResourceLocation, String> tableHashes = new ConcurrentHashMap<>();
+    private static volatile CatalogStructure catalogStructure = CatalogStructure.empty();
     private static volatile boolean loaded;
 
     private ArchaeologyJournalServerCatalog() {
@@ -86,8 +88,10 @@ public final class ArchaeologyJournalServerCatalog {
             cachedCatalogHash = null;
 
             // 1. 解析原始目录（概率字段为 "?" 占位符）
-            Map<ResourceLocation, TableDefinition> parsed =
+            ArchaeologyJournalCatalog.LoadResult loadResult =
                     ArchaeologyJournalCatalog.load(server.getResourceManager(), server.registryAccess());
+            Map<ResourceLocation, TableDefinition> parsed = loadResult.tables();
+            catalogStructure = loadResult.structure();
             rawCatalog.putAll(parsed);
             LOGGER.info("解析到 {} 个考古战利品表原始目录", parsed.size());
 
@@ -209,6 +213,7 @@ public final class ArchaeologyJournalServerCatalog {
                 updateDigest(digest, table.displayName().toString());
                 updateDigest(digest, table.type());
                 updateDigest(digest, Integer.toString(table.simulationCount()));
+                table.childTables().forEach(child -> updateDigest(digest, child.toString()));
                 List<ItemDefinition> items = table.items().stream()
                         .sorted(Comparator.comparing(item -> item.signature().toStoredKey()))
                         .toList();
@@ -229,6 +234,21 @@ public final class ArchaeologyJournalServerCatalog {
                     }
                 }
             }
+            catalogStructure.categories().forEach(category -> {
+                updateDigest(digest, category.id().toString());
+                updateDigest(digest, category.translationKey());
+                updateDigest(digest, category.fallbackName());
+                updateDigest(digest, category.descriptionKey());
+                updateDigest(digest, category.descriptionFallback());
+                updateDigest(digest, category.iconItem().toString());
+                updateDigest(digest, Integer.toString(category.order()));
+            });
+            catalogStructure.rootCategories().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey(Comparator.comparing(ResourceLocation::toString)))
+                    .forEach(entry -> {
+                        updateDigest(digest, entry.getKey().toString());
+                        updateDigest(digest, entry.getValue().toString());
+                    });
             cached = HexFormat.of().formatHex(digest.digest());
             cachedCatalogHash = cached;
             return cached;
@@ -259,6 +279,7 @@ public final class ArchaeologyJournalServerCatalog {
         catalog.clear();
         rawCatalog.clear();
         tableHashes.clear();
+        catalogStructure = CatalogStructure.empty();
         cachedCatalogHash = null;
         loaded = false;
     }
@@ -266,6 +287,10 @@ public final class ArchaeologyJournalServerCatalog {
     /** 获取已填充目录的只读视图 */
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         return Collections.unmodifiableMap(catalog);
+    }
+
+    public static CatalogStructure getCatalogStructure() {
+        return catalogStructure;
     }
 
     /** 获取原始目录的只读视图（概率为 "?" 占位符，但物品列表完整）。
@@ -326,7 +351,7 @@ public final class ArchaeologyJournalServerCatalog {
 
         return new TableDefinition(
                 rawTable.id(), rawTable.displayName(), rawTable.type(), restoredItems,
-                LootProbabilitySimulator.getSimulationCount());
+                LootProbabilitySimulator.getSimulationCount(), rawTable.childTables());
     }
 
     // 对每个表的 JSON 资源内容计算 SHA-256 哈希

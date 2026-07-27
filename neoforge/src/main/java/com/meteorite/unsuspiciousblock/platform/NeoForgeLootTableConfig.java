@@ -22,11 +22,13 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
                 .comment("需要追踪的战利品表匹配规则列表。",
                         "语法：[命名空间:路径]。指定命名空间时仅匹配该命名空间，省略时匹配所有命名空间。",
                         "路径以 / 结尾表示前缀匹配（命中该前缀下所有表），否则为精确匹配（仅命中单个表）。",
+                        "直接命中规则的表会显示为目录根表，即使它同时被其他表引用；仅通过父表引用收录的表只显示为子表。",
                         "例：minecraft:archaeology/desert_well -> 单表、unsuspiciousblock:archaeology/ -> 指定模组、archaeology/ -> 所有命名空间。",
                         "",
                         "List of loot table matching rules to track.",
                         "Syntax: [namespace:path]. With namespace, only that namespace is matched; without, all namespaces.",
                         "Path ending with / is a prefix match (all tables under that prefix); otherwise an exact match (single table).",
+                        "A directly matched table is a directory root even when referenced by another table; reference-only tables appear only as children.",
                         "e.g. minecraft:archaeology/desert_well (single), unsuspiciousblock:archaeology/ (specific mod), archaeology/ (all namespaces).")
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",

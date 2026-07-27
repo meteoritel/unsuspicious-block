@@ -62,6 +62,7 @@ public final class LootTableJsonParser {
 
     private final Predicate<ResourceLocation> tableFilter;
     private final Function<ResourceLocation, Component> tableNameResolver;
+    private final Set<ResourceLocation> excludedReferences;
 
     /**
      * @param tableFilter       战利品表过滤器，返回 true 的表纳入解析
@@ -69,8 +70,15 @@ public final class LootTableJsonParser {
      */
     public LootTableJsonParser(Predicate<ResourceLocation> tableFilter,
                                Function<ResourceLocation, Component> tableNameResolver) {
+        this(tableFilter, tableNameResolver, Set.of());
+    }
+
+    public LootTableJsonParser(Predicate<ResourceLocation> tableFilter,
+                               Function<ResourceLocation, Component> tableNameResolver,
+                               Set<ResourceLocation> excludedReferences) {
         this.tableFilter = tableFilter;
         this.tableNameResolver = tableNameResolver;
+        this.excludedReferences = Set.copyOf(excludedReferences);
     }
 
     /**
@@ -310,6 +318,9 @@ public final class LootTableJsonParser {
             LOGGER.warn("loot_table 引用缺少 value/name 字段，跳过展开");
             return;
         }
+        if (this.excludedReferences.contains(referencedId)) {
+            return;
+        }
         if (ctx.expandingStack.contains(referencedId)) {
             LOGGER.warn("检测到 loot_table 循环引用 {}，跳过展开", referencedId);
             return;
@@ -421,7 +432,7 @@ public final class LootTableJsonParser {
                 if (handler != null) {
                     try {
                         if (!functionConditions.isEmpty()) {
-                            Component hint = handler.describeHint(function);
+                            Component hint = handler.describeHint(function, functionElement.getAsJsonObject());
                             if (hint != null) {
                                 functionHints.add(hint);
                             }
@@ -433,7 +444,7 @@ public final class LootTableJsonParser {
                             previewStack = result;
                         } else {
                             entryHasConditions = true;
-                            Component hint = handler.describeHint(function);
+                            Component hint = handler.describeHint(function, functionElement.getAsJsonObject());
                             if (hint != null) {
                                 functionHints.add(hint);
                             }

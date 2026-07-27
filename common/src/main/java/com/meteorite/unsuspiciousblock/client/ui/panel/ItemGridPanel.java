@@ -597,11 +597,6 @@ public final class ItemGridPanel implements PagePanel {
                     LootConditionHandler.UncertaintyLevel.NONE, true);
         }
 
-        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null
-        public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability) {
-            this(stack, hint, count, probability, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true);
-        }
     }
 
     // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）
@@ -611,14 +606,6 @@ public final class ItemGridPanel implements PagePanel {
                            List<LootAcquisitionPath> acquisitionPaths,
                            boolean injected,
                            LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
-
-        // 兼容旧调用方的便利构造器：sourceChildTable 默认 null，conditions 默认空，parentTableConditions 默认空，injected 默认 false
-        public GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                        String probability, boolean unlocked, int count,
-                        LootResultSignature signature, boolean highlighted) {
-            this(id, displayName, tooltipHint, probability, unlocked, count, signature, highlighted,
-                    List.of(), false, LootConditionHandler.UncertaintyLevel.NONE);
-        }
 
         @Nullable
         public ResourceLocation primarySourceChildTable() {

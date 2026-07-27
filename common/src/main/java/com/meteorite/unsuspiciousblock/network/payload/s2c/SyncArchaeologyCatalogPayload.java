@@ -5,6 +5,8 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -19,7 +21,8 @@ import java.util.List;
 import java.util.Map;
 
 /** 全量目录同步包 —— 服务端→客户端 */
-public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinition> catalog)
+public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinition> catalog,
+                                            CatalogStructure structure)
         implements CustomPacketPayload {
 
     public static final Type<SyncArchaeologyCatalogPayload> TYPE =
@@ -40,6 +43,8 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             TableDefinition table = entry.getValue();
             buf.writeUtf(Component.Serializer.toJson(table.displayName(), buf.registryAccess()));
             buf.writeUtf(table.type());
+            buf.writeVarInt(table.childTables().size());
+            table.childTables().forEach(buf::writeResourceLocation);
             buf.writeVarInt(table.items().size());
             for (ItemDefinition item : table.items()) {
                 buf.writeResourceLocation(item.id());
@@ -68,6 +73,7 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             }
             buf.writeVarInt(table.simulationCount());
         }
+        encodeStructure(buf, payload.structure());
     }
 
     private static SyncArchaeologyCatalogPayload decode(RegistryFriendlyByteBuf buf) {
@@ -77,6 +83,9 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
             ResourceLocation tableId = buf.readResourceLocation();
             Component displayName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
             String type = buf.readUtf();
+            int childCount = buf.readVarInt();
+            List<ResourceLocation> childTables = new ArrayList<>(childCount);
+            for (int j = 0; j < childCount; j++) childTables.add(buf.readResourceLocation());
             int itemCount = buf.readVarInt();
             List<ItemDefinition> items = new ArrayList<>();
             for (int j = 0; j < itemCount; j++) {
@@ -109,9 +118,44 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                         signature, acquisitionPaths, injected));
             }
             int simulationCount = buf.readVarInt();
-            catalog.put(tableId, new TableDefinition(tableId, displayName, type, items, simulationCount));
+            catalog.put(tableId, new TableDefinition(tableId, displayName, type, items,
+                    simulationCount, childTables));
         }
-        return new SyncArchaeologyCatalogPayload(catalog);
+        return new SyncArchaeologyCatalogPayload(catalog, decodeStructure(buf));
+    }
+
+    private static void encodeStructure(RegistryFriendlyByteBuf buf, CatalogStructure structure) {
+        buf.writeVarInt(structure.categories().size());
+        for (CatalogCategoryDefinition category : structure.categories()) {
+            buf.writeResourceLocation(category.id());
+            buf.writeUtf(category.translationKey());
+            buf.writeUtf(category.fallbackName());
+            buf.writeUtf(category.descriptionKey());
+            buf.writeUtf(category.descriptionFallback());
+            buf.writeResourceLocation(category.iconItem());
+            buf.writeVarInt(category.order());
+        }
+        buf.writeVarInt(structure.rootCategories().size());
+        structure.rootCategories().forEach((tableId, categoryId) -> {
+            buf.writeResourceLocation(tableId);
+            buf.writeResourceLocation(categoryId);
+        });
+    }
+
+    private static CatalogStructure decodeStructure(RegistryFriendlyByteBuf buf) {
+        int categoryCount = buf.readVarInt();
+        List<CatalogCategoryDefinition> categories = new ArrayList<>(categoryCount);
+        for (int index = 0; index < categoryCount; index++) {
+            categories.add(new CatalogCategoryDefinition(
+                    buf.readResourceLocation(), buf.readUtf(), buf.readUtf(), buf.readUtf(), buf.readUtf(),
+                    buf.readResourceLocation(), buf.readVarInt()));
+        }
+        int rootCount = buf.readVarInt();
+        LinkedHashMap<ResourceLocation, ResourceLocation> roots = new LinkedHashMap<>();
+        for (int index = 0; index < rootCount; index++) {
+            roots.put(buf.readResourceLocation(), buf.readResourceLocation());
+        }
+        return new CatalogStructure(categories, roots);
     }
 
     // 递归编码单个 LootConditionInfo（含 children）

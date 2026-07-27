@@ -159,6 +159,8 @@ public class FabricLootTableConfig implements ILootTableConfig {
                       - 省略命名空间时匹配所有命名空间，例如：
                           archaeology/                         匹配任意命名空间下 archaeology/ 前缀的所有表
                     路径以 / 结尾为前缀匹配（命中该前缀下所有表），否则为精确匹配（仅命中单个表）。
+                    直接命中规则的表会显示为目录根表，即使它同时被其他表引用；
+                    仅通过父表引用自动收录的表不会显示为根表，只能作为子表查看。
 
                 max_log_entries_per_table
                     单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。
@@ -192,6 +194,8 @@ public class FabricLootTableConfig implements ILootTableConfig {
                           archaeology/                         all tables under the archaeology/ prefix in any namespace
                     Path ending with / is a prefix match (all tables under that prefix);
                     otherwise an exact match (single table).
+                    A directly matched table is shown as a directory root even when another table references it.
+                    A table included only through a parent reference is shown only as a child.
 
                 max_log_entries_per_table
                     Max log entries kept per loot table. Oldest entries are dropped when exceeded.
