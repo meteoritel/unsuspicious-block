@@ -347,7 +347,7 @@ public final class LootTableJsonParser {
         ResolvedEntry resolved = resolveEntry(itemId, object, ctx, entryConditions);
         ItemDefinitionBuilder builder = ctx.items.computeIfAbsent(resolved.signature().toStoredKey(),
                 ignored -> createBuilder(resolved));
-        builder.mergeResolved(resolved, createPath(resolved, ctx));
+        builder.mergeResolved(resolved, createPath(resolved, ctx, null));
     }
 
     private void parseTag(JsonObject object, ParseContext ctx, List<LootConditionInfo> entryConditions) {
@@ -374,7 +374,7 @@ public final class LootTableJsonParser {
             ResolvedEntry resolved = resolveEntry(itemId, object, ctx, entryConditions);
             ItemDefinitionBuilder builder = ctx.items.computeIfAbsent(resolved.signature().toStoredKey(),
                     ignored -> createBuilder(resolved));
-            builder.mergeResolved(resolved, createPath(resolved, ctx));
+            builder.mergeResolved(resolved, createPath(resolved, ctx, tagId));
         }
     }
 
@@ -500,8 +500,10 @@ public final class LootTableJsonParser {
                 resolved.signature());
     }
 
-    private static LootAcquisitionPath createPath(ResolvedEntry resolved, ParseContext ctx) {
-        return new LootAcquisitionPath(ctx.sourceChildTable, resolved.conditions(), ctx.parentTableConditions);
+    private static LootAcquisitionPath createPath(ResolvedEntry resolved, ParseContext ctx,
+                                                  @Nullable ResourceLocation sourceItemTag) {
+        return new LootAcquisitionPath(ctx.sourceChildTable, sourceItemTag,
+                resolved.conditions(), ctx.parentTableConditions);
     }
 
     private static Component resolveItemDisplayName(ItemStack previewStack) {

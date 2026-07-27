@@ -144,6 +144,7 @@ public final class JournalTooltipBuilder {
                         .withStyle(ChatFormatting.GREEN));
             }
             appendSourceTable(lines, path.sourceChildTable(), "  ");
+            appendSourceItemTag(lines, path.sourceItemTag(), "  ");
         }
     }
 
@@ -161,6 +162,7 @@ public final class JournalTooltipBuilder {
             appendConditionTree(lines, path.inheritedConditions(), "");
         }
         appendSourceTable(lines, path.sourceChildTable(), "");
+        appendSourceItemTag(lines, path.sourceItemTag(), "");
     }
 
     private static void appendSourceTable(List<Component> lines, ResourceLocation sourceChildTable, String prefix) {
@@ -170,6 +172,18 @@ public final class JournalTooltipBuilder {
         Component childTableName = LootTableNames.resolveDisplayName(sourceChildTable);
         lines.add(Component.literal(prefix).append(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName))
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
+    }
+
+    private static void appendSourceItemTag(List<Component> lines,
+                                            @org.jetbrains.annotations.Nullable ResourceLocation sourceItemTag,
+                                            String prefix) {
+        if (sourceItemTag == null) {
+            return;
+        }
+        lines.add(Component.literal(prefix).append(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.from_item_tag",
+                Component.literal(sourceItemTag.toString())))
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
     }
 

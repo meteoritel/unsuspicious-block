@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -17,7 +18,10 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** 右侧物品网格面板 —— 渲染物品图标、名称、概率与数量角标，补充信息通过 tooltip 展示 */
 public final class ItemGridPanel implements PagePanel {
@@ -37,10 +41,18 @@ public final class ItemGridPanel implements PagePanel {
     private static final int PENDING_COLOR = 0xFF7A6247;
     private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
     private static final int BADGE_COLOR_ABBR = 0xFFFFC060;
+    private static final int TAG_GROUP_BORDER_COLOR = 0x806B7D46;
+    private static final int TAG_GROUP_BG_COLOR = 0x186B7D46;
+    private static final int TAG_GROUP_TEXT_COLOR = 0xFF3F5128;
+    private static final int TAG_GROUP_MEMBERS_PER_PAGE = JournalLayout.GRID_ITEMS_PER_PAGE - 1;
 
     private final List<GridItem> items = new ArrayList<>();
+    private final List<GridItem> directItems = new ArrayList<>();
+    private final LinkedHashMap<ResourceLocation, TagGroup> tagGroups = new LinkedHashMap<>();
     private final JournalBookBackground.BookLayout layout;
     private int page;
+    @Nullable
+    private ResourceLocation activeTag;
     // 每个可视格子的滚动文字状态（物品名走马灯），按 visualIndex 索引
     private final int[] slotScrollTicks = new int[JournalLayout.GRID_ITEMS_PER_PAGE];
     private final boolean[] slotWasHovered = new boolean[JournalLayout.GRID_ITEMS_PER_PAGE];
@@ -54,12 +66,24 @@ public final class ItemGridPanel implements PagePanel {
     public void setTable(List<GridItem> items) {
         this.items.clear();
         this.items.addAll(items);
+        rebuildTagGroups();
+        if (this.activeTag != null && !this.tagGroups.containsKey(this.activeTag)) {
+            this.activeTag = null;
+        }
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        resetHoverState();
     }
 
     public int pageCount() {
-        if (items.isEmpty()) return 1;
-        return (items.size() + JournalLayout.GRID_ITEMS_PER_PAGE - 1) / JournalLayout.GRID_ITEMS_PER_PAGE;
+        if (this.activeTag != null) {
+            TagGroup group = this.tagGroups.get(this.activeTag);
+            int memberCount = group != null ? group.members().size() : 0;
+            return Math.max(1, (memberCount + TAG_GROUP_MEMBERS_PER_PAGE - 1)
+                    / TAG_GROUP_MEMBERS_PER_PAGE);
+        }
+        int entryCount = this.tagGroups.size() + this.directItems.size();
+        return Math.max(1, (entryCount + JournalLayout.GRID_ITEMS_PER_PAGE - 1)
+                / JournalLayout.GRID_ITEMS_PER_PAGE);
     }
 
     public int getPage() {
@@ -67,16 +91,37 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     public void changePage(int delta) {
-        page = Mth.clamp(page + delta, 0, Math.max(0, pageCount() - 1));
+        int nextPage = Mth.clamp(page + delta, 0, Math.max(0, pageCount() - 1));
+        if (nextPage != this.page) {
+            this.page = nextPage;
+            resetHoverState();
+        }
     }
 
     public void resetPage() {
-        page = 0;
+        this.page = 0;
+        this.activeTag = null;
+        resetHoverState();
     }
 
     // 直接设置页码（resize 后恢复用）
     public void setPage(int page) {
-        this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+        int nextPage = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+        if (nextPage != this.page) {
+            this.page = nextPage;
+            resetHoverState();
+        }
+    }
+
+    @Nullable
+    public ResourceLocation getActiveTag() {
+        return this.activeTag;
+    }
+
+    public void setActiveTag(@Nullable ResourceLocation tagId) {
+        this.activeTag = tagId != null && this.tagGroups.containsKey(tagId) ? tagId : null;
+        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        resetHoverState();
     }
 
     // 判断鼠标是否在物品网格面板区域内
@@ -87,7 +132,7 @@ public final class ItemGridPanel implements PagePanel {
 
     // 渲染物品网格（仅图标，不含进度/页码）
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (items.isEmpty()) {
+        if (this.items.isEmpty()) {
             int leftX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_entries"),
                     leftX, layout.rightPageY() + JournalLayout.GRID_TOP, 0x7A6247, false);
@@ -100,31 +145,139 @@ public final class ItemGridPanel implements PagePanel {
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
 
-        int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
-        int to = Math.min(items.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
-
-        for (int i = from; i < to; i++) {
-            int visualIndex = i - from;
-            int cellX = cellX(gridX, visualIndex);
-            int cellY = cellY(gridY, visualIndex);
-            boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
-            // 走马灯滚动状态：从非悬停切到悬停时重置计数，悬停期间持续累加
-            if (!slotWasHovered[visualIndex] && hovered) {
-                slotScrollTicks[visualIndex] = 0;
+        int visibleEntryCount;
+        if (this.activeTag != null) {
+            TagGroup group = this.tagGroups.get(this.activeTag);
+            List<GridItem> members = group != null ? group.members() : List.of();
+            int from = page * TAG_GROUP_MEMBERS_PER_PAGE;
+            int to = Math.min(members.size(), from + TAG_GROUP_MEMBERS_PER_PAGE);
+            boolean backHovered = isMouseOverCell(gridX, gridY, mouseX, mouseY);
+            updateHoverState(0, backHovered);
+            renderTagBackCell(guiGraphics, font, gridX, gridY,
+                    backHovered, this.activeTag, slotScrollTicks[0]);
+            for (int i = from; i < to; i++) {
+                int visualIndex = i - from + 1;
+                renderVisibleItem(guiGraphics, font, gridX, gridY, visualIndex,
+                        members.get(i), mouseX, mouseY);
             }
-            slotWasHovered[visualIndex] = hovered;
-            if (hovered) {
-                slotScrollTicks[visualIndex]++;
+            visibleEntryCount = to - from + 1;
+        } else {
+            int entryCount = this.tagGroups.size() + this.directItems.size();
+            int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
+            int to = Math.min(entryCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
+            List<TagGroup> groups = List.copyOf(this.tagGroups.values());
+            for (int i = from; i < to; i++) {
+                int visualIndex = i - from;
+                int cellX = cellX(gridX, visualIndex);
+                int cellY = cellY(gridY, visualIndex);
+                boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
+                updateHoverState(visualIndex, hovered);
+                if (i < groups.size()) {
+                    renderTagGroupCell(guiGraphics, font, cellX, cellY,
+                            groups.get(i), hovered, slotScrollTicks[visualIndex]);
+                } else {
+                    renderItemCell(guiGraphics, font, cellX, cellY,
+                            this.directItems.get(i - groups.size()), hovered,
+                            slotScrollTicks[visualIndex]);
+                }
             }
-            renderItemCell(guiGraphics, font, cellX, cellY, items.get(i), hovered, slotScrollTicks[visualIndex]);
+            visibleEntryCount = to - from;
         }
 
         // 行间分隔线
-        int visibleRows = (to - from + JournalLayout.GRID_CELLS_PER_ROW - 1) / JournalLayout.GRID_CELLS_PER_ROW;
+        int visibleRows = (visibleEntryCount + JournalLayout.GRID_CELLS_PER_ROW - 1)
+                / JournalLayout.GRID_CELLS_PER_ROW;
         for (int r = 1; r < visibleRows; r++) {
             int sepY = gridY + r * JournalLayout.GRID_CELL_HEIGHT;
             guiGraphics.fill(gridX, sepY, gridX + gridWidth, sepY + 1, JournalLayout.GRID_SEPARATOR_COLOR);
         }
+    }
+
+    private void renderVisibleItem(GuiGraphics guiGraphics, Font font, int gridX, int gridY,
+                                   int visualIndex, GridItem item, int mouseX, int mouseY) {
+        int cellX = cellX(gridX, visualIndex);
+        int cellY = cellY(gridY, visualIndex);
+        boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
+        updateHoverState(visualIndex, hovered);
+        renderItemCell(guiGraphics, font, cellX, cellY, item, hovered, slotScrollTicks[visualIndex]);
+    }
+
+    private void updateHoverState(int visualIndex, boolean hovered) {
+        if (!slotWasHovered[visualIndex] && hovered) {
+            slotScrollTicks[visualIndex] = 0;
+        }
+        slotWasHovered[visualIndex] = hovered;
+        if (hovered) {
+            slotScrollTicks[visualIndex]++;
+        }
+    }
+
+    private void renderTagGroupCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
+                                    TagGroup group, boolean hovered, int scrollTicks) {
+        int cellW = JournalLayout.GRID_CELL_WIDTH;
+        int cellH = JournalLayout.GRID_CELL_HEIGHT;
+        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
+                hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
+        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
+        guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
+
+        renderTagPreview(guiGraphics, group, cellX + cellW / 2, cellY + ICON_TOP);
+        ScrollTextHelper.draw(guiGraphics, font, group.id().toString(),
+                cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
+                TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
+
+        int discovered = group.discoveredCount();
+        Component progress = Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.tag_group_progress_short",
+                discovered, group.members().size());
+        int progressWidth = font.width(progress);
+        guiGraphics.drawString(font, progress, cellX + (cellW - progressWidth) / 2,
+                cellY + PROB_Y_OFFSET, TAG_GROUP_TEXT_COLOR, false);
+
+        if (!group.hasHighlightedMember()) {
+            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, 0x80808080);
+        }
+    }
+
+    private void renderTagPreview(GuiGraphics guiGraphics, TagGroup group, int centerX, int iconY) {
+        List<GridItem> discovered = group.members().stream().filter(GridItem::unlocked).limit(3).toList();
+        if (discovered.isEmpty()) {
+            guiGraphics.blit(UNKNOWN_TEXTURE, centerX - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE,
+                    0f, 0f, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE,
+                    UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
+            return;
+        }
+        int totalWidth = ICON_SIZE + (discovered.size() - 1) * 8;
+        int startX = centerX - totalWidth / 2;
+        for (int i = 0; i < discovered.size(); i++) {
+            ItemStack stack = discovered.get(i).stack();
+            int iconX = startX + i * 8;
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(iconX, iconY, i * 5f);
+            float scale = (float) ICON_SIZE / 16f;
+            guiGraphics.pose().scale(scale, scale, 1f);
+            guiGraphics.renderItem(stack, 0, 0);
+            guiGraphics.pose().popPose();
+        }
+    }
+
+    private void renderTagBackCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
+                                   boolean hovered, ResourceLocation tagId, int scrollTicks) {
+        int cellW = JournalLayout.GRID_CELL_WIDTH;
+        int cellH = JournalLayout.GRID_CELL_HEIGHT;
+        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
+                hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
+        Component backIcon = Component.literal("<");
+        guiGraphics.drawString(font, backIcon,
+                cellX + (cellW - font.width(backIcon)) / 2, cellY + ICON_TOP + 5,
+                TAG_GROUP_TEXT_COLOR, false);
+        ScrollTextHelper.draw(guiGraphics, font, tagId.toString(),
+                cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
+                TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
+        Component back = Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.tag_group_back");
+        guiGraphics.drawString(font, back, cellX + (cellW - font.width(back)) / 2,
+                cellY + PROB_Y_OFFSET, TAG_GROUP_TEXT_COLOR, false);
     }
 
     private void renderItemCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
@@ -242,26 +395,162 @@ public final class ItemGridPanel implements PagePanel {
 
     @Nullable
     public TooltipData getTooltipData(double mouseX, double mouseY) {
-        int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
-        int to = Math.min(items.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
+        GridItem hoveredItem = null;
+        if (this.activeTag != null) {
+            TagGroup group = this.tagGroups.get(this.activeTag);
+            List<GridItem> members = group != null ? group.members() : List.of();
+            int from = this.page * TAG_GROUP_MEMBERS_PER_PAGE;
+            int to = Math.min(members.size(), from + TAG_GROUP_MEMBERS_PER_PAGE);
+            for (int i = from; i < to; i++) {
+                int visualIndex = i - from + 1;
+                if (isMouseOverCell(cellX(gridX, visualIndex), cellY(gridY, visualIndex), mouseX, mouseY)) {
+                    hoveredItem = members.get(i);
+                    break;
+                }
+            }
+        } else {
+            int groupCount = this.tagGroups.size();
+            int entryCount = groupCount + this.directItems.size();
+            int from = this.page * JournalLayout.GRID_ITEMS_PER_PAGE;
+            int to = Math.min(entryCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
+            for (int i = Math.max(from, groupCount); i < to; i++) {
+                int visualIndex = i - from;
+                if (isMouseOverCell(cellX(gridX, visualIndex), cellY(gridY, visualIndex), mouseX, mouseY)) {
+                    hoveredItem = this.directItems.get(i - groupCount);
+                    break;
+                }
+            }
+        }
+        if (hoveredItem == null) {
+            return null;
+        }
+        if (!hoveredItem.unlocked()) {
+            return new TooltipData(ItemStack.EMPTY, null, -1, hoveredItem.probability(),
+                    hoveredItem.acquisitionPaths(), hoveredItem.injected(),
+                    hoveredItem.uncertaintyLevel(), false);
+        }
+        return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
+                hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
+                hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true);
+    }
 
+    // 处理 tag 分组入口与返回入口点击；普通物品格不消费点击。
+    public boolean handleClick(double mouseX, double mouseY, int button) {
+        if (button != 0) {
+            return false;
+        }
+        int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
+        int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
+        if (this.activeTag != null) {
+            if (isMouseOverCell(gridX, gridY, mouseX, mouseY)) {
+                this.activeTag = null;
+                this.page = 0;
+                resetHoverState();
+                return true;
+            }
+            return false;
+        }
+
+        int groupCount = this.tagGroups.size();
+        int from = this.page * JournalLayout.GRID_ITEMS_PER_PAGE;
+        int to = Math.min(groupCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
+        if (from >= groupCount) {
+            return false;
+        }
+        List<ResourceLocation> tagIds = List.copyOf(this.tagGroups.keySet());
         for (int i = from; i < to; i++) {
-            GridItem item = items.get(i);
             int visualIndex = i - from;
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
-                if (!item.unlocked()) {
-                    return new TooltipData(ItemStack.EMPTY, null, -1, item.probability(),
-                            item.acquisitionPaths(), item.injected(), item.uncertaintyLevel(), false);
-                }
-                return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability(),
-                        item.acquisitionPaths(), item.injected(), item.uncertaintyLevel(), true);
+                this.activeTag = tagIds.get(i);
+                this.page = 0;
+                resetHoverState();
+                return true;
             }
         }
+        return false;
+    }
+
+    // 渲染 tag 分组入口和返回入口的说明；物品 tooltip 由 JournalTooltipBuilder 处理。
+    public void renderNavigationTooltip(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        List<Component> lines = navigationTooltip(mouseX, mouseY);
+        if (lines != null) {
+            guiGraphics.renderTooltip(font,
+                    lines.stream().map(Component::getVisualOrderText).toList(), mouseX, mouseY);
+        }
+    }
+
+    @Nullable
+    private List<Component> navigationTooltip(double mouseX, double mouseY) {
+        int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
+        int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
+        if (this.activeTag != null) {
+            if (!isMouseOverCell(gridX, gridY, mouseX, mouseY)) {
+                return null;
+            }
+            return List.of(
+                    Component.literal(this.activeTag.toString()).withStyle(ChatFormatting.AQUA),
+                    Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip")
+                            .withStyle(ChatFormatting.GRAY));
+        }
+
+        int groupCount = this.tagGroups.size();
+        int from = this.page * JournalLayout.GRID_ITEMS_PER_PAGE;
+        int to = Math.min(groupCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
+        if (from >= groupCount) {
+            return null;
+        }
+        List<TagGroup> groups = List.copyOf(this.tagGroups.values());
+        for (int i = from; i < to; i++) {
+            int visualIndex = i - from;
+            if (!isMouseOverCell(cellX(gridX, visualIndex), cellY(gridY, visualIndex), mouseX, mouseY)) {
+                continue;
+            }
+            TagGroup group = groups.get(i);
+            return List.of(
+                    Component.literal(group.id().toString()).withStyle(ChatFormatting.AQUA),
+                    Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.tag_group_progress",
+                            group.discoveredCount(), group.members().size()).withStyle(ChatFormatting.GREEN),
+                    Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.tag_group_open")
+                            .withStyle(ChatFormatting.GRAY));
+        }
         return null;
+    }
+
+    private void rebuildTagGroups() {
+        this.directItems.clear();
+        this.tagGroups.clear();
+        LinkedHashMap<ResourceLocation, LinkedHashMap<String, GridItem>> groupedItems = new LinkedHashMap<>();
+        for (GridItem item : this.items) {
+            boolean hasDirectPath = item.acquisitionPaths().isEmpty();
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                ResourceLocation tagId = path.sourceItemTag();
+                if (tagId == null) {
+                    hasDirectPath = true;
+                    continue;
+                }
+                groupedItems.computeIfAbsent(tagId, ignored -> new LinkedHashMap<>())
+                        .putIfAbsent(item.signature().toStoredKey(), item);
+            }
+            if (hasDirectPath) {
+                this.directItems.add(item);
+            }
+        }
+        for (Map.Entry<ResourceLocation, LinkedHashMap<String, GridItem>> entry : groupedItems.entrySet()) {
+            this.tagGroups.put(entry.getKey(),
+                    new TagGroup(entry.getKey(), List.copyOf(entry.getValue().values())));
+        }
+    }
+
+    private void resetHoverState() {
+        Arrays.fill(this.slotScrollTicks, 0);
+        Arrays.fill(this.slotWasHovered, false);
     }
 
     private static int cellX(int gridX, int visualIndex) {
@@ -277,6 +566,17 @@ public final class ItemGridPanel implements PagePanel {
     private static boolean isMouseOverCell(int cellX, int cellY, double mouseX, double mouseY) {
         return mouseX >= cellX && mouseX < cellX + JournalLayout.GRID_CELL_WIDTH
                 && mouseY >= cellY && mouseY < cellY + JournalLayout.GRID_CELL_HEIGHT;
+    }
+
+    /** tag 分组入口所需的不可变展示数据。 */
+    private record TagGroup(ResourceLocation id, List<GridItem> members) {
+        private int discoveredCount() {
+            return (int) this.members.stream().filter(GridItem::unlocked).count();
+        }
+
+        private boolean hasHighlightedMember() {
+            return this.members.stream().anyMatch(GridItem::highlighted);
+        }
     }
 
     /**

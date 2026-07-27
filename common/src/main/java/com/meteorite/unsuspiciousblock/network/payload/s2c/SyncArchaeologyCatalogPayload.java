@@ -56,6 +56,10 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                     if (path.sourceChildTable() != null) {
                         buf.writeResourceLocation(path.sourceChildTable());
                     }
+                    buf.writeBoolean(path.sourceItemTag() != null);
+                    if (path.sourceItemTag() != null) {
+                        buf.writeResourceLocation(path.sourceItemTag());
+                    }
                     encodeConditionList(buf, path.entryConditions());
                     encodeConditionList(buf, path.inheritedConditions());
                 }
@@ -92,10 +96,13 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                     ResourceLocation sourceChildTable = buf.readBoolean()
                             ? buf.readResourceLocation()
                             : null;
+                    ResourceLocation sourceItemTag = buf.readBoolean()
+                            ? buf.readResourceLocation()
+                            : null;
                     List<LootConditionInfo> entryConditions = decodeConditionList(buf);
                     List<LootConditionInfo> inheritedConditions = decodeConditionList(buf);
                     acquisitionPaths.add(new LootAcquisitionPath(
-                            sourceChildTable, entryConditions, inheritedConditions));
+                            sourceChildTable, sourceItemTag, entryConditions, inheritedConditions));
                 }
                 boolean injected = buf.readBoolean();
                 items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability,

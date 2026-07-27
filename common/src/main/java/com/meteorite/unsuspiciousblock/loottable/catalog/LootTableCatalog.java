@@ -27,14 +27,22 @@ public final class LootTableCatalog {
 
     /**
      * 单个物品结果的获取路径。
-     * entryConditions 属于物品条目本身，inheritedConditions 来自 pool、组合 entry 或战利品表引用。
+     * sourceItemTag 标识该路径是否由物品 tag 展开，entryConditions 属于物品条目本身，
+     * inheritedConditions 来自 pool、组合 entry 或战利品表引用。
      */
     public record LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                      @Nullable ResourceLocation sourceItemTag,
                                       List<LootConditionInfo> entryConditions,
                                       List<LootConditionInfo> inheritedConditions) {
         public LootAcquisitionPath {
             entryConditions = List.copyOf(entryConditions);
             inheritedConditions = List.copyOf(inheritedConditions);
+        }
+
+        public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                   List<LootConditionInfo> entryConditions,
+                                   List<LootConditionInfo> inheritedConditions) {
+            this(sourceChildTable, null, entryConditions, inheritedConditions);
         }
 
         public boolean hasConditions() {

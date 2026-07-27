@@ -179,6 +179,13 @@ public final class RightPageContainer {
             this.logTabBtn.mouseClicked(mouseX, mouseY, button);
             return true;
         }
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
+            boolean changed = this.gridPanel.handleClick(mouseX, mouseY, button);
+            if (changed) {
+                syncPageIndicator();
+            }
+            return changed;
+        }
         if (this.activeTab != Tab.LOG) {
             return false;
         }
@@ -250,6 +257,16 @@ public final class RightPageContainer {
         syncPageIndicator();
     }
 
+    @Nullable
+    public ResourceLocation getActiveItemTag() {
+        return this.gridPanel.getActiveTag();
+    }
+
+    public void setActiveItemTag(@Nullable ResourceLocation tagId) {
+        this.gridPanel.setActiveTag(tagId);
+        syncPageIndicator();
+    }
+
     public boolean isShowingLogDetail() {
         return this.logMode == LogMode.DETAIL;
     }
@@ -286,7 +303,9 @@ public final class RightPageContainer {
 
     // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮、返回按钮、详情页复制按钮），需在 super.render 之后调用
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (this.activeTab == Tab.LOG && this.logMode == LogMode.LIST) {
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
+            this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
+        } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.LIST) {
             this.logPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
         } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
             this.logDetailPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);

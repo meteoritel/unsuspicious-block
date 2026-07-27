@@ -222,6 +222,8 @@ public final class ArchaeologyJournalServerCatalog {
                     for (LootAcquisitionPath path : item.acquisitionPaths()) {
                         updateDigest(digest, path.sourceChildTable() != null
                                 ? path.sourceChildTable().toString() : "");
+                        updateDigest(digest, path.sourceItemTag() != null
+                                ? path.sourceItemTag().toString() : "");
                         updateConditionListDigest(digest, path.entryConditions());
                         updateConditionListDigest(digest, path.inheritedConditions());
                     }

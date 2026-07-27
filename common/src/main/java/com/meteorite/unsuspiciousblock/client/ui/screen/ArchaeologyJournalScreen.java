@@ -183,6 +183,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rightPage = new RightPageContainer(this.bookLayout);
 
         this.updateItemGridPanel();
+        this.rightPage.setActiveItemTag(snapshot.activeItemTag());
         this.rightPage.restoreLogSelection(snapshot.logEntryId(), snapshot.logDetail());
 
         // 恢复日志排序状态
@@ -587,6 +588,7 @@ public class ArchaeologyJournalScreen extends Screen {
                 this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO,
                 this.rightPage != null ? this.rightPage.getPage() : 0,
                 this.catalogPanel != null ? this.catalogPanel.getPage() : 0,
+                this.rightPage != null ? this.rightPage.getActiveItemTag() : null,
                 this.rightPage != null && this.rightPage.isShowingLogDetail(),
                 this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null,
                 this.logToolbar.sortDescending(),
@@ -604,6 +606,7 @@ public class ArchaeologyJournalScreen extends Screen {
             RightPageContainer.Tab tab,
             int rightPagePage,
             int catalogPage,
+            @Nullable ResourceLocation activeItemTag,
             boolean logDetail,
             @Nullable UUID logEntryId,
             boolean logSortDescending,
