@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.client.ui.widget.JournalPageButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
@@ -55,11 +56,13 @@ public class ArchaeologyJournalScreen extends Screen {
     private IconButton directoryBackButton;
     private int categoryFocusIndex;
     private int restoredCatalogPage;
+    private int emptyCatalogScrollTicks;
+    private int catalogProgressScrollTicks;
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
         this.viewModel = new JournalViewModel(state);
-        this.catalogToolbar = new CatalogToolbar(this::rebuildWidgets);
+        this.catalogToolbar = new CatalogToolbar(this::rebuildViewModels, this::rebuildWidgets);
         this.logToolbar = new LogToolbar();
     }
 
@@ -94,10 +97,6 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         this.catalogToolbar.setSortDescending(ArchaeologyJournalClientState.getLastCatalogSortDescending());
         this.catalogToolbar.setHideLocked(ArchaeologyJournalClientState.getLastCatalogHideLocked());
-        String savedCatalogSearchText = ArchaeologyJournalClientState.getLastCatalogSearchText();
-        if (savedCatalogSearchText != null && !savedCatalogSearchText.isEmpty()) {
-            this.catalogToolbar.setCurrentSearch(JournalSearchQuery.parse(savedCatalogSearchText));
-        }
 
         // 恢复日志工具栏状态
         this.logToolbar.setSortDescending(ArchaeologyJournalClientState.getLastLogSortDescending());
@@ -123,7 +122,9 @@ public class ArchaeologyJournalScreen extends Screen {
         ArchaeologyJournalClientState.setLastCatalogSortOrder(this.catalogToolbar.currentSortOrder());
         ArchaeologyJournalClientState.setLastCatalogSortDescending(this.catalogToolbar.sortDescending());
         ArchaeologyJournalClientState.setLastCatalogHideLocked(this.catalogToolbar.hideLocked());
-        ArchaeologyJournalClientState.setLastCatalogSearchText(this.catalogToolbar.currentSearch().rawQuery());
+        ArchaeologyJournalClientState.setLastCatalogSearchText("");
+        this.catalogToolbar.setCurrentSearch(JournalSearchQuery.EMPTY);
+        this.catalogToolbar.setSearchExpanded(false);
         // 持久化日志工具栏状态
         ArchaeologyJournalClientState.setLastLogSortDescending(this.logToolbar.sortDescending());
         ArchaeologyJournalClientState.setLastLogGroupMode(this.logToolbar.groupMode());
@@ -291,7 +292,6 @@ public class ArchaeologyJournalScreen extends Screen {
         try {
             refreshAndSync();
             JournalBookBackground.render(guiGraphics, this.bookLayout);
-            renderTitle(guiGraphics);
             renderCatalogArea(guiGraphics, logicalMouseX, logicalMouseY);
             if (this.viewModel.isCategoryHome()) renderWelcomePage(guiGraphics);
             else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
@@ -319,14 +319,6 @@ public class ArchaeologyJournalScreen extends Screen {
         }
     }
 
-    // 渲染标题
-    private void renderTitle(GuiGraphics guiGraphics) {
-        int titleWidth = this.font.width(this.title);
-        guiGraphics.drawString(this.font, this.title,
-                (this.viewport.logicalWidth() - titleWidth) / 2,
-                this.bookLayout.bookY() + 2, 0x4A3320, false);
-    }
-
     // 渲染左侧目录区域（目录面板、解锁进度、翻页指示器、空状态）
     private void renderCatalogArea(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (this.catalogPanel != null) {
@@ -334,7 +326,7 @@ public class ArchaeologyJournalScreen extends Screen {
         }
 
         if (this.viewModel.totalTableCount() > 0) {
-            renderCatalogProgress(guiGraphics);
+            renderCatalogProgress(guiGraphics, mouseX, mouseY);
         }
 
         if (this.catalogPageIndicator != null && this.catalogPanel != null) {
@@ -343,16 +335,22 @@ public class ArchaeologyJournalScreen extends Screen {
         }
 
         if (!this.viewModel.isCategoryHome() && this.viewModel.isEmpty()) {
-            guiGraphics.drawString(this.font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_catalog"),
-                    this.bookLayout.leftPageX()
-                            + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
-                            + JournalLayout.CATALOG_X_OFFSET
-                            + JournalLayout.CATALOG_LEFT_PAD,
-                    this.bookLayout.leftPageY() + JournalLayout.CATALOG_LIST_TOP, 0x7A6247, false);
+            int x = this.bookLayout.leftPageX()
+                    + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
+                    + JournalLayout.CATALOG_X_OFFSET + JournalLayout.CATALOG_LEFT_PAD;
+            int y = this.bookLayout.leftPageY() + JournalLayout.CATALOG_LIST_TOP;
+            int width = JournalLayout.CATALOG_TEXTURE_WIDTH - JournalLayout.CATALOG_LEFT_PAD * 2;
+            boolean hovered = isTextHovered(mouseX, mouseY, x, y, width);
+            this.emptyCatalogScrollTicks = hovered ? this.emptyCatalogScrollTicks + 1 : 0;
+            ScrollTextHelper.draw(guiGraphics, this.font,
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_catalog").getString(),
+                    x, y, width, 0x7A6247, hovered, this.emptyCatalogScrollTicks, false);
+        } else {
+            this.emptyCatalogScrollTicks = 0;
         }
     }
 
-    private void renderCatalogProgress(GuiGraphics graphics) {
+    private void renderCatalogProgress(GuiGraphics graphics, int mouseX, int mouseY) {
         int unlocked = this.viewModel.displayedUnlockedTableCount();
         int total = this.viewModel.displayedTableCount();
         int x = this.bookLayout.leftPageX()
@@ -370,28 +368,36 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         Component label = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.unlocked_tables", unlocked, total);
-        graphics.drawString(this.font, label, x + (width - this.font.width(label)) / 2,
-                y + 2, 0xFF3D2810, false);
+        boolean hovered = isTextHovered(mouseX, mouseY, x + 2, y + 1, width - 4);
+        this.catalogProgressScrollTicks = hovered ? this.catalogProgressScrollTicks + 1 : 0;
+        ScrollTextHelper.draw(graphics, this.font, label.getString(), x + 2, y + 2, width - 4,
+                0xFF3D2810, hovered, this.catalogProgressScrollTicks, true);
     }
 
     private void renderWelcomePage(GuiGraphics graphics) {
-        int x = this.bookLayout.rightPageX() + 16;
-        int y = this.bookLayout.rightPageY() + 28;
-        int width = this.bookLayout.rightPageWidth() - 32;
+        int titleX = this.bookLayout.rightPageX() + 8;
+        int titleWidth = this.bookLayout.rightPageWidth() - 16;
+        int y = this.bookLayout.rightPageY() + 24;
         Component welcome = Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.title");
-        graphics.drawString(this.font, welcome, x + (width - this.font.width(welcome)) / 2, y, 0x4A3320, false);
-        y += 24;
-        for (var line : this.font.split(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.welcome.body"), width)) {
-            graphics.drawString(this.font, line, x, y, 0x6E5A42, false);
+        for (var line : this.font.split(welcome, titleWidth)) {
+            graphics.drawString(this.font, line,
+                    titleX + (titleWidth - this.font.width(line)) / 2, y, 0x4A3320, false);
             y += this.font.lineHeight + 2;
         }
-        y += 16;
-        Component progress = Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.unlocked_tables",
-                this.viewModel.unlockedTableCount(), this.viewModel.totalTableCount());
-        graphics.drawString(this.font, progress, x + (width - this.font.width(progress)) / 2,
-                y, 0x7B3E18, false);
+        y += 12;
+
+        int bodyX = this.bookLayout.rightPageX() + 16;
+        int bodyWidth = this.bookLayout.rightPageWidth() - 32;
+        for (var line : this.font.split(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.welcome.body"), bodyWidth)) {
+            graphics.drawString(this.font, line, bodyX, y, 0x6E5A42, false);
+            y += this.font.lineHeight + 2;
+        }
+    }
+
+    private boolean isTextHovered(int mouseX, int mouseY, int x, int y, int width) {
+        return mouseX >= x && mouseX < x + width
+                && mouseY >= y && mouseY < y + this.font.lineHeight + 1;
     }
 
     private void renderEmptyCategoryPage(GuiGraphics graphics) {
@@ -537,11 +543,10 @@ public class ArchaeologyJournalScreen extends Screen {
         this.rebuildViewModels();
         this.clearWidgets();
 
-        if (!this.viewModel.isCategoryHome()) {
-            this.addRenderableWidget(this.rightPage.getIntroTabButton());
-            this.addRenderableWidget(this.rightPage.getArchaeologyTabButton());
-            this.addRenderableWidget(this.rightPage.getLogTabButton());
-        }
+        // 分组首页发起搜索时只刷新 ViewModel，因此书签必须预先注册，再通过可见性同步状态。
+        this.addRenderableWidget(this.rightPage.getIntroTabButton());
+        this.addRenderableWidget(this.rightPage.getArchaeologyTabButton());
+        this.addRenderableWidget(this.rightPage.getLogTabButton());
 
         // 目录工具栏
         boolean categoryHomeMode = this.viewModel.isCategoryHomeMode();
@@ -719,6 +724,11 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void syncButtonState() {
+        boolean showRightPageTabs = !this.viewModel.isCategoryHome();
+        applyButtonState(this.rightPage.getIntroTabButton(), showRightPageTabs, showRightPageTabs);
+        applyButtonState(this.rightPage.getArchaeologyTabButton(), showRightPageTabs, showRightPageTabs);
+        applyButtonState(this.rightPage.getLogTabButton(), showRightPageTabs, showRightPageTabs);
+
         boolean hasCatalogContent = this.viewModel.isCategoryHome()
                 ? !this.viewModel.categoryViews().isEmpty() : !this.viewModel.isEmpty();
         boolean hasMultipleCatalogPages = this.catalogPanel != null && hasCatalogContent
@@ -794,6 +804,10 @@ public class ArchaeologyJournalScreen extends Screen {
                 this.catalogToolbar.searchExpanded(),
                 this.catalogToolbar.hideLocked()
         );
+    }
+
+    public IconButton getDirectoryBackButton() {
+        return directoryBackButton;
     }
 
     // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态

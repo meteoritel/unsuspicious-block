@@ -157,7 +157,8 @@ public final class CatalogPanel {
             Component progress = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.category.progress",
                     category.unlocked(), category.total());
-            graphics.drawString(font, progress, rect.x() + 4, rect.bottom() - 13, 0x7A6247, false);
+            ScrollTextHelper.draw(graphics, font, progress.getString(), rect.x() + 4, rect.bottom() - 13,
+                    rect.width() - 8, 0x7A6247, hovered, ticks, true);
         }
     }
 

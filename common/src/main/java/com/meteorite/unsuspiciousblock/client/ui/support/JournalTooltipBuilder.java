@@ -43,6 +43,7 @@ public final class JournalTooltipBuilder {
         // 未发现物品只展示状态与获取条件，避免提前泄露物品身份
         if (data.discovered()) {
             lines.add(data.stack().getHoverName().copy().withStyle(ChatFormatting.WHITE));
+            JournalItemDetailAppender.append(lines, data.stack());
         } else {
             lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered")
                     .copy().withStyle(ChatFormatting.GRAY));

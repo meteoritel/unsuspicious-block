@@ -69,11 +69,6 @@ public final class LootTableJsonParser {
      * @param tableNameResolver 表展示名解析器
      */
     public LootTableJsonParser(Predicate<ResourceLocation> tableFilter,
-                               Function<ResourceLocation, Component> tableNameResolver) {
-        this(tableFilter, tableNameResolver, Set.of());
-    }
-
-    public LootTableJsonParser(Predicate<ResourceLocation> tableFilter,
                                Function<ResourceLocation, Component> tableNameResolver,
                                Set<ResourceLocation> excludedReferences) {
         this.tableFilter = tableFilter;
@@ -215,12 +210,8 @@ public final class LootTableJsonParser {
         switch (LootParseUtil.normalizeType(type)) {
             case "item" -> parseItem(object, ctx, entryConditions);
             case "tag" -> parseTag(object, ctx, entryConditions);
-            case "loot_table" -> {
-                expandLootTableReference(object, ctx, entryConditions);
-            }
-            case "group", "alternatives", "sequence" -> {
-                parseChildrenWithInheritedConditions(object, ctx, entryConditions);
-            }
+            case "loot_table" -> expandLootTableReference(object, ctx, entryConditions);
+            case "group", "alternatives", "sequence" -> parseChildrenWithInheritedConditions(object, ctx, entryConditions);
             default -> {
                 List<LootConditionInfo> previousParentConditions = pushInheritedConditions(ctx, entryConditions);
                 try {
@@ -421,7 +412,7 @@ public final class LootTableJsonParser {
                     entryHasConditions = true;
                     functionHints.add(unknownFunctionHint(extractTypeId(functionElement, "function")));
                     LOGGER.warn("解析战利品函数失败: function={}, error={}",
-                            String.valueOf(extractTypeId(functionElement, "function")),
+                            extractTypeId(functionElement, "function"),
                             decodeResult.error().map(Object::toString).orElse("unknown"));
                     continue;
                 }

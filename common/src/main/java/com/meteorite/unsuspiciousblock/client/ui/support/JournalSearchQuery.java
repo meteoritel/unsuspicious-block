@@ -74,9 +74,9 @@ public final class JournalSearchQuery {
             }
         }
 
-        // 仅前缀无内容 → EMPTY（匹配全部）
+        // 仅前缀无内容时仍匹配全部，但保留原始输入供搜索框显示与状态恢复。
         if (trimmed.isEmpty()) {
-            return EMPTY;
+            return new JournalSearchQuery(mode, input, "");
         }
         return new JournalSearchQuery(mode, input, trimmed.toLowerCase(Locale.ROOT));
     }

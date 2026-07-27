@@ -33,6 +33,7 @@ public final class ArchaeologyJournalCatalog {
     private ArchaeologyJournalCatalog() {
     }
 
+    // 加载考古手册目录：构建引用图 → 检测循环引用 → 解析表 → 加载分类 → 组装结果
     public static LoadResult load(ResourceManager resourceManager, HolderLookup.Provider registries) {
         Map<ResourceLocation, Resource> resources = LOOT_TABLES.listMatchingResources(resourceManager);
         Map<ResourceLocation, List<ResourceLocation>> graph = buildReferenceGraph(resources);
@@ -70,6 +71,7 @@ public final class ArchaeologyJournalCatalog {
         return new LoadResult(Map.copyOf(tables), structure);
     }
 
+    // 构建战利品表引用图：遍历所有 loot_table 资源，解析每个表中的直接引用关系
     private static Map<ResourceLocation, List<ResourceLocation>> buildReferenceGraph(
             Map<ResourceLocation, Resource> resources) {
         LinkedHashMap<ResourceLocation, List<ResourceLocation>> graph = new LinkedHashMap<>();
@@ -86,6 +88,7 @@ public final class ArchaeologyJournalCatalog {
         return graph;
     }
 
+    // 递归收集 JSON 元素中的直接战利品表引用（type 为 loot_table 或 minecraft:loot_table 的条目）
     private static void collectDirectReferences(JsonElement element, Set<ResourceLocation> output) {
         if (element == null || element.isJsonNull()) return;
         if (element.isJsonArray()) {
@@ -108,6 +111,7 @@ public final class ArchaeologyJournalCatalog {
         object.entrySet().forEach(entry -> collectDirectReferences(entry.getValue(), output));
     }
 
+    // 从根节点出发 BFS 收集所有可达节点，排除 specified 集合中的节点
     private static Set<ResourceLocation> collectReachable(Set<ResourceLocation> roots,
                                                            Map<ResourceLocation, List<ResourceLocation>> graph,
                                                            Set<ResourceLocation> excluded) {
@@ -123,6 +127,7 @@ public final class ArchaeologyJournalCatalog {
         return result;
     }
 
+    // 在给定节点集合中检测循环引用，返回所有参与循环的表 ID
     private static Set<ResourceLocation> findCycleTables(Set<ResourceLocation> nodes,
                                                           Map<ResourceLocation, List<ResourceLocation>> graph) {
         Map<ResourceLocation, VisitState> states = new HashMap<>();
@@ -135,6 +140,7 @@ public final class ArchaeologyJournalCatalog {
         return cycleTables;
     }
 
+    // DFS 遍历检测循环引用，发现环时记录日志并将环中所有节点加入排除集合
     private static void dfsCycles(ResourceLocation node, Set<ResourceLocation> nodes,
                                   Map<ResourceLocation, List<ResourceLocation>> graph,
                                   Map<ResourceLocation, VisitState> states, List<ResourceLocation> stack,
@@ -150,7 +156,9 @@ public final class ArchaeologyJournalCatalog {
                 cycleTables.addAll(cycle);
                 cycle.add(child);
                 String signature = cycle.toString();
-                if (reported.add(signature)) Constants.LOG.warn("检测到战利品表循环引用，排除闭环: {}", cycle);
+                if (reported.add(signature)) {
+                    Constants.LOG.warn("检测到战利品表循环引用，排除闭环: {}", cycle);
+                }
             } else if (state == null) {
                 dfsCycles(child, nodes, graph, states, stack, cycleTables, reported);
             }

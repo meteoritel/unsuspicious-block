@@ -25,14 +25,18 @@ public final class DetailOverlayPanel implements PagePanel {
     private static final int MUTED_COLOR = 0x7A6247;
     private static final int ITEM_ROW_HEIGHT = 16;
     private static final int FOOTER_HEIGHT = 32;
-    private static final int MOD_SOURCE_TOP_OFFSET = 26;
-    private static final int MOD_SOURCE_LABEL_GAP = 4;
+    private static final int MOD_SOURCE_TOP_OFFSET = 30;
 
     private final JournalBookBackground.BookLayout layout;
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     private int parsedCount;
     private int totalCount;
     private String modSource;
+    private int progressLabelScrollTicks;
+    private int progressValueScrollTicks;
+    private int discoveredLabelScrollTicks;
+    private int emptyStateScrollTicks;
+    private int modLabelScrollTicks;
     private int modSourceScrollTicks;
     private boolean modSourceWasHovered;
     private List<DiscoveredItemEntry> unlockedItems = List.of();
@@ -85,7 +89,10 @@ public final class DetailOverlayPanel implements PagePanel {
 
         // 解析进度标题
         Component progressLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.parse_progress");
-        guiGraphics.drawString(font, progressLabel, leftX, y, LABEL_COLOR, false);
+        boolean progressLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
+        this.progressLabelScrollTicks = progressLabelHovered ? this.progressLabelScrollTicks + 1 : 0;
+        ScrollTextHelper.draw(guiGraphics, font, progressLabel.getString(), leftX, y, contentWidth,
+                LABEL_COLOR, progressLabelHovered, this.progressLabelScrollTicks, false);
         y += 14;
 
         guiGraphics.fill(leftX, y, leftX + contentWidth, y + BAR_HEIGHT, BAR_BG_COLOR);
@@ -100,27 +107,44 @@ public final class DetailOverlayPanel implements PagePanel {
 
             int percent = (int) (ratio * 100.0);
             String percentText = percent + "%  (" + this.parsedCount + "/" + this.totalCount + ")";
-            int textWidth = font.width(percentText);
-            guiGraphics.drawString(font, percentText,
-                    leftX + (contentWidth - textWidth) / 2, y + 2, 0xFFFFFFFF, false);
+            boolean valueHovered = isTextHovered(mouseX, mouseY, leftX + 2, y + 1,
+                    contentWidth - 4, BAR_HEIGHT - 2);
+            this.progressValueScrollTicks = valueHovered ? this.progressValueScrollTicks + 1 : 0;
+            ScrollTextHelper.draw(guiGraphics, font, percentText, leftX + 2, y + 2, contentWidth - 4,
+                    0xFFFFFFFF, valueHovered, this.progressValueScrollTicks, true);
+        } else {
+            this.progressValueScrollTicks = 0;
         }
         y += BAR_HEIGHT + 10;
 
         // 已发现物品列表
         Component discoveredLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.discovered_items");
-        guiGraphics.drawString(font, discoveredLabel, leftX, y, LABEL_COLOR, false);
+        boolean discoveredLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
+        this.discoveredLabelScrollTicks = discoveredLabelHovered ? this.discoveredLabelScrollTicks + 1 : 0;
+        ScrollTextHelper.draw(guiGraphics, font, discoveredLabel.getString(), leftX, y, contentWidth,
+                LABEL_COLOR, discoveredLabelHovered, this.discoveredLabelScrollTicks, false);
         y = listStartY(y);
 
         if (this.unlockedItems.isEmpty()) {
-            guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.no_discoveries"),
-                    leftX + 2, y, MUTED_COLOR, false);
+            int emptyWidth = contentWidth - 4;
+            boolean emptyHovered = isTextHovered(mouseX, mouseY, leftX + 2, y, emptyWidth, font.lineHeight);
+            this.emptyStateScrollTicks = emptyHovered ? this.emptyStateScrollTicks + 1 : 0;
+            ScrollTextHelper.draw(guiGraphics, font,
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.no_discoveries").getString(),
+                    leftX + 2, y, emptyWidth, MUTED_COLOR, emptyHovered, this.emptyStateScrollTicks, false);
             y += 12;
         } else {
+            this.emptyStateScrollTicks = 0;
             int maxVisibleItems = maxVisibleItems(y);
             int page = this.pagination.getPage();
             int from = page * maxVisibleItems;
             int to = Math.min(this.unlockedItems.size(), from + maxVisibleItems);
             int showCount = Math.max(0, to - from);
+            int countColumnWidth = 0;
+            for (int i = from; i < to; i++) {
+                countColumnWidth = Math.max(countColumnWidth,
+                        font.width(formatCount(this.unlockedItems.get(i).item.count())));
+            }
 
             for (int i = 0; i < showCount; i++) {
                 DiscoveredItemEntry entry = this.unlockedItems.get(from + i);
@@ -133,13 +157,14 @@ public final class DetailOverlayPanel implements PagePanel {
                 guiGraphics.renderItemDecorations(font, stack, leftX + 2, rowY - 1);
 
                 // 获得次数
-                String countText = "×" + item.count();
-                int countWidth = font.width(countText);
-                guiGraphics.drawString(font, countText, leftX + contentWidth - countWidth, rowY + 2, LABEL_COLOR, false);
+                String countText = formatCount(item.count());
+                int countX = leftX + contentWidth - countColumnWidth;
+                guiGraphics.drawString(font, countText, countX + countColumnWidth - font.width(countText),
+                        rowY + 2, LABEL_COLOR, false);
 
                 // 名称
                 int nameX = leftX + 22;
-                int nameMaxWidth = Math.max(0, contentWidth - 24 - countWidth - 6);
+                int nameMaxWidth = Math.max(0, countX - nameX - 4);
                 boolean hovered = mouseX >= nameX && mouseX < nameX + nameMaxWidth
                         && mouseY >= rowY && mouseY < rowY + ITEM_ROW_HEIGHT;
                 if (!entry.wasHovered && hovered) {
@@ -160,11 +185,13 @@ public final class DetailOverlayPanel implements PagePanel {
         // 模组来源
         y = Math.max(y, this.layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
         Component modLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.mod_source");
-        guiGraphics.drawString(font, modLabel, leftX, y, LABEL_COLOR, false);
-        int sourceX = leftX + font.width(modLabel) + MOD_SOURCE_LABEL_GAP;
-        int sourceWidth = Math.max(0, contentWidth - font.width(modLabel) - MOD_SOURCE_LABEL_GAP);
-        boolean sourceHovered = mouseX >= sourceX && mouseX < sourceX + sourceWidth
-                && mouseY >= y && mouseY < y + font.lineHeight + 1;
+        boolean modLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
+        this.modLabelScrollTicks = modLabelHovered ? this.modLabelScrollTicks + 1 : 0;
+        ScrollTextHelper.draw(guiGraphics, font, modLabel.getString(), leftX, y, contentWidth,
+                LABEL_COLOR, modLabelHovered, this.modLabelScrollTicks, false);
+        int sourceY = y + font.lineHeight + 2;
+        boolean sourceHovered = mouseX >= leftX && mouseX < leftX + contentWidth
+                && mouseY >= sourceY && mouseY < sourceY + font.lineHeight + 1;
         if (!this.modSourceWasHovered && sourceHovered) {
             this.modSourceScrollTicks = 0;
         }
@@ -173,7 +200,7 @@ public final class DetailOverlayPanel implements PagePanel {
             this.modSourceScrollTicks++;
         }
         ScrollTextHelper.draw(guiGraphics, font, this.modSource,
-                sourceX, y, sourceWidth, TEXT_COLOR,
+                leftX, sourceY, contentWidth, TEXT_COLOR,
                 sourceHovered, this.modSourceScrollTicks, false);
     }
 
@@ -208,6 +235,14 @@ public final class DetailOverlayPanel implements PagePanel {
         int listStartY = listStartY(this.layout.rightPageY() + JournalLayout.GRID_TOP + 14 + BAR_HEIGHT + 10);
         int maxVisibleItems = maxVisibleItems(listStartY);
         return Math.max(1, (this.unlockedItems.size() + maxVisibleItems - 1) / maxVisibleItems);
+    }
+
+    private static String formatCount(int count) {
+        return "×" + count;
+    }
+
+    private static boolean isTextHovered(int mouseX, int mouseY, int x, int y, int width, int height) {
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
     private static final class DiscoveredItemEntry {

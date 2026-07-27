@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
+import com.meteorite.unsuspiciousblock.client.ui.widget.ShadowlessEditBox;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -19,6 +20,10 @@ import java.util.List;
  * 及其状态（搜索查询、排序方式、排序方向、搜索展开状态）。
  */
 public class CatalogToolbar {
+    private static final int SEARCH_TEXT_HORIZONTAL_PADDING = 3;
+    private static final int SEARCH_BORDER_COLOR = 0xFF8B6914;
+    private static final int SEARCH_BG_COLOR = 0xFFD8C0A0;
+    private static final int SEARCH_TEXT_COLOR = 0xFF5A3D23;
 
     // 状态
     private JournalSearchQuery currentSearch = JournalSearchQuery.EMPTY;
@@ -37,12 +42,16 @@ public class CatalogToolbar {
     private IconButton sortOrderButton;
     private IconButton hideLockedButton;
     private EditBox searchField;
+    private int searchBackgroundX;
+    private int searchBackgroundY;
 
     // 回调
-    private final Runnable onConfigChanged;
+    private final Runnable onContentChanged;
+    private final Runnable onLayoutChanged;
 
-    public CatalogToolbar(Runnable onConfigChanged) {
-        this.onConfigChanged = onConfigChanged;
+    public CatalogToolbar(Runnable onContentChanged, Runnable onLayoutChanged) {
+        this.onContentChanged = onContentChanged;
+        this.onLayoutChanged = onLayoutChanged;
     }
 
     // —— 状态访问器 ——
@@ -100,7 +109,7 @@ public class CatalogToolbar {
     /** 搜索框内容变化 */
     public void onSearchChanged(String text) {
         this.currentSearch = JournalSearchQuery.parse(text);
-        onConfigChanged.run();
+        this.onContentChanged.run();
     }
 
     /** 切换搜索框展开/收起 */
@@ -111,7 +120,7 @@ public class CatalogToolbar {
         } else {
             this.currentSearch = JournalSearchQuery.EMPTY;
         }
-        onConfigChanged.run();
+        this.onLayoutChanged.run();
     }
 
     /** 循环切换排序方式 */
@@ -121,7 +130,7 @@ public class CatalogToolbar {
             this.sortButton.setIcon(sortOrderIcon(this.currentSortOrder));
             this.sortButton.setTooltip(CatalogSorter.sortOrderTooltip(this.currentSortOrder));
         }
-        onConfigChanged.run();
+        this.onContentChanged.run();
     }
 
     /** 切换正序/倒序 */
@@ -131,7 +140,7 @@ public class CatalogToolbar {
             this.sortOrderButton.setIcon(sortDirectionIcon(this.sortDescending));
             this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
         }
-        onConfigChanged.run();
+        this.onContentChanged.run();
     }
 
     /** 切换是否隐藏未解锁条目 */
@@ -141,7 +150,7 @@ public class CatalogToolbar {
             this.hideLockedButton.setIcon(hideLockedIcon(this.hideLocked));
             this.hideLockedButton.setTooltip(hideLockedTooltip(this.hideLocked));
         }
-        onConfigChanged.run();
+        this.onContentChanged.run();
     }
 
     private static IconButton.Icon sortOrderIcon(CatalogSorter.SortOrder order) {
@@ -282,11 +291,17 @@ public class CatalogToolbar {
         if (this.searchExpanded) {
             String savedText = this.currentSearch.rawQuery();
             boolean hadFocus = this.searchField != null && this.searchField.isFocused();
-            int searchFieldX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
-            this.searchField = new EditBox(font,
-                    searchFieldX, toolbarY + (JournalLayout.SEARCH_QUICK_BAR_HEIGHT - JournalLayout.SEARCH_BAR_HEIGHT) / 2,
-                    this.expandedSearchFieldWidth, JournalLayout.SEARCH_BAR_HEIGHT,
+            this.searchBackgroundX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
+            this.searchBackgroundY = toolbarY;
+            int searchFieldX = this.searchBackgroundX + SEARCH_TEXT_HORIZONTAL_PADDING;
+            int searchFieldY = toolbarY + (JournalLayout.SEARCH_BAR_HEIGHT - font.lineHeight) / 2;
+            int searchFieldWidth = Math.max(1,
+                    this.expandedSearchFieldWidth - SEARCH_TEXT_HORIZONTAL_PADDING * 2);
+            this.searchField = new ShadowlessEditBox(font,
+                    searchFieldX, searchFieldY, searchFieldWidth, font.lineHeight,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
+            this.searchField.setBordered(false);
+            this.searchField.setTextColor(SEARCH_TEXT_COLOR);
             this.searchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
             this.searchField.setMaxLength(50);
             // 初始化值会同步触发 responder，必须在绑定回调前恢复文本，避免重建递归
@@ -305,20 +320,15 @@ public class CatalogToolbar {
         }
     }
 
-    /** 渲染搜索框展开态暗黄色底色背景 */
+    /** 渲染与搜索按钮等高、同色的搜索框背景。 */
     public void renderSearchBackground(GuiGraphics guiGraphics) {
         if (this.searchExpanded && this.searchField != null) {
-            int searchBgX = this.searchField.getX() - 1;
-            int searchBgY = this.searchField.getY() - 1;
-            int searchBgW = this.searchField.getWidth() + 2;
-            int searchBgH = this.searchField.getHeight() + 2;
-            int borderColor = 0xFF8B6914;
-            int borderLight = 0xFFB8943C;
-            int bgColor = 0xFFD8C0A0;
-            guiGraphics.fill(searchBgX, searchBgY, searchBgX + searchBgW, searchBgY + searchBgH, borderColor);
-            guiGraphics.fill(searchBgX + 1, searchBgY + 1, searchBgX + searchBgW - 1, searchBgY + 2, borderLight);
-            guiGraphics.fill(searchBgX + 1, searchBgY + 2, searchBgX + 2, searchBgY + searchBgH - 1, borderLight);
-            guiGraphics.fill(searchBgX + 1, searchBgY + 1, searchBgX + searchBgW - 1, searchBgY + searchBgH - 1, bgColor);
+            int right = this.searchBackgroundX + this.expandedSearchFieldWidth;
+            int bottom = this.searchBackgroundY + JournalLayout.SEARCH_BAR_HEIGHT;
+            guiGraphics.fill(this.searchBackgroundX, this.searchBackgroundY,
+                    right, bottom, SEARCH_BORDER_COLOR);
+            guiGraphics.fill(this.searchBackgroundX + 1, this.searchBackgroundY + 1,
+                    right - 1, bottom - 1, SEARCH_BG_COLOR);
         }
     }
 

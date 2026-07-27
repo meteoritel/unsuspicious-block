@@ -41,6 +41,7 @@
   ],
   "client": [
     "client.AbstractContainerScreenAccessor",
+    "client.EditBoxMixin",
     "client.EnchantmentScreenMixin"
   ],
   "server": [],

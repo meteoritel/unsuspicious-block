@@ -137,7 +137,7 @@
   "screen.unsuspiciousblock.archaeology_journal.items": "Items: %d",
   "screen.unsuspiciousblock.archaeology_journal.summary": "Unlocked Tables: %d | Parsed: %d/%d",
   "screen.unsuspiciousblock.archaeology_journal.unlocked_tables": "Unlocked %d/%d",
-  "screen.unsuspiciousblock.archaeology_journal.category.progress": "Unlocked %d/%d",
+  "screen.unsuspiciousblock.archaeology_journal.category.progress": "%d/%d",
   "screen.unsuspiciousblock.archaeology_journal.category.back": "Back to categories",
   "screen.unsuspiciousblock.archaeology_journal.category.no_discovered_entries": "No entries in this category have been discovered yet.",
   "screen.unsuspiciousblock.archaeology_journal.welcome.title": "Welcome to the Archaeology Journal",
