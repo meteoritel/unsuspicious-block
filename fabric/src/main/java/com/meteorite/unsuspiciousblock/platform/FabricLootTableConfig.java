@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -15,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Fabric 战利品表配置——使用 GSON / JSON，规则说明见同目录 README.txt */
-public class FabricLootTableConfig implements ILootTableConfig {
+public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String CONFIG_DIR_NAME = "unsuspiciousblock";
@@ -27,6 +28,12 @@ public class FabricLootTableConfig implements ILootTableConfig {
     private final List<String> prefixes;
     private int maxLogEntriesPerTable;
     private long trackingTimeoutTicks;
+    private final int messengerLifetimeTicks;
+    private final int swordsmanLifetimeTicks;
+    private final int merchantLifetimeTicks;
+    private final int invulnerabilityDurationTicks;
+    private final int resistanceDurationTicks;
+    private final int fireResistanceDurationTicks;
 
     public FabricLootTableConfig() {
         ConfigData data = loadConfig();
@@ -34,6 +41,25 @@ public class FabricLootTableConfig implements ILootTableConfig {
                 ? data.archaeology_path_prefixes : DEFAULT_PREFIXES);
         this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
         this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
+        this.messengerLifetimeTicks = clampNpcLifetime("messenger_lifetime_ticks", data.messenger_lifetime_ticks,
+                DEFAULT_MESSENGER_LIFETIME_TICKS);
+        this.swordsmanLifetimeTicks = clampNpcLifetime("swordsman_lifetime_ticks", data.swordsman_lifetime_ticks,
+                DEFAULT_SWORDSMAN_LIFETIME_TICKS);
+        this.merchantLifetimeTicks = clampNpcLifetime("merchant_lifetime_ticks", data.merchant_lifetime_ticks,
+                DEFAULT_MERCHANT_LIFETIME_TICKS);
+        this.invulnerabilityDurationTicks = clampEffectDuration("invulnerability_duration_ticks",
+                data.invulnerability_duration_ticks, DEFAULT_INVULNERABILITY_DURATION_TICKS);
+        this.resistanceDurationTicks = clampEffectDuration("resistance_duration_ticks",
+                data.resistance_duration_ticks, DEFAULT_RESISTANCE_DURATION_TICKS);
+        this.fireResistanceDurationTicks = clampEffectDuration("fire_resistance_duration_ticks",
+                data.fire_resistance_duration_ticks, DEFAULT_FIRE_RESISTANCE_DURATION_TICKS);
+        if (!hasValidSpiritConfig(data)) {
+            saveToFile(getConfigPath(), new ConfigData(this.prefixes, this.maxLogEntriesPerTable,
+                    this.trackingTimeoutTicks, this.messengerLifetimeTicks, this.swordsmanLifetimeTicks,
+                    this.merchantLifetimeTicks, this.invulnerabilityDurationTicks,
+                    this.resistanceDurationTicks, this.fireResistanceDurationTicks));
+            Constants.LOG.info("Added or repaired spirit cat fields in Fabric config {}.", getConfigPath());
+        }
     }
 
     @Override
@@ -49,6 +75,36 @@ public class FabricLootTableConfig implements ILootTableConfig {
     @Override
     public long getTrackingTimeoutTicks() {
         return this.trackingTimeoutTicks;
+    }
+
+    @Override
+    public int getMessengerLifetimeTicks() {
+        return this.messengerLifetimeTicks;
+    }
+
+    @Override
+    public int getSwordsmanLifetimeTicks() {
+        return this.swordsmanLifetimeTicks;
+    }
+
+    @Override
+    public int getMerchantLifetimeTicks() {
+        return this.merchantLifetimeTicks;
+    }
+
+    @Override
+    public int getInvulnerabilityDurationTicks() {
+        return this.invulnerabilityDurationTicks;
+    }
+
+    @Override
+    public int getResistanceDurationTicks() {
+        return this.resistanceDurationTicks;
+    }
+
+    @Override
+    public int getFireResistanceDurationTicks() {
+        return this.fireResistanceDurationTicks;
     }
 
     /**
@@ -72,7 +128,10 @@ public class FabricLootTableConfig implements ILootTableConfig {
         this.maxLogEntriesPerTable = clampedLog;
         this.trackingTimeoutTicks = clampedTimeout;
 
-        saveToFile(getConfigPath(), new ConfigData(cleanedPrefixes, clampedLog, clampedTimeout));
+        saveToFile(getConfigPath(), new ConfigData(cleanedPrefixes, clampedLog, clampedTimeout,
+                this.messengerLifetimeTicks, this.swordsmanLifetimeTicks, this.merchantLifetimeTicks,
+                this.invulnerabilityDurationTicks, this.resistanceDurationTicks,
+                this.fireResistanceDurationTicks));
         Constants.LOG.info("Updated loot table config via ModMenu: {} prefixes, maxLog={}, timeout={}",
                 cleanedPrefixes.size(), clampedLog, clampedTimeout);
     }
@@ -88,6 +147,37 @@ public class FabricLootTableConfig implements ILootTableConfig {
                 ? raw : DEFAULT_TRACKING_TIMEOUT_TICKS;
     }
 
+    private static int clampNpcLifetime(String key, int raw, int fallback) {
+        if (raw >= MIN_NPC_LIFETIME_TICKS && raw <= MAX_NPC_LIFETIME_TICKS) {
+            return raw;
+        }
+        Constants.LOG.warn("Invalid spirit cat config {}={}, using default {}.", key, raw, fallback);
+        return fallback;
+    }
+
+    private static int clampEffectDuration(String key, int raw, int fallback) {
+        if (raw >= MIN_EFFECT_DURATION_TICKS && raw <= MAX_EFFECT_DURATION_TICKS) {
+            return raw;
+        }
+        Constants.LOG.warn("Invalid spirit cat config {}={}, using default {}.", key, raw, fallback);
+        return fallback;
+    }
+
+    private static boolean hasValidSpiritConfig(ConfigData data) {
+        return data.messenger_lifetime_ticks >= MIN_NPC_LIFETIME_TICKS
+                && data.messenger_lifetime_ticks <= MAX_NPC_LIFETIME_TICKS
+                && data.swordsman_lifetime_ticks >= MIN_NPC_LIFETIME_TICKS
+                && data.swordsman_lifetime_ticks <= MAX_NPC_LIFETIME_TICKS
+                && data.merchant_lifetime_ticks >= MIN_NPC_LIFETIME_TICKS
+                && data.merchant_lifetime_ticks <= MAX_NPC_LIFETIME_TICKS
+                && data.invulnerability_duration_ticks >= MIN_EFFECT_DURATION_TICKS
+                && data.invulnerability_duration_ticks <= MAX_EFFECT_DURATION_TICKS
+                && data.resistance_duration_ticks >= MIN_EFFECT_DURATION_TICKS
+                && data.resistance_duration_ticks <= MAX_EFFECT_DURATION_TICKS
+                && data.fire_resistance_duration_ticks >= MIN_EFFECT_DURATION_TICKS
+                && data.fire_resistance_duration_ticks <= MAX_EFFECT_DURATION_TICKS;
+    }
+
     private static ConfigData loadConfig() {
         Path configPath = getConfigPath();
         // 同步生成中英文 README（缺失时补写），用于弥补 JSON 无注释的限制
@@ -95,7 +185,7 @@ public class FabricLootTableConfig implements ILootTableConfig {
         ensureReadme(getConfigDir().resolve(README_EN_FILE_NAME), buildReadmeEn());
         if (!Files.exists(configPath)) {
             saveDefaults(configPath);
-            return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
+            return defaultConfigData();
         }
 
         try (Reader reader = Files.newBufferedReader(configPath)) {
@@ -106,12 +196,20 @@ public class FabricLootTableConfig implements ILootTableConfig {
         } catch (IOException e) {
             Constants.LOG.warn("Failed to read loot table config from {}, using defaults.", configPath, e);
         }
-        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
+        return defaultConfigData();
     }
 
     private static void saveDefaults(Path configPath) {
-        saveToFile(configPath, new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS));
+        saveToFile(configPath, defaultConfigData());
         Constants.LOG.info("Created default loot table config at {}", configPath);
+    }
+
+    private static ConfigData defaultConfigData() {
+        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
+                DEFAULT_TRACKING_TIMEOUT_TICKS, DEFAULT_MESSENGER_LIFETIME_TICKS,
+                DEFAULT_SWORDSMAN_LIFETIME_TICKS, DEFAULT_MERCHANT_LIFETIME_TICKS,
+                DEFAULT_INVULNERABILITY_DURATION_TICKS, DEFAULT_RESISTANCE_DURATION_TICKS,
+                DEFAULT_FIRE_RESISTANCE_DURATION_TICKS);
     }
 
     // 统一的文件写入逻辑，供 saveDefaults 与运行时 save 共用
@@ -169,6 +267,15 @@ public class FabricLootTableConfig implements ILootTableConfig {
                 tracking_timeout_ticks
                     战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。
                     取值范围：600 – 60000。默认 6000（5 分钟）。
+
+                spirit_cat
+                    messenger_lifetime_ticks：信使最长现世时间，默认 600。
+                    swordsman_lifetime_ticks：剑士最长现世时间，默认 600。
+                    merchant_lifetime_ticks：商人最长现世时间，默认 48000。
+                    invulnerability_duration_ticks：九命纯无敌时间，默认 40。
+                    resistance_duration_ticks：九命抗性提升 II 时间，默认 600。
+                    fire_resistance_duration_ticks：九命防火 I 时间，默认 600。
+                    所有值均使用游戏刻；20 ticks = 1 秒。
                 """;
     }
 
@@ -204,6 +311,15 @@ public class FabricLootTableConfig implements ILootTableConfig {
                 tracking_timeout_ticks
                     Loot container tracking timeout (ticks). Auto-settles and clears tracking state on expiry.
                     Range: 600 – 60000. Default 6000 (5 minutes).
+
+                spirit_cat
+                    messenger_lifetime_ticks: messenger lifetime, default 600.
+                    swordsman_lifetime_ticks: swordsman lifetime, default 600.
+                    merchant_lifetime_ticks: merchant lifetime, default 48000.
+                    invulnerability_duration_ticks: Nine Lives invulnerability, default 40.
+                    resistance_duration_ticks: Nine Lives Resistance II, default 600.
+                    fire_resistance_duration_ticks: Nine Lives Fire Resistance I, default 600.
+                    All values are in game ticks; 20 ticks = 1 second.
                 """;
     }
 
@@ -222,13 +338,37 @@ public class FabricLootTableConfig implements ILootTableConfig {
         int max_log_entries_per_table;
         @SuppressWarnings("unused")
         long tracking_timeout_ticks;
+        @SuppressWarnings("unused")
+        int messenger_lifetime_ticks;
+        @SuppressWarnings("unused")
+        int swordsman_lifetime_ticks;
+        @SuppressWarnings("unused")
+        int merchant_lifetime_ticks;
+        @SuppressWarnings("unused")
+        int invulnerability_duration_ticks;
+        @SuppressWarnings("unused")
+        int resistance_duration_ticks;
+        @SuppressWarnings("unused")
+        int fire_resistance_duration_ticks;
 
         ConfigData(List<String> archaeology_path_prefixes,
                    int max_log_entries_per_table,
-                   long tracking_timeout_ticks) {
+                   long tracking_timeout_ticks,
+                   int messenger_lifetime_ticks,
+                   int swordsman_lifetime_ticks,
+                   int merchant_lifetime_ticks,
+                   int invulnerability_duration_ticks,
+                   int resistance_duration_ticks,
+                   int fire_resistance_duration_ticks) {
             this.archaeology_path_prefixes = archaeology_path_prefixes;
             this.max_log_entries_per_table = max_log_entries_per_table;
             this.tracking_timeout_ticks = tracking_timeout_ticks;
+            this.messenger_lifetime_ticks = messenger_lifetime_ticks;
+            this.swordsman_lifetime_ticks = swordsman_lifetime_ticks;
+            this.merchant_lifetime_ticks = merchant_lifetime_ticks;
+            this.invulnerability_duration_ticks = invulnerability_duration_ticks;
+            this.resistance_duration_ticks = resistance_duration_ticks;
+            this.fire_resistance_duration_ticks = fire_resistance_duration_ticks;
         }
     }
 }

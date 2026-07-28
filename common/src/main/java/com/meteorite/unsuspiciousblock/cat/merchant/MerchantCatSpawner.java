@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.cat.merchant;
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.entity.MerchantCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -22,7 +23,6 @@ import java.util.UUID;
  */
 public final class MerchantCatSpawner {
     private static final int ATTEMPT_INTERVAL = 24000;
-    private static final int LIFETIME = 48000;
     private static final int PLAYER_RADIUS = 48;
     private static final int POSITION_ATTEMPTS = 10;
 
@@ -77,8 +77,8 @@ public final class MerchantCatSpawner {
             return;
         }
         ServerPlayer target = candidates.get(level.getRandom().nextInt(candidates.size()));
-        BlockPos spawnPos = findSpawnPosition(level, target);
-        if (spawnPos == null) {
+        MerchantSpawnLocation location = findSpawnPosition(level, target);
+        if (location == null) {
             data.recordFailure();
             return;
         }
@@ -87,10 +87,11 @@ public final class MerchantCatSpawner {
             data.recordFailure();
             return;
         }
-        merchant.moveTo(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
+        BlockPos spawnPos = location.spawnPos();
+        merchant.moveTo(spawnPos.getX() + 0.5, spawnPos.getY() + 1.5, spawnPos.getZ() + 0.5,
                 level.getRandom().nextFloat() * 360.0F, 0.0F);
-        merchant.freezeSpawnY();
-        merchant.setSpiritLifetime(LIFETIME);
+        merchant.activateDuty(Services.SPIRIT_CAT_CONFIG.getMerchantLifetimeTicks());
+        merchant.configureActivityCenter(location.activityCenter());
         merchant.initializeTrades(level, CatFavorManager.getCatBond(target));
         if (level.addFreshEntity(merchant)) {
             data.recordSuccess(merchant.getUUID());
@@ -100,7 +101,7 @@ public final class MerchantCatSpawner {
     }
 
     @Nullable
-    private static BlockPos findSpawnPosition(ServerLevel level, ServerPlayer player) {
+    private static MerchantSpawnLocation findSpawnPosition(ServerLevel level, ServerPlayer player) {
         List<BlockPos> attempts = new ArrayList<>();
         Optional<BlockPos> meetingPoint = level.getPoiManager().findClosest(
                 holder -> holder.is(PoiTypes.MEETING),
@@ -116,7 +117,7 @@ public final class MerchantCatSpawner {
             int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, candidate.getX(), candidate.getZ());
             BlockPos pos = new BlockPos(candidate.getX(), y, candidate.getZ());
             if (level.isVillage(pos) && isOpen(level, pos)) {
-                return pos;
+                return new MerchantSpawnLocation(pos, meetingPoint.orElse(pos));
             }
         }
         return null;
@@ -126,5 +127,8 @@ public final class MerchantCatSpawner {
         return level.getBlockState(pos).getCollisionShape(level, pos).isEmpty()
                 && level.getBlockState(pos.above()).getCollisionShape(level, pos.above()).isEmpty()
                 && !level.getBlockState(pos.below()).getCollisionShape(level, pos.below()).isEmpty();
+    }
+
+    private record MerchantSpawnLocation(BlockPos spawnPos, BlockPos activityCenter) {
     }
 }

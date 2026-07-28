@@ -4,13 +4,13 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MorningGiftBehavior;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MessengerCatPositioning;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.level.storage.loot.LootTable;
 
@@ -51,16 +51,15 @@ public final class CatGiftService {
         if (ghost == null) {
             return;
         }
-        RandomSource random = owner.getRandom();
-        double x = owner.getX() + (random.nextInt(7) - 3);
-        double y = owner.getY();
-        double z = owner.getZ() + (random.nextInt(7) - 3);
-        ghost.moveTo(x, y, z, random.nextFloat() * 360.0F, 0.0F);
-        // 记录召唤 Y 作为穿墙位移底部夹紧基准，防止掉到基岩层
-        ghost.freezeSpawnY();
-        // 注入晨礼行为策略，阶段机将驱动显现→接近→致意→赠礼→消散全流程
-        ghost.assignBehavior(new MorningGiftBehavior(owner.getUUID(), GHOST_GIFT_LOOT_TABLE));
-        level.addFreshEntity(ghost);
-        state.setActiveMessengerUuid(ghost.getUUID());
+        MessengerCatPositioning.placeNearTarget(level, ghost, owner);
+        ghost.setYRot(owner.getRandom().nextFloat() * 360.0F);
+        // 引礼者只影响开场注视；配送目标始终为玩家。
+        MorningGiftBehavior behavior = new MorningGiftBehavior(
+                owner.getUUID(), cat.getUUID(), GHOST_GIFT_LOOT_TABLE, true);
+        ghost.assignBehavior(behavior);
+        ghost.activateDuty(behavior.getMaxLifetime());
+        if (level.addFreshEntity(ghost)) {
+            state.setActiveMessengerUuid(ghost.getUUID());
+        }
     }
 }

@@ -3,8 +3,10 @@ package com.meteorite.unsuspiciousblock.cat;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.effect.MobEffects;
@@ -41,9 +43,6 @@ public final class CatPassiveAbilities {
     private static final int NIGHT_VISION_CHECK_IDLE = 20;
     // 激活态刷新间隔（tick）：5 秒一次，已授予夜视后续期刷新
     private static final int NIGHT_VISION_CHECK_ACTIVE = 100;
-
-    // 九命触发后的纯无敌缓冲：2 秒。
-    public static final int NINE_LIVES_INVULN_TICKS = 40;
 
     private CatPassiveAbilities() {
     }
@@ -223,7 +222,7 @@ public final class CatPassiveAbilities {
 
     // ========== 猫之九命执行 ==========
 
-    // 触发九命：恢复满血、清除负面效果、提供 2 秒纯无敌并召唤剑士猫猫。
+    // 触发九命：恢复满血、清除负面效果、提供保护效果并召唤剑士猫猫。
     public static void triggerNineLives(ServerPlayer player, net.minecraft.world.damagesource.DamageSource source) {
         CatFavorState state = CatFavorManager.getState(player);
         if (state == null || !state.consumeOneLife()) {
@@ -235,11 +234,21 @@ public final class CatPassiveAbilities {
                 player.removeEffect(effect.getEffect());
             }
         }
-        player.addEffect(new MobEffectInstance(ModEffects.CAT_FAVOR,
-                NINE_LIVES_INVULN_TICKS, 0, true, true, true));
+        grantNineLivesProtection(player, source.is(DamageTypeTags.IS_FIRE));
         LivingEntity preferredTarget = source.getEntity() instanceof LivingEntity living ? living : null;
-        SwordsmanCatService.summonOrRefresh(
-                player, preferredTarget, SwordsmanCatService.DEFAULT_LIFETIME_TICKS);
+        SwordsmanCatService.summonOrRefresh(player, preferredTarget);
         CatFavorManager.sync(player);
+    }
+
+    // 授予九命保护效果；调试剑士复用该入口但不消耗命数。
+    public static void grantNineLivesProtection(ServerPlayer player, boolean includeFireResistance) {
+        player.addEffect(new MobEffectInstance(ModEffects.CAT_FAVOR,
+                Services.SPIRIT_CAT_CONFIG.getInvulnerabilityDurationTicks(), 0, true, true, true));
+        player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE,
+                Services.SPIRIT_CAT_CONFIG.getResistanceDurationTicks(), 1, true, true, true));
+        if (includeFireResistance) {
+            player.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE,
+                    Services.SPIRIT_CAT_CONFIG.getFireResistanceDurationTicks(), 0, true, true, true));
+        }
     }
 }

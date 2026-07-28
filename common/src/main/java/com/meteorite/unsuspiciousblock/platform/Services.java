@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
+import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
 import com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.world.IBoneBlockTracker;
 
@@ -18,6 +19,7 @@ public class Services {
     public static final INetworkHelper NETWORK = load(INetworkHelper.class);
     public static final IAccessoryHelper ACCESSORY = load(IAccessoryHelper.class);
     public static final ILootTableConfig LOOT_TABLE_CONFIG = load(ILootTableConfig.class);
+    public static final ISpiritCatConfig SPIRIT_CAT_CONFIG = load(ISpiritCatConfig.class);
     public static final IEnchantmentEventAdapter ENCHANTMENT = load(IEnchantmentEventAdapter.class);
     public static final ICatEventAdapter CAT = load(ICatEventAdapter.class);
     public static final IBoneBlockTracker BONE_BLOCK_TRACKER = load(IBoneBlockTracker.class);

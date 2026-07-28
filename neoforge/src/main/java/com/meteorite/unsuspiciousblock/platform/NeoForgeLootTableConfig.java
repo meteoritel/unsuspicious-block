@@ -1,16 +1,23 @@
 package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.util.List;
 
 /** NeoForge 战利品表配置——使用 ModConfigSpec / TOML */
-public class NeoForgeLootTableConfig implements ILootTableConfig {
+public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConfig {
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> ARCHAEOLOGY_PATH_PREFIXES;
     private static final ModConfigSpec.IntValue MAX_LOG_ENTRIES_PER_TABLE;
     private static final ModConfigSpec.LongValue TRACKING_TIMEOUT_TICKS;
+    private static final ModConfigSpec.IntValue MESSENGER_LIFETIME_TICKS;
+    private static final ModConfigSpec.IntValue SWORDSMAN_LIFETIME_TICKS;
+    private static final ModConfigSpec.IntValue MERCHANT_LIFETIME_TICKS;
+    private static final ModConfigSpec.IntValue INVULNERABILITY_DURATION_TICKS;
+    private static final ModConfigSpec.IntValue RESISTANCE_DURATION_TICKS;
+    private static final ModConfigSpec.IntValue FIRE_RESISTANCE_DURATION_TICKS;
 
     public static final ModConfigSpec CONFIG_SPEC;
 
@@ -67,6 +74,21 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
                         ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS);
         builder.pop();
 
+        builder.push("spirit_cat");
+        MESSENGER_LIFETIME_TICKS = defineNpcLifetime(builder, "messenger_lifetime_ticks",
+                DEFAULT_MESSENGER_LIFETIME_TICKS, "信使猫猫最长现世时间", "Messenger cat maximum lifetime");
+        SWORDSMAN_LIFETIME_TICKS = defineNpcLifetime(builder, "swordsman_lifetime_ticks",
+                DEFAULT_SWORDSMAN_LIFETIME_TICKS, "剑士猫猫最长现世时间", "Swordsman cat maximum lifetime");
+        MERCHANT_LIFETIME_TICKS = defineNpcLifetime(builder, "merchant_lifetime_ticks",
+                DEFAULT_MERCHANT_LIFETIME_TICKS, "商人猫猫最长现世时间", "Merchant cat maximum lifetime");
+        INVULNERABILITY_DURATION_TICKS = defineEffectDuration(builder, "invulnerability_duration_ticks",
+                DEFAULT_INVULNERABILITY_DURATION_TICKS, "九命纯无敌持续时间", "Nine Lives invulnerability duration");
+        RESISTANCE_DURATION_TICKS = defineEffectDuration(builder, "resistance_duration_ticks",
+                DEFAULT_RESISTANCE_DURATION_TICKS, "九命抗性提升 II 持续时间", "Nine Lives Resistance II duration");
+        FIRE_RESISTANCE_DURATION_TICKS = defineEffectDuration(builder, "fire_resistance_duration_ticks",
+                DEFAULT_FIRE_RESISTANCE_DURATION_TICKS, "九命防火 I 持续时间", "Nine Lives Fire Resistance I duration");
+        builder.pop();
+
         CONFIG_SPEC = builder.build();
     }
 
@@ -84,5 +106,47 @@ public class NeoForgeLootTableConfig implements ILootTableConfig {
     @Override
     public long getTrackingTimeoutTicks() {
         return TRACKING_TIMEOUT_TICKS.get();
+    }
+
+    @Override
+    public int getMessengerLifetimeTicks() {
+        return MESSENGER_LIFETIME_TICKS.get();
+    }
+
+    @Override
+    public int getSwordsmanLifetimeTicks() {
+        return SWORDSMAN_LIFETIME_TICKS.get();
+    }
+
+    @Override
+    public int getMerchantLifetimeTicks() {
+        return MERCHANT_LIFETIME_TICKS.get();
+    }
+
+    @Override
+    public int getInvulnerabilityDurationTicks() {
+        return INVULNERABILITY_DURATION_TICKS.get();
+    }
+
+    @Override
+    public int getResistanceDurationTicks() {
+        return RESISTANCE_DURATION_TICKS.get();
+    }
+
+    @Override
+    public int getFireResistanceDurationTicks() {
+        return FIRE_RESISTANCE_DURATION_TICKS.get();
+    }
+
+    private static ModConfigSpec.IntValue defineNpcLifetime(ModConfigSpec.Builder builder, String key,
+                                                             int defaultValue, String cn, String en) {
+        return builder.comment(cn + "（游戏刻）。", en + " (ticks).")
+                .defineInRange(key, defaultValue, MIN_NPC_LIFETIME_TICKS, MAX_NPC_LIFETIME_TICKS);
+    }
+
+    private static ModConfigSpec.IntValue defineEffectDuration(ModConfigSpec.Builder builder, String key,
+                                                                int defaultValue, String cn, String en) {
+        return builder.comment(cn + "（游戏刻）。", en + " (ticks).")
+                .defineInRange(key, defaultValue, MIN_EFFECT_DURATION_TICKS, MAX_EFFECT_DURATION_TICKS);
     }
 }

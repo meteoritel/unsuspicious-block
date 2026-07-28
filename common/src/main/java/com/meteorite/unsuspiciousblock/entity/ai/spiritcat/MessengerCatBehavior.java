@@ -25,6 +25,10 @@ public interface MessengerCatBehavior {
     @Nullable
     UUID getTargetUuid();
 
+    // 引来本次信使的羁绊猫 UUID；失效不会中断配送。
+    @Nullable
+    UUID getGuideUuid();
+
     // 礼物战利品表，null 表示不赠礼
     @Nullable
     ResourceKey<LootTable> getLootTable();
@@ -39,6 +43,12 @@ public interface MessengerCatBehavior {
 
     // 消散阶段持续时长
     int getDissipateDuration();
+
+    // 重新定位淡出/淡入阶段总时长。
+    int getRelocateDuration();
+
+    // 成功投放后的告别停留时长。
+    int getFarewellDuration();
 
     // 幽灵猫总寿命上限，超时强制进入消散
     int getMaxLifetime();
@@ -62,8 +72,11 @@ public interface MessengerCatBehavior {
     // 致意阶段每 tick 触发（心型粒子、轻柔猫叫等）
     void onGreetTick(MessengerCat cat, ServerLevel level, int ticksInPhase);
 
-    // 赠礼阶段触发（掷出战利品表物品、bell 声等），仅调用一次
-    void onDeliver(MessengerCat cat, ServerLevel level);
+    // 赠礼阶段触发，返回是否实际生成了至少一件礼物。
+    boolean onDeliver(MessengerCat cat, ServerLevel level);
+
+    // 告别阶段首 tick 触发。
+    void onFarewellStart(MessengerCat cat, ServerLevel level);
 
     // 消散阶段首 tick 触发（粒子爆散、远去声效等）
     void onDissipateStart(MessengerCat cat, ServerLevel level);

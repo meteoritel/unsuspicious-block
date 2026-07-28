@@ -175,12 +175,26 @@ public final class CatFavorState {
         this.activeMessengerUuid = entityUuid;
     }
 
+    // 仅在 UUID 匹配时清除活跃信使，避免旧实体移除时覆盖新记录。
+    public void clearActiveMessengerUuid(UUID entityUuid) {
+        if (entityUuid.equals(this.activeMessengerUuid)) {
+            this.activeMessengerUuid = null;
+        }
+    }
+
     public UUID getActiveSwordsmanUuid() {
         return this.activeSwordsmanUuid;
     }
 
     public void setActiveSwordsmanUuid(UUID entityUuid) {
         this.activeSwordsmanUuid = entityUuid;
+    }
+
+    // 仅在 UUID 匹配时清除活跃剑士，避免旧实体移除时覆盖新记录。
+    public void clearActiveSwordsmanUuid(UUID entityUuid) {
+        if (entityUuid.equals(this.activeSwordsmanUuid)) {
+            this.activeSwordsmanUuid = null;
+        }
     }
 
     // ========== 轻步总开关（持久化） ==========
