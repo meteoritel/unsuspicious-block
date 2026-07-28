@@ -12,7 +12,7 @@ public final class UsbCommand {
         dispatcher.register(Commands.literal("usb")
                 .requires(source -> source.hasPermission(2))
                 .then(JournalCommand.build())
-                .then(GhostCatDebugCommand.build())
+                .then(MessengerCatDebugCommand.build())
                 .then(CatFavorDebugCommand.build()));
     }
 }

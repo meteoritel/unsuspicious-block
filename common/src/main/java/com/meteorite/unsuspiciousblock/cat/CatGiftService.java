@@ -1,9 +1,9 @@
 package com.meteorite.unsuspiciousblock.cat;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.entity.GhostCat;
+import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
-import com.meteorite.unsuspiciousblock.entity.ai.ghost.MorningGiftBehavior;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MorningGiftBehavior;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -43,11 +43,11 @@ public final class CatGiftService {
             return;
         }
         if (state.getActiveMessengerUuid() != null
-                && level.getEntity(state.getActiveMessengerUuid()) instanceof GhostCat existing
+                && level.getEntity(state.getActiveMessengerUuid()) instanceof MessengerCat existing
                 && !existing.isRemoved()) {
             return;
         }
-        GhostCat ghost = ModEntities.GHOST_CAT.get().create(level);
+        MessengerCat ghost = ModEntities.MESSENGER_CAT.get().create(level);
         if (ghost == null) {
             return;
         }

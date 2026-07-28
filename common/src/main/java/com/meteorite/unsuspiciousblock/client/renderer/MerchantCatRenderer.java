@@ -13,8 +13,8 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 猫猫商人占位渲染器——暂用原版猫模型，职业装饰由后续正式模型替换。
  */
-public class CatMerchantRenderer extends MobRenderer<MerchantCat, CatModel<MerchantCat>> {
-    public CatMerchantRenderer(EntityRendererProvider.Context context) {
+public class MerchantCatRenderer extends MobRenderer<MerchantCat, CatModel<MerchantCat>> {
+    public MerchantCatRenderer(EntityRendererProvider.Context context) {
         super(context, new CatModel<>(context.bakeLayer(ModelLayers.CAT)), 0.0F);
     }
 

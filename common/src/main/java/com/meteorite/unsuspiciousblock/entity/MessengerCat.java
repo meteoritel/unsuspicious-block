@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.entity;
 
-import com.meteorite.unsuspiciousblock.entity.ai.ghost.GhostCatBehavior;
-import com.meteorite.unsuspiciousblock.entity.ai.ghost.GhostCatGiftGoal;
-import com.meteorite.unsuspiciousblock.entity.ai.ghost.GhostCatPhase;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MessengerCatBehavior;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MessengerCatGiftGoal;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MessengerCatPhase;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -18,30 +18,30 @@ import org.jetbrains.annotations.Nullable;
 /**
  * 猫猫信使实体——保留旧 `ghost_cat` registry ID，并通过阶段机完成晨礼配送。
  */
-public class GhostCat extends SpiritCat {
+public class MessengerCat extends SpiritCat {
     private static final EntityDataAccessor<Integer> DATA_PHASE =
-            SynchedEntityData.defineId(GhostCat.class, EntityDataSerializers.INT);
+            SynchedEntityData.defineId(MessengerCat.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> DATA_PHASE_START_TICK =
-            SynchedEntityData.defineId(GhostCat.class, EntityDataSerializers.INT);
+            SynchedEntityData.defineId(MessengerCat.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> DATA_MANIFEST_DUR =
-            SynchedEntityData.defineId(GhostCat.class, EntityDataSerializers.INT);
+            SynchedEntityData.defineId(MessengerCat.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> DATA_DISSIPATE_DUR =
-            SynchedEntityData.defineId(GhostCat.class, EntityDataSerializers.INT);
+            SynchedEntityData.defineId(MessengerCat.class, EntityDataSerializers.INT);
 
     @Nullable
-    private GhostCatBehavior behavior;
-    private GhostCatPhase phase = GhostCatPhase.MANIFEST;
+    private MessengerCatBehavior behavior;
+    private MessengerCatPhase phase = MessengerCatPhase.MANIFEST;
     private int phaseTicks;
     private int totalTicks;
 
-    public GhostCat(EntityType<? extends Cat> type, Level level) {
+    public MessengerCat(EntityType<? extends Cat> type, Level level) {
         super(type, level);
     }
 
     @Override
     protected void defineSynchedData(SynchedEntityData.@NotNull Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(DATA_PHASE, GhostCatPhase.MANIFEST.ordinal());
+        builder.define(DATA_PHASE, MessengerCatPhase.MANIFEST.ordinal());
         builder.define(DATA_PHASE_START_TICK, 0);
         builder.define(DATA_MANIFEST_DUR, 10);
         builder.define(DATA_DISSIPATE_DUR, 15);
@@ -49,22 +49,22 @@ public class GhostCat extends SpiritCat {
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(0, new GhostCatGiftGoal(this));
+        this.goalSelector.addGoal(0, new MessengerCatGiftGoal(this));
     }
 
-    public void assignBehavior(GhostCatBehavior behavior) {
+    public void assignBehavior(MessengerCatBehavior behavior) {
         this.behavior = behavior;
         this.entityData.set(DATA_MANIFEST_DUR, Math.max(1, behavior.getManifestDuration()));
         this.entityData.set(DATA_DISSIPATE_DUR, Math.max(1, behavior.getDissipateDuration()));
     }
 
     @Nullable
-    public GhostCatBehavior getBehavior() {
+    public MessengerCatBehavior getBehavior() {
         return this.behavior;
     }
 
     public void beginLifecycle() {
-        this.phase = GhostCatPhase.MANIFEST;
+        this.phase = MessengerCatPhase.MANIFEST;
         this.phaseTicks = 0;
         this.totalTicks = 0;
         this.syncPhaseToClient();
@@ -75,14 +75,14 @@ public class GhostCat extends SpiritCat {
         this.totalTicks++;
     }
 
-    public void setPhase(GhostCatPhase phase) {
+    public void setPhase(MessengerCatPhase phase) {
         this.phase = phase;
         this.phaseTicks = 0;
         this.setDeltaMovement(Vec3.ZERO);
         this.syncPhaseToClient();
     }
 
-    public GhostCatPhase getPhase() {
+    public MessengerCatPhase getPhase() {
         return this.phase;
     }
 
@@ -102,21 +102,21 @@ public class GhostCat extends SpiritCat {
     @Override
     public float getRenderAlphaProgress(float partialTick) {
         int phaseOrdinal = this.entityData.get(DATA_PHASE);
-        GhostCatPhase renderPhase;
+        MessengerCatPhase renderPhase;
         try {
-            renderPhase = GhostCatPhase.values()[phaseOrdinal];
+            renderPhase = MessengerCatPhase.values()[phaseOrdinal];
         } catch (ArrayIndexOutOfBoundsException ex) {
             return 1.0F;
         }
-        if (renderPhase != GhostCatPhase.MANIFEST && renderPhase != GhostCatPhase.DISSIPATE) {
+        if (renderPhase != MessengerCatPhase.MANIFEST && renderPhase != MessengerCatPhase.DISSIPATE) {
             return 1.0F;
         }
         int startTick = this.entityData.get(DATA_PHASE_START_TICK);
         float elapsed = Math.max(0.0F, this.tickCount - startTick + partialTick);
-        int duration = renderPhase == GhostCatPhase.MANIFEST
+        int duration = renderPhase == MessengerCatPhase.MANIFEST
                 ? Math.max(1, this.entityData.get(DATA_MANIFEST_DUR))
                 : Math.max(1, this.entityData.get(DATA_DISSIPATE_DUR));
-        return renderPhase == GhostCatPhase.MANIFEST
+        return renderPhase == MessengerCatPhase.MANIFEST
                 ? Mth.clamp(elapsed / duration, 0.0F, 1.0F)
                 : Mth.clamp(1.0F - elapsed / duration, 0.0F, 1.0F);
     }

@@ -13,14 +13,14 @@ import java.util.UUID;
 /**
  * 猫猫商人每世界生成状态——持久化下次尝试时间、渐进概率档位与活动实体 UUID。
  */
-public final class CatMerchantSpawnData extends SavedData {
-    private static final String FILE_NAME = "unsuspiciousblock_cat_merchant";
+public final class MerchantCatSpawnData extends SavedData {
+    private static final String FILE_NAME = "unsuspiciousblock_merchant_cat";
     private static final String NEXT_ATTEMPT_TAG = "next_attempt";
     private static final String FAILURE_STEP_TAG = "failure_step";
     private static final String ACTIVE_MERCHANT_TAG = "active_merchant";
-    private static final SavedData.Factory<CatMerchantSpawnData> FACTORY = new SavedData.Factory<>(
-            CatMerchantSpawnData::new,
-            CatMerchantSpawnData::load,
+    private static final SavedData.Factory<MerchantCatSpawnData> FACTORY = new SavedData.Factory<>(
+            MerchantCatSpawnData::new,
+            MerchantCatSpawnData::load,
             DataFixTypes.LEVEL);
 
     private long nextAttempt;
@@ -28,15 +28,15 @@ public final class CatMerchantSpawnData extends SavedData {
     @Nullable
     private UUID activeMerchantUuid;
 
-    private CatMerchantSpawnData() {
+    private MerchantCatSpawnData() {
     }
 
-    public static CatMerchantSpawnData get(ServerLevel level) {
+    public static MerchantCatSpawnData get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, FILE_NAME);
     }
 
-    private static CatMerchantSpawnData load(CompoundTag tag, HolderLookup.Provider registries) {
-        CatMerchantSpawnData data = new CatMerchantSpawnData();
+    private static MerchantCatSpawnData load(CompoundTag tag, HolderLookup.Provider registries) {
+        MerchantCatSpawnData data = new MerchantCatSpawnData();
         data.nextAttempt = tag.getLong(NEXT_ATTEMPT_TAG);
         data.failureStep = Math.max(0, Math.min(2, tag.getInt(FAILURE_STEP_TAG)));
         if (tag.hasUUID(ACTIVE_MERCHANT_TAG)) {

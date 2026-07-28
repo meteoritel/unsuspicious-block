@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.entity;
 
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
-import com.meteorite.unsuspiciousblock.cat.merchant.CatMerchantSpawnData;
-import com.meteorite.unsuspiciousblock.cat.merchant.CatMerchantTradeManager;
+import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawnData;
+import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatTradeManager;
 import com.meteorite.unsuspiciousblock.cat.merchant.TaggedMerchantOffer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.ListTag;
@@ -35,9 +35,20 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.core.registries.Registries;
 
 /**
- * 猫猫商人——只向猫国挚友开放、库存由实体实例全服共享的临时猫国灵体。
+ * 商人猫猫——只向猫国挚友开放、库存由实体实例全服共享的临时猫国灵体。
  */
 public class MerchantCat extends SpiritCat implements Merchant {
+    // NBT 键常量
+    private static final String NBT_OFFERS = "MerchantCatOffers";
+    private static final String NBT_BUY_ITEM = "BuyItem";
+    private static final String NBT_BUY_COUNT = "BuyCount";
+    private static final String NBT_SELL_ITEM = "SellItem";
+    private static final String NBT_SELL_COUNT = "SellCount";
+    private static final String NBT_MAX_USES = "MaxUses";
+    private static final String NBT_USES = "Uses";
+    private static final String NBT_BUY_TAG = "BuyTag";
+    private static final String NBT_BUY_TAG_COUNT = "BuyTagCount";
+
     @Nullable
     private Player tradingPlayer;
     private MerchantOffers offers = new MerchantOffers();
@@ -52,7 +63,7 @@ public class MerchantCat extends SpiritCat implements Merchant {
 
     // 每次生成时固定本实例的六条交易，直到实体消散。
     public void initializeTrades(ServerLevel level, int catBond) {
-        this.offers = CatMerchantTradeManager.createOffers(level, this.getRandom(), catBond);
+        this.offers = MerchantCatTradeManager.createOffers(level, this.getRandom(), catBond);
     }
 
     @Override
@@ -64,15 +75,15 @@ public class MerchantCat extends SpiritCat implements Merchant {
     public void addAdditionalSaveData(@NotNull CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         if (!this.offers.isEmpty()) {
-            tag.put("CatMerchantOffers", this.saveOffers());
+            tag.put(NBT_OFFERS, this.saveOffers());
         }
     }
 
     @Override
     public void readAdditionalSaveData(@NotNull CompoundTag tag) {
         super.readAdditionalSaveData(tag);
-        if (tag.contains("CatMerchantOffers", Tag.TAG_LIST)) {
-            this.offers = this.loadOffers(tag.getList("CatMerchantOffers", Tag.TAG_COMPOUND));
+        if (tag.contains(NBT_OFFERS, Tag.TAG_LIST)) {
+            this.offers = this.loadOffers(tag.getList(NBT_OFFERS, Tag.TAG_COMPOUND));
         }
     }
 
@@ -84,15 +95,15 @@ public class MerchantCat extends SpiritCat implements Merchant {
             ResourceLocation buyId = BuiltInRegistries.ITEM.getKey(buy.getItem());
             ResourceLocation sellId = BuiltInRegistries.ITEM.getKey(sell.getItem());
             CompoundTag entry = new CompoundTag();
-            entry.putString("BuyItem", buyId.toString());
-            entry.putInt("BuyCount", buy.getCount());
-            entry.putString("SellItem", sellId.toString());
-            entry.putInt("SellCount", sell.getCount());
-            entry.putInt("MaxUses", offer.getMaxUses());
-            entry.putInt("Uses", offer.getUses());
+            entry.putString(NBT_BUY_ITEM, buyId.toString());
+            entry.putInt(NBT_BUY_COUNT, buy.getCount());
+            entry.putString(NBT_SELL_ITEM, sellId.toString());
+            entry.putInt(NBT_SELL_COUNT, sell.getCount());
+            entry.putInt(NBT_MAX_USES, offer.getMaxUses());
+            entry.putInt(NBT_USES, offer.getUses());
             if (offer instanceof TaggedMerchantOffer tagged) {
-                entry.putString("BuyTag", tagged.getAcceptedTagId().toString());
-                entry.putInt("BuyTagCount", tagged.getAcceptedCount());
+                entry.putString(NBT_BUY_TAG, tagged.getAcceptedTagId().toString());
+                entry.putInt(NBT_BUY_TAG_COUNT, tagged.getAcceptedCount());
             }
             saved.add(entry);
         }
@@ -103,28 +114,28 @@ public class MerchantCat extends SpiritCat implements Merchant {
         MerchantOffers loaded = new MerchantOffers();
         for (int i = 0; i < saved.size(); i++) {
             CompoundTag entry = saved.getCompound(i);
-            ResourceLocation buyId = ResourceLocation.tryParse(entry.getString("BuyItem"));
-            ResourceLocation sellId = ResourceLocation.tryParse(entry.getString("SellItem"));
+            ResourceLocation buyId = ResourceLocation.tryParse(entry.getString(NBT_BUY_ITEM));
+            ResourceLocation sellId = ResourceLocation.tryParse(entry.getString(NBT_SELL_ITEM));
             if (buyId == null || sellId == null) {
                 continue;
             }
             Item buyItem = BuiltInRegistries.ITEM.get(buyId);
             Item sellItem = BuiltInRegistries.ITEM.get(sellId);
-            int buyCount = Math.max(1, entry.getInt("BuyCount"));
-            int sellCount = Math.max(1, entry.getInt("SellCount"));
-            int maxUses = Math.max(1, entry.getInt("MaxUses"));
+            int buyCount = Math.max(1, entry.getInt(NBT_BUY_COUNT));
+            int sellCount = Math.max(1, entry.getInt(NBT_SELL_COUNT));
+            int maxUses = Math.max(1, entry.getInt(NBT_MAX_USES));
             ItemCost cost = new ItemCost(buyItem, buyCount);
             ItemStack result = new ItemStack(sellItem, sellCount);
             MerchantOffer offer;
-            ResourceLocation tagId = ResourceLocation.tryParse(entry.getString("BuyTag"));
+            ResourceLocation tagId = ResourceLocation.tryParse(entry.getString(NBT_BUY_TAG));
             if (tagId != null) {
                 TagKey<Item> acceptedTag = TagKey.create(Registries.ITEM, tagId);
                 offer = new TaggedMerchantOffer(cost, result, maxUses, acceptedTag,
-                        Math.max(1, entry.getInt("BuyTagCount")));
+                        Math.max(1, entry.getInt(NBT_BUY_TAG_COUNT)));
             } else {
                 offer = new MerchantOffer(cost, result, maxUses, 0, 0.05F);
             }
-            int uses = Math.min(maxUses, Math.max(0, entry.getInt("Uses")));
+            int uses = Math.min(maxUses, Math.max(0, entry.getInt(NBT_USES)));
             for (int used = 0; used < uses; used++) {
                 offer.increaseUses();
             }
@@ -217,7 +228,7 @@ public class MerchantCat extends SpiritCat implements Merchant {
     public void remove(Entity.@NotNull RemovalReason reason) {
         if (reason.shouldDestroy() && !this.level().isClientSide
                 && this.level() instanceof ServerLevel serverLevel) {
-            CatMerchantSpawnData.get(serverLevel).clearActive(this.getUUID());
+            MerchantCatSpawnData.get(serverLevel).clearActive(this.getUUID());
         }
         super.remove(reason);
     }

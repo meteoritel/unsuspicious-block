@@ -29,9 +29,9 @@ public class ModEntityRenderers {
     // 渲染器注册清单——新增实体渲染器只需在此添加一行
     // GHOST_CAT 本身已是 Supplier，二次包装为 lambda 以延迟类加载顺序下的字段读取
     public static final List<RendererEntry<?>> REGISTRY_MANIFEST = List.of(
-            new RendererEntry<>(() -> ModEntities.GHOST_CAT.get(), GhostCatRenderer::new),
+            new RendererEntry<>(() -> ModEntities.MESSENGER_CAT.get(), MessengerCatRenderer::new),
             new RendererEntry<>(() -> ModEntities.SWORDSMAN_CAT.get(), SwordsmanCatRenderer::new),
-            new RendererEntry<>(() -> ModEntities.CAT_MERCHANT.get(), CatMerchantRenderer::new),
+            new RendererEntry<>(() -> ModEntities.MERCHANT_CAT.get(), MerchantCatRenderer::new),
             new RendererEntry<>(() -> ModEntities.LANTERN_PET.get(), LanternPetRenderer::new)
     );
 

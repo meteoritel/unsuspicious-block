@@ -30,23 +30,23 @@ import java.util.Set;
 /**
  * 猫猫商人交易加载与抽取器——每次生成都从当前 Datapack 资源重新读取，天然响应 `/reload`。
  */
-public final class CatMerchantTradeManager {
-    private static final String DIRECTORY = "cat_merchant_trades";
+public final class MerchantCatTradeManager {
+    private static final String DIRECTORY = "merchant_cat_trades";
 
-    private CatMerchantTradeManager() {
+    private MerchantCatTradeManager() {
     }
 
     public static MerchantOffers createOffers(ServerLevel level, RandomSource random, int catBond) {
-        Map<CatMerchantTradePool, List<CatMerchantTradeDefinition>> pools = load(level.getServer().getResourceManager());
+        Map<MerchantCatTradePool, List<MerchantCatTradeDefinition>> pools = load(level.getServer().getResourceManager());
         MerchantOffers offers = new MerchantOffers();
-        addWeightedOffers(level, random, filter(level, catBond, pools.get(CatMerchantTradePool.EARNING)), 1, offers);
-        addWeightedOffers(level, random, filter(level, catBond, pools.get(CatMerchantTradePool.REGULAR)), 3, offers);
-        addWeightedOffers(level, random, filter(level, catBond, pools.get(CatMerchantTradePool.RARE)), 2, offers);
+        addWeightedOffers(level, random, filter(level, catBond, pools.get(MerchantCatTradePool.EARNING)), 1, offers);
+        addWeightedOffers(level, random, filter(level, catBond, pools.get(MerchantCatTradePool.REGULAR)), 3, offers);
+        addWeightedOffers(level, random, filter(level, catBond, pools.get(MerchantCatTradePool.RARE)), 2, offers);
         return offers;
     }
 
-    private static List<CatMerchantTradeDefinition> filter(ServerLevel level, int catBond,
-                                                           List<CatMerchantTradeDefinition> entries) {
+    private static List<MerchantCatTradeDefinition> filter(ServerLevel level, int catBond,
+                                                           List<MerchantCatTradeDefinition> entries) {
         if (entries == null) {
             return List.of();
         }
@@ -56,9 +56,9 @@ public final class CatMerchantTradeManager {
                 .toList();
     }
 
-    private static Map<CatMerchantTradePool, List<CatMerchantTradeDefinition>> load(ResourceManager manager) {
-        Map<CatMerchantTradePool, List<CatMerchantTradeDefinition>> result = new EnumMap<>(CatMerchantTradePool.class);
-        for (CatMerchantTradePool pool : CatMerchantTradePool.values()) {
+    private static Map<MerchantCatTradePool, List<MerchantCatTradeDefinition>> load(ResourceManager manager) {
+        Map<MerchantCatTradePool, List<MerchantCatTradeDefinition>> result = new EnumMap<>(MerchantCatTradePool.class);
+        for (MerchantCatTradePool pool : MerchantCatTradePool.values()) {
             result.put(pool, new ArrayList<>());
         }
         Map<ResourceLocation, Resource> resources = manager.listResources(
@@ -70,7 +70,7 @@ public final class CatMerchantTradeManager {
                     throw new IllegalArgumentException("根节点必须是数组");
                 }
                 for (JsonElement element : root.getAsJsonArray()) {
-                    CatMerchantTradeDefinition definition = parseDefinition(element.getAsJsonObject());
+                    MerchantCatTradeDefinition definition = parseDefinition(element.getAsJsonObject());
                     result.get(definition.pool()).add(definition);
                 }
             } catch (Exception exception) {
@@ -80,11 +80,11 @@ public final class CatMerchantTradeManager {
         return result;
     }
 
-    private static CatMerchantTradeDefinition parseDefinition(JsonObject object) {
-        CatMerchantTradePool pool = CatMerchantTradePool.parse(object.get("pool").getAsString());
+    private static MerchantCatTradeDefinition parseDefinition(JsonObject object) {
+        MerchantCatTradePool pool = MerchantCatTradePool.parse(object.get("pool").getAsString());
         int weight = Math.max(1, object.has("weight") ? object.get("weight").getAsInt() : 1);
         int maxUses = Math.max(1, object.has("max_uses") ? object.get("max_uses").getAsInt() : 1);
-        return new CatMerchantTradeDefinition(
+        return new MerchantCatTradeDefinition(
                 pool,
                 weight,
                 maxUses,
@@ -94,9 +94,9 @@ public final class CatMerchantTradeManager {
                         ? object.getAsJsonObject("conditions") : null));
     }
 
-    private static CatMerchantTradeDefinition.TradeConditions parseConditions(JsonObject object) {
+    private static MerchantCatTradeDefinition.TradeConditions parseConditions(JsonObject object) {
         if (object == null) {
-            return new CatMerchantTradeDefinition.TradeConditions(0, 100, Set.of());
+            return new MerchantCatTradeDefinition.TradeConditions(0, 100, Set.of());
         }
         int minimumBond = Math.max(0, object.has("min_cat_bond")
                 ? object.get("min_cat_bond").getAsInt() : 0);
@@ -115,11 +115,11 @@ public final class CatMerchantTradeManager {
         if (minimumBond > maximumBond) {
             throw new IllegalArgumentException("min_cat_bond 不能大于 max_cat_bond");
         }
-        return new CatMerchantTradeDefinition.TradeConditions(
+        return new MerchantCatTradeDefinition.TradeConditions(
                 minimumBond, maximumBond, Set.copyOf(dimensions));
     }
 
-    private static CatMerchantTradeDefinition.TradeIngredient parseIngredient(JsonObject object) {
+    private static MerchantCatTradeDefinition.TradeIngredient parseIngredient(JsonObject object) {
         boolean tag = object.has("tag");
         String rawId = tag ? object.get("tag").getAsString() : object.get("item").getAsString();
         ResourceLocation id = ResourceLocation.tryParse(rawId);
@@ -127,18 +127,18 @@ public final class CatMerchantTradeManager {
             throw new IllegalArgumentException("无效物品或 Tag ID: " + rawId);
         }
         int count = Math.max(1, object.has("count") ? object.get("count").getAsInt() : 1);
-        return new CatMerchantTradeDefinition.TradeIngredient(id, count, tag);
+        return new MerchantCatTradeDefinition.TradeIngredient(id, count, tag);
     }
 
     private static void addWeightedOffers(ServerLevel level, RandomSource random,
-                                          List<CatMerchantTradeDefinition> source, int count,
+                                          List<MerchantCatTradeDefinition> source, int count,
                                           MerchantOffers output) {
         if (source == null || source.isEmpty()) {
             return;
         }
-        List<CatMerchantTradeDefinition> available = new ArrayList<>(source);
+        List<MerchantCatTradeDefinition> available = new ArrayList<>(source);
         for (int i = 0; i < count && !available.isEmpty(); i++) {
-            CatMerchantTradeDefinition selected = removeWeighted(available, random);
+            MerchantCatTradeDefinition selected = removeWeighted(available, random);
             MerchantOffer offer = createOffer(level, random, selected);
             if (offer != null) {
                 output.add(offer);
@@ -146,12 +146,12 @@ public final class CatMerchantTradeManager {
         }
     }
 
-    private static CatMerchantTradeDefinition removeWeighted(List<CatMerchantTradeDefinition> entries,
-                                                              RandomSource random) {
-        int totalWeight = entries.stream().mapToInt(CatMerchantTradeDefinition::weight).sum();
+    private static MerchantCatTradeDefinition removeWeighted(List<MerchantCatTradeDefinition> entries,
+                                                             RandomSource random) {
+        int totalWeight = entries.stream().mapToInt(MerchantCatTradeDefinition::weight).sum();
         int roll = random.nextInt(totalWeight);
         for (int i = 0; i < entries.size(); i++) {
-            CatMerchantTradeDefinition entry = entries.get(i);
+            MerchantCatTradeDefinition entry = entries.get(i);
             roll -= entry.weight();
             if (roll < 0) {
                 entries.remove(i);
@@ -162,7 +162,7 @@ public final class CatMerchantTradeManager {
     }
 
     private static MerchantOffer createOffer(ServerLevel level, RandomSource random,
-                                             CatMerchantTradeDefinition definition) {
+                                             MerchantCatTradeDefinition definition) {
         Registry<Item> items = level.registryAccess().registryOrThrow(Registries.ITEM);
         ResolvedIngredient buy = resolve(items, definition.buy(), random);
         ResolvedIngredient sell = resolve(items, definition.sell(), random);
@@ -180,7 +180,7 @@ public final class CatMerchantTradeManager {
     }
 
     private static ResolvedIngredient resolve(Registry<Item> items,
-                                              CatMerchantTradeDefinition.TradeIngredient ingredient,
+                                              MerchantCatTradeDefinition.TradeIngredient ingredient,
                                               RandomSource random) {
         if (!ingredient.tag()) {
             Item item = items.get(ingredient.id());

@@ -7,8 +7,8 @@ import java.util.Set;
 /**
  * 猫猫商人单条数据驱动交易定义。
  */
-public record CatMerchantTradeDefinition(
-        CatMerchantTradePool pool,
+public record MerchantCatTradeDefinition(
+        MerchantCatTradePool pool,
         int weight,
         int maxUses,
         TradeIngredient buy,

@@ -1,7 +1,7 @@
-package com.meteorite.unsuspiciousblock.entity.ai.ghost;
+package com.meteorite.unsuspiciousblock.entity.ai.spiritcat;
 
 import com.meteorite.unsuspiciousblock.cat.CatFavorManager;
-import com.meteorite.unsuspiciousblock.entity.GhostCat;
+import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -23,7 +23,7 @@ import java.util.UUID;
  * 完整阶段：显现(10t) → 接近 → 致意(20t) → 赠礼 → 消散(15t)。
  * 总寿命上限 600t（30 秒）。
  */
-public class MorningGiftBehavior implements GhostCatBehavior {
+public class MorningGiftBehavior implements MessengerCatBehavior {
 
     // ========== 阶段时长（tick） ==========
     private static final int MANIFEST_TICKS = 10;
@@ -86,7 +86,7 @@ public class MorningGiftBehavior implements GhostCatBehavior {
 
     // 显现：脚下 end_rod 汇聚 + 细微猫嘶
     @Override
-    public void onManifestStart(GhostCat cat, ServerLevel level) {
+    public void onManifestStart(MessengerCat cat, ServerLevel level) {
         level.sendParticles(ParticleTypes.END_ROD,
                 cat.getX(), cat.getY() + 0.1, cat.getZ(),
                 8, 0.3, 0.05, 0.3, 0.02);
@@ -96,7 +96,7 @@ public class MorningGiftBehavior implements GhostCatBehavior {
 
     // 接近：身后 soul_fire_flame 拖尾
     @Override
-    public void onApproachTick(GhostCat cat, ServerLevel level) {
+    public void onApproachTick(MessengerCat cat, ServerLevel level) {
         level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME,
                 cat.getX(), cat.getY() + 0.2, cat.getZ(),
                 1, 0.0, 0.0, 0.0, 0.0);
@@ -104,7 +104,7 @@ public class MorningGiftBehavior implements GhostCatBehavior {
 
     // 致意：前 8 tick 撒心型粒子，首 tick 播放 purr
     @Override
-    public void onGreetTick(GhostCat cat, ServerLevel level, int ticksInPhase) {
+    public void onGreetTick(MessengerCat cat, ServerLevel level, int ticksInPhase) {
         if (ticksInPhase < GREET_PARTICLE_TICKS) {
             level.sendParticles(ParticleTypes.HEART,
                     cat.getX(), cat.getY() + 0.6, cat.getZ(),
@@ -118,7 +118,7 @@ public class MorningGiftBehavior implements GhostCatBehavior {
 
     // 赠礼：翻滚战利品表掷出物品 + bell 声
     @Override
-    public void onDeliver(GhostCat cat, ServerLevel level) {
+    public void onDeliver(MessengerCat cat, ServerLevel level) {
         ResourceKey<LootTable> lootKey = this.lootTable;
         if (lootKey == null) {
             return;
@@ -143,7 +143,7 @@ public class MorningGiftBehavior implements GhostCatBehavior {
 
     // 消散：end_rod 向上爆散 + 渐远猫叫
     @Override
-    public void onDissipateStart(GhostCat cat, ServerLevel level) {
+    public void onDissipateStart(MessengerCat cat, ServerLevel level) {
         level.sendParticles(ParticleTypes.END_ROD,
                 cat.getX(), cat.getY() + 0.3, cat.getZ(),
                 16, 0.4, 0.4, 0.4, 0.1);

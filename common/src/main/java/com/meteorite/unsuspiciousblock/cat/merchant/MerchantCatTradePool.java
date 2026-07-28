@@ -3,12 +3,12 @@ package com.meteorite.unsuspiciousblock.cat.merchant;
 /**
  * 猫猫商人交易池——控制每次生成时从不同层级抽取的交易数量。
  */
-public enum CatMerchantTradePool {
+public enum MerchantCatTradePool {
     EARNING,
     REGULAR,
     RARE;
 
-    public static CatMerchantTradePool parse(String value) {
+    public static MerchantCatTradePool parse(String value) {
         return switch (value) {
             case "earning" -> EARNING;
             case "regular" -> REGULAR;

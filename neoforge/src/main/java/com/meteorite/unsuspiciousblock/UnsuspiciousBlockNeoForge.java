@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.cat.merchant.CatMerchantSpawner;
+import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
@@ -285,7 +285,7 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
         LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
-        CatMerchantSpawner.tick(event.getServer());
+        MerchantCatSpawner.tick(event.getServer());
     }
 
     // chunk 首次生成时扫描骨块并标记为自然生成

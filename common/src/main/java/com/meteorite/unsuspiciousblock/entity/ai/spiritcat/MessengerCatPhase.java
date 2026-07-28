@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.entity.ai.ghost;
+package com.meteorite.unsuspiciousblock.entity.ai.spiritcat;
 
 /**
  * 幽灵猫生命周期阶段
@@ -7,7 +7,7 @@ package com.meteorite.unsuspiciousblock.entity.ai.ghost;
  * <p>
  * 任一阶段中目标失效或总寿命耗尽，直接跳转 DISSIPATE（不赠礼）。
  */
-public enum GhostCatPhase {
+public enum MessengerCatPhase {
     // 显现：原地浮现，alpha 渐入，禁用移动
     MANIFEST,
     // 接近：直线飘行穿墙靠近目标

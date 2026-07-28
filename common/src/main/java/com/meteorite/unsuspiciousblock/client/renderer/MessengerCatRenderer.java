@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.client.renderer.layer.GhostCatCollarLayer;
-import com.meteorite.unsuspiciousblock.entity.GhostCat;
+import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.CatModel;
@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 幽灵猫渲染器 —— 复用原版 CatModel 与纹理，通过半透明发光顶点色营造灵体感
  */
-public class GhostCatRenderer extends MobRenderer<GhostCat, CatModel<GhostCat>> {
+public class MessengerCatRenderer extends MobRenderer<MessengerCat, CatModel<MessengerCat>> {
 
     // 灵体色调：淡蓝青色（RGB 分量），alpha 由实体阶段动态决定
     private static final int GHOST_R = 170;
@@ -33,32 +33,32 @@ public class GhostCatRenderer extends MobRenderer<GhostCat, CatModel<GhostCat>> 
     private static final float HOVER_SPEED = 0.15F;
     private static final float HOVER_AMPLITUDE = 0.08F;
 
-    public GhostCatRenderer(EntityRendererProvider.Context ctx) {
+    public MessengerCatRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, new CatModel<>(ctx.bakeLayer(ModelLayers.CAT)), 0.4F);
         // 保留原版项圈层，同样以灵体色调渲染
         this.addLayer(new GhostCatCollarLayer(this, ctx.getModelSet()));
     }
 
     @Override
-    public @NotNull ResourceLocation getTextureLocation(GhostCat entity) {
+    public @NotNull ResourceLocation getTextureLocation(MessengerCat entity) {
         return entity.getTextureId();
     }
 
     @Override
-    protected RenderType getRenderType(@NotNull GhostCat entity, boolean bodyVisible, boolean translucent, boolean outline) {
+    protected RenderType getRenderType(@NotNull MessengerCat entity, boolean bodyVisible, boolean translucent, boolean outline) {
         // 始终使用半透明自发光渲染类型，忽略原版 cutout
         return RenderType.entityTranslucentEmissive(this.getTextureLocation(entity));
     }
 
     @Override
-    protected void scale(@NotNull GhostCat entity, @NotNull PoseStack poseStack, float partialTick) {
+    protected void scale(@NotNull MessengerCat entity, @NotNull PoseStack poseStack, float partialTick) {
         super.scale(entity, poseStack, partialTick);
         // 保持与原版 CatRenderer 相同的体型缩放
         poseStack.scale(0.8F, 0.8F, 0.8F);
     }
 
     @Override
-    protected void setupRotations(@NotNull GhostCat entity, @NotNull PoseStack poseStack, float bob,
+    protected void setupRotations(@NotNull MessengerCat entity, @NotNull PoseStack poseStack, float bob,
                                   float yBodyRot, float partialTick, float scale) {
         super.setupRotations(entity, poseStack, bob, yBodyRot, partialTick, scale);
         // 复刻原版猫躺下时的侧身姿态
@@ -77,7 +77,7 @@ public class GhostCatRenderer extends MobRenderer<GhostCat, CatModel<GhostCat>> 
     }
 
     @Override
-    public void render(@NotNull GhostCat entity, float entityYaw, float partialTicks,
+    public void render(@NotNull MessengerCat entity, float entityYaw, float partialTicks,
                        @NotNull PoseStack poseStack, @NotNull MultiBufferSource bufferSource, int packedLight) {
         poseStack.pushPose();
         // 灵体上下轻飘
@@ -94,13 +94,13 @@ public class GhostCatRenderer extends MobRenderer<GhostCat, CatModel<GhostCat>> 
     }
 
     @Override
-    protected float getShadowRadius(@NotNull GhostCat entity) {
+    protected float getShadowRadius(@NotNull MessengerCat entity) {
         // 幽灵不投射实体阴影
         return 0.0F;
     }
 
     @Override
-    protected boolean shouldShowName(@NotNull GhostCat entity) {
+    protected boolean shouldShowName(@NotNull MessengerCat entity) {
         // 隐藏名称，保持灵体纯粹视觉表现
         return false;
     }

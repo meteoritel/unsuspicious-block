@@ -15,9 +15,9 @@ import java.util.function.Supplier;
 public class ModEntities {
 
     // 平台侧在注册时回写为 Supplier，运行时通过 .get() 取 EntityType，永不为 null
-    public static Supplier<EntityType<GhostCat>> GHOST_CAT;
+    public static Supplier<EntityType<MessengerCat>> MESSENGER_CAT;
     public static Supplier<EntityType<SwordsmanCat>> SWORDSMAN_CAT;
-    public static Supplier<EntityType<MerchantCat>> CAT_MERCHANT;
+    public static Supplier<EntityType<MerchantCat>> MERCHANT_CAT;
     public static Supplier<EntityType<LanternPet>> LANTERN_PET;
 
     /**
@@ -36,17 +36,17 @@ public class ModEntities {
 
     // 实体注册清单——新增实体只需在此添加一行
     public static final List<EntityEntry<?>> REGISTRY_MANIFEST = List.of(
-            new EntityEntry<>("ghost_cat",
-                    ModEntities::createGhostCatType,
-                    supplier -> GHOST_CAT = supplier,
-                    GhostCat::createAttributes),
+            new EntityEntry<>("messenger_cat",
+                    ModEntities::createMessengerCatType,
+                    supplier -> MESSENGER_CAT = supplier,
+                    MessengerCat::createAttributes),
             new EntityEntry<>("swordsman_cat",
                     ModEntities::createSwordsmanCatType,
                     supplier -> SWORDSMAN_CAT = supplier,
                     SwordsmanCat::createAttributes),
-            new EntityEntry<>("cat_merchant",
-                    ModEntities::createCatMerchantType,
-                    supplier -> CAT_MERCHANT = supplier,
+            new EntityEntry<>("merchant_cat",
+                    ModEntities::createMerchantCatType,
+                    supplier -> MERCHANT_CAT = supplier,
                     MerchantCat::createAttributes),
             new EntityEntry<>("soul_lantern_pet",
                     ModEntities::createLanternPetType,
@@ -66,12 +66,12 @@ public class ModEntities {
         registrar.register(entry.name(), entry.factory(), entry.setter(), entry.attributes());
     }
 
-    public static EntityType<GhostCat> createGhostCatType() {
-        return EntityType.Builder.of(GhostCat::new, MobCategory.CREATURE)
+    public static EntityType<MessengerCat> createMessengerCatType() {
+        return EntityType.Builder.of(MessengerCat::new, MobCategory.CREATURE)
                 .sized(0.6f, 0.7f)
                 .eyeHeight(0.35f)
                 .clientTrackingRange(8)
-                .build("ghost_cat");
+                .build("messenger_cat");
     }
 
     public static EntityType<LanternPet> createLanternPetType() {
@@ -90,11 +90,11 @@ public class ModEntities {
                 .build("swordsman_cat");
     }
 
-    public static EntityType<MerchantCat> createCatMerchantType() {
+    public static EntityType<MerchantCat> createMerchantCatType() {
         return EntityType.Builder.of(MerchantCat::new, MobCategory.CREATURE)
                 .sized(0.6f, 0.7f)
                 .eyeHeight(0.35f)
                 .clientTrackingRange(8)
-                .build("cat_merchant");
+                .build("merchant_cat");
     }
 }

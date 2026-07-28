@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.command;
 
 import com.meteorite.unsuspiciousblock.cat.CatGiftService;
-import com.meteorite.unsuspiciousblock.entity.GhostCat;
+import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
-import com.meteorite.unsuspiciousblock.entity.ai.ghost.GhostCatPhase;
-import com.meteorite.unsuspiciousblock.entity.ai.ghost.MorningGiftBehavior;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MessengerCatPhase;
+import com.meteorite.unsuspiciousblock.entity.ai.spiritcat.MorningGiftBehavior;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -33,27 +33,27 @@ import java.util.concurrent.CompletableFuture;
  *   <li>{@code discard} —— 立即移除最近幽灵猫</li>
  * </ul>
  */
-public final class GhostCatDebugCommand {
+public final class MessengerCatDebugCommand {
 
     private static final String PHASE_ARG = "phase";
 
-    private GhostCatDebugCommand() {
+    private MessengerCatDebugCommand() {
     }
 
     // 构建 ghost_cat 子树
     public static LiteralArgumentBuilder<CommandSourceStack> build() {
-        return Commands.literal("ghost_cat")
+        return Commands.literal("messenger_cat")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("spawn")
-                        .executes(GhostCatDebugCommand::spawnNearPlayer))
+                        .executes(MessengerCatDebugCommand::spawnNearPlayer))
                 .then(Commands.literal("info")
-                        .executes(GhostCatDebugCommand::showNearestInfo))
+                        .executes(MessengerCatDebugCommand::showNearestInfo))
                 .then(Commands.literal("discard")
-                        .executes(GhostCatDebugCommand::discardNearest))
+                        .executes(MessengerCatDebugCommand::discardNearest))
                 .then(Commands.literal("phase")
                         .then(Commands.argument(PHASE_ARG, StringArgumentType.word())
-                                .suggests(GhostCatDebugCommand::suggestPhases)
-                                .executes(GhostCatDebugCommand::forcePhase)));
+                                .suggests(MessengerCatDebugCommand::suggestPhases)
+                                .executes(MessengerCatDebugCommand::forcePhase)));
     }
 
     // ========== 子指令实现 ==========
@@ -64,7 +64,7 @@ public final class GhostCatDebugCommand {
         if (!(player.level() instanceof ServerLevel level)) {
             return 0;
         }
-        GhostCat ghost = ModEntities.GHOST_CAT.get().create(level);
+        MessengerCat ghost = ModEntities.MESSENGER_CAT.get().create(level);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.ghost_cat.error.spawn_failed"));
@@ -89,7 +89,7 @@ public final class GhostCatDebugCommand {
     // info：输出最近幽灵猫运行时状态
     private static int showNearestInfo(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
-        GhostCat ghost = findNearest(player);
+        MessengerCat ghost = findNearest(player);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.ghost_cat.error.not_found"));
@@ -117,7 +117,7 @@ public final class GhostCatDebugCommand {
     // discard：立即移除最近幽灵猫
     private static int discardNearest(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
-        GhostCat ghost = findNearest(player);
+        MessengerCat ghost = findNearest(player);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.ghost_cat.error.not_found"));
@@ -135,13 +135,13 @@ public final class GhostCatDebugCommand {
     private static int forcePhase(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         String phaseName = StringArgumentType.getString(context, PHASE_ARG);
-        GhostCatPhase phase = parsePhase(phaseName);
+        MessengerCatPhase phase = parsePhase(phaseName);
         if (phase == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.ghost_cat.error.unknown_phase", phaseName));
             return 0;
         }
-        GhostCat ghost = findNearest(player);
+        MessengerCat ghost = findNearest(player);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.ghost_cat.error.not_found"));
@@ -158,12 +158,12 @@ public final class GhostCatDebugCommand {
     // ========== 辅助 ==========
 
     // 在玩家 64 格范围内寻找最近的幽灵猫
-    private static GhostCat findNearest(ServerPlayer player) {
+    private static MessengerCat findNearest(ServerPlayer player) {
         if (!(player.level() instanceof ServerLevel level)) {
             return null;
         }
         AABB box = AABB.ofSize(player.position(), 128.0, 128.0, 128.0);
-        List<GhostCat> ghosts = level.getEntitiesOfClass(GhostCat.class, box);
+        List<MessengerCat> ghosts = level.getEntitiesOfClass(MessengerCat.class, box);
         if (ghosts.isEmpty()) {
             return null;
         }
@@ -174,15 +174,15 @@ public final class GhostCatDebugCommand {
     // 阶段名补全
     private static CompletableFuture<Suggestions> suggestPhases(
             CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
-        for (GhostCatPhase phase : GhostCatPhase.values()) {
+        for (MessengerCatPhase phase : MessengerCatPhase.values()) {
             builder.suggest(phase.name().toLowerCase());
         }
         return builder.buildFuture();
     }
 
     // 大小写不敏感解析阶段枚举
-    private static GhostCatPhase parsePhase(String name) {
-        for (GhostCatPhase phase : GhostCatPhase.values()) {
+    private static MessengerCatPhase parsePhase(String name) {
+        for (MessengerCatPhase phase : MessengerCatPhase.values()) {
             if (phase.name().equalsIgnoreCase(name)) {
                 return phase;
             }

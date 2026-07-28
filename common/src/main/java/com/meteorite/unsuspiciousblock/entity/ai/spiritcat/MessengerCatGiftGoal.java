@@ -1,6 +1,6 @@
-package com.meteorite.unsuspiciousblock.entity.ai.ghost;
+package com.meteorite.unsuspiciousblock.entity.ai.spiritcat;
 
-import com.meteorite.unsuspiciousblock.entity.GhostCat;
+import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.player.Player;
@@ -10,25 +10,25 @@ import java.util.EnumSet;
 import java.util.UUID;
 
 /**
- * 幽灵猫阶段机驱动器 —— 按 {@link GhostCatBehavior} 配置推进生命周期阶段。
+ * 幽灵猫阶段机驱动器 —— 按 {@link MessengerCatBehavior} 配置推进生命周期阶段。
  * <p>
  * 阶段流转：MANIFEST → APPROACH → (GREET) → DELIVER → DISSIPATE。
  * 任一阶段中目标失效（离线/跨维度/距离 > 128）或总寿命耗尽，直接跳转 DISSIPATE（不赠礼）。
  * <p>
- * 接近阶段采用直线飘行 + 穿墙位移（由 {@link GhostCat#move} override 实现），
+ * 接近阶段采用直线飘行 + 穿墙位移（由 {@link MessengerCat#move} override 实现），
  * 目标点取玩家头顶上方（y+2.0），避免猫钻进玩家 hitbox。
  */
-public class GhostCatGiftGoal extends Goal {
+public class MessengerCatGiftGoal extends Goal {
 
     // 送达判定距离的平方（约 3 格）：拉远以避免猫钻进玩家 hitbox 触发视觉/物理贴脸
     private static final double DELIVER_DISTANCE_SQR = 9.0;
     // 目标失效距离阈值（格）
     private static final double TARGET_LOST_DISTANCE = 128.0;
 
-    private final GhostCat cat;
+    private final MessengerCat cat;
     private Player target;
 
-    public GhostCatGiftGoal(GhostCat cat) {
+    public MessengerCatGiftGoal(MessengerCat cat) {
         this.cat = cat;
         this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
     }
@@ -51,7 +51,7 @@ public class GhostCatGiftGoal extends Goal {
 
     @Override
     public void tick() {
-        GhostCatBehavior b = this.cat.getBehavior();
+        MessengerCatBehavior b = this.cat.getBehavior();
         if (b == null) {
             return;
         }
@@ -74,7 +74,7 @@ public class GhostCatGiftGoal extends Goal {
                     b.onManifestStart(this.cat, level);
                 }
                 if (phaseTicks >= b.getManifestDuration()) {
-                    this.cat.setPhase(targetValid ? GhostCatPhase.APPROACH : GhostCatPhase.DISSIPATE);
+                    this.cat.setPhase(targetValid ? MessengerCatPhase.APPROACH : MessengerCatPhase.DISSIPATE);
                 }
             }
             case APPROACH -> {
@@ -83,10 +83,10 @@ public class GhostCatGiftGoal extends Goal {
                     this.flyToward(this.target);
                     this.cat.getLookControl().setLookAt(this.target);
                     if (this.cat.distanceToSqr(this.target) <= DELIVER_DISTANCE_SQR) {
-                        this.cat.setPhase(b.shouldGreet() ? GhostCatPhase.GREET : GhostCatPhase.DELIVER);
+                        this.cat.setPhase(b.shouldGreet() ? MessengerCatPhase.GREET : MessengerCatPhase.DELIVER);
                     }
                 } else {
-                    this.cat.setPhase(GhostCatPhase.DISSIPATE);
+                    this.cat.setPhase(MessengerCatPhase.DISSIPATE);
                 }
             }
             case GREET -> {
@@ -95,14 +95,14 @@ public class GhostCatGiftGoal extends Goal {
                     this.cat.getLookControl().setLookAt(this.target);
                 }
                 if (phaseTicks >= b.getGreetDuration()) {
-                    this.cat.setPhase(GhostCatPhase.DELIVER);
+                    this.cat.setPhase(MessengerCatPhase.DELIVER);
                 }
             }
             case DELIVER -> {
                 if (b.shouldDeliverGift()) {
                     b.onDeliver(this.cat, level);
                 }
-                this.cat.setPhase(GhostCatPhase.DISSIPATE);
+                this.cat.setPhase(MessengerCatPhase.DISSIPATE);
             }
             case DISSIPATE -> {
                 if (phaseTicks == 1) {
@@ -118,8 +118,8 @@ public class GhostCatGiftGoal extends Goal {
 
         // 总寿命耗尽，强制进入消散（不赠礼）
         if (this.cat.getTotalTicks() >= b.getMaxLifetime()
-                && this.cat.getPhase() != GhostCatPhase.DISSIPATE) {
-            this.cat.setPhase(GhostCatPhase.DISSIPATE);
+                && this.cat.getPhase() != MessengerCatPhase.DISSIPATE) {
+            this.cat.setPhase(MessengerCatPhase.DISSIPATE);
         }
     }
 
@@ -146,7 +146,7 @@ public class GhostCatGiftGoal extends Goal {
 
     // 解析目标玩家（服务端），无效时返回 null
     private Player resolveTarget() {
-        GhostCatBehavior b = this.cat.getBehavior();
+        MessengerCatBehavior b = this.cat.getBehavior();
         if (b == null) {
             return null;
         }

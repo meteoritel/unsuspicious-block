@@ -1,6 +1,6 @@
-package com.meteorite.unsuspiciousblock.entity.ai.ghost;
+package com.meteorite.unsuspiciousblock.entity.ai.spiritcat;
 
-import com.meteorite.unsuspiciousblock.entity.GhostCat;
+import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -12,12 +12,12 @@ import java.util.UUID;
  * 幽灵猫行为策略 —— 决定各阶段时长、是否赠礼/致意，以及各阶段的视觉/声效副作用。
  * <p>
  * 这是幽灵猫的扩展点：未来「九命护灵」「击退袭击致意」等新场景只需实现此接口，
- * 由 {@link GhostCatGiftGoal} 统一驱动阶段机，无需改动实体或阶段机本身。
+ * 由 {@link MessengerCatGiftGoal} 统一驱动阶段机，无需改动实体或阶段机本身。
  * <p>
  * 实现实例通常携带自身数据（目标 UUID、战利品表等），由调用方在召唤时构造并
- * 通过 {@link GhostCat#assignBehavior(GhostCatBehavior)} 注入。
+ * 通过 {@link MessengerCat#assignBehavior(MessengerCatBehavior)} 注入。
  */
-public interface GhostCatBehavior {
+public interface MessengerCatBehavior {
 
     // ========== 目标与礼物 ==========
 
@@ -54,17 +54,17 @@ public interface GhostCatBehavior {
     // ========== 阶段副作用（由阶段机在对应阶段调用） ==========
 
     // 显现阶段首 tick 触发（粒子汇聚、显现声效等）
-    void onManifestStart(GhostCat cat, ServerLevel level);
+    void onManifestStart(MessengerCat cat, ServerLevel level);
 
     // 接近阶段每 tick 触发（拖尾粒子等）
-    void onApproachTick(GhostCat cat, ServerLevel level);
+    void onApproachTick(MessengerCat cat, ServerLevel level);
 
     // 致意阶段每 tick 触发（心型粒子、轻柔猫叫等）
-    void onGreetTick(GhostCat cat, ServerLevel level, int ticksInPhase);
+    void onGreetTick(MessengerCat cat, ServerLevel level, int ticksInPhase);
 
     // 赠礼阶段触发（掷出战利品表物品、bell 声等），仅调用一次
-    void onDeliver(GhostCat cat, ServerLevel level);
+    void onDeliver(MessengerCat cat, ServerLevel level);
 
     // 消散阶段首 tick 触发（粒子爆散、远去声效等）
-    void onDissipateStart(GhostCat cat, ServerLevel level);
+    void onDissipateStart(MessengerCat cat, ServerLevel level);
 }

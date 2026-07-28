@@ -20,13 +20,13 @@ import java.util.UUID;
 /**
  * 猫猫商人独立生成器——按每世界 25%/50%/75% 渐进概率在合格玩家附近村庄生成。
  */
-public final class CatMerchantSpawner {
+public final class MerchantCatSpawner {
     private static final int ATTEMPT_INTERVAL = 24000;
     private static final int LIFETIME = 48000;
     private static final int PLAYER_RADIUS = 48;
     private static final int POSITION_ATTEMPTS = 10;
 
-    private CatMerchantSpawner() {
+    private MerchantCatSpawner() {
     }
 
     public static void tick(MinecraftServer server) {
@@ -39,7 +39,7 @@ public final class CatMerchantSpawner {
     }
 
     private static void tickLevel(ServerLevel level) {
-        CatMerchantSpawnData data = CatMerchantSpawnData.get(level);
+        MerchantCatSpawnData data = MerchantCatSpawnData.get(level);
         long gameTime = level.getGameTime();
         if (data.getNextAttempt() == 0L) {
             data.scheduleNext(gameTime, ATTEMPT_INTERVAL);
@@ -82,7 +82,7 @@ public final class CatMerchantSpawner {
             data.recordFailure();
             return;
         }
-        MerchantCat merchant = ModEntities.CAT_MERCHANT.get().create(level);
+        MerchantCat merchant = ModEntities.MERCHANT_CAT.get().create(level);
         if (merchant == null) {
             data.recordFailure();
             return;
