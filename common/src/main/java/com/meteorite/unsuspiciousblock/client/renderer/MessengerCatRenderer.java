@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
-import com.meteorite.unsuspiciousblock.client.renderer.layer.GhostCatCollarLayer;
+import com.meteorite.unsuspiciousblock.client.renderer.layer.MessengerCatCollarLayer;
 import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -36,7 +36,7 @@ public class MessengerCatRenderer extends MobRenderer<MessengerCat, CatModel<Mes
     public MessengerCatRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, new CatModel<>(ctx.bakeLayer(ModelLayers.CAT)), 0.4F);
         // 保留原版项圈层，同样以灵体色调渲染
-        this.addLayer(new GhostCatCollarLayer(this, ctx.getModelSet()));
+        this.addLayer(new MessengerCatCollarLayer(this, ctx.getModelSet()));
     }
 
     @Override

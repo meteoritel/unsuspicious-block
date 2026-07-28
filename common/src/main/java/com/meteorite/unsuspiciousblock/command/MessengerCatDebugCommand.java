@@ -40,7 +40,7 @@ public final class MessengerCatDebugCommand {
     private MessengerCatDebugCommand() {
     }
 
-    // 构建 ghost_cat 子树
+    // 构建 messenger_cat 子树
     public static LiteralArgumentBuilder<CommandSourceStack> build() {
         return Commands.literal("messenger_cat")
                 .requires(source -> source.hasPermission(2))
@@ -67,7 +67,7 @@ public final class MessengerCatDebugCommand {
         MessengerCat ghost = ModEntities.MESSENGER_CAT.get().create(level);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.ghost_cat.error.spawn_failed"));
+                    "command.unsuspiciousblock.usb.messenger_cat.error.spawn_failed"));
             return 0;
         }
         double x = player.getX() + (player.getRandom().nextInt(7) - 3);
@@ -81,7 +81,7 @@ public final class MessengerCatDebugCommand {
                 player.getUUID(), CatGiftService.GHOST_GIFT_LOOT_TABLE));
         level.addFreshEntity(ghost);
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.ghost_cat.spawn.success",
+                "command.unsuspiciousblock.usb.messenger_cat.spawn.success",
                 ghost.getId()), true);
         return 1;
     }
@@ -92,7 +92,7 @@ public final class MessengerCatDebugCommand {
         MessengerCat ghost = findNearest(player);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.ghost_cat.error.not_found"));
+                    "command.unsuspiciousblock.usb.messenger_cat.error.not_found"));
             return 0;
         }
         String phaseName = ghost.getPhase().name();
@@ -105,7 +105,7 @@ public final class MessengerCatDebugCommand {
         boolean hasLoot = hasBehavior && ghost.getBehavior().getLootTable() != null;
         double dist = Math.sqrt(ghost.distanceToSqr(player));
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.ghost_cat.info.summary",
+                "command.unsuspiciousblock.usb.messenger_cat.info.summary",
                 ghost.getId(),
                 String.format("%.2f", ghost.getX()), String.format("%.2f", ghost.getY()), String.format("%.2f", ghost.getZ()),
                 phaseName, phaseTicks, totalTicks,
@@ -120,14 +120,14 @@ public final class MessengerCatDebugCommand {
         MessengerCat ghost = findNearest(player);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.ghost_cat.error.not_found"));
+                    "command.unsuspiciousblock.usb.messenger_cat.error.not_found"));
             return 0;
         }
         int id = ghost.getId();
         ghost.discard();
         final int finalId = id;
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.ghost_cat.discard.success", finalId), true);
+                "command.unsuspiciousblock.usb.messenger_cat.discard.success", finalId), true);
         return 1;
     }
 
@@ -138,19 +138,19 @@ public final class MessengerCatDebugCommand {
         MessengerCatPhase phase = parsePhase(phaseName);
         if (phase == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.ghost_cat.error.unknown_phase", phaseName));
+                    "command.unsuspiciousblock.usb.messenger_cat.error.unknown_phase", phaseName));
             return 0;
         }
         MessengerCat ghost = findNearest(player);
         if (ghost == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.ghost_cat.error.not_found"));
+                    "command.unsuspiciousblock.usb.messenger_cat.error.not_found"));
             return 0;
         }
         ghost.setPhase(phase);
         final String chosenName = phase.name();
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.ghost_cat.phase.success",
+                "command.unsuspiciousblock.usb.messenger_cat.phase.success",
                 ghost.getId(), chosenName), true);
         return 1;
     }

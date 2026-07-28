@@ -12,14 +12,14 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 幽灵猫项圈层 —— 复刻原版 CatCollarLayer，适配 GhostCat 泛型
+ * 猫猫信使项圈层 —— 复刻原版 CatCollarLayer，适配 MessengerCat 泛型
  */
-public class GhostCatCollarLayer extends RenderLayer<MessengerCat, CatModel<MessengerCat>> {
+public class MessengerCatCollarLayer extends RenderLayer<MessengerCat, CatModel<MessengerCat>> {
 
     private static final ResourceLocation CAT_COLLAR_LOCATION = ResourceLocation.withDefaultNamespace("textures/entity/cat/cat_collar.png");
     private final CatModel<MessengerCat> collarModel;
 
-    public GhostCatCollarLayer(RenderLayerParent<MessengerCat, CatModel<MessengerCat>> parent, EntityModelSet modelSet) {
+    public MessengerCatCollarLayer(RenderLayerParent<MessengerCat, CatModel<MessengerCat>> parent, EntityModelSet modelSet) {
         super(parent);
         this.collarModel = new CatModel<>(modelSet.bakeLayer(ModelLayers.CAT_COLLAR));
     }

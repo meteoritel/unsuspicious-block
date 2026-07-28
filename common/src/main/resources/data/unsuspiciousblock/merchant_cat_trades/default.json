@@ -3,7 +3,7 @@
     "pool": "earning",
     "weight": 10,
     "max_uses": 2,
-    "buy": { "tag": "unsuspiciousblock:cat_merchant/fishes", "count": 30 },
+    "buy": { "tag": "unsuspiciousblock:merchant_cat/fishes", "count": 30 },
     "sell": { "item": "unsuspiciousblock:ancient_coin", "count": 1 }
   },
   {

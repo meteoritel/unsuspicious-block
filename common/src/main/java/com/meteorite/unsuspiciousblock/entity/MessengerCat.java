@@ -16,7 +16,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 猫猫信使实体——保留旧 `ghost_cat` registry ID，并通过阶段机完成晨礼配送。
+ * 猫猫信使实体——通过阶段机完成晨礼配送。
  */
 public class MessengerCat extends SpiritCat {
     private static final EntityDataAccessor<Integer> DATA_PHASE =

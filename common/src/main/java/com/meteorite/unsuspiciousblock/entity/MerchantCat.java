@@ -158,7 +158,7 @@ public class MerchantCat extends SpiritCat implements Merchant {
                 || CatFavorManager.getCatBond(serverPlayer) < 100
                 || !CatFavorManager.hasOwnedHandOfCat(serverPlayer)) {
             player.displayClientMessage(
-                    Component.translatable("message.unsuspiciousblock.cat_merchant.unqualified"), true);
+                    Component.translatable("message.unsuspiciousblock.merchant_cat.unqualified"), true);
             return InteractionResult.CONSUME;
         }
         if (this.offers.isEmpty() && this.level() instanceof ServerLevel serverLevel) {
