@@ -1,9 +1,13 @@
 {
+  "block.unsuspiciousblock.unsuspicious_sand": "不可疑的沙子",
+  "block.unsuspiciousblock.unsuspicious_gravel": "不可疑的沙砾",
   "effect.unsuspiciousblock.cat_favor": "猫之九命",
   "item.unsuspiciousblock.suspicious_reader": "可疑解析仪",
   "item.unsuspiciousblock.suspicious_reader.not_suspicious": "这不是一个可疑方块。",
   "item.unsuspiciousblock.suspicious_reader.result_header": "[可疑解析仪]",
   "item.unsuspiciousblock.suspicious_reader.result_empty": "坐标 (%d, %d, %d) 处的可疑方块内没有任何物品。",
+  "item.unsuspiciousblock.suspicious_reader.sealed_by": "由%s玩家封存",
+  "item.unsuspiciousblock.suspicious_reader.unknown_player": "未知",
   "item.unsuspiciousblock.suspicious_reader.scan_level": "扫描等级: %s",
   "item.unsuspiciousblock.suspicious_reader.scan_mode": "单方块",
   "item.unsuspiciousblock.suspicious_reader.scan_mode_1": "3x3x3",
@@ -35,6 +39,11 @@
   "item.unsuspiciousblock.suspicious_reader.jade_contains_unknown": "§7未知的物品: %s §r×%d",
 
   "config.jade.plugin_unsuspiciousblock.scanned_loot": "解析战利品",
+  "config.jade.plugin_unsuspiciousblock.sealed_contents": "不可疑方块内容",
+  "jade.unsuspiciousblock.sealed_item": "封存物品：",
+  "jade.unsuspiciousblock.sealed_by": "封存玩家：%s",
+  "jade.unsuspiciousblock.empty": "空",
+  "jade.unsuspiciousblock.unknown_player": "未知玩家",
 
   "unsuspiciousblock.config.title": "Unsuspicious Block 配置",
   "unsuspiciousblock.config.save": "保存",

@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock;
 
+import com.meteorite.unsuspiciousblock.block.ModBlocks;
+import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
+import com.meteorite.unsuspiciousblock.blockentity.BlockEntityRegistrar;
+import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
@@ -22,6 +26,7 @@ import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
@@ -34,6 +39,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.StringUtil;
 import net.minecraft.sounds.SoundEvent;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -44,7 +50,10 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -60,6 +69,7 @@ import net.neoforged.neoforge.event.AnvilUpdateEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -78,6 +88,8 @@ import java.util.function.Supplier;
 @Mod(Constants.MOD_ID)
 public class UnsuspiciousBlockNeoForge {
 
+    private static final DeferredRegister.Blocks BLOCKS =
+            DeferredRegister.createBlocks(Constants.MOD_ID);
     private static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(Constants.MOD_ID);
     private static final DeferredRegister<MobEffect> EFFECTS =
@@ -88,6 +100,10 @@ public class UnsuspiciousBlockNeoForge {
             DeferredRegister.create(Registries.MENU, Constants.MOD_ID);
     private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(BuiltInRegistries.ENTITY_TYPE, Constants.MOD_ID);
+    private static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS =
+            DeferredRegister.create(Registries.RECIPE_SERIALIZER, Constants.MOD_ID);
+    private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
+            DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, Constants.MOD_ID);
 
     // 自定义战利品条件类型注册——NeoForge 使用 DeferredRegister，避免 Registry is already frozen
     private static final DeferredRegister<LootItemConditionType> LOOT_CONDITIONS =
@@ -116,10 +132,33 @@ public class UnsuspiciousBlockNeoForge {
     private static final List<ItemSyncEntry> ITEM_SYNC_LIST = new ArrayList<>();
 
     static {
+        // DeferredHolder 可直接作为 Supplier<Block> 回写给 common
+        ModBlocks.forEach((name, factory, setter) ->
+                setter.accept(BLOCKS.register(name, factory)));
+    }
+
+    static {
+        ModBlockEntities.forEach(new BlockEntityRegistrar() {
+            @Override
+            public <T extends BlockEntity> void register(String name, Supplier<BlockEntityType<T>> factory,
+                                                         Consumer<Supplier<BlockEntityType<T>>> setter) {
+                DeferredHolder<BlockEntityType<?>, BlockEntityType<T>> deferred =
+                        BLOCK_ENTITY_TYPES.register(name, factory);
+                setter.accept(deferred);
+            }
+        });
+    }
+
+    static {
         ModItems.forEach((name, factory, setter) -> {
             DeferredItem<Item> deferred = ITEMS.register(name, factory);
             ITEM_SYNC_LIST.add(new ItemSyncEntry(deferred, setter));
         });
+    }
+
+    static {
+        ModRecipeSerializers.forEach((name, factory, setter) ->
+                setter.accept(RECIPE_SERIALIZERS.register(name, factory)));
     }
 
     static {
@@ -188,11 +227,14 @@ public class UnsuspiciousBlockNeoForge {
 
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC);
 
+        BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         EFFECTS.register(modEventBus);
         SOUND_EVENTS.register(modEventBus);
         MENUS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
+        RECIPE_SERIALIZERS.register(modEventBus);
+        BLOCK_ENTITY_TYPES.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
         NeoForgeBoneBlockTracker.ATTACHMENT_TYPES.register(modEventBus);
         LOOT_MODIFIERS.register(modEventBus);
@@ -266,6 +308,15 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         UsbCommand.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
+    public void onRightClickUnsuspiciousBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (UnsuspiciousBlockInteractions.tryBreak(
+                event.getLevel(), event.getPos(), event.getEntity(), event.getItemStack())) {
+            event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide()));
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent

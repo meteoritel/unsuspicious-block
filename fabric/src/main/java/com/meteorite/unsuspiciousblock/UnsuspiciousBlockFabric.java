@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock;
 
+import com.meteorite.unsuspiciousblock.block.ModBlocks;
+import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
+import com.meteorite.unsuspiciousblock.blockentity.BlockEntityRegistrar;
+import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
@@ -22,11 +26,13 @@ import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -43,6 +49,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -53,6 +60,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.crafting.RecipeSerializer;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 
 import java.util.function.Consumer;
@@ -86,6 +97,30 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
         FabricInventoryPresenceAdapter.register();
 
+        // 先注册方块，确保后续 BlockItem 工厂可取得对应实例
+        ModBlocks.forEach((name, factory, setter) -> {
+            Block registered = Registry.register(
+                    BuiltInRegistries.BLOCK,
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                    factory.get()
+            );
+            setter.accept(() -> registered);
+        });
+
+        // 方块注册完成后注册方块实体类型
+        ModBlockEntities.forEach(new BlockEntityRegistrar() {
+            @Override
+            public <T extends BlockEntity> void register(String name, Supplier<BlockEntityType<T>> factory,
+                                                         Consumer<Supplier<BlockEntityType<T>>> setter) {
+                BlockEntityType<T> registered = Registry.register(
+                        BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                        factory.get()
+                );
+                setter.accept(() -> registered);
+            }
+        });
+
         // 遍历物品注册清单，统一注册并回写静态字段
         ModItems.forEach((name, factory, setter) -> {
             Item registered = Registry.register(
@@ -95,6 +130,23 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             );
             setter.accept(registered);
         });
+
+        // 注册特殊合成配方序列化器
+        ModRecipeSerializers.forEach((name, factory, setter) -> {
+            RecipeSerializer<?> registered = Registry.register(
+                    BuiltInRegistries.RECIPE_SERIALIZER,
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                    factory.get()
+            );
+            setter.accept(() -> registered);
+        });
+
+        // 刷子或考古铲右键不可疑方块时立即破坏，潜行交互同样生效
+        UseBlockCallback.EVENT.register((player, level, hand, hitResult) ->
+                UnsuspiciousBlockInteractions.tryBreak(
+                        level, hitResult.getBlockPos(), player, player.getItemInHand(hand))
+                        ? InteractionResult.sidedSuccess(level.isClientSide())
+                        : InteractionResult.PASS);
 
         // 通过反射跨越可选依赖边界，避免主入口在 Trinkets 缺失时解析其 API。
         if (Services.PLATFORM.isModLoaded("trinkets")) {

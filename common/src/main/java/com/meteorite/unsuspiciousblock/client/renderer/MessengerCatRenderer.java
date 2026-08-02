@@ -20,7 +20,7 @@ import com.mojang.math.Axis;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 幽灵猫渲染器 —— 复用原版 CatModel 与纹理，通过半透明发光顶点色营造灵体感
+ * 渲染器 —— 复用原版 CatModel 与纹理，通过半透明发光顶点色营造灵体感
  */
 public class MessengerCatRenderer extends MobRenderer<MessengerCat, CatModel<MessengerCat>> {
 

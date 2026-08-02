@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.block.SealedContents;
+import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
@@ -34,6 +36,7 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -228,7 +231,8 @@ public class SuspiciousReaderItem extends Item {
                 && player != null
                 && player.getItemInHand(InteractionHand.OFF_HAND).getItem() == ModItems.ARCHAEOLOGICAL_SHOVEL) {
             BlockEntity be = level.getBlockEntity(clickedPos);
-            if (be instanceof BrushableBlockEntityScanState scanState
+            if (!(be instanceof UnsuspiciousBlockEntity)
+                    && be instanceof BrushableBlockEntityScanState scanState
                     && scanState.unsuspiciousblock$isScanner(player.getUUID())) {
                 return InteractionResult.PASS;
             }
@@ -309,7 +313,7 @@ public class SuspiciousReaderItem extends Item {
                     // 已被同一玩家扫描过的方块仍显示结果，但不消耗额外能量
                     boolean alreadyScanned = targetScanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
                     ScanResult result = scanBrushable(serverPlayer, level, pos, be, targetScanState);
-                    sendPrimaryResultMessage(player, pos, result.lootItem(), alreadyScanned);
+                    sendPrimaryResultMessage(player, pos, result, alreadyScanned);
                     actualScanned++;
                     if (!alreadyScanned) {
                         newScanned++;
@@ -356,7 +360,7 @@ public class SuspiciousReaderItem extends Item {
         // 单方块模式免费（能量消耗为 0）
         boolean alreadyScanned = scanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
         ScanResult result = scanBrushable(serverPlayer, level, clickedPos, blockEntity, scanState);
-        sendPrimaryResultMessage(player, clickedPos, result.lootItem(), alreadyScanned);
+        sendPrimaryResultMessage(player, clickedPos, result, alreadyScanned);
 
         // 播放扫描音效
         level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(),
@@ -481,10 +485,14 @@ public class SuspiciousReaderItem extends Item {
                     LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
         }
 
-        return new ScanResult(lootItem);
+        SealedContents.CrafterIdentity crafter = blockEntity instanceof UnsuspiciousBlockEntity sealedBlock
+                ? sealedBlock.getCrafter().orElse(null)
+                : null;
+        return new ScanResult(lootItem, crafter, blockEntity instanceof UnsuspiciousBlockEntity);
     }
 
-    private void sendPrimaryResultMessage(Player player, BlockPos pos, ItemStack lootItem, boolean alreadyScanned) {
+    private void sendPrimaryResultMessage(Player player, BlockPos pos, ScanResult result, boolean alreadyScanned) {
+        ItemStack lootItem = result.lootItem();
         // 已扫描过的方块显示灰色提示
         if (alreadyScanned) {
             player.sendSystemMessage(
@@ -492,6 +500,19 @@ public class SuspiciousReaderItem extends Item {
                             "item.unsuspiciousblock.suspicious_reader.already_scanned",
                             pos.getX(), pos.getY(), pos.getZ()
                     ).withStyle(ChatFormatting.DARK_GRAY)
+            );
+        }
+
+        if (result.sealedByPlayer()) {
+            Component crafterName = result.crafter() == null
+                    ? Component.translatable("item.unsuspiciousblock.suspicious_reader.unknown_player")
+                    : Component.literal(result.crafter().name().isBlank()
+                            ? result.crafter().uuid().toString()
+                            : result.crafter().name());
+            player.sendSystemMessage(
+                    Component.translatable(
+                            "item.unsuspiciousblock.suspicious_reader.sealed_by", crafterName)
+                            .withStyle(ChatFormatting.AQUA)
             );
         }
 
@@ -533,7 +554,8 @@ public class SuspiciousReaderItem extends Item {
                 pos, lootItem.getHoverName().getString(), lootItem.getCount());
     }
 
-    private record ScanResult(ItemStack lootItem) {
+    private record ScanResult(ItemStack lootItem, @Nullable SealedContents.CrafterIdentity crafter,
+                              boolean sealedByPlayer) {
     }
 
     // 范围扫描结果分类：可疑方块与含战利品表的容器

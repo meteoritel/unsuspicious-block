@@ -1,9 +1,17 @@
 {
   "itemGroup.unsuspiciousblock.main": "Unsuspicious Block",
 
+  "block.unsuspiciousblock.unsuspicious_sand": "Unsuspicious Sand",
+  "block.unsuspiciousblock.unsuspicious_gravel": "Unsuspicious Gravel",
+
   "effect.unsuspiciousblock.cat_favor": "Nine Lives",
 
   "config.jade.plugin_unsuspiciousblock.scanned_loot": "Scanned Loot",
+  "config.jade.plugin_unsuspiciousblock.sealed_contents": "Unsuspicious Block Contents",
+  "jade.unsuspiciousblock.sealed_item": "Sealed item: ",
+  "jade.unsuspiciousblock.sealed_by": "Sealed by: %s",
+  "jade.unsuspiciousblock.empty": "Empty",
+  "jade.unsuspiciousblock.unknown_player": "Unknown player",
 
   "unsuspiciousblock.config.title": "Unsuspicious Block Config",
   "unsuspiciousblock.config.save": "Save",
@@ -29,6 +37,8 @@
   "item.unsuspiciousblock.suspicious_reader.not_suspicious": "This is not a suspicious block!",
   "item.unsuspiciousblock.suspicious_reader.result_header": "[Suspicious Reader]",
   "item.unsuspiciousblock.suspicious_reader.result_empty": "Block at (%d, %d, %d) contains nothing.",
+  "item.unsuspiciousblock.suspicious_reader.sealed_by": "Sealed by player %s",
+  "item.unsuspiciousblock.suspicious_reader.unknown_player": "Unknown",
   "item.unsuspiciousblock.suspicious_reader.scan_level": "Scan Level: %s",
   "item.unsuspiciousblock.suspicious_reader.scan_mode": "Single Block",
   "item.unsuspiciousblock.suspicious_reader.scan_mode_1": "3x3x3",

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
@@ -190,6 +191,14 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         Level level = context.getLevel();
         BlockPos pos = context.getClickedPos();
         BlockEntity be = level.getBlockEntity(pos);
+
+        // 平台事件通常会先处理；此处作为直接物品调用时的兼容兜底
+        Player interactionPlayer = context.getPlayer();
+        if (interactionPlayer != null
+                && UnsuspiciousBlockInteractions.tryBreak(
+                        level, pos, interactionPlayer, context.getItemInHand())) {
+            return InteractionResult.sidedSuccess(level.isClientSide());
+        }
 
         // 可疑方块：取出已扫描的战利品
         if (be instanceof BrushableBlockEntityScanState scanState) {

@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.item;
 
+import com.meteorite.unsuspiciousblock.block.ModBlocks;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
@@ -22,12 +24,20 @@ public class ModItems {
     public static Item BASE_PAGE;
     public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
+    public static BlockItem UNSUSPICIOUS_SAND;
+    public static BlockItem UNSUSPICIOUS_GRAVEL;
 
     // 物品注册清单条目，供各平台遍历注册
     public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
 
     // 物品注册清单——新增物品只需在此添加一行
     public static final List<ItemEntry> REGISTRY_MANIFEST = List.of(
+            new ItemEntry("unsuspicious_sand",
+                    ModItems::createUnsuspiciousSand,
+                    item -> UNSUSPICIOUS_SAND = (BlockItem) item),
+            new ItemEntry("unsuspicious_gravel",
+                    ModItems::createUnsuspiciousGravel,
+                    item -> UNSUSPICIOUS_GRAVEL = (BlockItem) item),
             new ItemEntry("suspicious_reader",
                     ModItems::createSuspiciousReader,
                     item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
@@ -64,6 +74,8 @@ public class ModItems {
     // 创造模式物品栏中展示的物品（使用 Supplier 延迟求值，因为静态字段在注册后才被赋值）
     public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
             () -> ARCHAEOLOGY_JOURNAL,
+            () -> UNSUSPICIOUS_SAND,
+            () -> UNSUSPICIOUS_GRAVEL,
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
             () -> ANCIENT_COIN,
@@ -75,6 +87,18 @@ public class ModItems {
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
+    // 创建不可疑的沙子方块物品
+    public static BlockItem createUnsuspiciousSand() {
+        return new UnsuspiciousBlockItem(ModBlocks.UNSUSPICIOUS_SAND.get(), new Item.Properties()
+                .component(DataComponents.CONTAINER, ItemContainerContents.EMPTY));
+    }
+
+    // 创建不可疑的沙砾方块物品
+    public static BlockItem createUnsuspiciousGravel() {
+        return new UnsuspiciousBlockItem(ModBlocks.UNSUSPICIOUS_GRAVEL.get(), new Item.Properties()
+                .component(DataComponents.CONTAINER, ItemContainerContents.EMPTY));
+    }
+
     // 创建可疑解析仪实例
     public static SuspiciousReaderItem createSuspiciousReader() {
         return new SuspiciousReaderItem(new Item.Properties().stacksTo(1));
