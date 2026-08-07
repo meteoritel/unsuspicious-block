@@ -22,6 +22,7 @@ import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
@@ -125,6 +126,8 @@ public class UnsuspiciousBlockNeoForge {
     private static final DeferredHolder<MenuType<?>, MenuType<SpecimenBoxMenu>> SPECIMEN_BOX_MENU =
             MENUS.register("specimen_box", () ->
                     new MenuType<>(SpecimenBoxMenu::new, FeatureFlags.DEFAULT_FLAGS));
+    private static final DeferredHolder<MenuType<?>, MenuType<PotteryWheelMenu>> POTTERY_WHEEL_MENU =
+            MENUS.register("pottery_wheel", () -> new MenuType<>(PotteryWheelMenu::new, FeatureFlags.DEFAULT_FLAGS));
 
     /** 存储 (DeferredItem, Consumer<Item>) 对，供 FMLCommonSetupEvent 中回写 */
     private record ItemSyncEntry(DeferredItem<Item> deferred, Consumer<Item> setter) {}
@@ -256,6 +259,7 @@ public class UnsuspiciousBlockNeoForge {
         // MenuType 同步回写：RegisterMenuScreensEvent 可能在 enqueueWork 任务执行前触发，
         // 同步执行确保运行时 TYPE 就绪；客户端注册 Screen 时另有 getter 兜底
         SpecimenBoxMenu.TYPE = SPECIMEN_BOX_MENU.get();
+        PotteryWheelMenu.TYPE = POTTERY_WHEEL_MENU.get();
         event.enqueueWork(() -> {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
@@ -272,6 +276,11 @@ public class UnsuspiciousBlockNeoForge {
     // 供客户端在 RegisterMenuScreensEvent 时获取 MenuType，避免 enqueueWork 时序问题
     public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
         return SPECIMEN_BOX_MENU.get();
+    }
+
+    // 供客户端注册陶轮台 Screen 时获取 MenuType
+    public static MenuType<PotteryWheelMenu> getPotteryWheelMenuType() {
+        return POTTERY_WHEEL_MENU.get();
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {

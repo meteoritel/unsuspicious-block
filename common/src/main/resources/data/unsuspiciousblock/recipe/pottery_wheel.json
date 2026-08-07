@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "TCT",
+    "PTP",
+    "PPP"
+  ],
+  "key": {
+    "T": { "item": "minecraft:terracotta" },
+    "C": { "item": "minecraft:copper_ingot" },
+    "P": { "item": "minecraft:oak_planks" }
+  },
+  "result": { "id": "unsuspiciousblock:pottery_wheel", "count": 1 }
+}

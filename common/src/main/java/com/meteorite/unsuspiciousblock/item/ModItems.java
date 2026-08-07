@@ -26,6 +26,8 @@ public class ModItems {
     public static HandOfCatItem HAND_OF_CAT;
     public static BlockItem UNSUSPICIOUS_SAND;
     public static BlockItem UNSUSPICIOUS_GRAVEL;
+    public static BlockItem POTTERY_WHEEL;
+    public static UnfiredDecoratedSherdItem UNFIRED_DECORATED_SHERD;
 
     // 物品注册清单条目，供各平台遍历注册
     public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
@@ -38,6 +40,9 @@ public class ModItems {
             new ItemEntry("unsuspicious_gravel",
                     ModItems::createUnsuspiciousGravel,
                     item -> UNSUSPICIOUS_GRAVEL = (BlockItem) item),
+            new ItemEntry("pottery_wheel",
+                    ModItems::createPotteryWheel,
+                    item -> POTTERY_WHEEL = (BlockItem) item),
             new ItemEntry("suspicious_reader",
                     ModItems::createSuspiciousReader,
                     item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
@@ -64,7 +69,10 @@ public class ModItems {
                     item -> EYE_OF_CAT = (EyeOfCatItem) item),
             new ItemEntry("hand_of_cat",
                     ModItems::createHandOfCat,
-                    item -> HAND_OF_CAT = (HandOfCatItem) item)
+                    item -> HAND_OF_CAT = (HandOfCatItem) item),
+            new ItemEntry("unfired_decorated_sherd",
+                    ModItems::createUnfiredDecoratedSherd,
+                    item -> UNFIRED_DECORATED_SHERD = (UnfiredDecoratedSherdItem) item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -76,6 +84,7 @@ public class ModItems {
             () -> ARCHAEOLOGY_JOURNAL,
             () -> UNSUSPICIOUS_SAND,
             () -> UNSUSPICIOUS_GRAVEL,
+            () -> POTTERY_WHEEL,
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
             () -> ANCIENT_COIN,
@@ -83,7 +92,8 @@ public class ModItems {
             () -> BASE_PAGE,
             () -> EYE_OF_CAT,
             () -> SPECIMEN_BOX,
-            () -> HAND_OF_CAT
+            () -> HAND_OF_CAT,
+            () -> UNFIRED_DECORATED_SHERD
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
@@ -97,6 +107,16 @@ public class ModItems {
     public static BlockItem createUnsuspiciousGravel() {
         return new UnsuspiciousBlockItem(ModBlocks.UNSUSPICIOUS_GRAVEL.get(), new Item.Properties()
                 .component(DataComponents.CONTAINER, ItemContainerContents.EMPTY));
+    }
+
+    // 创建纹饰陶轮台物品
+    public static BlockItem createPotteryWheel() {
+        return new UnsuspiciousBlockItem(ModBlocks.POTTERY_WHEEL.get(), new Item.Properties());
+    }
+
+    // 创建可保存纹饰数据的未烧制陶片
+    public static UnfiredDecoratedSherdItem createUnfiredDecoratedSherd() {
+        return new UnfiredDecoratedSherdItem(new Item.Properties().stacksTo(16));
     }
 
     // 创建可疑解析仪实例

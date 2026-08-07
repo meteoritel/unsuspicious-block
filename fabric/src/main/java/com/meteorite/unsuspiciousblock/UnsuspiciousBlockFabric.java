@@ -22,6 +22,7 @@ import com.meteorite.unsuspiciousblock.loot.VillageWeaponsmithLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
@@ -195,6 +196,11 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 BuiltInRegistries.MENU,
                 SpecimenBoxMenu.ID,
                 new MenuType<>(SpecimenBoxMenu::new, FeatureFlags.DEFAULT_FLAGS)
+        );
+        PotteryWheelMenu.TYPE = Registry.register(
+                BuiltInRegistries.MENU,
+                PotteryWheelMenu.ID,
+                new MenuType<>(PotteryWheelMenu::new, FeatureFlags.DEFAULT_FLAGS)
         );
 
         // 注册创造模式物品栏

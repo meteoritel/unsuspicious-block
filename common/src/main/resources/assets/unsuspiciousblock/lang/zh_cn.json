@@ -492,5 +492,8 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.entity_scores": "需要满足实体计分条件",
   "screen.unsuspiciousblock.archaeology_journal.condition.damage_source_properties": "需要匹配伤害来源",
   "screen.unsuspiciousblock.archaeology_journal.condition.unknown": "未知条件：%s",
-  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 模组联动"
+  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 模组联动",
+  "block.unsuspiciousblock.pottery_wheel": "纹饰陶轮台",
+  "item.unsuspiciousblock.unfired_decorated_sherd": "未烧制的纹饰陶片",
+  "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "纹饰：%s"
 }

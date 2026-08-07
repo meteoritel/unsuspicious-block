@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 public final class ModBlocks {
     public static Supplier<Block> UNSUSPICIOUS_SAND;
     public static Supplier<Block> UNSUSPICIOUS_GRAVEL;
+    public static Supplier<Block> POTTERY_WHEEL;
 
     private ModBlocks() {
     }
@@ -28,7 +29,10 @@ public final class ModBlocks {
                     block -> UNSUSPICIOUS_SAND = block),
             new BlockEntry("unsuspicious_gravel",
                     ModBlocks::createUnsuspiciousGravel,
-                    block -> UNSUSPICIOUS_GRAVEL = block)
+                    block -> UNSUSPICIOUS_GRAVEL = block),
+            new BlockEntry("pottery_wheel",
+                    ModBlocks::createPotteryWheel,
+                    block -> POTTERY_WHEEL = block)
     );
 
     // 创建不可疑的沙子，基础属性与原版可疑的沙子保持一致
@@ -39,6 +43,12 @@ public final class ModBlocks {
     // 创建不可疑的沙砾，基础属性与原版可疑的沙砾保持一致
     public static Block createUnsuspiciousGravel() {
         return new UnsuspiciousBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.SUSPICIOUS_GRAVEL));
+    }
+
+    // 创建纹饰陶轮台
+    public static Block createPotteryWheel() {
+        return new PotteryWheelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.OAK_PLANKS)
+                .strength(2.5F).noOcclusion());
     }
 
     // 遍历清单并交由平台完成注册

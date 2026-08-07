@@ -492,5 +492,8 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.entity_scores": "Requires entity score values",
   "screen.unsuspiciousblock.archaeology_journal.condition.damage_source_properties": "Requires a matching damage source",
   "screen.unsuspiciousblock.archaeology_journal.condition.unknown": "Unknown condition: %s",
-  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: Mod Integration"
+  "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: Mod Integration",
+  "block.unsuspiciousblock.pottery_wheel": "Decorated Pottery Wheel",
+  "item.unsuspiciousblock.unfired_decorated_sherd": "Unfired Decorated Pottery Sherd",
+  "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "Pattern: %s"
 }

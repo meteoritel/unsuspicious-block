@@ -21,6 +21,8 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -79,6 +81,8 @@ public final class UnsuspiciousBlockNeoForgeClient {
         // 此时 SpecimenBoxMenu.TYPE 静态字段可能为 null，直接用会导致注册失败
         SpecimenBoxMenu.TYPE = UnsuspiciousBlockNeoForge.getSpecimenBoxMenuType();
         event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+        PotteryWheelMenu.TYPE = UnsuspiciousBlockNeoForge.getPotteryWheelMenuType();
+        event.register(PotteryWheelMenu.TYPE, PotteryWheelScreen::new);
     }
 
     @SubscribeEvent

@@ -21,6 +21,8 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -66,6 +68,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         });
         // 注册标本箱界面（漏斗贴图）
         MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
+        MenuScreens.register(PotteryWheelMenu.TYPE, PotteryWheelScreen::new);
         TooltipComponentCallback.EVENT.register(component ->
                 component instanceof SpecimenBoxTooltip tooltip
                         ? new ClientSpecimenBoxTooltip(tooltip)

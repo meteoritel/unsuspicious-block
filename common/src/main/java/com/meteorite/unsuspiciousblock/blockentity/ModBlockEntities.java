@@ -13,6 +13,7 @@ import java.util.function.Supplier;
  */
 public final class ModBlockEntities {
     public static Supplier<BlockEntityType<UnsuspiciousBlockEntity>> UNSUSPICIOUS_BLOCK;
+    public static Supplier<BlockEntityType<PotteryWheelBlockEntity>> POTTERY_WHEEL;
 
     private ModBlockEntities() {
     }
@@ -27,7 +28,10 @@ public final class ModBlockEntities {
     public static final List<BlockEntityEntry<?>> REGISTRY_MANIFEST = List.of(
             new BlockEntityEntry<>("unsuspicious_block",
                     ModBlockEntities::createUnsuspiciousBlockType,
-                    type -> UNSUSPICIOUS_BLOCK = type)
+                    type -> UNSUSPICIOUS_BLOCK = type),
+            new BlockEntityEntry<>("pottery_wheel",
+                    ModBlockEntities::createPotteryWheelType,
+                    type -> POTTERY_WHEEL = type)
     );
 
     // 创建两种不可疑方块共用的方块实体类型
@@ -37,6 +41,11 @@ public final class ModBlockEntities {
                 ModBlocks.UNSUSPICIOUS_SAND.get(),
                 ModBlocks.UNSUSPICIOUS_GRAVEL.get()
         ).build(null);
+    }
+
+    // 创建纹饰陶轮台方块实体类型
+    public static BlockEntityType<PotteryWheelBlockEntity> createPotteryWheelType() {
+        return BlockEntityType.Builder.of(PotteryWheelBlockEntity::new, ModBlocks.POTTERY_WHEEL.get()).build(null);
     }
 
     // 遍历清单并交由平台完成注册
