@@ -494,6 +494,7 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.unknown": "Unknown condition: %s",
   "screen.unsuspiciousblock.archaeology_journal.injected_loot": "Source: Mod Integration",
   "block.unsuspiciousblock.pottery_wheel": "Decorated Pottery Wheel",
+  "block.unsuspiciousblock.unfired_decorated_pot": "Unfired Decorated Pot",
   "item.unsuspiciousblock.unfired_decorated_sherd": "Unfired Decorated Pottery Sherd",
   "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "Pattern: %s"
 }

@@ -27,6 +27,7 @@ public class ModItems {
     public static BlockItem UNSUSPICIOUS_SAND;
     public static BlockItem UNSUSPICIOUS_GRAVEL;
     public static BlockItem POTTERY_WHEEL;
+    public static UnfiredDecoratedPotItem UNFIRED_DECORATED_POT;
     public static UnfiredDecoratedSherdItem UNFIRED_DECORATED_SHERD;
 
     // 物品注册清单条目，供各平台遍历注册
@@ -43,6 +44,9 @@ public class ModItems {
             new ItemEntry("pottery_wheel",
                     ModItems::createPotteryWheel,
                     item -> POTTERY_WHEEL = (BlockItem) item),
+            new ItemEntry("unfired_decorated_pot",
+                    ModItems::createUnfiredDecoratedPot,
+                    item -> UNFIRED_DECORATED_POT = (UnfiredDecoratedPotItem) item),
             new ItemEntry("suspicious_reader",
                     ModItems::createSuspiciousReader,
                     item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
@@ -85,6 +89,7 @@ public class ModItems {
             () -> UNSUSPICIOUS_SAND,
             () -> UNSUSPICIOUS_GRAVEL,
             () -> POTTERY_WHEEL,
+            () -> UNFIRED_DECORATED_POT,
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
             () -> ANCIENT_COIN,
@@ -112,6 +117,11 @@ public class ModItems {
     // 创建纹饰陶轮台物品
     public static BlockItem createPotteryWheel() {
         return new UnsuspiciousBlockItem(ModBlocks.POTTERY_WHEEL.get(), new Item.Properties());
+    }
+
+    // 创建可携带四面纹饰组件的未烧制陶罐方块物品
+    public static UnfiredDecoratedPotItem createUnfiredDecoratedPot() {
+        return new UnfiredDecoratedPotItem(new Item.Properties().stacksTo(16));
     }
 
     // 创建可保存纹饰数据的未烧制陶片

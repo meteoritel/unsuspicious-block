@@ -1,0 +1,8 @@
+{
+  "type": "unsuspiciousblock:unfired_decorated_pot_smelting",
+  "category": "blocks",
+  "ingredient": { "item": "unsuspiciousblock:unfired_decorated_pot" },
+  "result": { "id": "minecraft:decorated_pot" },
+  "experience": 0.3,
+  "cookingtime": 200
+}

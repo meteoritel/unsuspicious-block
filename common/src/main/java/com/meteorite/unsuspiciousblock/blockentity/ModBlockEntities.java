@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 public final class ModBlockEntities {
     public static Supplier<BlockEntityType<UnsuspiciousBlockEntity>> UNSUSPICIOUS_BLOCK;
     public static Supplier<BlockEntityType<PotteryWheelBlockEntity>> POTTERY_WHEEL;
+    public static Supplier<BlockEntityType<UnfiredDecoratedPotBlockEntity>> UNFIRED_DECORATED_POT;
 
     private ModBlockEntities() {
     }
@@ -31,7 +32,10 @@ public final class ModBlockEntities {
                     type -> UNSUSPICIOUS_BLOCK = type),
             new BlockEntityEntry<>("pottery_wheel",
                     ModBlockEntities::createPotteryWheelType,
-                    type -> POTTERY_WHEEL = type)
+                    type -> POTTERY_WHEEL = type),
+            new BlockEntityEntry<>("unfired_decorated_pot",
+                    ModBlockEntities::createUnfiredDecoratedPotType,
+                    type -> UNFIRED_DECORATED_POT = type)
     );
 
     // 创建两种不可疑方块共用的方块实体类型
@@ -46,6 +50,12 @@ public final class ModBlockEntities {
     // 创建纹饰陶轮台方块实体类型
     public static BlockEntityType<PotteryWheelBlockEntity> createPotteryWheelType() {
         return BlockEntityType.Builder.of(PotteryWheelBlockEntity::new, ModBlocks.POTTERY_WHEEL.get()).build(null);
+    }
+
+    // 创建保存四面纹饰数据的未烧制陶罐方块实体类型
+    public static BlockEntityType<UnfiredDecoratedPotBlockEntity> createUnfiredDecoratedPotType() {
+        return BlockEntityType.Builder.of(UnfiredDecoratedPotBlockEntity::new,
+                ModBlocks.UNFIRED_DECORATED_POT.get()).build(null);
     }
 
     // 遍历清单并交由平台完成注册

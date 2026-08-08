@@ -1,0 +1,49 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "unsuspiciousblock:block/unfired_decorated_pot_side",
+    "side": "unsuspiciousblock:block/unfired_decorated_pot_side",
+    "top": "unsuspiciousblock:block/unfired_decorated_pot_top",
+    "neck": "unsuspiciousblock:block/unfired_decorated_pot_neck",
+    "bottom": "unsuspiciousblock:block/unfired_decorated_pot_bottom"
+  },
+  "elements": [
+    {
+      "name": "body",
+      "from": [1, 0, 1],
+      "to": [15, 16, 15],
+      "faces": {
+        "up": {"texture": "#top", "uv": [1, 1, 15, 15]},
+        "down": {"texture": "#bottom", "uv": [1, 1, 15, 15]},
+        "north": {"texture": "#side", "uv": [1, 0, 15, 16]},
+        "south": {"texture": "#side", "uv": [1, 0, 15, 16]},
+        "east": {"texture": "#side", "uv": [1, 0, 15, 16]},
+        "west": {"texture": "#side", "uv": [1, 0, 15, 16]}
+      }
+    },
+    {
+      "name": "collar",
+      "from": [4.8, 15.8, 4.8],
+      "to": [11.2, 17.2, 11.2],
+      "faces": {
+        "north": {"texture": "#neck", "uv": [4.8, 3, 11.2, 4]},
+        "south": {"texture": "#neck", "uv": [4.8, 3, 11.2, 4]},
+        "east": {"texture": "#neck", "uv": [4.8, 3, 11.2, 4]},
+        "west": {"texture": "#neck", "uv": [4.8, 3, 11.2, 4]}
+      }
+    },
+    {
+      "name": "rim",
+      "from": [4.1, 17.1, 4.1],
+      "to": [11.9, 19.9, 11.9],
+      "faces": {
+        "up": {"texture": "#neck", "uv": [4, 4, 12, 12]},
+        "down": {"texture": "#neck", "uv": [4, 12, 12, 16]},
+        "north": {"texture": "#neck", "uv": [4, 0, 12, 3]},
+        "south": {"texture": "#neck", "uv": [4, 0, 12, 3]},
+        "east": {"texture": "#neck", "uv": [4, 0, 12, 3]},
+        "west": {"texture": "#neck", "uv": [4, 0, 12, 3]}
+      }
+    }
+  ]
+}

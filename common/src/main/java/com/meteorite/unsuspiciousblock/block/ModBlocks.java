@@ -15,6 +15,7 @@ public final class ModBlocks {
     public static Supplier<Block> UNSUSPICIOUS_SAND;
     public static Supplier<Block> UNSUSPICIOUS_GRAVEL;
     public static Supplier<Block> POTTERY_WHEEL;
+    public static Supplier<Block> UNFIRED_DECORATED_POT;
 
     private ModBlocks() {
     }
@@ -32,7 +33,10 @@ public final class ModBlocks {
                     block -> UNSUSPICIOUS_GRAVEL = block),
             new BlockEntry("pottery_wheel",
                     ModBlocks::createPotteryWheel,
-                    block -> POTTERY_WHEEL = block)
+                    block -> POTTERY_WHEEL = block),
+            new BlockEntry("unfired_decorated_pot",
+                    ModBlocks::createUnfiredDecoratedPot,
+                    block -> UNFIRED_DECORATED_POT = block)
     );
 
     // 创建不可疑的沙子，基础属性与原版可疑的沙子保持一致
@@ -49,6 +53,12 @@ public final class ModBlocks {
     public static Block createPotteryWheel() {
         return new PotteryWheelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.OAK_PLANKS)
                 .strength(2.5F).noOcclusion());
+    }
+
+    // 创建未烧制的纹饰陶罐，占位模型阶段沿用黏土材质属性
+    public static Block createUnfiredDecoratedPot() {
+        return new UnfiredDecoratedPotBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.CLAY)
+                .strength(0.6F));
     }
 
     // 遍历清单并交由平台完成注册

@@ -23,7 +23,6 @@ import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.tags.ItemTags;
@@ -128,20 +127,23 @@ public class PotteryWheelBlockEntity extends BlockEntity implements Container, M
         setChanged();
     }
 
-    // 四个纹饰槽满足原版陶罐配方时优先输出陶罐
+    // 四个陶片样板、四份黏土材料和一瓶水优先输出未烧制陶罐
     public ItemStack getPotResult() {
-        if (items.get(TOP).isEmpty() || items.get(LEFT).isEmpty() || items.get(RIGHT).isEmpty() || items.get(BOTTOM).isEmpty()) {
+        if (!hasFourClayUnits() || !isWaterBottle(items.get(WATER))) {
             return ItemStack.EMPTY;
         }
         for (int i = TOP; i <= BOTTOM; i++) {
             ItemStack stack = items.get(i);
             if (!stack.is(ItemTags.DECORATED_POT_INGREDIENTS)) return ItemStack.EMPTY;
         }
-        return DecoratedPotBlockEntity.createDecoratedPotItem(new PotDecorations(
-                items.get(TOP).getItem(), items.get(LEFT).getItem(), items.get(RIGHT).getItem(), items.get(BOTTOM).getItem()));
+        ItemStack result = new ItemStack(ModItems.UNFIRED_DECORATED_POT);
+        result.set(DataComponents.POT_DECORATIONS, new PotDecorations(
+                items.get(TOP).getItem(), items.get(LEFT).getItem(),
+                items.get(RIGHT).getItem(), items.get(BOTTOM).getItem()));
+        return result;
     }
 
-    // 黏土块、水瓶和一个陶片共同生成未烧制纹饰陶片
+    // 一个陶片样板配合黏土与水生成未烧制陶片；黏土块产出四个，黏土球产出一个
     public ItemStack getSherdResult() {
         if (!isClayMaterial(items.get(CLAY))
                 || !isWaterBottle(items.get(WATER))) {
@@ -156,26 +158,24 @@ public class PotteryWheelBlockEntity extends BlockEntity implements Container, M
             }
         }
         if (source == null) return ItemStack.EMPTY;
-        ItemStack result = new ItemStack(ModItems.UNFIRED_DECORATED_SHERD);
+        int count = items.get(CLAY).is(Blocks.CLAY.asItem()) ? 4 : 1;
+        ItemStack result = new ItemStack(ModItems.UNFIRED_DECORATED_SHERD, count);
         result.set(DataComponents.POT_DECORATIONS, new PotDecorations(source, source, source, source));
         return result;
     }
 
-    // 玩家取出输出时消耗对应输入；水瓶转为空玻璃瓶
+    // 玩家取出输出时仅消耗黏土材料和水，陶片始终作为样板保留
     public void consumeResult() {
-        if (getPotResult().isEmpty() && getSherdResult().isEmpty()) return;
-        if (!getPotResult().isEmpty()) {
-            for (int i = TOP; i <= BOTTOM; i++) removeItem(i, 1);
+        ItemStack potResult = getPotResult();
+        ItemStack sherdResult = getSherdResult();
+        if (potResult.isEmpty() && sherdResult.isEmpty()) return;
+        if (!potResult.isEmpty()) {
+            consumeClayUnits(4);
         } else {
             removeItem(CLAY, 1);
-            for (int i = TOP; i <= BOTTOM; i++) {
-                if (!items.get(i).isEmpty() && items.get(i).is(ItemTags.DECORATED_POT_SHERDS)) {
-                    removeItem(i, 1); break;
-                }
-            }
-            removeItem(WATER, 1);
-            if (items.get(WATER).isEmpty()) setItem(WATER, new ItemStack(Items.GLASS_BOTTLE));
         }
+        removeItem(WATER, 1);
+        if (items.get(WATER).isEmpty()) setItem(WATER, new ItemStack(Items.GLASS_BOTTLE));
         refreshRecipe();
     }
 
@@ -196,6 +196,18 @@ public class PotteryWheelBlockEntity extends BlockEntity implements Container, M
     // 黏土槽允许黏土块与黏土球，二者均可作为陶坯材料
     private static boolean isClayMaterial(ItemStack stack) {
         return stack.is(Blocks.CLAY.asItem()) || stack.is(Items.CLAY_BALL);
+    }
+
+    // 黏土块等价于四个黏土球
+    private boolean hasFourClayUnits() {
+        ItemStack clay = items.get(CLAY);
+        return clay.is(Blocks.CLAY.asItem()) || clay.is(Items.CLAY_BALL) && clay.getCount() >= 4;
+    }
+
+    // 当前陶罐配方固定消耗四份，优先保持黏土块的单次消耗语义
+    private void consumeClayUnits(int units) {
+        ItemStack clay = items.get(CLAY);
+        removeItem(CLAY, clay.is(Blocks.CLAY.asItem()) ? 1 : units);
     }
 
     // 方块被破坏时仅掉落真实输入，避免把动态输出重复掉落

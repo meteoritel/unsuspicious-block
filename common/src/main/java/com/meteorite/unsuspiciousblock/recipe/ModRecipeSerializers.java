@@ -15,6 +15,7 @@ public final class ModRecipeSerializers {
     public static Supplier<RecipeSerializer<?>> UNSUSPICIOUS_SAND_SEALING;
     public static Supplier<RecipeSerializer<?>> UNSUSPICIOUS_GRAVEL_SEALING;
     public static Supplier<RecipeSerializer<?>> UNFIRED_DECORATED_SHERD_SMELTING;
+    public static Supplier<RecipeSerializer<?>> UNFIRED_DECORATED_POT_SMELTING;
 
     private ModRecipeSerializers() {
     }
@@ -34,7 +35,11 @@ public final class ModRecipeSerializers {
             new SerializerEntry("unfired_decorated_sherd_smelting",
                     () -> new net.minecraft.world.item.crafting.SimpleCookingSerializer<>(
                             UnfiredDecoratedSherdSmeltingRecipe::new, 200),
-                    serializer -> UNFIRED_DECORATED_SHERD_SMELTING = serializer)
+                    serializer -> UNFIRED_DECORATED_SHERD_SMELTING = serializer),
+            new SerializerEntry("unfired_decorated_pot_smelting",
+                    () -> new net.minecraft.world.item.crafting.SimpleCookingSerializer<>(
+                            UnfiredDecoratedPotSmeltingRecipe::new, 200),
+                    serializer -> UNFIRED_DECORATED_POT_SMELTING = serializer)
     );
 
     // 为指定方块类型创建无数据字段的特殊配方序列化器

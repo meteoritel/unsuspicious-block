@@ -64,6 +64,13 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private void renderPreview(GuiGraphics graphics) {
         ItemStack output = menu.getSlot(6).getItem();
         if (output.isEmpty()) return;
+        if (output.is(ModItems.UNFIRED_DECORATED_POT)) {
+            ItemStack decoratedPotPreview = Items.DECORATED_POT.getDefaultInstance();
+            decoratedPotPreview.set(DataComponents.POT_DECORATIONS,
+                    output.getOrDefault(DataComponents.POT_DECORATIONS, PotDecorations.EMPTY));
+            renderDecoratedPot(graphics, decoratedPotPreview);
+            return;
+        }
         if (output.is(Items.DECORATED_POT)) {
             renderDecoratedPot(graphics, output);
             return;

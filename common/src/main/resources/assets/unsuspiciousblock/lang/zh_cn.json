@@ -494,6 +494,7 @@
   "screen.unsuspiciousblock.archaeology_journal.condition.unknown": "未知条件：%s",
   "screen.unsuspiciousblock.archaeology_journal.injected_loot": "来源: 模组联动",
   "block.unsuspiciousblock.pottery_wheel": "纹饰陶轮台",
+  "block.unsuspiciousblock.unfired_decorated_pot": "未烧制的纹饰陶罐",
   "item.unsuspiciousblock.unfired_decorated_sherd": "未烧制的纹饰陶片",
   "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "纹饰：%s"
 }
