@@ -11,6 +11,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
+import org.jetbrains.annotations.NotNull;
 
 /** 将未烧制纹饰陶罐动态转换为保留四面纹饰的原版陶罐。 */
 public class UnfiredDecoratedPotSmeltingRecipe extends AbstractCookingRecipe {
@@ -21,14 +22,14 @@ public class UnfiredDecoratedPotSmeltingRecipe extends AbstractCookingRecipe {
     }
 
     @Override
-    public ItemStack assemble(SingleRecipeInput input, HolderLookup.Provider registries) {
+    public @NotNull ItemStack assemble(SingleRecipeInput input, HolderLookup.@NotNull Provider registries) {
         PotDecorations decorations = input.item().getOrDefault(
                 DataComponents.POT_DECORATIONS, PotDecorations.EMPTY);
         return DecoratedPotBlockEntity.createDecoratedPotItem(decorations);
     }
 
     @Override
-    public RecipeSerializer<?> getSerializer() {
+    public @NotNull RecipeSerializer<?> getSerializer() {
         return ModRecipeSerializers.UNFIRED_DECORATED_POT_SMELTING.get();
     }
 }

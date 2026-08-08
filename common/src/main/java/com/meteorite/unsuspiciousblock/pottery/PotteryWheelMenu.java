@@ -7,7 +7,9 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -19,24 +21,27 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
 
     private final net.minecraft.world.Container container;
     private final PotteryWheelBlockEntity wheel;
+    private final ContainerData data;
 
     // 客户端 MenuType 构造
     public PotteryWheelMenu(int id, Inventory inventory) {
-        this(id, inventory, new SimpleContainer(PotteryWheelBlockEntity.SIZE), null);
+        this(id, inventory, new SimpleContainer(PotteryWheelBlockEntity.SIZE), null, new SimpleContainerData(2));
     }
 
     // 服务端方块实体构造
     public PotteryWheelMenu(int id, Inventory inventory, PotteryWheelBlockEntity wheel) {
-        this(id, inventory, wheel, wheel);
+        this(id, inventory, wheel, wheel, wheel.getDataAccess());
     }
 
     private PotteryWheelMenu(int id, Inventory inventory, net.minecraft.world.Container container,
-                             PotteryWheelBlockEntity wheel) {
+                             PotteryWheelBlockEntity wheel, ContainerData data) {
         super(TYPE, id);
         this.container = container;
         this.wheel = wheel;
+        this.data = data;
         addWheelSlots();
         addPlayerSlots(inventory);
+        addDataSlots(data);
     }
 
     private void addWheelSlots() {
@@ -65,8 +70,14 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
         return wheel == null || wheel.stillValid(player);
     }
 
-    public ItemStack getSherdPreview() {
-        return wheel == null ? ItemStack.EMPTY : wheel.getSherdPreview();
+    public ItemStack getPreviewResult() {
+        return PotteryWheelBlockEntity.getPreviewResult(container);
+    }
+
+    public int getScaledProgress(int width) {
+        int progress = data.get(0);
+        int total = data.get(1);
+        return progress <= 0 || total <= 0 ? 0 : Math.min(width, (progress * width + total - 1) / total);
     }
 
     @Override
@@ -96,29 +107,20 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
         }
 
         @Override
-        public boolean mayPlace(ItemStack stack) {
+        public boolean mayPlace(@NotNull ItemStack stack) {
             return inputContainer.canPlaceItem(getContainerSlot(), stack);
         }
     }
 
     private static class OutputSlot extends Slot {
-        private final net.minecraft.world.Container outputContainer;
-
         OutputSlot(net.minecraft.world.Container container, int index, int x, int y) {
             super(container, index, x, y);
-            this.outputContainer = container;
         }
 
         @Override
-        public boolean mayPlace(ItemStack stack) { return false; }
+        public boolean mayPlace(@NotNull ItemStack stack) { return false; }
 
         @Override
-        public boolean mayPickup(Player player) { return hasItem(); }
-
-        @Override
-        public void onTake(Player player, ItemStack stack) {
-            super.onTake(player, stack);
-            if (outputContainer instanceof PotteryWheelBlockEntity wheel) wheel.consumeResult();
-        }
+        public boolean mayPickup(@NotNull Player player) { return hasItem(); }
     }
 }

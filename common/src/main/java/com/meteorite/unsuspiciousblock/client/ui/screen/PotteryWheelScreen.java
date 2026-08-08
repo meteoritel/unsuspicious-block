@@ -24,10 +24,16 @@ import org.jetbrains.annotations.NotNull;
 public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu> {
     private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/gui/pottery_wheel_gui.png");
-    private static final ResourceLocation CLAY_SLOT = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/item/clay_slot.png");
     private static final ResourceLocation WATER_BOTTLE_SLOT = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/item/water_bottle_slot.png");
+    private static final float SLOT_GHOST_ALPHA = 0.36F;
+    private static final int CLAY_GHOST_MASK = 0xDB8B8B8B;
+    private static final int PROGRESS_X = 110;
+    private static final int PROGRESS_Y = 36;
+    private static final int PROGRESS_TEXTURE_X = 176;
+    private static final int PROGRESS_TEXTURE_Y = 16;
+    private static final int PROGRESS_WIDTH = 20;
+    private static final int PROGRESS_HEIGHT = 16;
     private static final int PREVIEW_X = 134;
     private static final int PREVIEW_Y = 17;
     private static final int PREVIEW_SIZE = 38;
@@ -51,42 +57,64 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(TEXTURE, leftPos, topPos, 0, 0, imageWidth, imageHeight, 256, 256);
         if (!menu.getSlot(4).hasItem()) {
-            graphics.blit(CLAY_SLOT, leftPos + 44, topPos + 36, 0, 0, 16, 16, 16, 16);
+            renderGhostItem(graphics, new ItemStack(Blocks.CLAY), leftPos + 44, topPos + 36);
         }
         if (!menu.getSlot(5).hasItem()) {
+            graphics.setColor(1.0F, 1.0F, 1.0F, SLOT_GHOST_ALPHA);
             graphics.blit(WATER_BOTTLE_SLOT, leftPos + 89, topPos + 36, 0, 0, 16, 16, 16, 16);
+            graphics.flush();
+            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        }
+        int progressWidth = menu.getScaledProgress(PROGRESS_WIDTH);
+        if (progressWidth > 0) {
+            graphics.blit(TEXTURE, leftPos + PROGRESS_X, topPos + PROGRESS_Y,
+                    PROGRESS_TEXTURE_X, PROGRESS_TEXTURE_Y,
+                    progressWidth, PROGRESS_HEIGHT, 256, 256);
         }
         // 预览必须在槽位和 tooltip 之前绘制，避免物品图标覆盖 tooltip。
         renderPreview(graphics);
     }
 
+    // 使用真实黏土方块图标绘制低透明度槽位提示
+    private void renderGhostItem(GuiGraphics graphics, ItemStack stack, int x, int y) {
+        graphics.renderItem(stack, x, y);
+        graphics.flush();
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 200.0F);
+        graphics.fill(x, y, x + 16, y + 16, CLAY_GHOST_MASK);
+        graphics.flush();
+        graphics.pose().popPose();
+    }
+
     // 陶罐使用 BlockEntityRenderer，陶片使用放大的物品渲染器
     private void renderPreview(GuiGraphics graphics) {
-        ItemStack output = menu.getSlot(6).getItem();
-        if (output.isEmpty()) return;
-        if (output.is(ModItems.UNFIRED_DECORATED_POT)) {
+        ItemStack previewResult = menu.getPreviewResult();
+        if (previewResult.isEmpty()) return;
+        if (previewResult.is(ModItems.UNFIRED_DECORATED_POT)) {
             ItemStack decoratedPotPreview = Items.DECORATED_POT.getDefaultInstance();
             decoratedPotPreview.set(DataComponents.POT_DECORATIONS,
-                    output.getOrDefault(DataComponents.POT_DECORATIONS, PotDecorations.EMPTY));
+                    previewResult.getOrDefault(DataComponents.POT_DECORATIONS, PotDecorations.EMPTY));
             renderDecoratedPot(graphics, decoratedPotPreview);
             return;
         }
-        if (output.is(Items.DECORATED_POT)) {
-            renderDecoratedPot(graphics, output);
+        if (previewResult.is(Items.DECORATED_POT)) {
+            renderDecoratedPot(graphics, previewResult);
             return;
         }
-        ItemStack preview = output;
-        if (output.is(ModItems.UNFIRED_DECORATED_SHERD)) {
-            PotDecorations decorations = output.get(DataComponents.POT_DECORATIONS);
+        ItemStack preview = previewResult;
+        if (previewResult.is(ModItems.UNFIRED_DECORATED_SHERD)) {
+            PotDecorations decorations = previewResult.get(DataComponents.POT_DECORATIONS);
             if (decorations != null && !decorations.ordered().isEmpty()) {
                 preview = new ItemStack(decorations.ordered().getFirst());
             }
         }
         graphics.pose().pushPose();
-        graphics.pose().translate(leftPos + 137, topPos + 20, 150.0F);
-        graphics.pose().scale(2.0F, 2.0F, 2.0F);
+        graphics.pose().translate(leftPos + 137, topPos + 20, 0.0F);
+        graphics.pose().scale(2.0F, 2.0F, 1.0F);
         graphics.renderItem(preview, 0, 0);
         graphics.pose().popPose();
+        // 立即提交预览，防止延迟批次在 tooltip 之后才绘制。
+        graphics.flush();
     }
 
     // 调用原版 DecoratedPotRenderer，保证四面纹饰与实际输出一致

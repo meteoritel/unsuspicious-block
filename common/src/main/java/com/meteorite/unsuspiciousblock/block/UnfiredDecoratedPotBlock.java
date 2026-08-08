@@ -37,14 +37,14 @@ public class UnfiredDecoratedPotBlock extends Block implements EntityBlock {
     }
 
     @Override
-    protected InteractionResult useWithoutItem(@NotNull BlockState state, @NotNull Level level,
-                                               @NotNull BlockPos pos, @NotNull Player player,
-                                               @NotNull BlockHitResult hit) {
+    protected @NotNull InteractionResult useWithoutItem(@NotNull BlockState state, @NotNull Level level,
+                                                        @NotNull BlockPos pos, @NotNull Player player,
+                                                        @NotNull BlockHitResult hit) {
         return InteractionResult.PASS;
     }
 
     @Override
-    protected List<ItemStack> getDrops(@NotNull BlockState state, @NotNull LootParams.Builder params) {
+    protected @NotNull List<ItemStack> getDrops(@NotNull BlockState state, @NotNull LootParams.Builder params) {
         if (params.getOptionalParameter(net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY)
                 instanceof UnfiredDecoratedPotBlockEntity pot) {
             return List.of(pot.getPotAsItem());

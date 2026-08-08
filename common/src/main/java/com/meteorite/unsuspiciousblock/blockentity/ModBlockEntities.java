@@ -40,22 +40,29 @@ public final class ModBlockEntities {
 
     // 创建两种不可疑方块共用的方块实体类型
     public static BlockEntityType<UnsuspiciousBlockEntity> createUnsuspiciousBlockType() {
-        return BlockEntityType.Builder.of(
+        return buildWithoutDataFixer(BlockEntityType.Builder.of(
                 UnsuspiciousBlockEntity::new,
                 ModBlocks.UNSUSPICIOUS_SAND.get(),
                 ModBlocks.UNSUSPICIOUS_GRAVEL.get()
-        ).build(null);
+        ));
     }
 
     // 创建纹饰陶轮台方块实体类型
     public static BlockEntityType<PotteryWheelBlockEntity> createPotteryWheelType() {
-        return BlockEntityType.Builder.of(PotteryWheelBlockEntity::new, ModBlocks.POTTERY_WHEEL.get()).build(null);
+        return buildWithoutDataFixer(
+                BlockEntityType.Builder.of(PotteryWheelBlockEntity::new, ModBlocks.POTTERY_WHEEL.get()));
     }
 
     // 创建保存四面纹饰数据的未烧制陶罐方块实体类型
     public static BlockEntityType<UnfiredDecoratedPotBlockEntity> createUnfiredDecoratedPotType() {
-        return BlockEntityType.Builder.of(UnfiredDecoratedPotBlockEntity::new,
-                ModBlocks.UNFIRED_DECORATED_POT.get()).build(null);
+        return buildWithoutDataFixer(BlockEntityType.Builder.of(UnfiredDecoratedPotBlockEntity::new,
+                ModBlocks.UNFIRED_DECORATED_POT.get()));
+    }
+
+    // 自定义方块实体没有原版 DFU 类型，Minecraft 1.21.1 使用 null 表示不参与数据修复
+    @SuppressWarnings("DataFlowIssue")
+    private static <T extends BlockEntity> BlockEntityType<T> buildWithoutDataFixer(BlockEntityType.Builder<T> builder) {
+        return builder.build(null);
     }
 
     // 遍历清单并交由平台完成注册
