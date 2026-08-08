@@ -1,6 +1,7 @@
 {
   "block.unsuspiciousblock.unsuspicious_sand": "不可疑的沙子",
   "block.unsuspiciousblock.unsuspicious_gravel": "不可疑的沙砾",
+  "item.unsuspiciousblock.unsuspicious_block.tooltip_fill": "与任意物品合成即可填充",
   "effect.unsuspiciousblock.cat_favor": "猫之九命",
   "item.unsuspiciousblock.suspicious_reader": "可疑解析仪",
   "item.unsuspiciousblock.suspicious_reader.not_suspicious": "这不是一个可疑方块。",

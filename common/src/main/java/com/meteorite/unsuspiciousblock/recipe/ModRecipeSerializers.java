@@ -14,6 +14,8 @@ import java.util.function.Supplier;
 public final class ModRecipeSerializers {
     public static Supplier<RecipeSerializer<?>> UNSUSPICIOUS_SAND_SEALING;
     public static Supplier<RecipeSerializer<?>> UNSUSPICIOUS_GRAVEL_SEALING;
+    public static Supplier<RecipeSerializer<?>> UNSUSPICIOUS_SAND_CREATION;
+    public static Supplier<RecipeSerializer<?>> UNSUSPICIOUS_GRAVEL_CREATION;
     public static Supplier<RecipeSerializer<?>> UNFIRED_DECORATED_SHERD_SMELTING;
     public static Supplier<RecipeSerializer<?>> UNFIRED_DECORATED_POT_SMELTING;
 
@@ -27,11 +29,17 @@ public final class ModRecipeSerializers {
 
     public static final List<SerializerEntry> REGISTRY_MANIFEST = List.of(
             new SerializerEntry("unsuspicious_sand_sealing",
-                    () -> create(UnsuspiciousSealingRecipe.Variant.SAND),
+                    () -> createSealing(UnsuspiciousSealingRecipe.Variant.SAND),
                     serializer -> UNSUSPICIOUS_SAND_SEALING = serializer),
             new SerializerEntry("unsuspicious_gravel_sealing",
-                    () -> create(UnsuspiciousSealingRecipe.Variant.GRAVEL),
+                    () -> createSealing(UnsuspiciousSealingRecipe.Variant.GRAVEL),
                     serializer -> UNSUSPICIOUS_GRAVEL_SEALING = serializer),
+            new SerializerEntry("unsuspicious_sand_creation",
+                    () -> createCreation(UnsuspiciousSealingRecipe.Variant.SAND),
+                    serializer -> UNSUSPICIOUS_SAND_CREATION = serializer),
+            new SerializerEntry("unsuspicious_gravel_creation",
+                    () -> createCreation(UnsuspiciousSealingRecipe.Variant.GRAVEL),
+                    serializer -> UNSUSPICIOUS_GRAVEL_CREATION = serializer),
             new SerializerEntry("unfired_decorated_sherd_smelting",
                     () -> new net.minecraft.world.item.crafting.SimpleCookingSerializer<>(
                             UnfiredDecoratedSherdSmeltingRecipe::new, 200),
@@ -43,16 +51,30 @@ public final class ModRecipeSerializers {
     );
 
     // 为指定方块类型创建无数据字段的特殊配方序列化器
-    private static RecipeSerializer<?> create(UnsuspiciousSealingRecipe.Variant variant) {
+    private static RecipeSerializer<?> createSealing(UnsuspiciousSealingRecipe.Variant variant) {
         return new SimpleCraftingRecipeSerializer<>((CraftingBookCategory category) ->
                 new UnsuspiciousSealingRecipe(category, variant));
     }
 
+    // 为指定方块类型创建空方块制作配方序列化器
+    private static RecipeSerializer<?> createCreation(UnsuspiciousSealingRecipe.Variant variant) {
+        return new SimpleCraftingRecipeSerializer<>((CraftingBookCategory category) ->
+                new UnsuspiciousCreationRecipe(category, variant));
+    }
+
     // 返回配方类型对应的已注册序列化器
-    public static RecipeSerializer<?> get(UnsuspiciousSealingRecipe.Variant variant) {
+    public static RecipeSerializer<?> getSealing(UnsuspiciousSealingRecipe.Variant variant) {
         return switch (variant) {
             case SAND -> UNSUSPICIOUS_SAND_SEALING.get();
             case GRAVEL -> UNSUSPICIOUS_GRAVEL_SEALING.get();
+        };
+    }
+
+    // 返回空方块制作配方类型对应的已注册序列化器
+    public static RecipeSerializer<?> getCreation(UnsuspiciousSealingRecipe.Variant variant) {
+        return switch (variant) {
+            case SAND -> UNSUSPICIOUS_SAND_CREATION.get();
+            case GRAVEL -> UNSUSPICIOUS_GRAVEL_CREATION.get();
         };
     }
 

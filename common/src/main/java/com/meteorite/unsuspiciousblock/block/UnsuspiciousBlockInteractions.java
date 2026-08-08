@@ -24,7 +24,7 @@ public final class UnsuspiciousBlockInteractions {
         }
 
         if (level instanceof ServerLevel serverLevel) {
-            boolean destroyed = serverLevel.destroyBlock(pos, false, player);
+            boolean destroyed = serverLevel.destroyBlock(pos, true, player);
             if (destroyed && !player.isCreative()) {
                 ServerPlayer serverPlayer = player instanceof ServerPlayer sp ? sp : null;
                 tool.hurtAndBreak(1, serverLevel, serverPlayer, item -> {

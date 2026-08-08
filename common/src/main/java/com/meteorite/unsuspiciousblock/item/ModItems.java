@@ -116,7 +116,7 @@ public class ModItems {
 
     // 创建纹饰陶轮台物品
     public static BlockItem createPotteryWheel() {
-        return new UnsuspiciousBlockItem(ModBlocks.POTTERY_WHEEL.get(), new Item.Properties());
+        return new BlockItem(ModBlocks.POTTERY_WHEEL.get(), new Item.Properties());
     }
 
     // 创建可携带四面纹饰组件的未烧制陶罐方块物品

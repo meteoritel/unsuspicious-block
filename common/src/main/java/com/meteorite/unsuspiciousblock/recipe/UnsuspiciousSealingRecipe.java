@@ -14,7 +14,7 @@ import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 使用沙子或沙砾封存任意单个物品的无序特殊配方。
+ * 使用空不可疑方块封存任意单个非不可疑方块物品的无序特殊配方。
  */
 public class UnsuspiciousSealingRecipe extends CustomRecipe {
     private final Variant variant;
@@ -48,10 +48,10 @@ public class UnsuspiciousSealingRecipe extends CustomRecipe {
 
     @Override
     public @NotNull RecipeSerializer<?> getSerializer() {
-        return ModRecipeSerializers.get(this.variant);
+        return ModRecipeSerializers.getSealing(this.variant);
     }
 
-    // 查找唯一载荷，同时验证输入中恰好有一个基底和一个载荷
+    // 查找唯一载荷，同时验证输入中恰好有一个空不可疑方块和一个载荷
     private ItemStack findPayload(CraftingInput input) {
         boolean foundBase = false;
         ItemStack payload = ItemStack.EMPTY;
@@ -63,7 +63,7 @@ public class UnsuspiciousSealingRecipe extends CustomRecipe {
                 continue;
             }
             occupiedSlots++;
-            if (stack.is(this.variant.baseItem()) && !foundBase) {
+            if (stack.is(this.variant.outputItem()) && !SealedContents.isSealed(stack) && !foundBase) {
                 foundBase = true;
             } else if (payload.isEmpty() && isAllowedPayload(stack)) {
                 payload = stack;
@@ -75,11 +75,9 @@ public class UnsuspiciousSealingRecipe extends CustomRecipe {
         return occupiedSlots == 2 && foundBase && !payload.isEmpty() ? payload : null;
     }
 
-    // 排除会导致两种配方冲突的基底，以及可无限嵌套的成品方块
+    // 排除两种不可疑方块，避免成品嵌套或互相封存
     private static boolean isAllowedPayload(ItemStack stack) {
-        return !stack.is(Items.SAND)
-                && !stack.is(Items.GRAVEL)
-                && !stack.is(ModItems.UNSUSPICIOUS_SAND)
+        return !stack.is(ModItems.UNSUSPICIOUS_SAND)
                 && !stack.is(ModItems.UNSUSPICIOUS_GRAVEL);
     }
 
@@ -88,7 +86,7 @@ public class UnsuspiciousSealingRecipe extends CustomRecipe {
         SAND,
         GRAVEL;
 
-        // 获取当前类型使用的原版基底
+        // 获取制作空方块时使用的原版基底
         public Item baseItem() {
             return this == SAND ? Items.SAND : Items.GRAVEL;
         }

@@ -1,12 +1,14 @@
 package com.meteorite.unsuspiciousblock.block;
 
+import com.mojang.serialization.MapCodec;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.server.level.ServerLevel;
@@ -14,16 +16,31 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 不可疑的沙子与沙砾共用方块实现，负责创建方块实体并接收物品封存数据。
+ * 不可疑的沙子与沙砾共用方块实现，负责封存数据、重力检测与碎裂掉落。
  */
-public class UnsuspiciousBlock extends Block implements EntityBlock {
+public class UnsuspiciousBlock extends FallingBlock implements EntityBlock {
+    public static final MapCodec<UnsuspiciousBlock> CODEC = simpleCodec(UnsuspiciousBlock::new);
+
     public UnsuspiciousBlock(Properties properties) {
         super(properties);
     }
 
     @Override
+    public @NotNull MapCodec<? extends FallingBlock> codec() {
+        return CODEC;
+    }
+
+    @Override
     public @NotNull BlockEntity newBlockEntity(@NotNull BlockPos pos, @NotNull BlockState state) {
         return new UnsuspiciousBlockEntity(pos, state);
+    }
+
+    @Override
+    protected void tick(@NotNull BlockState state, @NotNull ServerLevel level, @NotNull BlockPos pos,
+                        @NotNull RandomSource random) {
+        if (FallingBlock.isFree(level.getBlockState(pos.below()))) {
+            level.destroyBlock(pos, true);
+        }
     }
 
     @Override

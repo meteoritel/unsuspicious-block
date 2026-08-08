@@ -39,6 +39,11 @@ public final class SealedContents {
         return contents.getFirst().copy();
     }
 
+    // 判断方块物品是否已经完成过填充
+    public static boolean isSealed(ItemStack carrier) {
+        return !getSealedItem(carrier).isEmpty();
+    }
+
     // 在玩家取得合成结果时写入身份；没有玩家上下文时不调用此方法
     public static void recordCrafter(ItemStack carrier, Player player) {
         CustomData.update(DataComponents.CUSTOM_DATA, carrier, tag -> {

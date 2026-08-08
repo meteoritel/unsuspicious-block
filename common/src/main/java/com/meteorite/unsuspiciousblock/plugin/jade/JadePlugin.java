@@ -1,11 +1,10 @@
 package com.meteorite.unsuspiciousblock.plugin.jade;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.block.SealedContents;
+import com.meteorite.unsuspiciousblock.block.SealedContentsDisplay;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlock;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
-import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -113,7 +112,7 @@ public class JadePlugin implements IWailaPlugin {
                     accessor.encodeAsNbt(ItemStack.OPTIONAL_STREAM_CODEC, sealedItem));
 
             blockEntity.getCrafter()
-                    .map(JadePlugin::displayCrafterName)
+                    .map(SealedContentsDisplay::displayCrafterName)
                     .ifPresent(name -> data.putString(TAG_CRAFTER_NAME, name));
         }
 
@@ -137,24 +136,19 @@ public class JadePlugin implements IWailaPlugin {
                             .orElse(ItemStack.EMPTY);
 
             IElementHelper elements = IElementHelper.get();
-            tooltip.add(Component.translatable("jade.unsuspiciousblock.sealed_item")
-                    .withStyle(ChatFormatting.GRAY));
+            tooltip.add(SealedContentsDisplay.sealedItemPrefix());
             if (sealedItem.isEmpty()) {
-                tooltip.append(Component.translatable("jade.unsuspiciousblock.empty")
-                        .withStyle(ChatFormatting.DARK_GRAY));
+                tooltip.append(SealedContentsDisplay.sealedItemValue(sealedItem));
             } else {
                 tooltip.append(elements.item(sealedItem, 0.6f));
                 tooltip.append(Component.literal(" "));
-                tooltip.append(sealedItem.getHoverName().copy().withStyle(ChatFormatting.YELLOW));
-                tooltip.append(Component.literal(" ×" + sealedItem.getCount())
-                        .withStyle(ChatFormatting.WHITE));
+                tooltip.append(SealedContentsDisplay.sealedItemValue(sealedItem));
             }
 
-            Component crafterName = data.contains(TAG_CRAFTER_NAME, Tag.TAG_STRING)
-                    ? Component.literal(data.getString(TAG_CRAFTER_NAME))
-                    : Component.translatable("jade.unsuspiciousblock.unknown_player");
-            tooltip.add(Component.translatable("jade.unsuspiciousblock.sealed_by", crafterName)
-                    .withStyle(ChatFormatting.AQUA));
+            String crafterName = data.contains(TAG_CRAFTER_NAME, Tag.TAG_STRING)
+                    ? data.getString(TAG_CRAFTER_NAME)
+                    : null;
+            tooltip.add(SealedContentsDisplay.sealedByNameLine(crafterName));
         }
 
         @Override
@@ -163,8 +157,4 @@ public class JadePlugin implements IWailaPlugin {
         }
     }
 
-    // 玩家名缺失时使用 UUID，确保已有身份数据始终可识别
-    private static String displayCrafterName(SealedContents.CrafterIdentity identity) {
-        return identity.name().isBlank() ? identity.uuid().toString() : identity.name();
-    }
 }
