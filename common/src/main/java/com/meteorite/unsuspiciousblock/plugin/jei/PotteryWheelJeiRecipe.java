@@ -54,7 +54,7 @@ public record PotteryWheelJeiRecipe(Mode mode,
     // 按注册名排序读取 tag，确保每次打开 JEI 时展示顺序稳定
     private static List<ItemStack> getTagStacks(TagKey<Item> tag) {
         return BuiltInRegistries.ITEM.stream()
-                .filter(item -> item.builtInRegistryHolder().is(tag))
+                .filter(item -> BuiltInRegistries.ITEM.wrapAsHolder(item).is(tag))
                 .sorted(Comparator.comparing(item -> BuiltInRegistries.ITEM.getKey(item).toString()))
                 .map(Item::getDefaultInstance)
                 .toList();

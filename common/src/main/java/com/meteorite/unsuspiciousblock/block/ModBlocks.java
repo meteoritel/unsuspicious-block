@@ -58,7 +58,9 @@ public final class ModBlocks {
     // 创建未烧制的纹饰陶罐，占位模型阶段沿用黏土材质属性
     public static Block createUnfiredDecoratedPot() {
         return new UnfiredDecoratedPotBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.CLAY)
-                .strength(0.6F));
+                .strength(0.6F)
+                // 模型为内缩的非完整方块，避免按完整方块参与光照遮挡
+                .noOcclusion());
     }
 
     // 遍历清单并交由平台完成注册
