@@ -77,7 +77,7 @@ public class JeiPlugin implements IModPlugin {
     // 为 tag 中的每种纹饰陶片创建独立的原版熔炉展示配方
     private static List<RecipeHolder<SmeltingRecipe>> createSherdSmeltingRecipes() {
         return BuiltInRegistries.ITEM.stream()
-                .filter(item -> item.builtInRegistryHolder().is(ItemTags.DECORATED_POT_SHERDS))
+                .filter(item -> BuiltInRegistries.ITEM.wrapAsHolder(item).is(ItemTags.DECORATED_POT_SHERDS))
                 .sorted(Comparator.comparing(item -> BuiltInRegistries.ITEM.getKey(item).toString()))
                 .map(JeiPlugin::createSherdSmeltingRecipe)
                 .toList();
