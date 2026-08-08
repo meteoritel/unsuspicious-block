@@ -20,7 +20,7 @@
 | Minecraft | 1.21.1 |
 | Loader | Fabric 0.17.0+ / NeoForge 21.1.195+ |
 | Java | 21 |
-| 当前版本 | 1.4.1-bug_fix |
+| 当前版本 | 1.5.0 |
 | 多人游戏 | 客户端与服务端均需安装 |
 | License | MIT |
 

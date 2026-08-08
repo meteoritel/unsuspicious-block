@@ -24,6 +24,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.PotDecorations;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Optional;
@@ -73,7 +74,7 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
     }
 
     @Override
-    public void setRecipe(IRecipeLayoutBuilder builder, PotteryWheelJeiRecipe recipe, IFocusGroup focuses) {
+    public void setRecipe(@NotNull IRecipeLayoutBuilder builder, PotteryWheelJeiRecipe recipe, @NotNull IFocusGroup focuses) {
         if (recipe.mode() == PotteryWheelJeiRecipe.Mode.POT) {
             addPatternSlot(builder, TOP_SLOT, 26, 2, recipe.patternInputs());
             addPatternSlot(builder, LEFT_SLOT, 8, 20, recipe.patternInputs());
@@ -98,9 +99,9 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
     }
 
     @Override
-    public void onDisplayedIngredientsUpdate(PotteryWheelJeiRecipe recipe,
-                                             List<IRecipeSlotDrawable> recipeSlots,
-                                             IFocusGroup focuses) {
+    public void onDisplayedIngredientsUpdate(@NotNull PotteryWheelJeiRecipe recipe,
+                                             @NotNull List<IRecipeSlotDrawable> recipeSlots,
+                                             @NotNull IFocusGroup focuses) {
         findSlot(recipeSlots, OUTPUT_SLOT).ifPresent(outputSlot -> {
             ItemStack result = recipe.mode() == PotteryWheelJeiRecipe.Mode.POT
                     ? createDisplayedPot(recipeSlots)
@@ -114,8 +115,8 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
     }
 
     @Override
-    public void draw(PotteryWheelJeiRecipe recipe, IRecipeSlotsView recipeSlotsView,
-                     GuiGraphics guiGraphics, double mouseX, double mouseY) {
+    public void draw(@NotNull PotteryWheelJeiRecipe recipe, IRecipeSlotsView recipeSlotsView,
+                     @NotNull GuiGraphics guiGraphics, double mouseX, double mouseY) {
         background.draw(guiGraphics, 0, 0);
         progress.draw(guiGraphics, 92, 20);
         recipeSlotsView.findSlotByName(OUTPUT_SLOT)

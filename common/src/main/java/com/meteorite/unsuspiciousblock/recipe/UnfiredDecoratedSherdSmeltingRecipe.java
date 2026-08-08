@@ -10,8 +10,8 @@ import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.PotDecorations;
+import org.jetbrains.annotations.NotNull;
 
 /** 未烧制纹饰陶片的动态熔炼配方，烧制结果取自输入组件中的花纹物品。 */
 public class UnfiredDecoratedSherdSmeltingRecipe extends AbstractCookingRecipe {
@@ -22,7 +22,7 @@ public class UnfiredDecoratedSherdSmeltingRecipe extends AbstractCookingRecipe {
     }
 
     @Override
-    public ItemStack assemble(SingleRecipeInput input, HolderLookup.Provider registries) {
+    public @NotNull ItemStack assemble(SingleRecipeInput input, HolderLookup.@NotNull Provider registries) {
         PotDecorations decorations = input.item().get(DataComponents.POT_DECORATIONS);
         if (decorations == null || decorations.ordered().isEmpty()) {
             return new ItemStack(Items.BRICK);
@@ -31,7 +31,7 @@ public class UnfiredDecoratedSherdSmeltingRecipe extends AbstractCookingRecipe {
     }
 
     @Override
-    public RecipeSerializer<?> getSerializer() {
+    public @NotNull RecipeSerializer<?> getSerializer() {
         return ModRecipeSerializers.UNFIRED_DECORATED_SHERD_SMELTING.get();
     }
 
