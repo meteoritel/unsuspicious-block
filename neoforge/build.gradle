@@ -21,6 +21,10 @@ dependencies {
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     runtimeOnly "maven.modrinth:jade:15.10.5+neoforge"
 
+    // JEI：API 仅用于编译，完整模组只在开发运行环境中加载
+    compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
+    runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+
     // Curios API：compileOnly 引用 API，runtimeOnly 供本地运行测试
     // 发布时不强制玩家安装 Curios，仅在存在时启用联动功能
     compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}:api"

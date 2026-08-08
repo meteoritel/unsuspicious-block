@@ -1,22 +1,18 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.client.ui.PotteryPreviewRenderer;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
-import com.mojang.math.Axis;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.Util;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import org.jetbrains.annotations.NotNull;
 
@@ -26,7 +22,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
             Constants.MOD_ID, "textures/gui/pottery_wheel_gui.png");
     private static final ResourceLocation WATER_BOTTLE_SLOT = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/item/water_bottle_slot.png");
-    private static final float SLOT_GHOST_ALPHA = 0.36F;
+    private static final float SLOT_GHOST_ALPHA = 0.6F;
     private static final int CLAY_GHOST_MASK = 0xDB8B8B8B;
     private static final int PROGRESS_X = 110;
     private static final int PROGRESS_Y = 36;
@@ -38,9 +34,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private static final int PREVIEW_Y = 17;
     private static final int PREVIEW_SIZE = 38;
 
-    private final DecoratedPotBlockEntity previewPot = new DecoratedPotBlockEntity(
-            net.minecraft.core.BlockPos.ZERO, Blocks.DECORATED_POT.defaultBlockState());
-    private ItemStack previewPotSource = ItemStack.EMPTY;
+    private final PotteryPreviewRenderer previewRenderer = new PotteryPreviewRenderer();
     private float manualRotation;
     private boolean draggingPreview;
     private double previousMouseX;
@@ -119,25 +113,10 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
 
     // 调用原版 DecoratedPotRenderer，保证四面纹饰与实际输出一致
     private void renderDecoratedPot(GuiGraphics graphics, ItemStack output) {
-        if (!ItemStack.isSameItemSameComponents(output, previewPotSource)) {
-            previewPot.setFromItem(output);
-            previewPotSource = output.copy();
-        }
         graphics.enableScissor(leftPos + PREVIEW_X, topPos + PREVIEW_Y,
                 leftPos + PREVIEW_X + PREVIEW_SIZE, topPos + PREVIEW_Y + PREVIEW_SIZE);
-        graphics.pose().pushPose();
-        graphics.pose().translate(leftPos + 153, topPos + 50, 120.0F);
-        graphics.pose().scale(24.0F, -24.0F, 24.0F);
-        graphics.pose().mulPose(Axis.XP.rotationDegrees(18.0F));
-        float automaticRotation = (Util.getMillis() % 12000L) * 0.03F;
-        graphics.pose().mulPose(Axis.YP.rotationDegrees(automaticRotation + manualRotation));
-        graphics.pose().translate(-0.5F, 0.0F, -0.5F);
-        BlockEntityRenderDispatcher dispatcher = net.minecraft.client.Minecraft.getInstance()
-                .getBlockEntityRenderDispatcher();
-        dispatcher.renderItem(previewPot, graphics.pose(), graphics.bufferSource(),
-                15728880, OverlayTexture.NO_OVERLAY);
-        graphics.flush();
-        graphics.pose().popPose();
+        previewRenderer.render(graphics, output,
+                leftPos + 153, topPos + 50, 24.0F, manualRotation);
         graphics.disableScissor();
     }
 

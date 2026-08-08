@@ -47,6 +47,9 @@ public class ModItems {
             new ItemEntry("unfired_decorated_pot",
                     ModItems::createUnfiredDecoratedPot,
                     item -> UNFIRED_DECORATED_POT = (UnfiredDecoratedPotItem) item),
+            new ItemEntry("unfired_decorated_sherd",
+                    ModItems::createUnfiredDecoratedSherd,
+                    item -> UNFIRED_DECORATED_SHERD = (UnfiredDecoratedSherdItem) item),
             new ItemEntry("suspicious_reader",
                     ModItems::createSuspiciousReader,
                     item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
@@ -73,10 +76,7 @@ public class ModItems {
                     item -> EYE_OF_CAT = (EyeOfCatItem) item),
             new ItemEntry("hand_of_cat",
                     ModItems::createHandOfCat,
-                    item -> HAND_OF_CAT = (HandOfCatItem) item),
-            new ItemEntry("unfired_decorated_sherd",
-                    ModItems::createUnfiredDecoratedSherd,
-                    item -> UNFIRED_DECORATED_SHERD = (UnfiredDecoratedSherdItem) item)
+                    item -> HAND_OF_CAT = (HandOfCatItem) item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -90,6 +90,7 @@ public class ModItems {
             () -> UNSUSPICIOUS_GRAVEL,
             () -> POTTERY_WHEEL,
             () -> UNFIRED_DECORATED_POT,
+            () -> UNFIRED_DECORATED_SHERD,
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
             () -> ANCIENT_COIN,
@@ -97,8 +98,7 @@ public class ModItems {
             () -> BASE_PAGE,
             () -> EYE_OF_CAT,
             () -> SPECIMEN_BOX,
-            () -> HAND_OF_CAT,
-            () -> UNFIRED_DECORATED_SHERD
+            () -> HAND_OF_CAT
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //

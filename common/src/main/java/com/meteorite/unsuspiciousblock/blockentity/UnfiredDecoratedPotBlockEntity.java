@@ -25,18 +25,10 @@ public class UnfiredDecoratedPotBlockEntity extends BlockEntity {
         setChanged();
     }
 
-    public PotDecorations getDecorations() {
-        return decorations;
-    }
-
     public ItemStack getPotAsItem() {
         ItemStack result = new ItemStack(com.meteorite.unsuspiciousblock.item.ModItems.UNFIRED_DECORATED_POT);
         result.set(DataComponents.POT_DECORATIONS, decorations);
         return result;
-    }
-
-    public void dropAsItem(Level level) {
-        Containers.dropItemStack(level, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), getPotAsItem());
     }
 
     @Override

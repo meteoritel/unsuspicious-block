@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.recipe;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
 import net.minecraft.world.item.crafting.CraftingInput;
@@ -62,6 +63,16 @@ public class UnsuspiciousCreationRecipe extends CustomRecipe {
     @Override
     public @NotNull RecipeSerializer<?> getSerializer() {
         return ModRecipeSerializers.getCreation(this.variant);
+    }
+
+    // 返回 JEI 等配方查看器展示时使用的原版基底
+    public Item getBaseItem() {
+        return this.variant.baseItem();
+    }
+
+    // 返回 JEI 等配方查看器展示时使用的空不可疑方块
+    public Item getOutputItem() {
+        return this.variant.outputItem();
     }
 
     // 验证输入中恰好包含一个对应基底和一把考古铲

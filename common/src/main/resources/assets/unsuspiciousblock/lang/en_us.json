@@ -497,5 +497,6 @@
   "block.unsuspiciousblock.pottery_wheel": "Decorated Pottery Wheel",
   "block.unsuspiciousblock.unfired_decorated_pot": "Unfired Decorated Pot",
   "item.unsuspiciousblock.unfired_decorated_sherd": "Unfired Decorated Pottery Sherd",
-  "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "Pattern: %s"
+  "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "Pattern: %s",
+  "jei.unsuspiciousblock.category.pottery_wheel": "Decorated Pottery Wheel"
 }

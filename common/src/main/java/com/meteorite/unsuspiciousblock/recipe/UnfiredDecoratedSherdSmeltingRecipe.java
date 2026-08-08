@@ -9,6 +9,7 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.PotDecorations;
 
@@ -23,12 +24,20 @@ public class UnfiredDecoratedSherdSmeltingRecipe extends AbstractCookingRecipe {
     @Override
     public ItemStack assemble(SingleRecipeInput input, HolderLookup.Provider registries) {
         PotDecorations decorations = input.item().get(DataComponents.POT_DECORATIONS);
-        if (decorations == null || decorations.ordered().isEmpty()) return ItemStack.EMPTY;
+        if (decorations == null || decorations.ordered().isEmpty()) {
+            return new ItemStack(Items.BRICK);
+        }
         return new ItemStack(decorations.ordered().getFirst());
     }
 
     @Override
     public RecipeSerializer<?> getSerializer() {
         return ModRecipeSerializers.UNFIRED_DECORATED_SHERD_SMELTING.get();
+    }
+
+    // 动态结果无法由原版配方书准确表达，交由配方查看器联动单独展示
+    @Override
+    public boolean isSpecial() {
+        return true;
     }
 }

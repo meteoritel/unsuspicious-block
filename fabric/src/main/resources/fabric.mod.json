@@ -28,6 +28,9 @@
         "jade": [
             "com.meteorite.unsuspiciousblock.plugin.jade.JadePlugin"
         ],
+        "jei_mod_plugin": [
+            "com.meteorite.unsuspiciousblock.plugin.jei.JeiPlugin"
+        ],
         "modmenu": [
             "com.meteorite.unsuspiciousblock.modmenu.ModMenuIntegration"
         ]

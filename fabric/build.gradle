@@ -41,6 +41,10 @@ dependencies {
     modCompileOnly "maven.modrinth:jade:15.10.5+fabric"
     modRuntimeOnly "maven.modrinth:jade:15.10.5+fabric"
 
+    // JEI：API 仅用于编译，完整模组只在开发运行环境中加载
+    modCompileOnly "mezz.jei:jei-${minecraft_version}-fabric-api:${jei_version}"
+    modRuntimeOnly "mezz.jei:jei-${minecraft_version}-fabric:${jei_version}"
+
     // Trinkets：可选联动，仅编译期引用 API，运行时由玩家自行安装
     modCompileOnly "dev.emi:trinkets:${trinkets_version}"
     // 本地运行测试时自动拉取 trinkets 及其传递依赖（CCA）
