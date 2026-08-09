@@ -23,7 +23,6 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final String README_CN_FILE_NAME = "README_CN.txt";
     private static final String README_EN_FILE_NAME = "README_EN.txt";
-    private static final List<String> DEFAULT_PREFIXES = ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES;
 
     private final List<String> prefixes;
     private int maxLogEntriesPerTable;
@@ -37,8 +36,8 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
     public FabricLootTableConfig() {
         ConfigData data = loadConfig();
-        this.prefixes = new ArrayList<>(data.archaeology_path_prefixes != null && !data.archaeology_path_prefixes.isEmpty()
-                ? data.archaeology_path_prefixes : DEFAULT_PREFIXES);
+        this.prefixes = new ArrayList<>(data.archaeology_path_prefixes != null
+                ? data.archaeology_path_prefixes : DEFAULT_ARCHAEOLOGY_PATH_PREFIXES);
         this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
         this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
         this.messengerLifetimeTicks = clampNpcLifetime("messenger_lifetime_ticks", data.messenger_lifetime_ticks,
@@ -190,7 +189,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
         try (Reader reader = Files.newBufferedReader(configPath)) {
             ConfigData data = GSON.fromJson(reader, ConfigData.class);
-            if (data != null && data.archaeology_path_prefixes != null && !data.archaeology_path_prefixes.isEmpty()) {
+            if (data != null && data.archaeology_path_prefixes != null) {
                 return data;
             }
         } catch (IOException e) {
@@ -205,7 +204,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     }
 
     private static ConfigData defaultConfigData() {
-        return new ConfigData(DEFAULT_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
+        return new ConfigData(DEFAULT_ARCHAEOLOGY_PATH_PREFIXES, DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
                 DEFAULT_TRACKING_TIMEOUT_TICKS, DEFAULT_MESSENGER_LIFETIME_TICKS,
                 DEFAULT_SWORDSMAN_LIFETIME_TICKS, DEFAULT_MERCHANT_LIFETIME_TICKS,
                 DEFAULT_INVULNERABILITY_DURATION_TICKS, DEFAULT_RESISTANCE_DURATION_TICKS,
@@ -262,21 +261,28 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
                 max_log_entries_per_table
                     单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。
-                    取值范围：64 – 4096。默认 512。
+                    取值范围：%d – %d。默认 %d。
 
                 tracking_timeout_ticks
                     战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。
-                    取值范围：600 – 60000。默认 6000（5 分钟）。
+                    取值范围：%d – %d。默认 %d（5 分钟）。
 
                 spirit_cat
-                    messenger_lifetime_ticks：信使最长现世时间，默认 600。
-                    swordsman_lifetime_ticks：剑士最长现世时间，默认 600。
-                    merchant_lifetime_ticks：商人最长现世时间，默认 48000。
-                    invulnerability_duration_ticks：九命纯无敌时间，默认 40。
-                    resistance_duration_ticks：九命抗性提升 II 时间，默认 600。
-                    fire_resistance_duration_ticks：九命防火 I 时间，默认 600。
+                    messenger_lifetime_ticks：信使最长现世时间，默认 %d。
+                    swordsman_lifetime_ticks：剑士最长现世时间，默认 %d。
+                    merchant_lifetime_ticks：商人最长现世时间，默认 %d。
+                    invulnerability_duration_ticks：九命纯无敌时间，默认 %d。
+                    resistance_duration_ticks：九命抗性提升 II 时间，默认 %d。
+                    fire_resistance_duration_ticks：九命防火 I 时间，默认 %d。
                     所有值均使用游戏刻；20 ticks = 1 秒。
-                """;
+                """.formatted(
+                MIN_MAX_LOG_ENTRIES_PER_TABLE, MAX_MAX_LOG_ENTRIES_PER_TABLE,
+                DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
+                MIN_TRACKING_TIMEOUT_TICKS, MAX_TRACKING_TIMEOUT_TICKS,
+                DEFAULT_TRACKING_TIMEOUT_TICKS,
+                DEFAULT_MESSENGER_LIFETIME_TICKS, DEFAULT_SWORDSMAN_LIFETIME_TICKS,
+                DEFAULT_MERCHANT_LIFETIME_TICKS, DEFAULT_INVULNERABILITY_DURATION_TICKS,
+                DEFAULT_RESISTANCE_DURATION_TICKS, DEFAULT_FIRE_RESISTANCE_DURATION_TICKS);
     }
 
     private static String buildReadmeEn() {
@@ -306,21 +312,28 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
                 max_log_entries_per_table
                     Max log entries kept per loot table. Oldest entries are dropped when exceeded.
-                    Range: 64 – 4096. Default 512.
+                    Range: %d – %d. Default %d.
 
                 tracking_timeout_ticks
                     Loot container tracking timeout (ticks). Auto-settles and clears tracking state on expiry.
-                    Range: 600 – 60000. Default 6000 (5 minutes).
+                    Range: %d – %d. Default %d (5 minutes).
 
                 spirit_cat
-                    messenger_lifetime_ticks: messenger lifetime, default 600.
-                    swordsman_lifetime_ticks: swordsman lifetime, default 600.
-                    merchant_lifetime_ticks: merchant lifetime, default 48000.
-                    invulnerability_duration_ticks: Nine Lives invulnerability, default 40.
-                    resistance_duration_ticks: Nine Lives Resistance II, default 600.
-                    fire_resistance_duration_ticks: Nine Lives Fire Resistance I, default 600.
+                    messenger_lifetime_ticks: messenger lifetime, default %d.
+                    swordsman_lifetime_ticks: swordsman lifetime, default %d.
+                    merchant_lifetime_ticks: merchant lifetime, default %d.
+                    invulnerability_duration_ticks: Nine Lives invulnerability, default %d.
+                    resistance_duration_ticks: Nine Lives Resistance II, default %d.
+                    fire_resistance_duration_ticks: Nine Lives Fire Resistance I, default %d.
                     All values are in game ticks; 20 ticks = 1 second.
-                """;
+                """.formatted(
+                MIN_MAX_LOG_ENTRIES_PER_TABLE, MAX_MAX_LOG_ENTRIES_PER_TABLE,
+                DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
+                MIN_TRACKING_TIMEOUT_TICKS, MAX_TRACKING_TIMEOUT_TICKS,
+                DEFAULT_TRACKING_TIMEOUT_TICKS,
+                DEFAULT_MESSENGER_LIFETIME_TICKS, DEFAULT_SWORDSMAN_LIFETIME_TICKS,
+                DEFAULT_MERCHANT_LIFETIME_TICKS, DEFAULT_INVULNERABILITY_DURATION_TICKS,
+                DEFAULT_RESISTANCE_DURATION_TICKS, DEFAULT_FIRE_RESISTANCE_DURATION_TICKS);
     }
 
     private static Path getConfigDir() {

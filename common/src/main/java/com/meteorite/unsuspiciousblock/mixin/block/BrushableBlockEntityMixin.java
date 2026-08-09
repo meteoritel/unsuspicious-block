@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
+import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -27,7 +28,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BrushableBlockEntity;
@@ -300,11 +300,12 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         // 主手优先——原版 BrushItem.useOn 用 context.getItemInHand() 调用 brush()，
         // 若玩家副手持刷，主手为空或非刷子时，使用副手刷子
         ItemStack mainHand = player.getMainHandItem();
-        if (mainHand.is(Items.BRUSH)) {
+        if (UnsuspiciousBlockInteractions.isBrush(mainHand)) {
             this.unsuspiciousblock$brushTool = mainHand;
         } else {
             ItemStack offHand = player.getOffhandItem();
-            this.unsuspiciousblock$brushTool = offHand.is(Items.BRUSH) ? offHand : ItemStack.EMPTY;
+            this.unsuspiciousblock$brushTool = UnsuspiciousBlockInteractions.isBrush(offHand)
+                    ? offHand : ItemStack.EMPTY;
         }
     }
 

@@ -218,7 +218,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         }
     }
 
-    // 服务端每 tick 推进一次制作；输入失效或结果槽被占用时停止并清空进度
+    // 服务端每 tick 推进一次制作；输入失效或结果槽无法容纳产物时停止并清空进度
     public static void serverTick(PotteryWheelBlockEntity wheel) {
         wheel.updateWetClayState();
         if (!wheel.canWorkNow()) {
@@ -226,7 +226,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
             return;
         }
         ItemStack result = getProcessingResult(wheel);
-        if (!wheel.items.get(OUTPUT).isEmpty() || result.isEmpty()) {
+        if (result.isEmpty() || !wheel.canAcceptOutput(result)) {
             wheel.updateWorkingState(false);
             wheel.resetProgress();
             return;
@@ -265,7 +265,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         }
         items.get(WATER).shrink(1);
         ItemStack bottle = new ItemStack(Items.GLASS_BOTTLE);
-        items.set(OUTPUT, insertIntoHopperBelow(result));
+        storeOutput(insertIntoHopperBelow(result));
         items.set(WATER, insertIntoHopperBelow(bottle));
         processProgress = 0;
         updateWetClayState();
@@ -279,6 +279,24 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
             return stack;
         }
         return HopperBlockEntity.addItem(this, hopper, stack, Direction.UP);
+    }
+
+    // 空槽或相同物品且剩余空间足够时，可以继续加工
+    private boolean canAcceptOutput(ItemStack result) {
+        ItemStack output = items.get(OUTPUT);
+        return output.isEmpty() || ItemStack.isSameItemSameComponents(output, result)
+                && output.getCount() + result.getCount() <= output.getMaxStackSize();
+    }
+
+    // 漏斗未接收的产物安全写入或合并到结果槽
+    private void storeOutput(ItemStack result) {
+        if (result.isEmpty()) return;
+        ItemStack output = items.get(OUTPUT);
+        if (output.isEmpty()) {
+            items.set(OUTPUT, result);
+        } else {
+            output.grow(result.getCount());
+        }
     }
 
     // 仅在状态真正变化时标脏，避免空闲方块每 tick 触发区块保存

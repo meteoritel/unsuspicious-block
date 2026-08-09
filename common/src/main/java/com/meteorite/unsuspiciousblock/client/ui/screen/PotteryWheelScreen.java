@@ -15,7 +15,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import org.jetbrains.annotations.NotNull;
 
@@ -25,8 +24,9 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
             Constants.MOD_ID, "textures/gui/pottery_wheel_gui.png");
     private static final ResourceLocation WATER_BOTTLE_SLOT = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/item/water_bottle_slot.png");
+    private static final ResourceLocation CLAY_SLOT = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/item/clay_slot.png");
     private static final float SLOT_GHOST_ALPHA = 0.6F;
-    private static final int CLAY_GHOST_MASK = 0xDB8B8B8B;
     private static final int PROGRESS_X = 110;
     private static final int PROGRESS_Y = 36;
     private static final int PROGRESS_TEXTURE_X = 176;
@@ -78,13 +78,10 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(TEXTURE, leftPos, topPos, 0, 0, imageWidth, imageHeight, 256, 256);
         if (!menu.getSlot(4).hasItem()) {
-            renderGhostItem(graphics, new ItemStack(Blocks.CLAY), leftPos + 44, topPos + 36);
+            renderGhostSlot(graphics, CLAY_SLOT, leftPos + 44, topPos + 36);
         }
         if (!menu.getSlot(5).hasItem()) {
-            graphics.setColor(1.0F, 1.0F, 1.0F, SLOT_GHOST_ALPHA);
-            graphics.blit(WATER_BOTTLE_SLOT, leftPos + 89, topPos + 36, 0, 0, 16, 16, 16, 16);
-            graphics.flush();
-            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            renderGhostSlot(graphics, WATER_BOTTLE_SLOT, leftPos + 89, topPos + 36);
         }
         int progressWidth = menu.getScaledProgress(PROGRESS_WIDTH);
         if (progressWidth > 0) {
@@ -96,15 +93,12 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         renderPreview(graphics);
     }
 
-    // 使用真实黏土方块图标绘制低透明度槽位提示
-    private void renderGhostItem(GuiGraphics graphics, ItemStack stack, int x, int y) {
-        graphics.renderItem(stack, x, y);
+    // 使用统一的半透明纹理流程绘制输入槽位提示
+    private void renderGhostSlot(GuiGraphics graphics, ResourceLocation texture, int x, int y) {
+        graphics.setColor(1.0F, 1.0F, 1.0F, SLOT_GHOST_ALPHA);
+        graphics.blit(texture, x, y, 0, 0, 16, 16, 16, 16);
         graphics.flush();
-        graphics.pose().pushPose();
-        graphics.pose().translate(0.0F, 0.0F, 200.0F);
-        graphics.fill(x, y, x + 16, y + 16, CLAY_GHOST_MASK);
-        graphics.flush();
-        graphics.pose().popPose();
+        graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     // 陶罐使用 BlockEntityRenderer，陶片使用放大的物品渲染器
@@ -176,7 +170,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
-    // 预览框仅负责观察，不再承担结果取出交互
+    // 预览框仅负责观察，不承担结果取出交互
     private boolean isInsidePreview(double mouseX, double mouseY) {
         return mouseX >= leftPos + PREVIEW_X && mouseX < leftPos + PREVIEW_X + PREVIEW_SIZE
                 && mouseY >= topPos + PREVIEW_Y && mouseY < topPos + PREVIEW_Y + PREVIEW_SIZE;

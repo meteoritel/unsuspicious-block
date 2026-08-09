@@ -39,8 +39,7 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
                         "e.g. minecraft:archaeology/desert_well (single), unsuspiciousblock:archaeology/ (specific mod), archaeology/ (all namespaces).")
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
-                        () -> List.of("archaeology/", "archeology/", "minecraft:gameplay/fishing",
-                                "pots/", "unsuspiciousblock:gameplay/fossil_hunter/", "gameplay/fishing/"),
+                        () -> ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES,
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
         builder.pop();

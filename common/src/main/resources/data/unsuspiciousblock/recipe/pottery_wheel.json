@@ -1,14 +1,16 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "TCT",
-    "PTP",
-    "PPP"
+    "SLS",
+    "FPF",
+    "CPC"
   ],
   "key": {
-    "T": { "item": "minecraft:terracotta" },
-    "C": { "item": "minecraft:copper_ingot" },
-    "P": { "item": "minecraft:oak_planks" }
+    "S": { "tag": "minecraft:decorated_pot_sherds" },
+    "L": { "tag": "minecraft:logs" },
+    "F": { "tag": "minecraft:wooden_fences" },
+    "P": { "tag": "minecraft:planks" },
+    "C": { "tag": "minecraft:stone_crafting_materials" }
   },
   "result": { "id": "unsuspiciousblock:pottery_wheel", "count": 1 }
 }

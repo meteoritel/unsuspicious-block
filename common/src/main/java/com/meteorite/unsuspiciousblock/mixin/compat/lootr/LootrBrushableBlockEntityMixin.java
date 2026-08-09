@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.mixin.compat.lootr;
 
+import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
@@ -15,7 +16,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -362,11 +362,12 @@ public abstract class LootrBrushableBlockEntityMixin
         this.unsuspiciousblock$brushGameTime = gameTime;
         this.unsuspiciousblock$brushDayTime = player.level().getDayTime();
         ItemStack mainHand = player.getMainHandItem();
-        if (mainHand.is(Items.BRUSH)) {
+        if (UnsuspiciousBlockInteractions.isBrush(mainHand)) {
             this.unsuspiciousblock$brushTool = mainHand;
         } else {
             ItemStack offHand = player.getOffhandItem();
-            this.unsuspiciousblock$brushTool = offHand.is(Items.BRUSH) ? offHand : ItemStack.EMPTY;
+            this.unsuspiciousblock$brushTool = UnsuspiciousBlockInteractions.isBrush(offHand)
+                    ? offHand : ItemStack.EMPTY;
         }
     }
 

@@ -275,61 +275,41 @@
 ### 新增
 
 #### 不可疑方块
-- 新增「不可疑的沙子」与「不可疑的沙砾」。使用考古铲和对应原版方块可先制作空方块，再与一个物品无序合成以封存该物品；封存时会记录首次持有成品的玩家。
-- 放置后的不可疑方块可用刷子或考古铲快速破坏并取回封存物品；方块失去支撑时会碎裂并掉落原版沙子或沙砾以及封存内容。
-- 可疑解析仪扫描时可识别封存玩家；安装 Jade 后，无需扫描即可查看封存物品、数量和封存玩家。
-- 物品悬浮提示会显示封存内容与封存玩家，并禁止不可疑方块互相嵌套封存。
+- 新增「不可疑的沙子」和「不可疑的沙砾」两种方块。使用考古铲分别与沙子、沙砾合成可获得对应的空方块，再通过无序合成填充单个物品。不可疑方块的材质与可疑方块完全一致，拿去整蛊你的朋友吧！
+- 放置后的不可疑方块可用刷子快速破坏，并取回其中封存的物品。
+- 不可疑方块无法相互嵌套填充。
 
 #### 纹饰陶轮台
-- 新增「纹饰陶轮台」、未烧制的纹饰陶片与未烧制的纹饰陶罐，支持自定义四面的陶罐纹饰。
-- 陶片可作为可重复使用的纹饰样板：配合黏土和水瓶加工 8 秒后生成未烧制纹饰陶片；黏土块一次产出 4 片，黏土球一次产出 1 片。
-- 四个陶罐原料配合一个黏土块或 4 个黏土球及一瓶水，可制作保留四面纹饰的未烧制陶罐。未烧制成品经熔炉烧制后转换为对应纹饰陶片或原版纹饰陶罐。
-- 陶轮台支持进度显示与漏斗自动化：顶部输入黏土和水瓶，侧面输入纹饰样板及材料，底部输出成品和空瓶；正下方漏斗会优先接收加工结果。
+- 新增「纹饰陶轮台」、未烧制的纹饰陶片与未烧制的纹饰陶罐。现在可以复制纹饰陶片了。
+- 陶轮台支持漏斗自动化：顶部输入黏土和水瓶，侧面输入纹饰样板及其他材料，底部输出成品和空瓶；加工产物会优先产生在下方漏斗中。
 
 #### JEI 联动
-- 新增纹饰陶轮台 JEI 分类，展示陶片压印与陶罐成型的动态配方，并将陶轮台注册为配方催化剂及界面点击区域。
-- 不可疑方块制作、未烧制纹饰陶片和纹饰陶罐的烧制方式现可在 JEI 中查询。
+- 为纹饰陶轮台添加了 JEI 分类支持，可查看陶片压印与陶罐成型的配方。
 
 ### 变化
 
 #### 考古笔记
-- 目录重构为分类首页，按刷扫发掘、遗迹宝箱、钓鱼与打捞、陶罐、化石采集和其他内容分类，并显示各分类解锁进度。
-- 战利品表目录支持父子层级展开；子表会显示引用来源与子表内概率，同时加入循环引用保护。
-- 物品网格会将来自同一物品 tag 的内容折叠成分组入口，并显示分组发现进度。
-- 优化搜索框、连续滚动文字、页面裁剪和详情布局；药水、附魔、唱片与箭等物品现在会显示更明确的变体详情。
-- 关闭界面后会清空搜索文本和临时展开状态，避免下次打开时残留。
-
-### 修复
-- 修复未烧制纹饰陶罐按完整方块遮挡光照以及底面渲染异常的问题。
-- 修复 JEI 查询纹饰陶片 tag 时 Holder 获取方式不正确的问题。
+- 目录页面重构为分类首页。
+- 战利品表目录支持父子层级展开；子表会显示引用来源和在父表中的出现概率，同时加入了循环引用保护。
+- 物品网格中，来自同一物品标签（tag）的内容会折叠为分组入口，并显示该分组的发现进度。
+- 药水、附魔、唱片和箭等物品现在会显示更详细的变体信息。
 
 ### Added
-
-#### Unsuspicious Blocks
-- Added Unsuspicious Sand and Unsuspicious Gravel. Craft an empty block with an Archaeological Shovel and its vanilla base block, then combine it shapelessly with one item to seal that item inside. The first player to hold the sealed result is recorded.
-- Placed Unsuspicious Blocks can be broken quickly with a Brush or Archaeological Shovel to recover their contents. If unsupported, they crumble and drop the vanilla sand or gravel together with the sealed item.
-- The Suspicious Reader can identify the sealing player. With Jade installed, the sealed item, amount, and player are visible without scanning.
-- Item tooltips show the sealed contents and player, and Unsuspicious Blocks cannot be nested inside one another.
+#### Unsuspicious Block
+- Added two new blocks: "Unsuspicious Sand" and "Unsuspicious Gravel". Combine sand or gravel with Archaeology Shovel to craft the empty block, then fill it with a single item via shapeless crafting. The textures of unsuspicious blocks are identical to suspicious blocks — go prank your friends!
+- Placed unsuspicious blocks can be quickly broken with a brush, retrieving the stored item inside. 
+- Unsuspicious blocks cannot be nested inside one another.
 
 #### Decorated Pottery Wheel
-- Added the Decorated Pottery Wheel, Unfired Decorated Pottery Sherds, and Unfired Decorated Pots with independently selected decorations for all four sides.
-- Pottery sherds act as reusable patterns. Processing a pattern with clay and a water bottle for 8 seconds creates unfired decorated sherds: a clay block yields four, while a clay ball yields one.
-- Four decorated-pot ingredients, one clay block or four clay balls, and a water bottle create an Unfired Decorated Pot that preserves all four decorations. Smelting unfired products creates the matching pottery sherd or vanilla Decorated Pot.
-- The Pottery Wheel has a progress display and hopper automation: clay and water enter from above, patterns and materials enter from the sides, and products and empty bottles leave from below. A hopper directly underneath receives completed outputs first.
+- Added the Decorated Pottery Wheel, unfired decorated pottery sherds, and unfired decorated pots. Decorated pottery sherds can now be duplicated.
+- The Pottery Wheel supports hopper automation: input clay and water bottles from the top, decorated patterns and other materials from the side, and output finished products and empty bottles from the bottom. Crafted items will prioritize appearing in a hopper below.
 
 #### JEI Integration
-- Added a Decorated Pottery Wheel JEI category for dynamic sherd stamping and pot forming recipes, including a recipe catalyst and clickable GUI area.
-- Unsuspicious Block crafting and the smelting recipes for unfired decorated sherds and pots can now be viewed in JEI.
+- Added JEI category support for the Decorated Pottery Wheel, allowing to view recipes for sherd stamping and pot forming.
 
 ### Changed
-
 #### Archaeology Journal
-- Reworked the catalogue into a category home page for brushing, ruins chests, fishing and dredging, pots, fossil gathering, and other content, with unlock progress for each category.
-- Loot table entries now support expandable parent-child hierarchies. Child tables show their references and within-table probabilities, with protection against circular references.
-- Items originating from the same item tag are grouped in the item grid with per-group discovery progress.
-- Improved the search box, smooth scrolling text, clipping, and detail layout. Potions, enchantments, music discs, arrows, and other variants now show clearer details.
-- Search text and temporary expanded state are cleared when the screen closes, preventing stale UI state on the next opening.
-
-### Fixed
-- Fixed incorrect light occlusion and bottom-face rendering on Unfired Decorated Pots.
-- Fixed JEI's Holder lookup when resolving decorated pottery sherd tags.
+- The table of contents page has been reworked into a category home page.
+- The loot table catalog now supports expanding parent‑child hierarchies. Child tables display their source reference and probability of appearing in the parent table, and cycle reference protection has been added.
+- In the item grid, contents from the same item tag are collapsed into a group entry, showing the discovery progress of that group.
+- Potions, enchantments, music discs, arrows, and similar items now display more detailed variant information.
