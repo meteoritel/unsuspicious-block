@@ -31,7 +31,9 @@ public class IconButton extends AbstractButton {
         SORT_ITEM_COUNT(2, 1),
         SORT_FAVORITE(3, 1),
         SORT_UNLOCK(4, 1),
-        SORT_UPDATE_TIME(5, 1);
+        SORT_UPDATE_TIME(5, 1),
+        DISABLED(6, 1),
+        ENABLED(7, 1);
 
         private final int atlasColumn;
         private final int atlasRow;

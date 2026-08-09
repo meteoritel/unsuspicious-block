@@ -26,7 +26,9 @@ public class ModModelLayers {
 
     // 模型层注册清单——新增模型层只需在此添加一行
     public static final List<LayerEntry> REGISTRY_MANIFEST = List.of(
-            new LayerEntry(LanternPetModel.LAYER_LOCATION, LanternPetModel::createBodyLayer)
+            new LayerEntry(LanternPetModel.LAYER_LOCATION, LanternPetModel::createBodyLayer),
+            new LayerEntry(PotteryWheelModel.TURNTABLE_LAYER, PotteryWheelModel::createTurntableLayer),
+            new LayerEntry(PotteryWheelModel.CLAY_LAYER, PotteryWheelModel::createClayLayer)
     );
 
     // 遍历清单，调用平台回调完成注册

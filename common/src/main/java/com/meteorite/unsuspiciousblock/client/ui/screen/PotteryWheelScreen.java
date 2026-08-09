@@ -4,6 +4,9 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.PotteryPreviewRenderer;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.blockentity.PotteryWheelBlockEntity;
+import com.meteorite.unsuspiciousblock.client.ui.widget.PotteryWheelModeButton;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
@@ -38,6 +41,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private float manualRotation;
     private boolean draggingPreview;
     private double previousMouseX;
+    private PotteryWheelModeButton modeButton;
 
     public PotteryWheelScreen(PotteryWheelMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -45,6 +49,29 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         this.imageHeight = 166;
         this.titleLabelX = 19;
         this.inventoryLabelY = 72;
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        modeButton = addRenderableWidget(new PotteryWheelModeButton(leftPos + 8, topPos + 17, nextMode -> {
+            menu.setClientControlMode(nextMode);
+            if (Minecraft.getInstance().gameMode != null) {
+                Minecraft.getInstance().gameMode.handleInventoryButtonClick(menu.containerId, 0);
+            }
+        }));
+        updateModeButton();
+    }
+
+    private void updateModeButton() {
+        if (modeButton == null) return;
+        PotteryWheelBlockEntity.ControlMode mode = menu.getControlMode();
+        String key = switch (mode) {
+            case ENABLED -> "screen.unsuspiciousblock.pottery_wheel.control.enabled";
+            case DISABLED -> "screen.unsuspiciousblock.pottery_wheel.control.disabled";
+            case REDSTONE_ENABLED -> "screen.unsuspiciousblock.pottery_wheel.control.redstone_enabled";
+        };
+        modeButton.setMode(mode, Component.translatable(key));
     }
 
     @Override
@@ -157,8 +184,10 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
 
     @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        updateModeButton();
         super.render(graphics, mouseX, mouseY, partialTick);
         renderTooltip(graphics, mouseX, mouseY);
+        if (modeButton != null) modeButton.renderTooltip(graphics, mouseX, mouseY);
     }
 
 }

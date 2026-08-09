@@ -7,6 +7,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.Container;
@@ -30,10 +32,22 @@ import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.util.RandomSource;
 import org.jetbrains.annotations.NotNull;
 
 /** 纹饰陶轮台的 6 个输入/输出槽位、动态配方与漏斗交互逻辑。 */
 public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyContainer, MenuProvider {
+    /** 陶轮台的工作许可模式。 */
+    public enum ControlMode {
+        ENABLED,
+        DISABLED,
+        REDSTONE_ENABLED;
+
+        public static ControlMode byId(int id) {
+            ControlMode[] values = values();
+            return values[Math.floorMod(id, values.length)];
+        }
+    }
     public static final int TOP = 0;
     public static final int LEFT = 1;
     public static final int RIGHT = 2;
@@ -45,6 +59,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
     public static final int PROCESS_TIME = 8 * 20;
 
     private static final String PROCESS_PROGRESS_TAG = "ProcessProgress";
+    private static final String CONTROL_MODE_TAG = "ControlMode";
     private static final int[] TOP_ACCESS_SLOTS = {CLAY, WATER};
     private static final int[] SIDE_ACCESS_SLOTS = {TOP, LEFT, RIGHT, BOTTOM, CLAY, WATER};
     private static final int[] BOTTOM_ACCESS_SLOTS = {OUTPUT, WATER};
@@ -56,6 +71,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
             return switch (index) {
                 case 0 -> processProgress;
                 case 1 -> PROCESS_TIME;
+                case 2 -> controlMode.ordinal();
                 default -> 0;
             };
         }
@@ -63,14 +79,16 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         @Override
         public void set(int index, int value) {
             if (index == 0) processProgress = value;
+            if (index == 2) controlMode = ControlMode.byId(value);
         }
 
         @Override
         public int getCount() {
-            return 2;
+            return 3;
         }
     };
     private int processProgress;
+    private ControlMode controlMode = ControlMode.ENABLED;
 
     public PotteryWheelBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.POTTERY_WHEEL.get(), pos, state);
@@ -142,7 +160,11 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
 
     @Override
     public boolean canPlaceItem(int slot, @NotNull ItemStack stack) {
-        if (slot == OUTPUT) return false;
+        return isValidInput(slot, stack);
+    }
+
+    // 客户端与服务端菜单共用输入规则，避免 shift 移动的预测结果不一致。
+    public static boolean isValidInput(int slot, ItemStack stack) {
         if (slot == CLAY) return isClayMaterial(stack);
         if (slot == WATER) return isWaterBottle(stack);
         if (slot >= TOP && slot <= BOTTOM) {
@@ -178,27 +200,60 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         setChanged();
     }
 
-    // 根据当前黏土和水瓶状态更新方块模型
+    // 黏土槽有材料时立即显示黏土，水瓶只决定能否实际加工
     private void updateWetClayState() {
-        boolean wet = isClayMaterial(items.get(CLAY)) && isWaterBottle(items.get(WATER));
+        boolean wet = isClayMaterial(items.get(CLAY));
         if (level != null && level.getBlockState(worldPosition).hasProperty(PotteryWheelBlock.WET_CLAY)
                 && level.getBlockState(worldPosition).getValue(PotteryWheelBlock.WET_CLAY) != wet) {
             level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(PotteryWheelBlock.WET_CLAY, wet), 3);
         }
     }
 
+    // 同步实际加工状态，供客户端转盘动画和粒子效果使用。
+    private void updateWorkingState(boolean working) {
+        if (level != null && level.getBlockState(worldPosition).hasProperty(PotteryWheelBlock.WORKING)
+                && level.getBlockState(worldPosition).getValue(PotteryWheelBlock.WORKING) != working) {
+            level.setBlock(worldPosition, level.getBlockState(worldPosition)
+                    .setValue(PotteryWheelBlock.WORKING, working), 3);
+        }
+    }
+
     // 服务端每 tick 推进一次制作；输入失效或结果槽被占用时停止并清空进度
     public static void serverTick(PotteryWheelBlockEntity wheel) {
+        wheel.updateWetClayState();
+        if (!wheel.canWorkNow()) {
+            wheel.updateWorkingState(false);
+            return;
+        }
         ItemStack result = getProcessingResult(wheel);
         if (!wheel.items.get(OUTPUT).isEmpty() || result.isEmpty()) {
+            wheel.updateWorkingState(false);
             wheel.resetProgress();
             return;
         }
 
+        wheel.updateWorkingState(true);
         wheel.processProgress++;
         if (wheel.processProgress >= PROCESS_TIME) {
             wheel.completeProcessing(result);
         }
+    }
+
+    // 客户端稳定生成随转盘向外飞散的黏土碎屑。
+    public static void clientTick(Level level, BlockPos pos, BlockState state) {
+        if (!state.getValue(PotteryWheelBlock.WORKING)) return;
+        RandomSource random = level.getRandom();
+        if (random.nextFloat() >= 0.35F) return;
+
+        double angle = random.nextDouble() * Math.PI * 2.0D;
+        double radius = 0.20D + random.nextDouble() * 0.28D;
+        double x = pos.getX() + 0.5D + Math.cos(angle) * radius;
+        double y = pos.getY() + 0.90D + random.nextDouble() * 0.10D;
+        double z = pos.getZ() + 0.5D + Math.sin(angle) * radius;
+        double outward = 0.008D + random.nextDouble() * 0.012D;
+        level.addParticle(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.CLAY.defaultBlockState()),
+                x, y, z, Math.cos(angle) * outward, 0.015D + random.nextDouble() * 0.02D,
+                Math.sin(angle) * outward);
     }
 
     // 完成时消耗材料，优先把空瓶和结果直接写入正下方漏斗
@@ -214,6 +269,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         items.set(WATER, insertIntoHopperBelow(bottle));
         processProgress = 0;
         updateWetClayState();
+        updateWorkingState(false);
         setChanged();
     }
 
@@ -246,6 +302,25 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
 
     public ContainerData getDataAccess() {
         return dataAccess;
+    }
+
+    public ControlMode getControlMode() {
+        return controlMode;
+    }
+
+    // 切换工作许可并立即停止不再允许运行的动画。
+    public void cycleControlMode() {
+        controlMode = ControlMode.byId(controlMode.ordinal() + 1);
+        if (!canWorkNow()) updateWorkingState(false);
+        setChanged();
+    }
+
+    private boolean canWorkNow() {
+        return switch (controlMode) {
+            case ENABLED -> true;
+            case DISABLED -> false;
+            case REDSTONE_ENABLED -> level != null && level.hasNeighborSignal(worldPosition);
+        };
     }
 
     // 从任意同步容器计算陶罐结果
@@ -334,6 +409,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         super.saveAdditional(tag, registries);
         ContainerHelper.saveAllItems(tag, items, registries);
         tag.putInt(PROCESS_PROGRESS_TAG, processProgress);
+        tag.putInt(CONTROL_MODE_TAG, controlMode.ordinal());
     }
 
     @Override
@@ -341,5 +417,6 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         super.loadAdditional(tag, registries);
         ContainerHelper.loadAllItems(tag, items, registries);
         processProgress = Math.max(0, Math.min(tag.getInt(PROCESS_PROGRESS_TAG), PROCESS_TIME - 1));
+        controlMode = ControlMode.byId(tag.contains(CONTROL_MODE_TAG) ? tag.getInt(CONTROL_MODE_TAG) : 0);
     }
 }

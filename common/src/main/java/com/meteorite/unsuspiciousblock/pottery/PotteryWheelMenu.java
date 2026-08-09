@@ -25,7 +25,7 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
 
     // 客户端 MenuType 构造
     public PotteryWheelMenu(int id, Inventory inventory) {
-        this(id, inventory, new SimpleContainer(PotteryWheelBlockEntity.SIZE), null, new SimpleContainerData(2));
+        this(id, inventory, new SimpleContainer(PotteryWheelBlockEntity.SIZE), null, new SimpleContainerData(3));
     }
 
     // 服务端方块实体构造
@@ -80,6 +80,22 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
         return progress <= 0 || total <= 0 ? 0 : Math.min(width, (progress * width + total - 1) / total);
     }
 
+    public PotteryWheelBlockEntity.ControlMode getControlMode() {
+        return PotteryWheelBlockEntity.ControlMode.byId(data.get(2));
+    }
+
+    // 客户端先更新按钮图标，服务端状态随后通过 ContainerData 同步。
+    public void setClientControlMode(PotteryWheelBlockEntity.ControlMode mode) {
+        data.set(2, mode.ordinal());
+    }
+
+    @Override
+    public boolean clickMenuButton(@NotNull Player player, int id) {
+        if (id != 0 || wheel == null) return false;
+        if (!player.level().isClientSide()) wheel.cycleControlMode();
+        return true;
+    }
+
     @Override
     public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
         Slot slot = slots.get(index);
@@ -91,24 +107,32 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
             slot.onTake(player, copy);
         } else if (index < 7) {
             if (!moveItemStackTo(original, 7, slots.size(), true)) return ItemStack.EMPTY;
-        } else if (!moveItemStackTo(original, 0, 6, false)) {
-            return ItemStack.EMPTY;
+        } else {
+            boolean moved;
+            if (PotteryWheelBlockEntity.isValidInput(PotteryWheelBlockEntity.CLAY, original)) {
+                moved = moveItemStackTo(original, PotteryWheelBlockEntity.CLAY,
+                        PotteryWheelBlockEntity.CLAY + 1, false);
+            } else if (PotteryWheelBlockEntity.isValidInput(PotteryWheelBlockEntity.WATER, original)) {
+                moved = moveItemStackTo(original, PotteryWheelBlockEntity.WATER,
+                        PotteryWheelBlockEntity.WATER + 1, false);
+            } else {
+                moved = moveItemStackTo(original, PotteryWheelBlockEntity.TOP,
+                        PotteryWheelBlockEntity.BOTTOM + 1, false);
+            }
+            if (!moved) return ItemStack.EMPTY;
         }
         if (original.isEmpty()) slot.setByPlayer(ItemStack.EMPTY); else slot.setChanged();
         return copy;
     }
 
     private static class InputSlot extends Slot {
-        private final net.minecraft.world.Container inputContainer;
-
         InputSlot(net.minecraft.world.Container container, int index, int x, int y) {
             super(container, index, x, y);
-            this.inputContainer = container;
         }
 
         @Override
         public boolean mayPlace(@NotNull ItemStack stack) {
-            return inputContainer.canPlaceItem(getContainerSlot(), stack);
+            return PotteryWheelBlockEntity.isValidInput(getContainerSlot(), stack);
         }
     }
 

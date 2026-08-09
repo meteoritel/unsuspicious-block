@@ -1,12 +1,20 @@
 {
   "variants": {
-    "facing=north,wet_clay=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
-    "facing=south,wet_clay=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
-    "facing=west,wet_clay=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
-    "facing=east,wet_clay=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
-    "facing=north,wet_clay=true": { "model": "unsuspiciousblock:block/pottery_wheel" },
-    "facing=south,wet_clay=true": { "model": "unsuspiciousblock:block/pottery_wheel", "y": 180 },
-    "facing=west,wet_clay=true": { "model": "unsuspiciousblock:block/pottery_wheel", "y": 270 },
-    "facing=east,wet_clay=true": { "model": "unsuspiciousblock:block/pottery_wheel", "y": 90 }
+    "facing=north,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
+    "facing=north,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
+    "facing=north,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
+    "facing=north,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
+    "facing=south,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
+    "facing=south,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
+    "facing=south,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
+    "facing=south,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
+    "facing=west,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
+    "facing=west,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
+    "facing=west,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
+    "facing=west,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
+    "facing=east,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
+    "facing=east,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
+    "facing=east,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
+    "facing=east,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 }
   }
 }

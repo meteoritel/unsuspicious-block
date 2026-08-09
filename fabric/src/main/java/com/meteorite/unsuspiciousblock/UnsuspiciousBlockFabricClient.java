@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
+import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
@@ -22,6 +23,7 @@ import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.fabricmc.api.ClientModInitializer;
@@ -37,6 +39,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.TooltipComponentCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
@@ -50,6 +53,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
 
         // 遍历渲染器清单，统一注册实体渲染器
         ModEntityRenderers.forEach(EntityRendererRegistry::register);
+        BlockEntityRenderers.register(ModBlockEntities.POTTERY_WHEEL.get(), PotteryWheelRenderer::new);
 
         // 遍历模型层清单，统一注册 LayerDefinition
         // fabric 用 TexturedModelDataProvider 函数式接口，通过 supplier::get 桥接

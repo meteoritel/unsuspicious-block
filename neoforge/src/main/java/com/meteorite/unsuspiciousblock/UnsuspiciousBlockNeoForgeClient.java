@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
+import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
@@ -22,6 +23,7 @@ import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.minecraft.client.Minecraft;
@@ -121,6 +123,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         // 实体类型 Supplier 已在 mod 构造器静态块中回写，此处直接遍历渲染器清单注册
         ModEntityRenderers.forEach(event::registerEntityRenderer);
+        event.registerBlockEntityRenderer(ModBlockEntities.POTTERY_WHEEL.get(), PotteryWheelRenderer::new);
     }
 
     @SubscribeEvent
