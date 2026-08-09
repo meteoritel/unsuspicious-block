@@ -283,6 +283,11 @@
 - 新增「纹饰陶轮台」、未烧制的纹饰陶片与未烧制的纹饰陶罐。现在可以复制纹饰陶片了。
 - 陶轮台支持漏斗自动化：顶部输入黏土和水瓶，侧面输入纹饰样板及其他材料，底部输出成品和空瓶；加工产物会优先产生在下方漏斗中。
 
+<div align="center">
+  <img src="docs/image/intro/pottery_wheel_craft.png" width="49%" alt="纹饰陶轮台合成配方">
+  <img src="docs/image/intro/pottery_wheel_auto.png" width="49%" alt="纹饰陶轮台漏斗自动化">
+</div>
+
 #### JEI 联动
 - 为纹饰陶轮台添加了 JEI 分类支持，可查看陶片压印与陶罐成型的配方。
 
@@ -303,6 +308,11 @@
 #### Decorated Pottery Wheel
 - Added the Decorated Pottery Wheel, unfired decorated pottery sherds, and unfired decorated pots. Decorated pottery sherds can now be duplicated.
 - The Pottery Wheel supports hopper automation: input clay and water bottles from the top, decorated patterns and other materials from the side, and output finished products and empty bottles from the bottom. Crafted items will prioritize appearing in a hopper below.
+
+<div align="center">
+  <img src="docs/image/intro/pottery_wheel_craft.png" width="49%" alt="纹饰陶轮台合成配方">
+  <img src="docs/image/intro/pottery_wheel_auto.png" width="49%" alt="纹饰陶轮台漏斗自动化">
+</div>
 
 #### JEI Integration
 - Added JEI category support for the Decorated Pottery Wheel, allowing to view recipes for sherd stamping and pot forming.
