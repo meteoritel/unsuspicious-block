@@ -439,7 +439,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         // 仅在刷拭上下文中处理精掘与日志——扫描仪路径由 SuspiciousReaderItem 自行处理追踪
         if (!this.unsuspiciousblock$brushContext || this.unsuspiciousblock$lootTableName == null
-                || !(player instanceof ServerPlayer sp) || this.item.isEmpty()) {
+                || !(player instanceof ServerPlayer) || this.item.isEmpty()) {
             this.unsuspiciousblock$syncBlockEntity();
             return;
         }
