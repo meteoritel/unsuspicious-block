@@ -250,6 +250,9 @@
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.archeology_sussand_underwater": "Underwater Suspicious Sand",
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.archeology_sword_loot": "Sword Loot",
   "screen.unsuspiciousblock.archaeology_journal.table.betterarcheology.archeology_taiga_dirt": "Taiga Dirt",
+  "screen.unsuspiciousblock.archaeology_journal.table.minecraft.chests_ancient_city": "Ancient City",
+  "screen.unsuspiciousblock.archaeology_journal.table.minecraft.chests_ancient_city_ice_box": "Ancient City Ice Box",
+  "screen.unsuspiciousblock.archaeology_journal.table.minecraft.chests_buried_treasure": "Buried Treasure",
 
   "screen.unsuspiciousblock.archaeology_journal.tab_intro": "Intro",
   "screen.unsuspiciousblock.archaeology_journal.tab_archaeology": "Journal",

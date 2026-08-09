@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ public final class DetailOverlayPanel implements PagePanel {
     private static final int MUTED_COLOR = 0x7A6247;
     private static final int ITEM_ROW_HEIGHT = 16;
     private static final int FOOTER_HEIGHT = 32;
-    private static final int MOD_SOURCE_TOP_OFFSET = 30;
+    private static final int MOD_SOURCE_TOP_OFFSET = 42;
 
     private final JournalBookBackground.BookLayout layout;
     private final PaginationState pagination = new PaginationState(this::computePageCount);
@@ -36,9 +37,6 @@ public final class DetailOverlayPanel implements PagePanel {
     private int progressValueScrollTicks;
     private int discoveredLabelScrollTicks;
     private int emptyStateScrollTicks;
-    private int modLabelScrollTicks;
-    private int modSourceScrollTicks;
-    private boolean modSourceWasHovered;
     private List<DiscoveredItemEntry> unlockedItems = List.of();
 
     public DetailOverlayPanel(JournalBookBackground.BookLayout layout) {
@@ -58,8 +56,6 @@ public final class DetailOverlayPanel implements PagePanel {
         } else {
             this.modSource = "???";
         }
-        this.modSourceScrollTicks = 0;
-        this.modSourceWasHovered = false;
         this.unlockedItems = new ArrayList<>();
         List<DiscoveredItemEntry> highlightedEntries = new ArrayList<>();
         List<DiscoveredItemEntry> nonHighlightedEntries = new ArrayList<>();
@@ -182,26 +178,26 @@ public final class DetailOverlayPanel implements PagePanel {
             y += showCount * ITEM_ROW_HEIGHT + 6;
         }
 
-        // 模组来源
+        // 模组来源：名称足够短时与标签同行，过长时从下一行开始换行
         y = Math.max(y, this.layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
         Component modLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.mod_source");
-        boolean modLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
-        this.modLabelScrollTicks = modLabelHovered ? this.modLabelScrollTicks + 1 : 0;
-        ScrollTextHelper.draw(guiGraphics, font, modLabel.getString(), leftX, y, contentWidth,
-                LABEL_COLOR, modLabelHovered, this.modLabelScrollTicks, false);
-        int sourceY = y + font.lineHeight + 2;
-        boolean sourceHovered = mouseX >= leftX && mouseX < leftX + contentWidth
-                && mouseY >= sourceY && mouseY < sourceY + font.lineHeight + 1;
-        if (!this.modSourceWasHovered && sourceHovered) {
-            this.modSourceScrollTicks = 0;
+        String labelText = modLabel.getString();
+        int labelWidth = font.width(labelText);
+        int gap = font.width(" ");
+        int sourceWidth = font.width(this.modSource);
+        if (labelWidth + gap + sourceWidth <= contentWidth) {
+            guiGraphics.drawString(font, labelText, leftX, y, LABEL_COLOR, false);
+            guiGraphics.drawString(font, this.modSource, leftX + labelWidth + gap, y, TEXT_COLOR, false);
+        } else {
+            guiGraphics.drawString(font, labelText, leftX, y, LABEL_COLOR, false);
+            int sourceY = y + font.lineHeight + 2;
+            List<FormattedCharSequence> sourceLines = font.split(
+                    Component.literal(this.modSource), contentWidth);
+            for (int index = 0; index < sourceLines.size(); index++) {
+                guiGraphics.drawString(font, sourceLines.get(index), leftX,
+                        sourceY + index * (font.lineHeight + 2), TEXT_COLOR, false);
+            }
         }
-        this.modSourceWasHovered = sourceHovered;
-        if (sourceHovered) {
-            this.modSourceScrollTicks++;
-        }
-        ScrollTextHelper.draw(guiGraphics, font, this.modSource,
-                leftX, sourceY, contentWidth, TEXT_COLOR,
-                sourceHovered, this.modSourceScrollTicks, false);
     }
 
     public int pageCount() {

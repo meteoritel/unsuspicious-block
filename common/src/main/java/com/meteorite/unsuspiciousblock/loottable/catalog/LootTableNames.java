@@ -165,7 +165,7 @@ public final class LootTableNames {
     }
 
     private static String humanizeTablePath(ResourceLocation tableId) {
-        String normalized = stripArchaeologyPrefix(tableId)
+        String normalized = tableId.getPath()
                 .replaceAll("[/_.-]+", " ")
                 .trim();
         if (normalized.isEmpty()) {
@@ -183,17 +183,6 @@ public final class LootTableNames {
             builder.append(titleCase(part));
         }
         return builder.toString();
-    }
-
-    // 按命中的规则剥离 path 前缀；精确规则保留完整 path，未命中任何规则时也保留完整 path
-    private static String stripArchaeologyPrefix(ResourceLocation tableId) {
-        String path = tableId.getPath();
-        for (LootTablePattern pattern : patterns()) {
-            if (pattern.matches(tableId)) {
-                return pattern.stripFrom(path);
-            }
-        }
-        return path;
     }
 
     private static String titleCase(String part) {

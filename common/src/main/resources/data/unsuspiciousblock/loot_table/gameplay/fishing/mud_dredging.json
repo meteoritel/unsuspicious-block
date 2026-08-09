@@ -14,17 +14,17 @@
         },
         {
           "type": "minecraft:tag",
-          "name": "unsuspiciousblock:random/pottery_sherds",
+          "name": "minecraft:decorated_pot_sherds",
           "expand": true
         },
         {
           "type": "minecraft:tag",
-          "name": "unsuspiciousblock:random/armor_trim_templates",
+          "name": "minecraft:trim_templates",
           "expand": true
         },
         {
           "type": "minecraft:tag",
-          "name": "unsuspiciousblock:random/music_discs",
+          "name": "minecraft:creeper_drop_music_discs",
           "expand": true
         },
         {

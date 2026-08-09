@@ -67,21 +67,21 @@
     "weight": 10,
     "max_uses": 2,
     "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 2 },
-    "sell": { "tag": "unsuspiciousblock:random/pottery_sherds", "count": 1 }
+    "sell": { "tag": "minecraft:decorated_pot_sherds", "count": 1 }
   },
   {
     "pool": "rare",
     "weight": 10,
     "max_uses": 1,
     "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 4 },
-    "sell": { "tag": "unsuspiciousblock:random/music_discs", "count": 1 }
+    "sell": { "tag": "minecraft:creeper_drop_music_discs", "count": 1 }
   },
   {
     "pool": "rare",
     "weight": 10,
     "max_uses": 1,
     "buy": { "item": "unsuspiciousblock:ancient_coin", "count": 5 },
-    "sell": { "tag": "unsuspiciousblock:random/armor_trim_templates", "count": 1 }
+    "sell": { "tag": "minecraft:trim_templates", "count": 1 }
   },
   {
     "pool": "rare",
