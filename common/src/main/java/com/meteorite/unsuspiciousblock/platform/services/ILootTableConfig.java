@@ -1,8 +1,12 @@
 package com.meteorite.unsuspiciousblock.platform.services;
 
+import net.minecraft.server.MinecraftServer;
+
 import java.util.List;
 
-/** 战利品表和日志配置——提供追踪前缀列表和日志参数，由各平台实现并通过 ServiceLoader 注入 */
+/**
+ * 服务端战利品表和日志配置——提供按世界生效的追踪规则与日志参数。
+ */
 public interface ILootTableConfig {
 
     // 单表日志条目上限的范围与默认值——Fabric / NeoForge 两端共用，确保校验一致
@@ -29,6 +33,14 @@ public interface ILootTableConfig {
     );
 
     List<String> getArchaeologyPathPrefixes();
+
+    // 服务端启动时加载当前世界配置；原生支持 SERVER 配置的平台可保持默认实现
+    default void loadForServer(MinecraftServer server) {
+    }
+
+    // 服务端停止时释放当前世界配置，避免集成服务器切换存档后沿用旧值
+    default void unloadServer() {
+    }
 
     /** 单表日志条目上限，默认 512 */
     default int getMaxLogEntriesPerTable() {

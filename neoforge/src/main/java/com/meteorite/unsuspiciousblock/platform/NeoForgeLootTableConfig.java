@@ -6,12 +6,18 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.util.List;
 
-/** NeoForge 战利品表配置——使用 ModConfigSpec / TOML */
+/**
+ * NeoForge 配置实现——战利品追踪使用 SERVER spec，灵体猫参数保留 COMMON spec。
+ */
 public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConfig {
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> ARCHAEOLOGY_PATH_PREFIXES;
     private static final ModConfigSpec.IntValue MAX_LOG_ENTRIES_PER_TABLE;
     private static final ModConfigSpec.LongValue TRACKING_TIMEOUT_TICKS;
+    private static final ModConfigSpec.BooleanValue MIGRATED_FROM_COMMON_CONFIG;
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> LEGACY_ARCHAEOLOGY_PATH_PREFIXES;
+    private static final ModConfigSpec.IntValue LEGACY_MAX_LOG_ENTRIES_PER_TABLE;
+    private static final ModConfigSpec.LongValue LEGACY_TRACKING_TIMEOUT_TICKS;
     private static final ModConfigSpec.IntValue MESSENGER_LIFETIME_TICKS;
     private static final ModConfigSpec.IntValue SWORDSMAN_LIFETIME_TICKS;
     private static final ModConfigSpec.IntValue MERCHANT_LIFETIME_TICKS;
@@ -19,13 +25,14 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
     private static final ModConfigSpec.IntValue RESISTANCE_DURATION_TICKS;
     private static final ModConfigSpec.IntValue FIRE_RESISTANCE_DURATION_TICKS;
 
-    public static final ModConfigSpec CONFIG_SPEC;
+    public static final ModConfigSpec SERVER_CONFIG_SPEC;
+    public static final ModConfigSpec COMMON_CONFIG_SPEC;
 
     static {
-        ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        ModConfigSpec.Builder serverBuilder = new ModConfigSpec.Builder();
 
-        builder.push("loot_table");
-        ARCHAEOLOGY_PATH_PREFIXES = builder
+        serverBuilder.push("loot_table");
+        ARCHAEOLOGY_PATH_PREFIXES = serverBuilder
                 .comment("需要追踪的战利品表匹配规则列表。",
                         "语法：[命名空间:路径]。指定命名空间时仅匹配该命名空间，省略时匹配所有命名空间。",
                         "路径以 / 结尾表示前缀匹配（命中该前缀下所有表），否则为精确匹配（仅命中单个表）。",
@@ -42,10 +49,10 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
                         () -> ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES,
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
-        builder.pop();
+        serverBuilder.pop();
 
-        builder.push("journal");
-        MAX_LOG_ENTRIES_PER_TABLE = builder
+        serverBuilder.push("journal");
+        MAX_LOG_ENTRIES_PER_TABLE = serverBuilder
                 .comment("单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。取值范围 "
                         + ILootTableConfig.MIN_MAX_LOG_ENTRIES_PER_TABLE + "–" + ILootTableConfig.MAX_MAX_LOG_ENTRIES_PER_TABLE
                         + "。默认 " + ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE + "。",
@@ -58,7 +65,7 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
                         ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
                         ILootTableConfig.MIN_MAX_LOG_ENTRIES_PER_TABLE,
                         ILootTableConfig.MAX_MAX_LOG_ENTRIES_PER_TABLE);
-        TRACKING_TIMEOUT_TICKS = builder
+        TRACKING_TIMEOUT_TICKS = serverBuilder
                 .comment("战利品箱追踪超时（游戏刻）。超时后自动结算并清除追踪状态。取值范围 "
                         + ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS + "–" + ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS
                         + "。",
@@ -71,24 +78,54 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
                         ILootTableConfig.DEFAULT_TRACKING_TIMEOUT_TICKS,
                         ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS,
                         ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS);
-        builder.pop();
+        serverBuilder.pop();
+        MIGRATED_FROM_COMMON_CONFIG = serverBuilder
+                .comment("内部迁移标记：首次加载世界时从旧 COMMON 配置复制战利品追踪设置。",
+                        "Internal migration marker for legacy COMMON loot tracking settings.")
+                .define("migrated_from_common_config", false);
+        SERVER_CONFIG_SPEC = serverBuilder.build();
 
-        builder.push("spirit_cat");
-        MESSENGER_LIFETIME_TICKS = defineNpcLifetime(builder, "messenger_lifetime_ticks",
+        ModConfigSpec.Builder commonBuilder = new ModConfigSpec.Builder();
+        commonBuilder.push("loot_table");
+        LEGACY_ARCHAEOLOGY_PATH_PREFIXES = commonBuilder
+                .comment("旧版全局追踪规则，仅用于新世界首次迁移。",
+                        "Legacy global tracking rules, retained only as migration defaults for new worlds.")
+                .defineListAllowEmpty("archaeology_path_prefixes",
+                        () -> ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES,
+                        () -> "",
+                        obj -> obj instanceof String s && !s.isBlank());
+        commonBuilder.pop();
+        commonBuilder.push("journal");
+        LEGACY_MAX_LOG_ENTRIES_PER_TABLE = commonBuilder
+                .comment("旧版全局日志上限，仅用于新世界首次迁移。",
+                        "Legacy global log limit, retained only as a migration default.")
+                .defineInRange("max_log_entries_per_table",
+                        ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE,
+                        ILootTableConfig.MIN_MAX_LOG_ENTRIES_PER_TABLE,
+                        ILootTableConfig.MAX_MAX_LOG_ENTRIES_PER_TABLE);
+        LEGACY_TRACKING_TIMEOUT_TICKS = commonBuilder
+                .comment("旧版全局追踪超时，仅用于新世界首次迁移。",
+                        "Legacy global tracking timeout, retained only as a migration default.")
+                .defineInRange("tracking_timeout_ticks",
+                        ILootTableConfig.DEFAULT_TRACKING_TIMEOUT_TICKS,
+                        ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS,
+                        ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS);
+        commonBuilder.pop();
+        commonBuilder.push("spirit_cat");
+        MESSENGER_LIFETIME_TICKS = defineNpcLifetime(commonBuilder, "messenger_lifetime_ticks",
                 DEFAULT_MESSENGER_LIFETIME_TICKS, "信使猫猫最长现世时间", "Messenger cat maximum lifetime");
-        SWORDSMAN_LIFETIME_TICKS = defineNpcLifetime(builder, "swordsman_lifetime_ticks",
+        SWORDSMAN_LIFETIME_TICKS = defineNpcLifetime(commonBuilder, "swordsman_lifetime_ticks",
                 DEFAULT_SWORDSMAN_LIFETIME_TICKS, "剑士猫猫最长现世时间", "Swordsman cat maximum lifetime");
-        MERCHANT_LIFETIME_TICKS = defineNpcLifetime(builder, "merchant_lifetime_ticks",
+        MERCHANT_LIFETIME_TICKS = defineNpcLifetime(commonBuilder, "merchant_lifetime_ticks",
                 DEFAULT_MERCHANT_LIFETIME_TICKS, "商人猫猫最长现世时间", "Merchant cat maximum lifetime");
-        INVULNERABILITY_DURATION_TICKS = defineEffectDuration(builder, "invulnerability_duration_ticks",
+        INVULNERABILITY_DURATION_TICKS = defineEffectDuration(commonBuilder, "invulnerability_duration_ticks",
                 DEFAULT_INVULNERABILITY_DURATION_TICKS, "九命纯无敌持续时间", "Nine Lives invulnerability duration");
-        RESISTANCE_DURATION_TICKS = defineEffectDuration(builder, "resistance_duration_ticks",
+        RESISTANCE_DURATION_TICKS = defineEffectDuration(commonBuilder, "resistance_duration_ticks",
                 DEFAULT_RESISTANCE_DURATION_TICKS, "九命抗性提升 II 持续时间", "Nine Lives Resistance II duration");
-        FIRE_RESISTANCE_DURATION_TICKS = defineEffectDuration(builder, "fire_resistance_duration_ticks",
+        FIRE_RESISTANCE_DURATION_TICKS = defineEffectDuration(commonBuilder, "fire_resistance_duration_ticks",
                 DEFAULT_FIRE_RESISTANCE_DURATION_TICKS, "九命防火 I 持续时间", "Nine Lives Fire Resistance I duration");
-        builder.pop();
-
-        CONFIG_SPEC = builder.build();
+        commonBuilder.pop();
+        COMMON_CONFIG_SPEC = commonBuilder.build();
     }
 
     @Override
@@ -105,6 +142,19 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
     @Override
     public long getTrackingTimeoutTicks() {
         return TRACKING_TIMEOUT_TICKS.get();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void loadForServer(net.minecraft.server.MinecraftServer server) {
+        if (MIGRATED_FROM_COMMON_CONFIG.get()) {
+            return;
+        }
+        ARCHAEOLOGY_PATH_PREFIXES.set(List.copyOf((List<String>) LEGACY_ARCHAEOLOGY_PATH_PREFIXES.get()));
+        MAX_LOG_ENTRIES_PER_TABLE.set(LEGACY_MAX_LOG_ENTRIES_PER_TABLE.get());
+        TRACKING_TIMEOUT_TICKS.set(LEGACY_TRACKING_TIMEOUT_TICKS.get());
+        MIGRATED_FROM_COMMON_CONFIG.set(true);
+        SERVER_CONFIG_SPEC.save();
     }
 
     @Override

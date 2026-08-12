@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimul
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -37,7 +38,6 @@ public final class JournalCatalogHandler {
 
         ArchaeologyJournalServerCatalog.ensureLoaded(server);
         Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
-        if (catalog.isEmpty()) return;
 
         // 做快照：NeoForge 的 C2S handler 在网络线程执行，
         // 若不拷贝，主线程 worker 并发 put 会导致 ConcurrentHashMap 的 size() 与迭代器不一致
@@ -54,6 +54,7 @@ public final class JournalCatalogHandler {
 
     /** 数据包重载：暂停 worker → 失效内存目录 → 重新解析入队 → 恢复 worker → 同步哈希 */
     public static void onDataPackReload(MinecraftServer server) {
+        ServerLootTableConfigManager.reload(server);
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if (worker != null) {
             worker.pauseForReload();

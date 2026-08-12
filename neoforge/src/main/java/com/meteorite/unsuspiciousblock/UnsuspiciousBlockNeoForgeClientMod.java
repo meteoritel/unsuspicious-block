@@ -9,7 +9,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 /**
  * NeoForge 客户端 mod 入口--仅在物理客户端加载
  * 注册 NeoForge 内置 ConfigurationScreen 作为模组配置界面，
- * 基于 NeoForgeLootTableConfig.CONFIG_SPEC 自动生成可编辑控件
+ * 基于已注册的 NeoForge ModConfigSpec 自动生成可编辑控件
  */
 @Mod(value = Constants.MOD_ID, dist = Dist.CLIENT)
 public class UnsuspiciousBlockNeoForgeClientMod {

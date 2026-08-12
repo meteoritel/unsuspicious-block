@@ -53,7 +53,7 @@ public final class LootTableNames {
     // 获取当前生效的匹配规则列表；配置变化时重新解析并缓存
     private static List<LootTablePattern> patterns() {
         List<String> rawPatterns = Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes();
-        if (rawPatterns == cachedRawPatterns) {
+        if (rawPatterns.equals(cachedRawPatterns)) {
             return cachedPatterns;
         }
 
@@ -66,7 +66,7 @@ public final class LootTableNames {
         }
         List<LootTablePattern> immutable = List.copyOf(parsed);
         cachedPatterns = immutable;
-        cachedRawPatterns = rawPatterns;
+        cachedRawPatterns = List.copyOf(rawPatterns);
         return immutable;
     }
 

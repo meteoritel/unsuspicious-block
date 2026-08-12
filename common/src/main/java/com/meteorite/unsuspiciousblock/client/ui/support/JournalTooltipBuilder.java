@@ -167,7 +167,8 @@ public final class JournalTooltipBuilder {
     }
 
     private static void appendSourceTable(List<Component> lines, ResourceLocation sourceChildTable, String prefix) {
-        if (sourceChildTable == null || !LootTableNames.isArchaeologyLootTable(sourceChildTable)) {
+        if (sourceChildTable == null
+                || !ArchaeologyJournalClientState.getCatalog().containsKey(sourceChildTable)) {
             return;
         }
         Component childTableName = LootTableNames.resolveDisplayName(sourceChildTable);

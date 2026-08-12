@@ -17,6 +17,7 @@
   "unsuspiciousblock.config.title": "Unsuspicious Block Config",
   "unsuspiciousblock.config.save": "Save",
   "unsuspiciousblock.config.reset": "Reset",
+  "unsuspiciousblock.config.server_managed": "This configuration is managed by the current world or multiplayer server",
   "unsuspiciousblock.configuration.title": "%s Configuration",
   "unsuspiciousblock.configuration.section.unsuspiciousblock.common.toml": "%s Common Configuration",
   "unsuspiciousblock.configuration.section.unsuspiciousblock.common.toml.title": "%s Common Configuration",

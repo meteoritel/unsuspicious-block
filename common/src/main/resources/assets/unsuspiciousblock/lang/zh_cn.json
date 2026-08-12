@@ -49,6 +49,7 @@
   "unsuspiciousblock.config.title": "Unsuspicious Block 配置",
   "unsuspiciousblock.config.save": "保存",
   "unsuspiciousblock.config.reset": "重置",
+  "unsuspiciousblock.config.server_managed": "该配置由当前世界或多人服务器管理",
   "unsuspiciousblock.configuration.title": "%s 配置",
   "unsuspiciousblock.configuration.section.unsuspiciousblock.common.toml": "%s 通用配置",
   "unsuspiciousblock.configuration.section.unsuspiciousblock.common.toml.title": "%s 通用配置",

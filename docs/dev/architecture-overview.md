@@ -163,12 +163,12 @@ NeoForge 端有几处需要注意的时序问题，代码中已有注释说明�
 
 ### 5.2 各平台构建
 
-| 维度 | common | fabric | neoforge |
-|---|---|---|---|
-| 插件 | `multiloader-common` + `net.neoforged.moddev` | `multiloader-loader` + `fabric-loom` | `multiloader-loader` + `net.neoforged.moddev` |
-| 映射 | moddev 提供 Mojang + Parchment | Loom layered（Mojang + Parchment） | moddev 提供 Mojang + Parchment |
-| 访问扩展 | AccessTransformer（`META-INF/accesstransformer.cfg`） | AccessWidener（`unsuspiciousblock.accesswidener`） | AccessTransformer（同 common） |
-| DataGen | — | — | `runData` 任务，输出到 `src/generated/resources` |
+| 维度      | common                                              | fabric                                           | neoforge                                      |
+|---------|-----------------------------------------------------|--------------------------------------------------|-----------------------------------------------|
+| 插件      | `multiloader-common` + `net.neoforged.moddev`       | `multiloader-loader` + `fabric-loom`             | `multiloader-loader` + `net.neoforged.moddev` |
+| 映射      | moddev 提供 Mojang + Parchment                        | Loom layered（Mojang + Parchment）                 | moddev 提供 Mojang + Parchment                  |
+| 访问扩展    | AccessTransformer（`META-INF/accesstransformer.cfg`） | AccessWidener（`unsuspiciousblock.accesswidener`） | AccessTransformer（同 common）                   |
+| DataGen | —                                                   | —                                                | `runData` 任务，输出到 `src/generated/resources`    |
 
 ### 5.3 Lootr 可选兼容
 

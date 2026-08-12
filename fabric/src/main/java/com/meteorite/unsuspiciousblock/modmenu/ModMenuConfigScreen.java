@@ -30,12 +30,14 @@ public class ModMenuConfigScreen extends Screen {
     private static final int FIELD_Y = FIELD_LABEL_Y + 11;
     private static final int FIELD_RANGE_Y = FIELD_Y + FIELD_HEIGHT + 2;
     private static final int BUTTON_Y = FIELD_RANGE_Y + 14;
+    private static final int NOTICE_Y = BUTTON_Y + FIELD_HEIGHT + 8;
 
     private final Screen parent;
 
     private MultiLineEditBox prefixesBox;
     private EditBox maxLogEntriesBox;
     private EditBox trackingTimeoutBox;
+    private boolean serverConfigAvailable;
 
     public ModMenuConfigScreen(Screen parent) {
         super(Component.translatable("unsuspiciousblock.config.title"));
@@ -45,6 +47,8 @@ public class ModMenuConfigScreen extends Screen {
     @Override
     protected void init() {
         ILootTableConfig config = Services.LOOT_TABLE_CONFIG;
+        this.serverConfigAvailable = config instanceof FabricLootTableConfig fabricConfig
+                && fabricConfig.hasActiveServerConfig();
 
         int boxWidth = Math.min(CONTENT_WIDTH, this.width - 40);
         int leftX = (this.width - boxWidth) / 2;
@@ -56,6 +60,7 @@ public class ModMenuConfigScreen extends Screen {
                 prefixLabel, prefixLabel);
         prefixesBox.setValue(String.join("\n", config.getArchaeologyPathPrefixes()));
         this.addRenderableWidget(prefixesBox);
+        prefixesBox.active = this.serverConfigAvailable;
 
         // 单表日志上限，仅允许非负整数
         maxLogEntriesBox = new EditBox(this.font, leftX, FIELD_Y, fieldWidth, FIELD_HEIGHT,
@@ -64,6 +69,7 @@ public class ModMenuConfigScreen extends Screen {
         maxLogEntriesBox.setFilter(s -> s.isEmpty() || s.matches("\\d+"));
         maxLogEntriesBox.setMaxLength(5);
         this.addRenderableWidget(maxLogEntriesBox);
+        maxLogEntriesBox.active = this.serverConfigAvailable;
 
         // 追踪超时，仅允许非负整数
         trackingTimeoutBox = new EditBox(this.font, leftX + fieldWidth + 10, FIELD_Y, fieldWidth, FIELD_HEIGHT,
@@ -72,14 +78,16 @@ public class ModMenuConfigScreen extends Screen {
         trackingTimeoutBox.setFilter(s -> s.isEmpty() || s.matches("\\d+"));
         trackingTimeoutBox.setMaxLength(6);
         this.addRenderableWidget(trackingTimeoutBox);
+        trackingTimeoutBox.active = this.serverConfigAvailable;
 
         // 底部按钮行：重置 / 取消 / 保存
         int totalButtonWidth = BUTTON_WIDTH * 3 + BUTTON_GAP * 2;
         int buttonX = (this.width - totalButtonWidth) / 2;
 
-        this.addRenderableWidget(Button.builder(
+        Button resetButton = this.addRenderableWidget(Button.builder(
                 Component.translatable("unsuspiciousblock.config.reset"),
                 b -> resetToDefaults()).bounds(buttonX, BUTTON_Y, BUTTON_WIDTH, FIELD_HEIGHT).build());
+        resetButton.active = this.serverConfigAvailable;
         buttonX += BUTTON_WIDTH + BUTTON_GAP;
 
         this.addRenderableWidget(Button.builder(
@@ -87,9 +95,10 @@ public class ModMenuConfigScreen extends Screen {
                 b -> this.onClose()).bounds(buttonX, BUTTON_Y, BUTTON_WIDTH, FIELD_HEIGHT).build());
         buttonX += BUTTON_WIDTH + BUTTON_GAP;
 
-        this.addRenderableWidget(Button.builder(
+        Button saveButton = this.addRenderableWidget(Button.builder(
                 Component.translatable("unsuspiciousblock.config.save"),
                 b -> saveAndClose()).bounds(buttonX, BUTTON_Y, BUTTON_WIDTH, FIELD_HEIGHT).build());
+        saveButton.active = this.serverConfigAvailable;
     }
 
     // 重置为默认值，仅更新输入框内容，玩家仍需点击保存才会写盘
@@ -173,5 +182,11 @@ public class ModMenuConfigScreen extends Screen {
         guiGraphics.drawString(this.font,
                 Component.literal(ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS + "-" + ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS),
                 leftX + fieldWidth + 10, FIELD_RANGE_Y, 0x707070, false);
+
+        if (!this.serverConfigAvailable) {
+            guiGraphics.drawCenteredString(this.font,
+                    Component.translatable("unsuspiciousblock.config.server_managed"),
+                    this.width / 2, NOTICE_Y, 0xFFAA00);
+        }
     }
 }

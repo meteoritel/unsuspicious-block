@@ -27,6 +27,7 @@ import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -227,17 +228,20 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         }
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            ServerLootTableConfigManager.start(server);
             LootProbabilitySimulationWorker.start();
             ArchaeologyJournalServerCatalog.ensureLoaded(server);
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             LootProbabilitySimulationWorker.stop();
             ArchaeologyJournalServerCatalog.invalidate();
+            ServerLootTableConfigManager.stop();
             NaturalBoneBlockTracker.clearPendingPlayerBreaks();
         });
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            ServerLootTableConfigManager.tick(server);
             LootProbabilitySimulationWorker.tickIfPresent(server);
             MerchantCatSpawner.tick(server);
         });

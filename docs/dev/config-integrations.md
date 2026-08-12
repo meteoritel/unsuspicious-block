@@ -4,7 +4,7 @@
 
 ## 1. 职责概述
 
-- **配置系统**：通过 `ILootTableConfig` 与 `ISpiritCatConfig` 两个 SPI 接口暴露可调参数，Fabric 用 JSON、NeoForge 用 ModConfigSpec。
+- **配置系统**：通过 `ILootTableConfig` 与 `ISpiritCatConfig` 两个 SPI 接口暴露可调参数。战利品追踪配置由服务端按世界持有；Fabric 使用世界目录 JSON，NeoForge 使用 SERVER ModConfigSpec。灵体猫参数仍为全局配置。
 - **数据驱动边界**：可枚举内容交数据包，可调强度交配置，身份/关系语义保持硬编码（见 [ADR 0007](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)）。
 - **第三方联动**：六类可选联动，统一用 `compileOnly` + `OptionalModIntegration` 反射加载，发布时不强制依赖。
 
@@ -48,24 +48,37 @@ unsuspiciousblock:gameplay/fossil_hunter/
 
 [`FabricLootTableConfig`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) **同时实现两个接口**（`ILootTableConfig` + `ISpiritCatConfig`），用 GSON 读写 JSON：
 
-- 配置文件：`config/unsuspiciousblock/unsuspiciousblock.json`
+- 战利品追踪配置：`<世界目录>/serverconfig/unsuspiciousblock.json`，服务端启动时加载，停止时解除世界绑定。
+- 灵体猫全局配置：`config/unsuspiciousblock/unsuspiciousblock.json`。
+- 世界配置首次创建时，以旧全局 JSON 中的三项战利品配置作为迁移初值，兼容已有玩家设置。
 - 自动生成中英文 `README_CN.txt` / `README_EN.txt`（弥补 JSON 无注释的限制），已存在则保留玩家自定义备注。
 - 钳制到合法范围（`clampLogEntries` / `clampTrackingTimeout` / `clampNpcLifetime` / `clampEffectDuration`），越界回退默认值，与 NeoForge 端 `defineInRange` 行为一致。
 - 缺失灵体配置字段时自动补写修复。
-- `save(rawPrefixes, rawMaxLogEntries, rawTrackingTimeoutTicks)` 供 ModMenu 配置界面调用，清洗（去空/去重）+ 钳制后落盘并更新内存缓存。
+- `save(rawPrefixes, rawMaxLogEntries, rawTrackingTimeoutTicks)` 仅在集成服务器运行时可用，清洗（去空/去重）+ 钳制后写入当前世界配置。
 
 ### 2.3 NeoForge 实现
 
 [`NeoForgeLootTableConfig`](../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgeLootTableConfig.java) 用 NeoForge 的 `ModConfigSpec`：
 
-- 在 `UnsuspiciousBlockNeoForge` 构造器中 `container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC)`。
+- `SERVER_CONFIG_SPEC` 注册为 `ModConfig.Type.SERVER`，保存三项战利品追踪配置并由 NeoForge 放入世界 `serverconfig`。
+- `COMMON_CONFIG_SPEC` 保留灵体猫参数和旧版三项追踪值；旧值只作为新世界首次迁移初值，不再作为运行时权威配置。
+- SERVER spec 使用一次性迁移标记，首次加载世界时复制旧 COMMON 值，之后不会覆盖该世界自己的设置。
 - 用 `defineInRange` 声明范围约束，与 Fabric 端钳制行为对齐。
 - 同样**同时实现两个接口**。
-- 玩家通过 NeoForge 的模组配置界面或配置文件调整。
+- 玩家通过 NeoForge 的模组配置界面或服务端配置文件调整；多人游戏以服务器文件为权威。
 
 ### 2.4 ModMenu 配置界面
 
-Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuConfigScreen.java) 提供图形化配置界面，安装 ModMenu 后可从模组列表进入。界面编辑的值通过 `FabricLootTableConfig.save` 落盘。
+Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuConfigScreen.java) 提供图形化配置界面。只有当前客户端正在运行集成服务器时允许编辑；主菜单和多人客户端显示为服务端管理，避免本地修改造成误导。
+
+### 2.5 运行时变更
+
+[`ServerLootTableConfigManager`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/ServerLootTableConfigManager.java) 统一管理服务端配置生命周期：
+
+- 服务端启动时在目录首次解析前加载当前世界配置，停止时清除世界绑定。
+- 每秒比较一次配置快照。日志上限和追踪超时由业务代码实时读取，不需要重建。
+- 追踪规则变化时暂停概率模拟、失效并重建目录，随后向在线玩家同步新目录哈希。
+- `/reload` 会重新读取 Fabric 世界 JSON；NeoForge SERVER spec 由平台负责加载。
 
 ## 3. 数据驱动与硬编码边界
 

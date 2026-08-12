@@ -6,6 +6,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -15,7 +17,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Fabric 战利品表配置——使用 GSON / JSON，规则说明见同目录 README.txt */
+/**
+ * Fabric 配置实现——战利品追踪配置按世界存储，灵体猫配置继续使用全局 JSON。
+ */
 public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -23,10 +27,15 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     private static final String CONFIG_FILE_NAME = "unsuspiciousblock.json";
     private static final String README_CN_FILE_NAME = "README_CN.txt";
     private static final String README_EN_FILE_NAME = "README_EN.txt";
+    private static final String SERVER_CONFIG_DIR_NAME = "serverconfig";
 
     private final List<String> prefixes;
+    private final List<String> legacyPrefixes;
+    private final int legacyMaxLogEntriesPerTable;
+    private final long legacyTrackingTimeoutTicks;
     private int maxLogEntriesPerTable;
     private long trackingTimeoutTicks;
+    private Path activeServerConfigPath;
     private final int messengerLifetimeTicks;
     private final int swordsmanLifetimeTicks;
     private final int merchantLifetimeTicks;
@@ -40,6 +49,9 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
                 ? data.archaeology_path_prefixes : DEFAULT_ARCHAEOLOGY_PATH_PREFIXES);
         this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
         this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
+        this.legacyPrefixes = List.copyOf(this.prefixes);
+        this.legacyMaxLogEntriesPerTable = this.maxLogEntriesPerTable;
+        this.legacyTrackingTimeoutTicks = this.trackingTimeoutTicks;
         this.messengerLifetimeTicks = clampNpcLifetime("messenger_lifetime_ticks", data.messenger_lifetime_ticks,
                 DEFAULT_MESSENGER_LIFETIME_TICKS);
         this.swordsmanLifetimeTicks = clampNpcLifetime("swordsman_lifetime_ticks", data.swordsman_lifetime_ticks,
@@ -62,18 +74,42 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     }
 
     @Override
-    public List<String> getArchaeologyPathPrefixes() {
-        return this.prefixes;
+    public synchronized List<String> getArchaeologyPathPrefixes() {
+        return List.copyOf(this.prefixes);
     }
 
     @Override
-    public int getMaxLogEntriesPerTable() {
+    public synchronized int getMaxLogEntriesPerTable() {
         return this.maxLogEntriesPerTable;
     }
 
     @Override
-    public long getTrackingTimeoutTicks() {
+    public synchronized long getTrackingTimeoutTicks() {
         return this.trackingTimeoutTicks;
+    }
+
+    @Override
+    public synchronized void loadForServer(MinecraftServer server) {
+        Path configPath = server.getWorldPath(LevelResource.ROOT)
+                .resolve(SERVER_CONFIG_DIR_NAME)
+                .resolve(CONFIG_FILE_NAME);
+        ServerConfigData data = loadServerConfig(configPath);
+        applyServerConfig(data);
+        this.activeServerConfigPath = configPath;
+        Constants.LOG.info("Loaded Fabric server loot table config from {}.", configPath);
+    }
+
+    @Override
+    public synchronized void unloadServer() {
+        this.activeServerConfigPath = null;
+        this.prefixes.clear();
+        this.prefixes.addAll(this.legacyPrefixes);
+        this.maxLogEntriesPerTable = this.legacyMaxLogEntriesPerTable;
+        this.trackingTimeoutTicks = this.legacyTrackingTimeoutTicks;
+    }
+
+    public synchronized boolean hasActiveServerConfig() {
+        return this.activeServerConfigPath != null;
     }
 
     @Override
@@ -110,7 +146,12 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
      * 保存配置到磁盘并同步更新内存缓存
      * 由 ModMenu 配置界面调用，传入玩家编辑后的原始值，方法内部完成清洗与钳制
      */
-    public void save(List<String> rawPrefixes, int rawMaxLogEntries, long rawTrackingTimeoutTicks) {
+    public synchronized boolean save(List<String> rawPrefixes, int rawMaxLogEntries,
+                                     long rawTrackingTimeoutTicks) {
+        if (this.activeServerConfigPath == null) {
+            Constants.LOG.warn("Ignored loot table config save because no integrated server config is active.");
+            return false;
+        }
         List<String> cleanedPrefixes = new ArrayList<>();
         for (String s : rawPrefixes) {
             if (s == null) continue;
@@ -127,12 +168,57 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         this.maxLogEntriesPerTable = clampedLog;
         this.trackingTimeoutTicks = clampedTimeout;
 
-        saveToFile(getConfigPath(), new ConfigData(cleanedPrefixes, clampedLog, clampedTimeout,
-                this.messengerLifetimeTicks, this.swordsmanLifetimeTicks, this.merchantLifetimeTicks,
-                this.invulnerabilityDurationTicks, this.resistanceDurationTicks,
-                this.fireResistanceDurationTicks));
-        Constants.LOG.info("Updated loot table config via ModMenu: {} prefixes, maxLog={}, timeout={}",
+        saveServerConfig(this.activeServerConfigPath,
+                new ServerConfigData(cleanedPrefixes, clampedLog, clampedTimeout));
+        Constants.LOG.info("Updated Fabric server loot table config: {} rules, maxLog={}, timeout={}",
                 cleanedPrefixes.size(), clampedLog, clampedTimeout);
+        return true;
+    }
+
+    private ServerConfigData loadServerConfig(Path configPath) {
+        if (!Files.exists(configPath)) {
+            ServerConfigData migrated = new ServerConfigData(this.legacyPrefixes,
+                    this.legacyMaxLogEntriesPerTable, this.legacyTrackingTimeoutTicks);
+            saveServerConfig(configPath, migrated);
+            Constants.LOG.info("Created Fabric server loot table config at {} from global defaults.", configPath);
+            return migrated;
+        }
+        try (Reader reader = Files.newBufferedReader(configPath)) {
+            ServerConfigData data = GSON.fromJson(reader, ServerConfigData.class);
+            if (data != null && data.archaeology_path_prefixes != null) {
+                return data;
+            }
+        } catch (IOException exception) {
+            Constants.LOG.warn("Failed to read Fabric server loot table config from {}, using defaults.",
+                    configPath, exception);
+        }
+        return new ServerConfigData(DEFAULT_ARCHAEOLOGY_PATH_PREFIXES,
+                DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
+    }
+
+    private void applyServerConfig(ServerConfigData data) {
+        this.prefixes.clear();
+        for (String value : data.archaeology_path_prefixes) {
+            if (value != null) {
+                String trimmed = value.trim();
+                if (!trimmed.isEmpty() && !this.prefixes.contains(trimmed)) {
+                    this.prefixes.add(trimmed);
+                }
+            }
+        }
+        this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
+        this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
+    }
+
+    private static void saveServerConfig(Path configPath, ServerConfigData data) {
+        try {
+            Files.createDirectories(configPath.getParent());
+            try (Writer writer = Files.newBufferedWriter(configPath)) {
+                GSON.toJson(data, writer);
+            }
+        } catch (IOException exception) {
+            Constants.LOG.warn("Failed to write Fabric server loot table config to {}.", configPath, exception);
+        }
     }
 
     // 将配置值钳制到合法范围 [MIN, MAX]，越界时回退默认值，与 NeoForge 端 defineInRange 行为一致
@@ -241,7 +327,9 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
                 unsuspiciousblock 战利品表配置说明（中文）
                 =========================================
 
-                本目录下的 unsuspiciousblock.json 为本模组战利品表追踪配置文件。
+                本目录下的 unsuspiciousblock.json 保存全局配置与新世界的迁移初值。
+                每个世界实际使用的战利品追踪配置位于：
+                  <世界目录>/serverconfig/unsuspiciousblock.json
                 由于 JSON 不支持注释，规则说明统一写在本文件中。英文版本见 README_EN.txt。
 
                 字段说明
@@ -290,9 +378,11 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
                 unsuspiciousblock Loot Table Config (English)
                 ==============================================
 
-                The file unsuspiciousblock.json in this directory is this mod's loot table
-                tracking config. Since JSON does not support comments, the rules are
-                documented here. Chinese version: README_CN.txt.
+                The unsuspiciousblock.json file in this directory stores global settings and
+                migration defaults for new worlds. Each world's authoritative loot tracking
+                config is stored at <world>/serverconfig/unsuspiciousblock.json.
+                Since JSON does not support comments, the rules are documented here.
+                Chinese version: README_CN.txt.
 
                 Fields
                 ------
@@ -382,6 +472,23 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
             this.invulnerability_duration_ticks = invulnerability_duration_ticks;
             this.resistance_duration_ticks = resistance_duration_ticks;
             this.fire_resistance_duration_ticks = fire_resistance_duration_ticks;
+        }
+    }
+
+    private static final class ServerConfigData {
+        @SuppressWarnings("unused")
+        List<String> archaeology_path_prefixes;
+        @SuppressWarnings("unused")
+        int max_log_entries_per_table;
+        @SuppressWarnings("unused")
+        long tracking_timeout_ticks;
+
+        ServerConfigData(List<String> archaeology_path_prefixes,
+                         int max_log_entries_per_table,
+                         long tracking_timeout_ticks) {
+            this.archaeology_path_prefixes = List.copyOf(archaeology_path_prefixes);
+            this.max_log_entries_per_table = max_log_entries_per_table;
+            this.tracking_timeout_ticks = tracking_timeout_ticks;
         }
     }
 }

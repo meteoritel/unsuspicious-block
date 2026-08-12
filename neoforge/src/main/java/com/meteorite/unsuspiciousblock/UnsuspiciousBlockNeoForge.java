@@ -27,6 +27,7 @@ import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.Holder;
@@ -228,7 +229,8 @@ public class UnsuspiciousBlockNeoForge {
 
         UnsuspiciousBlockCommon.init();
 
-        container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.CONFIG_SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, NeoForgeLootTableConfig.SERVER_CONFIG_SPEC);
+        container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.COMMON_CONFIG_SPEC);
 
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
@@ -330,6 +332,7 @@ public class UnsuspiciousBlockNeoForge {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
+        ServerLootTableConfigManager.start(event.getServer());
         LootProbabilitySimulationWorker.start();
         ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
     }
@@ -338,12 +341,14 @@ public class UnsuspiciousBlockNeoForge {
     public void onServerStopped(ServerStoppedEvent event) {
         LootProbabilitySimulationWorker.stop();
         ArchaeologyJournalServerCatalog.invalidate();
+        ServerLootTableConfigManager.stop();
         NaturalBoneBlockTracker.clearPendingPlayerBreaks();
     }
 
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
     @SubscribeEvent
     public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        ServerLootTableConfigManager.tick(event.getServer());
         LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
         MerchantCatSpawner.tick(event.getServer());
     }
