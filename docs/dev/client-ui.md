@@ -33,6 +33,8 @@
 | 状态类 | 职责 |
 |---|---|
 | [`ArchaeologyJournalClientState`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/ArchaeologyJournalClientState.java) | 考古笔记核心状态（目录/进度/日志缓存 + 解锁通知 + UI 偏好） |
+| `LootTableManagementClientState` | 服务端权威战利品表索引、权限和多语言名称快照 |
+| `ClientLootTableLanguageStore` | 服务端名称落盘、资源重载和动态语言覆盖 |
 | `SuspiciousReaderClientState` | 可疑解析仪客户端状态（扫描结果） |
 | `ReaderScanHighlightState` | 范围扫描高亮状态（描边方块） |
 | `HandOfCatClientState` | 猫之手客户端状态（缓存的 favor/lives） |
@@ -76,7 +78,7 @@ ui/
 ├── entry/      目录条目（ArchaeologyJournalEntry / ItemEntryLike / ...）
 ├── layout/     布局（JournalLayout / JournalBookBackground）
 ├── panel/      面板（CatalogPanel / LogPanel / DetailOverlayPanel / ItemGridPanel / ...）
-├── screen/     屏幕（ArchaeologyJournalScreen / SpecimenBoxScreen / JournalViewModel / ...）
+├── screen/     屏幕（ArchaeologyJournalScreen / LootTableManagementScreen / SpecimenBoxScreen / ...）
 ├── support/    支持类（ClientState / CatalogSorter / JournalSearchQuery / PaginationState / ...）
 ├── toast/      Toast 通知（JournalUnlockToast）
 ├── widget/     组件（IconButton / BookmarkToggleButton / CopyCoordinateButton / ...）
@@ -85,7 +87,13 @@ ui/
 
 ### 4.1 分层职责
 
-- **screen/**：顶层 `Screen` 实现。`ArchaeologyJournalScreen` 是主屏幕，`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏。`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕。`JournalLogNoteEditScreen` 是日志备注编辑。
+- **screen/**：顶层 `Screen` 实现。`ArchaeologyJournalScreen` 是主屏幕，`LootTableManagementScreen` 是与手册 TAB 分离的追踪管理页；`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏。`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕。`JournalLogNoteEditScreen` 是日志备注编辑。
+
+### 4.2 战利品表追踪管理页
+
+考古手册左外侧的管理按钮打开独立 `LootTableManagementScreen`。页面提供名称/ResourceLocation 搜索、全部/已追踪/未追踪筛选、状态切换、语言代码及自定义名称编辑。候选项按 namespace、path 与子路径构造成可逐层展开的文件树，并通过滚轮或可拖动滚动条连续浏览；搜索时自动展开匹配分支。布局根据当前 GUI 逻辑分辨率动态计算面板与双栏，截断的 ResourceLocation 可悬停查看完整值。无权限玩家仍可浏览，但只有服务端权限等级 2 的玩家可以修改。
+
+列表不在客户端自行枚举资源，而是显示 `LootTableManagementClientState` 接收的服务端注册表快照。名称更新后，客户端写入 `config/unsuspiciousblock/lang/<language>.json`；内容实际变化时触发资源重载，使当前界面立即使用新名称。
 - **panel/**：可复用的面板组件。`CatalogPanel`（目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（分页）、`RightPageContainer`（右侧标签页容器）。
 - **entry/**：目录条目数据。`ArchaeologyJournalEntry` / `ArchaeologyEntryItem` / `ArchaeologyEntryLogRef` / `ItemEntryLike`。
 - **layout/**：布局计算。`JournalLayout`（书本双页布局）、`JournalBookBackground`（背景渲染）。
@@ -93,7 +101,7 @@ ui/
 - **support/**：业务支持。`ArchaeologyJournalClientState`（状态）、`CatalogSorter`（排序）、`JournalSearchQuery`（搜索）、`JournalTooltipBuilder`（tooltip 构建）、`JournalFormatHelper`（格式化）、`LogGrouper`（日志分组）、`PaginationState`（分页状态）、`ScrollTextHelper`（滚动文本）、`JournalUiPreferencesStore`（偏好持久化）、`ArchaeologyJournalLogLocalStore`（日志本地存储）。
 - **toast/**：`JournalUnlockToast` 弹出表/物品解锁与 100% 完成通知。
 
-### 4.2 UI 打开流程
+### 4.3 UI 打开流程
 
 ```
 ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new ArchaeologyJournalScreen(state)))

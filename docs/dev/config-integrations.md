@@ -19,6 +19,7 @@
 | 参数 | 范围 | 默认 | 说明 |
 |---|---|---|---|
 | `archaeology_path_prefixes` | - | 见下 | 战利品表追踪前缀列表 |
+| `excluded_loot_tables` | - | 空 | 从宽泛规则中精确排除的战利品表 ID |
 | `max_log_entries_per_table` | 64-4096 | 512 | 单表日志条目上限 |
 | `tracking_timeout_ticks` | 600-60000 | 6000（5 分钟） | 战利品箱追踪超时 |
 
@@ -79,6 +80,12 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 - 每秒比较一次配置快照。日志上限和追踪超时由业务代码实时读取，不需要重建。
 - 追踪规则变化时暂停概率模拟、失效并重建目录，随后向在线玩家同步新目录哈希。
 - `/reload` 会重新读取 Fabric 世界 JSON；NeoForge SERVER spec 由平台负责加载。
+
+### 2.6 战利品表名称文件
+
+追踪配置和名称均由服务器管理，但分开存储：追踪规则属于 `ILootTableConfig`；多语言名称保存到当前世界 `serverconfig/unsuspiciousblock-loot-table-names.json`。服务端向所有客户端派发名称，客户端合并保存到全局 `config/unsuspiciousblock/lang/<language>.json`，因此该客户端的所有存档共享这些名称；同一自动 key 在不同服务器取值冲突时，以最近收到的服务端值为准。
+
+客户端文件采用标准语言 JSON 格式，并承担原有缺失 key 自动导出功能。运行时语言覆盖仅接受 `LootTableNames` 自动生成的 key，不允许借配置覆盖模组其他 GUI 文本。
 
 ## 3. 数据驱动与硬编码边界
 

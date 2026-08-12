@@ -44,7 +44,7 @@ record S2CSpec<T>(Type<T> type, StreamCodec codec)
 record S2C<T>(Type<T> type, StreamCodec codec, Consumer<T> handler)
 ```
 
-三个清单：`C2S_PAYLOADS`（8 个）、`S2C_SPECS`（10 个，服务端注册编解码）、`Client.S2C_PAYLOADS`（10 个，客户端注册接收器）。平台层只需遍历清单注册，不手写重复代码。
+三个清单：`C2S_PAYLOADS`、`S2C_SPECS`（服务端注册编解码）和 `Client.S2C_PAYLOADS`（客户端注册接收器）。平台层只需遍历清单注册，不手写重复代码；具体数量以清单源码为准。
 
 ## 4. 客户端/服务端分离
 
@@ -65,25 +65,28 @@ public final class ModPayloads {
 
 JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务端 classpath 引入客户端状态类。平台客户端入口遍历 `Client.S2C_PAYLOADS` 注册 S2C 接收器。
 
-## 5. C2S payload（8 个）
+## 5. C2S payload
 
 | Payload | 处理器 | 用途 |
 |---|---|---|
 | `UploadJournalLogSnapshotPayload` | `JournalLogHandler::handleUploadedLogSnapshot` | 上传日志快照 |
 | `UpdateReaderScanLevelPayload` | `ReaderScanLevelHandler::handleUpdateReaderScanLevel` | 更新解析仪扫描等级 |
 | `RequestCatalogPayload` | `JournalCatalogHandler::handleRequestCatalog` | 请求全量目录 |
+| `RequestLootTableManagementPayload` | `LootTableManagementHandler::handleRequest` | 请求服务端权威管理索引 |
+| `UpdateTrackedLootTablePayload` | `LootTableManagementHandler::handleUpdate` | 修改追踪状态及一个语言名称 |
 | `RequestJournalStateFullPayload` | `JournalStateHandler::handleRequestFull` | 请求全量状态重同步 |
 | `RequestJournalLogSnapshotPayload` | `JournalLogHandler::handleRequestSnapshot` | 请求日志快照 |
 | `UpdateJournalLogNotePayload` | `JournalLogHandler::handleUpdateNote` | 更新日志备注 |
 | `CatDeterrenceTogglePayload` | `CatNetworkHandler::handleDeterrenceToggle` | 切换威慑开关 |
 | `CatLightStepTogglePayload` | `CatNetworkHandler::handleLightStepToggle` | 切换轻步开关 |
 
-## 6. S2C payload（10 个）
+## 6. S2C payload
 
 | Payload | 客户端处理 | 用途 |
 |---|---|---|
 | `SyncArchaeologyCatalogPayload` | `ArchaeologyJournalClientState::receiveCatalog` | 全量目录 |
 | `SyncCatalogHashPayload` | `receiveCatalogHash` | 目录哈希（按需同步比对） |
+| `SyncLootTableManagementPayload` | `LootTableManagementClientState::receive` | 注册表索引、编辑权限和名称快照 |
 | `SyncJournalStatePayload` | `receiveState` | 进度状态（全量） |
 | `SyncJournalStateIncrementalPayload` | `receiveStateIncremental` | 进度状态（增量） |
 | `SyncJournalLogPayload` | `receiveLogUpdate` | 日志更新 |
@@ -151,11 +154,17 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 [`ArchaeologyJournalNetwork.syncOnJoin`](../../common/src/main/java/com/meteorite/unsuspiciousblock/network/ArchaeologyJournalNetwork.java) 按序执行（见 [考古笔记系统](journal.md) 第 6 节）：
 
 ```
-restoreAndSyncOnJoin  -> syncCatalogHash -> migrate -> syncStateFull
-  -> checkAndRewardAll -> checkAndGrantAll
+restoreAndSyncOnJoin -> syncCatalogHash -> sync loot table management
+  -> migrate -> syncStateFull -> checkAndRewardAll -> checkAndGrantAll
 ```
 
 补发奖励/成就在全量状态同步之后，确保客户端 catalog 已就绪可解析表名。
+
+### 8.5 战利品表管理同步
+
+服务端从 `ReloadableServerRegistries` 枚举 LootTable key，过滤 `entities/` 与 `blocks/`，然后发送 `ResourceLocation + tracked` 列表、玩家编辑权限以及按语言分组的自定义名称。写请求再次校验表是否仍存在于注册表且玩家权限等级至少为 2，不能信任客户端候选列表。
+
+名称快照由服务器统一派发。客户端接收后合并到全局语言文件，只有磁盘内容变化时才触发资源重载，避免登录时无意义重复加载。
 
 ## 9. 扩展点
 

@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.JournalProgressSignature
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
+import com.meteorite.unsuspiciousblock.network.journal.LootTableManagementHandler;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -15,10 +16,11 @@ import net.minecraft.server.level.ServerPlayer;
 public final class ArchaeologyJournalNetwork {
     private ArchaeologyJournalNetwork() {}
 
-    // 玩家加入时全量同步：从 NBT 恢复日志并下发快照 → 发送目录哈希（按需同步）→ 下发状态
+    // 玩家加入时全量同步：日志 → 目录哈希 → 管理索引/名称 → 签名迁移 → 状态
     public static void syncOnJoin(ServerPlayer player) {
         JournalLogHandler.restoreAndSyncOnJoin(player);
         JournalCatalogHandler.syncCatalogHash(player);
+        LootTableManagementHandler.sync(player);
         JournalProgressSignatureMigrator.migrate(player);
         JournalStateHandler.syncStateFull(player);
         // 状态全量同步之后再补发完成奖励，确保客户端 catalog 已就绪可解析表名

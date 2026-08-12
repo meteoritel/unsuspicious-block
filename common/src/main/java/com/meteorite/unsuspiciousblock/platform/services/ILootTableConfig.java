@@ -1,7 +1,9 @@
 package com.meteorite.unsuspiciousblock.platform.services;
 
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.resources.ResourceLocation;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -33,6 +35,34 @@ public interface ILootTableConfig {
     );
 
     List<String> getArchaeologyPathPrefixes();
+
+    // 被前缀规则命中但由管理页明确关闭的战利品表
+    default List<String> getExcludedLootTables() {
+        return List.of();
+    }
+
+    // 保存管理页修改后的包含规则与精确排除项
+    default boolean saveTrackingRules(List<String> rules, List<String> exclusions) {
+        return false;
+    }
+
+    // 按当前规则切换单张表；关闭时使用精确排除，避免破坏宽泛前缀规则
+    default boolean setTracked(ResourceLocation tableId, boolean tracked) {
+        List<String> rules = new ArrayList<>(getArchaeologyPathPrefixes());
+        List<String> exclusions = new ArrayList<>(getExcludedLootTables());
+        String id = tableId.toString();
+        exclusions.removeIf(id::equals);
+        if (tracked) {
+            boolean matched = rules.stream()
+                    .map(com.meteorite.unsuspiciousblock.loottable.catalog.LootTablePattern::parse)
+                    .anyMatch(pattern -> pattern != null && pattern.matches(tableId));
+            if (!matched) rules.add(id);
+        } else {
+            rules.removeIf(raw -> id.equals(raw.trim()));
+            exclusions.add(id);
+        }
+        return saveTrackingRules(rules, exclusions);
+    }
 
     // 服务端启动时加载当前世界配置；原生支持 SERVER 配置的平台可保持默认实现
     default void loadForServer(MinecraftServer server) {

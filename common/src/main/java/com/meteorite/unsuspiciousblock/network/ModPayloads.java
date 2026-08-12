@@ -5,7 +5,9 @@ import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClien
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
+import com.meteorite.unsuspiciousblock.network.journal.LootTableManagementHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
@@ -14,8 +16,10 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePay
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
@@ -26,6 +30,7 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -70,6 +75,10 @@ public final class ModPayloads {
                     (player, payload) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, player)),
             new C2S<>(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
                     (player, payload) -> JournalCatalogHandler.handleRequestCatalog(player)),
+            new C2S<>(RequestLootTableManagementPayload.TYPE, RequestLootTableManagementPayload.STREAM_CODEC,
+                    (player, payload) -> LootTableManagementHandler.handleRequest(player)),
+            new C2S<>(UpdateTrackedLootTablePayload.TYPE, UpdateTrackedLootTablePayload.STREAM_CODEC,
+                    LootTableManagementHandler::handleUpdate),
             new C2S<>(RequestJournalStateFullPayload.TYPE, RequestJournalStateFullPayload.STREAM_CODEC,
                     (player, payload) -> JournalStateHandler.handleRequestFull(player)),
             new C2S<>(RequestJournalLogSnapshotPayload.TYPE, RequestJournalLogSnapshotPayload.STREAM_CODEC,
@@ -86,6 +95,7 @@ public final class ModPayloads {
     public static final List<S2CSpec<?>> S2C_SPECS = List.of(
             new S2CSpec<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC),
             new S2CSpec<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC),
             new S2CSpec<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC),
             new S2CSpec<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC),
             new S2CSpec<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC),
@@ -118,6 +128,8 @@ public final class ModPayloads {
                         ArchaeologyJournalClientState::receiveCatalog),
                 new S2C<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC,
                         ArchaeologyJournalClientState::receiveCatalogHash),
+                new S2C<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC,
+                        LootTableManagementClientState::receive),
                 new S2C<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
                         ArchaeologyJournalClientState::receiveState),
                 new S2C<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,

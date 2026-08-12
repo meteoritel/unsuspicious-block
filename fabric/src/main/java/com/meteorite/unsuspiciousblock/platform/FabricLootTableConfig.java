@@ -30,6 +30,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     private static final String SERVER_CONFIG_DIR_NAME = "serverconfig";
 
     private final List<String> prefixes;
+    private final List<String> exclusions = new ArrayList<>();
     private final List<String> legacyPrefixes;
     private final int legacyMaxLogEntriesPerTable;
     private final long legacyTrackingTimeoutTicks;
@@ -79,6 +80,21 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     }
 
     @Override
+    public synchronized List<String> getExcludedLootTables() {
+        return List.copyOf(this.exclusions);
+    }
+
+    @Override
+    public synchronized boolean saveTrackingRules(List<String> rules, List<String> excludedTables) {
+        if (this.activeServerConfigPath == null) return false;
+        replaceCleaned(this.prefixes, rules);
+        replaceCleaned(this.exclusions, excludedTables);
+        saveServerConfig(this.activeServerConfigPath, new ServerConfigData(
+                this.prefixes, this.exclusions, this.maxLogEntriesPerTable, this.trackingTimeoutTicks));
+        return true;
+    }
+
+    @Override
     public synchronized int getMaxLogEntriesPerTable() {
         return this.maxLogEntriesPerTable;
     }
@@ -104,6 +120,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         this.activeServerConfigPath = null;
         this.prefixes.clear();
         this.prefixes.addAll(this.legacyPrefixes);
+        this.exclusions.clear();
         this.maxLogEntriesPerTable = this.legacyMaxLogEntriesPerTable;
         this.trackingTimeoutTicks = this.legacyTrackingTimeoutTicks;
     }
@@ -169,7 +186,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         this.trackingTimeoutTicks = clampedTimeout;
 
         saveServerConfig(this.activeServerConfigPath,
-                new ServerConfigData(cleanedPrefixes, clampedLog, clampedTimeout));
+                new ServerConfigData(cleanedPrefixes, this.exclusions, clampedLog, clampedTimeout));
         Constants.LOG.info("Updated Fabric server loot table config: {} rules, maxLog={}, timeout={}",
                 cleanedPrefixes.size(), clampedLog, clampedTimeout);
         return true;
@@ -177,7 +194,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
     private ServerConfigData loadServerConfig(Path configPath) {
         if (!Files.exists(configPath)) {
-            ServerConfigData migrated = new ServerConfigData(this.legacyPrefixes,
+            ServerConfigData migrated = new ServerConfigData(this.legacyPrefixes, List.of(),
                     this.legacyMaxLogEntriesPerTable, this.legacyTrackingTimeoutTicks);
             saveServerConfig(configPath, migrated);
             Constants.LOG.info("Created Fabric server loot table config at {} from global defaults.", configPath);
@@ -192,22 +209,28 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
             Constants.LOG.warn("Failed to read Fabric server loot table config from {}, using defaults.",
                     configPath, exception);
         }
-        return new ServerConfigData(DEFAULT_ARCHAEOLOGY_PATH_PREFIXES,
+        return new ServerConfigData(DEFAULT_ARCHAEOLOGY_PATH_PREFIXES, List.of(),
                 DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
     }
 
     private void applyServerConfig(ServerConfigData data) {
         this.prefixes.clear();
-        for (String value : data.archaeology_path_prefixes) {
+        replaceCleaned(this.prefixes, data.archaeology_path_prefixes);
+        replaceCleaned(this.exclusions, data.excluded_loot_tables != null ? data.excluded_loot_tables : List.of());
+        this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
+        this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
+    }
+
+    private static void replaceCleaned(List<String> target, List<String> values) {
+        target.clear();
+        for (String value : values) {
             if (value != null) {
                 String trimmed = value.trim();
-                if (!trimmed.isEmpty() && !this.prefixes.contains(trimmed)) {
-                    this.prefixes.add(trimmed);
+                if (!trimmed.isEmpty() && !target.contains(trimmed)) {
+                    target.add(trimmed);
                 }
             }
         }
-        this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
-        this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
     }
 
     private static void saveServerConfig(Path configPath, ServerConfigData data) {
@@ -437,7 +460,6 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     private static final class ConfigData {
         @SuppressWarnings("unused")
         List<String> archaeology_path_prefixes;
-        @SuppressWarnings("unused")
         int max_log_entries_per_table;
         @SuppressWarnings("unused")
         long tracking_timeout_ticks;
@@ -479,14 +501,18 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         @SuppressWarnings("unused")
         List<String> archaeology_path_prefixes;
         @SuppressWarnings("unused")
+        List<String> excluded_loot_tables;
+        @SuppressWarnings("unused")
         int max_log_entries_per_table;
         @SuppressWarnings("unused")
         long tracking_timeout_ticks;
 
         ServerConfigData(List<String> archaeology_path_prefixes,
+                         List<String> excluded_loot_tables,
                          int max_log_entries_per_table,
                          long tracking_timeout_ticks) {
             this.archaeology_path_prefixes = List.copyOf(archaeology_path_prefixes);
+            this.excluded_loot_tables = List.copyOf(excluded_loot_tables);
             this.max_log_entries_per_table = max_log_entries_per_table;
             this.tracking_timeout_ticks = tracking_timeout_ticks;
         }

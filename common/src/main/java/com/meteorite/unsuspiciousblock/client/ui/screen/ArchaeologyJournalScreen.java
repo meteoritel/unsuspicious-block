@@ -53,6 +53,7 @@ public class ArchaeologyJournalScreen extends Screen {
     private Button itemNextButton;
     // 书页外左上角帮助按钮
     private IconButton helpButton;
+    private IconButton managementButton;
     private IconButton directoryBackButton;
     private int categoryFocusIndex;
     private int restoredCatalogPage;
@@ -424,6 +425,9 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.helpButton != null) {
             this.helpButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
+        if (this.managementButton != null) {
+            this.managementButton.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
 
         if (this.viewModel.isCategoryHome()) {
             int hovered = this.catalogPanel != null ? this.catalogPanel.hoveredIndex(mouseX, mouseY) : -1;
@@ -659,6 +663,16 @@ public class ArchaeologyJournalScreen extends Screen {
                 '?',
                 buildHelpTooltip(),
                 () -> {}
+        ));
+
+        int managementX = Math.max(0,
+                this.bookLayout.bookX() - JournalLayout.HELP_BUTTON_GAP - JournalLayout.HELP_BUTTON_SIZE);
+        this.managementButton = this.addRenderableWidget(new IconButton(
+                managementX, helpY,
+                JournalLayout.HELP_BUTTON_SIZE,
+                '\u2699',
+                Component.translatable("screen.unsuspiciousblock.loot_table_management.open"),
+                () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
         ));
 
         // 日志列表页备注图标点击回调：直接打开备注编辑界面，无需进入详情页

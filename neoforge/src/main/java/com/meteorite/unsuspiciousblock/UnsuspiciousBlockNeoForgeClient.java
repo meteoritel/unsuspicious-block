@@ -19,6 +19,7 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
@@ -54,6 +55,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
+            ClientLootTableLanguageStore.initialize();
             ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
             // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
             ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);

@@ -19,6 +19,7 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
@@ -45,6 +46,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
+        ClientLootTableLanguageStore.initialize();
         // 注册按键绑定
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);

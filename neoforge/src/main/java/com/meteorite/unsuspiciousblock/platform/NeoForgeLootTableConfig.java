@@ -14,6 +14,7 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
     private static final ModConfigSpec.ConfigValue<List<? extends String>> ARCHAEOLOGY_PATH_PREFIXES;
     private static final ModConfigSpec.IntValue MAX_LOG_ENTRIES_PER_TABLE;
     private static final ModConfigSpec.LongValue TRACKING_TIMEOUT_TICKS;
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> EXCLUDED_LOOT_TABLES;
     private static final ModConfigSpec.BooleanValue MIGRATED_FROM_COMMON_CONFIG;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> LEGACY_ARCHAEOLOGY_PATH_PREFIXES;
     private static final ModConfigSpec.IntValue LEGACY_MAX_LOG_ENTRIES_PER_TABLE;
@@ -79,6 +80,11 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
                         ILootTableConfig.MIN_TRACKING_TIMEOUT_TICKS,
                         ILootTableConfig.MAX_TRACKING_TIMEOUT_TICKS);
         serverBuilder.pop();
+        EXCLUDED_LOOT_TABLES = serverBuilder
+                .comment("管理页面明确关闭的战利品表 ResourceLocation。",
+                        "Loot table ResourceLocations explicitly disabled in the management screen.")
+                .defineListAllowEmpty("excluded_loot_tables", List::of, () -> "",
+                        value -> value instanceof String text && !text.isBlank());
         MIGRATED_FROM_COMMON_CONFIG = serverBuilder
                 .comment("内部迁移标记：首次加载世界时从旧 COMMON 配置复制战利品追踪设置。",
                         "Internal migration marker for legacy COMMON loot tracking settings.")
@@ -131,7 +137,21 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
     @Override
     @SuppressWarnings("unchecked")
     public List<String> getArchaeologyPathPrefixes() {
-        return (List<String>) ARCHAEOLOGY_PATH_PREFIXES.get();
+        return List.copyOf((List<String>) ARCHAEOLOGY_PATH_PREFIXES.get());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<String> getExcludedLootTables() {
+        return List.copyOf((List<String>) EXCLUDED_LOOT_TABLES.get());
+    }
+
+    @Override
+    public boolean saveTrackingRules(List<String> rules, List<String> exclusions) {
+        ARCHAEOLOGY_PATH_PREFIXES.set(List.copyOf(rules));
+        EXCLUDED_LOOT_TABLES.set(List.copyOf(exclusions));
+        SERVER_CONFIG_SPEC.save();
+        return true;
     }
 
     @Override

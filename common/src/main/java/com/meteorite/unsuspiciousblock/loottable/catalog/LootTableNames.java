@@ -42,6 +42,9 @@ public final class LootTableNames {
 
     // 判断该表是否命中任一配置规则（命名空间 + 路径前缀/精确）
     public static boolean isArchaeologyLootTable(ResourceLocation tableId) {
+        if (Services.LOOT_TABLE_CONFIG.getExcludedLootTables().contains(tableId.toString())) {
+            return false;
+        }
         for (LootTablePattern pattern : patterns()) {
             if (pattern.matches(tableId)) {
                 return true;
@@ -116,7 +119,7 @@ public final class LootTableNames {
         }
         Constants.LOG.warn("[auto] Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
                 tableId, fallbackName, translationKey);
-        // 将缺失 key 追加写入游戏目录下的 usb_miss_key/missing_keys.json，便于补全本地化
+        // 将缺失 key 追加到客户端当前语言的全局覆盖文件，便于直接补全名称
         if (!MissingTranslationKeyExporter.record(translationKey, fallbackName)) {
             // 写入失败，撤销标记以便下次调用可重试
             WARNED_MISSING_TRANSLATIONS.remove(tableId);
@@ -148,9 +151,14 @@ public final class LootTableNames {
         }
     }
 
-    private static String createTranslationKey(ResourceLocation tableId) {
+    public static String createTranslationKey(ResourceLocation tableId) {
         // 保留完整 path（含 archaeology 前缀），避免不同前缀下的同名表产生 key 冲突
         return KEY_PREFIX + tableId.getNamespace() + "." + normalizePathForKey(tableId.getPath());
+    }
+
+    // 限制动态语言覆盖范围，避免自定义名称文件修改其他 GUI 文本
+    public static boolean isGeneratedTranslationKey(String translationKey) {
+        return translationKey != null && translationKey.startsWith(KEY_PREFIX);
     }
 
     private static String normalizePathForKey(String path) {

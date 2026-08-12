@@ -20,7 +20,8 @@ loottable/
 │   ├── LootTableCatalog            TableDefinition / ItemDefinition 等记录类型
 │   ├── LootTablePattern            收录规则解析与匹配
 │   ├── LootTableNames              表名/本地化 key 工具
-│   ├── MissingTranslationKeyExporter  导出缺失翻译键（调试用）
+│   ├── LootTableTranslationStore      服务端按世界保存自定义表名
+│   ├── MissingTranslationKeyExporter  客户端语言覆盖文件读写与缺失 key 补全
 │   └── (ArchaeologyJournalCatalog 在 journal/catalog/，调用本包)
 ├── analysis/     战利品表 JSON 解析
 │   ├── LootTableJsonParser         解析 loot_table JSON 为 TableDefinition
@@ -138,6 +139,18 @@ List.of(
 ```
 
 命中规则的表被纳入目录，并通过引用闭包递归发现子表（见 [`docs/journal-categories.md`](../journal-categories.md) 的"收录根表"与"引用闭包"概念）。`stripFrom` 剥离命中前缀，用于生成本地化 key 与展示名。
+
+### 5.1 可视化追踪管理
+
+管理页面的候选集合以服务端 `ReloadableServerRegistries` 中 `Registries.LOOT_TABLE` 的 key 为唯一权威，不读取客户端资源列表，也不猜测不存在的表。当前明确排除 path 以 `entities/`、`blocks/` 开头的实体和方块掉落表。
+
+追踪规则仍支持前缀和精确 ID。为允许从宽泛前缀中移除单表，`excluded_loot_tables` 保存精确排除项：关闭一张被前缀命中的表时加入排除项；重新开启时移除排除项，若原规则未命中则把精确 ID 加入追踪规则。修改权限要求服务端权限等级 2，变更后重建目录并广播最新管理快照。
+
+### 5.2 自定义表名
+
+名称 key 始终由 `LootTableNames.createTranslationKey(ResourceLocation)` 自动生成。服务端把各语言名称保存到当前世界的 `serverconfig/unsuspiciousblock-loot-table-names.json`，并随管理快照派发给所有在线客户端。空值是删除标记，用于清除客户端已保存的旧名称。
+
+客户端把收到的名称合并到全局 `config/unsuspiciousblock/lang/<language>.json`，同一客户端下所有存档共用。`ClientLanguageMixin` 只提供语言加载入口，具体读写与合并由 `ClientLootTableLanguageStore` 和 `MissingTranslationKeyExporter` 完成；覆盖范围限制为自动生成的战利品表名称 key。缺失 key 自动补全也写入当前语言的同一文件。
 
 ## 6. 解析流程
 
