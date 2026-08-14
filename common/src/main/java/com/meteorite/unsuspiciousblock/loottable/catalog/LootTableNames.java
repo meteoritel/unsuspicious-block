@@ -12,14 +12,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** 考古战利品表名称注册表——提供名称映射、本地化 key 规则与 fallback 解析 */
 public final class LootTableNames {
     private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.table.";
     private static final Map<ResourceLocation, NameRegistration> REGISTRATIONS = new LinkedHashMap<>();
-    private static final Set<ResourceLocation> WARNED_MISSING_TRANSLATIONS = ConcurrentHashMap.newKeySet();
+    // 待汇总的缺失 key 条目（tableId -> 首次检测到的 key 与 fallback 名）。
+    // 收集阶段零 I/O，由 logMissingTranslationSummary 统一分类汇总输出
+    private static final Map<ResourceLocation, MissingEntry> PENDING_MISSING = new LinkedHashMap<>();
 
     // 缓存上次解析的规则列表，避免每次匹配重复解析配置字符串
     private static volatile List<String> cachedRawPatterns;
@@ -97,43 +97,100 @@ public final class LootTableNames {
     public static Component resolveDisplayName(ResourceLocation tableId) {
         String translationKey = translationKey(tableId);
         String fallbackName = fallbackName(tableId);
-        warnMissingTranslation(tableId, translationKey, fallbackName);
+        collectMissingTranslation(tableId, translationKey, fallbackName);
         return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
-    // 强制重新检索缺失 key 并写盘，忽略 WARNED_MISSING_TRANSLATIONS 缓存；仅供调试命令手动补救使用
+    // 强制版本：立即输出缺失汇总并落盘，忽略收集去重；仅供调试命令手动补救使用
     public static Component forceResolveDisplayName(ResourceLocation tableId) {
         String translationKey = translationKey(tableId);
         String fallbackName = fallbackName(tableId);
-        forceMissingTranslation(tableId, translationKey, fallbackName);
+        PENDING_MISSING.put(tableId, new MissingEntry(translationKey, fallbackName));
+        logMissingTranslationSummary();
+        MissingTranslationKeyExporter.flushPending();
         return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
-    private static void warnMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
-        if (Language.getInstance().has(translationKey)) {
-            return;
-        }
-        // 仅在 record 成功后才标记为已警告，避免瞬时 I/O 失败导致该 tableId 永久放弃重试
-        if (!WARNED_MISSING_TRANSLATIONS.add(tableId)) {
-            return;
-        }
-        Constants.LOG.warn("[auto] Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
-                tableId, fallbackName, translationKey);
-        // 将缺失 key 追加到客户端当前语言的全局覆盖文件，便于直接补全名称
-        if (!MissingTranslationKeyExporter.record(translationKey, fallbackName)) {
-            // 写入失败，撤销标记以便下次调用可重试
-            WARNED_MISSING_TRANSLATIONS.remove(tableId);
-        }
+    // 收集缺失 key（同一 tableId 去重），分类与输出推迟到 logMissingTranslationSummary
+    private static void collectMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
+        PENDING_MISSING.putIfAbsent(tableId, new MissingEntry(translationKey, fallbackName));
     }
 
-    // 强制版本：绕过 WARNED_MISSING_TRANSLATIONS 缓存，每次调用都尝试写盘
-    private static void forceMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
-        if (Language.getInstance().has(translationKey)) {
+    /**
+     * 汇总输出所有已检测到的缺失 key，按语言 json 格式给出条目，便于直接粘贴到语言文件补全：
+     * <ul>
+     *   <li>当前语言与 en_us 均缺失 -- 界面使用 fallback 名称</li>
+     *   <li>当前语言缺失但 en_us 已有翻译 -- 界面显示英文，可按 en_us 值翻译</li>
+     * </ul>
+     * 批处理边界（目录加载结束、调试命令）调用；输出后清空收集。
+     * 无客户端语言环境（专用服务端）时统一按 fallback 类别输出。
+     */
+    public static void logMissingTranslationSummary() {
+        if (PENDING_MISSING.isEmpty()) {
             return;
         }
-        Constants.LOG.warn("[force] Archaeology loot table {} is using fallback display name '{}'; missing localization key: {}",
-                tableId, fallbackName, translationKey);
-        MissingTranslationKeyExporter.record(translationKey, fallbackName);
+
+        MissingTranslationKeyExporter.LanguageSnapshot snapshot =
+                MissingTranslationKeyExporter.captureLanguageSnapshot();
+        boolean serverContext = snapshot.currentLanguageCode() == null;
+
+        List<String> fallbackLines = new ArrayList<>();
+        List<String> englishOnlyLines = new ArrayList<>();
+        for (MissingEntry entry : PENDING_MISSING.values()) {
+            String translationKey = entry.translationKey();
+            // 当前语言是否覆盖该 key：客户端综合资源文件与自定义覆盖文件；服务端退化为合并语言视图
+            boolean currentLanguageHas = serverContext
+                    ? Language.getInstance().has(translationKey)
+                    : snapshot.currentResource().containsKey(translationKey)
+                            || snapshot.currentOverrides().containsKey(translationKey);
+            if (currentLanguageHas) {
+                continue;
+            }
+
+            String enUsValue = snapshot.enUsResource().get(translationKey);
+            if (!serverContext && enUsValue != null) {
+                englishOnlyLines.add(jsonEntry(translationKey, enUsValue));
+            } else {
+                fallbackLines.add(jsonEntry(translationKey, entry.fallbackName()));
+                // 完全缺失的 key 写入自动补全（客户端当前语言；服务端为空操作）
+                MissingTranslationKeyExporter.record(translationKey, entry.fallbackName());
+            }
+        }
+        PENDING_MISSING.clear();
+
+        if (fallbackLines.isEmpty() && englishOnlyLines.isEmpty()) {
+            return;
+        }
+        String languageLabel = serverContext ? "server(merged view)" : snapshot.currentLanguageCode();
+        StringBuilder message = new StringBuilder()
+                .append("[loot-table-names] 本地化缺失汇总（当前语言: ").append(languageLabel)
+                .append("，待补全表名共 ").append(fallbackLines.size() + englishOnlyLines.size()).append(" 个）：");
+        if (!fallbackLines.isEmpty()) {
+            message.append("\n-- 当前语言与 en_us 均缺失，已使用 fallback 名称（")
+                    .append(fallbackLines.size()).append(" 个，可直接粘贴到语言 json 补全）:");
+            fallbackLines.forEach(line -> message.append('\n').append(line));
+        }
+        if (!englishOnlyLines.isEmpty()) {
+            message.append("\n-- 当前语言缺失但 en_us 已有翻译，界面显示英文（")
+                    .append(englishOnlyLines.size()).append(" 个，可按 en_us 值翻译）:");
+            englishOnlyLines.forEach(line -> message.append('\n').append(line));
+        }
+        Constants.LOG.warn("{}", message);
+    }
+
+    // 生成可直接粘贴进语言 json 的 "key": "value", 行，value 做 JSON 转义
+    private static String jsonEntry(String translationKey, String value) {
+        return "  \"" + translationKey + "\": \"" + jsonEscape(value) + "\",";
+    }
+
+    private static String jsonEscape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    // 清空名称注册与缺失收集（服务端停止时调用，避免跨世界累积旧条目）
+    public static void clear() {
+        REGISTRATIONS.clear();
+        PENDING_MISSING.clear();
     }
 
     private static void registerInternal(ResourceLocation tableId, String translationKey, String fallbackName) {
@@ -209,5 +266,9 @@ public final class LootTableNames {
     }
 
     private record NameRegistration(String translationKey, String fallbackName) {
+    }
+
+    /** 单个待汇总的缺失 key 条目 */
+    private record MissingEntry(String translationKey, String fallbackName) {
     }
 }

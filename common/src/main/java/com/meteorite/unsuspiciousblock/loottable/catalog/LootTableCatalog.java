@@ -177,8 +177,10 @@ public final class LootTableCatalog {
         }
 
         /**
-         * 判断该条目是否附带条件（影响模拟结果置信度）。
-         * 条件包括：有静态条件分析结果、或 tooltipHint 为近似提示。
+         * 判断该条目是否附带条件（影响模拟结果置信度，零出现时显示 {@code "?"} 而非 {@code "<0.01%"}）。
+         * 条件包括：任一获取路径带静态条件分析结果，或签名为近似回退
+         * （解析期函数无法静态求值 / 组件编码失败等，模拟覆盖度不可保证）。
+         * 不依赖 tooltipHint 文本比较，避免服务端/客户端语言差异导致行为不一致。
          */
         public boolean hasConditions() {
             for (LootAcquisitionPath path : this.acquisitionPaths) {
@@ -186,9 +188,7 @@ public final class LootTableCatalog {
                     return true;
                 }
             }
-            return this.tooltipHint != null
-                    && this.tooltipHint.getString().equals(
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
+            return this.signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY;
         }
     }
 

@@ -16,6 +16,7 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
 import net.minecraft.world.level.storage.loot.functions.SetComponentsFunction;
 import net.minecraft.world.level.storage.loot.functions.SetCustomDataFunction;
@@ -644,7 +645,7 @@ public final class LootFunctionHandlers {
             if (!(function instanceof ApplyBonusCount)) {
                 return null;
             }
-            Holder<net.minecraft.world.item.enchantment.Enchantment> enchantmentHolder = reflectField(function, "enchantment");
+            Holder<Enchantment> enchantmentHolder = reflectField(function, "enchantment");
             ResourceLocation enchantmentId = enchantmentHolder != null
                     ? enchantmentHolder.unwrapKey().map(ResourceKey::location).orElse(null)
                     : null;

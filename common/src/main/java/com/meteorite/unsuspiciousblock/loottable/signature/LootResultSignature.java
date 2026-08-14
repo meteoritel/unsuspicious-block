@@ -95,7 +95,14 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
         if (type == SignatureType.ENCHANTED_RANDOM || type == SignatureType.ENCHANTED_LEVEL) {
             return enchantedApprox(itemId);
         }
-        return new LootResultSignature(itemId, type, decodeData(parts[3]));
+        String data = decodeData(parts[3]);
+        // COMPONENT_EXACT 的组件数据缺失/损坏时降级为近似签名：
+        // 否则会得到 data=null 的严格组件签名，匹配时以空组件预览栈参与最高优先级判定，
+        // 把无组件的普通掉落错误归到该条目上
+        if (type == SignatureType.COMPONENT_EXACT && data == null) {
+            return approximateItemOnly(itemId, "component_data_missing");
+        }
+        return new LootResultSignature(itemId, type, data);
     }
 
     public boolean isEnchantedVariant() {

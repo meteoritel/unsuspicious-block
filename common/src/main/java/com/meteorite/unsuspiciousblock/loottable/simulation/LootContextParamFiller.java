@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -20,7 +21,8 @@ import org.slf4j.Logger;
  * 向 LootParams.Builder 填充合理的默认值，使模拟抽取能在不同表类型下正常执行。
  * 策略：
  * - 简单标量/状态参数（TOOL/BLOCK_STATE/DAMAGE_SOURCE/EXPLOSION_RADIUS/BLOCK_ENTITY）用虚拟默认值填充
- * - 实体参数（THIS_ENTITY/ATTACKING_ENTITY/DIRECT_ATTACKING_ENTITY/LAST_DAMAGE_PLAYER）用 SimulationFakePlayer 填充
+ * - 实体参数（THIS_ENTITY/ATTACKING_ENTITY/DIRECT_ATTACKING_ENTITY/LAST_DAMAGE_PLAYER）用 SimulationFakePlayer 填充；
+ *   钓鱼类表的 THIS_ENTITY 例外，改用 SimulationFishingHook（owner 为假玩家）
  * - SimulationFakePlayer 为原版 ServerPlayer 子类，无在线玩家时也可构造，NeoForge/Fabric 通用
  */
 public final class LootContextParamFiller {
@@ -31,15 +33,17 @@ public final class LootContextParamFiller {
 
     /**
      * 为模拟构建 LootParams。
-     * 按 paramSet 的 required 参数填充；实体参数用 SimulationFakePlayer 填充（无需在线玩家）。
+     * 按 paramSet 的 required 参数填充；实体参数用 SimulationFakePlayer 填充（无需在线玩家），
+     * 钓鱼类表的 THIS_ENTITY 改用 SimulationFishingHook（使 fishing_hook 谓词条件可判定）。
      * 若存在完全未知的 required 参数，回退到仅 ORIGIN 的宽松 paramSet。
      */
-    public static LootParams createForSimulation(ServerLevel level, LootContextParamSet paramSet) {
+    public static LootParams createForSimulation(ServerLevel level, LootContextParamSet paramSet,
+                                                 ResourceLocation tableId) {
         LootParams.Builder builder = new LootParams.Builder(level)
                 .withParameter(LootContextParams.ORIGIN, Vec3.ZERO)
                 .withLuck(0.0F);
 
-        if (fillRequired(builder, paramSet, level)) {
+        if (fillRequired(builder, paramSet, level, tableId)) {
             return builder.create(paramSet);
         }
 
@@ -58,7 +62,8 @@ public final class LootContextParamFiller {
      *
      * @return true 若全部 required 参数均已支持填充；false 若存在未支持的 required 参数
      */
-    private static boolean fillRequired(LootParams.Builder builder, LootContextParamSet paramSet, ServerLevel level) {
+    private static boolean fillRequired(LootParams.Builder builder, LootContextParamSet paramSet,
+                                        ServerLevel level, ResourceLocation tableId) {
         // 延迟构造虚拟玩家：仅当遇到实体参数时才创建，避免无实体参数表的无效开销
         SimulationFakePlayer fakePlayer = null;
         boolean allSupported = true;
@@ -72,6 +77,13 @@ public final class LootContextParamFiller {
                 if (fakePlayer == null) {
                     fakePlayer = new SimulationFakePlayer(level.getServer(), level);
                 }
+                // 钓鱼类表的 THIS_ENTITY 用假浮标填充（owner 为假玩家），
+                // 使 entity_properties + fishing_hook + in_open_water 等条件在模拟中可判定
+                if (param == LootContextParams.THIS_ENTITY && isFishingTable(tableId)) {
+                    builder.withParameter(LootContextParams.THIS_ENTITY,
+                            new SimulationFishingHook(fakePlayer, level));
+                    continue;
+                }
                 fillEntityParam(builder, param, fakePlayer);
                 continue;
             }
@@ -81,6 +93,11 @@ public final class LootContextParamFiller {
             }
         }
         return allSupported;
+    }
+
+    // 判断是否为钓鱼类战利品表（vanilla gameplay/fishing 及各模组同路径约定）
+    private static boolean isFishingTable(ResourceLocation tableId) {
+        return tableId.getPath().contains("fishing");
     }
 
     // 判断是否为实体类参数（用虚拟玩家填充）

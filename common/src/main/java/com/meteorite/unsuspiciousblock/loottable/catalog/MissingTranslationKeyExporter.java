@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /***
@@ -34,36 +35,117 @@ public final class MissingTranslationKeyExporter {
     // 文件写入串行化，避免并发下文件损坏
     private static final Object WRITE_LOCK = new Object();
     private static volatile Supplier<String> clientLanguageSupplier;
+    // 客户端资源语言文件读取函数（语言代码 -> 该语言资源文件内容）；专用服务端保持空实现
+    private static volatile Function<String, Map<String, String>> resourceLanguageLookup = code -> Map.of();
+
+    // 待落盘的缺失 key（按语言分组）。record 只入内存，由 flushPending 批量写盘，
+    // 避免 reload 期间在主线程对每个 key 做一次整读 + 整写文件 I/O
+    private static final Map<String, Map<String, String>> pendingRecords = new LinkedHashMap<>();
+    // 累积条数达到阈值时立即落盘，防止长时间无 flush 触发导致 pending 无限增长
+    private static final int FLUSH_THRESHOLD = 32;
 
     private MissingTranslationKeyExporter() {
     }
 
-    // 客户端初始化时注册当前语言来源；专用服务端不注册，因此不会生成客户端语言文件
-    public static void configureClient(Supplier<String> languageSupplier) {
+    // 客户端初始化时注册当前语言来源与资源语言文件读取函数；专用服务端不注册，因此不会生成客户端语言文件
+    public static void configureClient(Supplier<String> languageSupplier,
+                                       Function<String, Map<String, String>> resourceLanguageReader) {
         clientLanguageSupplier = languageSupplier;
+        resourceLanguageLookup = resourceLanguageReader;
     }
 
-    // 记录当前客户端语言下的缺失 key；服务端环境仅记录日志，不执行文件写入
+    /** 语言快照--汇总缺失 key 时一次性读取的当前语言与 en_us 对照数据 */
+    public record LanguageSnapshot(String currentLanguageCode,
+                                   Map<String, String> currentResource,
+                                   Map<String, String> currentOverrides,
+                                   Map<String, String> enUsResource) {
+    }
+
+    // 一次性捕获语言快照，供缺失 key 汇总分类使用；无客户端语言环境时各 map 为空
+    public static LanguageSnapshot captureLanguageSnapshot() {
+        synchronized (WRITE_LOCK) {
+            Supplier<String> supplier = clientLanguageSupplier;
+            String languageCode = supplier != null ? normalizeLanguageCode(supplier.get()) : null;
+            if (languageCode == null || !isValidLanguageCode(languageCode)) {
+                return new LanguageSnapshot(null, Map.of(), Map.of(), Map.of());
+            }
+            Map<String, String> currentResource = safeResourceLookup(languageCode);
+            Map<String, String> enUsResource = safeResourceLookup("en_us");
+            Map<String, String> currentOverrides;
+            try {
+                currentOverrides = loadExisting(resolveLanguageFilePath(languageCode));
+            } catch (IOException e) {
+                Constants.LOG.warn("Failed to load custom overrides for language {}.", languageCode, e);
+                currentOverrides = new LinkedHashMap<>();
+            }
+            return new LanguageSnapshot(languageCode, currentResource, currentOverrides, enUsResource);
+        }
+    }
+
+    private static Map<String, String> safeResourceLookup(String languageCode) {
+        try {
+            return Map.copyOf(resourceLanguageLookup.apply(languageCode));
+        } catch (RuntimeException e) {
+            Constants.LOG.warn("Failed to read resource language file {}.", languageCode, e);
+            return Map.of();
+        }
+    }
+
+    // 记录当前客户端语言下的缺失 key；仅累积到内存，等待 flushPending 批量落盘。
+    // 服务端环境不落盘（无客户端语言来源），返回 true 表示无需调用方重试
     static boolean record(String translationKey, String fallbackValue) {
         Supplier<String> languageSupplier = clientLanguageSupplier;
         if (languageSupplier == null) return true;
         String languageCode = languageSupplier.get();
         if (!isValidLanguageCode(languageCode)) return false;
         synchronized (WRITE_LOCK) {
+            pendingRecords.computeIfAbsent(languageCode, ignored -> new LinkedHashMap<>())
+                    .putIfAbsent(translationKey, fallbackValue);
+            if (countPendingLocked() >= FLUSH_THRESHOLD) {
+                flushLocked();
+            }
+        }
+        return true;
+    }
+
+    // 将累积的缺失 key 一次性合并落盘；批处理边界（目录加载完成、调试命令）调用
+    public static void flushPending() {
+        synchronized (WRITE_LOCK) {
+            flushLocked();
+        }
+    }
+
+    private static void flushLocked() {
+        for (Map.Entry<String, Map<String, String>> entry : pendingRecords.entrySet()) {
+            String languageCode = entry.getKey();
+            Map<String, String> pending = entry.getValue();
+            if (pending.isEmpty()) continue;
             try {
                 Path file = resolveLanguageFile(languageCode);
                 Map<String, String> data = loadExisting(file);
-                if (!data.containsKey(translationKey)) {
-                    data.put(translationKey, fallbackValue);
-                    save(file, data);
+                boolean changed = false;
+                for (Map.Entry<String, String> pendingEntry : pending.entrySet()) {
+                    if (!data.containsKey(pendingEntry.getKey())) {
+                        data.put(pendingEntry.getKey(), pendingEntry.getValue());
+                        changed = true;
+                    }
                 }
-                return true;
+                if (changed) save(file, data);
+                pending.clear();
             } catch (IOException e) {
-                Constants.LOG.warn("Failed to export missing translation key '{}' for language {}.",
-                        translationKey, languageCode, e);
-                return false;
+                // 写入失败保留 pending，下次 flush 重试
+                Constants.LOG.warn("Failed to export missing translation keys for language {}.",
+                        languageCode, e);
             }
         }
+    }
+
+    private static int countPendingLocked() {
+        int count = 0;
+        for (Map<String, String> pending : pendingRecords.values()) {
+            count += pending.size();
+        }
+        return count;
     }
 
     // 合并服务端派发值；空字符串是显式删除标记。返回是否实际改变了文件内容

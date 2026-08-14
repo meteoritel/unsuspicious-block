@@ -18,6 +18,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParamSet;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +67,7 @@ public final class LootProbabilitySimulator {
             // 按战利品表声明的 paramSet 动态构建 LootParams；
             // 若 required 参数无法全部满足，LootContextParamFiller 内部回退到宽松 paramSet
             LootContextParamSet paramSet = lootTable.getParamSet();
-            LootParams lootParams = LootContextParamFiller.createForSimulation(level, paramSet);
+            LootParams lootParams = LootContextParamFiller.createForSimulation(level, paramSet, tableId);
             return simulateTable(tableId, rawTable, lootTable, lootParams);
         } catch (Exception e) {
             LOGGER.warn("模拟战利品表 {} 时出错，保留原始占位符", tableId, e);
@@ -94,15 +95,24 @@ public final class LootProbabilitySimulator {
         // 模拟期发现的注入签名（JSON 中不存在，来自 GLM / LootTableEvents.MODIFY）
         Map<String, LootResultSignature> discovered = new LinkedHashMap<>();
 
+        // 预览栈缓存：COMPONENT_EXACT 签名的预览栈构建涉及 base64 + JSON 解码，
+        // 10000 次抽取的匹配热路径上按签名复用，避免重复解析
+        Map<LootResultSignature, ItemStack> previewCache = new HashMap<>();
+        java.util.function.Function<LootResultSignature, ItemStack> previewProvider =
+                signature -> previewCache.computeIfAbsent(signature, LootResultSignature::createPreviewStack);
+
+        // 注入用随机源：整个模拟循环复用一个实例，避免每次抽取新建对象
+        RandomSource injectionRandom = RandomSource.create();
+
         // 模拟抽取
         for (int i = 0; i < SIMULATION_COUNT; i++) {
             List<ItemStack> drops = lootTable.getRandomItems(lootParams);
             // Fabric 端注入器在模拟期显式调用，确保模组物品被纳入概率统计与签名派生；
             // NeoForge 端注入由 GLM 在 getRandomItems 内部完成，此处注入器为空实现
-            ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, RandomSource.create(i));
+            ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, injectionRandom);
             for (ItemStack stack : drops) {
                 if (stack.isEmpty()) continue;
-                LootResultSignature matched = LootResultMatcher.resolve(stack, candidates);
+                LootResultSignature matched = LootResultMatcher.resolve(stack, candidates, previewProvider);
                 if (matched != null) {
                     appearanceCounts.merge(matched.toStoredKey(), 1, Integer::sum);
                     continue;

@@ -37,6 +37,7 @@ loottable/
 │   ├── LootProbabilitySimulationWorker  主线程 tick 驱动器
 │   ├── LootContextParamFiller      模拟用 LootParams 构建（宽松回退）
 │   ├── SimulationFakePlayer        模拟用假玩家
+│   ├── SimulationFishingHook       模拟用假钓鱼浮标（钓鱼表 THIS_ENTITY）
 │   └── ProbabilityFormat           概率格式化
 ├── injection/    战利品注入
 │   ├── ArchaeologyLootInjector     注入器接口
@@ -152,6 +153,8 @@ List.of(
 
 客户端把收到的名称合并到全局 `config/unsuspiciousblock/lang/<language>.json`，同一客户端下所有存档共用。`ClientLanguageMixin` 只提供语言加载入口，具体读写与合并由 `ClientLootTableLanguageStore` 和 `MissingTranslationKeyExporter` 完成；覆盖范围限制为自动生成的战利品表名称 key。缺失 key 自动补全也写入当前语言的同一文件。
 
+缺失 key 的检测与告警采用批处理：解析期间 `LootTableNames` 只把缺失条目收集到内存（按 tableId 去重，零 I/O），目录加载结束时由 `logMissingTranslationSummary()` 统一分类汇总输出为语言 json 格式的 WARN 日志（区分"当前语言与 en_us 均缺失、使用 fallback 名称"与"当前语言缺失但 en_us 已有翻译、界面显示英文"两类），随后 `MissingTranslationKeyExporter.flushPending()` 一次性把待补全 key 落盘。落盘按 32 条阈值兜底，写盘失败保留待重试。
+
 ## 6. 解析流程
 
 [`LootTableJsonParser`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LootTableJsonParser.java) 解析 loot_table JSON 为 `TableDefinition`：
@@ -172,6 +175,8 @@ List.of(
 ```
 simulateOne(tableId, rawTable, level)
   ├─ 取 LootTable（按声明的 paramSet 构建 LootParams，LootContextParamFiller 宽松回退）
+  │    钓鱼类表（path 含 "fishing"）的 THIS_ENTITY 用 SimulationFishingHook 填充，
+  │    使 entity_properties + fishing_hook + in_open_water 条件在模拟中可判定
   ├─ 初始化候选签名（来自 JSON 解析）+ appearanceCounts
   └─ 循环 10000 次：
        ├─ lootTable.getRandomItems(lootParams)

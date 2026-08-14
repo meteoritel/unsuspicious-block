@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableTranslationStore;
 import net.minecraft.server.MinecraftServer;
 
@@ -51,6 +52,8 @@ public final class ServerLootTableConfigManager {
     public static void stop() {
         snapshot = null;
         LootTableTranslationStore.unload();
+        // 同步清空名称注册与缺失收集，避免跨世界累积旧条目
+        LootTableNames.clear();
         Services.LOOT_TABLE_CONFIG.unloadServer();
     }
 
