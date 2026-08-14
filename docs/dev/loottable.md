@@ -176,7 +176,9 @@ List.of(
 simulateOne(tableId, rawTable, level)
   ├─ 取 LootTable（按声明的 paramSet 构建 LootParams，LootContextParamFiller 宽松回退）
   │    钓鱼类表（path 含 "fishing"）的 THIS_ENTITY 用 SimulationFishingHook 填充，
-  │    使 entity_properties + fishing_hook + in_open_water 条件在模拟中可判定
+  │    使 entity_properties + fishing_hook + in_open_water 条件在模拟中可判定。
+  │    注意：fishing paramSet 中 THIS_ENTITY 是 optional（required 仅 ORIGIN+TOOL），
+  │    Filler 需在 required 遍历之外按 allowed 集合补填，否则条件恒 false
   ├─ 初始化候选签名（来自 JSON 解析）+ appearanceCounts
   └─ 循环 10000 次：
        ├─ lootTable.getRandomItems(lootParams)

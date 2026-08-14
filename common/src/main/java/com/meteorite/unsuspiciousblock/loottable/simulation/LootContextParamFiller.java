@@ -67,6 +67,7 @@ public final class LootContextParamFiller {
         // 延迟构造虚拟玩家：仅当遇到实体参数时才创建，避免无实体参数表的无效开销
         SimulationFakePlayer fakePlayer = null;
         boolean allSupported = true;
+        boolean fishingHookFilled = false;
 
         for (LootContextParam<?> param : paramSet.getRequired()) {
             if (param == LootContextParams.ORIGIN) {
@@ -82,6 +83,7 @@ public final class LootContextParamFiller {
                 if (param == LootContextParams.THIS_ENTITY && isFishingTable(tableId)) {
                     builder.withParameter(LootContextParams.THIS_ENTITY,
                             new SimulationFishingHook(fakePlayer, level));
+                    fishingHookFilled = true;
                     continue;
                 }
                 fillEntityParam(builder, param, fakePlayer);
@@ -91,6 +93,18 @@ public final class LootContextParamFiller {
             if (!fillScalarParam(builder, param, level)) {
                 allSupported = false;
             }
+        }
+
+        // 钓鱼 paramSet（minecraft:fishing）中 THIS_ENTITY 是 optional 参数，仅遍历 required 不会填充；
+        // 而开放水域（fishing_hook）等条件依赖 THIS_ENTITY 存在，此处对钓鱼类表按 allowed 集合补填假浮标。
+        // paramSet 不允许 THIS_ENTITY 时跳过（create 会拒绝 allowed 之外的参数）
+        if (!fishingHookFilled && isFishingTable(tableId)
+                && paramSet.isAllowed(LootContextParams.THIS_ENTITY)) {
+            if (fakePlayer == null) {
+                fakePlayer = new SimulationFakePlayer(level.getServer(), level);
+            }
+            builder.withParameter(LootContextParams.THIS_ENTITY,
+                    new SimulationFishingHook(fakePlayer, level));
         }
         return allSupported;
     }
