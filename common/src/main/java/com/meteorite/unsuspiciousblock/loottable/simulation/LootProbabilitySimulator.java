@@ -57,9 +57,15 @@ public final class LootProbabilitySimulator {
     public static SimResult simulateOne(
             ResourceLocation tableId, TableDefinition rawTable, ServerLevel level) {
         try {
-            LootTable lootTable = level.getServer().reloadableRegistries()
-                    .getLootTable(net.minecraft.resources.ResourceKey.create(
-                            net.minecraft.core.registries.Registries.LOOT_TABLE, tableId));
+            // 优先用"模拟专用表"：原始 JSON 剥离环境依赖条件（location_check/weather_check 等）后重建，
+            // 使这些条件在模拟中恒通过，概率展示为理论概率；构建失败回退注册表原始表
+            LootTable lootTable = SimulationTableFactory.buildForSimulation(
+                    tableId, level.getServer().getResourceManager(), level.getServer().registryAccess());
+            if (lootTable == null) {
+                lootTable = level.getServer().reloadableRegistries()
+                        .getLootTable(net.minecraft.resources.ResourceKey.create(
+                                net.minecraft.core.registries.Registries.LOOT_TABLE, tableId));
+            }
             // 空表或内置空表直接返回原始
             if (lootTable == LootTable.EMPTY) {
                 return new SimResult(tableId, rawTable);

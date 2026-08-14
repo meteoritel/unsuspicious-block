@@ -48,7 +48,8 @@ public final class LootContextParamFiller {
         }
 
         // 回退：原 paramSet 有完全未支持的 required 参数（非已知实体/标量参数），
-        // 构建仅 ORIGIN 的宽松 paramSet。当前已覆盖 ALL_PARAMS 的全部 10 个参数，实际不会触发此分支。
+        // 构建仅 ORIGIN 的宽松 paramSet。1.21.1 的 ALL_PARAMS 共 12 个参数，
+        // 其中 ENCHANTMENT_LEVEL/ENCHANTMENT_ACTIVE 由 SimulationTableFactory 剥离相关条件规避，不在此填充。
         LOGGER.info("回退到宽松 paramSet 模拟（原 paramSet 存在未支持的 required 参数）");
         LootContextParamSet looseParamSet = LootContextParamSet.builder()
                 .required(LootContextParams.ORIGIN)
