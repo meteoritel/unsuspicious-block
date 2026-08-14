@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.journal.state;
 
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -26,19 +27,49 @@ public final class ArchaeologyJournalState {
     private static final String COUNT_TAG = "count";
     private static final String REVISION_TAG = "revision";
     private static final String COMPLETION_REWARD_CLAIMED_TAG = "completion_reward_claimed";
+    private static final String RECENT_LOOT_TABLES_TAG = "recent_loot_tables";
+    private static final String RECENT_TABLE_ID_TAG = "id";
+    private static final String RECENT_ORDER_TAG = "order";
+    private static final String RECENT_SEQUENCE_TAG = "recent_sequence";
+    private static final int MAX_RECENT_LOOT_TABLES = 128;
 
     private final LinkedHashMap<ResourceLocation, TableProgress> tables = new LinkedHashMap<>();
+    private final LinkedHashMap<ResourceLocation, Long> recentLootTables = new LinkedHashMap<>();
     // 增量同步：版本号，每次发送增量包时递增（由 drainDirtyTables 触发）
     // clear/removeTable 等全量重置操作也会 +1，对应全量同步
     private long revision;
+    private long recentSequence;
     // 增量同步：脏表追踪
     private final LinkedHashSet<ResourceLocation> dirtyTables = new LinkedHashSet<>();
 
     // 清除所有表进度
     public void clear() {
         this.tables.clear();
+        this.recentLootTables.clear();
+        this.recentSequence = 0L;
         this.dirtyTables.clear();
         this.revision++;
+    }
+
+    // 记录玩家最近遇到的战利品表；重复遇到时刷新顺序并限制持久化数量
+    public void recordRecentLootTable(ResourceLocation tableId) {
+        if (tableId == null) {
+            return;
+        }
+        this.recentLootTables.remove(tableId);
+        this.recentLootTables.put(tableId, ++this.recentSequence);
+        while (this.recentLootTables.size() > MAX_RECENT_LOOT_TABLES) {
+            ResourceLocation oldest = this.recentLootTables.keySet().iterator().next();
+            this.recentLootTables.remove(oldest);
+        }
+    }
+
+    // 返回按最近遇到优先排列的不可变快照
+    public List<RecentLootTable> getRecentLootTables() {
+        List<RecentLootTable> result = new ArrayList<>(this.recentLootTables.size());
+        this.recentLootTables.forEach((tableId, order) -> result.add(new RecentLootTable(tableId, order)));
+        Collections.reverse(result);
+        return List.copyOf(result);
     }
 
     // 获取当前版本号
@@ -247,6 +278,9 @@ public final class ArchaeologyJournalState {
         for (Map.Entry<ResourceLocation, TableProgress> entry : other.tables.entrySet()) {
             this.tables.put(entry.getKey(), entry.getValue().copy());
         }
+        this.recentLootTables.clear();
+        this.recentLootTables.putAll(other.recentLootTables);
+        this.recentSequence = other.recentSequence;
         this.revision = other.revision;
         this.dirtyTables.clear();
     }
@@ -262,11 +296,21 @@ public final class ArchaeologyJournalState {
     public void writeTo(CompoundTag tag) {
         tag.putInt(NbtDataVersion.TAG, NbtDataVersion.CURRENT);
         tag.putLong(REVISION_TAG, this.revision);
+        tag.putLong(RECENT_SEQUENCE_TAG, this.recentSequence);
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableProgress> entry : this.tables.entrySet()) {
             tablesTag.put(entry.getKey().toString(), entry.getValue().toTag());
         }
         tag.put(TABLES_TAG, tablesTag);
+
+        ListTag recentTag = new ListTag();
+        this.recentLootTables.forEach((tableId, order) -> {
+            CompoundTag entryTag = new CompoundTag();
+            entryTag.putString(RECENT_TABLE_ID_TAG, tableId.toString());
+            entryTag.putLong(RECENT_ORDER_TAG, order);
+            recentTag.add(entryTag);
+        });
+        tag.put(RECENT_LOOT_TABLES_TAG, recentTag);
     }
 
     // 从 CompoundTag 反序列化恢复状态
@@ -274,18 +318,34 @@ public final class ArchaeologyJournalState {
         this.clear();
         this.revision = tag.contains(REVISION_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(REVISION_TAG)) : 0L;
-        if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
-            return;
+        this.recentSequence = tag.contains(RECENT_SEQUENCE_TAG, Tag.TAG_LONG)
+                ? Math.max(0L, tag.getLong(RECENT_SEQUENCE_TAG)) : 0L;
+        if (tag.contains(RECENT_LOOT_TABLES_TAG, Tag.TAG_LIST)) {
+            ListTag recentTag = tag.getList(RECENT_LOOT_TABLES_TAG, Tag.TAG_COMPOUND);
+            for (int index = Math.max(0, recentTag.size() - MAX_RECENT_LOOT_TABLES);
+                 index < recentTag.size(); index++) {
+                CompoundTag entryTag = recentTag.getCompound(index);
+                ResourceLocation tableId = ResourceLocation.tryParse(entryTag.getString(RECENT_TABLE_ID_TAG));
+                if (tableId == null) {
+                    continue;
+                }
+                long order = Math.max(0L, entryTag.getLong(RECENT_ORDER_TAG));
+                this.recentLootTables.remove(tableId);
+                this.recentLootTables.put(tableId, order);
+                this.recentSequence = Math.max(this.recentSequence, order);
+            }
         }
 
-        CompoundTag tablesTag = tag.getCompound(TABLES_TAG);
-        for (String key : tablesTag.getAllKeys()) {
-            ResourceLocation tableId = ResourceLocation.tryParse(key);
-            if (tableId == null) {
-                continue;
-            }
+        if (tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
+            CompoundTag tablesTag = tag.getCompound(TABLES_TAG);
+            for (String key : tablesTag.getAllKeys()) {
+                ResourceLocation tableId = ResourceLocation.tryParse(key);
+                if (tableId == null) {
+                    continue;
+                }
 
-            this.tables.put(tableId, TableProgress.fromTag(tablesTag.getCompound(key)));
+                this.tables.put(tableId, TableProgress.fromTag(tablesTag.getCompound(key)));
+            }
         }
     }
 
@@ -298,6 +358,10 @@ public final class ArchaeologyJournalState {
 
     private TableProgress getOrCreateTable(ResourceLocation tableId) {
         return this.tables.computeIfAbsent(tableId, ignored -> new TableProgress());
+    }
+
+    /** 最近遇到的战利品表及其玩家内单调顺序。 */
+    public record RecentLootTable(ResourceLocation tableId, long encounterOrder) {
     }
 
     public static final class TableProgress {

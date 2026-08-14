@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class LootTableManagementClientState {
     private static final AtomicLong revision = new AtomicLong();
     private static volatile List<SyncLootTableManagementPayload.Entry> entries = List.of();
+    private static volatile List<SyncLootTableManagementPayload.RecentEntry> recentEntries = List.of();
     private static volatile Map<String, Map<String, String>> translations = Map.of();
     private static volatile boolean canEdit;
 
@@ -20,6 +21,7 @@ public final class LootTableManagementClientState {
 
     public static void receive(SyncLootTableManagementPayload payload) {
         entries = List.copyOf(payload.entries());
+        recentEntries = List.copyOf(payload.recentEntries());
         translations = copyTranslations(payload.translations());
         canEdit = payload.canEdit();
         revision.incrementAndGet();
@@ -28,6 +30,10 @@ public final class LootTableManagementClientState {
 
     public static List<SyncLootTableManagementPayload.Entry> entries() {
         return entries;
+    }
+
+    public static List<SyncLootTableManagementPayload.RecentEntry> recentEntries() {
+        return recentEntries;
     }
 
     public static Map<String, Map<String, String>> translations() {

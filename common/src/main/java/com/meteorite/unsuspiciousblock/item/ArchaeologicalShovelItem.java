@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
+import com.meteorite.unsuspiciousblock.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
 import net.minecraft.ChatFormatting;
@@ -249,15 +250,17 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         scanState.unsuspiciousblock$markBlockEntityChanged();
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ServerPlayer sp
-                && scanState.unsuspiciousblock$getPendingJournalEntry() == null) {
-            long gameTime = level.getGameTime();
-            long dayTime = level.getDayTime();
-            LootTrackingContext trackingContext = LootTrackingContext.root(
-                    sp, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
-                    BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()));
-            LootTrackingEvents.submit(new LootSession(trackingContext), extracted,
-                    LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
+        if (lootTableName != null && player instanceof ServerPlayer sp) {
+            RecentLootTableService.record(sp, lootTableName);
+            if (scanState.unsuspiciousblock$getPendingJournalEntry() == null) {
+                long gameTime = level.getGameTime();
+                long dayTime = level.getDayTime();
+                LootTrackingContext trackingContext = LootTrackingContext.root(
+                        sp, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
+                        BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()));
+                LootTrackingEvents.submit(new LootSession(trackingContext), extracted,
+                        LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
+            }
         }
 
         // inventory.add() 成功时会将 stack.count 置为 0，需在此之前保存副本用于日志记录

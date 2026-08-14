@@ -69,6 +69,12 @@ public final class LootTableTranslationStore {
         return Map.copyOf(result);
     }
 
+    // 判断指定语言是否已有非空名称，供服务端校验多语言编辑顺序
+    public static synchronized boolean hasNonBlank(String languageCode, String translationKey) {
+        Map<String, String> language = translations.get(languageCode);
+        return language != null && language.getOrDefault(translationKey, "").trim().length() > 0;
+    }
+
     private static boolean save() {
         try {
             Files.createDirectories(activeFile.getParent());

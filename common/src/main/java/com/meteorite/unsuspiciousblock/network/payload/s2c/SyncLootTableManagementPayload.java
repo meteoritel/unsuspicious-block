@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /** 服务端权威战利品表管理索引及名称覆盖快照。 */
-public record SyncLootTableManagementPayload(List<Entry> entries, boolean canEdit,
+public record SyncLootTableManagementPayload(List<Entry> entries, List<RecentEntry> recentEntries, boolean canEdit,
                                              Map<String, Map<String, String>> translations)
         implements CustomPacketPayload {
     public static final Type<SyncLootTableManagementPayload> TYPE = new Type<>(
@@ -22,6 +22,9 @@ public record SyncLootTableManagementPayload(List<Entry> entries, boolean canEdi
             StreamCodec.of(SyncLootTableManagementPayload::encode, SyncLootTableManagementPayload::decode);
 
     public record Entry(ResourceLocation tableId, boolean tracked) { }
+
+    /** 最近遇到的战利品表及其玩家内顺序。 */
+    public record RecentEntry(ResourceLocation tableId, long encounterOrder) { }
 
     @Override
     public @NotNull Type<SyncLootTableManagementPayload> type() {
@@ -33,6 +36,11 @@ public record SyncLootTableManagementPayload(List<Entry> entries, boolean canEdi
         payload.entries.forEach(entry -> {
             buf.writeResourceLocation(entry.tableId);
             buf.writeBoolean(entry.tracked);
+        });
+        buf.writeVarInt(payload.recentEntries.size());
+        payload.recentEntries.forEach(entry -> {
+            buf.writeResourceLocation(entry.tableId);
+            buf.writeLong(entry.encounterOrder);
         });
         buf.writeBoolean(payload.canEdit);
         buf.writeVarInt(payload.translations.size());
@@ -52,6 +60,11 @@ public record SyncLootTableManagementPayload(List<Entry> entries, boolean canEdi
         for (int index = 0; index < entryCount; index++) {
             entries.add(new Entry(buf.readResourceLocation(), buf.readBoolean()));
         }
+        int recentCount = buf.readVarInt();
+        List<RecentEntry> recentEntries = new ArrayList<>(recentCount);
+        for (int index = 0; index < recentCount; index++) {
+            recentEntries.add(new RecentEntry(buf.readResourceLocation(), buf.readLong()));
+        }
         boolean canEdit = buf.readBoolean();
         int languageCount = buf.readVarInt();
         Map<String, Map<String, String>> translations = new LinkedHashMap<>();
@@ -64,6 +77,7 @@ public record SyncLootTableManagementPayload(List<Entry> entries, boolean canEdi
             }
             translations.put(language, values);
         }
-        return new SyncLootTableManagementPayload(List.copyOf(entries), canEdit, Map.copyOf(translations));
+        return new SyncLootTableManagementPayload(
+                List.copyOf(entries), List.copyOf(recentEntries), canEdit, Map.copyOf(translations));
     }
 }

@@ -16,7 +16,7 @@ Mixin 主要用于四类需求：
 
 | 配置文件 | 位置 | mixin 数 | 说明 |
 |---|---|---|---|
-| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 34（含 3 客户端） | 跨平台通用 mixin，两端共用 |
+| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 38（含 5 客户端） | 跨平台通用 mixin，两端共用 |
 | `unsuspiciousblock.fabric.mixins.json` | `fabric/src/main/resources/` | 6 | Fabric 独有，补齐原生事件缺失 |
 | `unsuspiciousblock.lootr.mixins.json` | `common/src/main/resources/` | 5 | Lootr 兼容，`requiredMods = ["lootr"]` |
 
@@ -86,6 +86,8 @@ Mixin 主要用于四类需求：
 | `client/AbstractContainerScreenAccessor` | 容器屏幕 | 访问内部字段（tooltip 渲染） |
 | `client/EditBoxMixin` | 输入框 | 搜索框行为调整 |
 | `client/EnchantmentScreenMixin` | 附魔台屏幕 | 渲染完整候选列表 |
+| `client/ClientLanguageAccessor` | `ClientLanguage` | 访问已加载词条 storage 并调用私有构造器创建合并实例 |
+| `client/ClientLanguageMixin` | `ClientLanguage` | `loadFrom` 返回后合并配置目录中的战利品表名称覆盖 |
 
 ## 4. Fabric 独有 mixin
 

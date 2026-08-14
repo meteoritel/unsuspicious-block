@@ -86,7 +86,7 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 |---|---|---|
 | `SyncArchaeologyCatalogPayload` | `ArchaeologyJournalClientState::receiveCatalog` | 全量目录 |
 | `SyncCatalogHashPayload` | `receiveCatalogHash` | 目录哈希（按需同步比对） |
-| `SyncLootTableManagementPayload` | `LootTableManagementClientState::receive` | 注册表索引、编辑权限和名称快照 |
+| `SyncLootTableManagementPayload` | `LootTableManagementClientState::receive` | 注册表索引、玩家最近遇到列表、编辑权限和名称快照 |
 | `SyncJournalStatePayload` | `receiveState` | 进度状态（全量） |
 | `SyncJournalStateIncrementalPayload` | `receiveStateIncremental` | 进度状态（增量） |
 | `SyncJournalLogPayload` | `receiveLogUpdate` | 日志更新 |
@@ -162,7 +162,7 @@ restoreAndSyncOnJoin -> syncCatalogHash -> sync loot table management
 
 ### 8.5 战利品表管理同步
 
-服务端从 `ReloadableServerRegistries` 枚举 LootTable key，过滤 `entities/` 与 `blocks/`，然后发送 `ResourceLocation + tracked` 列表、玩家编辑权限以及按语言分组的自定义名称。写请求再次校验表是否仍存在于注册表且玩家权限等级至少为 2，不能信任客户端候选列表。
+服务端从 `ReloadableServerRegistries` 枚举 LootTable key，过滤 `entities/` 与 `blocks/`，然后发送 `ResourceLocation + tracked` 列表、该玩家仍存在于当前注册表的最近遇到列表、编辑权限以及按语言分组的自定义名称。最近列表已按玩家内遇到顺序从新到旧排列。写请求再次校验表是否仍存在于注册表且玩家权限等级至少为 2，不能信任客户端候选列表；非空的非英语名称还要求服务端名称存储中已存在非空 `en_us` 名称。
 
 名称快照由服务器统一派发。客户端接收后合并到全局语言文件，只有磁盘内容变化时才触发资源重载，避免登录时无意义重复加载。
 

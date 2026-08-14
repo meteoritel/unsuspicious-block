@@ -13,6 +13,7 @@ import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
+import com.meteorite.unsuspiciousblock.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -384,6 +385,9 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         this.unsuspiciousblock$lootTableName = this.lootTable.location();
         this.unsuspiciousblock$lootTableParsed = true;
         this.unsuspiciousblock$lootTableParsedThisCall = true;
+        if (this.unsuspiciousblock$brushContext && player instanceof ServerPlayer sp) {
+            RecentLootTableService.record(sp, this.unsuspiciousblock$lootTableName);
+        }
 
         // 命中追踪规则时准备上下文，由 getRandomItems 调用点建立异常安全的作用域
         if (ArchaeologyJournalServerCatalog.isTrackedTable(this.unsuspiciousblock$lootTableName)

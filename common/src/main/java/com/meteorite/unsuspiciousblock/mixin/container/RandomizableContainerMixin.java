@@ -14,6 +14,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.DecoratedPotTrackingServ
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
+import com.meteorite.unsuspiciousblock.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -73,6 +74,9 @@ public interface RandomizableContainerMixin {
             }
             capturedLootTable.set(tableId);
             return;
+        }
+        if (trackingPlayer != null && tableId != null) {
+            RecentLootTableService.record(trackingPlayer, tableId);
         }
         // 命中追踪规则时准备上下文，由 fill 调用点建立异常安全的作用域
         if (trackingPlayer != null && tableId != null

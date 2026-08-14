@@ -7,7 +7,7 @@
 考古笔记是模组的核心玩法载体，承担四件事：
 
 1. **目录**：解析服务端所有战利品表，按分类组织成可浏览的目录，每张表列出可能产出的物品及估算概率。
-2. **进度**：记录玩家解锁了哪些表、哪些物品、获取数量，并通过 mixin 持久化到玩家 NBT。
+2. **进度**：记录玩家解锁了哪些表、哪些物品、获取数量及最近遇到的战利品表，并通过 mixin 持久化到玩家 NBT。
 3. **追踪**：在玩家刷拭可疑方块、开箱、钓鱼、触发附魔战利品时，捕获实际产出的物品，解锁对应目录条目并记录日志。
 4. **日志**：记录每次发现的物品、坐标、维度、群系、结构、时间，支持分组、备注、复制传送指令。
 
@@ -31,6 +31,7 @@ journal/
 │   ├── LootTrackingContext / Holder      追踪上下文（ThreadLocal）
 │   ├── LootSession                       一次 loot roll 的会话
 │   ├── ArchaeologyLootRuntimeTracker     运行时解锁/记录入口
+│   ├── RecentLootTableService            低成本记录最近遇到的战利品表 ID
 │   ├── ContainerTrackingService          容器开箱追踪
 │   ├── DecoratedPotTrackingService       陶罐追踪
 │   ├── DirectLootTrackingService         直接获取追踪（钓鱼等）
@@ -96,6 +97,8 @@ ArchaeologyJournalState
 │       ├─ completionRewardClaimed: boolean   100% 完成奖励是否已发放
 │       └─ items: LinkedHashMap<sigKey, ItemProgress>
 │           └─ ItemProgress{ unlocked, count }  物品解锁与获取数量
+├─ recentLootTables: LinkedHashMap<TableId, Order>  最近遇到的 128 个唯一表
+├─ recentSequence: long                      玩家内单调遇到顺序
 ├─ revision: long                            增量同步版本号
 └─ dirtyTables: LinkedHashSet<TableId>       脏表追踪
 ```
@@ -109,6 +112,8 @@ ArchaeologyJournalState
 - [`ArchaeologyJournalStateHolder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/state/ArchaeologyJournalStateHolder.java) 是 mixin 接口，`ServerPlayer` 实例通过 `unsuspiciousblock$getArchaeologyJournalState()` 暴露状态。
 - `PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin`（见 [mixin.md](mixin.md)）实现状态的读写，序列化到玩家 NBT。
 - `NbtDataVersion` / `NbtDataMigrator` 处理旧存档格式迁移，序列化时写入版本号。
+
+最近列表由 `RecentLootTableService` 写入：同一表再次遇到时刷新为最新记录，超过 128 个唯一表时移除最旧项。该路径不创建 `LootSession`，只在玩家打开随机容器、实际刷拭或用考古铲取出可疑方块内容、钓鱼收杆、打破战利品陶罐时更新有限 Map；`entities/` 与 `blocks/` 路径不会记录。
 
 ### 4.3 增量同步
 

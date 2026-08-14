@@ -19,11 +19,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * 战利品表追踪管理页面——以可展开路径树浏览服务端权威索引并提交管理员操作。
@@ -39,21 +39,27 @@ public final class LootTableManagementScreen extends Screen {
     private static final int ROW_HEIGHT = 20;
     private static final int INDENT_WIDTH = 10;
     private static final int SCROLLBAR_WIDTH = 5;
+    private static final int LANGUAGE_ROW_HEIGHT = 18;
+    private static final int LANGUAGE_VISIBLE_ROWS = 6;
 
     private final Screen parent;
     private final List<SyncLootTableManagementPayload.Entry> filteredEntries = new ArrayList<>();
     private final List<TreeRow> visibleRows = new ArrayList<>();
     private final Set<String> expandedPaths = new HashSet<>();
+    private final List<String> languageCodes = new ArrayList<>();
     private EditBox searchBox;
-    private EditBox languageBox;
     private EditBox nameBox;
     private Button filterButton;
+    private Button languageButton;
     private Button applyButton;
     private Button saveNameButton;
     private Filter filter = Filter.ALL;
     private int scrollRow;
+    private int languageScrollRow;
     private boolean draggingScrollbar;
+    private boolean languageMenuOpen;
     private long observedRevision = -1L;
+    private String selectedLanguageCode = "";
     @Nullable
     private ResourceLocation selectedTableId;
     @Nullable
@@ -90,15 +96,11 @@ public final class LootTableManagementScreen extends Screen {
             rebuildTree();
         }).bounds(left + INNER_MARGIN + searchWidth + 5, top + 28, filterWidth, 20).build());
 
-        this.languageBox = new EditBox(this.font, detailsX, actionY - 72, detailsWidth, 20,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.language"));
-        this.languageBox.setMaxLength(16);
-        this.languageBox.setValue(Minecraft.getInstance().getLanguageManager().getSelected());
-        this.languageBox.setResponder(ignored -> {
-            populateName();
-            syncControls();
-        });
-        this.addRenderableWidget(this.languageBox);
+        initializeLanguageCodes();
+        this.languageButton = this.addRenderableWidget(Button.builder(languageLabel(), button -> {
+            this.languageMenuOpen = !this.languageMenuOpen;
+            ensureSelectedLanguageVisible();
+        }).bounds(detailsX, actionY - 72, detailsWidth, 20).build());
 
         this.nameBox = new EditBox(this.font, detailsX, actionY - 33, detailsWidth, 20,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"));
@@ -140,6 +142,7 @@ public final class LootTableManagementScreen extends Screen {
         }
         renderScrollbar(graphics, left + INNER_MARGIN + listWidth - SCROLLBAR_WIDTH, listTop());
         renderDetails(graphics, left + INNER_MARGIN + listWidth + COLUMN_GAP, top, detailsWidth());
+        renderLanguageMenu(graphics, mouseX, mouseY);
         if (this.hoveredTableId != null) {
             graphics.renderTooltip(this.font, Component.literal(this.hoveredTableId.toString()), mouseX, mouseY);
         }
@@ -209,7 +212,7 @@ public final class LootTableManagementScreen extends Screen {
         }
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.language"),
-                x, this.languageBox.getY() - 11, 0xB8B8B8, false);
+                x, this.languageButton.getY() - 11, 0xB8B8B8, false);
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"),
                 x, this.nameBox.getY() - 11, 0xB8B8B8, false);
@@ -217,12 +220,53 @@ public final class LootTableManagementScreen extends Screen {
             graphics.drawString(this.font,
                     trimToWidth(Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.read_only").getString(), width),
-                    x, this.applyButton.getY() + 24, 0xFFAA00, false);
+                    x, top + 86, 0xFFAA00, false);
+        } else if (requiresEnglishName()) {
+            graphics.drawString(this.font,
+                    trimToWidth(Component.translatable(
+                            "screen.unsuspiciousblock.loot_table_management.english_name_required")
+                            .getString(), width),
+                    x, top + 86, 0xFFAA00, false);
+        }
+    }
+
+    private void renderLanguageMenu(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!this.languageMenuOpen || this.languageButton == null || this.languageCodes.isEmpty()) {
+            return;
+        }
+        int rows = Math.min(LANGUAGE_VISIBLE_ROWS, this.languageCodes.size());
+        int x = this.languageButton.getX();
+        int width = this.languageButton.getWidth();
+        int bottom = this.languageButton.getY() - 2;
+        int top = bottom - rows * LANGUAGE_ROW_HEIGHT;
+        graphics.fill(x - 1, top - 1, x + width + 1, bottom + 1, 0xFF909090);
+        graphics.fill(x, top, x + width, bottom, 0xFF181818);
+        int end = Math.min(this.languageCodes.size(), this.languageScrollRow + rows);
+        for (int index = this.languageScrollRow; index < end; index++) {
+            int y = top + (index - this.languageScrollRow) * LANGUAGE_ROW_HEIGHT;
+            String code = this.languageCodes.get(index);
+            boolean selected = code.equals(this.selectedLanguageCode);
+            boolean hovered = mouseX >= x && mouseX < x + width
+                    && mouseY >= y && mouseY < y + LANGUAGE_ROW_HEIGHT;
+            if (selected || hovered) {
+                graphics.fill(x, y, x + width, y + LANGUAGE_ROW_HEIGHT,
+                        selected ? 0xFF4C6278 : 0xFF353535);
+            }
+            graphics.drawString(this.font,
+                    trimToWidth(languageOptionLabel(code).getString(), width - 8),
+                    x + 4, y + 5, selected ? 0xFFFFFF : 0xD0D0D0, false);
         }
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && this.languageMenuOpen && selectLanguageAt(mouseX, mouseY)) {
+            return true;
+        }
+        if (button == 0 && this.languageMenuOpen
+                && (this.languageButton == null || !this.languageButton.isMouseOver(mouseX, mouseY))) {
+            this.languageMenuOpen = false;
+        }
         if (button == 0 && !isOverTextBox(mouseX, mouseY)) this.setFocused(null);
         if (button == 0 && isOverScrollbar(mouseX, mouseY) && maxScrollRow() > 0) {
             this.draggingScrollbar = true;
@@ -247,7 +291,8 @@ public final class LootTableManagementScreen extends Screen {
 
         boolean handled = super.mouseClicked(mouseX, mouseY, button);
         // 原版在按钮回调结束后设置焦点；筛选和追踪切换是即时动作，不保留键盘焦点
-        if (this.getFocused() == this.filterButton || this.getFocused() == this.applyButton) {
+        if (this.getFocused() == this.filterButton || this.getFocused() == this.languageButton
+                || this.getFocused() == this.applyButton) {
             this.setFocused(null);
         }
         return handled;
@@ -273,6 +318,12 @@ public final class LootTableManagementScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta, double verticalDelta) {
+        if (this.languageMenuOpen && isOverLanguageMenu(mouseX, mouseY) && verticalDelta != 0.0) {
+            int direction = verticalDelta > 0.0 ? -1 : 1;
+            this.languageScrollRow = Math.max(0, Math.min(maxLanguageScroll(),
+                    this.languageScrollRow + direction));
+            return true;
+        }
         if (isOverList(mouseX, mouseY) && verticalDelta != 0.0) {
             int direction = verticalDelta > 0.0 ? -1 : 1;
             this.scrollRow = clampScroll(this.scrollRow + direction * 3);
@@ -299,8 +350,8 @@ public final class LootTableManagementScreen extends Screen {
         String query = this.searchBox.getValue().trim().toLowerCase(Locale.ROOT);
         boolean expandSearchResults = !query.isEmpty();
         this.filteredEntries.clear();
-        TreeMap<String, TreeNode> namespaces = new TreeMap<>();
-        for (SyncLootTableManagementPayload.Entry entry : LootTableManagementClientState.entries()) {
+        LinkedHashMap<String, TreeNode> namespaces = new LinkedHashMap<>();
+        for (SyncLootTableManagementPayload.Entry entry : entriesForCurrentFilter()) {
             if (!this.filter.matches(entry.tracked()) || !matchesQuery(entry, query)) continue;
             this.filteredEntries.add(entry);
             TreeNode node = namespaces.computeIfAbsent(entry.tableId().getNamespace(), namespace ->
@@ -351,18 +402,18 @@ public final class LootTableManagementScreen extends Screen {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         if (entry == null || !LootTableManagementClientState.canEdit()) return;
         Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(entry.tableId(), !entry.tracked(),
-                this.languageBox.getValue().trim().toLowerCase(Locale.ROOT), this.nameBox.getValue().trim()));
+                currentLanguageCode(), this.nameBox.getValue().trim()));
     }
 
     private void saveName() {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || !LootTableManagementClientState.canEdit()) return;
+        if (entry == null || !LootTableManagementClientState.canEdit() || requiresEnglishName()) return;
         Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(entry.tableId(), entry.tracked(),
-                this.languageBox.getValue().trim().toLowerCase(Locale.ROOT), this.nameBox.getValue().trim()));
+                currentLanguageCode(), this.nameBox.getValue().trim()));
     }
 
     private void populateName() {
-        if (this.nameBox == null || this.languageBox == null) return;
+        if (this.nameBox == null) return;
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         if (entry == null) {
             this.nameBox.setValue("");
@@ -370,21 +421,18 @@ public final class LootTableManagementScreen extends Screen {
         }
         String key = LootTableNames.createTranslationKey(entry.tableId());
         Map<String, String> language = LootTableManagementClientState.translations().getOrDefault(
-                this.languageBox.getValue().trim().toLowerCase(Locale.ROOT), Map.of());
+                currentLanguageCode(), Map.of());
         this.nameBox.setValue(language.getOrDefault(key, ""));
     }
 
     private void syncControls() {
         if (this.applyButton == null || this.saveNameButton == null
-                || this.languageBox == null || this.nameBox == null) return;
+                || this.languageButton == null || this.nameBox == null) return;
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         boolean hasSelectionPermission = entry != null && LootTableManagementClientState.canEdit();
-        boolean editable = hasSelectionPermission
-                && this.languageBox.getValue().trim().toLowerCase(Locale.ROOT)
-                .matches("[a-z0-9_-]{2,16}");
-        this.applyButton.active = editable;
-        this.saveNameButton.active = editable;
-        this.languageBox.active = hasSelectionPermission;
+        this.applyButton.active = hasSelectionPermission;
+        this.saveNameButton.active = hasSelectionPermission && !requiresEnglishName();
+        this.languageButton.active = hasSelectionPermission;
         this.nameBox.active = hasSelectionPermission;
         this.applyButton.setMessage(Component.translatable(entry != null && entry.tracked()
                 ? "screen.unsuspiciousblock.loot_table_management.remove"
@@ -402,8 +450,104 @@ public final class LootTableManagementScreen extends Screen {
 
     private boolean isOverTextBox(double mouseX, double mouseY) {
         return this.searchBox != null && this.searchBox.isMouseOver(mouseX, mouseY)
-                || this.languageBox != null && this.languageBox.isMouseOver(mouseX, mouseY)
                 || this.nameBox != null && this.nameBox.isMouseOver(mouseX, mouseY);
+    }
+
+    private List<SyncLootTableManagementPayload.Entry> entriesForCurrentFilter() {
+        if (this.filter != Filter.RECENT) {
+            return LootTableManagementClientState.entries();
+        }
+        Map<ResourceLocation, SyncLootTableManagementPayload.Entry> entriesById = new LinkedHashMap<>();
+        LootTableManagementClientState.entries().forEach(entry -> entriesById.put(entry.tableId(), entry));
+        List<SyncLootTableManagementPayload.Entry> result = new ArrayList<>();
+        for (SyncLootTableManagementPayload.RecentEntry recent
+                : LootTableManagementClientState.recentEntries()) {
+            SyncLootTableManagementPayload.Entry entry = entriesById.get(recent.tableId());
+            if (entry != null) {
+                result.add(entry);
+            }
+        }
+        return result;
+    }
+
+    private void initializeLanguageCodes() {
+        this.languageCodes.clear();
+        this.languageCodes.addAll(Minecraft.getInstance().getLanguageManager().getLanguages().keySet());
+        if (this.selectedLanguageCode.isEmpty() || !this.languageCodes.contains(this.selectedLanguageCode)) {
+            this.selectedLanguageCode = Minecraft.getInstance().getLanguageManager().getSelected();
+        }
+        if (!this.languageCodes.contains(this.selectedLanguageCode) && !this.languageCodes.isEmpty()) {
+            this.selectedLanguageCode = this.languageCodes.getFirst();
+        }
+        this.languageScrollRow = Math.max(0, Math.min(this.languageScrollRow, maxLanguageScroll()));
+    }
+
+    private Component languageLabel() {
+        return Component.literal(currentLanguageCode());
+    }
+
+    private static Component languageOptionLabel(String code) {
+        var info = Minecraft.getInstance().getLanguageManager().getLanguages().get(code);
+        return info == null ? Component.literal(code)
+                : Component.literal(code + " - ").append(info.toComponent());
+    }
+
+    private String currentLanguageCode() {
+        return this.selectedLanguageCode.toLowerCase(Locale.ROOT);
+    }
+
+    private boolean requiresEnglishName() {
+        SyncLootTableManagementPayload.Entry entry = selectedEntry();
+        if (entry == null || "en_us".equals(currentLanguageCode())) {
+            return false;
+        }
+        String key = LootTableNames.createTranslationKey(entry.tableId());
+        String englishName = LootTableManagementClientState.translations()
+                .getOrDefault("en_us", Map.of()).getOrDefault(key, "");
+        return englishName.isBlank();
+    }
+
+    private boolean selectLanguageAt(double mouseX, double mouseY) {
+        if (!isOverLanguageMenu(mouseX, mouseY)) {
+            return false;
+        }
+        int rows = Math.min(LANGUAGE_VISIBLE_ROWS, this.languageCodes.size());
+        int top = this.languageButton.getY() - 2 - rows * LANGUAGE_ROW_HEIGHT;
+        int index = this.languageScrollRow + (int) ((mouseY - top) / LANGUAGE_ROW_HEIGHT);
+        if (index < 0 || index >= this.languageCodes.size()) {
+            return false;
+        }
+        this.selectedLanguageCode = this.languageCodes.get(index);
+        this.languageMenuOpen = false;
+        this.languageButton.setMessage(languageLabel());
+        populateName();
+        syncControls();
+        return true;
+    }
+
+    private boolean isOverLanguageMenu(double mouseX, double mouseY) {
+        if (!this.languageMenuOpen || this.languageButton == null || this.languageCodes.isEmpty()) {
+            return false;
+        }
+        int rows = Math.min(LANGUAGE_VISIBLE_ROWS, this.languageCodes.size());
+        int top = this.languageButton.getY() - 2 - rows * LANGUAGE_ROW_HEIGHT;
+        return mouseX >= this.languageButton.getX()
+                && mouseX < this.languageButton.getX() + this.languageButton.getWidth()
+                && mouseY >= top && mouseY < this.languageButton.getY() - 2;
+    }
+
+    private void ensureSelectedLanguageVisible() {
+        int selectedIndex = this.languageCodes.indexOf(this.selectedLanguageCode);
+        if (selectedIndex < this.languageScrollRow) {
+            this.languageScrollRow = selectedIndex;
+        } else if (selectedIndex >= this.languageScrollRow + LANGUAGE_VISIBLE_ROWS) {
+            this.languageScrollRow = selectedIndex - LANGUAGE_VISIBLE_ROWS + 1;
+        }
+        this.languageScrollRow = Math.max(0, Math.min(maxLanguageScroll(), this.languageScrollRow));
+    }
+
+    private int maxLanguageScroll() {
+        return Math.max(0, this.languageCodes.size() - LANGUAGE_VISIBLE_ROWS);
     }
 
     private boolean isOverList(double mouseX, double mouseY) {
@@ -497,7 +641,7 @@ public final class LootTableManagementScreen extends Screen {
     private static final class TreeNode {
         private final String label;
         private final String key;
-        private final TreeMap<String, TreeNode> children = new TreeMap<>();
+        private final LinkedHashMap<String, TreeNode> children = new LinkedHashMap<>();
         @Nullable
         private SyncLootTableManagementPayload.Entry entry;
 
@@ -514,7 +658,8 @@ public final class LootTableManagementScreen extends Screen {
     private enum Filter {
         ALL("screen.unsuspiciousblock.loot_table_management.filter.all"),
         TRACKED("screen.unsuspiciousblock.loot_table_management.filter.tracked"),
-        UNTRACKED("screen.unsuspiciousblock.loot_table_management.filter.untracked");
+        UNTRACKED("screen.unsuspiciousblock.loot_table_management.filter.untracked"),
+        RECENT("screen.unsuspiciousblock.loot_table_management.filter.recent");
 
         private final String key;
 
@@ -531,7 +676,7 @@ public final class LootTableManagementScreen extends Screen {
         }
 
         private boolean matches(boolean tracked) {
-            return this == ALL || (this == TRACKED) == tracked;
+            return this == ALL || this == RECENT || (this == TRACKED) == tracked;
         }
     }
 }
