@@ -432,6 +432,7 @@
   "command.unsuspiciousblock.usb.journal.list.header": "当前服务端已加载 %d 个考古战利品表：",
   "command.unsuspiciousblock.usb.journal.list.entry": "[%1$d] %2$s | key=%3$s | fallback=%4$s | display=%5$s",
   "command.unsuspiciousblock.usb.journal.error.unknown_table": "未知的考古战利品表：%s",
+  "command.unsuspiciousblock.usb.journal.error.simulation_in_progress": "战利品表仍在模拟中，请等待完成后再解锁物品。",
   "command.unsuspiciousblock.usb.journal.error.state_unavailable": "无法访问当前玩家的考古笔记数据。",
 
   "command.unsuspiciousblock.usb.spirit_cat.spawn.success": "已召唤调试灵体 %1$s（eid=%2$s）。",

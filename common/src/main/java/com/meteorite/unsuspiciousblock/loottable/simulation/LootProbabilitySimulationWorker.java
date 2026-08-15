@@ -143,6 +143,11 @@ public final class LootProbabilitySimulationWorker {
         this.progressListener = listener;
     }
 
+    /** 判断当前是否仍有模拟任务或正处于 reload 暂停阶段。 */
+    public boolean isBusy() {
+        return this.paused || this.current != null || !this.enqueued.isEmpty();
+    }
+
     /**
      * 由服务端 tick 末尾调用：在主线程按 {@link #TICK_BUDGET_NANOS} 软预算推进任务。
      * 所有操作（模拟、写 SavedData、写 catalog、广播、回调）均在主线程完成，无并发风险。

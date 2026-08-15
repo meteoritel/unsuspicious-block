@@ -9,8 +9,11 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 战利品表目录数据记录——TableDefinition 与 ItemDefinition 为跨模块共享的基础类型，
@@ -232,6 +235,35 @@ public final class LootTableCatalog {
     }
 
     // ==================== 工具方法 ====================
+
+    /**
+     * 收集指定表及其全部后代表中的唯一物品定义。
+     * 按深度优先顺序保留首次出现的签名，共享子表与循环引用只处理一次。
+     */
+    public static List<ItemDefinition> collectSubtreeItems(
+            Map<ResourceLocation, TableDefinition> catalog, ResourceLocation rootTableId) {
+        Map<LootResultSignature, ItemDefinition> itemsBySignature = new LinkedHashMap<>();
+        collectSubtreeItems(catalog, rootTableId, itemsBySignature, new HashSet<>());
+        return List.copyOf(itemsBySignature.values());
+    }
+
+    private static void collectSubtreeItems(
+            Map<ResourceLocation, TableDefinition> catalog, ResourceLocation tableId,
+            Map<LootResultSignature, ItemDefinition> output, Set<ResourceLocation> visited) {
+        if (!visited.add(tableId)) {
+            return;
+        }
+        TableDefinition table = catalog.get(tableId);
+        if (table == null) {
+            return;
+        }
+        for (ItemDefinition item : table.items()) {
+            output.putIfAbsent(item.signature(), item);
+        }
+        for (ResourceLocation childId : table.childTables()) {
+            collectSubtreeItems(catalog, childId, output, visited);
+        }
+    }
 
     private static final String ENCHANTED_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted";
     private static final String APPROXIMATE_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate";

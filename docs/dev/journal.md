@@ -83,6 +83,13 @@ ensureLoaded(server)
 
 服务端计算整个目录的 SHA-256 哈希（`computeCatalogHash`），模拟完成后广播给所有在线玩家。客户端比对本地哈希，不一致时主动请求全量目录（`RequestCatalogPayload` -> `SyncArchaeologyCatalogPayload`）。这避免每次登录都全量下发目录，只在目录变化时同步。
 
+### 3.5 调试命令与目录稳定性
+
+- `/usb journal reload` 清空 `LootProbabilityData`、worker 队列和服务端目录后重新解析、模拟；它不会清除玩家的笔记进度与日志。进度监听器在任务计数完成时先解除，因此控制台执行或执行玩家中途离线也不会留下旧监听器。
+- `/usb journal unlock table [table_id]` 使用启动即完整的 `rawCatalog`，不依赖概率模拟进度。
+- `/usb journal unlock item [table_id]` 需要动态物品也已进入稳定目录，因此 worker 忙碌或 `catalog` 尚未覆盖全部 `rawCatalog` 时会拒绝执行，避免把半成品目录写入玩家状态。
+- 父表 Intro、`unlock item` 和 100% 完成奖励统一使用“当前表及全部后代表，按 `LootResultSignature` 去重”的物品闭包。共享子表和循环引用只遍历一次。
+
 ## 4. 玩家进度状态
 
 ### 4.1 状态结构
@@ -103,7 +110,7 @@ ArchaeologyJournalState
 └─ dirtyTables: LinkedHashSet<TableId>       脏表追踪
 ```
 
-物品用 `LootResultSignature.toStoredKey()` 作为 key（见 [战利品表系统](loottable.md) 的签名机制），而非物品 ID，以区分同一物品在不同表/不同条件下的产出。
+物品用 `LootResultSignature.toStoredKey()` 作为 key（见 [战利品表系统](loottable.md) 的签名机制），而非物品 ID，以区分同一物品的不同组件结果。父表完成度包含其全部后代表物品，并按签名去重。
 
 ### 4.2 持久化
 

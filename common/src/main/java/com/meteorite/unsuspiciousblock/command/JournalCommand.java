@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.command;
 
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
@@ -25,6 +26,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -74,7 +76,7 @@ public final class JournalCommand {
                 .then(Commands.literal("table")
                         .executes(context -> {
                             ServerPlayer player = requirePlayer(context);
-                            Map<ResourceLocation, TableDefinition> catalog = getCatalog(context.getSource());
+                            Map<ResourceLocation, TableDefinition> catalog = getRawCatalog(context.getSource());
                             return mutateAndSync(context.getSource(), player, state -> {
                                 for (ResourceLocation tableId : catalog.keySet()) {
                                     state.unlockTable(tableId);
@@ -94,11 +96,15 @@ public final class JournalCommand {
                 .then(Commands.literal("item")
                         .executes(context -> {
                             ServerPlayer player = requirePlayer(context);
-                            Map<ResourceLocation, TableDefinition> catalog = getCatalog(context.getSource());
+                            if (!requireCompletedSimulation(context.getSource())) {
+                                return 0;
+                            }
+                            Map<ResourceLocation, TableDefinition> catalog = getSimulatedCatalog(context.getSource());
                             int itemCount = countTotalItems(catalog);
                             return mutateAndSync(context.getSource(), player, state -> {
-                                for (Map.Entry<ResourceLocation, TableDefinition> entry : catalog.entrySet()) {
-                                    unlockTableItems(state, entry.getKey(), entry.getValue());
+                                for (ResourceLocation tableId : catalog.keySet()) {
+                                    unlockTableItems(state, tableId,
+                                            LootTableCatalog.collectSubtreeItems(catalog, tableId));
                                 }
                             }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.all.success", itemCount, catalog.size()));
                         })
@@ -106,11 +112,16 @@ public final class JournalCommand {
                                 .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
                                 .executes(context -> {
                                     ServerPlayer player = requirePlayer(context);
+                                    if (!requireCompletedSimulation(context.getSource())) {
+                                        return 0;
+                                    }
                                     ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
-                                    TableDefinition table = requireTable(context.getSource(), tableId);
+                                    requireTable(context.getSource(), tableId);
+                                    Map<ResourceLocation, TableDefinition> catalog = getSimulatedCatalog(context.getSource());
+                                    List<ItemDefinition> items = LootTableCatalog.collectSubtreeItems(catalog, tableId);
                                     return mutateAndSync(context.getSource(), player,
-                                            state -> unlockTableItems(state, tableId, table),
-                                            Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.success", tableId.toString(), table.items().size()));
+                                            state -> unlockTableItems(state, tableId, items),
+                                            Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.success", tableId.toString(), items.size()));
                                 })));
     }
 
@@ -150,25 +161,30 @@ public final class JournalCommand {
 
         worker.setProgressListener((tableId, result) -> {
             int idx = done.incrementAndGet();
+            int expected = total.get();
+            boolean completed = expected > 0 && idx >= expected;
+            if (completed) {
+                worker.setProgressListener(null);
+            }
             if (playerId == null) return;
             ServerPlayer p = server.getPlayerList().getPlayer(playerId);
             if (p == null) return;
             String displayName = LootTableNames.resolveDisplayName(tableId).getString();
             p.sendSystemMessage(Component.translatable(
                     "command.unsuspiciousblock.usb.journal.reload.progress",
-                    idx, total.get(), tableId.toString(), displayName));
-            // 全部完成时发送完成消息并清除回调
-            if (idx >= total.get()) {
+                    idx, expected, tableId.toString(), displayName));
+            if (completed) {
                 p.sendSystemMessage(Component.translatable(
                         "command.unsuspiciousblock.usb.journal.reload.complete", idx));
-                LootProbabilitySimulationWorker w = LootProbabilitySimulationWorker.get();
-                if (w != null) w.setProgressListener(null);
             }
         });
 
         // 执行 flush：清空缓存 + 重新解析 + 入队（worker 已暂停，不会消费）
         JournalCatalogHandler.forceFlushCatalog(server);
         total.set(ArchaeologyJournalServerCatalog.getRawCatalogCount());
+        if (total.get() == 0) {
+            worker.setProgressListener(null);
+        }
 
         // 恢复 worker 消费
         worker.resumeAfterReload();
@@ -178,16 +194,17 @@ public final class JournalCommand {
         return total.get();
     }
 
-    private static void unlockTableItems(ArchaeologyJournalState state, ResourceLocation tableId, TableDefinition table) {
-        if (table.items().isEmpty()) {
+    private static void unlockTableItems(ArchaeologyJournalState state, ResourceLocation tableId,
+                                         List<ItemDefinition> items) {
+        if (items.isEmpty()) {
             state.unlockTable(tableId);
             return;
         }
-        state.unlockItems(tableId, table.items().stream().map(ItemDefinition::signature).toList());
+        state.unlockItems(tableId, items.stream().map(ItemDefinition::signature).toList());
     }
 
     private static int sendTableList(CommandSourceStack source) {
-        Map<ResourceLocation, TableDefinition> catalog = getCatalog(source);
+        Map<ResourceLocation, TableDefinition> catalog = getRawCatalog(source);
         if (catalog.isEmpty()) {
             source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.journal.list.empty"), false);
             return 0;
@@ -262,13 +279,18 @@ public final class JournalCommand {
         return 1;
     }
 
-    private static Map<ResourceLocation, TableDefinition> getCatalog(CommandSourceStack source) {
+    private static Map<ResourceLocation, TableDefinition> getRawCatalog(CommandSourceStack source) {
+        ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
+        return ArchaeologyJournalServerCatalog.getRawCatalog();
+    }
+
+    private static Map<ResourceLocation, TableDefinition> getSimulatedCatalog(CommandSourceStack source) {
         ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
         return ArchaeologyJournalServerCatalog.getCatalog();
     }
 
     private static TableDefinition requireTable(CommandSourceStack source, ResourceLocation tableId) throws CommandSyntaxException {
-        TableDefinition table = getCatalog(source).get(tableId);
+        TableDefinition table = getRawCatalog(source).get(tableId);
         if (table == null) {
             throw UNKNOWN_TABLE.create(tableId.toString());
         }
@@ -278,14 +300,29 @@ public final class JournalCommand {
     // 复用原版 suggestResource 的过滤逻辑：基于 remaining 做前缀匹配，
     // 并对 minecraft 命名空间做特殊处理（无冒号时同时匹配 namespace 与 path）
     private static CompletableFuture<Suggestions> suggestTableIds(CommandSourceStack source, SuggestionsBuilder builder) {
-        return SharedSuggestionProvider.suggestResource(getCatalog(source).keySet(), builder);
+        return SharedSuggestionProvider.suggestResource(getRawCatalog(source).keySet(), builder);
     }
 
     private static int countTotalItems(Map<ResourceLocation, TableDefinition> catalog) {
         int count = 0;
-        for (TableDefinition table : catalog.values()) {
-            count += table.items().size();
+        for (ResourceLocation tableId : catalog.keySet()) {
+            count += LootTableCatalog.collectSubtreeItems(catalog, tableId).size();
         }
         return count;
+    }
+
+    // 物品目录会在模拟期间渐进填充，拒绝基于半成品目录执行批量解锁。
+    private static boolean requireCompletedSimulation(CommandSourceStack source) {
+        Map<ResourceLocation, TableDefinition> rawCatalog = getRawCatalog(source);
+        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if ((worker != null && worker.isBusy())
+                || catalog.size() != rawCatalog.size()
+                || !catalog.keySet().containsAll(rawCatalog.keySet())) {
+            source.sendFailure(Component.translatable(
+                    "command.unsuspiciousblock.usb.journal.error.simulation_in_progress"));
+            return false;
+        }
+        return true;
     }
 }

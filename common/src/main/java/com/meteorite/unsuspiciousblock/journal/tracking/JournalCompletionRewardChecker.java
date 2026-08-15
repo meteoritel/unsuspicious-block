@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerC
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState.TableProgress;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
@@ -15,6 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
+import java.util.Map;
 
 /***
  * 考古战利品表 100% 完成奖励检测器。
@@ -62,13 +64,14 @@ public final class JournalCompletionRewardChecker {
             return;
         }
 
-        TableDefinition def = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
-        if (def == null || def.items().isEmpty()) {
+        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
+        List<ItemDefinition> requiredItems = LootTableCatalog.collectSubtreeItems(catalog, tableId);
+        if (requiredItems.isEmpty()) {
             return;
         }
 
-        // 检测表中所有追踪物品是否都已解锁
-        for (ItemDefinition item : def.items()) {
+        // 完成度与父表 Intro 使用同一口径：当前表及全部后代表中的唯一物品签名。
+        for (ItemDefinition item : requiredItems) {
             if (!progress.isItemUnlocked(item.signature())) {
                 return;
             }

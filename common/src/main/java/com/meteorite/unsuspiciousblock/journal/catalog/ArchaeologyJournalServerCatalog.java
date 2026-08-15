@@ -389,15 +389,31 @@ public final class ArchaeologyJournalServerCatalog {
         for (ItemDefinition item : rawTable.items()) {
             rawKeys.add(item.signature().toStoredKey());
         }
+        Map<ResourceLocation, Set<String>> childSignatureIndex = buildCachedChildSignatureIndex(
+                rawTable, probabilityData);
         for (Map.Entry<String, LootProbabilityData.CachedItemProbability> cached : cachedProbabilities.entrySet()) {
             if (rawKeys.contains(cached.getKey())) {
                 continue;
             }
             LootResultSignature signature = LootResultSignature.fromStoredKey(cached.getKey());
             if (signature != null) {
-                restoredItems.add(LootTableCatalog.buildDiscoveredDefinition(signature,
+                ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(signature,
                         cached.getValue().probability(), true,
-                        restoreScenarioProbabilities(cached.getValue(), scenarios)));
+                        restoreScenarioProbabilities(cached.getValue(), scenarios));
+                List<ResourceLocation> childSources = findCachedChildSources(
+                        cached.getKey(), childSignatureIndex);
+                if (childSources.isEmpty()) {
+                    restoredItems.add(discoveredItem);
+                    continue;
+                }
+                List<LootAcquisitionPath> acquisitionPaths = new ArrayList<>(childSources.size());
+                for (ResourceLocation childSource : childSources) {
+                    acquisitionPaths.add(new LootAcquisitionPath(childSource, List.of(), List.of()));
+                }
+                restoredItems.add(new ItemDefinition(
+                        discoveredItem.id(), discoveredItem.displayName(), discoveredItem.tooltipHint(),
+                        discoveredItem.probability(), discoveredItem.signature(), acquisitionPaths,
+                        discoveredItem.injected(), discoveredItem.scenarioProbabilities()));
             }
         }
 
@@ -414,6 +430,54 @@ public final class ArchaeologyJournalServerCatalog {
         return new TableDefinition(
                 rawTable.id(), rawTable.displayName(), rawTable.type(), restoredItems,
                 LootProbabilitySimulator.getSimulationCount(), rawTable.childTables(), childProbabilities);
+    }
+
+    // 每张父表只构建一次临时子树签名索引，避免按动态物品重复递归。
+    private static Map<ResourceLocation, Set<String>> buildCachedChildSignatureIndex(
+            TableDefinition parent, LootProbabilityData probabilityData) {
+        Map<ResourceLocation, Set<String>> result = new LinkedHashMap<>();
+        for (ResourceLocation childId : parent.childTables()) {
+            Set<String> signatures = new HashSet<>();
+            collectCachedSubtreeSignatures(childId, probabilityData, signatures, new HashSet<>());
+            result.put(childId, signatures);
+        }
+        return result;
+    }
+
+    // 使用子表已有签名恢复动态条目的直接来源，避免为父表额外持久化整份来源映射。
+    private static List<ResourceLocation> findCachedChildSources(
+            String signatureKey, Map<ResourceLocation, Set<String>> childSignatureIndex) {
+        List<ResourceLocation> result = new ArrayList<>();
+        for (Map.Entry<ResourceLocation, Set<String>> entry : childSignatureIndex.entrySet()) {
+            if (entry.getValue().contains(signatureKey)) {
+                result.add(entry.getKey());
+            }
+        }
+        return result;
+    }
+
+    // 同时收集解析期静态条目和模拟期动态条目；visited 防止数据包循环引用。
+    private static void collectCachedSubtreeSignatures(
+            ResourceLocation tableId, LootProbabilityData probabilityData,
+            Set<String> output, Set<ResourceLocation> visited) {
+        if (!visited.add(tableId)) {
+            return;
+        }
+        TableDefinition table = rawCatalog.get(tableId);
+        if (table == null) {
+            return;
+        }
+        for (String key : probabilityData.getProbabilities(tableId).keySet()) {
+            if (!key.startsWith(CHILD_CACHE_PREFIX)) {
+                output.add(key);
+            }
+        }
+        for (ItemDefinition item : table.items()) {
+            output.add(item.signature().toStoredKey());
+        }
+        for (ResourceLocation childId : table.childTables()) {
+            collectCachedSubtreeSignatures(childId, probabilityData, output, visited);
+        }
     }
 
     private static List<ScenarioProbability> restoreScenarioProbabilities(

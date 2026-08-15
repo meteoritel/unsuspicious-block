@@ -284,10 +284,11 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 - `enqueued` 集合去重，避免同一表重复入队。
 - 数据包重载期间 `pauseForReload()` / `resumeAfterReload()` 暂停消费。
 - 队列排空后触发 `queueDrainedHandler`（批量广播目录哈希）。
+- `isBusy()` 同时检查 reload 暂停、当前任务和待处理队列；需要读取完整动态物品集合的命令据此拒绝半成品目录。
 
 ### 7.4 模拟结果缓存
 
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v9`。模拟异常或无法取得有效表时不写入缓存。详见 [考古笔记系统](journal.md) 的目录构建部分。
+模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。动态条目的来源不重复写入父表缓存，而是使用直接子表及其后代缓存中的相同签名重建获取路径。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v9`。模拟异常或无法取得有效表时不写入缓存。`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。详见 [考古笔记系统](journal.md) 的目录构建部分。
 
 ## 8. 战利品注入
 

@@ -16,13 +16,13 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -523,11 +523,10 @@ public class JournalViewModel {
 
     // Intro 按需映射当前表及全部后代物品，避免在每个树节点重复缓存完整子树视图。
     private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId) {
-        Map<LootResultSignature, ItemDefinition> definitionsBySignature = new LinkedHashMap<>();
-        collectSubtreeItems(tableId, definitionsBySignature, new HashSet<>());
+        List<ItemDefinition> definitions = LootTableCatalog.collectSubtreeItems(this.catalogDefinitions, tableId);
         ArchaeologyJournalState.TableProgress progress = this.state.getTable(tableId);
-        List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitionsBySignature.size());
-        for (ItemDefinition definition : definitionsBySignature.values()) {
+        List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitions.size());
+        for (ItemDefinition definition : definitions) {
             ArchaeologyJournalState.ItemProgress itemProgress = progress != null
                     ? progress.getItemProgress(definition.signature()) : null;
             boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
@@ -538,25 +537,6 @@ public class JournalViewModel {
                     definition.id(), definition.displayName(), definition.signature(), unlocked, count, highlighted));
         }
         return List.copyOf(result);
-    }
-
-    // 深度优先收集唯一物品签名；共享子表与循环引用只处理一次。
-    private void collectSubtreeItems(ResourceLocation tableId,
-                                     Map<LootResultSignature, ItemDefinition> output,
-                                     Set<ResourceLocation> visited) {
-        if (!visited.add(tableId)) {
-            return;
-        }
-        TableDefinition definition = this.catalogDefinitions.get(tableId);
-        if (definition == null) {
-            return;
-        }
-        for (ItemDefinition item : definition.items()) {
-            output.putIfAbsent(item.signature(), item);
-        }
-        for (ResourceLocation childId : definition.childTables()) {
-            collectSubtreeItems(childId, output, visited);
-        }
     }
 
     @Nullable
