@@ -6,7 +6,6 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,7 +22,7 @@ import java.util.List;
  *   <li>物品名、获取数量、概率信息</li>
  *   <li>概率不确定性提示</li>
  *   <li>外部注入标记</li>
- *   <li>条件树形结构递归渲染</li>
+ *   <li>获取路径条件树渲染</li>
  *   <li>父表条件与子表来源标注</li>
  * </ul>
  */
@@ -58,7 +57,7 @@ public final class JournalTooltipBuilder {
         }
 
         // 概率信息
-        if (data.probability() != null && data.scenarioProbabilities().size() <= 1) {
+        if (data.probability() != null) {
             boolean probUncertain = data.probability().equals("?");
             boolean hintIsApprox = data.hint() != null && data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
@@ -108,37 +107,28 @@ public final class JournalTooltipBuilder {
                     .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
         }
 
-        appendScenarioProbabilities(lines, data.scenarioProbabilities());
         appendAcquisitionPaths(lines, data.acquisitionPaths());
 
         return lines;
     }
 
-    private static void appendScenarioProbabilities(List<Component> lines,
-                                                    List<ScenarioProbability> probabilities) {
-        if (probabilities.size() <= 1) {
-            return;
-        }
+    // 构建子表入口 tooltip；概率口径为父表一次抽取中该子表至少产出一个物品。
+    public static List<Component> buildChildTable(Component displayName, ResourceLocation tableId,
+                                                  String probability) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(displayName.copy().withStyle(ChatFormatting.WHITE));
+        lines.add(Component.literal(tableId.toString()).withStyle(ChatFormatting.DARK_GRAY));
+        Component value = probability.equals("?")
+                ? Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.probability_unknown_short")
+                : Component.literal(probability);
         lines.add(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.scenario_probabilities_header")
-                .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
-        for (int i = 0; i < probabilities.size(); i++) {
-            ScenarioProbability scenario = probabilities.get(i);
-            Component probability = scenario.probability().equals("?")
-                    ? Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.probability_unknown_short")
-                    : Component.literal(scenario.probability());
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.scenario_probability",
-                    i + 1, probability).copy().withStyle(ChatFormatting.GREEN));
-            if (scenario.conditions().isEmpty()) {
-                lines.add(Component.literal("  ").append(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.scenario_default"))
-                        .withStyle(ChatFormatting.GRAY));
-            } else {
-                appendConditionTree(lines, scenario.conditions(), "  ");
-            }
-        }
+                "screen.unsuspiciousblock.archaeology_journal.child_trigger_probability", value)
+                .withStyle(probability.equals("?") ? ChatFormatting.GRAY : ChatFormatting.GREEN));
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.child_table_open")
+                .withStyle(ChatFormatting.GRAY));
+        return lines;
     }
 
     // 格式化概率为 tooltip Component

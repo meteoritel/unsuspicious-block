@@ -24,20 +24,30 @@ public final class LootTableCatalog {
     /** 战利品表定义 */
     public record TableDefinition(ResourceLocation id, Component displayName, String type,
                                   List<ItemDefinition> items, int simulationCount,
-                                  List<ResourceLocation> childTables) {
+                                  List<ResourceLocation> childTables,
+                                  List<ChildTableProbability> childTableProbabilities) {
         public TableDefinition {
             items = List.copyOf(items);
             childTables = List.copyOf(childTables);
+            childTableProbabilities = List.copyOf(childTableProbabilities);
         }
 
         public TableDefinition(ResourceLocation id, Component displayName, String type,
                                List<ItemDefinition> items, int simulationCount) {
-            this(id, displayName, type, items, simulationCount, List.of());
+            this(id, displayName, type, items, simulationCount, List.of(), List.of());
+        }
+
+        public TableDefinition(ResourceLocation id, Component displayName, String type,
+                               List<ItemDefinition> items, int simulationCount,
+                               List<ResourceLocation> childTables) {
+            this(id, displayName, type, items, simulationCount, childTables,
+                    childTables.stream().map(ChildTableProbability::pending).toList());
         }
 
         public TableDefinition withChildTables(List<ResourceLocation> children) {
             return new TableDefinition(this.id, this.displayName, this.type, this.items,
-                    this.simulationCount, children);
+                    this.simulationCount, children,
+                    children.stream().map(ChildTableProbability::pending).toList());
         }
     }
 
@@ -104,6 +114,18 @@ public final class LootTableCatalog {
                                       List<LootConditionInfo> conditions) {
         public ScenarioProbability {
             conditions = List.copyOf(conditions);
+        }
+    }
+
+    /** 父表一次抽取中，直接引用的子表至少产出一个物品的概率。 */
+    public record ChildTableProbability(ResourceLocation tableId, String probability,
+                                        List<ScenarioProbability> scenarioProbabilities) {
+        public ChildTableProbability {
+            scenarioProbabilities = List.copyOf(scenarioProbabilities);
+        }
+
+        public static ChildTableProbability pending(ResourceLocation tableId) {
+            return new ChildTableProbability(tableId, "?", List.of());
         }
     }
 

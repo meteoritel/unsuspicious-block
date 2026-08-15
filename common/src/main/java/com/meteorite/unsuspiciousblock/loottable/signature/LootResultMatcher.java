@@ -5,11 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
@@ -22,35 +18,40 @@ public final class LootResultMatcher {
     // 在候选签名中解析当前 stack 应命中的条目
     // 同优先级出现多个候选时，宁可保守返回 null，也不要把掉落错误归到具体条目上。
     @Nullable
-    public static LootResultSignature resolve(ItemStack stack, Iterable<LootResultSignature> candidates) {
+    public static LootResultSignature resolve(ItemStack stack, List<LootResultSignature> candidates) {
         return resolve(stack, candidates, LootResultSignature::createPreviewStack);
     }
 
     // 带预览栈提供者的解析入口：COMPONENT_EXACT 匹配需构建预览栈（base64 + JSON 解码），
     // 高频调用方（如概率模拟）可传入缓存函数避免每次匹配重复解析
     @Nullable
-    public static LootResultSignature resolve(ItemStack stack, Iterable<LootResultSignature> candidates,
+    public static LootResultSignature resolve(ItemStack stack, List<LootResultSignature> candidates,
                                                Function<LootResultSignature, ItemStack> previewStackProvider) {
         if (stack.isEmpty()) {
             return null;
         }
 
-        TreeMap<Integer, List<LootResultSignature>> matchesByPriority = new TreeMap<>(Comparator.reverseOrder());
-        for (LootResultSignature candidate : candidates) {
-            if (!matches(stack, candidate, previewStackProvider)) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        LootResultSignature best = null;
+        int bestPriority = Integer.MIN_VALUE;
+        boolean ambiguous = false;
+        for (int index = 0; index < candidates.size(); index++) {
+            LootResultSignature candidate = candidates.get(index);
+            if (!matches(stack, itemId, candidate, previewStackProvider)) {
                 continue;
             }
 
-            matchesByPriority.computeIfAbsent(priority(candidate), ignored -> new ArrayList<>()).add(candidate);
+            int candidatePriority = priority(candidate);
+            if (candidatePriority > bestPriority) {
+                best = candidate;
+                bestPriority = candidatePriority;
+                ambiguous = false;
+            } else if (candidatePriority == bestPriority && !candidate.equals(best)) {
+                ambiguous = true;
+            }
         }
-
-        // 取最高优先级分组；若恰好只有一个不重复候选则命中，否则视为歧义返回 null
-        var firstEntry = matchesByPriority.firstEntry();
-        if (firstEntry == null) {
-            return null;
-        }
-        List<LootResultSignature> matches = distinctSignatures(firstEntry.getValue());
-        return matches.size() == 1 ? matches.getFirst() : null;
+        // 取最高优先级候选；同优先级出现不同签名时视为歧义。
+        return best == null || ambiguous ? null : best;
     }
 
     // 判断 stack 是否满足某个签名的最小匹配条件
@@ -65,6 +66,12 @@ public final class LootResultMatcher {
         }
 
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return matches(stack, itemId, signature, previewStackProvider);
+    }
+
+    private static boolean matches(ItemStack stack, ResourceLocation itemId,
+                                   LootResultSignature signature,
+                                   Function<LootResultSignature, ItemStack> previewStackProvider) {
         if (!signature.itemId().equals(itemId)) {
             return false;
         }
@@ -82,11 +89,6 @@ public final class LootResultMatcher {
         return !preview.isEmpty() && ItemStack.isSameItemSameComponents(stack, preview);
     }
 
-    private static List<LootResultSignature> distinctSignatures(List<LootResultSignature> matches) {
-        return new ArrayList<>(new LinkedHashSet<>(matches));
-    }
-
-    
     private static int priority(LootResultSignature signature) {
         return switch (signature.type()) {
             case COMPONENT_EXACT -> 50;

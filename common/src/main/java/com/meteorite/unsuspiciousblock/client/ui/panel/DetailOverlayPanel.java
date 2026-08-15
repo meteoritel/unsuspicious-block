@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -47,7 +48,7 @@ public final class DetailOverlayPanel implements PagePanel {
     }
 
     public void setData(ResourceLocation tableId, int parsedCount, int totalCount,
-                        List<ItemGridPanel.GridItem> allItems) {
+                        List<IntroItem> allItems) {
         this.parsedCount = parsedCount;
         this.totalCount = totalCount;
         this.pagination.reset();
@@ -59,7 +60,7 @@ public final class DetailOverlayPanel implements PagePanel {
         this.unlockedItems = new ArrayList<>();
         List<DiscoveredItemEntry> highlightedEntries = new ArrayList<>();
         List<DiscoveredItemEntry> nonHighlightedEntries = new ArrayList<>();
-        for (ItemGridPanel.GridItem item : allItems) {
+        for (IntroItem item : allItems) {
             if (item.unlocked()) {
                 DiscoveredItemEntry entry = new DiscoveredItemEntry(item);
                 if (item.highlighted()) {
@@ -144,11 +145,11 @@ public final class DetailOverlayPanel implements PagePanel {
 
             for (int i = 0; i < showCount; i++) {
                 DiscoveredItemEntry entry = this.unlockedItems.get(from + i);
-                ItemGridPanel.GridItem item = entry.item;
+                IntroItem item = entry.item;
                 int rowY = y + i * ITEM_ROW_HEIGHT;
 
                 // 图标
-                ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(item.id()));
+                ItemStack stack = item.stack();
                 guiGraphics.renderItem(stack, leftX + 2, rowY - 1);
                 guiGraphics.renderItemDecorations(font, stack, leftX + 2, rowY - 1);
 
@@ -242,14 +243,23 @@ public final class DetailOverlayPanel implements PagePanel {
     }
 
     private static final class DiscoveredItemEntry {
-        private final ItemGridPanel.GridItem item;
+        private final IntroItem item;
         private final boolean highlighted;
         private int scrollTicks;
         private boolean wasHovered;
 
-        private DiscoveredItemEntry(ItemGridPanel.GridItem item) {
+        private DiscoveredItemEntry(IntroItem item) {
             this.item = item;
             this.highlighted = item.highlighted();
+        }
+    }
+
+    /** Intro 列表使用的轻量物品引用，记录值来自当前选中表。 */
+    public record IntroItem(ResourceLocation id, Component displayName, LootResultSignature signature,
+                            boolean unlocked, int count, boolean highlighted) {
+        public ItemStack stack() {
+            ItemStack preview = this.signature.createPreviewStack();
+            return preview.isEmpty() ? new ItemStack(BuiltInRegistries.ITEM.get(this.id)) : preview;
         }
     }
 }

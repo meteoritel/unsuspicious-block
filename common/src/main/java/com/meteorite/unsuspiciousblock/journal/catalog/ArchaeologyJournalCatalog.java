@@ -30,6 +30,10 @@ import java.util.Set;
  */
 public final class ArchaeologyJournalCatalog {
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
+    private static final ResourceLocation FISHING =
+            ResourceLocation.withDefaultNamespace("gameplay/fishing");
+    private static final ResourceLocation MUD_DREDGING =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging");
 
     private ArchaeologyJournalCatalog() {
     }
@@ -38,6 +42,7 @@ public final class ArchaeologyJournalCatalog {
     public static LoadResult load(ResourceManager resourceManager, HolderLookup.Provider registries) {
         Map<ResourceLocation, Resource> resources = LOOT_TABLES.listMatchingResources(resourceManager);
         Map<ResourceLocation, List<ResourceLocation>> graph = buildReferenceGraph(resources);
+        addRuntimeInjectedReferences(graph);
         Set<ResourceLocation> explicitlyTrackedTables = new LinkedHashSet<>();
         for (ResourceLocation tableId : graph.keySet()) {
             if (LootTableNames.isArchaeologyLootTable(tableId)) explicitlyTrackedTables.add(tableId);
@@ -73,6 +78,17 @@ public final class ArchaeologyJournalCatalog {
         }
         CatalogStructure structure = new CatalogStructure(categories.definitions(), rootCategories);
         return new LoadResult(Map.copyOf(tables), structure);
+    }
+
+    // 平台注入不会出现在原始 JSON 引用图中，在公共目录层补充两端一致的逻辑引用。
+    private static void addRuntimeInjectedReferences(Map<ResourceLocation, List<ResourceLocation>> graph) {
+        if (!graph.containsKey(FISHING) || !graph.containsKey(MUD_DREDGING)) {
+            return;
+        }
+        LinkedHashSet<ResourceLocation> references = new LinkedHashSet<>(
+                graph.getOrDefault(FISHING, List.of()));
+        references.add(MUD_DREDGING);
+        graph.put(FISHING, List.copyOf(references));
     }
 
     // 构建战利品表引用图：遍历所有 loot_table 资源，解析每个表中的直接引用关系

@@ -34,9 +34,10 @@ loottable/
 │   └── LootCounts                  计数工具
 ├── simulation/   概率模拟
 │   ├── LootProbabilitySimulator    模拟引擎（单表 10000 次抽取）
+│   ├── LootProbabilitySimulationJob 可续跑的单表模拟状态
 │   ├── LootProbabilitySimulationWorker  主线程 tick 驱动器
 │   ├── SimulationProfile             模拟工具/方块/实体参数与条件资格场景
-│   ├── SimulationScenarioPlanner     从获取路径规划互斥场景
+│   ├── SimulationScenarioPlanner     从获取路径规划代表场景
 │   ├── LootConditionFingerprint      解析期与运行时条件指纹
 │   ├── LootSimulationScope           主线程模拟期间的 profile 作用域
 │   ├── LootContextParamFiller      模拟用 LootParams 构建（宽松回退）
@@ -63,12 +64,13 @@ TableDefinition{
   type: String,                  声明类型
   items: List<ItemDefinition>,   物品条目
   simulationCount: int,          模拟次数（0 表示未模拟）
-  childTables: List<ResourceLocation>  引用的子表
+  childTables: List<ResourceLocation>, 引用的子表
+  childTableProbabilities: List       子表至少产出一个物品的摘要与分场景概率
 }
 
 ItemDefinition{
   id, displayName, tooltipHint,
-  probability: String,           概率字符串（"?"/"<0.01%"/"12.34%"）
+  probability: String,           概率字符串（"?"/"0"/"<0.01%"/"12.34%"）
   signature: LootResultSignature,物品签名
   acquisitionPaths: List<LootAcquisitionPath>,  获取路径
   injected: boolean,             是否模拟期发现的注入条目
@@ -182,7 +184,7 @@ List.of(
 simulateOne(tableId, rawTable, level)
   ├─ 从 ReloadableServerRegistries 取得数据包重载后的运行时 LootTable
   │    保留 Fabric LootTableEvents.MODIFY 等加载期注入；不从原始 JSON 重建表
-  ├─ SimulationScenarioPlanner 从所有获取路径生成至多 8 个自洽条件场景
+  ├─ SimulationScenarioPlanner 从所有获取路径生成至多 8 个代表条件场景
   ├─ 每个场景按声明的 paramSet 构建独立 LootParams
   │    SimulationProfile 提供 TOOL、BLOCK_STATE、DAMAGE_SOURCE、ORIGIN 等值
   │    钓鱼类表（path 含 "fishing"）的 THIS_ENTITY 用 SimulationFishingHook 填充，
@@ -196,14 +198,19 @@ simulateOne(tableId, rawTable, level)
        │     Fabric 显式调用注入器；NeoForge 空实现（GLM 已在 getRandomItems 内部完成）
        ├─ 对每个 drop：
        │    ├─ LootResultMatcher.resolve(stack, candidates) 匹配已知签名
-       │    └─ 未匹配 -> deriveSignature 派生签名（附魔折叠为近似）
+       │    └─ 未匹配 -> deriveSignature 派生签名（附魔折叠为近似，其他组件严格保留）
        │         若已是已知签名 -> 保守跳过（歧义掉落）
        │         否则登记为注入条目（injected=true）
        └─ 对本轮出现的签名去重后计数
 ```
 
-概率口径是“单次战利品表抽取中，该签名至少出现一次的概率”。同一轮返回多个相同签名的
+物品概率口径是“单次战利品表抽取中，该签名至少出现一次的概率”。同一轮返回多个相同签名的
 `ItemStack` 时只计一次，不统计物品数量或平均产量。
+
+模拟热路径按 `Item` 预先索引候选，只扫描当前掉落物的签名变体。`LootResultMatcher` 用局部状态记录
+最高优先级与歧义，不为每次匹配创建排序 Map 或临时 List；每个候选缓存 stable key，并由带轮次标记的
+原始计数器完成单轮去重，避免每轮重建 `HashSet` 节点和 `Integer` 装箱。上述优化不改变签名优先级、
+歧义回退或“每轮最多计一次”的概率口径。
 
 模拟必须调用普通 `LootTable.getRandomItems`：NeoForge 会在原始抽取结束后由该入口应用
 Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌套表由原版 resolver
@@ -213,9 +220,14 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 
 | 出现次数 | 条件 | 概率字符串 |
 |---|---|---|
+| - | 当前代表场景静态不可达 | `"0"` |
 | 0 | `hasConditions` | `"?"`（条件性物品，模拟可能未覆盖） |
 | 0 | 无条件 | `"<0.01%"` |
 | >0 | - | `formatPercent(appearances / 10000)` |
+
+模拟期才发现的动态条目不把有限样本中的出现频率当作稳定概率，对外统一显示
+`"<0.01%"`。这类条目中的非附魔 `DataComponentPatch` 使用 `COMPONENT_EXACT` 保存，确保药水等
+动态变体经过 SavedData 缓存和网络同步后仍能恢复；附魔结果继续折叠为 `ENCHANTED_APPROX`。
 
 ### 7.2 条件场景策略
 
@@ -243,20 +255,31 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 实体目标、伤害来源与计分范围提供具体描述。存在上述场景条件时，概率文字明确标为
 “条件满足时至少出现一次”，不是这些条件在自然游戏过程中的发生概率。
 
-`ItemDefinition.scenarioProbabilities` 保存每个自洽场景的概率与条件树。互斥场景不合并；网格仅保留
-摘要，多个场景值不同时显示“条件概率”，tooltip 逐场景显示“单次抽取至少出现一次”的概率。
-同一场景内多条路径产出同一签名时仍由整表模拟自然合并。
+`ItemDefinition.scenarioProbabilities` 保存代表场景的内部统计结果。静态条件证明不可达的物品或子表在
+对应场景中记为 `0`，可触发但 10000 次均未出现才记为 `<0.01%`。目录摘要取这些场景的最小值与最大值；
+网格和 tooltip 只展示该范围，不再逐场景展开重复条件树。代表场景用于控制组合数量与 UI 长度，
+因此范围不是所有现实条件组合的严格数学上下界。同一场景内多条路径产出同一签名时仍由整表模拟自然合并。
 
-原版 fishing JSON 看不到 Fabric 加载期注入池或 NeoForge GLM。规划器因此额外建立
-`普通/加成群系 × 泥地打捞 I/II/III` 六个补充场景，只收集运行时发现的注入物；泥地打捞父表
-自身也按这六个场景模拟。
+嵌套子表由 `NestedLootTableMixin` 在模拟作用域中直接观测。每次父表抽取内按子表 ID 去重，
+统计“该直接子表至少产出一个物品”的概率；不通过物品签名反推，因此父子表产物重叠不会造成误判。
+作用域只保留根表的直接子表，使用复用 List 记录本轮命中，并通过 `IdentityHashMap` 关联产物来源；
+身份未保留时再按物品与组件相等回退。内部命中集合由同步回调直接遍历，不为每轮创建副本。
+父表 UI 不再平铺 `sourceChildTable != null` 的物品路径，而是显示可点击的子表入口及该概率。
+平台运行时注入的 `minecraft:gameplay/fishing -> unsuspiciousblock:gameplay/fishing/mud_dredging`
+关系由公共目录加载器补入引用图；NeoForge GLM 直接调用子表时也显式写入同一模拟观测作用域。
+
+原版 fishing JSON 看不到 Fabric 加载期注入池或 NeoForge GLM。规划器因此使用泥地打捞 III 级工具，
+额外建立普通群系与加成群系两个代表场景，只收集运行时发现的注入物；父表自身也统一按 III 级模拟。
 
 ### 7.3 主线程 tick 驱动
 
 [`LootProbabilitySimulationWorker`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/LootProbabilitySimulationWorker.java) 是模拟的调度器。**关键约束**：`LootTable.getRandomItems` 与 `LootContextParamFiller` 会触碰 `ServerLevel` 关联的 `LegacyRandomSource`，后者不是线程安全的，后台线程与主线程 tick 并发会触发 `ThreadingDetector` 报错。因此**不用后台线程**，改为：
 
 - 在服务端每 tick 末尾（`END_SERVER_TICK`）由 `tick(server)` 消费队列。
-- 每 tick 最多处理 `MAX_TABLES_PER_TICK = 1` 个表；带场景的表会执行多组 10000 次抽取，因此以单表作为分片边界。
+- 单表由 `LootProbabilitySimulationJob` 保存当前场景、抽取次数、签名与计数，可跨 tick 续跑。
+- 每 tick 使用 15ms 软预算，每 32 次抽取检查一次时间；同一场景的模拟作用域在当前 tick 时间片内复用，避免每批重建观测容器。该预算优先保证服务端启动阶段尽快完成模拟，单次抽取无法中断，因此极端复杂的单次抽取仍可能略超预算。
+- 高优先级请求会把已在低队列中的同表任务提升到高队列；不同的高优先级任务会在下个 tick 边界抢占当前低优先级任务，且不丢失进度。
+- 完成日志分别输出“有效计算耗时”和“跨 tick 历时”；后者包含任务在 tick 之间等待的墙钟时间，不能用于和旧版同步模拟耗时直接比较。
 - **双优先级队列**：`highQueue`（玩家解锁触发，插队）先于 `lowQueue`（启动批量填充）。
 - `enqueued` 集合去重，避免同一表重复入队。
 - 数据包重载期间 `pauseForReload()` / `resumeAfterReload()` 暂停消费。
@@ -264,7 +287,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 ### 7.4 模拟结果缓存
 
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v6`。模拟异常或无法取得有效表时不写入缓存。详见 [考古笔记系统](journal.md) 的目录构建部分。
+模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v9`。模拟异常或无法取得有效表时不写入缓存。详见 [考古笔记系统](journal.md) 的目录构建部分。
 
 ## 8. 战利品注入
 
@@ -298,7 +321,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需配合 `NbtDataMigrator`。
 - **新增战利品条件**：参考 `MudDredgingCondition`，在 `ModLootConditions` 注册类型，两端各自注册到注册表。
 - **平台注入器**：Fabric 端如需新的注入逻辑，实现 `ArchaeologyLootInjector` 并在 `onInitialize` 调 `ArchaeologyLootInjectors.register`。
-- **模拟调优**：`SIMULATION_COUNT`（精度 vs 性能）与 `MAX_TABLES_PER_TICK`（吞吐 vs tick 占用）是两个可调参数。
+- **模拟调优**：`SIMULATION_COUNT`（精度 vs 性能）、`TICK_BUDGET_NANOS` 与批次大小（吞吐 vs tick 占用）是主要可调参数。
 
 ## 11. 相关文档
 

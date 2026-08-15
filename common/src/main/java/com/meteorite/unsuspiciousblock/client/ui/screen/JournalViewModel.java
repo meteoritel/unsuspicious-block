@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
+import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
@@ -17,7 +18,11 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -124,6 +129,40 @@ public class JournalViewModel {
         ResourceLocation id = this.tableViews.get(rowIndex).id();
         if (!this.rowMetadata.get(rowIndex).hasChildren()) return;
         if (!this.expandedRoots.add(id)) this.expandedRoots.remove(id);
+    }
+
+    // 为子表跳转准备目录状态：切换到可达分类并展开目标的全部祖先。
+    public boolean prepareNavigationTo(ResourceLocation tableId) {
+        if (!this.allViews.containsKey(tableId)) {
+            return false;
+        }
+        Set<ResourceLocation> categories = this.categoryIdsByTable.getOrDefault(tableId, Set.of());
+        if (categories.isEmpty()) {
+            return false;
+        }
+        if (this.selectedCategory == null || !categories.contains(this.selectedCategory)) {
+            this.selectedCategory = categories.stream().min(Comparator.comparing(ResourceLocation::toString)).orElse(null);
+        }
+        this.categoryHome = false;
+        this.expandedRoots.addAll(firstPathsByTable().getOrDefault(tableId, List.of()));
+        return true;
+    }
+
+    // 优先返回指定父表路径下的子表行，避免同一表同时作为分类根表时跳到错误位置。
+    public int findNavigationRow(ResourceLocation tableId, @Nullable ResourceLocation parentTableId) {
+        int fallback = -1;
+        for (int index = 0; index < this.tableViews.size(); index++) {
+            if (!this.tableViews.get(index).id().equals(tableId)) {
+                continue;
+            }
+            if (fallback < 0) {
+                fallback = index;
+            }
+            if (parentTableId != null && this.rowMetadata.get(index).parentPath().contains(parentTableId)) {
+                return index;
+            }
+        }
+        return fallback;
     }
 
     public boolean rowHasChildren(int rowIndex) {
@@ -332,11 +371,15 @@ public class JournalViewModel {
         List<ArchaeologyJournalEntry> children = parent.childTables().stream().map(this.allViews::get)
                 .filter(java.util.Objects::nonNull)
                 .filter(view -> !this.hideLocked || view.unlocked())
-                .sorted(CatalogSorter.getComparator(this.currentSortOrder, this.sortDescending))
+                .sorted(Comparator
+                        .comparing((ArchaeologyJournalEntry view) -> !hasChildTables(view.id()))
+                        .thenComparing(CatalogSorter.getComparator(
+                                this.currentSortOrder, this.sortDescending)))
                 .toList();
         for (ArchaeologyJournalEntry child : children) {
             addRow(child, depth, true, path, List.of(this.selectedCategory));
-            if (!this.catalogDefinitions.get(child.id()).childTables().isEmpty()) {
+            if (this.expandedRoots.contains(child.id())
+                    && !this.catalogDefinitions.get(child.id()).childTables().isEmpty()) {
                 List<ResourceLocation> nextPath = new ArrayList<>(path);
                 nextPath.add(child.id());
                 flattenChildren(child.id(), depth + 1, List.copyOf(nextPath), new HashSet<>(branch));
@@ -347,9 +390,14 @@ public class JournalViewModel {
     private void addRow(ArchaeologyJournalEntry view, int depth, boolean child,
                         List<ResourceLocation> parentPath, List<ResourceLocation> categoryIds) {
         this.tableViews.add(view);
-        boolean hasChildren = !this.catalogDefinitions.get(view.id()).childTables().isEmpty();
+        boolean hasChildren = hasChildTables(view.id());
         this.rowMetadata.add(new RowMeta(depth, child, hasChildren, this.expandedRoots.contains(view.id()),
                 parentPath, categoryIds));
+    }
+
+    private boolean hasChildTables(ResourceLocation tableId) {
+        TableDefinition table = this.catalogDefinitions.get(tableId);
+        return table != null && !table.childTables().isEmpty();
     }
 
     private Comparator<ArchaeologyJournalEntry> rootComparator() {
@@ -446,25 +494,125 @@ public class JournalViewModel {
         if (selected == null) return null;
         List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
         for (ArchaeologyEntryItem item : selected.items()) {
-            boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
-                    || this.currentSearch.matchesItem(item.id(), item.displayName().getString());
-            boolean approximate = item.tooltipHint() != null && item.tooltipHint().getString().equals(
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
-            LootConditionHandler.UncertaintyLevel level = approximate
-                    ? LootConditionHandler.UncertaintyLevel.RUNTIME : LootConditionHandler.UncertaintyLevel.NONE;
-            for (var path : item.acquisitionPaths()) {
-                LootConditionHandler.UncertaintyLevel candidate = LootConditionHandlers
-                        .computeUncertaintyLevel(path.allConditions(), false);
-                if (candidate.ordinal() > level.ordinal()) level = candidate;
+            ItemGridPanel.GridItem gridItem = buildDirectGridItem(item, true);
+            if (gridItem != null) {
+                gridItems.add(gridItem);
             }
-            gridItems.add(new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
-                    item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
-                    item.acquisitionPaths(), item.injected(), level, item.scenarioProbabilities()));
         }
         gridItems.sort(Comparator.comparing(ItemGridPanel.GridItem::primarySourceChildTable,
                         Comparator.nullsFirst(Comparator.comparing(String::valueOf)))
                 .thenComparingDouble(value -> -gridItemSortKey(value)));
-        return new BuildGridResult(selected.id(), gridItems, selected.parsedCount(), selected.totalCount(), selected.logRef());
+        List<ItemGridPanel.ChildTableEntry> childEntries = new ArrayList<>();
+        TableDefinition selectedDefinition = this.catalogDefinitions.get(selected.id());
+        if (selectedDefinition != null) {
+            for (ChildTableProbability childProbability : selectedDefinition.childTableProbabilities()) {
+                ArchaeologyJournalEntry child = this.allViews.get(childProbability.tableId());
+                if (child == null) continue;
+                List<ItemGridPanel.GridItem> previewItems = buildChildPreviewItems(
+                        child.id(), new HashSet<>());
+                childEntries.add(new ItemGridPanel.ChildTableEntry(
+                        child.id(), child.displayName(), childProbability.probability(),
+                        childProbability.scenarioProbabilities(), previewItems));
+            }
+        }
+        List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
+        int parsedCount = (int) introItems.stream().filter(DetailOverlayPanel.IntroItem::unlocked).count();
+        return new BuildGridResult(selected.id(), gridItems, childEntries, introItems,
+                parsedCount, introItems.size(), selected.logRef());
+    }
+
+    // Intro 按需映射当前表及全部后代物品，避免在每个树节点重复缓存完整子树视图。
+    private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId) {
+        Map<LootResultSignature, ItemDefinition> definitionsBySignature = new LinkedHashMap<>();
+        collectSubtreeItems(tableId, definitionsBySignature, new HashSet<>());
+        ArchaeologyJournalState.TableProgress progress = this.state.getTable(tableId);
+        List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitionsBySignature.size());
+        for (ItemDefinition definition : definitionsBySignature.values()) {
+            ArchaeologyJournalState.ItemProgress itemProgress = progress != null
+                    ? progress.getItemProgress(definition.signature()) : null;
+            boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
+            int count = unlocked ? itemProgress.getCount() : 0;
+            boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
+                    || this.currentSearch.matchesItem(definition.id(), definition.displayName().getString());
+            result.add(new DetailOverlayPanel.IntroItem(
+                    definition.id(), definition.displayName(), definition.signature(), unlocked, count, highlighted));
+        }
+        return List.copyOf(result);
+    }
+
+    // 深度优先收集唯一物品签名；共享子表与循环引用只处理一次。
+    private void collectSubtreeItems(ResourceLocation tableId,
+                                     Map<LootResultSignature, ItemDefinition> output,
+                                     Set<ResourceLocation> visited) {
+        if (!visited.add(tableId)) {
+            return;
+        }
+        TableDefinition definition = this.catalogDefinitions.get(tableId);
+        if (definition == null) {
+            return;
+        }
+        for (ItemDefinition item : definition.items()) {
+            output.putIfAbsent(item.signature(), item);
+        }
+        for (ResourceLocation childId : definition.childTables()) {
+            collectSubtreeItems(childId, output, visited);
+        }
+    }
+
+    @Nullable
+    private ItemGridPanel.GridItem buildDirectGridItem(ArchaeologyEntryItem item, boolean applySearch) {
+        List<LootAcquisitionPath> directPaths = item.acquisitionPaths().stream()
+                .filter(path -> path.sourceChildTable() == null)
+                .toList();
+        if (!item.acquisitionPaths().isEmpty() && directPaths.isEmpty()) {
+            return null;
+        }
+        boolean highlighted = !applySearch || this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
+                || this.currentSearch.matchesItem(item.id(), item.displayName().getString());
+        boolean approximate = item.tooltipHint() != null && item.tooltipHint().getString().equals(
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
+        LootConditionHandler.UncertaintyLevel level = approximate
+                ? LootConditionHandler.UncertaintyLevel.RUNTIME : LootConditionHandler.UncertaintyLevel.NONE;
+        for (LootAcquisitionPath path : directPaths) {
+            LootConditionHandler.UncertaintyLevel candidate = LootConditionHandlers
+                    .computeUncertaintyLevel(path.allConditions(), false);
+            if (candidate.ordinal() > level.ordinal()) level = candidate;
+        }
+        return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
+                item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
+                directPaths, item.injected(), level, item.scenarioProbabilities());
+    }
+
+    // 纯转发表没有直接物品时，向下寻找首批可展示后代；visited 防止循环引用。
+    private List<ItemGridPanel.GridItem> buildChildPreviewItems(
+            ResourceLocation tableId, Set<ResourceLocation> visited) {
+        if (!visited.add(tableId)) {
+            return List.of();
+        }
+        ArchaeologyJournalEntry table = this.allViews.get(tableId);
+        if (table == null) {
+            return List.of();
+        }
+        List<ItemGridPanel.GridItem> directItems = table.items().stream()
+                .map(item -> buildDirectGridItem(item, false))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (!directItems.isEmpty()) {
+            return directItems;
+        }
+        TableDefinition definition = this.catalogDefinitions.get(tableId);
+        if (definition == null) {
+            return List.of();
+        }
+        List<ItemGridPanel.GridItem> descendants = new ArrayList<>();
+        for (ResourceLocation childId : definition.childTables()) {
+            descendants.addAll(buildChildPreviewItems(childId, visited));
+            if (descendants.size() >= 3) {
+                break;
+            }
+        }
+        return List.copyOf(descendants);
     }
 
     private static double gridItemSortKey(ItemGridPanel.GridItem item) {
@@ -512,6 +660,8 @@ public class JournalViewModel {
     }
 
     public record BuildGridResult(ResourceLocation tableId, List<ItemGridPanel.GridItem> gridItems,
+                                  List<ItemGridPanel.ChildTableEntry> childTables,
+                                  List<DetailOverlayPanel.IntroItem> introItems,
                                   int parsedCount, int totalCount, ArchaeologyEntryLogRef logRef) {
     }
 }

@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -49,11 +50,14 @@ public final class ItemGridPanel implements PagePanel {
 
     private final List<GridItem> items = new ArrayList<>();
     private final List<GridItem> directItems = new ArrayList<>();
+    private final List<ChildTableEntry> childTables = new ArrayList<>();
     private final LinkedHashMap<ResourceLocation, TagGroup> tagGroups = new LinkedHashMap<>();
     private final JournalBookBackground.BookLayout layout;
     private int page;
     @Nullable
     private ResourceLocation activeTag;
+    @Nullable
+    private ResourceLocation navigationTarget;
     // 每个可视格子的滚动文字状态（物品名走马灯），按 visualIndex 索引
     private final int[] slotScrollTicks = new int[JournalLayout.GRID_ITEMS_PER_PAGE];
     private final boolean[] slotWasHovered = new boolean[JournalLayout.GRID_ITEMS_PER_PAGE];
@@ -64,9 +68,12 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     // 设置当前展示的战利品表数据
-    public void setTable(List<GridItem> items) {
+    public void setTable(List<GridItem> items, List<ChildTableEntry> childTables) {
         this.items.clear();
         this.items.addAll(items);
+        this.childTables.clear();
+        this.childTables.addAll(childTables);
+        this.navigationTarget = null;
         rebuildTagGroups();
         if (this.activeTag != null && !this.tagGroups.containsKey(this.activeTag)) {
             this.activeTag = null;
@@ -82,7 +89,7 @@ public final class ItemGridPanel implements PagePanel {
             return Math.max(1, (memberCount + TAG_GROUP_MEMBERS_PER_PAGE - 1)
                     / TAG_GROUP_MEMBERS_PER_PAGE);
         }
-        int entryCount = this.tagGroups.size() + this.directItems.size();
+        int entryCount = this.tagGroups.size() + this.childTables.size() + this.directItems.size();
         return Math.max(1, (entryCount + JournalLayout.GRID_ITEMS_PER_PAGE - 1)
                 / JournalLayout.GRID_ITEMS_PER_PAGE);
     }
@@ -133,7 +140,7 @@ public final class ItemGridPanel implements PagePanel {
 
     // 渲染物品网格（仅图标，不含进度/页码）
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (this.items.isEmpty()) {
+        if (this.items.isEmpty() && this.childTables.isEmpty()) {
             int leftX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_entries"),
                     leftX, layout.rightPageY() + JournalLayout.GRID_TOP, 0x7A6247, false);
@@ -163,7 +170,9 @@ public final class ItemGridPanel implements PagePanel {
             }
             visibleEntryCount = to - from + 1;
         } else {
-            int entryCount = this.tagGroups.size() + this.directItems.size();
+            int groupCount = this.tagGroups.size();
+            int childCount = this.childTables.size();
+            int entryCount = groupCount + childCount + this.directItems.size();
             int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
             int to = Math.min(entryCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
             List<TagGroup> groups = List.copyOf(this.tagGroups.values());
@@ -173,12 +182,16 @@ public final class ItemGridPanel implements PagePanel {
                 int cellY = cellY(gridY, visualIndex);
                 boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
                 updateHoverState(visualIndex, hovered);
-                if (i < groups.size()) {
+                if (i < groupCount) {
                     renderTagGroupCell(guiGraphics, font, cellX, cellY,
                             groups.get(i), hovered, slotScrollTicks[visualIndex]);
+                } else if (i < groupCount + childCount) {
+                    renderChildTableCell(guiGraphics, font, cellX, cellY,
+                            this.childTables.get(i - groupCount), hovered,
+                            slotScrollTicks[visualIndex]);
                 } else {
                     renderItemCell(guiGraphics, font, cellX, cellY,
-                            this.directItems.get(i - groups.size()), hovered,
+                            this.directItems.get(i - groupCount - childCount), hovered,
                             slotScrollTicks[visualIndex]);
                 }
             }
@@ -241,7 +254,31 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     private void renderTagPreview(GuiGraphics guiGraphics, TagGroup group, int centerX, int iconY) {
-        List<GridItem> discovered = group.members().stream().filter(GridItem::unlocked).limit(3).toList();
+        renderPreview(guiGraphics, group.members(), centerX, iconY);
+    }
+
+    private void renderChildTableCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
+                                      ChildTableEntry child, boolean hovered, int scrollTicks) {
+        int cellW = JournalLayout.GRID_CELL_WIDTH;
+        int cellH = JournalLayout.GRID_CELL_HEIGHT;
+        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
+                hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
+        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
+        guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
+        renderPreview(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
+        ScrollTextHelper.draw(guiGraphics, font, child.displayName().getString(),
+                cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
+                TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
+        Component probability = formatProbability(
+                child.probability(), LootConditionHandler.UncertaintyLevel.NONE,
+                child.scenarioProbabilities());
+        ScrollTextHelper.draw(guiGraphics, font, probability.getString(),
+                cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
+                TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
+    }
+
+    private void renderPreview(GuiGraphics guiGraphics, List<GridItem> items, int centerX, int iconY) {
+        List<GridItem> discovered = items.stream().filter(GridItem::unlocked).limit(3).toList();
         if (discovered.isEmpty()) {
             guiGraphics.blit(UNKNOWN_TEXTURE, centerX - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE,
                     0f, 0f, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE,
@@ -342,14 +379,14 @@ public final class ItemGridPanel implements PagePanel {
         // 概率（居中，颜色根据不确定性等级区分）
         Component probComp = formatProbability(item.probability(), item.uncertaintyLevel(),
                 item.scenarioProbabilities());
-        int probW = font.width(probComp);
         int probColor = switch (item.uncertaintyLevel()) {
             case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
             case RUNTIME -> PROB_COLOR_RUNTIME;
             default -> PROB_COLOR;
         };
-        guiGraphics.drawString(font, probComp, centerX - probW / 2,
-                cellY + PROB_Y_OFFSET, probColor, false);
+        ScrollTextHelper.draw(guiGraphics, font, probComp.getString(),
+                cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
+                probColor, hovered, scrollTicks, true);
 
         // 搜索不匹配：覆盖半透明灰色遮罩降低视觉权重
         if (!item.highlighted()) {
@@ -380,8 +417,10 @@ public final class ItemGridPanel implements PagePanel {
                                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                                                List<ScenarioProbability> scenarioProbabilities) {
         if (hasDistinctScenarioProbabilities(scenarioProbabilities)) {
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional");
+            return probability == null || probability.equals("?")
+                    ? Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional")
+                    : Component.literal(probability);
         }
         if (probability == null || probability.equals("?")) {
             if (uncertaintyLevel != LootConditionHandler.UncertaintyLevel.NONE) {
@@ -422,14 +461,14 @@ public final class ItemGridPanel implements PagePanel {
                 }
             }
         } else {
-            int groupCount = this.tagGroups.size();
-            int entryCount = groupCount + this.directItems.size();
+            int nonItemCount = this.tagGroups.size() + this.childTables.size();
+            int entryCount = nonItemCount + this.directItems.size();
             int from = this.page * JournalLayout.GRID_ITEMS_PER_PAGE;
             int to = Math.min(entryCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
-            for (int i = Math.max(from, groupCount); i < to; i++) {
+            for (int i = Math.max(from, nonItemCount); i < to; i++) {
                 int visualIndex = i - from;
                 if (isMouseOverCell(cellX(gridX, visualIndex), cellY(gridY, visualIndex), mouseX, mouseY)) {
-                    hoveredItem = this.directItems.get(i - groupCount);
+                    hoveredItem = this.directItems.get(i - nonItemCount);
                     break;
                 }
             }
@@ -466,9 +505,11 @@ public final class ItemGridPanel implements PagePanel {
         }
 
         int groupCount = this.tagGroups.size();
+        int childCount = this.childTables.size();
         int from = this.page * JournalLayout.GRID_ITEMS_PER_PAGE;
-        int to = Math.min(groupCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
-        if (from >= groupCount) {
+        int navigationCount = groupCount + childCount;
+        int to = Math.min(navigationCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
+        if (from >= navigationCount) {
             return false;
         }
         List<ResourceLocation> tagIds = List.copyOf(this.tagGroups.keySet());
@@ -477,13 +518,24 @@ public final class ItemGridPanel implements PagePanel {
             int cellX = cellX(gridX, visualIndex);
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
-                this.activeTag = tagIds.get(i);
-                this.page = 0;
-                resetHoverState();
+                if (i < groupCount) {
+                    this.activeTag = tagIds.get(i);
+                    this.page = 0;
+                    resetHoverState();
+                } else {
+                    this.navigationTarget = this.childTables.get(i - groupCount).tableId();
+                }
                 return true;
             }
         }
         return false;
+    }
+
+    @Nullable
+    public ResourceLocation consumeNavigationTarget() {
+        ResourceLocation target = this.navigationTarget;
+        this.navigationTarget = null;
+        return target;
     }
 
     // 渲染 tag 分组入口和返回入口的说明；物品 tooltip 由 JournalTooltipBuilder 处理。
@@ -511,9 +563,11 @@ public final class ItemGridPanel implements PagePanel {
         }
 
         int groupCount = this.tagGroups.size();
+        int childCount = this.childTables.size();
         int from = this.page * JournalLayout.GRID_ITEMS_PER_PAGE;
-        int to = Math.min(groupCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
-        if (from >= groupCount) {
+        int navigationCount = groupCount + childCount;
+        int to = Math.min(navigationCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
+        if (from >= navigationCount) {
             return null;
         }
         List<TagGroup> groups = List.copyOf(this.tagGroups.values());
@@ -522,15 +576,20 @@ public final class ItemGridPanel implements PagePanel {
             if (!isMouseOverCell(cellX(gridX, visualIndex), cellY(gridY, visualIndex), mouseX, mouseY)) {
                 continue;
             }
-            TagGroup group = groups.get(i);
-            return List.of(
-                    Component.literal(group.id().toString()).withStyle(ChatFormatting.AQUA),
-                    Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.tag_group_progress",
-                            group.discoveredCount(), group.members().size()).withStyle(ChatFormatting.GREEN),
-                    Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.tag_group_open")
-                            .withStyle(ChatFormatting.GRAY));
+            if (i < groupCount) {
+                TagGroup group = groups.get(i);
+                return List.of(
+                        Component.literal(group.id().toString()).withStyle(ChatFormatting.AQUA),
+                        Component.translatable(
+                                "screen.unsuspiciousblock.archaeology_journal.tag_group_progress",
+                                group.discoveredCount(), group.members().size()).withStyle(ChatFormatting.GREEN),
+                        Component.translatable(
+                                "screen.unsuspiciousblock.archaeology_journal.tag_group_open")
+                                .withStyle(ChatFormatting.GRAY));
+            }
+            ChildTableEntry child = this.childTables.get(i - groupCount);
+            return JournalTooltipBuilder.buildChildTable(
+                    child.displayName(), child.tableId(), child.probability());
         }
         return null;
     }
@@ -542,6 +601,9 @@ public final class ItemGridPanel implements PagePanel {
         for (GridItem item : this.items) {
             boolean hasDirectPath = item.acquisitionPaths().isEmpty();
             for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                if (path.sourceChildTable() != null) {
+                    continue;
+                }
                 ResourceLocation tagId = path.sourceItemTag();
                 if (tagId == null) {
                     hasDirectPath = true;
@@ -588,6 +650,17 @@ public final class ItemGridPanel implements PagePanel {
 
         private boolean hasHighlightedMember() {
             return this.members.stream().anyMatch(GridItem::highlighted);
+        }
+    }
+
+    /** 子表导航入口展示数据。 */
+    public record ChildTableEntry(ResourceLocation tableId, Component displayName,
+                                  String probability,
+                                  List<ScenarioProbability> scenarioProbabilities,
+                                  List<GridItem> previewItems) {
+        public ChildTableEntry {
+            scenarioProbabilities = List.copyOf(scenarioProbabilities);
+            previewItems = List.copyOf(previewItems);
         }
     }
 

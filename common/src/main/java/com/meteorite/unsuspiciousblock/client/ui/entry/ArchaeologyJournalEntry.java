@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -47,6 +48,12 @@ public record ArchaeologyJournalEntry(
         List<ArchaeologyEntryItem> items = new ArrayList<>();
         int parsedCount = 0;
         for (ItemDefinition itemDefinition : definition.items()) {
+            List<LootAcquisitionPath> directPaths = itemDefinition.acquisitionPaths().stream()
+                    .filter(path -> path.sourceChildTable() == null)
+                    .toList();
+            if (!itemDefinition.acquisitionPaths().isEmpty() && directPaths.isEmpty()) {
+                continue;
+            }
             ArchaeologyJournalState.ItemProgress itemProgress = progress != null
                     ? progress.getItemProgress(itemDefinition.signature())
                     : null;
@@ -57,13 +64,13 @@ public record ArchaeologyJournalEntry(
             }
             items.add(new ArchaeologyEntryItem(itemDefinition.id(), itemDefinition.displayName(),
                     itemDefinition.tooltipHint(), itemDefinition.probability(), unlocked, count,
-                    itemDefinition.signature(), itemDefinition.acquisitionPaths(),
+                    itemDefinition.signature(), directPaths,
                     itemDefinition.injected(), itemDefinition.scenarioProbabilities()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         boolean favorite = ArchaeologyJournalClientState.isFavorite(tableId);
         ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.from(logHistory);
         return new ArchaeologyJournalEntry(tableId, definition.displayName(), definition.type(), items,
-                definition.simulationCount(), definition.items().size(), parsedCount, tableUnlocked, favorite, logRef);
+                definition.simulationCount(), items.size(), parsedCount, tableUnlocked, favorite, logRef);
     }
 }

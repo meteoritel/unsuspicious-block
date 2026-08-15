@@ -81,6 +81,8 @@ public final class RightPageContainer {
     }
 
     public void setTable(@Nullable ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
+                         List<ItemGridPanel.ChildTableEntry> childTables,
+                         List<DetailOverlayPanel.IntroItem> introItems,
                          int parsedCount, int totalCount,
                          @Nullable ArchaeologyEntryLogRef logRef) {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
@@ -90,8 +92,8 @@ public final class RightPageContainer {
         LogMode savedLogMode = this.logMode;
         UUID savedSelectedLogEntryId = this.selectedLogEntryId;
 
-        this.gridPanel.setTable(items);
-        this.detailPanel.setData(tableId, parsedCount, totalCount, items);
+        this.gridPanel.setTable(items, childTables);
+        this.detailPanel.setData(tableId, parsedCount, totalCount, introItems);
         this.logPanel.setData(logRef);
 
         if (sameTable) {
@@ -191,10 +193,7 @@ public final class RightPageContainer {
         }
         if (this.logMode == LogMode.DETAIL) {
             // 返回按钮由 IconButton widget 处理；这里仅处理复制坐标按钮点击
-            if (this.logDetailPanel.handleClick(mouseX, mouseY)) {
-                return true;
-            }
-            return false;
+            return this.logDetailPanel.handleClick(mouseX, mouseY);
         }
         ExcavationLogEntry clickedEntry = this.logPanel.handleClick(mouseX, mouseY);
         if (clickedEntry == null) {
@@ -205,6 +204,11 @@ public final class RightPageContainer {
         this.logDetailPanel.setEntry(clickedEntry, this.currentTableId);
         syncPageIndicator();
         return true;
+    }
+
+    @Nullable
+    public ResourceLocation consumeNavigationTarget() {
+        return this.gridPanel.consumeNavigationTarget();
     }
 
     public void handleScroll(double scrollY) {

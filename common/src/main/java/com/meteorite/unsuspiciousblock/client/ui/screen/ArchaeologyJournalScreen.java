@@ -502,6 +502,10 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         if (!this.viewModel.isCategoryHome() && this.viewModel.selectedTable() != null
                 && this.rightPage.mouseClicked(mouseX, mouseY, button)) {
+            ResourceLocation navigationTarget = this.rightPage.consumeNavigationTarget();
+            if (navigationTarget != null) {
+                navigateToChildTable(navigationTarget);
+            }
             syncButtonState();
             return true;
         }
@@ -708,10 +712,25 @@ public class ArchaeologyJournalScreen extends Screen {
     private void updateItemGridPanel() {
         JournalViewModel.BuildGridResult result = this.viewModel.buildGridItems();
         if (result == null) {
-            this.rightPage.setTable(null, List.of(), 0, 0, null);
+            this.rightPage.setTable(null, List.of(), List.of(), List.of(), 0, 0, null);
         } else {
-            this.rightPage.setTable(result.tableId(), result.gridItems(),
+            this.rightPage.setTable(result.tableId(), result.gridItems(), result.childTables(), result.introItems(),
                     result.parsedCount(), result.totalCount(), result.logRef());
+        }
+    }
+
+    private void navigateToChildTable(ResourceLocation tableId) {
+        ResourceLocation parentTableId = this.viewModel.selectedTableId();
+        if (!this.viewModel.prepareNavigationTo(tableId)) {
+            return;
+        }
+        this.catalogToolbar.setCurrentSearch(JournalSearchQuery.EMPTY);
+        this.catalogToolbar.setHideLocked(false);
+        this.catalogToolbar.setSearchExpanded(false);
+        this.rebuildWidgets();
+        int targetRow = this.viewModel.findNavigationRow(tableId, parentTableId);
+        if (targetRow >= 0) {
+            setSelectedIndex(targetRow);
         }
     }
 

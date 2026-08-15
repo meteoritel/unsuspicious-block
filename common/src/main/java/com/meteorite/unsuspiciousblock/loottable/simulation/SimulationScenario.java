@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
 import java.util.Set;
@@ -10,9 +11,11 @@ import java.util.Set;
  */
 public record SimulationScenario(String key, SimulationProfile profile,
                                  List<LootConditionInfo> assumptions,
-                                 Set<String> applicableSignatures) {
+                                 Set<String> applicableSignatures,
+                                 Set<ResourceLocation> applicableChildTables) {
     public SimulationScenario {
         assumptions = List.copyOf(assumptions);
         applicableSignatures = Set.copyOf(applicableSignatures);
+        applicableChildTables = Set.copyOf(applicableChildTables);
     }
 }

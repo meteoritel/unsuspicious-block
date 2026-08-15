@@ -95,6 +95,14 @@ ui/
 
 列表不在客户端自行枚举资源，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器读取原版 `LanguageManager.getLanguages()`，弹出列表显示语言代码和原生名称；非 `en_us` 名称只有在该表已有非空英语名称时才能保存。名称更新后，客户端写入 `config/unsuspiciousblock/lang/<language>.json`；内容实际变化时触发资源重载，使当前界面立即使用新名称。
 - **panel/**：可复用的面板组件。`CatalogPanel`（目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（分页）、`RightPageContainer`（右侧标签页容器）。
+
+`ItemGridPanel` 只展示当前表自身的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，
+入口显示子表产出概率；多场景结果展示代表场景的最小值-最大值，不再在 tooltip 中逐场景展开条件树。
+点击后由 `JournalViewModel` 展开目录祖先并选中目标子表。
+目录树的每个节点独立保存展开状态；展开父表只显示其直接子表，只有显式展开子表时才显示孙表。
+子表入口优先预览自身直接物品；纯转发表没有直接物品时递归使用后代物品作为图标，并对循环引用做保护。
+子表物品不会进入父表网格或父表的物品搜索匹配；父表 Intro 会按需递归映射全部后代物品，
+按物品签名去重并读取父表自身的发现记录，避免为每个树节点重复缓存完整子树物品。
 - **entry/**：目录条目数据。`ArchaeologyJournalEntry` / `ArchaeologyEntryItem` / `ArchaeologyEntryLogRef` / `ItemEntryLike`。
 - **layout/**：布局计算。`JournalLayout`（书本双页布局）、`JournalBookBackground`（背景渲染）。
 - **widget/**：交互组件。`IconButton`、`BookmarkToggleButton`（收藏）、`CopyCoordinateButton`（复制传送指令）、`JournalPageButton`（翻页）。

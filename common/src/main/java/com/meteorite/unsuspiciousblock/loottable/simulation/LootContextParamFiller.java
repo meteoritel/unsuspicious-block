@@ -50,7 +50,10 @@ public final class LootContextParamFiller {
         LootContextParamSet looseParamSet = LootContextParamSet.builder()
                 .required(LootContextParams.ORIGIN)
                 .build();
-        return builder.create(looseParamSet);
+        LootParams.Builder looseBuilder = new LootParams.Builder(level)
+                .withParameter(LootContextParams.ORIGIN, profile.origin())
+                .withLuck(profile.luck());
+        return looseBuilder.create(looseParamSet);
     }
 
     /**

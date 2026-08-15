@@ -9,9 +9,8 @@ import org.slf4j.Logger;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -22,8 +21,7 @@ import java.util.function.Consumer;
  * 后台线程与主线程 tick 并发会触发 {@link net.minecraft.util.ThreadingDetector} 报错。
  * <p>
  * 改为在服务端每 tick 末尾（{@code END_SERVER_TICK}）由 {@link #tick(MinecraftServer)} 消费队列，
- * 每次最多处理 {@link #MAX_TABLES_PER_TICK} 个表；带多个条件场景的表会执行多组 10 000 次抽取，
- * 因此仍以单表为 tick 分片边界。
+ * 每个 tick 按固定时间预算推进可续跑任务，复杂表会跨多个 tick 保留进度。
  * <p>
  * 优先级：HIGH（玩家解锁插队）先于 LOW（启动批量填充）。
  * 数据包重载期间通过 {@link #pauseForReload()} / {@link #resumeAfterReload()} 暂停消费。
@@ -31,18 +29,19 @@ import java.util.function.Consumer;
 public final class LootProbabilitySimulationWorker {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    /** 每 tick 最多处理的表数，避免单 tick 占用过多时间 */
-    private static final int MAX_TABLES_PER_TICK = 1;
+    /** 每 tick 用于模拟抽取的软时间预算；单次抽取本身无法被中断。 */
+    private static final long TICK_BUDGET_NANOS = 15_000_000L;
 
     /** 单例，随服务端生命周期创建/销毁 */
     private static volatile LootProbabilitySimulationWorker instance;
 
     /** 高优先级队列（玩家解锁触发，插队） */
-    private final Deque<SimTask> highQueue = new ArrayDeque<>();
+    private final Deque<WorkItem> highQueue = new ArrayDeque<>();
     /** 低优先级队列（启动批量填充） */
-    private final Deque<SimTask> lowQueue = new ArrayDeque<>();
-    /** 已入队去重集合，避免同一表重复入队 */
-    private final Set<ResourceLocation> enqueued = new HashSet<>();
+    private final Deque<WorkItem> lowQueue = new ArrayDeque<>();
+    /** 已入队任务索引，同时用于去重与优先级提升。 */
+    private final Map<ResourceLocation, WorkItem> enqueued = new HashMap<>();
+    private WorkItem current;
     private volatile boolean paused = false;
     /** 模拟结果回调（由调用方设置，如写入目录、广播等） */
     private volatile ResultHandler resultHandler;
@@ -89,9 +88,10 @@ public final class LootProbabilitySimulationWorker {
         if (tables.isEmpty()) return;
         for (Map.Entry<ResourceLocation, TableDefinition> entry : tables.entrySet()) {
             ResourceLocation tableId = entry.getKey();
-            if (enqueued.contains(tableId)) continue;
-            enqueued.add(tableId);
-            lowQueue.addLast(new SimTask(tableId, entry.getValue()));
+            if (enqueued.containsKey(tableId)) continue;
+            WorkItem item = new WorkItem(tableId, entry.getValue(), Priority.LOW);
+            enqueued.put(tableId, item);
+            lowQueue.addLast(item);
         }
     }
 
@@ -100,15 +100,21 @@ public final class LootProbabilitySimulationWorker {
      * 调用方需自行检查是否已有模拟数据，并提供 raw table 定义。
      */
     public void enqueuePriority(ResourceLocation tableId, TableDefinition rawTable) {
-        if (enqueued.contains(tableId)) return;
-        enqueued.add(tableId);
-        highQueue.addLast(new SimTask(tableId, rawTable));
+        WorkItem existing = enqueued.get(tableId);
+        if (existing != null) {
+            promote(existing);
+            return;
+        }
+        WorkItem item = new WorkItem(tableId, rawTable, Priority.HIGH);
+        enqueued.put(tableId, item);
+        highQueue.addLast(item);
     }
 
     /** 清空队列（reload/flush 时丢弃旧任务） */
     public void clearQueue() {
         highQueue.clear();
         lowQueue.clear();
+        current = null;
         enqueued.clear();
     }
 
@@ -138,23 +144,38 @@ public final class LootProbabilitySimulationWorker {
     }
 
     /**
-     * 由服务端 tick 末尾调用：在主线程消费最多 {@link #MAX_TABLES_PER_TICK} 个任务。
+     * 由服务端 tick 末尾调用：在主线程按 {@link #TICK_BUDGET_NANOS} 软预算推进任务。
      * 所有操作（模拟、写 SavedData、写 catalog、广播、回调）均在主线程完成，无并发风险。
      */
     public void tick(MinecraftServer server) {
         if (paused) return;
-        boolean processed = false;
+        long deadlineNanos = System.nanoTime() + TICK_BUDGET_NANOS;
+        boolean completedAny = false;
         ServerLevel level = server.overworld();
-        for (int i = 0; i < MAX_TABLES_PER_TICK; i++) {
-            SimTask task = highQueue.pollFirst();
-            if (task == null) {
-                task = lowQueue.pollFirst();
-            }
-            if (task == null) break;
-            process(server, level, task);
-            processed = true;
+
+        // 当前低优先级任务只在 tick 边界被抢占，任务对象保留全部模拟进度。
+        if (this.current != null && this.current.priority == Priority.LOW && !this.highQueue.isEmpty()) {
+            this.lowQueue.addFirst(this.current);
+            this.current = null;
         }
-        if (processed && highQueue.isEmpty() && lowQueue.isEmpty()) {
+
+        boolean attempted = false;
+        while (!attempted || System.nanoTime() < deadlineNanos) {
+            attempted = true;
+            if (this.current == null) {
+                this.current = pollNext();
+            }
+            if (this.current == null) {
+                break;
+            }
+            if (advanceCurrent(server, level, deadlineNanos)) {
+                completedAny = true;
+                this.current = null;
+            } else {
+                break;
+            }
+        }
+        if (completedAny && this.current == null && highQueue.isEmpty() && lowQueue.isEmpty()) {
             Consumer<MinecraftServer> handler = this.queueDrainedHandler;
             if (handler != null) {
                 handler.accept(server);
@@ -162,36 +183,90 @@ public final class LootProbabilitySimulationWorker {
         }
     }
 
-    private void process(MinecraftServer server, ServerLevel level, SimTask task) {
-        long startNanos = System.nanoTime();
+    private WorkItem pollNext() {
+        WorkItem item = this.highQueue.pollFirst();
+        return item != null ? item : this.lowQueue.pollFirst();
+    }
+
+    // 返回 true 表示当前任务已经完成或失败，可继续消费预算内的下一任务。
+    private boolean advanceCurrent(MinecraftServer server, ServerLevel level, long deadlineNanos) {
+        WorkItem item = this.current;
+        if (item.startedNanos == 0L) {
+            item.startedNanos = System.nanoTime();
+        }
+        long sliceStartNanos = System.nanoTime();
+        LootProbabilitySimulator.SimResult completedResult;
         try {
-            LootProbabilitySimulator.SimResult result =
-                    LootProbabilitySimulator.simulateOne(task.tableId, task.rawTable, level);
-            long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-            if (result.successful()) {
-                ResultHandler handler = this.resultHandler;
-                if (handler != null) {
-                    handler.handle(result, server);
-                }
-                LOGGER.info("已完成战利品表 {} 的概率模拟，耗时 {}ms，剩余队列 {}",
-                        task.tableId, elapsedMs, enqueued.size() - 1);
-            } else {
-                LOGGER.warn("战利品表 {} 的概率模拟未成功，不写入缓存，耗时 {}ms",
-                        task.tableId, elapsedMs);
+            if (item.job == null) {
+                item.job = LootProbabilitySimulator.createJob(item.tableId, item.rawTable, level);
             }
-            ProgressListener listener = this.progressListener;
-            if (listener != null) {
-                listener.onTableSimulated(result.tableId(), result.result());
+            if (!item.job.advance(deadlineNanos)) {
+                return false;
             }
+            completedResult = item.job.result();
         } catch (Throwable t) {
-            LOGGER.error("模拟战利品表 {} 时异常", task.tableId, t);
+            LOGGER.error("模拟战利品表 {} 时异常", item.tableId, t);
+            completedResult = LootProbabilitySimulator.SimResult.failure(item.tableId, item.rawTable);
         } finally {
-            enqueued.remove(task.tableId);
+            item.activeNanos += System.nanoTime() - sliceStartNanos;
+        }
+        complete(server, item, completedResult);
+        return true;
+    }
+
+    private void complete(MinecraftServer server, WorkItem item,
+                          LootProbabilitySimulator.SimResult result) {
+        long wallElapsedMs = item.startedNanos == 0L ? 0L
+                : (System.nanoTime() - item.startedNanos) / 1_000_000L;
+        long activeElapsedMs = item.activeNanos / 1_000_000L;
+        if (result.successful()) {
+            ResultHandler handler = this.resultHandler;
+            if (handler != null) {
+                handler.handle(result, server);
+            }
+            LOGGER.info("已完成战利品表 {} 的概率模拟，有效计算 {}ms，跨 tick 历时 {}ms，剩余队列 {}",
+                    item.tableId, activeElapsedMs, wallElapsedMs,
+                    Math.max(0, enqueued.size() - 1));
+        } else {
+            LOGGER.warn("战利品表 {} 的概率模拟未成功，不写入缓存，有效计算 {}ms，跨 tick 历时 {}ms",
+                    item.tableId, activeElapsedMs, wallElapsedMs);
+        }
+        ProgressListener listener = this.progressListener;
+        if (listener != null) {
+            listener.onTableSimulated(result.tableId(), result.result());
+        }
+        this.enqueued.remove(item.tableId);
+    }
+
+    private void promote(WorkItem item) {
+        if (item.priority == Priority.HIGH) {
+            return;
+        }
+        item.priority = Priority.HIGH;
+        if (item != this.current && this.lowQueue.remove(item)) {
+            this.highQueue.addFirst(item);
         }
     }
 
-    /** 队列任务 */
-    private record SimTask(ResourceLocation tableId, TableDefinition rawTable) {
+    /** 可排队并保留续跑任务状态的工作项。 */
+    private static final class WorkItem {
+        private final ResourceLocation tableId;
+        private final TableDefinition rawTable;
+        private Priority priority;
+        private LootProbabilitySimulationJob job;
+        private long startedNanos;
+        private long activeNanos;
+
+        private WorkItem(ResourceLocation tableId, TableDefinition rawTable, Priority priority) {
+            this.tableId = tableId;
+            this.rawTable = rawTable;
+            this.priority = priority;
+        }
+    }
+
+    private enum Priority {
+        HIGH,
+        LOW
     }
 
     /** 模拟结果回调（在主线程调用） */

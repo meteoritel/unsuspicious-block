@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTr
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
+import com.meteorite.unsuspiciousblock.loottable.simulation.LootSimulationScope;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.datafixers.util.Either;
 import net.minecraft.resources.ResourceKey;
@@ -64,6 +65,22 @@ public abstract class NestedLootTableMixin {
             return;
         }
         ResourceLocation childTableId = leftOpt.get().location();
+
+        // 模拟期只记录子表是否实际产出，避免通过产物签名反推导致重叠物品误判。
+        if (LootSimulationScope.isActive()) {
+            if (!LootSimulationScope.shouldObserveChildTable(childTableId)) {
+                original.call(lootTable, lootContext, consumer);
+                return;
+            }
+            Consumer<ItemStack> observedConsumer = stack -> {
+                if (!stack.isEmpty()) {
+                    LootSimulationScope.recordChildTableDrop(childTableId, stack);
+                }
+                consumer.accept(stack);
+            };
+            original.call(lootTable, lootContext, observedConsumer);
+            return;
+        }
 
         // 读取追踪上下文；为空（模拟器 / 非追踪场景）直接透传
         LootTrackingContext ctx = LootTrackingContextHolder.current();

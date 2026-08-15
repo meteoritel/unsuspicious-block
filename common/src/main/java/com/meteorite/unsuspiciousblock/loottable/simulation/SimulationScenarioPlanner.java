@@ -23,10 +23,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 从静态获取路径中提取会改变可用性的条件，并生成数量受控的自洽模拟场景。
+ * 从静态获取路径中提取会改变可用性的条件，并生成数量受控的代表模拟场景。
  */
 public final class SimulationScenarioPlanner {
     private static final int MAX_SCENARIOS = 8;
+    private static final int FISHING_MUD_DREDGING_SCENARIOS = 2;
+    private static final int MUD_DREDGING_SIMULATION_LEVEL = 3;
     private static final ResourceLocation FISHING = ResourceLocation.withDefaultNamespace("gameplay/fishing");
     private static final ResourceLocation LOCATION_CHECK = ResourceLocation.withDefaultNamespace("location_check");
     private static final ResourceLocation MUD_DREDGING =
@@ -71,8 +73,11 @@ public final class SimulationScenarioPlanner {
         }
         List<SimulationScenario> result = new ArrayList<>();
         Set<String> emittedKeys = new LinkedHashSet<>();
+        int baseScenarioLimit = FISHING.equals(tableId)
+                ? MAX_SCENARIOS - FISHING_MUD_DREDGING_SCENARIOS
+                : MAX_SCENARIOS;
         for (Map<String, Boolean> candidate : candidates.values()) {
-            if (result.size() >= MAX_SCENARIOS) {
+            if (result.size() >= baseScenarioLimit) {
                 break;
             }
             Map<String, Boolean> normalized = new LinkedHashMap<>();
@@ -85,63 +90,69 @@ public final class SimulationScenarioPlanner {
                     applicable.add(item.signature().toStoredKey());
                 }
             }
+            Set<ResourceLocation> applicableChildren = applicableChildTables(
+                    table, normalized, conditionByFingerprint);
             List<LootConditionInfo> assumptions = describe(normalized, conditionByFingerprint);
             String key = normalized.isEmpty() ? "default" : canonical(normalized);
             if (!emittedKeys.add(key)) {
                 continue;
             }
             result.add(new SimulationScenario(key,
-                    baseProfile.withConditionOutcomes(normalized, Map.of()), assumptions, applicable));
+                    baseProfile.withConditionOutcomes(normalized, Map.of()), assumptions,
+                    applicable, applicableChildren));
         }
         if (MUD_DREDGING_TABLE.equals(tableId)) {
-            result = expandMudDredgingTableScenarios(result, level);
+            result = applyMudDredgingTool(result, level);
         } else if (FISHING.equals(tableId)) {
-            appendMudDredgingScenarios(result, baseProfile, level);
+            appendMudDredgingScenarios(result, table, baseProfile, level);
         }
         return List.copyOf(result);
     }
 
-    // 父表自身的群系分支各按附魔 I/II/III 独立模拟
-    private static List<SimulationScenario> expandMudDredgingTableScenarios(
+    // 泥地打捞统一使用 III 级工具，避免附魔等级与环境条件形成额外笛卡尔积。
+    private static List<SimulationScenario> applyMudDredgingTool(
             List<SimulationScenario> baseScenarios, ServerLevel level) {
         List<SimulationScenario> result = new ArrayList<>();
+        ItemStack tool = mudDredgingTool(level, MUD_DREDGING_SIMULATION_LEVEL);
         for (SimulationScenario base : baseScenarios) {
-            for (int enchantmentLevel = 1; enchantmentLevel <= 3; enchantmentLevel++) {
-                ItemStack tool = mudDredgingTool(level, enchantmentLevel);
-                List<LootConditionInfo> assumptions = new ArrayList<>(base.assumptions());
-                assumptions.addFirst(new LootConditionInfo(MUD_DREDGING, Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.condition.mud_dredging_level",
-                        enchantmentLevel), null));
-                result.add(new SimulationScenario(base.key() + ";level=" + enchantmentLevel,
-                        base.profile().withTool(tool), assumptions, base.applicableSignatures()));
-            }
+            List<LootConditionInfo> assumptions = new ArrayList<>(base.assumptions());
+            assumptions.addFirst(mudDredgingLevelAssumption());
+            result.add(new SimulationScenario(base.key() + ";level=" + MUD_DREDGING_SIMULATION_LEVEL,
+                    base.profile().withTool(tool), assumptions, base.applicableSignatures(),
+                    base.applicableChildTables()));
         }
         return result;
     }
 
-    // 原始 fishing JSON 看不到平台注入池，显式补充三档附魔乘两个群系分支
-    private static void appendMudDredgingScenarios(List<SimulationScenario> result,
+    // 原始 fishing JSON 看不到平台注入池，使用 III 级附魔补充普通/加成群系两个代表场景。
+    private static void appendMudDredgingScenarios(List<SimulationScenario> result, TableDefinition table,
                                                    SimulationProfile baseProfile,
                                                    ServerLevel level) {
-        for (int enchantmentLevel = 1; enchantmentLevel <= 3; enchantmentLevel++) {
-            ItemStack tool = mudDredgingTool(level, enchantmentLevel);
-            for (boolean swamp : List.of(false, true)) {
-                Map<ResourceLocation, Boolean> defaults = Map.of(LOCATION_CHECK, swamp);
-                SimulationProfile profile = baseProfile.withTool(tool).withConditionOutcomes(
-                        baseProfile.conditionOutcomes(), defaults);
-                List<LootConditionInfo> assumptions = List.of(
-                        new LootConditionInfo(MUD_DREDGING, Component.translatable(
-                                "screen.unsuspiciousblock.archaeology_journal.condition.mud_dredging_level",
-                                enchantmentLevel), null),
-                        new LootConditionInfo(LOCATION_CHECK, Component.translatable(
-                                "screen.unsuspiciousblock.archaeology_journal.condition."
-                                        + (swamp ? "mud_dredging_bonus_biome" : "mud_dredging_normal_biome")),
-                                null));
-                result.add(new SimulationScenario(
-                        "mud_dredging:level=" + enchantmentLevel + ";swamp=" + (swamp ? 1 : 0),
-                        profile, assumptions, Set.of()));
-            }
+        ItemStack tool = mudDredgingTool(level, MUD_DREDGING_SIMULATION_LEVEL);
+        Set<String> applicable = table.items().stream()
+                .map(item -> item.signature().toStoredKey())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        for (boolean swamp : List.of(false, true)) {
+            Map<ResourceLocation, Boolean> defaults = Map.of(LOCATION_CHECK, swamp);
+            SimulationProfile profile = baseProfile.withTool(tool).withConditionOutcomes(
+                    baseProfile.conditionOutcomes(), defaults);
+            List<LootConditionInfo> assumptions = List.of(
+                    mudDredgingLevelAssumption(),
+                    new LootConditionInfo(LOCATION_CHECK, Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.condition."
+                                    + (swamp ? "mud_dredging_bonus_biome" : "mud_dredging_normal_biome")),
+                            null));
+            result.add(new SimulationScenario(
+                    "mud_dredging:level=" + MUD_DREDGING_SIMULATION_LEVEL
+                            + ";swamp=" + (swamp ? 1 : 0),
+                    profile, assumptions, applicable, Set.copyOf(table.childTables())));
         }
+    }
+
+    private static LootConditionInfo mudDredgingLevelAssumption() {
+        return new LootConditionInfo(MUD_DREDGING, Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.condition.mud_dredging_level",
+                MUD_DREDGING_SIMULATION_LEVEL), null);
     }
 
     private static ItemStack mudDredgingTool(ServerLevel level, int enchantmentLevel) {
@@ -167,6 +178,38 @@ public final class SimulationScenarioPlanner {
             }
         }
         return false;
+    }
+
+    // 仅在解析路径能够证明子表在当前场景不可达时排除；没有静态产物信息时保守保留。
+    private static Set<ResourceLocation> applicableChildTables(
+            TableDefinition table, Map<String, Boolean> scenario,
+            Map<String, LootConditionInfo> conditionByFingerprint) {
+        Set<ResourceLocation> result = new LinkedHashSet<>();
+        for (ResourceLocation childTable : table.childTables()) {
+            boolean hasKnownPath = false;
+            boolean applicable = false;
+            for (ItemDefinition item : table.items()) {
+                for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                    if (!childTable.equals(path.sourceChildTable())) {
+                        continue;
+                    }
+                    hasKnownPath = true;
+                    for (Map<String, Boolean> requirement : requirementsFor(
+                            path.allConditions(), conditionByFingerprint)) {
+                        if (scenario.entrySet().containsAll(requirement.entrySet())) {
+                            applicable = true;
+                            break;
+                        }
+                    }
+                    if (applicable) break;
+                }
+                if (applicable) break;
+            }
+            if (!hasKnownPath || applicable) {
+                result.add(childTable);
+            }
+        }
+        return result;
     }
 
     private static List<Map<String, Boolean>> requirementsFor(

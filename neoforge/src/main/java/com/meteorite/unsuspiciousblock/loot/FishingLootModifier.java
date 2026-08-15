@@ -68,7 +68,13 @@ public class FishingLootModifier extends LootModifier {
                 .getLootTable(MudDredgingCondition.MUD_DREDGING);
 
         if (LootSimulationScope.isActive()) {
-            lootTable.getRandomItemsRaw(mudParams, generatedLoot::add);
+            lootTable.getRandomItemsRaw(mudParams, stack -> {
+                if (!stack.isEmpty()) {
+                    LootSimulationScope.recordChildTableDrop(
+                            MudDredgingCondition.MUD_DREDGING.location(), stack);
+                }
+                generatedLoot.add(stack);
+            });
             return generatedLoot;
         }
 
