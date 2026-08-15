@@ -7,10 +7,13 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenarioPlanner;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -59,7 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ArchaeologyJournalServerCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v2";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v6";
 
     /** 已填充概率的目录（随模拟完成渐进增长） */
     private static final Map<ResourceLocation, TableDefinition> catalog = new ConcurrentHashMap<>();
@@ -108,7 +111,7 @@ public final class ArchaeologyJournalServerCatalog {
                 String hash = tableHashes.getOrDefault(tableId, "");
 
                 if (!probabilityData.needsResimulation(tableId, hash) && probabilityData.hasData(tableId)) {
-                    catalog.put(tableId, restoreFromCache(entry.getValue(), tableId, probabilityData));
+                    catalog.put(tableId, restoreFromCache(entry.getValue(), tableId, probabilityData, level));
                 } else {
                     uncached.add(tableId);
                 }
@@ -167,14 +170,23 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 实际提交逻辑（不广播，供同步回退批量调用）
     private static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, LootProbabilityData probabilityData) {
+        if (!result.successful()) {
+            LOGGER.warn("忽略战利品表 {} 的失败模拟结果，保留待重试状态", result.tableId());
+            return;
+        }
         ResourceLocation tableId = result.tableId();
         TableDefinition table = result.result();
         String hash = tableHashes.getOrDefault(tableId, "");
 
         // 写入 SavedData
-        Map<String, String> probabilities = new LinkedHashMap<>();
+        Map<String, LootProbabilityData.CachedItemProbability> probabilities = new LinkedHashMap<>();
         for (ItemDefinition item : table.items()) {
-            probabilities.put(item.signature().toStoredKey(), item.probability());
+            Map<String, String> scenarioProbabilities = new LinkedHashMap<>();
+            for (ScenarioProbability scenario : item.scenarioProbabilities()) {
+                scenarioProbabilities.put(scenario.scenarioKey(), scenario.probability());
+            }
+            probabilities.put(item.signature().toStoredKey(),
+                    new LootProbabilityData.CachedItemProbability(item.probability(), scenarioProbabilities));
         }
         probabilityData.putSimulationResult(tableId, hash, probabilities);
 
@@ -224,6 +236,11 @@ public final class ArchaeologyJournalServerCatalog {
                     updateDigest(digest, item.probability());
                     updateDigest(digest, item.signature().toStoredKey());
                     updateDigest(digest, Boolean.toString(item.injected()));
+                    for (ScenarioProbability scenario : item.scenarioProbabilities()) {
+                        updateDigest(digest, scenario.scenarioKey());
+                        updateDigest(digest, scenario.probability());
+                        updateConditionListDigest(digest, scenario.conditions());
+                    }
                     for (LootAcquisitionPath path : item.acquisitionPaths()) {
                         updateDigest(digest, path.sourceChildTable() != null
                                 ? path.sourceChildTable().toString() : "");
@@ -265,6 +282,12 @@ public final class ArchaeologyJournalServerCatalog {
             updateDigest(digest, condition.description().toString());
             updateDigest(digest, condition.probability() != null
                     ? Float.toString(condition.probability()) : "");
+            condition.metadata().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        updateDigest(digest, entry.getKey());
+                        updateDigest(digest, entry.getValue());
+                    });
             updateConditionListDigest(digest, condition.children());
         }
     }
@@ -321,17 +344,25 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 从 SavedData 恢复概率到原始目录定义中
     private static TableDefinition restoreFromCache(
-            TableDefinition rawTable, ResourceLocation tableId, LootProbabilityData probabilityData) {
-        Map<String, String> cachedProbabilities = probabilityData.getProbabilities(tableId);
+            TableDefinition rawTable, ResourceLocation tableId, LootProbabilityData probabilityData,
+            ServerLevel level) {
+        Map<String, LootProbabilityData.CachedItemProbability> cachedProbabilities =
+                probabilityData.getProbabilities(tableId);
         List<ItemDefinition> restoredItems = new ArrayList<>(cachedProbabilities.size());
+        Map<String, SimulationScenario> scenarios = new LinkedHashMap<>();
+        for (SimulationScenario scenario : SimulationScenarioPlanner.plan(tableId, rawTable, level)) {
+            scenarios.put(scenario.key(), scenario);
+        }
 
         // 1. 恢复 JSON 解析出的原始条目概率
         for (ItemDefinition item : rawTable.items()) {
-            String cachedProb = cachedProbabilities.get(item.signature().toStoredKey());
-            String probability = cachedProb != null ? cachedProb : item.probability();
+            LootProbabilityData.CachedItemProbability cached =
+                    cachedProbabilities.get(item.signature().toStoredKey());
+            String probability = cached != null ? cached.probability() : item.probability();
+            List<ScenarioProbability> scenarioProbabilities = restoreScenarioProbabilities(cached, scenarios);
             restoredItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature(), item.acquisitionPaths(), item.injected()));
+                    probability, item.signature(), item.acquisitionPaths(), item.injected(), scenarioProbabilities));
         }
 
         // 2. 重建缓存中存在但 JSON 里没有的"注入条目"（GLM / LootTableEvents.MODIFY 模拟期发现）
@@ -339,19 +370,36 @@ public final class ArchaeologyJournalServerCatalog {
         for (ItemDefinition item : rawTable.items()) {
             rawKeys.add(item.signature().toStoredKey());
         }
-        for (Map.Entry<String, String> cached : cachedProbabilities.entrySet()) {
+        for (Map.Entry<String, LootProbabilityData.CachedItemProbability> cached : cachedProbabilities.entrySet()) {
             if (rawKeys.contains(cached.getKey())) {
                 continue;
             }
             LootResultSignature signature = LootResultSignature.fromStoredKey(cached.getKey());
             if (signature != null) {
-                restoredItems.add(LootTableCatalog.buildDiscoveredDefinition(signature, cached.getValue(), true));
+                restoredItems.add(LootTableCatalog.buildDiscoveredDefinition(signature,
+                        cached.getValue().probability(), true,
+                        restoreScenarioProbabilities(cached.getValue(), scenarios)));
             }
         }
 
         return new TableDefinition(
                 rawTable.id(), rawTable.displayName(), rawTable.type(), restoredItems,
                 LootProbabilitySimulator.getSimulationCount(), rawTable.childTables());
+    }
+
+    private static List<ScenarioProbability> restoreScenarioProbabilities(
+            LootProbabilityData.CachedItemProbability cached,
+            Map<String, SimulationScenario> scenarios) {
+        if (cached == null || cached.scenarioProbabilities().isEmpty()) {
+            return List.of();
+        }
+        List<ScenarioProbability> result = new ArrayList<>();
+        for (Map.Entry<String, String> entry : cached.scenarioProbabilities().entrySet()) {
+            SimulationScenario scenario = scenarios.get(entry.getKey());
+            result.add(new ScenarioProbability(entry.getKey(), entry.getValue(),
+                    scenario != null ? scenario.assumptions() : List.of()));
+        }
+        return List.copyOf(result);
     }
 
     // 对每个表的 JSON 资源内容计算 SHA-256 哈希

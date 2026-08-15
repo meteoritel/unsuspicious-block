@@ -121,7 +121,7 @@ common/src/main/resources/
        └─ CatFavorManager.init(...)           猫族关系系统
 ```
 
-**重要时序**：`UnsuspiciousBlockCommon.init()` 必须在平台完成战利品条件类型注册之后调用。Fabric 在 `onInitialize` 开头先 `Registry.register` 泥地打捞条件类型再调 init；NeoForge 在构造器中先 `ModLootConditions.setMudDredgingType(MUD_DREDGING_TYPE)` 再调 init。
+**重要时序**：`UnsuspiciousBlockCommon.init()` 必须在平台完成战利品条件类型注册之后调用。Fabric 在 `onInitialize` 开头先注册泥地打捞资格与工具附魔概率两种条件再调 init；NeoForge 也先通过 `ModLootConditions` 回写两个 `DeferredHolder`，再进入 common 初始化。
 
 平台入口在 `init()` 前后还要完成：
 - **注册**：遍历各 `ModXxx.forEach(registrar)` 清单（详见 [registration.md](registration.md)）。

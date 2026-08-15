@@ -35,6 +35,10 @@ loottable/
 ├── simulation/   概率模拟
 │   ├── LootProbabilitySimulator    模拟引擎（单表 10000 次抽取）
 │   ├── LootProbabilitySimulationWorker  主线程 tick 驱动器
+│   ├── SimulationProfile             模拟工具/方块/实体参数与条件资格场景
+│   ├── SimulationScenarioPlanner     从获取路径规划互斥场景
+│   ├── LootConditionFingerprint      解析期与运行时条件指纹
+│   ├── LootSimulationScope           主线程模拟期间的 profile 作用域
 │   ├── LootContextParamFiller      模拟用 LootParams 构建（宽松回退）
 │   ├── SimulationFakePlayer        模拟用假玩家
 │   ├── SimulationFishingHook       模拟用假钓鱼浮标（钓鱼表 THIS_ENTITY）
@@ -44,7 +48,8 @@ loottable/
 │   └── ArchaeologyLootInjectors    全局注册器（单例）
 └── condition/    自定义战利品条件
     ├── ModLootConditions           条件类型注册
-    └── MudDredgingCondition         泥底打捞条件
+    ├── MudDredgingCondition         泥底打捞附魔资格条件
+    └── ToolEnchantmentChanceCondition 工具附魔等级概率条件
 ```
 
 ## 3. 目录数据结构
@@ -66,7 +71,8 @@ ItemDefinition{
   probability: String,           概率字符串（"?"/"<0.01%"/"12.34%"）
   signature: LootResultSignature,物品签名
   acquisitionPaths: List<LootAcquisitionPath>,  获取路径
-  injected: boolean              是否模拟期发现的注入条目
+  injected: boolean,             是否模拟期发现的注入条目
+  scenarioProbabilities: List    各自洽条件场景下的至少出现一次概率
 }
 
 LootAcquisitionPath{
@@ -174,22 +180,34 @@ List.of(
 
 ```
 simulateOne(tableId, rawTable, level)
-  ├─ 取 LootTable（按声明的 paramSet 构建 LootParams，LootContextParamFiller 宽松回退）
+  ├─ 从 ReloadableServerRegistries 取得数据包重载后的运行时 LootTable
+  │    保留 Fabric LootTableEvents.MODIFY 等加载期注入；不从原始 JSON 重建表
+  ├─ SimulationScenarioPlanner 从所有获取路径生成至多 8 个自洽条件场景
+  ├─ 每个场景按声明的 paramSet 构建独立 LootParams
+  │    SimulationProfile 提供 TOOL、BLOCK_STATE、DAMAGE_SOURCE、ORIGIN 等值
   │    钓鱼类表（path 含 "fishing"）的 THIS_ENTITY 用 SimulationFishingHook 填充，
   │    使 entity_properties + fishing_hook + in_open_water 条件在模拟中可判定。
   │    注意：fishing paramSet 中 THIS_ENTITY 是 optional（required 仅 ORIGIN+TOOL），
   │    Filler 需在 required 遍历之外按 allowed 集合补填，否则条件恒 false
-  ├─ 初始化候选签名（来自 JSON 解析）+ appearanceCounts
-  └─ 循环 10000 次：
+  ├─ 初始化该场景适用的候选签名 + appearanceCounts
+  └─ 每个场景循环 10000 次：
        ├─ lootTable.getRandomItems(lootParams)
        ├─ ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, random)
        │     Fabric 显式调用注入器；NeoForge 空实现（GLM 已在 getRandomItems 内部完成）
-       └─ 对每个 drop：
-            ├─ LootResultMatcher.resolve(stack, candidates) 匹配已知签名 -> 计数
-            └─ 未匹配 -> deriveSignature 派生签名（附魔折叠为近似）
-                 若已是已知签名 -> 保守跳过（歧义掉落）
-                 否则登记为注入条目（injected=true）并计数
+       ├─ 对每个 drop：
+       │    ├─ LootResultMatcher.resolve(stack, candidates) 匹配已知签名
+       │    └─ 未匹配 -> deriveSignature 派生签名（附魔折叠为近似）
+       │         若已是已知签名 -> 保守跳过（歧义掉落）
+       │         否则登记为注入条目（injected=true）
+       └─ 对本轮出现的签名去重后计数
 ```
+
+概率口径是“单次战利品表抽取中，该签名至少出现一次的概率”。同一轮返回多个相同签名的
+`ItemStack` 时只计一次，不统计物品数量或平均产量。
+
+模拟必须调用普通 `LootTable.getRandomItems`：NeoForge 会在原始抽取结束后由该入口应用
+Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌套表由原版 resolver
+从同一个运行时注册表解析，且嵌套抽取使用 `getRandomItemsRaw`，因此 GLM 只在根表应用一次。
 
 概率计算规则：
 
@@ -199,20 +217,54 @@ simulateOne(tableId, rawTable, level)
 | 0 | 无条件 | `"<0.01%"` |
 | >0 | - | `formatPercent(appearances / 10000)` |
 
-### 7.2 主线程 tick 驱动
+### 7.2 条件场景策略
+
+运行时表保留全部条件，不能再通过读取原始 JSON、删除条件并重新解码来生成模拟副本。那种做法会
+绕过 Fabric 加载期修改，也无法可靠表达 `all_of`、`any_of`、`inverted` 等组合条件的语义。
+
+`SimulationScenarioPlanner` 从每个 `LootAcquisitionPath` 提取八类资格条件，为每条可达路径建立最小
+布尔赋值场景。解析阶段把 `simulation_fingerprint` 写入每个条件的 metadata；运行时 Mixin 用同一
+指纹查询 `SimulationProfile` 中的精确 true/false 结果，因此同类型的两个 `location_check` 不会混淆。
+
+| 条件 | 当前处理方式 |
+|---|---|
+| `match_tool`、`block_state_property` | profile 填充 `TOOL`、`BLOCK_STATE`；条件门槛按匹配场景处理 |
+| `damage_source_properties` | profile 填充 `DamageSource`；复杂伤害谓词按匹配场景处理 |
+| `entity_properties` | 填充假玩家；钓鱼表的 THIS_ENTITY 使用 `SimulationFishingHook` |
+| `location_check` | 场景按具体条件指纹分别取 true/false，不查找或生成真实区块 |
+| `weather_check`、`time_check` | 场景按具体条件取值，不修改服务器天气或时间 |
+| `entity_scores` | 场景按具体条件取值，不创建 objective、不写真实 scoreboard |
+
+`LootSimulationScope` 通过 `ThreadLocal` 仅在当前主线程的 10000 次抽取期间暴露 profile，并由
+`try-with-resources` 确保异常时清理。窄 Mixin 只把八类叶条件的 `test` 转交作用域；
+`all_of` / `any_of` / `inverted` 始终由原版逻辑根据叶子结果求值，随机条件、权重和 rolls 不覆盖。
+
+UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群系/维度/结构、天气、时间、
+实体目标、伤害来源与计分范围提供具体描述。存在上述场景条件时，概率文字明确标为
+“条件满足时至少出现一次”，不是这些条件在自然游戏过程中的发生概率。
+
+`ItemDefinition.scenarioProbabilities` 保存每个自洽场景的概率与条件树。互斥场景不合并；网格仅保留
+摘要，多个场景值不同时显示“条件概率”，tooltip 逐场景显示“单次抽取至少出现一次”的概率。
+同一场景内多条路径产出同一签名时仍由整表模拟自然合并。
+
+原版 fishing JSON 看不到 Fabric 加载期注入池或 NeoForge GLM。规划器因此额外建立
+`普通/加成群系 × 泥地打捞 I/II/III` 六个补充场景，只收集运行时发现的注入物；泥地打捞父表
+自身也按这六个场景模拟。
+
+### 7.3 主线程 tick 驱动
 
 [`LootProbabilitySimulationWorker`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/LootProbabilitySimulationWorker.java) 是模拟的调度器。**关键约束**：`LootTable.getRandomItems` 与 `LootContextParamFiller` 会触碰 `ServerLevel` 关联的 `LegacyRandomSource`，后者不是线程安全的，后台线程与主线程 tick 并发会触发 `ThreadingDetector` 报错。因此**不用后台线程**，改为：
 
 - 在服务端每 tick 末尾（`END_SERVER_TICK`）由 `tick(server)` 消费队列。
-- 每 tick 最多处理 `MAX_TABLES_PER_TICK = 1` 个表（单表 10000 次约 1-3ms，不显著影响 tick 预算）。
+- 每 tick 最多处理 `MAX_TABLES_PER_TICK = 1` 个表；带场景的表会执行多组 10000 次抽取，因此以单表作为分片边界。
 - **双优先级队列**：`highQueue`（玩家解锁触发，插队）先于 `lowQueue`（启动批量填充）。
 - `enqueued` 集合去重，避免同一表重复入队。
 - 数据包重载期间 `pauseForReload()` / `resumeAfterReload()` 暂停消费。
 - 队列排空后触发 `queueDrainedHandler`（批量广播目录哈希）。
 
-### 7.3 模拟结果缓存
+### 7.4 模拟结果缓存
 
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每张表存储其 JSON 内容哈希，重启时哈希未变则直接恢复缓存，避免重新模拟；数据包修改战利品表导致哈希变化时才重新模拟。详见 [考古笔记系统](journal.md) 的目录构建部分。
+模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v6`。模拟异常或无法取得有效表时不写入缓存。详见 [考古笔记系统](journal.md) 的目录构建部分。
 
 ## 8. 战利品注入
 
@@ -231,10 +283,12 @@ simulateOne(tableId, rawTable, level)
 
 `condition/` 包定义模组自定义的战利品条件：
 
-- [`ModLootConditions`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ModLootConditions.java) 注册 `mud_dredging` 条件类型，两端通过不同方式注册：
+- [`ModLootConditions`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ModLootConditions.java) 注册 `mud_dredging` 与 `random_chance_with_tool_enchantment` 两种条件：
   - Fabric：`Registry.register` 直接注册（`onInitialize` 开头）。
   - NeoForge：`DeferredRegister` 注册（避免 registry frozen）。
-- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 实现泥底打捞附魔的钓鱼条件判定（检查附魔、群系与概率）。
+- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 只检查工具是否具有泥地打捞附魔；旧 `swamp` 字段仅用于数据兼容。
+- [`ToolEnchantmentChanceCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentChanceCondition.java) 从 `TOOL` 读取指定附魔等级并用 `LevelBasedValue` 计算概率。
+- Fabric 只向原版 fishing 表追加一个带资格条件的父表 pool；NeoForge GLM 也只执行同一父表。父表用 biome tag 和两个互斥 pool 区分普通/加成群系。
 
 条件类型的注册时序约束见 [架构总览](architecture-overview.md) 的初始化流程--必须在 `UnsuspiciousBlockCommon.init()` 之前完成。
 

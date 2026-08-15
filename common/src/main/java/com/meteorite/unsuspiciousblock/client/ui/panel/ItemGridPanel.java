@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
@@ -339,7 +340,8 @@ public final class ItemGridPanel implements PagePanel {
                 NAME_COLOR, hovered, scrollTicks, true);
 
         // 概率（居中，颜色根据不确定性等级区分）
-        Component probComp = formatProbability(item.probability(), item.uncertaintyLevel());
+        Component probComp = formatProbability(item.probability(), item.uncertaintyLevel(),
+                item.scenarioProbabilities());
         int probW = font.width(probComp);
         int probColor = switch (item.uncertaintyLevel()) {
             case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
@@ -375,7 +377,12 @@ public final class ItemGridPanel implements PagePanel {
 
     // 格式化概率为显示用 Component
     private static Component formatProbability(@Nullable String probability,
-                                               LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
+                                               LootConditionHandler.UncertaintyLevel uncertaintyLevel,
+                                               List<ScenarioProbability> scenarioProbabilities) {
+        if (hasDistinctScenarioProbabilities(scenarioProbabilities)) {
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional");
+        }
         if (probability == null || probability.equals("?")) {
             if (uncertaintyLevel != LootConditionHandler.UncertaintyLevel.NONE) {
                 return Component.translatable(
@@ -391,6 +398,10 @@ public final class ItemGridPanel implements PagePanel {
                     "screen.unsuspiciousblock.archaeology_journal.probability_conditional_short", probability);
             default -> Component.literal(probability);
         };
+    }
+
+    private static boolean hasDistinctScenarioProbabilities(List<ScenarioProbability> probabilities) {
+        return probabilities.stream().map(ScenarioProbability::probability).distinct().limit(2).count() > 1;
     }
 
     @Nullable
@@ -429,11 +440,12 @@ public final class ItemGridPanel implements PagePanel {
         if (!hoveredItem.unlocked()) {
             return new TooltipData(ItemStack.EMPTY, null, -1, hoveredItem.probability(),
                     hoveredItem.acquisitionPaths(), hoveredItem.injected(),
-                    hoveredItem.uncertaintyLevel(), false);
+                    hoveredItem.uncertaintyLevel(), false, hoveredItem.scenarioProbabilities());
         }
         return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
                 hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
-                hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true);
+                hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true,
+                hoveredItem.scenarioProbabilities());
     }
 
     // 处理 tag 分组入口与返回入口点击；普通物品格不消费点击。
@@ -590,11 +602,12 @@ public final class ItemGridPanel implements PagePanel {
                                List<LootAcquisitionPath> acquisitionPaths,
                                boolean injected,
                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
-                               boolean discovered) {
+                               boolean discovered,
+                               List<ScenarioProbability> scenarioProbabilities) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
             this(stack, hint, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true);
+                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of());
         }
 
     }
@@ -605,7 +618,8 @@ public final class ItemGridPanel implements PagePanel {
                            LootResultSignature signature, boolean highlighted,
                            List<LootAcquisitionPath> acquisitionPaths,
                            boolean injected,
-                           LootConditionHandler.UncertaintyLevel uncertaintyLevel) {
+                           LootConditionHandler.UncertaintyLevel uncertaintyLevel,
+                           List<ScenarioProbability> scenarioProbabilities) {
 
         @Nullable
         public ResourceLocation primarySourceChildTable() {

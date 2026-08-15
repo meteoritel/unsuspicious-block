@@ -81,6 +81,12 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "mud_dredging"),
                 new LootItemConditionType(ModLootConditions.MUD_DREDGING_CODEC));
         ModLootConditions.setMudDredgingType(() -> mudDredgingType);
+        LootItemConditionType toolEnchantmentChanceType = Registry.register(
+                BuiltInRegistries.LOOT_CONDITION_TYPE,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID,
+                        "random_chance_with_tool_enchantment"),
+                new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CHANCE_CODEC));
+        ModLootConditions.setToolEnchantmentChanceType(() -> toolEnchantmentChanceType);
 
         UnsuspiciousBlockCommon.init();
 

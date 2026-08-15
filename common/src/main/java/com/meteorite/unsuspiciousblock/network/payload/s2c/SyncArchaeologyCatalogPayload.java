@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAc
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -70,6 +71,12 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 }
                 // 外部注入标记
                 buf.writeBoolean(item.injected());
+                buf.writeVarInt(item.scenarioProbabilities().size());
+                for (ScenarioProbability scenario : item.scenarioProbabilities()) {
+                    buf.writeUtf(scenario.scenarioKey());
+                    buf.writeUtf(scenario.probability());
+                    encodeConditionList(buf, scenario.conditions());
+                }
             }
             buf.writeVarInt(table.simulationCount());
         }
@@ -114,8 +121,14 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                             sourceChildTable, sourceItemTag, entryConditions, inheritedConditions));
                 }
                 boolean injected = buf.readBoolean();
+                int scenarioCount = buf.readVarInt();
+                List<ScenarioProbability> scenarioProbabilities = new ArrayList<>(scenarioCount);
+                for (int k = 0; k < scenarioCount; k++) {
+                    scenarioProbabilities.add(new ScenarioProbability(
+                            buf.readUtf(), buf.readUtf(), decodeConditionList(buf)));
+                }
                 items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability,
-                        signature, acquisitionPaths, injected));
+                        signature, acquisitionPaths, injected, scenarioProbabilities));
             }
             int simulationCount = buf.readVarInt();
             catalog.put(tableId, new TableDefinition(tableId, displayName, type, items,
@@ -170,6 +183,11 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
         for (LootConditionInfo child : info.children()) {
             encodeConditionInfo(buf, child);
         }
+        buf.writeVarInt(info.metadata().size());
+        info.metadata().forEach((key, value) -> {
+            buf.writeUtf(key);
+            buf.writeUtf(value);
+        });
     }
 
     private static void encodeConditionList(RegistryFriendlyByteBuf buf, List<LootConditionInfo> conditions) {
@@ -198,6 +216,11 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
         for (int i = 0; i < childCount; i++) {
             children.add(decodeConditionInfo(buf));
         }
-        return new LootConditionInfo(conditionType, desc, prob, children);
+        int metadataCount = buf.readVarInt();
+        Map<String, String> metadata = new LinkedHashMap<>();
+        for (int i = 0; i < metadataCount; i++) {
+            metadata.put(buf.readUtf(), buf.readUtf());
+        }
+        return new LootConditionInfo(conditionType, desc, prob, children, metadata);
     }
 }

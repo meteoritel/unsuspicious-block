@@ -2,12 +2,15 @@ package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
@@ -19,13 +22,15 @@ import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 战利品概率模拟引擎 —— 对目录中的每个战利品表执行模拟抽取，
- * 统计各条目的出现概率，替换 ItemDefinition 中占位符 "?" 为格式化后的概率字符串。
+ * 统计各条目在单次抽取中至少出现一次的概率，替换 ItemDefinition 中占位符 "?" 为格式化后的概率字符串。
  * 注意：LootTable 内部的 LegacyRandomSource 不是线程安全的，因此模拟采用顺序执行。
  */
 public final class LootProbabilitySimulator {
@@ -57,120 +62,135 @@ public final class LootProbabilitySimulator {
     public static SimResult simulateOne(
             ResourceLocation tableId, TableDefinition rawTable, ServerLevel level) {
         try {
-            // 优先用"模拟专用表"：原始 JSON 剥离环境依赖条件（location_check/weather_check 等）后重建，
-            // 使这些条件在模拟中恒通过，概率展示为理论概率；构建失败回退注册表原始表
-            LootTable lootTable = SimulationTableFactory.buildForSimulation(
-                    tableId, level.getServer().getResourceManager(), level.getServer().registryAccess());
-            if (lootTable == null) {
-                lootTable = level.getServer().reloadableRegistries()
-                        .getLootTable(net.minecraft.resources.ResourceKey.create(
-                                net.minecraft.core.registries.Registries.LOOT_TABLE, tableId));
-            }
-            // 空表或内置空表直接返回原始
+            // 使用数据包重载后注册表中的最终表，保留 Fabric LootTableEvents.MODIFY 等加载期注入。
+            // 普通 getRandomItems 会在 NeoForge 端继续应用 GLM；不能改用 getRandomItemsRaw。
+            LootTable lootTable = level.getServer().reloadableRegistries()
+                    .getLootTable(ResourceKey.create(Registries.LOOT_TABLE, tableId));
+            // 注册表未提供有效表时保留占位结果，但标记为失败，禁止写入模拟缓存
             if (lootTable == LootTable.EMPTY) {
-                return new SimResult(tableId, rawTable);
+                LOGGER.warn("战利品表 {} 为空，跳过概率缓存", tableId);
+                return SimResult.failure(tableId, rawTable);
             }
-            // 按战利品表声明的 paramSet 动态构建 LootParams；
-            // 若 required 参数无法全部满足，LootContextParamFiller 内部回退到宽松 paramSet
-            LootContextParamSet paramSet = lootTable.getParamSet();
-            LootParams lootParams = LootContextParamFiller.createForSimulation(level, paramSet, tableId);
-            return simulateTable(tableId, rawTable, lootTable, lootParams);
+            List<SimulationScenario> scenarios = SimulationScenarioPlanner.plan(tableId, rawTable, level);
+            return simulateTable(tableId, rawTable, lootTable, level, scenarios);
         } catch (Exception e) {
             LOGGER.warn("模拟战利品表 {} 时出错，保留原始占位符", tableId, e);
-            return new SimResult(tableId, rawTable);
+            return SimResult.failure(tableId, rawTable);
         }
     }
 
     private static SimResult simulateTable(
             ResourceLocation tableId, TableDefinition rawTable,
-            LootTable lootTable, LootParams lootParams) {
+            LootTable lootTable, ServerLevel level, List<SimulationScenario> scenarios) {
         List<ItemDefinition> rawItems = rawTable.items();
-
-        // 候选签名（可变）：初始来自 JSON 解析，模拟期可追加 GLM/事件注入的新签名
-        List<LootResultSignature> candidates = new ArrayList<>(rawItems.size());
-        for (ItemDefinition item : rawItems) {
-            candidates.add(item.signature());
-        }
-
-        // 统计每个签名的出现次数（含模拟期发现的注入签名）
-        Map<String, Integer> appearanceCounts = new LinkedHashMap<>();
-        for (ItemDefinition item : rawItems) {
-            appearanceCounts.put(item.signature().toStoredKey(), 0);
-        }
-
-        // 模拟期发现的注入签名（JSON 中不存在，来自 GLM / LootTableEvents.MODIFY）
+        LootContextParamSet paramSet = lootTable.getParamSet();
+        List<LootResultSignature> allRawCandidates = rawItems.stream()
+                .map(ItemDefinition::signature).toList();
         Map<String, LootResultSignature> discovered = new LinkedHashMap<>();
-
-        // 预览栈缓存：COMPONENT_EXACT 签名的预览栈构建涉及 base64 + JSON 解码，
-        // 10000 次抽取的匹配热路径上按签名复用，避免重复解析
+        Map<String, Map<String, Integer>> countsByScenario = new LinkedHashMap<>();
         Map<LootResultSignature, ItemStack> previewCache = new HashMap<>();
         java.util.function.Function<LootResultSignature, ItemStack> previewProvider =
                 signature -> previewCache.computeIfAbsent(signature, LootResultSignature::createPreviewStack);
-
-        // 注入用随机源：整个模拟循环复用一个实例，避免每次抽取新建对象
         RandomSource injectionRandom = RandomSource.create();
+        Set<String> appearedThisRoll = new HashSet<>();
 
-        // 模拟抽取
-        for (int i = 0; i < SIMULATION_COUNT; i++) {
-            List<ItemStack> drops = lootTable.getRandomItems(lootParams);
-            // Fabric 端注入器在模拟期显式调用，确保模组物品被纳入概率统计与签名派生；
-            // NeoForge 端注入由 GLM 在 getRandomItems 内部完成，此处注入器为空实现
-            ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, injectionRandom);
-            for (ItemStack stack : drops) {
-                if (stack.isEmpty()) continue;
-                LootResultSignature matched = LootResultMatcher.resolve(stack, candidates, previewProvider);
-                if (matched != null) {
-                    appearanceCounts.merge(matched.toStoredKey(), 1, Integer::sum);
-                    continue;
+        for (SimulationScenario scenario : scenarios) {
+            List<LootResultSignature> candidates = new ArrayList<>();
+            Map<String, Integer> appearanceCounts = new LinkedHashMap<>();
+            for (ItemDefinition item : rawItems) {
+                String storedKey = item.signature().toStoredKey();
+                if (scenario.applicableSignatures().contains(storedKey)) {
+                    candidates.add(item.signature());
+                    appearanceCounts.put(storedKey, 0);
                 }
-
-                // 未匹配任何已知候选：派生签名。若已是已知签名则视为歧义掉落，保守跳过不计数；
-                // 否则作为注入条目登记并计数。
-                LootResultSignature derived = deriveSignature(stack);
-                String derivedKey = derived.toStoredKey();
-                if (appearanceCounts.containsKey(derivedKey)) {
-                    continue;
-                }
-                discovered.put(derivedKey, derived);
-                candidates.add(derived);
-                appearanceCounts.put(derivedKey, 1);
             }
+            LootParams lootParams = LootContextParamFiller.createForSimulation(
+                    level, paramSet, scenario.profile());
+            try (LootSimulationScope.Scope ignored = LootSimulationScope.open(scenario.profile())) {
+                for (int i = 0; i < SIMULATION_COUNT; i++) {
+                    appearedThisRoll.clear();
+                    List<ItemStack> drops = lootTable.getRandomItems(lootParams);
+                    ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, injectionRandom);
+                    for (ItemStack stack : drops) {
+                        if (stack.isEmpty()) {
+                            continue;
+                        }
+                        LootResultSignature matched = LootResultMatcher.resolve(stack, candidates, previewProvider);
+                        if (matched != null) {
+                            appearedThisRoll.add(matched.toStoredKey());
+                            continue;
+                        }
+                        if (LootResultMatcher.resolve(stack, allRawCandidates, previewProvider) != null) {
+                            continue;
+                        }
+                        LootResultSignature derived = deriveSignature(stack);
+                        String derivedKey = derived.toStoredKey();
+                        if (appearanceCounts.containsKey(derivedKey)) {
+                            continue;
+                        }
+                        discovered.putIfAbsent(derivedKey, derived);
+                        candidates.add(derived);
+                        appearanceCounts.put(derivedKey, 0);
+                        appearedThisRoll.add(derivedKey);
+                    }
+                    for (String appearedKey : appearedThisRoll) {
+                        appearanceCounts.merge(appearedKey, 1, Integer::sum);
+                    }
+                }
+            }
+            countsByScenario.put(scenario.key(), appearanceCounts);
         }
 
-        // 构建新的 ItemDefinition 列表，替换概率字段
         List<ItemDefinition> simulatedItems = new ArrayList<>(rawItems.size() + discovered.size());
         for (ItemDefinition item : rawItems) {
             String storedKey = item.signature().toStoredKey();
-            int appearances = appearanceCounts.getOrDefault(storedKey, 0);
-
-            String probability;
-            if (appearances == 0) {
-                if (item.hasConditions()) {
-                    probability = "?";
-                } else {
-                    probability = "<0.01%";
+            List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
+            for (SimulationScenario scenario : scenarios) {
+                if (!scenario.applicableSignatures().contains(storedKey)) {
+                    continue;
                 }
-            } else {
-                double fraction = (double) appearances / SIMULATION_COUNT;
-                probability = ProbabilityFormat.formatPercent(fraction);
+                int appearances = countsByScenario.getOrDefault(scenario.key(), Map.of())
+                        .getOrDefault(storedKey, 0);
+                scenarioProbabilities.add(new ScenarioProbability(scenario.key(),
+                        formatProbability(appearances, item.hasConditions()), scenario.assumptions()));
             }
-
+            String probability = summarize(scenarioProbabilities);
             simulatedItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
-                    probability, item.signature(), item.acquisitionPaths(), false));
+                    probability, item.signature(), item.acquisitionPaths(), item.injected(), scenarioProbabilities));
         }
 
-        // 追加模拟期发现的注入条目
         for (Map.Entry<String, LootResultSignature> entry : discovered.entrySet()) {
-            int appearances = appearanceCounts.getOrDefault(entry.getKey(), 0);
-            String probability = appearances == 0
-                    ? "<0.01%"
-                    : ProbabilityFormat.formatPercent((double) appearances / SIMULATION_COUNT);
-            simulatedItems.add(LootTableCatalog.buildDiscoveredDefinition(entry.getValue(), probability, true));
+            List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
+            for (SimulationScenario scenario : scenarios) {
+                Map<String, Integer> counts = countsByScenario.getOrDefault(scenario.key(), Map.of());
+                if (!counts.containsKey(entry.getKey())) {
+                    continue;
+                }
+                scenarioProbabilities.add(new ScenarioProbability(scenario.key(),
+                        formatProbability(counts.get(entry.getKey()), false), scenario.assumptions()));
+            }
+            simulatedItems.add(LootTableCatalog.buildDiscoveredDefinition(entry.getValue(),
+                    summarize(scenarioProbabilities), true, scenarioProbabilities));
         }
 
-        return new SimResult(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(),
+        return SimResult.success(tableId, new TableDefinition(tableId, rawTable.displayName(), rawTable.type(),
                 simulatedItems, SIMULATION_COUNT, rawTable.childTables()));
+    }
+
+    private static String formatProbability(int appearances, boolean uncertainWhenAbsent) {
+        if (appearances == 0) {
+            return uncertainWhenAbsent ? "?" : "<0.01%";
+        }
+        return ProbabilityFormat.formatPercent((double) appearances / SIMULATION_COUNT);
+    }
+
+    private static String summarize(List<ScenarioProbability> probabilities) {
+        if (probabilities.isEmpty()) {
+            return "?";
+        }
+        String first = probabilities.getFirst().probability();
+        return probabilities.stream().allMatch(value -> value.probability().equals(first)) ? first : "?";
     }
 
     // 从运行时掉落派生用于匹配/展示的签名；附魔物折叠为近似附魔签名，其余按普通物品签名（保守，避免签名爆炸）
@@ -180,7 +200,16 @@ public final class LootProbabilitySimulator {
         return enchanted ? LootResultSignature.enchantedApprox(itemId) : LootResultSignature.plain(itemId);
     }
 
-    // 模拟结果数据（供 worker 在主线程提交时携带）
-    public record SimResult(ResourceLocation tableId, TableDefinition result) {
+    /** 模拟结果数据，只有 successful=true 的结果允许写入概率缓存。 */
+    public record SimResult(ResourceLocation tableId, TableDefinition result, boolean successful) {
+        // 创建可提交的成功结果
+        private static SimResult success(ResourceLocation tableId, TableDefinition result) {
+            return new SimResult(tableId, result, true);
+        }
+
+        // 创建仅用于保留原始占位数据的失败结果
+        private static SimResult failure(ResourceLocation tableId, TableDefinition result) {
+            return new SimResult(tableId, result, false);
+        }
     }
 }

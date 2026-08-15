@@ -459,7 +459,7 @@ public class JournalViewModel {
             }
             gridItems.add(new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
                     item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
-                    item.acquisitionPaths(), item.injected(), level));
+                    item.acquisitionPaths(), item.injected(), level, item.scenarioProbabilities()));
         }
         gridItems.sort(Comparator.comparing(ItemGridPanel.GridItem::primarySourceChildTable,
                         Comparator.nullsFirst(Comparator.comparing(String::valueOf)))
@@ -468,6 +468,15 @@ public class JournalViewModel {
     }
 
     private static double gridItemSortKey(ItemGridPanel.GridItem item) {
+        double scenarioMaximum = item.scenarioProbabilities().stream()
+                .map(com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability::probability)
+                .filter(probability -> probability != null && !probability.equals("?")
+                        && !probability.equals("<0.01%"))
+                .mapToDouble(ProbabilityFormat::parsePercentToFraction)
+                .max().orElse(-1.0);
+        if (scenarioMaximum >= 0.0) {
+            return scenarioMaximum;
+        }
         String probability = item.probability();
         return probability == null || probability.equals("?") || probability.equals("<0.01%")
                 ? -1.0 : ProbabilityFormat.parsePercentToFraction(probability);

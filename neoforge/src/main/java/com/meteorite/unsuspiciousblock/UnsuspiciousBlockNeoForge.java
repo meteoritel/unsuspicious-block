@@ -112,6 +112,9 @@ public class UnsuspiciousBlockNeoForge {
             DeferredRegister.create(Registries.LOOT_CONDITION_TYPE, Constants.MOD_ID);
     private static final DeferredHolder<LootItemConditionType, LootItemConditionType> MUD_DREDGING_TYPE =
             LOOT_CONDITIONS.register("mud_dredging", () -> new LootItemConditionType(ModLootConditions.MUD_DREDGING_CODEC));
+    private static final DeferredHolder<LootItemConditionType, LootItemConditionType> TOOL_ENCHANTMENT_CHANCE_TYPE =
+            LOOT_CONDITIONS.register("random_chance_with_tool_enchantment",
+                    () -> new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CHANCE_CODEC));
 
     // 全局战利品修改器序列化器注册——add_item 类型供 JSON 文件引用
     private static final DeferredRegister<MapCodec<? extends IGlobalLootModifier>> LOOT_MODIFIERS =
@@ -121,7 +124,7 @@ public class UnsuspiciousBlockNeoForge {
     // 埋藏宝藏注入猫之瞳（临时方案，未来会更改到自定义结构中）
     private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> INJECT_ITEM =
             LOOT_MODIFIERS.register("inject_item", () -> InjectItemLootModifier.CODEC);
-    // 泥地打捞钓鱼战利品注入——运行时检查附魔、群系与概率，追加 mud_dredging 表物品
+    // 泥地打捞钓鱼战利品注入——GLM 检查资格后执行数据驱动父表
     private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> FISHING_LOOT =
             LOOT_MODIFIERS.register("fishing_loot", () -> FishingLootModifier.CODEC);
     private static final DeferredHolder<MenuType<?>, MenuType<SpecimenBoxMenu>> SPECIMEN_BOX_MENU =
@@ -226,6 +229,7 @@ public class UnsuspiciousBlockNeoForge {
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
         // 在 common init 前设置平台注册的 LootItemConditionType，供 MudDredgingCondition 运行时使用
         ModLootConditions.setMudDredgingType(MUD_DREDGING_TYPE);
+        ModLootConditions.setToolEnchantmentChanceType(TOOL_ENCHANTMENT_CHANCE_TYPE);
 
         UnsuspiciousBlockCommon.init();
 

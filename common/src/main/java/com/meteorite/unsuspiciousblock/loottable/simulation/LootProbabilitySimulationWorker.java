@@ -22,8 +22,8 @@ import java.util.function.Consumer;
  * 后台线程与主线程 tick 并发会触发 {@link net.minecraft.util.ThreadingDetector} 报错。
  * <p>
  * 改为在服务端每 tick 末尾（{@code END_SERVER_TICK}）由 {@link #tick(MinecraftServer)} 消费队列，
- * 每次最多处理 {@link #MAX_TABLES_PER_TICK} 个表，单表模拟（10 000 次抽取）约 1-3ms，
- * 不会显著影响 tick 预算。
+ * 每次最多处理 {@link #MAX_TABLES_PER_TICK} 个表；带多个条件场景的表会执行多组 10 000 次抽取，
+ * 因此仍以单表为 tick 分片边界。
  * <p>
  * 优先级：HIGH（玩家解锁插队）先于 LOW（启动批量填充）。
  * 数据包重载期间通过 {@link #pauseForReload()} / {@link #resumeAfterReload()} 暂停消费。
@@ -167,13 +167,18 @@ public final class LootProbabilitySimulationWorker {
         try {
             LootProbabilitySimulator.SimResult result =
                     LootProbabilitySimulator.simulateOne(task.tableId, task.rawTable, level);
-            ResultHandler handler = this.resultHandler;
-            if (handler != null) {
-                handler.handle(result, server);
-            }
             long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-            LOGGER.info("已完成战利品表 {} 的概率模拟，耗时 {}ms，剩余队列 {}",
-                    task.tableId, elapsedMs, enqueued.size() - 1);
+            if (result.successful()) {
+                ResultHandler handler = this.resultHandler;
+                if (handler != null) {
+                    handler.handle(result, server);
+                }
+                LOGGER.info("已完成战利品表 {} 的概率模拟，耗时 {}ms，剩余队列 {}",
+                        task.tableId, elapsedMs, enqueued.size() - 1);
+            } else {
+                LOGGER.warn("战利品表 {} 的概率模拟未成功，不写入缓存，耗时 {}ms",
+                        task.tableId, elapsedMs);
+            }
             ProgressListener listener = this.progressListener;
             if (listener != null) {
                 listener.onTableSimulated(result.tableId(), result.result());

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,7 +24,8 @@ public record ArchaeologyEntryItem(
         int count,
         LootResultSignature signature,
         List<LootAcquisitionPath> acquisitionPaths,
-        boolean injected
+        boolean injected,
+        List<ScenarioProbability> scenarioProbabilities
 ) implements ItemEntryLike {
 
     @Override

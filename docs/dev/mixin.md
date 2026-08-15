@@ -16,7 +16,7 @@ Mixin 主要用于四类需求：
 
 | 配置文件 | 位置 | mixin 数 | 说明 |
 |---|---|---|---|
-| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 38（含 5 客户端） | 跨平台通用 mixin，两端共用 |
+| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 48（含 5 客户端） | 跨平台通用 mixin，两端共用 |
 | `unsuspiciousblock.fabric.mixins.json` | `fabric/src/main/resources/` | 6 | Fabric 独有，补齐原生事件缺失 |
 | `unsuspiciousblock.lootr.mixins.json` | `common/src/main/resources/` | 5 | Lootr 兼容，`requiredMods = ["lootr"]` |
 
@@ -76,7 +76,18 @@ Mixin 主要用于四类需求：
 | `FishingHookMixin` | 钓鱼钩 | 钓鱼追踪（泥底打捞 + 笔记记录） |
 | `NestedLootTableMixin` | 嵌套战利品表 | 自动捕获嵌套子表物品，派生追踪上下文 |
 
-### 3.6 其他
+### 3.6 loottable/ - 模拟条件作用域
+
+| Mixin | 目标 | 职责 |
+|---|---|---|
+| `Simulation*ConditionMixin`（8 个单目标入口） | 八类原版场景条件 | 模拟作用域存在时把 `test` 转交 `LootSimulationScope`；单目标保证 Fabric remap 正确 |
+| `SimulationCompositeConditionMixin` | `CompositeLootItemCondition` | 仅暴露只读 terms 供静态条件分析；运行时不覆盖组合结果 |
+
+这些 Mixin 都只作入口；profile、场景规划、条件指纹和线程作用域全部位于 `loottable/simulation/`
+普通 Java 类。作用域只覆盖有精确指纹或类型默认值的叶条件；组合与取反由原版求值，作用域外完整
+执行原版逻辑，不影响实际战利品生成。
+
+### 3.7 其他
 
 | Mixin | 目标 | 职责 |
 |---|---|---|
@@ -193,6 +204,6 @@ public abstract class AnvilMenuMixin {
 - [架构总览](architecture-overview.md) - 三套 mixin 配置与构建
 - [考古笔记系统](journal.md) - journal/ 包 mixin
 - [猫族关系系统](cat-favor.md) - catfavor/ 包 mixin
-- [战利品表系统](loottable.md) - `NestedLootTableMixin`
+- [战利品表系统](loottable.md) - `NestedLootTableMixin` 与模拟条件作用域
 - [实体与世界生成](entities-world.md) - Fabric 骨块追踪 mixin
 - [配置与第三方联动](config-integrations.md) - Lootr 兼容

@@ -40,6 +40,8 @@ public final class LootProbabilityData extends SavedData {
     private static final String TAG_ITEMS = "items";
     private static final String TAG_KEY = "key";
     private static final String TAG_PROBABILITY = "probability";
+    private static final String TAG_SCENARIOS = "scenarios";
+    private static final String TAG_SCENARIO_KEY = "scenario_key";
 
     private static final SavedData.Factory<LootProbabilityData> FACTORY = new SavedData.Factory<>(
             LootProbabilityData::new,
@@ -67,13 +69,20 @@ public final class LootProbabilityData extends SavedData {
             if (tableId == null) continue;
 
             String hash = entryTag.getString(TAG_HASH);
-            Map<String, String> probabilities = new LinkedHashMap<>();
+            Map<String, CachedItemProbability> probabilities = new LinkedHashMap<>();
             ListTag itemsTag = entryTag.getList(TAG_ITEMS, Tag.TAG_COMPOUND);
             for (int j = 0; j < itemsTag.size(); j++) {
                 CompoundTag itemTag = itemsTag.getCompound(j);
                 String key = itemTag.getString(TAG_KEY);
                 String probability = itemTag.getString(TAG_PROBABILITY);
-                probabilities.put(key, probability);
+                Map<String, String> scenarios = new LinkedHashMap<>();
+                ListTag scenariosTag = itemTag.getList(TAG_SCENARIOS, Tag.TAG_COMPOUND);
+                for (int k = 0; k < scenariosTag.size(); k++) {
+                    CompoundTag scenarioTag = scenariosTag.getCompound(k);
+                    scenarios.put(scenarioTag.getString(TAG_SCENARIO_KEY),
+                            scenarioTag.getString(TAG_PROBABILITY));
+                }
+                probabilities.put(key, new CachedItemProbability(probability, scenarios));
             }
             data.entries.put(tableId, new TableProbabilityEntry(hash, probabilities));
         }
@@ -90,10 +99,18 @@ public final class LootProbabilityData extends SavedData {
             entryTag.putString(TAG_HASH, entry.getValue().hash());
 
             ListTag itemsTag = new ListTag();
-            for (Map.Entry<String, String> probEntry : entry.getValue().probabilities().entrySet()) {
+            for (Map.Entry<String, CachedItemProbability> probEntry : entry.getValue().probabilities().entrySet()) {
                 CompoundTag itemTag = new CompoundTag();
                 itemTag.putString(TAG_KEY, probEntry.getKey());
-                itemTag.putString(TAG_PROBABILITY, probEntry.getValue());
+                itemTag.putString(TAG_PROBABILITY, probEntry.getValue().probability());
+                ListTag scenariosTag = new ListTag();
+                for (Map.Entry<String, String> scenario : probEntry.getValue().scenarioProbabilities().entrySet()) {
+                    CompoundTag scenarioTag = new CompoundTag();
+                    scenarioTag.putString(TAG_SCENARIO_KEY, scenario.getKey());
+                    scenarioTag.putString(TAG_PROBABILITY, scenario.getValue());
+                    scenariosTag.add(scenarioTag);
+                }
+                itemTag.put(TAG_SCENARIOS, scenariosTag);
                 itemsTag.add(itemTag);
             }
             entryTag.put(TAG_ITEMS, itemsTag);
@@ -111,20 +128,21 @@ public final class LootProbabilityData extends SavedData {
     }
 
     // 保存某个表的模拟结果
-    public void putSimulationResult(ResourceLocation tableId, String hash, Map<String, String> probabilities) {
+    public void putSimulationResult(ResourceLocation tableId, String hash,
+                                    Map<String, CachedItemProbability> probabilities) {
         entries.put(tableId, new TableProbabilityEntry(hash, probabilities));
         setDirty();
     }
 
     // 获取某个条目的概率字符串，不存在时返回 null
-    public String getProbability(ResourceLocation tableId, String signatureKey) {
+    public CachedItemProbability getProbability(ResourceLocation tableId, String signatureKey) {
         TableProbabilityEntry entry = entries.get(tableId);
         if (entry == null) return null;
         return entry.probabilities().get(signatureKey);
     }
 
     // 获取某个表的全部概率映射
-    public Map<String, String> getProbabilities(ResourceLocation tableId) {
+    public Map<String, CachedItemProbability> getProbabilities(ResourceLocation tableId) {
         TableProbabilityEntry entry = entries.get(tableId);
         if (entry == null) return Collections.emptyMap();
         return Collections.unmodifiableMap(entry.probabilities());
@@ -142,6 +160,16 @@ public final class LootProbabilityData extends SavedData {
     }
 
     /** 单个战利品表的概率数据条目 */
-    public record TableProbabilityEntry(String hash, Map<String, String> probabilities) {
+    public record TableProbabilityEntry(String hash, Map<String, CachedItemProbability> probabilities) {
+        public TableProbabilityEntry {
+            probabilities = Collections.unmodifiableMap(new LinkedHashMap<>(probabilities));
+        }
+    }
+
+    /** 单个签名的摘要概率与分场景概率。 */
+    public record CachedItemProbability(String probability, Map<String, String> scenarioProbabilities) {
+        public CachedItemProbability {
+            scenarioProbabilities = Collections.unmodifiableMap(new LinkedHashMap<>(scenarioProbabilities));
+        }
     }
 }

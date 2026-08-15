@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -57,7 +58,7 @@ public final class JournalTooltipBuilder {
         }
 
         // 概率信息
-        if (data.probability() != null) {
+        if (data.probability() != null && data.scenarioProbabilities().size() <= 1) {
             boolean probUncertain = data.probability().equals("?");
             boolean hintIsApprox = data.hint() != null && data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
@@ -107,9 +108,37 @@ public final class JournalTooltipBuilder {
                     .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
         }
 
+        appendScenarioProbabilities(lines, data.scenarioProbabilities());
         appendAcquisitionPaths(lines, data.acquisitionPaths());
 
         return lines;
+    }
+
+    private static void appendScenarioProbabilities(List<Component> lines,
+                                                    List<ScenarioProbability> probabilities) {
+        if (probabilities.size() <= 1) {
+            return;
+        }
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.scenario_probabilities_header")
+                .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+        for (int i = 0; i < probabilities.size(); i++) {
+            ScenarioProbability scenario = probabilities.get(i);
+            Component probability = scenario.probability().equals("?")
+                    ? Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.probability_unknown_short")
+                    : Component.literal(scenario.probability());
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.scenario_probability",
+                    i + 1, probability).copy().withStyle(ChatFormatting.GREEN));
+            if (scenario.conditions().isEmpty()) {
+                lines.add(Component.literal("  ").append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.scenario_default"))
+                        .withStyle(ChatFormatting.GRAY));
+            } else {
+                appendConditionTree(lines, scenario.conditions(), "  ");
+            }
+        }
     }
 
     // 格式化概率为 tooltip Component

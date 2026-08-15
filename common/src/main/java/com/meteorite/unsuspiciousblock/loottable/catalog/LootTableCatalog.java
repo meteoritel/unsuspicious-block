@@ -99,13 +99,30 @@ public final class LootTableCatalog {
         }
     }
 
+    /** 单个自洽模拟场景下，物品在一次抽取中至少出现一次的概率。 */
+    public record ScenarioProbability(String scenarioKey, String probability,
+                                      List<LootConditionInfo> conditions) {
+        public ScenarioProbability {
+            conditions = List.copyOf(conditions);
+        }
+    }
+
     /** 战利品表物品条目定义 */
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                                  String probability, LootResultSignature signature,
                                  List<LootAcquisitionPath> acquisitionPaths,
-                                 boolean injected) {
+                                 boolean injected,
+                                 List<ScenarioProbability> scenarioProbabilities) {
         public ItemDefinition {
             acquisitionPaths = List.copyOf(acquisitionPaths);
+            scenarioProbabilities = List.copyOf(scenarioProbabilities);
+        }
+
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              String probability, LootResultSignature signature,
+                              List<LootAcquisitionPath> acquisitionPaths, boolean injected) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    acquisitionPaths, injected, List.of());
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
@@ -206,6 +223,17 @@ public final class LootTableCatalog {
         Component displayName = resolveMergedDisplayName(itemId, signature);
         Component tooltipHint = resolveMergedTooltipHint(signature);
         return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, List.of(), injected);
+    }
+
+    /** 为带多场景概率的运行时注入条目构建目录定义。 */
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability,
+                                                            boolean injected,
+                                                            List<ScenarioProbability> scenarioProbabilities) {
+        ResourceLocation itemId = signature.itemId();
+        Component displayName = resolveMergedDisplayName(itemId, signature);
+        Component tooltipHint = resolveMergedTooltipHint(signature);
+        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature,
+                List.of(), injected, scenarioProbabilities);
     }
 
     /**

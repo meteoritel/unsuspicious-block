@@ -2,10 +2,7 @@ package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
@@ -13,7 +10,6 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParam;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSet;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
-import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 
 /**
@@ -38,18 +34,18 @@ public final class LootContextParamFiller {
      * 若存在完全未知的 required 参数，回退到仅 ORIGIN 的宽松 paramSet。
      */
     public static LootParams createForSimulation(ServerLevel level, LootContextParamSet paramSet,
-                                                 ResourceLocation tableId) {
+                                                 SimulationProfile profile) {
         LootParams.Builder builder = new LootParams.Builder(level)
-                .withParameter(LootContextParams.ORIGIN, Vec3.ZERO)
-                .withLuck(0.0F);
+                .withParameter(LootContextParams.ORIGIN, profile.origin())
+                .withLuck(profile.luck());
 
-        if (fillRequired(builder, paramSet, level, tableId)) {
+        if (fillRequired(builder, paramSet, level, profile)) {
             return builder.create(paramSet);
         }
 
         // 回退：原 paramSet 有完全未支持的 required 参数（非已知实体/标量参数），
-        // 构建仅 ORIGIN 的宽松 paramSet。1.21.1 的 ALL_PARAMS 共 12 个参数，
-        // 其中 ENCHANTMENT_LEVEL/ENCHANTMENT_ACTIVE 由 SimulationTableFactory 剥离相关条件规避，不在此填充。
+        // 构建仅 ORIGIN 的宽松 paramSet。依赖未填充参数的条件会按原版逻辑失败，
+        // 由上层将零出现的条件条目保留为未知概率，避免报告错误的确定值。
         LOGGER.info("回退到宽松 paramSet 模拟（原 paramSet 存在未支持的 required 参数）");
         LootContextParamSet looseParamSet = LootContextParamSet.builder()
                 .required(LootContextParams.ORIGIN)
@@ -64,7 +60,7 @@ public final class LootContextParamFiller {
      * @return true 若全部 required 参数均已支持填充；false 若存在未支持的 required 参数
      */
     private static boolean fillRequired(LootParams.Builder builder, LootContextParamSet paramSet,
-                                        ServerLevel level, ResourceLocation tableId) {
+                                        ServerLevel level, SimulationProfile profile) {
         // 延迟构造虚拟玩家：仅当遇到实体参数时才创建，避免无实体参数表的无效开销
         SimulationFakePlayer fakePlayer = null;
         boolean allSupported = true;
@@ -81,7 +77,7 @@ public final class LootContextParamFiller {
                 }
                 // 钓鱼类表的 THIS_ENTITY 用假浮标填充（owner 为假玩家），
                 // 使 entity_properties + fishing_hook + in_open_water 等条件在模拟中可判定
-                if (param == LootContextParams.THIS_ENTITY && isFishingTable(tableId)) {
+                if (param == LootContextParams.THIS_ENTITY && profile.fishingContext()) {
                     builder.withParameter(LootContextParams.THIS_ENTITY,
                             new SimulationFishingHook(fakePlayer, level));
                     fishingHookFilled = true;
@@ -91,7 +87,7 @@ public final class LootContextParamFiller {
                 continue;
             }
 
-            if (!fillScalarParam(builder, param, level)) {
+            if (!fillScalarParam(builder, param, profile)) {
                 allSupported = false;
             }
         }
@@ -99,7 +95,7 @@ public final class LootContextParamFiller {
         // 钓鱼 paramSet（minecraft:fishing）中 THIS_ENTITY 是 optional 参数，仅遍历 required 不会填充；
         // 而开放水域（fishing_hook）等条件依赖 THIS_ENTITY 存在，此处对钓鱼类表按 allowed 集合补填假浮标。
         // paramSet 不允许 THIS_ENTITY 时跳过（create 会拒绝 allowed 之外的参数）
-        if (!fishingHookFilled && isFishingTable(tableId)
+        if (!fishingHookFilled && profile.fishingContext()
                 && paramSet.isAllowed(LootContextParams.THIS_ENTITY)) {
             if (fakePlayer == null) {
                 fakePlayer = new SimulationFakePlayer(level.getServer(), level);
@@ -108,11 +104,6 @@ public final class LootContextParamFiller {
                     new SimulationFishingHook(fakePlayer, level));
         }
         return allSupported;
-    }
-
-    // 判断是否为钓鱼类战利品表（vanilla gameplay/fishing 及各模组同路径约定）
-    private static boolean isFishingTable(ResourceLocation tableId) {
-        return tableId.getPath().contains("fishing");
     }
 
     // 判断是否为实体类参数（用虚拟玩家填充）
@@ -137,23 +128,22 @@ public final class LootContextParamFiller {
     }
 
     // 填充非实体参数的默认值；返回 false 表示该参数未支持
-    private static boolean fillScalarParam(LootParams.Builder builder, LootContextParam<?> param, ServerLevel level) {
+    private static boolean fillScalarParam(LootParams.Builder builder, LootContextParam<?> param,
+                                           SimulationProfile profile) {
         if (param == LootContextParams.TOOL) {
-            builder.withParameter(LootContextParams.TOOL, new ItemStack(Items.FISHING_ROD));
+            builder.withParameter(LootContextParams.TOOL, profile.tool().copy());
             return true;
         }
         if (param == LootContextParams.BLOCK_STATE) {
-            builder.withParameter(LootContextParams.BLOCK_STATE, Blocks.AIR.defaultBlockState());
+            builder.withParameter(LootContextParams.BLOCK_STATE, profile.blockState());
             return true;
         }
         if (param == LootContextParams.DAMAGE_SOURCE) {
-            // 通用伤害源，足够满足条件判断
-            builder.withParameter(LootContextParams.DAMAGE_SOURCE, level.damageSources().generic());
+            builder.withParameter(LootContextParams.DAMAGE_SOURCE, profile.damageSource());
             return true;
         }
         if (param == LootContextParams.EXPLOSION_RADIUS) {
-            // 0.0 表示无爆炸
-            builder.withParameter(LootContextParams.EXPLOSION_RADIUS, 0.0F);
+            builder.withParameter(LootContextParams.EXPLOSION_RADIUS, profile.explosionRadius());
             return true;
         }
         if (param == LootContextParams.BLOCK_ENTITY) {

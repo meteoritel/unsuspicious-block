@@ -3,57 +3,56 @@
   "pools": [
     {
       "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:inverted",
+          "term": {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": "#unsuspiciousblock:mud_dredging_bonus_biomes"
+            }
+          }
+        },
+        {
+          "condition": "unsuspiciousblock:random_chance_with_tool_enchantment",
+          "enchantment": "unsuspiciousblock:mud_dredging",
+          "chance": {
+            "type": "minecraft:linear",
+            "base": 0.1,
+            "per_level_above_first": 0.1
+          }
+        }
+      ],
       "entries": [
         {
-          "type": "minecraft:item",
-          "name": "minecraft:sniffer_egg"
+          "type": "minecraft:loot_table",
+          "value": "unsuspiciousblock:gameplay/fishing/mud_dredging/common"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:location_check",
+          "predicate": {
+            "biomes": "#unsuspiciousblock:mud_dredging_bonus_biomes"
+          }
         },
         {
-          "type": "minecraft:item",
-          "name": "unsuspiciousblock:ancient_coin"
-        },
+          "condition": "unsuspiciousblock:random_chance_with_tool_enchantment",
+          "enchantment": "unsuspiciousblock:mud_dredging",
+          "chance": {
+            "type": "minecraft:linear",
+            "base": 0.25,
+            "per_level_above_first": 0.1
+          }
+        }
+      ],
+      "entries": [
         {
-          "type": "minecraft:tag",
-          "name": "minecraft:decorated_pot_sherds",
-          "expand": true
-        },
-        {
-          "type": "minecraft:tag",
-          "name": "minecraft:trim_templates",
-          "expand": true
-        },
-        {
-          "type": "minecraft:tag",
-          "name": "minecraft:creeper_drop_music_discs",
-          "expand": true
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:book",
-          "functions": [
-            {
-              "function": "minecraft:enchant_with_levels",
-              "levels": {"type": "minecraft:uniform", "min": 10, "max": 25}
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:mangrove_propagule"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:tnt"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:golden_axe",
-          "functions": [
-            {
-              "function": "minecraft:enchant_with_levels",
-              "levels": 30
-            }
-          ]
+          "type": "minecraft:loot_table",
+          "value": "unsuspiciousblock:gameplay/fishing/mud_dredging/swamp"
         }
       ]
     }

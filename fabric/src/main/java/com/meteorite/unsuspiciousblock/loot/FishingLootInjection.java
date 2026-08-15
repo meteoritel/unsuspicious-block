@@ -9,7 +9,7 @@ import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 
 /**
  * Fabric 平台泥地打捞钓鱼战利品注入——通过 {@link LootTableEvents#MODIFY} 向原版钓鱼表
- * 追加两个 pool（基础 / 沼泽），由 {@link MudDredgingCondition} 在运行时检查附魔等级、群系与概率。
+ * 追加一个父表 pool，注入层只检查泥地打捞附魔资格，群系与概率由数据表处理。
  * <p>
  * NeoForge 端通过 FishingLootModifier（GLM）实现等价语义。
  */
@@ -24,28 +24,15 @@ public final class FishingLootInjection {
 
     public static void register() {
         LootTableEvents.MODIFY.register((lootTableId, tableBuilder, source, registries) -> {
-            // 仅修改原版内置表，避免误伤数据包自定义表
-            if (!source.isBuiltin()) {
-                return;
-            }
             if (!lootTableId.location().equals(FISHING_ID)) {
                 return;
             }
-            // 追加基础池：非沼泽群系时按等级概率触发
-            LootPool basicPool = LootPool.lootPool()
+            LootPool pool = LootPool.lootPool()
                     .setRolls(ConstantValue.exactly(1.0f))
                     .add(NestedLootTable.lootTableReference(MudDredgingCondition.MUD_DREDGING))
                     .when(new MudDredgingCondition(false))
                     .build();
-            tableBuilder.pool(basicPool);
-
-            // 追加沼泽池：仅沼泽群系时按等级+15% 概率触发
-            LootPool swampPool = LootPool.lootPool()
-                    .setRolls(ConstantValue.exactly(1.0f))
-                    .add(NestedLootTable.lootTableReference(MudDredgingCondition.MUD_DREDGING_SWAMP))
-                    .when(new MudDredgingCondition(true))
-                    .build();
-            tableBuilder.pool(swampPool);
+            tableBuilder.pool(pool);
         });
     }
 }
