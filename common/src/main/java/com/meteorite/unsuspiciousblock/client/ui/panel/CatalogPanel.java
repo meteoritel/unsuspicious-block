@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 考古手册左页目录——渲染分类网格与可折叠的战利品表层级列表。
+ * 考古笔记左页目录——渲染分类网格与可折叠的战利品表层级列表。
  */
 public final class CatalogPanel {
     private static final ResourceLocation ENTRY_TEXTURE =

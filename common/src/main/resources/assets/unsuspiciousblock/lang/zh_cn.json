@@ -174,7 +174,7 @@
   "screen.unsuspiciousblock.archaeology_journal.category.progress": "已解锁 %d/%d",
   "screen.unsuspiciousblock.archaeology_journal.category.back": "返回分类首页",
   "screen.unsuspiciousblock.archaeology_journal.category.no_discovered_entries": "该分类尚无已发现条目。",
-  "screen.unsuspiciousblock.archaeology_journal.welcome.title": "欢迎翻阅考古手册",
+  "screen.unsuspiciousblock.archaeology_journal.welcome.title": "欢迎翻阅考古笔记",
   "screen.unsuspiciousblock.archaeology_journal.welcome.body": "选择左页分类，查阅战利品表及物品产出概率。搜索可跨分类定位战利品表和物品。",
   "screen.unsuspiciousblock.archaeology_journal.child_references": "当前目录中由 %d 张表引用",
   "screen.unsuspiciousblock.archaeology_journal.child_probability_short": "子表内概率",
@@ -416,7 +416,7 @@
   "screen.unsuspiciousblock.archaeology_journal.help_tooltip.sort": "点击工具栏图标可切换排序方式",
 
   "toast.unsuspiciousblock.journal_unlock.title": "笔记更新",
-  "toast.unsuspiciousblock.journal_completion.title": "考古手册完成",
+  "toast.unsuspiciousblock.journal_completion.title": "考古笔记完成",
 
   "command.unsuspiciousblock.usb.journal.clear.success": "你的考古笔记数据已清除。",
   "command.unsuspiciousblock.usb.journal.clear_table.success": "已清除考古战利品表 %s 的笔记数据。",

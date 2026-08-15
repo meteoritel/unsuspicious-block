@@ -1,4 +1,4 @@
-# 考古手册目录分类 Data Pack
+# 考古笔记目录分类 Data Pack
 
 分类文件位于 `data/<namespace>/journal_categories/<id>.json`。同一资源 ID 遵循正常的 Data Pack
 优先级覆盖规则。分类首先执行 `special_rules`，未命中特例时再使用 `types`，最终未匹配的顶层表进入

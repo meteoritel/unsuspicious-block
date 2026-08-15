@@ -22,7 +22,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 考古手册 UI 偏好的 per-world 客户端持久化。
+ * 考古笔记 UI 偏好的 per-world 客户端持久化。
  * <p>
  * 与 {@link ArchaeologyJournalLogLocalStore} 共用存储目录，但使用独立文件，
  * 保存玩家在该存档下的 UI 偏好：收藏集合、上次选中条目、目录/日志排序状态、搜索文本等。
@@ -105,7 +105,7 @@ public final class JournalUiPreferencesStore {
         try (InputStream inputStream = Files.newInputStream(path)) {
             tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());
         } catch (IOException e) {
-            Constants.LOG.warn("读取考古手册 UI 偏好失败: {}", path, e);
+            Constants.LOG.warn("读取考古笔记 UI 偏好失败: {}", path, e);
             return;
         }
         applyToClientState(tag);
@@ -123,7 +123,7 @@ public final class JournalUiPreferencesStore {
                 NbtIo.writeCompressed(snapshotFromClientState(), outputStream);
             }
         } catch (IOException e) {
-            Constants.LOG.warn("保存考古手册 UI 偏好失败: {}", path, e);
+            Constants.LOG.warn("保存考古笔记 UI 偏好失败: {}", path, e);
         }
     }
 

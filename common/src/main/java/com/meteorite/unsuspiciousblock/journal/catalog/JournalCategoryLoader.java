@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 考古手册目录分类加载器——从 Data Pack 读取 type 映射与高优先级特殊判定。
+ * 考古笔记目录分类加载器——从 Data Pack 读取 type 映射与高优先级特殊判定。
  */
 final class JournalCategoryLoader {
     private static final String DIRECTORY = "journal_categories";
@@ -38,13 +38,13 @@ final class JournalCategoryLoader {
             try (Reader reader = entry.getValue().openAsReader()) {
                 loaded.add(parse(categoryId, JsonParser.parseReader(reader).getAsJsonObject()));
             } catch (Exception exception) {
-                Constants.LOG.error("无法加载考古手册分类资源 {}", entry.getKey(), exception);
+                Constants.LOG.error("无法加载考古笔记分类资源 {}", entry.getKey(), exception);
             }
         }
         loaded.sort(Comparator.comparingInt((CategoryRule value) -> value.definition().order())
                 .thenComparing(value -> value.definition().id().toString()));
         if (loaded.stream().noneMatch(value -> value.definition().id().equals(OTHER_ID))) {
-            Constants.LOG.warn("考古手册分类缺少兜底分类 {}", OTHER_ID);
+            Constants.LOG.warn("考古笔记分类缺少兜底分类 {}", OTHER_ID);
         }
         return new CategorySet(List.copyOf(loaded));
     }

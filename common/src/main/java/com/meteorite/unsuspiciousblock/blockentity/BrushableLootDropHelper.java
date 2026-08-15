@@ -123,7 +123,7 @@ public final class BrushableLootDropHelper {
     }
 
     /**
-     * 使用翻倍后的总计数结算待定日志条目，确保考古手册日志的 actualLoot 反映翻倍后的实际获取量。
+     * 使用翻倍后的总计数结算待定日志条目，确保考古笔记日志的 actualLoot 反映翻倍后的实际获取量。
      */
     public static void settleJournal(DropContext ctx, ItemStack totalTrackedItem) {
         if (ctx.lootTableName() == null || ctx.pendingEntry() == null) {

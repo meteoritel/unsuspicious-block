@@ -22,7 +22,7 @@ import java.util.function.Predicate;
  * 核心职责：
  * <ol>
  *   <li>{@link #isPresent}：实时查询物品是否在玩家背包（原版 41 槽 + 饰品栏 + 便携容器递归），
- *       供猫之手、猫之眼、考古手册等物品的检测逻辑统一调用</li>
+ *       供猫之手、猫之眼、考古笔记等物品的检测逻辑统一调用</li>
  *   <li>{@link #serverTick}：每 tick 扫描注册了 trigger 的物品，diff 后触发 onEnter/onLeave/onTick</li>
  *   <li>{@link #clearPlayer}：玩家下线时清理 diff 状态</li>
  * </ol>

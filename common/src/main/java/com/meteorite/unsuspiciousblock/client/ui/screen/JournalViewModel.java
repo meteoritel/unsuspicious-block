@@ -42,7 +42,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 考古手册视图模型——管理分类首页、父子目录、搜索排序与右页数据快照。
+ * 考古笔记视图模型——管理分类首页、父子目录、搜索排序与右页数据快照。
  */
 public class JournalViewModel {
     private final ArchaeologyJournalState state;
@@ -470,7 +470,7 @@ public class JournalViewModel {
                 if (this.structure.rootCategories().containsKey(childId)) continue;
                 ArchaeologyJournalEntry child = this.allViews.get(childId);
                 if (child != null && child.unlocked()) {
-                    Constants.LOG.warn("考古手册状态异常：子表 {} 已解锁，但父表 {} 未解锁", childId, parent.id());
+                    Constants.LOG.warn("考古笔记状态异常：子表 {} 已解锁，但父表 {} 未解锁", childId, parent.id());
                 }
             }
         }

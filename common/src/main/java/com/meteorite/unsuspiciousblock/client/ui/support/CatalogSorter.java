@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 import java.util.Comparator;
 
 /**
- * 考古手册目录排序器。
+ * 考古笔记目录排序器。
  * <p>
  * 提供排序方式枚举、比较器构建、图标/tooltip 映射，
  */

@@ -16,7 +16,7 @@ import java.util.Base64;
 import java.util.Locale;
 
 /**
- * 表示考古手册中一个可匹配的战利品结果签名。
+ * 表示考古笔记中一个可匹配的战利品结果签名。
  */
 public record LootResultSignature(ResourceLocation itemId, SignatureType type, @Nullable String data) {
     private static final String STORED_KEY_PREFIX = "usb_sig";

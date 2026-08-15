@@ -36,7 +36,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * 考古手册客户端状态缓存。
+ * 考古笔记客户端状态缓存。
  * <p>
  * 管理服务端推送的目录、玩家进度和日志数据，
  * 并通过回调通知 UI 层解锁事件（如 Toast 弹窗）。
@@ -439,7 +439,7 @@ public final class ArchaeologyJournalClientState {
 
         for (Map.Entry<ResourceLocation, ArchaeologyJournalState.TableProgress> entry : newState.getTables().entrySet()) {
             ResourceLocation tableId = entry.getKey();
-            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古手册中显示）弹出通知
+            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古笔记中显示）弹出通知
             if (!catalog.containsKey(tableId)) {
                 continue;
             }
@@ -470,7 +470,7 @@ public final class ArchaeologyJournalClientState {
         for (String key : changedTables.getAllKeys()) {
             ResourceLocation tableId = ResourceLocation.tryParse(key);
             if (tableId == null) continue;
-            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古手册中显示）弹出通知
+            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古笔记中显示）弹出通知
             if (!catalog.containsKey(tableId)) {
                 continue;
             }

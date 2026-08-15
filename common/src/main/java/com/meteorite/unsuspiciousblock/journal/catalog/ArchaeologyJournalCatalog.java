@@ -26,7 +26,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 考古手册目录加载器——构建收录闭包、引用层级与基于 type 的目录分类。
+ * 考古笔记目录加载器——构建收录闭包、引用层级与基于 type 的目录分类。
  */
 public final class ArchaeologyJournalCatalog {
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
@@ -38,7 +38,7 @@ public final class ArchaeologyJournalCatalog {
     private ArchaeologyJournalCatalog() {
     }
 
-    // 加载考古手册目录：构建引用图 → 检测循环引用 → 解析表 → 加载分类 → 组装结果
+    // 加载考古笔记目录：构建引用图 → 检测循环引用 → 解析表 → 加载分类 → 组装结果
     public static LoadResult load(ResourceManager resourceManager, HolderLookup.Provider registries) {
         Map<ResourceLocation, Resource> resources = LOOT_TABLES.listMatchingResources(resourceManager);
         Map<ResourceLocation, List<ResourceLocation>> graph = buildReferenceGraph(resources);

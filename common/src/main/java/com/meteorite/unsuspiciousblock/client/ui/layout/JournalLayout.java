@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.layout;
 
-/** 考古手册 GUI 所有布局参数集中定义，便于手动调整测试 */
+/** 考古笔记 GUI 所有布局参数集中定义，便于手动调整测试 */
 public final class JournalLayout {
 
     // —— 书页纹理 ——

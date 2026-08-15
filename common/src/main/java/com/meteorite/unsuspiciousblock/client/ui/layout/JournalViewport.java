@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.layout;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * 考古手册的响应式视口。
+ * 考古笔记的响应式视口。
  * 将固定尺寸书页保留在逻辑坐标系中，并统一负责渲染缩放与鼠标坐标转换。
  */
 public record JournalViewport(float scale, int logicalWidth, int logicalHeight) {

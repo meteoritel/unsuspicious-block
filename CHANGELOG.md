@@ -1,18 +1,35 @@
 # 更新日志 Change log
 
+## [1.5.1]
+
+### 变化
+
+#### 考古笔记
+- 父表 100% 完成度与 `/usb journal unlock item` 现在统一覆盖当前表及全部后代表中的物品，并按物品签名去重；解锁子表物品即可推进父表完成度。
+- 父表物品网格不再平铺子表产出的物品，改为显示可点击的子表入口及其在父表中的出现概率，点击可跳转到对应子表。
+- 概率模拟改为时间片续跑：服务端启动期间按固定时间预算逐步填充概率数据，减少单 tick 卡顿。
+- 带条件的物品概率改为展示代表条件场景下的概率范围，泥地打捞等运行时注入内容统一按最高等级工具模拟。
+
+### Changed
+#### Archaeology Journal
+- A parent table's 100% completion and `/usb journal unlock item` now consistently cover items from the table and all its descendant tables, deduplicated by item signature. Unlocking items in child tables now progresses the parent table's completion.
+- Parent table grids no longer flatten items produced by child tables. They now show clickable child table entries with their appearance probability in the parent, which navigate to the corresponding child table.
+- Probability simulation now runs in time-sliced resumable jobs, filling probability data within a fixed per-tick budget during server startup to reduce single-tick lag.
+- Conditional item probabilities now show a range across representative condition scenarios, and runtime-injected content such as mud dredging is simulated with the highest-tier tool.
+
 ## [1.0.0]
 添加了可疑扫描仪，实现与jade的联动。
 
 ## [1.1.0]
 
 ### 新增
-- 添加了考古手册，现在可以记录考古信息了。
+- 添加了考古笔记，现在可以记录考古信息了。
 
 ## [1.2.0]
 
 ### 新增
 
-#### 考古手册「日志」标签页
+#### 考古笔记「日志」标签页
 - 新增「日志」标签页，完整记录玩家每次考古相关事件
 
 #### 可自定义追踪的战利品表
@@ -20,10 +37,10 @@
 - 新增对考古、战利品箱、钓鱼行为的日志支持，玩家可在配置文件中自由添加需要追踪的战利品表。
 
 #### 自动生成翻译键与缺失翻译键导出
-- **缺失翻译键自动导出**：运行时检测到考古手册中存在未本地化的战利品表名时，会自动将缺失翻译键追加写入游戏目录下的 `usb_miss_key/missing_keys.json`，value 预填为战利品表的清洗名称，方便直接修改后合并回模组语言文件。
+- **缺失翻译键自动导出**：运行时检测到考古笔记中存在未本地化的战利品表名时，会自动将缺失翻译键追加写入游戏目录下的 `usb_miss_key/missing_keys.json`，value 预填为战利品表的清洗名称，方便直接修改后合并回模组语言文件。
   - **为配置中新添加的战利品表补全翻译的步骤**：
     1. 在配置文件 `unsuspiciousblock.json` 的 `archaeology_path_prefixes` 中添加目标表规则（如 `mymod:archaeology/`），重载游戏；
-    2. 进入游戏世界，触发考古手册目录加载（打开手册或执行 `/usb debug table_list`）；
+    2. 进入游戏世界，触发考古笔记目录加载（打开手册或执行 `/usb debug table_list`）；
     3. 查看 `usb_miss_key/missing_keys.json`，其中已自动列出所有缺失的翻译键及预填名称；
     4. 将该文件中的键值对合并到模组的 en_us.json 与 zh_cn.json，并将 value 修改为正式翻译即可。
 
@@ -44,7 +61,7 @@
 
 ### 修改
 
-#### 考古手册
+#### 考古笔记
 - 战利品概率展示现改为基于 10000 次模拟抽取获得的近似值，首次启动服务端时可能需要数秒进行计算。
 - 注意：部分战利品需满足特定条件方可获得，概率显示仅供参考。
 
@@ -55,7 +72,7 @@
 
 ### Added
 
-#### Archaeology Handbook – "Log" Tab
+#### Archaeology Journal – "Log" Tab
 - Added a **"Log"** tab that fully records every archaeology-related event for the player.
 
 #### Customizable Trackable Loot Tables
@@ -63,10 +80,10 @@
 - Added logging support for archaeology, loot chests, and fishing. Players can freely add loot tables to track in the config file.
 
 #### Automatic Translation Key Generation & Missing Key Export
-- **Auto-export of missing translation keys**: At runtime, when the Archaeology Handbook detects unlocalized loot table names, missing keys are automatically appended to `usb_miss_key/missing_keys.json` in the game directory, with the value pre-filled as the cleaned name of the loot table for easy modification and merging back into the mod's language files.
+- **Auto-export of missing translation keys**: At runtime, when the Archaeology Journal detects unlocalized loot table names, missing keys are automatically appended to `usb_miss_key/missing_keys.json` in the game directory, with the value pre-filled as the cleaned name of the loot table for easy modification and merging back into the mod's language files.
   - **Steps to complete translations for newly added loot tables in the config**:
     1. Add the target table rule (e.g., `mymod:archaeology/`) to `archaeology_path_prefixes` in `unsuspiciousblock.json`, then reload the game.
-    2. Enter the game world and trigger the Archaeology Handbook catalogue load (open the handbook or run `/usb debug table_list`).
+    2. Enter the game world and trigger the Archaeology Journal catalogue load (open the handbook or run `/usb debug table_list`).
     3. Check `usb_miss_key/missing_keys.json` – all missing translation keys with pre-filled names are listed.
     4. Merge the key-value pairs from that file into the mod's `en_us.json` and `zh_cn.json`, and change the values to the final translations.
 
@@ -87,7 +104,7 @@
 
 ### Changed
 
-#### Archaeology Handbook
+#### Archaeology Journal
 - Loot probability display is now based on approximate values from 10,000 simulated draws. The first startup on the server side may take a few seconds to compute.
 - Note: Some loot requires specific conditions to be obtained; the displayed probabilities are for reference only.
 
@@ -108,7 +125,7 @@
 - 古代金币现可用于铁砧修复带耐久值的物品，每枚金币修复目标物品最大耐久的 25%。
 - 使用古代金币进行修复不会累加附魔惩罚。
 
-#### 考古手册收藏功能与日志备注
+#### 考古笔记收藏功能与日志备注
 - 现支持通过 Shift + 点击收藏战利品表。
 - 日志新增备注功能，被备注的日志将不会被自动销毁。
 
@@ -203,11 +220,11 @@
 - 标本箱现可作为饰品装备：NeoForge 端支持 Curios，Fabric 端支持 Trinkets，并新增与 Artifacts 的联动。
 - 标本箱现有 30% 概率出现在村庄铁匠铺的战利品箱中。
 
-#### 考古手册与战利品追踪
+#### 考古笔记与战利品追踪
 - 新增战利品表 100% 完成奖励：当一张被追踪的战利品表中全部物品都至少解锁一次时，发放 1 枚古代金币并弹出 Toast 提示。每张表的奖励仅发放一次.
 - 新增陶罐战利品与「化石猎手」额外掉落追踪，默认追踪范围加入原版 `pots/` 战利品表。
 - 新增 Lootr 联动（**仅 NeoForge 端**）：支持追踪 Lootr 容器和可疑方块、扫描或提取 Lootr 可疑方块，并持久化尚未取走物品的追踪状态。
-- 考古手册现可展示物品的多种获取路径、继承条件和战利品函数效果，并按概率型或运行时条件区分提示；外部模组注入的战利品也会显示来源标记。
+- 考古笔记现可展示物品的多种获取路径、继承条件和战利品函数效果，并按概率型或运行时条件区分提示；外部模组注入的战利品也会显示来源标记。
 - 目录新增按更新时间排序，支持 WASD、方向键和左右键导航；现在未解锁的物品也可查看获取条件。
 
 #### 配置与扫描
@@ -223,8 +240,8 @@
 - 修正「Completionist's Dust」成就判定范围，现在仅要求原版 6 张考古战利品表（`minecraft:archaeology/` 前缀）的全物品解锁。
 - 修复「泥地打捞」条件注册与钓鱼玩家识别错误导致效果无法正常触发的问题，并补全其嵌套战利品追踪。
 - 修复考古铲与可疑扫描仪分持主副手时的交互优先级，使未扫描方块优先扫描、已扫描方块优先提取战利品。
-- 修复考古手册目录哈希、客户端同步和模拟期间追踪回退问题，避免旧缓存覆盖服务端记录、数据包重载残留任务或目录尚未模拟完成时漏记战利品。
-- 修复考古手册在界面缩放时的文字裁切，以及重建搜索框时可能发生的递归响应问题。
+- 修复考古笔记目录哈希、客户端同步和模拟期间追踪回退问题，避免旧缓存覆盖服务端记录、数据包重载残留任务或目录尚未模拟完成时漏记战利品。
+- 修复考古笔记在界面缩放时的文字裁切，以及重建搜索框时可能发生的递归响应问题。
 - 禁止标本箱嵌套自身，避免递归容器导致物品无法取出。
 
 ### Added

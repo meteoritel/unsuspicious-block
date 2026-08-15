@@ -11,7 +11,7 @@ import net.minecraft.world.item.Item;
 import java.util.Locale;
 
 /**
- * 考古手册搜索查询解析器。
+ * 考古笔记搜索查询解析器。
  * <p>
  * 支持的前缀：
  * <ul>

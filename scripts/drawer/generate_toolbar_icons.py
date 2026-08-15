@@ -1,4 +1,4 @@
-"""生成考古手册工具栏图标 sprite sheet (toolbar_icons.png)
+"""生成考古笔记工具栏图标 sprite sheet (toolbar_icons.png)
 
 图标范围（共 14 个）：
 - 搜索/返回：search_open, search_back

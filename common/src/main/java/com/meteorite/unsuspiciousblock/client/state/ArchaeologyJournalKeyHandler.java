@@ -9,7 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
 
-/** 客户端状态：处理考古手册快捷键打开逻辑 */
+/** 客户端状态：处理考古笔记快捷键打开逻辑 */
 public final class ArchaeologyJournalKeyHandler {
 
     private ArchaeologyJournalKeyHandler() {

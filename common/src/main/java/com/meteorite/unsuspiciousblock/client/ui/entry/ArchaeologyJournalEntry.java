@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 考古手册左侧条目的完整视图模型。
+ * 考古笔记左侧条目的完整视图模型。
  * 合并目录定义、玩家进度与日志引用数据，作为目录面板与右侧页面的数据源。
  * 设计为不可变快照，在 {@code rebuildViewModels()} 时整体重建。
  */

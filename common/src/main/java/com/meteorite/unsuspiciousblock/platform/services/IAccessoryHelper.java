@@ -13,7 +13,7 @@ import java.util.stream.Stream;
  */
 public interface IAccessoryHelper {
 
-    // 判断玩家是否在饰品栏中装备了考古手册；未安装饰品模组时返回 false
+    // 判断玩家是否在饰品栏中装备了考古笔记；未安装饰品模组时返回 false
     boolean isJournalEquipped(Player player);
 
     // 判断玩家饰品栏是否装备了指定物品；未安装饰品模组时返回 false
