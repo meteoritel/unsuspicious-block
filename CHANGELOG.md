@@ -326,6 +326,12 @@
 
 ## [1.5.1]
 
+### 新增
+
+#### 考古笔记
+- 日志支持删除与批量管理：可在详情页删除单条日志；日志列表新增批量选择模式，可删除选中条目或整个分组，也可清空当前表 / 全部表的日志。所有删除操作均有二次确认，且不影响目录解锁、物品计数与累计条数等元数据。
+- 新增单表日志保留策略：可为每张战利品表设置自动保留上限（受服务端全局上限兜底），也支持按更新时间一次性仅保留最近 N 条；带备注的日志条目始终受保护，不会被自动清理。
+- 
 ### 变化
 
 #### 考古笔记
@@ -333,6 +339,14 @@
 - 父表物品网格不再平铺子表产出的物品，改为显示可点击的子表入口及其在父表中的出现概率，点击可跳转到对应子表。
 - 概率模拟改为时间片续跑：服务端启动期间按固定时间预算逐步填充概率数据，减少单 tick 卡顿。
 - 带条件的物品概率改为展示代表条件场景下的概率范围，泥地打捞等运行时注入内容统一按最高等级工具模拟。
+- 日志存储改为按玩家与战利品表分片的独立压缩文件，降低集中读写造成的卡顿；旧存档数据会在服务端启动或玩家登录时自动迁移，无需重置进度。
+- 战利品表管理页的语言选择改为语言代码输入框加选择弹窗，支持自定义语言代码。
+
+### Added
+#### Archaeology Journal
+- Logs can now be deleted and managed in bulk: delete a single entry from the detail page, use the new batch-selection mode in the log list to delete selected entries or whole groups, or clear the logs of the current table / all tables. All deletions require confirmation and never touch catalog unlocks, item counts, or lifetime counters.
+- Per-table log retention: set an automatic retention limit for each loot table (capped by a server-wide limit), or trim logs to the most recent N entries at once. Annotated entries are always protected from automatic cleanup.
+
 
 ### Changed
 #### Archaeology Journal
@@ -340,3 +354,5 @@
 - Parent table grids no longer flatten items produced by child tables. They now show clickable child table entries with their appearance probability in the parent, which navigate to the corresponding child table.
 - Probability simulation now runs in time-sliced resumable jobs, filling probability data within a fixed per-tick budget during server startup to reduce single-tick lag.
 - Conditional item probabilities now show a range across representative condition scenarios, and runtime-injected content such as mud dredging is simulated with the highest-tier tool.
+- Log storage now uses per-player, per-table sharded compressed files to reduce I/O hitches. Existing save data is migrated automatically on server startup or player login, with no progress reset required.
+- The language selector in the loot table management screen is now a language-code input box with a selection popup, supporting custom language codes.
