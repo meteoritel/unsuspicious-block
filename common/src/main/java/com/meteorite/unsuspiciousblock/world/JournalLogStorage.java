@@ -40,7 +40,7 @@ import java.util.UUID;
 public final class JournalLogStorage {
     private static final int FLUSH_INTERVAL_TICKS = 200;
     private static final int MAX_SHARDS_PER_FLUSH = 4;
-    private static final long MAX_MANIFEST_NBT_BYTES = 1L * 1024 * 1024;
+    private static final long MAX_MANIFEST_NBT_BYTES = (long) 1024 * 1024;
     private static final long MAX_INDEX_NBT_BYTES = 8L * 1024 * 1024;
     private static final long MAX_TABLE_NBT_BYTES = 64L * 1024 * 1024;
     private static final String MANIFEST_FILE = "storage.dat";
@@ -51,6 +51,12 @@ public final class JournalLogStorage {
     private static final String LEGACY_FILE = "unsuspiciousblock_journal_logs.dat";
 
     private static final String TAG_MIGRATION_COMPLETE = "migration_complete";
+    private static final String TAG_COMMITTED_STORAGE_VERSION = "committed_storage_version";
+    private static final String TAG_PENDING_FROM_VERSION = "pending_from_version";
+    private static final String TAG_PENDING_TO_VERSION = "pending_to_version";
+    private static final String TAG_MIGRATED_PLAYERS = "migrated_players";
+    private static final String TAG_MIGRATED_TABLES = "migrated_tables";
+    private static final String TAG_MIGRATED_ENTRIES = "migrated_entries";
     private static final String TAG_PLAYER_UUID = "player_uuid";
     private static final String TAG_TABLE_ID = "table_id";
     private static final String TAG_HISTORY = "history";
@@ -233,54 +239,147 @@ public final class JournalLogStorage {
     private void initialize() {
         try {
             Files.createDirectories(this.root);
-            Path manifest = this.root.resolve(MANIFEST_FILE);
-            CompoundTag manifestTag = null;
-            if (Files.exists(manifest)) {
-                try {
-                    manifestTag = readCompressed(manifest, MAX_MANIFEST_NBT_BYTES);
-                } catch (IOException | RuntimeException exception) {
-                    Constants.LOG.warn("考古日志存储 manifest 损坏，将重新校验并重建: {}", manifest, exception);
-                }
-            }
-            if (manifestTag != null) {
-                int version = JournalDataVersion.readStorageVersion(manifestTag);
-                if (version > JournalDataVersion.CURRENT_STORAGE_VERSION) {
-                    throw new IllegalStateException("考古日志存储版本过新: " + version);
-                }
-                if (version == JournalDataVersion.CURRENT_STORAGE_VERSION
-                        && manifestTag.getBoolean(TAG_MIGRATION_COMPLETE)) {
-                    return;
-                }
-                // manifest 只在迁移提交完成后写入；缺少完成标记时重跑上一阶段
-                if (version == JournalDataVersion.CURRENT_STORAGE_VERSION) {
-                    version--;
-                }
-                migrateStorageFrom(version);
-                return;
-            }
-            migrateStorageFrom(JournalDataVersion.LEGACY_STORAGE_VERSION);
+            migrateStorage(loadStorageManifest());
         } catch (IOException exception) {
             throw new IllegalStateException("初始化考古日志分片存储失败", exception);
         }
     }
 
-    // 存储布局也必须逐级迁移，新增版本时在此显式补充 vN -> vN+1
-    private void migrateStorageFrom(int version) throws IOException {
-        int currentVersion = version;
-        while (currentVersion < JournalDataVersion.CURRENT_STORAGE_VERSION) {
-            currentVersion = switch (currentVersion) {
-                case JournalDataVersion.STORAGE_VERSION_SINGLE_FILE -> {
-                    migrateStorageV1ToV2();
-                    yield JournalDataVersion.STORAGE_VERSION_SHARDED;
+    private StorageManifest loadStorageManifest() throws IOException {
+        Path manifestFile = this.root.resolve(MANIFEST_FILE);
+        if (!Files.exists(manifestFile)) {
+            return StorageManifest.initial();
+        }
+        CompoundTag manifestTag;
+        try {
+            manifestTag = readCompressed(manifestFile, MAX_MANIFEST_NBT_BYTES);
+        } catch (IOException | RuntimeException exception) {
+            Constants.LOG.warn("考古日志存储 manifest 损坏，将从已知源数据重建: {}", manifestFile, exception);
+            return StorageManifest.initial();
+        }
+        return parseStorageManifest(manifestTag);
+    }
+
+    private StorageManifest parseStorageManifest(CompoundTag tag) {
+        if (tag.contains(TAG_COMMITTED_STORAGE_VERSION, Tag.TAG_INT)) {
+            int committedVersion = tag.getInt(TAG_COMMITTED_STORAGE_VERSION);
+            boolean hasPendingFrom = tag.contains(TAG_PENDING_FROM_VERSION, Tag.TAG_INT);
+            boolean hasPendingTo = tag.contains(TAG_PENDING_TO_VERSION, Tag.TAG_INT);
+            if (hasPendingFrom != hasPendingTo) {
+                throw new IllegalStateException("考古日志存储 manifest 的 pending 迁移字段不完整");
+            }
+            PendingMigration pending = hasPendingFrom
+                    ? new PendingMigration(tag.getInt(TAG_PENDING_FROM_VERSION), tag.getInt(TAG_PENDING_TO_VERSION))
+                    : null;
+            return new StorageManifest(committedVersion, pending, readMigrationResult(tag), false);
+        }
+
+        int legacyVersion = JournalDataVersion.readStorageVersion(tag);
+        if (tag.getBoolean(TAG_MIGRATION_COMPLETE)) {
+            return new StorageManifest(legacyVersion, null, readMigrationResult(tag), true);
+        }
+        if (legacyVersion == JournalDataVersion.STORAGE_VERSION_SHARDED) {
+            Constants.LOG.warn("检测到旧格式未完成的 v1 -> v2 迁移标记，将按显式步骤从源数据重跑");
+            return new StorageManifest(
+                    JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
+                    new PendingMigration(
+                            JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
+                            JournalDataVersion.STORAGE_VERSION_SHARDED),
+                    MigrationResult.EMPTY,
+                    true);
+        }
+        throw new IllegalStateException("无法确定旧格式 manifest 的已提交存储版本: " + legacyVersion);
+    }
+
+    // committedVersion 始终表示最后完整提交版本；pending 只标识确切的待恢复步骤
+    private void migrateStorage(StorageManifest manifest) throws IOException {
+        validateStorageManifest(manifest);
+        int committedVersion = manifest.committedVersion();
+        PendingMigration pending = manifest.pending();
+        MigrationResult lastResult = manifest.lastResult();
+        boolean manifestNeedsRewrite = manifest.legacyFormat();
+
+        // 恢复“已提交但清理未完成”的迁移；清理动作必须可重复执行
+        cleanupCommittedMigrations(committedVersion);
+        while (committedVersion < JournalDataVersion.CURRENT_STORAGE_VERSION) {
+            StorageMigrationStep step = storageMigrationStepFrom(committedVersion);
+            boolean recovering = pending != null;
+            if (recovering) {
+                validatePendingStep(pending, step);
+                if (step.recoveryPolicy() == RecoveryPolicy.ABORT_IF_INTERRUPTED) {
+                    throw new IllegalStateException("考古日志存储迁移 v" + step.fromVersion()
+                            + " -> v" + step.toVersion() + " 不支持自动重放，需要人工恢复");
                 }
-                default -> throw new IllegalStateException(
-                        "考古日志存储缺少 v" + currentVersion + " -> v" + (currentVersion + 1) + " 迁移步骤");
-            };
+                Constants.LOG.warn("恢复中断的考古日志存储迁移: v{} -> v{}，策略={}",
+                        step.fromVersion(), step.toVersion(), step.recoveryPolicy());
+            } else {
+                pending = new PendingMigration(step.fromVersion(), step.toVersion());
+                writePendingManifest(committedVersion, pending);
+            }
+
+            lastResult = step.action().run();
+            committedVersion = step.toVersion();
+            pending = null;
+            writeCommittedManifest(committedVersion, lastResult);
+            step.cleanup().run();
+            manifestNeedsRewrite = false;
+            Constants.LOG.info("考古日志存储迁移完成: v{} -> v{}, {} 名玩家, {} 张表, {} 条记录",
+                    step.fromVersion(), step.toVersion(), lastResult.players(),
+                    lastResult.tables(), lastResult.entries());
+        }
+
+        if (manifestNeedsRewrite) {
+            writeCommittedManifest(committedVersion, lastResult);
         }
     }
 
-    // 迁移过程可重复执行：目标文件名确定，manifest 最后提交，旧文件最后归档
-    private void migrateStorageV1ToV2() throws IOException {
+    private void validateStorageManifest(StorageManifest manifest) {
+        int committedVersion = manifest.committedVersion();
+        if (committedVersion < JournalDataVersion.LEGACY_STORAGE_VERSION) {
+            throw new IllegalStateException("考古日志存储已提交版本无效: " + committedVersion);
+        }
+        if (committedVersion > JournalDataVersion.CURRENT_STORAGE_VERSION) {
+            throw new IllegalStateException("考古日志存储版本过新: " + committedVersion);
+        }
+        PendingMigration pending = manifest.pending();
+        if (pending == null) {
+            return;
+        }
+        if (pending.fromVersion() != committedVersion) {
+            throw new IllegalStateException("考古日志 pending 迁移起点与已提交版本不一致");
+        }
+        if (pending.toVersion() != pending.fromVersion() + 1) {
+            throw new IllegalStateException("考古日志 pending 迁移必须是连续版本: v"
+                    + pending.fromVersion() + " -> v" + pending.toVersion());
+        }
+        if (pending.toVersion() > JournalDataVersion.CURRENT_STORAGE_VERSION) {
+            throw new IllegalStateException("考古日志 pending 迁移目标版本过新: " + pending.toVersion());
+        }
+    }
+
+    private static void validatePendingStep(PendingMigration pending, StorageMigrationStep step) {
+        if (pending.fromVersion() != step.fromVersion() || pending.toVersion() != step.toVersion()) {
+            throw new IllegalStateException("考古日志 pending 迁移与已注册步骤不匹配: v"
+                    + pending.fromVersion() + " -> v" + pending.toVersion());
+        }
+    }
+
+    // 新增版本时必须显式登记来源、目标、恢复策略、迁移动作和提交后清理动作
+    private StorageMigrationStep storageMigrationStepFrom(int version) {
+        return switch (version) {
+            case JournalDataVersion.STORAGE_VERSION_SINGLE_FILE -> new StorageMigrationStep(
+                    JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
+                    JournalDataVersion.STORAGE_VERSION_SHARDED,
+                    RecoveryPolicy.RESTART_FROM_SOURCE,
+                    this::copyStorageV1ToV2,
+                    this::archiveStorageV1AfterV2Commit);
+            default -> throw new IllegalStateException(
+                    "考古日志存储缺少 v" + version + " -> v" + (version + 1) + " 迁移步骤");
+        };
+    }
+
+    // v1 源文件在提交前保持不变，目标文件名确定，因此中断后可以从源数据重新生成
+    private MigrationResult copyStorageV1ToV2() throws IOException {
         Path legacyFile = legacyFile();
         int players = 0;
         int tables = 0;
@@ -299,23 +398,63 @@ public final class JournalLogStorage {
                 writeIndex(player.getKey(), state);
             }
         }
+        return new MigrationResult(players, tables, entries);
+    }
 
-        CompoundTag manifest = new CompoundTag();
-        manifest.putInt(JournalDataVersion.STORAGE_VERSION_TAG,
-                JournalDataVersion.STORAGE_VERSION_SHARDED);
-        manifest.putBoolean(TAG_MIGRATION_COMPLETE, true);
-        manifest.putInt("migrated_players", players);
-        manifest.putInt("migrated_tables", tables);
-        manifest.putInt("migrated_entries", entries);
-        writeCompressedAtomic(this.root.resolve(MANIFEST_FILE), manifest);
-
-        if (Files.exists(legacyFile)) {
-            Path backupDir = checkedResolve(this.root, MIGRATION_DIR);
-            Files.createDirectories(backupDir);
-            Path backup = checkedResolve(backupDir, "unsuspiciousblock_journal_logs-v1.dat.bak");
-            Files.move(legacyFile, backup, StandardCopyOption.REPLACE_EXISTING);
+    private void archiveStorageV1AfterV2Commit() throws IOException {
+        Path legacyFile = legacyFile();
+        if (!Files.exists(legacyFile)) {
+            return;
         }
-        Constants.LOG.info("考古日志存储迁移完成: {} 名玩家, {} 张表, {} 条记录", players, tables, entries);
+        Path backupDir = checkedResolve(this.root, MIGRATION_DIR);
+        Files.createDirectories(backupDir);
+        Path backup = checkedResolve(backupDir, "unsuspiciousblock_journal_logs-v1.dat.bak");
+        Files.move(legacyFile, backup, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    // 提交成功但归档中断时，下次启动继续执行幂等清理
+    private void cleanupCommittedMigrations(int committedVersion) throws IOException {
+        int fromVersion = JournalDataVersion.LEGACY_STORAGE_VERSION;
+        while (fromVersion < committedVersion) {
+            StorageMigrationStep step = storageMigrationStepFrom(fromVersion);
+            if (step.toVersion() > committedVersion) {
+                throw new IllegalStateException("考古日志存储清理步骤超过已提交版本: v"
+                        + step.fromVersion() + " -> v" + step.toVersion());
+            }
+            step.cleanup().run();
+            fromVersion = step.toVersion();
+        }
+    }
+
+    private void writePendingManifest(int committedVersion, PendingMigration pending) throws IOException {
+        CompoundTag manifest = new CompoundTag();
+        putCommittedVersion(manifest, committedVersion);
+        manifest.putInt(TAG_PENDING_FROM_VERSION, pending.fromVersion());
+        manifest.putInt(TAG_PENDING_TO_VERSION, pending.toVersion());
+        writeCompressedAtomic(this.root.resolve(MANIFEST_FILE), manifest);
+    }
+
+    private void writeCommittedManifest(int committedVersion, MigrationResult result) throws IOException {
+        CompoundTag manifest = new CompoundTag();
+        putCommittedVersion(manifest, committedVersion);
+        manifest.putInt(TAG_MIGRATED_PLAYERS, result.players());
+        manifest.putInt(TAG_MIGRATED_TABLES, result.tables());
+        manifest.putInt(TAG_MIGRATED_ENTRIES, result.entries());
+        writeCompressedAtomic(this.root.resolve(MANIFEST_FILE), manifest);
+    }
+
+    // 同步保留旧字段，让旧版读取时只看到最后完整提交版本
+    private static void putCommittedVersion(CompoundTag manifest, int committedVersion) {
+        manifest.putInt(TAG_COMMITTED_STORAGE_VERSION, committedVersion);
+        manifest.putInt(JournalDataVersion.STORAGE_VERSION_TAG, committedVersion);
+        manifest.putBoolean(TAG_MIGRATION_COMPLETE, true);
+    }
+
+    private static MigrationResult readMigrationResult(CompoundTag tag) {
+        return new MigrationResult(
+                Math.max(0, tag.getInt(TAG_MIGRATED_PLAYERS)),
+                Math.max(0, tag.getInt(TAG_MIGRATED_TABLES)),
+                Math.max(0, tag.getInt(TAG_MIGRATED_ENTRIES)));
     }
 
     private ArchaeologyJournalLogState loadPlayer(UUID playerId) {
@@ -586,6 +725,74 @@ public final class JournalLogStorage {
         }
     }
 
+    /**
+     * 存储迁移中断后的恢复策略。
+     */
+    private enum RecoveryPolicy {
+        RESTART_FROM_SOURCE,
+        ABORT_IF_INTERRUPTED
+    }
+
+    /**
+     * 执行一个存储布局迁移步骤。
+     */
+    @FunctionalInterface
+    private interface MigrationAction {
+        MigrationResult run() throws IOException;
+    }
+
+    /**
+     * 清理已经提交的迁移源数据；实现必须可重复执行。
+     */
+    @FunctionalInterface
+    private interface MigrationCleanup {
+        void run() throws IOException;
+    }
+
+    /**
+     * 一个显式登记的连续存储迁移步骤。
+     */
+    private record StorageMigrationStep(
+            int fromVersion,
+            int toVersion,
+            RecoveryPolicy recoveryPolicy,
+            MigrationAction action,
+            MigrationCleanup cleanup) {
+    }
+
+    /**
+     * manifest 中尚未提交的确切迁移步骤。
+     */
+    private record PendingMigration(int fromVersion, int toVersion) {
+    }
+
+    /**
+     * 最近一次迁移写入的数据统计。
+     */
+    private record MigrationResult(int players, int tables, int entries) {
+        private static final MigrationResult EMPTY = new MigrationResult(0, 0, 0);
+    }
+
+    /**
+     * 存储 manifest 的解析结果。
+     */
+    private record StorageManifest(
+            int committedVersion,
+            @Nullable PendingMigration pending,
+            MigrationResult lastResult,
+            boolean legacyFormat) {
+        private static StorageManifest initial() {
+            return new StorageManifest(
+                    JournalDataVersion.LEGACY_STORAGE_VERSION,
+                    null,
+                    MigrationResult.EMPTY,
+                    false);
+        }
+    }
+
+    /**
+     * 待刷新的玩家日志分片标识。
+     */
     private record ShardKey(UUID playerId, ResourceLocation tableId) {
     }
 }

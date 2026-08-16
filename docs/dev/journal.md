@@ -144,7 +144,7 @@ ArchaeologyJournalState
 
 ```text
 <world>/data/unsuspiciousblock/journal_logs/
-├── storage.dat                              存储格式版本与迁移完成标记
+├── storage.dat                              已提交版本与待恢复迁移步骤
 ├── migration/
 │   └── unsuspiciousblock_journal_logs-v1.dat.bak
 └── players/<player-uuid>/
@@ -158,7 +158,7 @@ ArchaeologyJournalState
 - 玩家退出时同步刷新其全部 dirty shard，成功后从内存卸载状态；若 shard 或 index 写入失败，则保留缓存并由后续 tick 重试。玩家在重试完成前重新连接会取消待卸载标记并复用缓存。
 - 单表文件记录原始 `table_id`，文件名使用其 SHA-256；加载时同时校验存储版本、玩家 UUID 和表 ID。写入使用同目录临时文件再原子替换。
 - `index.dat` 是正常加载时的权威清单；索引损坏或不存在时才扫描 `tables/` 并重建索引，因此已删除但遗留的孤立分片不会被正常恢复。
-- 首次启动 v2 时，旧 `<world>/data/unsuspiciousblock_journal_logs.dat` 会按玩家和表拆分。所有目标分片与 `storage.dat` 成功写入后，旧文件才移动到 `migration/` 备份；过程可重复执行。
+- 首次启动 v2 时，旧 `<world>/data/unsuspiciousblock_journal_logs.dat` 会按玩家和表拆分。迁移开始前先在 `storage.dat` 写入确切的 pending 起止版本；所有目标分片成功写入后再提交新版本，最后才把旧文件移动到 `migration/` 备份。
 - 仍残留在玩家 NBT 的更早期 `unsuspiciousblock_archaeology_journal_log` 会在玩家登录时按 `entryId` 合并到 v2，服务端已有的同 ID 条目优先。旧 tag 通过 `peek` 读取；所有目标表与 index 同步落盘成功后才 `ack`，失败时继续写回玩家 NBT 等待重试。
 
 #### 4.4.1 版本迁移约定
@@ -169,6 +169,10 @@ ArchaeologyJournalState
 - **存储布局版本**：描述单文件或分片目录结构，当前为 v2。
 
 所有旧 NBT 字段名、默认值和逐级迁移步骤只能添加到 `JournalNbtMigrator`。迁移必须严格按 `vN -> vN+1` 连续执行；遇到高于当前版本的数据时拒绝降级读取。新增版本时先提高 `JournalDataVersion.CURRENT_NBT_VERSION`，再补齐每种数据类型对应的迁移步骤。状态类的 `readFrom` / `fromTag` 不得重新加入旧字段回退分支。
+
+存储布局 manifest 使用显式事务语义：`committed_storage_version` 始终是最后完整提交的版本，`pending_from_version` / `pending_to_version` 仅表示已经开始但尚未提交的确切一步。启动时必须验证 pending 起点等于 committed、目标是下一连续版本且不高于当前版本；语义冲突会阻止启动，不得再通过版本号减一猜测迁移阶段。物理损坏、无法解压的 manifest 才允许按已知源数据重建。
+
+每个存储布局迁移步骤都必须登记来源版本、目标版本、恢复策略、迁移动作和提交后清理动作。只有源数据在提交前保持不变、目标写入可重复覆盖的步骤才能使用 `RESTART_FROM_SOURCE`；非幂等步骤必须使用 `ABORT_IF_INTERRUPTED`，中断后停止自动迁移并要求人工恢复。提交后的源数据清理必须幂等，以便服务器在“版本已提交但清理未完成”时安全续做。兼容字段 `storage_version` / `migration_complete` 仍会写入，但只向旧版表示最后已提交版本，不参与新版恢复决策。
 
 `JournalPlayerDataService` 是生命周期统一入口：服务端启停和 tick、玩家登录/退出/重生都由它协调。登录时先恢复日志分片，再由 `JournalDataMigrationManager` 依次提交旧玩家日志并迁移目录签名，最后统一下发两类玩家数据。源数据只有在目标数据完整持久化后才允许清理，世界级旧单文件则保留 `.bak` 备份。
 

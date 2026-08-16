@@ -53,7 +53,7 @@ public record SyncJournalLogTableChunkPayload(UUID sessionId,
         ResourceLocation tableId = buf.readResourceLocation();
         int chunkIndex = buf.readVarInt();
         int chunkCount = buf.readVarInt();
-        if (chunkCount <= 0 || chunkCount > JournalLogSnapshotCodec.MAX_CHUNKS_PER_TABLE
+        if (chunkCount > JournalLogSnapshotCodec.MAX_CHUNKS_PER_TABLE
                 || chunkIndex < 0 || chunkIndex >= chunkCount) {
             throw new DecoderException("Invalid journal snapshot chunk: " + chunkIndex + "/" + chunkCount);
         }
