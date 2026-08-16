@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.JournalLogStorage;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
 import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -236,7 +237,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             ServerLootTableConfigManager.start(server);
-            JournalLogStorage.start(server);
+            JournalDataMigrationManager.initializeStorage(server);
             LootProbabilitySimulationWorker.start();
             ArchaeologyJournalServerCatalog.ensureLoaded(server);
         });
@@ -262,6 +263,8 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 ArchaeologyJournalNetwork.syncOnJoin(handler.player));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                JournalLogStorage.unloadPlayer(server, handler.player.getUUID()));
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 UsbCommand.register(dispatcher));

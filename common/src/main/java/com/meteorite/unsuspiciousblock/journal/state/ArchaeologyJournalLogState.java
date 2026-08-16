@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataVersion;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalNbtMigrator;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -116,7 +118,7 @@ public final class ArchaeologyJournalLogState {
 
     // 将日志状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
-        tag.putInt(NbtDataVersion.TAG, NbtDataVersion.CURRENT);
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableLogHistory> entry : this.tables.entrySet()) {
             tablesTag.put(entry.getKey().toString(), entry.getValue().toTag());
@@ -127,7 +129,7 @@ public final class ArchaeologyJournalLogState {
     // 从 CompoundTag 反序列化恢复日志状态
     public void readFrom(CompoundTag tag) {
         this.clear();
-        int version = NbtDataMigrator.migrateIfNeeded(tag, "ArchaeologyJournalLogState");
+        JournalNbtMigrator.migrateJournalLogState(tag);
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
             return;
         }
@@ -265,6 +267,7 @@ public final class ArchaeologyJournalLogState {
 
         public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
+            tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
             if (this.firstUnlockedGameTime != null) {
                 tag.putLong(FIRST_UNLOCKED_TIME_TAG, this.firstUnlockedGameTime);
                 tag.putLong(FIRST_UNLOCKED_DAY_TIME_TAG,
@@ -283,24 +286,22 @@ public final class ArchaeologyJournalLogState {
 
         public static TableLogHistory fromTag(CompoundTag tag) {
             TableLogHistory history = new TableLogHistory();
+            JournalNbtMigrator.migrateTableLogHistory(tag);
             if (tag.contains(FIRST_UNLOCKED_TIME_TAG, Tag.TAG_LONG)) {
                 history.firstUnlockedGameTime = Math.max(0L, tag.getLong(FIRST_UNLOCKED_TIME_TAG));
                 history.firstUnlockedDayTime = tag.contains(FIRST_UNLOCKED_DAY_TIME_TAG, Tag.TAG_LONG)
                         ? Math.max(0L, tag.getLong(FIRST_UNLOCKED_DAY_TIME_TAG))
                         : history.firstUnlockedGameTime;
             }
-            // 向后兼容：优先读取新字段，其次读取旧字段
-            @Deprecated // 将于 1.5.0 移除
-            String LOOT_SOURCE_LEGACY_TAG = "first_unlock_trigger_type";
             if (tag.contains(FIRST_UNLOCK_LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
                 history.firstUnlockLootSource = LootSourceType.fromId(tag.getString(FIRST_UNLOCK_LOOT_SOURCE_TAG));
-            } else if (tag.contains(LOOT_SOURCE_LEGACY_TAG, Tag.TAG_STRING)) {
-                history.firstUnlockLootSource = LootSourceType.fromId(tag.getString(LOOT_SOURCE_LEGACY_TAG));
             }
             if (tag.contains(ENTRIES_TAG, Tag.TAG_LIST)) {
                 ListTag entriesTag = tag.getList(ENTRIES_TAG, Tag.TAG_COMPOUND);
                 for (int i = 0; i < entriesTag.size(); i++) {
-                    history.upsertEntry(ExcavationLogEntry.fromTag(entriesTag.getCompound(i)));
+                    ExcavationLogEntry entry = ExcavationLogEntry.fromTag(entriesTag.getCompound(i));
+                    // 读盘只恢复磁盘内容；条目上限淘汰仅发生在运行时新增路径。
+                    history.entries.put(entry.entryId(), entry);
                 }
             }
             return history;

@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataVersion;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalNbtMigrator;
+
 import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.core.BlockPos;
@@ -40,20 +43,12 @@ public record ExcavationLogEntry(UUID entryId,
     private static final String ENTRY_ID_TAG = "entry_id";
     private static final String DIMENSION_ID_TAG = "dimension_id";
     private static final String LOOT_SOURCE_TAG = "loot_source";
-    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
-    private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String SOURCE_BLOCK_ID_TAG = "source_block_id";
-    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
-    private static final String ITEM_ID_TAG = "item_id";
     private static final String STRUCTURE_ID_TAG = "structure_id";
     private static final String BIOME_ID_TAG = "biome_id";
     private static final String POS_X_TAG = "pos_x";
     private static final String POS_Y_TAG = "pos_y";
     private static final String POS_Z_TAG = "pos_z";
-    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
-    private static final String GAME_TIME_TAG = "game_time";
-    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
-    private static final String DAY_TIME_TAG = "day_time";
     private static final String CREATED_GAME_TIME_TAG = "created_game_time";
     private static final String CREATED_DAY_TIME_TAG = "created_day_time";
     private static final String LAST_UPDATED_GAME_TIME_TAG = "last_updated_game_time";
@@ -191,6 +186,7 @@ public record ExcavationLogEntry(UUID entryId,
 
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
         tag.putString(ENTRY_ID_TAG, this.entryId.toString());
         if (this.lootSource != null) {
             tag.putString(LOOT_SOURCE_TAG, this.lootSource.id().toString());
@@ -229,16 +225,14 @@ public record ExcavationLogEntry(UUID entryId,
     }
 
     public static ExcavationLogEntry fromTag(CompoundTag tag) {
+        JournalNbtMigrator.migrateExcavationLogEntry(tag);
         UUID entryId = parseUuid(tag.getString(ENTRY_ID_TAG));
         if (entryId == null) {
             entryId = UUID.randomUUID();
         }
-        // 向后兼容：优先读取新字段 loot_source，其次读取旧字段 trigger_type
         LootSourceType lootSource = null;
         if (tag.contains(LOOT_SOURCE_TAG, Tag.TAG_STRING)) {
             lootSource = LootSourceType.fromId(tag.getString(LOOT_SOURCE_TAG));
-        } else if (tag.contains(LEGACY_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
-            lootSource = LootSourceType.fromId(tag.getString(LEGACY_TRIGGER_TYPE_TAG));
         }
         ResourceLocation sourceBlockId = tag.contains(SOURCE_BLOCK_ID_TAG, Tag.TAG_STRING)
                 ? ResourceLocation.tryParse(tag.getString(SOURCE_BLOCK_ID_TAG))
@@ -255,16 +249,12 @@ public record ExcavationLogEntry(UUID entryId,
         }
         BlockPos pos = new BlockPos(tag.getInt(POS_X_TAG), tag.getInt(POS_Y_TAG), tag.getInt(POS_Z_TAG));
 
-        long legacyGameTime = Math.max(0L, tag.getLong(GAME_TIME_TAG));
-        long legacyDayTime = tag.contains(DAY_TIME_TAG, Tag.TAG_LONG)
-                ? Math.max(0L, tag.getLong(DAY_TIME_TAG))
-                : legacyGameTime;
         long createdGameTime = tag.contains(CREATED_GAME_TIME_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(CREATED_GAME_TIME_TAG))
-                : legacyGameTime;
+                : 0L;
         long createdDayTime = tag.contains(CREATED_DAY_TIME_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(CREATED_DAY_TIME_TAG))
-                : legacyDayTime;
+                : createdGameTime;
         long lastUpdatedGameTime = tag.contains(LAST_UPDATED_GAME_TIME_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(LAST_UPDATED_GAME_TIME_TAG))
                 : createdGameTime;
@@ -272,15 +262,12 @@ public record ExcavationLogEntry(UUID entryId,
                 ? Math.max(0L, tag.getLong(LAST_UPDATED_DAY_TIME_TAG))
                 : createdDayTime;
 
-        ResourceLocation legacyItemId = tag.contains(ITEM_ID_TAG, Tag.TAG_STRING)
-                ? ResourceLocation.tryParse(tag.getString(ITEM_ID_TAG))
-                : null;
         Map<String, Integer> expectedLoot = tag.contains(EXPECTED_LOOT_TAG, Tag.TAG_COMPOUND)
                 ? LootCounts.readFromNbt(tag.getCompound(EXPECTED_LOOT_TAG))
-                : createLegacyLootMap(legacyItemId);
+                : Map.of();
         Map<String, Integer> actualLoot = tag.contains(ACTUAL_LOOT_TAG, Tag.TAG_COMPOUND)
                 ? LootCounts.readFromNbt(tag.getCompound(ACTUAL_LOOT_TAG))
-                : createLegacyLootMap(legacyItemId);
+                : Map.of();
         String note = tag.contains(NOTE_TAG, Tag.TAG_STRING) ? tag.getString(NOTE_TAG) : "";
 
         // tableStack：向后兼容，缺失时返回 null（视为单层根表）
@@ -319,14 +306,6 @@ public record ExcavationLogEntry(UUID entryId,
             LOGGER.warn("Failed to parse UUID from NBT: {}", value, e);
             return null;
         }
-    }
-
-    @Deprecated // 向后兼容读取旧NBT（item_id 字段），将于 1.5.0 移除
-    private static Map<String, Integer> createLegacyLootMap(@Nullable ResourceLocation itemId) {
-        if (itemId == null) {
-            return Map.of();
-        }
-        return Map.of(LootResultSignature.plain(itemId).toStoredKey(), 1);
     }
 
     @Nullable

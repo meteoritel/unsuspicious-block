@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.network;
 
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyChallengeChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalCompletionRewardChecker;
-import com.meteorite.unsuspiciousblock.journal.tracking.JournalProgressSignatureMigrator;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
@@ -21,7 +21,7 @@ public final class ArchaeologyJournalNetwork {
         JournalLogHandler.restoreAndSyncOnJoin(player);
         JournalCatalogHandler.syncCatalogHash(player);
         LootTableManagementHandler.sync(player);
-        JournalProgressSignatureMigrator.migrate(player);
+        JournalDataMigrationManager.migrateProgressSignatures(player);
         JournalStateHandler.syncStateFull(player);
         // 状态全量同步之后再补发完成奖励，确保客户端 catalog 已就绪可解析表名
         JournalCompletionRewardChecker.checkAndRewardAll(player);

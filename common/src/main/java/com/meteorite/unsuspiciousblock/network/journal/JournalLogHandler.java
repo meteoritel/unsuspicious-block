@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.network.journal;
 
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogLegacyAccess;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
@@ -355,18 +355,25 @@ public final class JournalLogHandler {
         }
 
         ArchaeologyJournalLogState persisted = JournalLogStorage.getPlayerState(server, player.getUUID());
-        session.restoreFromPersisted(persisted);
-
-        // 一次性迁移：若玩家 NBT 中残留旧版日志 tag，按 entryId 合并到 v2 分片
-        if (player instanceof ArchaeologyJournalLogLegacyAccess access) {
-            CompoundTag legacy = access.unsuspiciousblock$consumeLegacyJournalLogTag();
-            if (legacy != null) {
-                ArchaeologyJournalLogState migrated = new ArchaeologyJournalLogState();
-                migrated.readFrom(legacy);
-                session.mergeFromClient(migrated);
-                JournalLogStorage.markAllDirty(server, player.getUUID());
+        ArchaeologyJournalLogSyncSession.ReplayResult replay = session.restoreFromPersisted(persisted);
+        if (replay.hadQueuedMutations()) {
+            if (replay.clearAll()) {
+                if (!JournalLogStorage.persistClearAllNow(server, player.getUUID(), replay.affectedTables())) {
+                    for (ResourceLocation tableId : replay.affectedTables()) {
+                        JournalLogStorage.markTableDirty(server, player.getUUID(), tableId);
+                    }
+                }
+                for (ResourceLocation tableId : session.mirroredState().getTables().keySet()) {
+                    JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
+                }
+            } else {
+                for (ResourceLocation tableId : replay.affectedTables()) {
+                    JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
+                }
             }
         }
+
+        JournalDataMigrationManager.migrateLegacyPlayerLog(player, session);
 
         // 下发日志快照给客户端
         syncLogSnapshot(player);

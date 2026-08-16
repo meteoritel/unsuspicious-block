@@ -7,6 +7,8 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -28,12 +30,26 @@ public final class ArchaeologyJournalLogSyncSession {
     // 从服务端持久数据恢复日志到镜像状态（替代旧版的 reset + 客户端上传模式）
     // 直接引用分片存储缓存中的状态对象，消除登录时的全量深拷贝。
     // 不变式：调用后 session.mirroredState 与 JournalLogStorage 缓存持有同一引用。
-    public void restoreFromPersisted(ArchaeologyJournalLogState persisted) {
+    public ReplayResult restoreFromPersisted(ArchaeologyJournalLogState persisted) {
         this.sessionId = UUID.randomUUID();
         this.nextSequence = 1L;
         this.seeded = true;
         this.mirroredState = persisted;
+        Set<ResourceLocation> existingTables = new HashSet<>(persisted.getTables().keySet());
+        Set<ResourceLocation> affectedTables = new HashSet<>();
+        boolean clearAll = false;
+        boolean hadQueuedMutations = !this.queuedMutations.isEmpty();
+        for (QueuedMutation mutation : this.queuedMutations) {
+            if (mutation.type == Type.CLEAR_ALL) {
+                clearAll = true;
+                affectedTables.addAll(existingTables);
+            } else if (mutation.tableId != null) {
+                affectedTables.add(mutation.tableId);
+            }
+            mutation.apply(this.mirroredState);
+        }
         this.queuedMutations.clear();
+        return new ReplayResult(Set.copyOf(affectedTables), clearAll, hadQueuedMutations);
     }
 
     // 重置会话：清空 sessionId、镜像状态与待定变更队列
@@ -191,5 +207,11 @@ public final class ArchaeologyJournalLogSyncSession {
         UPSERT_ENTRY,
         CLEAR_ALL,
         CLEAR_TABLE
+    }
+
+    /** 服务端恢复持久化状态时回放的未 seeded 变更及其持久化影响范围。 */
+    public record ReplayResult(Set<ResourceLocation> affectedTables,
+                               boolean clearAll,
+                               boolean hadQueuedMutations) {
     }
 }

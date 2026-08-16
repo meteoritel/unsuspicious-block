@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * 日志结算行为由 {@code LootSettlementStrategy} 在每次会话提交时决定，来源类型只负责展示与序列化。
  * <p>
  * 序列化使用 {@link ResourceLocation} 格式（如 {@code unsuspiciousblock:archaeology}），
- * {@link #fromId} 兼容旧格式简单字符串（{@code "archaeology"}、{@code "brush"} 等）。
+ * 旧格式名称的转换由 JournalNbtMigrator 集中处理。
  */
 public final class LootSourceType {
     private static final Map<ResourceLocation, LootSourceType> REGISTRY = new LinkedHashMap<>();
@@ -107,7 +107,7 @@ public final class LootSourceType {
         return Collections.unmodifiableMap(REGISTRY);
     }
 
-    // 根据字符串 id 反序列化；兼容旧格式简单名（如 "archaeology"、"brush" 等）
+    // 根据当前格式的 ResourceLocation 字符串反序列化
     @Nullable
     public static LootSourceType fromId(String id) {
         if (id == null || id.isEmpty()) {
@@ -121,21 +121,7 @@ public final class LootSourceType {
                 return type;
             }
         }
-        // 向后兼容旧格式简单名
-        return fromLegacyName(id);
-    }
-
-    @Deprecated // 将于 1.5.0 移除
-    @Nullable
-    private static LootSourceType fromLegacyName(String name) {
-        return switch (name) {
-            case "archaeology", "brush", "reader", "spade" -> ARCHAEOLOGY;
-            case "loot_container", "container" -> LOOT_CONTAINER;
-            case "fishing" -> FISHING;
-            case "fossil_hunter" -> FOSSIL_HUNTER;
-            case "decorated_pot", "pot" -> DECORATED_POT;
-            default -> null;
-        };
+        return null;
     }
 
     @Override

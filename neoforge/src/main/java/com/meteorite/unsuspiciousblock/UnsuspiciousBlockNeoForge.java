@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.JournalLogStorage;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -322,6 +323,13 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     @SubscribeEvent
+    public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer sp && sp.getServer() != null) {
+            JournalLogStorage.unloadPlayer(sp.getServer(), sp.getUUID());
+        }
+    }
+
+    @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         UsbCommand.register(event.getDispatcher());
     }
@@ -338,7 +346,7 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         ServerLootTableConfigManager.start(event.getServer());
-        JournalLogStorage.start(event.getServer());
+        JournalDataMigrationManager.initializeStorage(event.getServer());
         LootProbabilitySimulationWorker.start();
         ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
     }

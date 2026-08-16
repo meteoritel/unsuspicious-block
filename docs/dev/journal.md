@@ -19,14 +19,17 @@ journal/
 │   ├── ArchaeologyJournalCatalog         原始目录解析（load）
 │   ├── ArchaeologyJournalServerCatalog   服务端目录（含概率模拟调度 + SavedData 缓存）
 │   └── JournalCategoryLoader             分类规则加载（data/journal_categories/）
+├── migration/    数据版本与迁移统一入口
+│   ├── JournalDataMigrationManager  存储/玩家/签名迁移生命周期调度
+│   ├── JournalDataVersion           NBT schema 与存储布局版本定义
+│   ├── JournalNbtMigrator           NBT 逐版本字段转换链
+│   └── LegacyJournalLogAccess       旧玩家 NBT 的 peek/ack 迁移接口
 ├── state/        玩家进度状态
 │   ├── ArchaeologyJournalState           进度状态（表/物品解锁 + 增量同步 revision）
 │   ├── ArchaeologyJournalStateHolder     mixin 接口，附加到 ServerPlayer
 │   ├── ArchaeologyJournalLogState        日志状态（条目列表）
 │   ├── ExcavationLogEntry                日志条目 record
-│   ├── LootSourceType                    战利品来源类型枚举
-│   ├── NbtDataMigrator / NbtDataVersion  旧存档数据迁移
-│   └── ArchaeologyJournalLogLegacyAccess 旧日志格式兼容访问
+│   └── LootSourceType                    战利品来源类型枚举
 ├── tracking/     战利品追踪
 │   ├── LootTrackingContext / Holder      追踪上下文（ThreadLocal）
 │   ├── LootSession                       一次 loot roll 的会话
@@ -39,7 +42,6 @@ journal/
 │   ├── JournalLogRecorder                日志记录器
 │   ├── ArchaeologyChallengeChecker       考古挑战成就检查
 │   ├── JournalCompletionRewardChecker    100% 完成奖励检查
-│   ├── JournalProgressSignatureMigrator  签名迁移（旧进度对齐新目录）
 │   ├── event/LootTrackingEvents          战利品发现事件总线
 │   ├── event/LootDiscoveredEvent         发现事件
 │   ├── event/LootTrackingBootstrap       内建订阅者注册
@@ -120,7 +122,7 @@ ArchaeologyJournalState
 
 - [`ArchaeologyJournalStateHolder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/state/ArchaeologyJournalStateHolder.java) 是 mixin 接口，`ServerPlayer` 实例通过 `unsuspiciousblock$getArchaeologyJournalState()` 暴露状态。
 - `PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin`（见 [mixin.md](mixin.md)）实现状态的读写，序列化到玩家 NBT。
-- `NbtDataVersion` / `NbtDataMigrator` 处理旧存档格式迁移，序列化时写入版本号。
+- `JournalDataVersion` / `JournalNbtMigrator` 统一处理旧存档格式迁移，状态类只解析当前字段。
 
 最近列表由 `RecentLootTableService` 写入：同一表再次遇到时刷新为最新记录，超过 128 个唯一表时移除最旧项。该路径不创建 `LootSession`，只在玩家打开随机容器、实际刷拭或用考古铲取出可疑方块内容、钓鱼收杆、打破战利品陶罐时更新有限 Map；`entities/` 与 `blocks/` 路径不会记录。
 
@@ -148,11 +150,25 @@ ArchaeologyJournalState
     └── tables/<sha256(table-id)>.dat         单张战利品表的日志历史
 ```
 
-- 普通新增和备注更新只标记对应表为 dirty；服务端每 200 tick 最多写入 4 个分片，避免集中压缩与 IO 卡顿。删除操作立即持久化，停服前刷新全部 dirty 分片。
+- 普通新增和备注更新只标记对应表为 dirty；服务端每 200 tick（约 10 秒）最多写入 4 个分片，避免集中压缩与 IO 卡顿。删除操作立即持久化，停服前刷新全部 dirty 分片。
+- 延迟写盘意味着进程崩溃可能丢失尚未刷新的日志变更；dirty 分片不超过一轮容量时，单次变更通常最多等待约 10 秒，积压超过 4 个分片时队尾等待时间会进一步延长。这是性能与数据持久化时效之间的明确取舍。
+- 定时刷盘按玩家轮询选择 shard，同一批中每名玩家只重写一次 `index.dat`；写入失败的 shard 会放回队尾，避免持续故障阻塞其他玩家。
+- 玩家退出时同步刷新其全部 dirty shard，成功后从内存卸载状态；若 shard 或 index 写入失败，则保留缓存并由后续 tick 重试。玩家在重试完成前重新连接会取消待卸载标记并复用缓存。
 - 单表文件记录原始 `table_id`，文件名使用其 SHA-256；加载时同时校验存储版本、玩家 UUID 和表 ID。写入使用同目录临时文件再原子替换。
 - `index.dat` 是正常加载时的权威清单；索引损坏或不存在时才扫描 `tables/` 并重建索引，因此已删除但遗留的孤立分片不会被正常恢复。
 - 首次启动 v2 时，旧 `<world>/data/unsuspiciousblock_journal_logs.dat` 会按玩家和表拆分。所有目标分片与 `storage.dat` 成功写入后，旧文件才移动到 `migration/` 备份；过程可重复执行。
-- 仍残留在玩家 NBT 的更早期 `unsuspiciousblock_archaeology_journal_log` 会在玩家登录时按 `entryId` 合并到 v2，服务端已有的同 ID 条目优先。
+- 仍残留在玩家 NBT 的更早期 `unsuspiciousblock_archaeology_journal_log` 会在玩家登录时按 `entryId` 合并到 v2，服务端已有的同 ID 条目优先。旧 tag 通过 `peek` 读取；所有目标表与 index 同步落盘成功后才 `ack`，失败时继续写回玩家 NBT 等待重试。
+
+#### 4.4.1 版本迁移约定
+
+考古日志有两个互不混用的版本轴，统一定义在 `JournalDataVersion`：
+
+- **NBT schema 版本**：描述字段与嵌套结构，当前为 v1；缺少 `data_version` 视为 v0。
+- **存储布局版本**：描述单文件或分片目录结构，当前为 v2。
+
+所有旧 NBT 字段名、默认值和逐级迁移步骤只能添加到 `JournalNbtMigrator`。迁移必须严格按 `vN -> vN+1` 连续执行；遇到高于当前版本的数据时拒绝降级读取。新增版本时先提高 `JournalDataVersion.CURRENT_NBT_VERSION`，再补齐每种数据类型对应的迁移步骤。状态类的 `readFrom` / `fromTag` 不得重新加入旧字段回退分支。
+
+`JournalDataMigrationManager` 是生命周期统一入口：服务端启动时触发存储布局检查；玩家登录时提交旧玩家日志并执行目录签名迁移。源数据只有在目标数据完整持久化后才允许清理，世界级旧单文件则保留 `.bak` 备份。
 
 玩家可删除单条日志、当前战利品表的全部日志或全部日志。三个入口都使用 `ConfirmScreen` 二次确认；C2S 请求只能操作连接玩家自身的数据。删除只影响日志，不回退目录解锁、物品计数、完成奖励或成就。
 
@@ -239,7 +255,7 @@ LootTrackingEvents.submit(session, itemCounts, settlementStrategy)
 syncOnJoin(player)
   ├─ JournalLogHandler.restoreAndSyncOnJoin   从 v2 分片存储恢复日志并下发快照
   ├─ JournalCatalogHandler.syncCatalogHash    下发目录哈希（客户端比对后按需请求全量）
-  ├─ JournalProgressSignatureMigrator.migrate 签名迁移（旧进度对齐新目录）
+  ├─ JournalDataMigrationManager.migrateProgressSignatures  签名迁移（旧进度对齐新目录）
   ├─ JournalStateHandler.syncStateFull        全量下发进度状态
   ├─ JournalCompletionRewardChecker.checkAndRewardAll  补发完成奖励
   └─ ArchaeologyChallengeChecker.checkAndGrantAll       补发考古成就

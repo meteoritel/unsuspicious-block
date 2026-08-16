@@ -23,8 +23,10 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -40,6 +42,7 @@ import java.util.UUID;
 public final class ArchaeologyJournalLogLocalStore {
     private static final String STORAGE_DIR = "unsuspiciousblock_journal_logs";
     private static final String STORAGE_FILE = "journal_log_state.dat";
+    private static final long MAX_LOCAL_NBT_BYTES = 256L * 1024 * 1024;
 
     private static volatile ArchaeologyJournalLogState logState = new ArchaeologyJournalLogState();
     @Nullable
@@ -319,9 +322,9 @@ public final class ArchaeologyJournalLogLocalStore {
             return state;
         }
         try (InputStream inputStream = Files.newInputStream(path)) {
-            CompoundTag tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());
+            CompoundTag tag = NbtIo.readCompressed(inputStream, NbtAccounter.create(MAX_LOCAL_NBT_BYTES));
             state.readFrom(tag);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             Constants.LOG.warn("读取本地考古日志失败: {}", path, e);
         }
         return state;
@@ -332,15 +335,32 @@ public final class ArchaeologyJournalLogLocalStore {
         if (path == null) {
             return false;
         }
+        Path temporary = path.resolveSibling(path.getFileName() + ".tmp");
+        boolean moved = false;
         try {
             Files.createDirectories(path.getParent());
-            try (OutputStream outputStream = Files.newOutputStream(path)) {
+            try (OutputStream outputStream = Files.newOutputStream(temporary)) {
                 NbtIo.writeCompressed(logState.toTag(), outputStream);
             }
+            try {
+                Files.move(temporary, path,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+            }
+            moved = true;
             return true;
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             Constants.LOG.warn("保存本地考古日志失败: {}", path, e);
             return false;
+        } finally {
+            if (!moved) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException cleanupException) {
+                    Constants.LOG.debug("清理本地考古日志临时文件失败: {}", temporary, cleanupException);
+                }
+            }
         }
     }
 

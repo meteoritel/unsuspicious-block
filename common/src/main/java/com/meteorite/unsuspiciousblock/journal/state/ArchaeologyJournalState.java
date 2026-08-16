@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
+import com.meteorite.unsuspiciousblock.journal.migration.JournalDataVersion;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalNbtMigrator;
+
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -294,7 +297,7 @@ public final class ArchaeologyJournalState {
 
     // 将状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
-        tag.putInt(NbtDataVersion.TAG, NbtDataVersion.CURRENT);
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
         tag.putLong(REVISION_TAG, this.revision);
         tag.putLong(RECENT_SEQUENCE_TAG, this.recentSequence);
         CompoundTag tablesTag = new CompoundTag();
@@ -316,6 +319,7 @@ public final class ArchaeologyJournalState {
     // 从 CompoundTag 反序列化恢复状态
     public void readFrom(CompoundTag tag) {
         this.clear();
+        JournalNbtMigrator.migrateJournalState(tag);
         this.revision = tag.contains(REVISION_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(REVISION_TAG)) : 0L;
         this.recentSequence = tag.contains(RECENT_SEQUENCE_TAG, Tag.TAG_LONG)

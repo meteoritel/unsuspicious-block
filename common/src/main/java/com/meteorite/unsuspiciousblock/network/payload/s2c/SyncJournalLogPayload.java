@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.journal.migration.JournalNbtMigrator;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -86,7 +87,7 @@ public record SyncJournalLogPayload(UUID sessionId,
         }
         // 向后兼容：读取旧字段名
         if (this.data.contains(LEGACY_TRIGGER_TYPE_TAG, Tag.TAG_STRING)) {
-            return LootSourceType.fromId(this.data.getString(LEGACY_TRIGGER_TYPE_TAG));
+            return JournalNbtMigrator.parseLegacyLootSource(this.data.getString(LEGACY_TRIGGER_TYPE_TAG));
         }
         return null;
     }
