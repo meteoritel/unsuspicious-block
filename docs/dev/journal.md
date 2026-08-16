@@ -9,7 +9,7 @@
 1. **目录**：解析服务端所有战利品表，按分类组织成可浏览的目录，每张表列出可能产出的物品及估算概率。
 2. **进度**：记录玩家解锁了哪些表、哪些物品、获取数量及最近遇到的战利品表，并通过 mixin 持久化到玩家 NBT。
 3. **追踪**：在玩家刷拭可疑方块、开箱、钓鱼、触发附魔战利品时，捕获实际产出的物品，解锁对应目录条目并记录日志。
-4. **日志**：记录每次发现的物品、坐标、维度、群系、结构、时间，支持分组、备注、复制传送指令。
+4. **日志**：记录每次发现的物品、坐标、维度、群系、结构、时间，支持分组、备注、复制传送指令和三级删除。
 
 ## 2. 子包结构
 
@@ -47,6 +47,8 @@ journal/
 └── sync/         日志分片同步
     └── ArchaeologyJournalLogSyncSession(Holder)
 ```
+
+日志持久化不位于 `journal/` 包，而由 `world/JournalLogStorage` 管理。
 
 ## 3. 目录构建（服务端）
 
@@ -132,6 +134,28 @@ ArchaeologyJournalState
 - `mergeFromIncremental`：客户端采用**服务端权威语义**，增量数据直接覆盖本地条目，不做二次合并。
 - 全量重置操作（`clear` / `removeTable`）也 +1 revision，对应全量同步。
 
+### 4.4 日志分片持久化与迁移
+
+[`JournalLogStorage`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/JournalLogStorage.java) 是日志的服务端权威存储。它不再把所有玩家日志写进同一个 `SavedData` NBT，而是按玩家 UUID、战利品表拆分压缩文件：
+
+```text
+<world>/data/unsuspiciousblock/journal_logs/
+├── storage.dat                              存储格式版本与迁移完成标记
+├── migration/
+│   └── unsuspiciousblock_journal_logs-v1.dat.bak
+└── players/<player-uuid>/
+    ├── index.dat                            该玩家的权威战利品表清单
+    └── tables/<sha256(table-id)>.dat         单张战利品表的日志历史
+```
+
+- 普通新增和备注更新只标记对应表为 dirty；服务端每 200 tick 最多写入 4 个分片，避免集中压缩与 IO 卡顿。删除操作立即持久化，停服前刷新全部 dirty 分片。
+- 单表文件记录原始 `table_id`，文件名使用其 SHA-256；加载时同时校验存储版本、玩家 UUID 和表 ID。写入使用同目录临时文件再原子替换。
+- `index.dat` 是正常加载时的权威清单；索引损坏或不存在时才扫描 `tables/` 并重建索引，因此已删除但遗留的孤立分片不会被正常恢复。
+- 首次启动 v2 时，旧 `<world>/data/unsuspiciousblock_journal_logs.dat` 会按玩家和表拆分。所有目标分片与 `storage.dat` 成功写入后，旧文件才移动到 `migration/` 备份；过程可重复执行。
+- 仍残留在玩家 NBT 的更早期 `unsuspiciousblock_archaeology_journal_log` 会在玩家登录时按 `entryId` 合并到 v2，服务端已有的同 ID 条目优先。
+
+玩家可删除单条日志、当前战利品表的全部日志或全部日志。三个入口都使用 `ConfirmScreen` 二次确认；C2S 请求只能操作连接玩家自身的数据。删除只影响日志，不回退目录解锁、物品计数、完成奖励或成就。
+
 ## 5. 战利品追踪（核心数据流）
 
 这是考古笔记最复杂的部分：如何把玩家的一次 loot roll 转化为目录解锁与日志记录。
@@ -213,7 +237,7 @@ LootTrackingEvents.submit(session, itemCounts, settlementStrategy)
 
 ```
 syncOnJoin(player)
-  ├─ JournalLogHandler.restoreAndSyncOnJoin   从 NBT 恢复日志并下发快照
+  ├─ JournalLogHandler.restoreAndSyncOnJoin   从 v2 分片存储恢复日志并下发快照
   ├─ JournalCatalogHandler.syncCatalogHash    下发目录哈希（客户端比对后按需请求全量）
   ├─ JournalProgressSignatureMigrator.migrate 签名迁移（旧进度对齐新目录）
   ├─ JournalStateHandler.syncStateFull        全量下发进度状态
@@ -230,11 +254,12 @@ syncOnJoin(player)
 | 进度增量 | `drainDirtyTables` | `SyncJournalStateIncrementalPayload` |
 | 进度全量 | 加入 / 数据包重载 | `SyncJournalStatePayload` / `SyncJournalStateFullPayload` |
 | 目录按需 | 哈希不一致 | `SyncCatalogHashPayload` -> `RequestCatalogPayload` -> `SyncArchaeologyCatalogPayload` |
-| 日志分片 | 日志数据量大 | `RequestJournalLogSnapshotPayload` / `SyncJournalLogSnapshotPayload` / `UploadJournalLogSnapshotPayload` |
+| 日志分片 | 加入 / 客户端重同步请求 | `SyncJournalLogSnapshotStartPayload` / `SyncJournalLogTableChunkPayload` / `SyncJournalLogSnapshotEndPayload` |
+| 日志删除 | 玩家确认删除 | `DeleteJournalLogPayload` / `JournalLogDeleteResultPayload` / `SyncJournalLogPayload` |
 | 扫描结果 | 可疑解析仪扫描 | `SyncReaderScanResultPayload` |
 | 完成奖励 | 100% 完成 | `NotifyTableCompletionRewardPayload` |
 
-日志同步用 [`ArchaeologyJournalLogSyncSession`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/sync/ArchaeologyJournalLogSyncSession.java) 分片进行，避免单包过大。网络层细节见 [network.md](network.md)。
+日志同步会话维护服务端权威状态与增量序号；全量快照按战利品表压缩，再切成最多 128 KiB 的网络分片，避免单个 NBT payload 触发 2 MiB 解码上限。网络层细节见 [network.md](network.md)。
 
 ## 7. 客户端侧
 

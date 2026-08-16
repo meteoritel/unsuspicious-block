@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 
@@ -95,6 +96,11 @@ public final class JournalLogSavedData extends SavedData {
     // 标记数据已变更，等待世界保存时落盘
     public void markDirty() {
         setDirty();
+    }
+
+    // 仅供存储格式 v1 -> v2 迁移读取；返回的状态仍由本 SavedData 持有
+    public Map<UUID, ArchaeologyJournalLogState> snapshotStatesForMigration() {
+        return Collections.unmodifiableMap(this.playerStates);
     }
 
     @Nullable

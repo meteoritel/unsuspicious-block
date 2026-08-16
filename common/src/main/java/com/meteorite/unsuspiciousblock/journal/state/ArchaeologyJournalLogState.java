@@ -79,6 +79,19 @@ public final class ArchaeologyJournalLogState {
         return this.tables.remove(tableId) != null;
     }
 
+    // 移除指定表中的单条日志；表的首次解锁元数据保持不变
+    public boolean removeEntry(ResourceLocation tableId, UUID entryId) {
+        TableLogHistory history = this.tables.get(tableId);
+        return history != null && history.removeEntry(entryId);
+    }
+
+    // 分片存储加载入口：以已反序列化的表历史覆盖对应表
+    public void putTable(ResourceLocation tableId, TableLogHistory history) {
+        if (tableId != null && history != null) {
+            this.tables.put(tableId, history);
+        }
+    }
+
     // 深度复制整个日志状态
     public ArchaeologyJournalLogState copy() {
         ArchaeologyJournalLogState copy = new ArchaeologyJournalLogState();
@@ -180,6 +193,14 @@ public final class ArchaeologyJournalLogState {
 
         public boolean containsEntry(UUID entryId) {
             return entryId != null && this.entries.containsKey(entryId);
+        }
+
+        private boolean removeEntry(UUID entryId) {
+            if (entryId == null || this.entries.remove(entryId) == null) {
+                return false;
+            }
+            this.entriesVersion++;
+            return true;
         }
 
         private boolean setFirstUnlockMetaMin(@Nullable LootSourceType lootSource, long gameTime, long dayTime) {

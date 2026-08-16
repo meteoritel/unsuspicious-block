@@ -119,6 +119,8 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 
 `ArchaeologyJournalScreen` 从 `ArchaeologyJournalClientState` 读取目录/进度/日志数据，通过 `JournalViewModel` 组织视图，渲染 `JournalBookBackground`（书本背景）+ 各 panel。
 
+日志详情页提供删除单条按钮，日志工具栏提供清空当前战利品表和清空全部按钮。三个入口都会先打开原版 `ConfirmScreen`；确认后才发送 `DeleteJournalLogPayload`，取消则返回原笔记界面。服务端成功后通过日志增量更新本地状态，并用 `JournalLogDeleteResultPayload` 显示结果提示。删除只影响日志条目，不改变目录解锁或获取计数。
+
 ## 5. HUD
 
 [`CatFavorHud`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/hud/CatFavorHud.java) 在快捷栏上方渲染猫之恩惠信息：

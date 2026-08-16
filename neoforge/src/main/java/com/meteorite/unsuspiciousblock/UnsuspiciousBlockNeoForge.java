@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.world.JournalLogStorage;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -337,12 +338,14 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         ServerLootTableConfigManager.start(event.getServer());
+        JournalLogStorage.start(event.getServer());
         LootProbabilitySimulationWorker.start();
         ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
+        JournalLogStorage.stop(event.getServer());
         LootProbabilitySimulationWorker.stop();
         ArchaeologyJournalServerCatalog.invalidate();
         ServerLootTableConfigManager.stop();
@@ -352,6 +355,7 @@ public class UnsuspiciousBlockNeoForge {
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
     @SubscribeEvent
     public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        JournalLogStorage.tick(event.getServer());
         ServerLootTableConfigManager.tick(event.getServer());
         LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
         MerchantCatSpawner.tick(event.getServer());

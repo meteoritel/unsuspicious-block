@@ -24,6 +24,8 @@ public class LogToolbar {
     // widget 引用
     private IconButton sortDirBtn;
     private IconButton groupBtn;
+    private IconButton clearTableBtn;
+    private IconButton clearAllBtn;
 
     public LogToolbar() {
     }
@@ -88,7 +90,8 @@ public class LogToolbar {
      * visible 由 {@link #syncVisibility} 控制。
      */
     public void createWidgets(ArchaeologyJournalScreen screen, JournalBookBackground.BookLayout bookLayout, Font font,
-                              boolean isLogListMode, RightPageContainer rightPage) {
+                              boolean isLogListMode, RightPageContainer rightPage,
+                              Runnable onClearTable, Runnable onClearAll) {
         int logToolbarY = bookLayout.rightPageY() + JournalLayout.LOG_LIST_LABEL_Y
                 + (JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.SEARCH_QUICK_BAR_HEIGHT) / 2;
         int logToolbarRightX = bookLayout.rightPageX() + bookLayout.rightPageWidth() - 8;
@@ -115,6 +118,28 @@ public class LogToolbar {
                 () -> cycleGroupMode(rightPage));
         this.groupBtn.visible = isLogListMode;
         screen.registerWidget(this.groupBtn);
+
+        int clearTableX = logGroupX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
+        this.clearTableBtn = new IconButton(
+                clearTableX, logToolbarY,
+                JournalLayout.LOG_GROUP_ICON_SIZE,
+                '×',
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
+                onClearTable);
+        this.clearTableBtn.visible = isLogListMode;
+        screen.registerWidget(this.clearTableBtn);
+
+        int clearAllX = clearTableX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
+        this.clearAllBtn = new IconButton(
+                clearAllX, logToolbarY,
+                JournalLayout.LOG_GROUP_ICON_SIZE,
+                '!',
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.all_tooltip"),
+                onClearAll);
+        this.clearAllBtn.visible = isLogListMode;
+        screen.registerWidget(this.clearAllBtn);
     }
 
     /** 同步日志工具栏 widget 可见性 */
@@ -126,6 +151,12 @@ public class LogToolbar {
         if (this.groupBtn != null) {
             this.groupBtn.visible = visible;
         }
+        if (this.clearTableBtn != null) {
+            this.clearTableBtn.visible = visible;
+        }
+        if (this.clearAllBtn != null) {
+            this.clearAllBtn.visible = visible;
+        }
     }
 
     /** 渲染日志工具栏 tooltip */
@@ -135,6 +166,12 @@ public class LogToolbar {
         }
         if (this.groupBtn != null) {
             this.groupBtn.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+        if (this.clearTableBtn != null) {
+            this.clearTableBtn.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+        if (this.clearAllBtn != null) {
+            this.clearAllBtn.renderTooltip(guiGraphics, mouseX, mouseY);
         }
     }
 }

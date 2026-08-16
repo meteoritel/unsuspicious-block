@@ -17,10 +17,13 @@ import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.client.ui.widget.JournalPageButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.DeleteJournalLogPayload;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -648,7 +651,8 @@ public class ArchaeologyJournalScreen extends Screen {
         // 日志工具栏
         boolean isLogTab = this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG;
         boolean isLogListMode = isLogTab && !this.rightPage.isShowingLogDetail();
-        this.logToolbar.createWidgets(this, this.bookLayout, this.font, isLogListMode, this.rightPage);
+        this.logToolbar.createWidgets(this, this.bookLayout, this.font, isLogListMode, this.rightPage,
+                this::confirmClearCurrentTableLogs, this::confirmClearAllLogs);
 
         // 日志详情页返回按钮（IconButton）
         this.rightPage.getLogDetailPanel().createBackButton(this::registerWidget,
@@ -656,6 +660,9 @@ public class ArchaeologyJournalScreen extends Screen {
 
         // 日志详情页备注编辑按钮（IconButton）
         this.rightPage.getLogDetailPanel().createNoteButton(this::registerWidget, this::openNoteEditor);
+
+        // 日志详情页删除按钮（IconButton）
+        this.rightPage.getLogDetailPanel().createDeleteButton(this::registerWidget, this::confirmDeleteCurrentEntry);
 
         // 书页外右上角帮助按钮（?），悬停展示使用提示
         int helpX = Math.min(this.viewport.logicalWidth() - JournalLayout.HELP_BUTTON_SIZE,
@@ -789,6 +796,7 @@ public class ArchaeologyJournalScreen extends Screen {
                 && this.rightPage.isShowingLogDetail();
         applyButtonState(this.rightPage.getLogDetailPanel().getBackButton(), isLogDetailMode, isLogDetailMode);
         applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode, isLogDetailMode);
+        applyButtonState(this.rightPage.getLogDetailPanel().getDeleteButton(), isLogDetailMode, isLogDetailMode);
     }
 
     private static void applyButtonState(@Nullable AbstractWidget btn, boolean visible, boolean active) {
@@ -818,6 +826,57 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
                 .setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
+    }
+
+    // 二次确认后删除当前表中的单条日志
+    private void confirmDeleteCurrentEntry() {
+        var detail = this.rightPage.getLogDetailPanel();
+        ExcavationLogEntry entry = detail.getEntry();
+        ResourceLocation tableId = detail.getTableId();
+        if (entry == null || tableId == null) {
+            return;
+        }
+        openDeleteConfirmation(
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_title"),
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_message"),
+                () -> {
+                    Services.NETWORK.sendToServer(DeleteJournalLogPayload.entry(tableId, entry.entryId()));
+                    this.rightPage.restoreLogSelection(null, false);
+                });
+    }
+
+    // 二次确认后清空当前战利品表的全部日志历史
+    private void confirmClearCurrentTableLogs() {
+        ResourceLocation tableId = this.viewModel.selectedTableId();
+        if (tableId == null) {
+            return;
+        }
+        var history = ArchaeologyJournalClientState.getLogState().getTable(tableId);
+        int count = history != null ? history.getTotalEntryCount() : 0;
+        openDeleteConfirmation(
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_title"),
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_message",
+                        tableId.toString(), count),
+                () -> Services.NETWORK.sendToServer(DeleteJournalLogPayload.table(tableId)));
+    }
+
+    // 二次确认后清空当前玩家的全部日志历史
+    private void confirmClearAllLogs() {
+        int count = ArchaeologyJournalClientState.getLogState().getTotalEntryCount();
+        openDeleteConfirmation(
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_title"),
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_message", count),
+                () -> Services.NETWORK.sendToServer(DeleteJournalLogPayload.all()));
+    }
+
+    private void openDeleteConfirmation(Component title, Component message, Runnable confirmedAction) {
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(new ConfirmScreen(confirmed -> {
+                    Objects.requireNonNull(this.minecraft).setScreen(this);
+                    if (confirmed) {
+                        confirmedAction.run();
+                    }
+                }, title, message));
     }
 
     // 捕获当前 UI 状态快照，用于窗口 resize 后恢复

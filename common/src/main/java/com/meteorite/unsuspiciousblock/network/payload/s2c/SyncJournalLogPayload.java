@@ -28,6 +28,7 @@ public record SyncJournalLogPayload(UUID sessionId,
     private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String GAME_TIME_TAG = "game_time";
     private static final String DAY_TIME_TAG = "day_time";
+    private static final String ENTRY_ID_TAG = "entry_id";
 
     public static final Type<SyncJournalLogPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_journal_log"));
@@ -64,6 +65,14 @@ public record SyncJournalLogPayload(UUID sessionId,
         return new SyncJournalLogPayload(sessionId, sequence, Action.CLEAR_TABLE, tableId, new CompoundTag());
     }
 
+    // 构建“删除单条日志”操作包
+    public static SyncJournalLogPayload deleteEntry(UUID sessionId, long sequence,
+                                                     ResourceLocation tableId, UUID entryId) {
+        CompoundTag data = new CompoundTag();
+        data.putUUID(ENTRY_ID_TAG, entryId);
+        return new SyncJournalLogPayload(sessionId, sequence, Action.DELETE_ENTRY, tableId, data);
+    }
+
     @Override
     public @NotNull Type<SyncJournalLogPayload> type() {
         return TYPE;
@@ -94,12 +103,18 @@ public record SyncJournalLogPayload(UUID sessionId,
                 : this.gameTime();
     }
 
+    @Nullable
+    public UUID entryId() {
+        return this.data.hasUUID(ENTRY_ID_TAG) ? this.data.getUUID(ENTRY_ID_TAG) : null;
+    }
+
     // 日志同步操作类型
     public enum Action {
         SET_FIRST_UNLOCK_META(0),
         UPSERT_ENTRY(1),
         CLEAR_ALL(2),
-        CLEAR_TABLE(3);
+        CLEAR_TABLE(3),
+        DELETE_ENTRY(4);
 
         private final int id;
 

@@ -4,9 +4,12 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.network.journal.JournalLogSnapshotCodec;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -24,6 +27,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -42,7 +49,7 @@ public final class ArchaeologyJournalLogLocalStore {
     @Nullable
     private static UUID currentSessionId;
     @Nullable
-    private static SyncJournalLogSnapshotPayload pendingSnapshot;
+    private static PendingSnapshot pendingSnapshot;
     private static final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private static long lastAppliedSequence;
     private static long revision;
@@ -72,32 +79,48 @@ public final class ArchaeologyJournalLogLocalStore {
         if (loadedPath == null) {
             return;
         }
+        tryCommitSnapshot();
         flushPending();
     }
 
-    // 接受服务端下发的全量快照——直接覆盖本地状态，设定 sessionId
-    public static synchronized void applySnapshot(SyncJournalLogSnapshotPayload payload) {
-        // 先刷新连接状态和待定数据（不触发基线上传）
+    // 开始接收服务端权威分片快照，旧状态在完整校验前继续可用
+    public static synchronized void beginSnapshot(SyncJournalLogSnapshotStartPayload payload) {
         refreshConnection();
         ensureLoaded();
-        flushPending();
-        if (loadedPath == null) {
-            queueSnapshot(payload);
-            return;
-        }
-        // 服务端权威模式：接受任意 sessionId 的快照（连接切换时 sessionId 会变化）
-        // 只要 sequence 不低于当前，就接受
         if (payload.sequence() < lastAppliedSequence) {
             return;
         }
+        pendingSnapshot = new PendingSnapshot(payload.sessionId(), payload.sequence(),
+                payload.snapshotId(), payload.tableCount());
+        pendingIncrementals.clear();
+    }
 
-        ArchaeologyJournalLogState updatedState = new ArchaeologyJournalLogState();
-        updatedState.readFrom(payload.state());
-        logState = updatedState;
-        currentSessionId = payload.sessionId();
-        lastAppliedSequence = payload.sequence();
-        revision++;
-        save();
+    // 接收单表压缩数据的一片；完整单表立即解码进待提交状态
+    public static synchronized void applySnapshotChunk(SyncJournalLogTableChunkPayload payload) {
+        refreshConnection();
+        PendingSnapshot snapshot = pendingSnapshot;
+        if (snapshot == null || !snapshot.matches(payload.sessionId(), payload.snapshotId())) {
+            requestLogSnapshotWithCooldown();
+            return;
+        }
+        try {
+            snapshot.add(payload);
+        } catch (RuntimeException exception) {
+            Constants.LOG.warn("接收考古日志快照分片失败，正在请求重同步", exception);
+            requestLogSnapshotWithCooldown();
+        }
+    }
+
+    // 标记分片快照传输结束，完整时原子提交
+    public static synchronized void completeSnapshot(SyncJournalLogSnapshotEndPayload payload) {
+        refreshConnection();
+        PendingSnapshot snapshot = pendingSnapshot;
+        if (snapshot == null || !snapshot.matches(payload.sessionId(), payload.snapshotId())) {
+            requestLogSnapshotWithCooldown();
+            return;
+        }
+        snapshot.ended = true;
+        tryCommitSnapshot();
     }
 
     // 接受服务端下发的增量更新
@@ -105,11 +128,19 @@ public final class ArchaeologyJournalLogLocalStore {
         // 先刷新连接状态和待定数据（不触发基线上传）
         refreshConnection();
         ensureLoaded();
-        flushPending();
         if (loadedPath == null) {
             pendingIncrementals.add(payload);
             return;
         }
+        if (pendingSnapshot != null) {
+            if (pendingSnapshot.sessionId.equals(payload.sessionId())) {
+                pendingIncrementals.add(payload);
+            } else {
+                requestLogSnapshotWithCooldown();
+            }
+            return;
+        }
+        flushPending();
         // sessionId 不匹配（currentSessionId 非空且与服务端不一致）→ 会话失效，请求快照重同步
         if (currentSessionId != null && !currentSessionId.equals(payload.sessionId())) {
             requestLogSnapshotWithCooldown();
@@ -163,36 +194,14 @@ public final class ArchaeologyJournalLogLocalStore {
         // 清除旧会话状态，允许后续快照重建基线
         currentSessionId = null;
         lastAppliedSequence = 0L;
+        pendingSnapshot = null;
         pendingIncrementals.clear();
         Services.NETWORK.sendToServer(new RequestJournalLogSnapshotPayload());
     }
 
-    private static void queueSnapshot(SyncJournalLogSnapshotPayload payload) {
-        if (pendingSnapshot == null
-                || !pendingSnapshot.sessionId().equals(payload.sessionId())
-                || payload.sequence() >= pendingSnapshot.sequence()) {
-            pendingSnapshot = payload;
-        }
-    }
-
     private static void flushPending() {
-        if (pendingSnapshot == null && pendingIncrementals.isEmpty()) {
+        if (pendingSnapshot != null || pendingIncrementals.isEmpty()) {
             return;
-        }
-
-        // 服务端权威模式：只处理与当前 sessionId 匹配的待定数据
-        if (pendingSnapshot != null) {
-            // 快照总是被接受（sequence 检查已排序）
-            if (pendingSnapshot.sequence() >= lastAppliedSequence) {
-                ArchaeologyJournalLogState snapshotState = new ArchaeologyJournalLogState();
-                snapshotState.readFrom(pendingSnapshot.state());
-                logState = snapshotState;
-                currentSessionId = pendingSnapshot.sessionId();
-                lastAppliedSequence = pendingSnapshot.sequence();
-                revision++;
-                save();
-            }
-            pendingSnapshot = null;
         }
 
         // 处理排队的增量更新
@@ -223,6 +232,26 @@ public final class ArchaeologyJournalLogLocalStore {
         }
     }
 
+    private static void tryCommitSnapshot() {
+        PendingSnapshot snapshot = pendingSnapshot;
+        if (snapshot == null || !snapshot.ended || loadedPath == null) {
+            return;
+        }
+        if (!snapshot.isComplete()) {
+            Constants.LOG.warn("考古日志快照不完整: 收到 {}/{} 张表",
+                    snapshot.completedTables.size(), snapshot.expectedTableCount);
+            requestLogSnapshotWithCooldown();
+            return;
+        }
+        logState = snapshot.state;
+        currentSessionId = snapshot.sessionId;
+        lastAppliedSequence = snapshot.sequence;
+        pendingSnapshot = null;
+        revision++;
+        save();
+        flushPending();
+    }
+
     private static boolean shouldAcceptUpdate(@Nullable UUID sessionId, long lastSequence,
                                               SyncJournalLogPayload payload) {
         // sessionId 匹配检查：如果当前已有 sessionId，必须与服务端一致
@@ -236,6 +265,8 @@ public final class ArchaeologyJournalLogLocalStore {
         return switch (payload.action()) {
             case CLEAR_ALL -> clearAll(state);
             case CLEAR_TABLE -> payload.tableId() != null && state.removeTable(payload.tableId());
+            case DELETE_ENTRY -> payload.tableId() != null && payload.entryId() != null
+                    && state.removeEntry(payload.tableId(), payload.entryId());
             case SET_FIRST_UNLOCK_META -> applyFirstUnlockMeta(state, payload);
             case UPSERT_ENTRY -> applyUpsertEntry(state, payload);
         };
@@ -345,5 +376,90 @@ public final class ArchaeologyJournalLogLocalStore {
             return "unknown_server";
         }
         return value.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    /** 一次正在接收的服务端日志快照。 */
+    private static final class PendingSnapshot {
+        private final UUID sessionId;
+        private final long sequence;
+        private final UUID snapshotId;
+        private final int expectedTableCount;
+        private final ArchaeologyJournalLogState state = new ArchaeologyJournalLogState();
+        private final Map<net.minecraft.resources.ResourceLocation, ChunkAccumulator> tables = new HashMap<>();
+        private final Set<net.minecraft.resources.ResourceLocation> completedTables = new HashSet<>();
+        private int compressedBytes;
+        private boolean ended;
+
+        private PendingSnapshot(UUID sessionId, long sequence, UUID snapshotId, int expectedTableCount) {
+            this.sessionId = sessionId;
+            this.sequence = sequence;
+            this.snapshotId = snapshotId;
+            this.expectedTableCount = expectedTableCount;
+        }
+
+        private boolean matches(UUID sessionId, UUID snapshotId) {
+            return this.sessionId.equals(sessionId) && this.snapshotId.equals(snapshotId);
+        }
+
+        private void add(SyncJournalLogTableChunkPayload payload) {
+            if (this.completedTables.contains(payload.tableId())) {
+                return;
+            }
+            byte[] chunk = payload.data();
+            this.compressedBytes += chunk.length;
+            if (this.compressedBytes > JournalLogSnapshotCodec.MAX_COMPRESSED_TABLE_BYTES
+                    * Math.max(1, Math.min(this.expectedTableCount, 16))) {
+                throw new IllegalArgumentException("考古日志快照压缩数据总量超过限制");
+            }
+            ChunkAccumulator accumulator = this.tables.computeIfAbsent(payload.tableId(),
+                    ignored -> new ChunkAccumulator(payload.chunkCount()));
+            byte[] completed = accumulator.add(payload.chunkIndex(), payload.chunkCount(), chunk);
+            if (completed == null) {
+                return;
+            }
+            this.state.putTable(payload.tableId(), JournalLogSnapshotCodec.decode(completed));
+            this.tables.remove(payload.tableId());
+            this.completedTables.add(payload.tableId());
+        }
+
+        private boolean isComplete() {
+            return this.tables.isEmpty() && this.completedTables.size() == this.expectedTableCount;
+        }
+    }
+
+    /** 单张表的定长分片重组器。 */
+    private static final class ChunkAccumulator {
+        private final byte[][] chunks;
+        private int received;
+        private int totalBytes;
+
+        private ChunkAccumulator(int chunkCount) {
+            this.chunks = new byte[chunkCount][];
+        }
+
+        @Nullable
+        private byte[] add(int chunkIndex, int chunkCount, byte[] data) {
+            if (chunkCount != this.chunks.length) {
+                throw new IllegalArgumentException("同一日志表的分片总数不一致");
+            }
+            if (this.chunks[chunkIndex] == null) {
+                this.chunks[chunkIndex] = data;
+                this.received++;
+                this.totalBytes += data.length;
+                if (this.totalBytes > JournalLogSnapshotCodec.MAX_COMPRESSED_TABLE_BYTES) {
+                    throw new IllegalArgumentException("单张日志表压缩数据超过限制");
+                }
+            }
+            if (this.received != this.chunks.length) {
+                return null;
+            }
+            byte[] result = new byte[this.totalBytes];
+            int offset = 0;
+            for (byte[] chunk : this.chunks) {
+                System.arraycopy(chunk, 0, result, offset, chunk.length);
+                offset += chunk.length;
+            }
+            return result;
+        }
     }
 }

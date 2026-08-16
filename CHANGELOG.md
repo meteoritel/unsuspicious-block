@@ -1,22 +1,5 @@
 # 更新日志 Change log
 
-## [1.5.1]
-
-### 变化
-
-#### 考古笔记
-- 父表 100% 完成度与 `/usb journal unlock item` 现在统一覆盖当前表及全部后代表中的物品，并按物品签名去重；解锁子表物品即可推进父表完成度。
-- 父表物品网格不再平铺子表产出的物品，改为显示可点击的子表入口及其在父表中的出现概率，点击可跳转到对应子表。
-- 概率模拟改为时间片续跑：服务端启动期间按固定时间预算逐步填充概率数据，减少单 tick 卡顿。
-- 带条件的物品概率改为展示代表条件场景下的概率范围，泥地打捞等运行时注入内容统一按最高等级工具模拟。
-
-### Changed
-#### Archaeology Journal
-- A parent table's 100% completion and `/usb journal unlock item` now consistently cover items from the table and all its descendant tables, deduplicated by item signature. Unlocking items in child tables now progresses the parent table's completion.
-- Parent table grids no longer flatten items produced by child tables. They now show clickable child table entries with their appearance probability in the parent, which navigate to the corresponding child table.
-- Probability simulation now runs in time-sliced resumable jobs, filling probability data within a fixed per-tick budget during server startup to reduce single-tick lag.
-- Conditional item probabilities now show a range across representative condition scenarios, and runtime-injected content such as mud dredging is simulated with the highest-tier tool.
-
 ## [1.0.0]
 添加了可疑扫描仪，实现与jade的联动。
 
@@ -340,3 +323,20 @@
 - The loot table catalog now supports expanding parent‑child hierarchies. Child tables display their source reference and probability of appearing in the parent table, and cycle reference protection has been added.
 - In the item grid, contents from the same item tag are collapsed into a group entry, showing the discovery progress of that group.
 - Potions, enchantments, music discs, arrows, and similar items now display more detailed variant information.
+
+## [1.5.1]
+
+### 变化
+
+#### 考古笔记
+- 父表 100% 完成度与 `/usb journal unlock item` 现在统一覆盖当前表及全部后代表中的物品，并按物品签名去重；解锁子表物品即可推进父表完成度。
+- 父表物品网格不再平铺子表产出的物品，改为显示可点击的子表入口及其在父表中的出现概率，点击可跳转到对应子表。
+- 概率模拟改为时间片续跑：服务端启动期间按固定时间预算逐步填充概率数据，减少单 tick 卡顿。
+- 带条件的物品概率改为展示代表条件场景下的概率范围，泥地打捞等运行时注入内容统一按最高等级工具模拟。
+
+### Changed
+#### Archaeology Journal
+- A parent table's 100% completion and `/usb journal unlock item` now consistently cover items from the table and all its descendant tables, deduplicated by item signature. Unlocking items in child tables now progresses the parent table's completion.
+- Parent table grids no longer flatten items produced by child tables. They now show clickable child table entries with their appearance probability in the parent, which navigate to the corresponding child table.
+- Probability simulation now runs in time-sliced resumable jobs, filling probability data within a fixed per-tick budget during server startup to reduce single-tick lag.
+- Conditional item probabilities now show a range across representative condition scenarios, and runtime-injected content such as mud dredging is simulated with the highest-tier tool.

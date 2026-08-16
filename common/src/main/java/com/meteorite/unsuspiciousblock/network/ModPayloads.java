@@ -13,6 +13,7 @@ import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
@@ -20,18 +21,20 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManag
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateTrackedLootTablePayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UploadJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncEnchantmentRevealListPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.JournalLogDeleteResultPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -69,8 +72,6 @@ public final class ModPayloads {
 
     /** C2S payload 列表（服务端处理） */
     public static final List<C2S<?>> C2S_PAYLOADS = List.of(
-            new C2S<>(UploadJournalLogSnapshotPayload.TYPE, UploadJournalLogSnapshotPayload.STREAM_CODEC,
-                    JournalLogHandler::handleUploadedLogSnapshot),
             new C2S<>(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC,
                     (player, payload) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, player)),
             new C2S<>(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
@@ -85,6 +86,8 @@ public final class ModPayloads {
                     (player, payload) -> JournalLogHandler.handleRequestSnapshot(player)),
             new C2S<>(UpdateJournalLogNotePayload.TYPE, UpdateJournalLogNotePayload.STREAM_CODEC,
                     JournalLogHandler::handleUpdateNote),
+            new C2S<>(DeleteJournalLogPayload.TYPE, DeleteJournalLogPayload.STREAM_CODEC,
+                    JournalLogHandler::handleDeleteLogs),
             new C2S<>(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
                     (player, payload) -> CatNetworkHandler.handleDeterrenceToggle(player)),
             new C2S<>(CatLightStepTogglePayload.TYPE, CatLightStepTogglePayload.STREAM_CODEC,
@@ -99,7 +102,10 @@ public final class ModPayloads {
             new S2CSpec<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC),
             new S2CSpec<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC),
             new S2CSpec<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC),
+            new S2CSpec<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC),
             new S2CSpec<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC),
             new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
             new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC),
@@ -136,8 +142,14 @@ public final class ModPayloads {
                         ArchaeologyJournalClientState::receiveStateIncremental),
                 new S2C<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
                         ArchaeologyJournalClientState::receiveLogUpdate),
-                new S2C<>(SyncJournalLogSnapshotPayload.TYPE, SyncJournalLogSnapshotPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveLogSnapshot),
+                new S2C<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC,
+                        ArchaeologyJournalClientState::beginLogSnapshot),
+                new S2C<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC,
+                        ArchaeologyJournalClientState::receiveLogSnapshotChunk),
+                new S2C<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC,
+                        ArchaeologyJournalClientState::completeLogSnapshot),
+                new S2C<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC,
+                        ArchaeologyJournalClientState::receiveLogDeleteResult),
                 new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
                         HandOfCatClientState::receive),
                 new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,

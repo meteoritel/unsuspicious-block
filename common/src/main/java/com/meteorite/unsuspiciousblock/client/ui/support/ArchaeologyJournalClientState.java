@@ -12,13 +12,17 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFu
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.JournalLogDeleteResultPayload;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -218,8 +222,32 @@ public final class ArchaeologyJournalClientState {
         ArchaeologyJournalLogLocalStore.applyUpdate(payload);
     }
 
-    public static void receiveLogSnapshot(SyncJournalLogSnapshotPayload payload) {
-        ArchaeologyJournalLogLocalStore.applySnapshot(payload);
+    public static void beginLogSnapshot(SyncJournalLogSnapshotStartPayload payload) {
+        ArchaeologyJournalLogLocalStore.beginSnapshot(payload);
+    }
+
+    public static void receiveLogSnapshotChunk(SyncJournalLogTableChunkPayload payload) {
+        ArchaeologyJournalLogLocalStore.applySnapshotChunk(payload);
+    }
+
+    public static void completeLogSnapshot(SyncJournalLogSnapshotEndPayload payload) {
+        ArchaeologyJournalLogLocalStore.completeSnapshot(payload);
+    }
+
+    public static void receiveLogDeleteResult(JournalLogDeleteResultPayload payload) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) {
+            return;
+        }
+        Component message = switch (payload.result()) {
+            case SUCCESS -> Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.log_delete.success", payload.removedCount());
+            case NOT_FOUND -> Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.log_delete.not_found");
+            case INVALID -> Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.log_delete.invalid");
+        };
+        minecraft.player.displayClientMessage(message, true);
     }
 
     // 收到服务端的 100% 完成奖励通知：解析表名并弹 Toast

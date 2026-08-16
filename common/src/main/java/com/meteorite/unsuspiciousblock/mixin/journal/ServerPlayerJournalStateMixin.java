@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * 为服务端玩家补充日志同步会话，并在重生时复制相关状态。
- * 日志持久化数据已迁移到 JournalLogSavedData（按 UUID 索引），重生不改 UUID，无需复制日志状态。
+ * 日志持久化数据由 JournalLogStorage 按 UUID 与战利品表分片；重生不改 UUID，无需复制日志状态。
  */
 @Mixin(ServerPlayer.class)
 public abstract class ServerPlayerJournalStateMixin implements ArchaeologyJournalLogSyncSessionHolder {

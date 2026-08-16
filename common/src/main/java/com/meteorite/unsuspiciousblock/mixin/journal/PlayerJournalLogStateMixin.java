@@ -13,8 +13,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * 旧版考古日志 NBT 迁移 mixin——仅负责读取并暂存旧版玩家 NBT 中的日志数据。
- * 不再向玩家 NBT 写回日志数据（持久化已迁移到 JournalLogSavedData）。
- * 暂存的旧版 tag 会在玩家登录时由 JournalLogHandler 消费并迁移到 SavedData，
+ * 不再向玩家 NBT 写回日志数据（持久化已迁移到 JournalLogStorage v2 分片）。
+ * 暂存的旧版 tag 会在玩家登录时由 JournalLogHandler 消费并迁移到分片存储，
  * 之后由于 addAdditionalSaveData 不再注入，旧 tag 自然从玩家 NBT 中剥离。
  *
  * @deprecated 将于 1.5.0 移除，旧版 NBT 迁移完成后不再需要此 Mixin
@@ -40,7 +40,7 @@ public abstract class PlayerJournalLogStateMixin implements ArchaeologyJournalLo
         return tag;
     }
 
-    // 读取旧版 NBT tag 暂存，等待登录时迁移到 SavedData
+    // 读取旧版 NBT tag 暂存，等待登录时迁移到 v2 分片存储
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
     private void unsuspiciousblock$loadLegacyJournalLogTag(CompoundTag tag, CallbackInfo ci) {
         if (tag.contains(UNSUSPICIOUSBLOCK_LEGACY_JOURNAL_LOG_TAG, Tag.TAG_COMPOUND)) {

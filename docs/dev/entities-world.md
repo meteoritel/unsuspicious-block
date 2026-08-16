@@ -43,7 +43,8 @@ world/
 ├── NaturalBoneBlockTracker   自然骨块追踪门面（静态，抹平平台差异）
 ├── IBoneBlockTracker         骨块追踪 SPI（平台实现）
 ├── LootProbabilityData       概率模拟结果 SavedData（附加 overworld）
-├── JournalLogSavedData       日志 SavedData
+├── JournalLogStorage         按玩家与战利品表分片的日志存储
+├── JournalLogSavedData       仅用于 v1 -> v2 迁移的旧存储读取器
 └── GameTimeFormatHelper      游戏时间格式化（日志显示用）
 ```
 
@@ -168,12 +169,12 @@ world/
 - **消费**：`FossilHunterEffect.apply` 调 `consumeNatural`，仅自然生成的骨块才触发额外掉落（见 [附魔系统](enchantment.md) 5.1）。
 - **排除**：玩家或机器放置的骨块不触发奖励。
 
-## 8. SavedData
+## 8. 世界持久化数据
 
-`world/` 包还包含两个服务端持久化数据：
+`world/` 包还包含以下服务端持久化组件：
 
 - [`LootProbabilityData`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/LootProbabilityData.java)：附加在 overworld，缓存每张战利品表的概率模拟结果与 JSON 哈希。详见 [考古笔记系统](journal.md) 与 [战利品表系统](loottable.md)。
-- [`JournalLogSavedData`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/JournalLogSavedData.java)：日志的服务端持久化。
+- [`JournalLogStorage`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/JournalLogStorage.java)：在 `<world>/data/unsuspiciousblock/journal_logs/` 下按玩家 UUID、战利品表保存日志分片。`JournalLogSavedData` 只保留为旧单文件迁移读取器。详见 [考古笔记系统](journal.md) 4.4 节。
 - [`GameTimeFormatHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/GameTimeFormatHelper.java)：游戏时间格式化，供日志显示。
 
 ## 9. 世界生成：猫之手藏宝点

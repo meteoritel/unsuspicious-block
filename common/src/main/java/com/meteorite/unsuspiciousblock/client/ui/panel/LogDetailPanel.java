@@ -51,6 +51,9 @@ public final class LogDetailPanel implements PagePanel {
     // 备注编辑按钮（IconButton widget，由外部 screen 注册）
     @Nullable
     private IconButton noteButton;
+    // 删除当前条目按钮（IconButton widget，由外部 screen 注册）
+    @Nullable
+    private IconButton deleteButton;
     // 元信息行悬停追踪：用于文字超宽滚动
     private int hoveredMetaRow = -1;
     private final int[] metaRowScrollTicks = new int[JournalLayout.LOG_DETAIL_META_ROWS];
@@ -112,6 +115,20 @@ public final class LogDetailPanel implements PagePanel {
         registrar.accept(this.noteButton);
     }
 
+    // 创建并注册删除当前条目按钮，紧邻备注按钮右侧
+    public void createDeleteButton(Consumer<IconButton> registrar, Runnable onDeleteClick) {
+        int leftX = this.layout.rightPageX() + 8;
+        int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
+        int btnSize = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE;
+        int btnX = leftX + (btnSize + 2) * 2;
+        this.deleteButton = new IconButton(
+                btnX, y, btnSize, IconButton.Icon.CLOSE,
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.entry_tooltip"),
+                onDeleteClick);
+        registrar.accept(this.deleteButton);
+    }
+
     @Nullable
     public IconButton getBackButton() {
         return this.backButton;
@@ -120,6 +137,11 @@ public final class LogDetailPanel implements PagePanel {
     @Nullable
     public IconButton getNoteButton() {
         return this.noteButton;
+    }
+
+    @Nullable
+    public IconButton getDeleteButton() {
+        return this.deleteButton;
     }
 
     @Nullable
@@ -205,6 +227,9 @@ public final class LogDetailPanel implements PagePanel {
         }
         if (this.noteButton != null && this.noteButton.visible) {
             this.noteButton.renderTooltip(guiGraphics, mouseX, mouseY);
+        }
+        if (this.deleteButton != null && this.deleteButton.visible) {
+            this.deleteButton.renderTooltip(guiGraphics, mouseX, mouseY);
         }
         if (this.copyBtnHovered) {
             CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
