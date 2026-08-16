@@ -11,8 +11,7 @@ import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.world.JournalLogStorage;
-import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
+import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -25,7 +24,6 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerC
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -318,14 +316,14 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp) {
-            ArchaeologyJournalNetwork.syncOnJoin(sp);
+            JournalPlayerDataService.onPlayerJoined(sp);
         }
     }
 
     @SubscribeEvent
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp && sp.getServer() != null) {
-            JournalLogStorage.unloadPlayer(sp.getServer(), sp.getUUID());
+            JournalPlayerDataService.onPlayerLeft(sp);
         }
     }
 
@@ -346,14 +344,14 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         ServerLootTableConfigManager.start(event.getServer());
-        JournalDataMigrationManager.initializeStorage(event.getServer());
+        JournalPlayerDataService.onServerStarted(event.getServer());
         LootProbabilitySimulationWorker.start();
         ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
-        JournalLogStorage.stop(event.getServer());
+        JournalPlayerDataService.onServerStopped(event.getServer());
         LootProbabilitySimulationWorker.stop();
         ArchaeologyJournalServerCatalog.invalidate();
         ServerLootTableConfigManager.stop();
@@ -363,7 +361,7 @@ public class UnsuspiciousBlockNeoForge {
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
     @SubscribeEvent
     public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
-        JournalLogStorage.tick(event.getServer());
+        JournalPlayerDataService.onServerTick(event.getServer());
         ServerLootTableConfigManager.tick(event.getServer());
         LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
         MerchantCatSpawner.tick(event.getServer());

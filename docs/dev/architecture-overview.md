@@ -127,6 +127,7 @@ common/src/main/resources/
 - **注册**：遍历各 `ModXxx.forEach(registrar)` 清单（详见 [registration.md](registration.md)）。
 - **事件接入**：Fabric 用 `*Callback.EVENT.register`，NeoForge 用 `@SubscribeEvent`。
 - **生命周期钩子**：服务器启动/停止、tick、chunk 生成、玩家登录等。
+- **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册。
 - **可选依赖**：通过 `OptionalModIntegration.instantiate()` 反射加载 Trinkets/Curios 集成。
 

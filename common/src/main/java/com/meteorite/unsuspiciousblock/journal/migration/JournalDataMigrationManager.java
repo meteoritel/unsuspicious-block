@@ -21,23 +21,25 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 考古日志版本迁移的统一生命周期入口。
+ * 玩家考古手册数据迁移的统一入口。
  * <p>
- * 负责调度存储布局迁移、玩家旧日志迁移和目录签名迁移；具体文件读写仍由
- * {@link JournalLogStorage} 负责，NBT 字段转换统一委托给 {@link JournalNbtMigrator}。
+ * 负责玩家旧日志迁移和目录签名迁移；具体文件读写仍由 {@link JournalLogStorage}
+ * 负责，NBT 字段转换统一委托给 {@link JournalNbtMigrator}。
  */
 public final class JournalDataMigrationManager {
     private JournalDataMigrationManager() {
     }
 
-    // 服务端启动时统一触发存储布局检查与迁移
-    public static void initializeStorage(MinecraftServer server) {
-        JournalLogStorage.start(server);
+    // 按固定顺序执行当前玩家的全部语义迁移
+    public static void migratePlayerData(ServerPlayer player,
+                                         ArchaeologyJournalLogSyncSession session) {
+        migrateLegacyPlayerLog(player, session);
+        migrateProgressSignatures(player);
     }
 
     // 将玩家 NBT 中的旧日志合并到 v2 分片；全部持久化成功后才确认清理源数据
-    public static void migrateLegacyPlayerLog(ServerPlayer player,
-                                              ArchaeologyJournalLogSyncSession session) {
+    private static void migrateLegacyPlayerLog(ServerPlayer player,
+                                               ArchaeologyJournalLogSyncSession session) {
         if (!(player instanceof LegacyJournalLogAccess access)) {
             return;
         }
@@ -71,7 +73,7 @@ public final class JournalDataMigrationManager {
     }
 
     // 将历史回退签名迁移为当前目录中的规范签名
-    public static int migrateProgressSignatures(ServerPlayer player) {
+    private static int migrateProgressSignatures(ServerPlayer player) {
         ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return 0;

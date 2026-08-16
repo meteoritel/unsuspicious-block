@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.network.journal;
 
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
-import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
+import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
@@ -17,7 +17,6 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.JournalLogStorage;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -294,7 +293,7 @@ public final class JournalLogHandler {
         return sb.toString();
     }
 
-    /** 向玩家下发按战利品表压缩并切片的日志全量快照 */
+    // 向玩家下发按战利品表压缩并切片的日志全量快照
     public static void syncLogSnapshot(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null || !session.isSeeded()) {
@@ -333,68 +332,17 @@ public final class JournalLogHandler {
     public static void handleRequestSnapshot(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
         if (session == null || !session.isSeeded()) {
-            // 会话未 seeded 时无法下发快照，先尝试从持久数据恢复
-            restoreAndSyncOnJoin(player);
-            return;
+            // 会话未 seeded 时通过统一入口恢复并迁移玩家数据
+            JournalPlayerDataService.preparePlayerData(player);
         }
-        syncLogSnapshot(player);
-    }
-
-    // 玩家加入时从 v2 分片存储恢复日志状态并下发快照（服务端权威模式）
-    public static void restoreAndSyncOnJoin(ServerPlayer player) {
-        ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session == null) {
-            return;
-        }
-
-        MinecraftServer server = player.getServer();
-        if (server == null) {
-            session.reset();
-            syncLogSnapshot(player);
-            return;
-        }
-
-        ArchaeologyJournalLogState persisted = JournalLogStorage.getPlayerState(server, player.getUUID());
-        ArchaeologyJournalLogSyncSession.ReplayResult replay = session.restoreFromPersisted(persisted);
-        if (replay.hadQueuedMutations()) {
-            if (replay.clearAll()) {
-                if (!JournalLogStorage.persistClearAllNow(server, player.getUUID(), replay.affectedTables())) {
-                    for (ResourceLocation tableId : replay.affectedTables()) {
-                        JournalLogStorage.markTableDirty(server, player.getUUID(), tableId);
-                    }
-                }
-                for (ResourceLocation tableId : session.mirroredState().getTables().keySet()) {
-                    JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
-                }
-            } else {
-                for (ResourceLocation tableId : replay.affectedTables()) {
-                    JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
-                }
-            }
-        }
-
-        JournalDataMigrationManager.migrateLegacyPlayerLog(player, session);
-
-        // 下发日志快照给客户端
         syncLogSnapshot(player);
     }
 
     // 判断单表条目数是否跨越了"缓存大师"成就门槛——即达到单表日志条目上限
-    static boolean crossesCacheMeIfYouCanThreshold(int previousEntryCount, int currentEntryCount) {
+    public static boolean crossesCacheMeIfYouCanThreshold(int previousEntryCount, int currentEntryCount) {
         int threshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
         return previousEntryCount < threshold
                 && currentEntryCount >= threshold;
-    }
-
-    // 判断状态中是否有任意单表条目数已达到上限（用于快照合并后的成就检查）
-    private static boolean anyTableReachedThreshold(ArchaeologyJournalLogState state) {
-        int threshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
-        for (ArchaeologyJournalLogState.TableLogHistory table : state.getTables().values()) {
-            if (table.getTotalEntryCount() >= threshold) {
-                return true;
-            }
-        }
-        return false;
     }
 
     // 获取玩家的日志同步会话（通过 mixin 接口）

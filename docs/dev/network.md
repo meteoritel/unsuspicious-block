@@ -148,7 +148,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 日志状态以服务端 [`JournalLogStorage`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/JournalLogStorage.java) 为权威，用 [`ArchaeologyJournalLogSyncSession`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/sync/ArchaeologyJournalLogSyncSession.java) 维护会话 ID 与增量序号：
 
-- 加入时：`JournalLogHandler.restoreAndSyncOnJoin` 从按 UUID、战利品表拆分的 v2 存储恢复日志。
+- 加入时：`JournalPlayerDataService.onPlayerJoined` 先从按 UUID、战利品表拆分的 v2 存储恢复并迁移玩家数据，再由 `JournalLogHandler.syncLogSnapshot` 下发日志。
 - 全量快照：先发 `SyncJournalLogSnapshotStartPayload`，每张表独立压缩并以 `SyncJournalLogTableChunkPayload` 切成最多 128 KiB 的 byte 分片，最后发 `SyncJournalLogSnapshotEndPayload`。客户端校验表数与所有分片后一次性替换状态，接收期间继续保留旧状态。
 - 规模限制：单表压缩后最多 16 MiB、解压 NBT 最多 64 MiB、一次快照最多 65,536 张表；网络解码不再调用 `readNbt` 读取整份日志，因此不受原 2 MiB 单 NBT payload 上限影响。
 - 运行时：`SyncJournalLogPayload` 发送首次解锁、条目更新、删除单条、清空表和清空全部等增量。
@@ -160,11 +160,11 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 ### 8.5 加入时同步序列
 
-[`ArchaeologyJournalNetwork.syncOnJoin`](../../common/src/main/java/com/meteorite/unsuspiciousblock/network/ArchaeologyJournalNetwork.java) 按序执行（见 [考古笔记系统](journal.md) 第 6 节）：
+[`JournalPlayerDataService.onPlayerJoined`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/JournalPlayerDataService.java) 按序执行（见 [考古笔记系统](journal.md) 第 6 节）：
 
 ```
-restoreAndSyncOnJoin -> syncCatalogHash -> sync loot table management
-  -> migrate -> syncStateFull -> checkAndRewardAll -> checkAndGrantAll
+restoreLogState -> migratePlayerData -> syncLogSnapshot -> syncCatalogHash
+  -> sync loot table management -> syncStateFull -> checkAndRewardAll -> checkAndGrantAll
 ```
 
 补发奖励/成就在全量状态同步之后，确保客户端 catalog 已就绪可解析表名。

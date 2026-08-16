@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.network;
 
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyChallengeChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalCompletionRewardChecker;
-import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
@@ -16,12 +15,11 @@ import net.minecraft.server.level.ServerPlayer;
 public final class ArchaeologyJournalNetwork {
     private ArchaeologyJournalNetwork() {}
 
-    // 玩家加入时全量同步：日志 → 目录哈希 → 管理索引/名称 → 签名迁移 → 状态
-    public static void syncOnJoin(ServerPlayer player) {
-        JournalLogHandler.restoreAndSyncOnJoin(player);
+    // 玩家数据已完成恢复和迁移后，全量下发日志、目录与解锁进度
+    public static void syncPreparedPlayerOnJoin(ServerPlayer player) {
+        JournalLogHandler.syncLogSnapshot(player);
         JournalCatalogHandler.syncCatalogHash(player);
         LootTableManagementHandler.sync(player);
-        JournalDataMigrationManager.migrateProgressSignatures(player);
         JournalStateHandler.syncStateFull(player);
         // 状态全量同步之后再补发完成奖励，确保客户端 catalog 已就绪可解析表名
         JournalCompletionRewardChecker.checkAndRewardAll(player);

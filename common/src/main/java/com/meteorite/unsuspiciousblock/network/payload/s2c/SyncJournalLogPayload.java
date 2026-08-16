@@ -25,7 +25,7 @@ public record SyncJournalLogPayload(UUID sessionId,
                                     @Nullable ResourceLocation tableId,
                                     CompoundTag data) implements CustomPacketPayload {
     private static final String LOOT_SOURCE_TAG = "loot_source";
-    @Deprecated // 向后兼容读取旧NBT，将于 1.5.0 移除
+    @Deprecated // 向后兼容读取旧 NBT
     private static final String LEGACY_TRIGGER_TYPE_TAG = "trigger_type";
     private static final String GAME_TIME_TAG = "game_time";
     private static final String DAY_TIME_TAG = "day_time";

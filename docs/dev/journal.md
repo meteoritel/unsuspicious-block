@@ -15,6 +15,7 @@
 
 ```
 journal/
+├── JournalPlayerDataService  玩家数据生命周期、恢复与迁移统一入口
 ├── catalog/      目录构建（服务端解析 + 客户端快照）
 │   ├── ArchaeologyJournalCatalog         原始目录解析（load）
 │   ├── ArchaeologyJournalServerCatalog   服务端目录（含概率模拟调度 + SavedData 缓存）
@@ -50,7 +51,7 @@ journal/
     └── ArchaeologyJournalLogSyncSession(Holder)
 ```
 
-日志持久化不位于 `journal/` 包，而由 `world/JournalLogStorage` 管理。
+日志的具体文件 I/O 由 `world/JournalLogStorage` 管理；外部生命周期统一通过 `JournalPlayerDataService` 进入。
 
 ## 3. 目录构建（服务端）
 
@@ -123,6 +124,7 @@ ArchaeologyJournalState
 - [`ArchaeologyJournalStateHolder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/state/ArchaeologyJournalStateHolder.java) 是 mixin 接口，`ServerPlayer` 实例通过 `unsuspiciousblock$getArchaeologyJournalState()` 暴露状态。
 - `PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin`（见 [mixin.md](mixin.md)）实现状态的读写，序列化到玩家 NBT。
 - `JournalDataVersion` / `JournalNbtMigrator` 统一处理旧存档格式迁移，状态类只解析当前字段。
+- `JournalPlayerDataService` 统一接收玩家登录、退出与重生事件。解锁进度仍由原版玩家 NBT 保存流程负责，不迁移其物理位置。
 
 最近列表由 `RecentLootTableService` 写入：同一表再次遇到时刷新为最新记录，超过 128 个唯一表时移除最旧项。该路径不创建 `LootSession`，只在玩家打开随机容器、实际刷拭或用考古铲取出可疑方块内容、钓鱼收杆、打破战利品陶罐时更新有限 Map；`entities/` 与 `blocks/` 路径不会记录。
 
@@ -168,7 +170,7 @@ ArchaeologyJournalState
 
 所有旧 NBT 字段名、默认值和逐级迁移步骤只能添加到 `JournalNbtMigrator`。迁移必须严格按 `vN -> vN+1` 连续执行；遇到高于当前版本的数据时拒绝降级读取。新增版本时先提高 `JournalDataVersion.CURRENT_NBT_VERSION`，再补齐每种数据类型对应的迁移步骤。状态类的 `readFrom` / `fromTag` 不得重新加入旧字段回退分支。
 
-`JournalDataMigrationManager` 是生命周期统一入口：服务端启动时触发存储布局检查；玩家登录时提交旧玩家日志并执行目录签名迁移。源数据只有在目标数据完整持久化后才允许清理，世界级旧单文件则保留 `.bak` 备份。
+`JournalPlayerDataService` 是生命周期统一入口：服务端启停和 tick、玩家登录/退出/重生都由它协调。登录时先恢复日志分片，再由 `JournalDataMigrationManager` 依次提交旧玩家日志并迁移目录签名，最后统一下发两类玩家数据。源数据只有在目标数据完整持久化后才允许清理，世界级旧单文件则保留 `.bak` 备份。
 
 玩家可删除单条日志、当前战利品表的全部日志或全部日志。三个入口都使用 `ConfirmScreen` 二次确认；C2S 请求只能操作连接玩家自身的数据。删除只影响日志，不回退目录解锁、物品计数、完成奖励或成就。
 
@@ -249,16 +251,21 @@ LootTrackingEvents.submit(session, itemCounts, settlementStrategy)
 
 ## 6. 网络同步
 
-同步调度入口是 [`ArchaeologyJournalNetwork.syncOnJoin`](../../common/src/main/java/com/meteorite/unsuspiciousblock/network/ArchaeologyJournalNetwork.java)，玩家加入时按序执行：
+玩家加入入口是 [`JournalPlayerDataService.onPlayerJoined`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/JournalPlayerDataService.java)，按序执行：
 
 ```
-syncOnJoin(player)
-  ├─ JournalLogHandler.restoreAndSyncOnJoin   从 v2 分片存储恢复日志并下发快照
-  ├─ JournalCatalogHandler.syncCatalogHash    下发目录哈希（客户端比对后按需请求全量）
-  ├─ JournalDataMigrationManager.migrateProgressSignatures  签名迁移（旧进度对齐新目录）
-  ├─ JournalStateHandler.syncStateFull        全量下发进度状态
-  ├─ JournalCompletionRewardChecker.checkAndRewardAll  补发完成奖励
-  └─ ArchaeologyChallengeChecker.checkAndGrantAll       补发考古成就
+onPlayerJoined(player)
+  ├─ restoreLogState                         从 v2 分片恢复日志并回放排队变更
+  ├─ JournalDataMigrationManager.migratePlayerData
+  │    ├─ 旧玩家日志提交到分片
+  │    └─ 旧进度签名对齐当前目录
+  └─ ArchaeologyJournalNetwork.syncPreparedPlayerOnJoin
+       ├─ JournalLogHandler.syncLogSnapshot            下发日志快照
+       ├─ JournalCatalogHandler.syncCatalogHash         下发目录哈希
+       ├─ LootTableManagementHandler.sync               下发管理索引/名称
+       ├─ JournalStateHandler.syncStateFull             下发解锁进度
+       ├─ JournalCompletionRewardChecker.checkAndRewardAll
+       └─ ArchaeologyChallengeChecker.checkAndGrantAll
 ```
 
 补发奖励/成就是在全量状态同步之后，确保客户端 catalog 已就绪可解析表名，且避免事件漏触发时遗漏授予。

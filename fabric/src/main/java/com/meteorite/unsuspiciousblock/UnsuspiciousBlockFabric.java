@@ -11,8 +11,7 @@ import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.world.JournalLogStorage;
-import com.meteorite.unsuspiciousblock.journal.migration.JournalDataMigrationManager;
+import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
@@ -25,7 +24,6 @@ import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.network.ArchaeologyJournalNetwork;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -237,12 +235,12 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             ServerLootTableConfigManager.start(server);
-            JournalDataMigrationManager.initializeStorage(server);
+            JournalPlayerDataService.onServerStarted(server);
             LootProbabilitySimulationWorker.start();
             ArchaeologyJournalServerCatalog.ensureLoaded(server);
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-            JournalLogStorage.stop(server);
+            JournalPlayerDataService.onServerStopped(server);
             LootProbabilitySimulationWorker.stop();
             ArchaeologyJournalServerCatalog.invalidate();
             ServerLootTableConfigManager.stop();
@@ -251,7 +249,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            JournalLogStorage.tick(server);
+            JournalPlayerDataService.onServerTick(server);
             ServerLootTableConfigManager.tick(server);
             LootProbabilitySimulationWorker.tickIfPresent(server);
             MerchantCatSpawner.tick(server);
@@ -262,9 +260,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 NaturalBoneBlockTracker.scanChunk(chunk));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
-                ArchaeologyJournalNetwork.syncOnJoin(handler.player));
+                JournalPlayerDataService.onPlayerJoined(handler.player));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-                JournalLogStorage.unloadPlayer(server, handler.player.getUUID()));
+                JournalPlayerDataService.onPlayerLeft(handler.player));
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 UsbCommand.register(dispatcher));
