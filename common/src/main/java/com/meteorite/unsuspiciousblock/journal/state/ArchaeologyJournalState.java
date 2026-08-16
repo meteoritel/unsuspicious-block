@@ -130,17 +130,6 @@ public final class ArchaeologyJournalState {
         return changed;
     }
 
-    // 解锁指定表中指定物品（表会自动解锁）
-    public boolean unlockItem(ResourceLocation tableId, LootResultSignature signature) {
-        TableProgress table = this.getOrCreateTable(tableId);
-        boolean tableChanged = table.unlock();
-        boolean itemChanged = table.unlockItem(signature);
-        if (tableChanged || itemChanged) {
-            this.markDirty(tableId);
-        }
-        return tableChanged || itemChanged;
-    }
-
     // 批量解锁指定表中的多个物品（去重后操作）
     public boolean unlockItems(ResourceLocation tableId, Iterable<LootResultSignature> signatures) {
         if (signatures == null) {
@@ -227,7 +216,7 @@ public final class ArchaeologyJournalState {
         if (table == null || table.isCompletionRewardClaimed()) {
             return false;
         }
-        table.setCompletionRewardClaimed(true);
+        table.setCompletionRewardClaimed();
         this.markDirty(tableId);
         return true;
     }
@@ -383,8 +372,8 @@ public final class ArchaeologyJournalState {
             return this.completionRewardClaimed;
         }
 
-        private void setCompletionRewardClaimed(boolean claimed) {
-            this.completionRewardClaimed = claimed;
+        private void setCompletionRewardClaimed() {
+            this.completionRewardClaimed = true;
         }
 
         @Nullable

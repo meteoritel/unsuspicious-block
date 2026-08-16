@@ -170,9 +170,8 @@ public class LogToolbar {
                 onToggleBatch);
         registerToolbarButton(screen, this.batchSelectBtn);
 
-        int retentionX = logToolbarLeftX;
         this.retentionBtn = new IconButton(
-                retentionX, logToolbarY,
+                logToolbarLeftX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
                 '⚙',
                 Component.translatable(

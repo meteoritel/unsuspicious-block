@@ -680,7 +680,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.managementButton = this.addRenderableWidget(new IconButton(
                 managementX, helpY,
                 JournalLayout.HELP_BUTTON_SIZE,
-                '\u2699',
+                '⚙',
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.open"),
                 () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
         ));

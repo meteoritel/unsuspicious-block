@@ -212,8 +212,8 @@ public class JournalViewModel {
                 ? this.tableViews.get(this.selectedIndex) : null;
     }
 
-    public int unlockedTableCount() { return this.globalUnlockedTableCount; }
     public int totalTableCount() { return this.totalTableCount; }
+
     public int displayedUnlockedTableCount() {
         CatalogPanel.CategoryEntryData category = selectedCategoryView();
         return category != null ? category.unlocked() : this.globalUnlockedTableCount;
@@ -366,6 +366,8 @@ public class JournalViewModel {
 
     private void flattenChildren(ResourceLocation parentId, int depth, List<ResourceLocation> path,
                                  Set<ResourceLocation> branch) {
+        // 上游 rebuildTableRows 已对 selectedCategory 判空，此处防御 IDE 可空性告警
+        if (this.selectedCategory == null) return;
         if (!branch.add(parentId)) return;
         TableDefinition parent = this.catalogDefinitions.get(parentId);
         if (parent == null) return;

@@ -22,7 +22,6 @@ import java.util.UUID;
  * <p>
  * 存储位置：overworld 的 data 目录下，文件名 {@value #FILE_NAME}。
  * 数据流：登录时从本类读取状态并交给 session(共享引用)；每次变更后由 JournalLogHandler
- * 通过 {@link #putForPlayer} 确保引用已注册并 setDirty，无需全量深拷贝。
  * <p>
  * 不变式：玩家在线时，本类持有的状态对象与 {@code ArchaeologyJournalLogSyncSession.mirroredState}
  * 为同一引用，因此对 session 镜像的修改即等同于修改持久化数据。
@@ -78,24 +77,6 @@ public final class JournalLogSavedData extends SavedData {
         }
         tag.put(TAG_PLAYERS, playersTag);
         return tag;
-    }
-
-    // 获取指定玩家的日志状态，不存在时创建空状态
-    public ArchaeologyJournalLogState getForPlayer(UUID uuid) {
-        return playerStates.computeIfAbsent(uuid, ignored -> new ArchaeologyJournalLogState());
-    }
-
-    // 设置指定玩家的日志状态引用（不拷贝）
-    // 用于:登录迁移、以及 session.mirroredState 的高频同步
-    // 调用方需保证 state 不会被外部突变(如 session.reset 会替换引用而非清空原对象)
-    public void putForPlayer(UUID uuid, ArchaeologyJournalLogState state) {
-        playerStates.put(uuid, state);
-        setDirty();
-    }
-
-    // 标记数据已变更，等待世界保存时落盘
-    public void markDirty() {
-        setDirty();
     }
 
     // 仅供存储格式 v1 -> v2 迁移读取；返回的状态仍由本 SavedData 持有

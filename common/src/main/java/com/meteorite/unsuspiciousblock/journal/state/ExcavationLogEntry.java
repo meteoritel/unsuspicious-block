@@ -159,13 +159,6 @@ public record ExcavationLogEntry(UUID entryId,
                 this.expectedLoot, this.actualLoot, newNote == null ? "" : newNote, this.tableStack);
     }
 
-    // 返回带有新 tableStack 的副本，其他字段保持不变
-    public ExcavationLogEntry withTableStack(@Nullable List<ResourceLocation> newTableStack) {
-        return new ExcavationLogEntry(this.entryId, this.lootSource, this.context,
-                this.created, this.lastUpdated,
-                this.expectedLoot, this.actualLoot, this.note, newTableStack);
-    }
-
     public ExcavationLogEntry withActualLootMerged(Map<String, Integer> deltaLoot,
                                                    long updatedGameTime, long updatedDayTime) {
         LinkedHashMap<String, Integer> mergedActualLoot = new LinkedHashMap<>(this.actualLoot);

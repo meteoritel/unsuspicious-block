@@ -252,10 +252,6 @@ public final class ArchaeologyJournalLogState {
             return this.entries.size();
         }
 
-        public long getLifetimeEntryCount() {
-            return this.lifetimeEntryCount;
-        }
-
         public int getRetentionLimit() {
             return this.retentionLimit;
         }
@@ -351,7 +347,7 @@ public final class ArchaeologyJournalLogState {
             List<UUID> removedEntryIds = added
                     ? this.trimEntriesToLimit(this.getEffectiveRetentionLimit())
                     : List.of();
-            boolean changed = !entry.equals(previous) || !removedEntryIds.isEmpty();
+            boolean changed = !entry.equals(previous);
             if (changed) {
                 this.entriesVersion++;
             }

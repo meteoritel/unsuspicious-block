@@ -116,8 +116,6 @@ public final class LogPanel implements PagePanel {
     private final List<LogEntryState> filteredEntries = new ArrayList<>();
     private final List<DisplayRow> displayRows = new ArrayList<>();
     private final PaginationState pagination = new PaginationState(this::computePageCount);
-    // 日志数据引用
-    private ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.EMPTY;
     // 排序方向：true=降序（最新在前），false=升序（最旧在前）
     private boolean sortDescending = true;
     // 分组状态——默认按时间区间分组
@@ -135,9 +133,11 @@ public final class LogPanel implements PagePanel {
 
     // 设置日志数据
     public void setData(@Nullable ArchaeologyEntryLogRef logRef) {
-        this.logRef = logRef != null ? logRef : ArchaeologyEntryLogRef.EMPTY;
+        // 日志数据引用
+        ArchaeologyEntryLogRef logRef1 =
+                logRef != null ? logRef : ArchaeologyEntryLogRef.EMPTY;
         this.allEntries.clear();
-        for (ExcavationLogEntry entry : this.logRef.logEntries()) {
+        for (ExcavationLogEntry entry : logRef1.logEntries()) {
             this.allEntries.add(new LogEntryState(entry));
         }
         Set<UUID> availableIds = new LinkedHashSet<>();
@@ -410,8 +410,8 @@ public final class LogPanel implements PagePanel {
                     && mouseY >= rowY && mouseY <= rowY + row.height()) {
                 if (row instanceof GroupHeaderRow header) {
                     toggleGroupSelection(header.entries);
-                } else if (row instanceof EntryRow entryRow) {
-                    toggleEntrySelection(entryRow.state.entry.entryId());
+                } else if (row instanceof EntryRow(LogEntryState state)) {
+                    toggleEntrySelection(state.entry.entryId());
                 }
                 return true;
             }

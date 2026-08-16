@@ -116,10 +116,7 @@ public final class LootSourceType {
         // 新格式：ResourceLocation 字符串
         ResourceLocation rl = ResourceLocation.tryParse(id);
         if (rl != null) {
-            LootSourceType type = REGISTRY.get(rl);
-            if (type != null) {
-                return type;
-            }
+            return REGISTRY.get(rl);
         }
         return null;
     }

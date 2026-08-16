@@ -207,32 +207,30 @@ public final class ArchaeologyJournalLogLocalStore {
             return;
         }
 
-        // 处理排队的增量更新
-        if (!pendingIncrementals.isEmpty()) {
-            ArrayList<SyncJournalLogPayload> sortedIncrementals = new ArrayList<>(pendingIncrementals);
-            sortedIncrementals.sort(Comparator.comparingLong(SyncJournalLogPayload::sequence));
-            boolean anyChanged = false;
-            for (SyncJournalLogPayload payload : sortedIncrementals) {
-                if (!shouldAcceptUpdate(currentSessionId, lastAppliedSequence, payload)) {
-                    continue;
-                }
-                if (applyIncremental(logState, payload)) {
+        // 处理排队的增量更新（卫语句已保证此时队列非空）
+        ArrayList<SyncJournalLogPayload> sortedIncrementals = new ArrayList<>(pendingIncrementals);
+        sortedIncrementals.sort(Comparator.comparingLong(SyncJournalLogPayload::sequence));
+        boolean anyChanged = false;
+        for (SyncJournalLogPayload payload : sortedIncrementals) {
+            if (!shouldAcceptUpdate(currentSessionId, lastAppliedSequence, payload)) {
+                continue;
+            }
+            if (applyIncremental(logState, payload)) {
+                currentSessionId = payload.sessionId();
+                lastAppliedSequence = payload.sequence();
+                anyChanged = true;
+            } else {
+                if (currentSessionId == null) {
                     currentSessionId = payload.sessionId();
-                    lastAppliedSequence = payload.sequence();
-                    anyChanged = true;
-                } else {
-                    if (currentSessionId == null) {
-                        currentSessionId = payload.sessionId();
-                    }
-                    lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
                 }
+                lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
             }
-            if (anyChanged) {
-                revision++;
-                save();
-            }
-            pendingIncrementals.clear();
         }
+        if (anyChanged) {
+            revision++;
+            save();
+        }
+        pendingIncrementals.clear();
     }
 
     private static void tryCommitSnapshot() {
@@ -466,8 +464,7 @@ public final class ArchaeologyJournalLogLocalStore {
             this.chunks = new byte[chunkCount][];
         }
 
-        @Nullable
-        private byte[] add(int chunkIndex, int chunkCount, byte[] data) {
+        private byte @Nullable [] add(int chunkIndex, int chunkCount, byte[] data) {
             if (chunkCount != this.chunks.length) {
                 throw new IllegalArgumentException("同一日志表的分片总数不一致");
             }
