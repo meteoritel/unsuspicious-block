@@ -53,8 +53,9 @@ public final class JournalLayout {
     public static final int LOG_TOP = GRID_TOP;
     // "最近发掘记录"标签
     public static final int LOG_LIST_LABEL_Y = LOG_TOP;
-    // 日志条目列表区域
-    public static final int LOG_LIST_TOP = LOG_TOP + 16;
+    // 日志工具栏为单行，列表起点与左侧目录内容对齐
+    public static final int LOG_TOOLBAR_ICON_SIZE = 14;
+    public static final int LOG_LIST_TOP = LOG_TOP + LOG_TOOLBAR_ICON_SIZE + 4;
     public static final int LOG_LIST_BOTTOM = GRID_PAGE_INDICATOR_Y - 8;
     public static final int LOG_ROW_HEIGHT = 28;
 
@@ -88,7 +89,7 @@ public final class JournalLayout {
 
     // 日志分组头
     public static final int LOG_GROUP_HEADER_HEIGHT = 14;   // 组头行高度
-    public static final int LOG_GROUP_ICON_SIZE = 14;        // 分组按钮图标尺寸
+    public static final int LOG_GROUP_ICON_SIZE = LOG_TOOLBAR_ICON_SIZE; // 分组按钮图标尺寸
     public static final int LOG_GROUP_HEADER_COLOR = 0x5A422C;  // 组头行文字颜色
     public static final int LOG_GROUP_HEADER_BG = 0x18A08060;   // 组头行背景色（复用详情卡片背景）
     public static final int LOG_GROUP_HEADER_BORDER = 0x30C8B090; // 组头行边框色（复用详情卡片边框）
@@ -98,7 +99,7 @@ public final class JournalLayout {
     public static final int LOG_LIST_SELECTED_BAR_WIDTH = 2;          // 色条宽度
 
     // 日志排序工具栏
-    public static final int LOG_SORT_ICON_SIZE = 14;
+    public static final int LOG_SORT_ICON_SIZE = LOG_TOOLBAR_ICON_SIZE;
     public static final int LOG_TOOLBAR_GAP = 2;
 
     // —— 日志详情页 ——

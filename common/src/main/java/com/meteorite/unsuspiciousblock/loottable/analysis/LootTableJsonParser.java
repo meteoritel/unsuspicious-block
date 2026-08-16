@@ -325,7 +325,10 @@ public final class LootTableJsonParser {
             List<LootConditionInfo> previousParentConditions = ctx.parentTableConditions;
             List<JsonElement> previousFunctions = ctx.inheritedFunctions;
             try {
-                ctx.sourceChildTable = referencedId;
+                // 从当前根表观察时始终保留第一层子表来源，后续孙表条件才能汇总回直接子表。
+                if (previousSource == null) {
+                    ctx.sourceChildTable = referencedId;
+                }
                 pushInheritedConditions(ctx, entryConditions);
                 ctx.inheritedFunctions = prependFunctions(previousFunctions, object);
                 parseNode(referencedElement, ctx);

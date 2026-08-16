@@ -22,6 +22,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.Catalo
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -559,9 +560,23 @@ public class JournalViewModel {
                     .computeUncertaintyLevel(path.allConditions(), false);
             if (candidate.ordinal() > level.ordinal()) level = candidate;
         }
+        String displayProbability = gridDisplayProbability(item, directPaths);
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
-                item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
+                displayProbability, item.unlocked(), item.count(), item.signature(), highlighted,
                 directPaths, item.injected(), level, item.scenarioProbabilities());
+    }
+
+    // 无条件条目显示所有代表场景中的最高概率；条件条目保留最小值到最大值的范围。
+    private static String gridDisplayProbability(
+            ArchaeologyEntryItem item, List<LootAcquisitionPath> directPaths) {
+        if (directPaths.stream().anyMatch(LootAcquisitionPath::hasConditions)) {
+            return item.probability();
+        }
+        return item.scenarioProbabilities().stream()
+                .map(ScenarioProbability::probability)
+                .filter(probability -> ProbabilityFormat.parsePercentToFraction(probability) >= 0.0)
+                .max(Comparator.comparingDouble(ProbabilityFormat::parsePercentToFraction))
+                .orElse(item.probability());
     }
 
     // 纯转发表没有直接物品时，向下寻找首批可展示后代；visited 防止循环引用。

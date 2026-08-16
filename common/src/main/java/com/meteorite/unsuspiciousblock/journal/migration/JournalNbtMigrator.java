@@ -38,14 +38,19 @@ public final class JournalNbtMigrator {
     private static final String LAST_UPDATED_DAY_TIME_TAG = "last_updated_day_time";
     private static final String EXPECTED_LOOT_TAG = "expected_loot";
     private static final String ACTUAL_LOOT_TAG = "actual_loot";
+    private static final String LIFETIME_ENTRY_COUNT_TAG = "lifetime_entry_count";
+    private static final String RETENTION_LIMIT_TAG = "retention_limit";
 
     private JournalNbtMigrator() {
     }
 
     // 迁移玩家考古目录进度；v0→v1 没有字段变化，只补齐版本标记
     public static void migrateJournalState(CompoundTag tag) {
-        migrateToCurrent(tag, "ArchaeologyJournalState",
-                ignored -> JournalDataVersion.NBT_VERSION_LOOT_SOURCE);
+        migrateToCurrent(tag, "ArchaeologyJournalState", version -> switch (version) {
+            case 0 -> JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
+            case 1 -> JournalDataVersion.NBT_VERSION_LOG_RETENTION;
+            default -> missingMigration("ArchaeologyJournalState", version);
+        });
     }
 
     // 迁移完整日志状态及其所有表、条目
@@ -63,6 +68,18 @@ public final class JournalNbtMigrator {
                 }
                 yield JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
             }
+            case 1 -> {
+                if (tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
+                    CompoundTag tables = tag.getCompound(TABLES_TAG);
+                    for (String tableId : tables.getAllKeys()) {
+                        CompoundTag table = tables.getCompound(tableId);
+                        migrateTableLogHistoryV1ToV2(table);
+                        table.putInt(JournalDataVersion.NBT_VERSION_TAG,
+                                JournalDataVersion.NBT_VERSION_LOG_RETENTION);
+                    }
+                }
+                yield JournalDataVersion.NBT_VERSION_LOG_RETENTION;
+            }
             default -> missingMigration("ArchaeologyJournalLogState", version);
         });
     }
@@ -73,6 +90,10 @@ public final class JournalNbtMigrator {
             case 0 -> {
                 migrateTableLogHistoryV0ToV1(tag);
                 yield JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
+            }
+            case 1 -> {
+                migrateTableLogHistoryV1ToV2(tag);
+                yield JournalDataVersion.NBT_VERSION_LOG_RETENTION;
             }
             default -> missingMigration("TableLogHistory", version);
         });
@@ -85,6 +106,7 @@ public final class JournalNbtMigrator {
                 migrateExcavationLogEntryV0ToV1(tag);
                 yield JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
             }
+            case 1 -> JournalDataVersion.NBT_VERSION_LOG_RETENTION;
             default -> missingMigration("ExcavationLogEntry", version);
         });
     }
@@ -128,6 +150,22 @@ public final class JournalNbtMigrator {
             migrateExcavationLogEntryV0ToV1(entry);
             entry.putInt(JournalDataVersion.NBT_VERSION_TAG,
                     JournalDataVersion.NBT_VERSION_LOOT_SOURCE);
+        }
+    }
+
+    private static void migrateTableLogHistoryV1ToV2(CompoundTag tag) {
+        ListTag entries = tag.contains(ENTRIES_TAG, Tag.TAG_LIST)
+                ? tag.getList(ENTRIES_TAG, Tag.TAG_COMPOUND)
+                : new ListTag();
+        if (!tag.contains(LIFETIME_ENTRY_COUNT_TAG, Tag.TAG_LONG)) {
+            tag.putLong(LIFETIME_ENTRY_COUNT_TAG, entries.size());
+        }
+        if (!tag.contains(RETENTION_LIMIT_TAG, Tag.TAG_INT)) {
+            tag.putInt(RETENTION_LIMIT_TAG, 0);
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            entries.getCompound(i).putInt(JournalDataVersion.NBT_VERSION_TAG,
+                    JournalDataVersion.NBT_VERSION_LOG_RETENTION);
         }
     }
 

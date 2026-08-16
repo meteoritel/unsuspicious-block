@@ -87,7 +87,7 @@ ui/
 
 ### 4.1 分层职责
 
-- **screen/**：顶层 `Screen` 实现。`ArchaeologyJournalScreen` 是主屏幕，`LootTableManagementScreen` 是与手册 TAB 分离的追踪管理页；`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏。`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕。`JournalLogNoteEditScreen` 是日志备注编辑。
+- **screen/**：顶层 `Screen` 实现。`ArchaeologyJournalScreen` 是主屏幕，`LootTableManagementScreen` 是与手册 TAB 分离的追踪管理页；`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏。`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕。`JournalLogNoteEditScreen` 与 `JournalLogRetentionScreen` 分别编辑日志备注和当前表保留策略。
 
 ### 4.2 战利品表追踪管理页
 
@@ -97,7 +97,7 @@ ui/
 - **panel/**：可复用的面板组件。`CatalogPanel`（目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（分页）、`RightPageContainer`（右侧标签页容器）。
 
 `ItemGridPanel` 只展示当前表自身的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，
-入口显示子表产出概率；多场景结果展示代表场景的最小值-最大值，不再在 tooltip 中逐场景展开条件树。
+入口显示子表产出概率；物品的直接获取路径不带条件时显示代表场景中的最高概率，带条件时显示最小值-最大值范围，不再在 tooltip 中逐场景展开条件树。
 点击后由 `JournalViewModel` 展开目录祖先并选中目标子表。
 目录树的每个节点独立保存展开状态；展开父表只显示其直接子表，只有显式展开子表时才显示孙表。
 子表入口优先预览自身直接物品；纯转发表没有直接物品时递归使用后代物品作为图标，并对循环引用做保护。
@@ -119,7 +119,7 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 
 `ArchaeologyJournalScreen` 从 `ArchaeologyJournalClientState` 读取目录/进度/日志数据，通过 `JournalViewModel` 组织视图，渲染 `JournalBookBackground`（书本背景）+ 各 panel。
 
-日志详情页提供删除单条按钮，日志工具栏提供清空当前战利品表和清空全部按钮。三个入口都会先打开原版 `ConfirmScreen`；确认后才发送 `DeleteJournalLogPayload`，取消则返回原笔记界面。服务端成功后通过日志增量更新本地状态，并用 `JournalLogDeleteResultPayload` 显示结果提示。删除只影响日志条目，不改变目录解锁或获取计数。
+日志详情页保留单条删除入口。列表工具栏提供保留配置、批量选择、批量执行、清空当前表和清空全部按钮；当前表没有日志时，整个日志工具栏隐藏。工具栏 widget 创建时一律保持隐藏，只由 `ArchaeologyJournalScreen.syncButtonState()` 根据统一的日志列表状态控制可见性，禁止各按钮自行判断当前表或全局日志数量。批量模式在条目与分组标题左侧显示方形选择框，点击整组会统一选择或取消，且此时不会进入详情页。所有显式删除都会先打开原版 `ConfirmScreen`。服务端成功后以权威单表历史或全量快照更新本地状态，并用 `JournalLogDeleteResultPayload` 显示结果提示。
 
 ## 5. HUD
 

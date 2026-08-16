@@ -13,7 +13,8 @@ public final class JournalDataVersion {
     public static final String NBT_VERSION_TAG = "data_version";
     public static final int LEGACY_NBT_VERSION = 0;
     public static final int NBT_VERSION_LOOT_SOURCE = 1;
-    public static final int CURRENT_NBT_VERSION = NBT_VERSION_LOOT_SOURCE;
+    public static final int NBT_VERSION_LOG_RETENTION = 2;
+    public static final int CURRENT_NBT_VERSION = NBT_VERSION_LOG_RETENTION;
 
     public static final String STORAGE_VERSION_TAG = "storage_version";
     public static final int STORAGE_VERSION_SINGLE_FILE = 1;

@@ -4,7 +4,7 @@
 
 ## 1. 职责概述
 
-模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 24 个自定义 payload（10 个 C2S + 14 个 S2C），覆盖：
+模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 25 个自定义 payload（11 个 C2S + 14 个 S2C），覆盖：
 
 - **考古笔记同步**：目录、进度状态（增量/全量）、日志（更新/快照）、完成奖励通知。
 - **目录按需同步**：哈希比对，不一致时客户端主动请求全量目录。
@@ -24,7 +24,7 @@ network/
 │   ├── JournalStateHandler      进度状态同步（增量/全量）
 │   └── ReaderScanLevelHandler   扫描等级更新处理
 ├── payload/
-│   ├── c2s/                   10 个客户端->服务端 payload
+│   ├── c2s/                   11 个客户端->服务端 payload
 │   └── s2c/                   14 个服务端->客户端 payload
 └── (cat/CatNetworkHandler 在 cat/ 包)
 ```
@@ -76,7 +76,8 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `RequestJournalStateFullPayload` | `JournalStateHandler::handleRequestFull` | 请求全量状态重同步 |
 | `RequestJournalLogSnapshotPayload` | `JournalLogHandler::handleRequestSnapshot` | 请求日志快照 |
 | `UpdateJournalLogNotePayload` | `JournalLogHandler::handleUpdateNote` | 更新日志备注 |
-| `DeleteJournalLogPayload` | `JournalLogHandler::handleDeleteLogs` | 删除单条、当前表或全部日志 |
+| `DeleteJournalLogPayload` | `JournalLogHandler::handleDeleteLogs` | 删除单条、批量选择、当前表或全部日志 |
+| `UpdateJournalLogRetentionPayload` | `JournalLogHandler::handleUpdateRetention` | 设置当前表自动上限或仅保留最近 N 条 |
 | `CatDeterrenceTogglePayload` | `CatNetworkHandler::handleDeterrenceToggle` | 切换威慑开关 |
 | `CatLightStepTogglePayload` | `CatNetworkHandler::handleLightStepToggle` | 切换轻步开关 |
 
@@ -126,7 +127,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned("2.0")` 声明 payload 协议版本。
+**版本化**：NeoForge 端用 `registrar.versioned("3.0")` 声明 payload 协议版本；本版本增加日志保留配置，并扩展批量删除包格式。
 
 ## 8. 同步策略
 
@@ -151,12 +152,12 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 - 加入时：`JournalPlayerDataService.onPlayerJoined` 先从按 UUID、战利品表拆分的 v2 存储恢复并迁移玩家数据，再由 `JournalLogHandler.syncLogSnapshot` 下发日志。
 - 全量快照：先发 `SyncJournalLogSnapshotStartPayload`，每张表独立压缩并以 `SyncJournalLogTableChunkPayload` 切成最多 128 KiB 的 byte 分片，最后发 `SyncJournalLogSnapshotEndPayload`。客户端校验表数与所有分片后一次性替换状态，接收期间继续保留旧状态。
 - 规模限制：单表压缩后最多 16 MiB、解压 NBT 最多 64 MiB、一次快照最多 65,536 张表；网络解码不再调用 `readNbt` 读取整份日志，因此不受原 2 MiB 单 NBT payload 上限影响。
-- 运行时：`SyncJournalLogPayload` 发送首次解锁、条目更新、删除单条、清空表和清空全部等增量。
+- 运行时：`SyncJournalLogPayload` 发送首次解锁、条目更新、删除单条，以及批量操作后的权威单表替换；清空全部表时下发新快照。
 - 恢复：会话或分片不匹配时，客户端以 2 秒限流发送 `RequestJournalLogSnapshotPayload`；客户端不再向服务端上传日志快照。
 
 ### 8.4 日志删除
 
-客户端在二次确认后发送 `DeleteJournalLogPayload`，scope 为 `ENTRY`、`TABLE` 或 `ALL`。服务端从连接取得玩家身份、验证目标属于该玩家，并立即持久化；成功后发送日志增量和 `JournalLogDeleteResultPayload`。删除不修改考古进度、奖励或成就。
+客户端在二次确认后发送 `DeleteJournalLogPayload`，scope 为 `ENTRY`、`BATCH`、`TABLE` 或 `ALL`。批量 UUID 列表有单包数量限制，客户端会按限制自动拆包。服务端从连接取得玩家身份、验证目标属于该玩家，并立即持久化；成功后发送权威日志状态和 `JournalLogDeleteResultPayload`。`UpdateJournalLogRetentionPayload` 单独处理当前表自动上限和按时间清理。普通 GUI 删除不修改累计数、保留策略、考古进度、奖励或成就。
 
 ### 8.5 加入时同步序列
 

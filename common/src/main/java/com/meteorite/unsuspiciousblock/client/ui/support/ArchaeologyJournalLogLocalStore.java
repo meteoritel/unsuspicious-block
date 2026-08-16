@@ -270,9 +270,18 @@ public final class ArchaeologyJournalLogLocalStore {
             case CLEAR_TABLE -> payload.tableId() != null && state.removeTable(payload.tableId());
             case DELETE_ENTRY -> payload.tableId() != null && payload.entryId() != null
                     && state.removeEntry(payload.tableId(), payload.entryId());
+            case REPLACE_TABLE -> applyReplaceTable(state, payload);
             case SET_FIRST_UNLOCK_META -> applyFirstUnlockMeta(state, payload);
             case UPSERT_ENTRY -> applyUpsertEntry(state, payload);
         };
+    }
+
+    private static boolean applyReplaceTable(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
+        if (payload.tableId() == null) {
+            return false;
+        }
+        state.putTable(payload.tableId(), ArchaeologyJournalLogState.TableLogHistory.fromTag(payload.data().copy()));
+        return true;
     }
 
     private static boolean applyFirstUnlockMeta(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {

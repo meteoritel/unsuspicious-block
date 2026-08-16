@@ -102,6 +102,7 @@ public final class RightPageContainer {
             this.logPanel.setPage(logListPage);
             restoreLogSelection(savedSelectedLogEntryId, savedLogMode == LogMode.DETAIL);
         } else {
+            this.logPanel.setBatchSelectionMode(false);
             this.gridPanel.resetPage();
             restoreLogSelection(null, false);
         }
@@ -195,6 +196,9 @@ public final class RightPageContainer {
             // 返回按钮由 IconButton widget 处理；这里仅处理复制坐标按钮点击
             return this.logDetailPanel.handleClick(mouseX, mouseY);
         }
+        if (this.logPanel.isBatchSelectionMode()) {
+            return this.logPanel.handleBatchSelectionClick(mouseX, mouseY);
+        }
         ExcavationLogEntry clickedEntry = this.logPanel.handleClick(mouseX, mouseY);
         if (clickedEntry == null) {
             return false;
@@ -235,6 +239,9 @@ public final class RightPageContainer {
             return;
         }
         this.activeTab = tab;
+        if (tab != Tab.LOG) {
+            this.logPanel.setBatchSelectionMode(false);
+        }
         // 切换到日志页时刷新时间分组参考刻，避免每帧重算
         if (tab == Tab.LOG) {
             captureReferenceGameTime();

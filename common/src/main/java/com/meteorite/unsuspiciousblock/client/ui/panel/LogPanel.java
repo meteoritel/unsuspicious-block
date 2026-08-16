@@ -18,10 +18,13 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -89,7 +92,7 @@ public final class LogPanel implements PagePanel {
     /**
      * 组头行——不可点击，显示组名 + 条目数
      */
-    private record GroupHeaderRow(String groupName, int count) implements DisplayRow {
+    private record GroupHeaderRow(String groupName, List<LogEntryState> entries) implements DisplayRow {
 
         @Override
         public int height() {
@@ -123,6 +126,8 @@ public final class LogPanel implements PagePanel {
     private long referenceGameTime = 0L;
     @Nullable
     private UUID selectedEntryId;
+    private boolean batchSelectionMode;
+    private final Set<UUID> selectedEntryIds = new LinkedHashSet<>();
 
     public LogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -135,6 +140,9 @@ public final class LogPanel implements PagePanel {
         for (ExcavationLogEntry entry : this.logRef.logEntries()) {
             this.allEntries.add(new LogEntryState(entry));
         }
+        Set<UUID> availableIds = new LinkedHashSet<>();
+        this.allEntries.forEach(state -> availableIds.add(state.entry.entryId()));
+        this.selectedEntryIds.retainAll(availableIds);
         applyFilterAndSort();
     }
 
@@ -164,6 +172,42 @@ public final class LogPanel implements PagePanel {
     // 设置备注图标点击回调（列表页点击铅笔图标时触发，打开备注编辑界面）
     public void setNoteClickHandler(@Nullable Consumer<ExcavationLogEntry> handler) {
         this.noteClickHandler = handler;
+    }
+
+    public void setBatchSelectionMode(boolean enabled) {
+        this.batchSelectionMode = enabled;
+        if (!enabled) {
+            this.selectedEntryIds.clear();
+        }
+        this.selectedEntryId = null;
+    }
+
+    public boolean isBatchSelectionMode() {
+        return this.batchSelectionMode;
+    }
+
+    public int getSelectedEntryCount() {
+        return this.selectedEntryIds.size();
+    }
+
+    public List<UUID> getSelectedEntryIds() {
+        return List.copyOf(this.selectedEntryIds);
+    }
+
+    // 恢复 resize 前的批量模式，并丢弃已不在当前表中的条目。
+    public void restoreBatchSelection(boolean enabled, Collection<UUID> entryIds) {
+        this.batchSelectionMode = enabled;
+        this.selectedEntryIds.clear();
+        if (enabled && !entryIds.isEmpty()) {
+            Set<UUID> availableIds = new LinkedHashSet<>();
+            this.allEntries.forEach(state -> availableIds.add(state.entry.entryId()));
+            for (UUID entryId : entryIds) {
+                if (availableIds.contains(entryId)) {
+                    this.selectedEntryIds.add(entryId);
+                }
+            }
+        }
+        this.selectedEntryId = null;
     }
 
     // 对全部条目执行排序和分组，结果写入 displayRows
@@ -201,7 +245,7 @@ public final class LogPanel implements PagePanel {
             }
             for (var entry : buckets.entrySet()) {
                 if (entry.getValue().isEmpty()) continue;
-                this.displayRows.add(new GroupHeaderRow(entry.getKey(), entry.getValue().size()));
+                this.displayRows.add(new GroupHeaderRow(entry.getKey(), List.copyOf(entry.getValue())));
                 for (LogEntryState state : entry.getValue()) {
                     this.displayRows.add(new EntryRow(state));
                 }
@@ -217,7 +261,7 @@ public final class LogPanel implements PagePanel {
             }
             for (var entry : groups.entrySet()) {
                 if (entry.getValue().isEmpty()) continue;
-                this.displayRows.add(new GroupHeaderRow(entry.getKey(), entry.getValue().size()));
+                this.displayRows.add(new GroupHeaderRow(entry.getKey(), List.copyOf(entry.getValue())));
                 for (LogEntryState state : entry.getValue()) {
                     this.displayRows.add(new EntryRow(state));
                 }
@@ -230,7 +274,7 @@ public final class LogPanel implements PagePanel {
                 groups.computeIfAbsent(key, k -> new ArrayList<>()).add(state);
             }
             for (var entry : groups.entrySet()) {
-                this.displayRows.add(new GroupHeaderRow(entry.getKey(), entry.getValue().size()));
+                this.displayRows.add(new GroupHeaderRow(entry.getKey(), List.copyOf(entry.getValue())));
                 for (LogEntryState state : entry.getValue()) {
                     this.displayRows.add(new EntryRow(state));
                 }
@@ -287,8 +331,17 @@ public final class LogPanel implements PagePanel {
         guiGraphics.fill(bgX, rowY, bgX + bgW, rowY + 1, JournalLayout.LOG_GROUP_HEADER_BORDER);
 
         // 组名文本
-        Component groupLabel = LogGrouper.groupHeader(this.groupMode, header.groupName, header.count);
-        guiGraphics.drawString(font, groupLabel, leftX + 2, rowY + 3, JournalLayout.LOG_GROUP_HEADER_COLOR, false);
+        int textX = leftX + 2;
+        if (this.batchSelectionMode) {
+            boolean allSelected = header.entries.stream()
+                    .allMatch(state -> this.selectedEntryIds.contains(state.entry.entryId()));
+            renderCheckbox(guiGraphics, leftX, rowY + 3, allSelected);
+            textX += 11;
+        }
+        Component groupLabel = LogGrouper.groupHeader(
+                this.groupMode, header.groupName, header.entries.size());
+        guiGraphics.drawString(font, groupLabel, textX, rowY + 3,
+                JournalLayout.LOG_GROUP_HEADER_COLOR, false);
     }
 
     @Override
@@ -299,6 +352,9 @@ public final class LogPanel implements PagePanel {
 
     @Nullable
     public ExcavationLogEntry handleClick(double mouseX, double mouseY) {
+        if (this.batchSelectionMode) {
+            return null;
+        }
         // 计算当前页可见行范围
         int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
         IntRange visible = computeVisibleRows(this.pagination.getPage());
@@ -332,6 +388,54 @@ public final class LogPanel implements PagePanel {
             yOffset += row.height();
         }
         return null;
+    }
+
+    // 批量模式下点击条目或组头，只切换选择状态，不进入详情页
+    public boolean handleBatchSelectionClick(double mouseX, double mouseY) {
+        if (!this.batchSelectionMode) {
+            return false;
+        }
+        IntRange visible = computeVisibleRows(this.pagination.getPage());
+        int leftX = this.layout.rightPageX() + 8;
+        int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
+        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
+        int yOffset = 0;
+        for (int index = visible.start(); index < visible.end() && index < this.displayRows.size(); index++) {
+            DisplayRow row = this.displayRows.get(index);
+            int rowY = listStartY + yOffset;
+            if (rowY + row.height() > listStartY + availableHeight) {
+                break;
+            }
+            if (mouseX >= leftX - 4 && mouseX <= leftX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
+                    && mouseY >= rowY && mouseY <= rowY + row.height()) {
+                if (row instanceof GroupHeaderRow header) {
+                    toggleGroupSelection(header.entries);
+                } else if (row instanceof EntryRow entryRow) {
+                    toggleEntrySelection(entryRow.state.entry.entryId());
+                }
+                return true;
+            }
+            yOffset += row.height();
+        }
+        return false;
+    }
+
+    private void toggleGroupSelection(List<LogEntryState> entries) {
+        boolean allSelected = entries.stream()
+                .allMatch(state -> this.selectedEntryIds.contains(state.entry.entryId()));
+        for (LogEntryState state : entries) {
+            if (allSelected) {
+                this.selectedEntryIds.remove(state.entry.entryId());
+            } else {
+                this.selectedEntryIds.add(state.entry.entryId());
+            }
+        }
+    }
+
+    private void toggleEntrySelection(UUID entryId) {
+        if (!this.selectedEntryIds.add(entryId)) {
+            this.selectedEntryIds.remove(entryId);
+        }
     }
 
     // 判定鼠标是否落在某条目的复制坐标按钮上
@@ -391,7 +495,9 @@ public final class LogPanel implements PagePanel {
                              LogEntryState state, int mouseX, int mouseY) {
         boolean hovered = mouseX >= leftX - 4 && mouseX <= leftX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
                 && mouseY >= rowY && mouseY <= rowY + JournalLayout.LOG_ROW_HEIGHT;
-        boolean selected = state.entry.entryId().equals(this.selectedEntryId);
+        boolean selected = this.batchSelectionMode
+                ? this.selectedEntryIds.contains(state.entry.entryId())
+                : state.entry.entryId().equals(this.selectedEntryId);
 
         if (!state.wasHovered && hovered) {
             state.scrollTicks = 0;
@@ -422,10 +528,15 @@ public final class LogPanel implements PagePanel {
         var sourceStack = state.entry.lootSource() != null ? state.entry.lootSource().iconItem() : net.minecraft.world.item.ItemStack.EMPTY;
         int textX = leftX;
         int textWidth = JournalLayout.LOG_ENTRY_TEXT_WIDTH;
+        if (this.batchSelectionMode) {
+            renderCheckbox(guiGraphics, textX, rowY + (JournalLayout.LOG_ROW_HEIGHT - 8) / 2, selected);
+            textX += 12;
+            textWidth -= 12;
+        }
         if (!sourceStack.isEmpty()) {
             int iconY = rowY + (JournalLayout.LOG_ROW_HEIGHT - JournalLayout.LOG_ENTRY_ICON_SIZE) / 2;
-            guiGraphics.renderItem(sourceStack, leftX, iconY);
-            guiGraphics.renderItemDecorations(font, sourceStack, leftX, iconY);
+            guiGraphics.renderItem(sourceStack, textX, iconY);
+            guiGraphics.renderItemDecorations(font, sourceStack, textX, iconY);
             textX += JournalLayout.LOG_ENTRY_ICON_SIZE + JournalLayout.LOG_ENTRY_ICON_GAP;
             textWidth -= JournalLayout.LOG_ENTRY_ICON_SIZE + JournalLayout.LOG_ENTRY_ICON_GAP;
         }
@@ -434,10 +545,13 @@ public final class LogPanel implements PagePanel {
         int btnX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
                 - CopyCoordinateButton.WIDTH - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD;
         int btnY = rowY + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET;
-        boolean btnHovered = CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
-        CopyCoordinateButton.render(guiGraphics, btnX, btnY, btnHovered);
-        if (btnHovered) {
-            this.copyBtnHoverX = btnX;
+        boolean btnHovered = !this.batchSelectionMode
+                && CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
+        if (!this.batchSelectionMode) {
+            CopyCoordinateButton.render(guiGraphics, btnX, btnY, btnHovered);
+            if (btnHovered) {
+                this.copyBtnHoverX = btnX;
+            }
         }
 
         // 行1：时间（左侧，主色——最高优先级）
@@ -458,7 +572,7 @@ public final class LogPanel implements PagePanel {
                 textX, rowY + 14, textWidth, JournalLayout.LOG_ENTRY_DIM_POS_COLOR, hovered, state.scrollTicks, false);
 
         // 已备注标记：右下角绘制小铅笔字符，悬停时高亮提示可点击编辑
-        if (state.entry.hasNote()) {
+        if (state.entry.hasNote() && !this.batchSelectionMode) {
             String badge = "✎";
             int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - font.width(badge) - 3;
             int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
@@ -478,6 +592,14 @@ public final class LogPanel implements PagePanel {
                 guiGraphics.drawString(font, badge, badgeX, badgeY,
                         JournalLayout.LOG_ENTRY_NOTE_BADGE_COLOR, false);
             }
+        }
+    }
+
+    private static void renderCheckbox(GuiGraphics guiGraphics, int x, int y, boolean checked) {
+        guiGraphics.fill(x, y, x + 8, y + 8, 0xFF6E5538);
+        guiGraphics.fill(x + 1, y + 1, x + 7, y + 7, 0xFFE7D4AA);
+        if (checked) {
+            guiGraphics.fill(x + 2, y + 2, x + 6, y + 6, 0xFF7B3E18);
         }
     }
 

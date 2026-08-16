@@ -275,6 +275,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
         this.rightPage.setActiveTab(snapshot.tab());
         this.rightPage.setPage(snapshot.rightPagePage());
+        this.rightPage.getLogPanel().restoreBatchSelection(
+                snapshot.logBatchSelectionMode(), snapshot.selectedLogEntryIds());
 
         this.rebuildWidgets();
         // 仅在第一次 init 之后的 reposition 中恢复 catalog page，
@@ -419,9 +421,7 @@ public class ArchaeologyJournalScreen extends Screen {
     // 渲染所有叠加层 tooltip（工具栏、帮助按钮、日志条目、物品网格）
     private void renderOverlays(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         this.catalogToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
-        boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
-                && !this.rightPage.isShowingLogDetail();
-        if (isLogListMode) {
+        if (isLogToolbarVisible()) {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         }
 
@@ -649,9 +649,8 @@ public class ArchaeologyJournalScreen extends Screen {
         this.restoredCatalogPage = 0;
 
         // 日志工具栏
-        boolean isLogTab = this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG;
-        boolean isLogListMode = isLogTab && !this.rightPage.isShowingLogDetail();
-        this.logToolbar.createWidgets(this, this.bookLayout, this.font, isLogListMode, this.rightPage,
+        this.logToolbar.createWidgets(this, this.bookLayout, this.rightPage,
+                this::openLogRetentionConfig, this::toggleBatchSelection, this::confirmDeleteSelectedEntries,
                 this::confirmClearCurrentTableLogs, this::confirmClearAllLogs);
 
         // 日志详情页返回按钮（IconButton）
@@ -786,14 +785,17 @@ public class ArchaeologyJournalScreen extends Screen {
                 hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1);
 
         // 日志工具栏可见性
-        boolean isLogListMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
-                && !this.rightPage.isShowingLogDetail();
-        boolean logHasEntries = isLogListMode && this.rightPage.getLogPanel().hasVisibleEntries();
-        this.logToolbar.syncVisibility(isLogListMode, logHasEntries);
+        boolean logToolbarVisible = isLogToolbarVisible();
+        if (!logToolbarVisible && this.rightPage.getLogPanel().isBatchSelectionMode()) {
+            this.rightPage.getLogPanel().setBatchSelectionMode(false);
+        }
+        this.logToolbar.syncVisibility(logToolbarVisible,
+                this.rightPage.getLogPanel().isBatchSelectionMode(),
+                this.rightPage.getLogPanel().getSelectedEntryCount());
 
         // 日志详情页返回/备注按钮可见性
-        boolean isLogDetailMode = this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
-                && this.rightPage.isShowingLogDetail();
+        boolean isLogDetailMode = hasSelectedTable() && this.rightPage.isShowingLogDetail()
+                && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG;
         applyButtonState(this.rightPage.getLogDetailPanel().getBackButton(), isLogDetailMode, isLogDetailMode);
         applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode, isLogDetailMode);
         applyButtonState(this.rightPage.getLogDetailPanel().getDeleteButton(), isLogDetailMode, isLogDetailMode);
@@ -804,6 +806,21 @@ public class ArchaeologyJournalScreen extends Screen {
             btn.visible = visible;
             btn.active = active;
         }
+    }
+
+    // 日志控件统一使用这组状态判断，避免创建、同步和 tooltip 各自维护显示条件。
+    private boolean hasSelectedTable() {
+        return !this.viewModel.isCategoryHome() && this.viewModel.selectedTable() != null;
+    }
+
+    private boolean isLogListMode() {
+        return hasSelectedTable() && this.rightPage != null
+                && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG
+                && !this.rightPage.isShowingLogDetail();
+    }
+
+    private boolean isLogToolbarVisible() {
+        return isLogListMode() && this.rightPage.getLogPanel().hasVisibleEntries();
     }
 
     // 打开备注编辑子界面：取出当前详情页的 entry + tableId
@@ -826,6 +843,52 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
                 .setScreen(new JournalLogNoteEditScreen(this, tableId, entry.entryId(), entry.note()));
+    }
+
+    private void openLogRetentionConfig() {
+        ResourceLocation tableId = this.viewModel.selectedTableId();
+        if (tableId == null) {
+            return;
+        }
+        var history = ArchaeologyJournalClientState.getLogState().getTable(tableId);
+        int retentionLimit = history != null
+                ? history.getRetentionLimit()
+                : com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
+        int entryCount = history != null ? history.getTotalEntryCount() : 0;
+        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
+                .setScreen(new JournalLogRetentionScreen(this, tableId, retentionLimit, entryCount));
+    }
+
+    private void toggleBatchSelection() {
+        var logPanel = this.rightPage.getLogPanel();
+        logPanel.setBatchSelectionMode(!logPanel.isBatchSelectionMode());
+        this.rightPage.restoreLogSelection(null, false);
+        syncButtonState();
+    }
+
+    private void confirmDeleteSelectedEntries() {
+        ResourceLocation tableId = this.viewModel.selectedTableId();
+        List<UUID> selectedEntryIds = this.rightPage.getLogPanel().getSelectedEntryIds();
+        if (tableId == null || selectedEntryIds.isEmpty()) {
+            return;
+        }
+        openDeleteConfirmation(
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_title"),
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_message",
+                        selectedEntryIds.size()),
+                () -> {
+                    for (int from = 0; from < selectedEntryIds.size();
+                         from += DeleteJournalLogPayload.MAX_BATCH_ENTRIES) {
+                        int to = Math.min(selectedEntryIds.size(),
+                                from + DeleteJournalLogPayload.MAX_BATCH_ENTRIES);
+                        Services.NETWORK.sendToServer(DeleteJournalLogPayload.batch(
+                                tableId, selectedEntryIds.subList(from, to)));
+                    }
+                    this.rightPage.getLogPanel().setBatchSelectionMode(false);
+                    syncButtonState();
+                });
     }
 
     // 二次确认后删除当前表中的单条日志
@@ -888,6 +951,8 @@ public class ArchaeologyJournalScreen extends Screen {
                 this.rightPage != null ? this.rightPage.getActiveItemTag() : null,
                 this.rightPage != null && this.rightPage.isShowingLogDetail(),
                 this.rightPage != null ? this.rightPage.getSelectedLogEntryId() : null,
+                this.rightPage != null && this.rightPage.getLogPanel().isBatchSelectionMode(),
+                this.rightPage != null ? this.rightPage.getLogPanel().getSelectedEntryIds() : List.of(),
                 this.logToolbar.sortDescending(),
                 this.logToolbar.groupMode(),
                 this.catalogToolbar.currentSortOrder(),
@@ -910,6 +975,8 @@ public class ArchaeologyJournalScreen extends Screen {
             @Nullable ResourceLocation activeItemTag,
             boolean logDetail,
             @Nullable UUID logEntryId,
+            boolean logBatchSelectionMode,
+            List<UUID> selectedLogEntryIds,
             boolean logSortDescending,
             LogGrouper.GroupMode groupMode,
             CatalogSorter.SortOrder catalogSortOrder,

@@ -290,7 +290,7 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("2.0");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("3.0");
         // 遍历 ModPayloads 统一清单注册 C2S，避免手写重复
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(registrar, c2s);

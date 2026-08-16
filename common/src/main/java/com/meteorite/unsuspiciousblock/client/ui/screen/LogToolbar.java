@@ -5,9 +5,11 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 日志工具栏管理器。
@@ -24,8 +26,12 @@ public class LogToolbar {
     // widget 引用
     private IconButton sortDirBtn;
     private IconButton groupBtn;
+    private IconButton retentionBtn;
+    private IconButton batchSelectBtn;
+    private IconButton executeBatchBtn;
     private IconButton clearTableBtn;
     private IconButton clearAllBtn;
+    private final List<IconButton> toolbarButtons = new ArrayList<>();
 
     public LogToolbar() {
     }
@@ -89,11 +95,14 @@ public class LogToolbar {
      * 在 Screen 上创建日志工具栏 widget。
      * visible 由 {@link #syncVisibility} 控制。
      */
-    public void createWidgets(ArchaeologyJournalScreen screen, JournalBookBackground.BookLayout bookLayout, Font font,
-                              boolean isLogListMode, RightPageContainer rightPage,
+    public void createWidgets(ArchaeologyJournalScreen screen, JournalBookBackground.BookLayout bookLayout,
+                              RightPageContainer rightPage,
+                              Runnable onOpenRetention, Runnable onToggleBatch, Runnable onExecuteBatch,
                               Runnable onClearTable, Runnable onClearAll) {
+        this.toolbarButtons.clear();
         int logToolbarY = bookLayout.rightPageY() + JournalLayout.LOG_LIST_LABEL_Y
                 + (JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.SEARCH_QUICK_BAR_HEIGHT) / 2;
+        int logToolbarLeftX = bookLayout.rightPageX() + 8;
         int logToolbarRightX = bookLayout.rightPageX() + bookLayout.rightPageWidth() - 8;
 
         // 排序方向按钮（最右侧）
@@ -104,8 +113,7 @@ public class LogToolbar {
                 sortDirectionIcon(this.sortDescending),
                 sortDirectionTooltip(this.sortDescending),
                 () -> toggleSortDirection(rightPage));
-        this.sortDirBtn.visible = isLogListMode;
-        screen.registerWidget(this.sortDirBtn);
+        registerToolbarButton(screen, this.sortDirBtn);
 
         // 分组按钮
         int logGroupX = logToolbarRightX - JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP
@@ -116,21 +124,10 @@ public class LogToolbar {
                 LogGrouper.groupModeIcon(this.groupMode),
                 LogGrouper.groupModeTooltip(this.groupMode),
                 () -> cycleGroupMode(rightPage));
-        this.groupBtn.visible = isLogListMode;
-        screen.registerWidget(this.groupBtn);
+        registerToolbarButton(screen, this.groupBtn);
 
-        int clearTableX = logGroupX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
-        this.clearTableBtn = new IconButton(
-                clearTableX, logToolbarY,
-                JournalLayout.LOG_GROUP_ICON_SIZE,
-                '×',
-                Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
-                onClearTable);
-        this.clearTableBtn.visible = isLogListMode;
-        screen.registerWidget(this.clearTableBtn);
-
-        int clearAllX = clearTableX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
+        // 清空操作与右侧视图设置排成一行。
+        int clearAllX = logGroupX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
         this.clearAllBtn = new IconButton(
                 clearAllX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
@@ -138,40 +135,76 @@ public class LogToolbar {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.all_tooltip"),
                 onClearAll);
-        this.clearAllBtn.visible = isLogListMode;
-        screen.registerWidget(this.clearAllBtn);
+        registerToolbarButton(screen, this.clearAllBtn);
+
+        int clearTableX = clearAllX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
+        this.clearTableBtn = new IconButton(
+                clearTableX, logToolbarY,
+                JournalLayout.LOG_GROUP_ICON_SIZE,
+                '×',
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
+                onClearTable);
+        registerToolbarButton(screen, this.clearTableBtn);
+
+        // 保留配置、批量选择、执行三个固定槽位，批量模式切换时布局不会跳动。
+        int executeBatchX = logToolbarLeftX
+                + (JournalLayout.LOG_GROUP_ICON_SIZE + JournalLayout.LOG_TOOLBAR_GAP) * 2;
+        this.executeBatchBtn = new IconButton(
+                executeBatchX, logToolbarY,
+                JournalLayout.LOG_GROUP_ICON_SIZE,
+                '✓',
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.execute_batch_tooltip"),
+                onExecuteBatch);
+        registerToolbarButton(screen, this.executeBatchBtn);
+
+        int batchSelectX = logToolbarLeftX + JournalLayout.LOG_GROUP_ICON_SIZE
+                + JournalLayout.LOG_TOOLBAR_GAP;
+        this.batchSelectBtn = new IconButton(
+                batchSelectX, logToolbarY,
+                JournalLayout.LOG_GROUP_ICON_SIZE,
+                '□',
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"),
+                onToggleBatch);
+        registerToolbarButton(screen, this.batchSelectBtn);
+
+        int retentionX = logToolbarLeftX;
+        this.retentionBtn = new IconButton(
+                retentionX, logToolbarY,
+                JournalLayout.LOG_GROUP_ICON_SIZE,
+                '⚙',
+                Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.log_retention.open_tooltip"),
+                onOpenRetention);
+        registerToolbarButton(screen, this.retentionBtn);
+    }
+
+    // 所有日志工具栏按钮均从隐藏状态注册，只允许 syncVisibility 决定是否显示。
+    private void registerToolbarButton(ArchaeologyJournalScreen screen, IconButton button) {
+        button.visible = false;
+        this.toolbarButtons.add(button);
+        screen.registerWidget(button);
     }
 
     /** 同步日志工具栏 widget 可见性 */
-    public void syncVisibility(boolean isLogListMode, boolean logHasEntries) {
-        boolean visible = isLogListMode && logHasEntries;
-        if (this.sortDirBtn != null) {
-            this.sortDirBtn.visible = visible;
+    public void syncVisibility(boolean toolbarVisible, boolean batchSelectionMode, int selectedEntryCount) {
+        this.toolbarButtons.forEach(button -> button.visible = toolbarVisible);
+        if (this.batchSelectBtn != null) {
+            this.batchSelectBtn.setIconChar(batchSelectionMode ? '■' : '□');
+            this.batchSelectBtn.setTooltip(Component.translatable(batchSelectionMode
+                    ? "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_exit_tooltip"
+                    : "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"));
         }
-        if (this.groupBtn != null) {
-            this.groupBtn.visible = visible;
-        }
-        if (this.clearTableBtn != null) {
-            this.clearTableBtn.visible = visible;
-        }
-        if (this.clearAllBtn != null) {
-            this.clearAllBtn.visible = visible;
+        if (this.executeBatchBtn != null) {
+            this.executeBatchBtn.visible = toolbarVisible && batchSelectionMode;
+            this.executeBatchBtn.active = selectedEntryCount > 0;
         }
     }
 
     /** 渲染日志工具栏 tooltip */
     public void renderTooltips(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.sortDirBtn != null) {
-            this.sortDirBtn.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.groupBtn != null) {
-            this.groupBtn.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.clearTableBtn != null) {
-            this.clearTableBtn.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.clearAllBtn != null) {
-            this.clearAllBtn.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
+        this.toolbarButtons.forEach(button -> button.renderTooltip(guiGraphics, mouseX, mouseY));
     }
 }

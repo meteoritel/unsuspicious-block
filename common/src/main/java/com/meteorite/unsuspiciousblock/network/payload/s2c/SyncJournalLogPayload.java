@@ -74,6 +74,12 @@ public record SyncJournalLogPayload(UUID sessionId,
         return new SyncJournalLogPayload(sessionId, sequence, Action.DELETE_ENTRY, tableId, data);
     }
 
+    // 构建“替换整张表历史”操作包，用于批量删除与保留策略更新
+    public static SyncJournalLogPayload replaceTable(UUID sessionId, long sequence,
+                                                      ResourceLocation tableId, CompoundTag historyTag) {
+        return new SyncJournalLogPayload(sessionId, sequence, Action.REPLACE_TABLE, tableId, historyTag.copy());
+    }
+
     @Override
     public @NotNull Type<SyncJournalLogPayload> type() {
         return TYPE;
@@ -115,7 +121,8 @@ public record SyncJournalLogPayload(UUID sessionId,
         UPSERT_ENTRY(1),
         CLEAR_ALL(2),
         CLEAR_TABLE(3),
-        DELETE_ENTRY(4);
+        DELETE_ENTRY(4),
+        REPLACE_TABLE(5);
 
         private final int id;
 

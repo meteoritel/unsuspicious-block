@@ -64,7 +64,7 @@ public final class ArchaeologyJournalServerCatalog {
     private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v9";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v10";
 
     /** 已填充概率的目录（随模拟完成渐进增长） */
     private static final Map<ResourceLocation, TableDefinition> catalog = new ConcurrentHashMap<>();
