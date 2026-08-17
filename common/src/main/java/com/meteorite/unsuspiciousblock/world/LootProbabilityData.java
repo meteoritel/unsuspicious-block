@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.world;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -12,8 +13,10 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,7 +31,8 @@ import java.util.Map;
  *     "items"    -> ListTag, 每个 CompoundTag 包含:
  *       "key"         -> String (signature storedKey)
  *       "probability" -> String (格式化的概率，如 "12.5%", "&lt;0.01%", "?")
- *       "sim_count"  -> int (模拟次数)
+ *       "has_direct_source" -> boolean (是否由当前表直接产出)
+ *       "source_child_tables" -> ListTag&lt;StringTag&gt; (动态条目的直接来源子表)
  * </pre>
  */
 public final class LootProbabilityData extends SavedData {
@@ -42,6 +46,8 @@ public final class LootProbabilityData extends SavedData {
     private static final String TAG_PROBABILITY = "probability";
     private static final String TAG_SCENARIOS = "scenarios";
     private static final String TAG_SCENARIO_KEY = "scenario_key";
+    private static final String TAG_HAS_DIRECT_SOURCE = "has_direct_source";
+    private static final String TAG_SOURCE_CHILD_TABLES = "source_child_tables";
 
     private static final SavedData.Factory<LootProbabilityData> FACTORY = new SavedData.Factory<>(
             LootProbabilityData::new,
@@ -82,7 +88,17 @@ public final class LootProbabilityData extends SavedData {
                     scenarios.put(scenarioTag.getString(TAG_SCENARIO_KEY),
                             scenarioTag.getString(TAG_PROBABILITY));
                 }
-                probabilities.put(key, new CachedItemProbability(probability, scenarios));
+                boolean hasDirectSource = itemTag.getBoolean(TAG_HAS_DIRECT_SOURCE);
+                List<ResourceLocation> sourceChildTables = new ArrayList<>();
+                ListTag sourceTags = itemTag.getList(TAG_SOURCE_CHILD_TABLES, Tag.TAG_STRING);
+                for (int k = 0; k < sourceTags.size(); k++) {
+                    ResourceLocation source = ResourceLocation.tryParse(sourceTags.getString(k));
+                    if (source != null) {
+                        sourceChildTables.add(source);
+                    }
+                }
+                probabilities.put(key, new CachedItemProbability(
+                        probability, scenarios, hasDirectSource, sourceChildTables));
             }
             data.entries.put(tableId, new TableProbabilityEntry(hash, probabilities));
         }
@@ -111,6 +127,12 @@ public final class LootProbabilityData extends SavedData {
                     scenariosTag.add(scenarioTag);
                 }
                 itemTag.put(TAG_SCENARIOS, scenariosTag);
+                itemTag.putBoolean(TAG_HAS_DIRECT_SOURCE, probEntry.getValue().hasDirectSource());
+                ListTag sourceTags = new ListTag();
+                for (ResourceLocation source : probEntry.getValue().sourceChildTables()) {
+                    sourceTags.add(StringTag.valueOf(source.toString()));
+                }
+                itemTag.put(TAG_SOURCE_CHILD_TABLES, sourceTags);
                 itemsTag.add(itemTag);
             }
             entryTag.put(TAG_ITEMS, itemsTag);
@@ -167,9 +189,13 @@ public final class LootProbabilityData extends SavedData {
     }
 
     /** 单个签名的摘要概率与分场景概率。 */
-    public record CachedItemProbability(String probability, Map<String, String> scenarioProbabilities) {
+    public record CachedItemProbability(String probability,
+                                        Map<String, String> scenarioProbabilities,
+                                        boolean hasDirectSource,
+                                        List<ResourceLocation> sourceChildTables) {
         public CachedItemProbability {
             scenarioProbabilities = Collections.unmodifiableMap(new LinkedHashMap<>(scenarioProbabilities));
+            sourceChildTables = List.copyOf(sourceChildTables);
         }
     }
 }

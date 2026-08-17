@@ -64,7 +64,7 @@ public final class ArchaeologyJournalServerCatalog {
     private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v10";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v11";
 
     /** 已填充概率的目录（随模拟完成渐进增长） */
     private static final Map<ResourceLocation, TableDefinition> catalog = new ConcurrentHashMap<>();
@@ -187,8 +187,20 @@ public final class ArchaeologyJournalServerCatalog {
             for (ScenarioProbability scenario : item.scenarioProbabilities()) {
                 scenarioProbabilities.put(scenario.scenarioKey(), scenario.probability());
             }
+            boolean hasDirectSource = item.acquisitionPaths().isEmpty();
+            List<ResourceLocation> sourceChildTables = new ArrayList<>();
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                ResourceLocation source = path.sourceChildTable();
+                if (source == null) {
+                    hasDirectSource = true;
+                } else if (!sourceChildTables.contains(source)) {
+                    sourceChildTables.add(source);
+                }
+            }
             probabilities.put(item.signature().toStoredKey(),
-                    new LootProbabilityData.CachedItemProbability(item.probability(), scenarioProbabilities));
+                    new LootProbabilityData.CachedItemProbability(
+                            item.probability(), scenarioProbabilities,
+                            hasDirectSource, sourceChildTables));
         }
         for (ChildTableProbability child : table.childTableProbabilities()) {
             Map<String, String> scenarioProbabilities = new LinkedHashMap<>();
@@ -196,7 +208,8 @@ public final class ArchaeologyJournalServerCatalog {
                 scenarioProbabilities.put(scenario.scenarioKey(), scenario.probability());
             }
             probabilities.put(CHILD_CACHE_PREFIX + child.tableId(),
-                    new LootProbabilityData.CachedItemProbability(child.probability(), scenarioProbabilities));
+                    new LootProbabilityData.CachedItemProbability(
+                            child.probability(), scenarioProbabilities, false, List.of()));
         }
         probabilityData.putSimulationResult(tableId, hash, probabilities);
 
@@ -400,15 +413,26 @@ public final class ArchaeologyJournalServerCatalog {
                 ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(signature,
                         cached.getValue().probability(), true,
                         restoreScenarioProbabilities(cached.getValue(), scenarios));
-                List<ResourceLocation> childSources = findCachedChildSources(
-                        cached.getKey(), childSignatureIndex);
-                if (childSources.isEmpty()) {
+                boolean hasDirectSource = cached.getValue().hasDirectSource();
+                List<ResourceLocation> childSources = cached.getValue().sourceChildTables();
+                if (!hasDirectSource && childSources.isEmpty()) {
+                    childSources = findCachedChildSources(cached.getKey(), childSignatureIndex);
+                }
+                if (hasDirectSource && childSources.isEmpty()) {
                     restoredItems.add(discoveredItem);
                     continue;
                 }
-                List<LootAcquisitionPath> acquisitionPaths = new ArrayList<>(childSources.size());
+                List<LootAcquisitionPath> acquisitionPaths = new ArrayList<>(
+                        childSources.size() + (hasDirectSource ? 1 : 0));
+                if (hasDirectSource) {
+                    acquisitionPaths.add(new LootAcquisitionPath(null, List.of(), List.of()));
+                }
                 for (ResourceLocation childSource : childSources) {
                     acquisitionPaths.add(new LootAcquisitionPath(childSource, List.of(), List.of()));
+                }
+                if (acquisitionPaths.isEmpty()) {
+                    restoredItems.add(discoveredItem);
+                    continue;
                 }
                 restoredItems.add(new ItemDefinition(
                         discoveredItem.id(), discoveredItem.displayName(), discoveredItem.tooltipHint(),
