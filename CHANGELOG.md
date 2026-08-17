@@ -328,31 +328,69 @@
 
 ### 新增
 
+> 注意：如果发现升级版本后考古笔记信息异常，可以执行 `/usb journal reload` 刷新缓存
 #### 考古笔记
-- 日志支持删除与批量管理：可在详情页删除单条日志；日志列表新增批量选择模式，可删除选中条目或整个分组，也可清空当前表 / 全部表的日志。所有删除操作均有二次确认，且不影响目录解锁、物品计数与累计条数等元数据。
-- 新增单表日志保留策略：可为每张战利品表设置自动保留上限（受服务端全局上限兜底），也支持按更新时间一次性仅保留最近 N 条；带备注的日志条目始终受保护，不会被自动清理。
-- 
+- 日志现在支持删除与批量管理：可以在详情页删除单条日志，也可以在列表中批量删除选中条目、当前战利品表的日志或全部日志。
+- 每张战利品表都可以单独设置日志保留上限（仍受服务器上限限制），超出后会自动移除最旧的未备注日志；也可以一键仅保留最近 N 条。带备注的日志始终受到保护。
+
+#### 战利品表追踪管理页面
+- 考古笔记旁新增战利品表管理页面，可按目录树浏览，并支持按名称或 ID 搜索。所有玩家均可浏览，权限等级 2 及以上方可修改。
+- 可为不同语言设置自定义战利品表名称；编辑非 `en_us` 名称前，需要先填写英文名称。
+
+#### 实体容器开箱追踪
+- 箱子矿车等可储物实体现在也会纳入战利品追踪。
+
 ### 变化
 
 #### 考古笔记
-- 父表 100% 完成度与 `/usb journal unlock item` 现在统一覆盖当前表及全部后代表中的物品，并按物品签名去重；解锁子表物品即可推进父表完成度。
-- 父表物品网格不再平铺子表产出的物品，改为显示可点击的子表入口及其在父表中的出现概率，点击可跳转到对应子表。
-- 概率模拟改为时间片续跑：服务端启动期间按固定时间预算逐步填充概率数据，减少单 tick 卡顿。
-- 带条件的物品概率改为展示代表条件场景下的概率范围，泥地打捞等运行时注入内容统一按最高等级工具模拟。
-- 日志存储改为按玩家与战利品表分片的独立压缩文件，降低集中读写造成的卡顿；旧存档数据会在服务端启动或玩家登录时自动迁移，无需重置进度。
-- 战利品表管理页的语言选择改为语言代码输入框加选择弹窗，支持自定义语言代码。
+- 重构日志存储方式，减少大量日志读写造成的卡顿或服务端连接丢失问题；旧存档会自动迁移，无需重置进度。
+- 父表物品网格不再把子表战利品全部铺开，而是显示可点击的子表入口及其出现概率，点击即可跳转到对应子表。
+- 左页目录改为滚轮与滚动条连续浏览，取代之前的翻页式。
+- 战利品概率模拟改为分段执行，启动服务器时分摊计算时间，减少单个游戏刻的卡顿。
+- 现在带条件的战利品会显示可选场景中最高的概率数值
+
+#### 战利品追踪配置
+- 追踪配置现在按世界分别保存，切换集成服务器存档时不会沿用其他存档的规则；旧配置会在首次加载世界时自动迁移。
+- Fabric 的 ModMenu 配置界面拆分为独立页面，分别编辑灵体猫参数和当前世界的战利品追踪设置。
+
+#### 附魔
+- “泥底打捞”的触发与奖励规则重新平衡：触发概率为 20% + 每级 10%，沼泽判定改用通用群系标签，沼泽中的奖励更偏向高价值宝物。
+
+### 修复
+- 修复重启后部分动态物品的获取来源显示不准确的问题。
+- 修复组件数据异常时可能将不同物品误判为同一掉落的问题。
 
 ### Added
-#### Archaeology Journal
-- Logs can now be deleted and managed in bulk: delete a single entry from the detail page, use the new batch-selection mode in the log list to delete selected entries or whole groups, or clear the logs of the current table / all tables. All deletions require confirmation and never touch catalog unlocks, item counts, or lifetime counters.
-- Per-table log retention: set an automatic retention limit for each loot table (capped by a server-wide limit), or trim logs to the most recent N entries at once. Annotated entries are always protected from automatic cleanup.
 
+> Note: If the Archaeology Journal shows incorrect information after upgrading, run `/usb journal reload` to refresh the cache.
+
+#### Archaeology Journal
+- Logs now support deletion and bulk management: you can delete a single entry from its detail page, or batch-delete selected entries, all logs of the current loot table, or all logs from the list.
+- Each loot table can have its own log retention limit (still capped by the server limit). Once exceeded, the oldest unannotated logs are removed automatically; you can also keep only the newest N entries with one click. Annotated logs are always protected.
+
+#### Loot Table Tracking Management Screen
+- A new management page is available beside the Archaeology Journal, supporting tree-style browsing and search by name or ID. Everyone can browse it, while only OP can make changes.
+- Custom loot table names can be set per language; an English (`en_us`) name must be filled in before editing names in other languages.
+
+#### Entity Container Loot Tracking
+- Chest minecarts and other storage entities are now included in loot tracking.
 
 ### Changed
+
 #### Archaeology Journal
-- A parent table's 100% completion and `/usb journal unlock item` now consistently cover items from the table and all its descendant tables, deduplicated by item signature. Unlocking items in child tables now progresses the parent table's completion.
-- Parent table grids no longer flatten items produced by child tables. They now show clickable child table entries with their appearance probability in the parent, which navigate to the corresponding child table.
-- Probability simulation now runs in time-sliced resumable jobs, filling probability data within a fixed per-tick budget during server startup to reduce single-tick lag.
-- Conditional item probabilities now show a range across representative condition scenarios, and runtime-injected content such as mud dredging is simulated with the highest-tier tool.
-- Log storage now uses per-player, per-table sharded compressed files to reduce I/O hitches. Existing save data is migrated automatically on server startup or player login, with no progress reset required.
-- The language selector in the loot table management screen is now a language-code input box with a selection popup, supporting custom language codes.
+- Reworked log storage to reduce stutter or server connection loss caused by heavy log I/O. Existing save data migrates automatically, so no progress reset is required.
+- Parent table grids no longer flatten all child-table loot. Instead, they show clickable child-table entries with their appearance probability, which take you to the corresponding child table.
+- The left catalogue page now supports continuous scrolling with the mouse wheel and a scrollbar, replacing the previous paginated navigation.
+- Loot probability simulation now runs in time-sliced stages, spreading the computation across server startup to reduce single-tick lag.
+- Conditional loot now displays the highest probability value among its selectable scenarios.
+
+#### Loot Table Tracking Configuration
+- Tracking configuration is now saved per world, so switching integrated-server saves no longer carries over rules from another save. Old configurations migrate automatically the first time a world loads.
+- The Fabric ModMenu config screen is split into separate pages for editing Spirit Cat settings and the current world's loot-tracking settings.
+
+#### Enchantments
+- "Mud Dredging" trigger and reward rules have been rebalanced: the trigger chance is now 20% + 10% per level, swamp detection now uses a common biome tag, and swamp rewards lean more toward high-value treasure.
+
+### Fixed
+- Fixed inaccurate acquisition-source display for some dynamic items after a restart.
+- Fixed an issue where malformed component data could misidentify different items as the same drop.
