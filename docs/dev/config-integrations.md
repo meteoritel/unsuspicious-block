@@ -70,7 +70,10 @@ unsuspiciousblock:gameplay/fossil_hunter/
 
 ### 2.4 ModMenu 配置界面
 
-Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuConfigScreen.java) 提供图形化配置界面。只有当前客户端正在运行集成服务器时允许编辑；主菜单和多人客户端显示为服务端管理，避免本地修改造成误导。
+Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuConfigScreen.java) 提供分层图形化配置界面：
+
+- **通用配置**：编辑灵体猫的六项全局参数，保存到 `config/unsuspiciousblock/unsuspiciousblock.json`，供本机托管的集成服务器使用。
+- **服务端配置**：编辑当前世界的战利品追踪规则、日志上限与追踪超时。重置时同时清空管理页面产生的精确排除项。只有当前客户端正在运行集成服务器时允许写入；主菜单和多人客户端显示为服务端管理，避免本地修改造成误导。
 
 ### 2.5 运行时变更
 
@@ -184,7 +187,9 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 `fabric/modmenu/`（仅 Fabric）：
 
 - `ModMenuIntegration`：注册 ModMenu 入口。
-- `ModMenuConfigScreen`：图形化配置界面，编辑值通过 `FabricLootTableConfig.save` 落盘。
+- `ModMenuConfigScreen`：区分通用配置与当前世界服务端配置的入口页面。
+- `SpiritCatConfigScreen`：编辑灵体猫全局配置，通过 `FabricLootTableConfig.saveSpiritCatConfig` 落盘。
+- `ServerLootConfigScreen`：编辑当前世界的战利品服务端配置，通过 `FabricLootTableConfig.save` 落盘。
 
 ## 5. 可选依赖加载机制
 

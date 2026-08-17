@@ -37,12 +37,12 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     private int maxLogEntriesPerTable;
     private long trackingTimeoutTicks;
     private Path activeServerConfigPath;
-    private final int messengerLifetimeTicks;
-    private final int swordsmanLifetimeTicks;
-    private final int merchantLifetimeTicks;
-    private final int invulnerabilityDurationTicks;
-    private final int resistanceDurationTicks;
-    private final int fireResistanceDurationTicks;
+    private volatile int messengerLifetimeTicks;
+    private volatile int swordsmanLifetimeTicks;
+    private volatile int merchantLifetimeTicks;
+    private volatile int invulnerabilityDurationTicks;
+    private volatile int resistanceDurationTicks;
+    private volatile int fireResistanceDurationTicks;
 
     public FabricLootTableConfig() {
         ConfigData data = loadConfig();
@@ -159,12 +159,40 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         return this.fireResistanceDurationTicks;
     }
 
+    // 保存灵体猫全局配置并同步内存值
+    public synchronized void saveSpiritCatConfig(int messengerLifetimeTicks,
+                                                  int swordsmanLifetimeTicks,
+                                                  int merchantLifetimeTicks,
+                                                  int invulnerabilityDurationTicks,
+                                                  int resistanceDurationTicks,
+                                                  int fireResistanceDurationTicks) {
+        this.messengerLifetimeTicks = clampNpcLifetime("messenger_lifetime_ticks",
+                messengerLifetimeTicks, DEFAULT_MESSENGER_LIFETIME_TICKS);
+        this.swordsmanLifetimeTicks = clampNpcLifetime("swordsman_lifetime_ticks",
+                swordsmanLifetimeTicks, DEFAULT_SWORDSMAN_LIFETIME_TICKS);
+        this.merchantLifetimeTicks = clampNpcLifetime("merchant_lifetime_ticks",
+                merchantLifetimeTicks, DEFAULT_MERCHANT_LIFETIME_TICKS);
+        this.invulnerabilityDurationTicks = clampEffectDuration("invulnerability_duration_ticks",
+                invulnerabilityDurationTicks, DEFAULT_INVULNERABILITY_DURATION_TICKS);
+        this.resistanceDurationTicks = clampEffectDuration("resistance_duration_ticks",
+                resistanceDurationTicks, DEFAULT_RESISTANCE_DURATION_TICKS);
+        this.fireResistanceDurationTicks = clampEffectDuration("fire_resistance_duration_ticks",
+                fireResistanceDurationTicks, DEFAULT_FIRE_RESISTANCE_DURATION_TICKS);
+
+        saveToFile(getConfigPath(), new ConfigData(this.legacyPrefixes,
+                this.legacyMaxLogEntriesPerTable, this.legacyTrackingTimeoutTicks,
+                this.messengerLifetimeTicks, this.swordsmanLifetimeTicks, this.merchantLifetimeTicks,
+                this.invulnerabilityDurationTicks, this.resistanceDurationTicks,
+                this.fireResistanceDurationTicks));
+        Constants.LOG.info("Updated Fabric spirit cat global config.");
+    }
+
     /**
      * 保存配置到磁盘并同步更新内存缓存
      * 由 ModMenu 配置界面调用，传入玩家编辑后的原始值，方法内部完成清洗与钳制
      */
-    public synchronized boolean save(List<String> rawPrefixes, int rawMaxLogEntries,
-                                     long rawTrackingTimeoutTicks) {
+    public synchronized boolean save(List<String> rawPrefixes, List<String> rawExclusions,
+                                     int rawMaxLogEntries, long rawTrackingTimeoutTicks) {
         if (this.activeServerConfigPath == null) {
             Constants.LOG.warn("Ignored loot table config save because no integrated server config is active.");
             return false;
@@ -182,13 +210,14 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
         this.prefixes.clear();
         this.prefixes.addAll(cleanedPrefixes);
+        replaceCleaned(this.exclusions, rawExclusions);
         this.maxLogEntriesPerTable = clampedLog;
         this.trackingTimeoutTicks = clampedTimeout;
 
         saveServerConfig(this.activeServerConfigPath,
                 new ServerConfigData(cleanedPrefixes, this.exclusions, clampedLog, clampedTimeout));
-        Constants.LOG.info("Updated Fabric server loot table config: {} rules, maxLog={}, timeout={}",
-                cleanedPrefixes.size(), clampedLog, clampedTimeout);
+        Constants.LOG.info("Updated Fabric server loot table config: {} rules, {} exclusions, maxLog={}, timeout={}",
+                cleanedPrefixes.size(), this.exclusions.size(), clampedLog, clampedTimeout);
         return true;
     }
 
