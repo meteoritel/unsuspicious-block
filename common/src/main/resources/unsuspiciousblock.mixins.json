@@ -6,6 +6,7 @@
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
     "container.AbstractContainerMenuMixin",
+    "container.AbstractMinecartContainerMixin",
     "container.BaseContainerBlockEntityMixin",
     "container.DecoratedPotLootStateMixin",
     "block.BlockBehaviourMixin",
@@ -18,6 +19,7 @@
     "catfavor.CatRelaxOnOwnerGoalMixin",
     "catfavor.CatSitOnBlockGoalMixin",
     "container.CompoundContainerMixin",
+    "container.ContainerEntityMixin",
     "catfavor.CreeperAvoidCatFavorMixin",
     "catfavor.EntityBlockTriggerMixin",
     "catfavor.FarmBlockTrampleMixin",

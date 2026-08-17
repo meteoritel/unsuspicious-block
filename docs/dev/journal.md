@@ -211,10 +211,12 @@ LootTrackingContext{
 | 服务 | 触发场景 | 说明 |
 |---|---|---|
 | `DirectLootTrackingService` | 钓鱼、附魔战利品等直接进背包 | 物品立即归玩家所有 |
-| `ContainerTrackingService` | 开箱（箱子、埋藏宝藏等） | 通过 `MenuTrackingSnapshot` 比对开箱前后差异 |
+| `ContainerTrackingService` | 开箱（箱子、箱子矿车、埋藏宝藏等） | 通过 `MenuTrackingSnapshot` 比对开箱前后差异 |
 | `DecoratedPotTrackingService` | 陶罐 | 类似容器，但走陶罐专属路径 |
 
-容器追踪的关键是 `MenuTrackingSnapshot`：记录玩家打开菜单时的物品快照，关闭时比对差异，确定实际取走了哪些物品。
+容器追踪的关键是 `MenuTrackingSnapshot`：记录玩家打开菜单时的物品快照，关闭时比对差异，确定实际取走了哪些物品。方块容器从 `RandomizableContainer#unpackLootTable` 接入；箱子矿车等实体容器从 `ContainerEntity#unpackChestVehicleLootTable` 接入，两者共用 `LOOT_CONTAINER` 分类和 `ContainerTrackingService`。实体容器的追踪状态保存在实体 NBT 中，真正销毁时结算，区块卸载不会提前清除。
+
+Lootr 奖励箱矿车不走原版实体容器填充方法，而是通过 `DefaultLootFiller` 创建每玩家 `LootrInventory`；现有 Lootr 兼容 Mixin 在该通用 filler 上接入，因此奖励箱矿车与 Lootr 方块容器使用同一条 `LOOT_CONTAINER` 追踪链，不需要矿车专用分类或重复钩子。
 
 ### 5.3 事件总线
 

@@ -16,7 +16,7 @@ Mixin 主要用于四类需求：
 
 | 配置文件 | 位置 | mixin 数 | 说明 |
 |---|---|---|---|
-| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 48（含 5 客户端） | 跨平台通用 mixin，两端共用 |
+| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 49（含 5 客户端） | 跨平台通用 mixin，两端共用 |
 | `unsuspiciousblock.fabric.mixins.json` | `fabric/src/main/resources/` | 6 | Fabric 独有，补齐原生事件缺失 |
 | `unsuspiciousblock.lootr.mixins.json` | `common/src/main/resources/` | 5 | Lootr 兼容，`requiredMods = ["lootr"]` |
 
@@ -57,6 +57,8 @@ Mixin 主要用于四类需求：
 |---|---|---|
 | `AbstractContainerMenuMixin` | `AbstractContainerMenu` | 菜单快照（追踪开箱前后差异） |
 | `RandomizableContainerBlockEntityMixin` / `RandomizableContainerMixin` | 战利品容器 | 容器开箱追踪 |
+| `AbstractMinecartContainerMixin` | `AbstractMinecartContainer` | 箱子矿车追踪状态、NBT 持久化与销毁结算 |
+| `ContainerEntityMixin` | `ContainerEntity` | 箱子矿车等实体容器的战利品生成入口，沿用 `LOOT_CONTAINER` |
 | `BaseContainerBlockEntityMixin` / `CompoundContainerMixin` | 基础容器 | 双联箱子追踪 |
 | `DecoratedPotLootStateMixin` | 陶罐 | 陶罐追踪 |
 | `SmithingMenuMixin` | 锻造台 | 失落书页锻造触发 |
@@ -121,13 +123,13 @@ Fabric 平台因原生事件缺失，用 mixin 补齐 NeoForge 用事件实现�
 
 | Mixin | 职责 |
 |---|---|
-| `DefaultLootFillerMixin` | 战利品填充钩子 |
+| `DefaultLootFillerMixin` | 普通 Lootr 容器及奖励箱矿车的每玩家战利品填充钩子 |
 | `DefaultBrushableLootFillerMixin` | 刷拭战利品填充钩子 |
 | `LootrInventoryMixin` | Lootr 容器集成 |
 | `LootrSavedDataMixin` | Lootr 存档数据 |
 | `LootrBrushableBlockEntityMixin` | Lootr 可疑方块实体 |
 
-目标是保留每位玩家独立的发掘与日志状态（Lootr 的每人独立战利品机制与模组的追踪系统协同）。
+目标是保留每位玩家独立的发掘与日志状态（Lootr 的每人独立战利品机制与模组的追踪系统协同）。Lootr 奖励箱矿车覆盖原版 `unpackChestVehicleLootTable` 为空实现，实际生成仍进入 `DefaultLootFiller`，所以不会与通用 `ContainerEntityMixin` 重复追踪。
 
 ## 6. 典型 mixin 模式
 

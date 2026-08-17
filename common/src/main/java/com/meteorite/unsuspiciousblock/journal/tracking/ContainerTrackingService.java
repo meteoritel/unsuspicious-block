@@ -1,9 +1,12 @@
 package com.meteorite.unsuspiciousblock.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -29,6 +32,38 @@ import java.util.UUID;
  */
 public final class ContainerTrackingService {
     private ContainerTrackingService() {
+    }
+
+    // 为方块容器和实体容器准备统一的开箱追踪会话；未命中追踪表时返回 null
+    @Nullable
+    public static LootSession prepareContainerLootSession(ServerPlayer player,
+                                                          ResourceLocation tableId,
+                                                          ServerLevel level,
+                                                          BlockPos pos,
+                                                          @Nullable ResourceLocation sourceBlockId) {
+        RecentLootTableService.record(player, tableId);
+        if (!ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
+            return null;
+        }
+
+        LootTrackingContext context = LootTrackingContext.root(
+                player, tableId, LootSourceType.LOOT_CONTAINER,
+                level.getGameTime(), level.getDayTime(), pos, sourceBlockId);
+        return new LootSession(context);
+    }
+
+    // 按容器最终库存提交开箱追踪会话
+    public static void completeContainerLootSession(TrackedContainerLootState container,
+                                                    @Nullable LootSession lootSession) {
+        if (lootSession == null) {
+            return;
+        }
+
+        ResourceLocation tableId = lootSession.rootContext().rootTableId();
+        List<LootResultSignature> candidates = ArchaeologyLootRuntimeTracker.resolveCandidateSignatures(
+                tableId, container);
+        onContainerLootResolved(lootSession.rootContext().player(), container, lootSession,
+                container.unsuspiciousblock$collectContainerItemCounts(candidates));
     }
 
     // 容器战利品确认处理：结算旧条目（如有）→ 解锁物品 + 创建待定日志条目 + 记录追踪状态
@@ -115,6 +150,11 @@ public final class ContainerTrackingService {
         if (!(blockEntity instanceof TrackedContainerLootState trackedContainer)) {
             return;
         }
+        onTrackedContainerDestroyed(level, trackedContainer);
+    }
+
+    // 方块或实体容器真正销毁时，按追踪玩家结算待定日志并清空状态
+    public static void onTrackedContainerDestroyed(ServerLevel level, TrackedContainerLootState trackedContainer) {
         if (!trackedContainer.unsuspiciousblock$hasTrackedLoot()
                 && trackedContainer.unsuspiciousblock$getPendingJournalEntry() == null) {
             return;
