@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 考古笔记左页目录——渲染分类网格与可折叠的战利品表层级列表。
+ * 考古笔记左页目录——渲染分类网格与可连续滚动的战利品表层级列表。
  */
 public final class CatalogPanel {
     private static final ResourceLocation ENTRY_TEXTURE =
@@ -35,8 +35,12 @@ public final class CatalogPanel {
     private static final int CARD_HEIGHT = 49;
     private static final int CARD_GAP_X = 5;
     private static final int CARD_GAP_Y = 5;
+    private static final int SCROLLBAR_WIDTH = 3;
+    private static final int SCROLLBAR_GAP = 2;
+    private static final int SCROLLBAR_TRACK_COLOR = 0x406B4C2A;
+    private static final int SCROLLBAR_THUMB_COLOR = 0xB08B6914;
+    private static final int SCROLLBAR_THUMB_HOVER_COLOR = 0xD07B3E18;
     public static final int CATEGORY_GRID_WIDTH = CARD_WIDTH * 2 + CARD_GAP_X;
-    private static final int CATEGORIES_PER_PAGE = 6;
 
     private final JournalBookBackground.BookLayout layout;
     private final List<CategoryEntryData> categories = new ArrayList<>();
@@ -44,7 +48,9 @@ public final class CatalogPanel {
     private final Map<ResourceLocation, Integer> categoryScrollTicks = new HashMap<>();
     private final Map<ResourceLocation, Integer> entryScrollTicks = new HashMap<>();
     private Mode mode = Mode.CATEGORIES;
-    private int page;
+    private int scrollOffset;
+    private boolean draggingScrollbar;
+    private int scrollbarDragOffset;
 
     public CatalogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -54,14 +60,14 @@ public final class CatalogPanel {
         this.mode = Mode.CATEGORIES;
         this.categories.clear();
         this.categories.addAll(values);
-        clampPage();
+        clampScrollOffset();
     }
 
     public void setEntries(List<CatalogEntryData> values) {
         this.mode = Mode.TABLES;
         this.entries.clear();
         this.entries.addAll(values);
-        clampPage();
+        clampScrollOffset();
     }
 
     public Mode mode() {
@@ -70,48 +76,48 @@ public final class CatalogPanel {
 
     public void ensureIndexVisible(int index) {
         if (index < 0) return;
-        this.page = Mth.clamp(index / itemsPerPage(), 0, Math.max(0, pageCount() - 1));
+        int first = firstVisibleIndex();
+        int visible = visibleItemCount();
+        if (index < first) {
+            this.scrollOffset = normalizeOffset(index);
+        } else if (index >= first + visible) {
+            int trailingOffset = index - visible + (this.mode == Mode.CATEGORIES ? 2 : 1);
+            this.scrollOffset = normalizeOffset(trailingOffset);
+        }
+        clampScrollOffset();
     }
 
-    public void changePage(int delta) {
-        this.page = Mth.clamp(this.page + delta, 0, Math.max(0, pageCount() - 1));
+    public void scrollByRows(int rowDelta) {
+        int itemDelta = this.mode == Mode.CATEGORIES ? rowDelta * 2 : rowDelta;
+        this.scrollOffset = normalizeOffset(this.scrollOffset + itemDelta);
+        clampScrollOffset();
     }
 
-    public int pageCount() {
-        int size = this.mode == Mode.CATEGORIES ? this.categories.size() : this.entries.size();
-        int perPage = itemsPerPage();
-        return Math.max(1, (size + perPage - 1) / perPage);
+    public int visibleItemCount() {
+        return this.mode == Mode.CATEGORIES ? visibleCategoryRows() * 2 : visibleTableRows();
     }
 
-    public int getPage() {
-        return this.page;
+    public int getScrollOffset() {
+        return this.scrollOffset;
     }
 
-    public void setPage(int page) {
-        this.page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
-    }
-
-    public int moveSelectionPage(int selectedIndex, int pageDelta) {
-        int size = this.mode == Mode.CATEGORIES ? this.categories.size() : this.entries.size();
-        if (size == 0) return -1;
-        int perPage = itemsPerPage();
-        int row = selectedIndex >= 0 ? selectedIndex % perPage : 0;
-        changePage(pageDelta);
-        return Math.min(size - 1, this.page * perPage + row);
+    public void setScrollOffset(int scrollOffset) {
+        this.scrollOffset = normalizeOffset(scrollOffset);
+        clampScrollOffset();
     }
 
     public ClickResult handleClick(double mouseX, double mouseY) {
         if (this.mode == Mode.CATEGORIES) {
-            int from = this.page * CATEGORIES_PER_PAGE;
-            int to = Math.min(this.categories.size(), from + CATEGORIES_PER_PAGE);
+            int from = firstVisibleIndex();
+            int to = Math.min(this.categories.size(), from + visibleItemCount());
             for (int index = from; index < to; index++) {
                 Rect rect = categoryRect(index - from);
                 if (rect.contains(mouseX, mouseY)) return new ClickResult(index, false);
             }
             return ClickResult.NONE;
         }
-        int from = this.page * itemsPerPage();
-        int to = Math.min(this.entries.size(), from + itemsPerPage());
+        int from = firstVisibleIndex();
+        int to = Math.min(this.entries.size(), from + visibleItemCount());
         for (int index = from; index < to; index++) {
             int y = listTop() + (index - from) * rowStride();
             if (mouseX >= buttonX() && mouseX <= buttonX() + buttonWidth()
@@ -129,18 +135,19 @@ public final class CatalogPanel {
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= buttonX() && mouseX <= buttonX() + buttonWidth()
+        return mouseX >= buttonX() && mouseX <= scrollbarTrackRect().right()
                 && mouseY >= listTop() && mouseY <= listBottom();
     }
 
     public void render(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
         if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
         else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
+        renderScrollbar(graphics, mouseX, mouseY);
     }
 
     private void renderCategories(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
-        int from = this.page * CATEGORIES_PER_PAGE;
-        int to = Math.min(this.categories.size(), from + CATEGORIES_PER_PAGE);
+        int from = firstVisibleIndex();
+        int to = Math.min(this.categories.size(), from + visibleItemCount());
         for (int index = from; index < to; index++) {
             CategoryEntryData category = this.categories.get(index);
             Rect rect = categoryRect(index - from);
@@ -163,8 +170,8 @@ public final class CatalogPanel {
     }
 
     private void renderEntries(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
-        int from = this.page * itemsPerPage();
-        int to = Math.min(this.entries.size(), from + itemsPerPage());
+        int from = firstVisibleIndex();
+        int to = Math.min(this.entries.size(), from + visibleItemCount());
         for (int index = from; index < to; index++) {
             CatalogEntryData entry = this.entries.get(index);
             int y = listTop() + (index - from) * rowStride();
@@ -218,9 +225,97 @@ public final class CatalogPanel {
                 listTop() + row * (CARD_HEIGHT + CARD_GAP_Y), CARD_WIDTH, CARD_HEIGHT);
     }
 
-    private int itemsPerPage() {
-        return this.mode == Mode.CATEGORIES ? CATEGORIES_PER_PAGE
-                : Math.max(1, (listBottom() - listTop() + JournalLayout.CATALOG_ROW_GAP) / rowStride());
+    // 点击滚动条轨道会跳转，点击滑块后可持续拖拽。
+    public boolean beginScrollbarDrag(double mouseX, double mouseY) {
+        if (!hasOverflow() || !scrollbarTrackRect().contains(mouseX, mouseY)) return false;
+        Rect thumb = scrollbarThumbRect();
+        if (thumb.contains(mouseX, mouseY)) {
+            this.scrollbarDragOffset = Mth.floor(mouseY) - thumb.y();
+        } else {
+            this.scrollbarDragOffset = thumb.height() / 2;
+            updateScrollFromThumbY(Mth.floor(mouseY) - this.scrollbarDragOffset);
+        }
+        this.draggingScrollbar = true;
+        return true;
+    }
+
+    public boolean dragScrollbar(double mouseY) {
+        if (!this.draggingScrollbar) return false;
+        updateScrollFromThumbY(Mth.floor(mouseY) - this.scrollbarDragOffset);
+        return true;
+    }
+
+    public void endScrollbarDrag() {
+        this.draggingScrollbar = false;
+    }
+
+    private void renderScrollbar(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!hasOverflow()) return;
+        Rect track = scrollbarTrackRect();
+        Rect thumb = scrollbarThumbRect();
+        graphics.fill(track.x(), track.y(), track.right(), track.bottom(), SCROLLBAR_TRACK_COLOR);
+        int color = this.draggingScrollbar || thumb.contains(mouseX, mouseY)
+                ? SCROLLBAR_THUMB_HOVER_COLOR : SCROLLBAR_THUMB_COLOR;
+        graphics.fill(thumb.x(), thumb.y(), thumb.right(), thumb.bottom(), color);
+    }
+
+    private void updateScrollFromThumbY(int thumbY) {
+        Rect track = scrollbarTrackRect();
+        int thumbHeight = scrollbarThumbHeight();
+        int travel = Math.max(1, track.height() - thumbHeight);
+        int clampedY = Mth.clamp(thumbY, track.y(), track.bottom() - thumbHeight);
+        int maxOffset = maxScrollOffset();
+        this.scrollOffset = normalizeOffset(Math.round((clampedY - track.y()) / (float) travel * maxOffset));
+        clampScrollOffset();
+    }
+
+    private Rect scrollbarTrackRect() {
+        int x = buttonX() + buttonWidth() + SCROLLBAR_GAP;
+        return new Rect(x, listTop(), SCROLLBAR_WIDTH, listBottom() - listTop());
+    }
+
+    private Rect scrollbarThumbRect() {
+        Rect track = scrollbarTrackRect();
+        int thumbHeight = scrollbarThumbHeight();
+        int maxOffset = maxScrollOffset();
+        int travel = track.height() - thumbHeight;
+        int y = track.y() + (maxOffset > 0 ? Math.round(travel * (this.scrollOffset / (float) maxOffset)) : 0);
+        return new Rect(track.x(), y, track.width(), thumbHeight);
+    }
+
+    private int scrollbarThumbHeight() {
+        Rect track = scrollbarTrackRect();
+        int size = itemCount();
+        return Mth.clamp(Math.round(track.height() * (visibleItemCount() / (float) size)), 12, track.height());
+    }
+
+    private boolean hasOverflow() {
+        return itemCount() > visibleItemCount();
+    }
+
+    private int itemCount() {
+        return this.mode == Mode.CATEGORIES ? this.categories.size() : this.entries.size();
+    }
+
+    private int firstVisibleIndex() {
+        return normalizeOffset(this.scrollOffset);
+    }
+
+    private int visibleCategoryRows() {
+        return Math.max(1, (listBottom() - listTop() + CARD_GAP_Y) / (CARD_HEIGHT + CARD_GAP_Y));
+    }
+
+    private int visibleTableRows() {
+        return Math.max(1, (listBottom() - listTop() + JournalLayout.CATALOG_ROW_GAP) / rowStride());
+    }
+
+    private int maxScrollOffset() {
+        int overflow = Math.max(0, itemCount() - visibleItemCount());
+        return this.mode == Mode.CATEGORIES ? ((overflow + 1) / 2) * 2 : overflow;
+    }
+
+    private int normalizeOffset(int offset) {
+        return this.mode == Mode.CATEGORIES ? Math.max(0, offset - Math.floorMod(offset, 2)) : Math.max(0, offset);
     }
 
     private int rowStride() {
@@ -241,11 +336,11 @@ public final class CatalogPanel {
     }
 
     private int buttonWidth() {
-        return JournalLayout.CATALOG_TEXTURE_WIDTH;
+        return JournalLayout.CATALOG_TEXTURE_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_GAP - 1;
     }
 
-    private void clampPage() {
-        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+    private void clampScrollOffset() {
+        this.scrollOffset = Mth.clamp(normalizeOffset(this.scrollOffset), 0, maxScrollOffset());
     }
 
     public enum Mode { CATEGORIES, TABLES }

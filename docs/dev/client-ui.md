@@ -94,12 +94,12 @@ ui/
 考古笔记左外侧的管理按钮打开独立 `LootTableManagementScreen`。页面提供名称/ResourceLocation 搜索、全部/已追踪/未追踪/最近遇到筛选、状态切换和自定义名称编辑。候选项按 namespace、path 与子路径构造成可逐层展开的文件树，并通过滚轮或可拖动滚动条连续浏览；搜索时自动展开匹配分支。“最近遇到”模式使用服务端下发的玩家记录，并让每级分支按最近的后代条目优先排列。布局根据当前 GUI 逻辑分辨率动态计算面板与双栏，截断的 ResourceLocation 可悬停查看完整值。无权限玩家仍可浏览，但只有服务端权限等级 2 的玩家可以修改。
 
 列表不在客户端自行枚举资源，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器读取原版 `LanguageManager.getLanguages()`，弹出列表显示语言代码和原生名称；非 `en_us` 名称只有在该表已有非空英语名称时才能保存。名称更新后，客户端写入 `config/unsuspiciousblock/lang/<language>.json`；内容实际变化时触发资源重载，使当前界面立即使用新名称。
-- **panel/**：可复用的面板组件。`CatalogPanel`（目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（分页）、`RightPageContainer`（右侧标签页容器）。
+- **panel/**：可复用的面板组件。`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）。
 
 `ItemGridPanel` 只展示当前表自身的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，
-入口显示子表产出概率；物品的直接获取路径不带条件时显示代表场景中的最高概率，带条件时显示最小值-最大值范围，不再在 tooltip 中逐场景展开条件树。
+物品与子表入口卡片统一显示代表场景中的最高概率，tooltip 汇总显示最小值与最大值，不再逐场景展开条件树。子表 tooltip 还会从父表展开后的获取路径中提取各产出共有的触发条件；原版钓鱼表运行时注入的泥底打捞入口没有静态父表路径，因此仅对这条已知引用从泥底打捞 JSON 定义的直接路径回填公共条件。
 点击后由 `JournalViewModel` 展开目录祖先并选中目标子表。
-目录树的每个节点独立保存展开状态；展开父表只显示其直接子表，只有显式展开子表时才显示孙表。
+左页目录使用鼠标滚轮或可拖动滚动条连续浏览，不再分页。目录树的每个节点独立保存展开状态；展开父表只显示其直接子表，只有显式展开子表时才显示孙表。
 子表入口优先预览自身直接物品；纯转发表没有直接物品时递归使用后代物品作为图标，并对循环引用做保护。
 子表物品不会进入父表网格或父表的物品搜索匹配；父表 Intro 会按需递归映射全部后代物品，
 按物品签名去重并读取父表自身的发现记录，避免为每个树节点重复缓存完整子树物品。

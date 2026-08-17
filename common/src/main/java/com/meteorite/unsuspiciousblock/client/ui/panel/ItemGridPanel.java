@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
@@ -589,7 +590,8 @@ public final class ItemGridPanel implements PagePanel {
             }
             ChildTableEntry child = this.childTables.get(i - groupCount);
             return JournalTooltipBuilder.buildChildTable(
-                    child.displayName(), child.tableId(), child.probability());
+                    child.displayName(), child.tableId(), child.probability(),
+                    child.scenarioProbabilities(), child.conditions());
         }
         return null;
     }
@@ -657,9 +659,11 @@ public final class ItemGridPanel implements PagePanel {
     public record ChildTableEntry(ResourceLocation tableId, Component displayName,
                                   String probability,
                                   List<ScenarioProbability> scenarioProbabilities,
+                                  List<LootConditionInfo> conditions,
                                   List<GridItem> previewItems) {
         public ChildTableEntry {
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
+            conditions = List.copyOf(conditions);
             previewItems = List.copyOf(previewItems);
         }
     }

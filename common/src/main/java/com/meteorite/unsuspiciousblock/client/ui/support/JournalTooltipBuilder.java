@@ -6,6 +6,8 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -66,7 +68,15 @@ public final class JournalTooltipBuilder {
                 case RUNTIME -> ChatFormatting.YELLOW;
                 default -> probUncertain ? ChatFormatting.GRAY : ChatFormatting.GREEN;
             };
-            if (probUncertain && hintIsApprox) {
+            ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
+            if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
+                lines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
+                        .copy().withStyle(probColor));
+                lines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
+                        .copy().withStyle(probColor));
+            } else if (probUncertain && hintIsApprox) {
                 lines.add(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.probability_uncertain_approx")
                         .copy().withStyle(probColor));
@@ -112,19 +122,32 @@ public final class JournalTooltipBuilder {
         return lines;
     }
 
-    // 构建子表入口 tooltip；概率口径为父表一次抽取中该子表至少产出一个物品。
+    // 构建子表入口 tooltip；概率与物品使用相同摘要格式，并展示父表中的公共触发条件。
     public static List<Component> buildChildTable(Component displayName, ResourceLocation tableId,
-                                                  String probability) {
+                                                   String probability,
+                                                   List<ScenarioProbability> scenarioProbabilities,
+                                                   List<LootConditionInfo> conditions) {
         List<Component> lines = new ArrayList<>();
         lines.add(displayName.copy().withStyle(ChatFormatting.WHITE));
         lines.add(Component.literal(tableId.toString()).withStyle(ChatFormatting.DARK_GRAY));
-        Component value = probability.equals("?")
-                ? Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.probability_unknown_short")
-                : Component.literal(probability);
-        lines.add(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.child_trigger_probability", value)
-                .withStyle(probability.equals("?") ? ChatFormatting.GRAY : ChatFormatting.GREEN));
+        ProbabilityBounds bounds = scenarioProbabilityBounds(scenarioProbabilities);
+        if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
+                    .withStyle(ChatFormatting.GREEN));
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
+                    .withStyle(ChatFormatting.GREEN));
+        } else {
+            lines.add(formatProbabilityComponent(probability).copy().withStyle(
+                    probability.equals("?") ? ChatFormatting.GRAY : ChatFormatting.GREEN));
+        }
+        if (!conditions.isEmpty()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")
+                    .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+            appendConditionTree(lines, conditions, "");
+        }
         lines.add(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.child_table_open")
                 .withStyle(ChatFormatting.GRAY));
@@ -136,7 +159,32 @@ public final class JournalTooltipBuilder {
         if (probability == null || probability.equals("?")) {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
         }
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability", probability);
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability",
+                ProbabilityFormat.normalizePercent(probability));
+    }
+
+    // 只聚合可解析的代表场景；未知值继续沿用原有概率提示。
+    private static ProbabilityBounds scenarioProbabilityBounds(List<ScenarioProbability> probabilities) {
+        String minimum = null;
+        String maximum = null;
+        double minimumValue = Double.POSITIVE_INFINITY;
+        double maximumValue = Double.NEGATIVE_INFINITY;
+        for (ScenarioProbability scenario : probabilities) {
+            double value = ProbabilityFormat.parsePercentToFraction(scenario.probability());
+            if (value < 0.0) continue;
+            if (value < minimumValue) {
+                minimumValue = value;
+                minimum = ProbabilityFormat.normalizePercent(scenario.probability());
+            }
+            if (value > maximumValue) {
+                maximumValue = value;
+                maximum = ProbabilityFormat.normalizePercent(scenario.probability());
+            }
+        }
+        return minimum != null && maximum != null ? new ProbabilityBounds(minimum, maximum) : null;
+    }
+
+    private record ProbabilityBounds(String minimum, String maximum) {
     }
 
     private static void appendAcquisitionPaths(List<Component> lines, List<LootAcquisitionPath> paths) {

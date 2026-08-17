@@ -47,4 +47,9 @@ public final class ProbabilityFormat {
             return -1.0;
         }
     }
+
+    // 模拟场景内部用 "0" 标记不适用，UI 展示时补齐百分号。
+    public static String normalizePercent(String probability) {
+        return "0".equals(probability) ? "0%" : probability;
+    }
 }

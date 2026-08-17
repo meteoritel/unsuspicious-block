@@ -27,8 +27,8 @@ public final class JournalLayout {
     public static final int CATALOG_ROW_GAP = 1;
     // 目录列表从工具栏下方开始
     public static final int CATALOG_LIST_TOP = TOOLBAR_Y + SEARCH_QUICK_BAR_HEIGHT + 4;
-    public static final int CATALOG_SUMMARY_Y = 190;
-    public static final int CATALOG_PAGE_INDICATOR_Y = 208;
+    // 左页取消分页后，解锁进度条下移到页底，并将腾出的空间交给滚动列表。
+    public static final int CATALOG_SUMMARY_Y = 207;
     public static final int CATALOG_LIST_BOTTOM = CATALOG_SUMMARY_Y - 4;
     public static final int CATALOG_LEFT_PAD = 4;
     public static final int CATALOG_X_OFFSET = 4;

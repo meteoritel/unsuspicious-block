@@ -16,6 +16,7 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
@@ -24,6 +25,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDe
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.simulation.LootConditionFingerprint;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -46,6 +48,11 @@ import java.util.Set;
  * 考古笔记视图模型——管理分类首页、父子目录、搜索排序与右页数据快照。
  */
 public class JournalViewModel {
+    private static final ResourceLocation FISHING =
+            ResourceLocation.withDefaultNamespace("gameplay/fishing");
+    private static final ResourceLocation MUD_DREDGING = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "gameplay/fishing/mud_dredging");
+
     private final ArchaeologyJournalState state;
     private ArchaeologyJournalLogState logState;
     private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
@@ -514,8 +521,10 @@ public class JournalViewModel {
                 List<ItemGridPanel.GridItem> previewItems = buildChildPreviewItems(
                         child.id(), new HashSet<>());
                 childEntries.add(new ItemGridPanel.ChildTableEntry(
-                        child.id(), child.displayName(), childProbability.probability(),
-                        childProbability.scenarioProbabilities(), previewItems));
+                        child.id(), child.displayName(), maxScenarioProbability(
+                                childProbability.probability(), childProbability.scenarioProbabilities()),
+                        childProbability.scenarioProbabilities(),
+                        childTableConditions(selectedDefinition, child.id()), previewItems));
             }
         }
         List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
@@ -562,23 +571,67 @@ public class JournalViewModel {
                     .computeUncertaintyLevel(path.allConditions(), false);
             if (candidate.ordinal() > level.ordinal()) level = candidate;
         }
-        String displayProbability = gridDisplayProbability(item, directPaths);
+        String displayProbability = maxScenarioProbability(
+                item.probability(), item.scenarioProbabilities());
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
                 displayProbability, item.unlocked(), item.count(), item.signature(), highlighted,
                 directPaths, item.injected(), level, item.scenarioProbabilities());
     }
 
-    // 无条件条目显示所有代表场景中的最高概率；条件条目保留最小值到最大值的范围。
-    private static String gridDisplayProbability(
-            ArchaeologyEntryItem item, List<LootAcquisitionPath> directPaths) {
-        if (directPaths.stream().anyMatch(LootAcquisitionPath::hasConditions)) {
-            return item.probability();
-        }
-        return item.scenarioProbabilities().stream()
+    // 卡片只显示代表场景中的最高概率，完整的最小值与最大值由 tooltip 展示。
+    private static String maxScenarioProbability(
+            String fallback, List<ScenarioProbability> scenarioProbabilities) {
+        String maximum = scenarioProbabilities.stream()
                 .map(ScenarioProbability::probability)
                 .filter(probability -> ProbabilityFormat.parsePercentToFraction(probability) >= 0.0)
                 .max(Comparator.comparingDouble(ProbabilityFormat::parsePercentToFraction))
-                .orElse(item.probability());
+                .orElse(fallback);
+        return ProbabilityFormat.normalizePercent(maximum);
+    }
+
+    // 从父表展开后的物品路径中提取所有子表产出共同具备的条件。
+    private List<LootConditionInfo> childTableConditions(
+            TableDefinition parent, ResourceLocation childTableId) {
+        List<List<LootConditionInfo>> paths = acquisitionConditionPaths(
+                parent, path -> childTableId.equals(path.sourceChildTable()));
+        if (paths.isEmpty() && FISHING.equals(parent.id()) && MUD_DREDGING.equals(childTableId)) {
+            TableDefinition injectedTable = this.catalogDefinitions.get(MUD_DREDGING);
+            if (injectedTable != null) {
+                paths = acquisitionConditionPaths(
+                        injectedTable, path -> path.sourceChildTable() == null);
+            }
+        }
+        return commonConditions(paths);
+    }
+
+    private static List<List<LootConditionInfo>> acquisitionConditionPaths(
+            TableDefinition table, java.util.function.Predicate<LootAcquisitionPath> filter) {
+        List<List<LootConditionInfo>> result = new ArrayList<>();
+        for (ItemDefinition item : table.items()) {
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                if (filter.test(path)) {
+                    result.add(path.allConditions());
+                }
+            }
+        }
+        return result;
+    }
+
+    private static List<LootConditionInfo> commonConditions(List<List<LootConditionInfo>> paths) {
+        if (paths.isEmpty()) return List.of();
+        LinkedHashMap<String, LootConditionInfo> common = indexConditions(paths.getFirst());
+        for (int index = 1; index < paths.size() && !common.isEmpty(); index++) {
+            common.keySet().retainAll(indexConditions(paths.get(index)).keySet());
+        }
+        return List.copyOf(common.values());
+    }
+
+    private static LinkedHashMap<String, LootConditionInfo> indexConditions(List<LootConditionInfo> conditions) {
+        LinkedHashMap<String, LootConditionInfo> result = new LinkedHashMap<>();
+        for (LootConditionInfo condition : conditions) {
+            result.putIfAbsent(LootConditionFingerprint.of(condition), condition);
+        }
+        return result;
     }
 
     // 纯转发表没有直接物品时，向下寻找首批可展示后代；visited 防止循环引用。
