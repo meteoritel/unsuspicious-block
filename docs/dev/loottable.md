@@ -312,7 +312,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
   - NeoForge：`DeferredRegister` 注册（避免 registry frozen）。
 - [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 只检查工具是否具有泥地打捞附魔；旧 `swamp` 字段仅用于数据兼容。
 - [`ToolEnchantmentChanceCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentChanceCondition.java) 从 `TOOL` 读取指定附魔等级并用 `LevelBasedValue` 计算概率。
-- Fabric 只向原版 fishing 表追加一个带资格条件的父表 pool；NeoForge GLM 也只执行同一父表。父表用 biome tag 和两个互斥 pool 区分普通/加成群系。
+- Fabric 只向原版 fishing 表追加一个带资格条件的父表 pool；NeoForge GLM 也只执行同一父表。父表为单 pool：资格与统一触发概率（0.2 + 0.1/级）写在 pool 条件上，基础物品直接平铺在根表，`common`（开放水域）与 `swamp`（开放水域 + `#c:is_swamp` 群系 tag）两个子表 entry 按权重参与竞争，沼泽表权重更高。
 
 条件类型的注册时序约束见 [架构总览](architecture-overview.md) 的初始化流程--必须在 `UnsuspiciousBlockCommon.init()` 之前完成。
 

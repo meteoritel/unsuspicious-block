@@ -5,14 +5,6 @@
       "rolls": 1,
       "entries": [
         {
-          "type": "minecraft:item",
-          "name": "minecraft:sniffer_egg"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "unsuspiciousblock:ancient_coin"
-        },
-        {
           "type": "minecraft:tag",
           "name": "minecraft:decorated_pot_sherds",
           "expand": true
@@ -23,35 +15,39 @@
           "expand": true
         },
         {
-          "type": "minecraft:tag",
-          "name": "minecraft:creeper_drop_music_discs",
-          "expand": true
+          "type": "minecraft:item",
+          "name": "unsuspiciousblock:ancient_coin",
+          "weight": 3
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:book",
+          "name": "minecraft:tnt",
+          "weight": 3
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:raw_iron",
+          "weight": 3,
           "functions": [
             {
-              "function": "minecraft:enchant_with_levels",
-              "levels": {"type": "minecraft:uniform", "min": 10, "max": 25}
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 1,
+                "max": 3
+              }
             }
           ]
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:mangrove_propagule"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:tnt"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:golden_axe",
+          "name": "minecraft:barrel",
+          "weight": 1,
           "functions": [
             {
-              "function": "minecraft:enchant_with_levels",
-              "levels": 30
+              "function": "minecraft:set_loot_table",
+              "name": "minecraft:chests/shipwreck/map",
+              "type": "minecraft:barrel"
             }
           ]
         }

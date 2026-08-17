@@ -6,42 +6,13 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "minecraft:sniffer_egg"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "unsuspiciousblock:ancient_coin"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:enchanted_golden_apple"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:mangrove_propagule"
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:book",
-          "functions": [
-            {
-              "function": "minecraft:enchant_with_levels",
-              "levels": {"type": "minecraft:uniform", "min": 20, "max": 30}
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:book",
-          "functions": [
-            {
-              "function": "minecraft:enchant_randomly"
-            }
-          ]
+          "name": "minecraft:sniffer_egg",
+          "weight": 12
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:golden_axe",
+          "weight": 12,
           "functions": [
             {
               "function": "minecraft:enchant_with_levels",
@@ -51,57 +22,120 @@
         },
         {
           "type": "minecraft:item",
+          "name": "minecraft:mangrove_propagule",
+          "weight": 12
+        },
+        {
+          "type": "minecraft:tag",
+          "name": "minecraft:creeper_drop_music_discs",
+          "expand": true
+        },
+        {
+          "type": "minecraft:item",
           "name": "minecraft:redstone",
+          "weight": 12,
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 4, "max": 8}
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:glass_bottle",
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 0, "max": 6}
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:glowstone_dust",
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 0, "max": 6}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 4,
+                "max": 8
+              }
             }
           ]
         },
         {
           "type": "minecraft:item",
           "name": "minecraft:gunpowder",
+          "weight": 12,
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 0, "max": 6}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 0,
+                "max": 6
+              }
             }
           ]
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:fermented_spider_eye",
+          "name": "minecraft:glowstone_dust",
+          "weight": 12,
           "functions": [
             {
               "function": "minecraft:set_count",
-              "count": {"type": "minecraft:uniform", "min": 0, "max": 6}
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 0,
+                "max": 6
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:stick",
+          "weight": 12,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 0,
+                "max": 6
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:sugar",
+          "weight": 12,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 0,
+                "max": 6
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:spider_eye",
+          "weight": 12,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 0,
+                "max": 6
+              }
             }
           ]
         },
         {
           "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:usb/random_potion"
+          "value": "unsuspiciousblock:usb/random_potion",
+          "weight": 12
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:barrel",
+          "weight": 12,
+          "functions": [
+            {
+              "function": "minecraft:set_loot_table",
+              "name": "minecraft:chests/shipwreck/treasure",
+              "type": "minecraft:barrel"
+            }
+          ]
         }
       ]
     }

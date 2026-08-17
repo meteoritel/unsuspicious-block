@@ -156,13 +156,6 @@ public final class LootProbabilityData extends SavedData {
         setDirty();
     }
 
-    // 获取某个条目的概率字符串，不存在时返回 null
-    public CachedItemProbability getProbability(ResourceLocation tableId, String signatureKey) {
-        TableProbabilityEntry entry = entries.get(tableId);
-        if (entry == null) return null;
-        return entry.probabilities().get(signatureKey);
-    }
-
     // 获取某个表的全部概率映射
     public Map<String, CachedItemProbability> getProbabilities(ResourceLocation tableId) {
         TableProbabilityEntry entry = entries.get(tableId);

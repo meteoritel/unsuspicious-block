@@ -140,7 +140,7 @@ apply(ctx)
 
 泥底打捞不通过效果框架，而是通过**自定义战利品条件**实现：
 
-- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 是附魔资格 `LootItemCondition`，只检查钓鱼竿是否具有泥地打捞；群系分支与概率由父 loot table 的 `location_check` 和 `random_chance_with_tool_enchantment` 处理。
+- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 是附魔资格 `LootItemCondition`，只检查钓鱼竿是否具有泥地打捞；开放水域/沼泽群系分支与统一触发概率由父 loot table 的 `entity_properties`(fishing_hook)、`location_check`(`#c:is_swamp`) 和 `random_chance_with_tool_enchantment` 处理。
 - 通过 `mud_dredging` 战利品池注入原版钓鱼表（Fabric 用 `FishingLootInjection`，NeoForge 用 `FishingLootModifier` GLM）。
 - 命中时从 `gameplay/fishing/mud_dredging` 战利品表抽取额外宝物。
 
