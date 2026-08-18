@@ -20,6 +20,7 @@ import mezz.jei.api.registration.IVanillaCategoryExtensionRegistration;
 import mezz.jei.api.runtime.IClickableIngredient;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.api.constants.VanillaTypes;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -81,43 +82,49 @@ public class JeiPlugin implements IModPlugin {
                 PotteryWheelJeiCategory.TYPE);
         registration.addGlobalGuiHandler(new JournalJeiGuiHandler(
                 registration.getJeiHelpers().getIngredientManager()));
-        registration.addGuiScreenHandler(ArchaeologyJournalScreen.class, screen ->
-                new mezz.jei.api.gui.handlers.IGuiProperties() {
-                    @Override
-                    public @NotNull Class<? extends Screen> screenClass() {
-                        return ArchaeologyJournalScreen.class;
-                    }
+        registration.addGuiScreenHandler(ArchaeologyJournalScreen.class, screen -> {
+            // JEI 可能在 Screen.init 完成前查询属性，此时 Screen 的宽高仍为 0。
+            int windowWidth = Minecraft.getInstance().getWindow().getGuiScaledWidth();
+            int windowHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+            int screenWidth = Math.max(2, screen.width > 1 ? screen.width : windowWidth);
+            int screenHeight = Math.max(2, screen.height > 1 ? screen.height : windowHeight);
+            return new mezz.jei.api.gui.handlers.IGuiProperties() {
+                @Override
+                public @NotNull Class<? extends Screen> screenClass() {
+                    return ArchaeologyJournalScreen.class;
+                }
 
-                    @Override
-                    public int guiLeft() {
-                        return 0;
-                    }
+                @Override
+                public int guiLeft() {
+                    return 0;
+                }
 
-                    @Override
-                    public int guiTop() {
-                        return 0;
-                    }
+                @Override
+                public int guiTop() {
+                    return 0;
+                }
 
-                    @Override
-                    public int guiXSize() {
-                        return screen.width;
-                    }
+                @Override
+                public int guiXSize() {
+                    return screenWidth;
+                }
 
-                    @Override
-                    public int guiYSize() {
-                        return screen.height;
-                    }
+                @Override
+                public int guiYSize() {
+                    return screenHeight;
+                }
 
-                    @Override
-                    public int screenWidth() {
-                        return screen.width;
-                    }
+                @Override
+                public int screenWidth() {
+                    return screenWidth;
+                }
 
-                    @Override
-                    public int screenHeight() {
-                        return screen.height;
-                    }
-                });
+                @Override
+                public int screenHeight() {
+                    return screenHeight;
+                }
+            };
+        });
     }
 
     @Override

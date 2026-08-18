@@ -102,10 +102,19 @@ public class JournalViewModel {
     public int selectedIndex() { return this.selectedIndex; }
     public void setSelectedIndex(int index) {
         this.selectedIndex = index;
-        if (this.currentSearch.isEmpty() && this.selectedCategory != null
-                && index >= 0 && index < this.tableViews.size()) {
+        if (index < 0 || index >= this.tableViews.size()) {
+            return;
+        }
+
+        ResourceLocation selectedId = this.tableViews.get(index).id();
+        // 搜索结果来自全目录，选中时同步正式分类与父级展开状态，确保退出搜索后仍能定位同一条目。
+        if (!this.currentSearch.isEmpty()) {
+            prepareNavigationTo(selectedId);
+        }
+        if (this.selectedCategory != null
+                && this.categoryIdsByTable.getOrDefault(selectedId, Set.of()).contains(this.selectedCategory)) {
             ArchaeologyJournalClientState.rememberCategorySelection(
-                    this.selectedCategory, this.tableViews.get(index).id());
+                    this.selectedCategory, selectedId);
         }
     }
     public boolean isCategoryHome() { return this.categoryHome && this.currentSearch.isEmpty(); }
