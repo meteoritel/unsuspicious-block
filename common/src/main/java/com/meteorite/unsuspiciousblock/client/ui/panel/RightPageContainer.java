@@ -302,6 +302,10 @@ public final class RightPageContainer {
 
     @Nullable
     public ItemGridPanel.TooltipData getTooltipData(double mouseX, double mouseY) {
+        if (this.activeTab == Tab.INTRO) {
+            ItemStack stack = this.detailPanel.getHoveredItemStack(mouseX, mouseY).orElse(ItemStack.EMPTY);
+            return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
+        }
         if (this.activeTab == Tab.ARCHAEOLOGY) {
             return this.gridPanel.getTooltipData(mouseX, mouseY);
         }

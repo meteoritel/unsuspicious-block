@@ -147,6 +147,8 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 [`JeiPlugin`](../../common/src/main/java/com/meteorite/unsuspiciousblock/plugin/jei/JeiPlugin.java) + `PotteryWheelJeiCategory` + `PotteryWheelJeiRecipe`（common）：
 
 - 注册陶轮配方的 JEI 类别。
+- 注册 `JournalJeiGuiHandler`，将考古笔记中的已解锁物品条目暴露为 JEI clickable ingredient，支持 U/R 查看配方与用法；JEI 关闭后按其原生 Screen 返回链回到考古笔记。
+- JEI runtime 向 `ArchaeologyJournalKeyHandler` 提供当前悬停原料，使玩家可在 JEI 物品上按手册快捷键按注册名搜索考古笔记。
 - 通过 `fabric.mod.json` 的 `jei_mod_plugin` entrypoint 与 NeoForge 事件注册。
 - JEI API 跨平台一致，故放在 common。
 

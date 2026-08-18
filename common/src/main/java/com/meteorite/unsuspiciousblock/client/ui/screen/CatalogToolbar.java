@@ -303,7 +303,7 @@ public class CatalogToolbar {
             this.searchField.setBordered(false);
             this.searchField.setTextColor(SEARCH_TEXT_COLOR);
             this.searchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
-            this.searchField.setMaxLength(50);
+            this.searchField.setMaxLength(256);
             // 初始化值会同步触发 responder，必须在绑定回调前恢复文本，避免重建递归
             this.searchField.setValue(savedText);
             this.searchField.setResponder(this::onSearchChanged);

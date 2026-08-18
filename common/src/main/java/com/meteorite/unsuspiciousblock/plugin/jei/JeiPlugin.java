@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.plugin.jei;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
+import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.recipe.UnsuspiciousCreationRecipe;
 import mezz.jei.api.IModPlugin;
@@ -15,6 +17,10 @@ import mezz.jei.api.registration.IRecipeCatalystRegistration;
 import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
 import mezz.jei.api.registration.IVanillaCategoryExtensionRegistration;
+import mezz.jei.api.runtime.IClickableIngredient;
+import mezz.jei.api.runtime.IJeiRuntime;
+import mezz.jei.api.constants.VanillaTypes;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.ItemTags;
@@ -28,6 +34,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /** JEI 联动入口，将模组配方接入原版工作台与熔炉分类。 */
 @mezz.jei.api.JeiPlugin
@@ -72,6 +79,73 @@ public class JeiPlugin implements IModPlugin {
                 PotteryWheelScreen.class,
                 110, 36, 20, 16,
                 PotteryWheelJeiCategory.TYPE);
+        registration.addGlobalGuiHandler(new JournalJeiGuiHandler(
+                registration.getJeiHelpers().getIngredientManager()));
+        registration.addGuiScreenHandler(ArchaeologyJournalScreen.class, screen ->
+                new mezz.jei.api.gui.handlers.IGuiProperties() {
+                    @Override
+                    public @NotNull Class<? extends Screen> screenClass() {
+                        return ArchaeologyJournalScreen.class;
+                    }
+
+                    @Override
+                    public int guiLeft() {
+                        return 0;
+                    }
+
+                    @Override
+                    public int guiTop() {
+                        return 0;
+                    }
+
+                    @Override
+                    public int guiXSize() {
+                        return screen.width;
+                    }
+
+                    @Override
+                    public int guiYSize() {
+                        return screen.height;
+                    }
+
+                    @Override
+                    public int screenWidth() {
+                        return screen.width;
+                    }
+
+                    @Override
+                    public int screenHeight() {
+                        return screen.height;
+                    }
+                });
+    }
+
+    @Override
+    public void onRuntimeAvailable(@NotNull IJeiRuntime jeiRuntime) {
+        ArchaeologyJournalKeyHandler.registerHoveredItemProvider((screen, mouseX, mouseY) -> {
+            if (jeiRuntime.getIngredientListOverlay().hasKeyboardFocus()) {
+                return Optional.of(ItemStack.EMPTY);
+            }
+            ItemStack ingredient = jeiRuntime.getIngredientListOverlay()
+                    .getIngredientUnderMouse(VanillaTypes.ITEM_STACK);
+            if (ingredient == null) {
+                ingredient = jeiRuntime.getBookmarkOverlay().getItemStackUnderMouse();
+            }
+            if (ingredient != null && !ingredient.isEmpty()) {
+                return Optional.of(ingredient);
+            }
+            return jeiRuntime.getScreenHelper()
+                    .getClickableIngredientUnderMouse(screen, mouseX, mouseY)
+                    .map(IClickableIngredient::getIngredient)
+                    .filter(ItemStack.class::isInstance)
+                    .map(ItemStack.class::cast)
+                    .findFirst();
+        });
+    }
+
+    @Override
+    public void onRuntimeUnavailable() {
+        ArchaeologyJournalKeyHandler.clearHoveredItemProvider();
     }
 
     // 为 tag 中的每种纹饰陶片创建独立的原版熔炉展示配方

@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
@@ -266,6 +267,25 @@ public final class ArchaeologyJournalClientState {
 
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         return serverCatalog;
+    }
+
+    // 按物品注册名预检当前可见目录是否存在搜索结果，避免打开空白手册。
+    public static boolean hasItemSearchResult(ResourceLocation itemId) {
+        JournalSearchQuery query = JournalSearchQuery.forItemId(itemId);
+        ArchaeologyJournalState state = journalState;
+        ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : serverCatalog.entrySet()) {
+            ArchaeologyJournalState.TableProgress progress = state.getTable(entry.getKey());
+            if (progress == null || !progress.isUnlocked()) {
+                continue;
+            }
+            ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(
+                    entry.getKey(), entry.getValue(), progress, logState.getTable(entry.getKey()));
+            if (query.matchesTableByItem(view.id(), view.displayName().getString(), view.type(), view.items())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static CatalogStructure getCatalogStructure() {

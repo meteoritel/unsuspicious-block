@@ -38,6 +38,8 @@ import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.TooltipComponentCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
@@ -62,7 +64,11 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         ModModelLayers.forEach((location, supplier) ->
                 EntityModelLayerRegistry.registerModelLayer(location, supplier::get));
 
-        ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
+        ArchaeologyJournalUi.registerOpener((state, itemId) ->
+                Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) ->
+                ScreenKeyboardEvents.allowKeyPress(screen).register((current, keyCode, scanCode, modifiers) ->
+                        !ArchaeologyJournalKeyHandler.handleScreenKey(current, keyCode, scanCode)));
         // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
         ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
         ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {

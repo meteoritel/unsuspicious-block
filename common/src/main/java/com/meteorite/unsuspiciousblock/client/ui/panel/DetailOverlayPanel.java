@@ -16,6 +16,7 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /** 考古信息面板 —— 玩家个人进度：进度条 + 已发现物品列表 + 模组来源 */
 public final class DetailOverlayPanel implements PagePanel {
@@ -215,6 +216,27 @@ public final class DetailOverlayPanel implements PagePanel {
 
     public void setPage(int page) {
         this.pagination.setPage(page);
+    }
+
+    // 返回介绍页当前悬停的已发现物品，供 JEI 配方/用法查询。
+    public Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
+        int leftX = this.layout.rightPageX() + 8;
+        int contentWidth = this.layout.rightPageWidth() - 20;
+        int listY = listStartY(this.layout.rightPageY() + JournalLayout.GRID_TOP
+                + 14 + BAR_HEIGHT + 10);
+        if (mouseX < leftX || mouseX >= leftX + contentWidth || mouseY < listY) {
+            return Optional.empty();
+        }
+        int maxVisibleItems = maxVisibleItems(listY);
+        int visibleIndex = (int) ((mouseY - listY) / ITEM_ROW_HEIGHT);
+        if (visibleIndex < 0 || visibleIndex >= maxVisibleItems) {
+            return Optional.empty();
+        }
+        int itemIndex = this.pagination.getPage() * maxVisibleItems + visibleIndex;
+        if (itemIndex >= this.unlockedItems.size()) {
+            return Optional.empty();
+        }
+        return Optional.of(this.unlockedItems.get(itemIndex).item.stack());
     }
 
     private int maxVisibleItems(int listStartY) {

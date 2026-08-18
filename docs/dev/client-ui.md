@@ -194,11 +194,13 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 | 按键 | 默认键 | 用途 |
 |---|---|---|
 | `SCAN_LEVEL_CYCLE` | V | 可疑解析仪扫描等级切换 |
-| `JOURNAL_OPEN` | C | 打开考古笔记 |
+| `JOURNAL_OPEN` | C | 打开考古笔记；在背包/JEI 物品上按下时按注册名搜索 |
 | `CAT_DETERRENCE_TOGGLE` | 未绑定 | 切换猫之威慑开关 |
 | `CAT_LIGHT_STEP_TOGGLE` | 未绑定 | 切换轻步开关 |
 
 Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMappingsEvent`。玩家可在控制设置中自由修改。威慑/轻步切换通过 C2S payload 发送到服务端处理（`CatPassiveAbilities.onDeterrenceToggle` / `onLightStepToggle`）。
+
+`ArchaeologyJournalKeyHandler` 还处理 GUI 内的 C 键：Fabric 通过 `ScreenKeyboardEvents`，NeoForge 通过 `ScreenEvent.KeyPressed.Pre` 接入。它优先读取 JEI 悬停原料，否则读取原版容器槽位，并用 `JournalSearchQuery.forItemId` 以完整物品注册名预检搜索结果；存在结果时用初始搜索条件打开手册。
 
 ## 11. 客户端 Mixin
 

@@ -42,6 +42,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -56,7 +57,8 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             ClientLootTableLanguageStore.initialize();
-            ArchaeologyJournalUi.registerOpener(state -> Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state)));
+            ArchaeologyJournalUi.registerOpener((state, itemId) ->
+                    Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
             // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
             ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
             ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {
@@ -70,6 +72,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderLevelStage);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderGui);
+            NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onScreenKeyPressed);
             // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
             // 注意 ItemTooltipEvent 用 getToolTip()（历史拼写），返回可变列表可直接追加
             NeoForge.EVENT_BUS.addListener((ItemTooltipEvent tooltipEvent) -> {
@@ -77,6 +80,13 @@ public final class UnsuspiciousBlockNeoForgeClient {
                 GrindstoneBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip());
             });
         });
+    }
+
+    private static void onScreenKeyPressed(ScreenEvent.KeyPressed.Pre event) {
+        if (ArchaeologyJournalKeyHandler.handleScreenKey(
+                event.getScreen(), event.getKeyCode(), event.getScanCode())) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent

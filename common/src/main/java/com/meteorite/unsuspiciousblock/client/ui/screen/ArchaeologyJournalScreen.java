@@ -58,12 +58,19 @@ public class ArchaeologyJournalScreen extends Screen {
     private int restoredCatalogScrollOffset;
     private int emptyCatalogScrollTicks;
     private int catalogProgressScrollTicks;
+    @Nullable
+    private final ResourceLocation initialItemSearch;
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
+        this(state, null);
+    }
+
+    public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
         this.viewModel = new JournalViewModel(state);
         this.catalogToolbar = new CatalogToolbar(this::rebuildViewModels, this::rebuildWidgets);
         this.logToolbar = new LogToolbar();
+        this.initialItemSearch = initialItemSearch;
     }
 
     @Override
@@ -75,6 +82,13 @@ public class ArchaeologyJournalScreen extends Screen {
 
         // 恢复上次关闭时持久化的 UI 状态
         restorePersistedUiState();
+
+        if (this.initialItemSearch != null) {
+            JournalSearchQuery search = JournalSearchQuery.forItemId(this.initialItemSearch);
+            this.catalogToolbar.setCurrentSearch(search);
+            this.catalogToolbar.setSearchExpanded(true);
+            this.viewModel.setCurrentSearch(search);
+        }
 
         this.viewModel.reloadCatalog();
         this.viewModel.restoreDirectoryState(
@@ -926,6 +940,20 @@ public class ArchaeologyJournalScreen extends Screen {
 
     public IconButton getDirectoryBackButton() {
         return directoryBackButton;
+    }
+
+    // 将物理屏幕坐标转换为手册逻辑坐标，并返回当前悬停的已解锁物品。
+    public Optional<net.minecraft.world.item.ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
+        if (this.viewport == null || this.rightPage == null) {
+            return Optional.empty();
+        }
+        double logicalMouseX = this.viewport.toLogicalX(mouseX);
+        double logicalMouseY = this.viewport.toLogicalY(mouseY);
+        ItemGridPanel.TooltipData tooltip = this.rightPage.getTooltipData(logicalMouseX, logicalMouseY);
+        if (tooltip == null || tooltip.stack().isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(tooltip.stack());
     }
 
     // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态

@@ -81,6 +81,11 @@ public final class JournalSearchQuery {
         return new JournalSearchQuery(mode, input, trimmed.toLowerCase(Locale.ROOT));
     }
 
+    // 使用完整物品注册名构造物品搜索，供 JEI/背包悬停快捷查询复用。
+    public static JournalSearchQuery forItemId(ResourceLocation itemId) {
+        return parse(Mode.ITEM_NAME.prefix() + itemId);
+    }
+
     public Mode mode() {
         return this.mode;
     }
@@ -124,7 +129,8 @@ public final class JournalSearchQuery {
                 if (this.normalizedQuery.startsWith("#")) {
                     yield matchesByTag(id, this.normalizedQuery.substring(1));
                 }
-                yield displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
+                yield id.toString().toLowerCase(Locale.ROOT).equals(this.normalizedQuery)
+                        || displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
                         || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             }
         };
