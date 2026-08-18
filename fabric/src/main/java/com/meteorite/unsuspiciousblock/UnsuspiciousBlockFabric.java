@@ -23,6 +23,7 @@ import com.meteorite.unsuspiciousblock.loot.VillageWeaponsmithLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
@@ -34,6 +35,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -104,6 +106,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
         FabricInventoryPresenceAdapter.register();
+
+        // 原版手持图腾未能阻止死亡时，尝试使用随身标本箱内的图腾。
+        ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, damageAmount) ->
+                !SpecimenBoxTotemProxy.tryActivate(entity, source, LivingEntity::removeAllEffects));
 
         // 先注册方块，确保后续 BlockItem 工厂可取得对应实例
         ModBlocks.forEach((name, factory, setter) -> {

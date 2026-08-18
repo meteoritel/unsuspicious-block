@@ -23,6 +23,7 @@ import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
@@ -65,6 +66,8 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.BasicItemListing;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.EffectCures;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.event.AnvilUpdateEvent;
@@ -324,6 +327,15 @@ public class UnsuspiciousBlockNeoForge {
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp && sp.getServer() != null) {
             JournalPlayerDataService.onPlayerLeft(sp);
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerDeath(LivingDeathEvent event) {
+        if (SpecimenBoxTotemProxy.tryActivate(
+                event.getEntity(), event.getSource(),
+                entity -> entity.removeEffectsCuredBy(EffectCures.PROTECTED_BY_TOTEM))) {
+            event.setCanceled(true);
         }
     }
 

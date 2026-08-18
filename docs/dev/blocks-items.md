@@ -113,6 +113,7 @@
 - `mutateFirst`：修改第一个匹配物品（如绑定猫之手），写回 `CONTAINER` 组件。
 - `getTooltipImage`：悬停时预览盒内物品（`SpecimenBoxTooltip` -> `ClientSpecimenBoxTooltip`）。
 - 放背包/饰品栏时，箱内需要"随身携带"或"装备"才生效的物品（考古笔记、猫之瞳）仍正常工作。
+- 箱内不死图腾可代理原版死亡保护：Fabric 通过 `ServerLivingEntityEvents.ALLOW_DEATH` 接入，NeoForge 通过可取消的 `LivingDeathEvent` 接入；两端共用 `SpecimenBoxTotemProxy` 消费箱内图腾并施加原版保护结果。
 - 装备到饰品栏（Trinkets/Curios）后，代理箱内兼容饰品的属性与效果（Artifacts 适配），详见 [配置与第三方联动](config-integrations.md)。
 
 `SpecimenBoxContents` 封装盒内物品的读写（`read` / `writeIfChanged`）。
