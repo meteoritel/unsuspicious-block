@@ -140,7 +140,7 @@ apply(ctx)
 
 泥底打捞不通过效果框架，而是通过**自定义战利品条件**实现：
 
-- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 是附魔资格 `LootItemCondition`，只检查钓鱼竿是否具有泥地打捞；开放水域/沼泽群系分支与统一触发概率由父 loot table 的 `entity_properties`(fishing_hook)、`location_check`(`#c:is_swamp`) 和 `random_chance_with_tool_enchantment` 处理。
+- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 是附魔资格 `LootItemCondition`，只检查钓鱼竿是否具有泥底打捞；开放水域/沼泽群系分支与统一触发概率由父 loot table 的 `entity_properties`(fishing_hook)、`location_check`(`#c:is_swamp`) 和 `random_chance_with_tool_enchantment` 处理。
 - 通过 `mud_dredging` 战利品池注入原版钓鱼表（Fabric 用 `FishingLootInjection`，NeoForge 用 `FishingLootModifier` GLM）。
 - 命中时从 `gameplay/fishing/mud_dredging` 战利品表抽取额外宝物。
 
@@ -162,7 +162,7 @@ roll(book, random, registries)
 
 原版附魔从 `EnchantmentTags.IN_ENCHANTING_TABLE` tag 池抽取，用普通书作探针调 `EnchantmentHelper.selectEnchantment`（原版对 BOOK 特判，接受所有附魔台可用附魔）。结果写入 `STORED_ENCHANTMENTS` 组件。
 
-锻造触发由配方序列化器（`ModRecipeSerializers`）处理，玩家在锻造台放入基页、书、失落书页时触发。
+锻造触发由数据配方 `data/unsuspiciousblock/recipe/enchant_book_smithing.json`（产出带 `unsuspiciousblock_pending_enchant` 标记的附魔书）+ `SmithingMenuMixin`（拦截 `SmithingMenu.onTake` 调用 `EnchantedBookRoller.roll`）实现，不经 `ModRecipeSerializers`。玩家在锻造台放入基页、书、失落书页并取出结果时触发。
 
 ## 8. 附魔揭示（猫之瞳）
 
@@ -193,7 +193,8 @@ EnchantmentMenu.slotsChanged  (由 EnchantmentMenuMixin 拦截)
 
 - `EnchantmentMenuMixin`（common）：拦截 `slotsChanged`，触发附魔揭示检查。
 - `EnchantmentScreenMixin`（common client）：渲染完整候选列表。
-- 钓鱼/刷拭/剪羊毛的触发由平台适配器通过事件或 mixin 接入（Fabric 部分用 mixin，如 `SheepMixin`、`BrushableBlockEntityMixin`、`FishingHookMixin`）。
+- `SmithingMenuMixin`（common）：拦截 `SmithingMenu.onTake`，触发失落书页锻造。
+- 刷拭/剪羊毛的触发由平台适配器通过事件或 mixin 接入（Fabric 部分用 mixin，如 `SheepMixin`、`BrushableBlockEntityMixin`）。钓鱼不再走附魔框架（见第 6 节）；`FishingHookMixin` 现属于考古笔记的钓鱼追踪上下文（见 [考古笔记系统](journal.md)）。
 
 ## 10. 扩展点
 

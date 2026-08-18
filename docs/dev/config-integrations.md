@@ -55,7 +55,7 @@ unsuspiciousblock:gameplay/fossil_hunter/
 - 自动生成中英文 `README_CN.txt` / `README_EN.txt`（弥补 JSON 无注释的限制），已存在则保留玩家自定义备注。
 - 钳制到合法范围（`clampLogEntries` / `clampTrackingTimeout` / `clampNpcLifetime` / `clampEffectDuration`），越界回退默认值，与 NeoForge 端 `defineInRange` 行为一致。
 - 缺失灵体配置字段时自动补写修复。
-- `save(rawPrefixes, rawMaxLogEntries, rawTrackingTimeoutTicks)` 仅在集成服务器运行时可用，清洗（去空/去重）+ 钳制后写入当前世界配置。
+- `save(rawPrefixes, rawExclusions, rawMaxLogEntries, rawTrackingTimeoutTicks)` 仅在集成服务器运行时可用，清洗（去空/去重）+ 钳制后写入当前世界配置。
 
 ### 2.3 NeoForge 实现
 

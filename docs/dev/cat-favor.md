@@ -8,7 +8,7 @@
 
 猫族关系系统是模组第二条玩法主线，承担：
 
-1. **关系建立**：玩家从猫国结构发现猫之手后绑定信物，建立与猫族的关系。
+1. **关系建立**：玩家从猫国结构发现猫之手后绑定信物，建立与猫族的关系（结构自然生成当前停用，见 [实体与世界生成](entities-world.md) 第 9 节）。
 2. **羁绊累积**：正向行为（喂食、驯服、共眠等）累积羁绊，惩罚行为（击打、杀猫）扣减。
 3. **恩惠能力**：羁绊达到阈值解锁被动能力（猫的眼、威慑、轻步、柔软肉垫、古国往礼、九命）。
 4. **灵体猫管理**：召唤并管理猫猫信使、剑士猫猫、猫猫商人三类灵体实体。
@@ -217,7 +217,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 
 ## 9. 猫猫商人
 
-`cat/merchant/` 子包实现猫国贵客阶段的商人系统：
+`cat/merchant/` 子包实现猫国挚友阶段的商人系统：
 
 - [`MerchantCatSpawner`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/merchant/MerchantCatSpawner.java)：服务端 tick 末尾由平台入口驱动（`MerchantCatSpawner.tick(server)`），在符合条件的玩家周围村庄生成商人。
 - [`MerchantCatTradeManager`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/merchant/MerchantCatTradeManager.java)：从 `data/unsuspiciousblock/merchant_cat_trades/` 加载交易定义（JSON，支持输入/输出/次数/权重/条件）。

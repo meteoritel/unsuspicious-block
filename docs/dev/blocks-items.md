@@ -144,7 +144,7 @@
 | `UnfiredDecoratedPotSmeltingRecipe` | 未烧制陶罐烧制为纹饰陶罐 |
 | `UnfiredDecoratedSherdSmeltingRecipe` | 未烧制纹饰陶片烧制 |
 
-失落书页锻造由 `EnchantedBookRoller` 处理（见 [附魔系统](enchantment.md) 第 7 节），通过配方序列化器触发。
+失落书页锻造由 `EnchantedBookRoller` 处理（见 [附魔系统](enchantment.md) 第 7 节），由数据配方 `data/unsuspiciousblock/recipe/enchant_book_smithing.json` + `SmithingMenuMixin`（拦截 `SmithingMenu.onTake`）触发，不经 `ModRecipeSerializers`。
 
 ## 7. 扩展点
 

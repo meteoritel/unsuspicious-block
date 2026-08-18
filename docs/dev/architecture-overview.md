@@ -11,7 +11,7 @@
 | Java | 21 |
 | 反混淆映射 | Mojang 官方映射 + Parchment 2024.11.17 |
 | 构建系统 | Gradle（multiloader 自定义插件） |
-| 当前版本 | 1.5.0 |
+| 当前版本 | 1.5.1 |
 
 模组核心围绕**考古探索 / 战利品发现记录 / 猫族关系**三条玩法主线展开，技术上是一个典型的 Architectury 风格多平台项目：绝大部分逻辑写在 `common`，Fabric 与 NeoForge 各自只提供平台接入。
 
@@ -28,7 +28,7 @@ unsuspiciousBlock-1.21.1-multi/
 
 ### 2.1 common 模块
 
-- 承载 **95% 以上的玩法代码**（约 324 个 Java 文件）。
+- 承载 **95% 以上的玩法代码**（约 364 个 Java 文件）。
 - **不 import 任何平台专属类**（`net.fabricmc.*`、`net.neoforged.*`）。这是项目的硬性约束，违反会在另一平台编译失败。
 - 通过 [`platform/services/`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services) 定义的 SPI 接口访问平台能力，由 `fabric` / `neoforge` 提供实现。
 - 包含全部数据资源（`assets/`、`data/`）、Mixin 配置（`common` 与 `lootr` 两套）、客户端 GUI。
@@ -62,14 +62,16 @@ com.meteorite.unsuspiciousblock/
 │
 ├── platform/                      平台抽象层
 │   ├── Services.java              ServiceLoader 加载 SPI 实现
-│   └── services/                  8 个 SPI 接口
+│   ├── ServerLootTableConfigManager.java  按世界的战利品追踪配置
+│   ├── VanillaAchievementHelper.java      IAchievementHelper 的 common 自实现
+│   └── services/                  SPI 接口（6 个；ServiceLoader SPI 共 8 个，其中 3 个在子系统包）
 │
 ├── item/  block/  blockentity/    注册清单 + 物品/方块/方块实体类
 ├── entity/                        实体注册 + 灵体猫/灯笼宠物
 ├── effect/  sound/  recipe/       效果/声音/配方序列化器注册
 │
-├── journal/                       考古笔记系统（catalog/state/sync/tracking）
-├── loottable/                     战利品表系统（analysis/catalog/injection/signature/simulation）
+├── journal/                       考古笔记系统（catalog/state/sync/tracking/migration + JournalPlayerDataService）
+├── loottable/                     战利品表系统（analysis/catalog/condition/injection/signature/simulation）
 ├── cat/                           猫族关系系统（羁绊/恩惠/灵体/商人）
 ├── enchantment/                   附魔系统（framework/reveal）
 │
@@ -81,7 +83,7 @@ com.meteorite.unsuspiciousblock/
 ├── client/                        客户端代码（anvil/grindstone/hud/ui/renderer/...）
 ├── mixin/                         common Mixin（block/catfavor/container/...）
 ├── plugin/                        第三方联动（jade/jei/lootr）
-└── achievement/  achievement/      成就系统
+└── achievement/                   成就系统
 ```
 
 各包的详细职责见对应子系统文档。
@@ -113,9 +115,10 @@ common/src/main/resources/
 ```
 平台入口构造/初始化
   └─ UnsuspiciousBlockCommon.init()
-       ├─ AchievementManager.init(...)        成就系统
+       ├─ AchievementManager.init(new VanillaAchievementHelper())  成就系统
        ├─ EnchantmentManager.init(...)        附魔框架
        ├─ EnchantmentEffects.registerAll()    注册附魔效果
+       ├─ ModLootConditions.registerAnalysisHandlers()  战利品条件分析处理器
        ├─ EnchantmentRevealConditions.register()  附魔揭示条件
        ├─ LootTrackingBootstrap.registerListeners()  战利品追踪事件订阅
        └─ CatFavorManager.init(...)           猫族关系系统

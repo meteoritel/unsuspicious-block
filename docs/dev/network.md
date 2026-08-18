@@ -21,7 +21,9 @@ network/
 ├── journal/                   考古笔记相关处理器
 │   ├── JournalCatalogHandler    目录请求处理
 │   ├── JournalLogHandler        日志快照/备注/删除处理
+│   ├── JournalLogSnapshotCodec  日志快照编解码
 │   ├── JournalStateHandler      进度状态同步（增量/全量）
+│   ├── LootTableManagementHandler  战利品表追踪管理页处理
 │   └── ReaderScanLevelHandler   扫描等级更新处理
 ├── payload/
 │   ├── c2s/                   11 个客户端->服务端 payload
@@ -117,7 +119,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("2.0");
+registrar.versioned("3.0");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：

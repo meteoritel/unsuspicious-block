@@ -45,8 +45,8 @@
 | `docs/cat-bond-design.md` | 设计文档 | 猫族羁绊玩法设计（面向策划） |
 | `docs/spirit-cat-npc-design.md` | 设计文档 | 灵体猫 NPC 设计（面向策划） |
 | `docs/journal-categories.md` | 设计文档 | 考古笔记目录分类规则 |
+| `docs/roadmap.md` | 计划文档 | 后续内容路线图与冻结项 |
 | `docs/readme/README_EN.md` | 用户文档 | 英文 README |
-| `docs/release-test-checklist-*.md` | 测试清单 | 发布前测试要点 |
 | `docs/image/` | 资源 | 文档用图片 |
 
 ## 约定

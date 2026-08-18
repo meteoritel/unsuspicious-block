@@ -30,7 +30,7 @@ journal/
 │   ├── ArchaeologyJournalStateHolder     mixin 接口，附加到 ServerPlayer
 │   ├── ArchaeologyJournalLogState        日志状态（条目列表）
 │   ├── ExcavationLogEntry                日志条目 record
-│   └── LootSourceType                    战利品来源类型枚举
+│   └── LootSourceType                    战利品来源类型（类 + 注册表模式，可扩展）
 ├── tracking/     战利品追踪
 │   ├── LootTrackingContext / Holder      追踪上下文（ThreadLocal）
 │   ├── LootSession                       一次 loot roll 的会话
@@ -40,6 +40,8 @@ journal/
 │   ├── DecoratedPotTrackingService       陶罐追踪
 │   ├── DirectLootTrackingService         直接获取追踪（钓鱼等）
 │   ├── MenuTrackingSnapshot(Service)     菜单快照（追踪开箱前后差异）
+│   ├── CompoundContainerAccess           复合容器（箱子矿车等实体容器）访问
+│   ├── WorldContextResolver              世界上下文解析
 │   ├── JournalLogRecorder                日志记录器
 │   ├── ArchaeologyChallengeChecker       考古挑战成就检查
 │   ├── JournalCompletionRewardChecker    100% 完成奖励检查
@@ -82,7 +84,7 @@ ensureLoaded(server)
 
 ### 3.3 分类结构
 
-`catalogStructure` 由 [`JournalCategoryLoader`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 从 `data/unsuspiciousblock/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则与领域语言见 [`docs/journal-categories.md`](../journal-categories.md) 与 [`docs/adr/0007`](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)。
+`catalogStructure` 由 [`JournalCategoryLoader`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描所有命名空间的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则与领域语言见 [`docs/journal-categories.md`](../journal-categories.md) 与 [`docs/adr/0007`](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)。
 
 ### 3.4 目录哈希与按需同步
 
@@ -283,7 +285,7 @@ onPlayerJoined(player)
 | 同步类型 | 触发 | Payload |
 |---|---|---|
 | 进度增量 | `drainDirtyTables` | `SyncJournalStateIncrementalPayload` |
-| 进度全量 | 加入 / 数据包重载 | `SyncJournalStatePayload` / `SyncJournalStateFullPayload` |
+| 进度全量 | 加入 / 数据包重载 | `SyncJournalStatePayload` |
 | 目录按需 | 哈希不一致 | `SyncCatalogHashPayload` -> `RequestCatalogPayload` -> `SyncArchaeologyCatalogPayload` |
 | 日志分片 | 加入 / 客户端重同步请求 | `SyncJournalLogSnapshotStartPayload` / `SyncJournalLogTableChunkPayload` / `SyncJournalLogSnapshotEndPayload` |
 | 日志删除 | 玩家确认删除 | `DeleteJournalLogPayload` / `JournalLogDeleteResultPayload` / `SyncJournalLogPayload` |
@@ -302,7 +304,7 @@ onPlayerJoined(player)
 - **订阅战利品发现事件**：`LootTrackingEvents.register(priority, listener)`。注意优先级不要与内建订阅者冲突（100/200/250/300/350）。
 - **新增结算策略**：实现 `LootSettlementStrategy`，决定 `recordsItemsImmediately` 与 `settle` 行为。
 - **目录收录范围**：修改 `ILootTableConfig.getArchaeologyPathPrefixes()` 的追踪前缀，或通过数据包新增战利品表（命中前缀即自动收录）。
-- **分类规则**：在 `data/unsuspiciousblock/journal_categories/` 添加 JSON。
+- **分类规则**：在任意命名空间的 `data/<namespace>/journal_categories/` 添加 JSON。
 
 ## 9. 相关文档
 

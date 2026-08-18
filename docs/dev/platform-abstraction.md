@@ -74,6 +74,8 @@ NeoForge 端结构对称，实现类替换为 `NeoForge*`。
 | `ICatEventAdapter` | `cat.adapter` | 猫族事件钩子（驯服、喂食、晨礼等猫相关事件） | `FabricCatEventAdapter` | `NeoForgeCatEventAdapter` |
 | `IBoneBlockTracker` | `world` | 自然骨块追踪（记录世界生成的骨块，供化石猎手附魔判定） | `FabricBoneBlockTracker`（mixin + chunk 事件） | `NeoForgeBoneBlockTracker`（DataAttachment） |
 
+> **例外**：`platform.services` 包内还有第 9 个接口 [`IAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IAchievementHelper.java)（授予/查询/撤销成就）。它**不走 ServiceLoader**，由 common 的 [`VanillaAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/VanillaAchievementHelper.java) 用原版 API 直接实现，在 `UnsuspiciousBlockCommon.init()` 中以构造参数注入 `AchievementManager`，双平台共用同一实现。
+
 ### 3.1 配置类双接口模式
 
 注意 `ISpiritCatConfig` 在两个平台都由 `*LootTableConfig` 类实现——**同一个配置类同时实现两个接口**。这是因为项目把"战利品配置"和"灵体配置"放在同一份配置文件里管理，但 common 代码通过两个独立接口读取，保持职责分离。

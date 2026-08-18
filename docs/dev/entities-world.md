@@ -21,8 +21,7 @@ entity/
 ├── LanternPet                灵魂提灯宠物（独立实体）
 ├── ModEntities               实体注册清单
 ├── EntityRegistrar           实体注册回调接口
-├── EntityRendererRegistrar   渲染器注册清单（client）
-└── ai/
+└── ai/                        （EntityRendererRegistrar 渲染器注册清单实际位于 client/renderer/ 包）
     ├── spiritcat/
     │   ├── SpiritCatRole         职业标识枚举（MESSENGER/SWORDSMAN/MERCHANT）
     │   ├── SpiritRunMode         运行模式（PREVIEW/DUTY/DEBUG_DUTY）
@@ -99,7 +98,7 @@ world/
 ### 4.2 剑士猫猫（SwordsmanCat）
 
 - 职责：九命触发时现身保护玩家，主动迎战敌对生物。
-- 由 [`SwordsmanCatService.summonOrRefresh`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/SwordsmanCatService.java) 召唤，以嘴叼钻石剑为职业标志。
+- 由 [`SwordsmanCatService.summonOrRefresh`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/SwordsmanCatService.java) 召唤，规划中以嘴叼钻石剑为职业标志（模型装饰尚未实现，当前仅原版猫模型 + 灵体半透明渲染）。
 - `configureProtection(owner, target, lifetime)`：配置保护目标与优先攻击目标。
 - `notifyOwnerHurt(attacker)`：主人受伤时把攻击者交给剑士。
 - 每名玩家同时最多一只，再次触发九命时刷新寿命而非新建。
@@ -179,7 +178,7 @@ world/
 
 ## 9. 世界生成：猫之手藏宝点
 
-模组包含一个数据驱动的结构--猫之手藏宝点（`hand_of_cat_cache`）：
+模组包含一个数据驱动的结构--猫之手藏宝点（`hand_of_cat_cache`）。**该结构的自然生成当前有意停用**（1.4.1 起删除了 structure_set，等待正式结构资产完成后再启用），结构定义与模板保留：
 
 ```
 data/unsuspiciousblock/
@@ -187,11 +186,10 @@ data/unsuspiciousblock/
 │   └── hand_of_cat_cache.nbt              结构 NBT
 └── worldgen/
     ├── structure/hand_of_cat_cache.json   结构定义
-    ├── structure_set/...                  结构集（生成频率与分布）
     └── template_pool/hand_of_cat_cache.json  模板池
 ```
 
-- 玩家从此结构中发现猫之手信物，绑定后建立猫族关系（见 [猫族关系系统](cat-favor.md) 第 3 节）。
+- 玩家从此结构中发现猫之手信物，绑定后建立猫族关系（见 [猫族关系系统](cat-favor.md) 第 3 节）；当前需通过 `/place structure` 等方式手动放置。
 - 结构战利品是有限的（见 [ADR 0003](../adr/0003-hand-of-cat-is-finite-structure-loot.md)）。
 - 结构生成时会触发 `NaturalBoneBlockTracker.scanBoundingBox` 标记结构内骨块。
 - biome 通过 `tags/worldgen/biome/has_structure/` 控制生成范围。

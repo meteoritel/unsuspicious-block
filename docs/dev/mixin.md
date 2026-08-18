@@ -197,7 +197,7 @@ public abstract class AnvilMenuMixin {
 部分 mixin 需要访问原版私有字段，通过平台访问扩展机制：
 
 - common: `META-INF/accesstransformer.cfg`（AccessTransformer，两端共用）
-- fabric: `unsuspiciousblock.accesswidener`（AccessWidener）
+- AccessWidener：`common/src/main/resources/unsuspiciousblock.accesswidener`（文件位于 common，由 Fabric 构建应用到 Fabric 端）
 
 详见 [架构总览](architecture-overview.md) 第 5.2 节。
 

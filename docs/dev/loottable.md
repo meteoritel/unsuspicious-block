@@ -38,6 +38,8 @@ loottable/
 │   ├── LootProbabilitySimulationWorker  主线程 tick 驱动器
 │   ├── SimulationProfile             模拟工具/方块/实体参数与条件资格场景
 │   ├── SimulationScenarioPlanner     从获取路径规划代表场景
+│   ├── SimulationScenario            单个自洽条件场景
+│   ├── SimulationCompositeConditionAccess 复合条件求值访问
 │   ├── LootConditionFingerprint      解析期与运行时条件指纹
 │   ├── LootSimulationScope           主线程模拟期间的 profile 作用域
 │   ├── LootContextParamFiller      模拟用 LootParams 构建（宽松回退）
@@ -70,7 +72,7 @@ TableDefinition{
 
 ItemDefinition{
   id, displayName, tooltipHint,
-  probability: String,           概率字符串（"?"/"0"/"<0.01%"/"12.34%"）
+  probability: String,           概率字符串（"?"/"0"/"<0.01%"/"12%"，按 2 位有效数字格式化）
   signature: LootResultSignature,物品签名
   acquisitionPaths: List<LootAcquisitionPath>,  获取路径
   injected: boolean,             是否模拟期发现的注入条目
@@ -288,7 +290,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 ### 7.4 模拟结果缓存
 
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的 `0` 场景能够汇总到直接子表。动态条目的来源不重复写入父表缓存，而是使用直接子表及其后代缓存中的相同签名重建获取路径。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v10`。模拟异常或无法取得有效表时不写入缓存。`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。详见 [考古笔记系统](journal.md) 的目录构建部分。
+模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的 `0` 场景能够汇总到直接子表。动态条目的直接来源标记（`hasDirectSource`）与子表来源列表（`sourceChildTables`）会一并持久化到父表缓存，恢复时优先使用缓存的来源信息，仅在其缺失时才用直接子表及其后代缓存中的相同签名重建获取路径。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v11`。模拟异常或无法取得有效表时不写入缓存。`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。详见 [考古笔记系统](journal.md) 的目录构建部分。
 
 ## 8. 战利品注入
 

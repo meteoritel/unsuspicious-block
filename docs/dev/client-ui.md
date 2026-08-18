@@ -39,7 +39,6 @@
 | `ReaderScanHighlightState` | 范围扫描高亮状态（描边方块） |
 | `HandOfCatClientState` | 猫之手客户端状态（缓存的 favor/lives） |
 | `CatHandClientState` | 猫之手按键处理状态 |
-| `SpecimenBoxScrollState` | 标本箱滚动状态 |
 | `EnchantmentRevealClientState` | 附魔揭示客户端状态（完整候选列表） |
 | `ArchaeologyJournalKeyHandler` | 考古笔记按键处理 |
 
@@ -70,18 +69,20 @@
 
 ## 4. 考古笔记 GUI 架构
 
-`client/ui/` 子包按职责分层，共约 41 个类：
+`client/ui/` 子包按职责分层，共约 48 个类：
 
 ```
 ui/
 ├── ArchaeologyJournalUi          UI 注册入口（注册 opener）
+├── JournalBookBackground         书本背景渲染（ui 根目录）
+├── PotteryPreviewRenderer        陶轮预览渲染（ui 根目录）
 ├── entry/      目录条目（ArchaeologyJournalEntry / ItemEntryLike / ...）
-├── layout/     布局（JournalLayout / JournalBookBackground）
+├── layout/     布局（JournalLayout / JournalViewport）
 ├── panel/      面板（CatalogPanel / LogPanel / DetailOverlayPanel / ItemGridPanel / ...）
 ├── screen/     屏幕（ArchaeologyJournalScreen / LootTableManagementScreen / SpecimenBoxScreen / ...）
-├── support/    支持类（ClientState / CatalogSorter / JournalSearchQuery / PaginationState / ...）
-├── toast/      Toast 通知（JournalUnlockToast）
-├── widget/     组件（IconButton / BookmarkToggleButton / CopyCoordinateButton / ...）
+├── support/    支持类（ClientState / CatalogSorter / JournalSearchQuery / JournalItemDetailAppender / ...）
+├── toast/      Toast 通知（JournalUnlockToast / CatBondToast）
+├── widget/     组件（IconButton / BookmarkToggleButton / CopyCoordinateButton / PotteryWheelModeButton / ShadowlessEditBox / ...）
 └── tooltip/    tooltip（ClientSpecimenBoxTooltip）
 ```
 
@@ -93,7 +94,7 @@ ui/
 
 考古笔记左外侧的管理按钮打开独立 `LootTableManagementScreen`。页面提供名称/ResourceLocation 搜索、全部/已追踪/未追踪/最近遇到筛选、状态切换和自定义名称编辑。候选项按 namespace、path 与子路径构造成可逐层展开的文件树，并通过滚轮或可拖动滚动条连续浏览；搜索时自动展开匹配分支。“最近遇到”模式使用服务端下发的玩家记录，并让每级分支按最近的后代条目优先排列。布局根据当前 GUI 逻辑分辨率动态计算面板与双栏，截断的 ResourceLocation 可悬停查看完整值。无权限玩家仍可浏览，但只有服务端权限等级 2 的玩家可以修改。
 
-列表不在客户端自行枚举资源，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器读取原版 `LanguageManager.getLanguages()`，弹出列表显示语言代码和原生名称；非 `en_us` 名称只有在该表已有非空英语名称时才能保存。名称更新后，客户端写入 `config/unsuspiciousblock/lang/<language>.json`；内容实际变化时触发资源重载，使当前界面立即使用新名称。
+列表不在客户端自行枚举资源，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器由语言代码输入框（`EditBox`，支持自定义语言代码并带校验，最长 16 字符）与旁侧按钮打开的 `LanguageSelectionScreen` 选择弹窗组成；非 `en_us` 名称只有在该表已有非空英语名称时才能保存。名称更新后，客户端写入 `config/unsuspiciousblock/lang/<language>.json`；内容实际变化时触发资源重载，使当前界面立即使用新名称。
 - **panel/**：可复用的面板组件。`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）。
 
 `ItemGridPanel` 只展示当前表自身的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，
@@ -104,10 +105,10 @@ ui/
 子表物品不会进入父表网格或父表的物品搜索匹配；父表 Intro 会按需递归映射全部后代物品，
 按物品签名去重并读取父表自身的发现记录，避免为每个树节点重复缓存完整子树物品。
 - **entry/**：目录条目数据。`ArchaeologyJournalEntry` / `ArchaeologyEntryItem` / `ArchaeologyEntryLogRef` / `ItemEntryLike`。
-- **layout/**：布局计算。`JournalLayout`（书本双页布局）、`JournalBookBackground`（背景渲染）。
-- **widget/**：交互组件。`IconButton`、`BookmarkToggleButton`（收藏）、`CopyCoordinateButton`（复制传送指令）、`JournalPageButton`（翻页）。
-- **support/**：业务支持。`ArchaeologyJournalClientState`（状态）、`CatalogSorter`（排序）、`JournalSearchQuery`（搜索）、`JournalTooltipBuilder`（tooltip 构建）、`JournalFormatHelper`（格式化）、`LogGrouper`（日志分组）、`PaginationState`（分页状态）、`ScrollTextHelper`（滚动文本）、`JournalUiPreferencesStore`（偏好持久化）、`ArchaeologyJournalLogLocalStore`（日志本地存储）。
-- **toast/**：`JournalUnlockToast` 弹出表/物品解锁与 100% 完成通知。
+- **layout/**：布局计算。`JournalLayout`（书本双页布局）、`JournalViewport`（视口与滚动区域）。
+- **widget/**：交互组件。`IconButton`、`BookmarkToggleButton`（收藏）、`CopyCoordinateButton`（复制传送指令）、`JournalPageButton`（翻页）、`PotteryWheelModeButton`（陶轮模式切换）、`ShadowlessEditBox`（无阴影输入框）。
+- **support/**：业务支持。`ArchaeologyJournalClientState`（状态）、`CatalogSorter`（排序）、`JournalSearchQuery`（搜索）、`JournalTooltipBuilder`（tooltip 构建）、`JournalFormatHelper`（格式化）、`LogGrouper`（日志分组）、`PaginationState`（分页状态）、`ScrollTextHelper`（滚动文本）、`JournalUiPreferencesStore`（偏好持久化）、`ArchaeologyJournalLogLocalStore`（日志本地存储）、`JournalItemDetailAppender`（物品详情追加）。
+- **toast/**：`JournalUnlockToast` 弹出表/物品解锁与 100% 完成通知；`CatBondToast` 弹出羁绊阶段变化通知（由 `HandOfCatClientState` 触发）。
 
 ### 4.3 UI 打开流程
 
@@ -141,7 +142,7 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 | 渲染器 | 实体 | 说明 |
 |---|---|---|
 | `MessengerCatRenderer` | 猫猫信使 | 灵体猫 + 职业装饰 |
-| `SwordsmanCatRenderer` | 剑士猫猫 | 嘴叼钻石剑 |
+| `SwordsmanCatRenderer` | 剑士猫猫 | 灵体渲染（钻石剑装饰待实现） |
 | `MerchantCatRenderer` | 猫猫商人 | 职业装饰 |
 | `LanternPetRenderer` | 灵魂提灯宠物 | 灵魂灯笼外形 |
 
@@ -201,9 +202,11 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 
 ## 11. 客户端 Mixin
 
-`mixin/client/` 包含 3 个客户端 mixin（见 [mixin.md](mixin.md)）：
+`mixin/client/` 包含 5 个客户端 mixin（见 [mixin.md](mixin.md)）：
 
 - `AbstractContainerScreenAccessor`：访问容器屏幕的内部字段（tooltip 渲染用）。
+- `ClientLanguageAccessor`：访问原版语言管理器内部字段（语言名称获取）。
+- `ClientLanguageMixin`：语言相关行为接入。
 - `EditBoxMixin`：输入框行为调整（搜索框）。
 - `EnchantmentScreenMixin`：附魔台界面渲染完整候选列表。
 

@@ -20,7 +20,7 @@ Replace the placeholder below with: ![Unsuspicious Block overview](../image/read
 | Minecraft | 1.21.1 |
 | Loader | Fabric 0.17.0+ / NeoForge 21.1.195+ |
 | Java | 21 |
-| Current version | 1.5.0 |
+| Current version | 1.5.1 |
 | Multiplayer | Install on both client and server |
 | License | MIT |
 
@@ -35,7 +35,8 @@ Craft an Archaeology Journal with a book and a brush. Right-click it, or press `
 The journal organizes your exploration into two main views:
 
 - **Catalog:** Browse recognized loot tables, possible items, acquisition conditions, and estimated probabilities. Search, sort, favorite entries, or hide locked content.
-- **Log:** Review actual finds with their coordinates, dimension, biome, structure, and time. Group records by time, dimension, biome, or note status, add personal notes, and copy teleport commands.
+- **Log:** Review actual finds with their coordinates, dimension, biome, structure, and time. Group records by time, dimension, biome, or note status, add personal notes, and copy teleport commands. Single entries can be deleted, batch deletion is supported, and each table has its own retention limit (annotated logs are always protected).
+- **Tracking management:** A management screen beside the Journal offers a tree-style browser and search over all loot tables, tracking toggles, and per-language custom names. Chest minecarts and other storage entities are also included in loot tracking.
 - **Collection progress:** Brushing suspicious blocks, excavating pots, fishing, and triggering the mod's special loot enchantments gradually unlock entries and archaeology challenges.
 - **Datapack support:** Common `archaeology/`, `archeology/`, fishing, pot, and fossil loot table paths are recognized by default. Modpack authors can extend the matching rules through configuration.
 
@@ -85,7 +86,7 @@ The rare archaeology loot pool in Trail Ruins has an 8% chance to yield a **Lost
 
 | Enchantment | Item | Effect |
 |---|---|---|
-| Mud Dredging I-III | Fishing rod | Adds a chance to dredge up extra treasure: +10% per level, with another +15% in swamps |
+| Mud Dredging I-III | Fishing rod | Adds a base 20% chance to dredge up extra treasure, +10% per level; in swamp biomes it switches to a swamp sub-table leaning toward high-value treasure |
 | Textile Recovery | Shears | Drops 1-3 extra string when shearing sheep |
 | Precision Excavation I-III | Brush | Has a 28% / 44% / 60% chance to double suspicious-block loot |
 | Fossil Hunter | Pickaxe | Has a 50% chance to roll extra dimension-specific fossil loot when mining naturally generated bone blocks |
@@ -133,6 +134,21 @@ Replace the placeholder below with: ![Specimen Box interface](../image/readme/sp
 
 > **Screenshot needed: Specimen Box GUI and content preview** (target: `docs/image/readme/specimen_box.png`)
 
+### Unsuspicious Blocks
+
+The mod's namesake feature. Craft an Archaeological Shovel with sand or gravel to obtain the matching empty **Unsuspicious Sand/Gravel** block, then seal a single item inside it with a shapeless recipe.
+
+- Unsuspicious blocks look exactly like suspicious blocks -- perfect for pranking your friends.
+- A placed unsuspicious block can be broken quickly with a brush to retrieve the sealed item.
+- Unsuspicious blocks cannot be nested inside each other.
+
+### Decorated Pottery Wheel
+
+Adds the **Decorated Pottery Wheel**, unfired decorated sherds, and unfired decorated pots. Pottery sherds can now be duplicated.
+
+- The wheel supports hopper automation: feed clay and water bottles from the top, decorated templates and other materials from the side, and collect outputs and empty bottles from the bottom.
+- Processed outputs appear in the hopper below first.
+
 ## Getting Started
 
 1. Craft an Archaeology Journal from a book and a brush, then keep it with you.
@@ -148,18 +164,19 @@ JEI, REI, or EMI is recommended for viewing recipes, but no recipe viewer is req
 
 | Mod | Integration |
 |---|---|
+| JEI | Built-in JEI plugin (includes the pottery wheel recipe category) |
 | Jade | Displays scanned suspicious-block loot in the block information overlay |
 | Trinkets | Fabric accessory support for the Journal, Eye of Cat, and Specimen Box |
 | Curios | NeoForge accessory support for the Journal, Eye of Cat, and Specimen Box |
 | Artifacts | Lets the Specimen Box proxy compatible accessory effects |
-| Mod Menu | Fabric configuration screen entry |
+| Mod Menu | Fabric configuration screen entry, with separate pages for Spirit Cat settings and per-world loot tracking |
 | Lootr | The NeoForge build offers optional compatibility for per-player excavation and journal state |
 
 ## Configuration
 
-- Fabric: `config/unsuspiciousblock/unsuspiciousblock.json`; with Mod Menu installed, it is also available from the mod list.
-- NeoForge: use the NeoForge mod configuration screen and configuration file.
-- Configurable values include archaeology loot-table matching rules, retained log entries per table, and loot-container tracking timeout.
+- Global Spirit Cat config: `config/unsuspiciousblock/unsuspiciousblock.json` on Fabric, or the NeoForge mod configuration screen. With Mod Menu installed, the paged configuration screen is available from the mod list.
+- Loot tracking configuration is saved per world (in the world's `serverconfig/` on Fabric, managed by the server config on NeoForge), so switching saves no longer carries over rules from another world.
+- Per-table log retention limits are set in-game from the log retention screen and remain capped by the server limit; archaeology loot-table matching rules and tracking timeout are adjusted in the config files.
 
 ## Links
 
