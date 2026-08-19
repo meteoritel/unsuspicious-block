@@ -1,0 +1,115 @@
+name: Publish GitHub Wiki
+
+# 发布标准：
+# 1. 1.21.1 分支的 docs/wiki/ 是唯一内容源。
+# 2. GitHub Wiki 仓库只是发布镜像，不接受独立维护。
+# 3. 每次发布都让 Wiki 内容与源目录完全一致，网页端直接修改会被覆盖。
+on:
+  push:
+    branches:
+      - '1.21.1'
+    paths:
+      - 'docs/wiki/**'
+      - '.github/workflows/publish-wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-wiki-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'meteoritel/unsuspicious-block' && github.ref == 'refs/heads/1.21.1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WIKI_SOURCE_DIR: docs/wiki
+
+    steps:
+      - name: 检出主仓库
+        uses: actions/checkout@v4
+
+      - name: 校验 Wiki 内容源
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(Home.md _Sidebar.md _Footer.md)
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "${WIKI_SOURCE_DIR}/${file}" ]]; then
+              echo "::error file=${WIKI_SOURCE_DIR}/${file}::缺少 GitHub Wiki 必需文件"
+              exit 1
+            fi
+          done
+
+          mapfile -t local_targets < <(
+            grep -rhoE '\]\([^)]+\)' "${WIKI_SOURCE_DIR}" --include='*.md' \
+              | sed -E 's/^\]\((.*)\)$/\1/' \
+              | sort -u
+          )
+
+          for raw_target in "${local_targets[@]}"; do
+            case "${raw_target}" in
+              http://*|https://*|mailto:*|'') continue ;;
+            esac
+
+            target="${raw_target%%#*}"
+            [[ -z "${target}" ]] && continue
+            [[ "${target}" == *.* ]] || target="${target}.md"
+
+            if [[ ! -e "${WIKI_SOURCE_DIR}/${target}" ]]; then
+              echo "::error::Wiki 本地链接目标不存在：${raw_target}"
+              exit 1
+            fi
+          done
+
+      - name: 克隆 GitHub Wiki 仓库
+        shell: bash
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${WIKI_TOKEN}" ]]; then
+            echo "::error::缺少仓库 Secret：WIKI_DEPLOY_TOKEN"
+            exit 1
+          fi
+
+          wiki_url="https://x-access-token:${WIKI_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          wiki_dir="${RUNNER_TEMP}/wiki"
+
+          if ! git clone "${wiki_url}" "${wiki_dir}"; then
+            echo "::error::无法克隆 Wiki。请先在 GitHub 网页启用 Wiki 并创建首个 Home 页面，同时检查 WIKI_DEPLOY_TOKEN 权限。"
+            exit 1
+          fi
+
+      - name: 同步并推送 Wiki
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wiki_dir="${RUNNER_TEMP}/wiki"
+          rsync -a --delete --exclude='.git/' "${WIKI_SOURCE_DIR}/" "${wiki_dir}/"
+
+          if [[ -z "$(git -C "${wiki_dir}" status --porcelain)" ]]; then
+            echo "Wiki 已与 ${GITHUB_REF_NAME}@${GITHUB_SHA} 一致，无需提交。"
+            exit 0
+          fi
+
+          git -C "${wiki_dir}" config user.name 'github-actions[bot]'
+          git -C "${wiki_dir}" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "${wiki_dir}" add -A
+          git -C "${wiki_dir}" commit \
+            -m "docs: sync wiki from ${GITHUB_REF_NAME}@${GITHUB_SHA::12}" \
+            -m "Source: https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+
+          wiki_branch="$(git -C "${wiki_dir}" branch --show-current)"
+          if [[ -z "${wiki_branch}" ]]; then
+            echo "::error::无法确定 GitHub Wiki 默认分支"
+            exit 1
+          fi
+
+          git -C "${wiki_dir}" push origin "HEAD:${wiki_branch}"
