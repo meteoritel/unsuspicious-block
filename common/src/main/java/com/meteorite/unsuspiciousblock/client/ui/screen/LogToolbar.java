@@ -52,6 +52,10 @@ public class LogToolbar {
 
     public void setGroupMode(LogGrouper.GroupMode mode) {
         this.groupMode = mode;
+        if (this.groupBtn != null) {
+            this.groupBtn.setIcon(groupModeIcon(mode));
+            this.groupBtn.setTooltip(LogGrouper.groupModeTooltip(mode));
+        }
     }
 
     // —— 事件处理 ——
@@ -61,7 +65,7 @@ public class LogToolbar {
         this.sortDescending = !this.sortDescending;
         rightPage.getLogPanel().setSortDescending(this.sortDescending);
         if (this.sortDirBtn != null) {
-            this.sortDirBtn.setIconChar(sortDirectionIcon(this.sortDescending));
+            this.sortDirBtn.setIcon(sortDirectionIcon(this.sortDescending));
             this.sortDirBtn.setTooltip(sortDirectionTooltip(this.sortDescending));
         }
     }
@@ -71,15 +75,15 @@ public class LogToolbar {
         this.groupMode = this.groupMode.next();
         rightPage.getLogPanel().setGroupMode(this.groupMode);
         if (this.groupBtn != null) {
-            this.groupBtn.setIconChar(LogGrouper.groupModeIcon(this.groupMode));
+            this.groupBtn.setIcon(groupModeIcon(this.groupMode));
             this.groupBtn.setTooltip(LogGrouper.groupModeTooltip(this.groupMode));
         }
     }
 
     // —— 图标 / tooltip —— 排序方向专用，从原 LogSorter 内联
 
-    public static char sortDirectionIcon(boolean descending) {
-        return descending ? '↓' : '↑';
+    public static IconButton.Icon sortDirectionIcon(boolean descending) {
+        return descending ? IconButton.Icon.ARROW_DOWN : IconButton.Icon.ARROW_UP;
     }
 
     public static Component sortDirectionTooltip(boolean descending) {
@@ -87,6 +91,16 @@ public class LogToolbar {
                 ? "screen.unsuspiciousblock.archaeology_journal.sort.descending"
                 : "screen.unsuspiciousblock.archaeology_journal.sort.ascending";
         return Component.translatable(key);
+    }
+
+    // 将日志分组方式映射到对应的图集图标
+    public static IconButton.Icon groupModeIcon(LogGrouper.GroupMode mode) {
+        return switch (mode) {
+            case TIME -> IconButton.Icon.CLOCK;
+            case DIMENSION -> IconButton.Icon.DIMENSION;
+            case BIOME -> IconButton.Icon.BIOME;
+            case NOTED -> IconButton.Icon.PENCIL;
+        };
     }
 
     // —— Widget 创建 ——
@@ -121,7 +135,7 @@ public class LogToolbar {
         this.groupBtn = new IconButton(
                 logGroupX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                LogGrouper.groupModeIcon(this.groupMode),
+                groupModeIcon(this.groupMode),
                 LogGrouper.groupModeTooltip(this.groupMode),
                 () -> cycleGroupMode(rightPage));
         registerToolbarButton(screen, this.groupBtn);
@@ -131,7 +145,7 @@ public class LogToolbar {
         this.clearAllBtn = new IconButton(
                 clearAllX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                '!',
+                IconButton.Icon.TRASH_FULL,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.all_tooltip"),
                 onClearAll);
@@ -141,7 +155,7 @@ public class LogToolbar {
         this.clearTableBtn = new IconButton(
                 clearTableX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                '×',
+                IconButton.Icon.TRASH_EMPTY,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
                 onClearTable);
@@ -153,7 +167,7 @@ public class LogToolbar {
         this.executeBatchBtn = new IconButton(
                 executeBatchX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                '✓',
+                IconButton.Icon.CHECK,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.execute_batch_tooltip"),
                 onExecuteBatch);
@@ -164,7 +178,7 @@ public class LogToolbar {
         this.batchSelectBtn = new IconButton(
                 batchSelectX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                '□',
+                IconButton.Icon.SQUARE,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"),
                 onToggleBatch);
@@ -173,7 +187,7 @@ public class LogToolbar {
         this.retentionBtn = new IconButton(
                 logToolbarLeftX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                '⚙',
+                IconButton.Icon.GEAR,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_retention.open_tooltip"),
                 onOpenRetention);
@@ -191,7 +205,9 @@ public class LogToolbar {
     public void syncVisibility(boolean toolbarVisible, boolean batchSelectionMode, int selectedEntryCount) {
         this.toolbarButtons.forEach(button -> button.visible = toolbarVisible);
         if (this.batchSelectBtn != null) {
-            this.batchSelectBtn.setIconChar(batchSelectionMode ? '■' : '□');
+            this.batchSelectBtn.setIcon(batchSelectionMode
+                    ? IconButton.Icon.GROUP
+                    : IconButton.Icon.SQUARE);
             this.batchSelectBtn.setTooltip(Component.translatable(batchSelectionMode
                     ? "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_exit_tooltip"
                     : "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"));

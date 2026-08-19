@@ -34,7 +34,7 @@
 |---|---|
 | [`ArchaeologyJournalClientState`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/ArchaeologyJournalClientState.java) | 考古笔记核心状态（目录/进度/日志缓存 + 解锁通知 + UI 偏好） |
 | `LootTableManagementClientState` | 服务端权威战利品表索引、权限和多语言名称快照 |
-| `ClientLootTableLanguageStore` | 服务端名称落盘、资源重载和动态语言覆盖 |
+| `ClientLootTableLanguageStore` | 游戏资源来源索引、服务端名称内存快照和动态语言补充 |
 | `SuspiciousReaderClientState` | 可疑解析仪客户端状态（扫描结果） |
 | `ReaderScanHighlightState` | 范围扫描高亮状态（描边方块） |
 | `HandOfCatClientState` | 猫之手客户端状态（缓存的 favor/lives） |
@@ -94,7 +94,9 @@ ui/
 
 考古笔记左外侧的管理按钮打开独立 `LootTableManagementScreen`。页面提供名称/ResourceLocation 搜索、全部/已追踪/未追踪/最近遇到筛选、状态切换和自定义名称编辑。候选项按 namespace、path 与子路径构造成可逐层展开的文件树，并通过滚轮或可拖动滚动条连续浏览；搜索时自动展开匹配分支。“最近遇到”模式使用服务端下发的玩家记录，并让每级分支按最近的后代条目优先排列。布局根据当前 GUI 逻辑分辨率动态计算面板与双栏，截断的 ResourceLocation 可悬停查看完整值。无权限玩家仍可浏览，但只有服务端权限等级 2 的玩家可以修改。
 
-列表不在客户端自行枚举资源，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器由语言代码输入框（`EditBox`，支持自定义语言代码并带校验，最长 16 字符）与旁侧按钮打开的 `LanguageSelectionScreen` 选择弹窗组成；非 `en_us` 名称只有在该表已有非空英语名称时才能保存。名称更新后，客户端写入 `config/unsuspiciousblock/lang/<language>.json`；内容实际变化时触发资源重载，使当前界面立即使用新名称。
+列表不在客户端自行枚举战利品表，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器由语言代码输入框（`EditBox`，支持自定义语言代码并带校验，最长 16 字符）与旁侧按钮打开的 `LanguageSelectionScreen` 选择弹窗组成。
+
+页面同时读取当前游戏资源栈中的语言 JSON。资源已有名称时显示 Resource Pack 来源并锁定输入；资源缺失时才允许编辑服务端补充配置，当前语言缺失时用 `en_us` 作为提示回退。手工输入按语言与表保存在页面草稿中，“应用更改”一次提交全部草稿。管理员可通过系统文件选择窗口导入本地语言 JSON，确认统计预览后批量提交；资源已有项、未匹配当前服务端战利品表的 key 与非法值不会上传。服务端快照只存客户端内存，断开服务器即清除。
 - **panel/**：可复用的面板组件。`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）。
 
 `ItemGridPanel` 只展示当前表自身的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，
@@ -108,6 +110,9 @@ ui/
 - **entry/**：目录条目数据。`ArchaeologyJournalEntry` / `ArchaeologyEntryItem` / `ArchaeologyEntryLogRef` / `ItemEntryLike`。
 - **layout/**：布局计算。`JournalLayout`（书本双页布局）、`JournalViewport`（视口与滚动区域）。
 - **widget/**：交互组件。`IconButton`、`BookmarkToggleButton`（收藏）、`CopyCoordinateButton`（复制传送指令）、`JournalPageButton`（翻页）、`PotteryWheelModeButton`（陶轮模式切换）、`ShadowlessEditBox`（无阴影输入框）。
+
+工具栏共用的 `toolbar_icons.png` 是 `9 x 9` 单元格组成的 `9 x 3` 图集。固定槽位、UV
+坐标与追加约束见 [工具栏图标图集](toolbar-icon-atlas.md)。
 - **support/**：业务支持。`ArchaeologyJournalClientState`（状态）、`CatalogSorter`（排序）、`JournalSearchQuery`（搜索）、`JournalTooltipBuilder`（tooltip 构建）、`JournalFormatHelper`（格式化）、`LogGrouper`（日志分组）、`PaginationState`（分页状态）、`ScrollTextHelper`（滚动文本）、`JournalUiPreferencesStore`（偏好持久化）、`ArchaeologyJournalLogLocalStore`（日志本地存储）、`JournalItemDetailAppender`（物品详情追加）。
 - **toast/**：`JournalUnlockToast` 弹出表/物品解锁与 100% 完成通知；`CatBondToast` 弹出羁绊阶段变化通知（由 `HandOfCatClientState` 触发）。
 
@@ -208,8 +213,7 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 `mixin/client/` 包含 5 个客户端 mixin（见 [mixin.md](mixin.md)）：
 
 - `AbstractContainerScreenAccessor`：访问容器屏幕的内部字段（tooltip 渲染用）。
-- `ClientLanguageAccessor`：访问原版语言管理器内部字段（语言名称获取）。
-- `ClientLanguageMixin`：语言相关行为接入。
+- `ClientLanguageMixin`：对自动生成的战利品表 key 动态补充当前服务端名称；仅在真实资源重载时清理资源来源索引。
 - `EditBoxMixin`：输入框行为调整（搜索框）。
 - `EnchantmentScreenMixin`：附魔台界面渲染完整候选列表。
 

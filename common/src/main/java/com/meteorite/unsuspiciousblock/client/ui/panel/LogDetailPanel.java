@@ -109,7 +109,7 @@ public final class LogDetailPanel implements PagePanel {
         this.noteButton = new IconButton(
                 btnX, y,
                 btnSize,
-                '✎',
+                IconButton.Icon.PENCIL,
                 tooltip,
                 onNoteClick);
         registrar.accept(this.noteButton);

@@ -26,6 +26,8 @@ public class IconButton extends AbstractButton {
         HIDE_LOCKED(3, 0),
         SEARCH(4, 0),
         CLOSE(5, 0),
+        PENCIL(7, 0),
+        CLOCK(8, 0),
         SORT_DEFAULT(0, 1),
         SORT_NAME(1, 1),
         SORT_ITEM_COUNT(2, 1),
@@ -33,7 +35,15 @@ public class IconButton extends AbstractButton {
         SORT_UNLOCK(4, 1),
         SORT_UPDATE_TIME(5, 1),
         DISABLED(6, 1),
-        ENABLED(7, 1);
+        ENABLED(7, 1),
+        CHECK(7, 1),
+        GEAR(0, 2),
+        SQUARE(1, 2),
+        GROUP(2, 2),
+        TRASH_FULL(3, 2),
+        TRASH_EMPTY(4, 2),
+        BIOME(5, 2),
+        DIMENSION(6, 2);
 
         private final int atlasColumn;
         private final int atlasRow;
@@ -56,7 +66,7 @@ public class IconButton extends AbstractButton {
             Constants.MOD_ID, "textures/gui/toolbar_icons.png");
     private static final int ICON_ATLAS_CELL_SIZE = 9;
     private static final int ICON_ATLAS_WIDTH = 81;
-    private static final int ICON_ATLAS_HEIGHT = 18;
+    private static final int ICON_ATLAS_HEIGHT = 27;
 
     // 像素风木质边框颜色
     private static final int BORDER_COLOR = 0xFF8B6914;

@@ -56,6 +56,6 @@ public final class PotteryWheelModeButton extends IconButton {
             return;
         }
         int column = mode == PotteryWheelBlockEntity.ControlMode.DISABLED ? 6 : 7;
-        graphics.blit(ICON_ATLAS, x + 2, y + 2, column * 9, 9, 9, 9, 81, 18);
+        graphics.blit(ICON_ATLAS, x + 2, y + 2, column * 9, 9, 9, 9, 81, 27);
     }
 }

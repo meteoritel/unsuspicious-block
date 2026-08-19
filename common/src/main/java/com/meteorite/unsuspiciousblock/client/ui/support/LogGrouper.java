@@ -6,7 +6,7 @@ import net.minecraft.network.chat.Component;
 /**
  * 考古日志分组器。
  * <p>
- * 提供日志条目的分组方式枚举、分组键提取、图标/tooltip 映射，
+ * 提供日志条目的分组方式枚举、分组键提取与 tooltip 映射，
  * 遵循与 {@link CatalogSorter} 相同的设计模式。
  */
 public final class LogGrouper {
@@ -78,16 +78,6 @@ public final class LogGrouper {
             case DIMENSION -> JournalFormatHelper.formatDimensionName(entry.dimensionId());
             case BIOME -> JournalFormatHelper.formatBiomeName(entry.biomeId());
             case NOTED -> entry.hasNote() ? "yes" : "no";
-        };
-    }
-
-    // 分组方式图标字符
-    public static char groupModeIcon(GroupMode mode) {
-        return switch (mode) {
-            case TIME -> '⏱';       // 按时间区间分组
-            case DIMENSION -> '◈';  // 按维度分组
-            case BIOME -> '❀';      // 按群系分组
-            case NOTED -> '✎';      // 按是否已备注分组
         };
     }
 
