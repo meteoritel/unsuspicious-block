@@ -52,7 +52,6 @@
   ],
   "client": [
     "client.AbstractContainerScreenAccessor",
-    "client.ClientLanguageAccessor",
     "client.ClientLanguageMixin",
     "client.EditBoxMixin",
     "client.EnchantmentScreenMixin"

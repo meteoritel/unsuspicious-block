@@ -1,8 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateLootTableTranslationsPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -12,12 +17,20 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -47,12 +60,15 @@ public final class LootTableManagementScreen extends Screen {
     private static final String LANGUAGE_CODE_PATTERN = "[a-z0-9_-]{2,16}";
     private static final long TEXT_SCROLL_PAUSE_MILLIS = 1_200L;
     private static final long TEXT_SCROLL_PIXEL_MILLIS = 35L;
+    private static final long MAX_IMPORT_FILE_BYTES = 2L * 1024L * 1024L;
+    private static final int MAX_IMPORT_ENTRIES = 4096;
 
     private final Screen parent;
     private final List<SyncLootTableManagementPayload.Entry> filteredEntries = new ArrayList<>();
     private final List<TreeRow> visibleRows = new ArrayList<>();
     private final Set<String> expandedPaths = new HashSet<>();
     private final List<String> languageCodes = new ArrayList<>();
+    private final Map<DraftKey, String> nameDrafts = new LinkedHashMap<>();
     private EditBox searchBox;
     private EditBox languageBox;
     private EditBox nameBox;
@@ -60,9 +76,11 @@ public final class LootTableManagementScreen extends Screen {
     private Button languageButton;
     private Button applyButton;
     private Button saveNameButton;
+    private Button importButton;
     private Filter filter = Filter.ALL;
     private int scrollRow;
     private boolean draggingScrollbar;
+    private boolean populatingName;
     private long observedRevision = -1L;
     private long textScrollStartedAt;
     private String selectedLanguageCode = "";
@@ -70,6 +88,8 @@ public final class LootTableManagementScreen extends Screen {
     private ResourceLocation selectedTableId;
     @Nullable
     private ResourceLocation hoveredTableId;
+    @Nullable
+    private Component importStatus;
 
     public LootTableManagementScreen(Screen parent) {
         super(Component.translatable("screen.unsuspiciousblock.loot_table_management.title"));
@@ -126,6 +146,7 @@ public final class LootTableManagementScreen extends Screen {
         this.nameBox = new EditBox(this.font, detailsX, nameY, detailsWidth, 20,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"));
         this.nameBox.setMaxLength(128);
+        this.nameBox.setResponder(this::onNameInputChanged);
         this.addRenderableWidget(this.nameBox);
 
         this.applyButton = this.addRenderableWidget(Button.builder(Component.empty(), button -> applySelection())
@@ -134,8 +155,12 @@ public final class LootTableManagementScreen extends Screen {
                         Component.translatable("screen.unsuspiciousblock.loot_table_management.save_name"),
                         button -> saveName())
                 .bounds(detailsX + actionWidth + 5, actionY, detailsWidth - actionWidth - 5, 20).build());
+        this.importButton = this.addRenderableWidget(Button.builder(
+                        Component.translatable("screen.unsuspiciousblock.loot_table_management.import_json"),
+                        button -> importJson())
+                .bounds(detailsX, backY, actionWidth, 20).build());
         this.addRenderableWidget(Button.builder(Component.translatable("gui.back"), button -> onClose())
-                .bounds(detailsX, backY, detailsWidth, 20).build());
+                .bounds(detailsX + actionWidth + 5, backY, detailsWidth - actionWidth - 5, 20).build());
 
         Services.NETWORK.sendToServer(new RequestLootTableManagementPayload());
         refreshSnapshot();
@@ -251,6 +276,13 @@ public final class LootTableManagementScreen extends Screen {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.english_name_required").getString(),
                     x, warningY, width, 0xFFAA00, true);
+        } else if (selected != null) {
+            renderOverflowText(graphics, nameSourceLabel(selected.tableId()).getString(),
+                    x, warningY, width, 0xAAAAAA, true);
+        }
+        if (this.importStatus != null) {
+            renderOverflowText(graphics, this.importStatus.getString(),
+                    x, warningY + 12, width, 0x78D66A, true);
         }
     }
 
@@ -325,6 +357,7 @@ public final class LootTableManagementScreen extends Screen {
         long revision = LootTableManagementClientState.revision();
         if (revision != this.observedRevision) {
             this.observedRevision = revision;
+            reconcileDrafts();
             rebuildTree();
         }
     }
@@ -386,43 +419,83 @@ public final class LootTableManagementScreen extends Screen {
 
     private void applySelection() {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || !LootTableManagementClientState.canEdit() || !hasValidLanguageCode()) return;
-        Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(entry.tableId(), !entry.tracked(),
-                currentLanguageCode(), this.nameBox.getValue().trim()));
+        if (entry == null || !LootTableManagementClientState.canEdit()) return;
+        Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(entry.tableId(), !entry.tracked()));
     }
 
     private void saveName() {
-        SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || !LootTableManagementClientState.canEdit()
-                || !hasValidLanguageCode() || requiresEnglishName()) return;
-        Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(entry.tableId(), entry.tracked(),
-                currentLanguageCode(), this.nameBox.getValue().trim()));
+        if (!LootTableManagementClientState.canEdit() || this.nameDrafts.isEmpty()
+                || hasInvalidEnglishDraft()) return;
+        List<UpdateLootTableTranslationsPayload.Entry> entries = this.nameDrafts.entrySet().stream()
+                .map(entry -> new UpdateLootTableTranslationsPayload.Entry(
+                        entry.getKey().tableId(), entry.getKey().languageCode(), entry.getValue()))
+                .toList();
+        Services.NETWORK.sendToServer(new UpdateLootTableTranslationsPayload(entries));
     }
 
     private void populateName() {
         if (this.nameBox == null) return;
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null) {
-            this.nameBox.setValue("");
-            return;
+        String value = "";
+        Component hint = Component.empty();
+        if (entry != null && hasValidLanguageCode()) {
+            DraftKey draftKey = new DraftKey(currentLanguageCode(), entry.tableId());
+            ClientLootTableLanguageStore.ResourceTranslation resource = resourceName(draftKey);
+            if (resource != null) {
+                value = resource.value();
+            } else {
+                value = this.nameDrafts.getOrDefault(draftKey, storedName(draftKey));
+                String fallback = englishFallback(entry.tableId());
+                if (value.isEmpty() && !fallback.isEmpty()) {
+                    hint = Component.literal(fallback).withStyle(ChatFormatting.DARK_GRAY);
+                }
+            }
         }
-        String key = LootTableNames.createTranslationKey(entry.tableId());
-        Map<String, String> language = LootTableManagementClientState.translations().getOrDefault(
-                currentLanguageCode(), Map.of());
-        this.nameBox.setValue(language.getOrDefault(key, ""));
+        this.populatingName = true;
+        this.nameBox.setValue(value);
+        this.nameBox.setHint(hint);
+        this.populatingName = false;
+    }
+
+    private void onNameInputChanged(String value) {
+        if (this.populatingName || !hasValidLanguageCode()) return;
+        SyncLootTableManagementPayload.Entry entry = selectedEntry();
+        if (entry == null || resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) != null) return;
+        DraftKey draftKey = new DraftKey(currentLanguageCode(), entry.tableId());
+        String normalized = value.trim();
+        if (normalized.equals(storedName(draftKey))) {
+            this.nameDrafts.remove(draftKey);
+        } else {
+            this.nameDrafts.put(draftKey, normalized);
+        }
+        syncControls();
+    }
+
+    private String storedName(DraftKey draftKey) {
+        String key = LootTableNames.createTranslationKey(draftKey.tableId());
+        return LootTableManagementClientState.translations()
+                .getOrDefault(draftKey.languageCode(), Map.of()).getOrDefault(key, "");
+    }
+
+    private void reconcileDrafts() {
+        this.nameDrafts.entrySet().removeIf(entry -> resourceName(entry.getKey()) != null
+                || entry.getValue().equals(storedName(entry.getKey())));
     }
 
     private void syncControls() {
-        if (this.applyButton == null || this.saveNameButton == null
+        if (this.applyButton == null || this.saveNameButton == null || this.importButton == null
                 || this.languageButton == null || this.languageBox == null || this.nameBox == null) return;
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         boolean hasSelectionPermission = entry != null && LootTableManagementClientState.canEdit();
         boolean validLanguage = hasValidLanguageCode();
-        this.applyButton.active = hasSelectionPermission && validLanguage;
-        this.saveNameButton.active = hasSelectionPermission && validLanguage && !requiresEnglishName();
+        this.applyButton.active = hasSelectionPermission;
+        this.saveNameButton.active = LootTableManagementClientState.canEdit()
+                && !this.nameDrafts.isEmpty() && !hasInvalidEnglishDraft();
         this.languageButton.active = hasSelectionPermission;
         this.languageBox.active = hasSelectionPermission;
-        this.nameBox.active = hasSelectionPermission;
+        this.nameBox.active = hasSelectionPermission && validLanguage
+                && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null;
+        this.importButton.active = LootTableManagementClientState.canEdit();
         this.applyButton.setMessage(Component.translatable(entry != null && entry.tracked()
                 ? "screen.unsuspiciousblock.loot_table_management.remove"
                 : "screen.unsuspiciousblock.loot_table_management.add"));
@@ -514,13 +587,164 @@ public final class LootTableManagementScreen extends Screen {
 
     private boolean requiresEnglishName() {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || !hasValidLanguageCode() || "en_us".equals(currentLanguageCode())) {
+        if (entry == null || !hasValidLanguageCode() || "en_us".equals(currentLanguageCode())
+                || this.nameBox.getValue().trim().isEmpty()) {
             return false;
         }
-        String key = LootTableNames.createTranslationKey(entry.tableId());
-        String englishName = LootTableManagementClientState.translations()
-                .getOrDefault("en_us", Map.of()).getOrDefault(key, "");
-        return englishName.isBlank();
+        return effectiveEnglishName(entry.tableId()).isBlank();
+    }
+
+    private boolean hasInvalidEnglishDraft() {
+        for (Map.Entry<DraftKey, String> entry : this.nameDrafts.entrySet()) {
+            if (!"en_us".equals(entry.getKey().languageCode()) && !entry.getValue().isBlank()
+                    && effectiveEnglishName(entry.getKey().tableId()).isBlank()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String effectiveEnglishName(ResourceLocation tableId) {
+        DraftKey englishKey = new DraftKey("en_us", tableId);
+        ClientLootTableLanguageStore.ResourceTranslation resource = resourceName(englishKey);
+        if (resource != null) return resource.value();
+        return this.nameDrafts.getOrDefault(englishKey, storedName(englishKey));
+    }
+
+    private String englishFallback(ResourceLocation tableId) {
+        if ("en_us".equals(currentLanguageCode())) return "";
+        return effectiveEnglishName(tableId);
+    }
+
+    @Nullable
+    private ClientLootTableLanguageStore.ResourceTranslation resourceName(DraftKey draftKey) {
+        return ClientLootTableLanguageStore.findResourceTranslation(
+                draftKey.languageCode(), LootTableNames.createTranslationKey(draftKey.tableId()));
+    }
+
+    private Component nameSourceLabel(ResourceLocation tableId) {
+        DraftKey draftKey = new DraftKey(currentLanguageCode(), tableId);
+        ClientLootTableLanguageStore.ResourceTranslation resource = resourceName(draftKey);
+        if (resource != null) {
+            return Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.source.resource", resource.sourcePackId());
+        }
+        if (this.nameDrafts.containsKey(draftKey)) {
+            return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.draft",
+                    this.nameDrafts.size());
+        }
+        if (!storedName(draftKey).isEmpty()) {
+            return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.server");
+        }
+        DraftKey englishKey = new DraftKey("en_us", tableId);
+        ClientLootTableLanguageStore.ResourceTranslation englishResource = resourceName(englishKey);
+        if (englishResource != null && !"en_us".equals(currentLanguageCode())) {
+            return Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.source.fallback_resource",
+                    englishResource.sourcePackId());
+        }
+        if (!storedName(englishKey).isEmpty() && !"en_us".equals(currentLanguageCode())) {
+            return Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.source.fallback_server");
+        }
+        return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.missing");
+    }
+
+    private void importJson() {
+        String selectedPath;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer filters = stack.mallocPointer(1);
+            filters.put(stack.UTF8("*.json")).flip();
+            selectedPath = TinyFileDialogs.tinyfd_openFileDialog(
+                    Component.translatable("screen.unsuspiciousblock.loot_table_management.import_dialog").getString(),
+                    Services.PLATFORM.getGameDir().toAbsolutePath().toString(), filters, "JSON", false);
+        }
+        if (selectedPath == null) return;
+        try {
+            ImportPreview preview = buildImportPreview(Path.of(selectedPath));
+            openImportPreview(preview);
+        } catch (IOException | RuntimeException exception) {
+            this.importStatus = Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.import_failed");
+        }
+    }
+
+    private ImportPreview buildImportPreview(Path file) throws IOException {
+        if (!Files.isRegularFile(file) || Files.size(file) > MAX_IMPORT_FILE_BYTES) {
+            throw new IOException("Invalid or oversized JSON file");
+        }
+        JsonElement root;
+        try (Reader reader = Files.newBufferedReader(file)) {
+            root = JsonParser.parseReader(reader);
+        }
+        if (!root.isJsonObject()) throw new IOException("Language JSON root must be an object");
+
+        String languageCode = inferImportLanguage(file);
+        Map<String, ResourceLocation> tableByKey = new LinkedHashMap<>();
+        Set<String> ambiguousKeys = new HashSet<>();
+        for (SyncLootTableManagementPayload.Entry entry : LootTableManagementClientState.entries()) {
+            String key = LootTableNames.createTranslationKey(entry.tableId());
+            if (tableByKey.putIfAbsent(key, entry.tableId()) != null) ambiguousKeys.add(key);
+        }
+
+        List<UpdateLootTableTranslationsPayload.Entry> accepted = new ArrayList<>();
+        int added = 0;
+        int updated = 0;
+        int resourceSkipped = 0;
+        int unmatched = 0;
+        int invalid = 0;
+        JsonObject object = root.getAsJsonObject();
+        if (object.size() > MAX_IMPORT_ENTRIES) throw new IOException("Too many JSON entries");
+        for (Map.Entry<String, JsonElement> jsonEntry : object.entrySet()) {
+            ResourceLocation tableId = tableByKey.get(jsonEntry.getKey());
+            if (tableId == null || ambiguousKeys.contains(jsonEntry.getKey())) {
+                unmatched++;
+                continue;
+            }
+            if (!jsonEntry.getValue().isJsonPrimitive()
+                    || !jsonEntry.getValue().getAsJsonPrimitive().isString()) {
+                invalid++;
+                continue;
+            }
+            String value = jsonEntry.getValue().getAsString().trim();
+            if (value.isEmpty() || value.length() > 128) {
+                invalid++;
+                continue;
+            }
+            DraftKey draftKey = new DraftKey(languageCode, tableId);
+            if (resourceName(draftKey) != null) {
+                resourceSkipped++;
+                continue;
+            }
+            if (storedName(draftKey).isEmpty()) added++;
+            else updated++;
+            accepted.add(new UpdateLootTableTranslationsPayload.Entry(tableId, languageCode, value));
+        }
+        return new ImportPreview(languageCode, List.copyOf(accepted),
+                added, updated, resourceSkipped, unmatched, invalid);
+    }
+
+    private String inferImportLanguage(Path file) {
+        String fileName = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        int extension = fileName.lastIndexOf('.');
+        String inferred = extension > 0 ? fileName.substring(0, extension) : fileName;
+        return isValidLanguageCode(inferred) ? inferred : validLanguageCodeOrFallback();
+    }
+
+    private void openImportPreview(ImportPreview preview) {
+        Component message = Component.translatable(
+                "screen.unsuspiciousblock.loot_table_management.import_preview.message",
+                preview.languageCode(), preview.added(), preview.updated(), preview.resourceSkipped(),
+                preview.unmatched(), preview.invalid());
+        Minecraft.getInstance().setScreen(new ConfirmScreen(confirmed -> {
+            Minecraft.getInstance().setScreen(this);
+            if (confirmed && !preview.entries().isEmpty()) {
+                Services.NETWORK.sendToServer(new UpdateLootTableTranslationsPayload(preview.entries()));
+                this.importStatus = Component.translatable(
+                        "screen.unsuspiciousblock.loot_table_management.import_submitted",
+                        preview.entries().size());
+            }
+        }, Component.translatable("screen.unsuspiciousblock.loot_table_management.import_preview.title"), message));
     }
 
     private boolean isOverList(double mouseX, double mouseY) {
@@ -806,6 +1030,15 @@ public final class LootTableManagementScreen extends Screen {
             this.label = label;
             this.key = key;
         }
+    }
+
+    /** 页面内未提交名称的复合键。 */
+    private record DraftKey(String languageCode, ResourceLocation tableId) {
+    }
+
+    /** JSON 导入预览及其可提交条目。 */
+    private record ImportPreview(String languageCode, List<UpdateLootTableTranslationsPayload.Entry> entries,
+                                 int added, int updated, int resourceSkipped, int unmatched, int invalid) {
     }
 
     private record TreeRow(String label, String key, int depth, boolean expandable,

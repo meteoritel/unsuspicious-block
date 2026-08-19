@@ -86,9 +86,9 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 
 ### 2.6 战利品表名称文件
 
-追踪配置和名称均由服务器管理，但分开存储：追踪规则属于 `ILootTableConfig`；多语言名称保存到当前世界 `serverconfig/unsuspiciousblock-loot-table-names.json`。服务端向所有客户端派发名称，客户端合并保存到全局 `config/unsuspiciousblock/lang/<language>.json`，因此该客户端的所有存档共享这些名称；同一自动 key 在不同服务器取值冲突时，以最近收到的服务端值为准。
+追踪配置和名称均由服务器管理，但分开存储：追踪规则属于按世界保存的 `ILootTableConfig`；补充语言按标准 JSON 保存到服务端全局 `config/unsuspiciousblock/loot_table_lang/<language>.json`，用于整合包分发和开发期补全。旧世界名称文件会自动合并迁移。
 
-客户端文件采用标准语言 JSON 格式，并承担原有缺失 key 自动导出功能。运行时语言覆盖仅接受 `LootTableNames` 自动生成的 key，不允许借配置覆盖模组其他 GUI 文本。
+客户端不持久化服务端名称，只在当前连接内存中应用；断线后清除。运行时覆盖仅接受 `LootTableNames` 自动生成的 key，且同语言的游戏资源值始终优先并在管理页中只读，配置不能覆盖模组其他 GUI 文本或正式资源翻译。
 
 ## 3. 数据驱动与硬编码边界
 

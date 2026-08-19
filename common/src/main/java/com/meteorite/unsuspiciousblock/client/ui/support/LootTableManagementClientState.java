@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 客户端战利品表管理快照——供独立管理页面与本地语言覆盖层读取。
+ * 客户端战利品表管理快照——供独立管理页面与当前连接的内存语言补充层读取。
  */
 public final class LootTableManagementClientState {
     private static final AtomicLong revision = new AtomicLong();

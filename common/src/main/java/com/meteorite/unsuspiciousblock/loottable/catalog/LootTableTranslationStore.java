@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 
@@ -18,49 +19,65 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 服务端战利品表名称存储——按世界保存多语言名称并向客户端提供不可变快照。
+ * 服务端战利品表名称存储——以标准语言 JSON 保存整合包级补充翻译，并向客户端提供权威快照。
  */
 public final class LootTableTranslationStore {
-    private static final String DIRECTORY = "serverconfig";
-    private static final String FILE_NAME = "unsuspiciousblock-loot-table-names.json";
+    private static final String CONFIG_DIRECTORY = "config";
+    private static final String MOD_DIRECTORY = "unsuspiciousblock";
+    private static final String LANGUAGE_DIRECTORY = "loot_table_lang";
+    private static final String LEGACY_DIRECTORY = "serverconfig";
+    private static final String LEGACY_FILE_NAME = "unsuspiciousblock-loot-table-names.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Type DATA_TYPE = new TypeToken<Map<String, Map<String, String>>>() { }.getType();
+    private static final Type LANGUAGE_TYPE = new TypeToken<Map<String, String>>() { }.getType();
+    private static final Type LEGACY_TYPE = new TypeToken<Map<String, Map<String, String>>>() { }.getType();
 
     private static final Map<String, Map<String, String>> translations = new LinkedHashMap<>();
-    private static Path activeFile;
+    private static Path activeDirectory;
 
     private LootTableTranslationStore() {
     }
 
-    // 服务端启动或 reload 时重新读取当前世界名称文件
+    // 服务端启动或 reload 时读取整合包级语言目录，并兼容迁移旧世界文件
     public static synchronized void load(MinecraftServer server) {
-        activeFile = server.getWorldPath(LevelResource.ROOT).resolve(DIRECTORY).resolve(FILE_NAME);
+        activeDirectory = Services.PLATFORM.getGameDir()
+                .resolve(CONFIG_DIRECTORY).resolve(MOD_DIRECTORY).resolve(LANGUAGE_DIRECTORY);
         translations.clear();
-        if (!Files.exists(activeFile)) return;
-        try (Reader reader = Files.newBufferedReader(activeFile)) {
-            Map<String, Map<String, String>> loaded = GSON.fromJson(reader, DATA_TYPE);
-            if (loaded != null) {
-                loaded.forEach((language, values) -> translations.put(language, new LinkedHashMap<>(values)));
-            }
-        } catch (IOException exception) {
-            Constants.LOG.warn("Failed to load loot table translations from {}.", activeFile, exception);
-        }
+        loadLanguageDirectory();
+        migrateLegacyWorldFile(server.getWorldPath(LevelResource.ROOT)
+                .resolve(LEGACY_DIRECTORY).resolve(LEGACY_FILE_NAME));
     }
 
     public static synchronized void unload() {
-        activeFile = null;
+        activeDirectory = null;
         translations.clear();
     }
 
-    // 写入单个名称；空名称作为删除标记保留，以便向客户端同步清理旧值
-    public static synchronized boolean put(String languageCode, String translationKey, String value) {
-        if (activeFile == null || !languageCode.matches("[a-z0-9_-]{2,16}")) return false;
-        String normalized = value.trim();
-        Map<String, String> language = translations.computeIfAbsent(languageCode,
-                ignored -> new LinkedHashMap<>());
-        if (Objects.equals(language.get(translationKey), normalized)) return false;
-        language.put(translationKey, normalized);
-        return save();
+    // 批量合并名称后每种受影响语言只写盘一次；空名称表示删除配置值
+    public static synchronized boolean putAll(Map<String, Map<String, String>> updates) {
+        if (activeDirectory == null || updates.isEmpty()) return false;
+        Map<String, Map<String, String>> changedLanguages = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, String>> languageEntry : updates.entrySet()) {
+            String languageCode = languageEntry.getKey();
+            if (!isValidLanguageCode(languageCode)) continue;
+            Map<String, String> language = translations.computeIfAbsent(languageCode,
+                    ignored -> new LinkedHashMap<>());
+            boolean changed = false;
+            for (Map.Entry<String, String> valueEntry : languageEntry.getValue().entrySet()) {
+                if (!LootTableNames.isGeneratedTranslationKey(valueEntry.getKey())) continue;
+                String normalized = valueEntry.getValue().trim();
+                if (normalized.isEmpty()) {
+                    changed |= language.remove(valueEntry.getKey()) != null;
+                } else if (!Objects.equals(language.put(valueEntry.getKey(), normalized), normalized)) {
+                    changed = true;
+                }
+            }
+            if (changed) changedLanguages.put(languageCode, language);
+        }
+        if (changedLanguages.isEmpty()) return false;
+        for (Map.Entry<String, Map<String, String>> entry : changedLanguages.entrySet()) {
+            saveLanguage(entry.getKey(), entry.getValue());
+        }
+        return true;
     }
 
     public static synchronized Map<String, Map<String, String>> snapshot() {
@@ -69,22 +86,82 @@ public final class LootTableTranslationStore {
         return Map.copyOf(result);
     }
 
-    // 判断指定语言是否已有非空名称，供服务端校验多语言编辑顺序
-    public static synchronized boolean hasNonBlank(String languageCode, String translationKey) {
-        Map<String, String> language = translations.get(languageCode);
-        return language != null && !language.getOrDefault(translationKey, "").trim().isEmpty();
+    private static void loadLanguageDirectory() {
+        if (activeDirectory == null || !Files.isDirectory(activeDirectory)) return;
+        try (var files = Files.list(activeDirectory)) {
+            files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".json"))
+                    .sorted()
+                    .forEach(LootTableTranslationStore::loadLanguageFile);
+        } catch (IOException exception) {
+            Constants.LOG.warn("Failed to list loot table language directory {}.", activeDirectory, exception);
+        }
     }
 
-    private static boolean save() {
+    private static void loadLanguageFile(Path file) {
+        String fileName = file.getFileName().toString();
+        String languageCode = fileName.substring(0, fileName.length() - ".json".length());
+        if (!isValidLanguageCode(languageCode)) {
+            Constants.LOG.warn("Ignoring loot table language file with invalid language code: {}.", file);
+            return;
+        }
+        try (Reader reader = Files.newBufferedReader(file)) {
+            Map<String, String> loaded = GSON.fromJson(reader, LANGUAGE_TYPE);
+            if (loaded == null) return;
+            Map<String, String> language = new LinkedHashMap<>();
+            loaded.forEach((key, value) -> {
+                if (LootTableNames.isGeneratedTranslationKey(key) && value != null && !value.isBlank()) {
+                    language.put(key, value.trim());
+                }
+            });
+            translations.put(languageCode, language);
+        } catch (IOException | RuntimeException exception) {
+            Constants.LOG.warn("Failed to load loot table language file {}.", file, exception);
+        }
+    }
+
+    private static void migrateLegacyWorldFile(Path legacyFile) {
+        if (!Files.isRegularFile(legacyFile)) return;
+        try (Reader reader = Files.newBufferedReader(legacyFile)) {
+            Map<String, Map<String, String>> legacy = GSON.fromJson(reader, LEGACY_TYPE);
+            if (legacy == null) return;
+            Map<String, Map<String, String>> missing = new LinkedHashMap<>();
+            legacy.forEach((languageCode, values) -> {
+                if (!isValidLanguageCode(languageCode) || values == null) return;
+                Map<String, String> current = translations.getOrDefault(languageCode, Map.of());
+                values.forEach((key, value) -> {
+                    if (LootTableNames.isGeneratedTranslationKey(key) && value != null
+                            && !value.isBlank() && !current.containsKey(key)) {
+                        missing.computeIfAbsent(languageCode, ignored -> new LinkedHashMap<>())
+                                .put(key, value);
+                    }
+                });
+            });
+            if (putAll(missing)) {
+                Constants.LOG.info("Migrated legacy loot table translations from {} to {}.",
+                        legacyFile, activeDirectory);
+            }
+        } catch (IOException | RuntimeException exception) {
+            Constants.LOG.warn("Failed to migrate legacy loot table translations from {}.", legacyFile, exception);
+        }
+    }
+
+    private static boolean saveLanguage(String languageCode, Map<String, String> language) {
         try {
-            Files.createDirectories(activeFile.getParent());
-            try (Writer writer = Files.newBufferedWriter(activeFile)) {
-                GSON.toJson(translations, DATA_TYPE, writer);
+            Files.createDirectories(activeDirectory);
+            Path file = activeDirectory.resolve(languageCode + ".json");
+            try (Writer writer = Files.newBufferedWriter(file)) {
+                GSON.toJson(language, LANGUAGE_TYPE, writer);
             }
             return true;
         } catch (IOException exception) {
-            Constants.LOG.warn("Failed to save loot table translations to {}.", activeFile, exception);
+            Constants.LOG.warn("Failed to save loot table language {} to {}.",
+                    languageCode, activeDirectory, exception);
             return false;
         }
+    }
+
+    private static boolean isValidLanguageCode(String languageCode) {
+        return languageCode != null && languageCode.matches("[a-z0-9_-]{2,16}");
     }
 }

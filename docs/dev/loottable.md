@@ -20,8 +20,8 @@ loottable/
 │   ├── LootTableCatalog            TableDefinition / ItemDefinition 等记录类型
 │   ├── LootTablePattern            收录规则解析与匹配
 │   ├── LootTableNames              表名/本地化 key 工具
-│   ├── LootTableTranslationStore      服务端按世界保存自定义表名
-│   ├── MissingTranslationKeyExporter  客户端语言覆盖文件读写与缺失 key 补全
+│   ├── LootTableTranslationStore      服务端整合包级补充语言存储
+│   ├── MissingTranslationKeyExporter  游戏资源与服务端配置的缺失 key 诊断快照
 │   └── (ArchaeologyJournalCatalog 在 journal/catalog/，调用本包)
 ├── analysis/     战利品表 JSON 解析
 │   ├── LootTableJsonParser         解析 loot_table JSON 为 TableDefinition
@@ -159,11 +159,13 @@ List.of(
 
 ### 5.2 自定义表名
 
-名称 key 始终由 `LootTableNames.createTranslationKey(ResourceLocation)` 自动生成。服务端把各语言名称保存到当前世界的 `serverconfig/unsuspiciousblock-loot-table-names.json`，并随管理快照派发给所有在线客户端。空值是删除标记，用于清除客户端已保存的旧名称。
+名称 key 始终由 `LootTableNames.createTranslationKey(ResourceLocation)` 自动生成。游戏资源语言是正式、只读来源；服务端配置只补充资源中不存在的 key。服务端按标准语言 JSON 保存到 `config/unsuspiciousblock/loot_table_lang/<language>.json`，适合整合包作者直接分发，也便于开发者把确认后的条目复制回 `assets/unsuspiciousblock/lang/`。旧世界的 `serverconfig/unsuspiciousblock-loot-table-names.json` 会在首次加载时合并迁移，旧文件保留。
 
-客户端把收到的名称合并到全局 `config/unsuspiciousblock/lang/<language>.json`，同一客户端下所有存档共用。`ClientLanguageMixin` 只提供语言加载入口，具体读写与合并由 `ClientLootTableLanguageStore` 和 `MissingTranslationKeyExporter` 完成；覆盖范围限制为自动生成的战利品表名称 key。缺失 key 自动补全也写入当前语言的同一文件。
+客户端收到的服务端名称只驻留当前连接的内存，断开连接时清除，不再写入客户端全局配置。`ClientLootTableLanguageStore` 扫描当前游戏资源栈的语言 JSON，记录最终提供 key 的 Resource Pack ID；`ClientLanguageMixin` 仅在同语言资源缺少 key 时合并服务端补充值。因此资源值优先、只读，服务端配置不会覆盖模组或 Resource Pack 已提供的正式翻译。
 
-缺失 key 的检测与告警采用批处理：解析期间 `LootTableNames` 只把缺失条目收集到内存（按 tableId 去重，零 I/O），目录加载结束时由 `logMissingTranslationSummary()` 统一分类汇总输出为语言 json 格式的 WARN 日志（区分"当前语言与 en_us 均缺失、使用 fallback 名称"与"当前语言缺失但 en_us 已有翻译、界面显示英文"两类），随后 `MissingTranslationKeyExporter.flushPending()` 一次性把待补全 key 落盘。落盘按 32 条阈值兜底，写盘失败保留待重试。
+管理页面以 `(languageCode, tableId)` 保存未提交草稿，切换表或语言不会丢失。一次“应用更改”通过批量 payload 提交全部草稿；服务端整体校验后每种受影响语言只写盘一次、广播一次。客户端语言查询直接读取新的内存快照，无需重载资源。管理员还可选择本地标准语言 JSON，预览新增、更新、资源跳过、未匹配与非法条目后批量导入。只有当前服务端已注册且可管理、并由自动规则构造的 key 会进入提交。
+
+缺失 key 的检测与告警仍采用批处理，但只读取当前游戏资源和服务端补充配置，不再自动生成客户端覆盖文件。已有模组资源翻译不会被误判为缺失。
 
 ## 6. 解析流程
 

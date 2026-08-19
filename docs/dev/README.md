@@ -25,6 +25,7 @@
 | [实体与世界生成](entities-world.md) | 灵体猫 AI / 灯笼宠物 / 骨块追踪 / 结构 | `entity/` `world/` |
 | [方块与物品](blocks-items.md) | 可疑方块 / 陶轮 / 标本箱 / 制陶 / 配方 | `block/` `item/` `specimen/` `pottery/` |
 | [客户端与 GUI](client-ui.md) | 考古笔记 GUI 层级 / HUD / 渲染 / 客户端状态 | `client/` |
+| [工具栏图标图集](toolbar-icon-atlas.md) | `toolbar_icons.png` 槽位 / UV / 图标语义 | `client/ui/widget/` |
 
 ## 横切关注点文档
 

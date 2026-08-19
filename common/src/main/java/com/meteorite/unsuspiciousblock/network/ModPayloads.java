@@ -20,6 +20,7 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFu
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogRetentionPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateLootTableTranslationsPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
@@ -81,6 +82,9 @@ public final class ModPayloads {
                     (player, payload) -> LootTableManagementHandler.handleRequest(player)),
             new C2S<>(UpdateTrackedLootTablePayload.TYPE, UpdateTrackedLootTablePayload.STREAM_CODEC,
                     LootTableManagementHandler::handleUpdate),
+            new C2S<>(UpdateLootTableTranslationsPayload.TYPE,
+                    UpdateLootTableTranslationsPayload.STREAM_CODEC,
+                    LootTableManagementHandler::handleTranslationUpdate),
             new C2S<>(RequestJournalStateFullPayload.TYPE, RequestJournalStateFullPayload.STREAM_CODEC,
                     (player, payload) -> JournalStateHandler.handleRequestFull(player)),
             new C2S<>(RequestJournalLogSnapshotPayload.TYPE, RequestJournalLogSnapshotPayload.STREAM_CODEC,

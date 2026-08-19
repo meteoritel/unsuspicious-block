@@ -92,6 +92,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         }
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ArchaeologyJournalClientState.resetOnDisconnect();
+            ClientLootTableLanguageStore.resetOnDisconnect();
             HandOfCatClientState.reset();
             ReaderScanHighlightState.reset();
             com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();

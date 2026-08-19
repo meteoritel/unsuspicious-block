@@ -66,6 +66,8 @@ public final class JournalCatalogHandler {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             syncCatalogHash(player);
         }
+        // /reload 也会重新读取服务端语言目录，随后同步管理快照供客户端一次性刷新语言
+        LootTableManagementHandler.broadcast(server);
     }
 
     /**

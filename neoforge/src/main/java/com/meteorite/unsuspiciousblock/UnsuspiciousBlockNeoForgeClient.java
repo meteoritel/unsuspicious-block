@@ -114,7 +114,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("3.0");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("4.0");
         // 遍历 ModPayloads 客户端清单注册 S2C，避免手写重复
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
             registerS2C(registrar, s2c);
@@ -154,6 +154,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         ArchaeologyJournalClientState.resetOnDisconnect();
+        ClientLootTableLanguageStore.resetOnDisconnect();
         HandOfCatClientState.reset();
         ReaderScanHighlightState.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();

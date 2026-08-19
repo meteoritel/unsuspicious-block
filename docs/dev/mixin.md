@@ -99,8 +99,7 @@ Mixin 主要用于四类需求：
 | `client/AbstractContainerScreenAccessor` | 容器屏幕 | 访问内部字段（tooltip 渲染） |
 | `client/EditBoxMixin` | 输入框 | 搜索框行为调整 |
 | `client/EnchantmentScreenMixin` | 附魔台屏幕 | 渲染完整候选列表 |
-| `client/ClientLanguageAccessor` | `ClientLanguage` | 访问已加载词条 storage 并调用私有构造器创建合并实例 |
-| `client/ClientLanguageMixin` | `ClientLanguage` | `loadFrom` 返回后合并配置目录中的战利品表名称覆盖 |
+| `client/ClientLanguageMixin` | `ClientLanguage` | 动态查询当前服务端补充名称，并在真实资源重载时失效资源来源索引 |
 
 ## 4. Fabric 独有 mixin
 

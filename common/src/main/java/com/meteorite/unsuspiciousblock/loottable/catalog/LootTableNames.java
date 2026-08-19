@@ -107,7 +107,6 @@ public final class LootTableNames {
         String fallbackName = fallbackName(tableId);
         PENDING_MISSING.put(tableId, new MissingEntry(translationKey, fallbackName));
         logMissingTranslationSummary();
-        MissingTranslationKeyExporter.flushPending();
         return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
@@ -152,8 +151,6 @@ public final class LootTableNames {
                 englishOnlyLines.add(jsonEntry(translationKey, enUsValue));
             } else {
                 fallbackLines.add(jsonEntry(translationKey, entry.fallbackName()));
-                // 完全缺失的 key 写入自动补全（客户端当前语言；服务端为空操作）
-                MissingTranslationKeyExporter.record(translationKey, entry.fallbackName());
             }
         }
         PENDING_MISSING.clear();

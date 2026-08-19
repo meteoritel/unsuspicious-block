@@ -4,7 +4,7 @@
 
 ## 1. 职责概述
 
-模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 25 个自定义 payload（11 个 C2S + 14 个 S2C），覆盖：
+模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 26 个自定义 payload（12 个 C2S + 14 个 S2C），覆盖：
 
 - **考古笔记同步**：目录、进度状态（增量/全量）、日志（更新/快照）、完成奖励通知。
 - **目录按需同步**：哈希比对，不一致时客户端主动请求全量目录。
@@ -26,7 +26,7 @@ network/
 │   ├── LootTableManagementHandler  战利品表追踪管理页处理
 │   └── ReaderScanLevelHandler   扫描等级更新处理
 ├── payload/
-│   ├── c2s/                   11 个客户端->服务端 payload
+│   ├── c2s/                   12 个客户端->服务端 payload
 │   └── s2c/                   14 个服务端->客户端 payload
 └── (cat/CatNetworkHandler 在 cat/ 包)
 ```
@@ -74,7 +74,8 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `UpdateReaderScanLevelPayload` | `ReaderScanLevelHandler::handleUpdateReaderScanLevel` | 更新解析仪扫描等级 |
 | `RequestCatalogPayload` | `JournalCatalogHandler::handleRequestCatalog` | 请求全量目录 |
 | `RequestLootTableManagementPayload` | `LootTableManagementHandler::handleRequest` | 请求服务端权威管理索引 |
-| `UpdateTrackedLootTablePayload` | `LootTableManagementHandler::handleUpdate` | 修改追踪状态及一个语言名称 |
+| `UpdateTrackedLootTablePayload` | `LootTableManagementHandler::handleUpdate` | 修改单张表的追踪状态 |
+| `UpdateLootTableTranslationsPayload` | `LootTableManagementHandler::handleTranslationUpdate` | 批量提交手工草稿或 JSON 导入名称 |
 | `RequestJournalStateFullPayload` | `JournalStateHandler::handleRequestFull` | 请求全量状态重同步 |
 | `RequestJournalLogSnapshotPayload` | `JournalLogHandler::handleRequestSnapshot` | 请求日志快照 |
 | `UpdateJournalLogNotePayload` | `JournalLogHandler::handleUpdateNote` | 更新日志备注 |
@@ -129,7 +130,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned("3.0")` 声明 payload 协议版本；本版本增加日志保留配置，并扩展批量删除包格式。
+**版本化**：NeoForge 端用 `registrar.versioned("4.0")` 声明 payload 协议版本；本版本拆分追踪状态与名称更新，并新增批量名称 payload。
 
 ## 8. 同步策略
 
@@ -174,9 +175,9 @@ restoreLogState -> migratePlayerData -> syncLogSnapshot -> syncCatalogHash
 
 ### 8.6 战利品表管理同步
 
-服务端从 `ReloadableServerRegistries` 枚举 LootTable key，过滤 `entities/` 与 `blocks/`，然后发送 `ResourceLocation + tracked` 列表、该玩家仍存在于当前注册表的最近遇到列表、编辑权限以及按语言分组的自定义名称。最近列表已按玩家内遇到顺序从新到旧排列。写请求再次校验表是否仍存在于注册表且玩家权限等级至少为 2，不能信任客户端候选列表；非空的非英语名称还要求服务端名称存储中已存在非空 `en_us` 名称。
+服务端从 `ReloadableServerRegistries` 枚举 LootTable key，过滤 `entities/` 与 `blocks/`，然后发送 `ResourceLocation + tracked` 列表、该玩家仍存在于当前注册表的最近遇到列表、编辑权限以及按语言分组的服务端补充名称。最近列表已按玩家内遇到顺序从新到旧排列。追踪与名称写请求都会重新校验表是否仍存在于注册表且玩家权限等级至少为 2，不能信任客户端候选列表。
 
-名称快照由服务器统一派发。客户端接收后合并到全局语言文件，只有磁盘内容变化时才触发资源重载，避免登录时无意义重复加载。
+名称草稿和 JSON 导入使用同一个批量 payload。服务端先按当前注册表、语言代码和长度限制过滤，再批量更新标准语言文件并只广播一次管理快照。客户端将快照保存在当前连接的内存中，`ClientLanguageMixin` 在查询自动生成的战利品表 key 时动态读取快照；进入或退出世界都不触发资源重载。手工修改服务端语言文件并执行 `/reload` 也会广播新快照。
 
 ## 9. 扩展点
 

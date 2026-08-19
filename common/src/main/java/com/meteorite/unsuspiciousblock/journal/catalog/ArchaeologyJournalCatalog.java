@@ -8,7 +8,6 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableJsonParser;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.loottable.catalog.MissingTranslationKeyExporter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
@@ -67,7 +66,6 @@ public final class ArchaeologyJournalCatalog {
         }
         // 批量解析结束：先汇总输出缺失 key 警告（汇总过程中登记待补全条目），再统一落盘
         LootTableNames.logMissingTranslationSummary();
-        MissingTranslationKeyExporter.flushPending();
 
         JournalCategoryLoader.CategorySet categories = JournalCategoryLoader.load(resourceManager);
         LinkedHashMap<ResourceLocation, ResourceLocation> rootCategories = new LinkedHashMap<>();
