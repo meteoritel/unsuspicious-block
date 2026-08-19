@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
@@ -45,9 +46,10 @@ import java.util.List;
 /***
  * 考古铲——兼具铲子的全部挖掘功能，并附带以下特性：
  * 1. 自定义工具材质：铁挖掘等级、256 点耐久。
- * 2. 挖掘铲子可挖方块时，向下垂直连挖共 4 格（潜行时仅 1 格），不会破坏可疑方块及其支撑方块。
+ * 2. 挖掘铲子可挖方块时，向下垂直连挖共 3 格（潜行时仅 1 格），不会破坏可疑方块及其支撑方块。
  * 3. 挖掘沙子 / 砂砾时有极小概率掉落古代金币。
  * 4. 右键已被扫描的可疑方块可直接取出战利品。
+ * 5. 直接挖掘可疑方块时必须潜行。
  */
 public class ArchaeologicalShovelItem extends ShovelItem {
 
@@ -105,6 +107,23 @@ public class ArchaeologicalShovelItem extends ShovelItem {
     }
 
     // ========== 挖掘行为 ==========
+
+    @Override
+    public boolean canAttackBlock(@NotNull BlockState state, @NotNull Level level, @NotNull BlockPos pos,
+                                  @NotNull Player player) {
+        return !shouldBlockSuspiciousMining(player, level, pos)
+                && super.canAttackBlock(state, level, pos, player);
+    }
+
+    // canAttackBlock 返回 false 会在实际破坏前终止流程，因此不会进入 mineBlock 触发向下连挖
+    private static boolean shouldBlockSuspiciousMining(Player player, Level level, BlockPos pos) {
+        if (player.isShiftKeyDown()) {
+            return false;
+        }
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        return blockEntity instanceof BrushableBlockEntityScanState
+                && !(blockEntity instanceof UnsuspiciousBlockEntity);
+    }
 
     @Override
     public boolean mineBlock(@NotNull ItemStack stack, @NotNull Level level, @NotNull BlockState state,

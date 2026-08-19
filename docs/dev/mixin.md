@@ -16,7 +16,7 @@ Mixin 主要用于四类需求：
 
 | 配置文件 | 位置 | mixin 数 | 说明 |
 |---|---|---|---|
-| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 49（含 5 客户端） | 跨平台通用 mixin，两端共用 |
+| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 48（含 4 客户端） | 跨平台通用 mixin，两端共用 |
 | `unsuspiciousblock.fabric.mixins.json` | `fabric/src/main/resources/` | 6 | Fabric 独有，补齐原生事件缺失 |
 | `unsuspiciousblock.lootr.mixins.json` | `common/src/main/resources/` | 5 | Lootr 兼容，`requiredMods = ["lootr"]` |
 
