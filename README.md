@@ -11,7 +11,7 @@
 替换下方占位文字为：![Unsuspicious Block 玩法概览](docs/image/readme/overview.png)
 -->
 
-> **截图待补：模组玩法概览**（目标文件：`docs/image/readme/overview.png`）
+![Unsuspicious Block 玩法概览](docs/image/readme/overview.png)
 
 ## 支持环境
 

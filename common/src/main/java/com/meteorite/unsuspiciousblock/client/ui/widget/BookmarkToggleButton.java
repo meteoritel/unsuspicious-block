@@ -15,7 +15,6 @@ import org.jetbrains.annotations.Nullable;
  *   1. 正常：窄条(14px)贴在书边缘
  *   2. 悬浮：书签向右展开(30px)
  *   3. 选中：书签固定展开(30px)
- *
  * 按钮实际 hitbox 保持展开宽度(30px)，鼠标靠近即可触发悬浮展开。
  * 展开时直接在书签上绘制文字标签，不再使用 tooltip。
  */
@@ -45,10 +44,6 @@ public class BookmarkToggleButton extends AbstractButton {
         this.toggled = false;
         this.tooltip = tooltip;
         this.onToggle = onToggle;
-    }
-
-    public boolean isToggled() {
-        return toggled;
     }
 
     public void setToggled(boolean toggled) {

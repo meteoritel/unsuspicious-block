@@ -248,6 +248,12 @@ public final class LootTableManagementScreen extends Screen {
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.details"),
                 x, top + 32, 0xFFFFFF, false);
+        if (!this.nameDrafts.isEmpty()) {
+            Component draftStatus = Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.source.draft", this.nameDrafts.size());
+            graphics.drawString(this.font, draftStatus,
+                    x + width - this.font.width(draftStatus), top + 9, 0xFFAA00, false);
+        }
         if (selected != null) {
             renderOverflowText(graphics, selected.tableId().toString(), x, top + 51,
                     width, 0xB8B8B8, true);
@@ -630,8 +636,7 @@ public final class LootTableManagementScreen extends Screen {
                     "screen.unsuspiciousblock.loot_table_management.source.resource", resource.sourcePackId());
         }
         if (this.nameDrafts.containsKey(draftKey)) {
-            return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.draft",
-                    this.nameDrafts.size());
+            return Component.empty();
         }
         if (!storedName(draftKey).isEmpty()) {
             return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.server");

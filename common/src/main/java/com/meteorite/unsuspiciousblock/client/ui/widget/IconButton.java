@@ -120,11 +120,6 @@ public class IconButton extends AbstractButton {
         this(x, y, size, icon, tooltip != null ? List.of(tooltip) : null, onPressed);
     }
 
-    public void setIconChar(char iconChar) {
-        this.iconChar = iconChar;
-        this.icon = null;
-    }
-
     public void setIcon(@Nullable Icon icon) {
         this.icon = icon;
     }
@@ -133,12 +128,6 @@ public class IconButton extends AbstractButton {
     public void setTooltip(@Nullable Component tooltip) {
         this.tooltipLines = tooltip != null ? List.of(tooltip) : null;
         this.setMessage(tooltip != null ? tooltip : Component.empty());
-    }
-
-    /** 设置多行 tooltip */
-    public void setTooltipLines(@Nullable List<Component> tooltipLines) {
-        this.tooltipLines = tooltipLines;
-        this.setMessage(firstTooltipLine(tooltipLines));
     }
 
     @Override
