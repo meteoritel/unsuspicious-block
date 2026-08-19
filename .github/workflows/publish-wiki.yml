@@ -69,12 +69,12 @@ jobs:
       - name: 克隆 GitHub Wiki 仓库
         shell: bash
         env:
-          WIKI_TOKEN: ${{ secrets.WIKI_DEPLOY_TOKEN }}
+          WIKI_TOKEN: ${{ secrets.METEORITE_MOD_WIKI_SECRET }}
         run: |
           set -euo pipefail
 
           if [[ -z "${WIKI_TOKEN}" ]]; then
-            echo "::error::缺少仓库 Secret：WIKI_DEPLOY_TOKEN"
+            echo "::error::缺少仓库 Secret：METEORITE_MOD_WIKI_SECRET"
             exit 1
           fi
 
@@ -82,7 +82,7 @@ jobs:
           wiki_dir="${RUNNER_TEMP}/wiki"
 
           if ! git clone "${wiki_url}" "${wiki_dir}"; then
-            echo "::error::无法克隆 Wiki。请先在 GitHub 网页启用 Wiki 并创建首个 Home 页面，同时检查 WIKI_DEPLOY_TOKEN 权限。"
+            echo "::error::无法克隆 Wiki。请先在 GitHub 网页启用 Wiki 并创建首个 Home 页面，同时检查 METEORITE_MOD_WIKI_SECRET 权限。"
             exit 1
           fi
 
