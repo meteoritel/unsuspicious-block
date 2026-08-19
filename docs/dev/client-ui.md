@@ -78,11 +78,11 @@ ui/
 ├── PotteryPreviewRenderer        陶轮预览渲染（ui 根目录）
 ├── entry/      目录条目（ArchaeologyJournalEntry / ItemEntryLike / ...）
 ├── layout/     布局（JournalLayout / JournalViewport）
-├── panel/      面板（CatalogPanel / LogPanel / DetailOverlayPanel / ItemGridPanel / ...）
+├── panel/      面板（CatalogPanel / LogPanel / WelcomeStatsPanel / DetailOverlayPanel / ItemGridPanel / ...）
 ├── screen/     屏幕（ArchaeologyJournalScreen / LootTableManagementScreen / SpecimenBoxScreen / ...）
 ├── support/    支持类（ClientState / CatalogSorter / JournalSearchQuery / JournalItemDetailAppender / ...）
 ├── toast/      Toast 通知（JournalUnlockToast / CatBondToast）
-├── widget/     组件（IconButton / BookmarkToggleButton / CopyCoordinateButton / PotteryWheelModeButton / ShadowlessEditBox / ...）
+├── widget/     组件（IconButton / BookSideTabButton / ExternalLinkButton / BookmarkToggleButton / CopyCoordinateButton / PotteryWheelModeButton / ShadowlessEditBox / ...）
 └── tooltip/    tooltip（ClientSpecimenBoxTooltip）
 ```
 
@@ -124,7 +124,9 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
   └─ 打开 ArchaeologyJournalScreen，传入 ClientState
 ```
 
-`ArchaeologyJournalScreen` 从 `ArchaeologyJournalClientState` 读取目录/进度/日志数据，通过 `JournalViewModel` 组织视图，渲染 `JournalBookBackground`（书本背景）+ 各 panel。
+`ArchaeologyJournalScreen` 从 `ArchaeologyJournalClientState` 读取目录/进度/日志数据，通过 `JournalViewModel` 组织视图，渲染 `JournalBookBackground`（书本背景）+ 各 panel。战利品表管理与帮助入口使用 `BookSideTabButton` 垂直附着在书本左侧，按纹理原生 `24 x 20` 像素尺寸渲染；帮助入口经原版链接确认界面打开项目 GitHub Wiki。
+
+分类首页右页由 `WelcomeStatsPanel` 显示紧凑的玩家统计与最近发现。刷拭次数与战利品箱次数来自日志状态按 `LootSourceType.ARCHAEOLOGY` / `LOOT_CONTAINER` 持久化的累计来源计数；同一次聚合日志只在父表计数，子表镜像不重复累计，且日志淘汰或手动清理不会减少计数。当前日志、已有标注、最近记录和最近发现物品来自客户端日志快照，Panel 按日志与目录 revision 缓存汇总结果。最近记录只参与父表日志的比较，并展示最新一条日志中的全部实际物品（无实际结果时回退预期物品）。右下角的 GitHub Issues、CurseForge 与 Modrinth 按钮使用 `ExternalLinkButton`，并经原版 `ConfirmLinkScreen` 确认后打开链接。
 
 日志详情页保留单条删除入口。列表工具栏提供保留配置、批量选择、批量执行、清空当前表和清空全部按钮；当前表没有日志时，整个日志工具栏隐藏。工具栏 widget 创建时一律保持隐藏，只由 `ArchaeologyJournalScreen.syncButtonState()` 根据统一的日志列表状态控制可见性，禁止各按钮自行判断当前表或全局日志数量。批量模式在条目与分组标题左侧显示方形选择框，点击整组会统一选择或取消，且此时不会进入详情页。所有显式删除都会先打开原版 `ConfirmScreen`。服务端成功后以权威单表历史或全量快照更新本地状态，并用 `JournalLogDeleteResultPayload` 显示结果提示。
 

@@ -139,10 +139,12 @@ public final class JournalLayout {
     public static final int PAGE_BUTTON_HEIGHT = 13;
     public static final int PAGE_BUTTON_CENTER_GAP = 32;
 
-    // —— 帮助按钮（书页外右上角问号） ——
-    public static final int HELP_BUTTON_SIZE = 14;
-    public static final int HELP_BUTTON_GAP = -4;        // 与书页右边缘的间距
-    public static final int HELP_BUTTON_Y_OFFSET = 14;   // 距书页顶部向下偏移
+    // —— 书本左侧入口标签 ——
+    public static final int SIDE_TAB_WIDTH = 24;
+    public static final int SIDE_TAB_HEIGHT = 20;
+    public static final int SIDE_TAB_OVERLAP = 4;        // 与书本封皮重叠，形成夹入书页的视觉效果
+    public static final int SIDE_TAB_Y_OFFSET = 28;
+    public static final int SIDE_TAB_GAP = 3;
 
     private JournalLayout() {}
 }

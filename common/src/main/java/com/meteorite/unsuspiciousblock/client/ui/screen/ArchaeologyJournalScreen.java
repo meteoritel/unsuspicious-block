@@ -1,28 +1,34 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.widget.BookSideTabButton;
+import com.meteorite.unsuspiciousblock.client.ui.widget.ExternalLinkButton;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.client.ui.widget.JournalPageButton;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.ConfirmScreen;
+import net.minecraft.client.gui.screens.ConfirmLinkScreen;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -30,6 +36,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -40,6 +47,27 @@ import java.util.UUID;
  */
 public class ArchaeologyJournalScreen extends Screen {
 
+    private static final ResourceLocation MANAGEMENT_TAB_TEXTURE = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/book_side_tabs/management_tab.png");
+    private static final ResourceLocation HELP_TAB_TEXTURE = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/book_side_tabs/help_tab.png");
+    private static final ResourceLocation GITHUB_ICON = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/external/github.png");
+    private static final ResourceLocation CURSEFORGE_ICON = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/external/curseforge.png");
+    private static final ResourceLocation MODRINTH_ICON = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/external/modrinth.png");
+    private static final String GITHUB_ISSUES_URL =
+            "https://github.com/meteoritel/unsuspicious-block/issues";
+    private static final String CURSEFORGE_URL =
+            "https://www.curseforge.com/minecraft/mc-mods/unsuspicious-block";
+    private static final String MODRINTH_URL =
+            "https://modrinth.com/mod/unsuspicious-block";
+    private static final String HELP_WIKI_URL =
+            "https://github.com/meteoritel/unsuspicious-block/wiki";
+    private static final int WELCOME_LINK_BUTTON_SIZE = 16;
+    private static final int WELCOME_LINK_BUTTON_GAP = 3;
+
     private final JournalViewModel viewModel;
     private final CatalogToolbar catalogToolbar;
     private final LogToolbar logToolbar;
@@ -48,22 +76,18 @@ public class ArchaeologyJournalScreen extends Screen {
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
+    private WelcomeStatsPanel welcomeStatsPanel;
     private Button itemPrevButton;
     private Button itemNextButton;
-    // 书页外左上角帮助按钮
-    private IconButton helpButton;
-    private IconButton managementButton;
-    private IconButton directoryBackButton;
+    private BookSideTabButton helpButton;
+    private BookSideTabButton managementButton;
+    private List<ExternalLinkButton> externalLinkButtons = List.of();
     private int categoryFocusIndex;
     private int restoredCatalogScrollOffset;
     private int emptyCatalogScrollTicks;
     private int catalogProgressScrollTicks;
     @Nullable
     private final ResourceLocation initialItemSearch;
-
-    public ArchaeologyJournalScreen(ArchaeologyJournalState state) {
-        this(state, null);
-    }
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
@@ -79,6 +103,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.viewport = JournalViewport.compute(this.width, this.height);
         this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
         this.rightPage = new RightPageContainer(this.bookLayout);
+        this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         // 恢复上次关闭时持久化的 UI 状态
         restorePersistedUiState();
@@ -180,8 +205,8 @@ public class ArchaeologyJournalScreen extends Screen {
         return switch (keyCode) {
             case GLFW.GLFW_KEY_UP, GLFW.GLFW_KEY_W -> moveCatalogSelection(-1);
             case GLFW.GLFW_KEY_DOWN, GLFW.GLFW_KEY_S -> moveCatalogSelection(1);
-            case GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_A -> setCurrentExpansion(false);
-            case GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_D -> setCurrentExpansion(true);
+            case GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_A -> { setCurrentExpansion(false); yield true; }
+            case GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_D -> { setCurrentExpansion(true); yield true; }
             case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { updateItemGridPanel(); yield true; }
             case GLFW.GLFW_KEY_PAGE_UP -> moveCatalogViewport(-1);
             case GLFW.GLFW_KEY_PAGE_DOWN -> moveCatalogViewport(1);
@@ -218,14 +243,13 @@ public class ArchaeologyJournalScreen extends Screen {
         rebuildWidgets();
     }
 
-    private boolean setCurrentExpansion(boolean expanded) {
+    private void setCurrentExpansion(boolean expanded) {
         int index = this.viewModel.selectedIndex();
-        if (!this.viewModel.rowHasChildren(index) || this.viewModel.rowExpanded(index) == expanded) return true;
+        if (!this.viewModel.rowHasChildren(index) || this.viewModel.rowExpanded(index) == expanded) return;
         ResourceLocation selected = this.viewModel.selectedTableId();
         this.viewModel.toggleExpanded(index);
         rebuildViewModels();
         if (selected != null) setSelectedTable(selected);
-        return true;
     }
 
     private void setSelectedTable(ResourceLocation id) {
@@ -257,6 +281,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.viewport = JournalViewport.compute(this.width, this.height);
         this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
         this.rightPage = new RightPageContainer(this.bookLayout);
+        this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         this.updateItemGridPanel();
         this.rightPage.setActiveItemTag(snapshot.activeItemTag());
@@ -301,7 +326,8 @@ public class ArchaeologyJournalScreen extends Screen {
             refreshAndSync();
             JournalBookBackground.render(guiGraphics, this.bookLayout);
             renderCatalogArea(guiGraphics, logicalMouseX, logicalMouseY);
-            if (this.viewModel.isCategoryHome()) renderWelcomePage(guiGraphics);
+            if (this.viewModel.isCategoryHome()) this.welcomeStatsPanel.render(
+                    guiGraphics, this.font, logicalMouseX, logicalMouseY);
             else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
             else this.rightPage.render(guiGraphics, this.font, logicalMouseX, logicalMouseY);
             this.catalogToolbar.renderSearchBackground(guiGraphics);
@@ -377,27 +403,6 @@ public class ArchaeologyJournalScreen extends Screen {
                 0xFF3D2810, hovered, this.catalogProgressScrollTicks, true);
     }
 
-    private void renderWelcomePage(GuiGraphics graphics) {
-        int titleX = this.bookLayout.rightPageX() + 8;
-        int titleWidth = this.bookLayout.rightPageWidth() - 16;
-        int y = this.bookLayout.rightPageY() + 24;
-        Component welcome = Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.title");
-        for (var line : this.font.split(welcome, titleWidth)) {
-            graphics.drawString(this.font, line,
-                    titleX + (titleWidth - this.font.width(line)) / 2, y, 0x4A3320, false);
-            y += this.font.lineHeight + 2;
-        }
-        y += 12;
-
-        int bodyX = this.bookLayout.rightPageX() + 16;
-        int bodyWidth = this.bookLayout.rightPageWidth() - 32;
-        for (var line : this.font.split(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.welcome.body"), bodyWidth)) {
-            graphics.drawString(this.font, line, bodyX, y, 0x6E5A42, false);
-            y += this.font.lineHeight + 2;
-        }
-    }
-
     private boolean isTextHovered(int mouseX, int mouseY, int x, int y, int width) {
         return mouseX >= x && mouseX < x + width
                 && mouseY >= y && mouseY < y + this.font.lineHeight + 1;
@@ -430,6 +435,7 @@ public class ArchaeologyJournalScreen extends Screen {
         }
 
         if (this.viewModel.isCategoryHome()) {
+            this.welcomeStatsPanel.renderTooltip(guiGraphics, this.font, mouseX, mouseY);
             int hovered = this.catalogPanel != null ? this.catalogPanel.hoveredIndex(mouseX, mouseY) : -1;
             if (hovered >= 0 && hovered < this.viewModel.categoryViews().size()) {
                 var category = this.viewModel.categoryViews().get(hovered);
@@ -582,7 +588,7 @@ public class ArchaeologyJournalScreen extends Screen {
                     + (this.bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
                     + JournalLayout.CATALOG_X_OFFSET;
             int backY = this.bookLayout.leftPageY() + JournalLayout.TOOLBAR_Y;
-            this.directoryBackButton = this.addRenderableWidget(new IconButton(
+            this.addRenderableWidget(new IconButton(
                     backX, backY, JournalLayout.SEARCH_ICON_SIZE, '<',
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.category.back"),
                     () -> {
@@ -598,8 +604,6 @@ public class ArchaeologyJournalScreen extends Screen {
                         this.viewModel.showCategoryHome();
                         rebuildWidgets();
                     }));
-        } else {
-            this.directoryBackButton = null;
         }
 
         int buttonWidth = JournalLayout.PAGE_BUTTON_WIDTH;
@@ -648,27 +652,26 @@ public class ArchaeologyJournalScreen extends Screen {
         // 日志详情页删除按钮（IconButton）
         this.rightPage.getLogDetailPanel().createDeleteButton(this::registerWidget, this::confirmDeleteCurrentEntry);
 
-        // 书页外右上角帮助按钮（?），悬停展示使用提示
-        int helpX = Math.min(this.viewport.logicalWidth() - JournalLayout.HELP_BUTTON_SIZE,
-                this.bookLayout.bookX() + JournalLayout.TEXTURE_WIDTH + JournalLayout.HELP_BUTTON_GAP);
-        int helpY = this.bookLayout.bookY() + JournalLayout.HELP_BUTTON_Y_OFFSET;
-        this.helpButton = this.addRenderableWidget(new IconButton(
-                helpX, helpY,
-                JournalLayout.HELP_BUTTON_SIZE,
-                '?',
-                buildHelpTooltip(),
-                () -> {}
-        ));
-
-        int managementX = Math.max(0,
-                this.bookLayout.bookX() - JournalLayout.HELP_BUTTON_GAP - JournalLayout.HELP_BUTTON_SIZE);
-        this.managementButton = this.addRenderableWidget(new IconButton(
-                managementX, helpY,
-                JournalLayout.HELP_BUTTON_SIZE,
-                '⚙',
+        int sideTabX = Math.max(0, this.bookLayout.bookX()
+                - JournalLayout.SIDE_TAB_WIDTH + JournalLayout.SIDE_TAB_OVERLAP);
+        int managementY = this.bookLayout.bookY() + JournalLayout.SIDE_TAB_Y_OFFSET;
+        this.managementButton = this.addRenderableWidget(new BookSideTabButton(
+                sideTabX, managementY,
+                JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
+                MANAGEMENT_TAB_TEXTURE,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.open"),
                 () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
         ));
+        int helpY = managementY + JournalLayout.SIDE_TAB_HEIGHT + JournalLayout.SIDE_TAB_GAP;
+        this.helpButton = this.addRenderableWidget(new BookSideTabButton(
+                sideTabX, helpY,
+                JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
+                HELP_TAB_TEXTURE,
+                buildHelpTooltip(),
+                () -> ConfirmLinkScreen.confirmLinkNow(this, HELP_WIKI_URL, true)
+        ));
+
+        createExternalLinkButtons();
 
         // 日志列表页备注图标点击回调：直接打开备注编辑界面，无需进入详情页
         this.rightPage.getLogPanel().setNoteClickHandler(this::openNoteEditorForEntry);
@@ -676,14 +679,50 @@ public class ArchaeologyJournalScreen extends Screen {
         this.syncButtonState();
     }
 
-    // 构建帮助按钮的多行 tooltip
-    private static java.util.List<Component> buildHelpTooltip() {
-        return java.util.List.of(
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.title"),
-                Component.literal("- ").append(Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.favorite")),
-                Component.literal("- ").append(Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.probability")),
-                Component.literal("- ").append(Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.sort"))
+    private void createExternalLinkButtons() {
+        int buttonY = this.bookLayout.rightPageBottom() - WELCOME_LINK_BUTTON_SIZE - 8;
+        int right = this.bookLayout.rightPageRight() - 10;
+        List<ExternalLinkButton> buttons = new ArrayList<>(3);
+        buttons.add(createExternalLinkButton(right - WELCOME_LINK_BUTTON_SIZE, buttonY,
+                MODRINTH_ICON, MODRINTH_URL,
+                "screen.unsuspiciousblock.archaeology_journal.welcome.link.modrinth"));
+        right -= WELCOME_LINK_BUTTON_SIZE + WELCOME_LINK_BUTTON_GAP;
+        buttons.add(createExternalLinkButton(right - WELCOME_LINK_BUTTON_SIZE, buttonY,
+                CURSEFORGE_ICON, CURSEFORGE_URL,
+                "screen.unsuspiciousblock.archaeology_journal.welcome.link.curseforge"));
+        right -= WELCOME_LINK_BUTTON_SIZE + WELCOME_LINK_BUTTON_GAP;
+        buttons.add(createExternalLinkButton(right - WELCOME_LINK_BUTTON_SIZE, buttonY,
+                GITHUB_ICON, GITHUB_ISSUES_URL,
+                "screen.unsuspiciousblock.archaeology_journal.welcome.link.github_issues"));
+        this.externalLinkButtons = List.copyOf(buttons);
+    }
+
+    private ExternalLinkButton createExternalLinkButton(int x, int y, ResourceLocation icon,
+                                                        String url, String tooltipKey) {
+        return this.addRenderableWidget(new ExternalLinkButton(
+                x, y, WELCOME_LINK_BUTTON_SIZE, this, icon, url, Component.translatable(tooltipKey)));
+    }
+
+    // 构建分层配色的帮助提示，长说明主动拆行以控制宽度。
+    private static List<Component> buildHelpTooltip() {
+        String tooltipBase = "screen.unsuspiciousblock.archaeology_journal.help_tooltip";
+        return List.of(
+                Component.translatable(tooltipBase + ".title")
+                        .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
+                Component.translatable(tooltipBase + ".favorite.label").withStyle(ChatFormatting.AQUA),
+                tooltipDescription(tooltipBase + ".favorite"),
+                Component.translatable(tooltipBase + ".probability.label").withStyle(ChatFormatting.AQUA),
+                tooltipDescription(tooltipBase + ".probability.summary"),
+                tooltipDescription(tooltipBase + ".probability.range"),
+                Component.translatable(tooltipBase + ".sort.label").withStyle(ChatFormatting.AQUA),
+                tooltipDescription(tooltipBase + ".sort"),
+                Component.translatable(tooltipBase + ".wiki").withStyle(ChatFormatting.GREEN)
         );
+    }
+
+    private static Component tooltipDescription(String translationKey) {
+        return Component.literal("  ")
+                .append(Component.translatable(translationKey).withStyle(ChatFormatting.GRAY));
     }
 
     private void rebuildViewModels() {
@@ -758,6 +797,11 @@ public class ArchaeologyJournalScreen extends Screen {
                 hasMultipleItemPages && this.rightPage.getPage() > 0);
         applyButtonState(this.itemNextButton, hasMultipleItemPages,
                 hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1);
+
+        boolean showExternalLinks = this.viewModel.isCategoryHome();
+        for (ExternalLinkButton button : this.externalLinkButtons) {
+            applyButtonState(button, showExternalLinks, showExternalLinks);
+        }
 
         // 日志工具栏可见性
         boolean logToolbarVisible = isLogToolbarVisible();
@@ -936,10 +980,6 @@ public class ArchaeologyJournalScreen extends Screen {
                 this.catalogToolbar.searchExpanded(),
                 this.catalogToolbar.hideLocked()
         );
-    }
-
-    public IconButton getDirectoryBackButton() {
-        return directoryBackButton;
     }
 
     // 将物理屏幕坐标转换为手册逻辑坐标，并返回当前悬停的已解锁物品。

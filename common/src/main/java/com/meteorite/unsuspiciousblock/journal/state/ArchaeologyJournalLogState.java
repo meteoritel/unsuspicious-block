@@ -63,6 +63,31 @@ public final class ArchaeologyJournalLogState {
         return total;
     }
 
+    // 获取全部表的累计日志数；已被清理或自动淘汰的历史条目仍计入。
+    public long getLifetimeEntryCount() {
+        long total = 0L;
+        for (TableLogHistory history : this.tables.values()) {
+            long count = history.getLifetimeEntryCount();
+            if (Long.MAX_VALUE - total < count) {
+                return Long.MAX_VALUE;
+            }
+            total += count;
+        }
+        return total;
+    }
+
+    // 获取指定来源的累计日志数，例如刷拭或战利品箱。
+    public long getLifetimeEntryCount(LootSourceType source) {
+        if (source == null) return 0L;
+        long total = 0L;
+        for (TableLogHistory history : this.tables.values()) {
+            long count = history.getLifetimeEntryCount(source);
+            if (Long.MAX_VALUE - total < count) return Long.MAX_VALUE;
+            total += count;
+        }
+        return total;
+    }
+
     // 设置（或保留最小）首次解锁时间元数据
     public boolean setFirstUnlockMetaMin(ResourceLocation tableId, @Nullable LootSourceType lootSource,
                                          long gameTime, long dayTime) {
@@ -76,7 +101,9 @@ public final class ArchaeologyJournalLogState {
 
     // 插入或更新条目，并返回累计数、拦截状态和自动淘汰结果
     public EntryUpsertResult upsertEntryWithResult(ResourceLocation tableId, ExcavationLogEntry entry) {
-        return this.getOrCreateTable(tableId).upsertEntryWithResult(entry);
+        ResourceLocation rootId = entry.tableStack() != null && !entry.tableStack().isEmpty()
+                ? entry.tableStack().getFirst() : tableId;
+        return this.getOrCreateTable(tableId).upsertEntryWithResult(entry, tableId.equals(rootId));
     }
 
     // 检查指定表中是否已存在日志条目
@@ -181,7 +208,9 @@ public final class ArchaeologyJournalLogState {
             if (tableId == null) {
                 continue;
             }
-            this.tables.put(tableId, TableLogHistory.fromTag(tablesTag.getCompound(key)));
+            TableLogHistory history = TableLogHistory.fromTag(tablesTag.getCompound(key));
+            history.initializeLegacySourceCounts(tableId);
+            this.tables.put(tableId, history);
         }
     }
 
@@ -204,6 +233,7 @@ public final class ArchaeologyJournalLogState {
 
     public static final class TableLogHistory {
         private static final String LIFETIME_ENTRY_COUNT_TAG = "lifetime_entry_count";
+        private static final String LIFETIME_SOURCE_COUNTS_TAG = "lifetime_source_counts";
         private static final String RETENTION_LIMIT_TAG = "retention_limit";
 
         // 服务端配置是所有玩家、所有表共享的最后兜底上限
@@ -219,6 +249,8 @@ public final class ArchaeologyJournalLogState {
         private LootSourceType firstUnlockLootSource;
         private final LinkedHashMap<UUID, ExcavationLogEntry> entries = new LinkedHashMap<>();
         private long lifetimeEntryCount;
+        private final LinkedHashMap<ResourceLocation, Long> lifetimeSourceCounts = new LinkedHashMap<>();
+        private boolean lifetimeSourceCountsInitialized = true;
         private int retentionLimit = getGlobalMaxEntries();
         // 懒缓存：仅在 entries 修改后重建
         private int entriesVersion = 0;
@@ -250,6 +282,17 @@ public final class ArchaeologyJournalLogState {
 
         public int getTotalEntryCount() {
             return this.entries.size();
+        }
+
+        public long getLifetimeEntryCount() {
+            return this.lifetimeEntryCount;
+        }
+
+        public long getLifetimeEntryCount(@Nullable LootSourceType source) {
+            if (source == null) {
+                return 0L;
+            }
+            return this.lifetimeSourceCounts.getOrDefault(source.id(), 0L);
         }
 
         public int getRetentionLimit() {
@@ -331,7 +374,7 @@ public final class ArchaeologyJournalLogState {
             return false;
         }
 
-        private EntryUpsertResult upsertEntryWithResult(ExcavationLogEntry entry) {
+        private EntryUpsertResult upsertEntryWithResult(ExcavationLogEntry entry, boolean rootEntry) {
             ExcavationLogEntry previous = this.entries.get(entry.entryId());
             long previousLifetimeCount = this.lifetimeEntryCount;
             if (previous == null && this.getNotedEntryCount() >= this.getEffectiveRetentionLimit()) {
@@ -343,6 +386,13 @@ public final class ArchaeologyJournalLogState {
             boolean added = previous == null;
             if (added && this.lifetimeEntryCount < Long.MAX_VALUE) {
                 this.lifetimeEntryCount++;
+            }
+            if (added && rootEntry && entry.lootSource() != null) {
+                ResourceLocation sourceId = entry.lootSource().id();
+                long previousSourceCount = this.lifetimeSourceCounts.getOrDefault(sourceId, 0L);
+                if (previousSourceCount < Long.MAX_VALUE) {
+                    this.lifetimeSourceCounts.put(sourceId, previousSourceCount + 1L);
+                }
             }
             List<UUID> removedEntryIds = added
                     ? this.trimEntriesToLimit(this.getEffectiveRetentionLimit())
@@ -413,6 +463,8 @@ public final class ArchaeologyJournalLogState {
             copy.firstUnlockedDayTime = this.firstUnlockedDayTime;
             copy.firstUnlockLootSource = this.firstUnlockLootSource;
             copy.lifetimeEntryCount = this.lifetimeEntryCount;
+            copy.lifetimeSourceCounts.putAll(this.lifetimeSourceCounts);
+            copy.lifetimeSourceCountsInitialized = this.lifetimeSourceCountsInitialized;
             copy.retentionLimit = this.retentionLimit;
             copy.entries.putAll(this.entries);
             return copy;
@@ -430,6 +482,11 @@ public final class ArchaeologyJournalLogState {
                 tag.putString(FIRST_UNLOCK_LOOT_SOURCE_TAG, this.firstUnlockLootSource.id().toString());
             }
             tag.putLong(LIFETIME_ENTRY_COUNT_TAG, this.lifetimeEntryCount);
+            CompoundTag sourceCountsTag = new CompoundTag();
+            for (Map.Entry<ResourceLocation, Long> sourceCount : this.lifetimeSourceCounts.entrySet()) {
+                sourceCountsTag.putLong(sourceCount.getKey().toString(), sourceCount.getValue());
+            }
+            tag.put(LIFETIME_SOURCE_COUNTS_TAG, sourceCountsTag);
             tag.putInt(RETENTION_LIMIT_TAG, this.retentionLimit);
             ListTag entriesTag = new ListTag();
             for (ExcavationLogEntry entry : this.entries.values()) {
@@ -452,6 +509,18 @@ public final class ArchaeologyJournalLogState {
                 history.firstUnlockLootSource = LootSourceType.fromId(tag.getString(FIRST_UNLOCK_LOOT_SOURCE_TAG));
             }
             history.lifetimeEntryCount = Math.max(0L, tag.getLong(LIFETIME_ENTRY_COUNT_TAG));
+            history.lifetimeSourceCountsInitialized = tag.contains(
+                    LIFETIME_SOURCE_COUNTS_TAG, Tag.TAG_COMPOUND);
+            if (history.lifetimeSourceCountsInitialized) {
+                CompoundTag sourceCountsTag = tag.getCompound(LIFETIME_SOURCE_COUNTS_TAG);
+                for (String sourceKey : sourceCountsTag.getAllKeys()) {
+                    ResourceLocation sourceId = ResourceLocation.tryParse(sourceKey);
+                    if (sourceId != null) {
+                        history.lifetimeSourceCounts.put(sourceId,
+                                Math.max(0L, sourceCountsTag.getLong(sourceKey)));
+                    }
+                }
+            }
             int storedRetentionLimit = tag.getInt(RETENTION_LIMIT_TAG);
             history.retentionLimit = storedRetentionLimit > 0
                     ? storedRetentionLimit : getGlobalMaxEntries();
@@ -465,6 +534,20 @@ public final class ArchaeologyJournalLogState {
             }
             history.lifetimeEntryCount = Math.max(history.lifetimeEntryCount, history.entries.size());
             return history;
+        }
+
+        // 旧存档没有来源累计值时，仅用当前父表日志建立不重复的兼容基线。
+        private void initializeLegacySourceCounts(ResourceLocation tableId) {
+            if (this.lifetimeSourceCountsInitialized) return;
+            this.lifetimeSourceCounts.clear();
+            for (ExcavationLogEntry entry : this.entries.values()) {
+                ResourceLocation rootId = entry.tableStack() != null && !entry.tableStack().isEmpty()
+                        ? entry.tableStack().getFirst() : tableId;
+                if (tableId.equals(rootId) && entry.lootSource() != null) {
+                    this.lifetimeSourceCounts.merge(entry.lootSource().id(), 1L, Long::sum);
+                }
+            }
+            this.lifetimeSourceCountsInitialized = true;
         }
     }
 }

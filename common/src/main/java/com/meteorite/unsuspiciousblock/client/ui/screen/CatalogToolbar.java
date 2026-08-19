@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
 import com.meteorite.unsuspiciousblock.client.ui.widget.ShadowlessEditBox;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -230,24 +231,24 @@ public class CatalogToolbar {
                 + (bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
                 + JournalLayout.CATALOG_X_OFFSET + this.horizontalOffset;
 
-        // 搜索切换按钮
-        // 多行 tooltip：标题 + 各搜索规则
-        Component header = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip");
-        Component ruleTable = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_table");
-        Component ruleMod = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_mod");
-        Component ruleType = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_type");
-        Component ruleItem = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_item");
-        Component ruleTag = Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_tooltip.rule_tag");
+        // 搜索规则分成语法与用途两行，缩短 tooltip 宽度并区分信息层级。
+        String tooltipBase = "screen.unsuspiciousblock.archaeology_journal.search_tooltip";
         this.searchToggleButton = new IconButton(
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
                 this.searchExpanded ? IconButton.Icon.CLOSE : IconButton.Icon.SEARCH,
-                List.of(header,
-                        Component.literal("- ").append(ruleTable),
-                        Component.literal("- ").append(ruleMod),
-                        Component.literal("- ").append(ruleType),
-                        Component.literal("- ").append(ruleItem),
-                        Component.literal("- ").append(ruleTag)),
+                List.of(
+                        Component.translatable(tooltipBase).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
+                        Component.translatable(tooltipBase + ".rule_table.syntax").withStyle(ChatFormatting.AQUA),
+                        tooltipDescription(tooltipBase + ".rule_table.description"),
+                        Component.translatable(tooltipBase + ".rule_mod.syntax").withStyle(ChatFormatting.AQUA),
+                        tooltipDescription(tooltipBase + ".rule_mod.description"),
+                        Component.translatable(tooltipBase + ".rule_type.syntax").withStyle(ChatFormatting.AQUA),
+                        tooltipDescription(tooltipBase + ".rule_type.description"),
+                        Component.translatable(tooltipBase + ".rule_item.syntax").withStyle(ChatFormatting.AQUA),
+                        tooltipDescription(tooltipBase + ".rule_item.description"),
+                        Component.translatable(tooltipBase + ".rule_tag.syntax").withStyle(ChatFormatting.AQUA),
+                        tooltipDescription(tooltipBase + ".rule_tag.description")),
                 this::toggleSearch
         );
         screen.registerWidget(this.searchToggleButton);
@@ -318,6 +319,11 @@ public class CatalogToolbar {
             this.searchField.setVisible(false);
             this.searchField.setResponder(this::onSearchChanged);
         }
+    }
+
+    private static Component tooltipDescription(String translationKey) {
+        return Component.literal("  ")
+                .append(Component.translatable(translationKey).withStyle(ChatFormatting.GRAY));
     }
 
     /** 渲染与搜索按钮等高、同色的搜索框背景。 */
