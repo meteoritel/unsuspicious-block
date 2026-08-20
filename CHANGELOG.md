@@ -394,3 +394,52 @@
 ### Fixed
 - Fixed inaccurate acquisition-source display for some dynamic items after a restart.
 - Fixed an issue where malformed component data could misidentify different items as the same drop.
+
+## [1.5.2]
+
+### 新增
+
+#### 进度系统
+- 新增 4 条进度：拨沙见真、吱悠~吱悠~、私人博物馆、满载而归。
+- 陶片/纹饰收藏家进度改用原版标签判定，其他模组添加的条目不再计入。
+
+#### JEI 联动
+- 手册介绍页与物品格中已解锁的物品支持 JEI 悬停联动，可按 U / R 查看配方与用法。
+- 在背包或 JEI 界面悬停物品并按下手册快捷键（默认 C）时，直接以该物品注册名发起搜索。
+
+#### 标本箱
+- 为标本箱添加不死图腾代理支持，标本箱在玩家背包内箱中不死图腾即会生效。优先级低于副手的不死图腾。
+
+### 变化
+- 考古铲未潜行时不再能直接挖掘可疑方块，避免误破坏。
+- 战利品表自定义名称迁移至整合包级语言文件（`config/unsuspiciousblock/loot_table_lang/`），旧世界文件自动迁移；管理界面支持批量编辑、名称来源标签与语言 JSON 导入。
+- 优化部分UI。
+
+### 修复
+- 修复其他模组联动的条目统一显示「<0.01%」的 bug 。
+- 现在从全局搜索选中条目时，目录会同步切换到对应分类并展开父级路径。
+- 修复 JEI 在手册界面初始化完成前查询到零尺寸的问题。
+
+### Added
+
+#### Advancements
+- Added 4 new advancements: "See Through the Sand", "Round and Round", "It Belongs in a Museum!", and "Motherlode".
+- "Sherd Collector" and "Template Collector" now use vanilla tags for their criteria; entries added by other mods no longer count.
+
+#### JEI Integration
+- Unlocked items on the journal intro pages and item grids now support JEI hover interaction — press U / R to view recipes and uses.
+- Hover over an item in your inventory or a JEI screen and press the journal hotkey (default C) to open the journal with a search by that item's registry name.
+
+#### Specimen Box
+- Added an Undying Totem proxy for the specimen box: an Undying Totem stored inside a specimen box in the player's inventory now takes effect. Its priority is lower than a totem held in the off-hand.
+
+### Changed
+- The Archaeological Shovel can no longer dig suspicious blocks directly unless sneaking, preventing accidental destruction.
+- Custom loot table names have been migrated to modpack-level language files (`config/unsuspiciousblock/loot_table_lang/`); old world files migrate automatically. The management screen now supports batch editing, name source tags, and language JSON import.
+- Misc UI polish.
+
+### Fixed
+- Fixed entries from mod integrations always displaying "<0.01%".
+- Selecting an entry from a global search now switches the catalogue to the matching category and expands the parent path.
+- Fixed JEI querying a zero-sized GUI before the journal screen finished initialization.
+
