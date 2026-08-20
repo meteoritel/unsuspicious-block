@@ -1,0 +1,35 @@
+{
+  "parent": "unsuspiciousblock:adventure/take_note_take_note",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:specimen_box"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.it_belongs_in_a_museum"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.it_belongs_in_a_museum.desc"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "museum": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "unsuspiciousblock:specimen_box"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "museum"
+    ]
+  ]
+}

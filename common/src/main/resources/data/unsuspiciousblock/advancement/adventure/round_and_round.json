@@ -1,0 +1,28 @@
+{
+  "parent": "unsuspiciousblock:adventure/take_note_take_note",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:pottery_wheel"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.round_and_round"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.round_and_round.desc"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "round_and_round": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "round_and_round"
+    ]
+  ]
+}

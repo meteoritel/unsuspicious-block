@@ -2,30 +2,27 @@
   "parent": "unsuspiciousblock:adventure/see_through_the_sand",
   "display": {
     "icon": {
-      "id": "unsuspiciousblock:archaeology_journal"
+      "id": "unsuspiciousblock:ancient_coin"
     },
     "title": {
-      "translate": "advancement.unsuspiciousblock.cache_me_if_you_can"
+      "translate": "advancement.unsuspiciousblock.motherlode"
     },
     "description": {
-      "translate": "advancement.unsuspiciousblock.cache_me_if_you_can.desc"
+      "translate": "advancement.unsuspiciousblock.motherlode.desc"
     },
     "frame": "challenge",
     "show_toast": true,
     "announce_to_chat": true,
-    "hidden": false
+    "hidden": true
   },
   "criteria": {
-    "reach_table_limit": {
+    "motherlode": {
       "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "reach_table_limit"
+      "motherlode"
     ]
-  ],
-  "rewards": {
-    "experience": 500
-  }
+  ]
 }

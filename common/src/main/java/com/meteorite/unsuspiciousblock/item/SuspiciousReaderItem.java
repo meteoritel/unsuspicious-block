@@ -51,6 +51,9 @@ public class SuspiciousReaderItem extends Item {
     // shift+右键空气充能时，双击强制充能的判定窗口（单位：tick）
     public static final int CHARGE_DOUBLE_CLICK_WINDOW_TICKS = 20;
 
+    // 「满载而归」挑战：单次范围扫描扫出的对象（可疑方块 + 战利品容器）达到该数量即授予
+    public static final int MOTHERLODE_MIN_OBJECTS = 8;
+
     // debug 开关：开启时创造模式也不跳过能量消耗，方便测试
     public static boolean DEBUG_FORCE_ENERGY_COST = false;
 
@@ -329,6 +332,11 @@ public class SuspiciousReaderItem extends Item {
                 );
             }
 
+            // 「满载而归」挑战：单次范围扫描扫出的可疑方块 + 战利品容器合计达标即授予
+            if (targets.size() + lootContainers.size() >= MOTHERLODE_MIN_OBJECTS) {
+                AchievementManager.grantIfNotAlready(serverPlayer, ModAchievements.MOTHERLODE);
+            }
+
             // 向客户端同步扫描到的高亮方块位置（可疑方块 + 战利品容器），用于描边透视显示
             Services.NETWORK.sendToPlayer(serverPlayer, new SyncReaderScanResultPayload(targets, lootContainers));
 
@@ -468,11 +476,6 @@ public class SuspiciousReaderItem extends Item {
                                       BrushableBlockEntityScanState scanState) {
         ItemStack lootItem = scanState.unsuspiciousblock$resolveAndGetLoot(player);
         scanState.unsuspiciousblock$markScanned(player.getUUID());
-
-        // 首次扫描到非空可疑方块时授予「Unsuspicious Minds」成就
-        if (!lootItem.isEmpty()) {
-            AchievementManager.grantIfNotAlready(player, ModAchievements.UNSUSPICIOUS_MINDS);
-        }
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null) {

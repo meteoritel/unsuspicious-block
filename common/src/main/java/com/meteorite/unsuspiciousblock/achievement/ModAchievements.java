@@ -11,19 +11,18 @@ public enum ModAchievements implements ModAchievement {
 
     // ======================== 普通进度 ========================
 
-    UNSUSPICIOUS_MINDS("story/unsuspicious_minds", "scanned"),
     TAKE_NOTE_TAKE_NOTE("adventure/take_note_take_note", "take_note"),
     PAPER_TRAIL("adventure/paper_trail", "paper_trail"),
     PENNY_FOR_YOUR_FINDS("adventure/penny_for_your_finds", "penny"),
     ANCIENT_SCHOLARSHIP("adventure/ancient_scholarship", "scholar"),
-    // TODO: 未来用于标本盒的成就
-    IT_BELONGS_IN_A_MUSEUM("adventure/it_belongs_in_a_museum", "museum"),
     SHERD_COLLECTOR("adventure/sherd_collector", "sherd_collector"),
     TEMPLATE_COLLECTOR("adventure/template_collector", "template_collector"),
+    ROUND_AND_ROUND("adventure/round_and_round", "round_and_round"),
 
     // ======================== 挑战进度 ========================
     COMPLETIONISTS_DUST("challenges/completionists_dust", "completionist"),
-    CACHE_ME_IF_YOU_CAN("challenges/cache_me_if_you_can", "reach_table_limit");
+    CACHE_ME_IF_YOU_CAN("challenges/cache_me_if_you_can", "reach_table_limit"),
+    MOTHERLODE("challenges/motherlode", "motherlode");
 
     private final String path;
     private final String criterion;

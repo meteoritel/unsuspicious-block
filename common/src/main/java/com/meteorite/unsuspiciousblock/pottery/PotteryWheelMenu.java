@@ -31,6 +31,8 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
     // 服务端方块实体构造
     public PotteryWheelMenu(int id, Inventory inventory, PotteryWheelBlockEntity wheel) {
         this(id, inventory, wheel, wheel, wheel.getDataAccess());
+        // 登记操作者，供陶轮台「首次开始工作」进度授予
+        wheel.noteOperator(inventory.player);
     }
 
     private PotteryWheelMenu(int id, Inventory inventory, net.minecraft.world.Container container,

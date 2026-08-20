@@ -5,10 +5,10 @@
       "id": "unsuspiciousblock:suspicious_reader"
     },
     "title": {
-      "translate": "advancement.unsuspiciousblock.unsuspicious_minds"
+      "translate": "advancement.unsuspiciousblock.see_through_the_sand"
     },
     "description": {
-      "translate": "advancement.unsuspiciousblock.unsuspicious_minds.desc"
+      "translate": "advancement.unsuspiciousblock.see_through_the_sand.desc"
     },
     "frame": "task",
     "show_toast": true,
@@ -16,13 +16,16 @@
     "hidden": false
   },
   "criteria": {
-    "scanned": {
-      "trigger": "minecraft:impossible"
+    "see_through_the_sand": {
+      "trigger": "minecraft:recipe_crafted",
+      "conditions": {
+        "recipe_id": "unsuspiciousblock:suspicious_reader"
+      }
     }
   },
   "requirements": [
     [
-      "scanned"
+      "see_through_the_sand"
     ]
   ]
 }

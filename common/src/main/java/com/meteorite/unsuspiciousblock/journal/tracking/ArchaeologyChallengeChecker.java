@@ -9,9 +9,15 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHold
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
 
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -19,7 +25,8 @@ import java.util.Set;
  * 考古收集类成就检测器——在战利品解锁后核对玩家的考古日记进度，
  * 判定是否达成「集齐陶片 / 集齐样板 / 原版考古表全图鉴」并授予对应成就。
  * <p>
- * 原版考古陶片与纹饰样板数量固定，故采用穷举固定物品集合的判定方式；
+ * 原版考古陶片与纹饰样板的判定范围取自原版物品标签（#minecraft:decorated_pot_sherds 与
+ * #minecraft:trim_templates），且仅保留 minecraft 命名空间条目，其他模组向标签添加的内容会被忽略；
  * 全图鉴成就仅要求原版考古战利品表（minecraft:archaeology/ 前缀）全部解锁，
  * 基于 rawCatalog 判定以避免渐进模拟导致的范围不稳定。
  * <p>
@@ -27,17 +34,11 @@ import java.util.Set;
  */
 public final class ArchaeologyChallengeChecker {
 
-    // 20 种原版考古陶片
-    private static final Set<ResourceLocation> POTTERY_SHERDS = Set.of(
-            sherd("angler"), sherd("archer"), sherd("arms_up"), sherd("blade"),
-            sherd("brewer"), sherd("burn"), sherd("danger"), sherd("explorer"),
-            sherd("friend"), sherd("heart"), sherd("heartbreak"), sherd("howl"),
-            sherd("miner"), sherd("mourner"), sherd("plenty"), sherd("prize"),
-            sherd("sheaf"), sherd("shelter"), sherd("skull"), sherd("snort"));
+    // 集齐陶片的判定范围：原版陶片标签（仅 minecraft 命名空间条目生效）
+    private static final TagKey<Item> SHERD_TAG = ItemTags.DECORATED_POT_SHERDS;
 
-    // 4 种原版考古纹饰样板（向导 / 牧民 / 塑造 / 雇主）
-    private static final Set<ResourceLocation> TRIM_TEMPLATES = Set.of(
-            template("wayfinder"), template("raiser"), template("shaper"), template("host"));
+    // 集齐纹饰样板的判定范围：原版纹饰样板标签（仅 minecraft 命名空间条目生效）
+    private static final TagKey<Item> TRIM_TEMPLATE_TAG = ItemTags.TRIM_TEMPLATES;
 
     private ArchaeologyChallengeChecker() {
     }
@@ -56,12 +57,18 @@ public final class ArchaeologyChallengeChecker {
             return;
         }
 
-        // 集齐陶片 / 样板：穷举固定物品集合判定
-        if (needSherd && allCollected(state, POTTERY_SHERDS)) {
-            AchievementManager.grantIfNotAlready(player, ModAchievements.SHERD_COLLECTOR);
+        // 集齐陶片 / 样板：按原版标签判定，忽略其他模组添加的条目；标签为空（尚未绑定）时不授予
+        if (needSherd) {
+            Set<ResourceLocation> sherds = vanillaTagItems(SHERD_TAG);
+            if (!sherds.isEmpty() && allCollected(state, sherds)) {
+                AchievementManager.grantIfNotAlready(player, ModAchievements.SHERD_COLLECTOR);
+            }
         }
-        if (needTemplate && allCollected(state, TRIM_TEMPLATES)) {
-            AchievementManager.grantIfNotAlready(player, ModAchievements.TEMPLATE_COLLECTOR);
+        if (needTemplate) {
+            Set<ResourceLocation> templates = vanillaTagItems(TRIM_TEMPLATE_TAG);
+            if (!templates.isEmpty() && allCollected(state, templates)) {
+                AchievementManager.grantIfNotAlready(player, ModAchievements.TEMPLATE_COLLECTOR);
+            }
         }
 
         // 全图鉴：要求解锁所有原版考古战利品表且表中每件物品都至少获得一次
@@ -129,11 +136,18 @@ public final class ArchaeologyChallengeChecker {
                 && tableId.getPath().startsWith("archaeology/");
     }
 
-    private static ResourceLocation sherd(String name) {
-        return ResourceLocation.withDefaultNamespace(name + "_pottery_sherd");
-    }
-
-    private static ResourceLocation template(String name) {
-        return ResourceLocation.withDefaultNamespace(name + "_armor_trim_smithing_template");
+    // 读取物品标签中 minecraft 命名空间的物品 id 集合；模组添加的条目被忽略，
+    // 标签尚未绑定或不含原版物品时返回空集（调用方需据此跳过授予）
+    private static Set<ResourceLocation> vanillaTagItems(TagKey<Item> tag) {
+        Set<ResourceLocation> ids = new HashSet<>();
+        for (Holder<Item> holder : BuiltInRegistries.ITEM.getOrCreateTag(tag)) {
+            holder.unwrapKey().ifPresent(key -> {
+                ResourceLocation id = key.location();
+                if ("minecraft".equals(id.getNamespace())) {
+                    ids.add(id);
+                }
+            });
+        }
+        return ids;
     }
 }

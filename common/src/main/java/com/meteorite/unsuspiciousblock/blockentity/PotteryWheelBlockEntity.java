@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
+import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.block.PotteryWheelBlock;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.core.BlockPos;
@@ -32,8 +34,12 @@ import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.UUID;
 
 /** 纹饰陶轮台的 6 个输入/输出槽位、动态配方与漏斗交互逻辑。 */
 public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyContainer, MenuProvider {
@@ -89,6 +95,9 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
     };
     private int processProgress;
     private ControlMode controlMode = ControlMode.ENABLED;
+    // 最近一次打开陶轮台菜单的玩家（仅内存，不持久化），用于「首次开始工作」进度授予
+    @Nullable
+    private UUID lastOperator;
 
     public PotteryWheelBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.POTTERY_WHEEL.get(), pos, state);
@@ -233,10 +242,30 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         }
 
         wheel.updateWorkingState(true);
+        // 进度从 0 开始递增的第一个 tick 视为「开始工作」，向最近操作者授予进度
+        if (wheel.processProgress == 0) {
+            wheel.grantRoundAndRound();
+        }
         wheel.processProgress++;
         if (wheel.processProgress >= PROCESS_TIME) {
             wheel.completeProcessing(result);
         }
+    }
+
+    // 「吱悠~吱悠~」进度：陶轮台首次开始工作时授予给最近一次操作者（重复触发由 grantIfNotAlready 幂等处理）
+    private void grantRoundAndRound() {
+        if (lastOperator == null || level == null || level.isClientSide() || level.getServer() == null) {
+            return;
+        }
+        ServerPlayer player = level.getServer().getPlayerList().getPlayer(lastOperator);
+        if (player != null) {
+            AchievementManager.grantIfNotAlready(player, ModAchievements.ROUND_AND_ROUND);
+        }
+    }
+
+    // 由菜单在服务端构造时登记操作者，供「首次开始工作」进度授予
+    public void noteOperator(Player player) {
+        this.lastOperator = player.getUUID();
     }
 
     // 客户端稳定生成随转盘向外飞散的黏土碎屑。
