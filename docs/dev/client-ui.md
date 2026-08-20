@@ -40,6 +40,7 @@
 | `HandOfCatClientState` | 猫之手客户端状态（缓存的 favor/lives） |
 | `CatHandClientState` | 猫之手按键处理状态 |
 | `EnchantmentRevealClientState` | 附魔揭示客户端状态（完整候选列表） |
+| `JournalHoveredItemProvider` | 可选物品查看器（JEI）向考古笔记快捷键提供悬停物品的接口；空物品栈表示输入被查看器占用 |
 | `ArchaeologyJournalKeyHandler` | 考古笔记按键处理 |
 
 ### 3.1 ArchaeologyJournalClientState 核心
@@ -69,7 +70,7 @@
 
 ## 4. 考古笔记 GUI 架构
 
-`client/ui/` 子包按职责分层，共约 48 个类：
+`client/ui/` 子包按职责分层，共约 51 个类：
 
 ```
 ui/
@@ -212,7 +213,7 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 
 ## 11. 客户端 Mixin
 
-`mixin/client/` 包含 5 个客户端 mixin（见 [mixin.md](mixin.md)）：
+`mixin/client/` 包含 4 个客户端 mixin（见 [mixin.md](mixin.md)）：
 
 - `AbstractContainerScreenAccessor`：访问容器屏幕的内部字段（tooltip 渲染用）。
 - `ClientLanguageMixin`：对自动生成的战利品表 key 动态补充当前服务端名称；仅在真实资源重载时清理资源来源索引。

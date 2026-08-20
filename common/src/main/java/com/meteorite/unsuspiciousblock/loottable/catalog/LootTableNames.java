@@ -137,7 +137,7 @@ public final class LootTableNames {
         List<String> englishOnlyLines = new ArrayList<>();
         for (MissingEntry entry : PENDING_MISSING.values()) {
             String translationKey = entry.translationKey();
-            // 当前语言是否覆盖该 key：客户端综合资源文件与自定义覆盖文件；服务端退化为合并语言视图
+            // 当前语言是否覆盖该 key：客户端综合资源文件与服务端补充配置快照；服务端退化为合并语言视图
             boolean currentLanguageHas = serverContext
                     ? Language.getInstance().has(translationKey)
                     : snapshot.currentResource().containsKey(translationKey)

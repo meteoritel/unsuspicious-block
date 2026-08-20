@@ -2,7 +2,7 @@
 
 > 面向 Minecraft 1.21.1 的考古探索与发现记录模组。
 >
-> 本页和本 Wiki 以正式版本 `1.5.1` 为准。
+> 本页和本 Wiki 以正式版本 `1.5.2` 为准。
 
 ## 这个模组做什么
 
@@ -19,15 +19,17 @@ Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工�
 - **纹饰陶轮台**：复制纹饰陶片、制作纹饰陶罐，并支持漏斗自动化。
 - **不可疑方块**：把物品封存在伪装成可疑方块的沙子或沙砾中。
 
-## 推荐阅读顺序
+## 目录
 
 1. [安装与运行环境](Installation)
 2. [快速上手](Getting-Started)
 3. [考古笔记](Archaeology-Journal)
 4. [可疑解析仪与考古铲](Reader-and-Shovel)
 5. [失落书页与附魔](Lost-Pages-and-Enchantments)
-
-之后可以按需要阅读[猫之瞳](Eye-of-Cat)、[标本箱](Specimen-Box)、[纹饰陶轮台](Pottery-Wheel)和[不可疑方块](Unsuspicious-Blocks)。
+6. [猫之瞳](Eye-of-Cat)
+7. [标本箱](Specimen-Box)
+8. [纹饰陶轮台](Pottery-Wheel)
+9. [不可疑方块](Unsuspicious-Blocks)
 
 ## 支持环境
 

@@ -120,7 +120,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("3.0");
+registrar.versioned("4.0");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：

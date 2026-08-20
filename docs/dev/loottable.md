@@ -159,7 +159,7 @@ List.of(
 
 ### 5.2 自定义表名
 
-名称 key 始终由 `LootTableNames.createTranslationKey(ResourceLocation)` 自动生成。游戏资源语言是正式、只读来源；服务端配置只补充资源中不存在的 key。服务端按标准语言 JSON 保存到 `config/unsuspiciousblock/loot_table_lang/<language>.json`，适合整合包作者直接分发，也便于开发者把确认后的条目复制回 `assets/unsuspiciousblock/lang/`。旧世界的 `serverconfig/unsuspiciousblock-loot-table-names.json` 会在首次加载时合并迁移，旧文件保留。
+名称 key 始终由 `LootTableNames.createTranslationKey(ResourceLocation)` 自动生成。游戏资源语言是正式、只读来源；服务端配置只补充资源中不存在的 key。服务端按标准语言 JSON 保存到 `config/unsuspiciousblock/loot_table_lang/<language>.json`，适合整合包作者直接分发，也便于开发者把确认后的条目复制回 `assets/unsuspiciousblock/lang/`。旧世界的 `serverconfig/unsuspiciousblock-loot-table-names.json` 会在每次加载时合并迁移（仅补充缺失 key，幂等；服务端启动与 `/reload` 均会触发），旧文件保留。
 
 客户端收到的服务端名称只驻留当前连接的内存，断开连接时清除，不再写入客户端全局配置。`ClientLootTableLanguageStore` 扫描当前游戏资源栈的语言 JSON，记录最终提供 key 的 Resource Pack ID；`ClientLanguageMixin` 仅在同语言资源缺少 key 时合并服务端补充值。因此资源值优先、只读，服务端配置不会覆盖模组或 Resource Pack 已提供的正式翻译。
 
@@ -229,9 +229,10 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 | 0 | 无条件 | `"<0.01%"` |
 | >0 | - | `formatPercent(appearances / 10000)` |
 
-模拟期才发现的动态条目不把有限样本中的出现频率当作稳定概率，对外统一显示
-`"<0.01%"`。这类条目中的非附魔 `DataComponentPatch` 使用 `COMPONENT_EXACT` 保存，确保药水等
-动态变体经过 SavedData 缓存和网络同步后仍能恢复；附魔结果继续折叠为 `ENCHANTED_APPROX`。
+模拟期才发现的动态条目同样按每个代表场景中的实际出现次数计算概率。由于这些条目没有可供静态
+判定的获取路径，只保存实际观测到该签名的场景。动态条目中的非附魔 `DataComponentPatch` 使用
+`COMPONENT_EXACT` 保存，确保药水等动态变体经过 SavedData 缓存和网络同步后仍能恢复；附魔结果
+继续折叠为 `ENCHANTED_APPROX`。
 
 ### 7.2 条件场景策略
 
@@ -292,7 +293,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 ### 7.4 模拟结果缓存
 
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的 `0` 场景能够汇总到直接子表。动态条目的直接来源标记（`hasDirectSource`）与子表来源列表（`sourceChildTables`）会一并持久化到父表缓存，恢复时优先使用缓存的来源信息，仅在其缺失时才用直接子表及其后代缓存中的相同签名重建获取路径。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v11`。模拟异常或无法取得有效表时不写入缓存。`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。详见 [考古笔记系统](journal.md) 的目录构建部分。
+模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的 `0` 场景能够汇总到直接子表。动态条目的直接来源标记（`hasDirectSource`）与子表来源列表（`sourceChildTables`）会一并持久化到父表缓存，恢复时优先使用缓存的来源信息，仅在其缺失时才用直接子表及其后代缓存中的相同签名重建获取路径。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v12`。模拟异常或无法取得有效表时不写入缓存。`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。详见 [考古笔记系统](journal.md) 的目录构建部分。
 
 ## 8. 战利品注入
 

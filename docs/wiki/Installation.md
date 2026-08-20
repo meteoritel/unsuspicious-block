@@ -1,6 +1,6 @@
 # 安装与运行环境
 
-> 适用于 Minecraft 1.21.1 和 Unsuspicious Block 1.5.1。
+> 适用于 Minecraft 1.21.1 和 Unsuspicious Block 1.5.2。
 
 ## 必要条件
 
