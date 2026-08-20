@@ -34,7 +34,6 @@ import java.util.function.Function;
  */
 final class LootProbabilitySimulationJob {
     private static final int TIME_CHECK_BATCH_SIZE = 32;
-    private static final String DYNAMIC_PROBABILITY = "<0.01%";
 
     private final ResourceLocation tableId;
     private final TableDefinition rawTable;
@@ -251,8 +250,9 @@ final class LootProbabilitySimulationJob {
                     item.signature(), item.acquisitionPaths(), item.injected(), probabilities));
         }
         for (Map.Entry<String, LootResultSignature> entry : this.discovered.entrySet()) {
+            List<ScenarioProbability> probabilities = discoveredScenarioProbabilities(entry.getKey());
             ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(
-                    entry.getValue(), DYNAMIC_PROBABILITY, true, List.of());
+                    entry.getValue(), summarize(probabilities), true, probabilities);
             ResourceLocation childSource = this.discoveredDirectly.contains(entry.getKey())
                     ? null : this.discoveredChildSources.get(entry.getKey());
             if (childSource == null) {
@@ -300,6 +300,20 @@ final class LootProbabilitySimulationJob {
             }
             probabilities.add(new ScenarioProbability(scenario.key(),
                     formatProbability(counts.get(storedKey), uncertainWhenAbsent), scenario.assumptions()));
+        }
+        return List.copyOf(probabilities);
+    }
+
+    // 动态条目没有可供静态判定的获取路径，只展示实际观测到该签名的代表场景。
+    private List<ScenarioProbability> discoveredScenarioProbabilities(String storedKey) {
+        List<ScenarioProbability> probabilities = new ArrayList<>();
+        for (SimulationScenario scenario : this.scenarios) {
+            Map<String, Integer> counts = this.countsByScenario.getOrDefault(scenario.key(), Map.of());
+            if (!counts.containsKey(storedKey)) {
+                continue;
+            }
+            probabilities.add(new ScenarioProbability(scenario.key(),
+                    formatProbability(counts.get(storedKey), false), scenario.assumptions()));
         }
         return List.copyOf(probabilities);
     }
