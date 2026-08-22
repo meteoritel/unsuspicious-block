@@ -44,6 +44,14 @@ public class ModKeyBindings {
             "key.categories.unsuspiciousblock"
     );
 
+    /** 扫描仪 HUD 显示开关键，默认 H 键 */
+    public static final KeyMapping READER_HUD_TOGGLE = new KeyMapping(
+            "key.unsuspiciousblock.reader_hud_toggle",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_H,
+            "key.categories.unsuspiciousblock"
+    );
+
     private ModKeyBindings() {
     }
 

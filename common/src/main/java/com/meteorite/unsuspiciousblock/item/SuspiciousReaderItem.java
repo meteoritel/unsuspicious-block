@@ -308,7 +308,7 @@ public class SuspiciousReaderItem extends Item {
             }
 
             // 执行扫描
-            int actualScanned = 0;
+            List<SyncReaderScanResultPayload.ScanEntry> scanResults = new ArrayList<>(targets.size());
             int newScanned = 0;
             for (BlockPos pos : targets) {
                 BlockEntity be = level.getBlockEntity(pos);
@@ -316,20 +316,12 @@ public class SuspiciousReaderItem extends Item {
                     // 已被同一玩家扫描过的方块仍显示结果，但不消耗额外能量
                     boolean alreadyScanned = targetScanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
                     ScanResult result = scanBrushable(serverPlayer, level, pos, be, targetScanState);
-                    sendPrimaryResultMessage(player, pos, result, alreadyScanned);
-                    actualScanned++;
+                    scanResults.add(createScanEntry(pos, result, alreadyScanned));
+                    logScanResult(pos, result);
                     if (!alreadyScanned) {
                         newScanned++;
                     }
                 }
-            }
-
-            // 范围扫描结果提示
-            if (!targets.isEmpty()) {
-                player.sendSystemMessage(
-                        Component.translatable("item.unsuspiciousblock.suspicious_reader.area_result", actualScanned)
-                                .withStyle(style -> style.withColor(0x55FF55))
-                );
             }
 
             // 「满载而归」挑战：单次范围扫描扫出的可疑方块 + 战利品容器合计达标即授予
@@ -338,7 +330,8 @@ public class SuspiciousReaderItem extends Item {
             }
 
             // 向客户端同步扫描到的高亮方块位置（可疑方块 + 战利品容器），用于描边透视显示
-            Services.NETWORK.sendToPlayer(serverPlayer, new SyncReaderScanResultPayload(targets, lootContainers));
+            Services.NETWORK.sendToPlayer(serverPlayer,
+                    new SyncReaderScanResultPayload(true, scanResults, lootContainers));
 
             // 实际消耗 = 等级数 + 解析出新可疑方块数（仅1级及以上）
             if (!isCreative) {
@@ -368,7 +361,9 @@ public class SuspiciousReaderItem extends Item {
         // 单方块模式免费（能量消耗为 0）
         boolean alreadyScanned = scanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
         ScanResult result = scanBrushable(serverPlayer, level, clickedPos, blockEntity, scanState);
-        sendPrimaryResultMessage(player, clickedPos, result, alreadyScanned);
+        logScanResult(clickedPos, result);
+        Services.NETWORK.sendToPlayer(serverPlayer, new SyncReaderScanResultPayload(
+                false, List.of(createScanEntry(clickedPos, result, alreadyScanned)), List.of()));
 
         // 播放扫描音效
         level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(),
@@ -494,67 +489,31 @@ public class SuspiciousReaderItem extends Item {
         return new ScanResult(lootItem, crafter, blockEntity instanceof UnsuspiciousBlockEntity);
     }
 
-    private void sendPrimaryResultMessage(Player player, BlockPos pos, ScanResult result, boolean alreadyScanned) {
+    private SyncReaderScanResultPayload.ScanEntry createScanEntry(BlockPos pos, ScanResult result,
+                                                                  boolean alreadyScanned) {
         ItemStack lootItem = result.lootItem();
-        // 已扫描过的方块显示灰色提示
-        if (alreadyScanned) {
-            player.sendSystemMessage(
-                    Component.translatable(
-                            "item.unsuspiciousblock.suspicious_reader.already_scanned",
-                            pos.getX(), pos.getY(), pos.getZ()
-                    ).withStyle(ChatFormatting.DARK_GRAY)
-            );
+        ResourceLocation itemId = lootItem.isEmpty()
+                ? null
+                : BuiltInRegistries.ITEM.getKey(lootItem.getItem());
+        Component displayName = lootItem.isEmpty() ? Component.empty() : lootItem.getHoverName();
+        String crafterName = "";
+        if (result.crafter() != null) {
+            crafterName = result.crafter().name().isBlank()
+                    ? result.crafter().uuid().toString()
+                    : result.crafter().name();
         }
+        return new SyncReaderScanResultPayload.ScanEntry(
+                pos, itemId, lootItem.getCount(), displayName, alreadyScanned,
+                result.sealedByPlayer(), crafterName);
+    }
 
-        if (result.sealedByPlayer()) {
-            Component crafterName = result.crafter() == null
-                    ? Component.translatable("item.unsuspiciousblock.suspicious_reader.unknown_player")
-                    : Component.literal(result.crafter().name().isBlank()
-                            ? result.crafter().uuid().toString()
-                            : result.crafter().name());
-            player.sendSystemMessage(
-                    Component.translatable(
-                            "item.unsuspiciousblock.suspicious_reader.sealed_by", crafterName)
-                            .withStyle(ChatFormatting.AQUA)
-            );
-        }
-
-        if (lootItem.isEmpty()) {
-            player.sendSystemMessage(
-                    Component.translatable(
-                            "item.unsuspiciousblock.suspicious_reader.result_empty",
-                            pos.getX(), pos.getY(), pos.getZ()
-                    ).withStyle(style -> style.withColor(0xAAAAAA))
-            );
+    private void logScanResult(BlockPos pos, ScanResult result) {
+        if (result.lootItem().isEmpty()) {
             Constants.LOG.debug("可疑方块 {} 内没有任何物品。", pos);
             return;
         }
-
-        Component header = Component.translatable(
-                "item.unsuspiciousblock.suspicious_reader.result_header"
-        ).withStyle(style -> style.withColor(0xFFD700).withBold(true));
-
-        Component coords = Component.literal(
-                String.format("(%d, %d, %d)", pos.getX(), pos.getY(), pos.getZ())
-        ).withStyle(style -> style.withColor(0x55FFFF));
-
-        Component itemName = lootItem.getHoverName().copy()
-                .withStyle(style -> style.withColor(0xFFE040));
-
-        Component count = Component.literal(" ×" + lootItem.getCount())
-                .withStyle(style -> style.withColor(0xFFFFFF));
-
-        Component full = Component.empty()
-                .append(header)
-                .append(Component.literal(" "))
-                .append(coords)
-                .append(Component.literal(" → ").withStyle(style -> style.withColor(0xAAAAAA)))
-                .append(itemName)
-                .append(count);
-
-        player.sendSystemMessage(full);
-        Constants.LOG.debug("可疑方块 {} 包含: {} ×{}",
-                pos, lootItem.getHoverName().getString(), lootItem.getCount());
+        Constants.LOG.debug("可疑方块 {} 包含: {} ×{}", pos,
+                result.lootItem().getHoverName().getString(), result.lootItem().getCount());
     }
 
     private record ScanResult(ItemStack lootItem, @Nullable SealedContents.CrafterIdentity crafter,

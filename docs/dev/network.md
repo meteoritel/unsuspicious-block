@@ -99,7 +99,7 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `SyncJournalLogSnapshotEndPayload` | `completeLogSnapshot` | 结束并提交完整快照 |
 | `JournalLogDeleteResultPayload` | `receiveLogDeleteResult` | 日志删除结果回执 |
 | `SyncCatFavorPayload` | `HandOfCatClientState::receive` | 羁绊/命数/关系状态 |
-| `SyncReaderScanResultPayload` | `ReaderScanHighlightState::receive` | 扫描高亮方块 |
+| `SyncReaderScanResultPayload` | `ReaderScanHudState::receive` | 紧凑扫描结果 HUD 与方块高亮 |
 | `SyncEnchantmentRevealListPayload` | `EnchantmentRevealClientState::receive` | 附魔揭示候选 |
 | `NotifyTableCompletionRewardPayload` | `receiveTableCompletionReward` | 100% 完成奖励通知 |
 
@@ -120,7 +120,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("4.0");
+registrar.versioned("4.1");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：
@@ -130,7 +130,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned("4.0")` 声明 payload 协议版本；本版本拆分追踪状态与名称更新，并新增批量名称 payload。
+**版本化**：NeoForge 端用 `registrar.versioned("4.1")` 声明 payload 协议版本；本版本将解析仪结果改为结构化 HUD 条目，同时保留坐标描边同步。
 
 ## 8. 同步策略
 

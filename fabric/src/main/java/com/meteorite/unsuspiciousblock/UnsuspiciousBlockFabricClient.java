@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppende
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
+import com.meteorite.unsuspiciousblock.client.hud.SuspiciousReaderHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
@@ -13,6 +14,7 @@ import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -54,6 +56,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.CAT_LIGHT_STEP_TOGGLE);
+        KeyBindingHelper.registerKeyBinding(ModKeyBindings.READER_HUD_TOGGLE);
 
         // 遍历渲染器清单，统一注册实体渲染器
         ModEntityRenderers.forEach(EntityRendererRegistry::register);
@@ -95,6 +98,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             ClientLootTableLanguageStore.resetOnDisconnect();
             HandOfCatClientState.reset();
             ReaderScanHighlightState.reset();
+            ReaderScanHudState.reset();
             com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
         });
 
@@ -104,6 +108,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             SuspiciousReaderClientState.tick();
             CatHandClientState.tick();
             ReaderScanHighlightState.tick();
+            ReaderScanHudState.tick();
         });
 
         // 半透明方块渲染之后绘制范围扫描高亮与猫之恩惠保护罩，实现透视效果
@@ -112,8 +117,11 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             CatFavorShieldRenderer.render(context.matrixStack(), context.camera());
         });
 
-        // 注册猫之恩惠快捷栏 HUD
-        HudRenderCallback.EVENT.register((guiGraphics, tickCounter) -> CatFavorHud.render(guiGraphics));
+        // 注册快捷栏状态与解析仪扫描结果 HUD
+        HudRenderCallback.EVENT.register((guiGraphics, tickCounter) -> {
+            CatFavorHud.render(guiGraphics);
+            SuspiciousReaderHud.render(guiGraphics);
+        });
 
         // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
         ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {

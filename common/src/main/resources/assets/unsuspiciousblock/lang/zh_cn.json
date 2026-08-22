@@ -28,11 +28,18 @@
   "item.unsuspiciousblock.suspicious_reader.charge_full": "能量已满，无需充能。",
   "item.unsuspiciousblock.suspicious_reader.charge_waste_hint": "已消耗 %s/%s 能量，硬币将部分浪费。shift+双击右键空气强制充能。",
   "item.unsuspiciousblock.suspicious_reader.charge_forced": "强制充能：消耗 1 枚古代金币。",
+  "hud.unsuspiciousblock.suspicious_reader.title": "结果：%s | 容器：%s",
+  "hud.unsuspiciousblock.suspicious_reader.empty": "空",
+  "hud.unsuspiciousblock.suspicious_reader.already_scanned": "已解析",
+  "hud.unsuspiciousblock.suspicious_reader.sealed_by": "由 %s 封存",
+  "hud.unsuspiciousblock.suspicious_reader.containers_only": "已高亮战利品容器",
+  "hud.unsuspiciousblock.suspicious_reader.more": "另有 %s 项结果",
 
   "key.unsuspiciousblock.scan_level_cycle": "切换扫描等级",
   "key.unsuspiciousblock.open_journal": "打开考古笔记",
   "key.unsuspiciousblock.cat_deterrence_toggle": "切换猫的威慑",
   "key.unsuspiciousblock.cat_light_step_toggle": "切换轻步",
+  "key.unsuspiciousblock.reader_hud_toggle": "切换可疑解析仪 HUD",
   "key.categories.unsuspiciousblock": "Unsuspicious Block",
 
   "item.unsuspiciousblock.suspicious_reader.jade_prefix": "§7解析战利品: ",

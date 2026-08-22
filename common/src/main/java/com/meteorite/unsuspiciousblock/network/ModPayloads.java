@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.network;
 import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
 import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
-import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
@@ -160,7 +160,7 @@ public final class ModPayloads {
                 new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
                         HandOfCatClientState::receive),
                 new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
-                        payload -> ReaderScanHighlightState.receive(payload.suspiciousBlocks(), payload.lootContainers())),
+                        ReaderScanHudState::receive),
                 new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
                         EnchantmentRevealClientState::receive),
                 new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,

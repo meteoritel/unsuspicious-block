@@ -117,11 +117,18 @@
   "item.unsuspiciousblock.suspicious_reader.charge_full": "Energy is already full.",
   "item.unsuspiciousblock.suspicious_reader.charge_waste_hint": "Consumed %s/%s energy; a coin would be partially wasted. Shift+right-click air again to force recharge.",
   "item.unsuspiciousblock.suspicious_reader.charge_forced": "Forced recharge: consumed 1 Ancient Coin.",
+  "hud.unsuspiciousblock.suspicious_reader.title": "Results: %s | Containers: %s",
+  "hud.unsuspiciousblock.suspicious_reader.empty": "Empty",
+  "hud.unsuspiciousblock.suspicious_reader.already_scanned": "Already scanned",
+  "hud.unsuspiciousblock.suspicious_reader.sealed_by": "Sealed by %s",
+  "hud.unsuspiciousblock.suspicious_reader.containers_only": "Loot containers highlighted",
+  "hud.unsuspiciousblock.suspicious_reader.more": "+%s more results",
 
   "key.unsuspiciousblock.scan_level_cycle": "Cycle Scan Level",
   "key.unsuspiciousblock.open_journal": "Open Archaeology Journal",
   "key.unsuspiciousblock.cat_deterrence_toggle": "Toggle Cat's Deterrence",
   "key.unsuspiciousblock.cat_light_step_toggle": "Toggle Light Step",
+  "key.unsuspiciousblock.reader_hud_toggle": "Toggle Suspicious Reader HUD",
   "key.categories.unsuspiciousblock": "Unsuspicious Block",
 
   "item.unsuspiciousblock.suspicious_reader.jade_prefix": "§7Scanned loot: ",

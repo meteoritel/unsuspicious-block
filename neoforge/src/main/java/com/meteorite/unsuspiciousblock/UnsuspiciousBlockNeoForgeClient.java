@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppende
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
+import com.meteorite.unsuspiciousblock.client.hud.SuspiciousReaderHud;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
@@ -13,6 +14,7 @@ import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
@@ -110,11 +112,12 @@ public final class UnsuspiciousBlockNeoForgeClient {
         event.register(ModKeyBindings.JOURNAL_OPEN);
         event.register(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
         event.register(ModKeyBindings.CAT_LIGHT_STEP_TOGGLE);
+        event.register(ModKeyBindings.READER_HUD_TOGGLE);
     }
 
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("4.0");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("4.1");
         // 遍历 ModPayloads 客户端清单注册 S2C，避免手写重复
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
             registerS2C(registrar, s2c);
@@ -150,6 +153,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         SuspiciousReaderClientState.tick();
         CatHandClientState.tick();
         ReaderScanHighlightState.tick();
+        ReaderScanHudState.tick();
     }
 
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
@@ -157,6 +161,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ClientLootTableLanguageStore.resetOnDisconnect();
         HandOfCatClientState.reset();
         ReaderScanHighlightState.reset();
+        ReaderScanHudState.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }
 
@@ -167,9 +172,10 @@ public final class UnsuspiciousBlockNeoForgeClient {
         CatFavorShieldRenderer.render(event.getPoseStack(), event.getCamera());
     }
 
-    // 渲染猫之恩惠快捷栏 HUD
+    // 渲染猫之恩惠快捷栏与解析仪扫描结果 HUD
     private static void onRenderGui(RenderGuiEvent.Post event) {
         GuiGraphics gui = event.getGuiGraphics();
         CatFavorHud.render(gui);
+        SuspiciousReaderHud.render(gui);
     }
 }
