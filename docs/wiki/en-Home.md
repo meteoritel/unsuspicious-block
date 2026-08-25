@@ -21,15 +21,15 @@ Unsuspicious Block adds more complete exploration tools and documentation system
 
 ## Table of Contents
 
-1. [Installation](Installation)
-2. [Getting Started](Getting-Started)
-3. [Archaeology Journal](Archaeology-Journal)
-4. [Suspicious Reader & Archaeology Shovel](Reader-and-Shovel)
-5. [Lost Pages and Enchantments](Lost-Pages-and-Enchantments)
-6. [Eye of Cat](Eye-of-Cat)
-7. [Specimen Box](Specimen-Box)
-8. [Pottery Wheel](Pottery-Wheel)
-9. [Unsuspicious Blocks](Unsuspicious-Blocks)
+1. [Installation](en-Installation)
+2. [Getting Started](en-Getting-Started)
+3. [Archaeology Journal](en-Archaeology-Journal)
+4. [Suspicious Reader & Archaeology Shovel](en-Reader-and-Shovel)
+5. [Lost Pages and Enchantments](en-Lost-Pages-and-Enchantments)
+6. [Eye of Cat](en-Eye-of-Cat)
+7. [Specimen Box](en-Specimen-Box)
+8. [Pottery Wheel](en-Pottery-Wheel)
+9. [Unsuspicious Blocks](en-Unsuspicious-Blocks)
 
 ## Supported Environments
 

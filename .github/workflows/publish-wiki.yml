@@ -37,18 +37,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 必需文件：根目录 + 各语言子目录都需要有 Home / _Sidebar / _Footer
-          required_files=(Home.md _Sidebar.md _Footer.md)
-          wiki_dirs=("" "zh/" "en/")
+          # GitHub Wiki 不支持子目录，页面必须全部平铺在仓库根目录，
+          # 语言通过文件名前缀 en- / zh- 区分
+          subdirs="$(find "${WIKI_SOURCE_DIR}" -mindepth 1 -type d)"
+          if [[ -n "${subdirs}" ]]; then
+            echo "::error::GitHub Wiki 不支持子目录，请改用 en- / zh- 文件名前缀：${subdirs}"
+            exit 1
+          fi
 
-          for dir in "${wiki_dirs[@]}"; do
-            for file in "${required_files[@]}"; do
-              path="${WIKI_SOURCE_DIR}/${dir}${file}"
-              if [[ ! -f "${path}" ]]; then
-                echo "::error file=${path}::缺少必需文件：${path}"
-                exit 1
-              fi
-            done
+          # 必需文件：全局三件套 + 两个语言入口页
+          required_files=(Home.md _Sidebar.md _Footer.md en-Home.md zh-Home.md)
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "${WIKI_SOURCE_DIR}/${file}" ]]; then
+              echo "::error file=${WIKI_SOURCE_DIR}/${file}::缺少 GitHub Wiki 必需文件"
+              exit 1
+            fi
           done
 
           # 逐个文件校验内部链接（相对链接基于文件所在目录解析）

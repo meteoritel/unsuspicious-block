@@ -21,15 +21,15 @@ Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工�
 
 ## 目录
 
-1. [安装与运行环境](Installation)
-2. [快速上手](Getting-Started)
-3. [考古笔记](Archaeology-Journal)
-4. [可疑解析仪与考古铲](Reader-and-Shovel)
-5. [失落书页与附魔](Lost-Pages-and-Enchantments)
-6. [猫之瞳](Eye-of-Cat)
-7. [标本箱](Specimen-Box)
-8. [纹饰陶轮台](Pottery-Wheel)
-9. [不可疑方块](Unsuspicious-Blocks)
+1. [安装与运行环境](zh-Installation)
+2. [快速上手](zh-Getting-Started)
+3. [考古笔记](zh-Archaeology-Journal)
+4. [可疑解析仪与考古铲](zh-Reader-and-Shovel)
+5. [失落书页与附魔](zh-Lost-Pages-and-Enchantments)
+6. [猫之瞳](zh-Eye-of-Cat)
+7. [标本箱](zh-Specimen-Box)
+8. [纹饰陶轮台](zh-Pottery-Wheel)
+9. [不可疑方块](zh-Unsuspicious-Blocks)
 
 ## 支持环境
 

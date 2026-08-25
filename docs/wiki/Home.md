@@ -6,8 +6,8 @@
 
 ## Select Language / 选择语言
 
-- [English (en)](en/Home)
-- [简体中文 (zh)](zh/Home)
+- [English (en)](en-Home)
+- [简体中文 (zh)](zh-Home)
 
 ---
 
