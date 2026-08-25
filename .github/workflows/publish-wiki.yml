@@ -37,34 +37,51 @@ jobs:
         run: |
           set -euo pipefail
 
+          # 必需文件：根目录 + 各语言子目录都需要有 Home / _Sidebar / _Footer
           required_files=(Home.md _Sidebar.md _Footer.md)
-          for file in "${required_files[@]}"; do
-            if [[ ! -f "${WIKI_SOURCE_DIR}/${file}" ]]; then
-              echo "::error file=${WIKI_SOURCE_DIR}/${file}::缺少 GitHub Wiki 必需文件"
-              exit 1
-            fi
+          wiki_dirs=("" "zh/" "en/")
+
+          for dir in "${wiki_dirs[@]}"; do
+            for file in "${required_files[@]}"; do
+              path="${WIKI_SOURCE_DIR}/${dir}${file}"
+              if [[ ! -f "${path}" ]]; then
+                echo "::error file=${path}::缺少必需文件：${path}"
+                exit 1
+              fi
+            done
           done
 
-          mapfile -t local_targets < <(
-            grep -rhoE '\]\([^)]+\)' "${WIKI_SOURCE_DIR}" --include='*.md' \
-              | sed -E 's/^\]\((.*)\)$/\1/' \
-              | sort -u
-          )
+          # 逐个文件校验内部链接（相对链接基于文件所在目录解析）
+          error_count=0
+          while IFS= read -r -d '' md_file; do
+            file_dir="$(dirname "${md_file}")"
+            rel_file="${md_file#${WIKI_SOURCE_DIR}/}"
 
-          for raw_target in "${local_targets[@]}"; do
-            case "${raw_target}" in
-              http://*|https://*|mailto:*|'') continue ;;
-            esac
+            while IFS= read -r raw_target; do
+              case "${raw_target}" in
+                http://*|https://*|mailto:*|"") continue ;;
+              esac
 
-            target="${raw_target%%#*}"
-            [[ -z "${target}" ]] && continue
-            [[ "${target}" == *.* ]] || target="${target}.md"
+              target="${raw_target%%#*}"
+              [[ -z "${target}" ]] && continue
+              # 检查文件名部分是否有扩展名（避免路径中 .. 的点被误判）
+              filename="${target##*/}"
+              [[ "${filename}" == *.* ]] || target="${target}.md"
 
-            if [[ ! -e "${WIKI_SOURCE_DIR}/${target}" ]]; then
-              echo "::error::Wiki 本地链接目标不存在：${raw_target}"
-              exit 1
-            fi
-          done
+              # 规范化路径（处理 ../ ./ 等相对段）
+              normalized="$(cd "${file_dir}" && realpath -m "${target}")"
+
+              if [[ ! -e "${normalized}" ]]; then
+                echo "::error file=${rel_file}::Wiki 本地链接目标不存在：${raw_target}"
+                error_count=$((error_count + 1))
+              fi
+            done < <(grep -oE '\]\([^)]+\)' "${md_file}" | sed -E 's/^\]\((.*)\)$/\1/')
+          done < <(find "${WIKI_SOURCE_DIR}" -name '*.md' -type f -print0)
+
+          if [[ error_count -gt 0 ]]; then
+            echo "::error::共发现 ${error_count} 个无效的 Wiki 本地链接"
+            exit 1
+          fi
 
       - name: 克隆 GitHub Wiki 仓库
         shell: bash
@@ -113,3 +130,4 @@ jobs:
           fi
 
           git -C "${wiki_dir}" push origin "HEAD:${wiki_branch}"
+

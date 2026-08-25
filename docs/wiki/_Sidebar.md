@@ -1,23 +1,14 @@
 ### Unsuspicious Block
 
-- [首页](Home)
+- [Home](Home)
 
-### 开始
+### Language / 语言
 
-- [安装与运行环境](Installation)
-- [快速上手](Getting-Started)
+- [English](en/Home)
+- [简体中文](zh/Home)
 
-### 模组内容
+### Links / 链接
 
-- [考古笔记](Archaeology-Journal)
-- [可疑解析仪与考古铲](Reader-and-Shovel)
-- [失落书页与附魔](Lost-Pages-and-Enchantments)
-- [猫之瞳](Eye-of-Cat)
-- [标本箱](Specimen-Box)
-- [纹饰陶轮台](Pottery-Wheel)
-- [不可疑方块](Unsuspicious-Blocks)
-
-### 帮助
-
-- [联动与服务器设置](Compatibility-and-Settings)
-- [常见问题](FAQ)
+- [CurseForge](https://www.curseforge.com/minecraft/mc-mods/unsuspicious-block)
+- [Source / 源码](https://github.com/meteoritel/unsuspicious-block)
+- [Issues / 反馈](https://github.com/meteoritel/unsuspicious-block/issues)

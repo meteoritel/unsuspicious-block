@@ -29,6 +29,7 @@ public final class ReaderScanHudState {
     private static final Object LOCK = new Object();
     private static final List<HudEntry> entries = new ArrayList<>();
     private static int lootContainerCount;
+    // 开关状态在 tick 线程翻转、渲染线程读取，volatile 保证线程间可见性
     private static volatile boolean hudEnabled = true;
 
     private ReaderScanHudState() {
@@ -38,22 +39,13 @@ public final class ReaderScanHudState {
     public record Snapshot(List<HudEntry> entries, int lootContainerCount) {
         // 面板锚点即最新条目（列表首位），面板淡出与其绑定
         public HudEntry anchor() {
-            return entries.isEmpty() ? null : entries.get(0);
+            return entries.isEmpty() ? null : entries.getFirst();
         }
     }
 
     // 接收新扫描结果并插入现有 HUD，单条信息拥有独立的 8 秒生命周期
     public static void receive(SyncReaderScanResultPayload payload) {
-        List<SyncReaderScanResultPayload.ScanEntry> sorted = new ArrayList<>(payload.results());
-        LocalPlayer player = Minecraft.getInstance().player;
-        Comparator<SyncReaderScanResultPayload.ScanEntry> comparator =
-                Comparator.comparing(SyncReaderScanResultPayload.ScanEntry::alreadyScanned)
-                        .thenComparing(SyncReaderScanResultPayload.ScanEntry::isEmpty);
-        if (player != null) {
-            comparator = comparator.thenComparingDouble(
-                    entry -> entry.pos().distSqr(player.blockPosition()));
-        }
-        sorted.sort(comparator);
+        List<SyncReaderScanResultPayload.ScanEntry> sorted = sortScanEntries(payload);
 
         long now = System.currentTimeMillis();
         synchronized (LOCK) {
@@ -90,6 +82,21 @@ public final class ReaderScanHudState {
         }
     }
 
+    // 按展示优先级排序扫描结果：未扫描 > 非空 > 距离玩家更近
+    private static List<SyncReaderScanResultPayload.ScanEntry> sortScanEntries(SyncReaderScanResultPayload payload) {
+        List<SyncReaderScanResultPayload.ScanEntry> sorted = new ArrayList<>(payload.results());
+        LocalPlayer player = Minecraft.getInstance().player;
+        Comparator<SyncReaderScanResultPayload.ScanEntry> comparator =
+                Comparator.comparing(SyncReaderScanResultPayload.ScanEntry::alreadyScanned)
+                        .thenComparing(SyncReaderScanResultPayload.ScanEntry::isEmpty);
+        if (player != null) {
+            comparator = comparator.thenComparingDouble(
+                    entry -> entry.pos().distSqr(player.blockPosition()));
+        }
+        sorted.sort(comparator);
+        return sorted;
+    }
+
     private static HudEntry findByPositionLocked(net.minecraft.core.BlockPos position) {
         for (HudEntry entry : entries) {
             if (entry.scanEntry != null && entry.scanEntry.pos().equals(position)) {
@@ -111,6 +118,7 @@ public final class ReaderScanHudState {
     // 客户端每 tick 更新按键状态与清理过期条目，不做任何整体清空以保证淡出曲线完整
     public static void tick() {
         while (ModKeyBindings.READER_HUD_TOGGLE.consumeClick()) {
+            // 翻转仅发生在客户端 tick 单一线程，直接取反即可
             hudEnabled = !hudEnabled;
         }
         long now = System.currentTimeMillis();
@@ -125,11 +133,6 @@ public final class ReaderScanHudState {
                 }
             }
         }
-    }
-
-    // 供渲染线程调用：HUD 是否被按键关闭
-    public static boolean isHudEnabled() {
-        return hudEnabled;
     }
 
     // 供渲染线程调用：单帧一致快照（hudEnabled 关闭时返回空快照）
