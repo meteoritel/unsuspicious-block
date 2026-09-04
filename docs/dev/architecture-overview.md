@@ -11,7 +11,7 @@
 | Java | 21 |
 | 反混淆映射 | Mojang 官方映射 + Parchment 2024.11.17 |
 | 构建系统 | Gradle（multiloader 自定义插件） |
-| 当前版本 | 1.5.1 |
+| 当前版本 | 1.5.2 |
 
 模组核心围绕**考古探索 / 战利品发现记录 / 猫族关系**三条玩法主线展开，技术上是一个典型的 Architectury 风格多平台项目：绝大部分逻辑写在 `common`，Fabric 与 NeoForge 各自只提供平台接入。
 
@@ -28,7 +28,7 @@ unsuspiciousBlock-1.21.1-multi/
 
 ### 2.1 common 模块
 
-- 承载 **95% 以上的玩法代码**（约 364 个 Java 文件）。
+- 承载 **95% 以上的玩法代码**（约 372 个 Java 文件）。
 - **不 import 任何平台专属类**（`net.fabricmc.*`、`net.neoforged.*`）。这是项目的硬性约束，违反会在另一平台编译失败。
 - 通过 [`platform/services/`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services) 定义的 SPI 接口访问平台能力，由 `fabric` / `neoforge` 提供实现。
 - 包含全部数据资源（`assets/`、`data/`）、Mixin 配置（`common` 与 `lootr` 两套）、客户端 GUI。

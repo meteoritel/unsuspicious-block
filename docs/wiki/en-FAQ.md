@@ -1,9 +1,7 @@
 # FAQ
 
-> ⚠️ This page has not been translated yet.
->
-> 此页面尚未翻译。
->
-> You can view the [Chinese version](zh-FAQ) for now.
 
-<!-- TODO: Translate this page. -->
+
+## How do I report an issue?
+
+Please provide your Minecraft version, loader, mod version, relevant mod list, and reproduction steps in [GitHub Issues](https://github.com/meteoritel/unsuspicious-block/issues). For multiplayer issues, also state whether the problem occurs on the client or the server.

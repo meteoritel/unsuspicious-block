@@ -35,9 +35,9 @@
 | [网络与同步](network.md) | payload 分类、C2S/S2C 通信、客户端状态同步会话 |
 | [配置与第三方联动](config-integrations.md) | 配置系统、数据驱动 vs 硬编码边界、Jade/JEI/Lootr/Trinkets/Curios/Artifacts 联动 |
 
-## 与 docs/ 其他内容的关系
+## 与 docs/ 及其他文档的关系
 
-`docs/` 目录下还有几类文档，与本目录分工如下：
+`docs/` 与项目根目录下还有几类文档，与本目录分工如下：
 
 | 路径 | 类型 | 说明 |
 |---|---|---|
@@ -47,6 +47,8 @@
 | `docs/spirit-cat-npc-design.md` | 设计文档 | 灵体猫 NPC 设计（面向策划） |
 | `docs/journal-categories.md` | 设计文档 | 考古笔记目录分类规则 |
 | `docs/roadmap.md` | 计划文档 | 后续内容路线图与冻结项 |
+| `docs/advancement-tree-plan.md` | 实施计划 | 进度树完善规划（已随 1.5.2 实施完成） |
+| `CONTEXT.md`（项目根目录） | 领域语言 | 各玩法子系统共用的统一术语权威 |
 | `docs/readme/README_EN.md` | 用户文档 | 英文 README |
 | `docs/image/` | 资源 | 文档用图片 |
 
