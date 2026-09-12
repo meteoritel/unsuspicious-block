@@ -54,7 +54,8 @@
     "client.AbstractContainerScreenAccessor",
     "client.ClientLanguageMixin",
     "client.EditBoxMixin",
-    "client.EnchantmentScreenMixin"
+    "client.EnchantmentScreenMixin",
+    "client.HumanoidPanningMixin"
   ],
   "server": [],
   "injectors": {

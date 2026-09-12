@@ -255,6 +255,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             ArchaeologyJournalServerCatalog.invalidate();
             ServerLootTableConfigManager.stop();
             NaturalBoneBlockTracker.clearPendingPlayerBreaks();
+            ShimmerSpawnService.stop(server);
         });
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费

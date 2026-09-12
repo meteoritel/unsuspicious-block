@@ -24,7 +24,7 @@ import java.util.UUID;
  * <p>
  * 由于存盘持久的实体散落在各个区块中，无法廉价地直接统计全维度数量，因此上限计数、间距校验
  * 与“区块是否已判定过”都由账本集中维护。账本与实体实际状态不一致时以实体为准：实体消散时
- * 主动注销自身，生成尝试前还会剔除所在区块已加载但实体已不存在的失效条目。
+ * 主动注销自身，实体恢复 tick 时补登记；不以方块区块加载状态推断实体是否存在。
  */
 public final class ShimmerLedger extends SavedData {
     /**
@@ -57,6 +57,8 @@ public final class ShimmerLedger extends SavedData {
             DataFixTypes.LEVEL);
 
     private final Map<UUID, Entry> entries = new LinkedHashMap<>();
+    private final Map<Long, Set<UUID>> entriesByChunk = new HashMap<>();
+    private int naturalCount;
     private final Set<Long> rolledChunks = new HashSet<>();
     private long nextAttempt;
 
@@ -77,12 +79,13 @@ public final class ShimmerLedger extends SavedData {
                 continue;
             }
             Source source = entryTag.getBoolean(SOURCE_TAG) ? Source.WORLDGEN : Source.NATURAL;
-            ledger.entries.put(entryTag.getUUID(UUID_TAG), new Entry(BlockPos.of(entryTag.getLong(POS_TAG)), source));
+            ledger.register(entryTag.getUUID(UUID_TAG), BlockPos.of(entryTag.getLong(POS_TAG)), source);
         }
         for (long chunkKey : tag.getLongArray(ROLLED_CHUNKS_TAG)) {
             ledger.rolledChunks.add(chunkKey);
         }
         ledger.nextAttempt = tag.getLong(NEXT_ATTEMPT_TAG);
+        ledger.setDirty(false);
         return ledger;
     }
 
@@ -104,61 +107,71 @@ public final class ShimmerLedger extends SavedData {
 
     // ========== 条目维护 ==========
 
-    // 登记一个新生成的闪烁的光
+    // 登记或校正实体，并同步维护空间索引与自然生成计数。
     public void register(UUID uuid, BlockPos pos, Source source) {
-        this.entries.put(uuid, new Entry(pos.immutable(), source));
+        Entry updated = new Entry(pos.immutable(), source);
+        if (updated.equals(this.entries.get(uuid))) {
+            return;
+        }
+        this.unregister(uuid);
+        this.entries.put(uuid, updated);
+        this.entriesByChunk.computeIfAbsent(new ChunkPos(pos).toLong(), key -> new HashSet<>()).add(uuid);
+        if (source == Source.NATURAL) {
+            this.naturalCount++;
+        }
         this.setDirty();
     }
 
-    // 实体消散时注销自身
+    // 实体消散时注销自身；区块卸载不注销。
     public void unregister(UUID uuid) {
-        if (this.entries.remove(uuid) != null) {
-            this.setDirty();
+        Entry removed = this.entries.remove(uuid);
+        if (removed == null) {
+            return;
         }
+        long chunkKey = new ChunkPos(removed.pos()).toLong();
+        Set<UUID> bucket = this.entriesByChunk.get(chunkKey);
+        bucket.remove(uuid);
+        if (bucket.isEmpty()) {
+            this.entriesByChunk.remove(chunkKey);
+        }
+        if (removed.source() == Source.NATURAL) {
+            this.naturalCount--;
+        }
+        this.setDirty();
     }
 
-    // 现存条目快照，供遍历时安全修改账本
-    public Map<UUID, Entry> snapshot() {
-        return new HashMap<>(this.entries);
-    }
-
-    // 自然生成来源的现存数量——数量上限只对它生效
+    // 自然生成数量为增量维护，不扫描世界生成记录。
     public int countNatural() {
-        int count = 0;
-        for (Entry entry : this.entries.values()) {
-            if (entry.source() == Source.NATURAL) {
-                count++;
-            }
-        }
-        return count;
+        return this.naturalCount;
     }
 
-    // 与现存任意闪烁的光（含世界生成）的水平距离是否小于指定间距
+    // 仅查询间距范围覆盖的区块，不扫描整个维度的记录。
     public boolean isTooClose(BlockPos pos, int minSpacingBlocks) {
+        if (minSpacingBlocks <= 0) {
+            return false;
+        }
         long minSpacingSquared = (long) minSpacingBlocks * minSpacingBlocks;
-        for (Entry entry : this.entries.values()) {
-            long deltaX = entry.pos().getX() - pos.getX();
-            long deltaZ = entry.pos().getZ() - pos.getZ();
-            if (deltaX * deltaX + deltaZ * deltaZ < minSpacingSquared) {
-                return true;
+        int minX = (pos.getX() - minSpacingBlocks) >> 4;
+        int maxX = (pos.getX() + minSpacingBlocks) >> 4;
+        int minZ = (pos.getZ() - minSpacingBlocks) >> 4;
+        int maxZ = (pos.getZ() + minSpacingBlocks) >> 4;
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                Set<UUID> bucket = this.entriesByChunk.get(ChunkPos.asLong(x, z));
+                if (bucket == null) {
+                    continue;
+                }
+                for (UUID uuid : bucket) {
+                    BlockPos other = this.entries.get(uuid).pos();
+                    long deltaX = (long) other.getX() - pos.getX();
+                    long deltaZ = (long) other.getZ() - pos.getZ();
+                    if (deltaX * deltaX + deltaZ * deltaZ < minSpacingSquared) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
-    }
-
-    // 剔除失效条目：所在区块已加载、但对应实体已不存在
-    public void pruneMissing(ServerLevel level) {
-        boolean changed = false;
-        for (Map.Entry<UUID, Entry> entry : this.snapshot().entrySet()) {
-            BlockPos pos = entry.getValue().pos();
-            if (level.isLoaded(pos) && level.getEntity(entry.getKey()) == null) {
-                this.entries.remove(entry.getKey());
-                changed = true;
-            }
-        }
-        if (changed) {
-            this.setDirty();
-        }
     }
 
     // ========== 世界生成判定 ==========

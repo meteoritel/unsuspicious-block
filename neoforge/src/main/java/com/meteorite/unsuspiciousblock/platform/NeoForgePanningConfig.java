@@ -19,6 +19,10 @@ public class NeoForgePanningConfig implements IPanningConfig {
 
     public static final ModConfigSpec SERVER_CONFIG_SPEC;
 
+    // 同一 mod 的同类配置默认文件名相同（<modid>-server.toml），注册第二个 SERVER spec 时必须显式指定文件名，
+    // 否则 ConfigTracker 会判定配置文件冲突并中断 mod 构造
+    public static final String SERVER_CONFIG_FILE_NAME = "unsuspiciousblock-panning-server.toml";
+
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
@@ -84,10 +88,10 @@ public class NeoForgePanningConfig implements IPanningConfig {
         builder.push("panning");
         PAN_DURATION_TICKS = builder
                 .comment("单次淘洗需要长按的刻数。默认 "
-                        + IPanningConfig.DEFAULT_PAN_DURATION_TICKS + "（8 秒）。",
+                        + IPanningConfig.DEFAULT_PAN_DURATION_TICKS + "（5 秒）。",
                         "",
                         "Ticks of holding right-click required per pan. Default "
-                        + IPanningConfig.DEFAULT_PAN_DURATION_TICKS + " (8 seconds).")
+                        + IPanningConfig.DEFAULT_PAN_DURATION_TICKS + " (5 seconds).")
                 .translation("unsuspiciousblock.configgui.panning.pan_duration_ticks")
                 .defineInRange("pan_duration_ticks", IPanningConfig.DEFAULT_PAN_DURATION_TICKS,
                         IPanningConfig.MIN_PAN_DURATION_TICKS, IPanningConfig.MAX_PAN_DURATION_TICKS);

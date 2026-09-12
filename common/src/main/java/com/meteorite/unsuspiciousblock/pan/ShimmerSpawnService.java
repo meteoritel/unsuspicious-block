@@ -45,11 +45,29 @@ public final class ShimmerSpawnService {
     // 世界生成待办：区块加载时完成概率判定，延迟到区块稳定后再实体化
     private static final Map<ResourceKey<Level>, Map<ChunkPos, BlockPos>> PENDING_WORLDGEN = new HashMap<>();
 
+    private static MinecraftServer pendingServer;
+
+    // 队列只属于当前服务器；切换存档时不能复用旧坐标。
+    public static void stop(MinecraftServer server) {
+        if (pendingServer == server) {
+            PENDING_WORLDGEN.clear();
+            pendingServer = null;
+        }
+    }
+
+    private static void bindServer(MinecraftServer server) {
+        if (pendingServer != server) {
+            PENDING_WORLDGEN.clear();
+            pendingServer = server;
+        }
+    }
+
     private ShimmerSpawnService() {
     }
 
     // 服务端 tick 入口：每 tick 消化世界生成待办，并按节拍尝试自然生成
     public static void tick(MinecraftServer server) {
+        bindServer(server);
         drainPendingWorldgen(server);
         if (server.getTickCount() % TICK_CHECK_INTERVAL != 0) {
             return;
@@ -74,8 +92,6 @@ public final class ShimmerSpawnService {
         }
         ledger.scheduleNextAttempt(gameTime, interval);
 
-        // 以实体实际状态为准修正账本，避免失效条目长期占用上限与间距
-        ledger.pruneMissing(level);
         // 到达上限后不再尝试生成
         if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) {
             return;
@@ -125,10 +141,13 @@ public final class ShimmerSpawnService {
     }
 
     // 在区块范围内随机取一个世界水平面附近的开阔水域点
+    // 采样点与区块边界保持 1 格间距：开阔水域判定需要查询水平相邻方块，
+    // 贴边采样会落到邻区块上，而世界生成阶段是在区块加载回调中执行的，
+    // 此时邻区块未必已加载，避免由此触发级联的同步区块加载
     @Nullable
     private static BlockPos randomWaterSurfaceIn(ServerLevel level, ChunkPos chunkPos) {
-        int x = chunkPos.getMinBlockX() + level.getRandom().nextInt(16);
-        int z = chunkPos.getMinBlockZ() + level.getRandom().nextInt(16);
+        int x = chunkPos.getMinBlockX() + 1 + level.getRandom().nextInt(14);
+        int z = chunkPos.getMinBlockZ() + 1 + level.getRandom().nextInt(14);
         return ShimmerPlacement.findOpenWaterSurface(level, x, z);
     }
 
@@ -167,12 +186,13 @@ public final class ShimmerSpawnService {
      * <p>
      * 概率判定使用「世界种子 + 区块坐标」推导的确定性随机：同一区块永远得到同一结论，
      * 因此无需为未命中的区块记录任何状态，账本只会记录真正生成过淘洗点的区块
-     * （约占河流区块的 2%），不会随探索范围无限增长。
+     * （默认约占河流区块的 2%），不记录未命中的区块。
      * <p>
      * 命中后选取落点并进入待办队列，由服务端 tick 在区块稳定后实体化；实体化成功才标记
      * 该区块已生成，被淘空或破坏后不会再重新出现。
      */
     public static void onChunkLoaded(ServerLevel level, ChunkPos chunkPos) {
+        bindServer(level.getServer());
         // 确定性判定代价极低且能过滤绝大多数区块，放在最前面避免多余的群系采样
         double chance = Services.PANNING_CONFIG.getWorldgenChance();
         if (chance <= 0.0D || !passesWorldgenRoll(level, chunkPos, chance)) {
@@ -228,8 +248,14 @@ public final class ShimmerSpawnService {
                 if (!ShimmerPlacement.isBoundWaterIntact(level, waterPos)) {
                     continue;
                 }
+                ShimmerLedger ledger = ShimmerLedger.of(level);
+                // 入队后其他候选可能已经生成，必须按最新账本复查。
+                if (ledger.isChunkRolled(new ChunkPos(waterPos))
+                        || ledger.isTooClose(waterPos, Services.PANNING_CONFIG.getSpacingBlocks())) {
+                    continue;
+                }
                 if (spawnShimmer(level, waterPos, false) != null) {
-                    ShimmerLedger.of(level).markChunkRolled(new ChunkPos(waterPos));
+                    ledger.markChunkRolled(new ChunkPos(waterPos));
                 }
             }
             if (levelEntry.getValue().isEmpty()) {

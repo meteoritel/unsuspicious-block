@@ -252,3 +252,15 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 - [猫族关系系统](cat-favor.md) - HUD 数据来源
 - [附魔系统](enchantment.md) - 附魔揭示
 - [Mixin 总览](mixin.md) - 客户端 mixin
+
+
+## 淘盘动画与水声
+
+`client/pan/PanningAnimation` 提供第一人称横向托平、绕圈摇洗与小幅抖动，并调整第三人称持盘手臂，支持左右手和副手。`CopperPanItem` 使用 `UseAnim.NONE`，不再触发原版刷子动画。第一人称由 NeoForge `RenderHandEvent` 与 Fabric `ItemInHandPanningMixin` 分别接入；第三人称由 common 客户端 `HumanoidPanningMixin` 在原版姿势完成后转交动画类。
+
+`PanningSoundController` 每五刻检查玩家附近工作中的淘洗点，每个点最多一个 `PanningSound`。声音复用原版 `block.water.ambient`，随摇洗周期调整音调与音量；停止工作、实体消散、离开范围或切换世界时停止。声音控制器通过两端客户端 tick 与断连事件管理，不从服务端类引用客户端类。
+
+
+贴水波光由 `ShimmerSurfaceRenderer` 在两端半透明方块渲染之后绘制：依据实际流体高度，在水面上方绘制金白色细线反光，保留深度测试并关闭深度写入。仅查询相机周围 32 格，远端淡出。剩余 3 次及以上、2 次、1 次分别绘制 48、28、12 道反光；增加线宽并保留基础亮度，避免闪烁低谷时难以辨认。白色粒子对应约 15、6.7、2 个每秒，利用明显的密度差异提示剩余次数；淘洗时仍保留水花与涟漪。
+
+第一人称工作动画使用 `ItemDisplayContext.NONE` 渲染原始物品盘面，由动画独立设置缩放与绕 X 轴的倾角，避免叠加 generated 模型自带第一人称旋转而变成侧立。普通持物仍使用原版显示变换。

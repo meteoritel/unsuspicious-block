@@ -1,6 +1,9 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
+import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
+import com.meteorite.unsuspiciousblock.client.pan.PanningAnimation;
+import net.neoforged.neoforge.client.event.RenderHandEvent;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
@@ -10,6 +13,7 @@ import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
+import com.meteorite.unsuspiciousblock.client.renderer.ShimmerSurfaceRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
@@ -71,6 +75,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
                 JournalUnlockToast.addItemUnlocks(entries);
             });
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
+            NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderHand);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderLevelStage);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderGui);
@@ -82,6 +87,16 @@ public final class UnsuspiciousBlockNeoForgeClient {
                 GrindstoneBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip());
             });
         });
+    }
+
+    // NeoForge 原生事件入口，与 Fabric 共用淘盘动画实现。
+    private static void onRenderHand(RenderHandEvent event) {
+        Minecraft client = Minecraft.getInstance();
+        if (PanningAnimation.renderFirstPerson(client.gameRenderer.itemInHandRenderer, client.player,
+                event.getHand(), event.getItemStack(), event.getPartialTick(), event.getEquipProgress(),
+                event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight())) {
+            event.setCanceled(true);
+        }
     }
 
     private static void onScreenKeyPressed(ScreenEvent.KeyPressed.Pre event) {
@@ -154,6 +169,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         CatHandClientState.tick();
         ReaderScanHighlightState.tick();
         ReaderScanHudState.tick();
+        PanningSoundController.tick();
     }
 
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
@@ -162,6 +178,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         HandOfCatClientState.reset();
         ReaderScanHighlightState.reset();
         ReaderScanHudState.reset();
+        PanningSoundController.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
     }
 
@@ -170,6 +187,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
         SuspiciousReaderRangeHighlight.render(event.getPoseStack(), event.getCamera());
         CatFavorShieldRenderer.render(event.getPoseStack(), event.getCamera());
+        ShimmerSurfaceRenderer.render(event.getPoseStack(), event.getCamera());
     }
 
     // 渲染猫之恩惠快捷栏与解析仪扫描结果 HUD

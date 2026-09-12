@@ -12,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 闪烁的光渲染器——实体本体不渲染任何模型。
  * <p>
- * 它的视觉表现完全由依附水方块表面的波光粒子承担（见 ShimmerEntity 的客户端 tick），
+ * 贴水波光由 ShimmerSurfaceRenderer 在水体之后绘制，粒子由 ShimmerEntity 客户端 tick 发射，
  * 因此这里保持空实现，只占用渲染器注册位避免客户端缺失渲染器警告。
  * 纹理路径仅作占位，实际不会被绑定。
  */
@@ -32,6 +32,6 @@ public class ShimmerRenderer extends EntityRenderer<ShimmerEntity> {
     @Override
     public void render(@NotNull ShimmerEntity entity, float entityYaw, float partialTick,
                        @NotNull PoseStack poseStack, @NotNull MultiBufferSource bufferSource, int packedLight) {
-        // 无可视模型：波光由粒子呈现
+        // 无实体模型：贴水波光与粒子分别由世界渲染阶段和客户端 tick 处理。
     }
 }

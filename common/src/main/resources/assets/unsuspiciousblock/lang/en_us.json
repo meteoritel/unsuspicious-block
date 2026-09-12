@@ -554,6 +554,11 @@
   "command.unsuspiciousblock.usb.favor.reset.success": "Cat favor state has been reset.",
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "Could not access this player's cat favor data.",
 
+  "command.unsuspiciousblock.usb.shimmer.spawn.success": "Spawned a Shimmer on water block %1$s (source: %2$s, pan uses left: %3$s).",
+  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "Cannot spawn at %s: the block above must be air; point the position at a water surface block.",
+  "command.unsuspiciousblock.usb.shimmer.error.spawn_failed": "Failed to spawn a Shimmer at %s.",
+  "command.unsuspiciousblock.usb.shimmer.error.unknown_source": "Unknown source: %s (expected natural / worldgen).",
+
   "entity.unsuspiciousblock.messenger_cat":"Cat Messenger",
   "entity.unsuspiciousblock.swordsman_cat":"Swordsman Cat",
   "entity.unsuspiciousblock.merchant_cat":"Cat Merchant",

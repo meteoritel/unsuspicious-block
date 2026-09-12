@@ -12,6 +12,7 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.Mth;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -50,12 +51,18 @@ public class ShimmerEntity extends Entity {
     private static final EntityDataAccessor<Integer> DATA_PAN_REMAINING =
             SynchedEntityData.defineId(ShimmerEntity.class, EntityDataSerializers.INT);
 
+    private static final EntityDataAccessor<Boolean> DATA_PANNING =
+            SynchedEntityData.defineId(ShimmerEntity.class, EntityDataSerializers.BOOLEAN);
+    private long lastPanningTick = Long.MIN_VALUE;
+    private int clientWorkTicks;
+
     // 玩家位于该半径内时，寿命到期不再直接消散，而是延长宽限时间
     private static final double GRACE_RADIUS = 3.0D;
     // 宽限延长的刻数（30 秒）
     private static final int GRACE_EXTENSION_TICKS = 600;
 
     private boolean naturalSpawn = true;
+    private boolean ledgerRegistered;
     // 剩余寿命刻数，仅在实体处于加载状态时递减；世界生成来源恒为 0（不消散）
     private int lifetimeTicks;
     private BlockPos anchorPos = BlockPos.ZERO;
@@ -69,6 +76,7 @@ public class ShimmerEntity extends Entity {
     @Override
     protected void defineSynchedData(SynchedEntityData.@NotNull Builder builder) {
         builder.define(DATA_PAN_REMAINING, Services.PANNING_CONFIG.getPanUses());
+        builder.define(DATA_PANNING, false);
     }
 
     // 在指定水方块上初始化淘洗点；worldgen 来源不设置寿命，永不自然消散
@@ -96,6 +104,23 @@ public class ShimmerEntity extends Entity {
     // 返回其依附的水方块坐标
     public BlockPos getAnchorPos() {
         return this.anchorPos;
+    }
+
+    // 只有服务端验证过的有效淘洗才能刷新工作状态；不持久化临时演出状态。
+    public void markPanning() {
+        if (!this.level().isClientSide() && !this.isRemoved() && this.getPanRemaining() > 0) {
+            this.lastPanningTick = this.level().getGameTime();
+            this.entityData.set(DATA_PANNING, true);
+        }
+    }
+
+    public boolean isPanning() {
+        return this.entityData.get(DATA_PANNING);
+    }
+
+    // 客户端演出时钟，供粒子与水声共用节奏。
+    public int getWorkTicks() {
+        return this.clientWorkTicks;
     }
 
     // ========== 交互 ==========
@@ -140,6 +165,9 @@ public class ShimmerEntity extends Entity {
     }
 
     private void serverTick() {
+        // 允许实体与玩家 tick 顺序相差一刻；停止操作后最多两刻恢复闲置。
+        this.entityData.set(DATA_PANNING, this.lastPanningTick != Long.MIN_VALUE
+                && this.level().getGameTime() - this.lastPanningTick <= 1L);
         // 位置锚定：任何外力造成的偏移都会被立刻纠正，保证始终贴合绑定的水方块
         if (!this.blockPosition().equals(this.anchorPos)) {
             this.snapToAnchor();
@@ -148,6 +176,11 @@ public class ShimmerEntity extends Entity {
         if (!ShimmerPlacement.isBoundWaterIntact(this.level(), this.anchorPos)) {
             this.discard();
             return;
+        }
+        if (!this.ledgerRegistered && this.level() instanceof ServerLevel serverLevel) {
+            ShimmerLedger.of(serverLevel).register(this.getUUID(), this.anchorPos,
+                    this.naturalSpawn ? ShimmerLedger.Source.NATURAL : ShimmerLedger.Source.WORLDGEN);
+            this.ledgerRegistered = true;
         }
         this.tickLifetime();
     }
@@ -174,34 +207,48 @@ public class ShimmerEntity extends Entity {
                 this.getBoundingBox().inflate(GRACE_RADIUS)).isEmpty();
     }
 
-    // 客户端仅负责水面波光粒子，不参与任何结算
+    // 粒子作为贴水金色波光的点缀，工作时增加旋转水花与向外扩散的涟漪。
     private void clientTick() {
         int remaining = this.getPanRemaining();
         if (remaining <= 0) {
             return;
         }
         RandomSource random = this.level().getRandom();
-        int density = remaining >= 3 ? 3 : (remaining == 2 ? 2 : 1);
-        for (int i = 0; i < density; i++) {
-            this.level().addParticle(ParticleTypes.GLOW,
-                    this.getX() + (random.nextDouble() - 0.5D) * 0.9D,
-                    this.waterSurfaceY() + random.nextDouble() * 0.12D,
-                    this.getZ() + (random.nextDouble() - 0.5D) * 0.9D,
-                    0.0D, 0.01D, 0.0D);
+        this.clientWorkTicks = this.isPanning() ? this.clientWorkTicks + 1 : 0;
+        int phaseTick = this.tickCount + this.getId();
+        // 剩余 3/2/1 次对应约 15/6.7/2 个白色粒子每秒，形成明显的密度档位。
+        int glintInterval = remaining >= 3 ? 4 : (remaining == 2 ? 6 : 10);
+        int glintCount = Math.min(3, remaining);
+        if (phaseTick % glintInterval == 0) {
+            for (int i = 0; i < glintCount; i++) {
+                this.level().addParticle(ParticleTypes.END_ROD,
+                        this.getX() + (random.nextDouble() - 0.5D) * 0.85D,
+                        this.waterSurfaceY() + 0.025D,
+                        this.getZ() + (random.nextDouble() - 0.5D) * 0.85D,
+                        0.0D, 0.0D, 0.0D);
+            }
         }
-        // 次数越少，额外的高亮闪光越罕见
-        if (remaining >= 2 && random.nextFloat() < 0.25F * remaining) {
-            this.level().addParticle(ParticleTypes.END_ROD,
-                    this.getX() + (random.nextDouble() - 0.5D) * 0.6D,
-                    this.waterSurfaceY() + 0.05D,
-                    this.getZ() + (random.nextDouble() - 0.5D) * 0.6D,
-                    0.0D, 0.02D, 0.0D);
+        if (!this.isPanning() || this.clientWorkTicks % 2 != 0) {
+            return;
+        }
+        float angle = this.clientWorkTicks * Mth.TWO_PI / 20.0F;
+        // 每两刻仅发射两组粒子；多人淘洗同一点不会叠加发射数量。
+        for (int i = 0; i < 2; i++) {
+            float direction = angle + i * Mth.PI;
+            double dx = Mth.cos(direction);
+            double dz = Mth.sin(direction);
+            this.level().addParticle(ParticleTypes.SPLASH,
+                    this.getX() + dx * 0.3D, this.waterSurfaceY() + 0.06D,
+                    this.getZ() + dz * 0.3D, dx * 0.025D, 0.055D, dz * 0.025D);
+            this.level().addParticle(ParticleTypes.FISHING,
+                    this.getX() + dx * 0.18D, this.waterSurfaceY() + 0.02D,
+                    this.getZ() + dz * 0.18D, dx * 0.04D, 0.0D, dz * 0.04D);
         }
     }
 
     // 水面高度：水方块顶面约在方块底部 +0.875
     private double waterSurfaceY() {
-        return this.getY() + 0.85D;
+        return this.getY() + 0.875D;
     }
 
     private void snapToAnchor() {

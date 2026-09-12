@@ -27,8 +27,7 @@ import java.util.List;
 /**
  * 淘洗产出服务——从淘洗战利品表抽取一次结果，并把产出交给玩家与考古笔记。
  * <p>
- * 产出直接进入玩家所有权（背包满则掉落在水面），因此考古笔记采用立即结算策略，
- * 与钓鱼、化石猎人等“直接到手”的来源保持一致。
+ * 产出从水面向上、朝玩家抛出；考古笔记按本次淘洗产出立即结算，与钓鱼一致。
  */
 public final class PanningLootService {
     // 淘盘专属战利品表——按河流水域产出原版物品
@@ -66,14 +65,14 @@ public final class PanningLootService {
             if (drop.isEmpty()) {
                 continue;
             }
-            // inventory.add() 成功时会将 stack.count 置为 0，需在此之前保存副本用于掉落
-            ItemStack dropCopy = drop.copy();
-            if (!player.getInventory().add(drop)) {
-                ItemEntity itemEntity = new ItemEntity(level,
-                        waterPos.getX() + 0.5D, waterPos.getY() + 1.0D, waterPos.getZ() + 0.5D, dropCopy);
-                itemEntity.setDefaultPickUpDelay();
-                level.addFreshEntity(itemEntity);
-            }
+            double x = waterPos.getX() + 0.5D;
+            double z = waterPos.getZ() + 0.5D;
+            Vec3 towardPlayer = new Vec3(player.getX() - x, 0.0D, player.getZ() - z).normalize();
+            ItemEntity itemEntity = new ItemEntity(level, x, waterPos.getY() + 1.0D, z, drop.copy());
+            // 水平速度固定，避免玩家距离较远时抛射过快；玩家恰在正上方时只向上抛。
+            itemEntity.setDeltaMovement(towardPlayer.scale(0.2D).add(0.0D, 0.3D, 0.0D));
+            itemEntity.setDefaultPickUpDelay();
+            level.addFreshEntity(itemEntity);
         }
     }
 }

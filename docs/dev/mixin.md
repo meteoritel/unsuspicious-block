@@ -208,3 +208,9 @@ public abstract class AnvilMenuMixin {
 - [战利品表系统](loottable.md) - `NestedLootTableMixin` 与模拟条件作用域
 - [实体与世界生成](entities-world.md) - Fabric 骨块追踪 mixin
 - [配置与第三方联动](config-integrations.md) - Lootr 兼容
+
+
+## 淘盘动画入口
+
+- common 客户端 `HumanoidPanningMixin`：`HumanoidModel.setupAnim` 尾部转交 `PanningAnimation`，只调整正在淘洗的玩家持盘手臂。
+- Fabric 客户端 `ItemInHandPanningMixin`：`ItemInHandRenderer.renderArmWithItem` 开头转交专属动画，仅成功接管当前使用的淘盘时取消原版持物绘制。NeoForge 对应接入使用原生 `RenderHandEvent`。

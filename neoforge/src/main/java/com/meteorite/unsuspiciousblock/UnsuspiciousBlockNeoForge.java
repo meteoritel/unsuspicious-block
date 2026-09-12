@@ -247,7 +247,8 @@ public class UnsuspiciousBlockNeoForge {
 
         container.registerConfig(ModConfig.Type.SERVER, NeoForgeLootTableConfig.SERVER_CONFIG_SPEC);
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.COMMON_CONFIG_SPEC);
-        container.registerConfig(ModConfig.Type.SERVER, NeoForgePanningConfig.SERVER_CONFIG_SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, NeoForgePanningConfig.SERVER_CONFIG_SPEC,
+                NeoForgePanningConfig.SERVER_CONFIG_FILE_NAME);
 
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
@@ -378,6 +379,7 @@ public class UnsuspiciousBlockNeoForge {
         ArchaeologyJournalServerCatalog.invalidate();
         ServerLootTableConfigManager.stop();
         NaturalBoneBlockTracker.clearPendingPlayerBreaks();
+        ShimmerSpawnService.stop(event.getServer());
     }
 
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费

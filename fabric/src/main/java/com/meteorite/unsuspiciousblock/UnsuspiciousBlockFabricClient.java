@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
+import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
@@ -10,6 +11,7 @@ import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
 import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
+import com.meteorite.unsuspiciousblock.client.renderer.ShimmerSurfaceRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
@@ -99,6 +101,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             HandOfCatClientState.reset();
             ReaderScanHighlightState.reset();
             ReaderScanHudState.reset();
+            PanningSoundController.reset();
             com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
         });
 
@@ -109,12 +112,14 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
             CatHandClientState.tick();
             ReaderScanHighlightState.tick();
             ReaderScanHudState.tick();
+            PanningSoundController.tick();
         });
 
         // 半透明方块渲染之后绘制范围扫描高亮与猫之恩惠保护罩，实现透视效果
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
             SuspiciousReaderRangeHighlight.render(context.matrixStack(), context.camera());
             CatFavorShieldRenderer.render(context.matrixStack(), context.camera());
+            ShimmerSurfaceRenderer.render(context.matrixStack(), context.camera());
         });
 
         // 注册快捷栏状态与解析仪扫描结果 HUD
