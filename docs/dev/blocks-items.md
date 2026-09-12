@@ -8,6 +8,7 @@
 - **陶轮与未烧制陶罐**：制陶工作站，可携带四面纹饰的陶罐半成品。
 - **可疑解析仪**：扫描可疑方块内部战利品，支持范围扫描与能量系统。
 - **考古铲**：快速取出已扫描可疑方块的战利品，向下连续挖掘。
+- **淘盘**：对闪烁的光长按淘洗的工具；淘洗点机制见 [淘洗系统](panning.md)。
 - **考古笔记**：打开考古笔记 GUI 的物品。
 - **猫之瞳 / 猫之手**：猫族系统的信息能力信物与身份信物。
 - **古代金币 / 失落书页 / 基页**：经济与附魔材料。
@@ -75,19 +76,23 @@
 
 **追踪接入**：`scanBrushable` 解析战利品后，通过 `LootTrackingContext` + `LootTrackingEvents.submit` 接入考古笔记追踪，使用 `deferred` 结算策略（待定日志暂存到方块实体，物品实际取出后转正）。详见 [考古笔记系统](journal.md)。
 
-### 3.2 考古铲（ArchaeologicalShovelItem）
+### 3.2 淘盘（CopperPanItem）
+
+[`CopperPanItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/CopperPanItem.java) 对闪烁的光长按右键淘洗：使用行为复用原版「正在使用物品」减速规则（不施加药水效果），客户端渲染入口负责专属摇洗动画。耐久 32，可用铜锭铁砧修复，经 `minecraft:enchantable/durability` 兼容耐久与经验修补。淘洗结算、战利品表与淘洗点实体详见 [淘洗系统](panning.md)。
+
+### 3.3 考古铲（ArchaeologicalShovelItem）
 
 右键已扫描的可疑方块直接取出战利品，无需完整刷拭。直接挖掘可疑方块时，未潜行虽然会显示破坏裂纹，但最终无法破坏，也不会触发向下连挖；必须按住 Shift 才能挖掘，此时沿用潜行单格挖掘。挖掘普通铲类方块时向下连续挖掘最多 3 格，并避开可疑方块及其支撑方块。挖掘沙子/红沙/砂砾时有 0.3% 概率找到古代金币。
 
-### 3.3 考古笔记（ArchaeologyJournalItem）
+### 3.4 考古笔记（ArchaeologyJournalItem）
 
 右键或按 `C` 键打开考古笔记 GUI。物品本身不持有进度数据，仅作为打开 UI 的入口；进度状态通过 mixin 附加在玩家 NBT。详见 [客户端与 GUI](client-ui.md)。
 
-### 3.4 猫之瞳（EyeOfCatItem）
+### 3.5 猫之瞳（EyeOfCatItem）
 
 放在背包/饰品栏/标本箱中时，提供三项信息能力：附魔台完整候选、铁砧成本分解、砂轮预览。详见 [附魔系统](enchantment.md) 第 8 节与 [客户端与 GUI](client-ui.md)。
 
-### 3.5 猫之手（HandOfCatItem）
+### 3.6 猫之手（HandOfCatItem）
 
 [`HandOfCatItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/HandOfCatItem.java) 是猫族身份信物，绑定逻辑通过 `CUSTOM_DATA` 存储 `owner_uuid` + `owner_name`：
 
@@ -98,13 +103,13 @@
 
 绑定与关系建立流程见 [猫族关系系统](cat-favor.md) 第 3 节。物品仍在开发中（WIP），见 [commit e6df5b0](https://github.com/meteoritel/unsuspicious-block/commit/e6df5b0)。
 
-### 3.6 古代金币 / 失落书页 / 基页
+### 3.7 古代金币 / 失落书页 / 基页
 
 - **古代金币**：连接考古与猫国经济的通用稀有资源。解析仪充能、铁砧修复（每枚恢复 25% 最大耐久）、流浪商人交易（1 枚换 5 绿宝石）、猫猫商人回收。
 - **失落书页**：稀有考古战利品，与基页 + 书在锻造台合成随机附魔书（见 [附魔系统](enchantment.md) 第 7 节）。
 - **基页**：由瓶子草合成，失落书页锻造的中间材料。
 
-### 3.7 标本箱（SpecimenBoxItem）
+### 3.8 标本箱（SpecimenBoxItem）
 
 [`SpecimenBoxItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/SpecimenBoxItem.java) 是 5 格便携容器，实现 [`PortableContainer`](../../common/src/main/java/com/meteorite/unsuspiciousblock/inventory/PortableContainer.java) 接口：
 

@@ -64,16 +64,17 @@ com.meteorite.unsuspiciousblock/
 │   ├── Services.java              ServiceLoader 加载 SPI 实现
 │   ├── ServerLootTableConfigManager.java  按世界的战利品追踪配置
 │   ├── VanillaAchievementHelper.java      IAchievementHelper 的 common 自实现
-│   └── services/                  SPI 接口（6 个；ServiceLoader SPI 共 8 个，其中 3 个在子系统包）
+│   └── services/                  SPI 接口（7 个；ServiceLoader SPI 共 9 个，其中 3 个在子系统包）
 │
 ├── item/  block/  blockentity/    注册清单 + 物品/方块/方块实体类
-├── entity/                        实体注册 + 灵体猫/灯笼宠物
+├── entity/                        实体注册 + 灵体猫/灯笼宠物/闪烁的光
 ├── effect/  sound/  recipe/       效果/声音/配方序列化器注册
 │
 ├── journal/                       考古笔记系统（catalog/state/sync/tracking/migration + JournalPlayerDataService）
 ├── loottable/                     战利品表系统（analysis/catalog/condition/injection/signature/simulation）
 ├── cat/                           猫族关系系统（羁绊/恩惠/灵体/商人）
 ├── enchantment/                   附魔系统（framework/reveal）
+├── pan/                           淘洗系统（淘洗点生成/账本/战利品结算）
 │
 ├── specimen/  pottery/  inventory/ 标本箱/制陶/背包存在检测
 ├── world/                         世界生成、骨块追踪
@@ -130,6 +131,7 @@ common/src/main/resources/
 - **注册**：遍历各 `ModXxx.forEach(registrar)` 清单（详见 [registration.md](registration.md)）。
 - **事件接入**：Fabric 用 `*Callback.EVENT.register`，NeoForge 用 `@SubscribeEvent`。
 - **生命周期钩子**：服务器启动/停止、tick、chunk 生成、玩家登录等。
+- **淘洗生成服务**：服务器 tick、区块加载与服务器停止事件转交 `ShimmerSpawnService`，驱动闪烁的光的自然生成与世界生成待办。
 - **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册。
 - **可选依赖**：通过 `OptionalModIntegration.instantiate()` 反射加载 Trinkets/Curios 集成。
@@ -199,22 +201,22 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 2. **客户端/服务端分离**：服务端代码严禁引用 `client/` 下的类。客户端类只在客户端入口或被环境守卫的路径引用。
 3. **清单 + 回调注册**：新增可注册内容只在 common 的 `REGISTRY_MANIFEST` 加一行，平台代码无需改动（见 [registration.md](registration.md)）。
 4. **优先 Event API，少用 Mixin**：Fabric 端原生事件不足时才用 Mixin，且 Mixin 仅作入口，不写业务逻辑（见 [mixin.md](mixin.md)）。
-5. **数据驱动优先**：可枚举内容（礼物、交易、结构、worldgen）交数据包，可调强度交配置，身份/关系语义保持硬编码（见 [config-integrations.md](config-integrations.md) 与 [`docs/adr/0007`](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)）。
+5. **数据驱动优先**：可枚举内容（礼物、交易、结构、worldgen）交数据包，可调强度交配置，身份/关系语义保持硬编码（见 [config-integrations.md](config-integrations.md)）。
 6. **注释规范**：类注释用 `/***/`，方法注释用 `//`，注释用简体中文。
 7. **i18n**：所有 HUD/GUI 文本用本地化 key，`en_us.json` 与 `zh_cn.json` 同步更新。
 
 ## 7. 相关文档
 
-- [平台抽象](platform-abstraction.md) — Services SPI 机制与 8 个接口
+- [平台抽象](platform-abstraction.md) — Services SPI 机制与 9 个 ServiceLoader 接口
 - [注册架构](registration.md) — 清单 + 回调模式详解
 - [考古笔记系统](journal.md)
 - [战利品表系统](loottable.md)
 - [猫族关系系统](cat-favor.md)
 - [附魔系统](enchantment.md)
 - [实体与世界生成](entities-world.md)
+- [淘洗系统](panning.md)
 - [方块与物品](blocks-items.md)
 - [客户端与 GUI](client-ui.md)
 - [Mixin 总览](mixin.md)
 - [网络与同步](network.md)
 - [配置与第三方联动](config-integrations.md)
-- [架构决策记录（ADR）](../adr/) — 猫族关系系统的设计决策

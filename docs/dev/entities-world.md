@@ -190,7 +190,7 @@ data/unsuspiciousblock/
 ```
 
 - 玩家从此结构中发现猫之手信物，绑定后建立猫族关系（见 [猫族关系系统](cat-favor.md) 第 3 节）；当前需通过 `/place structure` 等方式手动放置。
-- 结构战利品是有限的（见 [ADR 0003](../adr/0003-hand-of-cat-is-finite-structure-loot.md)）。
+- 结构战利品是有限的。
 - 结构生成时会触发 `NaturalBoneBlockTracker.scanBoundingBox` 标记结构内骨块。
 - biome 通过 `tags/worldgen/biome/has_structure/` 控制生成范围。
 
@@ -215,15 +215,8 @@ data/unsuspiciousblock/
 - [Mixin 总览](mixin.md) - Fabric 端骨块追踪 mixin
 - [docs/spirit-cat-npc-design.md](../spirit-cat-npc-design.md) - 灵体猫 NPC 设计
 
-
 ## 淘盘与闪烁的光
 
-- `CopperPanItem` 长按完成后消耗淘洗次数与耐久，由 `PanningLootService` 抽取 `gameplay/panning/river`。产出在水面生成掉落物，水平以 0.2 格/刻朝玩家抛出，竖直初速度为 0.3 格/刻，采用默认拾取延迟；玩家位于正上方时只向上抛出。笔记按淘洗产出立即记录，不等待拾取。
-- 淘盘通过 `minecraft:enchantable/durability` 支持耐久与经验修补附魔。
-- `ShimmerSpawnService` 在出队生成前复查区块生成标记与间距。待办绑定服务器实例，Fabric 与 NeoForge 的服务器停止事件均调用 `stop` 清理。
-- `ShimmerLedger` 持久化格式保持不变，加载时重建区块空间索引与自然生成计数，间距查询只访问附近区块。实体消散主动注销，首次服务端 tick 补登记；区块卸载保留记录，不依据方块区块已加载推断实体缺失。外部工具直接删除实体数据时，不自动修复遗留账本条目。
+淘洗子系统（淘盘物品、闪烁的光实体、生成服务与账本、淘洗结算、客户端表现、配置与调试指令）的权威文档见 [淘洗系统](panning.md)。
 
-
-淘洗默认时长为 100 刻（5 秒）。服务端只在有效淘洗 tick 刷新 `ShimmerEntity` 的临时工作状态，通过实体数据同步给附近客户端；停止后最多两刻恢复闲置，不写入 NBT。闲置视觉以客户端绘制的贴水金白色细线为主，辅以稀疏白色粒子，剩余次数越少越稀疏；工作时每两刻增加两组旋转水花与向外扩散的钓鱼涟漪，多人操作同一个点不增加粒子发射频率。
-
-旧的独立配置仍优先于代码默认值：已有配置若保留 `pan_duration_ticks = 160`，需改为 `100` 才会采用 5 秒；当前工作区 NeoForge 测试配置已同步调整。
+与本篇相关的注册事实：`ShimmerEntity` 注册于 `ModEntities` 清单（无模型装饰实体，不注册属性），渲染器 `ShimmerRenderer` 为空实现占位，视觉完全由世界渲染阶段的贴水波光与客户端 tick 粒子承担。

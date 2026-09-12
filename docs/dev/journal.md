@@ -84,7 +84,7 @@ ensureLoaded(server)
 
 ### 3.3 分类结构
 
-`catalogStructure` 由 [`JournalCategoryLoader`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描所有命名空间的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则与领域语言见 [`docs/journal-categories.md`](../journal-categories.md) 与 [`docs/adr/0007`](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)。
+`catalogStructure` 由 [`JournalCategoryLoader`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描所有命名空间的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则与领域语言见 [`docs/journal-categories.md`](../journal-categories.md) 。
 
 ### 3.4 目录哈希与按需同步
 

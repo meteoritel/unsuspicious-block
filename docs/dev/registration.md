@@ -88,9 +88,9 @@ public class ModItems {
 | 持有类 | 注册内容 | 条目数 | 平台回写时机 |
 |---|---|---|---|
 | `ModBlocks` | 方块 | 4 | Fabric 即时 / NeoForge static 块 |
-| `ModItems` | 物品（含 BlockItem） | 14 | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork` |
+| `ModItems` | 物品（含 BlockItem） | 15 | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork` |
 | `ModBlockEntities` | 方块实体类型 | - | Fabric 即时 / NeoForge static 块 |
-| `ModEntities` | 实体类型 | 4（信使/剑士/商人/灯笼宠物） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent` |
+| `ModEntities` | 实体类型 | 5（信使/剑士/商人/灯笼宠物/闪烁的光） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（闪烁的光为无模型装饰实体，不注册属性） |
 | `ModEffects` | 药水效果 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
 | `ModSounds` | 声音事件 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
 | `ModRecipeSerializers` | 配方序列化器 | - | Fabric 即时 / NeoForge static 块 |

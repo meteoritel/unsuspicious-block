@@ -52,6 +52,7 @@ fabric/src/main/resources/META-INF/services/
 ├── com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper   -> FabricAccessoryHelper
 ├── com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig   -> FabricLootTableConfig
 ├── com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig   -> FabricLootTableConfig
+├── com.meteorite.unsuspiciousblock.platform.services.IPanningConfig     -> FabricPanningConfig
 ├── com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter         -> FabricCatEventAdapter
 ├── com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmentEventAdapter -> FabricEnchantmentEventAdapter
 └── com.meteorite.unsuspiciousblock.world.IBoneBlockTracker              -> FabricBoneBlockTracker
@@ -61,7 +62,7 @@ NeoForge 端结构对称，实现类替换为 `NeoForge*`。
 
 > 注意：`ICatEventAdapter` 与 `IEnchantmentEventAdapter`、`IBoneBlockTracker` 虽然放在各自子系统的包下，但同样走 `Services` 的 `ServiceLoader` 机制，是 SPI 的一部分。
 
-## 3. 八个 SPI 接口职责
+## 3. 九个 SPI 接口职责
 
 | 接口 | 所在包 | 职责 | Fabric 实现 | NeoForge 实现 |
 |---|---|---|---|---|
@@ -70,15 +71,18 @@ NeoForge 端结构对称，实现类替换为 `NeoForge*`。
 | `IAccessoryHelper` | `platform.services` | 查询饰品栏装备（考古笔记/猫之瞳/标本箱是否装备） | `FabricAccessoryHelper`（Trinkets，缺失时返回空） | `NeoForgeAccessoryHelper`（Curios，缺失时返回空） |
 | `ILootTableConfig` | `platform.services` | 战利品追踪前缀、单表日志上限、追踪超时 | `FabricLootTableConfig` | `NeoForgeLootTableConfig` |
 | `ISpiritCatConfig` | `platform.services` | 猫国灵体生命周期与效果时长（信使/剑士/商人在场时间、无敌/抗性/火抗时长） | `FabricLootTableConfig` | `NeoForgeLootTableConfig` |
+| `IPanningConfig` | `platform.services` | 淘洗参数（生成间隔/上限/寿命、世界生成概率、淘洗时长/间距/次数） | `FabricPanningConfig`（全局 JSON） | `NeoForgePanningConfig`（SERVER ModConfigSpec，独立文件名） |
 | `IEnchantmentEventAdapter` | `enchantment.framework.adapter` | 附魔事件钩子（注册附魔、监听附魔相关事件） | `FabricEnchantmentEventAdapter` | `NeoForgeEnchantmentEventAdapter` |
 | `ICatEventAdapter` | `cat.adapter` | 猫族事件钩子（驯服、喂食、晨礼等猫相关事件） | `FabricCatEventAdapter` | `NeoForgeCatEventAdapter` |
 | `IBoneBlockTracker` | `world` | 自然骨块追踪（记录世界生成的骨块，供化石猎手附魔判定） | `FabricBoneBlockTracker`（mixin + chunk 事件） | `NeoForgeBoneBlockTracker`（DataAttachment） |
 
-> **例外**：`platform.services` 包内还有第 9 个接口 [`IAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IAchievementHelper.java)（授予/查询/撤销成就）。它**不走 ServiceLoader**，由 common 的 [`VanillaAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/VanillaAchievementHelper.java) 用原版 API 直接实现，在 `UnsuspiciousBlockCommon.init()` 中以构造参数注入 `AchievementManager`，双平台共用同一实现。
+> **例外**：`platform.services` 包内还有第 10 个接口 [`IAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IAchievementHelper.java)（授予/查询/撤销成就）。它**不走 ServiceLoader**，由 common 的 [`VanillaAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/VanillaAchievementHelper.java) 用原版 API 直接实现，在 `UnsuspiciousBlockCommon.init()` 中以构造参数注入 `AchievementManager`，双平台共用同一实现。
 
 ### 3.1 配置类双接口模式
 
 注意 `ISpiritCatConfig` 在两个平台都由 `*LootTableConfig` 类实现——**同一个配置类同时实现两个接口**。这是因为项目把"战利品配置"和"灵体配置"放在同一份配置文件里管理，但 common 代码通过两个独立接口读取，保持职责分离。
+
+`IPanningConfig` 则是反例：淘洗参数与上述配置文件无关，两个平台各用**独立的配置类**实现（`FabricPanningConfig` / `NeoForgePanningConfig`），存储位置与文件格式详见 [配置与第三方联动](config-integrations.md)。
 
 接口内还集中定义了**领域约束常量**（范围与默认值），例如 `ILootTableConfig`：
 

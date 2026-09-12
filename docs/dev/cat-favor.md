@@ -56,7 +56,7 @@ serverTick(player)
         -> tryAccumulate(FEED_CAT)
 ```
 
-**信物绑定规则**（见 [`HandOfCatItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/HandOfCatItem.java) 与 [ADR 0002](../adr/0002-hand-of-cat-is-owner-bound.md)）：
+**信物绑定规则**（见 [`HandOfCatItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/HandOfCatItem.java)）：
 
 - 猫之手与玩家 UUID 绑定，他人可持有但无法使用。
 - 已随身携带本人信物的玩家再次取得空白猫之手时，信物保持未绑定，供转赠。
@@ -187,7 +187,7 @@ triggerNineLives(player, source)   // 由 LivingEntityNineLivesMixin 在致命�
   └─ SwordsmanCatService.summonOrRefresh  召唤剑士猫猫保护玩家
 ```
 
-**命数规则**（见 [ADR 0004](../adr/0004-nine-lives-is-sustained-by-messenger-gifts.md)）：
+**命数规则**：
 
 - 首次成为挚友时授予 1 命（`grantNineLivesOnCap`，`initialBestFriendLifeGranted` 标记防重复）。
 - 猫猫信使每次成功送礼补充 1 命（`onMessengerGiftDelivered`，上限 9）。
@@ -209,7 +209,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 ```
 
 - 引礼者（触发晨礼的羁绊猫）只影响开场注视，**配送目标始终为玩家**。
-- 信使礼物使用 `gameplay/cat/ghost_gift` 战利品表（数据驱动，见 [ADR 0007](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)）。
+- 信使礼物使用 `gameplay/cat/ghost_gift` 战利品表（数据驱动）。
 - 每名玩家同时最多一只信使。
 - 信使送礼成功时通过 `CatFavorManager.onMessengerGiftDelivered` 补充九命（仅羁绊=100 时）。
 
@@ -222,7 +222,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - [`MerchantCatSpawner`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/merchant/MerchantCatSpawner.java)：服务端 tick 末尾由平台入口驱动（`MerchantCatSpawner.tick(server)`），在符合条件的玩家周围村庄生成商人。
 - [`MerchantCatTradeManager`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/merchant/MerchantCatTradeManager.java)：从 `data/unsuspiciousblock/merchant_cat_trades/` 加载交易定义（JSON，支持输入/输出/次数/权重/条件）。
 - [`TaggedMerchantOffer`](../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/merchant/TaggedMerchantOffer.java)：支持物品标签作为交易输入（如 `#unsuspiciousblock:random/discs`），通过 `random/*` 包装 tag 实现随机陶片/唱片/盔甲纹饰模板。
-- 商人主要收取古代金币，也提供少量高成本、严格限量的古代金币交易（见 [ADR 0005](../adr/0005-cat-merchant-uses-ancient-coin-economy.md)）。
+- 商人主要收取古代金币，也提供少量高成本、严格限量的古代金币交易。
 
 ## 10. 状态持久化与迁移
 
@@ -244,7 +244,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - `recentlyHitCatUuid/GameTime`：击杀去重
 - `activeMessengerUuid` / `activeSwordsmanUuid`：活跃灵体去重
 
-**数据迁移**：`CURRENT_DATA_VERSION = 2`，`readLegacy` 处理旧 `favor` 格式（冷却清空，旧压力板偏好映射为轻步总开关）。见 [ADR 0008](../adr/0008-migrate-cat-favor-saves-without-resetting-progress.md)。
+**数据迁移**：`CURRENT_DATA_VERSION = 2`，`readLegacy` 处理旧 `favor` 格式（冷却清空，旧压力板偏好映射为轻步总开关）。
 
 **重生保留**：`copyFrom` 复制持久化字段，不复制瞬态字段。关系与偏好跨重生保留。
 
@@ -284,4 +284,3 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - [配置与第三方联动](config-integrations.md) - `ISpiritCatConfig`
 - [docs/cat-bond-design.md](../cat-bond-design.md) - 羁绊玩法设计
 - [docs/spirit-cat-npc-design.md](../spirit-cat-npc-design.md) - 灵体猫 NPC 设计
-- [docs/adr/](../adr/) - 0002~0009 架构决策记录

@@ -145,7 +145,8 @@ List.of(
     "minecraft:chests/buried_treasure",
     "minecraft:chests/ancient_city", "minecraft:chests/ancient_city_ice_box",
     "unsuspiciousblock:gameplay/fishing/",
-    "unsuspiciousblock:gameplay/fossil_hunter/"
+    "unsuspiciousblock:gameplay/fossil_hunter/",
+    "unsuspiciousblock:gameplay/panning/"
 )
 ```
 

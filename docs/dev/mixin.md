@@ -212,5 +212,7 @@ public abstract class AnvilMenuMixin {
 
 ## 淘盘动画入口
 
+淘洗系统整体见 [淘洗系统](panning.md)。两个 mixin 仅作为入口，动画逻辑全部在 common 的 `PanningAnimation`：
+
 - common 客户端 `HumanoidPanningMixin`：`HumanoidModel.setupAnim` 尾部转交 `PanningAnimation`，只调整正在淘洗的玩家持盘手臂。
 - Fabric 客户端 `ItemInHandPanningMixin`：`ItemInHandRenderer.renderArmWithItem` 开头转交专属动画，仅成功接管当前使用的淘盘时取消原版持物绘制。NeoForge 对应接入使用原生 `RenderHandEvent`。

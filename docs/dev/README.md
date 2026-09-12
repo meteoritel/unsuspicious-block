@@ -23,6 +23,7 @@
 | [猫族关系系统](cat-favor.md) | 羁绊阶段 / 恩惠 / 灵体猫 / 猫猫商人 | `cat/` `entity/` |
 | [附魔系统](enchantment.md) | 附魔框架 / 揭示 / 四种附魔 | `enchantment/` |
 | [实体与世界生成](entities-world.md) | 灵体猫 AI / 灯笼宠物 / 骨块追踪 / 结构 | `entity/` `world/` |
+| [淘洗系统](panning.md) | 淘盘 / 闪烁的光 / 生成与账本 / 淘洗结算 / 摇洗动画与波光 | `pan/` `entity/` `item/` `client/pan/` |
 | [方块与物品](blocks-items.md) | 可疑方块 / 陶轮 / 标本箱 / 制陶 / 配方 | `block/` `item/` `specimen/` `pottery/` |
 | [客户端与 GUI](client-ui.md) | 考古笔记 GUI 层级 / HUD / 渲染 / 客户端状态 | `client/` |
 | [工具栏图标图集](toolbar-icon-atlas.md) | `toolbar_icons.png` 槽位 / UV / 图标语义 | `client/ui/widget/` |
@@ -42,7 +43,6 @@
 | 路径 | 类型 | 说明 |
 |---|---|---|
 | `docs/dev/`（本目录） | 开发者文档 | 代码架构，面向维护者 |
-| `docs/adr/` | 架构决策记录 | 猫族关系系统的关键设计决策与理由 |
 | `docs/cat-bond-design.md` | 设计文档 | 猫族羁绊玩法设计（面向策划） |
 | `docs/spirit-cat-npc-design.md` | 设计文档 | 灵体猫 NPC 设计（面向策划） |
 | `docs/journal-categories.md` | 设计文档 | 考古笔记目录分类规则 |

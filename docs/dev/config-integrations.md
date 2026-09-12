@@ -4,15 +4,15 @@
 
 ## 1. 职责概述
 
-- **配置系统**：通过 `ILootTableConfig` 与 `ISpiritCatConfig` 两个 SPI 接口暴露可调参数。战利品追踪配置由服务端按世界持有；Fabric 使用世界目录 JSON，NeoForge 使用 SERVER ModConfigSpec。灵体猫参数仍为全局配置。
-- **数据驱动边界**：可枚举内容交数据包，可调强度交配置，身份/关系语义保持硬编码（见 [ADR 0007](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md)）。
+- **配置系统**：通过 `ILootTableConfig`、`ISpiritCatConfig` 与 `IPanningConfig` 三个 SPI 接口暴露可调参数。战利品追踪配置由服务端按世界持有；Fabric 使用世界目录 JSON，NeoForge 使用 SERVER ModConfigSpec。灵体猫参数与淘洗参数仍为全局配置。
+- **数据驱动边界**：可枚举内容交数据包，可调强度交配置，身份/关系语义保持硬编码。
 - **第三方联动**：六类可选联动，统一用 `compileOnly` + `OptionalModIntegration` 反射加载，发布时不强制依赖。
 
 ## 2. 配置系统
 
 ### 2.1 配置接口
 
-两个 SPI 接口（见 [平台抽象](platform-abstraction.md)）定义可调参数与领域约束常量：
+三个 SPI 接口（见 [平台抽象](platform-abstraction.md)）定义可调参数与领域约束常量：
 
 [`ILootTableConfig`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ILootTableConfig.java)（战利品表与日志）：
 
@@ -31,7 +31,8 @@ minecraft:gameplay/fishing,
 minecraft:chests/buried_treasure,
 minecraft:chests/ancient_city, minecraft:chests/ancient_city_ice_box,
 unsuspiciousblock:gameplay/fishing/,
-unsuspiciousblock:gameplay/fossil_hunter/
+unsuspiciousblock:gameplay/fossil_hunter/,
+unsuspiciousblock:gameplay/panning/
 ```
 
 [`ISpiritCatConfig`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ISpiritCatConfig.java)（猫国灵体）：
@@ -45,11 +46,25 @@ unsuspiciousblock:gameplay/fossil_hunter/
 | `resistance_duration_ticks` | 1-72000 | 600 | 九命抗性提升 II 时间 |
 | `fire_resistance_duration_ticks` | 1-72000 | 600 | 九命防火 I 时间 |
 
+[`IPanningConfig`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IPanningConfig.java)（淘洗系统，机制详见 [淘洗系统](panning.md)）：
+
+| 参数 | 范围 | 默认 | 说明 |
+|---|---|---|---|
+| `spawn_interval_ticks` | 100-72000 | 600（30 秒） | 自然生成尝试的间隔节拍 |
+| `max_natural_per_dimension` | 0-64 | 5 | 每维度自然生成的闪烁的光数量上限 |
+| `min_lifetime_ticks` | 200-1728000 | 24000（20 分钟） | 自然生成实体最短寿命 |
+| `max_lifetime_ticks` | 200-1728000 | 48000（40 分钟） | 自然生成实体最长寿命 |
+| `worldgen_chance` | - | 0.02 | 区块世界生成时的确定性生成概率（仅河流水域） |
+| `pan_duration_ticks` | 10-400 | 100（5 秒） | 单次淘洗需要长按的刻数 |
+| `spacing_blocks` | 0-512 | 32 | 淘洗点之间的最小水平间距 |
+| `pan_uses` | 1-16 | 3 | 单个淘洗点可淘洗次数 |
+
 ### 2.2 Fabric 实现
 
 [`FabricLootTableConfig`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) **同时实现两个接口**（`ILootTableConfig` + `ISpiritCatConfig`），用 GSON 读写 JSON：
 
 - 战利品追踪配置：`<世界目录>/serverconfig/unsuspiciousblock.json`，服务端启动时加载，停止时解除世界绑定。
+- 淘洗配置：[`FabricPanningConfig`](../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricPanningConfig.java) 实现第三接口，全局 JSON `config/unsuspiciousblock/panning.json`，字段缺失时自动补写默认值。
 - 灵体猫全局配置：`config/unsuspiciousblock/unsuspiciousblock.json`。
 - 世界配置首次创建时，以旧全局 JSON 中的三项战利品配置作为迁移初值，兼容已有玩家设置。
 - 自动生成中英文 `README_CN.txt` / `README_EN.txt`（弥补 JSON 无注释的限制），已存在则保留玩家自定义备注。
@@ -62,6 +77,7 @@ unsuspiciousblock:gameplay/fossil_hunter/
 [`NeoForgeLootTableConfig`](../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgeLootTableConfig.java) 用 NeoForge 的 `ModConfigSpec`：
 
 - `SERVER_CONFIG_SPEC` 注册为 `ModConfig.Type.SERVER`，保存三项战利品追踪配置并由 NeoForge 放入世界 `serverconfig`。
+- 淘洗配置：[`NeoForgePanningConfig`](../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgePanningConfig.java) 实现第三接口，注册为独立的 SERVER ModConfigSpec。同一模组的同类配置默认文件名相同，因此必须显式指定文件名 `unsuspiciousblock-panning-server.toml`，否则 `ConfigTracker` 判定配置文件冲突并中断模组构造。
 - `COMMON_CONFIG_SPEC` 保留灵体猫参数和旧版三项追踪值；旧值只作为新世界首次迁移初值，不再作为运行时权威配置。
 - SERVER spec 使用一次性迁移标记，首次加载世界时复制旧 COMMON 值，之后不会覆盖该世界自己的设置。
 - 用 `defineInRange` 声明范围约束，与 Fabric 端钳制行为对齐。
@@ -92,7 +108,7 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 
 ## 3. 数据驱动与硬编码边界
 
-遵循 [ADR 0007](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md) 的三层分离：
+数据驱动三层分离原则：
 
 ### 3.1 数据驱动（可通过数据包修改）
 
@@ -111,7 +127,7 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 
 ### 3.2 可配置（服务端配置）
 
-- 羁绊增减与冷却（`CatFavorAction` 的 favorDelta / cooldownTicks 目前硬编码，但 ADR 0007 提及可调）。
+- 羁绊增减与冷却（`CatFavorAction` 的 favorDelta / cooldownTicks 目前硬编码，预留可调空间）。
 - 坐卧时间和半径、恩惠数值。
 - 灵体战斗与生命周期（`ISpiritCatConfig`）。
 - 商人生成参数。
@@ -225,4 +241,3 @@ if (Services.PLATFORM.isModLoaded("trinkets")) {
 - [考古笔记系统](journal.md) - 日志上限与追踪超时
 - [方块与物品](blocks-items.md) - 标本箱饰品代理
 - [架构总览](architecture-overview.md) - 构建与可选依赖
-- [docs/adr/0007](../adr/0007-cat-system-separates-content-balance-and-domain-rules.md) - 三层分离决策
