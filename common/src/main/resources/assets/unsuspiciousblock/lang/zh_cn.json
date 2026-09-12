@@ -674,5 +674,11 @@
   "block.unsuspiciousblock.unfired_decorated_pot": "未烧制的纹饰陶罐",
   "item.unsuspiciousblock.unfired_decorated_sherd": "未烧制的纹饰陶片",
   "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "纹饰：%s",
-  "jei.unsuspiciousblock.category.pottery_wheel": "纹饰陶轮台"
+  "jei.unsuspiciousblock.category.pottery_wheel": "纹饰陶轮台",
+  "item.unsuspiciousblock.copper_pan": "淘盘",
+  "item.unsuspiciousblock.copper_pan.tooltip_use": "对准闪烁的光长按右键淘洗水中沉积物",
+  "entity.unsuspiciousblock.shimmer": "闪烁的光",
+  "screen.unsuspiciousblock.archaeology_journal.category.panning": "淘筛采集",
+  "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "用淘盘从河流沉积物中淘洗出的战利品。",
+  "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "淘洗"
 }

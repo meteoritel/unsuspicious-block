@@ -26,6 +26,7 @@ import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
@@ -54,6 +55,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -172,7 +174,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         // 遍历实体注册清单，统一注册类型、回写 Supplier 并注册默认属性
         ModEntities.forEach(new EntityRegistrar() {
             @Override
-            public <T extends LivingEntity> void register(String name, Supplier<EntityType<T>> factory,
+            public <T extends Entity> void register(String name, Supplier<EntityType<T>> factory,
                     Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
                 EntityType<T> type = Registry.register(
                         BuiltInRegistries.ENTITY_TYPE,
@@ -181,8 +183,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 );
                 // 包装为不可变 Supplier，与 NeoForge 的 DeferredHolder 行为对齐
                 setter.accept(() -> type);
-                AttributeSupplier supplier = attributes.get().build();
-                FabricDefaultAttributeRegistry.register(type, supplier);
+                // 非生物实体（如闪烁的光）没有默认属性，跳过属性注册
+                if (attributes != null) {
+                    registerDefaultAttributes(type, attributes.get().build());
+                }
             }
         });
 
@@ -259,11 +263,16 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             ServerLootTableConfigManager.tick(server);
             LootProbabilitySimulationWorker.tickIfPresent(server);
             MerchantCatSpawner.tick(server);
+            ShimmerSpawnService.tick(server);
         });
 
         // 直接扫描事件提供的 chunk，避免其进入 chunk map 前重新触发生成
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->
                 NaturalBoneBlockTracker.scanChunk(chunk));
+
+        // 区块首次加载时进行闪烁的光世界生成判定；实际生成延迟到后续 tick 执行
+        ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
+                ShimmerSpawnService.onChunkLoaded(world, chunk.getPos()));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 JournalPlayerDataService.onPlayerJoined(handler.player));
@@ -283,6 +292,14 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         );
 
         Constants.LOG.info("UnsuspiciousBlock Fabric initialized.");
+    }
+
+    // 注册实体默认属性——非生物实体没有属性，因此仅在 attributes 非空时调用；
+    // 此处的向下转型是安全的：调用方只在条目提供了属性工厂（即生物实体）时才进入该分支
+    @SuppressWarnings("unchecked")
+    private static <T extends Entity> void registerDefaultAttributes(EntityType<T> type,
+                                                                     AttributeSupplier supplier) {
+        FabricDefaultAttributeRegistry.register((EntityType<? extends LivingEntity>) type, supplier);
     }
 
     // 注册 C2S payload 类型与服务端接收器，调度到主线程执行 handler

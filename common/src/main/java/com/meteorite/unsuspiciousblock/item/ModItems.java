@@ -24,6 +24,7 @@ public class ModItems {
     public static Item BASE_PAGE;
     public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
+    public static CopperPanItem COPPER_PAN;
     public static BlockItem UNSUSPICIOUS_SAND;
     public static BlockItem UNSUSPICIOUS_GRAVEL;
     public static BlockItem POTTERY_WHEEL;
@@ -76,7 +77,10 @@ public class ModItems {
                     item -> EYE_OF_CAT = (EyeOfCatItem) item),
             new ItemEntry("hand_of_cat",
                     ModItems::createHandOfCat,
-                    item -> HAND_OF_CAT = (HandOfCatItem) item)
+                    item -> HAND_OF_CAT = (HandOfCatItem) item),
+            new ItemEntry("copper_pan",
+                    ModItems::createCopperPan,
+                    item -> COPPER_PAN = (CopperPanItem) item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -93,6 +97,7 @@ public class ModItems {
             () -> UNFIRED_DECORATED_SHERD,
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
+            () -> COPPER_PAN,
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
             () -> BASE_PAGE,
@@ -137,6 +142,11 @@ public class ModItems {
     // 创建考古铲实例
     public static ArchaeologicalShovelItem createArchaeologicalShovel() {
         return new ArchaeologicalShovelItem(new Item.Properties().stacksTo(1));
+    }
+
+    // 创建淘盘实例——32 点耐久，可在铁砧上用铜锭修复
+    public static CopperPanItem createCopperPan() {
+        return new CopperPanItem(new Item.Properties().stacksTo(1).durability(32));
     }
 
     // 创建考古笔记实例

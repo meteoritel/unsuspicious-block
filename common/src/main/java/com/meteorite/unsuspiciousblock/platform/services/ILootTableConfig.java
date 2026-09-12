@@ -31,7 +31,8 @@ public interface ILootTableConfig {
             "minecraft:chests/ancient_city",
             "minecraft:chests/ancient_city_ice_box",
             "unsuspiciousblock:gameplay/fishing/",
-            "unsuspiciousblock:gameplay/fossil_hunter/"
+            "unsuspiciousblock:gameplay/fossil_hunter/",
+            "unsuspiciousblock:gameplay/panning/"
     );
 
     List<String> getArchaeologyPathPrefixes();

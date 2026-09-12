@@ -117,7 +117,7 @@ public class SuspiciousReaderItem extends Item {
 
     public static void setEnergy(ItemStack stack, int energy) {
         if (stack.getItem() != ModItems.SUSPICIOUS_READER) return;
-        int clamped = Math.max(0, Math.min(MAX_ENERGY, energy));
+        int clamped = Math.clamp(energy, 0, MAX_ENERGY);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(TAG_ENERGY, clamped));
     }
 
@@ -129,7 +129,7 @@ public class SuspiciousReaderItem extends Item {
 
     public static void setScanLevel(ItemStack stack, int level) {
         if (stack.getItem() != ModItems.SUSPICIOUS_READER) return;
-        int clamped = Math.max(0, Math.min(MAX_SCAN_LEVEL, level));
+        int clamped = Math.clamp(level, 0, MAX_SCAN_LEVEL);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(TAG_SCAN_LEVEL, clamped));
     }
 

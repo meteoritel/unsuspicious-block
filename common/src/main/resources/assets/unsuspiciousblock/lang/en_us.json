@@ -674,5 +674,11 @@
   "block.unsuspiciousblock.unfired_decorated_pot": "Unfired Decorated Pot",
   "item.unsuspiciousblock.unfired_decorated_sherd": "Unfired Decorated Pottery Sherd",
   "item.unsuspiciousblock.unfired_decorated_sherd.pattern": "Pattern: %s",
-  "jei.unsuspiciousblock.category.pottery_wheel": "Decorated Pottery Wheel"
+  "jei.unsuspiciousblock.category.pottery_wheel": "Decorated Pottery Wheel",
+  "item.unsuspiciousblock.copper_pan": "Copper Pan",
+  "item.unsuspiciousblock.copper_pan.tooltip_use": "Hold right-click on a Shimmer to pan river sediment",
+  "entity.unsuspiciousblock.shimmer": "Shimmer",
+  "screen.unsuspiciousblock.archaeology_journal.category.panning": "Panning",
+  "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "Loot panned out of river sediment with the Copper Pan.",
+  "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "Panning"
 }

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.state;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -54,6 +55,12 @@ public final class LootSourceType {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "decorated_pot"),
             Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.decorated_pot"),
             () -> new ItemStack(Items.DECORATED_POT),
+            true);
+
+    public static final LootSourceType PANNING = register(
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "panning"),
+            Component.translatable("screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning"),
+            () -> new ItemStack(ModItems.COPPER_PAN),
             true);
 
     private final ResourceLocation id;

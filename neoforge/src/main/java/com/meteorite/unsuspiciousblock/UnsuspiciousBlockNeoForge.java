@@ -20,12 +20,14 @@ import com.meteorite.unsuspiciousblock.loot.FishingLootModifier;
 import com.meteorite.unsuspiciousblock.loot.InjectItemLootModifier;
 import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
+import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
@@ -44,6 +46,7 @@ import net.minecraft.util.StringUtil;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -57,6 +60,7 @@ import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -190,13 +194,18 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     /** 存储 (DeferredHolder, 属性工厂) 对，泛型化以消除强制转换 */
-    private record EntitySyncEntry<T extends LivingEntity>(
+    private record EntitySyncEntry<T extends Entity>(
             DeferredHolder<EntityType<?>, EntityType<T>> deferred,
-            Supplier<AttributeSupplier.Builder> attributes) {
+            @Nullable Supplier<AttributeSupplier.Builder> attributes) {
 
-        // 注册实体默认属性
+        // 注册实体默认属性；非生物实体没有默认属性，跳过。
+        // 转型安全：只有条目提供了属性工厂（即生物实体）时才会进入该分支
+        @SuppressWarnings("unchecked")
         void putAttributes(EntityAttributeCreationEvent event) {
-            event.put(deferred.get(), attributes.get().build());
+            if (attributes == null) {
+                return;
+            }
+            event.put((EntityType<? extends LivingEntity>) deferred.get(), attributes.get().build());
         }
     }
 
@@ -205,7 +214,7 @@ public class UnsuspiciousBlockNeoForge {
     static {
         ModEntities.forEach(new EntityRegistrar() {
             @Override
-            public <T extends LivingEntity> void register(String name, Supplier<EntityType<T>> factory,
+            public <T extends Entity> void register(String name, Supplier<EntityType<T>> factory,
                     Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
                 DeferredHolder<EntityType<?>, EntityType<T>> deferred = ENTITY_TYPES.register(name, factory);
                 // DeferredHolder 本身即 Supplier，直接回写，无需等待 FMLCommonSetupEvent
@@ -238,6 +247,7 @@ public class UnsuspiciousBlockNeoForge {
 
         container.registerConfig(ModConfig.Type.SERVER, NeoForgeLootTableConfig.SERVER_CONFIG_SPEC);
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.COMMON_CONFIG_SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, NeoForgePanningConfig.SERVER_CONFIG_SPEC);
 
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
@@ -377,15 +387,18 @@ public class UnsuspiciousBlockNeoForge {
         ServerLootTableConfigManager.tick(event.getServer());
         LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
         MerchantCatSpawner.tick(event.getServer());
+        ShimmerSpawnService.tick(event.getServer());
     }
 
     // chunk 首次生成时扫描骨块并标记为自然生成
     @SubscribeEvent
     public void onChunkLoad(ChunkEvent.Load event) {
-        if (!event.isNewChunk()) {
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
             return;
         }
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+        // 区块首次加载时进行闪烁的光世界生成判定；实际生成延迟到后续 tick 执行
+        ShimmerSpawnService.onChunkLoaded(serverLevel, event.getChunk().getPos());
+        if (!event.isNewChunk()) {
             return;
         }
         ChunkAccess chunk = event.getChunk();

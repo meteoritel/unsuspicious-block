@@ -1,0 +1,16 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.panning",
+  "fallback": "Panning",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.panning.description",
+  "description_fallback": "Sediment panned out of river water with the Copper Pan.",
+  "icon": "unsuspiciousblock:copper_pan",
+  "order": 45,
+  "types": [],
+  "special_rules": [
+    {
+      "namespaces": ["unsuspiciousblock"],
+      "path_prefixes": ["gameplay/panning/"],
+      "priority": 100
+    }
+  ]
+}

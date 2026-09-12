@@ -1,8 +1,9 @@
 package com.meteorite.unsuspiciousblock.entity;
 
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -19,10 +20,11 @@ import java.util.function.Supplier;
 @FunctionalInterface
 public interface EntityRegistrar {
 
-    // 注册单个实体：创建类型、回写 common 静态字段（Supplier 形式）、注册默认属性
-    <T extends LivingEntity> void register(
+    // 注册单个实体：创建类型、回写 common 静态字段（Supplier 形式）、注册默认属性；
+    // attributes 仅生物实体需要，非生物实体（如闪烁的光）传 null
+    <T extends Entity> void register(
             String name,
             Supplier<EntityType<T>> factory,
             Consumer<Supplier<EntityType<T>>> setter,
-            Supplier<AttributeSupplier.Builder> attributes);
+            @Nullable Supplier<AttributeSupplier.Builder> attributes);
 }
