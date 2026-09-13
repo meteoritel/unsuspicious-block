@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.block.SealedContentsDisplay;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlock;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
+import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -24,6 +25,10 @@ public class JadePlugin implements IWailaPlugin {
             ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "scanned_loot");
     public static final ResourceLocation SEALED_CONTENTS_ID =
             ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "sealed_contents");
+    public static final ResourceLocation SHIMMER_LIFETIME_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "shimmer_lifetime");
+
+    private static final String TAG_SHIMMER_REMAINING = "ShimmerRemainingTicks";
 
     private static final String TAG_SEALED_ITEM = "SealedItem";
     private static final String TAG_CRAFTER_NAME = "CrafterName";
@@ -32,12 +37,57 @@ public class JadePlugin implements IWailaPlugin {
     public void register(IWailaCommonRegistration registration) {
         registration.registerBlockDataProvider(
                 SealedContentsServerDataProvider.INSTANCE, UnsuspiciousBlockEntity.class);
+        registration.registerEntityDataProvider(ShimmerLifetimeServerProvider.INSTANCE, ShimmerEntity.class);
     }
 
     @Override
     public void registerClient(IWailaClientRegistration registration) {
         registration.registerBlockComponent(ScannedLootProvider.INSTANCE, BrushableBlock.class);
         registration.registerBlockComponent(SealedContentsProvider.INSTANCE, UnsuspiciousBlock.class);
+        registration.registerEntityComponent(ShimmerLifetimeProvider.INSTANCE, ShimmerEntity.class);
+    }
+
+    /*** 按需发送服务端计算的剩余寿命，避免客户端尚未同步的来源和截止时间造成误报。 */
+    enum ShimmerLifetimeServerProvider implements IServerDataProvider<EntityAccessor> {
+        INSTANCE;
+
+        @Override
+        public void appendServerData(CompoundTag data, EntityAccessor accessor) {
+            if (accessor.getEntity() instanceof ShimmerEntity shimmer) {
+                data.putLong(TAG_SHIMMER_REMAINING, shimmer.isNaturalSpawn()
+                        ? Math.max(0L, shimmer.getExpiresAt() - shimmer.level().getGameTime()) : -1L);
+            }
+        }
+
+        @Override
+        public ResourceLocation getUid() {
+            return SHIMMER_LIFETIME_ID;
+        }
+    }
+
+    /*** 显示闪烁的光距离自然消失的分秒数；世界生成点单独说明不会自然消失。 */
+    enum ShimmerLifetimeProvider implements IEntityComponentProvider {
+        INSTANCE;
+
+        @Override
+        public void appendTooltip(ITooltip tooltip, EntityAccessor accessor, IPluginConfig config) {
+            CompoundTag data = accessor.getServerData();
+            if (!data.contains(TAG_SHIMMER_REMAINING, Tag.TAG_LONG)) return;
+            long ticks = data.getLong(TAG_SHIMMER_REMAINING);
+            if (ticks < 0L) {
+                tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.permanent"));
+            } else {
+                // 向上取整，避免尚有不足一秒寿命时提前显示零秒。
+                long seconds = ticks / 20L + (ticks % 20L == 0L ? 0L : 1L);
+                tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.remaining",
+                        seconds / 60L, seconds % 60L));
+            }
+        }
+
+        @Override
+        public ResourceLocation getUid() {
+            return SHIMMER_LIFETIME_ID;
+        }
     }
 
     /** 已扫描原版可疑方块的客户端提示组件。 */

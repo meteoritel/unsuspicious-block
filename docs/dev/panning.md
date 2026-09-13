@@ -22,7 +22,7 @@
 
 | 来源 | 数量上限 | 寿命 | 说明 |
 |---|---|---|---|
-| 自然生成 | 受 `max_natural_per_dimension` 约束 | 随机 20~40 分钟（配置区间），仅实体加载时递减 | 寿命到期时若玩家在 3 格内（`GRACE_RADIUS`）则延长 30 秒，避免在玩家眼前消散 |
+| 自然生成 | 受 `max_natural_per_dimension` 约束 | 随机 20~40 分钟（配置区间），绝对游戏时间截止 | 卸载继续计时，服务器关闭暂停；到期释放名额，重新加载立即消散，不再续期 |
 | 世界生成 | 不计入 | 无（`lifetimeTicks` 恒 0） | 供探索发现，永不自然消散 |
 
 交互与状态：
@@ -38,9 +38,11 @@
 
 ### 3.1 自然生成
 
-- 按配置的 `spawn_interval_ticks` 节拍（账本 `nextAttempt` 持久化）逐维度尝试：随机选一名玩家 → 在其视距范围内随机挑已加载区块 → `ShimmerPlacement.hasRiverBiome` 3x3 列采样预筛河流群系 → 区块内水平游走最多 12 次找开阔水域落点。
-- 落点判定（`ShimmerPlacement`，两条来源共用，保证"能生成的点"与"能存活的点"一致）：世界水平面 ±3 格内找水面方块，上方必须为空气；3x3 水平范围内至少 6 列开阔水面（`MIN_OPEN_SURFACE_COLUMNS`）才算开阔水域。
-- 间距校验失败或达到每维度上限则本轮放弃；有实体消散（账本注销）后自动恢复尝试。
+- 按配置的 `spawn_interval_ticks` 节拍（账本 `nextAttempt` 持久化）逐维度尝试：随机选一名玩家 → 在其所在区块为圆心、半径 8 区块的范围内最多随机筛选 8 次 → 找到已加载、不在冷却且含河流群系的区块后，按随机起点逐个采样 4×3 分区，最多 12 次寻找落点。保留多人聚集的抽中概率优势，不设玩家避让距离。
+- 落点判定（`ShimmerPlacement`，两条来源共用，保证"能生成的点"与"能存活的点"一致）：世界水平面 +1 至 -3 格内找水面方块，上方必须为空气；3x3 水平范围内至少 6 列开阔水面（`MIN_OPEN_SURFACE_COLUMNS`）才算开阔水域。
+- 间距校验失败或达到每维度上限则本轮放弃；实体消散或账本中的截止时间到期后释放名额。
+- 任意来源的点被采空后，以该区块为中心的 3×3 区块进入 `harvest_cooldown_ticks` 冷却（默认 36000 刻 / 30 分钟）。重叠冷却取较晚截止时间；自然生成、世界生成入队及出队均检查。破坏或自然到期不触发采空冷却。
+- 工具扩展可覆写 `CopperPanItem.getHarvestRegenerationChance`；仅最后一次成功采集后调用 `ShimmerSpawnService.tryRegenerateAfterHarvest`。普通铜淘盘返回 0。特例仅绕过冷却，在原区块立即尝试生成自然点，仍受上限、间距和落点约束，不清除原冷却。
 
 ### 3.2 世界生成
 
@@ -59,10 +61,15 @@
 - `entries`：UUID → `Entry(pos, source)`，附**区块空间索引** `entriesByChunk`（区块键 → UUID 集合）与自然生成计数 `naturalCount`，两者均随 register/unregister 增量维护，`countNatural` 与 `isTooClose` 因此无需全量扫描（间距查询只访问范围覆盖的区块）。
 - `rolledChunks`：已完成世界生成判定的区块键集合。
 - `nextAttempt`：下一次自然生成尝试的游戏刻。
+- `expirations`：自然点 UUID → 绝对到期游戏刻，持久化在条目 `expires_at`。
+- `expired`：已过期但尚未加载清理的 UUID；不占名额或间距，实体加载消散后移除。
+- `cooldowns`：区块键 → 冷却截止游戏刻，持久化并清理到期记录。
 
 一致性策略（设计取舍）：
 
-- 实体消散主动注销；区块卸载**不注销**；外部工具直接删除实体数据时不自动修复，靠实体恢复 tick 时的补登记收敛。
+- 实体消散主动注销；卸载时保留记录，到期由账本移出数量与空间索引并留下过期标记。实体读取 NBT、服务端 tick 和采集结算均校验到期，避免恢复或交互时复活。
+- 旧账本首次访问时为缺少截止时间的自然点设置“当前时间 + 配置寿命上限”；旧实体加载时按剩余寿命转换，并与账本截止时间取较早值。无法追溯升级前已经卸载的时长。
+- 外部工具永久删除实体文件时，对应过期 UUID 可能保留；过期标记不计入生成上限。
 - 存盘持久化格式保持简单（NBT 列表 + long 数组），加载时重建空间索引与计数。
 
 ## 5. 淘洗流程
@@ -103,6 +110,25 @@
 
 - 配置：SPI 接口 `IPanningConfig`，Fabric 全局 JSON（`config/unsuspiciousblock/panning.json`），NeoForge 独立 SERVER ModConfigSpec（必须显式文件名，否则 ConfigTracker 冲突）。全部参数与默认值见 [配置与第三方联动](config-integrations.md)。
 - 调试指令：`/usb shimmer spawn <pos> [natural|worldgen]`（见 [`ShimmerDebugCommand`](../../common/src/main/java/com/meteorite/unsuspiciousblock/command/ShimmerDebugCommand.java)，需 OP 权限 2）。坐标指向**绑定的水方块**，指令会先铺水再生成，可在陆地直接搭测试点；复用 `spawnShimmer` 正式生成流程，但不做间距与上限判定。清理样本用原版 `/kill @e[type=unsuspiciousblock:shimmer]`，消散时自行从账本注销。
+
+### 7.1 生成调试指令
+
+以下指令均需 OP 2，前缀为 `/usb shimmer`，使用命令源所在位置和维度，可配合 `/execute in ... positioned ... run`。
+
+| 子指令 | 用途 |
+|---|---|
+| `help` | 显示用法；直接输入前缀也显示帮助 |
+| `attempt` | 当前区块执行一次正式自然生成落点尝试，检查加载、上限、冷却、河流与间距，不铺水，不改自动节拍 |
+| `stats [all]` | 当前维度或全部维度的有效临时点、世界生成点、过期记录及已加载/未加载划分 |
+| `chunk` | 当前区块冷却剩余刻数、世界生成完成标记、有效点 UUID/坐标/寿命/加载状态，最多 20 条 |
+| `expire <uuid>` | 强制当前维度指定自然点过期；可操作卸载点，不影响世界生成点 |
+| `cooldown set <seconds>` | 当前区块周围 3×3 区域施加 1～86400 秒冷却；已有更长冷却保留 |
+| `cooldown clear` | 清除同一 3×3 区域冷却 |
+
+统计依据账本，不强制加载区块，也不扫描实体文件；过期 UUID 无坐标，因此 `chunk` 不列已过期点。`stats` 中“未加载”表示 UUID 当前不在服务端已加载实体中，不能据此验证其磁盘文件仍存在。
+
+卸载到期验证：先 `chunk` 记录自然点 UUID，离开并等待实体卸载，执行 `expire <uuid>`，用 `stats` 检查过期待清理数，再返回观察实体消失和标记清理。冷却验证可用 `cooldown set 30`、`attempt`、`chunk` 观察拒绝原因和倒计时，再清除或等待冷却结束。
+
 
 ## 8. 相关文档
 

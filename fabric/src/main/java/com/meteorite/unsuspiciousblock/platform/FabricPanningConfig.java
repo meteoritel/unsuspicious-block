@@ -76,6 +76,12 @@ public class FabricPanningConfig implements IPanningConfig {
         return clamp(this.data.pan_uses, DEFAULT_PAN_USES, MIN_PAN_USES, MAX_PAN_USES);
     }
 
+    @Override
+    public int getHarvestCooldownTicks() {
+        return clamp(this.data.harvest_cooldown_ticks, DEFAULT_HARVEST_COOLDOWN_TICKS,
+                0, MAX_HARVEST_COOLDOWN_TICKS);
+    }
+
     private static int clamp(Integer value, int fallback, int min, int max) {
         int raw = value != null ? value : fallback;
         return Math.max(min, Math.min(max, raw));
@@ -128,5 +134,6 @@ public class FabricPanningConfig implements IPanningConfig {
         private Integer pan_duration_ticks = DEFAULT_PAN_DURATION_TICKS;
         private Integer spacing_blocks = DEFAULT_SPACING_BLOCKS;
         private Integer pan_uses = DEFAULT_PAN_USES;
+        private Integer harvest_cooldown_ticks = DEFAULT_HARVEST_COOLDOWN_TICKS;
     }
 }

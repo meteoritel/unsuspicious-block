@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.pan.PanningLootService;
+import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -92,10 +93,19 @@ public class CopperPanItem extends Item {
             ShimmerEntity target = findTargetedShimmer(player);
             if (target != null && target.consumePanUse()) {
                 PanningLootService.grantPanningLoot(serverLevel, player, target.getAnchorPos(), stack);
+                if (target.getPanRemaining() == 0) {
+                    ShimmerSpawnService.tryRegenerateAfterHarvest(serverLevel, target.getAnchorPos(),
+                            this.getHarvestRegenerationChance(stack, player));
+                }
                 stack.hurtAndBreak(1, serverLevel, player, item -> {});
             }
         }
         return super.finishUsingItem(stack, level, entity);
+    }
+
+    // 扩展工具可按物品状态或玩家条件覆写；普通铜淘盘不触发立即再生。
+    protected double getHarvestRegenerationChance(ItemStack stack, ServerPlayer player) {
+        return 0.0D;
     }
 
     // 准星命中判定：只有指向闪烁的光时才视为有效淘洗目标

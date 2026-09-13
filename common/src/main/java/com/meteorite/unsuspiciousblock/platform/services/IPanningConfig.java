@@ -27,6 +27,8 @@ public interface IPanningConfig {
     int DEFAULT_PAN_DURATION_TICKS = 100;
     int DEFAULT_SPACING_BLOCKS = 32;
     int DEFAULT_PAN_USES = 3;
+    int DEFAULT_HARVEST_COOLDOWN_TICKS = 36_000;
+    int MAX_HARVEST_COOLDOWN_TICKS = 1_728_000;
 
     // 自然生成的两次尝试之间的间隔刻数
     int getSpawnIntervalTicks();
@@ -48,6 +50,9 @@ public interface IPanningConfig {
 
     // 自然生成与现存闪烁的光之间需要保持的最小水平间距（格）
     int getSpacingBlocks();
+
+    // 采空后周围 3×3 区块的生成冷却（绝对游戏时间）。
+    int getHarvestCooldownTicks();
 
     // 单个闪烁的光可被淘洗的次数
     int getPanUses();

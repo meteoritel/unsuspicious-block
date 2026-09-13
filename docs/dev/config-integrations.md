@@ -57,6 +57,7 @@ unsuspiciousblock:gameplay/panning/
 | `worldgen_chance` | - | 0.02 | 区块世界生成时的确定性生成概率（仅河流水域） |
 | `pan_duration_ticks` | 10-400 | 100（5 秒） | 单次淘洗需要长按的刻数 |
 | `spacing_blocks` | 0-512 | 32 | 淘洗点之间的最小水平间距 |
+| `harvest_cooldown_ticks` | 0-1728000 | 36000 | 采空后周围 3×3 区块生成冷却，绝对游戏时间 |
 | `pan_uses` | 1-16 | 3 | 单个淘洗点可淘洗次数 |
 
 ### 2.2 Fabric 实现
@@ -151,11 +152,12 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 
 所有联动均为**可选**，统一采用 `compileOnly` + `runtimeOnly`（开发运行环境）模式，发布时不强制安装。
 
-### 4.1 Jade（方块信息）
+### 4.1 Jade（方块与实体信息）
 
 [`JadePlugin`](../../common/src/main/java/com/meteorite/unsuspiciousblock/plugin/jade/JadePlugin.java)（common，通过 `fabric.mod.json` 的 `jade` entrypoint 与 NeoForge 事件注册）：
 
 - 在 Jade 的方块信息中显示已扫描出的可疑方块战利品。
+- 闪烁的光：通过实体服务端数据提供器按需同步剩余游戏刻，客户端显示距离自然消失的分钟与秒数（秒向上取整），世界生成点显示“不会自然消失”。未收到服务端数据时不显示寿命；显示随 Jade 数据刷新更新。
 - Jade API 跨平台一致，故放在 common。
 
 ### 4.2 JEI（配方查看）

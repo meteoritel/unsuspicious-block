@@ -91,15 +91,15 @@ public final class ShimmerSurfaceRenderer {
         for (int i = 0; i < count; i++) {
             float angle = i * 2.399963F + seed;
             float radius = 0.43F * Mth.sqrt((i + 0.5F) / count);
-            float pulse = Math.max(0.0F, Mth.sin(time * (0.075F + (i % 4) * 0.012F) + i * 1.71F + seed));
-            int alpha = (int)((85.0F + 170.0F * pulse * pulse) * distanceFade);
+            float pulse = Math.max(0.0F, Mth.sin(time * (0.035F + (i % 4) * 0.005F) + i * 1.71F + seed));
+            int alpha = (int)((65.0F + 120.0F * pulse * pulse) * distanceFade);
             if (alpha < 8) {
                 continue;
             }
-            float x = Mth.cos(angle) * radius + Mth.sin(time * 0.055F + i) * 0.008F;
-            float z = Mth.sin(angle) * radius + Mth.cos(time * 0.045F + i) * 0.012F;
+            float x = Mth.cos(angle) * radius + Mth.sin(time * 0.025F + i) * 0.008F;
+            float z = Mth.sin(angle) * radius + Mth.cos(time * 0.020F + i) * 0.012F;
             float width = 0.011F + (i % 3) * 0.002F;
-            float length = 0.028F + pulse * 0.032F;
+            float length = 0.028F + pulse * 0.018F;
             if (shimmer.isPanning()) {
                 z += Mth.sin(time * 0.3F + i) * 0.018F;
             }

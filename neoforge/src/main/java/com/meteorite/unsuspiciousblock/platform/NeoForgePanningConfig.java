@@ -16,6 +16,7 @@ public class NeoForgePanningConfig implements IPanningConfig {
     private static final ModConfigSpec.IntValue PAN_DURATION_TICKS;
     private static final ModConfigSpec.IntValue SPACING_BLOCKS;
     private static final ModConfigSpec.IntValue PAN_USES;
+    private static final ModConfigSpec.IntValue HARVEST_COOLDOWN_TICKS;
 
     public static final ModConfigSpec SERVER_CONFIG_SPEC;
 
@@ -27,6 +28,11 @@ public class NeoForgePanningConfig implements IPanningConfig {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
         builder.push("spawn");
+        HARVEST_COOLDOWN_TICKS = builder
+                .comment("采空后周围 3×3 区块的生成冷却（游戏刻），默认 36000（30 分钟）。")
+                .translation("unsuspiciousblock.configgui.panning.harvest_cooldown_ticks")
+                .defineInRange("harvest_cooldown_ticks", DEFAULT_HARVEST_COOLDOWN_TICKS,
+                        0, MAX_HARVEST_COOLDOWN_TICKS);
         SPAWN_INTERVAL_TICKS = builder
                 .comment("自然生成闪烁的光的尝试间隔（游戏刻）。默认 "
                         + IPanningConfig.DEFAULT_SPAWN_INTERVAL_TICKS + "（30 秒）。",
@@ -141,6 +147,11 @@ public class NeoForgePanningConfig implements IPanningConfig {
     @Override
     public int getSpacingBlocks() {
         return SPACING_BLOCKS.get();
+    }
+
+    @Override
+    public int getHarvestCooldownTicks() {
+        return HARVEST_COOLDOWN_TICKS.get();
     }
 
     @Override

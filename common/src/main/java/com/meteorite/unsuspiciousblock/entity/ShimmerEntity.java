@@ -11,7 +11,6 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.RandomSource;
 import net.minecraft.util.Mth;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -35,8 +34,7 @@ import org.jetbrains.annotations.Nullable;
  * <p>
  * 按来源分为两类：
  * <ul>
- *     <li>自然生成——每维度受数量上限约束，拥有 20~40 分钟随机寿命，未加载区块不计时，
- *     寿命耗尽前若玩家位于其 3 格内则延长 30 秒。</li>
+ *     <li>自然生成——每维度受数量上限约束，拥有 20~40 分钟绝对游戏时间寿命，卸载区块继续计时。</li>
  *     <li>世界生成——供玩家探索时发现，不自然消散也不计入数量上限。</li>
  * </ul>
  * 渲染完全依赖水面粒子，淘洗次数越少粒子越稀疏，用于向玩家暗示剩余价值。
@@ -45,6 +43,7 @@ public class ShimmerEntity extends Entity {
     private static final String NBT_PAN_REMAINING = "PanRemaining";
     private static final String NBT_NATURAL_SPAWN = "NaturalSpawn";
     private static final String NBT_LIFETIME_TICKS = "LifetimeTicks";
+    private static final String NBT_EXPIRES_AT = "ExpiresAt";
     private static final String NBT_ANCHOR = "AnchorPos";
 
     // 剩余可淘洗次数——同步到客户端用于分档粒子表现
@@ -56,15 +55,10 @@ public class ShimmerEntity extends Entity {
     private long lastPanningTick = Long.MIN_VALUE;
     private int clientWorkTicks;
 
-    // 玩家位于该半径内时，寿命到期不再直接消散，而是延长宽限时间
-    private static final double GRACE_RADIUS = 3.0D;
-    // 宽限延长的刻数（30 秒）
-    private static final int GRACE_EXTENSION_TICKS = 600;
-
     private boolean naturalSpawn = true;
     private boolean ledgerRegistered;
-    // 剩余寿命刻数，仅在实体处于加载状态时递减；世界生成来源恒为 0（不消散）
-    private int lifetimeTicks;
+    // 绝对游戏时间截止点；世界生成来源恒为 0。
+    private long expiresAt;
     private BlockPos anchorPos = BlockPos.ZERO;
 
     public ShimmerEntity(EntityType<? extends ShimmerEntity> type, Level level) {
@@ -83,9 +77,24 @@ public class ShimmerEntity extends Entity {
     public void initializeAt(BlockPos waterPos, boolean natural, int lifetimeTicks) {
         this.anchorPos = waterPos.immutable();
         this.naturalSpawn = natural;
-        this.lifetimeTicks = natural ? Math.max(0, lifetimeTicks) : 0;
+        this.expiresAt = natural ? this.level().getGameTime() + Math.max(1, lifetimeTicks) : 0;
         this.setPanRemaining(Services.PANNING_CONFIG.getPanUses());
         this.snapToAnchor();
+    }
+
+    public long getExpiresAt() {
+        return this.expiresAt;
+    }
+
+    // 交互也检查截止时间，避免实体与玩家 tick 顺序造成过期后仍可采集。
+    private boolean discardIfExpired() {
+        if (this.level() instanceof ServerLevel serverLevel && this.naturalSpawn
+                && (this.level().getGameTime() >= this.expiresAt
+                || ShimmerLedger.of(serverLevel).isExpired(this.getUUID()))) {
+            this.discard();
+            return true;
+        }
+        return false;
     }
 
     public int getPanRemaining() {
@@ -129,7 +138,7 @@ public class ShimmerEntity extends Entity {
     @Override
     public @NotNull InteractionResult interact(@NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (!(stack.getItem() instanceof CopperPanItem) || this.getPanRemaining() <= 0) {
+        if (this.discardIfExpired() || !(stack.getItem() instanceof CopperPanItem) || this.getPanRemaining() <= 0) {
             return InteractionResult.PASS;
         }
         // 由淘盘的长按流程接管后续进度；此处只负责进入使用状态
@@ -139,7 +148,7 @@ public class ShimmerEntity extends Entity {
 
     // 淘洗一次，返回是否成功消耗；次数耗尽时立刻消散
     public boolean consumePanUse() {
-        if (this.level().isClientSide() || this.getPanRemaining() <= 0) {
+        if (this.level().isClientSide() || this.isRemoved() || this.discardIfExpired() || this.getPanRemaining() <= 0) {
             return false;
         }
         int remaining = this.getPanRemaining() - 1;
@@ -147,6 +156,10 @@ public class ShimmerEntity extends Entity {
         this.level().playSound(null, this.anchorPos, SoundEvents.AMETHYST_BLOCK_CHIME,
                 SoundSource.BLOCKS, 0.8F, remaining <= 0 ? 0.6F : 1.0F + (3 - remaining) * 0.15F);
         if (remaining <= 0) {
+            if (this.level() instanceof ServerLevel serverLevel) {
+                ShimmerLedger.of(serverLevel).startHarvestCooldown(this.anchorPos,
+                        serverLevel.getGameTime(), Services.PANNING_CONFIG.getHarvestCooldownTicks());
+            }
             this.discard();
         }
         return true;
@@ -165,6 +178,7 @@ public class ShimmerEntity extends Entity {
     }
 
     private void serverTick() {
+        if (this.discardIfExpired()) return;
         // 允许实体与玩家 tick 顺序相差一刻；停止操作后最多两刻恢复闲置。
         this.entityData.set(DATA_PANNING, this.lastPanningTick != Long.MIN_VALUE
                 && this.level().getGameTime() - this.lastPanningTick <= 1L);
@@ -179,32 +193,9 @@ public class ShimmerEntity extends Entity {
         }
         if (!this.ledgerRegistered && this.level() instanceof ServerLevel serverLevel) {
             ShimmerLedger.of(serverLevel).register(this.getUUID(), this.anchorPos,
-                    this.naturalSpawn ? ShimmerLedger.Source.NATURAL : ShimmerLedger.Source.WORLDGEN);
+                    this.naturalSpawn ? ShimmerLedger.Source.NATURAL : ShimmerLedger.Source.WORLDGEN, this.expiresAt);
             this.ledgerRegistered = true;
         }
-        this.tickLifetime();
-    }
-
-    // 寿命只在实体加载时递减，天然满足“未加载区块不计时”
-    private void tickLifetime() {
-        if (!this.naturalSpawn || this.lifetimeTicks <= 0) {
-            return;
-        }
-        this.lifetimeTicks--;
-        if (this.lifetimeTicks > 0) {
-            return;
-        }
-        // 到期时若玩家就在近旁，则延长宽限时间，避免在玩家眼前消散
-        if (this.hasPlayerWithinGrace()) {
-            this.lifetimeTicks = GRACE_EXTENSION_TICKS;
-            return;
-        }
-        this.discard();
-    }
-
-    private boolean hasPlayerWithinGrace() {
-        return !this.level().getEntitiesOfClass(Player.class,
-                this.getBoundingBox().inflate(GRACE_RADIUS)).isEmpty();
     }
 
     // 粒子作为贴水金色波光的点缀，工作时增加旋转水花与向外扩散的涟漪。
@@ -213,21 +204,8 @@ public class ShimmerEntity extends Entity {
         if (remaining <= 0) {
             return;
         }
-        RandomSource random = this.level().getRandom();
         this.clientWorkTicks = this.isPanning() ? this.clientWorkTicks + 1 : 0;
-        int phaseTick = this.tickCount + this.getId();
-        // 剩余 3/2/1 次对应约 15/6.7/2 个白色粒子每秒，形成明显的密度档位。
-        int glintInterval = remaining >= 3 ? 4 : (remaining == 2 ? 6 : 10);
-        int glintCount = Math.min(3, remaining);
-        if (phaseTick % glintInterval == 0) {
-            for (int i = 0; i < glintCount; i++) {
-                this.level().addParticle(ParticleTypes.END_ROD,
-                        this.getX() + (random.nextDouble() - 0.5D) * 0.85D,
-                        this.waterSurfaceY() + 0.025D,
-                        this.getZ() + (random.nextDouble() - 0.5D) * 0.85D,
-                        0.0D, 0.0D, 0.0D);
-            }
-        }
+
         if (!this.isPanning() || this.clientWorkTicks % 2 != 0) {
             return;
         }
@@ -273,7 +251,7 @@ public class ShimmerEntity extends Entity {
     protected void addAdditionalSaveData(@NotNull CompoundTag tag) {
         tag.putInt(NBT_PAN_REMAINING, this.getPanRemaining());
         tag.putBoolean(NBT_NATURAL_SPAWN, this.naturalSpawn);
-        tag.putInt(NBT_LIFETIME_TICKS, this.lifetimeTicks);
+        tag.putLong(NBT_EXPIRES_AT, this.expiresAt);
         tag.putLong(NBT_ANCHOR, BlockPos.asLong(this.anchorPos.getX(), this.anchorPos.getY(),
                 this.anchorPos.getZ()));
     }
@@ -283,9 +261,17 @@ public class ShimmerEntity extends Entity {
         this.setPanRemaining(tag.contains(NBT_PAN_REMAINING)
                 ? tag.getInt(NBT_PAN_REMAINING) : Services.PANNING_CONFIG.getPanUses());
         this.naturalSpawn = !tag.contains(NBT_NATURAL_SPAWN) || tag.getBoolean(NBT_NATURAL_SPAWN);
-        this.lifetimeTicks = Math.max(0, tag.getInt(NBT_LIFETIME_TICKS));
+        this.expiresAt = this.naturalSpawn ? (tag.contains(NBT_EXPIRES_AT)
+                ? tag.getLong(NBT_EXPIRES_AT)
+                : this.level().getGameTime() + Math.max(1, tag.getInt(NBT_LIFETIME_TICKS))) : 0;
+        if (this.naturalSpawn && this.level() instanceof ServerLevel serverLevel) {
+            ShimmerLedger ledger = ShimmerLedger.of(serverLevel);
+            this.expiresAt = Math.min(this.expiresAt, ledger.expirationOf(this.getUUID(), this.expiresAt));
+        }
         this.anchorPos = tag.contains(NBT_ANCHOR) ? BlockPos.of(tag.getLong(NBT_ANCHOR)) : this.blockPosition();
         this.snapToAnchor();
+        this.ledgerRegistered = false;
+        this.discardIfExpired();
     }
 
     // ========== 物理与抗性 ==========
