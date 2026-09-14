@@ -17,7 +17,6 @@ import com.meteorite.unsuspiciousblock.client.renderer.ShimmerSurfaceRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
-import com.meteorite.unsuspiciousblock.client.state.ReaderScanHighlightState;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
@@ -167,7 +166,6 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ArchaeologyJournalClientState.tick();
         SuspiciousReaderClientState.tick();
         CatHandClientState.tick();
-        ReaderScanHighlightState.tick();
         ReaderScanHudState.tick();
         PanningSoundController.tick();
     }
@@ -176,7 +174,6 @@ public final class UnsuspiciousBlockNeoForgeClient {
         ArchaeologyJournalClientState.resetOnDisconnect();
         ClientLootTableLanguageStore.resetOnDisconnect();
         HandOfCatClientState.reset();
-        ReaderScanHighlightState.reset();
         ReaderScanHudState.reset();
         PanningSoundController.reset();
         com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();

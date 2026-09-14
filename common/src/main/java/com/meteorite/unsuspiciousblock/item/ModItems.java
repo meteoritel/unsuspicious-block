@@ -195,7 +195,7 @@ public class ModItems {
                 "item.unsuspiciousblock.spark_dust.tooltip.desc");
     }
 
-    // 创建回溯粉实例——功能后续实现
+    // 创建回溯粉实例——对世界生成结构右键原位重生成，逻辑见 world/StructureRewindService
     public static RewindDustItem createRewindDust() {
         return new RewindDustItem(new Item.Properties(),
                 "item.unsuspiciousblock.rewind_dust.tooltip.desc");

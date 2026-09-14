@@ -1,185 +1,179 @@
 package com.meteorite.unsuspiciousblock.client.hud;
 
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState.Snapshot;
+import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState.Target;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
-/** 可疑解析仪扫描结果 HUD，显示最多五条拥有独立生命周期的信息。 */
+/** 左下角扫描汇总与准星侧下方的目标详情；独立于 Jade，不注册或屏蔽其 HUD。 */
 public final class SuspiciousReaderHud {
-    private static final int SCREEN_MARGIN = 6;
-    private static final int BOTTOM_OFFSET = 48;
-    private static final int MIN_PANEL_WIDTH = 108;
-    private static final int MAX_PANEL_WIDTH = 148;
-    private static final int PANEL_PADDING = 4;
-    private static final int HEADER_HEIGHT = 14;
-    private static final int ROW_HEIGHT = 20;
-    private static final int ICON_SIZE = 16;
-    private static final int ICON_TEXT_GAP = 3;
-
-    private static final int PANEL_BACKGROUND = 0x90101010;
-    private static final int PANEL_BORDER = 0xA0A78235;
-    private static final int PANEL_ACCENT = 0xD0F0C95A;
-    private static final int HEADER_COLOR = 0xFFF0D77A;
-    private static final int ITEM_COLOR = 0xFFF2E6BD;
-    private static final int OLD_ITEM_COLOR = 0xFFAAAAAA;
-    private static final int META_COLOR = 0xFF9C9C9C;
-
-    // 原版 Font.adjustColor 会把 alpha 字节小于 4 的文字颜色强制改为完全不透明，
-    // 因此任何文字的 alpha 字节低于该值时必须跳过绘制，否则淡出末尾会闪现全不透明文字
-    private static final int MIN_TEXT_ALPHA = 4;
+    private static final int MARGIN = 6;
+    private static final int MAX_WIDTH = 180;
+    private static final int BACKGROUND = 0xC018191C;
+    private static final int ACCENT = 0xFFE4BF69;
+    private static final int TEXT = 0xFFF0F0F0;
+    private static final int META = 0xFFAAAAAA;
 
     private SuspiciousReaderHud() {
     }
 
-    // 由平台 HUD 渲染事件调用
     public static void render(GuiGraphics graphics) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null
-                || minecraft.options.hideGui
-                || minecraft.screen != null) {
-            return;
-        }
-        // 单帧快照：面板锚点与条目在同一次加锁中读取，保证淡出同步
-        ReaderScanHudState.Snapshot snapshot = ReaderScanHudState.snapshot();
-        List<ReaderScanHudState.HudEntry> entries = snapshot.entries();
-        if (entries.isEmpty()) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        Font font = minecraft.font;
-        String title = Component.translatable("hud.unsuspiciousblock.suspicious_reader.title",
-                entries.size(), snapshot.lootContainerCount()).getString();
-        int panelWidth = calculatePanelWidth(font, title, entries,
-                minecraft.getWindow().getGuiScaledWidth());
-        int panelHeight = PANEL_PADDING + HEADER_HEIGHT + entries.size() * ROW_HEIGHT + PANEL_PADDING;
-        int panelX = SCREEN_MARGIN;
-        int panelY = Math.max(SCREEN_MARGIN,
-                minecraft.getWindow().getGuiScaledHeight() - BOTTOM_OFFSET - panelHeight);
-
-        // 面板淡出绑定最新一条条目的淡出曲线（不含淡入），新条目到达时面板保持可见不闪烁
-        ReaderScanHudState.HudEntry anchor = snapshot.anchor();
-        int containerAlpha = Math.round(anchor.fadeOutAlpha(now) * 255.0F);
-        // 锚点淡出末尾（alpha 字节 < 4）时所有条目必然更透明，直接跳过整帧绘制
-        if (containerAlpha < MIN_TEXT_ALPHA) {
-            return;
-        }
-        drawPanel(graphics, panelX, panelY, panelWidth, panelHeight, containerAlpha);
-        int contentX = panelX + PANEL_PADDING;
-        int contentWidth = panelWidth - PANEL_PADDING * 2;
-        graphics.drawString(font, trimToWidth(font, title, contentWidth),
-                contentX, panelY + PANEL_PADDING, withAlpha(HEADER_COLOR, containerAlpha), false);
-
-        int rowY = panelY + PANEL_PADDING + HEADER_HEIGHT;
-        for (ReaderScanHudState.HudEntry hudEntry : entries) {
-            int alpha = Math.round(hudEntry.alpha(now) * 255.0F);
-            // alpha 字节 < 4 时跳过绘制但保留行占位：既避开原版文字不透明强制，也避免布局跳动
-            if (alpha >= MIN_TEXT_ALPHA) {
-                drawResultRow(graphics, font, hudEntry, contentX, rowY, contentWidth, alpha);
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.options.hideGui || mc.screen != null || !ReaderScanHudState.isHudEnabled()) return;
+        Snapshot snapshot = ReaderScanHudState.snapshot();
+        int alpha = Math.round(snapshot.alpha(ReaderScanHudState.now()) * 255);
+        // 原版字体会把极低 alpha 强制改为不透明，此处必须跳过。
+        if (alpha < 4) return;
+        int screenWidth = mc.getWindow().getGuiScaledWidth();
+        int screenHeight = mc.getWindow().getGuiScaledHeight();
+        Font font = mc.font;
+        int maxWidth = Math.clamp(screenWidth - MARGIN * 2, 1, MAX_WIDTH);
+        Target target = ReaderScanHudState.focusedTarget();
+        Panel detail = null;
+        if (target != null) {
+            int textOffset = target.icon().isEmpty() ? 6 : 28;
+            int horizontalPadding = textOffset + 6;
+            List<String> lines = detailLines(font, target, Math.max(1, maxWidth - horizontalPadding));
+            int width = Math.min(maxWidth, horizontalPadding + lines.stream().mapToInt(font::width).max().orElse(0));
+            int height = Math.max(28, lines.size() * 11 + 12);
+            // 避开 Jade 默认顶部区域，也为准星与快捷栏留出空隙。
+            // 上界在极小窗口下可能小于 MARGIN，先抬到 MARGIN 保证 clamp 的 min <= max。
+            int x = Math.clamp(screenWidth / 2 + 16, MARGIN, Math.max(MARGIN, screenWidth - width - MARGIN));
+            int y = Math.clamp(screenHeight / 2 + 18, MARGIN, Math.max(MARGIN, screenHeight - height - 44));
+            detail = new Panel(x, y, width, height);
+            panel(graphics, detail, alpha);
+            if (!target.icon().isEmpty()) icon(graphics, target.icon(), x + 6, y + 6, alpha);
+            for (int i = 0; i < lines.size(); i++) {
+                text(graphics, font, lines.get(i), x + textOffset, y + 6 + i * 11, width - horizontalPadding,
+                        i == 0 ? TEXT : META, alpha);
             }
-            rowY += ROW_HEIGHT;
+        }
+        int rows = Math.min(3, snapshot.groups().size());
+        boolean footer = snapshot.groups().size() > rows || snapshot.emptyCount() > 0;
+        String title = tr("summary", snapshot.blocks().size(), snapshot.containers().size());
+        String message = snapshot.blocks().isEmpty() && snapshot.containers().isEmpty()
+                ? tr("no_targets") : snapshot.blocks().isEmpty() ? tr("containers_only") : tr("empty");
+        int remaining = snapshot.groups().size() - rows;
+        String more = remaining == 0 ? tr("empty_count", snapshot.emptyCount())
+                : snapshot.emptyCount() == 0 ? tr("more", remaining)
+                : tr("remainder", remaining, snapshot.emptyCount());
+        // 将图标、名称、数量与内边距一并测量，短文本收缩，长文本仍受上限约束。
+        int desiredWidth = font.width(title) + 12;
+        if (rows == 0) desiredWidth = Math.max(desiredWidth, font.width(message) + 12);
+        if (footer) desiredWidth = Math.max(desiredWidth, font.width(more) + 12);
+        for (int i = 0; i < rows; i++) {
+            var group = snapshot.groups().get(i);
+            desiredWidth = Math.max(desiredWidth,
+                    40 + font.width(group.name().getString()) + font.width(tr("count", group.count())));
+        }
+        int width = Math.min(maxWidth, desiredWidth);
+        int height = 27 + rows * 19 + (footer ? 12 : 0);
+        Panel summary = new Panel(MARGIN, Math.max(MARGIN, screenHeight - 48 - height), width, height);
+        // 小窗口中优先保留正在阅读的目标，避免两个自有面板互相遮挡。
+        if (detail != null && summary.intersects(detail)) return;
+        panel(graphics, summary, alpha);
+        text(graphics, font, title, summary.x + 6, summary.y + 6, width - 12, ACCENT, alpha);
+        if (rows == 0) {
+            text(graphics, font, message, summary.x + 6, summary.y + 17, width - 12, META, alpha);
+        }
+        for (int i = 0; i < rows; i++) {
+            var group = snapshot.groups().get(i);
+            int y = summary.y + 21 + i * 19;
+            icon(graphics, group.icon(), summary.x + 6, y, alpha);
+            String count = tr("count", group.count());
+            int countWidth = font.width(count);
+            text(graphics, font, group.name().getString(), summary.x + 28, y + 4,
+                    width - 40 - countWidth, TEXT, alpha);
+            text(graphics, font, count, summary.x + width - 6 - countWidth, y + 4, countWidth, META, alpha);
+        }
+        if (footer) {
+            text(graphics, font, more, summary.x + 6, summary.y + height - 12, width - 12, META, alpha);
         }
     }
 
-    private static void drawPanel(GuiGraphics graphics, int x, int y, int width, int height, int alpha) {
-        graphics.fill(x, y, x + width, y + height, withAlpha(PANEL_BACKGROUND, alpha));
-        graphics.fill(x, y, x + width, y + 1, withAlpha(PANEL_BORDER, alpha));
-        graphics.fill(x, y + height - 1, x + width, y + height, withAlpha(PANEL_BORDER, alpha));
-        graphics.fill(x, y, x + 2, y + height, withAlpha(PANEL_ACCENT, alpha));
-    }
-
-    private static void drawResultRow(GuiGraphics graphics, Font font,
-                                      ReaderScanHudState.HudEntry hudEntry,
-                                      int x, int y, int width, int alpha) {
-        int textX = x + ICON_SIZE + ICON_TEXT_GAP;
-        int textWidth = width - ICON_SIZE - ICON_TEXT_GAP;
-        SyncReaderScanResultPayload.ScanEntry entry = hudEntry.scanEntry();
+    private static List<String> detailLines(Font font, Target target, int width) {
+        List<String> lines = new ArrayList<>();
+        var entry = target.entry();
         if (entry == null) {
-            graphics.drawString(font, trimToWidth(font, Component.translatable(
-                            "hud.unsuspiciousblock.suspicious_reader.containers_only").getString(), textWidth),
-                    textX, y + 4, withAlpha(META_COLOR, alpha), false);
-            return;
-        }
-
-        String itemName;
-        if (entry.isEmpty()) {
-            graphics.fill(x + 2, y + 3, x + ICON_SIZE - 2, y + ICON_SIZE + 1,
-                    withAlpha(0x605C5C5C, alpha));
-            itemName = Component.translatable("hud.unsuspiciousblock.suspicious_reader.empty").getString();
+            lines.add(tr("container"));
+            lines.add(tr("unread"));
         } else {
-            ItemStack icon = new ItemStack(BuiltInRegistries.ITEM.get(entry.itemId()));
-            RenderSystem.enableBlend();
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, alpha / 255.0F);
-            graphics.renderItem(icon, x, y + 1);
-            String countText = entry.count() > 1 ? String.valueOf(entry.count()) : null;
-            graphics.renderItemDecorations(font, icon, x, y + 1, countText);
-            graphics.flush();
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            itemName = entry.displayName().getString();
-        }
-
-        graphics.drawString(font, trimToWidth(font, itemName, textWidth), textX, y + 1,
-                withAlpha(entry.alreadyScanned() ? OLD_ITEM_COLOR : ITEM_COLOR, alpha), false);
-        String meta = buildMetaText(entry);
-        if (!meta.isEmpty()) {
-            graphics.drawString(font, trimToWidth(font, meta, textWidth), textX, y + 11,
-                    withAlpha(META_COLOR, alpha), false);
-        }
-    }
-
-    private static String buildMetaText(SyncReaderScanResultPayload.ScanEntry entry) {
-        if (entry.alreadyScanned()) {
-            return Component.translatable("hud.unsuspiciousblock.suspicious_reader.already_scanned").getString();
-        }
-        if (entry.sealedByPlayer()) {
-            String crafterName = entry.crafterName().isBlank()
-                    ? Component.translatable("item.unsuspiciousblock.suspicious_reader.unknown_player").getString()
-                    : entry.crafterName();
-            return Component.translatable("hud.unsuspiciousblock.suspicious_reader.sealed_by", crafterName).getString();
-        }
-        return "";
-    }
-
-    private static int calculatePanelWidth(Font font, String title,
-                                           List<ReaderScanHudState.HudEntry> entries,
-                                           int screenWidth) {
-        int desiredWidth = font.width(title) + PANEL_PADDING * 2;
-        int iconAndPadding = PANEL_PADDING * 2 + ICON_SIZE + ICON_TEXT_GAP;
-        for (ReaderScanHudState.HudEntry hudEntry : entries) {
-            SyncReaderScanResultPayload.ScanEntry entry = hudEntry.scanEntry();
-            String name = entry == null
-                    ? Component.translatable("hud.unsuspiciousblock.suspicious_reader.containers_only").getString()
-                    : (entry.isEmpty() ? Component.translatable("hud.unsuspiciousblock.suspicious_reader.empty").getString()
-                    : entry.displayName().getString());
-            desiredWidth = Math.max(desiredWidth, iconAndPadding + font.width(name));
-            if (entry != null) {
-                desiredWidth = Math.max(desiredWidth, iconAndPadding + font.width(buildMetaText(entry)));
+            String name = entry.isEmpty() ? tr("empty") : entry.displayName().getString();
+            String count = entry.isEmpty() ? "" : " " + tr("count", entry.count());
+            // 数量留在首行右侧，长名字最多两行；英文按实际像素宽度处理。
+            if (font.width(name + count) <= width) {
+                lines.add(name + count);
+            } else {
+                String first = font.plainSubstrByWidth(name, Math.max(1, width - font.width(count)));
+                lines.add(first + count);
+                lines.add(trim(font, name.substring(first.length()).stripLeading(), width));
             }
         }
-        int availableWidth = Math.max(1, screenWidth - SCREEN_MARGIN * 2);
-        int upperBound = Math.min(MAX_PANEL_WIDTH, availableWidth);
-        return Math.min(Math.max(MIN_PANEL_WIDTH, desiredWidth), upperBound);
+        var player = Minecraft.getInstance().player;
+        if (player == null) return lines;
+        double distance = player.getEyePosition().distanceTo(Vec3.atCenterOf(target.pos()));
+        int depth = player.blockPosition().getY() - target.pos().getY();
+        String height = depth > 0 ? tr("below", depth) : depth < 0 ? tr("above", -depth) : tr("same_height");
+        lines.add(tr("position", String.format(Locale.ROOT, "%.1f", distance), height));
+        if (entry != null && entry.sealedByPlayer()) {
+            lines.add(entry.crafterName().isBlank() ? tr("sealed") : tr("sealed_by", entry.crafterName()));
+        }
+        return lines;
     }
 
-    // 按 Font 的真实像素宽度截断，避免文本溢出面板
-    private static String trimToWidth(Font font, String text, int maxWidth) {
-        if (maxWidth <= 0 || text.isEmpty()) return "";
-        if (font.width(text) <= maxWidth) return text;
-        String ellipsis = "...";
-        int contentWidth = Math.max(0, maxWidth - font.width(ellipsis));
-        return font.plainSubstrByWidth(text, contentWidth) + ellipsis;
+    private static void panel(GuiGraphics graphics, Panel panel, int alpha) {
+        graphics.fill(panel.x, panel.y, panel.x + panel.width, panel.y + panel.height, withAlpha(BACKGROUND, alpha));
+        graphics.fill(panel.x, panel.y, panel.x + 1, panel.y + panel.height, withAlpha(ACCENT, alpha));
+    }
+
+    private static void text(GuiGraphics graphics, Font font, String value, int x, int y, int width, int color, int alpha) {
+        if (width > 0) graphics.drawString(font, trim(font, value, width), x, y, withAlpha(color, alpha), false);
+    }
+
+    private static String trim(Font font, String value, int width) {
+        if (width <= 0) return "";
+        if (font.width(value) <= width) return value;
+        String dots = "...";
+        if (font.width(dots) > width) return font.plainSubstrByWidth(dots, width);
+        return font.plainSubstrByWidth(value, width - font.width(dots)) + dots;
+    }
+
+    private static void icon(GuiGraphics graphics, ItemStack icon, int x, int y, int alpha) {
+        graphics.flush();
+        RenderSystem.enableBlend();
+        RenderSystem.setShaderColor(1, 1, 1, alpha / 255.0F);
+        try {
+            graphics.renderItem(icon, x, y);
+            graphics.flush();
+        } finally {
+            RenderSystem.setShaderColor(1, 1, 1, 1);
+            RenderSystem.disableBlend();
+        }
+    }
+
+    private static String tr(String suffix, Object... args) {
+        return Component.translatable("hud.unsuspiciousblock.suspicious_reader." + suffix, args).getString();
     }
 
     private static int withAlpha(int color, int alpha) {
         return (color & 0x00FFFFFF) | ((color >>> 24) * alpha / 255 << 24);
     }
-}
 
+    /** 面板边界用于窄窗口避让。 */
+    private record Panel(int x, int y, int width, int height) {
+        private boolean intersects(Panel other) {
+            return x < other.x + other.width && x + width > other.x
+                    && y < other.y + other.height && y + height > other.y;
+        }
+    }
+}

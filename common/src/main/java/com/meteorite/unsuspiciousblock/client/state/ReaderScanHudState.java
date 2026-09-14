@@ -1,211 +1,216 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
+import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
+import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload.ScanEntry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-/** 客户端扫描仪 HUD 状态：维护最多五条独立生命周期的信息条目。
- *  生命周期与透明度基于毫秒时间戳计算，避免 20Hz tick 粒度与线程可见性导致的透明度跳变。
- *  透明度曲线全程连续：淡入 200ms → 保持 → 最后 3 秒淡出；
- *  刷新（同坐标再次扫描）时从当前透明度平滑回升，不产生不透明度硬跳变。
- *  面板透明度始终锚定最新一条条目（列表首位）的淡出曲线（fadeOutAlpha，不含淡入），
- *  保证面板淡出与最新信息同步，且新条目到达时面板保持可见。
- *  注意：文字 alpha 字节低于 4 时原版 Font.adjustColor 会强制为不透明，
- *  渲染端（SuspiciousReaderHud.MIN_TEXT_ALPHA）必须跳过该区间。
- */
+/** 整批扫描结果、地下目标选择和世界描边共用的客户端状态。 */
 public final class ReaderScanHudState {
-    private static final long DISPLAY_MS = 8000L;
-    private static final long FADE_OUT_MS = 3000L;
-    private static final long FADE_IN_MS = 200L;
-    private static final int MAX_ENTRIES = 5;
-
-    private static final ReaderScanHudState.Snapshot EMPTY_SNAPSHOT = new ReaderScanHudState.Snapshot(List.of(), 0);
-
-    private static final Object LOCK = new Object();
-    private static final List<HudEntry> entries = new ArrayList<>();
-    private static int lootContainerCount;
-    // 开关状态在 tick 线程翻转、渲染线程读取，volatile 保证线程间可见性
-    private static volatile boolean hudEnabled = true;
+    private static final long DISPLAY_MS = 10_000L;
+    private static final long MAX_DISPLAY_MS = 30_000L;
+    private static final long FADE_MS = 500L;
+    private static final Snapshot EMPTY = new Snapshot(List.of(), List.of(), List.of(), 0, false, 0, 0);
+    private static volatile Snapshot current = EMPTY;
+    private static volatile Target focused;
+    // 仅客户端 Render 线程读写（tick 与渲染同线程），无需 volatile。
+    private static boolean hudEnabled = true;
+    private static ClientLevel scanLevel;
+    private static Target candidate;
+    private static long candidateSince;
 
     private ReaderScanHudState() {
     }
 
-    /** 渲染线程单帧快照：条目、面板锚点与容器计数在同一次加锁中读取，保证面板与条目同帧一致。 */
-    public record Snapshot(List<HudEntry> entries, int lootContainerCount) {
-        // 面板锚点即最新条目（列表首位），面板淡出与其绑定
-        public HudEntry anchor() {
-            return entries.isEmpty() ? null : entries.getFirst();
-        }
+    // 单调时钟避免系统时间调整造成动画跳变。
+    public static long now() {
+        return System.nanoTime() / 1_000_000L;
     }
 
-    // 接收新扫描结果并插入现有 HUD，单条信息拥有独立的 8 秒生命周期
+    // 网络回调在客户端线程执行；新一轮整体替换，展示行数不限制目标缓存。
     public static void receive(SyncReaderScanResultPayload payload) {
-        List<SyncReaderScanResultPayload.ScanEntry> sorted = sortScanEntries(payload);
-
-        long now = System.currentTimeMillis();
-        synchronized (LOCK) {
-            // 从后往前处理，使本轮排序优先级在 HUD 中保持不变，同时让新条目位于队列顶部。
-            for (int i = sorted.size() - 1; i >= 0; i--) {
-                SyncReaderScanResultPayload.ScanEntry scanEntry = sorted.get(i);
-                HudEntry existing = findByPositionLocked(scanEntry.pos());
-                if (existing != null) {
-                    existing.refresh(scanEntry, now);
-                    entries.remove(existing);
-                    entries.addFirst(existing);
-                } else {
-                    entries.addFirst(new HudEntry(scanEntry, now));
-                }
-            }
-            if (sorted.isEmpty() && !payload.lootContainers().isEmpty()) {
-                HudEntry existing = findContainerNoticeLocked();
-                if (existing != null) {
-                    existing.refresh(null, now);
-                    entries.remove(existing);
-                    entries.addFirst(existing);
-                } else {
-                    entries.addFirst(new HudEntry(null, now));
-                }
-            }
-            while (entries.size() > MAX_ENTRIES) {
-                entries.removeLast();
-            }
-            lootContainerCount = payload.lootContainers().size();
+        long time = now();
+        List<Target> targets = new ArrayList<>();
+        for (ScanEntry entry : payload.results()) {
+            ItemStack icon = entry.isEmpty() ? ItemStack.EMPTY : new ItemStack(BuiltInRegistries.ITEM.get(entry.itemId()));
+            targets.add(new Target(entry.pos(), entry, icon));
         }
-
-        if (payload.highlightResults()) {
-            ReaderScanHighlightState.receive(payload.suspiciousBlocks(), payload.lootContainers());
-        }
+        for (BlockPos pos : payload.lootContainers()) targets.add(new Target(pos, null, ItemStack.EMPTY));
+        scanLevel = Minecraft.getInstance().level;
+        current = makeSnapshot(targets, payload.highlightResults(), time, time + DISPLAY_MS);
+        focused = null;
+        candidate = null;
     }
 
-    // 按展示优先级排序扫描结果：未扫描 > 非空 > 距离玩家更近
-    private static List<SyncReaderScanResultPayload.ScanEntry> sortScanEntries(SyncReaderScanResultPayload payload) {
-        List<SyncReaderScanResultPayload.ScanEntry> sorted = new ArrayList<>(payload.results());
-        LocalPlayer player = Minecraft.getInstance().player;
-        Comparator<SyncReaderScanResultPayload.ScanEntry> comparator =
-                Comparator.comparing(SyncReaderScanResultPayload.ScanEntry::alreadyScanned)
-                        .thenComparing(SyncReaderScanResultPayload.ScanEntry::isEmpty);
-        if (player != null) {
-            comparator = comparator.thenComparingDouble(
-                    entry -> entry.pos().distSqr(player.blockPosition()));
-        }
-        sorted.sort(comparator);
-        return sorted;
-    }
-
-    private static HudEntry findByPositionLocked(net.minecraft.core.BlockPos position) {
-        for (HudEntry entry : entries) {
-            if (entry.scanEntry != null && entry.scanEntry.pos().equals(position)) {
-                return entry;
+    // 只在结果变化时分组并缓存图标，不在每个渲染帧重复分配。
+    private static Snapshot makeSnapshot(List<Target> targets, boolean range, long born, long expires) {
+        Map<GroupKey, ItemGroup> groups = new LinkedHashMap<>();
+        List<Target> blocks = new ArrayList<>();
+        List<Target> containers = new ArrayList<>();
+        int emptyCount = 0;
+        for (Target target : targets) {
+            ScanEntry entry = target.entry();
+            if (entry == null) {
+                containers.add(target);
+                continue;
             }
-        }
-        return null;
-    }
-
-    private static HudEntry findContainerNoticeLocked() {
-        for (HudEntry entry : entries) {
-            if (entry.scanEntry == null) {
-                return entry;
+            blocks.add(target);
+            if (entry.itemId() == null) {
+                emptyCount++;
+                continue;
             }
+            GroupKey key = new GroupKey(entry.itemId().toString(), entry.displayName(), entry.sealedByPlayer(), entry.crafterName());
+            groups.compute(key, (k, old) -> new ItemGroup(target.icon(), entry.displayName(),
+                    (old == null ? 0L : old.count()) + entry.count()));
         }
-        return null;
+        return new Snapshot(List.copyOf(blocks), List.copyOf(containers), List.copyOf(groups.values()),
+                emptyCount, range, born, expires);
     }
 
-    // 客户端每 tick 更新按键状态与清理过期条目，不做任何整体清空以保证淡出曲线完整
     public static void tick() {
-        while (ModKeyBindings.READER_HUD_TOGGLE.consumeClick()) {
-            // 翻转仅发生在客户端 tick 单一线程，直接取反即可
-            hudEnabled = !hudEnabled;
+        while (ModKeyBindings.READER_HUD_TOGGLE.consumeClick()) hudEnabled = !hudEnabled;
+        Minecraft mc = Minecraft.getInstance();
+        if (scanLevel != mc.level) clearResults();
+        long time = now();
+        Snapshot snapshot = current;
+        if (snapshot == EMPTY || time >= snapshot.expires()) {
+            clearResults();
+            return;
         }
-        long now = System.currentTimeMillis();
-        synchronized (LOCK) {
-            boolean hadScanEntries = entries.stream().anyMatch(HudEntry::isScanEntry);
-            entries.removeIf(entry -> entry.isExpired(now));
-            // 容器提示不能长期脱离真实扫描信息独立存在；最后一条真实信息消失时，
-            // 把容器提示的剩余寿命压缩为一次完整的淡出，平滑关闭整个 HUD。
-            if (hadScanEntries && entries.stream().noneMatch(HudEntry::isScanEntry)) {
-                for (HudEntry entry : entries) {
-                    entry.capToFadeOut(now);
-                }
-            }
+        // 仅访问已加载区块，移除挖走或卸载的目标，不请求加载新区块。
+        List<Target> valid = new ArrayList<>();
+        for (Target target : snapshot.blocks()) {
+            if (isValid(mc, target)) valid.add(target);
+        }
+        for (Target target : snapshot.containers()) {
+            if (isValid(mc, target)) valid.add(target);
+        }
+        if (valid.size() != snapshot.blocks().size() + snapshot.containers().size()) {
+            snapshot = makeSnapshot(valid, snapshot.range(), snapshot.born(), snapshot.expires());
+            current = snapshot;
+        }
+        if (!hudEnabled || readerStack().isEmpty() || mc.screen != null || mc.options.hideGui) {
+            focused = null;
+            candidate = null;
+            return;
+        }
+        Target next = findTarget(mc, valid);
+        if (focused != null && !valid.contains(focused)) focused = null;
+        if (next == null) {
+            focused = null;
+            candidate = null;
+        } else if (next.equals(focused)) {
+            candidate = null;
+        } else if (!next.equals(candidate)) {
+            candidate = next;
+            candidateSince = time;
+        } else if (time - candidateSince >= 100L) {
+            focused = next;
+        }
+        if (focused != null) {
+            // 阅读时延长整批显示，最多保留 30 秒；expires 恒不超过 born + MAX_DISPLAY_MS，clamp 安全。
+            long expires = Math.clamp(time + 1500L, snapshot.expires(), snapshot.born() + MAX_DISPLAY_MS);
+            current = new Snapshot(snapshot.blocks(), snapshot.containers(), snapshot.groups(), snapshot.emptyCount(),
+                    snapshot.range(), snapshot.born(), expires);
         }
     }
 
-    // 供渲染线程调用：单帧一致快照（hudEnabled 关闭时返回空快照）
+    private static boolean isValid(Minecraft mc, Target target) {
+        if (mc.level == null || !mc.level.hasChunk(SectionPos.blockToSectionCoord(target.pos().getX()),
+                SectionPos.blockToSectionCoord(target.pos().getZ()))) return false;
+        BlockEntity entity = mc.level.getBlockEntity(target.pos());
+        return target.entry() == null ? entity != null : entity instanceof BrushableBlockEntityScanState;
+    }
+
+    // 仅对已扫描方块做射线检测，穿过表层沙子，沿视线取最近目标。
+    private static Target findTarget(Minecraft mc, List<Target> targets) {
+        if (mc.player == null) return null;
+        var camera = mc.gameRenderer.getMainCamera();
+        Vec3 origin = camera.getPosition();
+        var look = camera.getLookVector();
+        Vec3 end = origin.add(look.x() * 32.0, look.y() * 32.0, look.z() * 32.0);
+        Target nearest = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Target target : targets) {
+            AABB box = new AABB(target.pos()).inflate(0.08);
+            var hit = box.clip(origin, end);
+            if (!box.contains(origin) && hit.isEmpty()) continue;
+            double distance = box.contains(origin) ? 0 : hit.orElseThrow().distanceToSqr(origin);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                nearest = target;
+            }
+        }
+        return nearest;
+    }
+
+    public static ItemStack readerStack() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) return ItemStack.EMPTY;
+        if (player.getMainHandItem().is(ModItems.SUSPICIOUS_READER)) return player.getMainHandItem();
+        if (player.getOffhandItem().is(ModItems.SUSPICIOUS_READER)) return player.getOffhandItem();
+        return ItemStack.EMPTY;
+    }
+
+    public static boolean isHudEnabled() {
+        return hudEnabled;
+    }
+
+    public static Target focusedTarget() {
+        return hudEnabled && !readerStack().isEmpty() ? focused : null;
+    }
+
     public static Snapshot snapshot() {
-        if (!hudEnabled) {
-            return EMPTY_SNAPSHOT;
-        }
-        synchronized (LOCK) {
-            return new Snapshot(List.copyOf(entries), lootContainerCount);
-        }
+        return scanLevel == Minecraft.getInstance().level ? current : EMPTY;
     }
 
-    // 断线时清除上一个世界的结果
+    private static void clearResults() {
+        current = EMPTY;
+        focused = null;
+        candidate = null;
+        scanLevel = null;
+    }
+
     public static void reset() {
-        synchronized (LOCK) {
-            entries.clear();
-            lootContainerCount = 0;
-            hudEnabled = true;
+        clearResults();
+        hudEnabled = true;
+    }
+
+    /** 不可修改的批次快照；图标只供渲染读取。 */
+    public record Snapshot(List<Target> blocks, List<Target> containers, List<ItemGroup> groups,
+                           int emptyCount, boolean range, long born, long expires) {
+        public float alpha(long time) {
+            if (expires <= time) return 0;
+            return Math.min(1.0F, (expires - time) / (float) FADE_MS)
+                    * Math.clamp((time - born) / 150.0F, 0.0F, 1.0F);
         }
     }
 
-    /** 单条 HUD 信息及其生命周期。
-     *  使用绝对毫秒时间戳（淡入起点与过期时间），避免 tick 粒度与线程可见性导致的透明度跳变。
-     */
-    public static final class HudEntry {
-        private SyncReaderScanResultPayload.ScanEntry scanEntry;
-        private long bornMs;
-        private long expiryMs;
+    /** 可疑方块持有解析结果，容器只持有位置，不推测其内容。 */
+    public record Target(BlockPos pos, ScanEntry entry, ItemStack icon) {
+    }
 
-        private HudEntry(SyncReaderScanResultPayload.ScanEntry scanEntry, long now) {
-            this.scanEntry = scanEntry;
-            this.bornMs = now;
-            this.expiryMs = now + DISPLAY_MS;
-        }
+    /** 一类展示物品及其总数量。 */
+    public record ItemGroup(ItemStack icon, Component name, long count) {
+    }
 
-        // 刷新条目内容与生命周期，用于同一坐标再次扫描时的去重
-        private void refresh(SyncReaderScanResultPayload.ScanEntry scanEntry, long now) {
-            this.scanEntry = scanEntry;
-            // 将淡入起点回溯到当前透明度对应的位置，使刷新前后透明度曲线连续、平滑回升
-            this.bornMs = now - (long) (alpha(now) * FADE_IN_MS);
-            this.expiryMs = now + DISPLAY_MS;
-        }
-
-        // 把剩余寿命压缩为一次完整淡出（用于容器提示随最后一条真实信息平滑关闭）
-        private void capToFadeOut(long now) {
-            this.expiryMs = Math.min(this.expiryMs, now + FADE_OUT_MS);
-        }
-
-        public SyncReaderScanResultPayload.ScanEntry scanEntry() {
-            return scanEntry;
-        }
-
-        public boolean isScanEntry() {
-            return scanEntry != null;
-        }
-
-        // 仅淡出曲线（不含淡入），供面板锚点使用：面板本身已可见，不随新条目淡入而闪烁
-        public float fadeOutAlpha(long now) {
-            long remaining = expiryMs - now;
-            if (remaining >= FADE_OUT_MS) {
-                return 1.0F;
-            }
-            return remaining <= 0L ? 0.0F : (float) remaining / (float) FADE_OUT_MS;
-        }
-
-        // 当前透明度：淡入 × 保持 × 淡出，基于系统时间，渲染线程每帧独立计算
-        public float alpha(long now) {
-            float fadeIn = Math.min(1.0F, (float) (now - bornMs) / (float) FADE_IN_MS);
-            return fadeIn * fadeOutAlpha(now);
-        }
-
-        public boolean isExpired(long now) {
-            return now >= expiryMs;
-        }
+    /** 同名但来源或封存者不同的物品分开统计。 */
+    private record GroupKey(String itemId, Component name, boolean sealed, String crafter) {
     }
 }

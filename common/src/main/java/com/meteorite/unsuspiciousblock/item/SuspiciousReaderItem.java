@@ -273,10 +273,9 @@ public class SuspiciousReaderItem extends Item {
                     }
                     setEnergy(stack, Math.max(0, energy - scanLevel));
                 }
-                player.sendSystemMessage(
-                        Component.translatable("item.unsuspiciousblock.suspicious_reader.no_suspicious_in_range")
-                                .withStyle(style -> style.withColor(0xFF5555))
-                );
+                // 空扫描也同步新批次，清除旧目标并在 HUD 显示简短反馈。
+                Services.NETWORK.sendToPlayer(serverPlayer,
+                        new SyncReaderScanResultPayload(true, List.of(), List.of()));
                 return InteractionResult.FAIL;
             }
 
