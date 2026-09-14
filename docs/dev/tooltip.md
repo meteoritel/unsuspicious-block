@@ -17,7 +17,7 @@
 | 段 | 内容 | 样式 | 说明 |
 |---|---|---|---|
 | 1 | WIP 横幅 | RED + ITALIC | 仅开发中物品；使用通用键，永远置顶 |
-| 2 | 简介行 | WHITE | 这是什么 / 怎么用，一句话 |
+| 2 | 简介行 | GRAY | 这是什么 / 怎么用，一句话 |
 | 3 | 动态状态行 | 整行 GRAY，值可按语义单独上色 | 能量、羁绊、纹饰等运行时数据 |
 | 4 | 操作提示行 | DARK_GRAY | 按键 / 右键等交互提示；按键名用 ACCENT 高亮 |
 | 5 | Shift 展开详情 | 分区标题 GOLD + 明细 | 见下方展开规则 |
@@ -31,7 +31,7 @@
 | 常量 | 颜色 | 语义 |
 |---|---|---|
 | `TITLE` | GOLD | 分区标题、关键数值（总计、羁绊值） |
-| `BODY` | WHITE | 简介正文行 |
+| `BODY` | WHITE | 正文行：Jade 数量、封存信息等（物品简介行自 2026-09-14 起改用 GRAY，与 `LABEL` 同色） |
 | `LABEL` | GRAY | 状态行 / 次要信息 / 标签 |
 | `HINT` | DARK_GRAY | 操作提示、未激活内容 |
 | `POSITIVE` | GREEN | 正面、已解锁、增益 |
@@ -73,7 +73,7 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | 类 | 职责 |
 |---|---|
 | [`client/tooltip/TooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 可安全引用 |
-| [`item/DescribedItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 WHITE 简介的素材类物品基类（古代金币 / 失落书页 / 基页） |
+| [`item/DescribedItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
 | [`block/SealedContentsDisplay`](../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
 | `client/anvil/AnvilBreakdownTooltipBuilder`、`client/grindstone/GrindstoneBreakdownTooltipBuilder` | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。**TODO**：GUI 侧 tooltip 暂未纳入统一规划，仍直接使用 `ChatFormatting` 挑色（含语义色表外的 `DARK_GREEN`、`LIGHT_PURPLE`），待规划确定后迁移至语义色表 |
 

@@ -77,7 +77,7 @@ com.meteorite.unsuspiciousblock/
 ├── pan/                           淘洗系统（淘洗点生成/账本/战利品结算）
 │
 ├── specimen/  pottery/  inventory/ 标本箱/制陶/背包存在检测
-├── world/                         世界生成、骨块追踪
+├── world/                         世界生成、骨块追踪、结构回溯
 ├── network/                       网络包（payload c2s/s2c + handler）
 ├── command/                       调试命令
 │

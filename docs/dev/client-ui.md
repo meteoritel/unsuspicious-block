@@ -38,8 +38,7 @@
 | `LootTableManagementClientState` | 服务端权威战利品表索引、权限和多语言名称快照 |
 | `ClientLootTableLanguageStore` | 游戏资源来源索引、服务端名称内存快照和动态语言补充 |
 | `SuspiciousReaderClientState` | 可疑解析仪按键与扫描等级切换 |
-| `ReaderScanHighlightState` | 范围扫描高亮状态（描边方块） |
-| `ReaderScanHudState` | 最近一次结构化扫描结果与左下角 HUD 倒计时 |
+| `ReaderScanHudState` | 整批扫描汇总、地下目标聚焦与世界描边的统一生命周期 |
 | `HandOfCatClientState` | 猫之手客户端状态（缓存的 favor/lives） |
 | `CatHandClientState` | 猫之手按键处理状态 |
 | `EnchantmentRevealClientState` | 附魔揭示客户端状态（完整候选列表） |
@@ -146,17 +145,14 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 平台客户端在 HUD 渲染事件中调用 `CatFavorHud.render(guiGraphics)`。
 
 [`SuspiciousReaderHud`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/hud/SuspiciousReaderHud.java)
-在左下角显示扫描结果容器：最多保留 5 条独立信息，每条存活 8 秒；透明度曲线全程连续——淡入 200ms、
-保持、最后 3 秒淡出，同坐标再次扫描时从当前透明度平滑回升而非瞬间跳回不透明。
-后续扫描会追加到尚未消失的容器中。面板透明度锚定最新一条条目（`Snapshot.anchor()`，即列表首位）
-的淡出曲线（不含淡入），渲染线程通过单次加锁快照读取，保证面板淡出与最新信息同帧同步，
-且新条目到达时面板保持可见；过期条目由 tick 逐条清理，不做整体清空。
-最后一条真实扫描信息消失后，容器提示的剩余寿命被压缩为一次完整淡出以平滑关闭 HUD。
-**原版渲染边界**：`Font.adjustColor` 会把 alpha 字节小于 4 的文字颜色强制改为完全不透明，
-因此任何文字 alpha 字节低于 `MIN_TEXT_ALPHA`（4）时必须跳过绘制（面板与条目行均遵守），
-否则淡出末尾与淡入起始会闪现全不透明文字。
-面板不显示坐标，背景保持低不透明度，最大宽度 148 GUI 像素。
-结果由 `SyncReaderScanResultPayload` 以紧凑条目同步，避免范围扫描逐条写入聊天栏。
+采用左下角汇总与准星侧下方目标详情两个面板，独立于 Jade；不检测、隐藏或替代 Jade HUD，默认位置避开其顶部区域。Jade 被用户自定义移动后仍可能与任意 HUD 重叠。
+
+- **汇总**：新扫描整批替换旧结果，显示仍有效的可疑方块/容器总数，按物品 ID、展示名及封存来源分组，最多展示三组物品；其余组数和空方块数显示在底部。所有目标保留用于定位，不受展示行数限制。空范围扫描同样发送原有 `SyncReaderScanResultPayload`，清除旧标记并显示“未发现目标”，不再写聊天栏。
+- **目标详情**：仅主手或副手持扫描仪时显示，换下立即隐藏；沿相机视线在 32 格内与已扫描方块包围盒相交，忽略表层沙子的遮挡，优先最近目标，切换确认延迟 100ms。详情仅显示物品/数量、距离、相对玩家脚部的上下格数，封存者按需追加；容器仅显示内容未知，不解析容器战利品。长物品名最多两行，数量保留在首行；其余长文本按像素宽度省略。
+- **布局**：两个面板分别按文本、图标、数量与内边距自适应宽度，最大 180 GUI 像素，并受窗口可用宽度限制；详情在准星右下方，靠边时向内收，小窗口两面板相交时优先显示详情。打开其他 GUI、F1 时不绘制；H 仅控制扫描仪两个面板及聚焦强调，不影响 Jade 或基础世界标记。
+- **生命周期**：`ReaderScanHudState` 统一持有结果、图标、分组与聚焦目标，结果和世界描边共用单调时钟的 10 秒寿命，淡入 150ms、淡出 500ms；持续聚焦可延长阅读，整批最多保留 30 秒。新扫描重新计时；跨维度、断线、到期清理。每客户端 tick 仅检查已加载区块的缓存目标，移除方块实体消失或区块卸载的目标并更新汇总，不加载新区块。
+- **渲染预算**：图标和分组在接收/结果变化时缓存，目标选择每 tick 执行，渲染只读取快照。基础可疑方块描边为高不透明度青色、空方块弱灰色、容器紫色，取消连续闪烁，聚焦目标增加浅色外框。透视绘制使用已有无深度测试 RenderType，线宽增至 3 像素以增强沙地背景下的辨识度。
+- **原版字体边界**：alpha 字节低于 4 时跳过 HUD 绘制，避免原版字体强制恢复不透明。
 
 ## 6. 渲染
 
@@ -179,7 +175,7 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 
 ### 6.3 世界渲染
 
-- [`SuspiciousReaderRangeHighlight`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/renderer/SuspiciousReaderRangeHighlight.java)：在半透明方块渲染之后绘制范围扫描高亮（可疑方块与战利品容器描边），实现透视效果。数据来自 `SyncReaderScanResultPayload` 同步的 `ReaderScanHighlightState`。
+- [`SuspiciousReaderRangeHighlight`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/renderer/SuspiciousReaderRangeHighlight.java)：在半透明方块渲染之后绘制扫描结果透视描边与聚焦强调，数据来自 `SyncReaderScanResultPayload` 同步的 `ReaderScanHudState`。
 - [`CatFavorShieldRenderer`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/renderer/CatFavorShieldRenderer.java)：九命触发时绘制保护罩。
 
 平台客户端在 `AFTER_TRANSLUCENT` / `AFTER_TRANSLUCENT_BLOCKS` 阶段调用这两个渲染器。
