@@ -58,7 +58,7 @@ public final class TooltipBuilder {
 
     // 简介行：说明这是什么 / 怎么用
     public void intro(String key, Object... args) {
-        lines.add(Component.translatable(key, args).withStyle(BODY));
+        lines.add(Component.translatable(key, args).withStyle(ChatFormatting.GRAY));
     }
 
     // 状态行：运行时变化的数据（整行标签色）

@@ -389,6 +389,7 @@ public class UnsuspiciousBlockNeoForge {
         ServerLootTableConfigManager.stop();
         NaturalBoneBlockTracker.clearPendingPlayerBreaks();
         ShimmerSpawnService.stop(event.getServer());
+        com.meteorite.unsuspiciousblock.world.StructureRewindService.stop(event.getServer());
     }
 
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
@@ -399,6 +400,7 @@ public class UnsuspiciousBlockNeoForge {
         LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
         MerchantCatSpawner.tick(event.getServer());
         ShimmerSpawnService.tick(event.getServer());
+        com.meteorite.unsuspiciousblock.world.StructureRewindService.tick(event.getServer());
     }
 
     // chunk 首次生成时扫描骨块并标记为自然生成

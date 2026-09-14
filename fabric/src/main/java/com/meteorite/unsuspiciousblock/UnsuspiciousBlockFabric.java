@@ -260,6 +260,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             ServerLootTableConfigManager.stop();
             NaturalBoneBlockTracker.clearPendingPlayerBreaks();
             ShimmerSpawnService.stop(server);
+            com.meteorite.unsuspiciousblock.world.StructureRewindService.stop(server);
         });
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
@@ -269,6 +270,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             LootProbabilitySimulationWorker.tickIfPresent(server);
             MerchantCatSpawner.tick(server);
             ShimmerSpawnService.tick(server);
+            com.meteorite.unsuspiciousblock.world.StructureRewindService.tick(server);
         });
 
         // 直接扫描事件提供的 chunk，避免其进入 chunk map 前重新触发生成
