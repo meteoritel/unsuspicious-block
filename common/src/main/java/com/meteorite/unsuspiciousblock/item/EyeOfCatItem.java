@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.item;
 
-import net.minecraft.ChatFormatting;
-import net.minecraft.client.gui.screens.Screen;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -23,26 +22,21 @@ public class EyeOfCatItem extends Item {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        // 一句话暗示
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip_hint")
-                .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
-
-        if (Screen.hasShiftDown()) {
-            // 详尽模式：仅列出能力名
-            tooltipLines.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip_abilities")
-                    .withStyle(ChatFormatting.GOLD));
-            tooltipLines.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.enchant_reveal")
-                    .withStyle(ChatFormatting.GREEN));
-            tooltipLines.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.anvil_breakdown")
-                    .withStyle(ChatFormatting.GREEN));
-            tooltipLines.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.grindstone_breakdown")
-                    .withStyle(ChatFormatting.GREEN));
-        } else {
-            // 简要模式：仅提示按住 Shift 查看详情
-            tooltipLines.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip_detail_hint")
-                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
-        }
-
         super.appendHoverText(stack, context, tooltipLines, flag);
+        TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
+
+        // 一句话暗示
+        tooltip.intro("item.unsuspiciousblock.eye_of_cat.tooltip.hint");
+
+        // 详尽模式：列出能力名；否则显示通用 Shift 展开提示
+        tooltip.expandable(t -> {
+            t.section("item.unsuspiciousblock.eye_of_cat.tooltip.abilities");
+            t.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.enchant_reveal")
+                    .withStyle(TooltipBuilder.POSITIVE));
+            t.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.anvil_breakdown")
+                    .withStyle(TooltipBuilder.POSITIVE));
+            t.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.grindstone_breakdown")
+                    .withStyle(TooltipBuilder.POSITIVE));
+        });
     }
 }

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.item;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
@@ -23,8 +24,9 @@ public class UnfiredDecoratedSherdItem extends Item {
         PotDecorations decorations = stack.get(DataComponents.POT_DECORATIONS);
         if (decorations != null && decorations.ordered().stream().findFirst().isPresent()) {
             Item pattern = decorations.ordered().getFirst();
-            tooltip.add(Component.translatable("item.unsuspiciousblock.unfired_decorated_sherd.pattern",
-                    pattern.getDescription()));
+            // 状态行：展示当前记录的纹饰
+            new TooltipBuilder(tooltip).status("item.unsuspiciousblock.unfired_decorated_sherd.tooltip.pattern",
+                    pattern.getDescription());
         }
     }
 }

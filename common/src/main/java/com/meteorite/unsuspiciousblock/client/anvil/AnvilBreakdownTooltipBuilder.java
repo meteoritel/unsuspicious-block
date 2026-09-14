@@ -13,7 +13,10 @@ import java.util.List;
  * 将 {@link AnvilBreakdown} 转换为可渲染的 {@link Component} 列表，
  * 供 {@link AnvilBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
  *
- * <p>样式约定：标签行灰色，总计金色，不兼容红色，新增/升级附魔绿色，拒绝附魔红色。</p>
+ * <p>TODO：GUI 侧 tooltip 暂未纳入统一规划，本类仍直接使用 {@code ChatFormatting} 挑色
+ * （含语义色表外的 DARK_GREEN 等），待规划确定后再迁移至 {@code TooltipBuilder}
+ * 语义色表（见 docs/dev/tooltip.md 第 6 节）。当前实际样式：标签行灰色，总计金色，
+ * 不兼容/拒绝附魔红色，新增/升级附魔绿色，过于昂贵红色。</p>
  */
 public final class AnvilBreakdownTooltipBuilder {
 
@@ -70,6 +73,12 @@ public final class AnvilBreakdownTooltipBuilder {
         // 总计
         lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.total", bd.total())
                 .withStyle(ChatFormatting.GOLD));
+
+        // 过于昂贵标注：数据层已判定操作超出上限时醒目提示
+        if (bd.tooExpensive()) {
+            lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.too_expensive")
+                    .withStyle(ChatFormatting.RED));
+        }
 
         // REPAIR_COST 变化
         if (bd.newRepairCost() != AnvilBreakdown.REPAIR_COST_UNKNOWN) {

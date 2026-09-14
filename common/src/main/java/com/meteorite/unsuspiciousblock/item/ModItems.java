@@ -163,17 +163,20 @@ public class ModItems {
 
     // 创建古代金币实例
     public static Item createAncientCoin() {
-        return new Item(new Item.Properties());
+        return new DescribedItem(new Item.Properties(),
+                "item.unsuspiciousblock.ancient_coin.tooltip.desc");
     }
 
     // 创建失落书页实例
     public static Item createLostPage() {
-        return new Item(new Item.Properties());
+        return new DescribedItem(new Item.Properties(),
+                "item.unsuspiciousblock.lost_page.tooltip.desc");
     }
 
     // 创建书页基底实例
     public static Item createBasePage() {
-        return new Item(new Item.Properties());
+        return new DescribedItem(new Item.Properties(),
+                "item.unsuspiciousblock.base_page.tooltip.desc");
     }
 
     // 创建猫之瞳实例——持有者开启附魔台时可窥见完整附魔候选

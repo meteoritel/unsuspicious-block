@@ -11,7 +11,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -100,10 +100,8 @@ public class ArchaeologicalShovelItem extends ShovelItem {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        tooltipLines.add(Component.translatable(
-                        "item.unsuspiciousblock.archaeological_shovel.tooltip_extract")
-                .withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltipLines, flag);
+        new TooltipBuilder(tooltipLines).intro("item.unsuspiciousblock.archaeological_shovel.tooltip.extract");
     }
 
     // ========== 挖掘行为 ==========

@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.item;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.pan.PanningLootService;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -44,9 +44,8 @@ public class CopperPanItem extends Item {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.copper_pan.tooltip_use")
-                .withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltipLines, flag);
+        new TooltipBuilder(tooltipLines).intro("item.unsuspiciousblock.copper_pan.tooltip.use");
     }
 
     // 原版不施加使用动画，客户端渲染入口负责专属摇洗动作。

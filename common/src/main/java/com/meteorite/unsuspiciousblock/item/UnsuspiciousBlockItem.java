@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.block.SealedContents;
 import com.meteorite.unsuspiciousblock.block.SealedContentsDisplay;
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -38,16 +38,14 @@ public class UnsuspiciousBlockItem extends BlockItem {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        super.appendHoverText(stack, context, tooltipLines, flag);
         ItemStack sealedItem = SealedContents.getSealedItem(stack);
         if (sealedItem.isEmpty()) {
-            tooltipLines.add(Component.translatable(
-                            "item.unsuspiciousblock.unsuspicious_block.tooltip_fill")
-                    .withStyle(ChatFormatting.GRAY));
+            new TooltipBuilder(tooltipLines).intro("item.unsuspiciousblock.unsuspicious_block.tooltip.fill");
         } else {
             tooltipLines.add(SealedContentsDisplay.sealedItemLine(sealedItem));
             tooltipLines.add(SealedContentsDisplay.sealedByIdentityLine(
                     SealedContents.getCrafter(stack).orElse(null)));
         }
-        super.appendHoverText(stack, context, tooltipLines, flag);
     }
 }

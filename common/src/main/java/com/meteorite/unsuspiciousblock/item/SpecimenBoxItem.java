@@ -3,8 +3,8 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.inventory.PortableContainer;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxContents;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -39,9 +39,8 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.specimen_box.tooltip_desc")
-                .withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltipLines, flag);
+        new TooltipBuilder(tooltipLines).intro("item.unsuspiciousblock.specimen_box.tooltip.desc");
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.block.SealedContentsDisplay;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlock;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -90,7 +91,7 @@ public class JadePlugin implements IWailaPlugin {
             int panRemaining = shimmer.getPanRemaining();
             if (panRemaining > 0) {
                 tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.pan_remaining",
-                        panRemaining).withStyle(style -> style.withColor(0xFFE040)));
+                        panRemaining).withStyle(TooltipBuilder.TITLE));
             }
         }
 
@@ -124,8 +125,8 @@ public class JadePlugin implements IWailaPlugin {
 
             if (stack.isEmpty()) {
                 tooltip.add(
-                        Component.translatable("item.unsuspiciousblock.suspicious_reader.jade_empty")
-                                .withStyle(style -> style.withColor(0xAAAAAA))
+                        Component.translatable("jade.unsuspiciousblock.suspicious_reader.empty")
+                                .withStyle(TooltipBuilder.LABEL)
                 );
                 return;
             }
@@ -133,20 +134,20 @@ public class JadePlugin implements IWailaPlugin {
             IElementHelper elements = IElementHelper.get();
 
             tooltip.add(
-                    Component.translatable("item.unsuspiciousblock.suspicious_reader.jade_prefix")
-                            .withStyle(style -> style.withColor(0xAAAAAA))
+                    Component.translatable("jade.unsuspiciousblock.suspicious_reader.prefix")
+                            .withStyle(TooltipBuilder.LABEL)
             );
             tooltip.append(elements.item(stack, 0.6f));
             tooltip.append(Component.literal(" "));
             tooltip.append(
                     stack.getHoverName().copy()
-                            .withStyle(style -> style.withColor(0xFFE040))
+                            .withStyle(TooltipBuilder.TITLE)
             );
 
             if (stack.getCount() > 1) {
                 tooltip.append(
                         Component.literal(" ×" + stack.getCount())
-                                .withStyle(style -> style.withColor(0xFFFFFF))
+                                .withStyle(TooltipBuilder.BODY)
                 );
             }
         }

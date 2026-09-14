@@ -3,9 +3,10 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
-import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.block.SealedContents;
+import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
@@ -76,30 +77,28 @@ public class SuspiciousReaderItem extends Item {
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        super.appendHoverText(stack, context, tooltipLines, flag);
+        TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
         int energy = getEnergyOrDefault(stack);
         int scanLevel = getScanLevel(stack);
 
-        // 能量条
+        // 状态行：当前扫描模式与能量
         String modeKey = switch (scanLevel) {
             case 1 -> "item.unsuspiciousblock.suspicious_reader.scan_mode_1";
             case 2 -> "item.unsuspiciousblock.suspicious_reader.scan_mode_2";
             case 3 -> "item.unsuspiciousblock.suspicious_reader.scan_mode_3";
             default -> "item.unsuspiciousblock.suspicious_reader.scan_mode";
         };
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_scan_level",
-                Component.translatable(modeKey)).withStyle(ChatFormatting.GRAY));
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_energy",
-                energy, MAX_ENERGY).withStyle(ChatFormatting.GRAY));
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_recharge")
-                .withStyle(ChatFormatting.DARK_GRAY));
+        tooltip.status("item.unsuspiciousblock.suspicious_reader.tooltip.scan_level",
+                Component.translatable(modeKey));
+        tooltip.status("item.unsuspiciousblock.suspicious_reader.tooltip.energy", energy, MAX_ENERGY);
 
+        // 操作提示行：充能与按键切换
+        tooltip.hint("item.unsuspiciousblock.suspicious_reader.tooltip.recharge");
         // 按键切换提示：按键绑定名以青色高亮，便于识别
         Component keybind = Component.keybind("key.unsuspiciousblock.scan_level_cycle")
-                .withStyle(ChatFormatting.AQUA);
-        tooltipLines.add(Component.translatable("item.unsuspiciousblock.suspicious_reader.tooltip_switch_mode", keybind)
-                .withStyle(ChatFormatting.DARK_GRAY));
-
-        super.appendHoverText(stack, context, tooltipLines, flag);
+                .withStyle(TooltipBuilder.ACCENT);
+        tooltip.hint("item.unsuspiciousblock.suspicious_reader.tooltip.switch_mode", keybind);
     }
 
     // ========== 能量与等级 CustomData 操作 ==========

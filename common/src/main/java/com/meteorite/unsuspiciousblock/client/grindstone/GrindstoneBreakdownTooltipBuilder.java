@@ -15,6 +15,10 @@ import java.util.List;
  *
  * <p>样式约定：标题金色，操作类型/分区灰色，移除项红色，保留诅咒暗红色，
  * 经验返还绿色，耐久变化绿色，附魔书转换紫色。</p>
+ *
+ * <p>TODO：GUI 侧 tooltip 暂未纳入统一规划，本类仍直接使用 {@code ChatFormatting} 挑色
+ * （含语义色表外的 LIGHT_PURPLE 等），待规划确定后再迁移至 {@code TooltipBuilder}
+ * 语义色表（见 docs/dev/tooltip.md 第 6 节）。</p>
  */
 public final class GrindstoneBreakdownTooltipBuilder {
 

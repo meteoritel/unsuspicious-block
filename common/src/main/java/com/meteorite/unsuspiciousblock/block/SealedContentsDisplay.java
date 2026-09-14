@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.block;
 
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.ItemStack;
@@ -15,20 +15,20 @@ public final class SealedContentsDisplay {
 
     // 构建“封存物品”标签
     public static MutableComponent sealedItemPrefix() {
-        return Component.translatable("jade.unsuspiciousblock.sealed_item")
-                .withStyle(ChatFormatting.GRAY);
+        return Component.translatable("unsuspiciousblock.sealed.item")
+                .withStyle(TooltipBuilder.LABEL);
     }
 
     // 构建封存物品值，包含物品名称与数量
     public static MutableComponent sealedItemValue(ItemStack sealedItem) {
         if (sealedItem.isEmpty()) {
-            return Component.translatable("jade.unsuspiciousblock.empty")
-                    .withStyle(ChatFormatting.DARK_GRAY);
+            return Component.translatable("unsuspiciousblock.sealed.empty")
+                    .withStyle(TooltipBuilder.HINT);
         }
         return sealedItem.getHoverName().copy()
-                .withStyle(ChatFormatting.YELLOW)
+                .withStyle(TooltipBuilder.NAME)
                 .append(Component.literal(" ×" + sealedItem.getCount())
-                        .withStyle(ChatFormatting.WHITE));
+                        .withStyle(TooltipBuilder.BODY));
     }
 
     // 构建不含物品图标的完整封存物品行
@@ -45,10 +45,10 @@ public final class SealedContentsDisplay {
     // 从服务端已解析的玩家名构建“封存玩家”行
     public static MutableComponent sealedByNameLine(@Nullable String crafterName) {
         Component displayName = crafterName == null || crafterName.isBlank()
-                ? Component.translatable("jade.unsuspiciousblock.unknown_player")
+                ? Component.translatable("unsuspiciousblock.sealed.unknown_player")
                 : Component.literal(crafterName);
-        return Component.translatable("jade.unsuspiciousblock.sealed_by", displayName)
-                .withStyle(ChatFormatting.AQUA);
+        return Component.translatable("unsuspiciousblock.sealed.by", displayName)
+                .withStyle(TooltipBuilder.ACCENT);
     }
 
     // 玩家名缺失时使用 UUID，确保已有身份数据始终可识别
