@@ -191,7 +191,7 @@ lootr_compat_neoforge=true
 
 ### 5.4 可选联动依赖
 
-Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，统一采用 `compileOnly`（编译期引用 API）+ `runtimeOnly`（仅开发运行环境加载）模式，发布时不强制玩家安装。跨可选依赖边界的调用通过 [`OptionalModIntegration.instantiate()`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/OptionalModIntegration.java) 反射完成，避免主入口在依赖缺失时类加载失败。
+Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，统一采用 `compileOnly`（编译期引用 API）+ `runtimeOnly`（仅开发运行环境加载）模式，发布时不强制玩家安装。依赖缺失时的反射加载机制以 [平台抽象](platform-abstraction.md) 第 4 节为权威；各联动的集成类清单见 [配置与第三方联动](config-integrations.md) 第 4 节。
 
 ## 6. 横切设计原则
 
@@ -213,7 +213,7 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 - [战利品表系统](loottable.md)
 - [猫族关系系统](cat-favor.md)
 - [附魔系统](enchantment.md)
-- [实体与世界生成](entities-world.md)
+- [实体与 AI](entities-world.md)
 - [淘洗系统](panning.md)
 - [方块与物品](blocks-items.md)
 - [客户端与 GUI](client-ui.md)

@@ -102,7 +102,7 @@
 
 ### 6.3 摇洗动画与水声
 
-- [`PanningAnimation`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/pan/PanningAnimation.java)（common，双端共用，支持左右手）：第一人称接管持物渲染绘制盘面绕圈摇洗；第三人称在 `HumanoidModel.setupAnim` 后调整持盘手臂。
+- [`PanningAnimation`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/pan/PanningAnimation.java)（common，双端共用，支持左右手）：第一人称接管持物渲染绘制盘面绕圈摇洗，以 `ItemDisplayContext.NONE` 渲染原始盘面并由动画自行设置缩放与绕 X 轴倾角，避免叠加 generated 模型自带的第一人称旋转而变成侧立（`CopperPanItem` 的 `getUseAnimation` 返回 `NONE`，不触发原版刷子动画）；第三人称在 `HumanoidModel.setupAnim` 后调整持盘手臂。
 - [`PanningSoundController`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/pan/PanningSoundController.java)：每五刻检查玩家 16 格内工作中的淘洗点，每个点最多一个 `PanningSound`（复用原版 `block.water.ambient`，随摇洗周期调音调音量）；停止工作、实体消散、离开范围或切换世界时停止。
 - 平台接入差异：NeoForge 用原生 `RenderHandEvent` 接第一人称动画；Fabric 原生事件不足，用 `ItemInHandPanningMixin`（`ItemInHandRenderer.renderArmWithItem` HEAD）补齐。第三人称两端都走 common mixin `HumanoidPanningMixin`。详见 [Mixin 总览](mixin.md)。
 
@@ -132,7 +132,7 @@
 
 ## 8. 相关文档
 
-- [实体与世界生成](entities-world.md) — 实体注册模式与其他实体
+- [实体与 AI](entities-world.md) — 实体注册模式与其他实体
 - [方块与物品](blocks-items.md) — 淘盘物品的实现细节
 - [考古笔记系统](journal.md) / [战利品表系统](loottable.md) — 淘洗产出的笔记结算与目录收录
 - [配置与第三方联动](config-integrations.md) — 配置接口全表

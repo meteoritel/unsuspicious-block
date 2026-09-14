@@ -164,20 +164,11 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 ### 8.5 加入时同步序列
 
-[`JournalPlayerDataService.onPlayerJoined`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/JournalPlayerDataService.java) 按序执行（见 [考古笔记系统](journal.md) 第 6 节）：
-
-```
-restoreLogState -> migratePlayerData -> syncLogSnapshot -> syncCatalogHash
-  -> sync loot table management -> syncStateFull -> checkAndRewardAll -> checkAndGrantAll
-```
-
-补发奖励/成就在全量状态同步之后，确保客户端 catalog 已就绪可解析表名。
+玩家加入时的完整同步序列（日志恢复 -> 数据迁移 -> 日志快照/目录哈希/管理索引/全量状态 -> 补发奖励与成就）以 [考古笔记系统](journal.md) 第 6 节为权威描述，此处不再重复。网络层的参与点是：`JournalLogHandler.syncLogSnapshot` 走日志分片快照（见 8.3），其余为一次性 payload 依次下发。
 
 ### 8.6 战利品表管理同步
 
-服务端从 `ReloadableServerRegistries` 枚举 LootTable key，过滤 `entities/` 与 `blocks/`，然后发送 `ResourceLocation + tracked` 列表、该玩家仍存在于当前注册表的最近遇到列表、编辑权限以及按语言分组的服务端补充名称。最近列表已按玩家内遇到顺序从新到旧排列。追踪与名称写请求都会重新校验表是否仍存在于注册表且玩家权限等级至少为 2，不能信任客户端候选列表。
-
-名称草稿和 JSON 导入使用同一个批量 payload。服务端先按当前注册表、语言代码和长度限制过滤，再批量更新标准语言文件并只广播一次管理快照。客户端将快照保存在当前连接的内存中，`ClientLanguageMixin` 在查询自动生成的战利品表 key 时动态读取快照；进入或退出世界都不触发资源重载。手工修改服务端语言文件并执行 `/reload` 也会广播新快照。
+服务端从 `ReloadableServerRegistries` 枚举 LootTable key（过滤 `entities/` 与 `blocks/`），通过 `SyncLootTableManagementPayload` 下发 `ResourceLocation + tracked` 列表、玩家最近遇到列表、编辑权限与按语言分组的服务端补充名称；追踪与名称写请求由 `UpdateTrackedLootTablePayload` / `UpdateLootTableTranslationsPayload` 承载。服务端的校验、过滤、写盘与广播语义以 [战利品表系统](loottable.md) 第 5 节为权威，此处不再重复。`ClientLanguageMixin` 在查询自动生成的战利品表 key 时动态读取内存快照，进入或退出世界都不触发资源重载；手工修改服务端语言文件并执行 `/reload` 也会广播新快照。
 
 ## 9. 扩展点
 

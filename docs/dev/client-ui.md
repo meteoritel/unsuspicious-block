@@ -2,6 +2,8 @@
 
 本文档描述 `client/` 包的架构：客户端初始化、状态管理、考古笔记 GUI 层级、HUD、渲染、铁砧/砂轮成本分解、附魔揭示与 Toast 通知。
 
+> **本篇职责边界**：本篇是**客户端通用基础设施**（状态管理框架、按键、Toast、HUD/渲染接入）与**考古笔记 GUI** 的权威文档。各玩法子系统的客户端表现，其机制权威在对应子系统文档（猫 HUD 数据流见 [猫族关系系统](cat-favor.md)、淘盘动画与水声见 [淘洗系统](panning.md)、附魔揭示服务端机制见 [附魔系统](enchantment.md)）；本篇只保留客户端侧的接入方式与渲染细节。
+
 ## 1. 职责概述
 
 `client/` 包含所有客户端专属代码（服务端严禁引用）：
@@ -98,7 +100,7 @@ ui/
 
 列表不在客户端自行枚举战利品表，而是显示 `LootTableManagementClientState` 接收的服务端注册表与最近记录快照。语言选择器由语言代码输入框（`EditBox`，支持自定义语言代码并带校验，最长 16 字符）与旁侧按钮打开的 `LanguageSelectionScreen` 选择弹窗组成。
 
-页面同时读取当前游戏资源栈中的语言 JSON。资源已有名称时显示 Resource Pack 来源并锁定输入；资源缺失时才允许编辑服务端补充配置，当前语言缺失时用 `en_us` 作为提示回退。手工输入按语言与表保存在页面草稿中，“应用更改”一次提交全部草稿。管理员可通过系统文件选择窗口导入本地语言 JSON，确认统计预览后批量提交；资源已有项、未匹配当前服务端战利品表的 key 与非法值不会上传。服务端快照只存客户端内存，断开服务器即清除。
+页面同时读取当前游戏资源栈中的语言 JSON：资源已有名称时显示 Resource Pack 来源并锁定输入，资源缺失时才允许编辑服务端补充配置，当前语言缺失时用 `en_us` 作为提示回退。手工输入按语言与表保存在页面草稿中，“应用更改”一次提交全部草稿；管理员可通过系统文件选择窗口导入本地语言 JSON，确认统计预览后批量提交。提交后的服务端过滤/写盘/广播语义以 [战利品表系统](loottable.md) 第 5.2 节为权威；服务端快照只驻留当前连接内存，断开即清除。
 - **panel/**：可复用的面板组件。`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）。
 
 `ItemGridPanel` 只展示当前表自身的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，
@@ -198,7 +200,7 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 
 ## 8. 附魔揭示客户端
 
-[`EnchantmentRevealClientState`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/enchantment/EnchantmentRevealClientState.java) 持有服务端下发的完整附魔候选列表（`SyncEnchantmentRevealListPayload`）。`EnchantmentScreenMixin` 在附魔台界面渲染完整候选，而非原版的一条提示。详见 [附魔系统](enchantment.md) 第 8 节。
+客户端仅负责展示：[`EnchantmentRevealClientState`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/enchantment/EnchantmentRevealClientState.java) 持有服务端下发的完整附魔候选列表（`SyncEnchantmentRevealListPayload`），`EnchantmentScreenMixin` 在附魔台界面渲染完整候选而非原版的一条提示。揭示的触发机制、条件扩展与服务端权威计算以 [附魔系统](enchantment.md) 第 8 节为权威。
 
 ## 9. Toast 通知
 
@@ -228,12 +230,7 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 
 ## 11. 客户端 Mixin
 
-`mixin/client/` 包含 4 个客户端 mixin（见 [mixin.md](mixin.md)）：
-
-- `AbstractContainerScreenAccessor`：访问容器屏幕的内部字段（tooltip 渲染用）。
-- `ClientLanguageMixin`：对自动生成的战利品表 key 动态补充当前服务端名称；仅在真实资源重载时清理资源来源索引。
-- `EditBoxMixin`：输入框行为调整（搜索框）。
-- `EnchantmentScreenMixin`：附魔台界面渲染完整候选列表。
+`mixin/client/` 包含 4 个客户端 mixin，注入点与目标的权威清单见 [Mixin 总览](mixin.md) 第 3.7 节。本篇只说明用途：`AbstractContainerScreenAccessor`（tooltip 渲染访问容器屏幕内部字段）、`EditBoxMixin`（搜索框行为）、`EnchantmentScreenMixin`（附魔揭示渲染）、`ClientLanguageMixin`（服务端补充名称动态生效，机制见 [战利品表系统](loottable.md) 第 5.2 节）。
 
 ## 12. 扩展点
 
@@ -252,8 +249,4 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 - [猫族关系系统](cat-favor.md) - HUD 数据来源
 - [附魔系统](enchantment.md) - 附魔揭示
 - [Mixin 总览](mixin.md) - 客户端 mixin
-
-
-## 淘盘动画与水声
-
-摇洗动画、水声控制器、贴水波光与粒子分档的机制与平台接入差异见 [淘洗系统](panning.md) 第 6 节。本篇仅保留渲染细节：`CopperPanItem` 使用 `UseAnim.NONE`，不触发原版刷子动画；第一人称工作动画使用 `ItemDisplayContext.NONE` 渲染原始物品盘面，由动画独立设置缩放与绕 X 轴的倾角，避免叠加 generated 模型自带第一人称旋转而变成侧立；普通持物仍使用原版显示变换。
+- [淘洗系统](panning.md) - 淘盘动画、水声与贴水波光

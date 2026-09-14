@@ -154,6 +154,8 @@ List.of(
 
 ### 5.1 可视化追踪管理
 
+> 本节与 5.2 是追踪管理页与自定义表名机制的**权威描述**：客户端页面交互见 [客户端与 GUI](client-ui.md) 第 4.2 节，payload 流转见 [网络与同步](network.md) 第 8.6 节，配置文件位置见 [配置与第三方联动](config-integrations.md) 第 2.6 节。
+
 管理页面的候选集合以服务端 `ReloadableServerRegistries` 中 `Registries.LOOT_TABLE` 的 key 为唯一权威，不读取客户端资源列表，也不猜测不存在的表。当前明确排除 path 以 `entities/`、`blocks/` 开头的实体和方块掉落表。
 
 追踪规则仍支持前缀和精确 ID。为允许从宽泛前缀中移除单表，`excluded_loot_tables` 保存精确排除项：关闭一张被前缀命中的表时加入排除项；重新开启时移除排除项，若原规则未命中则把精确 ID 加入追踪规则。修改权限要求服务端权限等级 2，变更后重建目录并广播最新管理快照。

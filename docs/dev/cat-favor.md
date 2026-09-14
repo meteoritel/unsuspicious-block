@@ -8,7 +8,7 @@
 
 猫族关系系统是模组第二条玩法主线，承担：
 
-1. **关系建立**：玩家从猫国结构发现猫之手后绑定信物，建立与猫族的关系（结构自然生成当前停用，见 [实体与世界生成](entities-world.md) 第 9 节）。
+1. **关系建立**：玩家从猫国结构发现猫之手后绑定信物，建立与猫族的关系（结构自然生成当前停用，见 [实体与 AI](entities-world.md) 第 9 节）。
 2. **羁绊累积**：正向行为（喂食、驯服、共眠等）累积羁绊，惩罚行为（击打、杀猫）扣减。
 3. **恩惠能力**：羁绊达到阈值解锁被动能力（猫的眼、威慑、轻步、柔软肉垫、古国往礼、九命）。
 4. **灵体猫管理**：召唤并管理猫猫信使、剑士猫猫、猫猫商人三类灵体实体。
@@ -213,7 +213,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - 每名玩家同时最多一只信使。
 - 信使送礼成功时通过 `CatFavorManager.onMessengerGiftDelivered` 补充九命（仅羁绊=100 时）。
 
-实体细节（MessengerCat 的 AI、阶段、行为）见 [实体与世界生成](entities-world.md)。
+实体细节（MessengerCat 的 AI、阶段、行为）见 [实体与 AI](entities-world.md)。
 
 ## 9. 猫猫商人
 
@@ -263,10 +263,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 
 ## 12. Mixin 依赖
 
-猫族系统依赖多个 mixin（见 [mixin.md](mixin.md)）：
-
-- `catfavor/` 包：`CatFeedMixin`（喂食）、`CatRelaxOnOwnerGoalMixin`（共眠）、`CatSitOnBlockGoalMixin`（坐方块）、`CreeperAvoidCatFavorMixin`（苦力怕回避）、`PhantomSpawnerMixin` / `PhantomTargetGoalMixin`（幻翼）、`FarmBlockTrampleMixin`（耕地）、`LivingEntityFallDamageMixin`（摔落）、`LivingEntityNineLivesMixin`（九命触发）、`PlayerCatFavorStateMixin` / `ServerPlayerCatFavorStateMixin`（状态附加）、`TamableAnimalTameMixin`（驯服）、`EntityBlockTriggerMixin`（压力板/绊线）等。
-- `PlayerHurtInvulnMixin`：九命无敌窗口的伤害豁免。
+猫族系统的行为修改与状态附加依赖 `mixin/catfavor/` 下十余个 mixin：喂食、共眠、坐方块、驯服、苦力怕回避、幻翼威慑、耕地/压力板/绊线（轻步）、摔落减伤、九命触发与无敌豁免、玩家状态附加。各 mixin 的注入点、目标类与平台差异见 [Mixin 总览](mixin.md) 第 3.2 节（唯一权威清单）；对应能力的服务端逻辑见本文第 5~7 节。
 
 ## 13. 扩展点
 
@@ -278,7 +275,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 
 ## 14. 相关文档
 
-- [实体与世界生成](entities-world.md) - 灵体猫实体与 AI
+- [实体与 AI](entities-world.md) - 灵体猫实体与 AI
 - [网络与同步](network.md) - `SyncCatFavorPayload` 等
 - [Mixin 总览](mixin.md) - `catfavor/` 包的注入点
 - [配置与第三方联动](config-integrations.md) - `ISpiritCatConfig`

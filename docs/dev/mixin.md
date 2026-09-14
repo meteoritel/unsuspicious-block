@@ -100,6 +100,7 @@ Mixin 主要用于四类需求：
 | `client/EditBoxMixin` | 输入框 | 搜索框行为调整 |
 | `client/EnchantmentScreenMixin` | 附魔台屏幕 | 渲染完整候选列表 |
 | `client/ClientLanguageMixin` | `ClientLanguage` | 动态查询当前服务端补充名称，并在真实资源重载时失效资源来源索引 |
+| `client/HumanoidPanningMixin` | `HumanoidModel` | 淘盘第三人称动画入口（`setupAnim` 尾部转交 `PanningAnimation`，见 [淘洗系统](panning.md)） |
 
 ## 4. Fabric 独有 mixin
 
@@ -113,6 +114,7 @@ Fabric 平台因原生事件缺失，用 mixin 补齐 NeoForge 用事件实现�
 | `container/AnvilMenuMixin` | `AnvilMenu` | `AnvilUpdateEvent` | 古代金币铁砧修复 |
 | `interaction/BrushableBlockEntityMixin` | 可疑方块实体 | 事件 | 刷拭触发（精准发掘翻倍 + 追踪） |
 | `interaction/SheepMixin` | 羊 | 事件 | 剪羊毛触发（织物采集） |
+| `client/ItemInHandPanningMixin` | `ItemInHandRenderer` | `RenderHandEvent` | 淘盘第一人称动画入口（转交 `PanningAnimation`，见 [淘洗系统](panning.md)） |
 
 > 这是项目"允许两端使用不同方案实现相同效果"原则的体现（见 [`CLAUDE.md`](../../CLAUDE.md)）。Fabric 端的骨块追踪用 mixin + chunk 事件，NeoForge 端用 `DataAttachment`；铁砧修复 Fabric 用 mixin，NeoForge 用 `AnvilUpdateEvent`。
 
@@ -206,13 +208,6 @@ public abstract class AnvilMenuMixin {
 - [考古笔记系统](journal.md) - journal/ 包 mixin
 - [猫族关系系统](cat-favor.md) - catfavor/ 包 mixin
 - [战利品表系统](loottable.md) - `NestedLootTableMixin` 与模拟条件作用域
-- [实体与世界生成](entities-world.md) - Fabric 骨块追踪 mixin
+- [实体与 AI](entities-world.md) - Fabric 骨块追踪 mixin
 - [配置与第三方联动](config-integrations.md) - Lootr 兼容
-
-
-## 淘盘动画入口
-
-淘洗系统整体见 [淘洗系统](panning.md)。两个 mixin 仅作为入口，动画逻辑全部在 common 的 `PanningAnimation`：
-
-- common 客户端 `HumanoidPanningMixin`：`HumanoidModel.setupAnim` 尾部转交 `PanningAnimation`，只调整正在淘洗的玩家持盘手臂。
-- Fabric 客户端 `ItemInHandPanningMixin`：`ItemInHandRenderer.renderArmWithItem` 开头转交专属动画，仅成功接管当前使用的淘盘时取消原版持物绘制。NeoForge 对应接入使用原生 `RenderHandEvent`。
+- [淘洗系统](panning.md) - 淘盘动画的两个 mixin 入口与动画逻辑

@@ -191,10 +191,7 @@ EnchantmentMenu.slotsChanged  (由 EnchantmentMenuMixin 拦截)
 
 ## 9. Mixin 依赖
 
-- `EnchantmentMenuMixin`（common）：拦截 `slotsChanged`，触发附魔揭示检查。
-- `EnchantmentScreenMixin`（common client）：渲染完整候选列表。
-- `SmithingMenuMixin`（common）：拦截 `SmithingMenu.onTake`，触发失落书页锻造。
-- 刷拭/剪羊毛的触发由平台适配器通过事件或 mixin 接入（Fabric 部分用 mixin，如 `SheepMixin`、`BrushableBlockEntityMixin`）。钓鱼不再走附魔框架（见第 6 节）；`FishingHookMixin` 现属于考古笔记的钓鱼追踪上下文（见 [考古笔记系统](journal.md)）。
+附魔系统的 mixin 需求集中在三处：`EnchantmentMenuMixin`（揭示触发）、`SmithingMenuMixin`（失落书页锻造触发）、`EnchantmentScreenMixin`（候选列表渲染）；刷拭/剪羊毛触发由平台适配器接入（Fabric 端用 `BrushableBlockEntityMixin` / `SheepMixin`）。注入点细节见 [Mixin 总览](mixin.md)（唯一权威清单）。钓鱼不走附魔框架（见第 6 节）；`FishingHookMixin` 属于考古笔记的钓鱼追踪（见 [考古笔记系统](journal.md)）。
 
 ## 10. 扩展点
 
@@ -210,7 +207,7 @@ EnchantmentMenu.slotsChanged  (由 EnchantmentMenuMixin 拦截)
 
 - [战利品表系统](loottable.md) - `MudDredgingCondition` 与条件注册
 - [考古笔记系统](journal.md) - `FossilHunterEffect` 的追踪接入
-- [实体与世界生成](entities-world.md) - `NaturalBoneBlockTracker` 骨块追踪
+- [实体与 AI](entities-world.md) - `NaturalBoneBlockTracker` 骨块追踪
 - [网络与同步](network.md) - `SyncEnchantmentRevealListPayload`
 - [客户端与 GUI](client-ui.md) - 附魔台揭示渲染、铁砧/砂轮分解
 - [Mixin 总览](mixin.md) - `EnchantmentMenuMixin` 等

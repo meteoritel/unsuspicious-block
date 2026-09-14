@@ -217,5 +217,5 @@ public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
 - [架构总览](architecture-overview.md)
 - [平台抽象](platform-abstraction.md)
 - [方块与物品](blocks-items.md) - 各物品/方块类的具体行为
-- [实体与世界生成](entities-world.md) - 实体注册与属性
+- [实体与 AI](entities-world.md) - 实体注册与属性
 - [网络与同步](network.md) - `ModPayloads` 清单

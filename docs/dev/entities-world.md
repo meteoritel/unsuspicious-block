@@ -1,13 +1,13 @@
-# 实体与世界生成
+# 实体与 AI
 
-本文档描述 `entity/` 与 `world/` 包的架构：猫国灵体猫的通用基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪，以及猫之手结构的世界生成。
+本文档描述 `entity/` 与 `world/` 包中实体侧内容的权威架构：猫国灵体猫的通用基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪，以及猫之手结构的世界生成。淘洗点实体 `ShimmerEntity` 属于淘洗玩法，权威文档见 [淘洗系统](panning.md)；`world/` 包中属于考古笔记/战利品系统的持久化类（第 8 节）此处只作包位置索引。
 
 ## 1. 职责概述
 
 - **猫国灵体**：信使、剑士、商人三种职责猫，共享 `SpiritCat` 基类，统一处理预览/职责模式、生命周期、飞行物理。
 - **灵魂提灯宠物**：独立的飞行陪伴宠物，非灵体体系。
 - **骨块追踪**：记录世界自然生成的骨块，供化石猎手附魔判定。
-- **SavedData**：日志与概率模拟结果的服务端持久化。
+- **SavedData**：日志与概率模拟结果的服务端持久化（机制权威在 [考古笔记系统](journal.md) 与 [战利品表系统](loottable.md)，见第 8 节）。
 - **世界生成**：猫之手藏宝点结构（数据驱动）。
 
 ## 2. 子包结构
@@ -170,7 +170,7 @@ world/
 
 ## 8. 世界持久化数据
 
-`world/` 包还包含以下服务端持久化组件：
+`world/` 包还包含以下服务端持久化组件。前两者属于考古笔记 / 战利品系统的存储，**机制权威在对应子系统文档**，此处仅作包位置索引：
 
 - [`LootProbabilityData`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/LootProbabilityData.java)：附加在 overworld，缓存每张战利品表的概率模拟结果与 JSON 哈希。详见 [考古笔记系统](journal.md) 与 [战利品表系统](loottable.md)。
 - [`JournalLogStorage`](../../common/src/main/java/com/meteorite/unsuspiciousblock/world/JournalLogStorage.java)：在 `<world>/data/unsuspiciousblock/journal_logs/` 下按玩家 UUID、战利品表保存日志分片。`JournalLogSavedData` 只保留为旧单文件迁移读取器。详见 [考古笔记系统](journal.md) 4.4 节。
@@ -214,9 +214,4 @@ data/unsuspiciousblock/
 - [客户端与 GUI](client-ui.md) - 实体渲染器与模型层
 - [Mixin 总览](mixin.md) - Fabric 端骨块追踪 mixin
 - [docs/spirit-cat-npc-design.md](../spirit-cat-npc-design.md) - 灵体猫 NPC 设计
-
-## 淘盘与闪烁的光
-
-淘洗子系统（淘盘物品、闪烁的光实体、生成服务与账本、淘洗结算、客户端表现、配置与调试指令）的权威文档见 [淘洗系统](panning.md)。
-
-与本篇相关的注册事实：`ShimmerEntity` 注册于 `ModEntities` 清单（无模型装饰实体，不注册属性），渲染器 `ShimmerRenderer` 为空实现占位，视觉完全由世界渲染阶段的贴水波光与客户端 tick 粒子承担。
+- [淘洗系统](panning.md) - 淘洗点实体 `ShimmerEntity`（同样注册于 `ModEntities` 清单，无模型装饰实体、不注册属性）

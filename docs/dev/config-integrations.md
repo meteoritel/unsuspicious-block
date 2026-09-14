@@ -6,7 +6,7 @@
 
 - **配置系统**：通过 `ILootTableConfig`、`ISpiritCatConfig` 与 `IPanningConfig` 三个 SPI 接口暴露可调参数。战利品追踪配置由服务端按世界持有；Fabric 使用世界目录 JSON，NeoForge 使用 SERVER ModConfigSpec。灵体猫参数与淘洗参数仍为全局配置。
 - **数据驱动边界**：可枚举内容交数据包，可调强度交配置，身份/关系语义保持硬编码。
-- **第三方联动**：六类可选联动，统一用 `compileOnly` + `OptionalModIntegration` 反射加载，发布时不强制依赖。
+- **第三方联动**：六类可选联动，统一用 `compileOnly` + `OptionalModIntegration` 反射加载，发布时不强制依赖。加载机制的权威描述见 [平台抽象](platform-abstraction.md) 第 4 节，本篇只列联动清单。
 
 ## 2. 配置系统
 
@@ -103,9 +103,7 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 
 ### 2.6 战利品表名称文件
 
-追踪配置和名称均由服务器管理，但分开存储：追踪规则属于按世界保存的 `ILootTableConfig`；补充语言按标准 JSON 保存到服务端全局 `config/unsuspiciousblock/loot_table_lang/<language>.json`，用于整合包分发和开发期补全。旧世界名称文件会自动合并迁移。
-
-客户端不持久化服务端名称，只在当前连接内存中应用；断线后清除。运行时覆盖仅接受 `LootTableNames` 自动生成的 key，且同语言的游戏资源值始终优先并在管理页中只读，配置不能覆盖模组其他 GUI 文本或正式资源翻译。
+追踪规则属于按世界保存的 `ILootTableConfig`；补充语言按标准 JSON 保存到服务端全局 `config/unsuspiciousblock/loot_table_lang/<language>.json`，用于整合包分发和开发期补全。名称合并迁移、资源优先语义与运行时覆盖规则以 [战利品表系统](loottable.md) 第 5.2 节为权威，此处只记录文件位置。
 
 ## 3. 数据驱动与硬编码边界
 
@@ -211,31 +209,17 @@ Fabric 端通过 [`ModMenuIntegration`](../../fabric/src/main/java/com/meteorite
 - `SpiritCatConfigScreen`：编辑灵体猫全局配置，通过 `FabricLootTableConfig.saveSpiritCatConfig` 落盘。
 - `ServerLootConfigScreen`：编辑当前世界的战利品服务端配置，通过 `FabricLootTableConfig.save` 落盘。
 
-## 5. 可选依赖加载机制
-
-跨可选依赖边界的调用统一通过 [`OptionalModIntegration`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/OptionalModIntegration.java) 反射完成（见 [平台抽象](platform-abstraction.md) 第 4 节）：
-
-```java
-if (Services.PLATFORM.isModLoaded("trinkets")) {
-    OptionalModIntegration.instantiate(
-            "com.meteorite.unsuspiciousblock.plugin.trinket.FabricTrinketsIntegration",
-            Runnable.class).run();
-}
-```
-
-集成类在 `run()` 中才真正引用第三方 API，配合 `isModLoaded` 前置判断，保证依赖缺失时不会类加载失败。NeoForge 端 Curios 同此模式。
-
-## 6. 扩展点
+## 5. 扩展点
 
 - **新增可配置参数**：在 `ILootTableConfig` 或 `ISpiritCatConfig` 加方法与默认值常量，两端配置类各自实现并读取。
 - **新增数据驱动内容**：在 `data/unsuspiciousblock/` 对应目录添加 JSON（战利品表、配方、商人交易、目录分类等）。
 - **新增第三方联动**：
   1. `compileOnly` 引用第三方 API（两端 build.gradle）。
-  2. 在 `plugin/` 下写集成类，通过 `OptionalModIntegration` 反射加载。
+  2. 在 `plugin/` 下写集成类，通过 `OptionalModIntegration` 反射加载（机制见 [平台抽象](platform-abstraction.md) 第 4 节）。
   3. 跨平台 API 放 common，平台专属 API 放 fabric/neoforge。
 - **调整 Lootr 兼容**：通过 `gradle.properties` 的 `lootr_compat_*` 属性控制构建。
 
-## 7. 相关文档
+## 6. 相关文档
 
 - [平台抽象](platform-abstraction.md) - SPI 接口与 `OptionalModIntegration`
 - [猫族关系系统](cat-favor.md) - `ISpiritCatConfig` 的使用
