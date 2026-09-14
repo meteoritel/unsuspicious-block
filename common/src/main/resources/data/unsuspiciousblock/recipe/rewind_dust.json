@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "EEE",
+    "ESE",
+    "EEE"
+  ],
+  "key": {
+    "E": {"item": "minecraft:echo_shard"},
+    "S": {"item": "unsuspiciousblock:spark_dust"}
+  },
+  "result": {
+    "id": "unsuspiciousblock:rewind_dust",
+    "count": 1
+  }
+}

@@ -23,6 +23,7 @@ public class ModItems {
     public static Item LOST_PAGE;
     public static Item BASE_PAGE;
     public static Item SPARK_DUST;
+    public static RewindDustItem REWIND_DUST;
     public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
     public static CopperPanItem COPPER_PAN;
@@ -76,6 +77,9 @@ public class ModItems {
             new ItemEntry("spark_dust",
                     ModItems::createSparkDust,
                     item -> SPARK_DUST = item),
+            new ItemEntry("rewind_dust",
+                    ModItems::createRewindDust,
+                    item -> REWIND_DUST = (RewindDustItem) item),
             new ItemEntry("eye_of_cat",
                     ModItems::createEyeOfCat,
                     item -> EYE_OF_CAT = (EyeOfCatItem) item),
@@ -106,6 +110,7 @@ public class ModItems {
             () -> LOST_PAGE,
             () -> BASE_PAGE,
             () -> SPARK_DUST,
+            () -> REWIND_DUST,
             () -> EYE_OF_CAT,
             () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
@@ -188,6 +193,12 @@ public class ModItems {
     public static Item createSparkDust() {
         return new DescribedItem(new Item.Properties(),
                 "item.unsuspiciousblock.spark_dust.tooltip.desc");
+    }
+
+    // 创建回溯粉实例——功能后续实现
+    public static RewindDustItem createRewindDust() {
+        return new RewindDustItem(new Item.Properties(),
+                "item.unsuspiciousblock.rewind_dust.tooltip.desc");
     }
 
     // 创建猫之瞳实例——持有者开启附魔台时可窥见完整附魔候选

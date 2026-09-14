@@ -153,6 +153,8 @@
   "item.unsuspiciousblock.base_page.tooltip.desc": "A pitcher-plant page; smith with a book and a lost page for an enchanted book",
   "item.unsuspiciousblock.spark_dust": "Spark Dust",
   "item.unsuspiciousblock.spark_dust.tooltip.desc": "Flammable powder ground from torchflowers",
+  "item.unsuspiciousblock.rewind_dust": "Rewind Dust",
+  "item.unsuspiciousblock.rewind_dust.tooltip.desc": "Glimmering powder echoing with the past, as if it could turn things back",
   "item.unsuspiciousblock.eye_of_cat": "Eye of Cat",
   "item.unsuspiciousblock.eye_of_cat.tooltip.hint": "Faint shimmer of enchantments dwells within.",
   "item.unsuspiciousblock.eye_of_cat.tooltip.abilities": "While held",
