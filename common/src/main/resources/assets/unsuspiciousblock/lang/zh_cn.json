@@ -147,6 +147,8 @@
   "item.unsuspiciousblock.lost_page.tooltip.desc": "失落的残页，或可承载失传的魔咒",
   "item.unsuspiciousblock.base_page": "基页",
   "item.unsuspiciousblock.base_page.tooltip.desc": "瓶子草制成的特殊纸页，可与书和失落书页锻造附魔书",
+  "item.unsuspiciousblock.spark_dust": "花火粉",
+  "item.unsuspiciousblock.spark_dust.tooltip.desc": "火把花研磨出的易燃粉末",
   "item.unsuspiciousblock.eye_of_cat": "猫之瞳",
   "item.unsuspiciousblock.eye_of_cat.tooltip.hint": "瞳孔中流转着魔咒的微光。",
   "item.unsuspiciousblock.eye_of_cat.tooltip.abilities": "持有此物品时展示：",

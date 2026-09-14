@@ -44,6 +44,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
+import net.fabricmc.fabric.api.registry.FuelRegistry;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -146,6 +147,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
             );
             setter.accept(registered);
         });
+
+        // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）
+        FuelRegistry.INSTANCE.add(ModItems.SPARK_DUST, 800);
 
         // 注册特殊合成配方序列化器
         ModRecipeSerializers.forEach((name, factory, setter) -> {

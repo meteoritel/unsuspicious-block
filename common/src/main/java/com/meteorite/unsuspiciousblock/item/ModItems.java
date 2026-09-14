@@ -22,6 +22,7 @@ public class ModItems {
     public static Item ANCIENT_COIN;
     public static Item LOST_PAGE;
     public static Item BASE_PAGE;
+    public static Item SPARK_DUST;
     public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
     public static CopperPanItem COPPER_PAN;
@@ -72,6 +73,9 @@ public class ModItems {
             new ItemEntry("base_page",
                     ModItems::createBasePage,
                     item -> BASE_PAGE = item),
+            new ItemEntry("spark_dust",
+                    ModItems::createSparkDust,
+                    item -> SPARK_DUST = item),
             new ItemEntry("eye_of_cat",
                     ModItems::createEyeOfCat,
                     item -> EYE_OF_CAT = (EyeOfCatItem) item),
@@ -101,6 +105,7 @@ public class ModItems {
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
             () -> BASE_PAGE,
+            () -> SPARK_DUST,
             () -> EYE_OF_CAT,
             () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
@@ -177,6 +182,12 @@ public class ModItems {
     public static Item createBasePage() {
         return new DescribedItem(new Item.Properties(),
                 "item.unsuspiciousblock.base_page.tooltip.desc");
+    }
+
+    // 创建花火粉实例——火把花研磨的燃料粉末，也可与木棍合成火把
+    public static Item createSparkDust() {
+        return new DescribedItem(new Item.Properties(),
+                "item.unsuspiciousblock.spark_dust.tooltip.desc");
     }
 
     // 创建猫之瞳实例——持有者开启附魔台时可窥见完整附魔候选
