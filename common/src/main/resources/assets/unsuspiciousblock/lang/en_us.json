@@ -705,5 +705,6 @@
   "command.unsuspiciousblock.usb.shimmer.debug.cooldown_set": "Applied %s seconds of cooldown to the surrounding 3x3 chunks; longer existing cooldowns are preserved.",
   "config.jade.plugin_unsuspiciousblock.shimmer_lifetime": "Shimmer Lifetime",
   "jade.unsuspiciousblock.shimmer.remaining": "Disappears in: %s min %s sec",
+  "jade.unsuspiciousblock.shimmer.pan_remaining": "Pan uses left: %s",
   "jade.unsuspiciousblock.shimmer.permanent": "Does not naturally disappear"
 }

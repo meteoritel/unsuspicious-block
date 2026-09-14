@@ -71,16 +71,26 @@ public class JadePlugin implements IWailaPlugin {
 
         @Override
         public void appendTooltip(ITooltip tooltip, EntityAccessor accessor, IPluginConfig config) {
+            if (!(accessor.getEntity() instanceof ShimmerEntity shimmer)) return;
+
             CompoundTag data = accessor.getServerData();
-            if (!data.contains(TAG_SHIMMER_REMAINING, Tag.TAG_LONG)) return;
-            long ticks = data.getLong(TAG_SHIMMER_REMAINING);
-            if (ticks < 0L) {
-                tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.permanent"));
-            } else {
-                // 向上取整，避免尚有不足一秒寿命时提前显示零秒。
-                long seconds = ticks / 20L + (ticks % 20L == 0L ? 0L : 1L);
-                tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.remaining",
-                        seconds / 60L, seconds % 60L));
+            if (data.contains(TAG_SHIMMER_REMAINING, Tag.TAG_LONG)) {
+                long ticks = data.getLong(TAG_SHIMMER_REMAINING);
+                if (ticks < 0L) {
+                    tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.permanent"));
+                } else {
+                    // 向上取整，避免尚有不足一秒寿命时提前显示零秒。
+                    long seconds = ticks / 20L + (ticks % 20L == 0L ? 0L : 1L);
+                    tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.remaining",
+                            seconds / 60L, seconds % 60L));
+                }
+            }
+
+            // 采集次数随 entityData 同步，客户端可直接读取；采空后实体会消失，无需处理耗尽状态。
+            int panRemaining = shimmer.getPanRemaining();
+            if (panRemaining > 0) {
+                tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.pan_remaining",
+                        panRemaining).withStyle(style -> style.withColor(0xFFE040)));
             }
         }
 

@@ -705,5 +705,6 @@
   "command.unsuspiciousblock.usb.shimmer.debug.cooldown_set": "已为周围 3×3 区块设置 %s 秒冷却；已有更长冷却会保留。",
   "config.jade.plugin_unsuspiciousblock.shimmer_lifetime": "闪烁的光寿命",
   "jade.unsuspiciousblock.shimmer.remaining": "距离消失：%s 分 %s 秒",
+  "jade.unsuspiciousblock.shimmer.pan_remaining": "剩余采集次数：%s",
   "jade.unsuspiciousblock.shimmer.permanent": "不会自然消失"
 }
