@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.grindstone;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -13,12 +15,9 @@ import java.util.List;
  * 将 {@link GrindstoneBreakdown} 转换为可渲染的 {@link Component} 列表，
  * 供 {@link GrindstoneBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
  *
- * <p>样式约定：标题金色，操作类型/分区灰色，移除项红色，保留诅咒暗红色，
- * 经验返还绿色，耐久变化绿色，附魔书转换紫色。</p>
- *
- * <p>TODO：GUI 侧 tooltip 暂未纳入统一规划，本类仍直接使用 {@code ChatFormatting} 挑色
- * （含语义色表外的 LIGHT_PURPLE 等），待规划确定后再迁移至 {@code TooltipBuilder}
- * 语义色表（见 docs/dev/tooltip.md 第 6 节）。</p>
+ * <p>样式约定遵循 docs/dev/tooltip.md 语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
+ * 常量）：标题 TITLE，操作类型/分区 LABEL，移除项 NEGATIVE，保留诅咒 SEVERE，
+ * 经验返还/耐久变化/惩罚减少 POSITIVE，惩罚增加 NEGATIVE，附魔书转换标注 ACCENT。</p>
  */
 public final class GrindstoneBreakdownTooltipBuilder {
 
@@ -31,29 +30,29 @@ public final class GrindstoneBreakdownTooltipBuilder {
         lines.add(Component.empty());
         // 标题
         lines.add(Component.translatable("unsuspiciousblock.container.grindstone.reveal.header")
-                .withStyle(ChatFormatting.GOLD));
+                .withStyle(TooltipBuilder.TITLE));
 
         // 操作类型
         String opKey = bd.operationType() == GrindstoneBreakdown.OperationType.MERGE_REPAIR
                 ? "unsuspiciousblock.container.grindstone.reveal.operation.merge_repair"
                 : "unsuspiciousblock.container.grindstone.reveal.operation.disenchant";
-        lines.add(Component.translatable(opKey).withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable(opKey).withStyle(TooltipBuilder.LABEL));
 
         // 将被移除的附魔
         if (!bd.removed().isEmpty()) {
             lines.add(Component.translatable("unsuspiciousblock.container.grindstone.reveal.removed_header")
-                    .withStyle(ChatFormatting.GRAY));
+                    .withStyle(TooltipBuilder.LABEL));
             for (GrindstoneBreakdown.EnchantEntry entry : bd.removed()) {
-                lines.add(buildEnchantLine(entry, "✗ ", ChatFormatting.RED));
+                lines.add(buildEnchantLine(entry, "✗ ", TooltipBuilder.NEGATIVE));
             }
         }
 
         // 将保留的诅咒
         if (!bd.kept().isEmpty()) {
             lines.add(Component.translatable("unsuspiciousblock.container.grindstone.reveal.kept_header")
-                    .withStyle(ChatFormatting.GRAY));
+                    .withStyle(TooltipBuilder.LABEL));
             for (GrindstoneBreakdown.EnchantEntry entry : bd.kept()) {
-                lines.add(buildEnchantLine(entry, "⚠ ", ChatFormatting.DARK_RED));
+                lines.add(buildEnchantLine(entry, "⚠ ", TooltipBuilder.SEVERE));
             }
         }
 
@@ -62,7 +61,7 @@ public final class GrindstoneBreakdownTooltipBuilder {
             MutableComponent expLine = Component.translatable(
                     "unsuspiciousblock.container.grindstone.reveal.experience_range",
                     bd.expMin(), bd.expMax());
-            lines.add(expLine.withStyle(ChatFormatting.GREEN));
+            lines.add(expLine.withStyle(TooltipBuilder.POSITIVE));
         }
 
         // 惩罚值变化（仅变化时显示）
@@ -72,8 +71,8 @@ public final class GrindstoneBreakdownTooltipBuilder {
                     bd.oldRepairCost(),
                     Component.literal(String.valueOf(bd.newRepairCost()))
                             .withStyle(bd.newRepairCost() > bd.oldRepairCost()
-                                    ? ChatFormatting.RED : ChatFormatting.GREEN)
-            ).withStyle(ChatFormatting.GRAY);
+                                    ? TooltipBuilder.NEGATIVE : TooltipBuilder.POSITIVE)
+            ).withStyle(TooltipBuilder.LABEL);
             lines.add(changeLine);
         }
 
@@ -82,13 +81,13 @@ public final class GrindstoneBreakdownTooltipBuilder {
             MutableComponent durLine = Component.translatable(
                     "unsuspiciousblock.container.grindstone.reveal.durability_change",
                     bd.oldDurability(), bd.newDurability());
-            lines.add(durLine.withStyle(ChatFormatting.GREEN));
+            lines.add(durLine.withStyle(TooltipBuilder.POSITIVE));
         }
 
         // 附魔书 → 普通书
         if (bd.bookTransformed()) {
             lines.add(Component.translatable("unsuspiciousblock.container.grindstone.reveal.book_transform")
-                    .withStyle(ChatFormatting.LIGHT_PURPLE));
+                    .withStyle(TooltipBuilder.ACCENT));
         }
 
         return lines;

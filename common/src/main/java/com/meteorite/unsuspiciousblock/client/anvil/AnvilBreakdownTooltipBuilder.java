@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -13,10 +14,9 @@ import java.util.List;
  * 将 {@link AnvilBreakdown} 转换为可渲染的 {@link Component} 列表，
  * 供 {@link AnvilBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
  *
- * <p>TODO：GUI 侧 tooltip 暂未纳入统一规划，本类仍直接使用 {@code ChatFormatting} 挑色
- * （含语义色表外的 DARK_GREEN 等），待规划确定后再迁移至 {@code TooltipBuilder}
- * 语义色表（见 docs/dev/tooltip.md 第 6 节）。当前实际样式：标签行灰色，总计金色，
- * 不兼容/拒绝附魔红色，新增/升级附魔绿色，过于昂贵红色。</p>
+ * <p>样式约定遵循 docs/dev/tooltip.md 语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
+ * 常量）：标签行 LABEL，标题/总计 TITLE，不兼容/过于昂贵/惩罚增加 NEGATIVE，
+ * 拒绝原因 SEVERE，新增/升级/仅重命名标注 POSITIVE，惩罚减少新值 BODY。</p>
  */
 public final class AnvilBreakdownTooltipBuilder {
 
@@ -32,7 +32,7 @@ public final class AnvilBreakdownTooltipBuilder {
         lines.add(Component.empty());
         lines.add(Component.translatable(
                 "unsuspiciousblock.container.anvil.reveal.input_penalty", repairCost)
-                .withStyle(ChatFormatting.GRAY));
+                .withStyle(TooltipBuilder.LABEL));
         return lines;
     }
 
@@ -43,7 +43,7 @@ public final class AnvilBreakdownTooltipBuilder {
         lines.add(Component.empty());
         // 标题
         lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.header")
-                .withStyle(ChatFormatting.GOLD));
+                .withStyle(TooltipBuilder.TITLE));
         // 成本明细
         if (bd.priorWork() > 0) {
             lines.add(line("prior_work", bd.priorWork()));
@@ -60,7 +60,7 @@ public final class AnvilBreakdownTooltipBuilder {
         if (bd.incompatibleCost() > 0) {
             lines.add(Component.translatable(
                     "unsuspiciousblock.container.anvil.reveal.incompatible", bd.incompatibleCost())
-                    .withStyle(ChatFormatting.RED));
+                    .withStyle(TooltipBuilder.NEGATIVE));
         }
         // 残差：其他 mod 改写或堆叠修正导致的未归类成本
         int known = bd.priorWork() + bd.enchantCost() + bd.repairCost()
@@ -72,12 +72,12 @@ public final class AnvilBreakdownTooltipBuilder {
 
         // 总计
         lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.total", bd.total())
-                .withStyle(ChatFormatting.GOLD));
+                .withStyle(TooltipBuilder.TITLE));
 
         // 过于昂贵标注：数据层已判定操作超出上限时醒目提示
         if (bd.tooExpensive()) {
             lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.too_expensive")
-                    .withStyle(ChatFormatting.RED));
+                    .withStyle(TooltipBuilder.NEGATIVE));
         }
 
         // REPAIR_COST 变化
@@ -87,22 +87,22 @@ public final class AnvilBreakdownTooltipBuilder {
                     bd.oldRepairCost(),
                     Component.literal(String.valueOf(bd.newRepairCost()))
                             .withStyle(bd.newRepairCost() > bd.oldRepairCost()
-                                    ? ChatFormatting.RED : ChatFormatting.WHITE)
-            ).withStyle(ChatFormatting.GRAY);
+                                    ? TooltipBuilder.NEGATIVE : TooltipBuilder.BODY)
+            ).withStyle(TooltipBuilder.LABEL);
             lines.add(changeLine);
         }
 
         // 仅重命名标注
         if (bd.renameOnly()) {
             lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.rename_only")
-                    .withStyle(ChatFormatting.DARK_GREEN));
+                    .withStyle(TooltipBuilder.POSITIVE));
         }
 
         // 附魔变动
         if (!bd.changes().isEmpty()) {
             lines.add(Component.empty());
             lines.add(Component.translatable("unsuspiciousblock.container.anvil.reveal.enchant_changes")
-                    .withStyle(ChatFormatting.GRAY));
+                    .withStyle(TooltipBuilder.LABEL));
             for (AnvilBreakdown.EnchantChange ec : bd.changes()) {
                 lines.add(buildEnchantChangeLine(ec));
             }
@@ -115,7 +115,7 @@ public final class AnvilBreakdownTooltipBuilder {
     private static Component line(String key, int value) {
         return Component.translatable(
                 "unsuspiciousblock.container.anvil.reveal." + key, value)
-                .withStyle(ChatFormatting.GRAY);
+                .withStyle(TooltipBuilder.LABEL);
     }
 
     /** 构建单条附魔变动行。 */
@@ -123,26 +123,26 @@ public final class AnvilBreakdownTooltipBuilder {
         MutableComponent line = Component.literal("  ");
         if (!ec.applied()) {
             // 拒绝：✗ 名称 (原因)
-            line.append(Component.literal("✗ ").withStyle(ChatFormatting.RED));
+            line.append(Component.literal("✗ ").withStyle(TooltipBuilder.NEGATIVE));
             line.append(Enchantment.getFullname(ec.enchant(), ec.materialLevel()));
             String reasonKey = AnvilBreakdown.EnchantChange.REASON_INCOMPATIBLE.equals(ec.rejectReason())
                     ? "unsuspiciousblock.container.anvil.reveal.change_rejected_incompatible"
                     : "unsuspiciousblock.container.anvil.reveal.change_rejected_unsupported";
             line.append(Component.literal(" "));
-            line.append(Component.translatable(reasonKey).withStyle(ChatFormatting.DARK_RED));
+            line.append(Component.translatable(reasonKey).withStyle(TooltipBuilder.SEVERE));
             return line;
         }
         if (ec.targetLevel() > 0) {
             // 升级：↑ 基名 oldRoman→newRoman
-            line.append(Component.literal("↑ ").withStyle(ChatFormatting.GREEN));
+            line.append(Component.literal("↑ ").withStyle(TooltipBuilder.POSITIVE));
             line.append(ec.enchant().value().description().copy());
             line.append(Component.literal(" "));
             line.append(roman(ec.targetLevel()));
-            line.append(Component.literal("→").withStyle(ChatFormatting.GREEN));
+            line.append(Component.literal("→").withStyle(TooltipBuilder.POSITIVE));
             line.append(roman(ec.resultLevel()));
         } else {
             // 新增：✓ 全名
-            line.append(Component.literal("✓ ").withStyle(ChatFormatting.GREEN));
+            line.append(Component.literal("✓ ").withStyle(TooltipBuilder.POSITIVE));
             line.append(Enchantment.getFullname(ec.enchant(), ec.resultLevel()));
         }
         return line;

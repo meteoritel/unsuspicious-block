@@ -1,6 +1,6 @@
-# Tooltip 格式规范
+# 文本格式规范
 
-本文档是本 mod **物品 tooltip 与 Jade HUD 文本格式**的唯一权威：统一行序（五段式）、语义色表与本地化键命名规则。所有新增/修改 tooltip 的代码都必须遵循本文档。
+本文档是本 mod **全部游戏内文本格式**的唯一权威：物品 tooltip 与 Jade HUD 的行序结构（五段式 / 两段式）、GUI 内文本提示、语义色表与本地化键命名规则。所有新增/修改游戏内文本呈现的代码都必须遵循本文档。
 
 > 猫之瞳的附魔揭示（附魔台候选、铁砧/砂轮分解预览）属于附魔玩法，其机制见[附魔系统](enchantment.md)；本文档只约束它的**呈现样式**。
 
@@ -8,6 +8,7 @@
 
 - 提供一套统一的 tooltip 行序结构（五段式），让玩家在所有物品上获得一致的阅读节奏；
 - 提供**语义色表**作为颜色的唯一出口，杜绝 `ChatFormatting` 随手挑选、`§` 格式码硬编码、hex 色值三种表示法并存的局面；
+- 约定 GUI 内文本提示（hover tooltip 与自绘文本）的语义对色与分段规则（第 8 节）；
 - 约定本地化键命名规则，保证 en_us / zh_cn 键集合一致。
 
 ## 2. 物品 tooltip：五段式行序
@@ -42,6 +43,8 @@
 
 灰阶只有两档：`LABEL`（#AAAAAA）与 `HINT`（#555555）。Jade 侧历史上使用的 `0xAAAAAA` 与 `LABEL` 同值，`0xFFE040` 已归并为 `TITLE`。
 
+> **语义层与实现层分离**：第 3 节语义色表是唯一语义层，定义"语义 → ChatFormatting"的实现（原版暗底 tooltip / Jade）。GUI 自绘文本（羊皮纸 / 暗色底）沿用同一批语义槽、各自提供 int 色实现，见第 8 节。
+
 ## 4. Jade HUD 规则
 
 Jade 注入行采用独立的**两段式**：`标签(LABEL)：值`。值直接复用第 3 节语义色表（同一批常量），不另搞一套颜色。物品名 + 数量的复合行中，数量用 `BODY`。
@@ -62,6 +65,7 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | 容器分解（铁砧/砂轮/附魔台） | `unsuspiciousblock.container.*`（保持既有前缀不变） |
 | Jade 专属 | `jade.unsuspiciousblock.<subject>.<seg>` |
 | 封存信息（物品 + Jade 共用） | `unsuspiciousblock.sealed.<seg>` |
+| GUI 内文本（自绘文本 + hover tooltip） | `screen.unsuspiciousblock.<screen>.<seg>`（追认现状；GUI 内 hover tooltip 同属所在屏幕，不另设前缀） |
 
 约束：
 
@@ -75,7 +79,8 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | [`client/tooltip/TooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 可安全引用 |
 | [`item/DescribedItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
 | [`block/SealedContentsDisplay`](../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
-| `client/anvil/AnvilBreakdownTooltipBuilder`、`client/grindstone/GrindstoneBreakdownTooltipBuilder` | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。**TODO**：GUI 侧 tooltip 暂未纳入统一规划，仍直接使用 `ChatFormatting` 挑色（含语义色表外的 `DARK_GREEN`、`LIGHT_PURPLE`），待规划确定后迁移至语义色表 |
+| [`client/ui/support/UiTextPalette`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) | GUI 自绘文本语义色表（羊皮纸 / 暗色两套 int 主题实现，见第 8 节） |
+| `client/anvil/AnvilBreakdownTooltipBuilder`、`client/grindstone/GrindstoneBreakdownTooltipBuilder` | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
 
 ## 7. 扩展点：新增物品 tooltip 的标准流程
 
@@ -84,3 +89,51 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 3. 需要展开详情 → 用 `tooltip.expandable(t -> { t.section(...); ... })`，不要自行读 Shift 状态；
 4. 上色 → 只从 `TooltipBuilder` 常量取，需要新语义时先在本文档第 3 节补行；
 5. 同步添加 en_us / zh_cn 两个键，并校验 JSON。
+
+GUI 内文本提示的新增 / 修改流程见第 8 节。
+
+## 8. GUI 内文本规范
+
+GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等提示，一律走原版 `renderTooltip` 渲染，不自绘）与**自绘文本**（面板标题、状态行、提示、空状态文案等）。Toast 与 HUD 文本暂不在本节范围内，需要时再扩展。
+
+### 8.1 结构规则（弱化五段式）
+
+物品侧五段式不强制搬进 GUI：**短提示只要求"语义对色"**（见 8.2），**长内容才要求分段**——详情 ≥ 4 行或需分区呈现时，按"标题（TITLE）→ 正文（BODY/LABEL）→ 状态 → 提示（HINT）"组织行序。GUI 内长 tooltip 允许复用物品侧展开机制：`Screen.hasShiftDown()` + `TooltipBuilder#expandable`，通用提示键共用 `tooltip.unsuspiciousblock.expand_hint`，不要在 GUI 代码里各自判断 Shift 状态。
+
+### 8.2 一语义三实现
+
+语义层只有一份（第 3 节 9 个语义槽），不同渲染介质各提供一套实现：
+
+| 实现层 | 介质 | 颜色出口 |
+|---|---|---|
+| 1 | 原版暗底 tooltip（物品 tooltip / GUI 内 hover tooltip / Jade） | [`TooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的 ChatFormatting 常量 |
+| 2 | 羊皮纸 GUI（考古笔记书页类界面） | [`UiTextPalette.Parchment`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
+| 3 | 暗色 GUI（战利品表管理等） | [`UiTextPalette.Dark`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
+
+GUI 侧 int 语义槽目标值（2026-09-15 定案；存量面板按此表逐步迁移，迁移前各组件旧常量继续可用）：
+
+| 语义槽 | Parchment | Dark |
+|---|---|---|
+| `TITLE` | `0xFF3A2818` | `0xFFFFFFFF` |
+| `BODY` | `0xFF5A422C` | `0xFFE0E0E0` |
+| `LABEL` | `0xFF7A6247` | `0xFFB8B8B8` |
+| `HINT` | `0xFF9A8A70` | `0xFF999999` |
+| `POSITIVE` | `0xFF3A8C3A` | `0xFF78D66A` |
+| `NEGATIVE` | `0xFFC06040` | `0xFFFF5555` |
+| `ACCENT` | `0xFFC8A014` | `0xFFFFAA00` |
+| `NAME` | `0xFF3A2A1A` | 预留 |
+| `SEVERE` | 预留 | 预留 |
+
+### 8.3 归并与边界规则
+
+- **违规色归并**（历史遗留色向 9 槽归并的既定结论）：`DARK_GREEN` 中"无损失标注"→ `POSITIVE`、"提示文本"→ `HINT`；`LIGHT_PURPLE` 转换标注 → `ACCENT`；概率值 YELLOW（运行时条件）→ `ACCENT`；
+- **控件结构色不属文本语义**：边框、背景、进度条、选中态色条、滚动条、子表分类标识等保留为组件本地常量，不强行塞进语义槽；
+- hover tooltip 一律走原版 `renderTooltip`，禁止自绘悬浮层；
+- lang 值一律纯文本、样式由代码控制（同第 5 节约束）。
+
+### 8.4 新增 GUI 文本的标准流程
+
+1. 自绘文本上色 → 只从 `UiTextPalette.Parchment` / `UiTextPalette.Dark` 取语义槽常量，控件结构色除外；
+2. GUI 内 hover tooltip → 用 `TooltipBuilder` 语义常量构建 `List<Component>`，交原版 `renderTooltip` 渲染；
+3. 长内容按 8.1 分段；需要展开详情 → 复用 `TooltipBuilder#expandable`；
+4. 键命名用 `screen.unsuspiciousblock.<screen>.<seg>`，同步添加 en_us / zh_cn 两个键，并校验 JSON。
