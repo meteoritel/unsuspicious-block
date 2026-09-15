@@ -141,7 +141,14 @@ public class ShimmerEntity extends Entity {
         if (this.discardIfExpired() || !(stack.getItem() instanceof CopperPanItem) || this.getPanRemaining() <= 0) {
             return InteractionResult.PASS;
         }
-        // 由淘盘的长按流程接管后续进度；此处只负责进入使用状态
+        if (player.isUsingItem()) {
+            return InteractionResult.CONSUME;
+        }
+        // 只播放装水声，不调用水桶取水逻辑；服务端广播一次，避免双端重复播放。
+        if (!this.level().isClientSide()) {
+            this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
+                    SoundEvents.BUCKET_FILL, SoundSource.PLAYERS, 0.8F, 1.0F);
+        }
         player.startUsingItem(hand);
         return InteractionResult.CONSUME;
     }

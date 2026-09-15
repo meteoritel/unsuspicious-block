@@ -102,7 +102,10 @@
 
 ### 6.3 摇洗动画与水声
 
-- [`PanningAnimation`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/pan/PanningAnimation.java)（common，双端共用，支持左右手）：第一人称接管持物渲染绘制盘面绕圈摇洗，以 `ItemDisplayContext.NONE` 渲染原始盘面并由动画自行设置缩放与绕 X 轴倾角，避免叠加 generated 模型自带的第一人称旋转而变成侧立（`CopperPanItem` 的 `getUseAnimation` 返回 `NONE`，不触发原版刷子动画）；第三人称在 `HumanoidModel.setupAnim` 后调整持盘手臂。
+- 起手由 `ShimmerEntity.interact` 在服务端广播一次原版 `BUCKET_FILL`，只播放音效，不移除水方块；已在使用物品时不会重复触发。
+- `PanningVisuals` 共用每次使用的计时：前 8 刻下探装水并抬盘（短时长配置取总时长的四分之一），阶段中点换成装水盘，随后以 20 刻为周期左右摇洗，幅度在 5 刻内平滑增加。总淘洗时长不变，中断或完成后恢复空盘。
+- `assets/minecraft/atlases/blocks.json` 使用原版 `unstitch` 将 `copper_pan_water.png` 自上而下拆为四个精灵，保留 generated 模型的透明轮廓和厚度。双平台客户端注册 `panning_frame` 模型属性（沿用 AT / Access Widener 开放 `ItemProperties.register`），按摇洗相位切换四个模型；不使用全局自动循环的 `.mcmeta`，避免不同玩家起手时错帧。原图从上到下为左、中、右、中，起手从第二帧的中间水面开始；左手交换左右帧，第一人称和第三人称共用计时，模型帧按游戏刻切换。
+- [`PanningAnimation`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/pan/PanningAnimation.java)（common，双端共用，支持左右手）：第一人称接管持物渲染绘制装水起手与左右摇洗，以 `ItemDisplayContext.NONE` 渲染原始盘面并由动画自行设置缩放与绕 X 轴倾角，避免叠加 generated 模型自带的第一人称旋转而变成侧立（`CopperPanItem` 的 `getUseAnimation` 返回 `NONE`，不触发原版刷子动画）；第三人称在 `HumanoidModel.setupAnim` 后调整持盘手臂。
 - [`PanningSoundController`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/pan/PanningSoundController.java)：每五刻检查玩家 16 格内工作中的淘洗点，每个点最多一个 `PanningSound`（复用原版 `block.water.ambient`，随摇洗周期调音调音量）；停止工作、实体消散、离开范围或切换世界时停止。
 - 平台接入差异：NeoForge 用原生 `RenderHandEvent` 接第一人称动画；Fabric 原生事件不足，用 `ItemInHandPanningMixin`（`ItemInHandRenderer.renderArmWithItem` HEAD）补齐。第三人称两端都走 common mixin `HumanoidPanningMixin`。详见 [Mixin 总览](mixin.md)。
 

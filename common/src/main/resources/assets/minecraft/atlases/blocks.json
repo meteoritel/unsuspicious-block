@@ -1,0 +1,40 @@
+{
+  "sources": [
+    {
+      "type": "minecraft:unstitch",
+      "resource": "unsuspiciousblock:item/copper_pan_water",
+      "divisor_x": 1,
+      "divisor_y": 4,
+      "regions": [
+        {
+          "sprite": "unsuspiciousblock:item/copper_pan_water_0",
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "sprite": "unsuspiciousblock:item/copper_pan_water_1",
+          "x": 0,
+          "y": 1,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "sprite": "unsuspiciousblock:item/copper_pan_water_2",
+          "x": 0,
+          "y": 2,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "sprite": "unsuspiciousblock:item/copper_pan_water_3",
+          "x": 0,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        }
+      ]
+    }
+  ]
+}

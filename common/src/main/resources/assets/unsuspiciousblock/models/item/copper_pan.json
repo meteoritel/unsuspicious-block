@@ -2,5 +2,11 @@
   "parent": "minecraft:item/generated",
   "textures": {
     "layer0": "unsuspiciousblock:item/copper_pan"
-  }
+  },
+  "overrides": [
+    { "predicate": { "unsuspiciousblock:panning_frame": 0.25 }, "model": "unsuspiciousblock:item/copper_pan_water_0" },
+    { "predicate": { "unsuspiciousblock:panning_frame": 0.5 }, "model": "unsuspiciousblock:item/copper_pan_water_1" },
+    { "predicate": { "unsuspiciousblock:panning_frame": 0.75 }, "model": "unsuspiciousblock:item/copper_pan_water_2" },
+    { "predicate": { "unsuspiciousblock:panning_frame": 1 }, "model": "unsuspiciousblock:item/copper_pan_water_3" }
+  ]
 }

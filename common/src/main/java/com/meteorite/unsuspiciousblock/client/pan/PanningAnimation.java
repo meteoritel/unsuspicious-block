@@ -16,7 +16,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 
-/*** 淘盘摇洗动画：盘面前倾，水平绕圈并轻微抖动；两端共用并支持左右手。 */
+/*** 淘盘演出：下探装水、抬盘，再随水面帧左右摇洗；两端共用并支持左右手。 */
 public final class PanningAnimation {
     private PanningAnimation() {
     }
@@ -32,18 +32,20 @@ public final class PanningAnimation {
         HumanoidArm arm = hand == InteractionHand.MAIN_HAND ? player.getMainArm() : player.getMainArm().getOpposite();
         int side = arm == HumanoidArm.RIGHT ? 1 : -1;
         float elapsed = player.getTicksUsingItem() + partialTick;
-        float blend = Mth.clamp(elapsed / 6.0F, 0.0F, 1.0F);
-        float phase = elapsed * Mth.TWO_PI / 20.0F;
-        float sway = Mth.sin(phase);
-        float dip = Mth.cos(phase);
+        float blend = PanningVisuals.smooth(elapsed / PanningVisuals.fillTicks(player));
+        float scoop = Mth.sin(blend * Mth.PI);
+        float wash = PanningVisuals.washBlend(player, elapsed);
+        float phase = PanningVisuals.phase(player, elapsed);
+        float sway = Mth.sin(phase) * wash;
+        float dip = Mth.sin(phase * 2.0F) * wash;
         pose.pushPose();
         try {
-            pose.translate(side * (0.56F - blend * 0.18F + blend * sway * 0.09F),
-                    -0.52F - equipProgress * 0.6F + blend * (0.12F + dip * 0.025F),
-                    -0.72F - blend * (0.1F + dip * 0.035F));
-            pose.mulPose(Axis.XP.rotationDegrees(blend * (-62.0F + dip * 4.0F)));
-            pose.mulPose(Axis.YP.rotationDegrees(side * blend * sway * 5.0F));
-            pose.mulPose(Axis.ZP.rotationDegrees(side * blend * (sway * 4.0F + Mth.sin(phase * 2))));
+            pose.translate(side * (0.56F - blend * 0.18F + sway * 0.09F),
+                    -0.52F - equipProgress * 0.6F + blend * 0.12F - scoop * 0.10F + dip * 0.018F,
+                    -0.72F - blend * 0.1F - scoop * 0.08F + dip * 0.025F);
+            pose.mulPose(Axis.XP.rotationDegrees(blend * -62.0F - scoop * 10.0F + dip * 3.0F));
+            pose.mulPose(Axis.YP.rotationDegrees(side * sway * 5.0F));
+            pose.mulPose(Axis.ZP.rotationDegrees(side * (sway * 5.0F + dip)));
             // 使用模型原始盘面，避免 FIRST_PERSON 自带的侧转与摇洗旋转叠加成竖盘。
             // generated 模型盘面位于 XY 平面，绕 X 轴前倾后形成横向托盘姿态。
             pose.scale(0.75F, 0.75F, 0.75F);
@@ -64,9 +66,12 @@ public final class PanningAnimation {
                 ? entity.getMainArm() : entity.getMainArm().getOpposite();
         ModelPart part = arm == HumanoidArm.RIGHT ? model.rightArm : model.leftArm;
         int side = arm == HumanoidArm.RIGHT ? 1 : -1;
-        float phase = (entity.getTicksUsingItem() + ageInTicks - entity.tickCount) * Mth.TWO_PI / 20.0F;
-        part.xRot = -0.9F + Mth.cos(phase) * 0.08F;
-        part.yRot = -side * 0.22F + Mth.sin(phase) * 0.14F;
-        part.zRot = side * (0.08F + Mth.sin(phase) * 0.07F);
+        float elapsed = entity.getTicksUsingItem() + ageInTicks - entity.tickCount;
+        float blend = PanningVisuals.smooth(elapsed / PanningVisuals.fillTicks(entity));
+        float phase = PanningVisuals.phase(entity, elapsed);
+        float wash = PanningVisuals.washBlend(entity, elapsed);
+        part.xRot = Mth.lerp(blend, -0.55F, -0.9F) + Mth.sin(phase * 2.0F) * wash * 0.06F;
+        part.yRot = -side * (0.22F - Mth.sin(phase) * wash * 0.14F);
+        part.zRot = side * (0.08F + Mth.sin(phase) * wash * 0.07F);
     }
 }

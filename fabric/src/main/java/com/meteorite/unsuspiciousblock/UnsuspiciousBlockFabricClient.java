@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
+import com.meteorite.unsuspiciousblock.client.pan.PanningVisuals;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
@@ -52,6 +53,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClientLootTableLanguageStore.initialize();
+        PanningVisuals.register();
         // 注册按键绑定
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);

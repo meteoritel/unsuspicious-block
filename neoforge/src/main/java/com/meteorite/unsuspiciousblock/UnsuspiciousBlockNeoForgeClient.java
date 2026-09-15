@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
+import com.meteorite.unsuspiciousblock.client.pan.PanningVisuals;
 import com.meteorite.unsuspiciousblock.client.pan.PanningAnimation;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
@@ -62,6 +63,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             ClientLootTableLanguageStore.initialize();
+            PanningVisuals.register();
             ArchaeologyJournalUi.registerOpener((state, itemId) ->
                     Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
             // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
