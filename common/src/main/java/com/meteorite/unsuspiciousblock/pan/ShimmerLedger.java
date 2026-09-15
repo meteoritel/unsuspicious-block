@@ -35,7 +35,13 @@ public final class ShimmerLedger extends SavedData {
         // 自然生成：受每维度上限约束，拥有随机寿命
         NATURAL,
         // 世界生成：供玩家探索发现，不消散也不计入上限
-        WORLDGEN
+        WORLDGEN,
+        // 特殊再生：单独记录来源，仍与自然点共用数量上限与寿命。
+        SPECIAL;
+
+        public boolean hasLifetime() {
+            return this != WORLDGEN;
+        }
     }
 
     /***
@@ -95,9 +101,10 @@ public final class ShimmerLedger extends SavedData {
             if (!entryTag.hasUUID(UUID_TAG) || !entryTag.contains(POS_TAG)) {
                 continue;
             }
-            Source source = entryTag.getBoolean(SOURCE_TAG) ? Source.WORLDGEN : Source.NATURAL;
+            Source source = entryTag.getBoolean(SOURCE_TAG) ? Source.WORLDGEN
+                    : entryTag.getBoolean("special") ? Source.SPECIAL : Source.NATURAL;
             ledger.register(entryTag.getUUID(UUID_TAG), BlockPos.of(entryTag.getLong(POS_TAG)), source);
-            if (source == Source.NATURAL) {
+            if (source.hasLifetime()) {
                 ledger.expirations.put(entryTag.getUUID(UUID_TAG),
                         entryTag.contains("expires_at") ? entryTag.getLong("expires_at") : -1L);
             }
@@ -128,7 +135,8 @@ public final class ShimmerLedger extends SavedData {
             entryTag.putUUID(UUID_TAG, uuid);
             entryTag.putLong(POS_TAG, BlockPos.asLong(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ()));
             entryTag.putBoolean(SOURCE_TAG, entry.source() == Source.WORLDGEN);
-            if (entry.source() == Source.NATURAL) {
+            entryTag.putBoolean("special", entry.source() == Source.SPECIAL);
+            if (entry.source().hasLifetime()) {
                 entryTag.putLong("expires_at", this.expirations.getOrDefault(uuid, -1L));
             }
             list.add(entryTag);
@@ -165,7 +173,7 @@ public final class ShimmerLedger extends SavedData {
         this.unregister(uuid);
         this.entries.put(uuid, updated);
         this.entriesByChunk.computeIfAbsent(new ChunkPos(pos).toLong(), key -> new HashSet<>()).add(uuid);
-        if (source == Source.NATURAL) {
+        if (source.hasLifetime()) {
             this.naturalCount++;
         }
         this.setDirty();
@@ -185,7 +193,7 @@ public final class ShimmerLedger extends SavedData {
         if (bucket.isEmpty()) {
             this.entriesByChunk.remove(chunkKey);
         }
-        if (removed.source() == Source.NATURAL) {
+        if (removed.source().hasLifetime()) {
             this.naturalCount--;
         }
         this.setDirty();
@@ -200,7 +208,7 @@ public final class ShimmerLedger extends SavedData {
     public void register(UUID uuid, BlockPos pos, Source source, long expiresAt) {
         if (this.expired.contains(uuid)) return;
         this.register(uuid, pos, source);
-        if (source == Source.NATURAL && !Long.valueOf(expiresAt).equals(this.expirations.put(uuid, expiresAt))) {
+        if (source.hasLifetime() && !Long.valueOf(expiresAt).equals(this.expirations.put(uuid, expiresAt))) {
             this.setDirty();
         }
     }
@@ -249,6 +257,22 @@ public final class ShimmerLedger extends SavedData {
         return Set.copyOf(this.expired);
     }
 
+    // 返回待清除候选的快照；null 表示全部来源，不触碰区块或实体文件。
+    public Set<UUID> matchingEntries(@Nullable Source source) {
+        Set<UUID> result = new HashSet<>();
+        this.entries.forEach((uuid, entry) -> {
+            if (source == null || entry.source() == source) result.add(uuid);
+        });
+        return result;
+    }
+
+    // 复用持久化失效标记；先释放账本名额，未加载实体恢复时也必须消散。
+    public void markForRemoval(UUID uuid) {
+        this.unregister(uuid);
+        this.expired.add(uuid);
+        this.setDirty();
+    }
+
     public Map<UUID, Entry> entriesInChunk(ChunkPos chunk) {
         Map<UUID, Entry> result = new LinkedHashMap<>();
         for (UUID uuid : this.entriesByChunk.getOrDefault(chunk.toLong(), Set.of())) {
@@ -277,7 +301,7 @@ public final class ShimmerLedger extends SavedData {
     // 调试强制过期也保留标记，使尚未加载的实体按正式路径消散。
     public boolean expireNatural(UUID uuid) {
         Entry entry = this.entries.get(uuid);
-        if (entry == null || entry.source() != Source.NATURAL) return false;
+        if (entry == null || !entry.source().hasLifetime()) return false;
         this.unregister(uuid);
         this.expired.add(uuid);
         this.setDirty();

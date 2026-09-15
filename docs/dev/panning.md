@@ -18,12 +18,13 @@
 - 绑定水方块被破坏或上方被占据（`ShimmerPlacement.isBoundWaterIntact` 失败）时立刻 `discard`，不产出任何东西。
 - 不参与碰撞、不受流体推动、不可被任何攻击或爆炸破坏（`hurt` 恒 false）；但 `isPickable` 为 true，保证能被淘盘准星选中。
 
-按来源分两类（存 NBT `NaturalSpawn`）：
+按来源分三类（兼容保留 NBT `NaturalSpawn`，新增 `SpecialSpawn` 标记）：
 
 | 来源 | 数量上限 | 寿命 | 说明 |
 |---|---|---|---|
 | 自然生成 | 受 `max_natural_per_dimension` 约束 | 随机 20~40 分钟（配置区间），绝对游戏时间截止 | 卸载继续计时，服务器关闭暂停；到期释放名额，重新加载立即消散，不再续期 |
 | 世界生成 | 不计入 | 无（`lifetimeTicks` 恒 0） | 供探索发现，永不自然消散 |
+| 特殊生成 | 与自然点共用上限 | 与自然点相同 | 来源单独持久化；旧存档未记录特殊标记时仍归自然类型 |
 
 交互与状态：
 
@@ -41,8 +42,10 @@
 - 按配置的 `spawn_interval_ticks` 节拍（账本 `nextAttempt` 持久化）逐维度尝试：随机选一名玩家 → 在其所在区块为圆心、半径 8 区块的范围内最多随机筛选 8 次 → 找到已加载、不在冷却且含河流群系的区块后，按随机起点逐个采样 4×3 分区，最多 12 次寻找落点。保留多人聚集的抽中概率优势，不设玩家避让距离。
 - 落点判定（`ShimmerPlacement`，两条来源共用，保证"能生成的点"与"能存活的点"一致）：世界水平面 +1 至 -3 格内找水面方块，上方必须为空气；3x3 水平范围内至少 6 列开阔水面（`MIN_OPEN_SURFACE_COLUMNS`）才算开阔水域。
 - 间距校验失败或达到每维度上限则本轮放弃；实体消散或账本中的截止时间到期后释放名额。
+- 自动自然生成成功后，向同维度、距离实体不超过 32 格（三维球形范围）的玩家发送聊天提示“有东西掉入了水中”。提示只在成功添加新实体后触发，存档加载不重复广播。
+- 生成触发方式由 `ShimmerSpawnService.SpawnTrigger` 区分：`NATURAL` 广播提示，`SPECIAL`（特殊再生）、`MANUAL`（手动调试）和 `WORLDGEN` 不广播。`NATURAL` 与 `MANUAL` 记为自然类型，`SPECIAL` 独立记为特殊类型；前三者共享有限寿命与数量上限。实体新增 `SpecialSpawn`、账本新增 `special` 标记，缺失时按旧的自然/世界类型读取。底层 `spawnShimmer(..., SpawnTrigger.SPECIAL)` 可供后续特殊生成调用，它不校验落点、上限或间距，调用者负责这些规则。
 - 任意来源的点被采空后，以该区块为中心的 3×3 区块进入 `harvest_cooldown_ticks` 冷却（默认 36000 刻 / 30 分钟）。重叠冷却取较晚截止时间；自然生成、世界生成入队及出队均检查。破坏或自然到期不触发采空冷却。
-- 工具扩展可覆写 `CopperPanItem.getHarvestRegenerationChance`；仅最后一次成功采集后调用 `ShimmerSpawnService.tryRegenerateAfterHarvest`。普通铜淘盘返回 0。特例仅绕过冷却，在原区块立即尝试生成自然点，仍受上限、间距和落点约束，不清除原冷却。
+- 工具扩展可覆写 `CopperPanItem.getHarvestRegenerationChance`；仅最后一次成功采集后调用 `ShimmerSpawnService.tryRegenerateAfterHarvest`。普通铜淘盘返回 0。特例使用 `SPECIAL` 触发方式，仅绕过冷却，在原区块立即尝试生成有寿命的点，仍受上限、间距和落点约束，不清除原冷却，不广播提示，也不计入自然生成速率。
 
 ### 3.2 世界生成
 
@@ -62,7 +65,7 @@
 - `rolledChunks`：已完成世界生成判定的区块键集合。
 - `nextAttempt`：下一次自然生成尝试的游戏刻。
 - `expirations`：自然点 UUID → 绝对到期游戏刻，持久化在条目 `expires_at`。
-- `expired`：已过期但尚未加载清理的 UUID；不占名额或间距，实体加载消散后移除。
+- `expired`：已过期或被清除指令标记、但尚未加载清理的 UUID；所有来源均检查此标记，不占名额或间距，实体加载消散后移除。
 - `cooldowns`：区块键 → 冷却截止游戏刻，持久化并清理到期记录。
 
 一致性策略（设计取舍）：
@@ -116,7 +119,7 @@
 ## 7. 配置与调试
 
 - 配置：SPI 接口 `IPanningConfig`，Fabric 全局 JSON（`config/unsuspiciousblock/panning.json`），NeoForge 独立 SERVER ModConfigSpec（必须显式文件名，否则 ConfigTracker 冲突）。全部参数与默认值见 [配置与第三方联动](config-integrations.md)。
-- 调试指令：`/usb shimmer spawn <pos> [natural|worldgen]`（见 [`ShimmerDebugCommand`](../../common/src/main/java/com/meteorite/unsuspiciousblock/command/ShimmerDebugCommand.java)，需 OP 权限 2）。坐标指向**绑定的水方块**，指令会先铺水再生成，可在陆地直接搭测试点；复用 `spawnShimmer` 正式生成流程，但不做间距与上限判定。清理样本用原版 `/kill @e[type=unsuspiciousblock:shimmer]`，消散时自行从账本注销。
+- 调试指令：`/usb shimmer spawn <pos> [natural|worldgen|special]`（见 [`ShimmerDebugCommand`](../../common/src/main/java/com/meteorite/unsuspiciousblock/command/ShimmerDebugCommand.java)，需 OP 权限 2）。坐标指向**绑定的水方块**，指令会先铺水再生成，可在陆地直接搭测试点；复用 `spawnShimmer` 正式生成流程，但不做间距与上限判定。清理样本用原版 `/kill @e[type=unsuspiciousblock:shimmer]`，消散时自行从账本注销。
 
 ### 7.1 生成调试指令
 
@@ -131,6 +134,20 @@
 | `expire <uuid>` | 强制当前维度指定自然点过期；可操作卸载点，不影响世界生成点 |
 | `cooldown set <seconds>` | 当前区块周围 3×3 区域施加 1～86400 秒冷却；已有更长冷却保留 |
 | `cooldown clear` | 清除同一 3×3 区域冷却 |
+| `rate start <seconds> [intervalTicks]` | 在当前维度统计 1～86400 游戏秒，临时替代自动自然生成节拍；间隔可设 1～72000 刻，省略则使用开始时的配置值，时长至少覆盖一次间隔 |
+| `rate [status]` | 查询当前统计或本维度最近一次结果 |
+| `rate stop` | 提前结束，输出结果并恢复当前配置节拍与上限检查 |
+| `clear <natural\|worldgen\|special\|all> [current\|all\|dimension <id>]` | 按类型清除当前、全部或指定维度的点，省略范围为当前维度 |
+
+速率统计由 `ShimmerSpawnStatistics` 在服务端 tick 驱动，使用与正式自然生成相同的完整尝试流程，实际生成实体；期间该维度的常规调度暂停，不叠加尝试。第一轮在一个完整间隔后执行；到时自动输出结果，重新等待配置间隔后恢复常规生成。临时节拍不写配置或账本；服务器停止时清空统计。每维度只保留一场统计，其他维度互不影响。
+
+示例：`/usb shimmer rate start 120 20` 统计 120 游戏秒、每秒尝试一次。结果包含尝试轮数、成功生成数、实测每分钟速率，以及默认 600 刻（30 秒）间隔下的每分钟和每小时估算。换算公式：`默认速率 = 成功数 / 实际统计游戏分钟 × 临时间隔刻数 / 600`；例如两分钟成功 6 个，间隔 20 刻，则实测 3 个/分钟，折算 0.1 个/分钟、6 个/小时。
+
+统计只计自动自然生成成功的新实体，排除世界生成、手动 `spawn/attempt` 和特殊再生。测试轮次绕过当前维度的数量上限，保留间距、冷却、寿命与玩家条件；受阻轮次仍计数，未发生尝试时显示零值，表示尚无样本。时间按服务器实际运行 tick 计数（20 刻为一游戏秒），低 TPS 下不代表墙钟秒。折算是无数量上限条件下的线性估算，不能视为正常有上限玩法的长期实测。测试结束后恢复上限检查，超额实体保留，普通自然生成等数量降到上限以下后恢复；其他维度、手动 attempt 和特殊再生的上限规则不变。
+
+清除示例：`/usb shimmer clear natural` 清当前维度自然点，`/usb shimmer clear special dimension minecraft:overworld` 清主世界特殊点，`/usb shimmer clear all all` 清全部维度全部类型。手动 natural 样本归自然类型，可用 `spawn <pos> special` 布置特殊样本。旧版本未保存特殊来源的点无法追溯，只能按自然类型处理。
+
+已加载实体立即删除；账本中未加载点立即释放名额和间距，并持久化清除标记，重启后再次加载仍会删除。不触发采空冷却或掉落，不强制加载区块、不扫描实体文件；无账本记录的离线实体无法追溯。清除世界类型同时取消现有待办并标记对应区块，已有世界生成完成标记保留。清除不会停止速率测试或后续自然/新区块生成；清理测试现场可先执行 `rate stop`。反馈逐维度区分立即删除、未加载标记和取消待办数量。
 
 统计依据账本，不强制加载区块，也不扫描实体文件；过期 UUID 无坐标，因此 `chunk` 不列已过期点。`stats` 中“未加载”表示 UUID 当前不在服务端已加载实体中，不能据此验证其磁盘文件仍存在。
 

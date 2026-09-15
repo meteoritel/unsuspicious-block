@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /***
  * 闪烁的光生成服务——同时驱动“自然生成”与“世界生成”两条来源。
@@ -32,6 +33,11 @@ import java.util.Map;
  * 等区块完全加载后的服务器 tick 再真正生成实体——世界生成来源不消散也不计入上限。
  */
 public final class ShimmerSpawnService {
+    /*** 区分生成触发方式；特殊生成与手动样本仍使用自然点的寿命和账本分类。 */
+    public enum SpawnTrigger {
+        NATURAL, SPECIAL, MANUAL, WORLDGEN
+    }
+
     // 生成节拍的检查间隔（真正的尝试间隔由配置的 spawn interval 决定）
     private static final int TICK_CHECK_INTERVAL = 20;
     // 单次尝试在区块内游走的最大落点数
@@ -53,6 +59,7 @@ public final class ShimmerSpawnService {
     // 队列只属于当前服务器；切换存档时不能复用旧坐标。
     public static void stop(MinecraftServer server) {
         if (pendingServer == server) {
+            ShimmerSpawnStatistics.clear();
             PENDING_WORLDGEN.clear();
             pendingServer = null;
         }
@@ -60,6 +67,7 @@ public final class ShimmerSpawnService {
 
     private static void bindServer(MinecraftServer server) {
         if (pendingServer != server) {
+            ShimmerSpawnStatistics.clear();
             PENDING_WORLDGEN.clear();
             pendingServer = server;
         }
@@ -68,15 +76,53 @@ public final class ShimmerSpawnService {
     private ShimmerSpawnService() {
     }
 
+    /*** 清除结果区分立即删除、等待实体加载和取消的世界生成待办。 */
+    public record ClearResult(int loaded, int deferred, int pendingWorldgen) {
+    }
+
+    // 按账本处理整个维度，同时补上已加载但尚未完成首 tick 登记的实体。
+    public static ClearResult clear(ServerLevel level, @Nullable ShimmerLedger.Source source) {
+        ShimmerLedger ledger = ShimmerLedger.of(level);
+        var candidates = ledger.matchingEntries(source);
+        Map<UUID, ShimmerEntity> loaded = new HashMap<>();
+        for (var entity : level.getAllEntities()) {
+            if (!(entity instanceof ShimmerEntity shimmer) || shimmer.isRemoved()) continue;
+            UUID uuid = shimmer.getUUID();
+            // 已加载实体的真实来源优先于旧账本。
+            if (source == null || shimmer.getSpawnSource() == source) {
+                candidates.add(uuid);
+                loaded.put(uuid, shimmer);
+            } else {
+                candidates.remove(uuid);
+            }
+        }
+        for (UUID uuid : candidates) {
+            ledger.markForRemoval(uuid);
+            ShimmerEntity shimmer = loaded.get(uuid);
+            if (shimmer != null) shimmer.discard();
+        }
+        int pendingCount = 0;
+        if (source == null || source == ShimmerLedger.Source.WORLDGEN) {
+            Map<ChunkPos, BlockPos> pending = PENDING_WORLDGEN.remove(level.dimension());
+            if (pending != null) {
+                pendingCount = pending.size();
+                // 已选中的待办视为清除完成，避免区块重新加载时再次入队。
+                pending.keySet().forEach(ledger::markChunkRolled);
+            }
+        }
+        return new ClearResult(loaded.size(), candidates.size() - loaded.size(), pendingCount);
+    }
+
     // 服务端 tick 入口：每 tick 消化世界生成待办，并按节拍尝试自然生成
     public static void tick(MinecraftServer server) {
         bindServer(server);
         drainPendingWorldgen(server);
+        ShimmerSpawnStatistics.tick(server);
         if (server.getTickCount() % TICK_CHECK_INTERVAL != 0) {
             return;
         }
         for (ServerLevel level : server.getAllLevels()) {
-            tickLevel(level);
+            if (!ShimmerSpawnStatistics.isRunning(level)) tickLevel(level);
         }
     }
 
@@ -95,21 +141,28 @@ public final class ShimmerSpawnService {
         }
         ledger.scheduleNextAttempt(gameTime, interval);
 
+        attemptNaturalSpawn(level, false);
+    }
+
+    // 自动节拍与速率统计共用完整尝试；受上限或无人阻止的轮次也视为失败。
+    static boolean attemptNaturalSpawn(ServerLevel level, boolean bypassCap) {
+        ShimmerLedger ledger = ShimmerLedger.of(level);
+
         // 到达上限后不再尝试生成
-        if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) {
-            return;
+        if (!bypassCap && ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) {
+            return false;
         }
 
         List<ServerPlayer> players = level.players();
         if (players.isEmpty()) {
-            return;
+            return false;
         }
         ServerPlayer target = players.get(level.getRandom().nextInt(players.size()));
         ChunkPos chunkPos = pickLoadedChunk(level, target);
         if (chunkPos == null) {
-            return;
+            return false;
         }
-        trySpawnInChunk(level, ledger, chunkPos, true, false);
+        return trySpawnInChunk(level, ledger, chunkPos, SpawnTrigger.NATURAL, false);
     }
 
     // 预计算圆形范围，确保八次机会都抽取范围内的区块，不浪费在方形四角。
@@ -143,7 +196,7 @@ public final class ShimmerSpawnService {
     }
 
     // 在区块内做水平游走，命中河流群系中的开阔水域且间距足够时生成
-    private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunkPos, boolean natural, boolean bypassCooldown) {
+    private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunkPos, SpawnTrigger trigger, boolean bypassCooldown) {
         if (!bypassCooldown && ledger.isCoolingDown(chunkPos, level.getGameTime())) return false;
         // 随机起始分区后逐区探查 4×3 个分区，命中即停，避免重复检查同一列。
         int start = level.getRandom().nextInt(WANDER_ATTEMPTS);
@@ -162,7 +215,7 @@ public final class ShimmerSpawnService {
             if (ledger.isTooClose(waterPos, Services.PANNING_CONFIG.getSpacingBlocks())) {
                 continue;
             }
-            return spawnShimmer(level, waterPos, natural) != null;
+            return spawnShimmer(level, waterPos, trigger) != null;
         }
         return false;
     }
@@ -178,24 +231,29 @@ public final class ShimmerSpawnService {
         return ShimmerPlacement.findOpenWaterSurface(level, x, z);
     }
 
-    /***
-     * 在指定水方块上生成一个闪烁的光，并登记到账本。
-     *
-     * @param natural true 为自然生成（受上限约束且有寿命），false 为世界生成（不消散且不计上限）
-     */
+    // 保留手动生成接口；此底层入口不校验上限、间距和落点，不广播自然生成提示。
     @Nullable
     public static ShimmerEntity spawnShimmer(ServerLevel level, BlockPos waterPos, boolean natural) {
+        return spawnShimmer(level, waterPos, natural ? SpawnTrigger.MANUAL : SpawnTrigger.WORLDGEN);
+    }
+
+    // 特殊生成可传 SPECIAL：共享有限寿命和账本登记，但不广播自然生成提示。
+    @Nullable
+    public static ShimmerEntity spawnShimmer(ServerLevel level, BlockPos waterPos, SpawnTrigger trigger) {
+        boolean natural = trigger != SpawnTrigger.WORLDGEN;
         ShimmerEntity shimmer = ModEntities.SHIMMER.get().create(level);
         if (shimmer == null) {
             return null;
         }
         shimmer.initializeAt(waterPos, natural, natural ? randomLifetimeTicks(level) : 0);
+        shimmer.setSpecialSpawn(trigger == SpawnTrigger.SPECIAL);
         if (!level.addFreshEntity(shimmer)) {
             return null;
         }
         ShimmerLedger.of(level).register(shimmer.getUUID(), waterPos,
-                natural ? ShimmerLedger.Source.NATURAL : ShimmerLedger.Source.WORLDGEN, shimmer.getExpiresAt());
+                shimmer.getSpawnSource(), shimmer.getExpiresAt());
         shimmer.playSpawnEffects(level);
+        if (trigger == SpawnTrigger.NATURAL) shimmer.broadcastNaturalSpawn(level);
         return shimmer;
     }
 
@@ -209,7 +267,7 @@ public final class ShimmerSpawnService {
                 || !level.isLoaded(chunk.getWorldPosition())
                 || level.getRandom().nextDouble() >= chance
                 || !ShimmerPlacement.hasRiverBiome(level, chunk)) return false;
-        return trySpawnInChunk(level, ledger, chunk, true, true);
+        return trySpawnInChunk(level, ledger, chunk, SpawnTrigger.SPECIAL, true);
     }
 
     // 调试指定区块的自然生成尝试，复用正式落点流程，不改变自动尝试节拍。
@@ -219,7 +277,7 @@ public final class ShimmerSpawnService {
         if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) return "cap";
         if (ledger.isCoolingDown(chunk, level.getGameTime())) return "cooldown";
         if (!ShimmerPlacement.hasRiverBiome(level, chunk)) return "not_river";
-        return trySpawnInChunk(level, ledger, chunk, true, false) ? "success" : "no_position";
+        return trySpawnInChunk(level, ledger, chunk, SpawnTrigger.MANUAL, false) ? "success" : "no_position";
     }
 
     // 生成时即固定的随机寿命，落在配置的寿命区间内

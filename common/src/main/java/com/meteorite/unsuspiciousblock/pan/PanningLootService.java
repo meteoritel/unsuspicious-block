@@ -70,7 +70,7 @@ public final class PanningLootService {
             Vec3 towardPlayer = new Vec3(player.getX() - x, 0.0D, player.getZ() - z).normalize();
             ItemEntity itemEntity = new ItemEntity(level, x, waterPos.getY() + 1.0D, z, drop.copy());
             // 水平速度固定，避免玩家距离较远时抛射过快；玩家恰在正上方时只向上抛。
-            itemEntity.setDeltaMovement(towardPlayer.scale(0.2D).add(0.0D, 0.3D, 0.0D));
+            itemEntity.setDeltaMovement(towardPlayer.scale(0.3D).add(0.0D, 0.4D, 0.0D));
             itemEntity.setDefaultPickUpDelay();
             level.addFreshEntity(itemEntity);
         }

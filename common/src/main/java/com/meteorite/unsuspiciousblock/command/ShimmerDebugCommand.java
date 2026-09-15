@@ -2,10 +2,12 @@ package com.meteorite.unsuspiciousblock.command;
 
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
+import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnStatistics;
 import com.meteorite.unsuspiciousblock.pan.ShimmerLedger;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.commands.arguments.UuidArgument;
+import net.minecraft.commands.arguments.DimensionArgument;
 import net.minecraft.world.level.ChunkPos;
 import java.util.UUID;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -47,7 +49,8 @@ public final class ShimmerDebugCommand {
     // 来源名称——与指令输入一致地使用小写
     private static final String SOURCE_NATURAL = "natural";
     private static final String SOURCE_WORLDGEN = "worldgen";
-    private static final List<String> SOURCES = List.of(SOURCE_NATURAL, SOURCE_WORLDGEN);
+    private static final String SOURCE_SPECIAL = "special";
+    private static final List<String> SOURCES = List.of(SOURCE_NATURAL, SOURCE_WORLDGEN, SOURCE_SPECIAL);
 
     private ShimmerDebugCommand() {
     }
@@ -59,6 +62,22 @@ public final class ShimmerDebugCommand {
                 .executes(context -> help(context.getSource()))
                 .then(Commands.literal("help").executes(context -> help(context.getSource())))
                 .then(Commands.literal("attempt").executes(context -> attempt(context.getSource())))
+                .then(buildClear())
+                .then(Commands.literal("rate")
+                        .executes(context -> ShimmerSpawnStatistics.status(context.getSource(), false))
+                        .then(Commands.literal("start")
+                                .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 86400))
+                                        .executes(context -> ShimmerSpawnStatistics.start(context.getSource(),
+                                                IntegerArgumentType.getInteger(context, "seconds"),
+                                                Services.PANNING_CONFIG.getSpawnIntervalTicks()))
+                                        .then(Commands.argument("intervalTicks", IntegerArgumentType.integer(1, 72000))
+                                                .executes(context -> ShimmerSpawnStatistics.start(context.getSource(),
+                                                        IntegerArgumentType.getInteger(context, "seconds"),
+                                                        IntegerArgumentType.getInteger(context, "intervalTicks"))))))
+                        .then(Commands.literal("status")
+                                .executes(context -> ShimmerSpawnStatistics.status(context.getSource(), false)))
+                        .then(Commands.literal("stop")
+                                .executes(context -> ShimmerSpawnStatistics.status(context.getSource(), true))))
                 .then(Commands.literal("stats")
                         .executes(context -> stats(context.getSource(), false))
                         .then(Commands.literal("all").executes(context -> stats(context.getSource(), true))))
@@ -79,6 +98,39 @@ public final class ShimmerDebugCommand {
                                 .then(Commands.argument(SOURCE_ARG, StringArgumentType.word())
                                         .suggests(ShimmerDebugCommand::suggestSources)
                                         .executes(ShimmerDebugCommand::spawnWithSource))));
+    }
+
+    // 类型用字面量校验；省略范围表示当前维度，显式维度支持原版补全。
+    private static LiteralArgumentBuilder<CommandSourceStack> buildClear() {
+        var clear = Commands.literal("clear");
+        for (String type : List.of(SOURCE_NATURAL, SOURCE_WORLDGEN, SOURCE_SPECIAL, "all")) {
+            clear.then(Commands.literal(type)
+                    .executes(context -> clear(context.getSource(), type, List.of(context.getSource().getLevel())))
+                    .then(Commands.literal("current")
+                            .executes(context -> clear(context.getSource(), type, List.of(context.getSource().getLevel()))))
+                    .then(Commands.literal("all")
+                            .executes(context -> clear(context.getSource(), type, context.getSource().getServer().getAllLevels())))
+                    .then(Commands.literal("dimension")
+                            .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                    .executes(context -> clear(context.getSource(), type,
+                                            List.of(DimensionArgument.getDimension(context, "dimension")))))));
+        }
+        return clear;
+    }
+
+    private static int clear(CommandSourceStack source, String type, Iterable<ServerLevel> levels) {
+        ShimmerLedger.Source filter = type.equals("all") ? null
+                : ShimmerLedger.Source.valueOf(type.toUpperCase(Locale.ROOT));
+        int total = 0;
+        for (ServerLevel level : levels) {
+            var result = ShimmerSpawnService.clear(level, filter);
+            total += result.loaded() + result.deferred();
+            source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.shimmer.clear.result",
+                    level.dimension().location().toString(),
+                    Component.translatable("command.unsuspiciousblock.usb.shimmer.clear.type." + type),
+                    result.loaded(), result.deferred(), result.pendingWorldgen()), true);
+        }
+        return total;
     }
 
     // 位置来自命令执行源，也支持 execute positioned / in 指定测试地点和维度。
@@ -137,7 +189,7 @@ public final class ShimmerDebugCommand {
             if (shown++ >= 20) break;
             UUID uuid = entry.getKey();
             var point = entry.getValue();
-            long remaining = point.source() == ShimmerLedger.Source.NATURAL
+            long remaining = point.source().hasLifetime()
                     ? Math.max(0L, ledger.expirationOf(uuid, level.getGameTime()) - level.getGameTime()) : -1L;
             source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.shimmer.debug.entry",
                     uuid.toString(), point.pos().toShortString(), point.source().name().toLowerCase(Locale.ROOT),
@@ -181,11 +233,19 @@ public final class ShimmerDebugCommand {
                     "command.unsuspiciousblock.usb.shimmer.error.unknown_source", source));
             return 0;
         }
-        return spawn(context, SOURCE_NATURAL.equals(source));
+        return spawn(context, switch (source) {
+            case SOURCE_WORLDGEN -> ShimmerSpawnService.SpawnTrigger.WORLDGEN;
+            case SOURCE_SPECIAL -> ShimmerSpawnService.SpawnTrigger.SPECIAL;
+            default -> ShimmerSpawnService.SpawnTrigger.MANUAL;
+        });
     }
 
     // 在指定水方块位置生成闪烁的光
     private static int spawn(CommandContext<CommandSourceStack> context, boolean natural) throws CommandSyntaxException {
+        return spawn(context, natural ? ShimmerSpawnService.SpawnTrigger.MANUAL : ShimmerSpawnService.SpawnTrigger.WORLDGEN);
+    }
+
+    private static int spawn(CommandContext<CommandSourceStack> context, ShimmerSpawnService.SpawnTrigger trigger) throws CommandSyntaxException {
         ServerLevel level = context.getSource().getLevel();
         BlockPos waterPos = BlockPosArgument.getBlockPos(context, POS_ARG);
         // 上方必须是空气：否则实体在生成后的第一个 tick 就会判定绑定水方块失效而立刻消散
@@ -199,13 +259,13 @@ public final class ShimmerDebugCommand {
             level.setBlockAndUpdate(waterPos, Blocks.WATER.defaultBlockState());
         }
 
-        ShimmerEntity shimmer = ShimmerSpawnService.spawnShimmer(level, waterPos, natural);
+        ShimmerEntity shimmer = ShimmerSpawnService.spawnShimmer(level, waterPos, trigger);
         if (shimmer == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.shimmer.error.spawn_failed", waterPos.toShortString()));
             return 0;
         }
-        String source = natural ? SOURCE_NATURAL : SOURCE_WORLDGEN;
+        String source = shimmer.getSpawnSource().name().toLowerCase(Locale.ROOT);
         context.getSource().sendSuccess(() -> Component.translatable(
                 "command.unsuspiciousblock.usb.shimmer.spawn.success", waterPos.toShortString(), source,
                 shimmer.getPanRemaining()), true);

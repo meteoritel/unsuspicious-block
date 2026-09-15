@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -42,6 +43,7 @@ import org.jetbrains.annotations.Nullable;
 public class ShimmerEntity extends Entity {
     private static final String NBT_PAN_REMAINING = "PanRemaining";
     private static final String NBT_NATURAL_SPAWN = "NaturalSpawn";
+    private static final String NBT_SPECIAL_SPAWN = "SpecialSpawn";
     private static final String NBT_LIFETIME_TICKS = "LifetimeTicks";
     private static final String NBT_EXPIRES_AT = "ExpiresAt";
     private static final String NBT_ANCHOR = "AnchorPos";
@@ -56,6 +58,7 @@ public class ShimmerEntity extends Entity {
     private int clientWorkTicks;
 
     private boolean naturalSpawn = true;
+    private boolean specialSpawn;
     private boolean ledgerRegistered;
     // 绝对游戏时间截止点；世界生成来源恒为 0。
     private long expiresAt;
@@ -77,6 +80,7 @@ public class ShimmerEntity extends Entity {
     public void initializeAt(BlockPos waterPos, boolean natural, int lifetimeTicks) {
         this.anchorPos = waterPos.immutable();
         this.naturalSpawn = natural;
+        this.specialSpawn = false;
         this.expiresAt = natural ? this.level().getGameTime() + Math.max(1, lifetimeTicks) : 0;
         this.setPanRemaining(Services.PANNING_CONFIG.getPanUses());
         this.snapToAnchor();
@@ -86,10 +90,30 @@ public class ShimmerEntity extends Entity {
         return this.expiresAt;
     }
 
+    // 特殊来源沿用有限寿命，但单独持久化分类以支持按类型清除。
+    public void setSpecialSpawn(boolean special) {
+        this.specialSpawn = this.naturalSpawn && special;
+    }
+
+    public ShimmerLedger.Source getSpawnSource() {
+        if (!this.naturalSpawn) return ShimmerLedger.Source.WORLDGEN;
+        return this.specialSpawn ? ShimmerLedger.Source.SPECIAL : ShimmerLedger.Source.NATURAL;
+    }
+
+    // 仅由自然生成成功入口调用；按同维度三维球形距离通知，加载存档不重复提示。
+    public void broadcastNaturalSpawn(ServerLevel level) {
+        Component message = Component.translatable("message.unsuspiciousblock.shimmer.natural_spawn");
+        for (var player : level.players()) {
+            if (player.distanceToSqr(this) <= 32.0D * 32.0D) {
+                player.sendSystemMessage(message);
+            }
+        }
+    }
+
     // 交互也检查截止时间，避免实体与玩家 tick 顺序造成过期后仍可采集。
     private boolean discardIfExpired() {
-        if (this.level() instanceof ServerLevel serverLevel && this.naturalSpawn
-                && (this.level().getGameTime() >= this.expiresAt
+        if (this.level() instanceof ServerLevel serverLevel
+                && ((this.naturalSpawn && this.level().getGameTime() >= this.expiresAt)
                 || ShimmerLedger.of(serverLevel).isExpired(this.getUUID()))) {
             this.discard();
             return true;
@@ -200,7 +224,7 @@ public class ShimmerEntity extends Entity {
         }
         if (!this.ledgerRegistered && this.level() instanceof ServerLevel serverLevel) {
             ShimmerLedger.of(serverLevel).register(this.getUUID(), this.anchorPos,
-                    this.naturalSpawn ? ShimmerLedger.Source.NATURAL : ShimmerLedger.Source.WORLDGEN, this.expiresAt);
+                    this.getSpawnSource(), this.expiresAt);
             this.ledgerRegistered = true;
         }
     }
@@ -258,6 +282,7 @@ public class ShimmerEntity extends Entity {
     protected void addAdditionalSaveData(@NotNull CompoundTag tag) {
         tag.putInt(NBT_PAN_REMAINING, this.getPanRemaining());
         tag.putBoolean(NBT_NATURAL_SPAWN, this.naturalSpawn);
+        tag.putBoolean(NBT_SPECIAL_SPAWN, this.specialSpawn);
         tag.putLong(NBT_EXPIRES_AT, this.expiresAt);
         tag.putLong(NBT_ANCHOR, BlockPos.asLong(this.anchorPos.getX(), this.anchorPos.getY(),
                 this.anchorPos.getZ()));
@@ -268,6 +293,7 @@ public class ShimmerEntity extends Entity {
         this.setPanRemaining(tag.contains(NBT_PAN_REMAINING)
                 ? tag.getInt(NBT_PAN_REMAINING) : Services.PANNING_CONFIG.getPanUses());
         this.naturalSpawn = !tag.contains(NBT_NATURAL_SPAWN) || tag.getBoolean(NBT_NATURAL_SPAWN);
+        this.specialSpawn = this.naturalSpawn && tag.getBoolean(NBT_SPECIAL_SPAWN);
         this.expiresAt = this.naturalSpawn ? (tag.contains(NBT_EXPIRES_AT)
                 ? tag.getLong(NBT_EXPIRES_AT)
                 : this.level().getGameTime() + Math.max(1, tag.getInt(NBT_LIFETIME_TICKS))) : 0;
