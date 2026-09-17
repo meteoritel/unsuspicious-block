@@ -162,12 +162,16 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 
 | 渲染器 | 实体 | 说明 |
 |---|---|---|
-| `MessengerCatRenderer` | 猫猫信使 | 灵体猫 + 职业装饰 |
+| `MessengerCatRenderer` | 信使猫猫 | 灵体猫 + 职业装饰 |
 | `SwordsmanCatRenderer` | 剑士猫猫 | 灵体渲染（钻石剑装饰待实现） |
 | `MerchantCatRenderer` | 猫猫商人 | 职业装饰 |
 | `LanternPetRenderer` | 灵魂提灯宠物 | 灵魂灯笼外形 |
 
-`GhostCatRenderer` / `GhostCatCollarLayer` 处理灵体猫的通用渲染（半透明、项圈层）。`LanternPetModel` 是灯笼宠物的模型。`ModModelLayers` 注册模型层。渲染器的 alpha 由 `SpiritCat.getRenderAlphaProgress` 驱动（显现/消散渐变）。
+`MessengerCatRenderer` 用 `GhostlyBufferSource` 包装 `MultiBufferSource`，把原版猫皮肤统一染成淡蓝青色半透明（alpha 由 `SpiritCat.getRenderAlphaProgress` 驱动，实现显现/消散渐变），并在其上叠加 `MessengerCatCollarLayer`（复刻原版项圈层）与 `MessengerCatClothesLayer`（职业装饰）。
+
+职业装饰模型 [`MessengerCatClothesModel`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/model/MessengerCatClothesModel.java) 不自行播放动画：它的 `head` / `body` 枢轴与原版 `CatModel` 完全对齐，渲染器把**同一份烘焙根部件**交给 `CatModel` 与装饰层共享，装饰层每帧用 `ModelPart.copyFrom` 把原版骨骼姿态拷到装饰骨骼上，因此行走、坐下、躺卧等全部原版猫动画自动生效。装饰贴图为独立的 64x64 `textures/entity/cat/messenger_cat_clothes.png`，与随机抽取的原版猫皮肤分两次绘制。
+
+`LanternPetModel` 是灯笼宠物的模型。`ModModelLayers` 注册模型层。
 
 ### 6.2 方块实体渲染
 

@@ -1,11 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
+import com.meteorite.unsuspiciousblock.client.renderer.layer.MessengerCatClothesLayer;
 import com.meteorite.unsuspiciousblock.client.renderer.layer.MessengerCatCollarLayer;
 import com.meteorite.unsuspiciousblock.entity.MessengerCat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.CatModel;
 import net.minecraft.client.model.geom.ModelLayers;
+import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
@@ -20,7 +22,8 @@ import com.mojang.math.Axis;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 渲染器 —— 复用原版 CatModel 与纹理，通过半透明发光顶点色营造灵体感
+ * 渲染器 —— 复用原版 CatModel 与随机抽取的原版猫皮肤，通过半透明发光顶点色营造灵体感，
+ * 并叠加职业装饰层（邮差帽与邮包）与项圈层
  */
 public class MessengerCatRenderer extends MobRenderer<MessengerCat, CatModel<MessengerCat>> {
 
@@ -34,8 +37,14 @@ public class MessengerCatRenderer extends MobRenderer<MessengerCat, CatModel<Mes
     private static final float HOVER_AMPLITUDE = 0.08F;
 
     public MessengerCatRenderer(EntityRendererProvider.Context ctx) {
-        super(ctx, new CatModel<>(ctx.bakeLayer(ModelLayers.CAT)), 0.4F);
-        // 保留原版项圈层，同样以灵体色调渲染
+        this(ctx, ctx.bakeLayer(ModelLayers.CAT));
+    }
+
+    // 私有构造：把同一份烘焙骨骼实例同时交给 CatModel 与职业装饰层，使装饰层能直接读取动画后的骨骼姿态
+    private MessengerCatRenderer(EntityRendererProvider.Context ctx, ModelPart catRoot) {
+        super(ctx, new CatModel<>(catRoot), 0.4F);
+        // 先画职业装饰，再画项圈，保证项圈不被遮挡
+        this.addLayer(new MessengerCatClothesLayer(this, ctx.getModelSet(), catRoot));
         this.addLayer(new MessengerCatCollarLayer(this, ctx.getModelSet()));
     }
 

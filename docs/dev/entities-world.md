@@ -94,6 +94,7 @@ world/
 - 定位：`MessengerCatPositioning.placeNearTarget` 在玩家附近放置。
 - 每名玩家同时最多一只（`CatFavorState.activeMessengerUuid` 去重）。
 - 送礼成功时通过 `CatFavorManager.onMessengerGiftDelivered` 补充九命。
+- 外观：复用原版 `CatModel` 与随机抽取的原版猫皮肤，另叠加职业装饰层「邮差帽 + 邮包」，装饰通过骨骼同步跟随原版猫动画（见 [客户端与 GUI](client-ui.md) 第 6.1 节）。
 
 ### 4.2 剑士猫猫（SwordsmanCat）
 
