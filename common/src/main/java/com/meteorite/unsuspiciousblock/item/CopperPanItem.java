@@ -91,8 +91,8 @@ public class CopperPanItem extends Item {
             ShimmerEntity target = findTargetedShimmer(player);
             if (target != null && target.consumePanUse()) {
                 PanningLootService.grantPanningLoot(serverLevel, player, target.getAnchorPos(), stack);
-                if (target.getPanRemaining() == 0) {
-                    ShimmerSpawnService.tryRegenerateAfterHarvest(serverLevel, target.getAnchorPos(),
+                if (target.isNaturalSpawn()) {
+                    ShimmerSpawnService.tryRegenerateAfterHarvest(serverLevel, target,
                             this.getHarvestRegenerationChance(stack, player));
                 }
                 stack.hurtAndBreak(1, serverLevel, player, item -> {});
@@ -101,7 +101,7 @@ public class CopperPanItem extends Item {
         return super.finishUsingItem(stack, level, entity);
     }
 
-    // 扩展工具可按物品状态或玩家条件覆写；普通铜淘盘不触发立即再生。
+    // 扩展工具可按物品状态或玩家条件覆写；每次自然点淘洗成功后判定，普通铜淘盘保持零概率，仅预留扩展接口。
     protected double getHarvestRegenerationChance(ItemStack stack, ServerPlayer player) {
         return 0.0D;
     }

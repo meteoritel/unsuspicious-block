@@ -731,7 +731,7 @@
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.not_river": "River biome precheck failed",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.success": "Spawned one natural Shimmer",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.no_position": "No spawn: 12 samples failed water/biome/spacing checks, or entity insertion failed",
-  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] Active temporary (natural + special): %s/%s; worldgen: %s; invalid pending (expired/cleared): %s (not loaded: %s, loaded: %s); next automatic attempt in %s ticks. Counts are ledger records, not an entity-file scan.",
+  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] Natural: %s/%s; special: %s; worldgen: %s; awaiting removal (expired/cleared): %s (unloaded: %s, loaded: %s); next automatic attempt in %s ticks. Ledger counts only; entity files are not scanned.",
   "command.unsuspiciousblock.usb.shimmer.debug.chunk": "Chunk [%s, %s]: loaded=%s, cooldown=%s ticks, worldgen completed=%s, active records=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | pos=%s | source=%s | remaining=%s ticks (-1=permanent) | entity loaded=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.truncated": "%s additional records omitted.",

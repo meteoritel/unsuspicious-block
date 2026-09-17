@@ -36,7 +36,7 @@ public final class ShimmerLedger extends SavedData {
         NATURAL,
         // 世界生成：供玩家探索发现，不消散也不计入上限
         WORLDGEN,
-        // 特殊再生：单独记录来源，仍与自然点共用数量上限与寿命。
+        // 特殊再生：单独记录来源，拥有有限寿命，但不计入自然生成数量上限。
         SPECIAL;
 
         public boolean hasLifetime() {
@@ -173,7 +173,7 @@ public final class ShimmerLedger extends SavedData {
         this.unregister(uuid);
         this.entries.put(uuid, updated);
         this.entriesByChunk.computeIfAbsent(new ChunkPos(pos).toLong(), key -> new HashSet<>()).add(uuid);
-        if (source.hasLifetime()) {
+        if (source == Source.NATURAL) {
             this.naturalCount++;
         }
         this.setDirty();
@@ -193,7 +193,7 @@ public final class ShimmerLedger extends SavedData {
         if (bucket.isEmpty()) {
             this.entriesByChunk.remove(chunkKey);
         }
-        if (removed.source().hasLifetime()) {
+        if (removed.source() == Source.NATURAL) {
             this.naturalCount--;
         }
         this.setDirty();
@@ -250,7 +250,11 @@ public final class ShimmerLedger extends SavedData {
 
     // 调试统计只读取账本和已加载实体，不加载区块或实体文件。
     public int countWorldgen() {
-        return this.entries.size() - this.naturalCount;
+        return (int) this.entries.values().stream().filter(entry -> entry.source() == Source.WORLDGEN).count();
+    }
+
+    public int countSpecial() {
+        return (int) this.entries.values().stream().filter(entry -> entry.source() == Source.SPECIAL).count();
     }
 
     public Set<UUID> expiredSnapshot() {

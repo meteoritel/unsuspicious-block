@@ -55,7 +55,7 @@ public class JadePlugin implements IWailaPlugin {
         @Override
         public void appendServerData(CompoundTag data, EntityAccessor accessor) {
             if (accessor.getEntity() instanceof ShimmerEntity shimmer) {
-                data.putLong(TAG_SHIMMER_REMAINING, shimmer.isNaturalSpawn()
+                data.putLong(TAG_SHIMMER_REMAINING, shimmer.getSpawnSource().hasLifetime()
                         ? Math.max(0L, shimmer.getExpiresAt() - shimmer.level().getGameTime()) : -1L);
             }
         }

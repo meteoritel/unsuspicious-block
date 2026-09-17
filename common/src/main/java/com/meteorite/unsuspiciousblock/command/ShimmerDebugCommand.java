@@ -169,7 +169,7 @@ public final class ShimmerDebugCommand {
             totalNatural += natural;
             source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.shimmer.debug.stats",
                     level.dimension().location().toString(), natural, Services.PANNING_CONFIG.getMaxNaturalPerDimension(),
-                    ledger.countWorldgen(), expired.size(), pendingUnloaded, loaded,
+                    ledger.countSpecial(), ledger.countWorldgen(), expired.size(), pendingUnloaded, loaded,
                     Math.max(0L, ledger.getNextAttempt() - level.getGameTime())), false);
         }
         return totalNatural;

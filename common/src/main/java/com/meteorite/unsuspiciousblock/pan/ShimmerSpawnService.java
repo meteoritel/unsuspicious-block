@@ -16,6 +16,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,7 +35,7 @@ import java.util.UUID;
  * 等区块完全加载后的服务器 tick 再真正生成实体——世界生成来源不消散也不计入上限。
  */
 public final class ShimmerSpawnService {
-    /*** 区分生成触发方式；特殊生成与手动样本仍使用自然点的寿命和账本分类。 */
+    /*** 区分生成触发方式；特殊生成使用独立分类，手动自然样本归自然类型。 */
     public enum SpawnTrigger {
         NATURAL, SPECIAL, MANUAL, WORLDGEN
     }
@@ -245,7 +247,7 @@ public final class ShimmerSpawnService {
         if (shimmer == null) {
             return null;
         }
-        shimmer.initializeAt(waterPos, natural, natural ? randomLifetimeTicks(level) : 0);
+        shimmer.initializeAt(waterPos, natural, randomLifetimeTicks(level));
         shimmer.setSpecialSpawn(trigger == SpawnTrigger.SPECIAL);
         if (!level.addFreshEntity(shimmer)) {
             return null;
@@ -257,17 +259,34 @@ public final class ShimmerSpawnService {
         return shimmer;
     }
 
-    // 供未来工具在采空结算后调用；仅绕过区域冷却，仍受自然点上限、间距和水域约束。
-    // 不清除冷却，不额外产出战利品；概率由工具决定，失败不补偿或重试。
-    public static boolean tryRegenerateAfterHarvest(ServerLevel level, BlockPos harvestedPos, double chance) {
-        if (!Double.isFinite(chance) || chance <= 0.0D || chance > 1.0D) return false;
+    // 每次自然点淘洗成功后预留的概率入口；普通工具概率为零，特殊点不能递归触发。
+    // 调用者须在成功消耗次数后调用，最后一次采集导致来源消散也允许本次生成。
+    public static boolean tryRegenerateAfterHarvest(ServerLevel level, ShimmerEntity harvested, double chance) {
+        if (harvested.level() != level || !harvested.isNaturalSpawn()
+                || !Double.isFinite(chance) || chance <= 0.0D || chance > 1.0D
+                || level.getRandom().nextDouble() >= chance) return false;
+        BlockPos center = harvested.getAnchorPos();
         ShimmerLedger ledger = ShimmerLedger.of(level);
-        ChunkPos chunk = new ChunkPos(harvestedPos);
-        if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()
-                || !level.isLoaded(chunk.getWorldPosition())
-                || level.getRandom().nextDouble() >= chance
-                || !ShimmerPlacement.hasRiverBiome(level, chunk)) return false;
-        return trySpawnInChunk(level, ledger, chunk, SpawnTrigger.SPECIAL, true);
+        Set<BlockPos> occupiedPositions = new HashSet<>();
+        for (int x = (center.getX() - 5) >> 4; x <= (center.getX() + 5) >> 4; x++) {
+            for (int z = (center.getZ() - 5) >> 4; z <= (center.getZ() + 5) >> 4; z++) {
+                ledger.entriesInChunk(new ChunkPos(x, z)).values()
+                        .forEach(entry -> occupiedPositions.add(entry.pos()));
+            }
+        }
+        BlockPos selected = null;
+        int candidates = 0;
+        // 闪烁的光只能依附于水面，故再生落点与触发点同高：只在触发点所在水平面做蓄水池抽样，
+        // 各有效水面等概率；最多检查 81 个方块。
+        for (int dx = -5; dx <= 5; dx++) {
+            for (int dz = -5; dz <= 5; dz++) {
+                if (dx * dx + dz * dz > 25 || (dx == 0 && dz == 0)) continue;
+                BlockPos pos = center.offset(dx, 0, dz);
+                if (!level.isLoaded(pos) || !ShimmerPlacement.isBoundWaterIntact(level, pos)) continue;
+                if (!occupiedPositions.contains(pos) && level.getRandom().nextInt(++candidates) == 0) selected = pos;
+            }
+        }
+        return selected != null && spawnShimmer(level, selected, SpawnTrigger.SPECIAL) != null;
     }
 
     // 调试指定区块的自然生成尝试，复用正式落点流程，不改变自动尝试节拍。
@@ -281,7 +300,7 @@ public final class ShimmerSpawnService {
     }
 
     // 生成时即固定的随机寿命，落在配置的寿命区间内
-    private static int randomLifetimeTicks(ServerLevel level) {
+    public static int randomLifetimeTicks(ServerLevel level) {
         int min = Math.max(1, Services.PANNING_CONFIG.getMinLifetimeTicks());
         int max = Math.max(min, Services.PANNING_CONFIG.getMaxLifetimeTicks());
         return Mth.nextInt(level.getRandom(), min, max);
@@ -297,7 +316,7 @@ public final class ShimmerSpawnService {
      * （默认约占河流区块的 2%），不记录未命中的区块。
      * <p>
      * 命中后选取落点并进入待办队列，由服务端 tick 在区块稳定后实体化；实体化成功才标记
-     * 该区块已生成，被淘空或破坏后不会再重新出现。
+     * 该区块已生成，被破坏后不会再重新出现；采空由实体自身恢复次数。
      */
     public static void onChunkLoaded(ServerLevel level, ChunkPos chunkPos) {
         bindServer(level.getServer());

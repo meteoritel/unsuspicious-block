@@ -731,7 +731,7 @@
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.not_river": "河流群系预筛未通过",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.success": "已生成一个自然采集点",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.no_position": "未生成：12 次采样未找到满足水域、群系、间距的落点，或实体加入失败",
-  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] 有效临时点（自然+特殊）：%s/%s；世界生成点：%s；失效待清理（过期/清除）：%s（当前未加载：%s，已加载：%s）；距自动尝试：%s 刻。以上为账本统计，未扫描实体文件。",
+  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] 自然点：%s/%s；特殊点：%s；世界生成点：%s；失效待清理（过期/清除）：%s（当前未加载：%s，已加载：%s）；距自动尝试：%s 刻。以上为账本统计，未扫描实体文件。",
   "command.unsuspiciousblock.usb.shimmer.debug.chunk": "区块 [%s, %s]：已加载=%s，冷却剩余=%s 刻，世界生成已完成=%s，有效记录=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | 坐标=%s | 来源=%s | 剩余=%s 刻（-1=永久） | 实体已加载=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.truncated": "另有 %s 条记录未展示。",
