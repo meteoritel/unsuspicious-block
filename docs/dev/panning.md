@@ -15,7 +15,7 @@
 [`ShimmerEntity`](../../common/src/main/java/com/meteorite/unsuspiciousblock/entity/ShimmerEntity.java) 继承 `Entity`（非生物，不注册属性），核心约束是**锚定**：
 
 - 位置永远锚定在绑定的水方块（`anchorPos`，存 NBT `AnchorPos`）；任何外力偏移在服务端 tick 中立刻被 `snapToAnchor` 纠正。
-- 绑定水方块被破坏或上方被占据（`ShimmerPlacement.isBoundWaterIntact` 失败）时立刻 `discard`，不产出任何东西。
+- 绑定方块变为水和普通冰以外的方块或上方被占据（`ShimmerPlacement.isBoundWaterIntact` 失败）时立刻 `discard`，不产出任何东西。
 - 不参与碰撞、不受流体推动、不可被任何攻击或爆炸破坏（`hurt` 恒 false）；但 `isPickable` 为 true，保证能被淘盘准星选中。
 
 按来源分三类（兼容保留 NBT `NaturalSpawn`，新增 `SpecialSpawn` 标记）：
@@ -25,6 +25,8 @@
 | 自然生成 | 受 `max_natural_per_dimension` 约束 | 随机 20~40 分钟（配置区间），绝对游戏时间截止 | 卸载继续计时，服务器关闭暂停；到期释放名额，重新加载立即消散，不再续期 |
 | 世界生成 | 不计入 | 无 | 采空保留；生成时共用寿命随机方法固定恢复周期（默认 20~40 分钟），每周期恢复 1 次，上限为生成时初始次数 |
 | 特殊生成 | 不计入 | 与自然点相同 | 外观与自然点一致，不能继续触发特殊生成；来源单独持久化 |
+
+冰面依附：生成采样、开阔度计算和存活检查均接受水与普通冰（`minecraft:ice`），上方仍须为空气。水结冰或冰融化不删除实体，寿命及世界点恢复计时继续运行。冰上的反光贴合方块顶面并固定为静态；世界点辨识粒子保留，淘洗水花与工作水声停止。淘盘起手、持续使用与最终结算均检查实际水面，途中结冰立即中断，不消耗次数、耐久或产出战利品；融化后可重新淘洗。浮冰、蓝冰不属于本次支持范围。
 
 交互与状态：
 

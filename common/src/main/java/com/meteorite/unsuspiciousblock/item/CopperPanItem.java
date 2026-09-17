@@ -74,7 +74,7 @@ public class CopperPanItem extends Item {
             return;
         }
         ShimmerEntity target = findTargetedShimmer(player);
-        if (target == null || target.getPanRemaining() <= 0) {
+        if (target == null || !target.canPan()) {
             player.releaseUsingItem();
             return;
         }

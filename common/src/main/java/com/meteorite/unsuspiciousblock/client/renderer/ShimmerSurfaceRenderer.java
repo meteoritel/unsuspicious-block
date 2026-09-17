@@ -63,7 +63,8 @@ public final class ShimmerSurfaceRenderer {
             }
             BlockPos pos = shimmer.blockPosition();
             FluidState fluid = client.level.getFluidState(pos);
-            if (!fluid.is(FluidTags.WATER)) {
+            boolean frozen = shimmer.isFrozen();
+            if (!frozen && !fluid.is(FluidTags.WATER)) {
                 continue;
             }
             float fade = Mth.clamp((float)((VIEW_DISTANCE - distance) / 8.0D), 0.0F, 1.0F);
@@ -71,9 +72,9 @@ public final class ShimmerSurfaceRenderer {
             try {
                 // 实际流体表面高度上抬少量，避免波光埋在水面内或与水面闪烁冲突。
                 poseStack.translate(shimmer.getX() - eye.x,
-                        pos.getY() + fluid.getHeight(client.level, pos) + 0.006D - eye.y,
+                        pos.getY() + (frozen ? 1.0D : fluid.getHeight(client.level, pos)) + 0.006D - eye.y,
                         shimmer.getZ() - eye.z);
-                drawGlints(vertices, poseStack.last(), shimmer, partialTick, fade);
+                drawGlints(vertices, poseStack.last(), shimmer, partialTick, fade, frozen);
             } finally {
                 poseStack.popPose();
             }
@@ -83,8 +84,10 @@ public final class ShimmerSurfaceRenderer {
 
     // 固定数量与确定性分布，不在逐帧渲染中建立随机数或粒子对象。
     private static void drawGlints(VertexConsumer vertices, PoseStack.Pose pose,
-            ShimmerEntity shimmer, float partialTick, float distanceFade) {
-        float time = shimmer.tickCount + partialTick;
+            ShimmerEntity shimmer, float partialTick, float distanceFade, boolean frozen) {
+        // 冰上的反光固定在静态相位，融化后恢复水面波动。
+        float time = frozen ? 0.0F : shimmer.tickCount + partialTick;
+        boolean panning = !frozen && shimmer.isPanning();
         float seed = (shimmer.getId() & 255) * 0.73F;
         // 三档通过数量区分，最后一次也保持足够亮度，不会被误认为已耗尽。
         int count = shimmer.getPanRemaining() >= 3 ? 48 : (shimmer.getPanRemaining() == 2 ? 28 : 12);
@@ -100,7 +103,7 @@ public final class ShimmerSurfaceRenderer {
             float z = Mth.sin(angle) * radius + Mth.cos(time * 0.020F + i) * 0.012F;
             float width = 0.011F + (i % 3) * 0.002F;
             float length = 0.028F + pulse * 0.018F;
-            if (shimmer.isPanning()) {
+            if (panning) {
                 z += Mth.sin(time * 0.3F + i) * 0.018F;
             }
             quad(vertices, pose, x, z, width, length, 255, 223, 115, alpha);

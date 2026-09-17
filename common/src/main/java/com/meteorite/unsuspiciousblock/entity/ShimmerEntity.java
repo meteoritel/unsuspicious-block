@@ -24,6 +24,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -166,16 +167,29 @@ public class ShimmerEntity extends Entity {
         return this.anchorPos;
     }
 
+    // 客户端使用同步后的位置，不能使用未同步的 anchorPos 字段判定冰面。
+    public boolean isFrozen() {
+        return this.level().getBlockState(this.blockPosition()).is(Blocks.ICE);
+    }
+
+    // 起手、持续淘洗和结算都即时检查水面，避免结冰与实体 tick 的先后顺序造成误结算。
+    public boolean canPan() {
+        BlockPos pos = this.level().isClientSide() ? this.blockPosition() : this.anchorPos;
+        return !this.isRemoved() && this.getPanRemaining() > 0
+                && this.level().getBlockState(pos).is(Blocks.WATER)
+                && this.level().getBlockState(pos.above()).isAir();
+    }
+
     // 只有服务端验证过的有效淘洗才能刷新工作状态；不持久化临时演出状态。
     public void markPanning() {
-        if (!this.level().isClientSide() && !this.isRemoved() && this.getPanRemaining() > 0) {
+        if (!this.level().isClientSide() && this.canPan()) {
             this.lastPanningTick = this.level().getGameTime();
             this.entityData.set(DATA_PANNING, true);
         }
     }
 
     public boolean isPanning() {
-        return this.entityData.get(DATA_PANNING);
+        return this.entityData.get(DATA_PANNING) && this.canPan();
     }
 
     // 客户端演出时钟，供粒子与水声共用节奏。
@@ -189,7 +203,7 @@ public class ShimmerEntity extends Entity {
     @Override
     public @NotNull InteractionResult interact(@NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (this.discardIfExpired() || !(stack.getItem() instanceof CopperPanItem) || this.getPanRemaining() <= 0) {
+        if (this.discardIfExpired() || !(stack.getItem() instanceof CopperPanItem) || !this.canPan()) {
             return InteractionResult.PASS;
         }
         if (player.isUsingItem()) {
@@ -206,7 +220,7 @@ public class ShimmerEntity extends Entity {
 
     // 淘洗一次，返回是否成功消耗；世界生成点耗尽后保留。
     public boolean consumePanUse() {
-        if (this.level().isClientSide() || this.isRemoved() || this.discardIfExpired() || this.getPanRemaining() <= 0) {
+        if (this.level().isClientSide() || this.isRemoved() || this.discardIfExpired() || !this.canPan()) {
             return false;
         }
         int remaining = this.getPanRemaining() - 1;
@@ -239,7 +253,7 @@ public class ShimmerEntity extends Entity {
         if (this.discardIfExpired()) return;
         this.recoverPanUses();
         // 允许实体与玩家 tick 顺序相差一刻；停止操作后最多两刻恢复闲置。
-        this.entityData.set(DATA_PANNING, this.lastPanningTick != Long.MIN_VALUE
+        this.entityData.set(DATA_PANNING, this.canPan() && this.lastPanningTick != Long.MIN_VALUE
                 && this.level().getGameTime() - this.lastPanningTick <= 1L);
         // 位置锚定：任何外力造成的偏移都会被立刻纠正，保证始终贴合绑定的水方块
         if (!this.blockPosition().equals(this.anchorPos)) {
@@ -259,7 +273,7 @@ public class ShimmerEntity extends Entity {
 
     // 按生成时固定的周期恢复；卸载期间继续计时，跨多个周期一次补算且不超过初始次数。
     private void recoverPanUses() {
-        if (!this.hasLifetime || this.recoveryIntervalTicks <= 0) return;
+        if (this.hasLifetime || this.recoveryIntervalTicks <= 0) return;
         long now = this.level().getGameTime();
         if (now < this.nextRecoveryAt) return;
         long cycles = (now - this.nextRecoveryAt) / this.recoveryIntervalTicks + 1;
@@ -301,9 +315,9 @@ public class ShimmerEntity extends Entity {
         }
     }
 
-    // 水面高度：水方块顶面约在方块底部 +0.875
+    // 冰面位于完整方块顶面，水面约在方块底部 +0.875。
     private double waterSurfaceY() {
-        return this.getY() + 0.875D;
+        return this.getY() + (this.isFrozen() ? 1.0D : 0.875D);
     }
 
     private void snapToAnchor() {
@@ -420,7 +434,7 @@ public class ShimmerEntity extends Entity {
         if (level == null) {
             return;
         }
-        level.sendParticles(ParticleTypes.SPLASH,
+        level.sendParticles(this.isFrozen() ? ParticleTypes.END_ROD : ParticleTypes.SPLASH,
                 this.getX(), this.waterSurfaceY(), this.getZ(),
                 8, 0.35D, 0.05D, 0.35D, 0.0D);
         level.playSound(null, this.anchorPos, SoundEvents.AMETHYST_BLOCK_CHIME,

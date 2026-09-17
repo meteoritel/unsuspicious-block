@@ -55,6 +55,12 @@ public final class ShimmerLedger extends SavedData {
     private static final String UUID_TAG = "uuid";
     private static final String POS_TAG = "pos";
     private static final String SOURCE_TAG = "source";
+    private static final String SPECIAL_TAG = "special";
+    private static final String EXPIRES_AT_TAG = "expires_at";
+    private static final String EXPIRED_TAG = "expired";
+    private static final String COOLDOWNS_TAG = "cooldowns";
+    private static final String COOLDOWN_CHUNK_TAG = "chunk";
+    private static final String COOLDOWN_UNTIL_TAG = "until";
     private static final String ROLLED_CHUNKS_TAG = "rolled_chunks";
     private static final String NEXT_ATTEMPT_TAG = "next_attempt";
 
@@ -102,22 +108,22 @@ public final class ShimmerLedger extends SavedData {
                 continue;
             }
             Source source = entryTag.getBoolean(SOURCE_TAG) ? Source.WORLDGEN
-                    : entryTag.getBoolean("special") ? Source.SPECIAL : Source.NATURAL;
+                    : entryTag.getBoolean(SPECIAL_TAG) ? Source.SPECIAL : Source.NATURAL;
             ledger.register(entryTag.getUUID(UUID_TAG), BlockPos.of(entryTag.getLong(POS_TAG)), source);
             if (source.hasLifetime()) {
                 ledger.expirations.put(entryTag.getUUID(UUID_TAG),
-                        entryTag.contains("expires_at") ? entryTag.getLong("expires_at") : -1L);
+                        entryTag.contains(EXPIRES_AT_TAG) ? entryTag.getLong(EXPIRES_AT_TAG) : -1L);
             }
         }
-        ListTag expiredTags = tag.getList("expired", Tag.TAG_COMPOUND);
+        ListTag expiredTags = tag.getList(EXPIRED_TAG, Tag.TAG_COMPOUND);
         for (int i = 0; i < expiredTags.size(); i++) {
             CompoundTag expiredTag = expiredTags.getCompound(i);
             if (expiredTag.hasUUID(UUID_TAG)) ledger.expired.add(expiredTag.getUUID(UUID_TAG));
         }
-        ListTag cooldownTags = tag.getList("cooldowns", Tag.TAG_COMPOUND);
+        ListTag cooldownTags = tag.getList(COOLDOWNS_TAG, Tag.TAG_COMPOUND);
         for (int i = 0; i < cooldownTags.size(); i++) {
             CompoundTag cooldown = cooldownTags.getCompound(i);
-            ledger.cooldowns.put(cooldown.getLong("chunk"), cooldown.getLong("until"));
+            ledger.cooldowns.put(cooldown.getLong(COOLDOWN_CHUNK_TAG), cooldown.getLong(COOLDOWN_UNTIL_TAG));
         }
         for (long chunkKey : tag.getLongArray(ROLLED_CHUNKS_TAG)) {
             ledger.rolledChunks.add(chunkKey);
@@ -135,9 +141,9 @@ public final class ShimmerLedger extends SavedData {
             entryTag.putUUID(UUID_TAG, uuid);
             entryTag.putLong(POS_TAG, BlockPos.asLong(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ()));
             entryTag.putBoolean(SOURCE_TAG, entry.source() == Source.WORLDGEN);
-            entryTag.putBoolean("special", entry.source() == Source.SPECIAL);
+            entryTag.putBoolean(SPECIAL_TAG, entry.source() == Source.SPECIAL);
             if (entry.source().hasLifetime()) {
-                entryTag.putLong("expires_at", this.expirations.getOrDefault(uuid, -1L));
+                entryTag.putLong(EXPIRES_AT_TAG, this.expirations.getOrDefault(uuid, -1L));
             }
             list.add(entryTag);
         });
@@ -150,15 +156,15 @@ public final class ShimmerLedger extends SavedData {
             value.putUUID(UUID_TAG, uuid);
             expiredTags.add(value);
         });
-        tag.put("expired", expiredTags);
+        tag.put(EXPIRED_TAG, expiredTags);
         ListTag cooldownTags = new ListTag();
         this.cooldowns.forEach((chunk, until) -> {
             CompoundTag value = new CompoundTag();
-            value.putLong("chunk", chunk);
-            value.putLong("until", until);
+            value.putLong(COOLDOWN_CHUNK_TAG, chunk);
+            value.putLong(COOLDOWN_UNTIL_TAG, until);
             cooldownTags.add(value);
         });
-        tag.put("cooldowns", cooldownTags);
+        tag.put(COOLDOWNS_TAG, cooldownTags);
         return tag;
     }
 
