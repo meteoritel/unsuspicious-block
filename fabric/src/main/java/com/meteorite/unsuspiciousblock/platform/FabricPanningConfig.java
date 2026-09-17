@@ -54,12 +54,6 @@ public class FabricPanningConfig implements IPanningConfig {
     }
 
     @Override
-    public double getWorldgenChance() {
-        double value = this.data.worldgen_chance != null ? this.data.worldgen_chance : DEFAULT_WORLDGEN_CHANCE;
-        return Math.max(0.0D, Math.min(1.0D, value));
-    }
-
-    @Override
     public int getPanDurationTicks() {
         return clamp(this.data.pan_duration_ticks, DEFAULT_PAN_DURATION_TICKS,
                 MIN_PAN_DURATION_TICKS, MAX_PAN_DURATION_TICKS);
@@ -130,7 +124,6 @@ public class FabricPanningConfig implements IPanningConfig {
         private Integer max_natural_per_dimension = DEFAULT_MAX_PER_DIMENSION;
         private Integer min_lifetime_ticks = DEFAULT_MIN_LIFETIME_TICKS;
         private Integer max_lifetime_ticks = DEFAULT_MAX_LIFETIME_TICKS;
-        private Double worldgen_chance = DEFAULT_WORLDGEN_CHANCE;
         private Integer pan_duration_ticks = DEFAULT_PAN_DURATION_TICKS;
         private Integer spacing_blocks = DEFAULT_SPACING_BLOCKS;
         private Integer pan_uses = DEFAULT_PAN_USES;

@@ -12,7 +12,6 @@ public class NeoForgePanningConfig implements IPanningConfig {
     private static final ModConfigSpec.IntValue MAX_NATURAL_PER_DIMENSION;
     private static final ModConfigSpec.IntValue MIN_LIFETIME_TICKS;
     private static final ModConfigSpec.IntValue MAX_LIFETIME_TICKS;
-    private static final ModConfigSpec.DoubleValue WORLDGEN_CHANCE;
     private static final ModConfigSpec.IntValue PAN_DURATION_TICKS;
     private static final ModConfigSpec.IntValue SPACING_BLOCKS;
     private static final ModConfigSpec.IntValue PAN_USES;
@@ -60,14 +59,6 @@ public class NeoForgePanningConfig implements IPanningConfig {
                 .translation("unsuspiciousblock.configgui.panning.spacing_blocks")
                 .defineInRange("spacing_blocks", IPanningConfig.DEFAULT_SPACING_BLOCKS,
                         IPanningConfig.MIN_SPACING_BLOCKS, IPanningConfig.MAX_SPACING_BLOCKS);
-        WORLDGEN_CHANCE = builder
-                .comment("世界生成时，含河流开阔水域的区块出现闪烁的光的概率。默认 "
-                        + IPanningConfig.DEFAULT_WORLDGEN_CHANCE + "。",
-                        "",
-                        "Chance for a river chunk to receive a world-gen Shimmer when first loaded. Default "
-                        + IPanningConfig.DEFAULT_WORLDGEN_CHANCE + ".")
-                .translation("unsuspiciousblock.configgui.panning.worldgen_chance")
-                .defineInRange("worldgen_chance", IPanningConfig.DEFAULT_WORLDGEN_CHANCE, 0.0D, 1.0D);
         builder.pop();
 
         builder.push("lifetime");
@@ -132,11 +123,6 @@ public class NeoForgePanningConfig implements IPanningConfig {
     @Override
     public int getMaxLifetimeTicks() {
         return Math.max(getMinLifetimeTicks(), MAX_LIFETIME_TICKS.get());
-    }
-
-    @Override
-    public double getWorldgenChance() {
-        return WORLDGEN_CHANCE.get();
     }
 
     @Override

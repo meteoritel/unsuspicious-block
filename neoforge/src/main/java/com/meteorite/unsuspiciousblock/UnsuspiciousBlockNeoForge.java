@@ -8,6 +8,8 @@ import com.meteorite.unsuspiciousblock.command.UsbCommand;
 import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.entity.ModEntities;
+import com.meteorite.unsuspiciousblock.world.ModFeatures;
+import net.minecraft.world.level.levelgen.feature.Feature;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
@@ -110,6 +112,12 @@ public class UnsuspiciousBlockNeoForge {
             DeferredRegister.create(Registries.MENU, Constants.MOD_ID);
     private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(BuiltInRegistries.ENTITY_TYPE, Constants.MOD_ID);
+    private static final DeferredRegister<Feature<?>> FEATURES =
+            DeferredRegister.create(Registries.FEATURE, Constants.MOD_ID);
+
+    static {
+        ModFeatures.forEach((name, factory) -> FEATURES.register(name, factory));
+    }
     private static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS =
             DeferredRegister.create(Registries.RECIPE_SERIALIZER, Constants.MOD_ID);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
@@ -257,6 +265,7 @@ public class UnsuspiciousBlockNeoForge {
         SOUND_EVENTS.register(modEventBus);
         MENUS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
+        FEATURES.register(modEventBus);
         RECIPE_SERIALIZERS.register(modEventBus);
         BLOCK_ENTITY_TYPES.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
@@ -406,11 +415,9 @@ public class UnsuspiciousBlockNeoForge {
     // chunk 首次生成时扫描骨块并标记为自然生成
     @SubscribeEvent
     public void onChunkLoad(ChunkEvent.Load event) {
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+        if (!(event.getLevel() instanceof ServerLevel)) {
             return;
         }
-        // 区块首次加载时进行闪烁的光世界生成判定；实际生成延迟到后续 tick 执行
-        ShimmerSpawnService.onChunkLoaded(serverLevel, event.getChunk().getPos());
         if (!event.isNewChunk()) {
             return;
         }

@@ -1,0 +1,6 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "#minecraft:is_river",
+  "features": "unsuspiciousblock:river_shimmer",
+  "step": "vegetal_decoration"
+}

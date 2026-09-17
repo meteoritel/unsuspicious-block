@@ -93,6 +93,7 @@ public class ModItems {
 | `ModEntities` | 实体类型 | 5（信使/剑士/商人/灯笼宠物/闪烁的光） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（闪烁的光为无模型装饰实体，不注册属性） |
 | `ModEffects` | 药水效果 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
 | `ModSounds` | 声音事件 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
+| `ModFeatures` | 世界生成地物类型 | 1（河流闪烁的光） | 无实例回写；Fabric 即时 / NeoForge DeferredRegister，动态配置由 JSON 提供 |
 | `ModRecipeSerializers` | 配方序列化器 | - | Fabric 即时 / NeoForge static 块 |
 
 > `ModEffects` / `ModSounds` 回写的是 `Holder<MobEffect>` / `Holder<SoundEvent>`，因为 NeoForge 的 `DeferredHolder` 即 `Holder`，可直接回写；Fabric 端通过 `BuiltInRegistries.MOB_EFFECT.getHolder(...)` 取 `Holder` 回写，两端对 common 暴露统一类型。

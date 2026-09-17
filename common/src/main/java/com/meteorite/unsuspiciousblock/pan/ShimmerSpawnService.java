@@ -4,35 +4,29 @@ import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /***
- * 闪烁的光生成服务——同时驱动“自然生成”与“世界生成”两条来源。
+ * 闪烁的光运行时生成服务——驱动自然生成、特殊再生与手动生成。
  * <p>
  * 自然生成：按固定节拍在玩家已加载区块中挑选河流区块，以世界水平面高度做水平游走，
  * 命中开阔水域且与现存淘洗点保持足够间距时生成。每维度数量达到上限后不再尝试，
  * 直到有实体消散（账本条目注销）才恢复尝试。
  * <p>
- * 世界生成：区块首次加载时做一次低概率判定，命中则在区块内寻找落点并进入待办队列，
- * 等区块完全加载后的服务器 tick 再真正生成实体——世界生成来源不消散也不计入上限。
+ * 世界生成由 ShimmerRiverFeature 在新区块生成期间写入实体 NBT，不经过本服务的运行时调度。
  */
 public final class ShimmerSpawnService {
     /*** 区分生成触发方式；特殊生成使用独立分类，手动自然样本归自然类型。 */
@@ -42,44 +36,32 @@ public final class ShimmerSpawnService {
 
     // 生成节拍的检查间隔（真正的尝试间隔由配置的 spawn interval 决定）
     private static final int TICK_CHECK_INTERVAL = 20;
-    // 单次尝试在区块内游走的最大落点数
-    private static final int WANDER_ATTEMPTS = 12;
     // 挑选玩家附近加载区块时的最大重试次数
     private static final int CHUNK_PICK_ATTEMPTS = 8;
     private static final int SPAWN_RADIUS_CHUNKS = 8;
     private static final List<ChunkPos> SPAWN_OFFSETS = createSpawnOffsets();
-    // 每次服务器 tick 处理的世界生成待办上限，避免区块批量加载时集中生成
-    private static final int PENDING_SPAWN_BUDGET = 4;
-    // 世界生成确定性判定的混淆盐值，避免与世界种子的其它用途产生相关性
-    private static final long WORLDGEN_SALT = 0x5DEECE66DL;
+    private static MinecraftServer boundServer;
 
-    // 世界生成待办：区块加载时完成概率判定，延迟到区块稳定后再实体化
-    private static final Map<ResourceKey<Level>, Map<ChunkPos, BlockPos>> PENDING_WORLDGEN = new HashMap<>();
-
-    private static MinecraftServer pendingServer;
-
-    // 队列只属于当前服务器；切换存档时不能复用旧坐标。
+    // 速率统计只属于当前服务器，切换存档时清空。
     public static void stop(MinecraftServer server) {
-        if (pendingServer == server) {
+        if (boundServer == server) {
             ShimmerSpawnStatistics.clear();
-            PENDING_WORLDGEN.clear();
-            pendingServer = null;
+            boundServer = null;
         }
     }
 
     private static void bindServer(MinecraftServer server) {
-        if (pendingServer != server) {
+        if (boundServer != server) {
             ShimmerSpawnStatistics.clear();
-            PENDING_WORLDGEN.clear();
-            pendingServer = server;
+            boundServer = server;
         }
     }
 
     private ShimmerSpawnService() {
     }
 
-    /*** 清除结果区分立即删除、等待实体加载和取消的世界生成待办。 */
-    public record ClearResult(int loaded, int deferred, int pendingWorldgen) {
+    /*** 清除结果区分立即删除和等待实体加载。 */
+    public record ClearResult(int loaded, int deferred) {
     }
 
     // 按账本处理整个维度，同时补上已加载但尚未完成首 tick 登记的实体。
@@ -103,22 +85,12 @@ public final class ShimmerSpawnService {
             ShimmerEntity shimmer = loaded.get(uuid);
             if (shimmer != null) shimmer.discard();
         }
-        int pendingCount = 0;
-        if (source == null || source == ShimmerLedger.Source.WORLDGEN) {
-            Map<ChunkPos, BlockPos> pending = PENDING_WORLDGEN.remove(level.dimension());
-            if (pending != null) {
-                pendingCount = pending.size();
-                // 已选中的待办视为清除完成，避免区块重新加载时再次入队。
-                pending.keySet().forEach(ledger::markChunkRolled);
-            }
-        }
-        return new ClearResult(loaded.size(), candidates.size() - loaded.size(), pendingCount);
+        return new ClearResult(loaded.size(), candidates.size() - loaded.size());
     }
 
-    // 服务端 tick 入口：每 tick 消化世界生成待办，并按节拍尝试自然生成
+    // 服务端 tick 入口：驱动速率统计并按节拍尝试自然生成
     public static void tick(MinecraftServer server) {
         bindServer(server);
-        drainPendingWorldgen(server);
         ShimmerSpawnStatistics.tick(server);
         if (server.getTickCount() % TICK_CHECK_INTERVAL != 0) {
             return;
@@ -190,7 +162,7 @@ public final class ShimmerSpawnService {
             ChunkPos candidate = new ChunkPos(center.x + offset.x, center.z + offset.z);
             if (level.isLoaded(candidate.getWorldPosition())
                     && !ledger.isCoolingDown(candidate, level.getGameTime())
-                    && ShimmerPlacement.hasRiverBiome(level, candidate)) {
+                    && ShimmerPlacement.hasRiverBiome(level, candidate, level.getSeaLevel())) {
                 return candidate;
             }
         }
@@ -200,37 +172,9 @@ public final class ShimmerSpawnService {
     // 在区块内做水平游走，命中河流群系中的开阔水域且间距足够时生成
     private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunkPos, SpawnTrigger trigger, boolean bypassCooldown) {
         if (!bypassCooldown && ledger.isCoolingDown(chunkPos, level.getGameTime())) return false;
-        // 随机起始分区后逐区探查 4×3 个分区，命中即停，避免重复检查同一列。
-        int start = level.getRandom().nextInt(WANDER_ATTEMPTS);
-        for (int attempt = 0; attempt < WANDER_ATTEMPTS; attempt++) {
-            int cell = (start + attempt) % WANDER_ATTEMPTS;
-            int minX = 1 + (cell % 4) * 14 / 4;
-            int maxX = 1 + (cell % 4 + 1) * 14 / 4;
-            int minZ = 1 + (cell / 4) * 14 / 3;
-            int maxZ = 1 + (cell / 4 + 1) * 14 / 3;
-            BlockPos waterPos = ShimmerPlacement.findOpenWaterSurface(level,
-                    chunkPos.getMinBlockX() + minX + level.getRandom().nextInt(maxX - minX),
-                    chunkPos.getMinBlockZ() + minZ + level.getRandom().nextInt(maxZ - minZ));
-            if (waterPos == null || !ShimmerPlacement.isRiverBiome(level, waterPos)) {
-                continue;
-            }
-            if (ledger.isTooClose(waterPos, Services.PANNING_CONFIG.getSpacingBlocks())) {
-                continue;
-            }
-            return spawnShimmer(level, waterPos, trigger) != null;
-        }
-        return false;
-    }
-
-    // 在区块范围内随机取一个世界水平面附近的开阔水域点
-    // 采样点与区块边界保持 1 格间距：开阔水域判定需要查询水平相邻方块，
-    // 贴边采样会落到邻区块上，而世界生成阶段是在区块加载回调中执行的，
-    // 此时邻区块未必已加载，避免由此触发级联的同步区块加载
-    @Nullable
-    private static BlockPos randomWaterSurfaceIn(ServerLevel level, ChunkPos chunkPos) {
-        int x = chunkPos.getMinBlockX() + 1 + level.getRandom().nextInt(14);
-        int z = chunkPos.getMinBlockZ() + 1 + level.getRandom().nextInt(14);
-        return ShimmerPlacement.findOpenWaterSurface(level, x, z);
+        BlockPos waterPos = ShimmerPlacement.wanderForSurface(level, level.getRandom(), chunkPos,
+                level.getSeaLevel(), pos -> !ledger.isTooClose(pos, Services.PANNING_CONFIG.getSpacingBlocks()));
+        return waterPos != null && spawnShimmer(level, waterPos, trigger) != null;
     }
 
     // 保留手动生成接口；此底层入口不校验上限、间距和落点，不广播自然生成提示。
@@ -295,7 +239,7 @@ public final class ShimmerSpawnService {
         if (!level.isLoaded(chunk.getWorldPosition())) return "unloaded";
         if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) return "cap";
         if (ledger.isCoolingDown(chunk, level.getGameTime())) return "cooldown";
-        if (!ShimmerPlacement.hasRiverBiome(level, chunk)) return "not_river";
+        if (!ShimmerPlacement.hasRiverBiome(level, chunk, level.getSeaLevel())) return "not_river";
         return trySpawnInChunk(level, ledger, chunk, SpawnTrigger.MANUAL, false) ? "success" : "no_position";
     }
 
@@ -306,89 +250,4 @@ public final class ShimmerSpawnService {
         return Mth.nextInt(level.getRandom(), min, max);
     }
 
-    // ========== 世界生成 ==========
-
-    /***
-     * 区块首次加载时的世界生成判定，由平台侧的区块加载事件调用。
-     * <p>
-     * 概率判定使用「世界种子 + 区块坐标」推导的确定性随机：同一区块永远得到同一结论，
-     * 因此无需为未命中的区块记录任何状态，账本只会记录真正生成过淘洗点的区块
-     * （默认约占河流区块的 2%），不记录未命中的区块。
-     * <p>
-     * 命中后选取落点并进入待办队列，由服务端 tick 在区块稳定后实体化；实体化成功才标记
-     * 该区块已生成，被破坏后不会再重新出现；采空由实体自身恢复次数。
-     */
-    public static void onChunkLoaded(ServerLevel level, ChunkPos chunkPos) {
-        bindServer(level.getServer());
-        // 确定性判定代价极低且能过滤绝大多数区块，放在最前面避免多余的群系采样
-        double chance = Services.PANNING_CONFIG.getWorldgenChance();
-        if (chance <= 0.0D || !passesWorldgenRoll(level, chunkPos, chance)) {
-            return;
-        }
-        ShimmerLedger ledger = ShimmerLedger.of(level);
-        if (ledger.isChunkRolled(chunkPos) || ledger.isCoolingDown(chunkPos, level.getGameTime())) {
-            return;
-        }
-        if (!ShimmerPlacement.hasRiverBiome(level, chunkPos)) {
-            return;
-        }
-        for (int attempt = 0; attempt < WANDER_ATTEMPTS; attempt++) {
-            BlockPos waterPos = randomWaterSurfaceIn(level, chunkPos);
-            if (waterPos == null || !ShimmerPlacement.isRiverBiome(level, waterPos)) {
-                continue;
-            }
-            if (ledger.isTooClose(waterPos, Services.PANNING_CONFIG.getSpacingBlocks())) {
-                continue;
-            }
-            PENDING_WORLDGEN.computeIfAbsent(level.dimension(), key -> new LinkedHashMap<>())
-                    .put(chunkPos, waterPos);
-            return;
-        }
-    }
-
-    // 由世界种子与区块坐标推导的确定性概率判定
-    private static boolean passesWorldgenRoll(ServerLevel level, ChunkPos chunkPos, double chance) {
-        RandomSource random = RandomSource.create(level.getSeed()
-                ^ chunkPos.toLong() * WORLDGEN_SALT);
-        return random.nextDouble() < chance;
-    }
-
-    // 消化世界生成待办：区块完全加载且落点仍然有效时才真正生成
-    private static void drainPendingWorldgen(MinecraftServer server) {
-        if (PENDING_WORLDGEN.isEmpty()) {
-            return;
-        }
-        int budget = PENDING_SPAWN_BUDGET;
-        Iterator<Map.Entry<ResourceKey<Level>, Map<ChunkPos, BlockPos>>> levelIterator =
-                PENDING_WORLDGEN.entrySet().iterator();
-        while (levelIterator.hasNext() && budget > 0) {
-            Map.Entry<ResourceKey<Level>, Map<ChunkPos, BlockPos>> levelEntry = levelIterator.next();
-            ServerLevel level = server.getLevel(levelEntry.getKey());
-            Iterator<Map.Entry<ChunkPos, BlockPos>> iterator = levelEntry.getValue().entrySet().iterator();
-            while (iterator.hasNext() && budget > 0) {
-                BlockPos waterPos = iterator.next().getValue();
-                iterator.remove();
-                budget--;
-                if (level == null || !level.isLoaded(waterPos)) {
-                    continue;
-                }
-                if (!ShimmerPlacement.isBoundWaterIntact(level, waterPos)) {
-                    continue;
-                }
-                ShimmerLedger ledger = ShimmerLedger.of(level);
-                // 入队后其他候选可能已经生成，必须按最新账本复查。
-                if (ledger.isChunkRolled(new ChunkPos(waterPos))
-                        || ledger.isCoolingDown(new ChunkPos(waterPos), level.getGameTime())
-                        || ledger.isTooClose(waterPos, Services.PANNING_CONFIG.getSpacingBlocks())) {
-                    continue;
-                }
-                if (spawnShimmer(level, waterPos, false) != null) {
-                    ledger.markChunkRolled(new ChunkPos(waterPos));
-                }
-            }
-            if (levelEntry.getValue().isEmpty()) {
-                levelIterator.remove();
-            }
-        }
-    }
 }

@@ -1,5 +1,5 @@
 {
-  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] 清除%s：立即删除 %s 个，未加载标记清除 %s 个，取消世界生成待办 %s 个。不会停止后续生成或正在运行的速率测试。",
+  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] 清除%s：立即删除 %s 个，未加载标记清除 %s 个。不会停止后续生成或正在运行的速率测试。",
   "command.unsuspiciousblock.usb.shimmer.clear.type.natural": "自然生成点",
   "command.unsuspiciousblock.usb.shimmer.clear.type.worldgen": "世界生成点",
   "command.unsuspiciousblock.usb.shimmer.clear.type.special": "特殊生成点",
@@ -732,7 +732,7 @@
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.success": "已生成一个自然采集点",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.no_position": "未生成：12 次采样未找到满足水域、群系、间距的落点，或实体加入失败",
   "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] 自然点：%s/%s；特殊点：%s；世界生成点：%s；失效待清理（过期/清除）：%s（当前未加载：%s，已加载：%s）；距自动尝试：%s 刻。以上为账本统计，未扫描实体文件。",
-  "command.unsuspiciousblock.usb.shimmer.debug.chunk": "区块 [%s, %s]：已加载=%s，冷却剩余=%s 刻，世界生成已完成=%s，有效记录=%s",
+  "command.unsuspiciousblock.usb.shimmer.debug.chunk": "区块 [%s, %s]：已加载=%s，冷却剩余=%s 刻，有效记录=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | 坐标=%s | 来源=%s | 剩余=%s 刻（-1=永久） | 实体已加载=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.truncated": "另有 %s 条记录未展示。",
   "command.unsuspiciousblock.usb.shimmer.debug.expire_failed": "当前维度没有 UUID 为 %s 的有效自然采集点。",

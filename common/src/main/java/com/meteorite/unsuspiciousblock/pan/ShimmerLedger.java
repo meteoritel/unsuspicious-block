@@ -21,10 +21,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /***
- * 每维度的闪烁的光账本——记录现存淘洗点的位置与来源，并保存已经完成世界生成判定的区块。
+ * 每维度的闪烁的光账本——记录现存淘洗点的位置与来源、寿命与采空冷却。
  * <p>
  * 由于存盘持久的实体散落在各个区块中，无法廉价地直接统计全维度数量，因此上限计数、间距校验
- * 与“区块是否已判定过”都由账本集中维护。账本与实体实际状态不一致时以实体为准：实体消散时
+ * 与采空冷却都由账本集中维护。账本与实体实际状态不一致时以实体为准：实体消散时
  * 主动注销自身，实体恢复 tick 时补登记；不以方块区块加载状态推断实体是否存在。
  */
 public final class ShimmerLedger extends SavedData {
@@ -61,7 +61,6 @@ public final class ShimmerLedger extends SavedData {
     private static final String COOLDOWNS_TAG = "cooldowns";
     private static final String COOLDOWN_CHUNK_TAG = "chunk";
     private static final String COOLDOWN_UNTIL_TAG = "until";
-    private static final String ROLLED_CHUNKS_TAG = "rolled_chunks";
     private static final String NEXT_ATTEMPT_TAG = "next_attempt";
 
     private static final SavedData.Factory<ShimmerLedger> FACTORY = new SavedData.Factory<>(
@@ -72,7 +71,6 @@ public final class ShimmerLedger extends SavedData {
     private final Map<UUID, Entry> entries = new LinkedHashMap<>();
     private final Map<Long, Set<UUID>> entriesByChunk = new HashMap<>();
     private int naturalCount;
-    private final Set<Long> rolledChunks = new HashSet<>();
     private final Map<UUID, Long> expirations = new HashMap<>();
     private final Set<UUID> expired = new HashSet<>();
     private final Map<Long, Long> cooldowns = new HashMap<>();
@@ -125,9 +123,6 @@ public final class ShimmerLedger extends SavedData {
             CompoundTag cooldown = cooldownTags.getCompound(i);
             ledger.cooldowns.put(cooldown.getLong(COOLDOWN_CHUNK_TAG), cooldown.getLong(COOLDOWN_UNTIL_TAG));
         }
-        for (long chunkKey : tag.getLongArray(ROLLED_CHUNKS_TAG)) {
-            ledger.rolledChunks.add(chunkKey);
-        }
         ledger.nextAttempt = tag.getLong(NEXT_ATTEMPT_TAG);
         ledger.setDirty(false);
         return ledger;
@@ -148,7 +143,6 @@ public final class ShimmerLedger extends SavedData {
             list.add(entryTag);
         });
         tag.put(ENTRIES_TAG, list);
-        tag.putLongArray(ROLLED_CHUNKS_TAG, this.rolledChunks.stream().mapToLong(Long::longValue).toArray());
         tag.putLong(NEXT_ATTEMPT_TAG, this.nextAttempt);
         ListTag expiredTags = new ListTag();
         this.expired.forEach(uuid -> {
@@ -345,20 +339,6 @@ public final class ShimmerLedger extends SavedData {
             }
         }
         return false;
-    }
-
-    // ========== 世界生成判定 ==========
-
-    // 该区块是否已经完成过世界生成判定；判定过的区块不会再次生成
-    public boolean isChunkRolled(ChunkPos chunkPos) {
-        return this.rolledChunks.contains(chunkPos.toLong());
-    }
-
-    // 标记区块已完成世界生成判定
-    public void markChunkRolled(ChunkPos chunkPos) {
-        if (this.rolledChunks.add(chunkPos.toLong())) {
-            this.setDirty();
-        }
     }
 
     // ========== 生成节拍 ==========

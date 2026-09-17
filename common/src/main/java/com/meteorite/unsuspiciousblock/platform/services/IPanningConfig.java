@@ -23,7 +23,6 @@ public interface IPanningConfig {
     int DEFAULT_MAX_PER_DIMENSION = 5;
     int DEFAULT_MIN_LIFETIME_TICKS = 24_000;
     int DEFAULT_MAX_LIFETIME_TICKS = 48_000;
-    double DEFAULT_WORLDGEN_CHANCE = 0.02D;
     int DEFAULT_PAN_DURATION_TICKS = 100;
     int DEFAULT_SPACING_BLOCKS = 32;
     int DEFAULT_PAN_USES = 3;
@@ -41,9 +40,6 @@ public interface IPanningConfig {
 
     // 自然生成的闪烁的光寿命上限（含）
     int getMaxLifetimeTicks();
-
-    // 世界生成来源的闪烁的光在每个河流区块出现的概率
-    double getWorldgenChance();
 
     // 单次淘洗需要长按的刻数
     int getPanDurationTicks();

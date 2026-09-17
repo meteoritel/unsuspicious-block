@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.entity;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.item.CopperPanItem;
 import com.meteorite.unsuspiciousblock.pan.ShimmerLedger;
 import com.meteorite.unsuspiciousblock.pan.ShimmerPlacement;
@@ -8,6 +9,8 @@ import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -85,6 +88,21 @@ public class ShimmerEntity extends Entity {
         super(type, level);
         this.setNoGravity(true);
         this.noPhysics = true;
+    }
+
+    // 生成线程仅写 NBT；配置、随机恢复周期与账本访问留给主线程加载和首 tick。
+    public static CompoundTag createWorldgenTag(BlockPos anchor) {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("id", Constants.MOD_ID + ":shimmer");
+        tag.putLong(NBT_ANCHOR, anchor.asLong());
+        tag.putBoolean(NBT_NATURAL_SPAWN, false);
+        tag.putBoolean("NoGravity", true);
+        ListTag position = new ListTag();
+        position.add(DoubleTag.valueOf(anchor.getX() + 0.5D));
+        position.add(DoubleTag.valueOf(anchor.getY()));
+        position.add(DoubleTag.valueOf(anchor.getZ() + 0.5D));
+        tag.put("Pos", position);
+        return tag;
     }
 
     @Override

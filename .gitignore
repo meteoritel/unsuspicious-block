@@ -33,6 +33,7 @@ INSPIRATION.md
 .worktrees
 
 docs/aegis
+docs/archive
 
 common/src/test
 common/logs

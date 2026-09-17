@@ -1,5 +1,5 @@
 {
-  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] Clear %s: removed %s loaded entities, marked %s unloaded entities for removal, cancelled %s pending worldgen spawns. Future spawning and active rate sessions continue.",
+  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] Clear %s: removed %s loaded entities, marked %s unloaded entities for removal. Future spawning and active rate sessions continue.",
   "command.unsuspiciousblock.usb.shimmer.clear.type.natural": "natural spawns",
   "command.unsuspiciousblock.usb.shimmer.clear.type.worldgen": "worldgen spawns",
   "command.unsuspiciousblock.usb.shimmer.clear.type.special": "special spawns",
@@ -732,7 +732,7 @@
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.success": "Spawned one natural Shimmer",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.no_position": "No spawn: 12 samples failed water/biome/spacing checks, or entity insertion failed",
   "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] Natural: %s/%s; special: %s; worldgen: %s; awaiting removal (expired/cleared): %s (unloaded: %s, loaded: %s); next automatic attempt in %s ticks. Ledger counts only; entity files are not scanned.",
-  "command.unsuspiciousblock.usb.shimmer.debug.chunk": "Chunk [%s, %s]: loaded=%s, cooldown=%s ticks, worldgen completed=%s, active records=%s",
+  "command.unsuspiciousblock.usb.shimmer.debug.chunk": "Chunk [%s, %s]: loaded=%s, cooldown=%s ticks, active records=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | pos=%s | source=%s | remaining=%s ticks (-1=permanent) | entity loaded=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.truncated": "%s additional records omitted.",
   "command.unsuspiciousblock.usb.shimmer.debug.expire_failed": "No active natural Shimmer with UUID %s in this dimension.",

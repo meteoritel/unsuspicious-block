@@ -11,6 +11,11 @@ import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.world.ModFeatures;
+import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
+import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
+import net.minecraft.tags.BiomeTags;
+import net.minecraft.world.level.levelgen.GenerationStep;
 import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
@@ -80,6 +85,12 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // 地物类型走共用清单，群系注入由 Fabric API 接入。
+        ModFeatures.forEach((name, factory) -> Registry.register(BuiltInRegistries.FEATURE,
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name), factory.get()));
+        BiomeModifications.addFeature(BiomeSelectors.tag(BiomeTags.IS_RIVER),
+                GenerationStep.Decoration.VEGETAL_DECORATION, ModFeatures.RIVER_SHIMMER);
+
         // 注册自定义战利品条件类型（Fabric 端直接 Registry.register，在 common init 前完成）
         LootItemConditionType mudDredgingType = Registry.register(
                 BuiltInRegistries.LOOT_CONDITION_TYPE,
@@ -277,9 +288,6 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->
                 NaturalBoneBlockTracker.scanChunk(chunk));
 
-        // 区块首次加载时进行闪烁的光世界生成判定；实际生成延迟到后续 tick 执行
-        ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
-                ShimmerSpawnService.onChunkLoaded(world, chunk.getPos()));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 JournalPlayerDataService.onPlayerJoined(handler.player));

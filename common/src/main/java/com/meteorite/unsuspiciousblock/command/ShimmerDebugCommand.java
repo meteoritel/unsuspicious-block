@@ -128,7 +128,7 @@ public final class ShimmerDebugCommand {
             source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.shimmer.clear.result",
                     level.dimension().location().toString(),
                     Component.translatable("command.unsuspiciousblock.usb.shimmer.clear.type." + type),
-                    result.loaded(), result.deferred(), result.pendingWorldgen()), true);
+                    result.loaded(), result.deferred()), true);
         }
         return total;
     }
@@ -183,7 +183,7 @@ public final class ShimmerDebugCommand {
         var entries = ledger.entriesInChunk(chunk);
         source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.shimmer.debug.chunk",
                 chunk.x, chunk.z, level.isLoaded(chunk.getWorldPosition()),
-                ledger.cooldownRemaining(chunk, level.getGameTime()), ledger.isChunkRolled(chunk), entries.size()), false);
+                ledger.cooldownRemaining(chunk, level.getGameTime()), entries.size()), false);
         int shown = 0;
         for (var entry : entries.entrySet()) {
             if (shown++ >= 20) break;
