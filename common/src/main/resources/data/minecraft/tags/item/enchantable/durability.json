@@ -1,4 +1,8 @@
 {
   "replace": false,
-  "values": ["unsuspiciousblock:copper_pan"]
+  "values": [
+    "unsuspiciousblock:copper_pan",
+    "unsuspiciousblock:gold_pan",
+    "unsuspiciousblock:obsidian_pan"
+  ]
 }

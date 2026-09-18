@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
+import com.meteorite.unsuspiciousblock.client.pan.PanningMediumIndex;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.pan.variant.GlowStyle;
 import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
@@ -52,6 +53,8 @@ public final class ShimmerSurfaceRenderer {
         AABB area = new AABB(eye, eye).inflate(VIEW_DISTANCE);
         var shimmers = client.level.getEntitiesOfClass(ShimmerEntity.class, area,
                 shimmer -> !shimmer.isRemoved() && shimmer.getPanRemaining() > 0);
+        // 顺势按本帧收集到的淘洗点重建介质索引；必须在空集合提前返回之前调用，否则停手后不会清空
+        PanningMediumIndex.refresh(shimmers);
         if (shimmers.isEmpty()) {
             return;
         }

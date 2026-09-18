@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.pan;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.unsuspiciousblock.pan.variant.PanningMedium;
 import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -17,6 +18,9 @@ public final class PanningVisuals {
     private static final float CYCLE_TICKS = 20.0F;
     private static final ResourceLocation PANNING_FRAME =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "panning_frame");
+    // 正在淘洗的介质：0 = 水域帧组，1 = 岩浆帧组；用于在自定义模型里按介质二选一
+    private static final ResourceLocation PANNING_MEDIUM =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "panning_medium");
 
     private PanningVisuals() {
     }
@@ -42,6 +46,14 @@ public final class PanningVisuals {
                 }
                 frame = (frame + 1) % 4;
                 return (frame + 1) / 4.0F;
+            });
+            ItemProperties.register(pan.get(), PANNING_MEDIUM, (stack, level, entity, seed) -> {
+                if (entity == null) {
+                    return 0.0F;
+                }
+                PanningMedium medium = PanningMediumIndex.mediumOf(entity.getUUID());
+                // 未在淘洗或尚未同步时按水域帧组处理，与空盘阶段的表现一致
+                return medium == null ? 0.0F : medium.ordinal();
             });
         }
     }

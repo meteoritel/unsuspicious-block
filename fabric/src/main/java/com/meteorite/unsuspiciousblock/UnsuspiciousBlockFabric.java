@@ -90,6 +90,8 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name), factory.get()));
         BiomeModifications.addFeature(BiomeSelectors.tag(BiomeTags.IS_RIVER),
                 GenerationStep.Decoration.VEGETAL_DECORATION, ModFeatures.RIVER_SHIMMER);
+        BiomeModifications.addFeature(BiomeSelectors.tag(BiomeTags.IS_NETHER),
+                GenerationStep.Decoration.VEGETAL_DECORATION, ModFeatures.NETHER_SHIMMER);
 
         // 注册自定义战利品条件类型（Fabric 端直接 Registry.register，在 common init 前完成）
         LootItemConditionType mudDredgingType = Registry.register(

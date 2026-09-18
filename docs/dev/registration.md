@@ -88,12 +88,12 @@ public class ModItems {
 | 持有类 | 注册内容 | 条目数 | 平台回写时机 |
 |---|---|---|---|
 | `ModBlocks` | 方块 | 4 | Fabric 即时 / NeoForge static 块 |
-| `ModItems` | 物品（含 BlockItem） | 15 | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork` |
+| `ModItems` | 物品（含 BlockItem） | 18 | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork`；淘盘另有 `PAN_ITEMS` 子清单供客户端注册物品属性 |
 | `ModBlockEntities` | 方块实体类型 | - | Fabric 即时 / NeoForge static 块 |
-| `ModEntities` | 实体类型 | 5（信使/剑士/商人/灯笼宠物/闪烁的光） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（闪烁的光为无模型装饰实体，不注册属性） |
+| `ModEntities` | 实体类型 | 6（信使/剑士/商人/灯笼宠物/闪烁的光/幽微的光） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（两个淘洗点变体为无模型装饰实体，不注册属性） |
 | `ModEffects` | 药水效果 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
 | `ModSounds` | 声音事件 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
-| `ModFeatures` | 世界生成地物类型 | 1（河流闪烁的光） | 无实例回写；Fabric 即时 / NeoForge DeferredRegister，动态配置由 JSON 提供 |
+| `ModFeatures` | 世界生成地物类型 | 1 个类型（`unsuspiciousblock:shimmer`）+ 2 个 placed key（河流 / 下界） | 无实例回写；Fabric 即时 / NeoForge DeferredRegister，具体变体由 configured_feature 的 config 指定 |
 | `ModRecipeSerializers` | 配方序列化器 | - | Fabric 即时 / NeoForge static 块 |
 
 > `ModEffects` / `ModSounds` 回写的是 `Holder<MobEffect>` / `Holder<SoundEvent>`，因为 NeoForge 的 `DeferredHolder` 即 `Holder`，可直接回写；Fabric 端通过 `BuiltInRegistries.MOB_EFFECT.getHolder(...)` 取 `Holder` 回写，两端对 common 暴露统一类型。

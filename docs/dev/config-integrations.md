@@ -51,15 +51,20 @@ unsuspiciousblock:gameplay/panning/
 | 参数 | 范围 | 默认 | 说明 |
 |---|---|---|---|
 | `spawn_interval_ticks` | 100-72000 | 600（30 秒） | 自然生成尝试的间隔节拍 |
-| `max_natural_per_dimension` | 0-64 | 5 | 每维度自然生成的闪烁的光数量上限 |
+| `max_natural_per_dimension` | 0-64 | 5 | 每维度、**每个变体**自然生成的淘洗点数量上限 |
 | `min_lifetime_ticks` | 200-1728000 | 24000（20 分钟） | 自然生成实体最短寿命 |
 | `max_lifetime_ticks` | 200-1728000 | 48000（40 分钟） | 自然生成实体最长寿命 |
 | `pan_duration_ticks` | 10-400 | 100（5 秒） | 单次淘洗需要长按的刻数 |
 | `spacing_blocks` | 0-512 | 32 | 新自然点与现存淘洗点之间的最小水平间距；世界生成不检查 |
 | `harvest_cooldown_ticks` | 0-1728000 | 36000 | 采空后周围 3×3 区块自然生成冷却，绝对游戏时间 |
 | `pan_uses` | 1-16 | 3 | 单个淘洗点可淘洗次数 |
+| `gold_pan_luck_bonus` | 0-5 | 1.0 | 金淘盘在水域变体上的幸运加成（原版幸运值，非百分比） |
+| `obsidian_pan_luck_penalty` | 0-5 | 0.5 | 黑曜石淘盘在水域变体上的幸运减损；它在幽微的光上无加成 |
+| `gold_pan_regeneration_chance` | 0-1 | 0.10 | 金淘盘单次淘洗后再生一个新的自然淘洗点的概率；铜盘与黑曜石盘恒为 0 |
 
-世界生成稀有度由两端共用的 `data/unsuspiciousblock/worldgen/placed_feature/river_shimmer.json` 控制（`rarity_filter.chance=50`），不再提供 `worldgen_chance` 配置。只影响新区块，详见 [淘洗系统](panning.md) §3.2。
+这三个工具标量**必须延迟读取**：NeoForge 的 SERVER spec 在注册表填充期尚未加载，若在物品构造时立即求值会抛「配置未加载」异常，因此 `PanProfile` 用 `DoubleSupplier` 持有它们。详见 [淘洗系统](panning.md) §8。
+
+世界生成稀有度由两端共用的 `data/unsuspiciousblock/worldgen/placed_feature/` 下的投放文件控制（河流 `river_shimmer` 的 `rarity_filter.chance=50`、下界 `nether_shimmer` 的 `chance=100`），不再提供 `worldgen_chance` 配置。只影响新区块，详见 [淘洗系统](panning.md) §4.2。
 
 ### 2.2 Fabric 实现
 

@@ -24,6 +24,8 @@ import java.util.Map;
 public final class ShimmerVariants {
     public static final ResourceLocation WATER_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "water");
+    public static final ResourceLocation GLIMMER_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "glimmer");
 
     // 水域变体——依附水与普通冰，沿河流群系与海平面生成
     public static final ShimmerVariant WATER = new ShimmerVariant(
@@ -38,10 +40,30 @@ public final class ShimmerVariants {
                     ParticleTypes.FISHING,
                     SoundEvents.BUCKET_FILL,
                     SoundEvents.AMETHYST_BLOCK_CHIME,
-                    SoundEvents.WATER_AMBIENT),
+                    SoundEvents.WATER_AMBIENT,
+                    PanningMedium.WATER),
             ResourceKey.create(Registries.LOOT_TABLE,
                     ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/panning/river")),
             () -> ModEntities.SHIMMER.get());
+
+    // 幽微的光变体——依附下界岩浆，紫色波光与岩浆音效，产出走独立的岩浆表
+    public static final ShimmerVariant GLIMMER = new ShimmerVariant(
+            GLIMMER_ID,
+            new LavaAnchor(),
+            new NetherDomain(),
+            new GlowStyle(
+                    new GlowStyle.Rgb(200, 120, 255),
+                    new GlowStyle.Rgb(240, 205, 255),
+                    ParticleTypes.WITCH,
+                    ParticleTypes.LAVA,
+                    ParticleTypes.WITCH,
+                    SoundEvents.BUCKET_FILL_LAVA,
+                    SoundEvents.LAVA_POP,
+                    SoundEvents.LAVA_AMBIENT,
+                    PanningMedium.LAVA),
+            ResourceKey.create(Registries.LOOT_TABLE,
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/panning/lava")),
+            () -> ModEntities.GLIMMER.get());
 
     private static final Map<ResourceLocation, ShimmerVariant> BY_ID = createIndex();
 
@@ -58,6 +80,7 @@ public final class ShimmerVariants {
     private static Map<ResourceLocation, ShimmerVariant> createIndex() {
         Map<ResourceLocation, ShimmerVariant> index = new LinkedHashMap<>();
         register(index, WATER);
+        register(index, GLIMMER);
         return Map.copyOf(index);
     }
 

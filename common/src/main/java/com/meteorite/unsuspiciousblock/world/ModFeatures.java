@@ -16,6 +16,9 @@ import java.util.function.Supplier;
 public final class ModFeatures {
     public static final ResourceKey<PlacedFeature> RIVER_SHIMMER = ResourceKey.create(
             Registries.PLACED_FEATURE, ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "river_shimmer"));
+    // 下界岩浆海的世界生成入口；变体由 configured_feature 的 config 指定
+    public static final ResourceKey<PlacedFeature> NETHER_SHIMMER = ResourceKey.create(
+            Registries.PLACED_FEATURE, ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "nether_shimmer"));
 
     /*** 地物类型名称及其延迟工厂。 */
     public record FeatureEntry(String name, Supplier<Feature<?>> factory) {}

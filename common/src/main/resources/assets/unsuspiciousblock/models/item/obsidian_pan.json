@@ -1,0 +1,64 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "unsuspiciousblock:item/obsidian_pan"
+  },
+  "overrides": [
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 0,
+        "unsuspiciousblock:panning_frame": 0.25
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_water_0"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 0,
+        "unsuspiciousblock:panning_frame": 0.5
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_water_1"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 0,
+        "unsuspiciousblock:panning_frame": 0.75
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_water_2"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 0,
+        "unsuspiciousblock:panning_frame": 1.0
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_water_3"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 1,
+        "unsuspiciousblock:panning_frame": 0.25
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_lava_0"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 1,
+        "unsuspiciousblock:panning_frame": 0.5
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_lava_1"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 1,
+        "unsuspiciousblock:panning_frame": 0.75
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_lava_2"
+    },
+    {
+      "predicate": {
+        "unsuspiciousblock:panning_medium": 1,
+        "unsuspiciousblock:panning_frame": 1.0
+      },
+      "model": "unsuspiciousblock:item/obsidian_pan_lava_3"
+    }
+  ]
+}

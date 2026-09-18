@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.block.ModBlocks;
 import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -33,6 +34,8 @@ public class ModItems {
     public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
     public static PanItem COPPER_PAN;
+    public static PanItem GOLD_PAN;
+    public static PanItem OBSIDIAN_PAN;
     public static BlockItem UNSUSPICIOUS_SAND;
     public static BlockItem UNSUSPICIOUS_GRAVEL;
     public static BlockItem POTTERY_WHEEL;
@@ -97,7 +100,13 @@ public class ModItems {
                     item -> HAND_OF_CAT = (HandOfCatItem) item),
             new ItemEntry("copper_pan",
                     ModItems::createCopperPan,
-                    item -> COPPER_PAN = (PanItem) item)
+                    item -> COPPER_PAN = (PanItem) item),
+            new ItemEntry("gold_pan",
+                    ModItems::createGoldPan,
+                    item -> GOLD_PAN = (PanItem) item),
+            new ItemEntry("obsidian_pan",
+                    ModItems::createObsidianPan,
+                    item -> OBSIDIAN_PAN = (PanItem) item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -115,6 +124,8 @@ public class ModItems {
             () -> SUSPICIOUS_READER,
             () -> ARCHAEOLOGICAL_SHOVEL,
             () -> COPPER_PAN,
+            () -> GOLD_PAN,
+            () -> OBSIDIAN_PAN,
             () -> ANCIENT_COIN,
             () -> LOST_PAGE,
             () -> BASE_PAGE,
@@ -127,7 +138,9 @@ public class ModItems {
 
     // 全部淘盘——客户端据此为每把盘注册摇洗帧等物品属性，新增淘盘只需在此追加
     public static final List<Supplier<Item>> PAN_ITEMS = List.of(
-            () -> COPPER_PAN
+            () -> COPPER_PAN,
+            () -> GOLD_PAN,
+            () -> OBSIDIAN_PAN
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
@@ -174,7 +187,31 @@ public class ModItems {
                 Set.of(ShimmerVariants.WATER_ID),
                 commonItemTag("ingots/copper"),
                 Map.of(),
-                () -> 0.0D));
+                () -> 0.0D,
+                null));
+    }
+
+    // 创建金淘盘实例——水域专属，耐久 24，可在铁砧上用金锭修复；
+    // 按配置提供幸运加成，并在淘空自然点后按配置概率再生新点
+    public static PanItem createGoldPan() {
+        return new PanItem(new Item.Properties().stacksTo(1).durability(24), new PanProfile(
+                Set.of(ShimmerVariants.WATER_ID),
+                commonItemTag("ingots/gold"),
+                Map.of(ShimmerVariants.WATER_ID, () -> Services.PANNING_CONFIG.getGoldPanLuckBonus()),
+                () -> Services.PANNING_CONFIG.getGoldPanRegenerationChance(),
+                "item.unsuspiciousblock.gold_pan.tooltip.quality"));
+    }
+
+    // 创建黑曜石淘盘实例——耐久 64，可在铁砧上用黑曜石修复；
+    // 既能采水点也能采幽微的光，淘水时按配置扣减幸运，因此水中产出明显低于铜盘
+    public static PanItem createObsidianPan() {
+        return new PanItem(new Item.Properties().stacksTo(1).durability(64), new PanProfile(
+                Set.of(ShimmerVariants.WATER_ID, ShimmerVariants.GLIMMER_ID),
+                commonItemTag("obsidians/normal"),
+                Map.of(ShimmerVariants.WATER_ID,
+                        () -> -Services.PANNING_CONFIG.getObsidianPanLuckPenalty()),
+                () -> 0.0D,
+                "item.unsuspiciousblock.obsidian_pan.tooltip.quality"));
     }
 
     // 铁砧修复材料统一引用 c: 通用标签，两端数据包均会填充原版物品

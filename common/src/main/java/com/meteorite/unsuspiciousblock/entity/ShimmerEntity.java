@@ -29,6 +29,10 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 /***
  * 闪烁的光——淘盘专属的液面淘洗点实体的抽象基类，全部变体共用这套机制骨架。
  * <p>
@@ -70,8 +74,19 @@ public abstract class ShimmerEntity extends Entity {
     private static final EntityDataAccessor<Boolean> DATA_WORLDGEN =
             SynchedEntityData.defineId(ShimmerEntity.class, EntityDataSerializers.BOOLEAN);
 
+    // 正在淘洗本点的玩家 UUID 集合，以逗号分隔同步。
+    // 变体本身不需要同步（两侧各自查注册表），但「谁在淘洗我」只有服务端知道，
+    // 远端玩家要显示正确的摇洗帧组就必须由服务端下发。
+    private static final EntityDataAccessor<String> DATA_PANNERS =
+            SynchedEntityData.defineId(ShimmerEntity.class, EntityDataSerializers.STRING);
+
+    // 淘洗者集合的刷新超时：服务端每 tick 被 markPanning 刷新一次，连续两刻未刷新即剔除
+    private static final long PANNER_TIMEOUT_TICKS = 2L;
+
     private long lastPanningTick = Long.MIN_VALUE;
     private int clientWorkTicks;
+    // 服务端权威的淘洗者集合：玩家 UUID -> 最近一次刷新时刻
+    private final Map<UUID, Long> panners = new HashMap<>();
 
     // 是否有寿命：世界生成来源恒为 false，它不自然消散也不计入自然生成上限。
     private boolean hasLifetime = true;
@@ -113,6 +128,7 @@ public abstract class ShimmerEntity extends Entity {
         builder.define(DATA_PAN_REMAINING, Services.PANNING_CONFIG.getPanUses());
         builder.define(DATA_PANNING, false);
         builder.define(DATA_WORLDGEN, false);
+        builder.define(DATA_PANNERS, "");
     }
 
     // 在指定水方块上初始化淘洗点：有寿命来源用 lifetimeTicks 作绝对寿命，
@@ -204,10 +220,42 @@ public abstract class ShimmerEntity extends Entity {
     }
 
     // 只有服务端验证过的有效淘洗才能刷新工作状态；不持久化临时演出状态。
-    public void markPanning() {
-        if (!this.level().isClientSide() && this.canPan()) {
-            this.lastPanningTick = this.level().getGameTime();
-            this.entityData.set(DATA_PANNING, true);
+    public void markPanning(Player player) {
+        if (this.level().isClientSide() || !this.canPan()) {
+            return;
+        }
+        this.lastPanningTick = this.level().getGameTime();
+        this.entityData.set(DATA_PANNING, true);
+        // 集合新增成员时才同步一次，避免每 tick 重复发包
+        if (this.panners.put(player.getUUID(), this.lastPanningTick) == null) {
+            this.publishPanners();
+        }
+    }
+
+    // 同步给客户端的淘洗者集合快照，供物品属性选用摇洗帧组
+    public String getPannersSnapshot() {
+        return this.entityData.get(DATA_PANNERS);
+    }
+
+    // 剔除超时未刷新的淘洗者；集合变化时同步一次
+    private void prunePanners() {
+        long now = this.level().getGameTime();
+        if (this.panners.entrySet().removeIf(entry -> now - entry.getValue() > PANNER_TIMEOUT_TICKS)) {
+            this.publishPanners();
+        }
+    }
+
+    private void publishPanners() {
+        StringBuilder builder = new StringBuilder();
+        for (UUID uuid : this.panners.keySet()) {
+            if (builder.length() > 0) {
+                builder.append(',');
+            }
+            builder.append(uuid);
+        }
+        String snapshot = builder.toString();
+        if (!snapshot.equals(this.entityData.get(DATA_PANNERS))) {
+            this.entityData.set(DATA_PANNERS, snapshot);
         }
     }
 
@@ -276,6 +324,7 @@ public abstract class ShimmerEntity extends Entity {
     private void serverTick() {
         if (this.discardIfExpired()) return;
         this.recoverPanUses();
+        this.prunePanners();
         // 允许实体与玩家 tick 顺序相差一刻；停止操作后最多两刻恢复闲置。
         this.entityData.set(DATA_PANNING, this.canPan() && this.lastPanningTick != Long.MIN_VALUE
                 && this.level().getGameTime() - this.lastPanningTick <= 1L);

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "O O",
+    "OCO"
+  ],
+  "key": {
+    "O": {
+      "tag": "c:obsidians/normal"
+    },
+    "C": {
+      "tag": "c:obsidians/crying"
+    }
+  },
+  "result": {
+    "id": "unsuspiciousblock:obsidian_pan",
+    "count": 1
+  }
+}

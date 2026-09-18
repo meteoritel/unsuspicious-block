@@ -67,7 +67,7 @@ com.meteorite.unsuspiciousblock/
 │   └── services/                  SPI 接口（7 个；ServiceLoader SPI 共 9 个，其中 3 个在子系统包）
 │
 ├── item/  block/  blockentity/    注册清单 + 物品/方块/方块实体类
-├── entity/                        实体注册 + 灵体猫/灯笼宠物/闪烁的光
+├── entity/                        实体注册 + 灵体猫/灯笼宠物/淘洗点（闪烁的光与幽微的光）
 ├── effect/  sound/  recipe/       效果/声音/配方序列化器注册
 │
 ├── journal/                       考古笔记系统（catalog/state/sync/tracking/migration + JournalPlayerDataService）
@@ -131,7 +131,7 @@ common/src/main/resources/
 - **注册**：遍历各 `ModXxx.forEach(registrar)` 清单（详见 [registration.md](registration.md)）。
 - **事件接入**：Fabric 用 `*Callback.EVENT.register`，NeoForge 用 `@SubscribeEvent`。
 - **生命周期钩子**：服务器启动/停止、tick、chunk 生成、玩家登录等。
-- **淘洗生成服务**：服务器 tick 与服务器停止事件转交 `ShimmerSpawnService`，驱动闪烁的光的自然生成；世界生成通过 `ShimmerRiverFeature` 与两端河流群系注入接入原版地物阶段。
+- **淘洗生成服务**：服务器 tick 与服务器停止事件转交 `ShimmerSpawnService`，驱动淘洗点的自然生成（只投放水域变体）；世界生成通过统一的 `ShimmerFeature` 与两端群系注入接入原版地物阶段，介质由数据包里的变体 id 指定。变体数据见 [淘洗系统](panning.md) 第 2 节。
 - **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册。
 - **可选依赖**：通过 `OptionalModIntegration.instantiate()` 反射加载 Trinkets/Curios 集成。

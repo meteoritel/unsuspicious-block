@@ -8,7 +8,7 @@
 - **陶轮与未烧制陶罐**：制陶工作站，可携带四面纹饰的陶罐半成品。
 - **可疑解析仪**：扫描可疑方块内部战利品，支持范围扫描与能量系统。
 - **考古铲**：快速取出已扫描可疑方块的战利品，向下连续挖掘。
-- **淘盘**：对闪烁的光长按淘洗的工具；淘洗点机制见 [淘洗系统](panning.md)。
+- **淘盘**：对淘洗点长按淘洗的工具，共三把（铜 / 金 / 黑曜石）；淘洗点机制与变体系统见 [淘洗系统](panning.md)。
 - **考古笔记**：打开考古笔记 GUI 的物品。
 - **猫之瞳 / 猫之手**：猫族系统的信息能力信物与身份信物。
 - **古代金币 / 失落书页 / 基页**：经济与附魔材料。
@@ -78,9 +78,17 @@
 
 **追踪接入**：`scanBrushable` 解析战利品后，通过 `LootTrackingContext` + `LootTrackingEvents.submit` 接入考古笔记追踪，使用 `deferred` 结算策略（待定日志暂存到方块实体，物品实际取出后转正）。详见 [考古笔记系统](journal.md)。
 
-### 3.2 淘盘（CopperPanItem）
+### 3.2 淘盘（PanItem + PanProfile）
 
-[`CopperPanItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/CopperPanItem.java) 对闪烁的光长按右键淘洗：使用行为复用原版「正在使用物品」减速规则（不施加药水效果），客户端渲染入口负责专属摇洗动画。耐久 32，可用铜锭铁砧修复，经 `minecraft:enchantable/durability` 兼容耐久与经验修补。淘洗结算、战利品表与淘洗点实体详见 [淘洗系统](panning.md)。
+[`PanItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/PanItem.java) 是三把淘盘的共同基类，对**本工具可采的**淘洗点长按右键淘洗：使用行为复用原版「正在使用物品」减速规则（不施加药水效果），客户端渲染入口负责专属摇洗动画。差异全部由 [`PanProfile`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/PanProfile.java) 提供，因此新增淘盘不需要新类：
+
+| 淘盘 | 耐久 | 铁砧修复材料 | 可采变体 | 幸运加成（水域） | 再生概率 |
+|---|---|---|---|---|---|
+| 铜淘盘 `copper_pan` | 32 | `c:ingots/copper` | 水域 | 0 | 0 |
+| 金淘盘 `gold_pan` | 24 | `c:ingots/gold` | 水域 | `+gold_pan_luck_bonus`（默认 1.0） | `gold_pan_regeneration_chance`（默认 0.10） |
+| 黑曜石淘盘 `obsidian_pan` | 64 | `c:obsidians/normal` | 水域 + 幽微的光 | `-obsidian_pan_luck_penalty`（默认 0.5） | 0 |
+
+三把盘经 `minecraft:enchantable/durability` 兼容耐久与经验修补。工具与点是**能力交集**判定（`PanProfile.harvestTargets` 与点的变体取交集），因此不支持的组合会直接 `PASS` 让位给原版，不会出现「铜盘持续淘洗幽微的光」这类越界行为。淘洗结算、战利品表、变体系统与淘洗点实体详见 [淘洗系统](panning.md)。
 
 ### 3.3 考古铲（ArchaeologicalShovelItem）
 

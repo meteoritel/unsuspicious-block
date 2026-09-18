@@ -23,6 +23,7 @@ public class ModEntities {
     // 各变体的实体类型按具体子类声明：EntityType 的泛型不协变，写入时类型精确匹配，无需强制转换。
     // 读取方（变体注册表、渲染器清单）自行以 EntityType<? extends ShimmerEntity> 接收。
     public static Supplier<EntityType<WaterShimmerEntity>> SHIMMER;
+    public static Supplier<EntityType<GlimmerEntity>> GLIMMER;
 
     /**
      * 实体注册清单条目
@@ -59,6 +60,10 @@ public class ModEntities {
             new EntityEntry<>("shimmer",
                     ModEntities::createShimmerType,
                     supplier -> SHIMMER = supplier,
+                    null),
+            new EntityEntry<>("glimmer",
+                    ModEntities::createGlimmerType,
+                    supplier -> GLIMMER = supplier,
                     null)
     );
 
@@ -106,9 +111,18 @@ public class ModEntities {
                 .build("merchant_cat");
     }
 
+    // 幽微的光·岩浆变体——包围盒规格与水域变体一致；岩浆没有碰撞箱，海面中央的点可以正常淘洗
+    public static EntityType<GlimmerEntity> createGlimmerType() {
+        return EntityType.Builder.of(GlimmerEntity::new, MobCategory.MISC)
+                .sized(0.9f, 0.9f)
+                .clientTrackingRange(10)
+                .updateInterval(20)
+                .build("glimmer");
+    }
+
     // 闪烁的光·水域变体——无 AI 的液面淘洗点，包围盒覆盖其依附的液面方块，便于准星选中。
     // 包围盒高度不超过一格：依附于完整碰撞箱方块（如冰）的点会被准星射线截断而无法淘洗，
-    // 这是刻意保留的行为，改动 .sized(...) 会改变它，详见 docs/plan/panning-variants.md §3.9。
+    // 这是刻意保留的行为，改动 .sized(...) 会改变它，详见 docs/dev/panning.md 第 3 节。
     public static EntityType<WaterShimmerEntity> createShimmerType() {
         return EntityType.Builder.of(WaterShimmerEntity::new, MobCategory.MISC)
                 .sized(0.9f, 0.9f)

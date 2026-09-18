@@ -33,7 +33,8 @@ public class ModEntityRenderers {
             new RendererEntry<>(() -> ModEntities.SWORDSMAN_CAT.get(), SwordsmanCatRenderer::new),
             new RendererEntry<>(() -> ModEntities.MERCHANT_CAT.get(), MerchantCatRenderer::new),
             new RendererEntry<>(() -> ModEntities.LANTERN_PET.get(), LanternPetRenderer::new),
-            new RendererEntry<>(() -> ModEntities.SHIMMER.get(), ShimmerRenderer::new)
+            new RendererEntry<>(() -> ModEntities.SHIMMER.get(), ShimmerRenderer::new),
+            new RendererEntry<>(() -> ModEntities.GLIMMER.get(), ShimmerRenderer::new)
     );
 
     // 遍历清单，调用平台回调完成注册

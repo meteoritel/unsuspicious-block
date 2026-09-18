@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "unsuspiciousblock:item/gold_pan_water_0"
+  }
+}

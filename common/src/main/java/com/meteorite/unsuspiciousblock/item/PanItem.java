@@ -45,12 +45,16 @@ public class PanItem extends Item {
         return this.profile;
     }
 
-    // 引导文案按物品注册名派生，新增淘盘无需改动代码，只需补语言键
+    // 引导文案按物品注册名派生，新增淘盘无需改动代码，只需补语言键；品质暗示行仅在档案登记时追加
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltipLines, flag);
-        new TooltipBuilder(tooltipLines).intro(this.getDescriptionId() + ".tooltip.use");
+        TooltipBuilder builder = new TooltipBuilder(tooltipLines);
+        builder.intro(this.getDescriptionId() + ".tooltip.use");
+        if (this.profile.qualityTooltipKey() != null) {
+            builder.intro(this.profile.qualityTooltipKey());
+        }
     }
 
     // 原版不施加使用动画，客户端渲染入口负责专属摇洗动作。
@@ -85,7 +89,7 @@ public class PanItem extends Item {
             return;
         }
         if (!level.isClientSide()) {
-            target.markPanning();
+            target.markPanning(player);
         }
     }
 

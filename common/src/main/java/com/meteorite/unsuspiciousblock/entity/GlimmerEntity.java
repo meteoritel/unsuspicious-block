@@ -6,19 +6,19 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 
 /***
- * 闪烁的光·水域变体——依附水方块与河水冻结后的普通冰，沿河流群系与海平面生成。
+ * 幽微的光——依附下界岩浆的淘洗点变体。
  * <p>
  * 本类只回答「我是哪个变体」，机制骨架、账本登记与全部表现参数都继承自 {@link ShimmerEntity}。
- * 请注意冰面依附点是刻意不可淘洗的，原因见 {@code docs/dev/panning.md} 第 3 节。
+ * 它只由世界生成地物投放下界，不做运行时自然生成，因此没有每维度数量上限。
+ * 岩浆没有碰撞箱，玩家可以正常瞄准并淘洗海面中央的点（与冰面依附点相反）。
  */
-public class WaterShimmerEntity extends ShimmerEntity {
-    // 构造器参数放宽为 ? extends WaterShimmerEntity，与原版子类实体的写法一致
-    public WaterShimmerEntity(EntityType<? extends WaterShimmerEntity> type, Level level) {
+public class GlimmerEntity extends ShimmerEntity {
+    public GlimmerEntity(EntityType<? extends GlimmerEntity> type, Level level) {
         super(type, level);
     }
 
     @Override
     public ShimmerVariant getVariant() {
-        return ShimmerVariants.WATER;
+        return ShimmerVariants.GLIMMER;
     }
 }
