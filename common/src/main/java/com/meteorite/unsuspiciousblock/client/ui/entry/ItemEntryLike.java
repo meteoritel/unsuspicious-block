@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import net.minecraft.resources.ResourceLocation;
 
 public interface ItemEntryLike {
@@ -7,5 +8,5 @@ public interface ItemEntryLike {
     ResourceLocation itemId();
     String itemDisplayName();
     boolean unlocked();
-    String probability();
+    Probability probability();
 }

@@ -9,11 +9,8 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 战利品表目录数据记录——TableDefinition 与 ItemDefinition 为跨模块共享的基础类型，
@@ -35,10 +32,6 @@ public final class LootTableCatalog {
             childTableProbabilities = List.copyOf(childTableProbabilities);
         }
 
-        public TableDefinition(ResourceLocation id, Component displayName, String type,
-                               List<ItemDefinition> items, int simulationCount) {
-            this(id, displayName, type, items, simulationCount, List.of(), List.of());
-        }
 
         public TableDefinition(ResourceLocation id, Component displayName, String type,
                                List<ItemDefinition> items, int simulationCount,
@@ -113,7 +106,7 @@ public final class LootTableCatalog {
     }
 
     /** 单个自洽模拟场景下，物品在一次抽取中至少出现一次的概率。 */
-    public record ScenarioProbability(String scenarioKey, String probability,
+    public record ScenarioProbability(String scenarioKey, Probability probability,
                                       List<LootConditionInfo> conditions) {
         public ScenarioProbability {
             conditions = List.copyOf(conditions);
@@ -121,20 +114,20 @@ public final class LootTableCatalog {
     }
 
     /** 父表一次抽取中，直接引用的子表至少产出一个物品的概率。 */
-    public record ChildTableProbability(ResourceLocation tableId, String probability,
+    public record ChildTableProbability(ResourceLocation tableId, Probability probability,
                                         List<ScenarioProbability> scenarioProbabilities) {
         public ChildTableProbability {
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
         }
 
         public static ChildTableProbability pending(ResourceLocation tableId) {
-            return new ChildTableProbability(tableId, "?", List.of());
+            return new ChildTableProbability(tableId, Probability.unknown(), List.of());
         }
     }
 
     /** 战利品表物品条目定义 */
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                                 String probability, LootResultSignature signature,
+                                 Probability probability, LootResultSignature signature,
                                  List<LootAcquisitionPath> acquisitionPaths,
                                  boolean injected,
                                  List<ScenarioProbability> scenarioProbabilities) {
@@ -144,44 +137,18 @@ public final class LootTableCatalog {
         }
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                              String probability, LootResultSignature signature,
+                              Probability probability, LootResultSignature signature,
                               List<LootAcquisitionPath> acquisitionPaths, boolean injected) {
             this(id, displayName, tooltipHint, probability, signature,
                     acquisitionPaths, injected, List.of());
         }
 
-        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                               String probability, LootResultSignature signature) {
-            this(id, displayName, tooltipHint, probability, signature,
-                    List.of(new LootAcquisitionPath(null, List.of(), List.of())), false);
-        }
+
+
+
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                               String probability, LootResultSignature signature,
-                               @Nullable ResourceLocation sourceChildTable) {
-            this(id, displayName, tooltipHint, probability, signature,
-                    List.of(new LootAcquisitionPath(sourceChildTable, List.of(), List.of())), false);
-        }
-
-        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                              String probability, LootResultSignature signature,
-                               @Nullable ResourceLocation sourceChildTable,
-                               List<LootConditionInfo> conditions) {
-            this(id, displayName, tooltipHint, probability, signature,
-                    List.of(new LootAcquisitionPath(sourceChildTable, conditions, List.of())), false);
-        }
-
-        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                              String probability, LootResultSignature signature,
-                               @Nullable ResourceLocation sourceChildTable,
-                               List<LootConditionInfo> conditions,
-                               boolean injected) {
-            this(id, displayName, tooltipHint, probability, signature,
-                    List.of(new LootAcquisitionPath(sourceChildTable, conditions, List.of())), injected);
-        }
-
-        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                              String probability, LootResultSignature signature,
+                              Probability probability, LootResultSignature signature,
                               @Nullable ResourceLocation sourceChildTable,
                               List<LootConditionInfo> conditions,
                               List<LootConditionInfo> inheritedConditions,
@@ -236,51 +203,12 @@ public final class LootTableCatalog {
 
     // ==================== 工具方法 ====================
 
-    /**
-     * 收集指定表及其全部后代表中的唯一物品定义。
-     * 按深度优先顺序保留首次出现的签名，共享子表与循环引用只处理一次。
-     */
-    public static List<ItemDefinition> collectSubtreeItems(
-            Map<ResourceLocation, TableDefinition> catalog, ResourceLocation rootTableId) {
-        Map<LootResultSignature, ItemDefinition> itemsBySignature = new LinkedHashMap<>();
-        collectSubtreeItems(catalog, rootTableId, itemsBySignature, new HashSet<>());
-        return List.copyOf(itemsBySignature.values());
-    }
-
-    private static void collectSubtreeItems(
-            Map<ResourceLocation, TableDefinition> catalog, ResourceLocation tableId,
-            Map<LootResultSignature, ItemDefinition> output, Set<ResourceLocation> visited) {
-        if (!visited.add(tableId)) {
-            return;
-        }
-        TableDefinition table = catalog.get(tableId);
-        if (table == null) {
-            return;
-        }
-        for (ItemDefinition item : table.items()) {
-            output.putIfAbsent(item.signature(), item);
-        }
-        for (ResourceLocation childId : table.childTables()) {
-            collectSubtreeItems(catalog, childId, output, visited);
-        }
-    }
 
     private static final String ENCHANTED_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted";
     private static final String APPROXIMATE_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate";
 
-    /**
-     * 为模拟期发现的"注入条目"（GLM / LootTableEvents.MODIFY 注入，JSON 中不存在）构建 ItemDefinition。
-     */
-    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability,
-                                                         boolean injected) {
-        ResourceLocation itemId = signature.itemId();
-        Component displayName = resolveMergedDisplayName(itemId, signature);
-        Component tooltipHint = resolveMergedTooltipHint(signature);
-        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature, List.of(), injected);
-    }
-
     /** 为带多场景概率的运行时注入条目构建目录定义。 */
-    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, String probability,
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, Probability probability,
                                                             boolean injected,
                                                             List<ScenarioProbability> scenarioProbabilities) {
         ResourceLocation itemId = signature.itemId();

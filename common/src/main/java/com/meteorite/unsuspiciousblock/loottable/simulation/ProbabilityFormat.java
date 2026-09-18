@@ -1,18 +1,46 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 
 /**
- * 概率格式化工具 —— 将比例值格式化为人类可读的百分数字符串。
- * 使用 BigDecimal 保留百分号下 2 位有效数字。
+ * 概率格式化工具——把 {@link Probability} 值渲染成人类可读的文本。
+ * <p>
+ * 这是**唯一**的概率格式化入口，按规划只在 UI 边界调用：数据层一律持有数值，
+ * 不再出现"把界面文本反解回数值来排序"这种既脆弱又不可逆的做法。
+ * 未知渲染为 {@code ?}，不可达渲染为 {@code 0%}，"抽样零出现"渲染为 {@code <0.01%}，
+ * 区间渲染为 {@code 下界-上界}。
  */
 public final class ProbabilityFormat {
 
     private static final MathContext MC_2SIG = new MathContext(2, RoundingMode.HALF_UP);
 
     private ProbabilityFormat() {
+    }
+
+    /**
+     * 把概率值渲染为展示文本；未知为 {@code ?}，不可达为 {@code 0%}。
+     * <p>
+     * 区间两端用 {@link #formatBound(double)} 而非 {@link #formatFraction(double)}：区间下界为 0 时
+     * 无法从数值上区分来源是"某场景静态不可达"还是"某场景抽样零出现"，统一渲染为 {@code 0%}
+     * （两者都成立且不会把"抽样零出现"误述成"不可达"）。单值仍保留 {@code <0.01%} 的细分语义。
+     */
+    public static String format(Probability probability) {
+        return switch (probability) {
+            case Probability.Unknown ignored -> "?";
+            case Probability.Unreachable ignored -> "0%";
+            case Probability.Measured measured -> measured.upper().isPresent()
+                    ? formatBound(measured.lower()) + "-" + formatBound(measured.upper().getAsDouble())
+                    : formatFraction(measured.lower());
+        };
+    }
+
+    // 区间端点的渲染：0 直接写 0%，其余走常规比例渲染
+    private static String formatBound(double fraction) {
+        return fraction == 0.0 ? "0%" : formatFraction(fraction);
     }
 
     /**
@@ -23,33 +51,11 @@ public final class ProbabilityFormat {
      *   <li>其他 → 百分数保留2位有效数字（如 "12%", "1.5%", "0.12%"）</li>
      * </ul>
      */
-    public static String formatPercent(double fraction) {
+    private static String formatFraction(double fraction) {
         if (fraction >= 1.0) return "100%";
         if (fraction < 0.0001) return "<0.01%";
         double percent = fraction * 100.0;
         BigDecimal bd = new BigDecimal(percent, MC_2SIG);
         return bd.stripTrailingZeros().toPlainString() + "%";
-    }
-
-    /**
-     * 解析概率字符串为比例值，用于排序等场景。
-     * 返回 -1.0 表示无法解析（如 "?"）。
-     */
-    public static double parsePercentToFraction(String probability) {
-        if (probability == null || probability.equals("?")) return -1.0;
-        if (probability.equals("<0.01%")) return 0.0001; // 用于排序，给一个极小值
-        if (probability.equals("100%")) return 1.0;
-        try {
-            String numPart = probability.replace("%", "").trim();
-            double val = Double.parseDouble(numPart);
-            return val / 100.0;
-        } catch (NumberFormatException e) {
-            return -1.0;
-        }
-    }
-
-    // 模拟场景内部用 "0" 标记不适用，UI 展示时补齐百分号。
-    public static String normalizePercent(String probability) {
-        return "0".equals(probability) ? "0%" : probability;
     }
 }

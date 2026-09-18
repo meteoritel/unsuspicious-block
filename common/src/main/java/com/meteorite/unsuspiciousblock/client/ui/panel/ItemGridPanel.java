@@ -9,6 +9,8 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
@@ -413,17 +415,19 @@ public final class ItemGridPanel implements PagePanel {
         return s;
     }
 
-    // 格式化概率为显示用 Component
-    private static Component formatProbability(@Nullable String probability,
+    // 格式化概率为显示用 Component——这是概率值转文本的渲染边界
+    private static Component formatProbability(@Nullable Probability probability,
                                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                                                List<ScenarioProbability> scenarioProbabilities) {
+        boolean unknown = probability == null || probability.isUnknown();
+        String text = unknown ? null : ProbabilityFormat.format(probability);
         if (hasDistinctScenarioProbabilities(scenarioProbabilities)) {
-            return probability == null || probability.equals("?")
+            return unknown
                     ? Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.probability_conditional")
-                    : Component.literal(probability);
+                    : Component.literal(text);
         }
-        if (probability == null || probability.equals("?")) {
+        if (unknown) {
             if (uncertaintyLevel != LootConditionHandler.UncertaintyLevel.NONE) {
                 return Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.probability_conditional");
@@ -433,10 +437,10 @@ public final class ItemGridPanel implements PagePanel {
         }
         return switch (uncertaintyLevel) {
             case PROBABILISTIC -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_estimated_short", probability);
+                    "screen.unsuspiciousblock.archaeology_journal.probability_estimated_short", text);
             case RUNTIME -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional_short", probability);
-            default -> Component.literal(probability);
+                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional_short", text);
+            default -> Component.literal(text);
         };
     }
 
@@ -657,7 +661,7 @@ public final class ItemGridPanel implements PagePanel {
 
     /** 子表导航入口展示数据。 */
     public record ChildTableEntry(ResourceLocation tableId, Component displayName,
-                                  String probability,
+                                  Probability probability,
                                   List<ScenarioProbability> scenarioProbabilities,
                                   List<LootConditionInfo> conditions,
                                   List<GridItem> previewItems) {
@@ -675,7 +679,7 @@ public final class ItemGridPanel implements PagePanel {
      * probability 为 null 时不追加 "Drop Chance" 行。
      * discovered=false 时不携带真实物品身份，仅展示未发现状态与获取条件。
      */
-    public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable String probability,
+    public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable Probability probability,
                                List<LootAcquisitionPath> acquisitionPaths,
                                boolean injected,
                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
@@ -691,7 +695,7 @@ public final class ItemGridPanel implements PagePanel {
 
     // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）
     public record GridItem(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
-                           String probability, boolean unlocked, int count,
+                           Probability probability, boolean unlocked, int count,
                            LootResultSignature signature, boolean highlighted,
                            List<LootAcquisitionPath> acquisitionPaths,
                            boolean injected,

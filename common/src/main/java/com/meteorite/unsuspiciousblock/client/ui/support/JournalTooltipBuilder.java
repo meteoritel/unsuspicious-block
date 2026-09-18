@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -60,7 +61,7 @@ public final class JournalTooltipBuilder {
 
         // 概率信息
         if (data.probability() != null) {
-            boolean probUncertain = data.probability().equals("?");
+            boolean probUncertain = data.probability().isUnknown();
             boolean hintIsApprox = data.hint() != null && data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
             ChatFormatting probColor = switch (data.uncertaintyLevel()) {
@@ -88,11 +89,13 @@ public final class JournalTooltipBuilder {
                         .copy().withStyle(probColor));
             } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.PROBABILISTIC) {
                 lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_estimated", data.probability())
+                        "screen.unsuspiciousblock.archaeology_journal.probability_estimated",
+                        ProbabilityFormat.format(data.probability()))
                         .copy().withStyle(probColor));
             } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.RUNTIME) {
                 lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_conditional_value", data.probability())
+                        "screen.unsuspiciousblock.archaeology_journal.probability_conditional_value",
+                        ProbabilityFormat.format(data.probability()))
                         .copy().withStyle(probColor));
             } else {
                 lines.add(formatProbabilityComponent(data.probability())
@@ -102,7 +105,7 @@ public final class JournalTooltipBuilder {
 
         // 提示文本（近似概率等）
         if (data.discovered() && data.hint() != null) {
-            boolean probUncertain = data.probability() != null && data.probability().equals("?");
+            boolean probUncertain = data.probability() != null && data.probability().isUnknown();
             boolean hintIsApprox = data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
             if (!(probUncertain && hintIsApprox)) {
@@ -124,7 +127,7 @@ public final class JournalTooltipBuilder {
 
     // 构建子表入口 tooltip；概率与物品使用相同摘要格式，并展示父表中的公共触发条件。
     public static List<Component> buildChildTable(Component displayName, ResourceLocation tableId,
-                                                   String probability,
+                                                   Probability probability,
                                                    List<ScenarioProbability> scenarioProbabilities,
                                                    List<LootConditionInfo> conditions) {
         List<Component> lines = new ArrayList<>();
@@ -140,7 +143,7 @@ public final class JournalTooltipBuilder {
                     .withStyle(ChatFormatting.GREEN));
         } else {
             lines.add(formatProbabilityComponent(probability).copy().withStyle(
-                    probability.equals("?") ? ChatFormatting.GRAY : ChatFormatting.GREEN));
+                    probability.isUnknown() ? ChatFormatting.GRAY : ChatFormatting.GREEN));
         }
         if (!conditions.isEmpty()) {
             lines.add(Component.translatable(
@@ -154,34 +157,32 @@ public final class JournalTooltipBuilder {
         return lines;
     }
 
-    // 格式化概率为 tooltip Component
-    private static Component formatProbabilityComponent(String probability) {
-        if (probability == null || probability.equals("?")) {
+    // 格式化概率为 tooltip Component——展示点直接格式化，不再依赖界面文本
+    private static Component formatProbabilityComponent(Probability probability) {
+        if (probability.isUnknown()) {
             return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
         }
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability",
-                ProbabilityFormat.normalizePercent(probability));
+                ProbabilityFormat.format(probability));
     }
 
-    // 只聚合可解析的代表场景；未知值继续沿用原有概率提示。
+    // 只聚合已测量/不可达的代表场景；未知值继续沿用原有概率提示。
     private static ProbabilityBounds scenarioProbabilityBounds(List<ScenarioProbability> probabilities) {
-        String minimum = null;
-        String maximum = null;
-        double minimumValue = Double.POSITIVE_INFINITY;
-        double maximumValue = Double.NEGATIVE_INFINITY;
+        Probability minimum = null;
+        Probability maximum = null;
         for (ScenarioProbability scenario : probabilities) {
-            double value = ProbabilityFormat.parsePercentToFraction(scenario.probability());
-            if (value < 0.0) continue;
-            if (value < minimumValue) {
-                minimumValue = value;
-                minimum = ProbabilityFormat.normalizePercent(scenario.probability());
+            Probability value = scenario.probability();
+            if (value.isUnknown()) continue;
+            if (minimum == null || value.lowerBound() < minimum.lowerBound()) {
+                minimum = value;
             }
-            if (value > maximumValue) {
-                maximumValue = value;
-                maximum = ProbabilityFormat.normalizePercent(scenario.probability());
+            if (maximum == null || value.upperBound() > maximum.upperBound()) {
+                maximum = value;
             }
         }
-        return minimum != null && maximum != null ? new ProbabilityBounds(minimum, maximum) : null;
+        return minimum == null
+                ? null
+                : new ProbabilityBounds(ProbabilityFormat.format(minimum), ProbabilityFormat.format(maximum));
     }
 
     private record ProbabilityBounds(String minimum, String maximum) {

@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDe
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
@@ -288,7 +289,7 @@ final class LootProbabilitySimulationJob {
                             .getOrDefault(childTable, 0);
                     probabilities.add(new ScenarioProbability(scenario.key(),
                             scenario.applicableChildTables().contains(childTable)
-                                    ? formatProbability(appearances, false) : "0",
+                                    ? formatProbability(appearances, false) : Probability.unreachable(),
                             scenario.assumptions()));
                 }
             }
@@ -323,7 +324,7 @@ final class LootProbabilitySimulationJob {
         for (SimulationScenario scenario : this.scenarios) {
             if (!scenario.applicableSignatures().contains(storedKey)) {
                 probabilities.add(new ScenarioProbability(
-                        scenario.key(), "0", scenario.assumptions()));
+                        scenario.key(), Probability.unreachable(), scenario.assumptions()));
                 continue;
             }
             Map<String, Integer> counts = this.countsByScenario.getOrDefault(scenario.key(), Map.of());
@@ -370,34 +371,37 @@ final class LootProbabilitySimulationJob {
         return List.copyOf(probabilities);
     }
 
-    private static String formatProbability(int appearances, boolean uncertainWhenAbsent) {
+    // 抽样零出现有两种含义：条目带条件时按"未知"报告（模拟可能没覆盖到），
+    // 无条件时才作为测量结果记为 0.0（展示为 <0.01%）。两者都不等于"不可达"。
+    private static Probability formatProbability(int appearances, boolean uncertainWhenAbsent) {
         if (appearances == 0) {
-            return uncertainWhenAbsent ? "?" : "<0.01%";
+            return uncertainWhenAbsent ? Probability.unknown() : Probability.measured(0.0);
         }
-        return ProbabilityFormat.formatPercent((double) appearances
+        return Probability.measured((double) appearances
                 / LootProbabilitySimulator.getSimulationCount());
     }
 
-    private static String summarize(List<ScenarioProbability> probabilities) {
+    // 汇总：全等取其值；含未知则整体未知；否则取跨场景区间的下界与上界
+    private static Probability summarize(List<ScenarioProbability> probabilities) {
         if (probabilities.isEmpty()) {
-            return "?";
+            return Probability.unknown();
         }
-        String first = probabilities.getFirst().probability();
+        Probability first = probabilities.getFirst().probability();
         if (probabilities.stream().allMatch(value -> value.probability().equals(first))) {
             return first;
         }
-        if (probabilities.stream().anyMatch(value -> value.probability().equals("?"))) {
-            return "?";
+        if (probabilities.stream().anyMatch(value -> value.probability().isUnknown())) {
+            return Probability.unknown();
         }
-        ScenarioProbability minimum = probabilities.stream()
-                .min(java.util.Comparator.comparingDouble(
-                        value -> ProbabilityFormat.parsePercentToFraction(value.probability())))
+        double lower = probabilities.stream()
+                .mapToDouble(value -> value.probability().lowerBound())
+                .min()
                 .orElseThrow();
-        ScenarioProbability maximum = probabilities.stream()
-                .max(java.util.Comparator.comparingDouble(
-                        value -> ProbabilityFormat.parsePercentToFraction(value.probability())))
+        double upper = probabilities.stream()
+                .mapToDouble(value -> value.probability().upperBound())
+                .max()
                 .orElseThrow();
-        return minimum.probability() + "-" + maximum.probability();
+        return Probability.measuredRange(lower, upper);
     }
 
     // 附魔结果继续折叠，其他动态结果保留组件，避免药水等物品在缓存和同步后丢失变体。

@@ -17,7 +17,8 @@ import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
@@ -26,7 +27,6 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAc
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootConditionFingerprint;
-import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -544,7 +544,7 @@ public class JournalViewModel {
 
     // Intro 按需映射当前表及全部后代物品，避免在每个树节点重复缓存完整子树视图。
     private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId) {
-        List<ItemDefinition> definitions = LootTableCatalog.collectSubtreeItems(this.catalogDefinitions, tableId);
+        List<ItemDefinition> definitions = CatalogQueryIndex.subtreeItems(this.catalogDefinitions, tableId);
         ArchaeologyJournalState.TableProgress progress = this.state.getTable(tableId);
         List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitions.size());
         for (ItemDefinition definition : definitions) {
@@ -580,7 +580,7 @@ public class JournalViewModel {
                     .computeUncertaintyLevel(path.allConditions(), false);
             if (candidate.ordinal() > level.ordinal()) level = candidate;
         }
-        String displayProbability = maxScenarioProbability(
+        Probability displayProbability = maxScenarioProbability(
                 item.probability(), item.scenarioProbabilities());
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
                 displayProbability, item.unlocked(), item.count(), item.signature(), highlighted,
@@ -588,14 +588,14 @@ public class JournalViewModel {
     }
 
     // 卡片只显示代表场景中的最高概率，完整的最小值与最大值由 tooltip 展示。
-    private static String maxScenarioProbability(
-            String fallback, List<ScenarioProbability> scenarioProbabilities) {
-        String maximum = scenarioProbabilities.stream()
+    // 未知场景值不参与取最大值；全部未知时退回摘要概率。
+    private static Probability maxScenarioProbability(
+            Probability fallback, List<ScenarioProbability> scenarioProbabilities) {
+        return scenarioProbabilities.stream()
                 .map(ScenarioProbability::probability)
-                .filter(probability -> ProbabilityFormat.parsePercentToFraction(probability) >= 0.0)
-                .max(Comparator.comparingDouble(ProbabilityFormat::parsePercentToFraction))
+                .filter(probability -> !probability.isUnknown())
+                .max(Comparator.comparingDouble(Probability::upperBound))
                 .orElse(fallback);
-        return ProbabilityFormat.normalizePercent(maximum);
     }
 
     // 从父表展开后的物品路径中提取所有子表产出共同具备的条件。
@@ -674,19 +674,14 @@ public class JournalViewModel {
         return List.copyOf(descendants);
     }
 
+    // 排序只按场景数值：未知与"抽样零出现"（<0.01%）排到末尾，不再反解展示文本。
+    // 摘要概率本身由同一组场景汇总而来，因此无需再回退到它。
     private static double gridItemSortKey(ItemGridPanel.GridItem item) {
-        double scenarioMaximum = item.scenarioProbabilities().stream()
-                .map(com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability::probability)
-                .filter(probability -> probability != null && !probability.equals("?")
-                        && !probability.equals("<0.01%"))
-                .mapToDouble(ProbabilityFormat::parsePercentToFraction)
+        return item.scenarioProbabilities().stream()
+                .map(ScenarioProbability::probability)
+                .filter(probability -> !probability.isUnknown() && !probability.isBelowDisplayThreshold())
+                .mapToDouble(Probability::upperBound)
                 .max().orElse(-1.0);
-        if (scenarioMaximum >= 0.0) {
-            return scenarioMaximum;
-        }
-        String probability = item.probability();
-        return probability == null || probability.equals("?") || probability.equals("<0.01%")
-                ? -1.0 : ProbabilityFormat.parsePercentToFraction(probability);
     }
 
     private int resolveSelectedIndex(@Nullable ResourceLocation selectedId, @Nullable ResourceLocation rememberedId) {

@@ -58,9 +58,9 @@ public final class ItemDefinitionAccumulator {
         return this.signature;
     }
 
-    /** 构建条目；概率保持 {@code "?"} 占位，等待模拟填充。 */
+    /** 构建条目；概率保持未知占位，等待模拟填充。 */
     public ItemDefinition build() {
-        return new ItemDefinition(this.id, this.displayName, this.tooltipHint, "?",
+        return new ItemDefinition(this.id, this.displayName, this.tooltipHint, Probability.unknown(),
                 this.signature, this.acquisitionPaths, false);
     }
 }
