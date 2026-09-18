@@ -61,7 +61,7 @@ world/
 | `DUTY` | 正常职责模式 | 运行职责 AI | 有（到期消散） |
 | `DEBUG_DUTY` | 调试职责模式 | 运行职责 AI | 有（不受正常职责的最长现世时间限制语义约束） |
 
-切换通过 `activateDuty(lifetime)` / `activateDebugDuty(lifetime)` / `activatePreview()`。预览实体用于检查模型与渲染效果，不运行职业 AI（见 [`CONTEXT.md`](../../CONTEXT.md) "预览灵体"）。
+切换通过 `activateDuty(lifetime)` / `activateDebugDuty(lifetime)` / `activatePreview()`。**预览灵体**（`PREVIEW`）指通过原版 `/summon` 创建、仅用于检查模型与渲染效果的无职责灵体：不运行职业 AI，也不受正常职责实体的最长现世时间限制。
 
 ### 3.2 生命周期
 
@@ -112,7 +112,7 @@ world/
 - 交易由 `MerchantCatTradeManager` 从 `data/unsuspiciousblock/merchant_cat_trades/` 加载，支持标签输入（`TaggedMerchantOffer`）。
 - 阶段由 `MerchantCatPhase` 管理，在生成村庄内活动而不跟随玩家。
 
-> 三种职业的玩法设计与领域术语见 [`docs/spirit-cat-npc-design.md`](../spirit-cat-npc-design.md) 与 [`CONTEXT.md`](../../CONTEXT.md) "猫国灵体"。
+> **猫国灵体**指猫国成员在现世活动时采用的统一形态：不同职责的灵体共享原版猫的基础体型，靠职业装饰、行为与出现条件相互区分。三种职业的玩法设计详见 [`docs/spirit-cat-npc-design.md`](../spirit-cat-npc-design.md)。
 
 ## 5. 灵体 AI 框架
 

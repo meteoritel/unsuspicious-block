@@ -4,7 +4,7 @@
 
 ## 1. 职责概述
 
-模组遵循项目准则（见 [`CLAUDE.md`](../../CLAUDE.md)）：**优先使用已有 Event API，尽可能少用 Mixin**。Fabric 平台原生事件不足时才使用 Mixin，且 **Mixin 仅作入口，不写大量业务逻辑**。
+模组遵循项目准则：**优先使用已有 Event API，尽可能少用 Mixin**。Fabric 平台原生事件不足时才使用 Mixin，且 **Mixin 仅作入口，不写大量业务逻辑**。
 
 Mixin 主要用于四类需求：
 1. **状态附加**：为玩家/方块实体附加持久化状态（考古笔记进度、猫族关系状态）。
@@ -116,7 +116,7 @@ Fabric 平台因原生事件缺失，用 mixin 补齐 NeoForge 用事件实现�
 | `interaction/SheepMixin` | 羊 | 事件 | 剪羊毛触发（织物采集） |
 | `client/ItemInHandPanningMixin` | `ItemInHandRenderer` | `RenderHandEvent` | 淘盘第一人称动画入口（转交 `PanningAnimation`，见 [淘洗系统](panning.md)） |
 
-> 这是项目"允许两端使用不同方案实现相同效果"原则的体现（见 [`CLAUDE.md`](../../CLAUDE.md)）。Fabric 端的骨块追踪用 mixin + chunk 事件，NeoForge 端用 `DataAttachment`；铁砧修复 Fabric 用 mixin，NeoForge 用 `AnvilUpdateEvent`。
+> 这是项目"允许两端使用不同方案实现相同效果"原则的体现。Fabric 端的骨块追踪用 mixin + chunk 事件，NeoForge 端用 `DataAttachment`；铁砧修复 Fabric 用 mixin，NeoForge 用 `AnvilUpdateEvent`。
 
 ## 5. Lootr 兼容 mixin
 

@@ -2,7 +2,7 @@
 
 本文档描述 `cat/` 包的架构：玩家与猫族之间的长期关系如何建立、累积、惩罚，以及由关系派生的被动能力（猫之恩惠）、灵体猫（信使/剑士/商人）如何被召唤与管理。
 
-> 玩法设计与领域术语见 [`docs/cat-bond-design.md`](../cat-bond-design.md)、[`docs/spirit-cat-npc-design.md`](../spirit-cat-npc-design.md) 与 [`CONTEXT.md`](../../CONTEXT.md)。本文聚焦代码实现。
+> 玩法设计见 [`docs/cat-bond-design.md`](../cat-bond-design.md) 与 [`docs/spirit-cat-npc-design.md`](../spirit-cat-npc-design.md)。本文聚焦代码实现，涉及的领域术语在正文中就地定义。
 
 ## 1. 职责概述
 

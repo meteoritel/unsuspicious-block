@@ -195,7 +195,7 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 
 ## 6. 横切设计原则
 
-以下原则贯穿整个代码库，开发时务必遵守（也写入项目 `CLAUDE.md`）：
+以下原则贯穿整个代码库，开发时务必遵守（同一份内容也写在项目根目录的本地规则文件里；该文件不入库，仅供本地开发环境参考）：
 
 1. **common 零平台依赖**：`common/` 不得 import 任何平台类。需要平台能力时定义 SPI 接口（见 [platform-abstraction.md](platform-abstraction.md)）。
 2. **客户端/服务端分离**：服务端代码严禁引用 `client/` 下的类。客户端类只在客户端入口或被环境守卫的路径引用。
