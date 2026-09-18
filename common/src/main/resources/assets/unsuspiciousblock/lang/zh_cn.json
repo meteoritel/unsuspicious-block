@@ -1,5 +1,5 @@
 {
-  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] 清除%s：立即删除 %s 个，未加载标记清除 %s 个。不会停止后续生成或正在运行的速率测试。",
+  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] 清除 %s / %s：立即删除 %s 个，未加载标记清除 %s 个。不会停止后续生成或正在运行的速率测试。",
   "command.unsuspiciousblock.usb.shimmer.clear.type.natural": "自然生成点",
   "command.unsuspiciousblock.usb.shimmer.clear.type.worldgen": "世界生成点",
   "command.unsuspiciousblock.usb.shimmer.clear.type.special": "特殊生成点",
@@ -591,10 +591,9 @@
   "command.unsuspiciousblock.usb.favor.reset.success": "猫之恩惠状态已重置。",
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "无法访问当前玩家的猫之恩惠数据。",
 
-  "command.unsuspiciousblock.usb.shimmer.spawn.success": "已在依附方块 %1$s 生成闪烁的光（来源：%2$s，剩余淘洗次数：%3$s）。",
-  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "无法在 %s 生成：该位置上方必须是空气，坐标应指向要依附的方块位置（水源或冰块）。",
+  "command.unsuspiciousblock.usb.shimmer.spawn.success": "已在依附方块 %1$s 生成%2$s（来源：%3$s，剩余淘洗次数：%4$s）。",
+  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "无法在 %1$s 生成%2$s：该位置上方必须是空气，坐标应指向要依附的方块位置。",
   "command.unsuspiciousblock.usb.shimmer.error.spawn_failed": "在 %s 生成闪烁的光失败。",
-  "command.unsuspiciousblock.usb.shimmer.error.unknown_source": "未知来源：%s（可选 natural / worldgen）。",
 
   "entity.unsuspiciousblock.messenger_cat":"信使猫猫",
   "entity.unsuspiciousblock.swordsman_cat":"剑士猫猫",
@@ -723,7 +722,10 @@
   "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "用淘盘从河流沉积物中淘洗出的战利品。",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "淘洗",
   "unsuspiciousblock.configgui.panning.harvest_cooldown_ticks": "采空区域冷却（游戏刻）",
-  "command.unsuspiciousblock.usb.shimmer.debug.help": "闪烁的光调试：attempt | stats [all] | chunk | expire <uuid> | cooldown set <秒数> | cooldown clear | spawn <坐标> [natural|worldgen|special] [frozen]（frozen 绑定冰块，省略时绑定水源） | rate start <秒数> [间隔刻数] | rate status | rate stop | clear <natural|worldgen|special|all> [current|all|dimension <维度ID>]。使用命令执行位置与维度；20 游戏刻 = 1 游戏秒。rate 真实生成且忽略上限，到时恢复配置节拍和上限限制。",
+  "unsuspiciousblock.configgui.panning.gold_pan_luck_bonus": "金淘盘的幸运加成（幸运值）",
+  "unsuspiciousblock.configgui.panning.obsidian_pan_luck_penalty": "黑曜石淘盘淘水时的幸运减损（幸运值）",
+  "unsuspiciousblock.configgui.panning.gold_pan_regeneration_chance": "金淘盘再生新淘洗点的概率",
+  "command.unsuspiciousblock.usb.shimmer.debug.help": "闪烁的光调试：attempt | stats [变体] [all] | chunk | expire <uuid> | cooldown set <秒数> | cooldown clear | spawn <坐标> [变体|natural|worldgen|special] [natural|worldgen|special] [frozen]（frozen 改铺冰块，变体省略时为水域，来源省略时为手动） | rate start <秒数> [间隔刻数] | rate status | rate stop | clear <变体|natural|worldgen|special|all> [natural|worldgen|special|all] [current|all|dimension <维度ID>]。使用命令执行位置与维度；20 游戏刻 = 1 游戏秒。rate 真实生成且忽略上限，到时恢复配置节拍和上限限制。",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt": "区块 [%s, %s] 生成尝试：%s",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.unloaded": "区块未加载",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.cap": "自然生成数量已达上限",
@@ -731,9 +733,9 @@
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.not_river": "河流群系预筛未通过",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.success": "已生成一个自然采集点",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.no_position": "未生成：12 次采样未找到满足水域、群系、间距的落点，或实体加入失败",
-  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] 自然点：%s/%s；特殊点：%s；世界生成点：%s；失效待清理（过期/清除）：%s（当前未加载：%s，已加载：%s）；距自动尝试：%s 刻。以上为账本统计，未扫描实体文件。",
+  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] 变体：%s；自然点：%s/%s；特殊点：%s；世界生成点：%s；失效待清理（过期/清除）：%s（当前未加载：%s，已加载：%s）；距自动尝试：%s 刻。以上为账本统计，未扫描实体文件。",
   "command.unsuspiciousblock.usb.shimmer.debug.chunk": "区块 [%s, %s]：已加载=%s，冷却剩余=%s 刻，有效记录=%s",
-  "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | 坐标=%s | 来源=%s | 剩余=%s 刻（-1=永久） | 实体已加载=%s",
+  "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | 坐标=%s | 变体=%s | 来源=%s | 剩余=%s 刻（-1=永久） | 实体已加载=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.truncated": "另有 %s 条记录未展示。",
   "command.unsuspiciousblock.usb.shimmer.debug.expire_failed": "当前维度没有 UUID 为 %s 的有效自然采集点。",
   "command.unsuspiciousblock.usb.shimmer.debug.expired": "已将 %s 标记过期；已加载实体立即清除，否则加载时清除。",
@@ -742,5 +744,6 @@
   "config.jade.plugin_unsuspiciousblock.shimmer_lifetime": "闪烁的光寿命",
   "jade.unsuspiciousblock.shimmer.remaining": "距离消失：%s 分 %s 秒",
   "jade.unsuspiciousblock.shimmer.pan_remaining": "剩余采集次数：%s",
-  "jade.unsuspiciousblock.shimmer.permanent": "不会自然消失"
+  "jade.unsuspiciousblock.shimmer.permanent": "不会自然消失",
+  "command.unsuspiciousblock.usb.shimmer.variant.all": "全部变体"
 }

@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
 import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -65,16 +66,19 @@ public final class ShimmerSpawnService {
     public record ClearResult(int loaded, int deferred) {
     }
 
-    // 按账本处理整个维度，同时补上已加载但尚未完成首 tick 登记的实体。
-    public static ClearResult clear(ServerLevel level, @Nullable ShimmerLedger.Source source) {
+    // 按账本处理整个维度，同时补上已加载但尚未完成首 tick 登记的实体；两条过滤轴为 null 表示不过滤。
+    public static ClearResult clear(ServerLevel level, @Nullable ShimmerLedger.Source source,
+                                    @Nullable ResourceLocation variant) {
         ShimmerLedger ledger = ShimmerLedger.of(level);
-        var candidates = ledger.matchingEntries(source);
+        var candidates = ledger.matchingEntries(source, variant);
         Map<UUID, ShimmerEntity> loaded = new HashMap<>();
         for (var entity : level.getAllEntities()) {
             if (!(entity instanceof ShimmerEntity shimmer) || shimmer.isRemoved()) continue;
             UUID uuid = shimmer.getUUID();
-            // 已加载实体的真实来源优先于旧账本。
-            if (source == null || shimmer.getSpawnSource() == source) {
+            // 已加载实体的真实来源与变体优先于旧账本。
+            boolean sourceMatches = source == null || shimmer.getSpawnSource() == source;
+            boolean variantMatches = variant == null || shimmer.getVariant().id().equals(variant);
+            if (sourceMatches && variantMatches) {
                 candidates.add(uuid);
                 loaded.put(uuid, shimmer);
             } else {
@@ -123,8 +127,9 @@ public final class ShimmerSpawnService {
     static boolean attemptNaturalSpawn(ServerLevel level, boolean bypassCap) {
         ShimmerLedger ledger = ShimmerLedger.of(level);
 
-        // 到达上限后不再尝试生成
-        if (!bypassCap && ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) {
+        // 到达上限后不再尝试生成；上限按变体分别计算
+        ShimmerVariant variant = ShimmerVariants.WATER;
+        if (!bypassCap && ledger.countNatural(variant.id()) >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) {
             return false;
         }
 
@@ -202,7 +207,7 @@ public final class ShimmerSpawnService {
             return null;
         }
         ShimmerLedger.of(level).register(shimmer.getUUID(), waterPos,
-                shimmer.getSpawnSource(), shimmer.getExpiresAt());
+                shimmer.getSpawnSource(), variant.id(), shimmer.getExpiresAt());
         shimmer.playSpawnEffects(level);
         if (trigger == SpawnTrigger.NATURAL) shimmer.broadcastNaturalSpawn(level);
         return shimmer;
@@ -243,10 +248,10 @@ public final class ShimmerSpawnService {
     // 该子指令只针对水域变体，幽微的光没有运行时自然生成入口。
     public static String debugAttemptInChunk(ServerLevel level, ChunkPos chunk) {
         ShimmerLedger ledger = ShimmerLedger.of(level);
-        if (!level.isLoaded(chunk.getWorldPosition())) return "unloaded";
-        if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) return "cap";
-        if (ledger.isCoolingDown(chunk, level.getGameTime())) return "cooldown";
         ShimmerVariant variant = ShimmerVariants.WATER;
+        if (!level.isLoaded(chunk.getWorldPosition())) return "unloaded";
+        if (ledger.countNatural(variant.id()) >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) return "cap";
+        if (ledger.isCoolingDown(chunk, level.getGameTime())) return "cooldown";
         if (!variant.spawnDomain().acceptsChunk(level, chunk, surfaceSearchCenter(level, variant))) {
             return "not_river";
         }

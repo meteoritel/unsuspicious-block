@@ -76,8 +76,31 @@ public class FabricPanningConfig implements IPanningConfig {
                 0, MAX_HARVEST_COOLDOWN_TICKS);
     }
 
+    @Override
+    public double getGoldPanLuckBonus() {
+        return clamp(this.data.gold_pan_luck_bonus, DEFAULT_GOLD_PAN_LUCK_BONUS,
+                MIN_PAN_LUCK_MODIFIER, MAX_PAN_LUCK_MODIFIER);
+    }
+
+    @Override
+    public double getObsidianPanLuckPenalty() {
+        return clamp(this.data.obsidian_pan_luck_penalty, DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY,
+                MIN_PAN_LUCK_MODIFIER, MAX_PAN_LUCK_MODIFIER);
+    }
+
+    @Override
+    public double getGoldPanRegenerationChance() {
+        return clamp(this.data.gold_pan_regeneration_chance, DEFAULT_GOLD_PAN_REGENERATION_CHANCE,
+                MIN_REGENERATION_CHANCE, MAX_REGENERATION_CHANCE);
+    }
+
     private static int clamp(Integer value, int fallback, int min, int max) {
         int raw = value != null ? value : fallback;
+        return Math.max(min, Math.min(max, raw));
+    }
+
+    private static double clamp(Double value, double fallback, double min, double max) {
+        double raw = value != null ? value : fallback;
         return Math.max(min, Math.min(max, raw));
     }
 
@@ -128,5 +151,8 @@ public class FabricPanningConfig implements IPanningConfig {
         private Integer spacing_blocks = DEFAULT_SPACING_BLOCKS;
         private Integer pan_uses = DEFAULT_PAN_USES;
         private Integer harvest_cooldown_ticks = DEFAULT_HARVEST_COOLDOWN_TICKS;
+        private Double gold_pan_luck_bonus = DEFAULT_GOLD_PAN_LUCK_BONUS;
+        private Double obsidian_pan_luck_penalty = DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY;
+        private Double gold_pan_regeneration_chance = DEFAULT_GOLD_PAN_REGENERATION_CHANCE;
     }
 }

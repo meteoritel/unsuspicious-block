@@ -13,6 +13,8 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 @FunctionalInterface
 public interface EntityRendererRegistrar {
 
-    // 为指定实体类型注册渲染器提供者
-    <T extends Entity> void register(EntityType<T> type, EntityRendererProvider<T> provider);
+    // 为指定实体类型注册渲染器提供者。
+    // 参数用 EntityType<? extends T> 而非 EntityType<T>：与 Fabric 的 EntityRendererRegistry.register
+    // 及 NeoForge 的 EntityRenderersEvent.registerEntityRenderer 签名一致，使子类化的实体类型可直接登记。
+    <T extends Entity> void register(EntityType<? extends T> type, EntityRendererProvider<T> provider);
 }

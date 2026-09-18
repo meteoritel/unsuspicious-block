@@ -19,6 +19,12 @@ public interface IPanningConfig {
     int MIN_PAN_USES = 1;
     int MAX_PAN_USES = 16;
 
+    // 工具幸运加成与再生概率的取值范围。幸运是无量纲的原版幸运值，不是百分比。
+    double MIN_PAN_LUCK_MODIFIER = 0.0D;
+    double MAX_PAN_LUCK_MODIFIER = 5.0D;
+    double MIN_REGENERATION_CHANCE = 0.0D;
+    double MAX_REGENERATION_CHANCE = 1.0D;
+
     int DEFAULT_SPAWN_INTERVAL_TICKS = 600;
     int DEFAULT_MAX_PER_DIMENSION = 5;
     int DEFAULT_MIN_LIFETIME_TICKS = 24_000;
@@ -28,6 +34,9 @@ public interface IPanningConfig {
     int DEFAULT_PAN_USES = 3;
     int DEFAULT_HARVEST_COOLDOWN_TICKS = 36_000;
     int MAX_HARVEST_COOLDOWN_TICKS = 1_728_000;
+    double DEFAULT_GOLD_PAN_LUCK_BONUS = 1.0D;
+    double DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY = 0.5D;
+    double DEFAULT_GOLD_PAN_REGENERATION_CHANCE = 0.10D;
 
     // 自然生成的两次尝试之间的间隔刻数
     int getSpawnIntervalTicks();
@@ -52,4 +61,13 @@ public interface IPanningConfig {
 
     // 单个闪烁的光可被淘洗的次数
     int getPanUses();
+
+    // 金淘盘在水域变体上的幸运加成（正值提高稀有产出权重）
+    double getGoldPanLuckBonus();
+
+    // 黑曜石淘盘在水域变体上的幸运减损（正值表示从幸运中扣除，让水中沉积物的产出变差）
+    double getObsidianPanLuckPenalty();
+
+    // 金淘盘单次淘洗后再生一个新的自然淘洗点的概率
+    double getGoldPanRegenerationChance();
 }

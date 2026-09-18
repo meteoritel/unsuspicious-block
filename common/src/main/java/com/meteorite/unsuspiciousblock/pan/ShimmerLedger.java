@@ -1,11 +1,13 @@
 package com.meteorite.unsuspiciousblock.pan;
 
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.level.ChunkPos;
@@ -21,11 +23,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /***
- * 每维度的闪烁的光账本——记录现存淘洗点的位置与来源、寿命与采空冷却。
+ * 每维度的闪烁的光账本——记录现存淘洗点的位置、变体与来源，以及寿命与采空冷却。
  * <p>
  * 由于存盘持久的实体散落在各个区块中，无法廉价地直接统计全维度数量，因此上限计数、间距校验
  * 与采空冷却都由账本集中维护。账本与实体实际状态不一致时以实体为准：实体消散时
  * 主动注销自身，实体恢复 tick 时补登记；不以方块区块加载状态推断实体是否存在。
+ * <p>
+ * 变体是独立于来源的第二条分类轴：自然生成上限按变体分别计数，清除与统计可按变体过滤，
+ * 间距校验则跨变体生效——不同介质的点本就不可能落在同一格。
  */
 public final class ShimmerLedger extends SavedData {
     /***
@@ -45,9 +50,9 @@ public final class ShimmerLedger extends SavedData {
     }
 
     /***
-     * 账本条目——一个现存闪烁的光的位置与来源。
+     * 账本条目——一个现存闪烁的光的位置、来源与变体。
      */
-    public record Entry(BlockPos pos, Source source) {
+    public record Entry(BlockPos pos, Source source, ResourceLocation variant) {
     }
 
     private static final String FILE_NAME = "unsuspiciousblock_shimmer";
@@ -56,6 +61,7 @@ public final class ShimmerLedger extends SavedData {
     private static final String POS_TAG = "pos";
     private static final String SOURCE_TAG = "source";
     private static final String SPECIAL_TAG = "special";
+    private static final String VARIANT_TAG = "variant";
     private static final String EXPIRES_AT_TAG = "expires_at";
     private static final String EXPIRED_TAG = "expired";
     private static final String COOLDOWNS_TAG = "cooldowns";
@@ -70,7 +76,8 @@ public final class ShimmerLedger extends SavedData {
 
     private final Map<UUID, Entry> entries = new LinkedHashMap<>();
     private final Map<Long, Set<UUID>> entriesByChunk = new HashMap<>();
-    private int naturalCount;
+    // 自然生成上限按变体分别计数，增量维护，不扫描世界生成记录。
+    private final Map<ResourceLocation, Integer> naturalCounts = new HashMap<>();
     private final Map<UUID, Long> expirations = new HashMap<>();
     private final Set<UUID> expired = new HashSet<>();
     private final Map<Long, Long> cooldowns = new HashMap<>();
@@ -107,7 +114,8 @@ public final class ShimmerLedger extends SavedData {
             }
             Source source = entryTag.getBoolean(SOURCE_TAG) ? Source.WORLDGEN
                     : entryTag.getBoolean(SPECIAL_TAG) ? Source.SPECIAL : Source.NATURAL;
-            ledger.register(entryTag.getUUID(UUID_TAG), BlockPos.of(entryTag.getLong(POS_TAG)), source);
+            ledger.register(entryTag.getUUID(UUID_TAG), BlockPos.of(entryTag.getLong(POS_TAG)), source,
+                    readVariant(entryTag));
             if (source.hasLifetime()) {
                 ledger.expirations.put(entryTag.getUUID(UUID_TAG),
                         entryTag.contains(EXPIRES_AT_TAG) ? entryTag.getLong(EXPIRES_AT_TAG) : -1L);
@@ -128,6 +136,13 @@ public final class ShimmerLedger extends SavedData {
         return ledger;
     }
 
+    // 变体是后加的字段：旧账本条目缺字段或字段不可解析时按水域变体处理。
+    private static ResourceLocation readVariant(CompoundTag entryTag) {
+        ResourceLocation parsed = entryTag.contains(VARIANT_TAG)
+                ? ResourceLocation.tryParse(entryTag.getString(VARIANT_TAG)) : null;
+        return parsed != null ? parsed : ShimmerVariants.WATER_ID;
+    }
+
     @Override
     public @NotNull CompoundTag save(@NotNull CompoundTag tag, HolderLookup.@NotNull Provider registries) {
         ListTag list = new ListTag();
@@ -137,6 +152,7 @@ public final class ShimmerLedger extends SavedData {
             entryTag.putLong(POS_TAG, BlockPos.asLong(entry.pos().getX(), entry.pos().getY(), entry.pos().getZ()));
             entryTag.putBoolean(SOURCE_TAG, entry.source() == Source.WORLDGEN);
             entryTag.putBoolean(SPECIAL_TAG, entry.source() == Source.SPECIAL);
+            entryTag.putString(VARIANT_TAG, entry.variant().toString());
             if (entry.source().hasLifetime()) {
                 entryTag.putLong(EXPIRES_AT_TAG, this.expirations.getOrDefault(uuid, -1L));
             }
@@ -164,9 +180,9 @@ public final class ShimmerLedger extends SavedData {
 
     // ========== 条目维护 ==========
 
-    // 登记或校正实体，并同步维护空间索引与自然生成计数。
-    private void register(UUID uuid, BlockPos pos, Source source) {
-        Entry updated = new Entry(pos.immutable(), source);
+    // 登记或校正实体，并同步维护空间索引与该变体的自然生成计数。
+    private void register(UUID uuid, BlockPos pos, Source source, ResourceLocation variant) {
+        Entry updated = new Entry(pos.immutable(), source, variant);
         if (updated.equals(this.entries.get(uuid))) {
             return;
         }
@@ -174,7 +190,7 @@ public final class ShimmerLedger extends SavedData {
         this.entries.put(uuid, updated);
         this.entriesByChunk.computeIfAbsent(new ChunkPos(pos).toLong(), key -> new HashSet<>()).add(uuid);
         if (source == Source.NATURAL) {
-            this.naturalCount++;
+            this.naturalCounts.merge(variant, 1, Integer::sum);
         }
         this.setDirty();
     }
@@ -194,20 +210,25 @@ public final class ShimmerLedger extends SavedData {
             this.entriesByChunk.remove(chunkKey);
         }
         if (removed.source() == Source.NATURAL) {
-            this.naturalCount--;
+            this.naturalCounts.computeIfPresent(removed.variant(), (key, count) -> count > 1 ? count - 1 : null);
         }
         this.setDirty();
     }
 
-    // 自然生成数量为增量维护，不扫描世界生成记录。
-    public int countNatural() {
-        return this.naturalCount;
+    // 指定变体的自然生成数量；上限按变体分别计算
+    public int countNatural(ResourceLocation variant) {
+        return this.naturalCounts.getOrDefault(variant, 0);
+    }
+
+    // 全部变体的自然生成数量之和，供汇总统计使用
+    public int countNaturalOfAllVariants() {
+        return this.naturalCounts.values().stream().mapToInt(Integer::intValue).sum();
     }
 
     // 截止时间与实体共用；过期标记保留到实体加载并注销，防止旧实体补登记复活。
-    public void register(UUID uuid, BlockPos pos, Source source, long expiresAt) {
+    public void register(UUID uuid, BlockPos pos, Source source, ResourceLocation variant, long expiresAt) {
         if (this.expired.contains(uuid)) return;
-        this.register(uuid, pos, source);
+        this.register(uuid, pos, source, variant);
         if (source.hasLifetime() && !Long.valueOf(expiresAt).equals(this.expirations.put(uuid, expiresAt))) {
             this.setDirty();
         }
@@ -248,24 +269,34 @@ public final class ShimmerLedger extends SavedData {
         return this.cooldowns.getOrDefault(chunk.toLong(), 0L) > gameTime;
     }
 
-    // 调试统计只读取账本和已加载实体，不加载区块或实体文件。
-    public int countWorldgen() {
-        return (int) this.entries.values().stream().filter(entry -> entry.source() == Source.WORLDGEN).count();
+    // 调试统计只读取账本和已加载实体，不加载区块或实体文件；variant 为 null 时统计全部变体。
+    public int countWorldgen(@Nullable ResourceLocation variant) {
+        return this.countBySource(Source.WORLDGEN, variant);
     }
 
-    public int countSpecial() {
-        return (int) this.entries.values().stream().filter(entry -> entry.source() == Source.SPECIAL).count();
+    public int countSpecial(@Nullable ResourceLocation variant) {
+        return this.countBySource(Source.SPECIAL, variant);
+    }
+
+    private int countBySource(Source source, @Nullable ResourceLocation variant) {
+        return (int) this.entries.values().stream()
+                .filter(entry -> entry.source() == source)
+                .filter(entry -> variant == null || entry.variant().equals(variant))
+                .count();
     }
 
     public Set<UUID> expiredSnapshot() {
         return Set.copyOf(this.expired);
     }
 
-    // 返回待清除候选的快照；null 表示全部来源，不触碰区块或实体文件。
-    public Set<UUID> matchingEntries(@Nullable Source source) {
+    // 返回待清除候选的快照；null 表示该维度上的全部来源或全部变体，不触碰区块或实体文件。
+    public Set<UUID> matchingEntries(@Nullable Source source, @Nullable ResourceLocation variant) {
         Set<UUID> result = new HashSet<>();
         this.entries.forEach((uuid, entry) -> {
-            if (source == null || entry.source() == source) result.add(uuid);
+            if ((source == null || entry.source() == source)
+                    && (variant == null || entry.variant().equals(variant))) {
+                result.add(uuid);
+            }
         });
         return result;
     }
@@ -312,7 +343,7 @@ public final class ShimmerLedger extends SavedData {
         return true;
     }
 
-    // 仅查询间距范围覆盖的区块，不扫描整个维度的记录。
+    // 仅查询间距范围覆盖的区块，不扫描整个维度的记录；跨变体生效。
     public boolean isTooClose(BlockPos pos, int minSpacingBlocks) {
         if (minSpacingBlocks <= 0) {
             return false;

@@ -1,5 +1,5 @@
 {
-  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] Clear %s: removed %s loaded entities, marked %s unloaded entities for removal. Future spawning and active rate sessions continue.",
+  "command.unsuspiciousblock.usb.shimmer.clear.result": "[%s] Clear %s / %s: removed %s loaded entities, marked %s unloaded entities for removal. Future spawning and active rate sessions continue.",
   "command.unsuspiciousblock.usb.shimmer.clear.type.natural": "natural spawns",
   "command.unsuspiciousblock.usb.shimmer.clear.type.worldgen": "worldgen spawns",
   "command.unsuspiciousblock.usb.shimmer.clear.type.special": "special spawns",
@@ -591,10 +591,9 @@
   "command.unsuspiciousblock.usb.favor.reset.success": "Cat favor state has been reset.",
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "Could not access this player's cat favor data.",
 
-  "command.unsuspiciousblock.usb.shimmer.spawn.success": "Spawned a Shimmer on anchor block %1$s (source: %2$s, pan uses left: %3$s).",
-  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "Cannot spawn at %s: the block above must be air; point the position at the anchor block (water or ice).",
+  "command.unsuspiciousblock.usb.shimmer.spawn.success": "Spawned %2$s on anchor block %1$s (source: %3$s, pan uses left: %4$s).",
+  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "Cannot spawn %2$s at %1$s: the block above must be air; point the position at the anchor block.",
   "command.unsuspiciousblock.usb.shimmer.error.spawn_failed": "Failed to spawn a Shimmer at %s.",
-  "command.unsuspiciousblock.usb.shimmer.error.unknown_source": "Unknown source: %s (expected natural / worldgen).",
 
   "entity.unsuspiciousblock.messenger_cat":"Cat Messenger",
   "entity.unsuspiciousblock.swordsman_cat":"Swordsman Cat",
@@ -723,7 +722,10 @@
   "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "Loot panned out of river sediment with the Copper Pan.",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "Panning",
   "unsuspiciousblock.configgui.panning.harvest_cooldown_ticks": "Harvest area cooldown (ticks)",
-  "command.unsuspiciousblock.usb.shimmer.debug.help": "Shimmer debug: attempt | stats [all] | chunk | expire <uuid> | cooldown set <seconds> | cooldown clear | spawn <pos> [natural|worldgen|special] [frozen] (frozen binds ice instead of water) | rate start <seconds> [intervalTicks] | rate status | rate stop | clear <natural|worldgen|special|all> [current|all|dimension <id>]. Uses command position/dimension; 20 ticks = 1 game second. Rate sessions spawn real entities and restore configured scheduling when finished.",
+  "unsuspiciousblock.configgui.panning.gold_pan_luck_bonus": "Gold Pan luck bonus (luck points)",
+  "unsuspiciousblock.configgui.panning.obsidian_pan_luck_penalty": "Obsidian Pan luck penalty on water (luck points)",
+  "unsuspiciousblock.configgui.panning.gold_pan_regeneration_chance": "Gold Pan regeneration chance",
+  "command.unsuspiciousblock.usb.shimmer.debug.help": "Shimmer debug: attempt | stats [variant] [all] | chunk | expire <uuid> | cooldown set <seconds> | cooldown clear | spawn <pos> [variant|natural|worldgen|special] [natural|worldgen|special] [frozen] (frozen lays ice; variant defaults to water, source to manual) | rate start <seconds> [intervalTicks] | rate status | rate stop | clear <variant|natural|worldgen|special|all> [natural|worldgen|special|all] [current|all|dimension <id>]. Uses command position/dimension; 20 ticks = 1 game second. Rate sessions spawn real entities and restore configured scheduling when finished.",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt": "Chunk [%s, %s] spawn attempt: %s",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.unloaded": "Chunk is not loaded",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.cap": "Natural spawn cap reached",
@@ -731,9 +733,9 @@
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.not_river": "River biome precheck failed",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.success": "Spawned one natural Shimmer",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.no_position": "No spawn: 12 samples failed water/biome/spacing checks, or entity insertion failed",
-  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] Natural: %s/%s; special: %s; worldgen: %s; awaiting removal (expired/cleared): %s (unloaded: %s, loaded: %s); next automatic attempt in %s ticks. Ledger counts only; entity files are not scanned.",
+  "command.unsuspiciousblock.usb.shimmer.debug.stats": "[%s] Variant: %s; natural: %s/%s; special: %s; worldgen: %s; awaiting removal (expired/cleared): %s (unloaded: %s, loaded: %s); next automatic attempt in %s ticks. Ledger counts only; entity files are not scanned.",
   "command.unsuspiciousblock.usb.shimmer.debug.chunk": "Chunk [%s, %s]: loaded=%s, cooldown=%s ticks, active records=%s",
-  "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | pos=%s | source=%s | remaining=%s ticks (-1=permanent) | entity loaded=%s",
+  "command.unsuspiciousblock.usb.shimmer.debug.entry": "UUID=%s | pos=%s | variant=%s | source=%s | remaining=%s ticks (-1=permanent) | entity loaded=%s",
   "command.unsuspiciousblock.usb.shimmer.debug.truncated": "%s additional records omitted.",
   "command.unsuspiciousblock.usb.shimmer.debug.expire_failed": "No active natural Shimmer with UUID %s in this dimension.",
   "command.unsuspiciousblock.usb.shimmer.debug.expired": "Marked %s expired; loaded entity removed, otherwise it will be cleared on load.",
@@ -742,5 +744,6 @@
   "config.jade.plugin_unsuspiciousblock.shimmer_lifetime": "Shimmer Lifetime",
   "jade.unsuspiciousblock.shimmer.remaining": "Disappears in: %s min %s sec",
   "jade.unsuspiciousblock.shimmer.pan_remaining": "Pan uses left: %s",
-  "jade.unsuspiciousblock.shimmer.permanent": "Does not naturally disappear"
+  "jade.unsuspiciousblock.shimmer.permanent": "Does not naturally disappear",
+  "command.unsuspiciousblock.usb.shimmer.variant.all": "all variants"
 }

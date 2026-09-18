@@ -14,6 +14,9 @@ public interface AnchorRule {
     // 该方块是否为可依附介质，不校验上方是否为空气
     boolean isAnchorBlock(BlockState state);
 
+    // 代表介质方块——调试指令据此铺设测试点，取该变体最典型的依附介质
+    BlockState mediumState();
+
     // 该位置是否构成有效依附：介质方块 + 上方空气
     default boolean isValid(LevelReader level, BlockPos pos) {
         return this.isAnchorBlock(level.getBlockState(pos))

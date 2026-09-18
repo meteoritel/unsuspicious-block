@@ -21,6 +21,11 @@ public final class WaterAnchor implements AnchorRule {
     }
 
     @Override
+    public BlockState mediumState() {
+        return Blocks.WATER.defaultBlockState();
+    }
+
+    @Override
     public boolean isFrozenAt(LevelReader level, BlockPos pos) {
         return level.getBlockState(pos).is(Blocks.ICE);
     }

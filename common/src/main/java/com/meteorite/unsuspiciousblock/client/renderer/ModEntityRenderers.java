@@ -23,7 +23,7 @@ public class ModEntityRenderers {
      * @param provider 渲染器提供者
      */
     public record RendererEntry<T extends Entity>(
-            Supplier<EntityType<T>> type,
+            Supplier<EntityType<? extends T>> type,
             EntityRendererProvider<T> provider) {}
 
     // 渲染器注册清单——新增实体渲染器只需在此添加一行

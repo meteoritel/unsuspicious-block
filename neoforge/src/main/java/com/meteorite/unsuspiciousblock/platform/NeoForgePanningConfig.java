@@ -16,6 +16,9 @@ public class NeoForgePanningConfig implements IPanningConfig {
     private static final ModConfigSpec.IntValue SPACING_BLOCKS;
     private static final ModConfigSpec.IntValue PAN_USES;
     private static final ModConfigSpec.IntValue HARVEST_COOLDOWN_TICKS;
+    private static final ModConfigSpec.DoubleValue GOLD_PAN_LUCK_BONUS;
+    private static final ModConfigSpec.DoubleValue OBSIDIAN_PAN_LUCK_PENALTY;
+    private static final ModConfigSpec.DoubleValue GOLD_PAN_REGENERATION_CHANCE;
 
     public static final ModConfigSpec SERVER_CONFIG_SPEC;
 
@@ -102,6 +105,36 @@ public class NeoForgePanningConfig implements IPanningConfig {
                         IPanningConfig.MIN_PAN_USES, IPanningConfig.MAX_PAN_USES);
         builder.pop();
 
+        builder.push("tool");
+        GOLD_PAN_LUCK_BONUS = builder
+                .comment("金淘盘在水域变体上的幸运加成（原版幸运值，非百分比）。默认 "
+                        + IPanningConfig.DEFAULT_GOLD_PAN_LUCK_BONUS + "。",
+                        "",
+                        "Luck bonus of the Gold Pan on water variants, in vanilla luck points. Default "
+                        + IPanningConfig.DEFAULT_GOLD_PAN_LUCK_BONUS + ".")
+                .translation("unsuspiciousblock.configgui.panning.gold_pan_luck_bonus")
+                .defineInRange("gold_pan_luck_bonus", IPanningConfig.DEFAULT_GOLD_PAN_LUCK_BONUS,
+                        IPanningConfig.MIN_PAN_LUCK_MODIFIER, IPanningConfig.MAX_PAN_LUCK_MODIFIER);
+        OBSIDIAN_PAN_LUCK_PENALTY = builder
+                .comment("黑曜石淘盘在水域变体上的幸运减损（原版幸运值，非百分比）。默认 "
+                        + IPanningConfig.DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY + "。",
+                        "",
+                        "Luck penalty of the Obsidian Pan on water variants, in vanilla luck points. Default "
+                        + IPanningConfig.DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY + ".")
+                .translation("unsuspiciousblock.configgui.panning.obsidian_pan_luck_penalty")
+                .defineInRange("obsidian_pan_luck_penalty", IPanningConfig.DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY,
+                        IPanningConfig.MIN_PAN_LUCK_MODIFIER, IPanningConfig.MAX_PAN_LUCK_MODIFIER);
+        GOLD_PAN_REGENERATION_CHANCE = builder
+                .comment("金淘盘单次淘洗后再生一个新的自然淘洗点的概率。默认 "
+                        + IPanningConfig.DEFAULT_GOLD_PAN_REGENERATION_CHANCE + "。",
+                        "",
+                        "Chance for the Gold Pan to spawn a replacement natural Shimmer after a harvest. Default "
+                        + IPanningConfig.DEFAULT_GOLD_PAN_REGENERATION_CHANCE + ".")
+                .translation("unsuspiciousblock.configgui.panning.gold_pan_regeneration_chance")
+                .defineInRange("gold_pan_regeneration_chance", IPanningConfig.DEFAULT_GOLD_PAN_REGENERATION_CHANCE,
+                        IPanningConfig.MIN_REGENERATION_CHANCE, IPanningConfig.MAX_REGENERATION_CHANCE);
+        builder.pop();
+
         SERVER_CONFIG_SPEC = builder.build();
     }
 
@@ -143,5 +176,20 @@ public class NeoForgePanningConfig implements IPanningConfig {
     @Override
     public int getPanUses() {
         return PAN_USES.get();
+    }
+
+    @Override
+    public double getGoldPanLuckBonus() {
+        return GOLD_PAN_LUCK_BONUS.get();
+    }
+
+    @Override
+    public double getObsidianPanLuckPenalty() {
+        return OBSIDIAN_PAN_LUCK_PENALTY.get();
+    }
+
+    @Override
+    public double getGoldPanRegenerationChance() {
+        return GOLD_PAN_REGENERATION_CHANCE.get();
     }
 }

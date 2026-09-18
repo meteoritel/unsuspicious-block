@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.pan.ShimmerLedger;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.pan.variant.GlowStyle;
 import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
-import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -31,12 +30,15 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /***
- * 闪烁的光——淘盘专属的液面淘洗点实体。
+ * 闪烁的光——淘盘专属的液面淘洗点实体的抽象基类，全部变体共用这套机制骨架。
  * <p>
  * 该实体依附于其下方的介质方块而存在：位置永远锚定在该方块上，方块被破坏或被占据时立刻消散，
  * 且不参与碰撞、不受流体推动、不可被攻击破坏。依附介质、波光配色、粒子与音效全部由
  * {@link ShimmerVariant} 提供，服务端与客户端各自从注册表取同一份数据，因此变体本身无需同步。
  * 它只响应可采该变体的淘盘，有限寿命来源被淘空后消散，世界生成来源保留并恢复次数。
+ * <p>
+ * 具体变体由子类实现 {@link #getVariant()} 声明，继承深度固定为 1 层；子类中不允许出现介质分支，
+ * 一旦出现即说明该差异应下沉进变体数据。
  * <p>
  * 按来源分为三类：
  * <ul>
@@ -46,7 +48,7 @@ import org.jetbrains.annotations.Nullable;
  * </ul>
  * 渲染完全依赖液面粒子与贴面波光，淘洗次数越少粒子越稀疏，用于向玩家暗示剩余价值。
  */
-public class ShimmerEntity extends Entity {
+public abstract class ShimmerEntity extends Entity {
     private static final String NBT_PAN_REMAINING = "PanRemaining";
     private static final String NBT_NATURAL_SPAWN = "NaturalSpawn";
     private static final String NBT_SPECIAL_SPAWN = "SpecialSpawn";
@@ -181,11 +183,8 @@ public class ShimmerEntity extends Entity {
         return this.hasLifetime && !this.specialSpawn;
     }
 
-    // 本实体所属变体——依附介质与全部表现参数都由它决定。
-    // P1b 拆分子类后由具体子类返回各自常量，本阶段只有水域一个变体。
-    public ShimmerVariant getVariant() {
-        return ShimmerVariants.WATER;
-    }
+    // 本实体所属变体——依附介质与全部表现参数都由它决定，由具体子类返回各自常量。
+    public abstract ShimmerVariant getVariant();
 
     // 返回其依附的水方块坐标
     public BlockPos getAnchorPos() {
@@ -291,7 +290,7 @@ public class ShimmerEntity extends Entity {
         }
         if (!this.ledgerRegistered && this.level() instanceof ServerLevel serverLevel) {
             ShimmerLedger.of(serverLevel).register(this.getUUID(), this.anchorPos,
-                    this.getSpawnSource(), this.expiresAt);
+                    this.getSpawnSource(), this.getVariant().id(), this.expiresAt);
             this.ledgerRegistered = true;
         }
     }

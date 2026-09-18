@@ -7,6 +7,8 @@
 > **复核修订（第二轮）**：§3.2 补充泛型放宽在 `ModEntityRenderers` 处的编译约束；§3.4 修正 `Level.getSeaLevel()` 硬编码 63 的事实与影响范围；§4.3 要求 `luckByVariant` 惰性求值；§4.9 补齐改动清单；§6 新增 10~12 条风险。
 >
 > **复核修订（第三轮）**：变体载体裁定为**两个 EntityType**（§5 裁定 1 已记录采纳理由与被否决的备选）。§3.2 补充 `defineId` 约束与裁定说明；§4.8 把 P1 拆为 P1a（变体数据层，实体不动）与 P1b（实体层次拆分），并把 `RendererEntry` 泛型改造、工厂换构造器、渲染器清单补行分别落到对应阶段；§6 新增第 13 条（实体层面的反向降级代价）。
+>
+> **实施记录（P1a 已实机验收，P1b / P2 / P3 已完成，构建通过，待一次合并验收）**：新增 §3.9 记录「冰中的淘洗点不可淘洗」是刻意保留的特性。P1a 的实机验收已通过，未发现行为差异。实施中确认了两处对计划的收窄：`AnchorRule.isRenderableSurface` 实现为 `default` 方法（由 `isAnchorBlock` 派生）而非抽象方法；`surfaceOffset` 只服务实体演出，渲染器继续用 `fluid.getHeight(...)`，以免引入 0.014 格的可见变化。另有一处刻意的语义放宽：铜盘修复材料由硬编码 `minecraft:copper_ingot` 改为 `c:ingots/copper` 标签（`PanProfile.repairTag` 的必然结果）。
 
 ## 一、现状
 
@@ -90,18 +92,14 @@
 - **选择器与数据包可区分**：`@e[type=...]`、`/place feature`、生成蛋、后续扩展都按类型工作。
 - **Jade 无需重复注册**：见 §3.5。
 
-代价是 `ModEntities.SHIMMER` 的泛型要从 `Supplier<EntityType<ShimmerEntity>>` 放宽为 `Supplier<EntityType<? extends ShimmerEntity>>`。
+代价是渲染器注册链必须改造，**但泛型不必放宽**（P1b 实施修正）：
 
-**这个代价比原先估计的大（源码核实：会直接编译失败）**。`ModEntityRenderers` 的 `RendererEntry<T extends Entity>` 同时接收 `Supplier<EntityType<T>>` 与 `EntityRendererProvider<T>`。`SHIMMER` 一旦放宽，`new RendererEntry<>(() -> ModEntities.SHIMMER.get(), ShimmerRenderer::new)` 就无法通过类型推导——`T` 会被固定为 `ShimmerEntity`，而 `EntityType<? extends ShimmerEntity>` 不是 `EntityType<ShimmerEntity>`。新增 `GLIMMER` 那条同理（`ShimmerRenderer extends EntityRenderer<ShimmerEntity>`）。
+- `EntityType<T>` 的泛型不协变，`EntityType<WaterShimmerEntity>` 装不进 `EntityType<ShimmerEntity>`，因此 `ModEntities.SHIMMER` 按具体子类声明为 `Supplier<EntityType<WaterShimmerEntity>>`（`GLIMMER` 同理）。
+- 曾按本节原方案尝试放宽为 `Supplier<EntityType<? extends ShimmerEntity>>`，**编译失败**，但失败原因与原先的推断不同：`EntityEntry` 清单里的 setter 是隐式类型 lambda，javac 会在类型推断完成前检查其 lambda 体，此时 `T` 仍只是推断变量，`Supplier<EntityType<T>>` 到 `Supplier<EntityType<? extends ShimmerEntity>>` 无法被证明为合法。改成按具体子类声明后 setter 类型精确匹配，问题消失，也不需要任何强制转换。
+- `ModEntityRenderers` 仍然必须改：`RendererEntry<T>` 同时接收 `Supplier<EntityType<T>>` 与 `EntityRendererProvider<T>`，而 `ShimmerRenderer extends EntityRenderer<ShimmerEntity>` 要求 `T = ShimmerEntity`，两个参数无法共存。改为 `Supplier<EntityType<? extends T>>` 后成立——这恰好与两个平台 API 的既有签名一致（Fabric `EntityRendererRegistry.register` 与 NeoForge `EntityRenderersEvent.registerEntityRenderer` 都已核实为 `EntityType<? extends T>`），因此项目自己的 `EntityRendererRegistrar` 也一并对齐，平台侧零改动、零强制转换。
+- `ModEntities.createShimmerType()` 的 `EntityType.Builder.of(ShimmerEntity::new, ...)` 必须换成具体子类构造器（抽象基类无法实例化），`GLIMMER` 同理。
 
-落地时以下三件事必须一并完成：
-
-1. `client/renderer/ModEntityRenderers.java` 的 `RendererEntry` 改为
-   `record RendererEntry<T extends Entity>(Supplier<EntityType<? extends T>> type, EntityRendererProvider<T> provider)`；
-2. 渲染器清单补一行 `new RendererEntry<>(() -> ModEntities.GLIMMER.get(), ShimmerRenderer::new)`。**该文件原先漏在 §4.9 的改动清单外，但它是必须改的**：未登记渲染器的实体类型在客户端 `EntityRenderDispatcher.getRenderer` 取不到渲染器（返回 null，不抛异常），随后渲染时 NPE；
-3. `ModEntities.createShimmerType()` 的 `EntityType.Builder.of(ShimmerEntity::new, ...)` 必须换成具体子类构造器（抽象基类无法实例化），`GLIMMER` 同理。
-
-只有渲染器这处会断：`EntityEntry<ShimmerEntity>` 的 setter 赋值不受影响，`Supplier<EntityType<ShimmerEntity>>` 到 `Supplier<EntityType<? extends ShimmerEntity>>` 的协变是合法的。
+**`client/renderer/ModEntityRenderers.java` 原先漏在 §4.9 的改动清单外，但它是必须改的**：未登记渲染器的实体类型在客户端 `EntityRenderDispatcher.getRenderer` 取不到渲染器（返回 null，不抛异常），随后渲染时 NPE。
 
 **关键约束**：基类必须保留 `ShimmerEntity` 这个名字（由具体类改为抽象类），这样所有 `instanceof ShimmerEntity` 的位置——渲染器、声音控制器、生成服务、Jade、调试指令——都零改动。
 
@@ -188,6 +186,18 @@ int rolls = this.rolls.getInt(context) + Mth.floor(this.bonusRolls.getFloat(cont
 - **`EntityDataSerializers` 没有 UUID 序列化器**：介质同步用 `STRING` 拼接 UUID 列表，或拆成两个 `LONG`。
 - **准星命中结果只有本地玩家有**：`Minecraft.crosshairPickEntity` 在远端玩家身上不可用，所以远端玩家要正确显示介质必须由服务端同步。
 - **过期的世界点不占名额**：账本与实体不一致时以实体为准，改造后仍需保持。
+
+### 3.9 冰中的淘洗点不可淘洗（刻意保留的行为，实机确认）
+
+冰面属于水域变体的可依附介质（`WaterAnchor.isAnchorBlock` 认 `Blocks.ICE`），因此冰中的点能生成、能存活、也能通过 `canPan()` 的状态校验，但**玩家永远淘不到它**：
+
+- 起手与持续判定都走 `ProjectileUtil.getHitResultOnViewVector`，该射线以 `ClipContext.Block.COLLIDER` 在第一个带碰撞箱的方块处截断；
+- 实体包围盒自依附方块底部起高 0.9，整体落在实心冰块内部，射线止于冰块顶面，够不到实体；
+- 水方块没有碰撞箱，射线可穿透，所以只有冰面会触发这个现象。
+
+**这是刻意保留的特性，不是缺陷**——水结冰本就不该让玩家隔着冰面淘洗。它依赖两条隐式不变量：实体包围盒高度不超过 1；依附介质是完整碰撞箱方块。因此改动 `ModEntities.createShimmerType()` 的 `.sized(...)`，或新增带碰撞箱的依附介质，都会改变这个行为。岩浆没有碰撞箱，幽微的光不受影响。
+
+由此产生一处刻意的不对称：冰面的点在账本里**照常占用名额**（worldgen 来源不计入自然上限，自然来源与特殊再生则会计入），只是无人能采集它。若将来需要收口，可在落点采样时按「依附介质是否带碰撞箱」排除。
 
 ## 四、技术路线
 
@@ -334,9 +344,9 @@ if (!(stack.getItem() instanceof PanItem pan) || !pan.profile().supports(this.ge
 | 阶段 | 内容 | 验证方式 |
 |---|---|---|
 | **P1a 变体数据层** | 引入 `ShimmerVariant` / `AnchorRule` / `SpawnDomain` / `GlowStyle` / `ShimmerVariants`，只注册 `water`；`CopperPanItem` → `PanItem` + `PanProfile`；地物参数化 + `ShimmerFeatureConfig`。**实体类暂不动**，`getVariant()` 临时返回 water 变体常量（P1b 再换成子类常量实现） | `./gradlew build`；自然生成、`/usb shimmer spawn`、淘洗产出、两视角动画与改前完全一致；旧存档正常加载。**这一步不碰实体注册、不碰渲染器清单、不动泛型**，因此不会触发 §3.2 的编译面 |
-| **P1b 实体层次拆分** | `ShimmerEntity` 抽象化 + `WaterShimmerEntity`；`ModEntities.SHIMMER` 泛型放宽、`createShimmerType()` 换 `WaterShimmerEntity::new`；`ModEntityRenderers.RendererEntry` 改为接收 `Supplier<EntityType<? extends T>>`。此阶段仍只有 water 一个变体 | `./gradlew build`；重跑 P1a 的全部验证项，重点确认**客户端仍能正常渲染闪烁的光**（渲染器清单若因泛型改造漏行，表现是渲染时 NPE 而非启动失败）；旧存档实体正常加载 |
-| **P2 账本与配置** | `Entry` 加 `variant`（缺省 water）；计数与过滤带变体参数；新增 `getGoldPanLuckBonus` / `getObsidianPanLuckPenalty` 与两端实现、配置 GUI 语言键 | 旧存档读入无异常；`stats` 输出不变 |
-| **P3 指令变体轴** | `spawn <pos> [variant] [source]`（按变体铺水或铺岩浆）、`clear <variant\|all> <source\|all> [范围]`、`stats [variant] [all]`、`chunk` 显示变体；`attempt` 仅水变体；`rate` 不需要变体轴 | 各子指令输出正确 |
+| **P1b 实体层次拆分**（已完成） | `ShimmerEntity` 抽象化 + `WaterShimmerEntity`；`ModEntities.SHIMMER` 按具体子类声明为 `Supplier<EntityType<WaterShimmerEntity>>`、`createShimmerType()` 换 `WaterShimmerEntity::new`；`ModEntityRenderers.RendererEntry` 与 `EntityRendererRegistrar` 改为接收 `EntityType<? extends T>`。此阶段仍只有 water 一个变体 | `./gradlew build`；重跑 P1a 的全部验证项，重点确认**客户端仍能正常渲染闪烁的光**（渲染器清单若漏行，表现是渲染时 NPE 而非启动失败）；旧存档实体正常加载 |
+| **P2 账本与配置**（已完成） | `Entry` 加 `variant`（缺省 water）；自然生成上限改为按变体分别计数；清除与统计带变体过滤；新增 `getGoldPanLuckBonus` / `getObsidianPanLuckPenalty` / `getGoldPanRegenerationChance` 三项与两端实现、配置语言键（配置项在 P4/P6 才被消费，但统一在配置步骤落地） | 旧存档读入无异常；`stats` 输出新增变体标签，其余数值不变 |
+| **P3 指令变体轴**（已完成） | `spawn <pos> [<变体>\|<来源>] [<来源>] [frozen]`（按变体铺该变体的代表介质）、`clear <变体\|<来源>\|all> [<来源>\|all] [范围]`、`stats [<变体>] [all]`、`chunk` 每条记录显示变体；`attempt` 仅水变体；`rate` 不需要变体轴。变体名由注册表路径名生成字面量，新增变体自动获得指令入口；第一位参数同时接受变体名与来源名，因此**原有 `spawn <坐标> <来源>` 与 `clear <来源>` 语法保持可用** | 各子指令输出正确 |
 | **P4 金淘盘 + 幸运表** | `gold_pan` 物品（耐久 24、`c:ingots/gold`）；`luckByVariant = {water: +配置}`；再生走既有钩子并改为按变体找落点；`river.json` 加入三档幸运条目；tooltip、配方、tag、创造栏、语言键、帧模型与帧贴图（含 `atlases/blocks.json` 的 unstitch 条目，必须与贴图同批落地） | 把幸运加成临时调到 3 观察门槛系必出；调回 1.0 复验 |
 | **P5 幽微的光** | `GlimmerEntity` + `ModEntities.GLIMMER` + `createGlimmerType()`（`GlimmerEntity::new`）+ **`ModEntityRenderers` 新增一行**；变体 `glimmer`（`LavaAnchor` / `NetherDomain` / 紫色 `GlowStyle` / `gameplay/panning/lava`）；`nether_shimmer` 地物与两端注入；客户端颜色、粒子、音效按变体取 | `/usb shimmer spawn <pos> glimmer worldgen`；**客户端能渲染幽微的光**；紫色波光；依附失效消散；把 `chance` 临时设为 1 验证新区块注入 |
 | **P6 黑曜石淘盘** | `obsidian_pan` 物品（耐久 64、`c:obsidians/normal`）；`luckByVariant = {water: -配置}`；`DATA_PANNERS` 玩家集合同步 + `PanningMediumIndex`（含未刷新条目淘汰）+ `panning_medium` 属性；水/岩浆两套帧模型 | 两种点都能淘；第三人称看他人采幽微的光为岩浆帧；水点产出明显低于铜盘 |
@@ -365,15 +375,18 @@ entity/GlimmerEntity.java            client/pan/PanningMediumIndex.java
 entity/ShimmerEntity.java            改为抽象基类
 item/CopperPanItem.java              删除，并入 PanItem
 item/ModItems.java                   新增 gold_pan / obsidian_pan 清单项与配置创建方法
-entity/ModEntities.java              新增 glimmer；SHIMMER 泛型放宽；两处工厂改具体子类构造器
+entity/ModEntities.java              新增 glimmer；两处工厂改具体子类构造器，SHIMMER 按具体子类声明
 pan/ShimmerPlacement.java            参数化，介质与群系由变体注入
 pan/ShimmerSpawnService.java         按变体生成与清除；两处 level.getSeaLevel() 改为生成器取值
 pan/ShimmerLedger.java               Entry 增加 variant 字段与变体过滤
 pan/PanningLootService.java          按变体选表 + 叠加工具幸运 + 笔记上下文传变体表 id
-command/ShimmerDebugCommand.java     变体轴
+command/ShimmerDebugCommand.java     变体轴（`spawn`/`clear`/`stats`/`chunk`，变体名与来源名共用首层字面量）
+pan/variant/AnchorRule.java          新增 `mediumState()`，供指令铺设该变体的代表介质
+pan/variant/ShimmerVariants.java     新增路径名查找与补全清单，供指令使用
 platform/services/IPanningConfig.java 两个幸运配置项
 client/renderer/ShimmerSurfaceRenderer.java   颜色与液面判定按变体
-client/renderer/ModEntityRenderers.java       RendererEntry 支持通配符泛型 + 新增 glimmer 行
+client/renderer/ModEntityRenderers.java       RendererEntry 改为接收 EntityType<? extends T> + 新增 glimmer 行
+client/renderer/EntityRendererRegistrar.java  回调签名与两个平台 API 对齐为 EntityType<? extends T>
 client/pan/PanningVisuals.java       为每把盘注册两个属性
 client/pan/PanningAnimation.java     instanceof PanItem
 client/pan/PanningSound.java         音效与偏移按变体
@@ -427,7 +440,7 @@ neoforge  data/.../neoforge/biome_modifier/add_nether_shimmer.json  新增
 
 | # | 决策项 | 裁定 |
 |---|---|---|
-| 1 | 变体载体 | 两个 EntityType：`shimmer` 与 `glimmer`，共同继承抽象基类。**已裁定采纳**，并接受其已知代价：`ModEntities.SHIMMER` 泛型放宽会连锁到 `ModEntityRenderers.RendererEntry`（必须改为接收 `Supplier<EntityType<? extends T>>`，原计划清单遗漏该文件）；两个工厂须换具体子类构造器；`defineId` 必须留在基类且子类不得覆写 `defineSynchedData`；P1 拆成 P1a（变体数据层，实体不动）与 P1b（实体拆分）。**平行评估并否决**了「单 EntityType + 同步变体 id」：它在 P1 回归面与反向降级行为上更优，但会让幽微的光在数据包、选择器与外部工具眼里不是一个独立实体，与本计划「变体 = 注册项」的定位冲突 |
+| 1 | 变体载体 | 两个 EntityType：`shimmer` 与 `glimmer`，共同继承抽象基类。**已裁定并已实施**，实际代价比原估更小：渲染器链需要改造（`ModEntityRenderers.RendererEntry` 与 `EntityRendererRegistrar` 改为 `EntityType<? extends T>`，与两个平台 API 对齐，平台侧零改动），但 **`ModEntities.SHIMMER` 的泛型不需要放宽**——按具体子类声明 `Supplier<EntityType<WaterShimmerEntity>>` 即可，原先判断的「协变合法但改法繁琐」不成立，真实障碍是隐式 lambda 的提前类型检查；两个工厂须换具体子类构造器；`defineId` 必须留在基类且子类不得覆写 `defineSynchedData`；P1 拆成 P1a（变体数据层，实体不动，已完成需验收）与 P1b（实体拆分，已完成）。**平行评估并否决**了「单 EntityType + 同步变体 id」：它在 P1 回归面与反向降级行为上更优，但会让幽微的光在数据包、选择器与外部工具眼里不是一个独立实体，与本计划「变体 = 注册项」的定位冲突 |
 | 2 | 差异表达 | 数据注册表 + 两个算法接口；工具用基类 + 数据档案 |
 | 3 | 产出表归属 | 由变体决定，不由工具决定 |
 | 4 | 笔记归类 | 两表都自动归入「淘洗」，笔记侧零代码改动 |

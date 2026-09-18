@@ -9,8 +9,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.level.storage.loot.LootTable;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /***
@@ -43,6 +45,9 @@ public final class ShimmerVariants {
 
     private static final Map<ResourceLocation, ShimmerVariant> BY_ID = createIndex();
 
+    // 变体路径名清单——调试指令用不带命名空间的短名输入与补全
+    private static final List<String> PATHS = BY_ID.keySet().stream().map(ResourceLocation::getPath).toList();
+
     // 地物配置与账本条目以变体 id 持久化，读取时经由此编解码器还原为变体数据
     public static final Codec<ShimmerVariant> CODEC =
             ResourceLocation.CODEC.xmap(ShimmerVariants::get, ShimmerVariant::id);
@@ -63,6 +68,17 @@ public final class ShimmerVariants {
             throw new IllegalArgumentException("Unknown shimmer variant: " + id);
         }
         return variant;
+    }
+
+    // 按路径名查找——命令输入用；未登记时返回 null，由调用方给出可读的失败提示
+    @Nullable
+    public static ShimmerVariant byPath(String path) {
+        return BY_ID.get(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path));
+    }
+
+    // 全部变体的路径名，供调试指令补全
+    public static List<String> paths() {
+        return PATHS;
     }
 
     private static void register(Map<ResourceLocation, ShimmerVariant> index, ShimmerVariant variant) {
