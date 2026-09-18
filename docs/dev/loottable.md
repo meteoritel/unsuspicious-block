@@ -16,18 +16,31 @@
 
 ```
 loottable/
-├── catalog/      目录数据结构与收录匹配
-│   ├── LootTableCatalog            TableDefinition / ItemDefinition 等记录类型
+├── source/       单轮重载的资源快照
+│   └── LootTableSourceSnapshot  一次列举拿到全表"有效原文 + 完整资源栈"，解析/建图/哈希共用
+├── graph/        引用关系权威
+│   ├── LootTableReferenceGraph  直接子表 / 可达集 / 子树 / 强连通环 / 子树摘要
+│   ├── LootTableEdge            边类型：JSON_REFERENCE 参与静态语义，RUNTIME_INJECTION 只参与结构
+│   └── RuntimeLootLinks         平台注入关系与"钓鱼上下文"判定的唯一来源
+├── analysis/     战利品表 JSON 编译
+│   ├── LootTableCompiler        单表 JSON → 上下文无关的编译产物
+│   ├── CompiledLootTable        事件流：本表直接物品路径 + 引用位置（保序、不去重）
+│   ├── LootConditionHandler(s|Info)  战利品条件分析与描述
+│   ├── LootFunctionHandler(s)      战利品函数分析
+│   └── LootParseUtil               条件分析、函数链拼接与类型规范化的唯一实现
+├── catalog/      读模型与查询
+│   ├── LootTableCatalog         跨模块共享的记录类型
+│   ├── Probability              概率值类型（未知 / 不可达 / 已测量）
+│   ├── LootTableProjector       图 + 编译产物 → 静态投影
+│   ├── StaticTableProjection    静态展平物品路径与子表入口（概率为占位）
+│   ├── ItemDefinitionAccumulator 同签名多路径合并的唯一实现
+│   ├── CatalogQueryIndex        子树物品等跨表聚合的唯一入口
+│   ├── CatalogTableDto          网络形态：场景假设每表只发一次
 │   ├── LootTablePattern            收录规则解析与匹配
 │   ├── LootTableNames              表名/本地化 key 工具
 │   ├── LootTableTranslationStore      服务端整合包级补充语言存储
 │   ├── MissingTranslationKeyExporter  游戏资源与服务端配置的缺失 key 诊断快照
 │   └── (ArchaeologyJournalCatalog 在 journal/catalog/，调用本包)
-├── analysis/     战利品表 JSON 解析
-│   ├── LootTableJsonParser         解析 loot_table JSON 为 TableDefinition
-│   ├── LootConditionHandler(s|Info)  战利品条件分析与描述
-│   ├── LootFunctionHandler(s)      战利品函数分析
-│   └── LootParseUtil               解析工具
 ├── signature/    结果签名
 │   ├── LootResultSignature         签名 record（核心）
 │   ├── LootResultMatcher           运行时掉落与候选签名匹配
@@ -45,7 +58,7 @@ loottable/
 │   ├── LootContextParamFiller      模拟用 LootParams 构建（宽松回退）
 │   ├── SimulationFakePlayer        模拟用假玩家
 │   ├── SimulationFishingHook       模拟用假钓鱼浮标（钓鱼表 THIS_ENTITY）
-│   └── ProbabilityFormat           概率格式化
+│   └── ProbabilityFormat           概率值 → 展示文本（唯一格式化入口，仅 UI 边界调用）
 ├── injection/    战利品注入
 │   ├── ArchaeologyLootInjector     注入器接口
 │   └── ArchaeologyLootInjectors    全局注册器（单例）
@@ -54,6 +67,24 @@ loottable/
     ├── MudDredgingCondition         泥底打捞附魔资格条件
     └── ToolEnchantmentChanceCondition 工具附魔等级概率条件
 ```
+
+解析与追踪按**四层管线**组织，每层只依赖上一层：
+
+```
+ResourceManager
+   └─(每次重载只读一次)→ LootTableSourceSnapshot
+          ├─→ LootTableReferenceGraph ─→ 闭包 / SCC / 子树摘要 / 分型边
+          └─→ CompiledLootTable ──────→ LootTableProjector → StaticTableProjection
+                                            ↑                       │
+                        LootTableReferenceGraph ────────────────────┘
+
+StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ 模拟结果 → CatalogTableDto
+```
+
+- **快照**：全表有效原文（编译用，最高优先级层）与完整资源栈（哈希用），`JsonElement` 按需重解析。
+- **图**：引用关系唯一权威；`loot_table` 类型识别、环检测、闭包、子树摘要都从这里出。
+- **编译**：单表**上下文无关**的局部语义。同一个子表在不同引用位置产出的物品路径不同（条件与函数被引用位置改写），因此编译产物只记"本表直接物品路径 + 引用位置"，绝不缓存展开后的子表结果；item tag 在编译期展开为具体物品。
+- **投影**：链接期把父表的继承条件与函数链拼到子表语义上，复现首跳归属、条件继承顺序、函数继承与近似降级三条语义。
 
 ## 3. 目录数据结构
 
@@ -66,13 +97,13 @@ TableDefinition{
   type: String,                  声明类型
   items: List<ItemDefinition>,   物品条目
   simulationCount: int,          模拟次数（0 表示未模拟）
-  childTables: List<ResourceLocation>, 引用的子表
+  childTables: List<ResourceLocation>, 引用的子表（只含真正产出物品的表）
   childTableProbabilities: List       子表至少产出一个物品的摘要与分场景概率
 }
 
 ItemDefinition{
   id, displayName, tooltipHint,
-  probability: String,           概率字符串（"?"/"0"/"<0.01%"/"12%"，按 2 位有效数字格式化）
+  probability: Probability,      概率值（未知 / 不可达 / 已测量）
   signature: LootResultSignature,物品签名
   acquisitionPaths: List<LootAcquisitionPath>,  获取路径
   injected: boolean,             是否模拟期发现的注入条目
@@ -87,7 +118,22 @@ LootAcquisitionPath{
 }
 ```
 
-`acquisitionPaths` 记录一个物品在表中的所有获取路径（可能来自不同 pool、不同子表、不同条件），用于在 UI 中展示"如何获得"。`injected=true` 表示该条目不在原始 JSON 中，而是模拟期由 GLM 或 LootTableEvents.MODIFY 注入发现的。
+`acquisitionPaths` 记录一个物品在表中的所有获取路径（可能来自不同 pool、不同子表、不同条件），用于在 UI 中展示"如何获得"。`injected=true` 表示该条目不在原始 JSON 中，而是模拟期由 GLM 或 LootTableEvents.MODIFY 注入发现的。`sourceChildTable` 只记**第一跳**：从根表观察时孙表的条件汇总回直接子表，父表页签的归属才不会错位。
+
+### 3.1 概率值类型
+
+概率**不是**字符串。[`Probability`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/catalog/Probability.java) 是 sealed 值类型，三个互斥状态取代了原先共用一个字符串的五种语义：
+
+| 状态 | 含义 | 展示文本 |
+|---|---|---|
+| `Unknown` | 未被任何代表场景覆盖，或条目带条件而抽样零出现（**不是**不可达） | `?` |
+| `Unreachable` | 该场景被静态判定不可达 | `0%` |
+| `Measured(lower, upper?)` | 实际抽样比例；`upper` 非空表示跨场景区间 | `12%` / `<0.01%` / `3%-7%` |
+
+- 构造即校验有限数值与 `0 ≤ lower ≤ upper ≤ 1`，非法值在构造点抛出，不会流到 UI 变成乱码。
+- "抽样 10000 次一次未出现"是 `Measured(0.0)`（展示 `<0.01%`），"静态不可达"是 `Unreachable`（展示 `0%`）。两者曾经都写成 `"0"`，正是"把没算到显示成不可能"那类问题的根源。
+- **格式化只发生在 UI 边界**（`ProbabilityFormat.format`）。数据层、存档缓存、网络与排序一律用数值，不存在"把界面文本反解回数值来排序"的做法。
+- 服务端内部保留 `lowerBound()` / `upperBound()` 访问器用于排序与聚合；不统计产量期望，也不持久化展示文本。
 
 ## 4. 签名机制
 
@@ -172,14 +218,21 @@ List.of(
 
 ## 6. 解析流程
 
-[`LootTableJsonParser`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LootTableJsonParser.java) 解析 loot_table JSON 为 `TableDefinition`：
+[`ArchaeologyJournalCatalog.load`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/ArchaeologyJournalCatalog.java)（在 `journal/catalog/` 包）按四层管线构建目录：
 
-- 遍历 pools / entries，提取物品、条件、函数。
-- `LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`（含描述与概率提示），供 UI 展示。
-- 识别 `loot_table` 类型 entry（嵌套表引用），建立父子关系。
-- 此阶段概率字段为 `"?"` 占位符，等待模拟填充。
+```
+capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排除集 → compile 闭包内每张表
+             → project 每张表 → 组装静态读模型与分类结构 → 算每表哈希 → 原子发布
+```
 
-解析结果交给 [`ArchaeologyJournalCatalog.load`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/ArchaeologyJournalCatalog.java)（在 `journal/catalog/` 包），构建完整目录与分类结构。解析细节见 [考古笔记系统](journal.md) 的目录构建部分。
+- **快照**（`LootTableSourceSnapshot.capture`）：一次 `listMatchingResourceStacks` 拿到全表。栈首是该表在本次重载下的**有效原文**（等价 `listMatchingResources` / `getResource`），整个栈用于哈希（等价 `getResourceStack`）；原文与 `JsonElement` 惰性读取并缓存。
+- **图**（`LootTableReferenceGraph.build`）：有效 JSON 引用边 + 平台注入合成边。合成边施加**双端存在守卫**，目标已由 JSON 引用覆盖时不重复加边；邻接表按目标去重但保序。
+- **环排除**：只对追踪根的初始可达集计算强连通分量，其成员被排除出收录闭包并输出一次性告警；与考古目录无关的第三方表循环不新增告警。
+- **编译**（`LootTableCompiler`）：单表 JSON → 上下文无关的 `CompiledLootTable`。遇到 `loot_table` 引用只记 `ReferenceSite` 不跟随；`item` / `tag` 记物品路径，其中 **item tag 在编译期展开为具体物品**（签名按具体物品生成，存档缓存也按具体签名索引）。
+- **投影**（`LootTableProjector`）：沿 JSON 引用把编译产物链接起来，复现三条语义——首跳子表归属、条件继承顺序（上层传入 → 本表内已继承 → 本事件自身）、函数继承与 `APPROX_ITEM_ONLY` 降级。引用位置按出现顺序逐个进入，**不去重也不合并**：同一子表在两处被引用且条件不同时两条获取路径都要保留。
+- **读模型**：`LootTableProjection` 展平出的 `TableDefinition` 只收真正产出物品的表；无物品的表既不进目录也不作为子表入口。此阶段概率为 `Probability.unknown()` 占位，等待模拟填充。
+
+`LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`；条件分析、函数链拼接与多路径合并各只有一份实现（`LootParseUtil`、`ItemDefinitionAccumulator`），保证编译路径与投影路径产出逐位一致的条件指纹与签名。
 
 ## 7. 概率模拟
 
@@ -225,13 +278,15 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 
 概率计算规则：
 
-| 出现次数 | 条件 | 概率字符串 |
+| 出现次数 | 条件 | 概率值 |
 |---|---|---|
-| - | 当前代表场景静态不可达 | `"0"` |
-| - | 条目在所有代表场景中都不适用（条件组合超出代表场景上限） | `"?"`（未被覆盖，不等于不可达） |
-| 0 | `hasConditions` | `"?"`（条件性物品，模拟可能未覆盖） |
-| 0 | 无条件 | `"<0.01%"` |
-| >0 | - | `formatPercent(appearances / 10000)` |
+| - | 当前代表场景静态不可达 | `Unreachable`（展示 `0%`） |
+| - | 条目在所有代表场景中都不适用（条件组合超出代表场景上限） | `Unknown`（未被覆盖，不等于不可达） |
+| 0 | `hasConditions` | `Unknown`（条件性物品，模拟可能未覆盖） |
+| 0 | 无条件 | `Measured(0.0)`（展示 `<0.01%`） |
+| >0 | - | `Measured(appearances / 10000)` |
+
+条目摘要由该条目的场景集合汇总：全等取其值；含 `Unknown` 则整体 `Unknown`；否则取跨场景区间的下界与上界（`Measured(lower, upper)`）。展示文本由 `ProbabilityFormat` 在 UI 边界生成。
 
 模拟期才发现的动态条目同样按每个代表场景中的实际出现次数计算概率。由于这些条目没有可供静态
 判定的获取路径，只保存实际观测到该签名的场景。动态条目中的非附魔 `DataComponentPatch` 使用
@@ -252,6 +307,14 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 场景规划（按无约束处理，条目因此保留在各场景中而非被判成不可达）并告警一次——否则解析期与运行时
 的两个实例必然算出不同指纹，场景覆盖会静默失效。运行时另有兜底：属于场景控制类型、却没有被任何
 代表场景覆盖的条件，会在该表模拟完成时汇总告警，提示这部分数值是按真实逻辑求值得到的。
+
+**已知的预期告警**：`minecraft:gameplay/fishing` 重模拟时会出现一条
+`有 1 个场景控制类型条件未被代表场景覆盖 … minecraft:entity_properties`。这来自追加的泥地打捞
+注入场景——它们有意只带 `location_check` 的类型默认值、**不带**基础场景的条件指纹表，好让注入路径上的
+`entity_properties`（`in_open_water`）交给真实逻辑（假浮标 `SimulationFishingHook`）判定：若把基础场景的
+指纹表传进去，"默认"场景会把 `in_open_water` 归一到 `false`，反而把宝箱与泥地打捞的条目强制判成不可达。
+因此这条告警是"该场景按真实逻辑求值"的诚实信号，不是指纹失效；它只在该表**实际发生模拟**时输出
+（缓存命中时不会出现），无需处理。
 
 | 条件 | 当前处理方式 |
 |---|---|
@@ -305,7 +368,16 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 ### 7.4 模拟结果缓存
 
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`；恢复时由规划器重建场景条件描述。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的 `0` 场景能够汇总到直接子表。动态条目的直接来源标记（`hasDirectSource`）与子表来源列表（`sourceChildTables`）会一并持久化到父表缓存，恢复时优先使用缓存的来源信息，仅在其缺失时才用直接子表及其后代缓存中的相同签名重建获取路径。旧单值 NBT 可读，但统计口径或运行时表来源变化会通过缓存版本自动失效；当前版本为 `loot-analysis-v12`。模拟异常或无法取得有效表时不写入缓存。`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。详见 [考古笔记系统](journal.md) 的目录构建部分。
+模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。每个签名和子表入口同时保存摘要概率与 `scenario_key -> probability`，概率以值类型的三态结构存储；恢复时由规划器重建场景条件描述。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的不可达场景能够汇总到直接子表。动态条目的直接来源标记（`hasDirectSource`）与子表来源列表（`sourceChildTables`）会一并持久化到父表缓存，恢复时优先使用缓存的来源信息，仅在其缺失时才用直接子表及其后代缓存中的相同签名重建获取路径。
+
+**缓存格式与失效**：
+
+- 存档根带 `format_version`（当前 2）。读取时先校验版本与**严格的 NBT tag 类型**——根缺少版本、版本不符、概率仍是旧版 `StringTag`（注意这并**不是**"字段缺失"，必须按类型显式判定），或单个表的条目无法解析时，一律把对应表按**缓存未命中**处理：既不报错中断，也不迁移数值、更不把类型不匹配解成 0。
+- 每表还存一份内容哈希，输入为该表**子树内每张表**的完整资源栈摘要与编译产物摘要。后者必须覆盖整棵子树而不只是本表，否则"子表引用的 item tag 成员变化"（JSON 文本不变、只有展开结果变）不会让父表失效。
+- 统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v13`。模拟异常或无法取得有效表时不写入缓存。
+- `/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。
+
+**重载一致性**：整轮重载的静态部分（快照 / 图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）在同一轮局部构建完成，再通过单个 volatile 引用**原子发布**，读取方只会看到上一代的完整状态或新一代的完整静态部分。模拟结果作为该代的 overlay 随进度增长，提交时校验代次，旧代结果不会写入新代。`invalidate()` 只需丢掉引用，资源快照与投影随之释放。详见 [考古笔记系统](journal.md) 的目录构建部分。
 
 ## 8. 战利品注入
 
@@ -339,6 +411,8 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需在 `JournalNbtMigrator` 补充连续迁移步骤。
 - **新增战利品条件**：参考 `MudDredgingCondition`，在 `ModLootConditions` 注册类型，两端各自注册到注册表。
 - **新增场景控制类型**：把类型加入 `SimulationScenarioPlanner` 的 `SCENARIO_CONDITIONS`，并为其补一个 `test` 转交作用域的窄 Mixin；类型须实现为 record 或覆写 `toString()`，否则指纹稳定性判定会把它排除出场景规划（见 7.2）。
+- **新增运行时联动边（平台注入 / 表间运行时关系）**：在 `RuntimeLootLinks` 声明标识符与边，并在 `LootTableEdge.Kind` 中显式选型——`RUNTIME_INJECTION` 只参与收录闭包、目录层级与哈希，**不参与静态语义链接**，条目仍由模拟期动态发现并保持 `injected=true`。合成边只在两端资源都存在时才会注入。
+- **修改概率口径**：`Probability` 是不变式载体，新增状态需同时更新存档与网络的穷尽 codec 与 `ProbabilityFormat`；任何情况下都不要把展示文本写回数据层，也不要反解文本做数值比较。
 - **平台注入器**：Fabric 端如需新的注入逻辑，实现 `ArchaeologyLootInjector` 并在 `onInitialize` 调 `ArchaeologyLootInjectors.register`。
 - **模拟调优**：`SIMULATION_COUNT`（精度 vs 性能）、`TICK_BUDGET_NANOS` 与批次大小（吞吐 vs tick 占用）是主要可调参数。
 
