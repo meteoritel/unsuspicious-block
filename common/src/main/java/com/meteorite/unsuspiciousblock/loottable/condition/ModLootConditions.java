@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -51,7 +52,7 @@ public final class ModLootConditions {
 
     // 注册自定义条件的静态描述
     public static void registerAnalysisHandlers() {
-        ResourceLocation mudDredging = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "mud_dredging");
+        ResourceLocation mudDredging = RuntimeLootLinks.MUD_DREDGING_CONDITION;
         ResourceLocation toolChance = ResourceLocation.fromNamespaceAndPath(
                 Constants.MOD_ID, "random_chance_with_tool_enchantment");
         LootConditionHandlers.register(mudDredging, new DescriptionHandler("mud_dredging",

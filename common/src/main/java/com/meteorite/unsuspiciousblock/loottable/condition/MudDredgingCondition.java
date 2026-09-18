@@ -1,14 +1,13 @@
 package com.meteorite.unsuspiciousblock.loottable.condition;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.storage.loot.LootContext;
@@ -27,7 +26,7 @@ public record MudDredgingCondition(boolean swamp) implements LootItemCondition, 
             instance.group(Codec.BOOL.optionalFieldOf("swamp", false).forGetter(MudDredgingCondition::swamp))
                     .apply(instance, MudDredgingCondition::new));
     public static final ResourceKey<LootTable> MUD_DREDGING = ResourceKey.create(Registries.LOOT_TABLE,
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging"));
+            RuntimeLootLinks.MUD_DREDGING_TABLE);
 
     @Override
     public boolean test(LootContext context) {

@@ -1,23 +1,17 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableJsonParser;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
+import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,39 +19,46 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 考古笔记目录加载器——构建收录闭包、引用层级与基于 type 的目录分类。
+ * 考古笔记目录加载器——基于引用图构建收录闭包与引用层级，并按声明类型分类。
+ * <p>
+ * 引用关系的唯一权威是 {@link LootTableReferenceGraph}：直接子表、可达集、循环集合
+ * 与子树遍历都从图取出，本类不再自行扫描 JSON 或实现环检测。
  */
 public final class ArchaeologyJournalCatalog {
-    private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
-    private static final ResourceLocation FISHING =
-            ResourceLocation.withDefaultNamespace("gameplay/fishing");
-    private static final ResourceLocation MUD_DREDGING =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging");
 
     private ArchaeologyJournalCatalog() {
     }
 
-    // 加载考古笔记目录：构建引用图 → 检测循环引用 → 解析表 → 加载分类 → 组装结果
-    public static LoadResult load(ResourceManager resourceManager, HolderLookup.Provider registries) {
-        Map<ResourceLocation, Resource> resources = LOOT_TABLES.listMatchingResources(resourceManager);
-        Map<ResourceLocation, List<ResourceLocation>> graph = buildReferenceGraph(resources);
-        addRuntimeInjectedReferences(graph);
-        Set<ResourceLocation> explicitlyTrackedTables = new LinkedHashSet<>();
-        for (ResourceLocation tableId : graph.keySet()) {
-            if (LootTableNames.isArchaeologyLootTable(tableId)) explicitlyTrackedTables.add(tableId);
+    /**
+     * 加载考古笔记目录：建图 → 算初始可达集与环排除集 → 解析有效表 → 加载分类 → 组装结果。
+     *
+     * @param sourceSnapshot 本轮资源快照（有效原文 + 完整资源栈）
+     * @param resourceManager 仅用于加载目录分类资源，不再用于读取战利品表
+     */
+    public static LoadResult load(LootTableSourceSnapshot sourceSnapshot, ResourceManager resourceManager,
+                                  HolderLookup.Provider registries) {
+        LootTableReferenceGraph referenceGraph = LootTableReferenceGraph.build(
+                sourceSnapshot, RuntimeLootLinks.syntheticEdges());
+
+        Set<ResourceLocation> trackedRoots = new LinkedHashSet<>();
+        for (ResourceLocation tableId : referenceGraph.nodes()) {
+            if (LootTableNames.isArchaeologyLootTable(tableId)) {
+                trackedRoots.add(tableId);
+            }
         }
 
-        Set<ResourceLocation> initialClosure = collectReachable(explicitlyTrackedTables, graph, Set.of());
-        Set<ResourceLocation> cycleTables = findCycleTables(initialClosure, graph);
-        Set<ResourceLocation> validClosure = collectReachable(explicitlyTrackedTables, graph, cycleTables);
+        Set<ResourceLocation> initialClosure = referenceGraph.reachableFrom(trackedRoots);
+        Set<ResourceLocation> cycleTables = reportCycles(referenceGraph, initialClosure);
+        Set<ResourceLocation> validClosure = referenceGraph.reachableFrom(trackedRoots, cycleTables);
 
         LootTableJsonParser parser = new LootTableJsonParser(
                 validClosure::contains, LootTableNames::resolveDisplayName, cycleTables);
-        Map<ResourceLocation, TableDefinition> parsed = parser.load(resourceManager, registries);
+        Map<ResourceLocation, TableDefinition> parsed = parser.load(sourceSnapshot, registries);
 
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (Map.Entry<ResourceLocation, TableDefinition> entry : parsed.entrySet()) {
-            List<ResourceLocation> children = graph.getOrDefault(entry.getKey(), List.of()).stream()
+            // 子表入口只收录真正产出物品的表：图是纯拓扑，无物品的表不进目录也不作为入口。
+            List<ResourceLocation> children = referenceGraph.directChildren(entry.getKey()).stream()
                     .filter(parsed::containsKey)
                     .toList();
             tables.put(entry.getKey(), entry.getValue().withChildTables(children));
@@ -69,127 +70,33 @@ public final class ArchaeologyJournalCatalog {
 
         JournalCategoryLoader.CategorySet categories = JournalCategoryLoader.load(resourceManager);
         LinkedHashMap<ResourceLocation, ResourceLocation> rootCategories = new LinkedHashMap<>();
-        for (ResourceLocation tableId : explicitlyTrackedTables) {
+        for (ResourceLocation tableId : trackedRoots) {
             TableDefinition table = tables.get(tableId);
             if (table == null) continue;
             rootCategories.put(table.id(), categories.classify(table.id(), table.type()));
         }
         CatalogStructure structure = new CatalogStructure(categories.definitions(), rootCategories);
-        return new LoadResult(Map.copyOf(tables), structure);
+        return new LoadResult(Map.copyOf(tables), structure, referenceGraph);
     }
 
-    // 平台注入不会出现在原始 JSON 引用图中，在公共目录层补充两端一致的逻辑引用。
-    private static void addRuntimeInjectedReferences(Map<ResourceLocation, List<ResourceLocation>> graph) {
-        if (!graph.containsKey(FISHING) || !graph.containsKey(MUD_DREDGING)) {
-            return;
-        }
-        LinkedHashSet<ResourceLocation> references = new LinkedHashSet<>(
-                graph.getOrDefault(FISHING, List.of()));
-        references.add(MUD_DREDGING);
-        graph.put(FISHING, List.copyOf(references));
-    }
-
-    // 构建战利品表引用图：遍历所有 loot_table 资源，解析每个表中的直接引用关系
-    private static Map<ResourceLocation, List<ResourceLocation>> buildReferenceGraph(
-            Map<ResourceLocation, Resource> resources) {
-        LinkedHashMap<ResourceLocation, List<ResourceLocation>> graph = new LinkedHashMap<>();
-        for (Map.Entry<ResourceLocation, Resource> entry : resources.entrySet()) {
-            ResourceLocation tableId = LOOT_TABLES.fileToId(entry.getKey());
-            LinkedHashSet<ResourceLocation> references = new LinkedHashSet<>();
-            try (Reader reader = entry.getValue().openAsReader()) {
-                collectDirectReferences(JsonParser.parseReader(reader), references);
-            } catch (Exception exception) {
-                Constants.LOG.warn("读取战利品表引用关系失败 {}", tableId, exception);
-            }
-            graph.put(tableId, List.copyOf(references));
-        }
-        return graph;
-    }
-
-    // 递归收集 JSON 元素中的直接战利品表引用（type 为 loot_table 或 minecraft:loot_table 的条目）
-    private static void collectDirectReferences(JsonElement element, Set<ResourceLocation> output) {
-        if (element == null || element.isJsonNull()) return;
-        if (element.isJsonArray()) {
-            element.getAsJsonArray().forEach(child -> collectDirectReferences(child, output));
-            return;
-        }
-        if (!element.isJsonObject()) return;
-        JsonObject object = element.getAsJsonObject();
-        if (object.has("type") && object.get("type").isJsonPrimitive()) {
-            String type = object.get("type").getAsString();
-            if (type.equals("loot_table") || type.equals("minecraft:loot_table")) {
-                JsonElement idElement = object.has("value") ? object.get("value") : object.get("name");
-                if (idElement != null && idElement.isJsonPrimitive()) {
-                    ResourceLocation id = ResourceLocation.tryParse(idElement.getAsString());
-                    if (id != null) output.add(id);
-                }
-                return;
-            }
-        }
-        object.entrySet().forEach(entry -> collectDirectReferences(entry.getValue(), output));
-    }
-
-    // 从根节点出发 BFS 收集所有可达节点，排除 specified 集合中的节点
-    private static Set<ResourceLocation> collectReachable(Set<ResourceLocation> roots,
-                                                           Map<ResourceLocation, List<ResourceLocation>> graph,
-                                                           Set<ResourceLocation> excluded) {
-        LinkedHashSet<ResourceLocation> result = new LinkedHashSet<>();
-        ArrayList<ResourceLocation> queue = new ArrayList<>(roots);
-        for (int index = 0; index < queue.size(); index++) {
-            ResourceLocation current = queue.get(index);
-            if (excluded.contains(current) || !graph.containsKey(current) || !result.add(current)) continue;
-            for (ResourceLocation child : graph.getOrDefault(current, List.of())) {
-                if (!excluded.contains(child)) queue.add(child);
-            }
-        }
-        return result;
-    }
-
-    // 在给定节点集合中检测循环引用，返回所有参与循环的表 ID
-    private static Set<ResourceLocation> findCycleTables(Set<ResourceLocation> nodes,
-                                                          Map<ResourceLocation, List<ResourceLocation>> graph) {
-        Map<ResourceLocation, VisitState> states = new HashMap<>();
-        List<ResourceLocation> stack = new ArrayList<>();
-        Set<ResourceLocation> cycleTables = new HashSet<>();
-        Set<String> reported = new HashSet<>();
-        for (ResourceLocation node : nodes) {
-            if (!states.containsKey(node)) dfsCycles(node, nodes, graph, states, stack, cycleTables, reported);
+    /**
+     * 输出追踪根初始可达集内的循环告警，返回需要排除出闭包的环上表集合。
+     * <p>
+     * 环的发现与排除只作用于该 scope：与考古目录无关的第三方表循环不新增告警，
+     * 也不会影响本目录的收录结果。
+     */
+    private static Set<ResourceLocation> reportCycles(LootTableReferenceGraph graph,
+                                                      Set<ResourceLocation> scope) {
+        Set<ResourceLocation> cycleTables = new LinkedHashSet<>();
+        for (Set<ResourceLocation> component : graph.cyclicComponentsIn(scope)) {
+            cycleTables.addAll(component);
+            Constants.LOG.warn("检测到战利品表循环引用，排除闭环: {}", component);
         }
         return cycleTables;
     }
 
-    // DFS 遍历检测循环引用，发现环时记录日志并将环中所有节点加入排除集合
-    private static void dfsCycles(ResourceLocation node, Set<ResourceLocation> nodes,
-                                  Map<ResourceLocation, List<ResourceLocation>> graph,
-                                  Map<ResourceLocation, VisitState> states, List<ResourceLocation> stack,
-                                  Set<ResourceLocation> cycleTables, Set<String> reported) {
-        states.put(node, VisitState.VISITING);
-        stack.add(node);
-        for (ResourceLocation child : graph.getOrDefault(node, List.of())) {
-            if (!nodes.contains(child)) continue;
-            VisitState state = states.get(child);
-            if (state == VisitState.VISITING) {
-                int start = stack.indexOf(child);
-                List<ResourceLocation> cycle = new ArrayList<>(stack.subList(start, stack.size()));
-                cycleTables.addAll(cycle);
-                cycle.add(child);
-                String signature = cycle.toString();
-                if (reported.add(signature)) {
-                    Constants.LOG.warn("检测到战利品表循环引用，排除闭环: {}", cycle);
-                }
-            } else if (state == null) {
-                dfsCycles(child, nodes, graph, states, stack, cycleTables, reported);
-            }
-        }
-        stack.removeLast();
-        states.put(node, VisitState.VISITED);
-    }
-
-    public record LoadResult(Map<ResourceLocation, TableDefinition> tables, CatalogStructure structure) {
-    }
-
-    private enum VisitState {
-        VISITING,
-        VISITED
+    /** 目录加载结果：收录到的表、分类结构，以及本轮引用图（供哈希等下游复用同一份拓扑）。 */
+    public record LoadResult(Map<ResourceLocation, TableDefinition> tables, CatalogStructure structure,
+                             LootTableReferenceGraph referenceGraph) {
     }
 }

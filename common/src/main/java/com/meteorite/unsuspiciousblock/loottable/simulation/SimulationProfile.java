@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -37,9 +38,11 @@ public record SimulationProfile(
         conditionTypeDefaults = Map.copyOf(conditionTypeDefaults);
     }
 
-    // 创建当前目录概率统计使用的“满足获取条件”场景
-    public static SimulationProfile eligibleConditions(ServerLevel level, ResourceLocation tableId) {
-        boolean fishing = tableId.getPath().contains("fishing");
+    // 创建当前目录概率统计使用的“满足获取条件”场景；上下文由表自己声明的 type 决定，
+    // 不再按表 id 的 path 猜测，避免命名里带 fishing 的非钓鱼表被误判。
+    public static SimulationProfile eligibleConditions(ServerLevel level, String declaredType) {
+        boolean fishing = RuntimeLootLinks.contextKind(declaredType)
+                == RuntimeLootLinks.SimulationContext.FISHING;
         ItemStack defaultTool = new ItemStack(fishing ? Items.FISHING_ROD : Items.DIAMOND_PICKAXE);
         return new SimulationProfile(
                 Vec3.ZERO,

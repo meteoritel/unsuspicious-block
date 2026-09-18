@@ -3,12 +3,12 @@ package com.meteorite.unsuspiciousblock.loottable.analysis;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
@@ -17,11 +17,8 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.Resource;
-import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -32,8 +29,6 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.io.BufferedReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -45,18 +40,19 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * 通用战利品表 JSON 解析器——从资源包加载战利品表 JSON，
+ * 通用战利品表 JSON 解析器——从资源快照读取战利品表 JSON，
  * 解析为 {@link TableDefinition} 与 {@link ItemDefinition}。
  * <p>
  * 通过 {@link Predicate} 过滤器决定哪些表纳入解析，
  * 通过 {@link Function} 解析器决定表展示名，实现与具体业务（考古、钓鱼等）解耦。
+ * 读盘、有效原文选择与子表展开所需的 JSON 一律取自 {@link LootTableSourceSnapshot}，
+ * 解析器自身不持有 {@code ResourceManager}。
  * <p>
  * 解析期间自动分析 entry 的 conditions 数组，通过 {@link LootConditionHandlers}
  * 静态评估条件并生成人类可读描述，供 UI 展示条件触发信息。
  */
 public final class LootTableJsonParser {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
     private static final String ENCHANTED_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted";
     private static final String APPROXIMATE_HINT_KEY = "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate";
 
@@ -77,33 +73,34 @@ public final class LootTableJsonParser {
     }
 
     /**
-     * 从 ResourceManager 加载所有匹配 filter 的战利品表。
+     * 从快照解析所有匹配 filter 的战利品表。
+     * 表的有效原文与子表展开都取自快照，解析器不再自行读盘。
      */
-    public Map<ResourceLocation, TableDefinition> load(ResourceManager resourceManager,
+    public Map<ResourceLocation, TableDefinition> load(LootTableSourceSnapshot sourceSnapshot,
                                                        HolderLookup.Provider registries) {
         DynamicOps<JsonElement> lootOps = RegistryOps.create(JsonOps.INSTANCE, registries);
-        Map<ResourceLocation, Resource> allResources = LOOT_TABLES.listMatchingResources(resourceManager);
-        List<Map.Entry<ResourceLocation, Resource>> orderedResources = new ArrayList<>();
-        for (Map.Entry<ResourceLocation, Resource> entry : allResources.entrySet()) {
-            ResourceLocation tableId = LOOT_TABLES.fileToId(entry.getKey());
+        List<ResourceLocation> orderedTables = new ArrayList<>();
+        for (ResourceLocation tableId : sourceSnapshot.tableIds()) {
             if (tableFilter.test(tableId)) {
-                orderedResources.add(Map.entry(tableId, entry.getValue()));
+                orderedTables.add(tableId);
             }
         }
-        orderedResources.sort(Comparator.comparing(entry -> entry.getKey().toString()));
+        orderedTables.sort(Comparator.comparing(ResourceLocation::toString));
 
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
-        for (Map.Entry<ResourceLocation, Resource> entry : orderedResources) {
-            ResourceLocation tableId = entry.getKey();
-            try (BufferedReader reader = entry.getValue().openAsReader()) {
-                JsonElement element = JsonParser.parseReader(reader);
-                TableDefinition definition = parseTable(tableId, element, resourceManager,
+        for (ResourceLocation tableId : orderedTables) {
+            JsonElement element = sourceSnapshot.effectiveJson(tableId);
+            if (element == null) {
+                continue;
+            }
+            try {
+                TableDefinition definition = parseTable(tableId, element, sourceSnapshot,
                         new LinkedHashSet<>(), lootOps);
                 if (!definition.items().isEmpty()) {
                     tables.put(tableId, definition);
                 }
-            } catch (IOException | RuntimeException exception) {
-                LOGGER.warn("Failed to read loot table {}", entry.getKey(), exception);
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Failed to read loot table {}", tableId, exception);
             }
         }
 
@@ -113,10 +110,10 @@ public final class LootTableJsonParser {
     // ==================== 解析核心 ====================
 
     private TableDefinition parseTable(ResourceLocation tableId, JsonElement element,
-                                       ResourceManager resourceManager, Set<ResourceLocation> expandingStack,
+                                       LootTableSourceSnapshot sourceSnapshot, Set<ResourceLocation> expandingStack,
                                        DynamicOps<JsonElement> lootOps) {
         LinkedHashMap<String, ItemDefinitionBuilder> items = new LinkedHashMap<>();
-        ParseContext ctx = new ParseContext(items, resourceManager, expandingStack,
+        ParseContext ctx = new ParseContext(items, sourceSnapshot, expandingStack,
                 lootOps, null, List.of(), List.of());
         parseNode(element, ctx);
 
@@ -317,29 +314,29 @@ public final class LootTableJsonParser {
             return;
         }
 
-        ResourceLocation filePath = LOOT_TABLES.idToFile(referencedId);
-        try (BufferedReader reader = ctx.resourceManager.openAsReader(filePath)) {
-            JsonElement referencedElement = JsonParser.parseReader(reader);
-            ctx.expandingStack.add(referencedId);
-            ResourceLocation previousSource = ctx.sourceChildTable;
-            List<LootConditionInfo> previousParentConditions = ctx.parentTableConditions;
-            List<JsonElement> previousFunctions = ctx.inheritedFunctions;
-            try {
-                // 从当前根表观察时始终保留第一层子表来源，后续孙表条件才能汇总回直接子表。
-                if (previousSource == null) {
-                    ctx.sourceChildTable = referencedId;
-                }
-                pushInheritedConditions(ctx, entryConditions);
-                ctx.inheritedFunctions = prependFunctions(previousFunctions, object);
-                parseNode(referencedElement, ctx);
-            } finally {
-                ctx.parentTableConditions = previousParentConditions;
-                ctx.inheritedFunctions = previousFunctions;
-                ctx.sourceChildTable = previousSource;
-                ctx.expandingStack.remove(referencedId);
+        JsonElement referencedElement = ctx.sourceSnapshot.effectiveJson(referencedId);
+        if (referencedElement == null) {
+            LOGGER.warn("展开 loot_table 引用 {} 失败：有效资源缺失或 JSON 无法解析", referencedId);
+            return;
+        }
+
+        ctx.expandingStack.add(referencedId);
+        ResourceLocation previousSource = ctx.sourceChildTable;
+        List<LootConditionInfo> previousParentConditions = ctx.parentTableConditions;
+        List<JsonElement> previousFunctions = ctx.inheritedFunctions;
+        try {
+            // 从当前根表观察时始终保留第一层子表来源，后续孙表条件才能汇总回直接子表。
+            if (previousSource == null) {
+                ctx.sourceChildTable = referencedId;
             }
-        } catch (IOException | RuntimeException exception) {
-            LOGGER.warn("展开 loot_table 引用 {} 失败", referencedId, exception);
+            pushInheritedConditions(ctx, entryConditions);
+            ctx.inheritedFunctions = prependFunctions(previousFunctions, object);
+            parseNode(referencedElement, ctx);
+        } finally {
+            ctx.parentTableConditions = previousParentConditions;
+            ctx.inheritedFunctions = previousFunctions;
+            ctx.sourceChildTable = previousSource;
+            ctx.expandingStack.remove(referencedId);
         }
     }
 
@@ -543,10 +540,10 @@ public final class LootTableJsonParser {
 
     // ==================== 内部类型 ====================
 
-    /** 解析上下文——将原本分散传递的 5 个可变参数聚合为单一对象，改善方法签名可读性 */
+    /** 解析上下文——聚合 items 收集器、资源快照与三个靠 save-restore 传递的继承字段 */
     private static final class ParseContext {
         final Map<String, ItemDefinitionBuilder> items;
-        final ResourceManager resourceManager;
+        final LootTableSourceSnapshot sourceSnapshot;
         final Set<ResourceLocation> expandingStack;
         final DynamicOps<JsonElement> lootOps;
         @Nullable
@@ -554,14 +551,14 @@ public final class LootTableJsonParser {
         List<LootConditionInfo> parentTableConditions;
         List<JsonElement> inheritedFunctions;
 
-        ParseContext(Map<String, ItemDefinitionBuilder> items, ResourceManager resourceManager,
+        ParseContext(Map<String, ItemDefinitionBuilder> items, LootTableSourceSnapshot sourceSnapshot,
                      Set<ResourceLocation> expandingStack,
                      DynamicOps<JsonElement> lootOps,
                      @Nullable ResourceLocation sourceChildTable,
                      List<LootConditionInfo> parentTableConditions,
                      List<JsonElement> inheritedFunctions) {
             this.items = items;
-            this.resourceManager = resourceManager;
+            this.sourceSnapshot = sourceSnapshot;
             this.expandingStack = expandingStack;
             this.lootOps = lootOps;
             this.sourceChildTable = sourceChildTable;

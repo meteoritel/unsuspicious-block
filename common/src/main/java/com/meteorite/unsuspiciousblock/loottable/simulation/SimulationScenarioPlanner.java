@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.component.DataComponents;
@@ -31,12 +32,10 @@ public final class SimulationScenarioPlanner {
     private static final int MAX_SCENARIOS = 8;
     private static final int FISHING_MUD_DREDGING_SCENARIOS = 2;
     private static final int MUD_DREDGING_SIMULATION_LEVEL = 3;
-    private static final ResourceLocation FISHING = ResourceLocation.withDefaultNamespace("gameplay/fishing");
+    private static final ResourceLocation FISHING = RuntimeLootLinks.FISHING_TABLE;
     private static final ResourceLocation LOCATION_CHECK = ResourceLocation.withDefaultNamespace("location_check");
-    private static final ResourceLocation MUD_DREDGING =
-            ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "mud_dredging");
-    private static final ResourceLocation MUD_DREDGING_TABLE =
-            ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "gameplay/fishing/mud_dredging");
+    private static final ResourceLocation MUD_DREDGING = RuntimeLootLinks.MUD_DREDGING_CONDITION;
+    private static final ResourceLocation MUD_DREDGING_TABLE = RuntimeLootLinks.MUD_DREDGING_TABLE;
     private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
     private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
@@ -49,7 +48,7 @@ public final class SimulationScenarioPlanner {
             ResourceLocation.withDefaultNamespace("weather_check"),
             ResourceLocation.withDefaultNamespace("time_check"),
             ResourceLocation.withDefaultNamespace("entity_scores"),
-            ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "mud_dredging"));
+            MUD_DREDGING);
 
     private static final Logger LOGGER = LogUtils.getLogger();
     /** 已告警过的指纹不稳定类型，避免按条目刷屏；仅在主线程的场景规划中访问。 */
@@ -66,7 +65,7 @@ public final class SimulationScenarioPlanner {
     // 每条获取路径形成一个最小场景，避免对所有条件做无界笛卡尔积
     public static List<SimulationScenario> plan(ResourceLocation tableId, TableDefinition table,
                                                 ServerLevel level) {
-        SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, tableId);
+        SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type());
         Map<String, LootConditionInfo> conditionByFingerprint = new LinkedHashMap<>();
         Map<String, Map<String, Boolean>> candidates = new LinkedHashMap<>();
         candidates.put("default", Map.of());

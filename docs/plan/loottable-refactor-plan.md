@@ -1,10 +1,10 @@
 # 战利品表解析追踪重构规划（四层管线）
 
-> 状态：**进行中（未开工）**。架构方向、实施边界与验收方式已对齐；代码尚未改动。
+> 状态：**进行中（步骤① 已完成，待实机验证；步骤②③ 未开工）**。架构方向、实施边界与验收方式已对齐，开工前复审的修正已并入 §3.9；步骤① 的实施结果与偏离见 §九。
 >
 > 当前机制的唯一权威描述是 [战利品表系统](../dev/loottable.md)；本文记录改造背景、核实依据与决策记录，机制描述在实施完成后同步回该文档。问题清单与严重度分级见 [架构审查记录](../todo/loottable-architecture-review.md)。
 >
-> 修订记录：初版按 [开发者文档约定](../dev/README.md)《计划文档统一结构》编写；第二轮架构审查补入模拟完成态、专用网络 DTO、边类型语义、重载 session、旧 NBT 类型兼容与验收矩阵。
+> 修订记录：初版按 [开发者文档约定](../dev/README.md)《计划文档统一结构》编写；第二轮架构审查补入模拟完成态、专用网络 DTO、边类型语义、重载 session、旧 NBT 类型兼容与验收矩阵；第三轮开工前复审修正哈希失效链、合成边守卫、空表子表过滤等 7 处（见 §3.9 与 §五 留档）。
 
 ## 一、现状
 
@@ -136,7 +136,7 @@ patch 把三个返回 `void` 的重载改为 `this.getRandomItems(...).forEach(.
 
 ### 3.7 为什么循环引用保持「排除」语义（现状语义 + 风险判断）
 
-今天的行为是"在追踪根表初始可达集内检测到环 → 环上所有表排除出收录闭包并告警"。改为"环内断边保留"会改变目录可见内容与哈希、触发一次全量重模拟，属产品决策而非重构细节。本规划允许图全局计算 SCC，但排除与日志策略只作用于初始可达集内的 SCC；与考古目录无关的实体、方块或第三方表循环不得新增告警。图以此计算与今天相同的排除集，并暴露带 scope 的访问器（对外仍只输出日志，见 D7），语义零变化。
+今天的行为是"在追踪根表初始可达集内检测到环 → 环上所有表排除出收录闭包并告警"。改为"环内断边保留"会改变目录可见内容与哈希、触发一次全量重模拟，属产品决策而非重构细节。本规划允许图全局计算 SCC，但排除与日志策略只作用于初始可达集内的 SCC；与考古目录无关的实体、方块或第三方表循环不得新增告警。图暴露带 scope 的循环分量访问器（对外仍只输出日志，见 D7），并以此产出排除集——**注意 SCC 恒为今天回边切片集合的超集，两者只在存在环时不同，理由与量化见 §3.9 之八**。
 
 统一的是**循环发现与排除策略**，不是删除所有局部保护：解析链接器仍保留 stack 作为断言式防御，普通图查询仍用 visited 处理共享 DAG 节点；二者不得自行决定排除集或重复输出循环日志。
 
@@ -155,6 +155,56 @@ patch 把三个返回 `void` 的重载改为 `this.getRandomItems(...).forEach(.
 | 9 | `RUNTIME_INJECTION` 只参与结构关系，不参与静态语义链接；动态物品仍由模拟发现并保留 `injected=true` | fishing→mud_dredging 两端注入路径 | 注入物被误当静态条目，条件、来源与缓存语义变化 |
 | 10 | 图邻接可去重，`ReferenceSite` 不去重且保持出现顺序 | 同一子表在不同引用位置的 conditions / functions | 两条不同获取路径被错误合并 |
 | 11 | 同一轮快照、图、编译结果与哈希带同一个 generation，完整构建后原子发布 | `ArchaeologyJournalServerCatalog.ensureLoaded` / worker 提交 | 读到半新半旧目录，旧模拟结果写入新目录 |
+| 12 | 父表 `childTables` 只收录「有物品」的子表；无物品的表不进目录也不作为子表入口 | `ArchaeologyJournalCatalog.load` 的 `filter(parsed::containsKey)`（而 `parsed` 只收 `items()` 非空的表） | UI 多出空的子表入口，父表页签出现不可达层级 |
+| 13 | 每表哈希的**编译产物摘要**覆盖 `descendantsInclusive(id)` 内每张表，而非只覆盖本表 | `computeTableHashes`（见 §3.9 之一） | 子表 tag 成员变化时父表缓存不失效，概率静默过期 |
+| 14 | 合成边只在两端资源都存在时注入 | `ArchaeologyJournalCatalog.addRuntimeInjectedReferences` 的 `containsKey` 双端守卫 | 图出现快照中不存在的节点，编译层取不到 JSON |
+
+### 3.9 开工前复审的修正（第二轮计划文本的缺陷）
+
+本轮复审对照 `a6b8c24` 之后的实际代码逐条核对 §3 / §4，发现七处需要在动工前改正。前三条是会导致行为错误的实质缺陷，后四条是文本与清单的不完整。
+
+**之一（实质）：每表哈希的编译产物摘要必须覆盖整个子树，而不是只覆盖本表。**
+
+这是本文档最重要的修正。现状 `computeTableHashes` 的第三类输入 `updateRawDefinitionDigest(digest, entry.getValue())` 吃的是 `entry.getValue().items()`，而 `LootTableJsonParser.parseTable` 把**整棵子树的物品内联进了父表的 items**（§3.2 已论证）。因此现状下父表 P 的哈希包含子表 T 的物品签名。
+
+实际后果：数据包往 T 引用的某个 item tag 里加物品时，T 的 JSON 文本不变。现状 P 的哈希会因 `signature` 变化而失效；而 §4.3 描述的"编译产物摘要 + 资源摘要 + 闭包摘要"如果按 §4.2 的 `CompiledLootTable`（**本表**上下文无关局部语义）取本表摘要，P 的三项输入全都不变，**P 的缓存不会失效，概率静默过期**。这条失效链正是 §3.4 明确要求保住的不变量 #5。
+
+修正后的规则：每表哈希的第二、三类输入都按 `descendantsInclusive(id)`（含合成边）取全集——资源摘要取子树内每张表的完整 resource stack 摘要，编译产物摘要取子树内每张表的编译产物摘要（tag 展开后的 item id 与签名集合）。这与现状"每表哈希吃整子树物品签名"语义等价，也是 §4.2 `subtreeDigest(id)` 应当采用的形态：**它必须同时包含其后代的编译产物摘要，而不只是资源摘要**。
+
+**之二（实质）：合成边的双端存在守卫必须保留。**
+
+`addRuntimeInjectedReferences` 只在 `graph.containsKey(FISHING) && graph.containsKey(MUD_DREDGING)` 时才加边。新方案的 `RuntimeLootLinks.SYNTHETIC_EDGES` 若无条件注入，图里会出现快照中并不存在的节点；编译层对这类节点取 `effectiveJson(id)` 会得到 null，必须显式跳过而不是抛异常或产出空表。两处都要做：注入侧保留守卫，编译/投影侧对"图有节点但快照无资源"保持跳过 + 告警。
+
+**之三（实质）：`childTables` 必须过滤掉"没有物品的表"。**
+
+`ArchaeologyJournalCatalog.load` 里 `parsed` 只收 `items()` 非空的表，`withChildTables` 又用 `filter(parsed::containsKey)` 过滤，所以空表既不入目录、也不作为子表入口。§4.2 的图 `directChildren(id)` 是纯拓扑关系，若 `StaticTableProjection` 直接使用，UI 会多出空子表入口。投影期必须复现这条过滤，已作为不变量 #12 补入 §3.8。
+
+**之四：`RuntimeLootLinks` 需要覆盖的标识符是三个，不是两个。**
+
+除两张战利品表外，`SimulationScenarioPlanner:37,52` 还硬编码了**条件类型** `unsuspiciousblock:mud_dredging`（用于场景假设文案与指纹类型默认值）。它性质不同（条件类型 id 而非 loot table id），但同属"平台注入联动的标识符"，应在 `RuntimeLootLinks` 中一并声明，避免遗漏第四处硬编码。
+
+**之五：`contextKind` 的入参需要归一化。**
+
+§4.2 写 `contextKind(ResourceLocation declaredType)`，但 `TableDefinition.type` 是 `String` 且由 JSON 原样读出（可能是 `fishing`，也可能缺失为空串）。实现须按 `LootParseUtil.normalizeType` 的语义归一化后比较，并对缺失 `type` 的表退回非钓鱼上下文。
+
+**之六：`computeCatalogHash` 未列入改动清单。**
+
+它遍历 `catalog` map 的 `TableDefinition`（含 items / acquisitionPaths / 场景概率）。步骤② 改用 `SimulatedTable` 与 `CatalogTableDto` 后，这个哈希的输入源必须同步切换，否则客户端按需同步的比对会与 payload 内容脱节。§4.4 只在 `SyncArchaeologyCatalogPayload` 一行提到 payload。
+
+**之七：`invalidate()` 需要清理快照与 session。**
+
+`invalidate()` 目前清 `catalog` / `rawCatalog` / `tableHashes` / `catalogStructure` / `cachedCatalogHash`。§4.2 引入 `LootTableAnalysisSession` 与 `CatalogGeneration` 后，快照会常驻全表原文，`invalidate()` 必须一并释放，否则数据包重载期间旧快照留存。§4.4 未列这一处。
+
+**之八（实质）：SCC 与今天的环排除集并不相等，SCC 恒为超集。**
+
+§3.7 断言"图以此计算与今天相同的排除集"。实施时用随机图对照验证发现该断言不成立：
+
+- 今天 `dfsCycles` 收的是 **DFS 回边对应的栈切片并集**；回边切片上的节点都在某个有向环上，因此旧集合恒 ⊆ SCC 集合，但反过来不成立——**旧实现会漏报环上成员**。
+- 反例（`0→1, 1→0/3/4/5, 2→5, 3→1, 4→2/3/5, 5→3`）：从 0 出发 DFS 时 3 在从 1 展开后即完成，之后 5→3 看到的是 `VISITED` 而非 `VISITING`，于是 `{2,4,5}` 虽在环上却从未进入任何回边切片；旧集合 `{0,1,3}`，SCC 集合 `{0,1,2,3,4,5}`。
+- 量化（各 20 万次随机图，边密度按真实引用图特征设定）：树状图 0/20 万不一致；加 1% 回边 3/20 万；加 5% 回边 24/20 万；两出边图 3176/20 万。**80 万次试验中旧集合恒为 SCC 集合的子集，零反例。**
+- 影响面：模组与 原版 战利品表**当前都没有环**，排除集在两种实现下都是空集，因此本批次对现有数据零可见影响；差异只在数据包构造循环表时出现，届时 SCC 会多排除一部分环上表（即更接近 §3.7 描述的意图"环上所有表排除出收录闭包"，而旧实现会让部分环上表漏进目录、靠解析期 `expandingStack` 兜住）。
+
+处置：保留 SCC（D7 明确要求"图全局计算 SCC"，且它忠实于今天行为被描述的意图），并把本条记为步骤① 唯一超出"行为保持"的语义变化，列入 §六 风险与 §九 偏离，供用户决定是否需要改回逐字复刻旧集合。
 
 ## 四、技术路线
 
@@ -181,9 +231,9 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 | 类型 | 关键 API |
 |---|---|
 | `loottable/source/LootTableSourceSnapshot` | `capture(ResourceManager)` / `tableIds()` / `effectiveJson(ResourceLocation)`（`listMatchingResources` 语义，最高优先级那份）/ `resourceStackDigest(ResourceLocation)`（`getResourceStack` 语义，全部数据包层）/ `directReferences(ResourceLocation)`；`JsonElement` 不常驻，编译期按需重解析。实现时从同一次 resource stack 捕获中取得有效原文与摘要，避免最高层被重复打开 |
-| `loottable/graph/LootTableReferenceGraph` | `build(snapshot, syntheticEdges)` / `directEdges(id)` / `directChildren(id)` / `reachableFrom(roots)` / `descendantsInclusive(id)`（稳定顺序）/ `cyclicNodesIn(scope)` / `subtreeDigest(id)`（含合成边、visited 去重） |
+| `loottable/graph/LootTableReferenceGraph` | `build(snapshot, syntheticEdges)` / `directEdges(id)` / `directChildren(id)` / `reachableFrom(roots)` / `descendantsInclusive(id)`（稳定顺序）/ `cyclicNodesIn(scope)` / `subtreeDigest(id)`（含合成边、visited 去重；**并入后代每张表的 resource stack 摘要与编译产物摘要**，见 §3.9 之一） |
 | `loottable/graph/LootTableEdge` | `target` + `kind`；`JSON_REFERENCE` 参与语义链接，`RUNTIME_INJECTION` 只参与结构关系。边类型显式声明是否参与 closure / semanticLink / directory / hash |
-| `loottable/graph/RuntimeLootLinks` | 注入关系与上下文判定的单一权威：两个标识符、`SYNTHETIC_EDGES`、`contextKind(ResourceLocation declaredType)` |
+| `loottable/graph/RuntimeLootLinks` | 注入关系与上下文判定的单一权威：两个 loot table 标识符 + 一个条件类型标识符、`SYNTHETIC_EDGES`（保留双端存在守卫）、`contextKind(String declaredType)`（内部按 `LootParseUtil.normalizeType` 语义归一化） |
 | `loottable/analysis/CompiledLootTable` | 本表直接物品路径 + 按出现位置保序的 `ReferenceSite(target, inheritedConditions, entryConditions, functions)`；引用位置的继承语义显式化，不再靠可变上下文 save-restore |
 | `loottable/catalog/LootTableProjector` | 消费图与编译结果，为根表构建 `StaticTableProjection`；只沿 `JSON_REFERENCE` 做语义链接，结构型合成边只进入 child / closure 视图 |
 | `loottable/catalog/StaticTableProjection` | 静态展平物品路径 / `itemsByFirstHopChild` / 静态子树签名集合 / 场景适用子表；是模拟与无需概率的命令、成就和迁移查询输入，不含概率占位符或模拟期动态签名 |
@@ -219,7 +269,7 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 |---|---|
 | `journal/catalog/ArchaeologyJournalCatalog.java` | 闭包、环、合成边、子树遍历改为消费图；删除 `buildReferenceGraph` / `collectDirectReferences` / `collectReachable` / `findCycleTables` / `dfsCycles` / `addRuntimeInjectedReferences` |
 | `loottable/analysis/LootTableJsonParser.java` | 从快照取 JSON（含子表引用），不再持有 `ResourceManager`；环保护与图的排除集对齐 |
-| `journal/catalog/ArchaeologyJournalServerCatalog.java` | `computeTableHashes` 改吃摘要并保留编译产物摘要；构建带 generation 的 session / catalog generation 并原子发布；worker 提交校验 generation；删除 `updateTableResourceDigest` / `collectReferencedTables` / `isLootTableEntry` |
+| `journal/catalog/ArchaeologyJournalServerCatalog.java` | `computeTableHashes` 改吃摘要并保留编译产物摘要（摘要按 `descendantsInclusive` 覆盖子树，见 §3.9 之一）；构建带 generation 的 session / catalog generation 并原子发布；worker 提交校验 generation；`computeCatalogHash` 输入源随步骤② 的投影/DTO 同步切换（见 §3.9 之六）；`invalidate()` 一并释放快照与 session（见 §3.9 之七）；删除 `updateTableResourceDigest` / `collectReferencedTables` / `isLootTableEntry` |
 | `loottable/simulation/SimulationProfile.java` | 上下文类型改由 `RuntimeLootLinks.contextKind(...)` 决定 |
 | `loottable/simulation/SimulationScenarioPlanner.java`、`mixin/interaction/FishingHookMixin.java:37` | 硬编码标识符改引 `RuntimeLootLinks` |
 | `loottable/catalog/LootTableCatalog.java` | 步骤② 清理便捷构造器与 `collectSubtreeItems`；解析态、模拟态记录由新类型替代 |
@@ -227,7 +277,7 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 | `network/payload/s2c/SyncArchaeologyCatalogPayload.java` | 步骤② 改为序列化 `CatalogTableDto` 并做 P3-1，不直接暴露 `StaticTableProjection` / `SimulatedTable` 内部索引 |
 | 客户端 `JournalViewModel` / `ItemGridPanel` / `JournalTooltipBuilder` | 步骤②③ 跟随投影 DTO 与值类型调整 |
 
-**查询调用点切换**（步骤②）：`JournalViewModel:547`、`JournalCommand:107,121,284,309,316`、`JournalCompletionRewardChecker:68`、`ArchaeologyLootRuntimeTracker:97,286`、`ArchaeologyChallengeChecker:113`、`JournalDataMigrationManager:83`。
+**查询调用点切换**（步骤②）：`JournalViewModel:547`、`JournalCommand:107,121,309`、`JournalCompletionRewardChecker:68`、`ArchaeologyLootRuntimeTracker:97,286`、`ArchaeologyChallengeChecker:113`、`JournalDataMigrationManager:83`。`collectSubtreeItems` 的四个调用点即前三项（`JournalCommand:284,316` 是 `getRawCatalog` 的取值处，不是子树查询，见 §3.9 之六的行号订正）。
 
 **不做**：客户端 `JournalViewModel:52,54` 的两处硬编码标识符在步骤① 不动（缩小批次风险），步骤② 随 DTO 携带合成边后消除。
 
@@ -276,6 +326,9 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 2. **硬编码位置数错。** 审查记录原写 fishing↔mud_dredging 硬编码"三处"，实测是 **5 处 Java 位置**（多出客户端 `JournalViewModel:52,54` 与 `FishingHookMixin:37`）。已修正审查记录与本文 §1.2。
 3. **计划文档的归属搞错。** 初版把本文放在 `docs/todo/`，而 `docs/dev/README.md` 早已约定 `docs/plan/` 用于"进行中的子系统改造规划"。已移入 `docs/plan/` 并把结构规范补进开发者文档约定。
 4. **投影层边界初版仍然一型多角。** 初版让 `LootTableProjection` 同时充当模拟输入、模拟结果与网络 DTO，并把 `Probability` 设计成可组合出非法状态的 `state + double`。第二轮审查后拆为 `StaticTableProjection` / `SimulatedTable` / `CatalogTableDto`，概率改为 sealed 值类型，同时补上旧 NBT 类型守卫与 session generation。
+5. **哈希失效链在第二轮的表述里是断的。** 第二轮把每表哈希写成"编译产物摘要 + 资源摘要 + 闭包摘要"，但 `CompiledLootTable` 被定义为**本表**上下文无关语义，于是"子表 tag 成员变化"这条失效链会断——而 §3.4 恰恰把这条链列为必须保留的不变量 #5。第三轮复审时改正为"编译产物摘要按 `descendantsInclusive` 覆盖子树"（§3.9 之一）。
+6. **`RuntimeLootLinks` 漏了一个标识符。** 第二轮写"两个标识符"，实际除两张表外还有条件类型 `unsuspiciousblock:mud_dredging`（`SimulationScenarioPlanner:37,52`）。**审查记录里的"5 处"本身是对的**，是计划侧收敛范围写漏了一处。
+7. **`computeCatalogHash` 与 `invalidate()` 漏在改动清单外。** 两处都会因步骤② 引入 session/投影而必须同步改动，第二轮只列了 payload。
 
 ## 六、风险与限制
 
@@ -283,6 +336,9 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 |---|---|---|
 | 步骤② 语义复现不全 | 要同时复现首跳归属、条件继承顺序、函数继承与 `APPROX_ITEM_ONLY` 降级三重语义 | 拆成"先建类型、双跑对比、再切消费者"；发现不一致保留旧路径 |
 | 合成边被当作静态引用展开 | `fishing→mud_dredging` 会把运行时注入物提前变成静态条目，改变 `injected`、条件与来源 | `LootTableEdge` 强制分型；投影器只对 `JSON_REFERENCE` semanticLink，验收 dump 单独核对合成边两侧条目 |
+| 环排除集由回边切片改为 SCC | SCC 恒为旧集合的超集（§3.9 之八，80 万次随机图零反例），存在环时会多排除环上表 | 现有数据无环 → 零可见影响；已记录为步骤① 唯一超出"行为保持"的语义变化，若需逐字复刻旧集合须改回回边切片 |
+| 子树编译产物摘要被漏进哈希 | 若每表哈希只吃本表编译产物，子表 tag 成员变化不会让父表缓存失效，概率静默过期（§3.9 之一） | 摘要按 `descendantsInclusive` 覆盖子树；验收矩阵的「item tag 成员变化、loot table JSON 不变」场景必须同时验证**父表**重模拟 |
+| 空表子表入口泄漏到 UI | 图是纯拓扑，不区分"表是否有物品" | 投影期复现 `parsed::containsKey` 过滤（不变量 #12） |
 | 签名不兼容会动存档 | 签名是玩家进度 / 日志 / 缓存的键 | 每步验收都把签名集合纳入结构 dump；任何签名变化单独评估并补 `JournalNbtMigrator` 步骤 |
 | 升级触发全量重模拟 | 步骤① 与步骤③ 各一次 | 已由 D2 接受；若整合包规模导致时长不可接受，再评估兼容读取旧缓存 |
 | 旧概率 NBT 类型不匹配 | 旧 `probability` 是 String，新 codec 若直接按结构读取，可能在哈希比较前报错或静默得到伪值 | decoder 先检查 tag 类型；旧格式按单表缓存未命中跳过，摘要与场景概率同规则；用旧世界副本验证可加载并自动重模拟 |
@@ -307,9 +363,9 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 | 场景 | 必须证明 |
 |---|---|
 | 同一子表在两个位置被引用，且 conditions / functions 不同 | 图可去重拓扑边，但 `ReferenceSite` 与最终获取路径保留两份且顺序稳定 |
-| 自循环、两节点循环、共享 DAG 子树 | 只排除追踪根初始可达集中的循环成员；共享节点只聚合一次；无关 SCC 不新增日志 |
+| 自循环、两节点循环、共享 DAG 子树 | 只排除追踪根初始可达集中的循环成员；共享节点只聚合一次；无关 SCC 不新增日志。**注意**：SCC 排除集 ⊇ 旧回边切片集合（§3.9 之八），须按"环上所有表"而非旧实现逐字复刻来验收 |
 | 重复引用与缺失目标表 | 重复引用不丢语义路径；缺失目标只告警并跳过，不使整个 session 半发布 |
-| item tag 成员变化、loot table JSON 不变 | 编译摘要变化并触发对应表及祖先缓存失效 |
+| item tag 成员变化、loot table JSON 不变 | 编译摘要变化并触发对应表**及祖先**缓存失效（只验子表自身不够，见 §3.9 之一） |
 | 仅低优先级 inactive resource-pack 层变化 | 明确记录并验证采用的哈希语义；不得意外改变有效 JSON 或引用图 |
 | JSON 引用边与 `RUNTIME_INJECTION` 合成边同时存在 | 两者都进入 closure / directory / hash，只有 JSON 边进入 semanticLink；动态注入物仍为 `injected=true` |
 | 无 `format_version` 且使用旧版 `StringTag probability` 的 SavedData | 世界可正常加载；旧表按缓存未命中重模拟，不被解成 0、不影响其他合法表 |
@@ -332,4 +388,48 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 
 ## 九、实施结果
 
-> 尚未开始。三步完成后在此追加带日期的结果：构建与验收结果、产物检查、与计划的偏离、待用户实机验证项。
+### 2026-09-18 步骤① 完成（快照 + 引用图）
+
+**构建结果**：`./gradlew build` BUILD SUCCESSFUL；新增/改动文件经 IDE 静态检查（warning 级）无遗留提示。
+
+**新增文件**
+
+| 文件 | 内容 |
+|---|---|
+| `loottable/source/LootTableSourceSnapshot` | 一次 `listMatchingResourceStacks` 捕获全部战利品表；栈首（index 0，最高优先级层）为有效原文，整个栈供哈希。原文与 `JsonElement` 惰性读取并缓存，`directReferences` 按 `LootParseUtil.normalizeType` 统一类型判定 |
+| `loottable/graph/LootTableEdge` | `target` + `Kind`（`JSON_REFERENCE` / `RUNTIME_INJECTION`），两类边的四维参与规则写在类型注释里 |
+| `loottable/graph/LootTableReferenceGraph` | `build`（含合成边双端存在守卫与目标去重）/ `directEdges` / `directChildren`（只取快照中真实存在的目标）/ `reachableFrom`（可带排除集）/ `descendantsInclusive` / `cyclicComponentsIn`（Tarjan SCC，scope 受限）/ `updateSubtreeDigest`（并入后代每张表的资源栈摘要与编译产物摘要） |
+| `loottable/graph/RuntimeLootLinks` | 两个战利品表标识符 + 一个条件类型标识符 + `syntheticEdges()` + `contextKind(declaredType)` |
+
+**改造文件**
+
+| 文件 | 改动 |
+|---|---|
+| `journal/catalog/ArchaeologyJournalCatalog.java` | 改为消费图：闭包走 `reachableFrom`、环走 `cyclicComponentsIn`、子表走 `directChildren`；删除 `buildReferenceGraph` / `collectDirectReferences` / `collectReachable` / `findCycleTables` / `dfsCycles` / `addRuntimeInjectedReferences` 与本地 FISHING / MUD_DREDGING 常量；`LoadResult` 增加 `referenceGraph` 供哈希复用同一份拓扑 |
+| `loottable/analysis/LootTableJsonParser.java` | `load` 接收 `LootTableSourceSnapshot`，子表展开改用 `effectiveJson`，不再持有 `ResourceManager`、不再读盘 |
+| `journal/catalog/ArchaeologyJournalServerCatalog.java` | `ensureLoaded` 先捕获快照；`computeTableHashes` 改为图摘要 + 编译产物摘要；删除 `updateTableResourceDigest` / `collectReferencedTables` / `isLootTableEntry` / `updateRawDefinitionDigest` 与 `LOOT_TABLES` |
+| `loottable/simulation/SimulationProfile.java` | `eligibleConditions` 改吃声明的 `type`，上下文由 `RuntimeLootLinks.contextKind` 判定 |
+| `loottable/simulation/SimulationScenarioPlanner.java` | `FISHING` / `MUD_DREDGING`（条件类型）/ `MUD_DREDDING_TABLE` 改引 `RuntimeLootLinks`（顺带修掉条件类型 id 用裸字面量 `"unsuspiciousblock"` 的不一致） |
+| `loottable/condition/MudDredgingCondition.java` | `MUD_DREDGING` 的 `ResourceKey` 派生自 `RuntimeLootLinks.MUD_DREDDING_TABLE` |
+| `loottable/condition/ModLootConditions.java` | 条件类型 id 改引 `RuntimeLootLinks.MUD_DREDDING_CONDITION` |
+| `mixin/interaction/FishingHookMixin.java` | 根表标识符改引 `RuntimeLootLinks.FISHING_TABLE` |
+
+**与计划的偏离**
+
+1. `LootTableEdge.Kind` 只保留枚举常量，四维参与规则写在类型注释；未暴露 `contributesToClosure` / `contributesToHash` / `contributesToSemanticLink` 访问器——前两者对所有现有类型恒为真，暴露出来是死代码；`contributesToSemanticLink` 到步骤② 由投影层消费时再加。
+2. `LootTableReferenceGraph` 未提供计划草案里的 `cyclicNodesIn`（由 `cyclicComponentsIn` 取代，日志按分量输出需要分量粒度）与 `missingTargets`（当前无消费者，悬空引用与今天一样静默跳过）。
+3. `computeTableHashes` 未 bump `SIMULATION_CACHE_VERSION`：`needsResimulation` 是逐表哈希比对，摘要组成变化本身即触发重模拟，版本号留给步骤③ 的 NBT 格式变更。
+4. 已按 §3.9 之一把编译产物摘要做进子树：`updateSubtreeDigest` 对 `descendantsInclusive` 内每张表都写入资源栈摘要与编译产物摘要，而非只写根表。
+
+**结构变化（会触发一次全量重模拟，已由 D2 接受）**
+
+- 每表哈希输入从"根表内联整棵子树的物品签名 + 从每一层文本递归追引用"变为"子树内每张表的完整资源栈摘要 + 编译产物摘要"。哈希值必然变化，旧缓存按逐表哈希比对自动失效。
+- 环排除集从"DFS 回边栈切片并集"改为"强连通分量成员"。**这不是等价替换**：用随机图对照验证，SCC 恒为旧集合的超集（80 万次试验零反例，见 §3.9 之八）——旧实现会漏报不在任何回边切片上的环成员。现有数据（模组 + 原版）无环，两种实现的排除集都是空集，因此对本批次零可见影响；差异只在数据包构造循环表时体现，届时 SCC 会多排除一部分环上表，即更接近 §3.7 描述的意图"环上所有表排除出收录闭包"。这是步骤① 唯一超出"行为保持"的语义变化，如需逐字复刻旧集合需改回回边切片。
+
+**待用户实机验证**（§七 的实机清单，另加本批次特有的三项）
+
+1. 启动/载入世界确认 `解析到 N 个考古战利品表原始目录` 与 `从缓存恢复 N 个表，N 个待模拟` 符合预期，且**本轮应观察到全部表重新模拟一次**（哈希组成变化）。
+2. 确认钓鱼表页签下的泥地打捞子表入口仍在且概率正常（合成边未因守卫被误丢）。
+3. 若整合包自带循环引用的战利品表，确认告警为每个环一次、且环上表确实被排除出目录。
+4. 打开考古笔记核对：物品概率与场景范围、子表入口及其概率、条件树、排序、搜索定位。
+

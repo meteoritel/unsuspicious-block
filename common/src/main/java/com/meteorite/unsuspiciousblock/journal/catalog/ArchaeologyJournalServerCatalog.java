@@ -1,8 +1,5 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -11,25 +8,24 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.Scenar
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenarioPlanner;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import com.mojang.logging.LogUtils;
-import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.packs.resources.Resource;
-import net.minecraft.server.packs.resources.ResourceManager;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -63,7 +59,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ArchaeologyJournalServerCatalog {
     private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
     private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v12";
 
     /** 已填充概率的目录（随模拟完成渐进增长） */
@@ -92,18 +87,21 @@ public final class ArchaeologyJournalServerCatalog {
             tableHashes.clear();
             cachedCatalogHash = null;
 
-            // 1. 解析原始目录（概率字段为 "?" 占位符）
-            ArchaeologyJournalCatalog.LoadResult loadResult =
-                    ArchaeologyJournalCatalog.load(server.getResourceManager(), server.registryAccess());
+            // 1. 先捕获本轮资源快照（全表有效原文 + 完整资源栈），解析与哈希共用同一次读盘
+            LootTableSourceSnapshot sourceSnapshot = LootTableSourceSnapshot.capture(server.getResourceManager());
+
+            // 2. 建图并解析原始目录（概率字段为 "?" 占位符）；图随结果返回，供哈希复用同一份拓扑
+            ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
+                    sourceSnapshot, server.getResourceManager(), server.registryAccess());
             Map<ResourceLocation, TableDefinition> parsed = loadResult.tables();
             catalogStructure = loadResult.structure();
             rawCatalog.putAll(parsed);
             LOGGER.info("解析到 {} 个考古战利品表原始目录", parsed.size());
 
-            // 2. 计算每个表的 JSON 内容哈希
-            tableHashes.putAll(computeTableHashes(server.getResourceManager(), parsed));
+            // 3. 计算哈希（吃子树内每张表的资源栈摘要与编译产物摘要）
+            tableHashes.putAll(computeTableHashes(loadResult.referenceGraph(), parsed));
 
-            // 3. 从 SavedData 恢复已缓存表
+            // 4. 从 SavedData 恢复已缓存表
             ServerLevel level = server.overworld();
             LootProbabilityData probabilityData = LootProbabilityData.get(level);
             List<ResourceLocation> uncached = new ArrayList<>();
@@ -519,9 +517,11 @@ public final class ArchaeologyJournalServerCatalog {
         return List.copyOf(result);
     }
 
-    // 对每个表的 JSON 资源内容计算 SHA-256 哈希
+    // 对每个表计算 SHA-256 哈希：缓存版本 + 模拟次数 + 该表子树的资源栈摘要与编译产物摘要。
+    // 摘要按 descendantsInclusive 覆盖后代每一张表，因此子表引用的 item tag 成员变化
+    // （子表 JSON 文本不变、只有 tag 展开结果变）同样会让父表失效。
     private static Map<ResourceLocation, String> computeTableHashes(
-            ResourceManager resourceManager, Map<ResourceLocation, TableDefinition> tables) {
+            LootTableReferenceGraph graph, Map<ResourceLocation, TableDefinition> tables) {
         Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
         MessageDigest digest;
         try {
@@ -534,18 +534,13 @@ public final class ArchaeologyJournalServerCatalog {
             return hashes;
         }
 
-        for (Map.Entry<ResourceLocation, TableDefinition> entry : tables.entrySet()) {
-            ResourceLocation tableId = entry.getKey();
+        for (ResourceLocation tableId : tables.keySet()) {
             try {
                 digest.reset();
                 updateDigest(digest, SIMULATION_CACHE_VERSION);
                 updateDigest(digest, Integer.toString(LootProbabilitySimulator.getSimulationCount()));
-                Set<ResourceLocation> visited = new HashSet<>();
-                updateTableResourceDigest(resourceManager, tableId, digest, visited);
-                for (ResourceLocation childTable : entry.getValue().childTables()) {
-                    updateTableResourceDigest(resourceManager, childTable, digest, visited);
-                }
-                updateRawDefinitionDigest(digest, entry.getValue());
+                graph.updateSubtreeDigest(tableId, digest,
+                        (node, nodeDigest) -> updateCompiledProductDigest(nodeDigest, tables.get(node)));
                 hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
             } catch (IOException | RuntimeException e) {
                 LOGGER.warn("计算战利品表 {} 哈希失败，将触发重新模拟", tableId, e);
@@ -555,79 +550,20 @@ public final class ArchaeologyJournalServerCatalog {
         return hashes;
     }
 
-    // 将解析后的物品签名纳入哈希，覆盖 loot table 中 item tag 成员变化等间接依赖
-    private static void updateRawDefinitionDigest(MessageDigest digest, TableDefinition table) {
-        table.childTables().stream().sorted(Comparator.comparing(ResourceLocation::toString))
-                .forEach(child -> updateDigest(digest, child.toString()));
+    // 编译产物摘要——tag 展开后的物品签名与物品 id，是"JSON 不变但解析结果变"的唯一失效信号。
+    // 表未被解析（无物品）时写入固定标记，使"空表变为有物品"同样能改变父表摘要。
+    private static void updateCompiledProductDigest(MessageDigest digest, @Nullable TableDefinition table) {
+        if (table == null) {
+            LootTableSourceSnapshot.updateDigest(digest, "no_compiled_product");
+            return;
+        }
         List<ItemDefinition> items = table.items().stream()
                 .sorted(Comparator.comparing(item -> item.signature().toStoredKey()))
                 .toList();
-        updateDigest(digest, Integer.toString(items.size()));
+        LootTableSourceSnapshot.updateDigest(digest, Integer.toString(items.size()));
         for (ItemDefinition item : items) {
-            updateDigest(digest, item.signature().toStoredKey());
-            updateDigest(digest, item.id().toString());
-            updateDigest(digest, Boolean.toString(item.injected()));
+            LootTableSourceSnapshot.updateDigest(digest, item.signature().toStoredKey());
+            LootTableSourceSnapshot.updateDigest(digest, item.id().toString());
         }
-    }
-
-    private static void updateTableResourceDigest(ResourceManager resourceManager, ResourceLocation tableId,
-                                                  MessageDigest digest, Set<ResourceLocation> visited)
-            throws IOException {
-        if (!visited.add(tableId)) {
-            return;
-        }
-        updateDigest(digest, tableId.toString());
-        ResourceLocation filePath = LOOT_TABLES.idToFile(tableId);
-        for (Resource resource : resourceManager.getResourceStack(filePath)) {
-            StringBuilder json = new StringBuilder();
-            try (BufferedReader reader = resource.openAsReader()) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    json.append(line).append('\n');
-                }
-            }
-            String content = json.toString();
-            updateDigest(digest, content);
-            collectReferencedTables(JsonParser.parseString(content), resourceManager, digest, visited);
-        }
-    }
-
-    private static void collectReferencedTables(JsonElement element, ResourceManager resourceManager,
-                                                MessageDigest digest, Set<ResourceLocation> visited)
-            throws IOException {
-        if (element == null || element.isJsonNull()) {
-            return;
-        }
-        if (element.isJsonArray()) {
-            for (JsonElement child : element.getAsJsonArray()) {
-                collectReferencedTables(child, resourceManager, digest, visited);
-            }
-            return;
-        }
-        if (!element.isJsonObject()) {
-            return;
-        }
-
-        JsonObject object = element.getAsJsonObject();
-        JsonElement typeElement = object.get("type");
-        if (typeElement != null && typeElement.isJsonPrimitive()
-                && typeElement.getAsJsonPrimitive().isString()
-                && isLootTableEntry(typeElement.getAsString())) {
-            JsonElement valueElement = object.has("value") ? object.get("value") : object.get("name");
-            if (valueElement != null && valueElement.isJsonPrimitive()
-                    && valueElement.getAsJsonPrimitive().isString()) {
-                ResourceLocation referencedId = ResourceLocation.tryParse(valueElement.getAsString());
-                if (referencedId != null) {
-                    updateTableResourceDigest(resourceManager, referencedId, digest, visited);
-                }
-            }
-        }
-        for (Map.Entry<String, JsonElement> child : object.entrySet()) {
-            collectReferencedTables(child.getValue(), resourceManager, digest, visited);
-        }
-    }
-
-    private static boolean isLootTableEntry(String type) {
-        return type.equals("loot_table") || type.equals("minecraft:loot_table");
     }
 }

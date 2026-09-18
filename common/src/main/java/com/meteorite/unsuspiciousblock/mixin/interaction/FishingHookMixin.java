@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolde
 import com.meteorite.unsuspiciousblock.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -33,8 +34,7 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(FishingHook.class)
 public abstract class FishingHookMixin {
     @Unique
-    private static final ResourceLocation FISHING_ROOT_TABLE =
-            ResourceLocation.parse("minecraft:gameplay/fishing");
+    private static final ResourceLocation FISHING_ROOT_TABLE = RuntimeLootLinks.FISHING_TABLE;
 
     // 仅在原版钓鱼表生成物品期间激活上下文，异常时由 Scope 自动恢复栈
     @WrapOperation(
