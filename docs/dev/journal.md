@@ -17,8 +17,10 @@
 journal/
 ├── JournalPlayerDataService  玩家数据生命周期、恢复与迁移统一入口
 ├── catalog/      目录构建（服务端解析 + 客户端快照）
-│   ├── ArchaeologyJournalCatalog         原始目录解析（load）
-│   ├── ArchaeologyJournalServerCatalog   服务端目录（含概率模拟调度 + SavedData 缓存）
+│   ├── ArchaeologyJournalCatalog         单轮分析（load）：快照 → 引用图 → 编译 → 投影 → 静态读模型
+│   ├── LootTableAnalysisSession          一代的分析结果（快照 / 引用图 / 编译产物 / 静态投影）
+│   ├── CatalogGeneration                 一代目录状态：静态部分 + 模拟 overlay，由服务端原子发布
+│   ├── ArchaeologyJournalServerCatalog   服务端目录入口（构建、模拟调度、SavedData 缓存、查询索引）
 │   └── JournalCategoryLoader             分类规则加载（data/journal_categories/）
 ├── migration/    数据版本与迁移统一入口
 │   ├── JournalDataMigrationManager  存储/玩家/签名迁移生命周期调度
@@ -63,39 +65,44 @@ journal/
 
 ```
 ensureLoaded(server)
-  ├─ 1. ArchaeologyJournalCatalog.load(resourceManager, registryAccess)
-  │     解析所有 loot_table 资源 -> rawCatalog（概率为 "?" 占位符）+ catalogStructure（分类结构）
-  ├─ 2. computeTableHashes()
-  │     对每个表 JSON 内容计算 SHA-256，递归纳入引用的子表内容（覆盖 item tag 成员变化）
-  ├─ 3. 从 SavedData（LootProbabilityData）恢复已缓存表 -> catalog
+  ├─ buildGeneration(server)                  在局部对象上构建整代状态，全部成功后才发布
+  │   ├─ 1. LootTableSourceSnapshot.capture()  一次列举拿到全表"有效原文 + 完整资源栈"
+  │   ├─ 2. ArchaeologyJournalCatalog.load()   建图 → 编译 → 投影 → 静态读模型（概率为 "?" 占位）
+  │   │                                        产出 LootTableAnalysisSession 与 CatalogStructure
+  │   ├─ 3. computeTableHashes()               每表子树内资源栈摘要 + 编译产物摘要
+  │   └─ 4. new CatalogGeneration(...)         整代静态部分成型
+  ├─ currentGeneration = ...                  单个 volatile 引用发布；构建抛异常则改为 empty()
+  ├─ 从 SavedData（LootProbabilityData）恢复命中缓存的表 -> 写入当代 overlay
   │     needsResimulation(tableId, hash) 判断哈希是否变化
-  └─ 4. 未缓存表入队 LootProbabilitySimulationWorker 分 tick 模拟
-        worker 主线程分片消费 -> commitSimulatedTable() 写入 catalog + SavedData
-        整批结束 -> broadcastCatalogHash() 广播目录哈希
+  └─ 未缓存表入队 LootProbabilitySimulationWorker 分 tick 模拟
+        worker 主线程分片消费 -> commitSimulatedTable(generationId, ...) 校验代次后写 overlay + SavedData
+        整批结束 -> broadcastCatalogHash(generationId, ...) 广播目录哈希
 ```
 
 ### 3.2 关键设计
 
-- **非阻塞渐进填充**：`ensureLoaded` 立即返回，catalog 随模拟完成渐进填充。客户端打开笔记时，未模拟完的表概率显示为 "?"。
+- **原子发布**：整代静态部分（快照 / 引用图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）在局部对象上构建完成后，经单个 volatile 引用整体替换。读取方只会看到上一代的完整状态或新一代的完整静态部分，不会读到半构建结果；构建抛异常时进入 `CatalogGeneration.empty()`，而不是留下半成品。
+- **非阻塞渐进填充**：`ensureLoaded` 立即返回，模拟结果作为当代 overlay 随模拟完成渐进增长。客户端打开笔记时，未模拟完的表概率显示为 "?"；不受模拟进度影响的解析态视图由 `getRawCatalog()` 提供，启动即完整。
 - **模拟结果持久化**：`LootProbabilityData`（SavedData，附加在 overworld）缓存每张表的概率结果，避免每次重启重新模拟。哈希变化（数据包修改战利品表）时才重新模拟。
-- **哈希覆盖间接依赖**：表哈希不仅包含自身 JSON，还递归纳入引用的子表内容与解析后的物品签名，覆盖 item tag 成员变化等间接依赖。
-- **线程安全**：`catalog` / `rawCatalog` 用 `ConcurrentHashMap`，读路径无锁；写路径仅在主线程（`ensureLoaded` / `commitSimulatedTable`）。
+- **哈希覆盖间接依赖**：表哈希的输入是该表子树内每张表的完整资源栈摘要与编译产物摘要（`computeTableHashes`），覆盖 item tag 成员变化等间接依赖。
+- **代次校验**：模拟提交与队列排空广播都携带构建时的 `generation`，旧代结果被直接丢弃，不会写进新代。
+- **线程安全**：静态部分不可变并整体发布；只有模拟 overlay 是 `ConcurrentHashMap`，读路径无锁，写路径仅在主线程。
 - **worker 回退**：模拟工作线程未启动时回退到主线程同步模拟，避免功能缺失。
 
 ### 3.3 分类结构
 
-`catalogStructure` 由 [`JournalCategoryLoader`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描所有命名空间的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则与领域语言见 [`docs/journal-categories.md`](../journal-categories.md) 。
+分类结构（当代的 `CatalogGeneration.structure()`）由 [`JournalCategoryLoader`](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描所有命名空间的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则与领域语言见 [`docs/journal-categories.md`](../journal-categories.md) 。
 
 ### 3.4 目录哈希与按需同步
 
-服务端计算整个目录的 SHA-256 哈希（`computeCatalogHash`），模拟完成后广播给所有在线玩家。客户端比对本地哈希，不一致时主动请求全量目录（`RequestCatalogPayload` -> `SyncArchaeologyCatalogPayload`）。这避免每次登录都全量下发目录，只在目录变化时同步。
+服务端计算整个目录的 SHA-256 哈希（`computeCatalogHash()` → 当代的 `CatalogGeneration.catalogHash()`），模拟完成后广播给所有在线玩家。哈希输入取自网络形态 `CatalogTableDto`——与实际上线的内容一一对应（场景假设条件树在表级只计一次，物品与子表侧只计 key 与概率），因此"要发的内容变了"必然改变哈希。结果在当代内缓存，任一表提交新模拟结果即失效。客户端比对本地哈希，不一致时主动请求全量目录（`RequestCatalogPayload` -> `SyncArchaeologyCatalogPayload`）。这避免每次登录都全量下发目录，只在目录变化时同步。
 
 ### 3.5 调试命令与目录稳定性
 
 - `/usb journal reload` 清空 `LootProbabilityData`、worker 队列和服务端目录后重新解析、模拟；它不会清除玩家的笔记进度与日志。进度监听器在任务计数完成时先解除，因此控制台执行或执行玩家中途离线也不会留下旧监听器。
-- `/usb journal unlock table [table_id]` 使用启动即完整的 `rawCatalog`，不依赖概率模拟进度。
-- `/usb journal unlock item [table_id]` 需要动态物品也已进入稳定目录，因此 worker 忙碌或 `catalog` 尚未覆盖全部 `rawCatalog` 时会拒绝执行，避免把半成品目录写入玩家状态。
-- 父表 Intro、`unlock item` 和 100% 完成奖励统一使用“当前表及全部后代表，按 `LootResultSignature` 去重”的物品闭包。共享子表和循环引用只遍历一次。
+- `/usb journal unlock table [table_id]` 使用启动即完整的解析态视图（`getRawCatalog()`），不依赖概率模拟进度。
+- `/usb journal unlock item [table_id]` 需要动态物品也已进入稳定目录，因此 worker 忙碌、或模拟 overlay（`getCatalog()`）尚未覆盖解析态视图的全部表时会拒绝执行，避免把半成品目录写入玩家状态。
+- 父表 Intro、`unlock item` 和 100% 完成奖励统一使用“当前表及全部后代表，按 `LootResultSignature` 去重”的物品闭包（`CatalogQueryIndex.subtreeItems`，见 [战利品表系统](loottable.md) 第 2 节）。共享子表和循环引用只遍历一次。
 
 ## 4. 玩家进度状态
 

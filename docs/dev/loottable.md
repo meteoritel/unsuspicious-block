@@ -40,10 +40,12 @@ loottable/
 │   ├── LootTableNames              表名/本地化 key 工具
 │   ├── LootTableTranslationStore      服务端整合包级补充语言存储
 │   ├── MissingTranslationKeyExporter  游戏资源与服务端配置的缺失 key 诊断快照
-│   └── (ArchaeologyJournalCatalog 在 journal/catalog/，调用本包)
+│   └── (journal/catalog/ 的三个合作者：ArchaeologyJournalCatalog 组装静态读模型，
+│        LootTableAnalysisSession 承载一代分析结果，CatalogGeneration 原子发布整代目录)
 ├── signature/    结果签名
 │   ├── LootResultSignature         签名 record（核心）
 │   ├── LootResultMatcher           运行时掉落与候选签名匹配
+│   ├── LootResultPreviewCache      签名 → 预览栈的进程内缓存（玩家侧匹配共用）
 │   └── LootCounts                  计数工具
 ├── simulation/   概率模拟
 │   ├── LootProbabilitySimulator    模拟引擎（单表 10000 次抽取）
@@ -174,7 +176,7 @@ usb_sig|TYPE|itemId|base64(data)
 `COMPONENT_EXACT` 的预览栈需要 base64 + JSON 解码再套用组件补丁，成本远高于其它类型的匹配。因此
 [`LootResultPreviewCache`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/signature/LootResultPreviewCache.java)
 按签名内容缓存预览栈——预览栈由签名值唯一决定，缓存结果永远有效、不需要失效策略；玩家侧的掉落实时匹配
-（掉落追踪、容器/菜单扫描）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。
+（掉落追踪、容器已追踪状态、菜单快照三条来源）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。
 缓存只在数据包重载时清空以限制内存。概率模拟热路径不共用它：单表模拟自带 `HashMap` 缓存，单线程且无并发开销，更快。
 
 ## 5. 收录范围匹配
@@ -236,7 +238,7 @@ capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排
 - **环排除**：只对追踪根的初始可达集计算强连通分量，其成员被排除出收录闭包并输出一次性告警；与考古目录无关的第三方表循环不新增告警。
 - **编译**（`LootTableCompiler`）：单表 JSON → 上下文无关的 `CompiledLootTable`。遇到 `loot_table` 引用只记 `ReferenceSite` 不跟随；`item` / `tag` 记物品路径，其中 **item tag 在编译期展开为具体物品**（签名按具体物品生成，存档缓存也按具体签名索引）。
 - **投影**（`LootTableProjector`）：沿 JSON 引用把编译产物链接起来，复现三条语义——首跳子表归属、条件继承顺序（上层传入 → 本表内已继承 → 本事件自身）、函数继承与 `APPROX_ITEM_ONLY` 降级。引用位置按出现顺序逐个进入，**不去重也不合并**：同一子表在两处被引用且条件不同时两条获取路径都要保留。
-- **读模型**：`LootTableProjection` 展平出的 `TableDefinition` 只收真正产出物品的表；无物品的表既不进目录也不作为子表入口。此阶段概率为 `Probability.unknown()` 占位，等待模拟填充。
+- **读模型**：`StaticTableProjection` 展平出的 `TableDefinition` 只收真正产出物品的表（会话保留全部追踪表的投影，含空表）；无物品的表既不进目录也不作为子表入口。此阶段概率为 `Probability.unknown()` 占位，等待模拟填充。本轮的会话、分类结构与每表哈希一同装进 `CatalogGeneration`，构建完成后整体原子发布（见 7.4 的重载一致性）。
 
 `LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`；条件分析、函数链拼接与多路径合并各只有一份实现（`LootParseUtil`、`ItemDefinitionAccumulator`），保证编译路径与投影路径产出逐位一致的条件指纹与签名。
 
