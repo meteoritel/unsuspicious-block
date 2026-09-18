@@ -1,17 +1,23 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableJsonParser;
+import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableCompiler;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableProjector;
+import com.meteorite.unsuspiciousblock.loottable.catalog.StaticTableProjection;
 import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -51,19 +57,27 @@ public final class ArchaeologyJournalCatalog {
         Set<ResourceLocation> cycleTables = reportCycles(referenceGraph, initialClosure);
         Set<ResourceLocation> validClosure = referenceGraph.reachableFrom(trackedRoots, cycleTables);
 
-        LootTableJsonParser parser = new LootTableJsonParser(
-                validClosure::contains, LootTableNames::resolveDisplayName, cycleTables);
-        Map<ResourceLocation, TableDefinition> parsed = parser.load(sourceSnapshot, registries);
+        // 编译每张表的上下文无关语义，再由投影器沿 JSON 引用把它们链接成静态投影
+        Map<ResourceLocation, CompiledLootTable> compiledTables =
+                new LootTableCompiler(registries).compile(sourceSnapshot, validClosure);
+        LootTableProjector projector = new LootTableProjector(
+                referenceGraph, compiledTables, cycleTables, registries);
+
+        // 按表 id 排序遍历，保持与原解析路径一致的展示名登记顺序
+        List<ResourceLocation> orderedTables = new ArrayList<>(validClosure);
+        orderedTables.sort(Comparator.comparing(ResourceLocation::toString));
 
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
-        for (Map.Entry<ResourceLocation, TableDefinition> entry : parsed.entrySet()) {
-            // 子表入口只收录真正产出物品的表：图是纯拓扑，无物品的表不进目录也不作为入口。
-            List<ResourceLocation> children = referenceGraph.directChildren(entry.getKey()).stream()
-                    .filter(parsed::containsKey)
-                    .toList();
-            tables.put(entry.getKey(), entry.getValue().withChildTables(children));
-            LootTableNames.ensureRegistered(entry.getKey());
-            LootTableNames.resolveDisplayName(entry.getKey());
+        for (ResourceLocation tableId : orderedTables) {
+            LootTableNames.ensureRegistered(tableId);
+            Component displayName = LootTableNames.resolveDisplayName(tableId);
+            StaticTableProjection projection = projector.project(tableId);
+            // 无物品的表不进目录；子表入口由投影层按同样规则过滤，两边一致
+            if (projection == null || projection.isEmpty()) {
+                continue;
+            }
+            tables.put(tableId, new TableDefinition(tableId, displayName, projection.declaredType(),
+                    projection.items(), 0, projection.childTables()));
         }
         // 批量解析结束：先汇总输出缺失 key 警告（汇总过程中登记待补全条目），再统一落盘
         LootTableNames.logMissingTranslationSummary();

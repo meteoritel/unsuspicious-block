@@ -334,7 +334,7 @@ public final class SimulationScenarioPlanner {
             return "default";
         }
         return requirements.entrySet().stream()
-                .sorted(Comparator.comparing(Map.Entry::getKey))
+                .sorted(Map.Entry.comparingByKey())
                 .map(entry -> entry.getKey() + '=' + (entry.getValue() ? '1' : '0'))
                 .reduce((left, right) -> left + ';' + right)
                 .orElse("default");

@@ -433,3 +433,72 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ SimulatedTable �
 3. 若整合包自带循环引用的战利品表，确认告警为每个环一次、且环上表确实被排除出目录。
 4. 打开考古笔记核对：物品概率与场景范围、子表入口及其概率、条件树、排序、搜索定位。
 
+> 验收结果：用户实测未发现明显 bug，本批次已提交。
+
+### 2026-09-18 步骤② 子批次 1 完成（编译 / 投影层 + 双跑对比）
+
+按 §4.5，本子批次只建类型并双跑对比，**不切换任何消费者**，因此目录行为与步骤① 完全一致（多一次编译 + 投影的开销，验收后随对比设施一起消失）。
+
+**新增文件**
+
+| 文件 | 内容 |
+|---|---|
+| `loottable/analysis/CompiledLootTable` | 上下文无关编译产物：按 JSON 出现顺序排列的事件流（`ItemPath` / `ReferenceSite`），每个事件携带两个**本表局部**快照（继承条件链、函数链）。既不缓存展开结果，也不含任何跨表信息 |
+| `loottable/analysis/LootTableCompiler` | 单表 JSON → 编译产物。遇到 `loot_table` 引用只记 `ReferenceSite` 不跟随；item tag 在编译期展开为具体物品；遍历结构与条件/函数链累积次序与解析路径逐条对齐 |
+| `loottable/catalog/LootTableProjector` | 图 + 编译产物 → `StaticTableProjection`。链接期复现首跳归属、条件继承顺序、函数继承与 `APPROX_ITEM_ONLY` 降级三条不变量；引用位置按出现顺序逐个进入，不去重 |
+| `loottable/catalog/StaticTableProjection` | 静态投影读模型：展平物品条目 + 子表入口，概率保持 `"?"` 占位，不兼任网络 DTO |
+| `loottable/catalog/ItemDefinitionAccumulator` | 同签名多条获取路径的合并逻辑，解析与投影两条路径共用同一实现，杜绝合并规则漂移 |
+| `journal/catalog/StaticProjectionShadowCheck` | **临时**双跑对比设施：逐项比对物品签名集合、展示名与 tooltip、获取路径（条件 / 首跳来源 / tag 来源）、声明类型、子表入口；只告警不改行为 |
+
+**改造文件**
+
+| 文件 | 改动 |
+|---|---|
+| `loottable/analysis/LootParseUtil` | 迁入 `parseConditions` / `extractTypeId` / `prependFunctions` / `appendConditions`，成为条件分析与函数链拼接的唯一实现——两条路径必须产出逐位一致的条件指纹与函数顺序 |
+| `loottable/analysis/LootTableJsonParser` | 改用共享工具与 `ItemDefinitionAccumulator`，删除私有副本与 `ItemDefinitionBuilder` |
+| `journal/catalog/ArchaeologyJournalCatalog` | 解析之后追加一次编译 + 投影并调用对比设施（临时代码，已就地标注删除时机） |
+
+**实施中修正的自身错误**
+
+1. 初版把 `resolveEntry` 的函数处理抽成 `applyHandler` 辅助方法，导致 `previewStack` 的**原地更新**丢失（后续函数会作用在错误的物品栈上），且额外加了一条"近似签名即视为条件性"的判断——两者都会破坏逐位一致。已改回逐字照搬原逻辑。这是 §六 首项风险（语义复现不全）的一次实际命中，说明双跑对比这道门是必要的。
+2. 编译器初版给 `recordItem` 保留了 `sourceItemTag` 形参，实际只有 tag 分支传非空值且该分支已自行发事件，形参恒为 `null`。已去掉。
+
+**遗留的既有行为（本轮刻意保留，未修正）**
+
+解析路径对 `group` / `alternatives` / `sequence` 条目**只并入自身条件、不并入自身函数**；未知类型条目同样不并入自身函数。这会让这些层级上声明的 `functions` 被忽略。编译路径逐字复现了该行为——因为修正它会改变签名（不变量 #4），属于独立议题，不在本轮范围。
+
+**待用户实机验证**（本子批次特有，一次加载即可给出结论）
+
+1. 载入世界或执行 `/usb journal reload`，确认日志出现一行
+   `[投影双跑] 对齐通过：N 张表，物品签名集合、获取路径、条件与子表入口逐项一致`。
+2. 若出现 `[投影双跑] 发现差异`，请把该行及其后最多 5 张表的差异明细贴回——每条差异会同时打印解析侧与投影侧的完整渲染文本，可直接定位到具体字段。
+3. 注意双跑期间同一个缺失子表 / 循环引用会各告警一次（两条路径各一条），属预期。
+4. 已知的假阳性：若某条件的 `toString()` 是默认身份实现，其指纹元数据含 `类名@hash`，两条路径各自解码出的实例必然不同 → 差异只体现在元数据字段上。现有条件类型均为 record（值语义文本），按现有数据不应触发；若出现且差异仅限此类元数据，可判定为假阳性而非语义偏差。
+
+**下一步（子批次 2 的前置条件）**：只有在上述对齐通过后，才按 §4.4 切换消费者（`collectSubtreeItems` 的四个调用点、`getRawTable` 系查询、`computeCatalogHash` 输入源），否则语义偏差会被固化进投影层。
+
+**验收结果**：用户实机执行 `/usb journal reload`，日志输出
+`[投影双跑] 对齐通过：58 张表，物品签名集合、获取路径、条件与子表入口逐项一致` —— 门通过。
+
+### 2026-09-18 步骤② 子批次 2 完成（投影层切为生产路径）
+
+**改动**
+
+| 文件 | 改动 |
+|---|---|
+| `journal/catalog/ArchaeologyJournalCatalog.java` | 解析改为"编译 → 投影"：`LootTableCompiler` 编译 `validClosure`，`LootTableProjector` 建投影，再按表 id 排序把投影转成 `TableDefinition`。展示名登记改为对 `validClosure` 全量调用一次（与原解析路径的调用集合一致），无物品的表仍不进目录，子表入口由投影层按同一规则过滤 |
+| `loottable/analysis/LootTableJsonParser.java` | **删除**（连同私有 `ResolvedEntry` / `ItemDefinitionBuilder`） |
+| `journal/catalog/StaticProjectionShadowCheck.java` | **删除**（D3：验收后删除临时设施） |
+
+**行为保持的依据**：双跑对比已在真实数据上证明两条路径逐项一致；本批次只是把生产路径换成已验证的那一条，并把展示名登记、无物品表过滤、子表入口过滤三处调用集合逐一对齐。目录对外形态（`TableDefinition` / `ItemDefinition` / 网络 payload / 客户端）本批次一律未动。
+
+**顺带消掉的重复**：编译期只在 `LootParseUtil` 里解析条件与拼接函数链，条件指纹与签名顺序对整条链路只有一个来源；`ItemDefinition` 的多路径合并同样只剩 `ItemDefinitionAccumulator` 一份实现。
+
+**待用户实机验证**
+
+1. 载入世界或 `/usb journal reload`，确认 `解析到 58 个考古战利品表原始目录` 数量不变，且**不再出现** `[投影双跑]` 相关日志（设施已删除）。
+2. 确认没有新增告警，特别是没有 `展开 loot_table 引用 … 失败`、`检测到战利品表循环引用` 这类来自投影层的告警。
+3. 打开考古笔记逐项核对：物品概率与场景范围、子表入口及其概率、条件树、排序、搜索定位——应与上一次验收（步骤① 状态）完全一致。
+
+**下一步（子批次 3）**：`CatalogQueryIndex` 替换 `collectSubtreeItems` 的四个调用点，并引入 `LootTableAnalysisSession` / `CatalogGeneration` 承载投影集合与 generation 原子发布；随后清理 `LootTableCatalog` 的便捷构造器与 `collectSubtreeItems` 本身。
+
