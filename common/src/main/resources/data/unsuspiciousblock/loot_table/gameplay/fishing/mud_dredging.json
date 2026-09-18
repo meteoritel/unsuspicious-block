@@ -5,10 +5,7 @@
       "rolls": 1,
       "conditions": [
         {
-          "condition": "unsuspiciousblock:mud_dredging"
-        },
-        {
-          "condition": "unsuspiciousblock:random_chance_with_tool_enchantment",
+          "condition": "unsuspiciousblock:tool_enchantment",
           "enchantment": "unsuspiciousblock:mud_dredging",
           "chance": {
             "type": "minecraft:linear",

@@ -126,11 +126,9 @@ public class UnsuspiciousBlockNeoForge {
     // 自定义战利品条件类型注册——NeoForge 使用 DeferredRegister，避免 Registry is already frozen
     private static final DeferredRegister<LootItemConditionType> LOOT_CONDITIONS =
             DeferredRegister.create(Registries.LOOT_CONDITION_TYPE, Constants.MOD_ID);
-    private static final DeferredHolder<LootItemConditionType, LootItemConditionType> MUD_DREDGING_TYPE =
-            LOOT_CONDITIONS.register("mud_dredging", () -> new LootItemConditionType(ModLootConditions.MUD_DREDGING_CODEC));
-    private static final DeferredHolder<LootItemConditionType, LootItemConditionType> TOOL_ENCHANTMENT_CHANCE_TYPE =
-            LOOT_CONDITIONS.register("random_chance_with_tool_enchantment",
-                    () -> new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CHANCE_CODEC));
+    private static final DeferredHolder<LootItemConditionType, LootItemConditionType> TOOL_ENCHANTMENT_TYPE =
+            LOOT_CONDITIONS.register(ModLootConditions.TOOL_ENCHANTMENT.getPath(),
+                    () -> new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CODEC));
 
     // 全局战利品修改器序列化器注册——add_item 类型供 JSON 文件引用
     private static final DeferredRegister<MapCodec<? extends IGlobalLootModifier>> LOOT_MODIFIERS =
@@ -248,9 +246,8 @@ public class UnsuspiciousBlockNeoForge {
                     .build());
 
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
-        // 在 common init 前设置平台注册的 LootItemConditionType，供 MudDredgingCondition 运行时使用
-        ModLootConditions.setMudDredgingType(MUD_DREDGING_TYPE);
-        ModLootConditions.setToolEnchantmentChanceType(TOOL_ENCHANTMENT_CHANCE_TYPE);
+        // 在 common init 前设置平台注册的 LootItemConditionType，供 ToolEnchantmentCondition 运行时使用
+        ModLootConditions.setToolEnchantmentType(TOOL_ENCHANTMENT_TYPE);
 
         UnsuspiciousBlockCommon.init();
 

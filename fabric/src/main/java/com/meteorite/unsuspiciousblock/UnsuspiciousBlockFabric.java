@@ -94,17 +94,11 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 GenerationStep.Decoration.VEGETAL_DECORATION, ModFeatures.NETHER_SHIMMER);
 
         // 注册自定义战利品条件类型（Fabric 端直接 Registry.register，在 common init 前完成）
-        LootItemConditionType mudDredgingType = Registry.register(
+        LootItemConditionType toolEnchantmentType = Registry.register(
                 BuiltInRegistries.LOOT_CONDITION_TYPE,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "mud_dredging"),
-                new LootItemConditionType(ModLootConditions.MUD_DREDGING_CODEC));
-        ModLootConditions.setMudDredgingType(() -> mudDredgingType);
-        LootItemConditionType toolEnchantmentChanceType = Registry.register(
-                BuiltInRegistries.LOOT_CONDITION_TYPE,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID,
-                        "random_chance_with_tool_enchantment"),
-                new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CHANCE_CODEC));
-        ModLootConditions.setToolEnchantmentChanceType(() -> toolEnchantmentChanceType);
+                ModLootConditions.TOOL_ENCHANTMENT,
+                new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CODEC));
+        ModLootConditions.setToolEnchantmentType(() -> toolEnchantmentType);
 
         UnsuspiciousBlockCommon.init();
 

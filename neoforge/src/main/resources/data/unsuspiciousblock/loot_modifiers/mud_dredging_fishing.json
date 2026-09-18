@@ -6,7 +6,8 @@
       "loot_table_id": "minecraft:gameplay/fishing"
     },
     {
-      "condition": "unsuspiciousblock:mud_dredging"
+      "condition": "unsuspiciousblock:tool_enchantment",
+      "enchantment": "unsuspiciousblock:mud_dredging"
     }
   ]
 }

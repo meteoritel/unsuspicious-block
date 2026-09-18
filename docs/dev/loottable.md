@@ -65,9 +65,8 @@ loottable/
 │   ├── ArchaeologyLootInjector     注入器接口
 │   └── ArchaeologyLootInjectors    全局注册器（单例）
 └── condition/    自定义战利品条件
-    ├── ModLootConditions           条件类型注册
-    ├── MudDredgingCondition         泥底打捞附魔资格条件
-    └── ToolEnchantmentChanceCondition 工具附魔等级概率条件
+    ├── ModLootConditions           条件类型注册与展示描述
+    └── ToolEnchantmentCondition    工具附魔门槛 + 可选按等级概率（唯一自定义条件）
 ```
 
 解析与追踪按**四层管线**组织，每层只依赖上一层：
@@ -338,7 +337,13 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 `all_of` / `any_of` / `inverted` 始终由原版逻辑根据叶子结果求值，随机条件、权重和 rolls 不覆盖。
 
 UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群系/维度/结构、天气、时间、
-实体目标、伤害来源与计分范围提供具体描述。
+实体目标、伤害来源与计分范围提供具体描述。条件展示带**保真度三态**，由服务端解析层在
+`analyzeAll` 时以 metadata 给出（键 `analysis_fidelity`，见 `LootConditionHandlers`）：描述完整时不写该键，
+只给出"成立但有未展示约束"的描述时标 `partial`，没有解析器或解析器失败时标 `unreadable`
+（此时文案统一为"未识别：<条件 id>"，保留 id 作为唯一的定位入口）。客户端只据该标记映射样式
+（`partial` 与 `unreadable` 用斜体，`unreadable` 另用 `TooltipBuilder.CONDITION_UNREADABLE` 上色），
+不推断条件语义——"解析只有一份实现"的边界不因此破开。同理，拿不到确定数值的概率条件一律承认是
+动态值（`random_chance` 只在常量或 `uniform` 两端皆为常量时给出百分比），绝不展示编造的 `100%`。
 
 概率文本与颜色共用**一份**判定：`ItemDefinition.uncertaintyLevel()` 与 `hasConditions()` 读同一批数据
 （全部获取路径的条件树 + 近似签名），UI 不再在客户端另起规则、也不再用 tooltip 文案比较来识别近似条目
@@ -362,8 +367,10 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 平台运行时注入的 `minecraft:gameplay/fishing -> unsuspiciousblock:gameplay/fishing/mud_dredging`
 关系由公共目录加载器补入引用图；NeoForge GLM 直接调用子表时也显式写入同一模拟观测作用域。
 
-原版 fishing JSON 看不到 Fabric 加载期注入池或 NeoForge GLM。规划器因此使用泥地打捞 III 级工具，
-额外建立普通群系与加成群系两个代表场景，只收集运行时发现的注入物；父表自身也统一按 III 级模拟。
+原版 fishing JSON 看不到 Fabric 加载期注入池或 NeoForge GLM。规划器因此使用泥地打捞**满级**工具
+（等级取自附魔自身的 `max_level`，当前数据下即 III 级），额外建立普通群系与加成群系两个代表场景，
+只收集运行时发现的注入物；父表自身也统一按满级模拟。取满级而不是保留写死的等级，是为了把附魔等级
+这一维压成单点（避免与环境条件形成笛卡尔积），并让整合包提高 `max_level` 时模拟自动跟随。
 
 ### 7.3 主线程 tick 驱动
 
@@ -409,22 +416,35 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 ## 9. 自定义战利品条件
 
-`condition/` 包定义模组自定义的战利品条件：
+`condition/` 包只定义**一个**模组自定义战利品条件：
 
-- [`ModLootConditions`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ModLootConditions.java) 注册 `mud_dredging` 与 `random_chance_with_tool_enchantment` 两种条件：
+- [`ModLootConditions`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ModLootConditions.java) 注册唯一规范名 `unsuspiciousblock:tool_enchantment`，并登记它的展示描述：
   - Fabric：`Registry.register` 直接注册（`onInitialize` 开头）。
   - NeoForge：`DeferredRegister` 注册（避免 registry frozen）。
-- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 只检查工具是否具有泥地打捞附魔；旧 `swamp` 字段仅用于数据兼容。
-- [`ToolEnchantmentChanceCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentChanceCondition.java) 从 `TOOL` 读取指定附魔等级并用 `LevelBasedValue` 计算概率。
-- Fabric 只向原版 fishing 表追加一个带资格条件的父表 pool；NeoForge GLM 也只执行同一父表。父表为单 pool：资格与统一触发概率（0.2 + 0.1/级）写在 pool 条件上，基础物品直接平铺在根表，`common`（开放水域）与 `swamp`（开放水域 + `#c:is_swamp` 群系 tag）两个子表 entry 按权重参与竞争，沼泽表权重更高。
+- [`ToolEnchantmentCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentCondition.java) 是一个类型表达完整语义的条件：
+  - `enchantment` 必填（`Enchantment.CODEC`，即 `Holder<Enchantment>`）；
+  - `min_level` 可选，默认 `1`，以 `Codec.intRange(1, 255)` 校验——"带有该附魔"本身就是该类型的固有语义；
+  - `chance` 可选（`LevelBasedValue`）：缺省表示**纯资格门槛**，给出时再按实际附魔等级掷一次概率。
+  - 因此"需要工具附魔"与"按该附魔等级掷概率"不再需要并列两条条件，tooltip 也从相邻两行变成
+    "一行附魔展示名 + 按需的等级/概率子行"。
+- Fabric 只向原版 fishing 表追加一个带资格条件的父表 pool（门槛形态：无等级门槛、无 `chance`，
+  附魔 `Holder` 由 `LootTableEvents.MODIFY` 回调提供的 `HolderLookup.Provider` 取得）；NeoForge GLM
+  的 JSON 里写同一种条件（`enchantment` 必填，无 `chance`）。父表为单 pool：资格与统一触发概率
+  （0.2 + 0.1/级，`linear`）写在 pool 的**同一条**条件上，基础物品直接平铺在根表，`common`
+  （开放水域）与 `swamp`（开放水域 + `#c:is_swamp` 群系 tag）两个子表 entry 按权重参与竞争，
+  沼泽表权重更高。
 
 条件类型的注册时序约束见 [架构总览](architecture-overview.md) 的初始化流程--必须在 `UnsuspiciousBlockCommon.init()` 之前完成。
+
+> 旧注册名 `mud_dredging` 与 `random_chance_with_tool_enchantment`、旧 `swamp` 字段都已删除：
+> 两个旧格式只由本模组内置资源使用，代码与 JSON 在同一构建产物里原子更新，不承诺跨版本兼容。
+> 引用未注册条件类型会让**整张表**解析失败并不注册，因此资源与注册名必须同批发布。
 
 ## 10. 扩展点
 
 - **新增收录范围**：修改配置的追踪前缀列表（`ILootTableConfig.getArchaeologyPathPrefixes()`），或通过数据包新增命中前缀的战利品表。
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需在 `JournalNbtMigrator` 补充连续迁移步骤。
-- **新增战利品条件**：参考 `MudDredgingCondition`，在 `ModLootConditions` 注册类型，两端各自注册到注册表。
+- **新增战利品条件**：参考 `ToolEnchantmentCondition`，在 `ModLootConditions` 注册类型与展示描述，两端各自注册到注册表；资源与本批必须同批落地（见第 9 节）。展示描述只能做到"成立但有未展示约束"时，调 `LootConditionHandlers.partial(info)` 告诉客户端改用斜体，别让半懂乍看像读懂。
 - **新增场景控制类型**：把类型加入 `SimulationScenarioPlanner` 的 `SCENARIO_CONDITIONS`，并为其补一个 `test` 转交作用域的窄 Mixin；类型须实现为 record 或覆写 `toString()`，否则指纹稳定性判定会把它排除出场景规划（见 7.2）。
 - **新增运行时联动边（平台注入 / 表间运行时关系）**：在 `RuntimeLootLinks` 声明标识符与边，并在 `LootTableEdge.Kind` 中显式选型——`RUNTIME_INJECTION` 只参与收录闭包、目录层级与哈希，**不参与静态语义链接**，条目仍由模拟期动态发现并保持 `injected=true`。合成边只在两端资源都存在时才会注入。
 - **修改概率口径**：`Probability` 是不变式载体，新增状态需同时更新存档与网络的穷尽 codec 与 `ProbabilityFormat`；任何情况下都不要把展示文本写回数据层，也不要反解文本做数值比较。

@@ -7,7 +7,7 @@ import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
-import com.meteorite.unsuspiciousblock.loottable.condition.MudDredgingCondition;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootSimulationScope;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.serialization.MapCodec;
@@ -65,13 +65,13 @@ public class FishingLootModifier extends LootModifier {
         }
         LootParams mudParams = paramsBuilder.create(LootContextParamSets.FISHING);
         LootTable lootTable = context.getLevel().getServer().reloadableRegistries()
-                .getLootTable(MudDredgingCondition.MUD_DREDGING);
+                .getLootTable(RuntimeLootLinks.MUD_DREDGING_TABLE_KEY);
 
         if (LootSimulationScope.isActive()) {
             lootTable.getRandomItemsRaw(mudParams, stack -> {
                 if (!stack.isEmpty()) {
                     LootSimulationScope.recordChildTableDrop(
-                            MudDredgingCondition.MUD_DREDGING.location(), stack);
+                            RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), stack);
                 }
                 generatedLoot.add(stack);
             });
@@ -87,7 +87,7 @@ public class FishingLootModifier extends LootModifier {
 
         BlockPos pos = BlockPos.containing(origin);
         LootTrackingContext trackingContext = LootTrackingContext.root(
-                player, MudDredgingCondition.MUD_DREDGING.location(), LootSourceType.FISHING,
+                player, RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), LootSourceType.FISHING,
                 context.getLevel().getGameTime(), context.getLevel().getDayTime(), pos, null);
         LootSession session = new LootSession(trackingContext);
         List<ItemStack> captured = new ArrayList<>();

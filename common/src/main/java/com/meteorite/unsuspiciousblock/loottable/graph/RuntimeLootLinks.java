@@ -2,7 +2,10 @@ package com.meteorite.unsuspiciousblock.loottable.graph;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootParseUtil;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.storage.loot.LootTable;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -25,9 +28,9 @@ public final class RuntimeLootLinks {
     public static final ResourceLocation MUD_DREDGING_TABLE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gameplay/fishing/mud_dredging");
 
-    /** 泥地打捞资格条件类型 id（是条件类型，不是战利品表），用于场景假设文案与条件类型默认值。 */
-    public static final ResourceLocation MUD_DREDGING_CONDITION =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "mud_dredging");
+    /** 泥地打捞子表的 {@link ResourceKey} 形态——平台注入与掉落追踪共用的表身份。 */
+    public static final ResourceKey<LootTable> MUD_DREDGING_TABLE_KEY =
+            ResourceKey.create(Registries.LOOT_TABLE, MUD_DREDGING_TABLE);
 
     /** 原版与模组钓鱼表声明的战利品表类型，表示模拟需要钓鱼上下文（默认钓竿、假浮标）。 */
     private static final String FISHING_DECLARED_TYPE = "fishing";

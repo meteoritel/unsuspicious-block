@@ -4,9 +4,11 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -14,11 +16,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,14 +33,14 @@ import java.util.Set;
 public final class SimulationScenarioPlanner {
     private static final int MAX_SCENARIOS = 8;
     private static final int FISHING_MUD_DREDGING_SCENARIOS = 2;
-    private static final int MUD_DREDGING_SIMULATION_LEVEL = 3;
     private static final ResourceLocation FISHING = RuntimeLootLinks.FISHING_TABLE;
     private static final ResourceLocation LOCATION_CHECK = ResourceLocation.withDefaultNamespace("location_check");
-    private static final ResourceLocation MUD_DREDGING = RuntimeLootLinks.MUD_DREDGING_CONDITION;
     private static final ResourceLocation MUD_DREDGING_TABLE = RuntimeLootLinks.MUD_DREDGING_TABLE;
     private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
     private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
+    // 工具附魔条件不参与场景覆盖：概率的等级曲线无法在布尔场景假设里表达，表中的它按真实 test() 求值，
+    // 等级维度另由泥地打捞路径统一压成满级单点（见 applyMudDredgingTool）
     private static final Set<ResourceLocation> SCENARIO_CONDITIONS = Set.of(
             ResourceLocation.withDefaultNamespace("match_tool"),
             ResourceLocation.withDefaultNamespace("block_state_property"),
@@ -47,8 +49,7 @@ public final class SimulationScenarioPlanner {
             ResourceLocation.withDefaultNamespace("location_check"),
             ResourceLocation.withDefaultNamespace("weather_check"),
             ResourceLocation.withDefaultNamespace("time_check"),
-            ResourceLocation.withDefaultNamespace("entity_scores"),
-            MUD_DREDGING);
+            ResourceLocation.withDefaultNamespace("entity_scores"));
 
     private static final Logger LOGGER = LogUtils.getLogger();
     /** 已告警过的指纹不稳定类型，避免按条目刷屏；仅在主线程的场景规划中访问。 */
@@ -119,26 +120,31 @@ public final class SimulationScenarioPlanner {
         return List.copyOf(result);
     }
 
-    // 泥地打捞统一使用 III 级工具，避免附魔等级与环境条件形成额外笛卡尔积。
+    // 泥地打捞统一使用满级工具：附魔等级这一维压成单点，避免与环境条件形成笛卡尔积。
+    // 满级取自附魔数据本身（max_level），数据包调整最大等级时模拟自动跟随。
     private static List<SimulationScenario> applyMudDredgingTool(
             List<SimulationScenario> baseScenarios, ServerLevel level) {
         List<SimulationScenario> result = new ArrayList<>();
-        ItemStack tool = mudDredgingTool(level, MUD_DREDGING_SIMULATION_LEVEL);
+        Holder<Enchantment> enchantment = mudDredgingEnchantment(level);
+        int toolLevel = enchantment.value().definition().maxLevel();
+        ItemStack tool = toolWithEnchantment(enchantment, toolLevel);
         for (SimulationScenario base : baseScenarios) {
             List<LootConditionInfo> assumptions = new ArrayList<>(base.assumptions());
-            assumptions.addFirst(mudDredgingLevelAssumption());
-            result.add(new SimulationScenario(base.key() + ";level=" + MUD_DREDGING_SIMULATION_LEVEL,
+            assumptions.addFirst(mudDredgingLevelAssumption(toolLevel));
+            result.add(new SimulationScenario(base.key() + ";level=" + toolLevel,
                     base.profile().withTool(tool), assumptions, base.applicableSignatures(),
                     base.applicableChildTables()));
         }
         return result;
     }
 
-    // 原始 fishing JSON 看不到平台注入池，使用 III 级附魔补充普通/加成群系两个代表场景。
+    // 原始 fishing JSON 看不到平台注入池，使用满级附魔补充普通/加成群系两个代表场景。
     private static void appendMudDredgingScenarios(List<SimulationScenario> result, TableDefinition table,
                                                    SimulationProfile baseProfile,
                                                    ServerLevel level) {
-        ItemStack tool = mudDredgingTool(level, MUD_DREDGING_SIMULATION_LEVEL);
+        Holder<Enchantment> enchantment = mudDredgingEnchantment(level);
+        int toolLevel = enchantment.value().definition().maxLevel();
+        ItemStack tool = toolWithEnchantment(enchantment, toolLevel);
         Set<String> applicable = table.items().stream()
                 .map(item -> item.signature().toStoredKey())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
@@ -147,27 +153,28 @@ public final class SimulationScenarioPlanner {
             SimulationProfile profile = baseProfile.withTool(tool).withConditionOutcomes(
                     baseProfile.conditionOutcomes(), defaults);
             List<LootConditionInfo> assumptions = List.of(
-                    mudDredgingLevelAssumption(),
+                    mudDredgingLevelAssumption(toolLevel),
                     new LootConditionInfo(LOCATION_CHECK, Component.translatable(
                             "screen.unsuspiciousblock.archaeology_journal.condition."
                                     + (swamp ? "mud_dredging_bonus_biome" : "mud_dredging_normal_biome")),
                             null));
             result.add(new SimulationScenario(
-                    "mud_dredging:level=" + MUD_DREDGING_SIMULATION_LEVEL
-                            + ";swamp=" + (swamp ? 1 : 0),
+                    "mud_dredging:level=" + toolLevel + ";swamp=" + (swamp ? 1 : 0),
                     profile, assumptions, applicable, Set.copyOf(table.childTables())));
         }
     }
 
-    private static LootConditionInfo mudDredgingLevelAssumption() {
-        return new LootConditionInfo(MUD_DREDGING, Component.translatable(
+    private static LootConditionInfo mudDredgingLevelAssumption(int toolLevel) {
+        return new LootConditionInfo(ModLootConditions.TOOL_ENCHANTMENT, Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.condition.mud_dredging_level",
-                MUD_DREDGING_SIMULATION_LEVEL), null);
+                toolLevel), null);
     }
 
-    private static ItemStack mudDredgingTool(ServerLevel level, int enchantmentLevel) {
-        var enchantment = level.holderLookup(Registries.ENCHANTMENT)
-                .getOrThrow(ModEnchantments.MUD_DREDGING);
+    private static Holder<Enchantment> mudDredgingEnchantment(ServerLevel level) {
+        return level.holderLookup(Registries.ENCHANTMENT).getOrThrow(ModEnchantments.MUD_DREDGING);
+    }
+
+    private static ItemStack toolWithEnchantment(Holder<Enchantment> enchantment, int enchantmentLevel) {
         ItemStack tool = new ItemStack(Items.FISHING_ROD);
         ItemEnchantments.Mutable enchantments = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
         enchantments.set(enchantment, enchantmentLevel);

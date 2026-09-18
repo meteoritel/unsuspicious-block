@@ -140,8 +140,9 @@ apply(ctx)
 
 泥底打捞不通过效果框架，而是通过**自定义战利品条件**实现：
 
-- [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) 是附魔资格 `LootItemCondition`，只检查钓鱼竿是否具有泥底打捞；开放水域/沼泽群系分支与统一触发概率由父 loot table 的 `entity_properties`(fishing_hook)、`location_check`(`#c:is_swamp`) 和 `random_chance_with_tool_enchantment` 处理。
-- 通过 `mud_dredging` 战利品池注入原版钓鱼表（Fabric 用 `FishingLootInjection`，NeoForge 用 `FishingLootModifier` GLM）。
+- [`ToolEnchantmentCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentCondition.java) 用**一个**条件表达完整语义："需要钓鱼竿带有泥底打捞（可选等级门槛）+ 按该附魔等级掷概率（`0.2 + 0.1/级`）"。它不再拆成"资格条件"与"概率条件"两条并列条件，因此 tooltip 上是一行附魔名加按需的等级/概率子行。
+- 开放水域/沼泽群系分支仍由父 loot table 的 `entity_properties`(fishing_hook) 与 `location_check`(`#c:is_swamp`) 处理。
+- 通过 `mud_dredging` 战利品池注入原版钓鱼表（Fabric 用 `FishingLootInjection`，NeoForge 用 `FishingLootModifier` GLM）；注入侧只写资格门槛形态（无 `chance`），概率由子表自己的数据表达。
 - 命中时从 `gameplay/fishing/mud_dredging` 战利品表抽取额外宝物。
 
 条件类型注册有时序约束（必须在 `init` 前完成），见 [战利品表系统](loottable.md) 第 9 节与 [架构总览](architecture-overview.md) 第 4 节。
@@ -205,7 +206,7 @@ EnchantmentMenu.slotsChanged  (由 EnchantmentMenuMixin 拦截)
 
 ## 11. 相关文档
 
-- [战利品表系统](loottable.md) - `MudDredgingCondition` 与条件注册
+- [战利品表系统](loottable.md) - `ToolEnchantmentCondition` 与条件注册
 - [考古笔记系统](journal.md) - `FossilHunterEffect` 的追踪接入
 - [实体与 AI](entities-world.md) - `NaturalBoneBlockTracker` 骨块追踪
 - [网络与同步](network.md) - `SyncEnchantmentRevealListPayload`
