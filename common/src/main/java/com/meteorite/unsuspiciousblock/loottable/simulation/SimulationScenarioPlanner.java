@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDe
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -13,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -49,7 +51,16 @@ public final class SimulationScenarioPlanner {
             ResourceLocation.withDefaultNamespace("entity_scores"),
             ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "mud_dredging"));
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+    /** 已告警过的指纹不稳定类型，避免按条目刷屏；仅在主线程的场景规划中访问。 */
+    private static final Set<ResourceLocation> WARNED_UNSTABLE_TYPES = new LinkedHashSet<>();
+
     private SimulationScenarioPlanner() {
+    }
+
+    // 判断条件类型是否属于需要由代表场景控制的类型；其余类型在模拟中按真实逻辑求值
+    public static boolean isScenarioControlled(ResourceLocation conditionType) {
+        return SCENARIO_CONDITIONS.contains(conditionType);
     }
 
     // 每条获取路径形成一个最小场景，避免对所有条件做无界笛卡尔积
@@ -248,9 +259,25 @@ public final class SimulationScenarioPlanner {
         if (!SCENARIO_CONDITIONS.contains(type)) {
             return List.of(Map.of());
         }
+        // 指纹无法跨解析期/运行时复现时，建立场景只会产出运行时永远匹配不上的死键，
+        // 反而把条目在其"自家场景"里也判成不适达。此处按无约束处理，让条目保留在
+        // 所有代表场景中（数值偏保守，但不会伪装成确定值）。
+        if (!LootConditionFingerprint.isStable(condition)) {
+            warnUnstableFingerprint(condition.conditionType());
+            return List.of(Map.of());
+        }
         String fingerprint = LootConditionFingerprint.of(condition);
         conditionByFingerprint.putIfAbsent(fingerprint, condition);
         return List.of(Map.of(fingerprint, !negated));
+    }
+
+    // 每个类型只告警一次：该类型无法参与场景覆盖，需要改为 record 或覆写 toString
+    private static void warnUnstableFingerprint(ResourceLocation conditionType) {
+        if (WARNED_UNSTABLE_TYPES.add(conditionType)) {
+            LOGGER.warn("战利品条件 {} 的指纹不稳定（toString 为默认实现），无法参与模拟场景规划，"
+                    + "该条件已按无约束处理；如需纳管请将其实现为 record 或覆写 toString",
+                    conditionType);
+        }
     }
 
     private static List<Map<String, Boolean>> combineAnd(List<Map<String, Boolean>> left,

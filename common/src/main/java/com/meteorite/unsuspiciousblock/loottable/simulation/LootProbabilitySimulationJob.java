@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableD
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -17,11 +18,13 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +37,7 @@ import java.util.function.Function;
  */
 final class LootProbabilitySimulationJob {
     private static final int TIME_CHECK_BATCH_SIZE = 32;
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private final ResourceLocation tableId;
     private final TableDefinition rawTable;
@@ -46,6 +50,8 @@ final class LootProbabilitySimulationJob {
     private final Set<String> discoveredDirectly = new HashSet<>();
     private final Map<String, Map<String, Integer>> countsByScenario = new LinkedHashMap<>();
     private final Map<String, Map<ResourceLocation, Integer>> childCountsByScenario = new LinkedHashMap<>();
+    /** 本表模拟中只按真实逻辑求值的场景控制类型条件（指纹未命中），用于完成时集中提示。 */
+    private final Set<String> uncoveredConditions = new LinkedHashSet<>();
     private final Map<LootResultSignature, ItemStack> previewCache = new HashMap<>();
     private final Map<LootResultSignature, String> storedKeyCache = new HashMap<>();
     private final Function<LootResultSignature, ItemStack> previewProvider =
@@ -84,20 +90,25 @@ final class LootProbabilitySimulationJob {
                 prepareScenario();
             }
             SimulationScenario scenario = this.scenarios.get(this.scenarioIndex);
-            try (LootSimulationScope.Scope ignored = LootSimulationScope.open(
+            try (LootSimulationScope.Scope scope = LootSimulationScope.open(
                     scenario.profile(), this.directChildTables)) {
-                while (this.completedRolls < LootProbabilitySimulator.getSimulationCount()) {
-                    int batchEnd = Math.min(LootProbabilitySimulator.getSimulationCount(),
-                            this.completedRolls + TIME_CHECK_BATCH_SIZE);
-                    while (this.completedRolls < batchEnd) {
-                        simulateRoll();
-                        this.completedRolls++;
-                        advanced = true;
+                try {
+                    while (this.completedRolls < LootProbabilitySimulator.getSimulationCount()) {
+                        int batchEnd = Math.min(LootProbabilitySimulator.getSimulationCount(),
+                                this.completedRolls + TIME_CHECK_BATCH_SIZE);
+                        while (this.completedRolls < batchEnd) {
+                            simulateRoll();
+                            this.completedRolls++;
+                            advanced = true;
+                        }
+                        if (this.completedRolls < LootProbabilitySimulator.getSimulationCount()
+                                && advanced && System.nanoTime() >= deadlineNanos) {
+                            return false;
+                        }
                     }
-                    if (this.completedRolls < LootProbabilitySimulator.getSimulationCount()
-                            && advanced && System.nanoTime() >= deadlineNanos) {
-                        return false;
-                    }
+                } finally {
+                    // 作用域关闭前收集本片内未被场景覆盖的条件（提前返回同样需要收集）
+                    this.uncoveredConditions.addAll(scope.uncoveredConditions());
                 }
             }
             finishScenario(scenario);
@@ -269,13 +280,17 @@ final class LootProbabilitySimulationJob {
         List<ChildTableProbability> childProbabilities = new ArrayList<>();
         for (ResourceLocation childTable : this.rawTable.childTables()) {
             List<ScenarioProbability> probabilities = new ArrayList<>();
-            for (SimulationScenario scenario : this.scenarios) {
-                int appearances = this.childCountsByScenario.getOrDefault(scenario.key(), Map.of())
-                        .getOrDefault(childTable, 0);
-                probabilities.add(new ScenarioProbability(scenario.key(),
-                        scenario.applicableChildTables().contains(childTable)
-                                ? formatProbability(appearances, false) : "0",
-                        scenario.assumptions()));
+            // 与物品同一口径：该子表在所有场景中都被判定不可达时，更可能是其条件组合被场景上限
+            // 截断，按未知报告；逐个写 "0" 会把"没覆盖到"显示成"不可能产出"。
+            if (isChildApplicableInAnyScenario(childTable)) {
+                for (SimulationScenario scenario : this.scenarios) {
+                    int appearances = this.childCountsByScenario.getOrDefault(scenario.key(), Map.of())
+                            .getOrDefault(childTable, 0);
+                    probabilities.add(new ScenarioProbability(scenario.key(),
+                            scenario.applicableChildTables().contains(childTable)
+                                    ? formatProbability(appearances, false) : "0",
+                            scenario.assumptions()));
+                }
             }
             childProbabilities.add(new ChildTableProbability(
                     childTable, summarize(probabilities), probabilities));
@@ -283,10 +298,27 @@ final class LootProbabilitySimulationJob {
         TableDefinition table = new TableDefinition(
                 this.tableId, this.rawTable.displayName(), this.rawTable.type(), simulatedItems,
                 LootProbabilitySimulator.getSimulationCount(), this.rawTable.childTables(), childProbabilities);
+        logUncoveredConditions();
         return LootProbabilitySimulator.SimResult.success(this.tableId, table);
     }
 
+    // 未命中场景覆盖的场景控制类型条件只能按真实逻辑求值，数值可能偏离场景估算，完成时汇总提示一次
+    private void logUncoveredConditions() {
+        if (this.uncoveredConditions.isEmpty()) {
+            return;
+        }
+        LOGGER.warn("战利品表 {} 有 {} 个场景控制类型条件未被代表场景覆盖，已按真实逻辑求值，"
+                        + "结果可能偏离场景估算（常见成因：条件指纹不可用，或条件来自运行时注入的路径）：{}",
+                this.tableId, this.uncoveredConditions.size(), String.join(", ", this.uncoveredConditions));
+    }
+
     private List<ScenarioProbability> scenarioProbabilities(String storedKey, boolean uncertainWhenAbsent) {
+        // 代表场景数量受 MAX_SCENARIOS 限制。被截断的条件组合不会有任何场景覆盖它，此时条目在
+        // 每个场景里都是"不适用"，逐个写 "0" 会把"未覆盖"显示成"不可达"；返回空场景列表让汇总
+        // 落到 "?"（未知）。
+        if (!isApplicableInAnyScenario(storedKey)) {
+            return List.of();
+        }
         List<ScenarioProbability> probabilities = new ArrayList<>();
         for (SimulationScenario scenario : this.scenarios) {
             if (!scenario.applicableSignatures().contains(storedKey)) {
@@ -302,6 +334,26 @@ final class LootProbabilitySimulationJob {
                     formatProbability(counts.get(storedKey), uncertainWhenAbsent), scenario.assumptions()));
         }
         return List.copyOf(probabilities);
+    }
+
+    // 判断签名是否至少在一个代表场景中被静态判定可达；全为否说明场景集未覆盖该条目
+    private boolean isApplicableInAnyScenario(String storedKey) {
+        for (SimulationScenario scenario : this.scenarios) {
+            if (scenario.applicableSignatures().contains(storedKey)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 判断子表是否至少在一个代表场景中被静态判定可达
+    private boolean isChildApplicableInAnyScenario(ResourceLocation childTable) {
+        for (SimulationScenario scenario : this.scenarios) {
+            if (scenario.applicableChildTables().contains(childTable)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 动态条目没有可供静态判定的获取路径，只展示实际观测到该签名的代表场景。

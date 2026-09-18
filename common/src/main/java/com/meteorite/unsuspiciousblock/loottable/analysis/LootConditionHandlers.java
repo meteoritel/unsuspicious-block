@@ -188,24 +188,25 @@ public final class LootConditionHandlers {
                 try {
                     info = handler.analyze(condition);
                 } catch (RuntimeException exception) {
-                    info = fallbackInfo(conditionId);
+                    info = null;
                 }
-                if (info != null) {
-                    results.add(info.withMetadata(LootConditionFingerprint.METADATA_KEY,
-                            LootConditionFingerprint.ofRaw(condition)));
-                } else {
-                    results.add(fallbackInfo(conditionId).withMetadata(
-                            LootConditionFingerprint.METADATA_KEY,
-                            LootConditionFingerprint.ofRaw(condition)));
-                }
+                results.add(withSimulationMetadata(
+                        info != null ? info : fallbackInfo(conditionId), condition));
             } else if (conditionId != null) {
                 // 两级 fallback：未知条件生成通用描述
-                results.add(fallbackInfo(conditionId).withMetadata(
-                        LootConditionFingerprint.METADATA_KEY,
-                        LootConditionFingerprint.ofRaw(condition)));
+                results.add(withSimulationMetadata(fallbackInfo(conditionId), condition));
             }
         }
         return results;
+    }
+
+    // 写入场景规划所需的机器可读元数据：条件指纹，以及该指纹是否可跨解析期/运行时稳定复现
+    private static LootConditionInfo withSimulationMetadata(LootConditionInfo info,
+                                                           LootItemCondition condition) {
+        return info.withMetadata(LootConditionFingerprint.METADATA_KEY,
+                        LootConditionFingerprint.ofRaw(condition))
+                .withMetadata(LootConditionFingerprint.STABLE_METADATA_KEY,
+                        Boolean.toString(LootConditionFingerprint.isStableSource(condition)));
     }
 
     // ==================== 共享工具方法 ====================

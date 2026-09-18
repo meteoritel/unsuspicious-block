@@ -228,6 +228,7 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 | 出现次数 | 条件 | 概率字符串 |
 |---|---|---|
 | - | 当前代表场景静态不可达 | `"0"` |
+| - | 条目在所有代表场景中都不适用（条件组合超出代表场景上限） | `"?"`（未被覆盖，不等于不可达） |
 | 0 | `hasConditions` | `"?"`（条件性物品，模拟可能未覆盖） |
 | 0 | 无条件 | `"<0.01%"` |
 | >0 | - | `formatPercent(appearances / 10000)` |
@@ -245,6 +246,12 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 `SimulationScenarioPlanner` 从每个 `LootAcquisitionPath` 提取八类资格条件，为每条可达路径建立最小
 布尔赋值场景。解析阶段把 `simulation_fingerprint` 写入每个条件的 metadata；运行时 Mixin 用同一
 指纹查询 `SimulationProfile` 中的精确 true/false 结果，因此同类型的两个 `location_check` 不会混淆。
+
+指纹取自条件对象的 `toString()`，因此**只对按字段值生成文本的类型成立**（record 即是）。解析阶段
+同时写入 `simulation_fingerprint_stable`：识别出 `类名@identityHash` 这类默认实现时，该条件不参与
+场景规划（按无约束处理，条目因此保留在各场景中而非被判成不可达）并告警一次——否则解析期与运行时
+的两个实例必然算出不同指纹，场景覆盖会静默失效。运行时另有兜底：属于场景控制类型、却没有被任何
+代表场景覆盖的条件，会在该表模拟完成时汇总告警，提示这部分数值是按真实逻辑求值得到的。
 
 | 条件 | 当前处理方式 |
 |---|---|
@@ -264,7 +271,9 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 “条件满足时至少出现一次”，不是这些条件在自然游戏过程中的发生概率。
 
 `ItemDefinition.scenarioProbabilities` 保存代表场景的内部统计结果。静态条件证明不可达的物品或子表在
-对应场景中记为 `0`，可触发但 10000 次均未出现才记为 `<0.01%`。目录摘要取这些场景的最小值与最大值；
+对应场景中记为 `0`，可触发但 10000 次均未出现才记为 `<0.01%`。条目或子表在**所有**代表场景中都不
+适用时（其条件组合因场景上限被截断，见 `MAX_SCENARIOS`），视为未被覆盖，摘要统一记为 `"?"` 而不是
+逐个写 `0`——否则"没算到"会被显示成"不可能获得"。目录摘要取这些场景的最小值与最大值；
 网格和 tooltip 只展示该范围，不再逐场景展开重复条件树。代表场景用于控制组合数量与 UI 长度，
 因此范围不是所有现实条件组合的严格数学上下界。同一场景内多条路径产出同一签名时仍由整表模拟自然合并。
 
@@ -329,6 +338,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 - **新增收录范围**：修改配置的追踪前缀列表（`ILootTableConfig.getArchaeologyPathPrefixes()`），或通过数据包新增命中前缀的战利品表。
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需在 `JournalNbtMigrator` 补充连续迁移步骤。
 - **新增战利品条件**：参考 `MudDredgingCondition`，在 `ModLootConditions` 注册类型，两端各自注册到注册表。
+- **新增场景控制类型**：把类型加入 `SimulationScenarioPlanner` 的 `SCENARIO_CONDITIONS`，并为其补一个 `test` 转交作用域的窄 Mixin；类型须实现为 record 或覆写 `toString()`，否则指纹稳定性判定会把它排除出场景规划（见 7.2）。
 - **平台注入器**：Fabric 端如需新的注入逻辑，实现 `ArchaeologyLootInjector` 并在 `onInitialize` 调 `ArchaeologyLootInjectors.register`。
 - **模拟调优**：`SIMULATION_COUNT`（精度 vs 性能）、`TICK_BUDGET_NANOS` 与批次大小（吞吐 vs tick 占用）是主要可调参数。
 

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.predicates.CompositeLootItemCondition;
@@ -9,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -90,8 +92,9 @@ public final class LootSimulationScope {
         if (ACTIVE.get() != null) {
             throw new IllegalStateException("战利品模拟作用域不允许嵌套");
         }
-        ACTIVE.set(new State(profile, directChildTables));
-        return new Scope();
+        State state = new State(profile, directChildTables);
+        ACTIVE.set(state);
+        return new Scope(state);
     }
 
     /**
@@ -111,6 +114,9 @@ public final class LootSimulationScope {
             return state.conditionOutcomes.get(condition);
         }
         Boolean result = state.profile.conditionOutcome(condition);
+        if (result == null) {
+            state.recordUncovered(condition);
+        }
         state.conditionOutcomes.put(condition, result);
         return result;
     }
@@ -121,19 +127,38 @@ public final class LootSimulationScope {
         private final List<ResourceLocation> childTablesWithDrops = new ArrayList<>();
         private final IdentityHashMap<ItemStack, ResourceLocation> childSources = new IdentityHashMap<>();
         private final IdentityHashMap<LootItemCondition, Boolean> conditionOutcomes = new IdentityHashMap<>();
+        private final Set<String> uncoveredConditions = new LinkedHashSet<>();
 
         private State(SimulationProfile profile, Set<ResourceLocation> directChildTables) {
             this.profile = profile;
             this.directChildTables = directChildTables;
         }
 
+        // 记录"属于场景控制类型、却未被任何代表场景覆盖"的条件，供上层汇总告警。
+        // 这类条件只能按真实逻辑求值，数值可能因此偏离场景估算；不记录非场景控制类型
+        // （它们本就不由场景接管，未被覆盖是预期行为）。
+        private void recordUncovered(LootItemCondition condition) {
+            ResourceLocation conditionId =
+                    BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(condition.getType());
+            if (conditionId == null || !SimulationScenarioPlanner.isScenarioControlled(conditionId)) {
+                return;
+            }
+            this.uncoveredConditions.add(conditionId + " (" + condition.getClass().getSimpleName() + ")");
+        }
     }
 
     /** 模拟作用域关闭句柄。 */
     public static final class Scope implements AutoCloseable {
+        private final State state;
         private boolean closed;
 
-        private Scope() {
+        private Scope(State state) {
+            this.state = state;
+        }
+
+        /** 当前作用域内未被代表场景覆盖的场景控制类型条件；须在 {@link #close()} 前读取。 */
+        public Set<String> uncoveredConditions() {
+            return Set.copyOf(this.state.uncoveredConditions);
         }
 
         @Override
