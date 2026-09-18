@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.blockentity;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
@@ -118,7 +119,8 @@ public interface TrackedContainerLootState extends Container {
                 continue;
             }
 
-            LootResultSignature signature = LootResultMatcher.resolve(stack, candidateList);
+            LootResultSignature signature = LootResultMatcher.resolve(
+                    stack, candidateList, LootResultPreviewCache.PROVIDER);
             if (signature == null) {
                 continue;
             }

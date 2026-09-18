@@ -35,8 +35,7 @@ public final class LootResultMatcher {
         LootResultSignature best = null;
         int bestPriority = Integer.MIN_VALUE;
         boolean ambiguous = false;
-        for (int index = 0; index < candidates.size(); index++) {
-            LootResultSignature candidate = candidates.get(index);
+        for (LootResultSignature candidate : candidates) {
             if (!matches(stack, itemId, candidate, previewStackProvider)) {
                 continue;
             }
@@ -59,8 +58,9 @@ public final class LootResultMatcher {
         return matches(stack, signature, LootResultSignature::createPreviewStack);
     }
 
-    private static boolean matches(ItemStack stack, LootResultSignature signature,
-                                   Function<LootResultSignature, ItemStack> previewStackProvider) {
+    // 带预览栈提供者的匹配入口；高频调用方应传入缓存函数（见 LootResultPreviewCache）
+    public static boolean matches(ItemStack stack, LootResultSignature signature,
+                                  Function<LootResultSignature, ItemStack> previewStackProvider) {
         if (stack.isEmpty()) {
             return false;
         }

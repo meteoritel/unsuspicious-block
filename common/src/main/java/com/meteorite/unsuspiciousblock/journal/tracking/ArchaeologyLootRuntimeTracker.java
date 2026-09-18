@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDe
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
@@ -215,7 +216,7 @@ public final class ArchaeologyLootRuntimeTracker {
         for (ItemDefinition item : table.items()) {
             candidates.add(item.signature());
         }
-        return LootResultMatcher.resolve(stack, candidates);
+        return LootResultMatcher.resolve(stack, candidates, LootResultPreviewCache.PROVIDER);
     }
 
     // 获取容器物品匹配候选；目录签名优先，容器现状的普通签名用于补充运行时注入物品
@@ -233,7 +234,7 @@ public final class ArchaeologyLootRuntimeTracker {
         for (int slot = 0; slot < container.getContainerSize(); slot++) {
             ItemStack stack = container.getItem(slot);
             if (!stack.isEmpty() && catalogCandidates.stream()
-                    .noneMatch(candidate -> LootResultMatcher.matches(stack, candidate))) {
+                    .noneMatch(candidate -> LootResultMatcher.matches(stack, candidate, LootResultPreviewCache.PROVIDER))) {
                 candidates.add(LootResultSignature.plain(BuiltInRegistries.ITEM.getKey(stack.getItem())));
             }
         }

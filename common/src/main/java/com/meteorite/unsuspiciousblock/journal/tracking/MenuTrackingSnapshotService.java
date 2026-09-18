@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.journal.tracking;
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
@@ -153,7 +154,8 @@ public final class MenuTrackingSnapshotService {
                 continue;
             }
 
-            LootResultSignature signature = LootResultMatcher.resolve(stack, candidates);
+            LootResultSignature signature = LootResultMatcher.resolve(
+                    stack, candidates, LootResultPreviewCache.PROVIDER);
             if (signature == null) {
                 continue;
             }
@@ -168,7 +170,8 @@ public final class MenuTrackingSnapshotService {
             return Map.of();
         }
         List<LootResultSignature> candidates = new ArrayList<>(trackedSignatures);
-        LootResultSignature signature = LootResultMatcher.resolve(stack, candidates);
+        LootResultSignature signature = LootResultMatcher.resolve(
+                stack, candidates, LootResultPreviewCache.PROVIDER);
         if (signature == null) {
             return Map.of();
         }

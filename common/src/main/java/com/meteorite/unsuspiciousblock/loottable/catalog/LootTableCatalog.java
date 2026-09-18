@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.loottable.catalog;
 
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -198,6 +200,31 @@ public final class LootTableCatalog {
                 }
             }
             return this.signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY;
+        }
+
+        /**
+         * 该条目的不确定性等级——与 {@link #hasConditions()} **同源同数据**（全部获取路径的条件树 +
+         * 近似签名），供 UI 着色与文本使用。
+         * <p>
+         * 两者共用一份判定是刻意的：过去 UI 在客户端另起一套规则（只看直接路径、并用 tooltip 文案
+         * 比较来识别近似条目），会出现"颜色说不确定、概率却从不显示 {@code ?}"或反过来的错配。
+         * 关系是单向蕴含——等级非 {@code NONE} 必然说明条目带条件或签名近似（即可显示 {@code ?}），
+         * 但只有可静态求值的条件（如 {@code match_tool}）时等级为 {@code NONE} 而概率仍可能为 {@code ?}，
+         * 此时 UI 按"未知"着色而不是按等级着色。
+         */
+        public LootConditionHandler.UncertaintyLevel uncertaintyLevel() {
+            if (this.signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY) {
+                return LootConditionHandler.UncertaintyLevel.RUNTIME;
+            }
+            LootConditionHandler.UncertaintyLevel level = LootConditionHandler.UncertaintyLevel.NONE;
+            for (LootAcquisitionPath path : this.acquisitionPaths) {
+                LootConditionHandler.UncertaintyLevel candidate =
+                        LootConditionHandlers.computeUncertaintyLevel(path.allConditions(), false);
+                if (candidate.ordinal() > level.ordinal()) {
+                    level = candidate;
+                }
+            }
+            return level;
         }
     }
 

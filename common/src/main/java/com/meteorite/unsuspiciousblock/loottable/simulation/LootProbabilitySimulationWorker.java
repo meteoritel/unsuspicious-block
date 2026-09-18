@@ -10,7 +10,9 @@ import org.slf4j.Logger;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -41,6 +43,9 @@ public final class LootProbabilitySimulationWorker {
     private final Deque<WorkItem> lowQueue = new ArrayDeque<>();
     /** 已入队任务索引，同时用于去重与优先级提升。 */
     private final Map<ResourceLocation, WorkItem> enqueued = new HashMap<>();
+    /** 本轮实际发生模拟失败的表；仅供结束时汇总，不参与重试。 */
+    private final Set<ResourceLocation> failedTables = new LinkedHashSet<>();
+
     private WorkItem current;
     private volatile boolean paused = false;
     /** 模拟结果回调（由调用方设置，如写入目录、广播等） */
@@ -116,6 +121,7 @@ public final class LootProbabilitySimulationWorker {
         lowQueue.clear();
         current = null;
         enqueued.clear();
+        failedTables.clear();
     }
 
     /** 暂停消费（数据包重载前调用） */
@@ -181,11 +187,24 @@ public final class LootProbabilitySimulationWorker {
             }
         }
         if (completedAny && this.current == null && highQueue.isEmpty() && lowQueue.isEmpty()) {
+            logFailedSummary();
             Consumer<MinecraftServer> handler = this.queueDrainedHandler;
             if (handler != null) {
                 handler.accept(server);
             }
         }
+    }
+
+    // 一轮模拟结束时汇总失败表：明确它们不会自动重试，概率保持"未知"直到下次重载
+    private void logFailedSummary() {
+        if (this.failedTables.isEmpty()) {
+            return;
+        }
+        LOGGER.warn("{} 张表的概率模拟失败，其概率保持未知（不会显示为 0），"
+                        + "将在下次数据包重载或 /usb journal reload 时重新尝试：{}",
+                this.failedTables.size(),
+                String.join(", ", this.failedTables.stream().map(ResourceLocation::toString).toList()));
+        this.failedTables.clear();
     }
 
     private WorkItem pollNext() {
@@ -233,6 +252,10 @@ public final class LootProbabilitySimulationWorker {
                     item.tableId, activeElapsedMs, wallElapsedMs,
                     Math.max(0, enqueued.size() - 1));
         } else {
+            // 失败表不会在本轮重试：能确定性失败的情形（注册表中没有该表、条件求值抛异常）
+            // 用同一份输入重跑只会再失败一次并持续占用 tick 预算。这里只如实记录，
+            // 由本轮结束时的汇总说明其后续行为。
+            this.failedTables.add(item.tableId);
             LOGGER.warn("战利品表 {} 的概率模拟未成功，不写入缓存，有效计算 {}ms，跨 tick 历时 {}ms",
                     item.tableId, activeElapsedMs, wallElapsedMs);
         }

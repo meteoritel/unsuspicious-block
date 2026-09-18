@@ -171,6 +171,12 @@ usb_sig|TYPE|itemId|base64(data)
 
 `createPreviewStack()` 根据签名重建用于 UI 展示或精确匹配的物品栈：`COMPONENT_EXACT` 应用组件 patch，附魔变体设置附魔光效覆盖。
 
+`COMPONENT_EXACT` 的预览栈需要 base64 + JSON 解码再套用组件补丁，成本远高于其它类型的匹配。因此
+[`LootResultPreviewCache`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/signature/LootResultPreviewCache.java)
+按签名内容缓存预览栈——预览栈由签名值唯一决定，缓存结果永远有效、不需要失效策略；玩家侧的掉落实时匹配
+（掉落追踪、容器/菜单扫描）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。
+缓存只在数据包重载时清空以限制内存。概率模拟热路径不共用它：单表模拟自带 `HashMap` 缓存，单线程且无并发开销，更快。
+
 ## 5. 收录范围匹配
 
 [`LootTablePattern`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/catalog/LootTablePattern.java) 把配置字符串解析为可匹配的规则：
@@ -330,7 +336,13 @@ Global Loot Modifier（GLM），而 `getRandomItemsRaw` 不会应用 GLM。嵌�
 `all_of` / `any_of` / `inverted` 始终由原版逻辑根据叶子结果求值，随机条件、权重和 rolls 不覆盖。
 
 UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群系/维度/结构、天气、时间、
-实体目标、伤害来源与计分范围提供具体描述。存在上述场景条件时，概率文字明确标为
+实体目标、伤害来源与计分范围提供具体描述。
+
+概率文本与颜色共用**一份**判定：`ItemDefinition.uncertaintyLevel()` 与 `hasConditions()` 读同一批数据
+（全部获取路径的条件树 + 近似签名），UI 不再在客户端另起规则、也不再用 tooltip 文案比较来识别近似条目
+（那种做法会受语言差异影响）。两者的关系是单向蕴含：等级非 `NONE` 必然说明条目带条件或签名近似
+（即概率可能显示 `?`）；反过来，只有可静态求值的条件（如 `match_tool`）时等级为 `NONE` 而概率仍可能为
+`?`——此时网格与 tooltip 都按"未知"着色，不会出现"颜色说不确定、概率却从不显示 `?`"或反过来的错配。存在上述场景条件时，概率文字明确标为
 “条件满足时至少出现一次”，不是这些条件在自然游戏过程中的发生概率。
 
 `ItemDefinition.scenarioProbabilities` 保存代表场景的内部统计结果。静态条件证明不可达的物品或子表在
@@ -375,6 +387,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 - 存档根带 `format_version`（当前 2）。读取时先校验版本与**严格的 NBT tag 类型**——根缺少版本、版本不符、概率仍是旧版 `StringTag`（注意这并**不是**"字段缺失"，必须按类型显式判定），或单个表的条目无法解析时，一律把对应表按**缓存未命中**处理：既不报错中断，也不迁移数值、更不把类型不匹配解成 0。
 - 每表还存一份内容哈希，输入为该表**子树内每张表**的完整资源栈摘要与编译产物摘要。后者必须覆盖整棵子树而不只是本表，否则"子表引用的 item tag 成员变化"（JSON 文本不变、只有展开结果变）不会让父表失效。
 - 统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v13`。模拟异常或无法取得有效表时不写入缓存。
+- **失败表不会自动重试**：能确定性失败的情形（注册表里没有该表、条件求值抛异常）用同一份输入重跑只会再失败一次并持续占用 tick 预算，因此失败表只记录不重排。它的概率保持"未知"（不会显示成 0%），本轮队列排空时汇总列出一次 `N 张表的概率模拟失败…将在下次数据包重载或 /usb journal reload 时重新尝试`。
 - `/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。
 
 **重载一致性**：整轮重载的静态部分（快照 / 图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）在同一轮局部构建完成，再通过单个 volatile 引用**原子发布**，读取方只会看到上一代的完整状态或新一代的完整静态部分。模拟结果作为该代的 overlay 随进度增长，提交时校验代次，旧代结果不会写入新代。`invalidate()` 只需丢掉引用，资源快照与投影随之释放。详见 [考古笔记系统](journal.md) 的目录构建部分。

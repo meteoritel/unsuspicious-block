@@ -43,6 +43,7 @@ public final class ItemGridPanel implements PagePanel {
     private static final int PROB_COLOR = 0xFF8B5A2B;
     private static final int PROB_COLOR_PROBABILISTIC = 0xFFC8A014; // 金色——有概率型条件
     private static final int PROB_COLOR_RUNTIME = 0xFFC06040;       // 橙红色——有运行时条件
+    private static final int PROB_COLOR_UNKNOWN = 0xFF6B6B6B;       // 灰色——概率未知（未覆盖），与 tooltip 一致
     private static final int PENDING_COLOR = 0xFF7A6247;
     private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
     private static final int BADGE_COLOR_ABBR = 0xFFFFC060;
@@ -382,11 +383,15 @@ public final class ItemGridPanel implements PagePanel {
         // 概率（居中，颜色根据不确定性等级区分）
         Component probComp = formatProbability(item.probability(), item.uncertaintyLevel(),
                 item.scenarioProbabilities());
-        int probColor = switch (item.uncertaintyLevel()) {
-            case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
-            case RUNTIME -> PROB_COLOR_RUNTIME;
-            default -> PROB_COLOR;
-        };
+        // 未知概率优先按"未知"着色：此时等级可能是 NONE（只有可静态求值的条件），
+        // 沿用等级着色会和 tooltip 的灰色口径打架
+        int probColor = item.probability().isUnknown()
+                ? PROB_COLOR_UNKNOWN
+                : switch (item.uncertaintyLevel()) {
+                    case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
+                    case RUNTIME -> PROB_COLOR_RUNTIME;
+                    default -> PROB_COLOR;
+                };
         ScrollTextHelper.draw(guiGraphics, font, probComp.getString(),
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 probColor, hovered, scrollTicks, true);

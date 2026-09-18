@@ -15,7 +15,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
@@ -570,16 +569,8 @@ public class JournalViewModel {
         }
         boolean highlighted = !applySearch || this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
                 || this.currentSearch.matchesItem(item.id(), item.displayName().getString());
-        boolean approximate = item.tooltipHint() != null && item.tooltipHint().getString().equals(
-                Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
-        LootConditionHandler.UncertaintyLevel level = approximate
-                ? LootConditionHandler.UncertaintyLevel.RUNTIME : LootConditionHandler.UncertaintyLevel.NONE;
-        for (LootAcquisitionPath path : directPaths) {
-            LootConditionHandler.UncertaintyLevel candidate = LootConditionHandlers
-                    .computeUncertaintyLevel(path.allConditions(), false);
-            if (candidate.ordinal() > level.ordinal()) level = candidate;
-        }
+        // 等级来自条目自身（服务端同一份判定），不再在客户端另起规则、也不再比较 tooltip 文案
+        LootConditionHandler.UncertaintyLevel level = item.uncertaintyLevel();
         Probability displayProbability = maxScenarioProbability(
                 item.probability(), item.scenarioProbabilities());
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),

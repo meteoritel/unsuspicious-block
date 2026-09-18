@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.Scenar
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
@@ -212,7 +213,8 @@ public final class ArchaeologyJournalServerCatalog {
                                             LootProbabilitySimulator.SimResult result,
                                             LootProbabilityData probabilityData) {
         if (!result.successful()) {
-            LOGGER.warn("忽略战利品表 {} 的失败模拟结果，保留待重试状态", result.tableId());
+            LOGGER.warn("忽略战利品表 {} 的失败模拟结果；其概率保持未知，不写入缓存，"
+                    + "将在下次数据包重载时重新尝试", result.tableId());
             return;
         }
         ResourceLocation tableId = result.tableId();
@@ -282,6 +284,8 @@ public final class ArchaeologyJournalServerCatalog {
     public static void invalidate() {
         currentGeneration = null;
         loaded = false;
+        // 预览栈按签名内容缓存，跨代仍然有效；此处只做释放以限制内存
+        LootResultPreviewCache.clear();
     }
 
     /** 获取已填充概率的目录只读视图（随模拟完成渐进增长） */
