@@ -100,23 +100,28 @@ public final class LootTableProjector {
         return projection;
     }
 
-    // 以该表为根展平出物品条目；结果只取决于该表自身，可安全缓存
+    // 以该表为根展平出物品条目；结果只取决于该表自身，可安全缓存。
+    // 未被编译的表（资源缺失、或被环排除集剔出闭包）返回空结果——子表入口据此把它们过滤掉。
     private List<ItemDefinition> itemsOf(ResourceLocation rootId) {
         List<ItemDefinition> cached = this.itemsCache.get(rootId);
         if (cached != null) {
             return cached;
         }
-        LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
-        expand(this.compiledTables.get(rootId), List.of(), List.of(), null, new LinkedHashSet<>(), items);
 
-        List<ItemDefinition> definitions = new ArrayList<>(items.size());
-        for (ItemDefinitionAccumulator accumulator : items.values()) {
-            definitions.add(accumulator.build());
+        List<ItemDefinition> result = List.of();
+        if (this.compiledTables.containsKey(rootId)) {
+            LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
+            expand(this.compiledTables.get(rootId), List.of(), List.of(), null, new LinkedHashSet<>(), items);
+
+            List<ItemDefinition> definitions = new ArrayList<>(items.size());
+            for (ItemDefinitionAccumulator accumulator : items.values()) {
+                definitions.add(accumulator.build());
+            }
+            definitions.sort(Comparator
+                    .comparing((ItemDefinition definition) -> definition.id().toString())
+                    .thenComparing(definition -> definition.signature().toStoredKey()));
+            result = List.copyOf(definitions);
         }
-        definitions.sort(Comparator
-                .comparing((ItemDefinition definition) -> definition.id().toString())
-                .thenComparing(definition -> definition.signature().toStoredKey()));
-        List<ItemDefinition> result = List.copyOf(definitions);
         this.itemsCache.put(rootId, result);
         return result;
     }

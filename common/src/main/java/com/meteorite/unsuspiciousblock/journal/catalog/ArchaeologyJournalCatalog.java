@@ -41,8 +41,8 @@ public final class ArchaeologyJournalCatalog {
      * @param sourceSnapshot 本轮资源快照（有效原文 + 完整资源栈）
      * @param resourceManager 仅用于加载目录分类资源，不再用于读取战利品表
      */
-    public static LoadResult load(LootTableSourceSnapshot sourceSnapshot, ResourceManager resourceManager,
-                                  HolderLookup.Provider registries) {
+    public static LoadResult load(long generation, LootTableSourceSnapshot sourceSnapshot,
+                                  ResourceManager resourceManager, HolderLookup.Provider registries) {
         LootTableReferenceGraph referenceGraph = LootTableReferenceGraph.build(
                 sourceSnapshot, RuntimeLootLinks.syntheticEdges());
 
@@ -67,13 +67,19 @@ public final class ArchaeologyJournalCatalog {
         List<ResourceLocation> orderedTables = new ArrayList<>(validClosure);
         orderedTables.sort(Comparator.comparing(ResourceLocation::toString));
 
+        LinkedHashMap<ResourceLocation, StaticTableProjection> projections = new LinkedHashMap<>();
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (ResourceLocation tableId : orderedTables) {
+            // 展示名登记对闭包内全部表调用一次，与既有调用集合一致（含无物品的表）
             LootTableNames.ensureRegistered(tableId);
             Component displayName = LootTableNames.resolveDisplayName(tableId);
             StaticTableProjection projection = projector.project(tableId);
-            // 无物品的表不进目录；子表入口由投影层按同样规则过滤，两边一致
-            if (projection == null || projection.isEmpty()) {
+            if (projection == null) {
+                continue;
+            }
+            // 会话保留全部追踪表的投影（含无物品的空表），对外读模型只收有物品的表
+            projections.put(tableId, projection);
+            if (projection.isEmpty()) {
                 continue;
             }
             tables.put(tableId, new TableDefinition(tableId, displayName, projection.declaredType(),
@@ -90,7 +96,9 @@ public final class ArchaeologyJournalCatalog {
             rootCategories.put(table.id(), categories.classify(table.id(), table.type()));
         }
         CatalogStructure structure = new CatalogStructure(categories.definitions(), rootCategories);
-        return new LoadResult(Map.copyOf(tables), structure, referenceGraph);
+        LootTableAnalysisSession session = new LootTableAnalysisSession(generation, sourceSnapshot,
+                referenceGraph, compiledTables, projections);
+        return new LoadResult(session, structure, Map.copyOf(tables));
     }
 
     /**
@@ -109,8 +117,11 @@ public final class ArchaeologyJournalCatalog {
         return cycleTables;
     }
 
-    /** 目录加载结果：收录到的表、分类结构，以及本轮引用图（供哈希等下游复用同一份拓扑）。 */
-    public record LoadResult(Map<ResourceLocation, TableDefinition> tables, CatalogStructure structure,
-                             LootTableReferenceGraph referenceGraph) {
+    /**
+     * 目录加载结果：本代分析会话、分类结构，以及对外读模型（解析态表定义，概率为 {@code "?"}）。
+     * 会话持有引用图与编译产物，哈希等下游据此复用同一份拓扑，不必再解析。
+     */
+    public record LoadResult(LootTableAnalysisSession session, CatalogStructure structure,
+                             Map<ResourceLocation, TableDefinition> staticTables) {
     }
 }

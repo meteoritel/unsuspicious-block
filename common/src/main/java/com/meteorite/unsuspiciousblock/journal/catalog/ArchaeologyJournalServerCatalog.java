@@ -1,19 +1,20 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
-import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
+import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenarioPlanner;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -27,11 +28,9 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -39,149 +38,191 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 服务端目录——解析所有考古战利品表，按需通过主线程 tick 工作器填充概率。
  * <p>
+ * 状态模型：整轮重载的静态部分（快照 / 引用图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）
+ * 全部在局部对象上构建完成，再通过单个 volatile 引用（{@link #currentGeneration}）
+ * <b>原子发布</b>，读取方只会看到上一代的完整状态或新一代的完整静态部分。模拟结果作为该代的
+ * overlay 随进度增长；提交时校验 generation，旧代结果不会写入新代。
+ * <p>
  * 生命周期：
  * <ul>
- *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，解析原始目录 + 从 SavedData 恢复已缓存表 +
- *       将未缓存表入队分 tick 模拟。立即返回，catalog 会随模拟完成渐进填充。</li>
+ *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，构建并发布新一代目录 + 从 SavedData 恢复已缓存表 +
+ *       将未缓存表入队分 tick 模拟。构建失败时保留上一代完整状态；无上一代可用时进入明确的空状态。</li>
  *   <li>{@link #commitSimulatedTable(LootProbabilitySimulator.SimResult, MinecraftServer)}：由工作器在主线程调用，
- *       将单表模拟结果写入 catalog 与 SavedData；整批任务结束后统一广播哈希。</li>
- *   <li>{@link #invalidate()}：清空内存目录与哈希缓存，下次 ensureLoaded 重新解析。</li>
+ *       将单表模拟结果写入当代 overlay 与 SavedData；整批任务结束后统一广播哈希。</li>
+ *   <li>{@link #invalidate()}：释放当代目录（含资源快照与投影），下次 ensureLoaded 重新构建。</li>
  * </ul>
  * <p>
- * 线程安全：{@link #catalog} 与 {@link #rawCatalog} 使用 ConcurrentHashMap，
- * 读路径（getCatalog/getRawTable）无锁；写路径仅在主线程发生（ensureLoaded / commitSimulatedTable）。
+ * 线程安全：读取走当前 {@link CatalogGeneration}——静态部分不可变、模拟 overlay 使用
+ * ConcurrentHashMap，读路径无锁；写路径仅在主线程发生（ensureLoaded / commitSimulatedTable）。
  */
 public final class ArchaeologyJournalServerCatalog {
     private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v12";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v13";
 
-    /** 已填充概率的目录（随模拟完成渐进增长） */
-    private static final Map<ResourceLocation, TableDefinition> catalog = new ConcurrentHashMap<>();
-    /** 原始目录（概率为 "?" 占位符），ensureLoaded 后填充，供 worker 查询 */
-    private static final Map<ResourceLocation, TableDefinition> rawCatalog = new ConcurrentHashMap<>();
-    /** 每个 tableId 对应的 JSON 内容哈希，用于判断是否需要重新模拟 */
-    private static final Map<ResourceLocation, String> tableHashes = new ConcurrentHashMap<>();
-    private static volatile CatalogStructure catalogStructure = CatalogStructure.empty();
+    /** 唯一发布点：整代目录状态一次成型后整体替换。 */
+    private static volatile CatalogGeneration currentGeneration;
+    /** 代次计数器；仅在主线程递增。 */
+    private static long generationCounter;
     private static volatile boolean loaded;
 
     private ArchaeologyJournalServerCatalog() {
     }
 
     /**
-     * 非阻塞加载：解析原始目录 → 从 SavedData 恢复缓存 → 未缓存表入队后台模拟。
-     * 调用后 catalog 立即可用（仅含缓存表），未缓存表的概率为 "?" 占位符，
-     * 后台模拟完成后渐进填充。
+     * 非阻塞加载：构建新一代目录 → 从 SavedData 恢复缓存 → 未缓存表入队后台模拟。
+     * 调用后目录立即可用（仅含缓存表），未缓存表的概率为 "?" 占位符，后台模拟完成后渐进填充。
      */
     public static void ensureLoaded(MinecraftServer server) {
         if (loaded) return;
 
+        List<ResourceLocation> uncached = List.of();
         try {
-            rawCatalog.clear();
-            catalog.clear();
-            tableHashes.clear();
-            cachedCatalogHash = null;
-
-            // 1. 先捕获本轮资源快照（全表有效原文 + 完整资源栈），解析与哈希共用同一次读盘
-            LootTableSourceSnapshot sourceSnapshot = LootTableSourceSnapshot.capture(server.getResourceManager());
-
-            // 2. 建图并解析原始目录（概率字段为 "?" 占位符）；图随结果返回，供哈希复用同一份拓扑
-            ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
-                    sourceSnapshot, server.getResourceManager(), server.registryAccess());
-            Map<ResourceLocation, TableDefinition> parsed = loadResult.tables();
-            catalogStructure = loadResult.structure();
-            rawCatalog.putAll(parsed);
-            LOGGER.info("解析到 {} 个考古战利品表原始目录", parsed.size());
-
-            // 3. 计算哈希（吃子树内每张表的资源栈摘要与编译产物摘要）
-            tableHashes.putAll(computeTableHashes(loadResult.referenceGraph(), parsed));
-
-            // 4. 从 SavedData 恢复已缓存表
-            ServerLevel level = server.overworld();
-            LootProbabilityData probabilityData = LootProbabilityData.get(level);
-            List<ResourceLocation> uncached = new ArrayList<>();
-
-            for (Map.Entry<ResourceLocation, TableDefinition> entry : parsed.entrySet()) {
-                ResourceLocation tableId = entry.getKey();
-                String hash = tableHashes.getOrDefault(tableId, "");
-
-                if (!probabilityData.needsResimulation(tableId, hash) && probabilityData.hasData(tableId)) {
-                    catalog.put(tableId, restoreFromCache(entry.getValue(), tableId, probabilityData, level));
-                } else {
-                    uncached.add(tableId);
-                }
-            }
-            LOGGER.info("从缓存恢复 {} 个表，{} 个待模拟", catalog.size(), uncached.size());
-
-            loaded = true;
-
-            // 4. 未缓存表入队分 tick 模拟
-            if (!uncached.isEmpty()) {
-                LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-                if (worker != null) {
-                    worker.setResultHandler(ArchaeologyJournalServerCatalog::commitSimulatedTable);
-                    worker.setQueueDrainedHandler(ArchaeologyJournalServerCatalog::broadcastCatalogHash);
-                    // 构建仅含未缓存表的子 map
-                    Map<ResourceLocation, TableDefinition> uncachedMap = new LinkedHashMap<>();
-                    for (ResourceLocation id : uncached) {
-                        TableDefinition raw = rawCatalog.get(id);
-                        if (raw != null) {
-                            uncachedMap.put(id, raw);
-                        }
-                    }
-                    worker.enqueueBatch(uncachedMap);
-                } else {
-                    // 工作线程未启动（异常情况）：回退到主线程同步模拟，避免功能缺失
-                    LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个表", uncached.size());
-                    simulateSynchronously(server, uncached);
-                }
-            }
+            BuildResult buildResult = buildGeneration(server);
+            currentGeneration = buildResult.generation();
+            uncached = buildResult.uncachedTables();
         } catch (Exception e) {
             LOGGER.error("加载考古战利品表目录失败", e);
-            loaded = true;
+            // 构建失败时进入明确的空状态而不是把半成品留在引用上；
+            // invalidate 与失败路径都会让 loaded=false 与 currentGeneration=null 成对出现，
+            // 因此这里不存在"上一代可保留"的情形。
+            currentGeneration = CatalogGeneration.empty(++generationCounter);
         }
-    }
+        loaded = true;
 
-    // 同步回退模拟（仅在 worker 未启动时使用）
-    private static void simulateSynchronously(MinecraftServer server, List<ResourceLocation> tableIds) {
-        ServerLevel level = server.overworld();
-        LootProbabilityData probabilityData = LootProbabilityData.get(level);
-        for (ResourceLocation tableId : tableIds) {
-            TableDefinition rawTable = rawCatalog.get(tableId);
-            if (rawTable == null) continue;
-            LootProbabilitySimulator.SimResult result = LootProbabilitySimulator.simulateOne(tableId, rawTable, level);
-            commitSimulatedTable(result, probabilityData);
+        CatalogGeneration generation = currentGeneration;
+        if (generation != null && !uncached.isEmpty()) {
+            enqueueSimulation(server, generation, uncached);
         }
-        broadcastCatalogHash(server);
     }
 
     /**
-     * 由工作器在主线程调用：提交单表模拟结果到 catalog 与 SavedData，并广播哈希。
+     * 在局部对象上构建整代目录状态；全部成功后才由调用方发布。
+     * 失败时抛出，由 {@link #ensureLoaded} 决定保留上一代还是进入空状态。
+     */
+    private static BuildResult buildGeneration(MinecraftServer server) {
+        long generation = ++generationCounter;
+
+        // 1. 捕获本轮资源快照（全表有效原文 + 完整资源栈），编译与哈希共用同一次读盘
+        LootTableSourceSnapshot sourceSnapshot = LootTableSourceSnapshot.capture(server.getResourceManager());
+
+        // 2. 建图 → 编译 → 投影 → 组装静态读模型
+        ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
+                generation, sourceSnapshot, server.getResourceManager(), server.registryAccess());
+        Map<ResourceLocation, TableDefinition> staticTables = loadResult.staticTables();
+        LOGGER.info("解析到 {} 个考古战利品表原始目录", staticTables.size());
+
+        // 3. 计算哈希（吃子树内每张表的资源栈摘要与编译产物摘要）
+        Map<ResourceLocation, String> tableHashes =
+                computeTableHashes(loadResult.session().referenceGraph(), staticTables);
+        CatalogGeneration catalogGeneration = new CatalogGeneration(
+                loadResult.session(), loadResult.structure(), staticTables, tableHashes);
+
+        // 4. 从 SavedData 恢复已缓存表，写入当代 overlay
+        ServerLevel level = server.overworld();
+        LootProbabilityData probabilityData = LootProbabilityData.get(level);
+        List<ResourceLocation> uncached = new ArrayList<>();
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : staticTables.entrySet()) {
+            ResourceLocation tableId = entry.getKey();
+            String hash = tableHashes.getOrDefault(tableId, "");
+            if (!probabilityData.needsResimulation(tableId, hash) && probabilityData.hasData(tableId)) {
+                catalogGeneration.publishSimulated(restoreFromCache(
+                        entry.getValue(), tableId, probabilityData, level, staticTables));
+            } else {
+                uncached.add(tableId);
+            }
+        }
+        LOGGER.info("从缓存恢复 {} 个表，{} 个待模拟",
+                catalogGeneration.simulatedTables().size(), uncached.size());
+        return new BuildResult(catalogGeneration, List.copyOf(uncached));
+    }
+
+    // 未缓存表入队分 tick 模拟；提交与排空回调都捕获本代 generation，提交时校验。
+    // 这里依赖既有 reload 协议：数据包重载走 pause → clearQueue → invalidate → ensureLoaded → resume，
+    // 队列与在跑任务都会被丢弃，且暂停期间不会产出结果，因此旧代结果不可能落到新代处理器上；
+    // 若将来出现"不清队列就换代"的调用路径，需要改为由工作项自身携带 generation。
+    private static void enqueueSimulation(MinecraftServer server, CatalogGeneration generation,
+                                         List<ResourceLocation> uncached) {
+        long generationId = generation.generation();
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker == null) {
+            // 工作线程未启动（异常情况）：回退到主线程同步模拟，避免功能缺失
+            LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个表", uncached.size());
+            simulateSynchronously(server, generation, uncached);
+            return;
+        }
+
+        worker.setResultHandler((result, srv) -> commitSimulatedTable(generationId, result, srv));
+        worker.setQueueDrainedHandler(srv -> broadcastCatalogHash(generationId, srv));
+
+        Map<ResourceLocation, TableDefinition> uncachedMap = new LinkedHashMap<>();
+        for (ResourceLocation tableId : uncached) {
+            TableDefinition raw = generation.staticTable(tableId);
+            if (raw != null) {
+                uncachedMap.put(tableId, raw);
+            }
+        }
+        worker.enqueueBatch(uncachedMap);
+    }
+
+    // 同步回退模拟（仅在 worker 未启动时使用）
+    private static void simulateSynchronously(MinecraftServer server, CatalogGeneration generation,
+                                             List<ResourceLocation> tableIds) {
+        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
+        for (ResourceLocation tableId : tableIds) {
+            TableDefinition rawTable = generation.staticTable(tableId);
+            if (rawTable == null) continue;
+            LootProbabilitySimulator.SimResult result =
+                    LootProbabilitySimulator.simulateOne(tableId, rawTable, server.overworld());
+            commitSimulatedTable(generation, result, probabilityData);
+        }
+        broadcastCatalogHash(generation.generation(), server);
+    }
+
+    /**
+     * 由工作器在主线程调用：提交单表模拟结果到当代 overlay 与 SavedData，并广播哈希。
      */
     public static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, MinecraftServer server) {
-        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
-        commitSimulatedTable(result, probabilityData);
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null) {
+            return;
+        }
+        commitSimulatedTable(generation.generation(), result, server);
+    }
+
+    // 带 generation 校验的提交入口：旧代结果直接丢弃
+    private static void commitSimulatedTable(long generationId, LootProbabilitySimulator.SimResult result,
+                                             MinecraftServer server) {
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null || generation.generation() != generationId) {
+            LOGGER.warn("丢弃来自旧 generation {} 的战利品表 {} 模拟结果（当前 generation {}）",
+                    generationId, result.tableId(),
+                    generation == null ? "无" : generation.generation());
+            return;
+        }
+        commitSimulatedTable(generation, result, LootProbabilityData.get(server.overworld()));
     }
 
     // 实际提交逻辑（不广播，供同步回退批量调用）
-    private static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, LootProbabilityData probabilityData) {
+    private static void commitSimulatedTable(CatalogGeneration generation,
+                                            LootProbabilitySimulator.SimResult result,
+                                            LootProbabilityData probabilityData) {
         if (!result.successful()) {
             LOGGER.warn("忽略战利品表 {} 的失败模拟结果，保留待重试状态", result.tableId());
             return;
         }
         ResourceLocation tableId = result.tableId();
         TableDefinition table = result.result();
-        String hash = tableHashes.getOrDefault(tableId, "");
+        String hash = generation.tableHash(tableId);
 
         // 写入 SavedData
         Map<String, LootProbabilityData.CachedItemProbability> probabilities = new LinkedHashMap<>();
         for (ItemDefinition item : table.items()) {
-            Map<String, String> scenarioProbabilities = new LinkedHashMap<>();
+            Map<String, Probability> scenarioProbabilities = new LinkedHashMap<>();
             for (ScenarioProbability scenario : item.scenarioProbabilities()) {
                 scenarioProbabilities.put(scenario.scenarioKey(), scenario.probability());
             }
@@ -201,7 +242,7 @@ public final class ArchaeologyJournalServerCatalog {
                             hasDirectSource, sourceChildTables));
         }
         for (ChildTableProbability child : table.childTableProbabilities()) {
-            Map<String, String> scenarioProbabilities = new LinkedHashMap<>();
+            Map<String, Probability> scenarioProbabilities = new LinkedHashMap<>();
             for (ScenarioProbability scenario : child.scenarioProbabilities()) {
                 scenarioProbabilities.put(scenario.scenarioKey(), scenario.probability());
             }
@@ -211,14 +252,18 @@ public final class ArchaeologyJournalServerCatalog {
         }
         probabilityData.putSimulationResult(tableId, hash, probabilities);
 
-        // 写入 catalog，失效哈希缓存
-        catalog.put(tableId, table);
-        cachedCatalogHash = null;
+        // 写入当代 overlay，并失效本代目录哈希缓存
+        generation.publishSimulated(table);
     }
 
-    /** 向所有在线玩家广播目录哈希，客户端比对不一致时会主动请求全量目录 */
-    public static void broadcastCatalogHash(MinecraftServer server) {
-        String hash = computeCatalogHash();
+
+    // 带 generation 校验的广播入口：旧代排空事件不再触发同步
+    private static void broadcastCatalogHash(long generationId, MinecraftServer server) {
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null || generation.generation() != generationId) {
+            return;
+        }
+        String hash = generation.catalogHash();
         if (hash.isEmpty()) return;
         SyncCatalogHashPayload payload = new SyncCatalogHashPayload(hash);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -226,156 +271,72 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    // 缓存目录的 SHA-256 哈希（invalidate 时清除）
-    @SuppressWarnings("VolatileArrayField")
-    private static volatile String cachedCatalogHash;
-
-    // 计算整个目录内容的 SHA-256 哈希（用于按需同步比对）
+    // 计算整个目录内容的 SHA-256 哈希（用于按需同步比对）；缓存与失效都在当代内完成
     public static String computeCatalogHash() {
         if (!loaded) return "";
-        String cached = cachedCatalogHash;
-        if (cached != null) return cached;
-
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            List<TableDefinition> tables = catalog.values().stream()
-                    .sorted(Comparator.comparing(table -> table.id().toString()))
-                    .toList();
-            for (TableDefinition table : tables) {
-                updateDigest(digest, table.id().toString());
-                updateDigest(digest, table.displayName().toString());
-                updateDigest(digest, table.type());
-                updateDigest(digest, Integer.toString(table.simulationCount()));
-                table.childTables().forEach(child -> updateDigest(digest, child.toString()));
-                for (ChildTableProbability child : table.childTableProbabilities()) {
-                    updateDigest(digest, child.tableId().toString());
-                    updateDigest(digest, child.probability());
-                    for (ScenarioProbability scenario : child.scenarioProbabilities()) {
-                        updateDigest(digest, scenario.scenarioKey());
-                        updateDigest(digest, scenario.probability());
-                        updateConditionListDigest(digest, scenario.conditions());
-                    }
-                }
-                List<ItemDefinition> items = table.items().stream()
-                        .sorted(Comparator.comparing(item -> item.signature().toStoredKey()))
-                        .toList();
-                for (ItemDefinition item : items) {
-                    updateDigest(digest, item.id().toString());
-                    updateDigest(digest, item.displayName().toString());
-                    updateDigest(digest, item.tooltipHint() != null ? item.tooltipHint().toString() : "");
-                    updateDigest(digest, item.probability());
-                    updateDigest(digest, item.signature().toStoredKey());
-                    updateDigest(digest, Boolean.toString(item.injected()));
-                    for (ScenarioProbability scenario : item.scenarioProbabilities()) {
-                        updateDigest(digest, scenario.scenarioKey());
-                        updateDigest(digest, scenario.probability());
-                        updateConditionListDigest(digest, scenario.conditions());
-                    }
-                    for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                        updateDigest(digest, path.sourceChildTable() != null
-                                ? path.sourceChildTable().toString() : "");
-                        updateDigest(digest, path.sourceItemTag() != null
-                                ? path.sourceItemTag().toString() : "");
-                        updateConditionListDigest(digest, path.entryConditions());
-                        updateConditionListDigest(digest, path.inheritedConditions());
-                    }
-                }
-            }
-            catalogStructure.categories().forEach(category -> {
-                updateDigest(digest, category.id().toString());
-                updateDigest(digest, category.translationKey());
-                updateDigest(digest, category.fallbackName());
-                updateDigest(digest, category.descriptionKey());
-                updateDigest(digest, category.descriptionFallback());
-                updateDigest(digest, category.iconItem().toString());
-                updateDigest(digest, Integer.toString(category.order()));
-            });
-            catalogStructure.rootCategories().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey(Comparator.comparing(ResourceLocation::toString)))
-                    .forEach(entry -> {
-                        updateDigest(digest, entry.getKey().toString());
-                        updateDigest(digest, entry.getValue().toString());
-                    });
-            cached = HexFormat.of().formatHex(digest.digest());
-            cachedCatalogHash = cached;
-            return cached;
-        } catch (NoSuchAlgorithmException e) {
-            LOGGER.warn("SHA-256 算法不可用，目录哈希将返回空字符串", e);
-            return "";
-        }
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? "" : generation.catalogHash();
     }
 
-    private static void updateConditionListDigest(MessageDigest digest, List<LootConditionInfo> conditions) {
-        updateDigest(digest, Integer.toString(conditions.size()));
-        for (LootConditionInfo condition : conditions) {
-            updateDigest(digest, condition.conditionType().toString());
-            updateDigest(digest, condition.description().toString());
-            updateDigest(digest, condition.probability() != null
-                    ? Float.toString(condition.probability()) : "");
-            condition.metadata().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> {
-                        updateDigest(digest, entry.getKey());
-                        updateDigest(digest, entry.getValue());
-                    });
-            updateConditionListDigest(digest, condition.children());
-        }
-    }
-
-    private static void updateDigest(MessageDigest digest, String value) {
-        digest.update(value.getBytes(StandardCharsets.UTF_8));
-        digest.update((byte) 0);
-    }
-
-    /** 使内存缓存失效（数据包重载后调用，下次 ensureLoaded 会重新加载） */
+    /** 释放当代目录并标记为未加载；下次 ensureLoaded 会重新构建（含资源快照与投影一并释放） */
     public static void invalidate() {
-        catalog.clear();
-        rawCatalog.clear();
-        tableHashes.clear();
-        catalogStructure = CatalogStructure.empty();
-        cachedCatalogHash = null;
+        currentGeneration = null;
         loaded = false;
     }
 
-    /** 获取已填充目录的只读视图 */
+    /** 获取已填充概率的目录只读视图（随模拟完成渐进增长） */
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
-        return Collections.unmodifiableMap(catalog);
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? Map.of() : generation.simulatedTables();
     }
 
     public static CatalogStructure getCatalogStructure() {
-        return catalogStructure;
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? CatalogStructure.empty() : generation.structure();
     }
 
     /** 获取原始目录的只读视图（概率为 "?" 占位符，但物品列表完整）。
      *  ensureLoaded 后立即可用，不受渐进模拟影响；供成就判定等需要完整表集合的场景使用 */
     public static Map<ResourceLocation, TableDefinition> getRawCatalog() {
-        return Collections.unmodifiableMap(rawCatalog);
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? Map.of() : generation.staticTables();
+    }
+
+    /** 获取当代查询索引（子树物品等跨表聚合的唯一入口）；目录尚未加载时返回空索引 */
+    public static CatalogQueryIndex getQueryIndex() {
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? CatalogQueryIndex.EMPTY : generation.queryIndex();
     }
 
     /** 获取原始表定义（概率为占位符），供工作线程模拟时查询 */
+    @Nullable
     public static TableDefinition getRawTable(ResourceLocation tableId) {
-        return rawCatalog.get(tableId);
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? null : generation.staticTable(tableId);
     }
 
     // 判断指定表是否已被当前服务端的原始目录收录；不受概率模拟进度影响
     public static boolean isTrackedTable(ResourceLocation tableId) {
-        return rawCatalog.containsKey(tableId);
+        CatalogGeneration generation = currentGeneration;
+        return generation != null && generation.isTracked(tableId);
     }
 
     /** 原始目录中的表总数（已 ensureLoaded 后可用） */
     public static int getRawCatalogCount() {
-        return rawCatalog.size();
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? 0 : generation.trackedTableCount();
     }
 
-    /** 判断指定表是否已有模拟结果（catalog 或 SavedData 任一命中即可） */
+    /** 判断指定表是否已有模拟结果（overlay 或 SavedData 任一命中即可） */
     public static boolean hasSimulatedData(ResourceLocation tableId) {
-        return catalog.containsKey(tableId);
+        CatalogGeneration generation = currentGeneration;
+        return generation != null && generation.hasSimulated(tableId);
     }
 
     // 从 SavedData 恢复概率到原始目录定义中
     private static TableDefinition restoreFromCache(
             TableDefinition rawTable, ResourceLocation tableId, LootProbabilityData probabilityData,
-            ServerLevel level) {
+            ServerLevel level, Map<ResourceLocation, TableDefinition> staticTables) {
         Map<String, LootProbabilityData.CachedItemProbability> cachedProbabilities =
                 probabilityData.getProbabilities(tableId);
         List<ItemDefinition> restoredItems = new ArrayList<>(cachedProbabilities.size());
@@ -388,7 +349,7 @@ public final class ArchaeologyJournalServerCatalog {
         for (ItemDefinition item : rawTable.items()) {
             LootProbabilityData.CachedItemProbability cached =
                     cachedProbabilities.get(item.signature().toStoredKey());
-            String probability = cached != null ? cached.probability() : item.probability();
+            Probability probability = cached != null ? cached.probability() : item.probability();
             List<ScenarioProbability> scenarioProbabilities = restoreScenarioProbabilities(cached, scenarios);
             restoredItems.add(new ItemDefinition(
                     item.id(), item.displayName(), item.tooltipHint(),
@@ -401,7 +362,7 @@ public final class ArchaeologyJournalServerCatalog {
             rawKeys.add(item.signature().toStoredKey());
         }
         Map<ResourceLocation, Set<String>> childSignatureIndex = buildCachedChildSignatureIndex(
-                rawTable, probabilityData);
+                rawTable, probabilityData, staticTables);
         for (Map.Entry<String, LootProbabilityData.CachedItemProbability> cached : cachedProbabilities.entrySet()) {
             if (rawKeys.contains(cached.getKey())) {
                 continue;
@@ -456,11 +417,12 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 每张父表只构建一次临时子树签名索引，避免按动态物品重复递归。
     private static Map<ResourceLocation, Set<String>> buildCachedChildSignatureIndex(
-            TableDefinition parent, LootProbabilityData probabilityData) {
+            TableDefinition parent, LootProbabilityData probabilityData,
+            Map<ResourceLocation, TableDefinition> staticTables) {
         Map<ResourceLocation, Set<String>> result = new LinkedHashMap<>();
         for (ResourceLocation childId : parent.childTables()) {
             Set<String> signatures = new HashSet<>();
-            collectCachedSubtreeSignatures(childId, probabilityData, signatures, new HashSet<>());
+            collectCachedSubtreeSignatures(childId, probabilityData, staticTables, signatures, new HashSet<>());
             result.put(childId, signatures);
         }
         return result;
@@ -481,11 +443,12 @@ public final class ArchaeologyJournalServerCatalog {
     // 同时收集解析期静态条目和模拟期动态条目；visited 防止数据包循环引用。
     private static void collectCachedSubtreeSignatures(
             ResourceLocation tableId, LootProbabilityData probabilityData,
+            Map<ResourceLocation, TableDefinition> staticTables,
             Set<String> output, Set<ResourceLocation> visited) {
         if (!visited.add(tableId)) {
             return;
         }
-        TableDefinition table = rawCatalog.get(tableId);
+        TableDefinition table = staticTables.get(tableId);
         if (table == null) {
             return;
         }
@@ -498,7 +461,7 @@ public final class ArchaeologyJournalServerCatalog {
             output.add(item.signature().toStoredKey());
         }
         for (ResourceLocation childId : table.childTables()) {
-            collectCachedSubtreeSignatures(childId, probabilityData, output, visited);
+            collectCachedSubtreeSignatures(childId, probabilityData, staticTables, output, visited);
         }
     }
 
@@ -509,7 +472,7 @@ public final class ArchaeologyJournalServerCatalog {
             return List.of();
         }
         List<ScenarioProbability> result = new ArrayList<>();
-        for (Map.Entry<String, String> entry : cached.scenarioProbabilities().entrySet()) {
+        for (Map.Entry<String, Probability> entry : cached.scenarioProbabilities().entrySet()) {
             SimulationScenario scenario = scenarios.get(entry.getKey());
             result.add(new ScenarioProbability(entry.getKey(), entry.getValue(),
                     scenario != null ? scenario.assumptions() : List.of()));
@@ -537,8 +500,9 @@ public final class ArchaeologyJournalServerCatalog {
         for (ResourceLocation tableId : tables.keySet()) {
             try {
                 digest.reset();
-                updateDigest(digest, SIMULATION_CACHE_VERSION);
-                updateDigest(digest, Integer.toString(LootProbabilitySimulator.getSimulationCount()));
+                LootTableSourceSnapshot.updateDigest(digest, SIMULATION_CACHE_VERSION);
+                LootTableSourceSnapshot.updateDigest(digest,
+                        Integer.toString(LootProbabilitySimulator.getSimulationCount()));
                 graph.updateSubtreeDigest(tableId, digest,
                         (node, nodeDigest) -> updateCompiledProductDigest(nodeDigest, tables.get(node)));
                 hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
@@ -565,5 +529,9 @@ public final class ArchaeologyJournalServerCatalog {
             LootTableSourceSnapshot.updateDigest(digest, item.signature().toStoredKey());
             LootTableSourceSnapshot.updateDigest(digest, item.id().toString());
         }
+    }
+
+    /** 一轮构建的产物：可发布的当代目录，以及需要入队模拟的未缓存表。 */
+    private record BuildResult(CatalogGeneration generation, List<ResourceLocation> uncachedTables) {
     }
 }

@@ -5,9 +5,7 @@ import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerC
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState.TableProgress;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -16,7 +14,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
-import java.util.Map;
 
 /***
  * 考古战利品表 100% 完成奖励检测器。
@@ -51,8 +48,9 @@ public final class JournalCompletionRewardChecker {
         if (state == null) {
             return;
         }
-        // 快照 catalog keySet，避免扫描期间 catalog 变更引发并发问题
-        for (ResourceLocation tableId : List.copyOf(ArchaeologyJournalServerCatalog.getCatalog().keySet())) {
+        // 快照目录 keySet，避免扫描期间目录变更引发并发问题；表集合以解析态为准，
+        // 不受概率模拟进度影响，否则未模拟完的表会被整张跳过而漏发奖励
+        for (ResourceLocation tableId : List.copyOf(ArchaeologyJournalServerCatalog.getRawCatalog().keySet())) {
             tryReward(player, state, tableId);
         }
     }
@@ -64,8 +62,9 @@ public final class JournalCompletionRewardChecker {
             return;
         }
 
-        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
-        List<ItemDefinition> requiredItems = LootTableCatalog.collectSubtreeItems(catalog, tableId);
+        // 查询索引在未模拟时回退静态投影，因此判定不会因为"还没轮到这张表"而漏掉物品
+        List<ItemDefinition> requiredItems =
+                ArchaeologyJournalServerCatalog.getQueryIndex().subtreeItems(tableId);
         if (requiredItems.isEmpty()) {
             return;
         }

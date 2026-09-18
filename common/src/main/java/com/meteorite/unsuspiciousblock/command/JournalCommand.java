@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.command;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
@@ -26,6 +26,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -100,11 +101,11 @@ public final class JournalCommand {
                                 return 0;
                             }
                             Map<ResourceLocation, TableDefinition> catalog = getSimulatedCatalog(context.getSource());
-                            int itemCount = countTotalItems(catalog);
+                            CatalogQueryIndex queryIndex = getQueryIndex(context.getSource());
+                            int itemCount = countTotalItems(queryIndex, catalog.keySet());
                             return mutateAndSync(context.getSource(), player, state -> {
                                 for (ResourceLocation tableId : catalog.keySet()) {
-                                    unlockTableItems(state, tableId,
-                                            LootTableCatalog.collectSubtreeItems(catalog, tableId));
+                                    unlockTableItems(state, tableId, queryIndex.subtreeItems(tableId));
                                 }
                             }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.all.success", itemCount, catalog.size()));
                         })
@@ -117,8 +118,7 @@ public final class JournalCommand {
                                     }
                                     ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
                                     requireTable(context.getSource(), tableId);
-                                    Map<ResourceLocation, TableDefinition> catalog = getSimulatedCatalog(context.getSource());
-                                    List<ItemDefinition> items = LootTableCatalog.collectSubtreeItems(catalog, tableId);
+                                    List<ItemDefinition> items = getQueryIndex(context.getSource()).subtreeItems(tableId);
                                     return mutateAndSync(context.getSource(), player,
                                             state -> unlockTableItems(state, tableId, items),
                                             Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.success", tableId.toString(), items.size()));
@@ -284,6 +284,12 @@ public final class JournalCommand {
         return ArchaeologyJournalServerCatalog.getRawCatalog();
     }
 
+    // 当代查询索引：子树物品聚合的唯一入口（模拟态优先、缺失处回退静态投影）
+    private static CatalogQueryIndex getQueryIndex(CommandSourceStack source) {
+        ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
+        return ArchaeologyJournalServerCatalog.getQueryIndex();
+    }
+
     private static Map<ResourceLocation, TableDefinition> getSimulatedCatalog(CommandSourceStack source) {
         ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
         return ArchaeologyJournalServerCatalog.getCatalog();
@@ -303,10 +309,10 @@ public final class JournalCommand {
         return SharedSuggestionProvider.suggestResource(getRawCatalog(source).keySet(), builder);
     }
 
-    private static int countTotalItems(Map<ResourceLocation, TableDefinition> catalog) {
+    private static int countTotalItems(CatalogQueryIndex queryIndex, Set<ResourceLocation> tableIds) {
         int count = 0;
-        for (ResourceLocation tableId : catalog.keySet()) {
-            count += LootTableCatalog.collectSubtreeItems(catalog, tableId).size();
+        for (ResourceLocation tableId : tableIds) {
+            count += queryIndex.subtreeItems(tableId).size();
         }
         return count;
     }
