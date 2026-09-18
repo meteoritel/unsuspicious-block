@@ -4,8 +4,9 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
@@ -108,7 +109,12 @@ public final class ArchaeologyJournalClientState {
 
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
         ArchaeologyJournalLogLocalStore.tick();
-        serverCatalog = Collections.unmodifiableMap(new LinkedHashMap<>(payload.catalog()));
+        // 网络形态还原为客户端内存读模型：表级场景假设按 key 回填到每个分场景概率
+        Map<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
+        for (CatalogTableDto table : payload.catalog()) {
+            tables.put(table.id(), table.toTableDefinition());
+        }
+        serverCatalog = Collections.unmodifiableMap(tables);
         catalogStructure = payload.structure();
         catalogRevision.incrementAndGet();
         // 收到完整目录后，哈希由服务端下次同步时更新

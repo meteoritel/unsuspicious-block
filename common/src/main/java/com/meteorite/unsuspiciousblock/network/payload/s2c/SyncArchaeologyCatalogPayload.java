@@ -2,13 +2,15 @@ package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ChildTableEntry;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ItemEntry;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ScenarioAssumptions;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ScenarioRef;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -22,13 +24,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 全量目录同步包 —— 服务端→客户端 */
-public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinition> catalog,
-                                            CatalogStructure structure)
+/**
+ * 全量目录同步包 —— 服务端→客户端。
+ * <p>
+ * 载荷是 {@link CatalogTableDto} 而非服务端内部记录：场景假设条件树按 {@code scenarioKey}
+ * 每表只发一次，物品与子表侧只带 key 与概率（P3-1）。这样把"同一条件树被按物品重复序列化"
+ * 的冗余去掉，同时让目录哈希的输入与实际上线内容完全一致。
+ */
+public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, CatalogStructure structure)
         implements CustomPacketPayload {
 
     public static final Type<SyncArchaeologyCatalogPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_archaeology_catalog"));
+
+    public SyncArchaeologyCatalogPayload {
+        catalog = List.copyOf(catalog);
+    }
 
     @Override
     public @NotNull Type<SyncArchaeologyCatalogPayload> type() {
@@ -40,28 +51,31 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
 
     private static void encode(RegistryFriendlyByteBuf buf, SyncArchaeologyCatalogPayload payload) {
         buf.writeVarInt(payload.catalog.size());
-        for (Map.Entry<ResourceLocation, TableDefinition> entry : payload.catalog.entrySet()) {
-            buf.writeResourceLocation(entry.getKey());
-            TableDefinition table = entry.getValue();
+        for (CatalogTableDto table : payload.catalog) {
+            buf.writeResourceLocation(table.id());
             buf.writeUtf(Component.Serializer.toJson(table.displayName(), buf.registryAccess()));
             buf.writeUtf(table.type());
+            buf.writeVarInt(table.simulationCount());
+
             buf.writeVarInt(table.childTables().size());
             table.childTables().forEach(buf::writeResourceLocation);
-            buf.writeVarInt(table.childTableProbabilities().size());
-            for (ChildTableProbability child : table.childTableProbabilities()) {
-                buf.writeResourceLocation(child.tableId());
-                buf.writeUtf(child.probability());
-                encodeScenarioProbabilities(buf, child.scenarioProbabilities());
+
+            // 表级场景假设：同一张表的所有物品与子表共用，只发一次
+            buf.writeVarInt(table.scenarios().size());
+            for (ScenarioAssumptions scenario : table.scenarios()) {
+                buf.writeUtf(scenario.scenarioKey());
+                encodeConditionList(buf, scenario.assumptions());
             }
+
             buf.writeVarInt(table.items().size());
-            for (ItemDefinition item : table.items()) {
+            for (ItemEntry item : table.items()) {
                 buf.writeResourceLocation(item.id());
                 buf.writeUtf(Component.Serializer.toJson(item.displayName(), buf.registryAccess()));
                 buf.writeBoolean(item.tooltipHint() != null);
                 if (item.tooltipHint() != null) {
                     buf.writeUtf(Component.Serializer.toJson(item.tooltipHint(), buf.registryAccess()));
                 }
-                buf.writeUtf(item.probability());
+                writeProbability(buf, item.probability());
                 buf.writeUtf(item.signature().toStoredKey());
                 buf.writeVarInt(item.acquisitionPaths().size());
                 for (LootAcquisitionPath path : item.acquisitionPaths()) {
@@ -78,38 +92,47 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                 }
                 // 外部注入标记
                 buf.writeBoolean(item.injected());
-                encodeScenarioProbabilities(buf, item.scenarioProbabilities());
+                encodeScenarioRefs(buf, item.scenarioProbabilities());
             }
-            buf.writeVarInt(table.simulationCount());
+
+            buf.writeVarInt(table.childProbabilities().size());
+            for (ChildTableEntry child : table.childProbabilities()) {
+                buf.writeResourceLocation(child.tableId());
+                writeProbability(buf, child.probability());
+                encodeScenarioRefs(buf, child.scenarioProbabilities());
+            }
         }
         encodeStructure(buf, payload.structure());
     }
 
     private static SyncArchaeologyCatalogPayload decode(RegistryFriendlyByteBuf buf) {
         int tableCount = buf.readVarInt();
-        LinkedHashMap<ResourceLocation, TableDefinition> catalog = new LinkedHashMap<>();
+        List<CatalogTableDto> catalog = new ArrayList<>(tableCount);
         for (int i = 0; i < tableCount; i++) {
             ResourceLocation tableId = buf.readResourceLocation();
             Component displayName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
             String type = buf.readUtf();
+            int simulationCount = buf.readVarInt();
+
             int childCount = buf.readVarInt();
             List<ResourceLocation> childTables = new ArrayList<>(childCount);
             for (int j = 0; j < childCount; j++) childTables.add(buf.readResourceLocation());
-            int childProbabilityCount = buf.readVarInt();
-            List<ChildTableProbability> childProbabilities = new ArrayList<>(childProbabilityCount);
-            for (int j = 0; j < childProbabilityCount; j++) {
-                childProbabilities.add(new ChildTableProbability(
-                        buf.readResourceLocation(), buf.readUtf(), decodeScenarioProbabilities(buf)));
+
+            int scenarioCount = buf.readVarInt();
+            List<ScenarioAssumptions> scenarios = new ArrayList<>(scenarioCount);
+            for (int j = 0; j < scenarioCount; j++) {
+                scenarios.add(new ScenarioAssumptions(buf.readUtf(), decodeConditionList(buf)));
             }
+
             int itemCount = buf.readVarInt();
-            List<ItemDefinition> items = new ArrayList<>();
+            List<ItemEntry> items = new ArrayList<>(itemCount);
             for (int j = 0; j < itemCount; j++) {
                 ResourceLocation itemId = buf.readResourceLocation();
                 Component itemName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
                 Component tooltipHint = buf.readBoolean()
                         ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess())
                         : null;
-                String probability = buf.readUtf();
+                Probability probability = readProbability(buf);
                 LootResultSignature signature = LootResultSignature.fromStoredKey(buf.readUtf());
                 if (signature == null) {
                     signature = LootResultSignature.plain(itemId);
@@ -129,35 +152,67 @@ public record SyncArchaeologyCatalogPayload(Map<ResourceLocation, TableDefinitio
                             sourceChildTable, sourceItemTag, entryConditions, inheritedConditions));
                 }
                 boolean injected = buf.readBoolean();
-                List<ScenarioProbability> scenarioProbabilities = decodeScenarioProbabilities(buf);
-                items.add(new ItemDefinition(itemId, itemName, tooltipHint, probability,
-                        signature, acquisitionPaths, injected, scenarioProbabilities));
+                items.add(new ItemEntry(itemId, itemName, tooltipHint, probability,
+                        signature, acquisitionPaths, injected, decodeScenarioRefs(buf)));
             }
-            int simulationCount = buf.readVarInt();
-            catalog.put(tableId, new TableDefinition(tableId, displayName, type, items,
-                    simulationCount, childTables, childProbabilities));
+
+            int childProbabilityCount = buf.readVarInt();
+            List<ChildTableEntry> childProbabilities = new ArrayList<>(childProbabilityCount);
+            for (int j = 0; j < childProbabilityCount; j++) {
+                childProbabilities.add(new ChildTableEntry(
+                        buf.readResourceLocation(), readProbability(buf), decodeScenarioRefs(buf)));
+            }
+
+            catalog.add(new CatalogTableDto(tableId, displayName, type, simulationCount,
+                    childTables, scenarios, items, childProbabilities));
         }
         return new SyncArchaeologyCatalogPayload(catalog, decodeStructure(buf));
     }
 
-    private static void encodeScenarioProbabilities(
-            RegistryFriendlyByteBuf buf, List<ScenarioProbability> probabilities) {
-        buf.writeVarInt(probabilities.size());
-        for (ScenarioProbability scenario : probabilities) {
-            buf.writeUtf(scenario.scenarioKey());
-            buf.writeUtf(scenario.probability());
-            encodeConditionList(buf, scenario.conditions());
+    // 分场景概率的引用形态：只写 key 与数值，条件树在表级已发过
+    private static void encodeScenarioRefs(RegistryFriendlyByteBuf buf, List<ScenarioRef> refs) {
+        buf.writeVarInt(refs.size());
+        for (ScenarioRef ref : refs) {
+            buf.writeUtf(ref.scenarioKey());
+            writeProbability(buf, ref.probability());
         }
     }
 
-    private static List<ScenarioProbability> decodeScenarioProbabilities(RegistryFriendlyByteBuf buf) {
-        int scenarioCount = buf.readVarInt();
-        List<ScenarioProbability> probabilities = new ArrayList<>(scenarioCount);
-        for (int index = 0; index < scenarioCount; index++) {
-            probabilities.add(new ScenarioProbability(
-                    buf.readUtf(), buf.readUtf(), decodeConditionList(buf)));
+    private static List<ScenarioRef> decodeScenarioRefs(RegistryFriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        List<ScenarioRef> refs = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            refs.add(new ScenarioRef(buf.readUtf(), readProbability(buf)));
         }
-        return List.copyOf(probabilities);
+        return List.copyOf(refs);
+    }
+
+    // 概率值编码：1 字节状态 + 按需的数值，未知与不可达不占额外空间
+    private static void writeProbability(RegistryFriendlyByteBuf buf, Probability probability) {
+        switch (probability) {
+            case Probability.Unknown ignored -> buf.writeByte(0);
+            case Probability.Unreachable ignored -> buf.writeByte(1);
+            case Probability.Measured measured -> {
+                buf.writeByte(2);
+                buf.writeDouble(measured.lower());
+                buf.writeBoolean(measured.upper().isPresent());
+                measured.upper().ifPresent(buf::writeDouble);
+            }
+        }
+    }
+
+    private static Probability readProbability(RegistryFriendlyByteBuf buf) {
+        return switch (buf.readByte()) {
+            case 0 -> Probability.unknown();
+            case 1 -> Probability.unreachable();
+            default -> {
+                double lower = buf.readDouble();
+                if (!buf.readBoolean()) {
+                    yield Probability.measured(lower);
+                }
+                yield Probability.measuredRange(lower, buf.readDouble());
+            }
+        };
     }
 
     private static void encodeStructure(RegistryFriendlyByteBuf buf, CatalogStructure structure) {
