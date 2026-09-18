@@ -96,12 +96,12 @@ public class FabricPanningConfig implements IPanningConfig {
 
     private static int clamp(Integer value, int fallback, int min, int max) {
         int raw = value != null ? value : fallback;
-        return Math.max(min, Math.min(max, raw));
+        return Math.clamp(raw, min, max);
     }
 
     private static double clamp(Double value, double fallback, double min, double max) {
         double raw = value != null ? value : fallback;
-        return Math.max(min, Math.min(max, raw));
+        return Math.clamp(raw, min, max);
     }
 
     // 读取配置；文件不存在或不可解析时写入一份默认配置
@@ -141,7 +141,10 @@ public class FabricPanningConfig implements IPanningConfig {
 
     /**
      * 配置文件数据结构——字段名即 JSON 键名，缺失时回落到默认值。
+     * <p>
+     * 字段由 Gson 通过反射写入，因此不能声明为 final；JSON 中缺失的键会保留字段初始化值。
      */
+    @SuppressWarnings("FieldMayBeFinal")
     private static final class ConfigData {
         private Integer spawn_interval_ticks = DEFAULT_SPAWN_INTERVAL_TICKS;
         private Integer max_natural_per_dimension = DEFAULT_MAX_PER_DIMENSION;

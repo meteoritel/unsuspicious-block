@@ -197,8 +197,8 @@ public class ModItems {
         return new PanItem(new Item.Properties().stacksTo(1).durability(24), new PanProfile(
                 Set.of(ShimmerVariants.WATER_ID),
                 commonItemTag("ingots/gold"),
-                Map.of(ShimmerVariants.WATER_ID, () -> Services.PANNING_CONFIG.getGoldPanLuckBonus()),
-                () -> Services.PANNING_CONFIG.getGoldPanRegenerationChance(),
+                Map.of(ShimmerVariants.WATER_ID, Services.PANNING_CONFIG::getGoldPanLuckBonus),
+                Services.PANNING_CONFIG::getGoldPanRegenerationChance,
                 "item.unsuspiciousblock.gold_pan.tooltip.quality"));
     }
 
