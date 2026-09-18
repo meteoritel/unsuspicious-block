@@ -1,4 +1,6 @@
 {
-  "type": "unsuspiciousblock:river_shimmer",
-  "config": {}
+  "type": "unsuspiciousblock:shimmer",
+  "config": {
+    "variant": "unsuspiciousblock:water"
+  }
 }

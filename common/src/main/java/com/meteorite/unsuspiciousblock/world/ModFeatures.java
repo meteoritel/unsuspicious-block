@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.world;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.pan.ShimmerRiverFeature;
+import com.meteorite.unsuspiciousblock.pan.ShimmerFeature;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -21,7 +21,7 @@ public final class ModFeatures {
     public record FeatureEntry(String name, Supplier<Feature<?>> factory) {}
 
     public static final List<FeatureEntry> REGISTRY_MANIFEST = List.of(
-            new FeatureEntry("river_shimmer", ShimmerRiverFeature::new));
+            new FeatureEntry("shimmer", ShimmerFeature::new));
 
     private ModFeatures() {}
 

@@ -1,7 +1,8 @@
 package com.meteorite.unsuspiciousblock.pan;
 
-import com.meteorite.unsuspiciousblock.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
@@ -22,11 +23,11 @@ import java.util.UUID;
 /***
  * 闪烁的光运行时生成服务——驱动自然生成、特殊再生与手动生成。
  * <p>
- * 自然生成：按固定节拍在玩家已加载区块中挑选河流区块，以世界水平面高度做水平游走，
- * 命中开阔水域且与现存淘洗点保持足够间距时生成。每维度数量达到上限后不再尝试，
- * 直到有实体消散（账本条目注销）才恢复尝试。
+ * 自然生成：按固定节拍在玩家已加载区块中挑选生成域内的区块，以该维度的海平面做水平游走，
+ * 命中开阔液面且与现存淘洗点保持足够间距时生成。每维度数量达到上限后不再尝试，
+ * 直到有实体消散（账本条目注销）才恢复尝试。自然生成只投放水域变体，幽微的光纯由世界生成产出。
  * <p>
- * 世界生成由 ShimmerRiverFeature 在新区块生成期间写入实体 NBT，不经过本服务的运行时调度。
+ * 世界生成由 ShimmerFeature 在新区块生成期间写入实体 NBT，不经过本服务的运行时调度。
  */
 public final class ShimmerSpawnService {
     /*** 区分生成触发方式；特殊生成使用独立分类，手动自然样本归自然类型。 */
@@ -132,11 +133,11 @@ public final class ShimmerSpawnService {
             return false;
         }
         ServerPlayer target = players.get(level.getRandom().nextInt(players.size()));
-        ChunkPos chunkPos = pickLoadedChunk(level, target);
+        ChunkPos chunkPos = pickLoadedChunk(level, target, ShimmerVariants.WATER);
         if (chunkPos == null) {
             return false;
         }
-        return trySpawnInChunk(level, ledger, chunkPos, SpawnTrigger.NATURAL, false);
+        return trySpawnInChunk(level, ledger, chunkPos, ShimmerVariants.WATER, SpawnTrigger.NATURAL, false);
     }
 
     // 预计算圆形范围，确保八次机会都抽取范围内的区块，不浪费在方形四角。
@@ -152,42 +153,46 @@ public final class ShimmerSpawnService {
         return List.copyOf(offsets);
     }
 
-    // 保留按玩家抽样的聚集加权；最多八次筛选半径八区块内已加载的河流区块。
+    // 保留按玩家抽样的聚集加权；最多八次筛选半径八区块内已加载、且落在该变体生成域内的区块。
     @Nullable
-    private static ChunkPos pickLoadedChunk(ServerLevel level, ServerPlayer player) {
+    private static ChunkPos pickLoadedChunk(ServerLevel level, ServerPlayer player, ShimmerVariant variant) {
         ChunkPos center = player.chunkPosition();
         ShimmerLedger ledger = ShimmerLedger.of(level);
+        int seaLevel = surfaceSearchCenter(level, variant);
         for (int attempt = 0; attempt < CHUNK_PICK_ATTEMPTS; attempt++) {
             ChunkPos offset = SPAWN_OFFSETS.get(level.getRandom().nextInt(SPAWN_OFFSETS.size()));
             ChunkPos candidate = new ChunkPos(center.x + offset.x, center.z + offset.z);
             if (level.isLoaded(candidate.getWorldPosition())
                     && !ledger.isCoolingDown(candidate, level.getGameTime())
-                    && ShimmerPlacement.hasRiverBiome(level, candidate, level.getSeaLevel())) {
+                    && variant.spawnDomain().acceptsChunk(level, candidate, seaLevel)) {
                 return candidate;
             }
         }
         return null;
     }
 
-    // 在区块内做水平游走，命中河流群系中的开阔水域且间距足够时生成
-    private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunkPos, SpawnTrigger trigger, boolean bypassCooldown) {
+    // 落点搜索的基准高度必须取自区块生成器：Level#getSeaLevel 是固定值 63，在下界会定位到错误的层高。
+    private static int surfaceSearchCenter(ServerLevel level, ShimmerVariant variant) {
+        return variant.spawnDomain().surfaceSearchCenter(level.getChunkSource().getGenerator());
+    }
+
+    // 在区块内做水平游走，命中生成域中的开阔液面且间距足够时生成
+    private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunkPos,
+                                           ShimmerVariant variant, SpawnTrigger trigger, boolean bypassCooldown) {
         if (!bypassCooldown && ledger.isCoolingDown(chunkPos, level.getGameTime())) return false;
-        BlockPos waterPos = ShimmerPlacement.wanderForSurface(level, level.getRandom(), chunkPos,
-                level.getSeaLevel(), pos -> !ledger.isTooClose(pos, Services.PANNING_CONFIG.getSpacingBlocks()));
-        return waterPos != null && spawnShimmer(level, waterPos, trigger) != null;
+        BlockPos surfacePos = ShimmerPlacement.wanderForSurface(level, level.getRandom(), chunkPos,
+                variant, surfaceSearchCenter(level, variant),
+                pos -> !ledger.isTooClose(pos, Services.PANNING_CONFIG.getSpacingBlocks()));
+        return surfacePos != null && spawnShimmer(level, surfacePos, variant, trigger) != null;
     }
 
-    // 保留手动生成接口；此底层入口不校验上限、间距和落点，不广播自然生成提示。
+    // 底层生成入口：按变体创建实体并完成初始化、账本登记与演出。
+    // 该入口不校验上限、间距与落点；特殊生成可传 SPECIAL，共享有限寿命但不广播自然生成提示。
     @Nullable
-    public static ShimmerEntity spawnShimmer(ServerLevel level, BlockPos waterPos, boolean natural) {
-        return spawnShimmer(level, waterPos, natural ? SpawnTrigger.MANUAL : SpawnTrigger.WORLDGEN);
-    }
-
-    // 特殊生成可传 SPECIAL：共享有限寿命和账本登记，但不广播自然生成提示。
-    @Nullable
-    public static ShimmerEntity spawnShimmer(ServerLevel level, BlockPos waterPos, SpawnTrigger trigger) {
+    public static ShimmerEntity spawnShimmer(ServerLevel level, BlockPos waterPos,
+                                             ShimmerVariant variant, SpawnTrigger trigger) {
         boolean natural = trigger != SpawnTrigger.WORLDGEN;
-        ShimmerEntity shimmer = ModEntities.SHIMMER.get().create(level);
+        ShimmerEntity shimmer = variant.entityType().get().create(level);
         if (shimmer == null) {
             return null;
         }
@@ -210,6 +215,7 @@ public final class ShimmerSpawnService {
                 || !Double.isFinite(chance) || chance <= 0.0D || chance > 1.0D
                 || level.getRandom().nextDouble() >= chance) return false;
         BlockPos center = harvested.getAnchorPos();
+        ShimmerVariant variant = harvested.getVariant();
         ShimmerLedger ledger = ShimmerLedger.of(level);
         Set<BlockPos> occupiedPositions = new HashSet<>();
         for (int x = (center.getX() - 5) >> 4; x <= (center.getX() + 5) >> 4; x++) {
@@ -220,27 +226,32 @@ public final class ShimmerSpawnService {
         }
         BlockPos selected = null;
         int candidates = 0;
-        // 闪烁的光只能依附于水面，故再生落点与触发点同高：只在触发点所在水平面做蓄水池抽样，
-        // 各有效水面等概率；最多检查 81 个方块。
+        // 依附介质只存在于触发点所在的同一水平面，故再生落点与触发点同高：在该水平面做蓄水池抽样，
+        // 各有效液面等概率；最多检查 81 个方块。
         for (int dx = -5; dx <= 5; dx++) {
             for (int dz = -5; dz <= 5; dz++) {
                 if (dx * dx + dz * dz > 25 || (dx == 0 && dz == 0)) continue;
                 BlockPos pos = center.offset(dx, 0, dz);
-                if (!level.isLoaded(pos) || !ShimmerPlacement.isBoundWaterIntact(level, pos)) continue;
+                if (!level.isLoaded(pos) || !variant.anchor().isValid(level, pos)) continue;
                 if (!occupiedPositions.contains(pos) && level.getRandom().nextInt(++candidates) == 0) selected = pos;
             }
         }
-        return selected != null && spawnShimmer(level, selected, SpawnTrigger.SPECIAL) != null;
+        return selected != null && spawnShimmer(level, selected, variant, SpawnTrigger.SPECIAL) != null;
     }
 
     // 调试指定区块的自然生成尝试，复用正式落点流程，不改变自动尝试节拍。
+    // 该子指令只针对水域变体，幽微的光没有运行时自然生成入口。
     public static String debugAttemptInChunk(ServerLevel level, ChunkPos chunk) {
         ShimmerLedger ledger = ShimmerLedger.of(level);
         if (!level.isLoaded(chunk.getWorldPosition())) return "unloaded";
         if (ledger.countNatural() >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) return "cap";
         if (ledger.isCoolingDown(chunk, level.getGameTime())) return "cooldown";
-        if (!ShimmerPlacement.hasRiverBiome(level, chunk, level.getSeaLevel())) return "not_river";
-        return trySpawnInChunk(level, ledger, chunk, SpawnTrigger.MANUAL, false) ? "success" : "no_position";
+        ShimmerVariant variant = ShimmerVariants.WATER;
+        if (!variant.spawnDomain().acceptsChunk(level, chunk, surfaceSearchCenter(level, variant))) {
+            return "not_river";
+        }
+        return trySpawnInChunk(level, ledger, chunk, variant, SpawnTrigger.MANUAL, false)
+                ? "success" : "no_position";
     }
 
     // 生成时即固定的随机寿命，落在配置的寿命区间内

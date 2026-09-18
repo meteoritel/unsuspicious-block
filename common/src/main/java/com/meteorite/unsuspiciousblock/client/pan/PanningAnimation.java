@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.pan;
 
-import com.meteorite.unsuspiciousblock.item.CopperPanItem;
+import com.meteorite.unsuspiciousblock.item.PanItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.model.HumanoidModel;
@@ -26,7 +26,7 @@ public final class PanningAnimation {
             InteractionHand hand, ItemStack stack, float partialTick, float equipProgress,
             PoseStack pose, MultiBufferSource buffers, int light) {
         if (player == null || player.isScoping() || !player.isUsingItem()
-                || player.getUsedItemHand() != hand || !(stack.getItem() instanceof CopperPanItem)) {
+                || player.getUsedItemHand() != hand || !(stack.getItem() instanceof PanItem)) {
             return false;
         }
         HumanoidArm arm = hand == InteractionHand.MAIN_HAND ? player.getMainArm() : player.getMainArm().getOpposite();
@@ -59,7 +59,7 @@ public final class PanningAnimation {
     // 在原版模型完成姿势后调整持盘手臂；非玩家模型与另一只手保持原版行为。
     public static void poseThirdPerson(HumanoidModel<?> model, LivingEntity entity, float ageInTicks) {
         if (!(entity instanceof Player) || !entity.isUsingItem()
-                || !(entity.getUseItem().getItem() instanceof CopperPanItem)) {
+                || !(entity.getUseItem().getItem() instanceof PanItem)) {
             return;
         }
         HumanoidArm arm = entity.getUsedItemHand() == InteractionHand.MAIN_HAND

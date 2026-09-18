@@ -1,13 +1,13 @@
 package com.meteorite.unsuspiciousblock.entity;
 
-import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.item.CopperPanItem;
+import com.meteorite.unsuspiciousblock.item.PanItem;
 import com.meteorite.unsuspiciousblock.pan.ShimmerLedger;
-import com.meteorite.unsuspiciousblock.pan.ShimmerPlacement;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
+import com.meteorite.unsuspiciousblock.pan.variant.GlowStyle;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.ListTag;
@@ -16,7 +16,6 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
@@ -27,16 +26,17 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /***
- * 闪烁的光——淘盘专属的水面淘洗点实体。
+ * 闪烁的光——淘盘专属的液面淘洗点实体。
  * <p>
- * 该实体依附于其下方的水方块而存在：位置永远锚定在水方块上，水方块被破坏或被方块占据时立刻消散，
- * 且不参与碰撞、不受流体推动、不可被攻击破坏。它只响应淘盘，有限寿命来源被淘空后消散，世界生成来源保留并恢复次数。
+ * 该实体依附于其下方的介质方块而存在：位置永远锚定在该方块上，方块被破坏或被占据时立刻消散，
+ * 且不参与碰撞、不受流体推动、不可被攻击破坏。依附介质、波光配色、粒子与音效全部由
+ * {@link ShimmerVariant} 提供，服务端与客户端各自从注册表取同一份数据，因此变体本身无需同步。
+ * 它只响应可采该变体的淘盘，有限寿命来源被淘空后消散，世界生成来源保留并恢复次数。
  * <p>
  * 按来源分为三类：
  * <ul>
@@ -44,7 +44,7 @@ import org.jetbrains.annotations.Nullable;
  *     <li>世界生成——供玩家探索时发现，不自然消散也不计入数量上限，定时恢复一次淘洗次数。</li>
  *     <li>特殊生成——拥有有限寿命，不计入自然生成上限，不能继续触发特殊生成。</li>
  * </ul>
- * 渲染完全依赖水面粒子，淘洗次数越少粒子越稀疏，用于向玩家暗示剩余价值。
+ * 渲染完全依赖液面粒子与贴面波光，淘洗次数越少粒子越稀疏，用于向玩家暗示剩余价值。
  */
 public class ShimmerEntity extends Entity {
     private static final String NBT_PAN_REMAINING = "PanRemaining";
@@ -91,9 +91,10 @@ public class ShimmerEntity extends Entity {
     }
 
     // 生成线程仅写 NBT；配置、随机恢复周期与账本访问留给主线程加载和首 tick。
-    public static CompoundTag createWorldgenTag(BlockPos anchor) {
+    // 实体 id 取自变体携带的实体类型，因此同一个地物类型可服务全部依附介质。
+    public static CompoundTag createWorldgenTag(BlockPos anchor, ShimmerVariant variant) {
         CompoundTag tag = new CompoundTag();
-        tag.putString("id", Constants.MOD_ID + ":shimmer");
+        tag.putString("id", EntityType.getKey(variant.entityType().get()).toString());
         tag.putLong(NBT_ANCHOR, anchor.asLong());
         tag.putBoolean(NBT_NATURAL_SPAWN, false);
         tag.putBoolean("NoGravity", true);
@@ -180,22 +181,27 @@ public class ShimmerEntity extends Entity {
         return this.hasLifetime && !this.specialSpawn;
     }
 
+    // 本实体所属变体——依附介质与全部表现参数都由它决定。
+    // P1b 拆分子类后由具体子类返回各自常量，本阶段只有水域一个变体。
+    public ShimmerVariant getVariant() {
+        return ShimmerVariants.WATER;
+    }
+
     // 返回其依附的水方块坐标
     public BlockPos getAnchorPos() {
         return this.anchorPos;
     }
 
-    // 客户端使用同步后的位置，不能使用未同步的 anchorPos 字段判定冰面。
+    // 客户端使用同步后的位置，不能使用未同步的 anchorPos 字段判定冻结相位。
     public boolean isFrozen() {
-        return this.level().getBlockState(this.blockPosition()).is(Blocks.ICE);
+        return this.getVariant().anchor().isFrozenAt(this.level(), this.blockPosition());
     }
 
-    // 起手、持续淘洗和结算都即时检查水面，避免结冰与实体 tick 的先后顺序造成误结算。
+    // 起手、持续淘洗和结算都即时检查依附面，避免依附失效与实体 tick 的先后顺序造成误结算。
     public boolean canPan() {
         BlockPos pos = this.level().isClientSide() ? this.blockPosition() : this.anchorPos;
         return !this.isRemoved() && this.getPanRemaining() > 0
-                && this.level().getBlockState(pos).is(Blocks.WATER)
-                && this.level().getBlockState(pos.above()).isAir();
+                && this.getVariant().anchor().isValid(this.level(), pos);
     }
 
     // 只有服务端验证过的有效淘洗才能刷新工作状态；不持久化临时演出状态。
@@ -221,16 +227,17 @@ public class ShimmerEntity extends Entity {
     @Override
     public @NotNull InteractionResult interact(@NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (this.discardIfExpired() || !(stack.getItem() instanceof CopperPanItem) || !this.canPan()) {
+        if (this.discardIfExpired() || !(stack.getItem() instanceof PanItem pan)
+                || !pan.canHarvest(this)) {
             return InteractionResult.PASS;
         }
         if (player.isUsingItem()) {
             return InteractionResult.CONSUME;
         }
-        // 只播放装水声，不调用水桶取水逻辑；服务端广播一次，避免双端重复播放。
+        // 只播放起手介质音，不调用取液逻辑；服务端广播一次，避免双端重复播放。
         if (!this.level().isClientSide()) {
             this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
-                    SoundEvents.BUCKET_FILL, SoundSource.PLAYERS, 0.8F, 1.0F);
+                    this.getVariant().glow().startSound(), SoundSource.PLAYERS, 0.8F, 1.0F);
         }
         player.startUsingItem(hand);
         return InteractionResult.CONSUME;
@@ -243,7 +250,7 @@ public class ShimmerEntity extends Entity {
         }
         int remaining = this.getPanRemaining() - 1;
         this.setPanRemaining(remaining);
-        this.level().playSound(null, this.anchorPos, SoundEvents.AMETHYST_BLOCK_CHIME,
+        this.level().playSound(null, this.anchorPos, this.getVariant().glow().consumeSound(),
                 SoundSource.BLOCKS, 0.8F, remaining <= 0 ? 0.6F : 1.0F + (3 - remaining) * 0.15F);
         if (remaining <= 0) {
             if (this.level() instanceof ServerLevel serverLevel) {
@@ -277,8 +284,8 @@ public class ShimmerEntity extends Entity {
         if (!this.blockPosition().equals(this.anchorPos)) {
             this.snapToAnchor();
         }
-        // 绑定的水方块被破坏或被方块占据时，立刻消散且不产出任何东西
-        if (!ShimmerPlacement.isBoundWaterIntact(this.level(), this.anchorPos)) {
+        // 绑定的介质方块被破坏或被方块占据时，立刻消散且不产出任何东西
+        if (!this.getVariant().anchor().isValid(this.level(), this.anchorPos)) {
             this.discard();
             return;
         }
@@ -299,13 +306,14 @@ public class ShimmerEntity extends Entity {
         this.nextRecoveryAt += cycles * this.recoveryIntervalTicks;
     }
 
-    // 粒子作为贴水金色波光的点缀，工作时增加旋转水花与向外扩散的涟漪。
+    // 粒子作为贴液面波光的点缀，工作时增加旋转水花与向外扩散的涟漪。
     private void clientTick() {
+        GlowStyle glow = this.getVariant().glow();
         // 世界生成点即使暂时采空也保留低频闪光，方便玩家辨认与再次寻找。
         if (this.entityData.get(DATA_WORLDGEN) && this.tickCount % 10 == 0) {
-            this.level().addParticle(ParticleTypes.END_ROD,
+            this.level().addParticle(glow.idleParticle(),
                     this.getX() + (this.random.nextDouble() - 0.5D) * 0.7D,
-                    this.waterSurfaceY() + 0.08D,
+                    this.getSurfaceY() + 0.08D,
                     this.getZ() + (this.random.nextDouble() - 0.5D) * 0.7D,
                     0.0D, 0.015D, 0.0D);
         }
@@ -324,18 +332,20 @@ public class ShimmerEntity extends Entity {
             float direction = angle + i * Mth.PI;
             double dx = Mth.cos(direction);
             double dz = Mth.sin(direction);
-            this.level().addParticle(ParticleTypes.SPLASH,
-                    this.getX() + dx * 0.3D, this.waterSurfaceY() + 0.06D,
+            this.level().addParticle(glow.splashParticle(),
+                    this.getX() + dx * 0.3D, this.getSurfaceY() + 0.06D,
                     this.getZ() + dz * 0.3D, dx * 0.025D, 0.055D, dz * 0.025D);
-            this.level().addParticle(ParticleTypes.FISHING,
-                    this.getX() + dx * 0.18D, this.waterSurfaceY() + 0.02D,
+            this.level().addParticle(glow.rippleParticle(),
+                    this.getX() + dx * 0.18D, this.getSurfaceY() + 0.02D,
                     this.getZ() + dz * 0.18D, dx * 0.04D, 0.0D, dz * 0.04D);
         }
     }
 
-    // 冰面位于完整方块顶面，水面约在方块底部 +0.875。
-    private double waterSurfaceY() {
-        return this.getY() + (this.isFrozen() ? 1.0D : 0.875D);
+    // 演出高度由变体的依附规则提供：水面 0.875、冰面位于完整方块顶面、岩浆面取流体实际高度。
+    // 粒子、生成特效与摇洗循环声共用它，保证声画贴合同一液面。
+    public double getSurfaceY() {
+        return this.getY() + this.getVariant().anchor()
+                .surfaceOffset(this.level(), this.blockPosition(), this.isFrozen());
     }
 
     private void snapToAnchor() {
@@ -447,15 +457,16 @@ public class ShimmerEntity extends Entity {
         return false;
     }
 
-    // 供外部在生成后补充一次入水演出
+    // 供外部在生成后补充一次入液演出
     public void playSpawnEffects(@Nullable ServerLevel level) {
         if (level == null) {
             return;
         }
-        level.sendParticles(this.isFrozen() ? ParticleTypes.END_ROD : ParticleTypes.SPLASH,
-                this.getX(), this.waterSurfaceY(), this.getZ(),
+        GlowStyle glow = this.getVariant().glow();
+        level.sendParticles(this.isFrozen() ? glow.idleParticle() : glow.splashParticle(),
+                this.getX(), this.getSurfaceY(), this.getZ(),
                 8, 0.35D, 0.05D, 0.35D, 0.0D);
-        level.playSound(null, this.anchorPos, SoundEvents.AMETHYST_BLOCK_CHIME,
+        level.playSound(null, this.anchorPos, glow.consumeSound(),
                 SoundSource.BLOCKS, 0.7F, 1.4F);
     }
 }

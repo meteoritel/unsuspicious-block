@@ -591,8 +591,8 @@
   "command.unsuspiciousblock.usb.favor.reset.success": "猫之恩惠状态已重置。",
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "无法访问当前玩家的猫之恩惠数据。",
 
-  "command.unsuspiciousblock.usb.shimmer.spawn.success": "已在水方块 %1$s 生成闪烁的光（来源：%2$s，剩余淘洗次数：%3$s）。",
-  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "无法在 %s 生成：该位置上方必须是空气，坐标应指向水面方块。",
+  "command.unsuspiciousblock.usb.shimmer.spawn.success": "已在依附方块 %1$s 生成闪烁的光（来源：%2$s，剩余淘洗次数：%3$s）。",
+  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "无法在 %s 生成：该位置上方必须是空气，坐标应指向要依附的方块位置（水源或冰块）。",
   "command.unsuspiciousblock.usb.shimmer.error.spawn_failed": "在 %s 生成闪烁的光失败。",
   "command.unsuspiciousblock.usb.shimmer.error.unknown_source": "未知来源：%s（可选 natural / worldgen）。",
 
@@ -723,7 +723,7 @@
   "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "用淘盘从河流沉积物中淘洗出的战利品。",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "淘洗",
   "unsuspiciousblock.configgui.panning.harvest_cooldown_ticks": "采空区域冷却（游戏刻）",
-  "command.unsuspiciousblock.usb.shimmer.debug.help": "闪烁的光调试：attempt | stats [all] | chunk | expire <uuid> | cooldown set <秒数> | cooldown clear | spawn <坐标> [natural|worldgen|special] | rate start <秒数> [间隔刻数] | rate status | rate stop | clear <natural|worldgen|special|all> [current|all|dimension <维度ID>]。使用命令执行位置与维度；20 游戏刻 = 1 游戏秒。rate 真实生成且忽略上限，到时恢复配置节拍和上限限制。",
+  "command.unsuspiciousblock.usb.shimmer.debug.help": "闪烁的光调试：attempt | stats [all] | chunk | expire <uuid> | cooldown set <秒数> | cooldown clear | spawn <坐标> [natural|worldgen|special] [frozen]（frozen 绑定冰块，省略时绑定水源） | rate start <秒数> [间隔刻数] | rate status | rate stop | clear <natural|worldgen|special|all> [current|all|dimension <维度ID>]。使用命令执行位置与维度；20 游戏刻 = 1 游戏秒。rate 真实生成且忽略上限，到时恢复配置节拍和上限限制。",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt": "区块 [%s, %s] 生成尝试：%s",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.unloaded": "区块未加载",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.cap": "自然生成数量已达上限",

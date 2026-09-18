@@ -591,8 +591,8 @@
   "command.unsuspiciousblock.usb.favor.reset.success": "Cat favor state has been reset.",
   "command.unsuspiciousblock.usb.favor.error.state_unavailable": "Could not access this player's cat favor data.",
 
-  "command.unsuspiciousblock.usb.shimmer.spawn.success": "Spawned a Shimmer on water block %1$s (source: %2$s, pan uses left: %3$s).",
-  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "Cannot spawn at %s: the block above must be air; point the position at a water surface block.",
+  "command.unsuspiciousblock.usb.shimmer.spawn.success": "Spawned a Shimmer on anchor block %1$s (source: %2$s, pan uses left: %3$s).",
+  "command.unsuspiciousblock.usb.shimmer.error.blocked_above": "Cannot spawn at %s: the block above must be air; point the position at the anchor block (water or ice).",
   "command.unsuspiciousblock.usb.shimmer.error.spawn_failed": "Failed to spawn a Shimmer at %s.",
   "command.unsuspiciousblock.usb.shimmer.error.unknown_source": "Unknown source: %s (expected natural / worldgen).",
 
@@ -723,7 +723,7 @@
   "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "Loot panned out of river sediment with the Copper Pan.",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "Panning",
   "unsuspiciousblock.configgui.panning.harvest_cooldown_ticks": "Harvest area cooldown (ticks)",
-  "command.unsuspiciousblock.usb.shimmer.debug.help": "Shimmer debug: attempt | stats [all] | chunk | expire <uuid> | cooldown set <seconds> | cooldown clear | spawn <pos> [natural|worldgen|special] | rate start <seconds> [intervalTicks] | rate status | rate stop | clear <natural|worldgen|special|all> [current|all|dimension <id>]. Uses command position/dimension; 20 ticks = 1 game second. Rate sessions spawn real entities and restore configured scheduling when finished.",
+  "command.unsuspiciousblock.usb.shimmer.debug.help": "Shimmer debug: attempt | stats [all] | chunk | expire <uuid> | cooldown set <seconds> | cooldown clear | spawn <pos> [natural|worldgen|special] [frozen] (frozen binds ice instead of water) | rate start <seconds> [intervalTicks] | rate status | rate stop | clear <natural|worldgen|special|all> [current|all|dimension <id>]. Uses command position/dimension; 20 ticks = 1 game second. Rate sessions spawn real entities and restore configured scheduling when finished.",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt": "Chunk [%s, %s] spawn attempt: %s",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.unloaded": "Chunk is not loaded",
   "command.unsuspiciousblock.usb.shimmer.debug.attempt.cap": "Natural spawn cap reached",

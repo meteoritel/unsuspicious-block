@@ -1,7 +1,11 @@
 package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.block.ModBlocks;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -9,6 +13,8 @@ import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.component.ItemContainerContents;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -26,12 +32,15 @@ public class ModItems {
     public static RewindDustItem REWIND_DUST;
     public static EyeOfCatItem EYE_OF_CAT;
     public static HandOfCatItem HAND_OF_CAT;
-    public static CopperPanItem COPPER_PAN;
+    public static PanItem COPPER_PAN;
     public static BlockItem UNSUSPICIOUS_SAND;
     public static BlockItem UNSUSPICIOUS_GRAVEL;
     public static BlockItem POTTERY_WHEEL;
     public static UnfiredDecoratedPotItem UNFIRED_DECORATED_POT;
     public static UnfiredDecoratedSherdItem UNFIRED_DECORATED_SHERD;
+
+    // 通用标签的命名空间——由 Fabric API 与 NeoForge 各自的数据包提供并填充原版物品
+    private static final String COMMON_TAG_NAMESPACE = "c";
 
     // 物品注册清单条目，供各平台遍历注册
     public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
@@ -88,7 +97,7 @@ public class ModItems {
                     item -> HAND_OF_CAT = (HandOfCatItem) item),
             new ItemEntry("copper_pan",
                     ModItems::createCopperPan,
-                    item -> COPPER_PAN = (CopperPanItem) item)
+                    item -> COPPER_PAN = (PanItem) item)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -114,6 +123,11 @@ public class ModItems {
             () -> EYE_OF_CAT,
             () -> SPECIMEN_BOX,
             () -> HAND_OF_CAT
+    );
+
+    // 全部淘盘——客户端据此为每把盘注册摇洗帧等物品属性，新增淘盘只需在此追加
+    public static final List<Supplier<Item>> PAN_ITEMS = List.of(
+            () -> COPPER_PAN
     );
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
@@ -154,9 +168,18 @@ public class ModItems {
         return new ArchaeologicalShovelItem(new Item.Properties().stacksTo(1));
     }
 
-    // 创建淘盘实例——32 点耐久，可在铁砧上用铜锭修复
-    public static CopperPanItem createCopperPan() {
-        return new CopperPanItem(new Item.Properties().stacksTo(1).durability(32));
+    // 创建铜淘盘实例——水域专属，32 点耐久，可在铁砧上用铜锭修复，无再生效果与幸运加成
+    public static PanItem createCopperPan() {
+        return new PanItem(new Item.Properties().stacksTo(1).durability(32), new PanProfile(
+                Set.of(ShimmerVariants.WATER_ID),
+                commonItemTag("ingots/copper"),
+                Map.of(),
+                () -> 0.0D));
+    }
+
+    // 铁砧修复材料统一引用 c: 通用标签，两端数据包均会填充原版物品
+    private static TagKey<Item> commonItemTag(String path) {
+        return TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath(COMMON_TAG_NAMESPACE, path));
     }
 
     // 创建考古笔记实例

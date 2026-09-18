@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.pan.variant.GlowStyle;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -11,13 +13,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/*** 贴水波光：以错峰明灭的金白色细线表现水中反光，在半透明水体之后绘制。 */
+/*** 贴液面波光：以错峰明灭的细线表现液面反光，在半透明流体之后绘制；配色由变体提供。 */
 public final class ShimmerSurfaceRenderer {
     private static final double VIEW_DISTANCE = 32.0D;
     // 仅写颜色、保留深度测试；波光不能穿墙，也不覆盖后续粒子的深度。
@@ -62,19 +63,21 @@ public final class ShimmerSurfaceRenderer {
                 continue;
             }
             BlockPos pos = shimmer.blockPosition();
-            FluidState fluid = client.level.getFluidState(pos);
+            ShimmerVariant variant = shimmer.getVariant();
             boolean frozen = shimmer.isFrozen();
-            if (!frozen && !fluid.is(FluidTags.WATER)) {
+            // 冻结相位恒可绘制，否则要求该方块本身是该变体的依附介质
+            if (!variant.anchor().isRenderableSurface(client.level, pos, frozen)) {
                 continue;
             }
+            FluidState fluid = client.level.getFluidState(pos);
             float fade = Mth.clamp((float)((VIEW_DISTANCE - distance) / 8.0D), 0.0F, 1.0F);
             poseStack.pushPose();
             try {
-                // 实际流体表面高度上抬少量，避免波光埋在水面内或与水面闪烁冲突。
+                // 实际流体表面高度上抬少量，避免波光埋在液面内或与液面闪烁冲突。
                 poseStack.translate(shimmer.getX() - eye.x,
                         pos.getY() + (frozen ? 1.0D : fluid.getHeight(client.level, pos)) + 0.006D - eye.y,
                         shimmer.getZ() - eye.z);
-                drawGlints(vertices, poseStack.last(), shimmer, partialTick, fade, frozen);
+                drawGlints(vertices, poseStack.last(), shimmer, variant.glow(), partialTick, fade, frozen);
             } finally {
                 poseStack.popPose();
             }
@@ -83,9 +86,9 @@ public final class ShimmerSurfaceRenderer {
     }
 
     // 固定数量与确定性分布，不在逐帧渲染中建立随机数或粒子对象。
-    private static void drawGlints(VertexConsumer vertices, PoseStack.Pose pose,
-            ShimmerEntity shimmer, float partialTick, float distanceFade, boolean frozen) {
-        // 冰上的反光固定在静态相位，融化后恢复水面波动。
+    private static void drawGlints(VertexConsumer vertices, PoseStack.Pose pose, ShimmerEntity shimmer,
+            GlowStyle glow, float partialTick, float distanceFade, boolean frozen) {
+        // 冻结相位上的反光固定在静态相位，融化后恢复液面波动。
         float time = frozen ? 0.0F : shimmer.tickCount + partialTick;
         boolean panning = !frozen && shimmer.isPanning();
         float seed = (shimmer.getId() & 255) * 0.73F;
@@ -106,13 +109,17 @@ public final class ShimmerSurfaceRenderer {
             if (panning) {
                 z += Mth.sin(time * 0.3F + i) * 0.018F;
             }
-            quad(vertices, pose, x, z, width, length, 255, 223, 115, alpha);
+            GlowStyle.Rgb glint = glow.glint();
+            quad(vertices, pose, x, z, width, length,
+                    glint.red(), glint.green(), glint.blue(), alpha);
             // 亮芯仍是一条短线，不绘制朝向相机的十字星。
-            quad(vertices, pose, x, z, width * 0.5F, length * 0.4F, 255, 249, 213, alpha);
+            GlowStyle.Rgb core = glow.glintCore();
+            quad(vertices, pose, x, z, width * 0.5F, length * 0.4F,
+                    core.red(), core.green(), core.blue(), alpha);
         }
     }
 
-    // 在 XZ 水平面绘制细长矩形，所有反光均贴合水面。
+    // 在 XZ 水平面绘制细长矩形，所有反光均贴合液面。
     private static void quad(VertexConsumer vertices, PoseStack.Pose pose,
             float x, float z, float halfWidth, float halfLength, int r, int g, int b, int alpha) {
         vertices.addVertex(pose, x - halfWidth, 0.0F, z - halfLength).setColor(r, g, b, alpha);

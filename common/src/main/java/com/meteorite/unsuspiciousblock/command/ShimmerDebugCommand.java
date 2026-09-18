@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnStatistics;
 import com.meteorite.unsuspiciousblock.pan.ShimmerLedger;
+import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.commands.arguments.UuidArgument;
@@ -23,6 +24,7 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 import java.util.List;
@@ -30,15 +32,16 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /***
- * 闪烁的光调试子指令树——在指定坐标铺设其绑定的水方块，并生成淘洗点。
+ * 闪烁的光调试子指令树——在指定坐标铺设其绑定的依附方块，并生成淘洗点。
  * <p>
- * 坐标参数指向<b>绑定的水方块</b>所在位置（而非实体本身）：指令会先把该处替换为水源方块，
- * 再生成附着于其水面的闪烁的光，因此可以在陆地上直接搭建测试点。生成流程复用自然生成
+ * 坐标参数指向<b>绑定的依附方块</b>所在位置（而非实体本身）：指令会先把该处替换为水源方块，
+ * 再生成附着于其液面的闪烁的光，因此可以在陆地上直接搭建测试点。生成流程复用自然生成
  * 使用的 {@link ShimmerSpawnService#spawnShimmer}，账本登记、初始淘洗次数与入水演出与
  * 正式生成的实体完全一致（间距校验与每维度上限不参与判定，便于集中布置测试样本）。
  * <p>
- * 子指令：{@code shimmer spawn <pos> [natural|worldgen]}——省略来源时按自然生成处理。
- * 自然生成来源带随机寿命并计入每维度上限，世界生成来源不消散也不计入上限。
+ * 子指令：{@code shimmer spawn <pos> [natural|worldgen|special] [frozen]}——省略来源时按自然生成处理。
+ * 自然生成来源带随机寿命并计入每维度上限，世界生成来源不消散也不计入上限；
+ * {@code frozen} 分支把该处铺成冰块，用于验证冻结相位下的依附、波光与淘洗判定。
  * <p>
  * 清理已生成的调试样本可直接使用原版指令：{@code /kill @e[type=unsuspiciousblock:shimmer]}，
  * 实体消散时会自行从账本注销。
@@ -46,6 +49,8 @@ import java.util.concurrent.CompletableFuture;
 public final class ShimmerDebugCommand {
     private static final String POS_ARG = "pos";
     private static final String SOURCE_ARG = "source";
+    // 冻结分支——出现时绑定冰块而非水源，不带值时维持原有水方块行为
+    private static final String FROZEN_ARG = "frozen";
     // 来源名称——与指令输入一致地使用小写
     private static final String SOURCE_NATURAL = "natural";
     private static final String SOURCE_WORLDGEN = "worldgen";
@@ -94,10 +99,15 @@ public final class ShimmerDebugCommand {
                                 .executes(context -> cooldown(context.getSource(), 0))))
                 .then(Commands.literal("spawn")
                         .then(Commands.argument(POS_ARG, BlockPosArgument.blockPos())
-                                .executes(context -> spawn(context, true))
+                                .executes(context -> spawn(context, ShimmerSpawnService.SpawnTrigger.MANUAL, false))
+                                .then(Commands.literal(FROZEN_ARG)
+                                        .executes(context -> spawn(context,
+                                                ShimmerSpawnService.SpawnTrigger.MANUAL, true)))
                                 .then(Commands.argument(SOURCE_ARG, StringArgumentType.word())
                                         .suggests(ShimmerDebugCommand::suggestSources)
-                                        .executes(ShimmerDebugCommand::spawnWithSource))));
+                                        .executes(context -> spawnWithSource(context, false))
+                                        .then(Commands.literal(FROZEN_ARG)
+                                                .executes(context -> spawnWithSource(context, true))))));
     }
 
     // 类型用字面量校验；省略范围表示当前维度，显式维度支持原版补全。
@@ -226,7 +236,7 @@ public final class ShimmerDebugCommand {
     }
 
     // 带来源参数的变体：解析来源名称后再走统一生成流程
-    private static int spawnWithSource(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+    private static int spawnWithSource(CommandContext<CommandSourceStack> context, boolean frozen) throws CommandSyntaxException {
         String source = StringArgumentType.getString(context, SOURCE_ARG).toLowerCase(Locale.ROOT);
         if (!SOURCES.contains(source)) {
             context.getSource().sendFailure(Component.translatable(
@@ -237,37 +247,35 @@ public final class ShimmerDebugCommand {
             case SOURCE_WORLDGEN -> ShimmerSpawnService.SpawnTrigger.WORLDGEN;
             case SOURCE_SPECIAL -> ShimmerSpawnService.SpawnTrigger.SPECIAL;
             default -> ShimmerSpawnService.SpawnTrigger.MANUAL;
-        });
+        }, frozen);
     }
 
-    // 在指定水方块位置生成闪烁的光
-    private static int spawn(CommandContext<CommandSourceStack> context, boolean natural) throws CommandSyntaxException {
-        return spawn(context, natural ? ShimmerSpawnService.SpawnTrigger.MANUAL : ShimmerSpawnService.SpawnTrigger.WORLDGEN);
-    }
-
-    private static int spawn(CommandContext<CommandSourceStack> context, ShimmerSpawnService.SpawnTrigger trigger) throws CommandSyntaxException {
+    // 在指定位置生成闪烁的光；frozen 为 true 时铺设冰块，否则铺设水源
+    private static int spawn(CommandContext<CommandSourceStack> context, ShimmerSpawnService.SpawnTrigger trigger,
+                             boolean frozen) throws CommandSyntaxException {
         ServerLevel level = context.getSource().getLevel();
-        BlockPos waterPos = BlockPosArgument.getBlockPos(context, POS_ARG);
-        // 上方必须是空气：否则实体在生成后的第一个 tick 就会判定绑定水方块失效而立刻消散
-        if (!level.getBlockState(waterPos.above()).isAir()) {
+        BlockPos anchorPos = BlockPosArgument.getBlockPos(context, POS_ARG);
+        // 上方必须是空气：否则实体在生成后的第一个 tick 就会判定绑定方块失效而立刻消散
+        if (!level.getBlockState(anchorPos.above()).isAir()) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.shimmer.error.blocked_above", waterPos.toShortString()));
+                    "command.unsuspiciousblock.usb.shimmer.error.blocked_above", anchorPos.toShortString()));
             return 0;
         }
-        // 铺设绑定水方块；已是水时跳过，避免多余的方块更新与流体重算
-        if (!level.getBlockState(waterPos).is(Blocks.WATER)) {
-            level.setBlockAndUpdate(waterPos, Blocks.WATER.defaultBlockState());
+        // 铺设绑定方块；已是目标方块时跳过，避免多余的方块更新与流体重算
+        Block anchor = frozen ? Blocks.ICE : Blocks.WATER;
+        if (!level.getBlockState(anchorPos).is(anchor)) {
+            level.setBlockAndUpdate(anchorPos, anchor.defaultBlockState());
         }
 
-        ShimmerEntity shimmer = ShimmerSpawnService.spawnShimmer(level, waterPos, trigger);
+        ShimmerEntity shimmer = ShimmerSpawnService.spawnShimmer(level, anchorPos, ShimmerVariants.WATER, trigger);
         if (shimmer == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.shimmer.error.spawn_failed", waterPos.toShortString()));
+                    "command.unsuspiciousblock.usb.shimmer.error.spawn_failed", anchorPos.toShortString()));
             return 0;
         }
         String source = shimmer.getSpawnSource().name().toLowerCase(Locale.ROOT);
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.shimmer.spawn.success", waterPos.toShortString(), source,
+                "command.unsuspiciousblock.usb.shimmer.spawn.success", anchorPos.toShortString(), source,
                 shimmer.getPanRemaining()), true);
         return 1;
     }
