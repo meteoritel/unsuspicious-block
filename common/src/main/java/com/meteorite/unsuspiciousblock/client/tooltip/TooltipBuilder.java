@@ -39,6 +39,17 @@ public final class TooltipBuilder {
     /** 归属者 / 物品名。 */
     public static final ChatFormatting NAME = ChatFormatting.YELLOW;
 
+    // ===== 条件树语义别名：只复用上面既有色值，不新增颜色 =====
+
+    /** 条件树：可静态判定的条件。 */
+    public static final ChatFormatting CONDITION_STATIC = POSITIVE;
+    /** 条件树：概率型条件。 */
+    public static final ChatFormatting CONDITION_PROBABILISTIC = TITLE;
+    /** 条件树：运行时才能判定的条件。 */
+    public static final ChatFormatting CONDITION_RUNTIME = NAME;
+    /** 条件树：未被分析层识别的条件。 */
+    public static final ChatFormatting CONDITION_UNREADABLE = LABEL;
+
     /** 通用 WIP 横幅键。 */
     public static final String WIP_KEY = "tooltip.unsuspiciousblock.wip";
     /** 通用 Shift 展开提示键。 */

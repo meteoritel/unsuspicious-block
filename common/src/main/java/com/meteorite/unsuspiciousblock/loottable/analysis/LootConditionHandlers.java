@@ -10,7 +10,9 @@ import net.minecraft.advancements.critereon.EntityPredicate;
 import net.minecraft.advancements.critereon.EntitySubPredicate;
 import net.minecraft.advancements.critereon.EntityTypePredicate;
 import net.minecraft.advancements.critereon.FishingHookPredicate;
+import net.minecraft.advancements.critereon.ItemPredicate;
 import net.minecraft.advancements.critereon.LocationPredicate;
+import net.minecraft.advancements.critereon.MinMaxBounds;
 import net.minecraft.advancements.critereon.StatePropertiesPredicate;
 import net.minecraft.advancements.critereon.TagPredicate;
 import net.minecraft.core.Holder;
@@ -42,6 +44,7 @@ import net.minecraft.world.level.storage.loot.predicates.TimeCheck;
 import net.minecraft.world.level.storage.loot.predicates.WeatherCheck;
 import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
+import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -57,11 +60,24 @@ import java.util.Optional;
  * 内建全部原版 1.21.1 的 19 种 loot condition 处理器。
  * 外部模组可通过 {@link #register} 注册自定义条件的处理器。
  * 设计模式与 {@link LootFunctionHandlers} 一致。
+ * <p>
+ * 每条分析结果还会带上"描述保真度"元数据（{@link #FIDELITY_METADATA_KEY}）：只能给出成立但
+ * 有未展示约束的描述时标 {@link #FIDELITY_PARTIAL}，没有解析器或解析失败时标
+ * {@link #FIDELITY_UNREADABLE}，描述完整时不写该键。保真度由服务端解析层决定，
+ * 客户端只据此映射样式，不自行推断条件语义。
  */
 public final class LootConditionHandlers {
+    /** 描述保真度元数据键——服务端写入、客户端只读，跨包复用因此公开。 */
+    public static final String FIDELITY_METADATA_KEY = "analysis_fidelity";
+    /** 有保留：描述成立，但明知有未展示的约束。 */
+    public static final String FIDELITY_PARTIAL = "partial";
+    /** 未读到：没有分析 handler，或 handler 未能产出描述。缺失该键表示描述完整。 */
+    public static final String FIDELITY_UNREADABLE = "unreadable";
+
+    /** 条件展示文案键前缀——自定义条件处理器拼接自己的文案键时复用同一来源，避免字面量重复。 */
+    public static final String I18N_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
+
     private static final Map<ResourceLocation, LootConditionHandler> REGISTRY = new LinkedHashMap<>();
-    private static final String I18N_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
-    private static final String I18N_FALLBACK_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
 
     static {
         // 类别 A：概率型条件
@@ -178,7 +194,7 @@ public final class LootConditionHandlers {
         List<LootConditionInfo> results = new ArrayList<>();
         for (LootItemCondition condition : conditions) {
             if (condition == null) {
-                results.add(fallbackInfo(null));
+                results.add(unreadable(fallbackInfo(null)));
                 continue;
             }
             ResourceLocation conditionId = BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(condition.getType());
@@ -191,10 +207,10 @@ public final class LootConditionHandlers {
                     info = null;
                 }
                 results.add(withSimulationMetadata(
-                        info != null ? info : fallbackInfo(conditionId), condition));
+                        info != null ? info : unreadable(fallbackInfo(conditionId)), condition));
             } else if (conditionId != null) {
-                // 两级 fallback：未知条件生成通用描述
-                results.add(withSimulationMetadata(fallbackInfo(conditionId), condition));
+                // 该条件已成功解码但没有分析 handler：与解析失败合并为一态，保留 id 作为定位入口
+                results.add(withSimulationMetadata(unreadable(fallbackInfo(conditionId)), condition));
             }
         }
         return results;
@@ -212,25 +228,53 @@ public final class LootConditionHandlers {
     // ==================== 共享工具方法 ====================
 
     /**
-     * 判断给定的条件信息列表是否引入不确定性。
+     * 标记为"有保留"：描述成立，但明知有未展示的约束。
+     * <p>
+     * 自定义条件处理器给出"只说了一半"的描述时也应调用它，客户端会据此改用斜体。
      */
-    public static boolean hasAnyUncertainty(List<LootConditionInfo> conditions) {
-        for (LootConditionInfo info : conditions) {
-            LootConditionHandler handler = get(info.conditionType());
-            if (handler == null || handler.addsUncertainty()) {
-                return true;
-            }
-        }
-        return false;
+    public static LootConditionInfo partial(LootConditionInfo info) {
+        return info.withMetadata(FIDELITY_METADATA_KEY, FIDELITY_PARTIAL);
     }
 
-    /** 为未知条件生成通用 fallback 描述 */
+    // 标记为"未读到"：没有分析 handler，或 handler 未能产出描述
+    static LootConditionInfo unreadable(LootConditionInfo info) {
+        return info.withMetadata(FIDELITY_METADATA_KEY, FIDELITY_UNREADABLE);
+    }
+
+    /**
+     * 组合条件继承最差子项：任一子项未读到则整体未读到，任一子项有保留则整体有保留。
+     * 与 {@link #uncertaintyLevelOf} 的递归口径一致；子项自身的标记在此前已递归算好。
+     */
+    static LootConditionInfo inheritChildFidelity(LootConditionInfo info) {
+        if (info.children().isEmpty()) {
+            return info;
+        }
+        int worst = fidelityRank(info.metadata().get(FIDELITY_METADATA_KEY));
+        for (LootConditionInfo child : info.children()) {
+            worst = Math.max(worst, fidelityRank(child.metadata().get(FIDELITY_METADATA_KEY)));
+        }
+        return switch (worst) {
+            case 2 -> unreadable(info);
+            case 1 -> partial(info);
+            default -> info;
+        };
+    }
+
+    // 保真度排序用序号：完整（无标记）< 有保留 < 未读到
+    private static int fidelityRank(@Nullable String fidelity) {
+        if (FIDELITY_UNREADABLE.equals(fidelity)) {
+            return 2;
+        }
+        return FIDELITY_PARTIAL.equals(fidelity) ? 1 : 0;
+    }
+
+    /** 为未识别条件生成通用 fallback 描述——保留条件 id，它是玩家定位未读到的唯一入口 */
     static LootConditionInfo fallbackInfo(@Nullable ResourceLocation conditionId) {
         ResourceLocation resolvedId = conditionId != null
                 ? conditionId
                 : ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "unknown");
         return new LootConditionInfo(resolvedId,
-                Component.translatable(I18N_FALLBACK_PREFIX + "unknown", resolvedId.toString()),
+                Component.translatable(I18N_PREFIX + "unknown", resolvedId.toString()),
                 null);
     }
 
@@ -251,17 +295,18 @@ public final class LootConditionHandlers {
         return result;
     }
 
-    // 用原版 Codec 提取 IntRange 的常量边界，动态 NumberProvider 回退为紧凑 JSON
-    private static String describeRange(IntRange range) {
+    // 用原版 Codec 提取 IntRange 的常量边界；动态 NumberProvider 回落为紧凑 JSON，
+    // 并由 lossy 告知调用方"这一行没把约束说全"
+    private static RangeDescription describeRange(IntRange range) {
         JsonElement encoded = IntRange.CODEC.encodeStart(JsonOps.INSTANCE, range).result().orElse(null);
         if (encoded == null) {
-            return "?";
+            return new RangeDescription("?", true);
         }
         if (encoded.isJsonPrimitive()) {
-            return encoded.getAsString();
+            return new RangeDescription(encoded.getAsString(), false);
         }
         if (!encoded.isJsonObject()) {
-            return encoded.toString();
+            return new RangeDescription(encoded.toString(), true);
         }
         JsonObject object = encoded.getAsJsonObject();
         JsonElement min = object.get("min");
@@ -269,15 +314,25 @@ public final class LootConditionHandlers {
         String minText = compactJsonValue(min);
         String maxText = compactJsonValue(max);
         if (min != null && max != null) {
-            return minText + " - " + maxText;
+            return new RangeDescription(minText + " - " + maxText,
+                    isDynamicJsonValue(min) || isDynamicJsonValue(max));
         }
         if (min != null) {
-            return ">= " + minText;
+            return new RangeDescription(">= " + minText, isDynamicJsonValue(min));
         }
         if (max != null) {
-            return "<= " + maxText;
+            return new RangeDescription("<= " + maxText, isDynamicJsonValue(max));
         }
-        return "*";
+        // 两端都缺失即无界，描述完整
+        return new RangeDescription("*", false);
+    }
+
+    private static boolean isDynamicJsonValue(@Nullable JsonElement element) {
+        return element != null && !element.isJsonPrimitive();
+    }
+
+    /** IntRange 的文本描述，以及该描述是否回落到机器可读 JSON（即没说全）。 */
+    private record RangeDescription(String text, boolean lossy) {
     }
 
     private static String compactJsonValue(@Nullable JsonElement element) {
@@ -319,9 +374,10 @@ public final class LootConditionHandlers {
         return new LootConditionHandler() {
             @Override
             public LootConditionInfo analyze(LootItemCondition condition) {
-                return new LootConditionInfo(keyOf(condition),
+                // value_check / table_bonus / enchantment_active_check 的参数均未展示，描述天然有保留
+                return partial(new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + i18nKey),
-                        null);
+                        null));
             }
 
             @Override
@@ -358,19 +414,47 @@ public final class LootConditionHandlers {
 
     // ==================== 类别 A：概率型条件 ====================
 
-    /** 处理 random_chance：从 NumberProvider 提取常量概率值 */
+    /**
+     * 处理 random_chance：只在能读出确定数值时展示比例，其余形态一律承认"动态"，不编造百分比。
+     * <p>
+     * uniform 两端都是常量时可以完整给出区间；只有一端是常量时另一端写 {@code ?} 并标记有保留。
+     */
     private static final class RandomChanceHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            float chance = 1.0f;
-            if (condition instanceof LootItemRandomChanceCondition(NumberProvider chance1)) {
-                if (chance1 instanceof ConstantValue(float value)) {
-                    chance = value;
+            NumberProvider provider = condition instanceof LootItemRandomChanceCondition(NumberProvider chance)
+                    ? chance
+                    : null;
+            if (provider instanceof ConstantValue(float value)) {
+                return new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "random_chance", Math.round(value * 100)),
+                        value);
+            }
+            if (provider instanceof UniformGenerator(NumberProvider min, NumberProvider max)) {
+                boolean minConstant = min instanceof ConstantValue;
+                boolean maxConstant = max instanceof ConstantValue;
+                if (minConstant && maxConstant) {
+                    return new LootConditionInfo(keyOf(condition),
+                            Component.translatable(I18N_PREFIX + "random_chance_range",
+                                    percentOf(min), percentOf(max)), null);
+                }
+                if (minConstant || maxConstant) {
+                    return partial(new LootConditionInfo(keyOf(condition),
+                            Component.translatable(I18N_PREFIX + "random_chance_range",
+                                    minConstant ? percentOf(min) : "?",
+                                    maxConstant ? percentOf(max) : "?"), null));
                 }
             }
-            return new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "random_chance", Math.round(chance * 100)),
-                    chance);
+            // 两端皆动态的 uniform，以及 binomial / score 等 provider：只能承认是动态值
+            return partial(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "random_chance_dynamic"), null));
+        }
+
+        // 与 condition.random_chance 保持同一精度口径：整数百分比
+        private String percentOf(NumberProvider provider) {
+            return provider instanceof ConstantValue(float value)
+                    ? Math.round(value * 100) + "%"
+                    : "?";
         }
 
         @Override
@@ -384,7 +468,7 @@ public final class LootConditionHandlers {
         }
     }
 
-    /** 处理 random_chance_with_enchanted_bonus：读取基础概率 */
+    /** 处理 random_chance_with_enchanted_bonus：只展示基础概率，附魔加成从未展示 */
     private static final class RandomChanceWithEnchantedBonusHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
@@ -392,10 +476,10 @@ public final class LootConditionHandlers {
             if (condition instanceof LootItemRandomChanceWithEnchantedBonusCondition c) {
                 baseChance = c.unenchantedChance();
             }
-            return new LootConditionInfo(keyOf(condition),
+            return partial(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "random_chance_with_enchanted_bonus",
                             Math.round(baseChance * 100)),
-                    baseChance);
+                    baseChance));
         }
 
         @Override
@@ -426,7 +510,7 @@ public final class LootConditionHandlers {
         }
     }
 
-    /** 处理 match_tool：优先展示物品或物品标签。 */
+    /** 处理 match_tool：优先展示物品或物品标签；count / 组件谓词等未展示约束时标记有保留。 */
     private static final class MatchToolHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
@@ -434,7 +518,13 @@ public final class LootConditionHandlers {
                 return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "match_tool"), null);
             }
-            Optional<HolderSet<Item>> items = matchTool.predicate().get().items();
+            ItemPredicate predicate = matchTool.predicate().get();
+            LootConditionInfo info = describeItems(condition, predicate);
+            return hasNonItemConstraints(predicate) ? partial(info) : info;
+        }
+
+        private LootConditionInfo describeItems(LootItemCondition condition, ItemPredicate predicate) {
+            Optional<HolderSet<Item>> items = predicate.items();
             if (items.isEmpty()) {
                 return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "match_tool"), null);
@@ -445,6 +535,13 @@ public final class LootConditionHandlers {
                     names.add(Component.translatable(holder.value().getDescriptionId()))));
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "match_tool_items", joinComponents(names)), null);
+        }
+
+        // 除 items 外还有 count / 组件 / 子谓词约束时，只说"需要特定工具"是有保留的
+        private boolean hasNonItemConstraints(ItemPredicate predicate) {
+            return !MinMaxBounds.Ints.ANY.equals(predicate.count())
+                    || !predicate.components().alwaysMatches()
+                    || !predicate.subPredicates().isEmpty();
         }
 
         @Override
@@ -522,8 +619,9 @@ public final class LootConditionHandlers {
                                     joinComponents(structureNames)), null));
                 }
             });
+            // 以下四行只说明"有约束"，不给约束内容，因此逐行标记有保留
             if (locPred.position().isPresent()) {
-                children.add(simpleChild(condition, "location_check_position"));
+                children.add(partial(simpleChild(condition, "location_check_position")));
             }
             if (!locationCheck.offset().equals(net.minecraft.core.BlockPos.ZERO)) {
                 children.add(new LootConditionInfo(keyOf(condition),
@@ -536,13 +634,13 @@ public final class LootConditionHandlers {
             locPred.canSeeSky().ifPresent(value -> children.add(simpleChild(condition,
                     value ? "location_check_can_see_sky" : "location_check_cannot_see_sky")));
             if (locPred.light().isPresent()) {
-                children.add(simpleChild(condition, "location_check_light"));
+                children.add(partial(simpleChild(condition, "location_check_light")));
             }
             if (locPred.block().isPresent()) {
-                children.add(simpleChild(condition, "location_check_block"));
+                children.add(partial(simpleChild(condition, "location_check_block")));
             }
             if (locPred.fluid().isPresent()) {
-                children.add(simpleChild(condition, "location_check_fluid"));
+                children.add(partial(simpleChild(condition, "location_check_fluid")));
             }
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "location_check"), null, children);
@@ -587,7 +685,7 @@ public final class LootConditionHandlers {
         }
     }
 
-    /** 处理 time_check：展示时间范围与周期。 */
+    /** 处理 time_check：展示时间范围与周期；范围回落到 JSON 时标记有保留。 */
     private static final class TimeCheckHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
@@ -598,9 +696,11 @@ public final class LootConditionHandlers {
                     .map(period -> List.of(new LootConditionInfo(keyOf(condition),
                             Component.translatable(I18N_PREFIX + "time_check_period", period), null)))
                     .orElseGet(List::of);
-            return new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "time_check_range", describeRange(timeCheck.value())),
+            RangeDescription range = describeRange(timeCheck.value());
+            LootConditionInfo info = new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "time_check_range", range.text()),
                     null, children);
+            return range.lossy() ? partial(info) : info;
         }
 
         @Override
@@ -693,9 +793,11 @@ public final class LootConditionHandlers {
             return genericInfo(condition, entityCondition.entityTarget());
         }
 
+        // 除 entityType 与 fishing_hook 分支外，整个实体谓词都塌成一句话，因此标记有保留
         private LootConditionInfo genericInfo(LootItemCondition condition, LootContext.EntityTarget target) {
-            return new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "entity_properties_target", entityTargetName(target)), null);
+            return partial(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "entity_properties_target", entityTargetName(target)),
+                    null));
         }
 
         @Override
@@ -709,7 +811,7 @@ public final class LootConditionHandlers {
         }
     }
 
-    /** 处理 entity_scores：展示目标实体、objective 名称和分数范围。 */
+    /** 处理 entity_scores：展示目标实体、objective 名称和分数范围；范围回落到 JSON 时该行标记有保留。 */
     private static final class EntityScoresHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
@@ -717,13 +819,19 @@ public final class LootConditionHandlers {
                 return null;
             }
             List<LootConditionInfo> children = scoresCondition.scores().entrySet().stream()
-                    .map(entry -> new LootConditionInfo(keyOf(condition),
-                            Component.translatable(I18N_PREFIX + "entity_scores_value",
-                                    entry.getKey(), describeRange(entry.getValue())), null))
+                    .map(score -> scoreInfo(condition, score))
                     .toList();
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "entity_scores_target",
                             entityTargetName(scoresCondition.entityTarget())), null, children);
+        }
+
+        private LootConditionInfo scoreInfo(LootItemCondition condition, Map.Entry<String, IntRange> score) {
+            RangeDescription range = describeRange(score.getValue());
+            LootConditionInfo info = new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "entity_scores_value",
+                            score.getKey(), range.text()), null);
+            return range.lossy() ? partial(info) : info;
         }
 
         @Override
@@ -758,12 +866,12 @@ public final class LootConditionHandlers {
                     Component.translatable(I18N_PREFIX
                             + (direct ? "damage_source_direct" : "damage_source_indirect")), null)));
             if (predicate.directEntity().isPresent()) {
-                children.add(new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + "damage_source_direct_entity"), null));
+                children.add(partial(new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "damage_source_direct_entity"), null)));
             }
             if (predicate.sourceEntity().isPresent()) {
-                children.add(new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + "damage_source_source_entity"), null));
+                children.add(partial(new LootConditionInfo(keyOf(condition),
+                        Component.translatable(I18N_PREFIX + "damage_source_source_entity"), null)));
             }
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "damage_source_properties"), null, children);
@@ -794,10 +902,10 @@ public final class LootConditionHandlers {
             LootConditionInfo childInfo = analyzed.isEmpty()
                     ? fallbackInfo(BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(term.getType()))
                     : analyzed.getFirst();
-            return new LootConditionInfo(keyOf(condition),
+            return inheritChildFidelity(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "inverted", childInfo.description()),
                     null,
-                    List.of(childInfo));
+                    List.of(childInfo)));
         }
 
         @Override
@@ -825,8 +933,8 @@ public final class LootConditionHandlers {
             if (children.isEmpty()) {
                 return null;
             }
-            return new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "any_of"), null, children);
+            return inheritChildFidelity(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "any_of"), null, children));
         }
 
         @Override
@@ -854,8 +962,8 @@ public final class LootConditionHandlers {
             if (children.isEmpty()) {
                 return null;
             }
-            return new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "all_of"), null, children);
+            return inheritChildFidelity(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "all_of"), null, children));
         }
 
         @Override
@@ -871,7 +979,7 @@ public final class LootConditionHandlers {
 
     // ==================== 类别 E：引用 ====================
 
-    /** 处理 reference：引用外部条件，无法静态解析 */
+    /** 处理 reference：只给出被引用的条件 id，不解析其内容，因此标记有保留 */
     private static final class ReferenceHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
@@ -879,9 +987,9 @@ public final class LootConditionHandlers {
             if (condition instanceof ConditionReference(net.minecraft.resources.ResourceKey<LootItemCondition> name1)) {
                 name = name1.location().toString();
             }
-            return new LootConditionInfo(keyOf(condition),
+            return partial(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "reference", name),
-                    null);
+                    null));
         }
 
         @Override

@@ -45,6 +45,23 @@
 
 > **语义层与实现层分离**：第 3 节语义色表是唯一语义层，定义"语义 → ChatFormatting"的实现（原版暗底 tooltip / Jade）。GUI 自绘文本（羊皮纸 / 暗色底）沿用同一批语义槽、各自提供 int 色实现，见第 8 节。
 
+### 3.1 条件树映射（考古笔记 tooltip）
+
+条件树（[`JournalTooltipBuilder#appendConditionTree`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java)）的每个节点用两个**正交**维度表达信息，两者都必须从 `TooltipBuilder` 取语义槽：
+
+| 维度 | 取值 | 样式 | 回答的问题 |
+|---|---|---|---|
+| 颜色 | `CONDITION_STATIC` | 绿 | 这个条件的概率是怎么来的 |
+| | `CONDITION_PROBABILISTIC` | 金 | |
+| | `CONDITION_RUNTIME` | 黄 | |
+| | `CONDITION_UNREADABLE` | 灰 | |
+| 字重 | 常规 | — | 这句话读全了吗 |
+| | 斜体（`ITALIC`） | 斜体 | |
+
+四个条件语义别名只复用既有色值（`CONDITION_STATIC`=`POSITIVE`、`CONDITION_PROBABILISTIC`=`TITLE`、`CONDITION_RUNTIME`=`NAME`、`CONDITION_UNREADABLE`=`LABEL`），**不新增颜色**。颜色已被"概率来源"占用且进入玩家阅读习惯，字重此前未被使用，故用它承载保真度。
+
+保真度由**服务端解析层**以 `LootConditionInfo.metadata()` 的 `analysis_fidelity` 给出：缺失该键表示描述完整（常规），`partial` 表示"有保留"、`unreadable` 表示"未读到"（两者都用斜体）。客户端只做样式映射，**不推断条件语义**；键与取值常量取自 [`LootConditionHandlers`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LootConditionHandlers.java)，禁止在客户端写字面量。
+
 ## 4. Jade HUD 规则
 
 Jade 注入行采用独立的**两段式**：`标签(LABEL)：值`。值直接复用第 3 节语义色表（同一批常量），不另搞一套颜色。物品名 + 数量的复合行中，数量用 `BODY`。
@@ -80,7 +97,8 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | [`item/DescribedItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
 | [`block/SealedContentsDisplay`](../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
 | [`client/ui/support/UiTextPalette`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) | GUI 自绘文本语义色表（羊皮纸 / 暗色两套 int 主题实现，见第 8 节） |
-| `client/anvil/AnvilBreakdownTooltipBuilder`、`client/grindstone/GrindstoneBreakdownTooltipBuilder` | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
+| [`client/ui/support/JournalTooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记 tooltip 行构建；条件树按 3.1 的"颜色 + 字重"双维度渲染 |
+| [`client/anvil/AnvilBreakdownTooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java) | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
 
 ## 7. 扩展点：新增物品 tooltip 的标准流程
 

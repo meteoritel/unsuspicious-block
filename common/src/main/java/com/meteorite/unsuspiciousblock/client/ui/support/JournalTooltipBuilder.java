@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
@@ -11,6 +12,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -257,7 +259,7 @@ public final class JournalTooltipBuilder {
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
     }
 
-    // 递归渲染条件树到 tooltip 行列表
+    // 递归渲染条件树到 tooltip 行列表；颜色表示不确定性等级，斜体表示描述保真度
     private static void appendConditionTree(List<Component> lines, List<LootConditionInfo> conditions, String prefix) {
         for (int i = 0; i < conditions.size(); i++) {
             LootConditionInfo info = conditions.get(i);
@@ -265,9 +267,11 @@ public final class JournalTooltipBuilder {
             String branch = isLast ? "└─ " : "├─ ";
             String childPrefix = isLast ? "   " : "│  ";
 
-            ChatFormatting color = getConditionColor(info.conditionType());
-            lines.add(Component.literal(prefix + branch).withStyle(ChatFormatting.DARK_GRAY)
-                    .append(info.description().copy().withStyle(color)));
+            MutableComponent text = info.description().copy().withStyle(getConditionColor(info));
+            if (isFidelityIncomplete(info)) {
+                text.withStyle(ChatFormatting.ITALIC);
+            }
+            lines.add(Component.literal(prefix + branch).withStyle(ChatFormatting.DARK_GRAY).append(text));
 
             if (!info.children().isEmpty()) {
                 appendConditionTree(lines, info.children(), prefix + childPrefix);
@@ -275,14 +279,27 @@ public final class JournalTooltipBuilder {
         }
     }
 
-    // 根据条件类型返回对应颜色
-    private static ChatFormatting getConditionColor(ResourceLocation conditionType) {
-        var handler = LootConditionHandlers.get(conditionType);
-        if (handler == null) return ChatFormatting.GRAY;
+    // 保真度未知（"有保留"/"未读到"）时用斜体；缺失该标记即代表描述完整
+    private static boolean isFidelityIncomplete(LootConditionInfo info) {
+        return info.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY);
+    }
+
+    // 根据条件是否被识别、以及其不确定性等级返回对应颜色
+    private static ChatFormatting getConditionColor(LootConditionInfo info) {
+        if (isFidelityUnreadable(info)) {
+            return TooltipBuilder.CONDITION_UNREADABLE;
+        }
+        var handler = LootConditionHandlers.get(info.conditionType());
+        if (handler == null) return TooltipBuilder.CONDITION_UNREADABLE;
         return switch (handler.uncertaintyLevel()) {
-            case NONE -> ChatFormatting.GREEN;
-            case PROBABILISTIC -> ChatFormatting.GOLD;
-            case RUNTIME -> ChatFormatting.YELLOW;
+            case NONE -> TooltipBuilder.CONDITION_STATIC;
+            case PROBABILISTIC -> TooltipBuilder.CONDITION_PROBABILISTIC;
+            case RUNTIME -> TooltipBuilder.CONDITION_RUNTIME;
         };
+    }
+
+    private static boolean isFidelityUnreadable(LootConditionInfo info) {
+        return LootConditionHandlers.FIDELITY_UNREADABLE.equals(
+                info.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY));
     }
 }
