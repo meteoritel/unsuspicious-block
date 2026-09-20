@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 单表的**上下文无关**编译产物——只记录本表直接物品路径与引用位置，不缓存展开后的子表结果。
@@ -20,10 +21,22 @@ import java.util.List;
  * 继承条件链，最外层在前）与 {@code inheritedFunctions}（自本表根向下累积的函数链，
  * 最内层在前）。二者都不含本事件自身的条目条件/函数，投影层按
  * {@code 本事件自身 ++ 局部快照 ++ 上层传入} 的顺序拼接。
+ * <p>
+ * {@code referencedEnchantments} 是编译期扫出的"本表 JSON 引用到的附魔"——
+ * 附魔定义不在任何战利品表 JSON 里，却决定模拟用的满级工具与等级控件范围，
+ * 因此它既进哈希摘要（决策 35），也是旋钮目录里等级控件的唯一来源（决策 26），
+ * 两份用途共用这一份枚举，不再各扫一遍。
  */
-public record CompiledLootTable(ResourceLocation id, String declaredType, List<Event> events) {
+public record CompiledLootTable(ResourceLocation id, String declaredType, List<Event> events,
+                                Set<ResourceLocation> referencedEnchantments) {
     public CompiledLootTable {
         events = List.copyOf(events);
+        referencedEnchantments = Set.copyOf(referencedEnchantments);
+    }
+
+    /** 兼容旧调用方：无被引用附魔。 */
+    public CompiledLootTable(ResourceLocation id, String declaredType, List<Event> events) {
+        this(id, declaredType, events, Set.of());
     }
 
     /** 编译事件——直接物品路径或子表引用位置。 */

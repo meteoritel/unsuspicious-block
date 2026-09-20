@@ -35,12 +35,12 @@ public final class SimulationScenarioPlanner {
     private static final int FISHING_MUD_DREDGING_SCENARIOS = 2;
     private static final ResourceLocation FISHING = RuntimeLootLinks.FISHING_TABLE;
     private static final ResourceLocation LOCATION_CHECK = ResourceLocation.withDefaultNamespace("location_check");
-    private static final ResourceLocation MUD_DREDGING_TABLE = RuntimeLootLinks.MUD_DREDGING_TABLE;
     private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
     private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
-    // 工具附魔条件不参与场景覆盖：概率的等级曲线无法在布尔场景假设里表达，表中的它按真实 test() 求值，
-    // 等级维度另由泥地打捞路径统一压成满级单点（见 applyMudDredgingTool）
+    // 工具附魔条件不参与场景覆盖：概率的等级曲线无法在布尔场景假设里表达，表中的它按真实 test() 求值。
+    // 等级是运行时输入而非条件谓词（决策 26），基准场景用无附魔工具，因此受它约束的条目在基准下
+    // 自然落到"需要条件"，而不是被伪造成某个具体等级下的数字。
     private static final Set<ResourceLocation> SCENARIO_CONDITIONS = Set.of(
             ResourceLocation.withDefaultNamespace("match_tool"),
             ResourceLocation.withDefaultNamespace("block_state_property"),
@@ -87,6 +87,7 @@ public final class SimulationScenarioPlanner {
         int baseScenarioLimit = FISHING.equals(tableId)
                 ? MAX_SCENARIOS - FISHING_MUD_DREDGING_SCENARIOS
                 : MAX_SCENARIOS;
+        boolean baselineEmitted = false;
         for (Map<String, Boolean> candidate : candidates.values()) {
             if (result.size() >= baseScenarioLimit) {
                 break;
@@ -108,37 +109,25 @@ public final class SimulationScenarioPlanner {
             if (!emittedKeys.add(key)) {
                 continue;
             }
+            // 基准场景 = 条件全部不成立的场景（决策 2）。它由候选表里的第一个（空赋值）候选产生，
+            // 且必须在截断之前产出——否则"基准"会随上界变化而消失。
+            boolean baseline = !baselineEmitted
+                    && normalized.values().stream().noneMatch(Boolean::booleanValue);
+            baselineEmitted |= baseline;
             result.add(new SimulationScenario(key,
                     baseProfile.withConditionOutcomes(normalized, Map.of()), assumptions,
-                    applicable, applicableChildren));
+                    applicable, applicableChildren, baseline));
         }
-        if (MUD_DREDGING_TABLE.equals(tableId)) {
-            result = applyMudDredgingTool(result, level);
-        } else if (FISHING.equals(tableId)) {
+        if (FISHING.equals(tableId)) {
             appendMudDredgingScenarios(result, table, baseProfile, level);
         }
         return List.copyOf(result);
     }
 
-    // 泥地打捞统一使用满级工具：附魔等级这一维压成单点，避免与环境条件形成笛卡尔积。
-    // 满级取自附魔数据本身（max_level），数据包调整最大等级时模拟自动跟随。
-    private static List<SimulationScenario> applyMudDredgingTool(
-            List<SimulationScenario> baseScenarios, ServerLevel level) {
-        List<SimulationScenario> result = new ArrayList<>();
-        Holder<Enchantment> enchantment = mudDredgingEnchantment(level);
-        int toolLevel = enchantment.value().definition().maxLevel();
-        ItemStack tool = toolWithEnchantment(enchantment, toolLevel);
-        for (SimulationScenario base : baseScenarios) {
-            List<LootConditionInfo> assumptions = new ArrayList<>(base.assumptions());
-            assumptions.addFirst(mudDredgingLevelAssumption(toolLevel));
-            result.add(new SimulationScenario(base.key() + ";level=" + toolLevel,
-                    base.profile().withTool(tool), assumptions, base.applicableSignatures(),
-                    base.applicableChildTables()));
-        }
-        return result;
-    }
-
     // 原始 fishing JSON 看不到平台注入池，使用满级附魔补充普通/加成群系两个代表场景。
+    // 这两个场景**不是基准**：它们只为让运行时注入的泥地打捞条目仍被模拟发现（否则注入物在原版
+    // fishing 表里连入口都不存在）。按决策 42，P2 会把这条专门分支换成由 RuntimeLootLinks 注入边
+    // 通用派生的父表约束描述；在那之前保留它，是"注入物看得见但基准下显示未覆盖"的过渡手段。
     private static void appendMudDredgingScenarios(List<SimulationScenario> result, TableDefinition table,
                                                    SimulationProfile baseProfile,
                                                    ServerLevel level) {

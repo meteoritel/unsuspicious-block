@@ -134,7 +134,8 @@ public final class LootTableCatalog {
         }
 
         public static ChildTableProbability pending(ResourceLocation tableId) {
-            return new ChildTableProbability(tableId, Probability.unknown(), List.of());
+            return new ChildTableProbability(tableId,
+                    Probability.unknown(UnknownReason.UNCOVERED), List.of());
         }
     }
 
@@ -199,9 +200,12 @@ public final class LootTableCatalog {
         }
 
         /**
-         * 判断该条目是否附带条件（影响模拟结果置信度，零出现时显示 {@code "?"} 而非 {@code "<0.01%"}）。
-         * 条件包括：任一获取路径带静态条件分析结果，或签名为近似回退
-         * （解析期函数无法静态求值 / 组件编码失败等，模拟覆盖度不可保证）。
+         * 判断该条目是否附带条件（含近似签名兜底）。
+         * <p>
+         * 注意它**不再**决定零命中的显示口径：抽样零命中一律是 {@code Measured(0.0)}（展示为
+         * 「未命中」），因为条目在当前输入下已被静态判定可达，剩下的零出现就是真实的抽样事实
+         * （决策 40）。展示状态本身由服务端按"可适用性 × 计算状态"两轴派生，见
+         * {@code Probability} 与 {@code PathHintAnalyzer}。
          * 不依赖 tooltipHint 文本比较，避免服务端/客户端语言差异导致行为不一致。
          */
         public boolean hasConditions() {
@@ -254,18 +258,29 @@ public final class LootTableCatalog {
     public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, Probability probability,
                                                             boolean injected,
                                                             List<ScenarioProbability> scenarioProbabilities) {
+        return buildDiscoveredDefinition(signature, probability, injected, scenarioProbabilities,
+                signature.createPreviewStack());
+    }
+
+    // 已有预览的调用方可复用解码结果；传入独占副本，避免物品名称扩展逻辑修改共享匹配预览。
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, Probability probability,
+                                                            boolean injected,
+                                                            List<ScenarioProbability> scenarioProbabilities,
+                                                            ItemStack previewStack) {
         ResourceLocation itemId = signature.itemId();
-        Component displayName = resolveMergedDisplayName(itemId, signature);
+        Component displayName = resolveMergedDisplayName(itemId, previewStack);
         Component tooltipHint = resolveMergedTooltipHint(signature);
         return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature,
                 List.of(), injected, scenarioProbabilities);
     }
 
-    /**
-     * 根据签名解析合并后的展示名（取预览栈的 hoverName）。
-     */
+    // 根据签名解析合并后的展示名（取预览栈的 hoverName）
     public static Component resolveMergedDisplayName(ResourceLocation itemId, LootResultSignature signature) {
-        ItemStack previewStack = signature.createPreviewStack();
+        return resolveMergedDisplayName(itemId, signature.createPreviewStack());
+    }
+
+    // 使用同一空栈回退与名称复制规则，供新建预览和已有预览共用。
+    private static Component resolveMergedDisplayName(ResourceLocation itemId, ItemStack previewStack) {
         if (previewStack.isEmpty()) {
             previewStack = new ItemStack(BuiltInRegistries.ITEM.get(itemId));
         }

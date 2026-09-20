@@ -11,7 +11,10 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.Scenari
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.loottable.catalog.ParameterKind;
+import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -191,10 +194,13 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
         return List.copyOf(refs);
     }
 
-    // 概率值编码：1 字节状态 + 按需的数值，未知与不可达不占额外空间
+    // 概率值编码：1 字节状态 + 按需的载荷。未知带原因，需要条件带静态信息性提示
     private static void writeProbability(RegistryFriendlyByteBuf buf, Probability probability) {
         switch (probability) {
-            case Probability.Unknown ignored -> buf.writeByte(0);
+            case Probability.Unknown unknown -> {
+                buf.writeByte(0);
+                buf.writeEnum(unknown.reason());
+            }
             case Probability.Unreachable ignored -> buf.writeByte(1);
             case Probability.Measured measured -> {
                 buf.writeByte(2);
@@ -202,13 +208,18 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
                 buf.writeBoolean(measured.upper().isPresent());
                 measured.upper().ifPresent(buf::writeDouble);
             }
+            case Probability.NeedsCondition needsCondition -> {
+                buf.writeByte(3);
+                writePathHints(buf, needsCondition.hints());
+            }
         }
     }
 
     private static Probability readProbability(RegistryFriendlyByteBuf buf) {
         return switch (buf.readByte()) {
-            case 0 -> Probability.unknown();
+            case 0 -> Probability.unknown(buf.readEnum(UnknownReason.class));
             case 1 -> Probability.unreachable();
+            case 3 -> Probability.needsCondition(readPathHints(buf));
             default -> {
                 double lower = buf.readDouble();
                 if (!buf.readBoolean()) {
@@ -217,6 +228,43 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
                 yield Probability.measuredRange(lower, buf.readDouble());
             }
         };
+    }
+
+    private static void writePathHints(RegistryFriendlyByteBuf buf, List<PathHint> hints) {
+        buf.writeVarInt(hints.size());
+        for (PathHint hint : hints) {
+            switch (hint) {
+                case PathHint.ReferencesParameter parameter -> {
+                    buf.writeByte(0);
+                    buf.writeEnum(parameter.kind());
+                    buf.writeBoolean(parameter.detail() != null);
+                    if (parameter.detail() != null) {
+                        buf.writeUtf(Component.Serializer.toJson(parameter.detail(), buf.registryAccess()));
+                    }
+                }
+                case PathHint.ReferencesScenario scenario -> {
+                    buf.writeByte(1);
+                    encodeConditionList(buf, scenario.conditions());
+                }
+            }
+        }
+    }
+
+    private static List<PathHint> readPathHints(RegistryFriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        List<PathHint> hints = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            if (buf.readByte() == 0) {
+                ParameterKind kind = buf.readEnum(ParameterKind.class);
+                Component detail = buf.readBoolean()
+                        ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess())
+                        : null;
+                hints.add(new PathHint.ReferencesParameter(kind, detail));
+                continue;
+            }
+            hints.add(new PathHint.ReferencesScenario(decodeConditionList(buf)));
+        }
+        return List.copyOf(hints);
     }
 
     private static void encodeStructure(RegistryFriendlyByteBuf buf, CatalogStructure structure) {

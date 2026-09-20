@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAc
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
@@ -213,13 +214,39 @@ public final class CatalogGeneration {
     // 概率按状态与数值参与摘要，避免"改了数值但显示文本未变"这类漏检
     private static void updateProbabilityDigest(MessageDigest digest, Probability probability) {
         switch (probability) {
-            case Probability.Unknown ignored -> updateDigest(digest, "unknown");
+            case Probability.Unknown unknown -> {
+                updateDigest(digest, "unknown");
+                // 原因也进摘要：把"尚未计算"换成"计算失败"是玩家可见的变化
+                updateDigest(digest, unknown.reason().name());
+            }
             case Probability.Unreachable ignored -> updateDigest(digest, "unreachable");
             case Probability.Measured measured -> {
                 updateDigest(digest, "measured");
                 updateDigest(digest, Double.toString(measured.lower()));
                 updateDigest(digest, measured.upper().isPresent()
                         ? Double.toString(measured.upper().getAsDouble()) : "");
+            }
+            case Probability.NeedsCondition needsCondition -> {
+                updateDigest(digest, "needs_condition");
+                updateNeedsConditionDigest(digest, needsCondition.hints());
+            }
+        }
+    }
+
+    // 提示文本与引用目标都进摘要：它们会直接改变 tooltip 内容
+    private static void updateNeedsConditionDigest(MessageDigest digest, List<PathHint> hints) {
+        updateDigest(digest, Integer.toString(hints.size()));
+        for (PathHint hint : hints) {
+            switch (hint) {
+                case PathHint.ReferencesParameter parameter -> {
+                    updateDigest(digest, "parameter");
+                    updateDigest(digest, parameter.kind().name());
+                    updateDigest(digest, parameter.detail() != null ? parameter.detail().toString() : "");
+                }
+                case PathHint.ReferencesScenario scenario -> {
+                    updateDigest(digest, "scenario");
+                    updateConditionListDigest(digest, scenario.conditions());
+                }
             }
         }
     }

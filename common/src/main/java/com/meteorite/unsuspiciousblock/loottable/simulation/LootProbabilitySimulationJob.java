@@ -1,11 +1,13 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
@@ -250,21 +252,36 @@ final class LootProbabilitySimulationJob {
         this.scenarioPrepared = false;
     }
 
+    // 基准场景 key——条件全部不成立的那个场景（决策 2）。网格上的数字只来自它。
+    // 找不到显式标记时退回第一个场景：宁可展示一个有据可查的场景，也不留空。
+    private String baselineScenarioKey() {
+        for (SimulationScenario scenario : this.scenarios) {
+            if (scenario.baseline()) {
+                return scenario.key();
+            }
+        }
+        return this.scenarios.isEmpty() ? "" : this.scenarios.getFirst().key();
+    }
+
     private LootProbabilitySimulator.SimResult buildResult() {
+        String baselineKey = baselineScenarioKey();
         List<ItemDefinition> simulatedItems = new ArrayList<>(
                 this.rawTable.items().size() + this.discovered.size());
         for (ItemDefinition item : this.rawTable.items()) {
-            String storedKey = storedKey(item.signature());
-            List<ScenarioProbability> probabilities = scenarioProbabilities(
-                    storedKey, item.hasConditions());
+            List<ScenarioProbability> probabilities = scenarioProbabilities(item);
+            Probability display = PathHintAnalyzer.deriveDisplay(
+                    baselineMeasurement(baselineKey, probabilities), item.acquisitionPaths());
             simulatedItems.add(new ItemDefinition(
-                    item.id(), item.displayName(), item.tooltipHint(), summarize(probabilities),
+                    item.id(), item.displayName(), item.tooltipHint(), display,
                     item.signature(), item.acquisitionPaths(), item.injected(), probabilities));
         }
         for (Map.Entry<String, LootResultSignature> entry : this.discovered.entrySet()) {
             List<ScenarioProbability> probabilities = discoveredScenarioProbabilities(entry.getKey());
+            // 动态条目没有可供静态判定的获取路径，因此"需要条件"无从陈述；基准下没观测到就是未覆盖
+            Probability display = baselineMeasurement(baselineKey, probabilities);
             ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(
-                    entry.getValue(), summarize(probabilities), true, probabilities);
+                    entry.getValue(), display, true, probabilities,
+                    this.previewProvider.apply(entry.getValue()).copy());
             ResourceLocation childSource = this.discoveredDirectly.contains(entry.getKey())
                     ? null : this.discoveredChildSources.get(entry.getKey());
             if (childSource == null) {
@@ -280,27 +297,27 @@ final class LootProbabilitySimulationJob {
 
         List<ChildTableProbability> childProbabilities = new ArrayList<>();
         for (ResourceLocation childTable : this.rawTable.childTables()) {
-            List<ScenarioProbability> probabilities = new ArrayList<>();
-            // 与物品同一口径：该子表在所有场景中都被判定不可达时，更可能是其条件组合被场景上限
-            // 截断，按未知报告；逐个写 "0" 会把"没覆盖到"显示成"不可能产出"。
-            if (isChildApplicableInAnyScenario(childTable)) {
-                for (SimulationScenario scenario : this.scenarios) {
-                    int appearances = this.childCountsByScenario.getOrDefault(scenario.key(), Map.of())
-                            .getOrDefault(childTable, 0);
-                    probabilities.add(new ScenarioProbability(scenario.key(),
-                            scenario.applicableChildTables().contains(childTable)
-                                    ? formatProbability(appearances, false) : Probability.unreachable(),
-                            scenario.assumptions()));
-                }
-            }
-            childProbabilities.add(new ChildTableProbability(
-                    childTable, summarize(probabilities), probabilities));
+            List<ScenarioProbability> probabilities = childScenarioProbabilities(childTable);
+            childProbabilities.add(new ChildTableProbability(childTable,
+                    baselineMeasurement(baselineKey, probabilities), probabilities));
         }
         TableDefinition table = new TableDefinition(
                 this.tableId, this.rawTable.displayName(), this.rawTable.type(), simulatedItems,
                 LootProbabilitySimulator.getSimulationCount(), this.rawTable.childTables(), childProbabilities);
         logUncoveredConditions();
         return LootProbabilitySimulator.SimResult.success(this.tableId, table);
+    }
+
+    // 基准场景下的测量值；基准场景未覆盖该签名时说明"该输入下没有可用路径"，
+    // 由 PathHintAnalyzer 决定它该显示为「需要条件」还是「未覆盖」。
+    private static Probability baselineMeasurement(String baselineKey,
+                                                    List<ScenarioProbability> probabilities) {
+        for (ScenarioProbability scenario : probabilities) {
+            if (scenario.scenarioKey().equals(baselineKey)) {
+                return scenario.probability();
+            }
+        }
+        return Probability.uncovered();
     }
 
     // 未命中场景覆盖的场景控制类型条件只能按真实逻辑求值，数值可能偏离场景估算，完成时汇总提示一次
@@ -313,18 +330,23 @@ final class LootProbabilitySimulationJob {
                 this.tableId, this.uncoveredConditions.size(), String.join(", ", this.uncoveredConditions));
     }
 
-    private List<ScenarioProbability> scenarioProbabilities(String storedKey, boolean uncertainWhenAbsent) {
+    private List<ScenarioProbability> scenarioProbabilities(ItemDefinition item) {
+        String storedKey = storedKey(item.signature());
         // 代表场景数量受 MAX_SCENARIOS 限制。被截断的条件组合不会有任何场景覆盖它，此时条目在
         // 每个场景里都是"不适用"，逐个写 "0" 会把"未覆盖"显示成"不可达"；返回空场景列表让汇总
         // 落到 "?"（未知）。
         if (!isApplicableInAnyScenario(storedKey)) {
             return List.of();
         }
+        List<PathHint> hints = PathHintAnalyzer.hintsFor(item.acquisitionPaths());
         List<ScenarioProbability> probabilities = new ArrayList<>();
         for (SimulationScenario scenario : this.scenarios) {
             if (!scenario.applicableSignatures().contains(storedKey)) {
-                probabilities.add(new ScenarioProbability(
-                        scenario.key(), Probability.unreachable(), scenario.assumptions()));
+                // D2 的拆分：某条路径在该场景下不可用**不是**"静态不可达"，它只是在这个场景的
+                // 布尔赋值下不成立。展示为「需要条件」并逐条列出引用到的条件，而不是 0%。
+                probabilities.add(new ScenarioProbability(scenario.key(),
+                        PathHintAnalyzer.inapplicableScenarioDisplay(hints),
+                        scenario.assumptions()));
                 continue;
             }
             Map<String, Integer> counts = this.countsByScenario.getOrDefault(scenario.key(), Map.of());
@@ -332,9 +354,51 @@ final class LootProbabilitySimulationJob {
                 continue;
             }
             probabilities.add(new ScenarioProbability(scenario.key(),
-                    formatProbability(counts.get(storedKey), uncertainWhenAbsent), scenario.assumptions()));
+                    formatProbability(counts.get(storedKey)), scenario.assumptions()));
         }
         return List.copyOf(probabilities);
+    }
+
+    // 子表入口的分场景概率；不可用时与物品同一口径记为「需要条件」，不用 0% 冒充"不可达"
+    private List<ScenarioProbability> childScenarioProbabilities(ResourceLocation childTable) {
+        if (!isChildApplicableInAnyScenario(childTable)) {
+            return List.of();
+        }
+        List<LootConditionInfo> childConditions = conditionsOfChildTable(childTable);
+        boolean hasHints = !childConditions.isEmpty();
+        List<ScenarioProbability> probabilities = new ArrayList<>();
+        for (SimulationScenario scenario : this.scenarios) {
+            int appearances = this.childCountsByScenario.getOrDefault(scenario.key(), Map.of())
+                    .getOrDefault(childTable, 0);
+            if (!scenario.applicableChildTables().contains(childTable)) {
+                probabilities.add(new ScenarioProbability(scenario.key(),
+                        PathHintAnalyzer.inapplicableScenarioDisplay(hasHints
+                                ? List.of(new PathHint.ReferencesScenario(childConditions))
+                                : List.of()),
+                        scenario.assumptions()));
+                continue;
+            }
+            probabilities.add(new ScenarioProbability(scenario.key(),
+                    formatProbability(appearances), scenario.assumptions()));
+        }
+        return List.copyOf(probabilities);
+    }
+
+    // 该子表入口在父表里出现过的条件；用于"这个场景下为什么拿不到"的静态陈述
+    private List<LootConditionInfo> conditionsOfChildTable(ResourceLocation childTable) {
+        LinkedHashMap<String, LootConditionInfo> conditions = new LinkedHashMap<>();
+        for (ItemDefinition item : this.rawTable.items()) {
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                if (!childTable.equals(path.sourceChildTable())) {
+                    continue;
+                }
+                for (LootConditionInfo condition : path.allConditions()) {
+                    conditions.putIfAbsent(condition.conditionType() + "|" + condition.description().getString(),
+                            condition);
+                }
+            }
+        }
+        return List.copyOf(conditions.values());
     }
 
     // 判断签名是否至少在一个代表场景中被静态判定可达；全为否说明场景集未覆盖该条目
@@ -366,42 +430,19 @@ final class LootProbabilitySimulationJob {
                 continue;
             }
             probabilities.add(new ScenarioProbability(scenario.key(),
-                    formatProbability(counts.get(storedKey), false), scenario.assumptions()));
+                    formatProbability(counts.get(storedKey)), scenario.assumptions()));
         }
         return List.copyOf(probabilities);
     }
 
-    // 抽样零出现有两种含义：条目带条件时按"未知"报告（模拟可能没覆盖到），
-    // 无条件时才作为测量结果记为 0.0（展示为 <0.01%）。两者都不等于"不可达"。
-    private static Probability formatProbability(int appearances, boolean uncertainWhenAbsent) {
+    // 抽样零出现只记为测量结果 0.0（展示为「未命中」）：条目在该场景下已被静态判定可达，
+    // 剩下的零出现是真实的抽样事实，不再是"模拟可能没覆盖到"。0% 只留给静态可证明的不可达。
+    private static Probability formatProbability(int appearances) {
         if (appearances == 0) {
-            return uncertainWhenAbsent ? Probability.unknown() : Probability.measured(0.0);
+            return Probability.measured(0.0);
         }
         return Probability.measured((double) appearances
                 / LootProbabilitySimulator.getSimulationCount());
-    }
-
-    // 汇总：全等取其值；含未知则整体未知；否则取跨场景区间的下界与上界
-    private static Probability summarize(List<ScenarioProbability> probabilities) {
-        if (probabilities.isEmpty()) {
-            return Probability.unknown();
-        }
-        Probability first = probabilities.getFirst().probability();
-        if (probabilities.stream().allMatch(value -> value.probability().equals(first))) {
-            return first;
-        }
-        if (probabilities.stream().anyMatch(value -> value.probability().isUnknown())) {
-            return Probability.unknown();
-        }
-        double lower = probabilities.stream()
-                .mapToDouble(value -> value.probability().lowerBound())
-                .min()
-                .orElseThrow();
-        double upper = probabilities.stream()
-                .mapToDouble(value -> value.probability().upperBound())
-                .max()
-                .orElseThrow();
-        return Probability.measuredRange(lower, upper);
     }
 
     // 附魔结果继续折叠，其他动态结果保留组件，避免药水等物品在缓存和同步后丢失变体。

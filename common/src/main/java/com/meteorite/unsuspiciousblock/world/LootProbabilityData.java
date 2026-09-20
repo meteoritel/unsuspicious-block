@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.world;
 
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.SimulatedValue;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -25,7 +25,7 @@ import java.util.OptionalDouble;
 /**
  * 战利品概率数据持久化——按表存储内容哈希与各条目的数值化概率。
  * <p>
- * 存储格式（{@code format_version = 2}）：
+ * 存储格式（{@code format_version = 3}）：
  * <pre>
  * root tag:
  *   "format_version" -> int
@@ -34,19 +34,21 @@ import java.util.OptionalDouble;
  *     "hash"     -> String (SHA-256 hex)
  *     "items"    -> ListTag, 每个 CompoundTag 包含:
  *       "key"                 -> String (signature storedKey)
- *       "probability"         -> CompoundTag，见下
+ *       "value"               -> CompoundTag，见下
  *       "has_direct_source"   -> boolean
  *       "source_child_tables" -> ListTag&lt;StringTag&gt;
- *       "scenarios"           -> ListTag, 每项 { "scenario_key": String, "probability": CompoundTag }
+ *       "scenarios"           -> ListTag, 每项 { "scenario_key": String, "value": CompoundTag }
  *
- * 概率 CompoundTag:
- *   { "state": "unknown" }                          -- 未被覆盖 / 带条件条目抽样零出现
- *   { "state": "unreachable" }                      -- 该场景静态不可达
+ * 测量值 CompoundTag（{@link SimulatedValue}，只表达"算没算、算出多少"）:
+ *   { "state": "unknown" }                          -- 没有测量值
  *   { "state": "measured", "lower": double [, "upper": double] }
  * </pre>
+ * 格式 3 相对格式 2 的两处变化（决策 22）：条目级与分场景值都改存窄类型，**不再存**
+ * {@code unreachable} ——"静态不可达"与"需要条件"都是从条件树与路径结构推导出的结论，
+ * 读取时按当前静态结构重新派生，因此改了静态分析规则不需要迁移存档。
  * <p>
  * 兼容策略（规划 D2）：<b>不做数值迁移</b>。根缺少 {@code format_version}、版本不匹配、
- * 概率仍是旧的 {@code StringTag}（注意这不是"字段缺失"，必须显式按类型判定），
+ * 概率仍是旧的 {@code StringTag}（注意这不是"字段缺失"，必须显式按类型判定）、
  * 或单个 entry 的概率无法解析时，一律把对应表视为<b>缓存未命中</b>——
  * 既不报错中断，也不把类型不匹配解成 0，避免"静默的错值"。
  */
@@ -54,21 +56,20 @@ public final class LootProbabilityData extends SavedData {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String FILE_NAME = "unsuspiciousblock_loot_probability";
     /** 概率存储格式版本；旧文件没有该字段，因此"缺失"即视为不兼容。 */
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
     private static final String TAG_FORMAT_VERSION = "format_version";
     private static final String TAG_ENTRIES = "entries";
     private static final String TAG_TABLE_ID = "table_id";
     private static final String TAG_HASH = "hash";
     private static final String TAG_ITEMS = "items";
     private static final String TAG_KEY = "key";
-    private static final String TAG_PROBABILITY = "probability";
+    private static final String TAG_VALUE = "value";
     private static final String TAG_SCENARIOS = "scenarios";
     private static final String TAG_SCENARIO_KEY = "scenario_key";
     private static final String TAG_HAS_DIRECT_SOURCE = "has_direct_source";
     private static final String TAG_SOURCE_CHILD_TABLES = "source_child_tables";
 
     private static final String STATE_UNKNOWN = "unknown";
-    private static final String STATE_UNREACHABLE = "unreachable";
     private static final String STATE_MEASURED = "measured";
     private static final String TAG_STATE = "state";
     private static final String TAG_LOWER = "lower";
@@ -139,16 +140,16 @@ public final class LootProbabilityData extends SavedData {
             if (key.isEmpty()) {
                 return null;
             }
-            Probability probability = readProbability(itemTag);
+            SimulatedValue probability = readSimulatedValue(itemTag);
             if (probability == null) {
                 return null;
             }
 
             ListTag scenariosTag = itemTag.getList(TAG_SCENARIOS, Tag.TAG_COMPOUND);
-            Map<String, Probability> scenarios = new LinkedHashMap<>();
+            Map<String, SimulatedValue> scenarios = new LinkedHashMap<>();
             for (int k = 0; k < scenariosTag.size(); k++) {
                 CompoundTag scenarioTag = scenariosTag.getCompound(k);
-                Probability scenarioProbability = readProbability(scenarioTag);
+                SimulatedValue scenarioProbability = readSimulatedValue(scenarioTag);
                 if (scenarioProbability == null) {
                     return null;
                 }
@@ -164,26 +165,26 @@ public final class LootProbabilityData extends SavedData {
                 }
             }
             probabilities.put(key, new CachedItemProbability(
-                    probability, scenarios, itemTag.getBoolean(TAG_HAS_DIRECT_SOURCE), sourceChildTables));
+                    probability, scenarios, itemTag.getBoolean(TAG_HAS_DIRECT_SOURCE),
+                    sourceChildTables));
         }
         return probabilities;
     }
 
-    // 严格读取概率：非 CompoundTag（含旧版 StringTag）一律返回 null，不猜测、不转换
+    // 严格读取测量值：非 CompoundTag（含旧版 StringTag）一律返回 null，不猜测、不转换
     @Nullable
-    private static Probability readProbability(CompoundTag parent) {
-        if (!parent.contains(TAG_PROBABILITY, Tag.TAG_COMPOUND)) {
+    private static SimulatedValue readSimulatedValue(CompoundTag parent) {
+        if (!parent.contains(TAG_VALUE, Tag.TAG_COMPOUND)) {
             return null;
         }
-        CompoundTag value = parent.getCompound(TAG_PROBABILITY);
+        CompoundTag value = parent.getCompound(TAG_VALUE);
         if (!value.contains(TAG_STATE, Tag.TAG_STRING)) {
             return null;
         }
         String state = value.getString(TAG_STATE);
         try {
             return switch (state) {
-                case STATE_UNKNOWN -> Probability.unknown();
-                case STATE_UNREACHABLE -> Probability.unreachable();
+                case STATE_UNKNOWN -> SimulatedValue.Unknown.INSTANCE;
                 case STATE_MEASURED -> {
                     if (!value.contains(TAG_LOWER, Tag.TAG_DOUBLE)) {
                         yield null;
@@ -192,7 +193,7 @@ public final class LootProbabilityData extends SavedData {
                     OptionalDouble upper = value.contains(TAG_UPPER, Tag.TAG_DOUBLE)
                             ? OptionalDouble.of(value.getDouble(TAG_UPPER))
                             : OptionalDouble.empty();
-                    yield new Probability.Measured(lower, upper);
+                    yield new SimulatedValue.Measured(lower, upper);
                 }
                 default -> null;
             };
@@ -217,13 +218,13 @@ public final class LootProbabilityData extends SavedData {
             for (Map.Entry<String, CachedItemProbability> probEntry : entry.getValue().probabilities().entrySet()) {
                 CompoundTag itemTag = new CompoundTag();
                 itemTag.putString(TAG_KEY, probEntry.getKey());
-                itemTag.put(TAG_PROBABILITY, writeProbability(probEntry.getValue().probability()));
+                itemTag.put(TAG_VALUE, writeSimulatedValue(probEntry.getValue().probability()));
 
                 ListTag scenariosTag = new ListTag();
-                for (Map.Entry<String, Probability> scenario : probEntry.getValue().scenarioProbabilities().entrySet()) {
+                for (Map.Entry<String, SimulatedValue> scenario : probEntry.getValue().scenarioProbabilities().entrySet()) {
                     CompoundTag scenarioTag = new CompoundTag();
                     scenarioTag.putString(TAG_SCENARIO_KEY, scenario.getKey());
-                    scenarioTag.put(TAG_PROBABILITY, writeProbability(scenario.getValue()));
+                    scenarioTag.put(TAG_VALUE, writeSimulatedValue(scenario.getValue()));
                     scenariosTag.add(scenarioTag);
                 }
                 itemTag.put(TAG_SCENARIOS, scenariosTag);
@@ -242,18 +243,18 @@ public final class LootProbabilityData extends SavedData {
         return tag;
     }
 
-    private static CompoundTag writeProbability(Probability probability) {
-        CompoundTag value = new CompoundTag();
-        switch (probability) {
-            case Probability.Unknown ignored -> value.putString(TAG_STATE, STATE_UNKNOWN);
-            case Probability.Unreachable ignored -> value.putString(TAG_STATE, STATE_UNREACHABLE);
-            case Probability.Measured measured -> {
-                value.putString(TAG_STATE, STATE_MEASURED);
-                value.putDouble(TAG_LOWER, measured.lower());
-                measured.upper().ifPresent(upper -> value.putDouble(TAG_UPPER, upper));
+    // 只写测量事实：Unknown 与 Measured 两态，派生结论（不可达 / 需要条件）绝不落盘
+    private static CompoundTag writeSimulatedValue(SimulatedValue value) {
+        CompoundTag tag = new CompoundTag();
+        switch (value) {
+            case SimulatedValue.Unknown ignored -> tag.putString(TAG_STATE, STATE_UNKNOWN);
+            case SimulatedValue.Measured measured -> {
+                tag.putString(TAG_STATE, STATE_MEASURED);
+                tag.putDouble(TAG_LOWER, measured.lower());
+                measured.upper().ifPresent(upper -> tag.putDouble(TAG_UPPER, upper));
             }
         }
-        return value;
+        return tag;
     }
 
     // 判断某个表的 hash 是否变化，需要重新模拟
@@ -295,9 +296,9 @@ public final class LootProbabilityData extends SavedData {
         }
     }
 
-    /** 单个签名的摘要概率与分场景概率。 */
-    public record CachedItemProbability(Probability probability,
-                                        Map<String, Probability> scenarioProbabilities,
+    /** 单个签名的测量值与分场景测量值——只有"算没算、算出多少"，没有派生结论。 */
+    public record CachedItemProbability(SimulatedValue probability,
+                                        Map<String, SimulatedValue> scenarioProbabilities,
                                         boolean hasDirectSource,
                                         List<ResourceLocation> sourceChildTables) {
         public CachedItemProbability {

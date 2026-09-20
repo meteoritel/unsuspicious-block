@@ -70,8 +70,53 @@ public final class LootTableCompiler {
     /** 编译单张表；表声明的 {@code type} 一并记入产物，供模拟上下文判定使用。 */
     public CompiledLootTable compileTable(ResourceLocation tableId, JsonElement element) {
         CompileState state = new CompileState();
+        state.referencedEnchantments.addAll(collectEnchantments(element));
         walkNode(element, state);
-        return new CompiledLootTable(tableId, declaredType(element), state.events);
+        return new CompiledLootTable(tableId, declaredType(element), state.events,
+                state.referencedEnchantments);
+    }
+
+    /**
+     * 收集本表 JSON 里被引用到的附魔。
+     * <p>
+     * 判定键就是 JSON 字段名 {@code enchantment}：读附魔的五个机制
+     * （{@code apply_bonus} / {@code table_bonus} / {@code tool_enchantment} /
+     * {@code enchanted_count_increase} / {@code random_chance_with_enchanted_bonus}）
+     * 都用这个字段指名附魔，而 {@code set_enchantments} / {@code enchant_randomly} 用的是复数
+     * {@code enchantments} 映射，不会被误收。等级数值在 1.21.1 的 JSON 里根本不存在
+     * （等级是函数/条件运行时从 TOOL 读的输入，见决策 26），因此这里只收 id。
+     */
+    private static Set<ResourceLocation> collectEnchantments(JsonElement element) {
+        LinkedHashSet<ResourceLocation> enchantments = new LinkedHashSet<>();
+        collectEnchantments(element, enchantments);
+        return enchantments;
+    }
+
+    private static void collectEnchantments(JsonElement element, Set<ResourceLocation> output) {
+        if (element == null || element.isJsonNull()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) {
+                collectEnchantments(child, output);
+            }
+            return;
+        }
+        if (!element.isJsonObject()) {
+            return;
+        }
+        JsonObject object = element.getAsJsonObject();
+        JsonElement enchantment = object.get("enchantment");
+        if (enchantment != null && enchantment.isJsonPrimitive()
+                && enchantment.getAsJsonPrimitive().isString()) {
+            ResourceLocation id = ResourceLocation.tryParse(enchantment.getAsString());
+            if (id != null) {
+                output.add(id);
+            }
+        }
+        for (Map.Entry<String, JsonElement> child : object.entrySet()) {
+            collectEnchantments(child.getValue(), output);
+        }
     }
 
     // 读取表顶层声明的 type；缺失或非法时为空串
@@ -91,6 +136,8 @@ public final class LootTableCompiler {
     /** 遍历当前表时临时持有的继承上下文，各池处理后恢复。 */
     private static final class CompileState {
         final List<CompiledLootTable.Event> events = new ArrayList<>();
+        /** 本表 JSON 引用到的附魔（id 去重、保持出现顺序）。 */
+        final Set<ResourceLocation> referencedEnchantments = new LinkedHashSet<>();
         List<LootConditionInfo> inheritedConditions = List.of();
         List<JsonElement> inheritedFunctions = List.of();
         boolean luckAffected;
