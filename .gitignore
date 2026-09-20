@@ -43,3 +43,7 @@ report
 /docs/adr/
 /.zcodeignore
 /docs/plan/loot-performance/
+
+# 诊断脚本（scripts/）的 Python 缓存残渣
+__pycache__/
+*.pyc

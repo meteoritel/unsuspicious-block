@@ -82,12 +82,18 @@ Mixin 主要用于四类需求：
 
 | Mixin | 目标 | 职责 |
 |---|---|---|
-| `Simulation*ConditionMixin`（8 个单目标入口） | 八类原版场景条件 | 模拟作用域存在时把 `test` 转交 `LootSimulationScope`；单目标保证 Fabric remap 正确 |
+| `Simulation*ConditionMixin`（7 个单目标入口） | 七类原版场景条件 | 模拟作用域存在时把 `test` 转交 `LootSimulationScope`；单目标保证 Fabric remap 正确 |
 | `SimulationCompositeConditionMixin` | `CompositeLootItemCondition` | 仅暴露只读 terms 供静态条件分析；运行时不覆盖组合结果 |
 
 这些 Mixin 都只作入口；profile、场景规划、条件指纹和线程作用域全部位于 `loottable/simulation/`
 普通 Java 类。作用域只覆盖有精确指纹或类型默认值的叶条件；组合与取反由原版求值，作用域外完整
 执行原版逻辑，不影响实际战利品生成。
+
+**`match_tool` 已不再是场景控制类型**（P1，决策 8）：它原先由 `SimulationContextConditionMixin`
+在 `MatchTool.test()` 的 HEAD 拦截、按场景布尔取值，于是"工具匹配"与"时运等级"互不相干——
+条件说匹配成功，而读真实 `TOOL` 的 `apply_bonus` / `table_bonus` 拿到的是一把无附魔镐。
+该 Mixin 已删除，工具改由 profile 填充的真实 `TOOL` 求值：能否匹配由 `ItemPredicate` 自己回答，
+附魔等级由参数旋钮写进工具栈。场景布尔维度因此从 8 类降到 7 类。
 
 ### 3.7 其他
 

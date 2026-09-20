@@ -35,16 +35,190 @@
 
 | 点 | 交付 | 状态 |
 |---|---|---|
-| P1-1 | 编译层保留 `weight`/`quality`/`rolls`/`bonus_rolls` 与被引用附魔 | ⬜ |
-| P1-2 | `LuckGateAnalysis` 逐路径最小幸运门槛（0.01 对齐 + 真实公式回验） | ⬜ |
-| P1-3 | `SimulationInput` / `ScenarioParams` / `SimulationInputKey`（含抽样次数档位） | ⬜ |
-| P1-4 | `SimulationConstraintCatalog` 只发布约束，不枚举候选 Input（决策 32） | ⬜ |
-| P1-5 | 条件树展开预算（决策 33） | ⬜ |
-| P1-6 | worker 去重键改 `(tableId, inputKey)`、限流、代次校验 | ⬜ |
-| P1-7 | 缓存格式 3：表级发现记录 + per-Input 测量值 + 按参数组合计数的 LRU（决策 37/46） | ⬜ |
-| P1-8 | 新 C2S/S2C payload 与协议版本 | ⬜ |
-| P1-9 | 启动只跑基准 Input | ⬜ |
-| P1-10 | `match_tool` 移出 `SCENARIO_CONDITIONS`、工具改为真实求值（决策 8；布尔维度 8 类降 7 类） | ⬜ |
+| P1-1 | 编译层保留 `weight`/`quality`/`rolls`/`bonus_rolls` 与被引用附魔 | ✅ `LuckSpec` 随事件携带；`bonus_rolls` 缺省按原版 `constant 0` 处理（不是"未知"）；`group`/`sequence` 子节点不参与权重选择，其权重按缺省处理 |
+| P1-2 | `LuckGateAnalysis` 逐路径最小幸运门槛（0.01 对齐 + 真实公式回验） | ✅ 门槛按路径保留（`LootAcquisitionPath.luckGate`），含"区间受限/不可达"两档降级；`PathHintAnalyzer` 据此产出可直接照填的数值提示，并在**全部**路径不可达时报 `Unreachable`（`0%`） |
+| P1-3 | `SimulationInput` / `ScenarioParams` / `SimulationInputKey`（含抽样次数档位） | ✅ 三件套 + `ToolOption`；抽样次数进输入身份且只接受签发档位；幸运量化到 0.01 网格，使"门槛值"与"手填值"是同一个缓存键 |
+| P1-4 | `SimulationConstraintCatalog` 只发布约束，不枚举候选 Input（决策 32） | ✅ 场景候选 / 工具基座 / 附魔等级上限 / 次数档位四份清单；单输入在请求时构造并由 `resolve` 逐项校验，越权整体拒绝 |
+| P1-5 | 条件树展开预算（决策 33） | ✅ 节点数与组合集合各一个预算，超限整表按"无约束"降级并告警一次 |
+| P1-6 | worker 去重键改 `(tableId, inputKey)`、限流、代次校验 | ✅ 含"同一输入的多个等待者都收到结果"；HIGH 待处理 ≤32、每玩家在途 ≤2（**只约束玩家触发**，启动批量与解锁插队不受约束） |
+| P1-7 | 缓存格式 3：表级发现记录 + per-Input 测量值 + 按参数组合计数的 LRU（决策 37/46） | ✅ 见"与规划的已知偏差"5（实际落到 `format_version = 4`） |
+| P1-8 | 新 C2S/S2C payload 与协议版本 | ✅ 请求/结果/拒绝三个 payload + 共享 `CatalogStreamCodec`；NeoForge 协议版本服务端 `4.5`、客户端 `4.4`；`CatalogTableDto` 增加每表哈希（按需请求的版本凭据） |
+| P1-9 | 启动只跑基准 Input | ✅ 缓存命中判定改为"该表**基准输入**的测量值是否存在"；每表每代只入队一个低优先级任务 |
+| P1-10 | `match_tool` 移出 `SCENARIO_CONDITIONS`、工具改为真实求值（决策 8；布尔维度 8 类降 7 类） | ✅ `SimulationContextConditionMixin` 已删除并从 `unsuspiciousblock.mixins.json` 移除 |
+
+验收方式：`./gradlew build` 通过（52 张表规模的完整构建）；改动文件经 IDEA MCP 检查后无报错、无警告。
+实机验收（改 JSON 后 `/reload`、门槛数值、参数生效、双平台）仍待用户执行。
+
+### P1 实机反馈修复（2026-09-20，用户首轮实机）
+
+用户首轮实机截图报出三处问题，处置如下：
+
+1. **参数根本没进抽取（真 bug，影响 P1-3 的全部语义）**：`LootProbabilitySimulationJob.prepareScenario`
+   用**场景自带**的 profile 构造 `LootParams`，而条件作用域用的是合成后的 `effectiveProfile`——于是每次模拟
+   实际都跑在"默认工具 + 幸运 1.0"上，玩家设的幸运/工具/附魔等级一律无效。实机证据：河流淘洗的青金石
+   显示 60%，正是幸运 1.0 下池 2 的份额（3/5）。已改用 `effectiveProfile`，并**升 `SIMULATION_CACHE_VERSION`
+   v17→v18** 让旧存档里按错口径算出的测量值整体失效（否则它们会被当作缓存命中继续展示）。
+2. **tooltip 重复且读不通的"需要条件"行**：`PathHintAnalyzer` 无条件递归条件子节点，把 `tool_enchantment`
+   的展示子行（"概率：基础 20%，每级变化 10%"）也当成一条独立门槛，于是同一条门槛列两遍、第二遍还写成
+   "该路径需要工具带 概率：… 附魔"。已改为**只对组合条件（`all_of`/`any_of`/`inverted`）递归**。
+   同时去掉附魔提示里硬编码的"（等级 ≥ 1）"——`min_level` 由数据包给出，写死会在 `min_level > 1` 的表上说谎。
+3. **灰色文字难以辨读**：网格状态词 `PROB_COLOR_UNKNOWN` 由 `0xFF6B6B6B`（浅纸面上约 3.9:1）改为深暖灰
+   `0xFF4A4038`（约 7:1）；`TooltipBuilder.HINT` 由 `DARK_GRAY` 改为 `GRAY`（前者在深色 tooltip 背景上只有
+   约 1.9:1），条件树的树枝前缀与子表 tooltip 的表 id 行一并跟随。配色约束写入 `docs/dev/client-ui.md` 4.2.1。
+4. **随口的一句话文案**：tooltip 的"随幸运变化（模拟幸运值：1.0）"里的固定数字已删除——幸运自 P1 起是
+   输入的一维（基准值 0），印一个固定数字与玩家看到的输入不符。
+
+**用户对子表显示语义的裁定**：泥地打捞这类"内容被可调门槛挡住"的表，**保持显示「需要条件」**，
+不做"自动满足门槛"的假设（决策 2 不变）；要求 tooltip 把需要的条件与**该条目自己的**幸运门槛写清——
+门槛本已按路径/条目保留，本次修好参数生效后数值门槛才会真正出现在 tooltip 里。
+
+### 第二轮实机反馈：缓存永不命中（2026-09-20，用户报告）
+
+用户报告"每次进入服务端都会重新跑全量模拟"。由 `neoforge/run/saves/test/data/unsuspiciousblock_loot_probability.dat`
+与 `neoforge/run/logs/` 定位到两个独立问题：
+
+1. **陈旧写入守卫造成死循环（已修，直接原因）**：`commitSimulated` 原本只要该 `(表, 输入)` 已有测量值就跳过写入，
+   **不判断那条测量值属于哪个内容哈希**。于是版本升级后：读路径判"哈希不同 → 重算"，写路径却"已有测量值 → 跳过写入"，
+   存档里的哈希永远停在旧值，每次启动都全量重算。现改为仅在 `!needsResimulation(...)` 且该输入的测量值存在时才跳过。
+   证据：存档里河流淘洗的数值仍是**幸运 1.0 的口径**（`lapis_lazuli 0.5951` / `amethyst_shard 0.4049` 正是池 2 在幸运 1 下的
+   3:2 分配，`iron_nugget 0.4279` 亦同），而键上写的是 `luck=0.00` —— 说明修好参数生效后算出的新数值从未落盘，
+   **参数修复本身是对的**。
+2. **条件指纹跨运行不稳定（已修，T1）**：`minecraft:gameplay/fishing`、`.../fishing/junk`、
+   `unsuspiciousblock:gameplay/fishing/mud_dredging` 三张表各存了 **4 个输入键**，每次运行新增一条 —— 场景键里嵌了条件指纹，
+   而 `entity_properties`/`location_check` 的指纹跨 JVM 运行不重复（`tool_enchantment` 的指纹是稳定的）。
+   由于 LRU 按**参数组合**计数，这些陈旧键既不会被淘汰也不会被覆盖，会无限累积。处置见下条。
+
+配套改动：启动日志的未命中原因分账（`哈希变化 A 个、缺少该输入的测量值 B 个`）；新增存档诊断脚本
+`scripts/read_loot_probability_save.py`。
+
+### T1：稳定场景身份（2026-09-20，已实施，未提交）
+
+把"场景键"从"条件指纹的编码"改为**稳定身份**：基准恒为 `baseline`，其余按发射顺序编号 `scene-N`。
+条件指纹仍留在 `SimulationProfile.conditionOutcomes` 里作为运行时语义（模拟时按运行时指纹回答条件成立与否），
+只是不再进键。落地清单：
+
+| 改动 | 位置 | 要点 |
+|---|---|---|
+| 输入记录增加场景维 | `SimulationInput` | `(scenarioKey, conditionOutcomes, params)`；`scenarioKey` 非空校验；条件赋值不进键 |
+| 键只取场景键 | `SimulationInputKey` | `scenario=baseline\|luck=…`；删除 `canonicalOutcomes`（它曾是持久化键的来源） |
+| 规划器给稳定序号 | `SimulationScenarioPlanner` | `BASELINE_SCENARIO_KEY = "baseline"`、`scene-N`；泥地打捞注入场景接在已发射场景之后 |
+| 去掉不稳定的并列破平局 | 同上 | 覆盖度排序**只按覆盖路径数降序**，并列保持插入顺序（路径枚举顺序）。原来按指纹字符串破并列，而指纹跨运行不稳，并列候选每次启动互换序号——原版 `minecraft:gameplay/fishing` 的群系条目恰好每条覆盖一条路径，是典型的全并列 |
+| 按场景键查缓存 | `SimulationConstraintCatalog.baselineInput/resolve`、`ArchaeologyJournalServerCatalog.measurementsByScenario` | 直接用 `scenario.key()`，不再从 `conditionOutcomes` 反算 |
+| 版本作废孤儿条目 | `SIMULATION_CACHE_VERSION` v18→**v19** | 存档里那批指纹键整体作废，避免它们作为同一参数组合下的孤儿条目永久留着 |
+
+诊断脚本的新判据：`存有多个输入键的表 = 0`，且每个键形如 `scenario=baseline|luck=0.00|…`。
+
+### T4：把泥地打捞的入口门槛从子表移到注入处（2026-09-20，用户要求，已实施）
+
+**用户要求**：泥地打捞是钓鱼表的子表。它在**钓鱼表里**显示「未命中」可以理解，但在**它自己的页面**上
+不应该被"从父表带来的条件"挡住——应该显示子表自己的物品概率。
+
+**核实到的机制事实**：那些「需要条件」并非来自父表，而是 `mud_dredging.json` 自己池上的
+`tool_enchantment`（`chance` = `linear(0.2, 0.1)`）。父表那边的注入池另有一条**同名门槛**
+（Fabric `FishingLootInjection` / NeoForge GLM），但它**不带** `chance`——从 tooltip 上能否出现
+「基础 20%，每级变化 10%」这一子行即可区分两者（截图里出现的是子表自己那条）。
+因此"只把父表条件排除"不会有任何显示变化，必须做数据层的移动。
+
+**做法**：门槛与概率一起搬到注入处，被注入子表不再写条件。
+
+| 位置 | 改动 |
+|---|---|
+| `mud_dredging.json` | 删除池上的 `tool_enchantment` 条件（只保留"进来之后产出什么"） |
+| `FishingLootInjection`（Fabric） | 注入池条件补 `chance = LevelBasedValue.Linear(0.2F, 0.1F)` |
+| `mud_dredging_fishing.json`（NeoForge GLM） | 条件补同样的 `chance` |
+| `RuntimeLootLinks` | 新增 `injectionGateEnchantments(tableId)`：声明注入边条件引用的附魔，**记在发起注入的表上**（身份只有 `ModEnchantments.MUD_DREDDING` 一个字面量）。记父表侧而非子表侧，是因为变的是父表能产出什么，给子表挂旋钮只会多个点不动的控件 |
+| `ArchaeologyJournalServerCatalog` | 每表哈希与附魔等级旋钮清单改吃 `summaryEnchantments = JSON 引用 ∪ 注入边门槛附魔` |
+
+两个页面的语义因此分开且各自明确：**父表页答"能不能进本表"**（基准输入下如实显示未命中），
+**子表页答"进了本表之后各物品的份额"**（五个直接物品显示各自占比，不再被入口门槛判成「需要条件」）。
+子表里剩下的 `entity_properties`(开放水域) 与 `location_check`(沼泽) 是**条目级**门槛，照旧显示「需要条件」。
+
+**必须一起做的连带修复**：门槛搬走之后两端 JSON 里都不再出现 `enchantment` 字段，而该附魔的 `max_level`
+仍决定注入场景要带几级附魔（且它是父表的附魔等级旋钮）。不并入 `summaryEnchantments`（记在发起注入的表上），
+"改 `max_level` 会失效"（决策 35）与"附魔等级旋钮可见"（决策 26）会同时断掉。
+
+**代价**：门槛的等级/概率参数在两端的注入处各写一份（Fabric Java 条件 / NeoForge GLM 数据），
+改一处必须改另一处；掷概率的位置从子表池内移到父表入口，随机数消耗点改变，**掉落分布不变**。
+**本项把决策 42 的方向提前了一半**：注入边及其门槛附魔现在有了 common 侧声明，
+剩下的"由注入边通用派生父表约束描述"仍按 P2-6 做。
+
+### T5：父表页的子表入口改为「需要条件」+ 门槛单一声明（2026-09-20，用户要求，已实施）
+
+**用户要求**：泥地打捞在父表（钓鱼）里不应显示「未命中」，应显示「需要条件」，tooltip 要给出条件，
+并且后续调条件场景要能影响这一项。
+
+**根因（不是"父表漏了一条判定"，而是三处叠加）**：
+
+1. 父表页子表入口的**状态派生**与物品不同构：物品的展示值走 `PathHintAnalyzer.deriveDisplay`
+   （零命中 + 引用了旋钮 → 「需要条件」），而子表入口直接把测量值透传 → 零命中只会显示「未命中」；
+2. 子表入口的**条件树**由客户端本地推导（`JournalViewModel.childTableConditions`），
+   并带一条 P0 遗留的专门分支："父表没有静态路径时回填子表自己的直接路径条件"。
+   T4 把子表条件删掉后，这条回填随之失效 → 入口既没有状态词也没有条件可讲；
+3. 注入边**不写在任何 JSON 里**，所以"从物品路径本地重推"这条路对注入入口必然漏项——
+   这正是"解析只有一份实现"这条边界要防的情形。
+
+**做法**：门槛单一声明 + 服务端派生 + 客户端只渲染。
+
+| 位置 | 改动 |
+|---|---|
+| `RuntimeLootLinks` | 新增 `InjectionEdge`/`InjectionGate`（附魔 + 最低等级 + 概率曲线）与 `MUD_DREDGING_GATE`；`INJECTION_EDGES` 成为**唯一声明**，`syntheticEdges()` 由它派生（避免"边"与"门槛"各写一份）、`injectionGate(target)`、`injectionGateEnchantments(source)` |
+| `FishingLootInjection`（Fabric） | pool 条件改为 `MUD_DREDGING_GATE.condition(registries)` |
+| `FishingLootModifier`（NeoForge） | 门槛在 `doApply` 里按同一份声明判定；GLM 数据只留 `loot_table_id`（判定时机与原先作为 GLM 条件一致） |
+| `SimulationConstraintCatalog` | 新增 `childEntryGates`（子表 id → 门槛条件树）与 `describeGate`（门槛 → 同一个条件对象 → 同一份分析处理器，因此 tooltip 的等级/概率不会与玩法漂移） |
+| `PathHintAnalyzer` | 新增 `hintsForConditions`（无路径条件的提示）与 `deriveEntryDisplay`（子表入口的零命中 → 需要条件） |
+| `ChildTableProbability` / `CatalogTableDto.ChildTableEntry` / `CatalogStreamCodec` | 入口条件树随目录下发；协议版本 4.5/4.4 → **4.6/4.5** |
+| `CatalogGeneration.updateTableDigest` | 入口条件进目录哈希（它直接改变 tooltip 内容） |
+| `JournalTooltipBuilder.buildChildTable` | 状态词**优先于**区间（区间含 `0%` 会与「需要条件」互相打脸） |
+| `JournalViewModel` | 改用服务端下发的条件，删除本地推导与 P0 遗留的 mud_dredging 专门分支 |
+
+并集/交集的分工是刻意的：**提示用并集**（回答"引用了哪些可调的旋钮"，有一条路径引用过就该列出来），
+**条件树用交集**（回答"要拿到它必须满足什么"，并集会把"只有部分路径需要"说成"需要"）。
+分场景列表仍保留原始测量值，入口那一行回答的是"当前输入下能不能进"——与物品的两层结构一致。
+
+## T2 实机验收清单（交用户执行，2026-09-20）
+
+代码侧已完成编译与静态检查；下面每一步都要看**日志**或**存档**给出判读，不靠"看起来对"。
+`git` 未提交，改动都在工作区。
+
+| # | 操作 | 判定依据 | 期望 |
+|---|---|---|---|
+| 1 | NeoForge 启动，进一次世界后正常退出；再启动第二次 | `latest.log` 的 `概率缓存命中 … 未命中原因：…` | 第一次应为 `0 命中，58 待模拟（哈希变化 58）`（v19 让旧存档整体作废）；第二次应为 `命中 58 个表的基准输入，0 个待模拟（哈希变化 0、缺少该输入的测量值 0）` |
+| 2 | `python scripts/read_loot_probability_save.py` | 脚本的 `存有多个输入键的表` | 应为 `0`；`--table` dump 出的键形如 `scenario=baseline|luck=0.00|tool=…|n=10000` |
+| 3 | `淘洗（河流）` 页 | 网格与 tooltip | 青金石/紫水晶显示「需要条件」，tooltip 给「该路径需要：幸运 ≥ 0.34」/「≥ 0.5」；**不再**出现 60%/40%。存档里这两条在 `luck=0.00` 下应为 `measured 0.0`（即零命中，不是旧口径的 0.5951/0.4049） |
+| 4 | `钓鱼（总表）` 页的 `泥地打捞` 入口 | 网格与 tooltip | **T5 起**：显示「需要条件」（不再是「未命中」），tooltip 列出入口条件（泥底打捞 + 「概率：基础 20%，每级变化 10%」子行） |
+| 5 | `钓鱼（泥地打捞）` 子表页 | 网格与 tooltip | **T4 起**：五件直接物品显示各自占比（各约 6.7%，池总权重 15）而不是「需要条件」；`泥底打捞（普通群系）`/`（加成群系）` 因开放水域/沼泽是条目级门槛，仍显示「需要条件」 |
+| 6 | 灰色文字 | 目视 | 网格状态词与 tooltip 副文本在浅纸面／深底上均可辨读 |
+| 7 | 改一张被追踪表的 JSON 后 `/reload` | 日志 `哈希变化 N 个` | 该表重算、`N ≥ 1`，其余表不受影响 |
+| 8 | 改附魔 `max_level` 后 `/reload` | 同上 | 引用它的表哈希变化并重算（钓鱼表因注入门槛而被计入） |
+| 9 | Fabric 端重复 1–5、6 | 同上 | 行为一致（两端共用 common 的规划与缓存代码；注入门槛两端同源） |
+
+判读要点：输入键里的 `luck=` 是**该次模拟的输入幸运**；若键写 `luck=0.00` 而数值呈现幸运 1 的口径
+（例如河流淘洗的青金石 0.5951），说明"算的是新参数、存的是旧数值"，即写入路径没执行。
+
+**T3（已记录，未处理）**：
+
+1. `LootConditionFingerprint.isStableSource` 只检查**条件对象自身**的 `toString()` 形态（是否 record /
+   是否退化成 `类名@identityHash`），看不到嵌套字段。已核实的链条（源码级）：
+   - 解析期分析的是 `LootTableCompiler` 从 JSON 解出的另一份实例，与运行时 `ReloadableServerRegistries`
+     的对象不同，因此只有**整条** `toString` 链按值生成才能复现指纹；
+   - `LootItemEntityPropertyCondition` / `EntityPredicate` / `FishingHookPredicate` / `LocationPredicate`
+     全是 record ⇒ 一律判"稳定"，嵌套的非 record 对象不参与判定；
+   - `location_check` 带标签时**必然**不稳：`LocationPredicate.biomes` = `Optional<HolderSet<Biome>>`，
+     `HolderSet.Named.toString` 逐个打印 `Holder`，而 `Holder.Reference.toString` 打印它持有的**值对象**
+     （`"Reference{key=value}"`），`Biome` 无按值 `toString` ⇒ 落回 `类名@identityHash`。
+   - `entity_properties`（`fishing_hook/in_open_water`）的链路上全是 record，**其不稳的具体环节尚未定位**
+     ——下一轮若要收紧判定，需要按"条件树任意层级"检查稳定性（含值对象），并顺带确认这一条。
+   - 附注：告警按 `条件 id + (简单类名)` 去重，"有 N 个"是**类型数**，不能读成条件条数。
+   `docs/dev/loottable.md` 第 7.2 节已按上述事实改写（原文把该告警单独归因于泥地打捞注入场景，
+   并断言"不是指纹失效"，与第 3 条冲突）。
+2. 同一张表的子表条目出现「未命中」与「需要条件」不对称（截图中的 `钓鱼（总表）→ 钓鱼（泥地）`），
+   待 T2 结果确认是否仍存在。
+3. 原版 `minecraft:gameplay/fishing` 的注入条目在 P2 决策 42 落地前只能靠专门分支场景发现，
+   基准下显示未覆盖/未命中属预期。
+2. 同一张表的子表条目出现「未命中」与「需要条件」不对称（截图中的 `钓鱼（总表）→ 钓鱼（泥地）`），
+   待 T2 结果确认是否仍存在。
+3. 原版 `minecraft:gameplay/fishing` 的注入条目在 P2 决策 42 落地前只能靠专门分支场景发现，
+   基准下显示未覆盖/未命中属预期。
 
 ## P2 交互与联合见证
 
@@ -65,11 +239,23 @@
 | P3-1 | 原版 `minecraft:gameplay/fishing` 群系条目全覆盖验收 | ⬜ |
 | P3-2 | 整合包注入与动态条目的 Input 归属 | ⬜ |
 | P3-3 | 双平台实机验收 | ⬜ |
-| P3-4 | `docs/dev/` 文档同步（loottable / client-ui / network / mixin / config-integrations） | ✅ 2026-09-20 随 P0 与索引修复同步：loottable、client-ui、network、config-integrations 已改；mixin 核对无需改。P1/P2 落地后需再同步 |
+| P3-4 | `docs/dev/` 文档同步（loottable / client-ui / network / mixin / config-integrations） | ✅ 2026-09-20 随 P0 与索引修复同步一次；**P1 再次同步**：loottable（新增 7.5/7.6/7.7/7.8 与包结构、缓存格式、worker 语义）、network（payload 清单、协议版本、新增 6.1）、mixin（`SimulationContextConditionMixin` 删除）。`client-ui.md` 与 `config-integrations.md` 待 P2 涉及 UI/配置时再同步 |
 
 ## 与规划的已知偏差（实施期决定，需回写规划）
 
 1. **P0 提前移除泥地打捞专门分支**（规划把 `RuntimeLootLinks` 注入边的通用化放在 P2，决策 42）。理由：P0 的完成标准是"网格上不再有误导数字"，而专门分支给基准场景配的是满级附魔钓竿，会让该表五件直接物品在基准下显示"能拿到"。移除后它们按静态提示显示「需要条件：工具带泥地打捞附魔（等级 ≥ 1）」，与规划 §7.2 的验收标准一致。代价：原版 `minecraft:gameplay/fishing` 里的注入条目在 P2 完成前只显示 `?`（未覆盖），因为父表的约束描述尚未并入被注入子表的条件树。
-2. **P0 的「需要条件」判定是近似**：基准场景下测量值为零且路径引用旋钮时显示 `NeedsCondition` 而非「未命中」。P1 的 `LuckGateAnalysis` 与两轴展示状态落地后，该规则由"逐路径最小幸运门槛 + 参数化可适用性"取代。
-3. **`PathHint.ReferencesParameter.detail` 用 `Component` 而非规划草案的 `String`**：需要本地化文案（附魔名、工具谓词原文），`String` 会把服务端语言固化进目录。
-4. **决策 8 未随 P0 落地**：`match_tool` 仍在 `SCENARIO_CONDITIONS` 内，场景仍为它伪造布尔（基准场景取 `false`），只有泥地打捞的满级工具专门分支被移除。P0 期间 `docs/dev/loottable.md` 曾把它写成"已移出场景控制类型 / 工具真实求值"，与代码不符，已改回事实描述；落地见 P1-10。
+2. **P0 的「需要条件」判定是近似**：基准场景下测量值为零且路径引用旋钮时显示 `NeedsCondition` 而非「未命中」。**P1 已取代该近似**：`PathHintAnalyzer` 现在先判"全部路径是否被逐路径幸运门槛证明不可达"（是则 `Unreachable` → `0%`），再按测量值/提示派生，规则与规划 §4.3 的两轴判定一致。
+3. **`PathHint.ReferencesParameter.detail` 用 `Component` 而非规划草案的 `String`**：需要本地化文案（附魔名、工具谓词原文、幸运门槛数值），`String` 会把服务端语言固化进目录。
+4. **决策 8 未随 P0 落地**：P0 期间 `match_tool` 仍在 `SCENARIO_CONDITIONS` 内，只有泥地打捞的满级工具专门分支被移除。**P1-10 已完成**，该偏差关闭。
+5. **概率存档格式实际落到 `format_version = 4`（规划写"格式 3"）**：规划 §4.5 的编号早于 P0——P0 已把"窄类型 `SimulatedValue`"这一改动用掉了 3。P1 的结构改造（表级 `discovery` + per-Input `inputs` + 参数组合 LRU）因此是 4。旧格式读到即按缓存未命中处理，不做迁移。
+6. **抽样次数档位与参数组合上限落为可调常量**：`ScenarioParams.SAMPLE_COUNT_TIERS`（1 万 / 5 万 / 10 万，同时是白名单与硬上限）、`MAX_PARAMETER_COMBINATIONS = 8`。规划把它们定为"实机观察后再定"的可调实现参数，P1 先取建议值。
+7. **模式外的工具不被参数覆盖**：泥地打捞注入场景把"满级钓竿"写进场景定义，P1 用 `SimulationScenario.keepBaseTool` 让这类场景只接受输入的幸运、保留自带工具。规划没有这一维度——它是"注入场景本就不是玩家处境"的直接后果：若被默认工具覆盖，注入池永远抽空，注入条目再也发现不了（信息丢失，不是参数生效）。
+8. **`CatalogTableDto` 新增每表哈希**：规划没有这一字段，但按需请求必须携带一个"我按的是这一版内容"的凭据。用整目录哈希不行——它会被任何一张表的模拟完成改变，导致并发计算时的正常请求被频繁误判为过期。
+9. **约束描述暂不下发给客户端**：`SimulationConstraintCatalog` 目前只活在服务端（构建期派生、随代次缓存），P1-4 的交付是"目录只发布约束"这一结构本身。参数区所需的约束描述下发属 P2（规划 §4.5 的投影行）。
+10. **客户端目前只做结果入库，不做界面切换**：`ScenarioSimulationClientState` 校验并缓存结果，`receiveRejection` 只写日志。规划把"结果与当前选择的匹配、界面切换"放在 P2；P1 刻意不先建一份无人读取的状态。
+11. **`SimulationInput` 增加"场景身份"这一维（T1）**：规划 §4.2 的草案是
+    `record SimulationInput(Map<String, Boolean> conditionOutcomes, ScenarioParams params)`，键由条件赋值的编码而来。
+    实测该编码**跨 JVM 运行不重复**（原因见 T3 第 1 条），作为缓存键会让同一个场景每次启动换一个键，因此改为
+    `record SimulationInput(String scenarioKey, Map<String, Boolean> conditionOutcomes, ScenarioParams params)`，
+    键取稳定的 `scenarioKey`（`baseline` / `scene-N`）。规划未预见这一维——它把"场景"等同于"条件赋值"，
+    而那个赋值里含不可复现的指纹。条件赋值仍是场景的**运行时语义**，只是不再是身份。

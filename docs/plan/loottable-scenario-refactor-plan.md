@@ -677,5 +677,46 @@ P0 至 P2 是解决本次问题的最小完整交付。**调度上有两条硬�
 已追加复用缓存预览的独占副本以去掉重复工作，保持名称、匹配及存储语义，收益待复测。
 玩家实际拿取物品路径仍可复用索引，但其成本不在本轮模拟计时中，本轮不混入修改。
 
-P1 起的功能（`SimulationInput` 与按需管线、参数区、场景 Tab、联合见证、一键填充）尚未开始；
-过渡期内原版 `minecraft:gameplay/fishing` 的注入条目显示为「未覆盖」，待 P2 的决策 42 收口。
+2026-09-20（P1 实施完成）：按 [执行级拆点清单](loottable-scenario-refactor-tasks.md) 的点序完成 P1 全部 10 项，
+`./gradlew build` 通过，改动文件经 IDEA MCP 检查无报错、无警告。落地内容与文件对应：
+
+- **P1-1 编译层局部语义**：新增 `LuckSpec`（`weight`/`quality`/`rolls`/`bonus_rolls` 及各自的可静态求值程度），
+  随 `CompiledLootTable` 的每个事件携带；`match_tool` 谓词可枚举出的基座物品记入 `referencedTools`（标签取首个成员）。
+  两处易错点按原版语义处理：`bonus_rolls` **缺省**是 `constant 0` 而不是"未知"（当未知会让每次模拟都进门槛分析），
+  字段存在但值动态时必须保留"未知"；`group`/`sequence` 的子节点不参与权重选择，其 `weight`/`quality` 按缺省处理。
+- **P1-2 逐路径幸运门槛**：新增 `LuckGate` / `LuckGateAnalysis`，从原版两条真实公式（`max(floor(weight + quality × luck), 0)`
+  与 `rolls + floor(bonus_rolls × luck)`）推出每条路径的最小门槛，**向上对齐 0.01 网格后用真实公式回验**；
+  解不出"从某点往上全满足"的形态（负 quality 造成的上限、解落在可表示范围外、预算耗尽）一律不给数值、
+  降级为「区间受限」。门槛按路径保留在 `LootAcquisitionPath.luckGate` 并进目录哈希与网络编码；
+  `PathHintAnalyzer` 据此产出可直接照填的数值提示，并把静态不可达判据改为"**全部**路径都被门槛证明拿不到"。
+- **P1-3/P1-4 输入身份与约束目录**：新增 `SimulationInput` / `ScenarioParams` / `SimulationInputKey` / `ToolOption` /
+  `SimulationConstraintCatalog`。目录只发布四份清单（场景候选 ≤32、工具基座、附魔等级上限、次数档位），
+  单个输入在请求时构造并由 `resolve` 逐项校验，**越权整体拒绝、不做部分修正**（悄悄改成最近合法值会让
+  玩家看到的数字与他填的参数不一致）。
+- **P1-5 展开预算**：条件树展开设节点数与组合集合两个预算，超限整表按"无约束"降级并告警一次（降级方向保守：
+  条目保留在场景中，不伪装成不可达）；场景上限 8→32，截断改为按"覆盖路径数"降序并如实上报数量，
+  基准场景先占名额（它的覆盖度天然最低，排序后会第一个被丢掉）。
+- **P1-6/P1-9 调度**：worker 去重键改为 `(表, 输入键)`（抽样次数与参数都进了输入身份，按表去重会让后一个请求
+  顶掉前一个）；HIGH 待处理 ≤32、每玩家在途 ≤2，且**只约束玩家触发**——启动批量与解锁插队不受约束，
+  否则"表很多"会被误判成"被刷爆"；同一输入的多个等待者都会收到结果。启动只跑每表的基准输入。
+- **P1-7 存档**：概率存档改为 `format_version = 4`，分三层——`hash` / 表级 `discovery`（LRU **不淘汰**，
+  否则动态条目淘汰一次就会从界面上消失）/ per-Input `inputs`（按**参数组合** LRU，组合数上限 8，
+  同一组合的不同次数档位整体保留：换参数是换问题，换次数是换答案的精度）。
+- **P1-8 协议**：新增 `RequestScenarioSimulationPayload`（结构化字段，客户端只挑场景、不构造条件赋值）、
+  `SyncScenarioResultPayload`（携带代次/表哈希/输入键三个校验标识）、`ScenarioRequestRejectedPayload`
+  （被拒绝的请求一定回执，否则"点了没反应"与"还在计算中"无法区分）；两条通道共用新抽出的 `CatalogStreamCodec`；
+  `CatalogTableDto` 增加每表哈希作为按需请求的版本凭据（整目录哈希会被任何一张表的模拟完成改变）。
+  NeoForge 协议版本服务端 `4.5`、客户端 `4.4`。
+- **P1-10 工具真实求值**：`match_tool` 移出 `SCENARIO_CONDITIONS`（布尔维度 8 类降 7 类），
+  `SimulationContextConditionMixin` 删除，工具由填充的真实 `TOOL` 求值。
+
+**展示派生收敛为一处**：`SimulationMeasurement` 只承载原始测量值，展示用的 `TableDefinition` 由
+`ArchaeologyJournalServerCatalog.deriveTable` 从"场景规划 + 指定输入的测量值 + 表级发现记录"当场派生，
+**从缓存恢复与刚刚算完都走它**，因此不存在两套口径；按需结果只回给请求者，共享目录里的数字始终是基准输入的。
+
+**实施期决定与规划编号的偏差**（已回写执行清单第 5–10 条）：存档格式实际为 4（规划写"格式 3"，编号早于 P0）；
+`CatalogTableDto` 增加每表哈希；注入场景的"满级钓竿"用 `SimulationScenario.keepBaseTool` 保护不被参数覆盖；
+约束描述暂不下发客户端（P2）。
+
+P2 的功能（参数区、场景 Tab、联合见证、一键填充、偏好的文件实现）尚未开始；过渡期内原版
+`minecraft:gameplay/fishing` 的注入条目在**被请求之前**显示为「未覆盖」，待 P2 的决策 42 收口。

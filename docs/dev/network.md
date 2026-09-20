@@ -4,10 +4,11 @@
 
 ## 1. 职责概述
 
-模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 26 个自定义 payload（12 个 C2S + 14 个 S2C），覆盖：
+模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 30 个自定义 payload（13 个 C2S + 17 个 S2C），覆盖：
 
 - **考古笔记同步**：目录、进度状态（增量/全量）、日志（更新/快照）、完成奖励通知。
 - **目录按需同步**：哈希比对，不一致时客户端主动请求全量目录。
+- **按需概率模拟**：玩家选定的模拟输入（场景 + 参数）请求计算、结果回执、拒绝回执。
 - **解析仪交互**：扫描等级切换、扫描结果高亮同步。
 - **猫族关系**：羁绊/命数同步、威慑/轻步开关切换。
 - **附魔揭示**：完整候选列表下发。
@@ -24,10 +25,12 @@ network/
 │   ├── JournalLogSnapshotCodec  日志快照编解码
 │   ├── JournalStateHandler      进度状态同步（增量/全量）
 │   ├── LootTableManagementHandler  战利品表追踪管理页处理
+│   ├── ScenarioSimulationHandler  按需概率模拟请求：限流 + 参数构造 + 转交目录受理
 │   └── ReaderScanLevelHandler   扫描等级更新处理
 ├── payload/
-│   ├── c2s/                   12 个客户端->服务端 payload
-│   └── s2c/                   14 个服务端->客户端 payload
+│   ├── c2s/                   13 个客户端->服务端 payload
+│   ├── s2c/                   17 个服务端->客户端 payload
+│   └── s2c/CatalogStreamCodec   目录数据的线格式编解码（全量目录与按需结果共用一份）
 └── (cat/CatNetworkHandler 在 cat/ 包)
 ```
 
@@ -83,6 +86,7 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `UpdateJournalLogRetentionPayload` | `JournalLogHandler::handleUpdateRetention` | 设置当前表自动上限或仅保留最近 N 条 |
 | `CatDeterrenceTogglePayload` | `CatNetworkHandler::handleDeterrenceToggle` | 切换威慑开关 |
 | `CatLightStepTogglePayload` | `CatNetworkHandler::handleLightStepToggle` | 切换轻步开关 |
+| `RequestScenarioSimulationPayload` | `ScenarioSimulationHandler::handleRequest` | 请求按需模拟一个输入（携带目录代次、表哈希、场景 key 与参数） |
 
 ## 6. S2C payload
 
@@ -102,6 +106,8 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `SyncReaderScanResultPayload` | `ReaderScanHudState::receive` | 紧凑扫描结果 HUD 与方块高亮 |
 | `SyncEnchantmentRevealListPayload` | `EnchantmentRevealClientState::receive` | 附魔揭示候选 |
 | `NotifyTableCompletionRewardPayload` | `receiveTableCompletionReward` | 100% 完成奖励通知 |
+| `SyncScenarioResultPayload` | `ScenarioSimulationClientState::receive` | 某个输入的模拟结果（单表 DTO + 代次/表哈希/输入键） |
+| `ScenarioRequestRejectedPayload` | `ScenarioSimulationClientState::receiveRejection` | 请求被拒绝的回执与原因 |
 
 ## 7. 平台注册
 
@@ -130,7 +136,39 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned("4.4")` 声明 payload 协议版本。当前版本因概率值布局变化而升级——`Probability` 的第 4 态「需要条件」会携带一串静态提示（`ParameterKind` + 引用目标 `Component`，或场景条件列表），`Unknown` 会携带原因枚举，两者都在目录包内编码，旧版客户端读不出这个布局。目录获取路径在条件列表后依次传输 `functionUncertainty` 枚举与 `luckAffected` 布尔值，编解码顺序一致。声明触发率范围复用条件 metadata 传输。两平台客户端与服务端均须同步更新；物品签名与发现进度的存储格式不变。解析仪继续使用结构化 HUD 条目及坐标描边同步。
+**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本（服务端入口 `4.6`、客户端入口 `4.5`）。当前版本因 P1 的按需模拟通道与目录形态变化而升级：
+
+- `Probability` 的第 4 态「需要条件」携带静态提示（`ParameterKind` + 引用目标 `Component`，或场景条件列表），
+  `Unknown` 携带原因枚举，两者都在目录包内编码；
+- 目录获取路径在条件列表后依次传输 `functionUncertainty`、`luckAffected` 与**逐路径幸运门槛**，编解码顺序一致；
+- `CatalogTableDto` 新增**每表内容哈希**：按需请求用它声明"我按的是这一版内容"，服务端据此判断请求是否已过期。
+  用整目录哈希做凭据不行——它会被任何一张表的模拟完成改变，并发计算时的正常请求会被频繁误判为过期；
+- 新增两个 payload 与一个共享编解码器（`CatalogStreamCodec`）。全量目录与按需结果传的是同一个
+  `CatalogTableDto`，因此线格式只有一份实现：各写一份的结果是"改了字段只更新了一处"，
+  而症状是客户端读到错位的字节流——那是最难从现象反推成因的一类错误；
+- `ChildTableEntry` 追加**入口条件树**（`writeConditionList`，追加在 `scenarioProbabilities` 之后）：
+  子表入口的条件（路径共同条件 + 注入边门槛）改由服务端派生下发，客户端不再本地重推——
+  注入边不写在任何 JSON 里，本地重推必然漏项。**追加字段是线格式变更**，故协议版本从 4.5/4.4 升到 4.6/4.5。
+
+两平台客户端与服务端均须同步更新；物品签名与发现进度的存储格式不变（概率存档格式升到 4，见
+[战利品表系统](loottable.md) 第 7.4 节）。解析仪继续使用结构化 HUD 条目及坐标描边同步。
+
+### 6.1 按需概率模拟
+
+玩家选定一个模拟输入（场景 + 参数）后，客户端发 `RequestScenarioSimulationPayload`，服务端回
+`SyncScenarioResultPayload`（成功）或 `ScenarioRequestRejectedPayload`（被拒绝）。完整链路与校验语义以
+[战利品表系统](loottable.md) 第 7.7 节为权威，此处只记网络侧的约定：
+
+- **请求传结构化字段而不是拼好的输入键**：服务端必须能逐项校验（场景、工具、抽样次数只能取签发值，
+  幸运有界），把这些校验建立在一个自造字符串上就等于把校验逻辑也写成一个解析器，而解析器的每一处
+  "宽松处理"都是越权的入口。
+- **客户端的条件赋值由服务端还原**：客户端只挑场景（传场景 key），不构造条件指纹表。
+- **结果包的三个标识缺一不可**（决策 36）：目录代次、表哈希、输入键。三者在客户端都要校验，
+  任一不符即丢弃——切参数或 `/reload` 之后旧结果可能后到，不校验就会把上一代的数据画到当前界面上。
+- **被拒绝的请求一定回执**：这些情形都不会产出结果包，没有回执的话"点了没反应"与"还在计算中"在
+  界面上无法区分。回执不携带任何概率，也不进缓存。
+- **结果只回给请求者**，不写共享目录：按内容去重的缓存是全服共享的，但"当前展示哪个输入"是每个玩家
+  自己的选择，写进共享目录会让两个玩家互相覆盖对方的界面。
 
 ## 8. 同步策略
 
@@ -177,6 +215,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
   2. C2S：在 `ModPayloads.C2S_PAYLOADS` 加条目（type + codec + handler）。
   3. S2C：在 `S2C_SPECS` 加类型描述（服务端注册编解码），在 `Client.S2C_PAYLOADS` 加完整描述（客户端注册接收器）。
   4. 无需修改平台代码，两端自动遍历注册。
+  5. 传输目录数据时**必须**走 `CatalogStreamCodec`，不要另写一份字段顺序——两条通道共用同一份编解码是"改了字段不会只更新一处"的前提。
 - **新增同步策略**：参考增量同步的 revision + 脏表机制，或日志的分片会话机制。
 
 ## 10. 相关文档

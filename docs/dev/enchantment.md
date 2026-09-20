@@ -141,9 +141,11 @@ apply(ctx)
 泥底打捞不通过效果框架，而是通过**自定义战利品条件**实现：
 
 - [`ToolEnchantmentCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentCondition.java) 用**一个**条件表达完整语义："需要钓鱼竿带有泥底打捞（可选等级门槛）+ 按该附魔等级掷概率（`0.2 + 0.1/级`）"。它不再拆成"资格条件"与"概率条件"两条并列条件，因此 tooltip 上是一行附魔名加按需的等级/概率子行。
-- 开放水域/沼泽群系分支仍由父 loot table 的 `entity_properties`(fishing_hook) 与 `location_check`(`#c:is_swamp`) 处理。
-- 通过 `mud_dredging` 战利品池注入原版钓鱼表（Fabric 用 `FishingLootInjection`，NeoForge 用 `FishingLootModifier` GLM）；注入侧只写资格门槛形态（无 `chance`），概率由子表自己的数据表达。
+- **条件挂在注入处，不写在子表里**：Fabric 的 `FishingLootInjection` 追加的父表 pool 条件、NeoForge 的 `FishingLootModifier.doApply` 里的判定，都由 [`RuntimeLootLinks.MUD_DREDGING_GATE`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/graph/RuntimeLootLinks.java) 一处声明构造（附魔 + 最低等级 + 概率曲线），GLM 数据里只留 `loot_table_id` 过滤；被注入子表 `gameplay/fishing/mud_dredging` 自己的池**不写任何条件**，只描述"进来之后产出什么"。
+  两个页面因此各回答一个明确的问题：父表（钓鱼）页答"能不能进本表"——基准输入下显示「需要条件」，tooltip 用同一份声明分析出的条件树给出附魔与概率行；子表自己的页答"进了本表之后各物品的份额"——五个直接物品显示各自占比，不再被入口门槛判成「需要条件」。
+- 开放水域/沼泽群系分支仍由子表自己的两个子表引用上的 `entity_properties`(fishing_hook) 与 `location_check`(`#c:is_swamp`) 处理——它们是**条目级**门槛，按既有规则照常显示「需要条件」。
 - 命中时从 `gameplay/fishing/mud_dredging` 战利品表抽取额外宝物。
+- 门槛**只有一份声明**：附魔身份、最低等级与概率曲线都在 `RuntimeLootLinks`，因此玩法与 tooltip 不可能各说一套；`injectionGateEnchantments` 记在**发起注入的表**上，每表哈希与附魔等级旋钮清单据此并入该附魔，保住"改 `max_level` 会失效"。掷概率的位置从"子表池内"移到"父表入口"后随机数消耗点改变，**分布不变**。
 
 条件类型注册有时序约束（必须在 `init` 前完成），见 [战利品表系统](loottable.md) 第 9 节与 [架构总览](architecture-overview.md) 第 4 节。
 
