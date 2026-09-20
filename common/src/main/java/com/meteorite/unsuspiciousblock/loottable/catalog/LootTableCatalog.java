@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -72,19 +73,34 @@ public final class LootTableCatalog {
      * 单个物品结果的获取路径。
      * sourceItemTag 标识该路径是否由物品 tag 展开，entryConditions 属于物品条目本身，
      * inheritedConditions 来自 pool、组合 entry 或战利品表引用；functionUncertainty 单独描述函数求值的不确定性。
+     * <p>
+     * luckGate 是这条路径的**逐路径最小幸运门槛**（由 {@code LuckGateAnalysis} 在投影期从条目与池的
+     * weight/quality/rolls/bonus_rolls 推出）。它按路径分别保留而不是取多路径的最小值：合并后的数字
+     * 无法指回是哪条路径需要它（决策 34）。为 {@code null} 表示该路径与幸运无关。
      */
     public record LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
                                       @Nullable ResourceLocation sourceItemTag,
                                       List<LootConditionInfo> entryConditions,
                                       List<LootConditionInfo> inheritedConditions,
                                       LootConditionHandler.UncertaintyLevel functionUncertainty,
-                                      boolean luckAffected) {
+                                      boolean luckAffected,
+                                      @Nullable LuckGate luckGate) {
         public LootAcquisitionPath {
             entryConditions = List.copyOf(entryConditions);
             inheritedConditions = List.copyOf(inheritedConditions);
         }
 
-        // 未经投影器分析的路径保守标记；仅在条目签名近似时使用该兜底。
+        /** 未经投影器分析的路径保守标记；仅在条目签名近似时使用该兜底。 */
+        public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                   @Nullable ResourceLocation sourceItemTag,
+                                   List<LootConditionInfo> entryConditions,
+                                   List<LootConditionInfo> inheritedConditions,
+                                   LootConditionHandler.UncertaintyLevel functionUncertainty,
+                                   boolean luckAffected) {
+            this(sourceChildTable, sourceItemTag, entryConditions, inheritedConditions,
+                    functionUncertainty, luckAffected, null);
+        }
+
         public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
                                    @Nullable ResourceLocation sourceItemTag,
                                    List<LootConditionInfo> entryConditions,
@@ -101,6 +117,11 @@ public final class LootTableCatalog {
 
         public boolean hasConditions() {
             return !this.entryConditions.isEmpty() || !this.inheritedConditions.isEmpty();
+        }
+
+        /** 该路径是否被静态证明在任何可表示的幸运下都拿不到。 */
+        public boolean luckImpossible() {
+            return this.luckGate != null && this.luckGate.impossible();
         }
 
         public List<LootConditionInfo> allConditions() {

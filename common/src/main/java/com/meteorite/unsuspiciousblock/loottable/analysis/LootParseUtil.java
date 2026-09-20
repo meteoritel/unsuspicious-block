@@ -80,6 +80,39 @@ public final class LootParseUtil {
     }
 
     /**
+     * 读取数字提供器 JSON 的**常量值**；无法静态求值时返回 {@code null}。
+     * <p>
+     * 识别三种可静态求值的形态：数字字面量、{@code constant} 提供器、以及
+     * {@code uniform} 两端相等。其余形态（依分数、依等级、两端不等的 {@code uniform} 等）
+     * 一律返回 {@code null}——"未知"与"零"在幸运门槛判定里是两件不同的事：
+     * 前者降级为"区间受限"，后者会断言"没有额外抽取"。
+     * <p>
+     * 只被 {@link LuckSpec} 的采集使用，不参与条件/函数分析。
+     */
+    @Nullable
+    public static Double knownNumber(@Nullable JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
+            return element.getAsDouble();
+        }
+        if (!element.isJsonObject()) {
+            return null;
+        }
+        JsonObject object = element.getAsJsonObject();
+        return switch (normalizeType(getString(object, "type", ""))) {
+            case "constant" -> knownNumber(object.get("value"));
+            case "uniform" -> {
+                Double min = knownNumber(object.get("min"));
+                Double max = knownNumber(object.get("max"));
+                yield min != null && min.equals(max) ? min : null;
+            }
+            default -> null;
+        };
+    }
+
+    /**
      * 从 JSON 元素中读取指定字段的类型 id，字段缺失或非字符串时返回 {@code null}。
      */
     @Nullable

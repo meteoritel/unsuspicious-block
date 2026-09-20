@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
@@ -199,6 +200,7 @@ public final class CatalogGeneration {
                 updateConditionListDigest(digest, path.inheritedConditions());
                 updateDigest(digest, path.functionUncertainty().name());
                 updateDigest(digest, Boolean.toString(path.luckAffected()));
+                updateLuckGateDigest(digest, path.luckGate());
             }
         }
         for (CatalogTableDto.ChildTableEntry child : table.childProbabilities()) {
@@ -249,6 +251,21 @@ public final class CatalogGeneration {
                 }
             }
         }
+    }
+
+    // 幸运门槛会直接改变 tooltip 文案（"需要幸运 ≥ 0.34"），因此逐字段进摘要
+    private static void updateLuckGateDigest(MessageDigest digest, @Nullable LuckGate gate) {
+        if (gate == null) {
+            updateDigest(digest, "no_luck_gate");
+            return;
+        }
+        updateDigest(digest, "luck_gate");
+        updateDigest(digest, Boolean.toString(gate.impossible()));
+        updateDigest(digest, gate.minLuck().isPresent()
+                ? Double.toString(gate.minLuck().getAsDouble()) : "");
+        updateDigest(digest, Boolean.toString(gate.rangeLimited()));
+        updateDigest(digest, gate.bonusRollsGate().isPresent()
+                ? Double.toString(gate.bonusRollsGate().getAsDouble()) : "");
     }
 
     private static void updateConditionListDigest(MessageDigest digest, List<LootConditionInfo> conditions) {

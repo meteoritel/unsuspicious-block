@@ -7,6 +7,8 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.U
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootParseUtil;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
@@ -312,7 +314,15 @@ public final class LootTableProjector {
                         resolved.tooltipHint(), resolved.signature()));
         accumulator.merge(resolved.displayName(), resolved.tooltipHint(), new LootAcquisitionPath(
                 sourceChildTable, path.sourceItemTag(), resolved.conditions(), inheritedConditions,
-                functionUncertainty, luckAffected));
+                functionUncertainty, luckAffected, luckGate(path)));
+    }
+
+    // 逐路径最小幸运门槛（决策 34）。只读本条目自身与其所在池的数值：父池的 rolls 只增加抽取次数，
+    // quality 只在本条目与同池兄弟竞争时起作用，因此叶子事件的 LuckSpec 就是全部输入，
+    // 不需要把"整条路径上任意池都受幸运影响"那个布尔（luckAffected）也揉进来。
+    private static LuckGate luckGate(CompiledLootTable.ItemPath path) {
+        LuckGate gate = LuckGateAnalysis.analyze(path.luckSpec());
+        return gate.isTrivial() ? null : gate;
     }
 
     // 多个函数取最保守等级，不能让后续的纯数量函数覆盖前面的未知效果。

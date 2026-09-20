@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
-import com.meteorite.unsuspiciousblock.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
@@ -134,7 +133,8 @@ public final class ProbabilityFormat {
         Component detail = parameter.detail();
         boolean hasDetail = detail != null && !detail.getString().isBlank();
         return switch (parameter.kind()) {
-            case LUCK -> Component.translatable(KEY_PREFIX + "path_hint.luck");
+            case LUCK -> Component.translatable(KEY_PREFIX
+                    + (hasDetail ? "path_hint.luck_detail" : "path_hint.luck"), hasDetail ? detail : Component.empty());
             case TOOL -> Component.translatable(KEY_PREFIX
                             + (hasDetail ? "path_hint.tool" : "path_hint.tool_unspecified"),
                     hasDetail ? detail : Component.empty());
@@ -143,6 +143,18 @@ public final class ProbabilityFormat {
                     hasDetail ? detail : Component.empty());
             case SAMPLE_COUNT -> Component.translatable(KEY_PREFIX + "path_hint.sample_count");
         };
+    }
+
+    /**
+     * 幸运门槛的数值渲染：固定两位小数并去掉无意义的尾零（{@code 0.34} / {@code 3}）。
+     * <p>
+     * 用 {@link BigDecimal} 而不是字符串截断：门槛值已经在 {@code LuckGateAnalysis} 里对齐到
+     * 0.01 网格并用真实公式回验过，这里的渲染只负责让它"能被照着填进输入框"，
+     * 不能引入新的舍入误差（{@code 0.1 + 0.2} 那类浮点尾巴会显示成 {@code 0.30000000000000004}）。
+     */
+    public static String formatLuck(double luck) {
+        return BigDecimal.valueOf(luck).setScale(2, RoundingMode.HALF_UP)
+                .stripTrailingZeros().toPlainString();
     }
 
     // 场景条件逐条列出，用与条件树相同的分隔符拼接；保留条件本身的保真度标记不动

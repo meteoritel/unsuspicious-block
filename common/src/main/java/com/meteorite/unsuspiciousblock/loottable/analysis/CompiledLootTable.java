@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -26,17 +27,34 @@ import java.util.Set;
  * 附魔定义不在任何战利品表 JSON 里，却决定模拟用的满级工具与等级控件范围，
  * 因此它既进哈希摘要（决策 35），也是旋钮目录里等级控件的唯一来源（决策 26），
  * 两份用途共用这一份枚举，不再各扫一遍。
+ * <p>
+ * 每个事件另携带 {@link LuckSpec}——条目与所在池里"与幸运有关"的原始数值
+ * （{@code weight} / {@code quality} / {@code rolls} / {@code bonus_rolls} 及各自的可静态求值程度）。
+ * 门槛数值**不在这里算**：它由 {@link LuckGateAnalysis} 从本记录推出，使"改判定算法"不必
+ * 重新定义编译产物。
+ * <p>
+ * {@code referencedTools} 是编译期扫出的"本表 {@code match_tool} 谓词允许的基座物品"——
+ * 值是该谓词的原文。{@code ItemPredicate} 无法穷举（可含任意物品、标签、组件、数量），
+ * 因此这里只给"可枚举的那一小撮"：标签谓词取**首个成员**（决策 45），下拉因此必然不是全集，
+ * 所以谓词原文必须一起带上，提示里才能写清"下拉不等于谓词允许的全部物品"。
  */
 public record CompiledLootTable(ResourceLocation id, String declaredType, List<Event> events,
-                                Set<ResourceLocation> referencedEnchantments) {
+                                Set<ResourceLocation> referencedEnchantments,
+                                Map<ResourceLocation, String> referencedTools) {
     public CompiledLootTable {
         events = List.copyOf(events);
         referencedEnchantments = Set.copyOf(referencedEnchantments);
+        referencedTools = Map.copyOf(referencedTools);
     }
 
-    /** 兼容旧调用方：无被引用附魔。 */
+    /** 兼容旧调用方：无被引用附魔与工具。 */
     public CompiledLootTable(ResourceLocation id, String declaredType, List<Event> events) {
-        this(id, declaredType, events, Set.of());
+        this(id, declaredType, events, Set.of(), Map.of());
+    }
+
+    public CompiledLootTable(ResourceLocation id, String declaredType, List<Event> events,
+                             Set<ResourceLocation> referencedEnchantments) {
+        this(id, declaredType, events, referencedEnchantments, Map.of());
     }
 
     /** 编译事件——直接物品路径或子表引用位置。 */
@@ -49,6 +67,9 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
 
         // 当前路径所在池的权重或奖励抽取次数受幸运影响。
         boolean luckAffected();
+
+        /** 当前路径在权重竞争与奖励抽取两处的原始数值；无法静态求值的成分为 {@code null}。 */
+        LuckSpec luckSpec();
     }
 
     /**
@@ -61,12 +82,14 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
                            List<JsonElement> entryFunctions,
                            List<LootConditionInfo> inheritedConditions,
                            List<JsonElement> inheritedFunctions,
-                           boolean luckAffected) implements Event {
+                           boolean luckAffected,
+                           LuckSpec luckSpec) implements Event {
         public ItemPath {
             entryConditions = List.copyOf(entryConditions);
             entryFunctions = List.copyOf(entryFunctions);
             inheritedConditions = List.copyOf(inheritedConditions);
             inheritedFunctions = List.copyOf(inheritedFunctions);
+            luckSpec = luckSpec == null ? LuckSpec.DEFAULT : luckSpec;
         }
     }
 
@@ -81,12 +104,14 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
                                 List<JsonElement> siteFunctions,
                                 List<LootConditionInfo> inheritedConditions,
                                 List<JsonElement> inheritedFunctions,
-                                boolean luckAffected) implements Event {
+                                boolean luckAffected,
+                                LuckSpec luckSpec) implements Event {
         public ReferenceSite {
             siteConditions = List.copyOf(siteConditions);
             siteFunctions = List.copyOf(siteFunctions);
             inheritedConditions = List.copyOf(inheritedConditions);
             inheritedFunctions = List.copyOf(inheritedFunctions);
+            luckSpec = luckSpec == null ? LuckSpec.DEFAULT : luckSpec;
         }
     }
 }

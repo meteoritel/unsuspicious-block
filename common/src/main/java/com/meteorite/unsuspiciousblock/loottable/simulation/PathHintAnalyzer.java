@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
@@ -26,18 +27,25 @@ import java.util.Map;
  * 本类同时承担"测量值 → 展示值"的派生（见 {@link #deriveDisplay}）。派生规则刻意保持保守：
  * <ol>
  *   <li>测到了非零值就报测量值——这是玩家最想要的那个事实；</li>
- *   <li>静态不可达照实报 {@code 0%}；</li>
+ *   <li>静态不可达照实报 {@code 0%}（全部路径都被逐路径幸运门槛证明不可达时）；</li>
  *   <li>表级失败（规则未解析、计算失败、尚未请求、已淘汰）原样透传，不被"需要条件"覆盖；</li>
- *   <li>零命中且路径引用了旋钮 → 「需要条件」。**这是 P0 的近似**：真正的可适用性判定需要
- *       逐路径最小幸运门槛与参数化判定（P1 的 {@code LuckGateAnalysis} 与两轴展示状态）。
- *       在只有布尔场景与固定旋钮的 P0，把"被旋钮挡住而抽样为零"说成「未命中」会是一句假话
- *       （决策 40 的同一类错误），因此优先报「需要条件」；</li>
+ *   <li>零命中且路径引用了旋钮 → 「需要条件」，并逐条列出引用目标（P1 起带**逐路径幸运门槛**的
+ *       具体数值，可直接照着填）；</li>
  *   <li>零命中且路径不引用任何旋钮 → 「未命中」——这是老实的抽样陈述。</li>
  * </ol>
+ * 子表入口走同构的 {@link #deriveEntryDisplay}：入口没有逐路径幸运门槛，但"零命中 + 有可陈述的
+ * 入口门槛 → 需要条件"这条规则一致。
  */
 public final class PathHintAnalyzer {
+    private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.";
+    private static final String KEY_LUCK_AT_LEAST = KEY_PREFIX + "path_hint.luck_at_least";
+    private static final String KEY_LUCK_RANGE_LIMITED = KEY_PREFIX + "path_hint.luck_range_limited";
+    private static final String KEY_LUCK_BONUS_ROLLS = KEY_PREFIX + "path_hint.luck_bonus_rolls";
     private static final ResourceLocation MATCH_TOOL =
             ResourceLocation.withDefaultNamespace("match_tool");
+    private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
+    private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
+    private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final ResourceLocation TABLE_BONUS =
             ResourceLocation.withDefaultNamespace("table_bonus");
     private static final ResourceLocation ENCHANTMENT_ACTIVE_CHECK =
@@ -50,6 +58,11 @@ public final class PathHintAnalyzer {
 
     /** 把基准输入的测量值派生为展示值。 */
     public static Probability deriveDisplay(Probability baseline, List<LootAcquisitionPath> paths) {
+        // 静态可证明的不可达优先（规划 §4.3 的静态判据：有效权重恒为 0）。只有**全部**路径都
+        // 在任何可表示的幸运下拿不到时才成立；任一条路径可达就不能写 0%。
+        if (isStaticallyUnreachable(paths)) {
+            return Probability.unreachable();
+        }
         if (baseline instanceof Probability.NeedsCondition) {
             return baseline;
         }
@@ -60,8 +73,8 @@ public final class PathHintAnalyzer {
             return baseline;
         }
         // 表级失败优先于"需要条件"：规则没解析出来时，说"需要某个条件"同样是编造
-        if (baseline instanceof Probability.Unknown unknown
-                && unknown.reason() != UnknownReason.UNCOVERED) {
+        if (baseline instanceof Probability.Unknown(UnknownReason reason)
+                && reason != UnknownReason.UNCOVERED) {
             return baseline;
         }
         List<PathHint> hints = hintsFor(paths);
@@ -70,6 +83,19 @@ public final class PathHintAnalyzer {
         }
         // 适用、抽样零命中、且路径不引用任何旋钮：这是真正的抽样结论
         return baseline instanceof Probability.Measured ? baseline : Probability.uncovered();
+    }
+
+    // 该条目的全部获取路径是否都被逐路径幸运门槛证明不可达；无静态路径的动态条目不算
+    private static boolean isStaticallyUnreachable(List<LootAcquisitionPath> paths) {
+        if (paths.isEmpty()) {
+            return false;
+        }
+        for (LootAcquisitionPath path : paths) {
+            if (!path.luckImpossible()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -84,24 +110,81 @@ public final class PathHintAnalyzer {
     }
 
     /**
+     * 子表入口的展示派生——与 {@link #deriveDisplay} 同构，区别只是入口没有逐路径幸运门槛。
+     * <p>
+     * 为什么零命中要报「需要条件」：子表入口被入口门槛（附魔、群系等）挡住时，"抽样零命中"是
+     * **错误归因**——它把一个确定的原因说成了运气，玩家看不到自己缺什么。反过来说，把这一项
+     * 与物品用同一条规则派生，也让"调好条件后它变成数字"这件事不需要另一套逻辑。
+     */
+    public static Probability deriveEntryDisplay(Probability measured, List<PathHint> hints) {
+        if (measured instanceof Probability.Measured value && value.lower() > 0.0) {
+            return measured;
+        }
+        if (measured instanceof Probability.Unreachable) {
+            return measured;
+        }
+        // 表级失败（规则未解析、计算失败、尚未请求、已淘汰）原样透传：那些时候说"需要某个条件"
+        // 同样是编造
+        if (measured instanceof Probability.Unknown(UnknownReason reason)
+                && reason != UnknownReason.UNCOVERED) {
+            return measured;
+        }
+        return hints.isEmpty() ? measured : Probability.needsCondition(hints);
+    }
+
+    /**
      * 收集该条目全部获取路径引用到的旋钮与场景条件。
      * 参数提示按 {@link ParameterKind} 的声明顺序排在前，场景条件合并为一条排在最后——
      * 先读"要调什么"、再读"要满足什么"。
+     * <p>
+     * 幸运提示优先给出**逐路径幸运门槛**的具体数值（"需要幸运 ≥ 0.34"）：那是玩家能直接照着填的值。
+     * 门槛为"区间受限"或不可数时降级为对应陈述；只有连门槛都算不出来（路径只带
+     * {@code luckAffected} 标记）时才退回无具体目标的那条文案。
      */
     public static List<PathHint> hintsFor(List<LootAcquisitionPath> paths) {
         Map<ParameterKind, Map<String, Component>> parameterDetails = new EnumMap<>(ParameterKind.class);
         LinkedHashMap<String, LootConditionInfo> scenarioConditions = new LinkedHashMap<>();
+        LinkedHashMap<String, Component> luckDetails = new LinkedHashMap<>();
         boolean luckReferenced = false;
 
         for (LootAcquisitionPath path : paths) {
             luckReferenced |= path.luckAffected();
+            Component luckDetail = luckDetail(path.luckGate());
+            if (luckDetail != null) {
+                luckDetails.putIfAbsent(luckDetail.getString(), luckDetail);
+            }
             for (LootConditionInfo condition : path.allConditions()) {
                 collect(condition, parameterDetails, scenarioConditions);
             }
         }
+        return assembleHints(luckDetails, luckReferenced, parameterDetails, scenarioConditions);
+    }
 
+    /**
+     * 把一组**不在任何获取路径上**的条件翻译成同样的提示——目前只有子表入口用它。
+     * <p>
+     * 注入边声明的入口门槛不写在任何 JSON 里，因此也不在任何 {@link LootAcquisitionPath} 上；
+     * 但它的分类规则与物品完全共用（{@link #collect}），所以同一个条件在物品 tooltip 与子表入口
+     * tooltip 上说同一句话，不会出现"物品说要附魔、子表入口却说别的东西"。
+     */
+    public static List<PathHint> hintsForConditions(List<LootConditionInfo> conditions) {
+        Map<ParameterKind, Map<String, Component>> parameterDetails = new EnumMap<>(ParameterKind.class);
+        LinkedHashMap<String, LootConditionInfo> scenarioConditions = new LinkedHashMap<>();
+        for (LootConditionInfo condition : conditions) {
+            collect(condition, parameterDetails, scenarioConditions);
+        }
+        return assembleHints(new LinkedHashMap<>(), false, parameterDetails, scenarioConditions);
+    }
+
+    private static List<PathHint> assembleHints(LinkedHashMap<String, Component> luckDetails,
+                                                boolean luckReferenced,
+                                                Map<ParameterKind, Map<String, Component>> parameterDetails,
+                                                LinkedHashMap<String, LootConditionInfo> scenarioConditions) {
         List<PathHint> hints = new ArrayList<>();
-        if (luckReferenced) {
+        for (Component detail : luckDetails.values()) {
+            hints.add(new PathHint.ReferencesParameter(ParameterKind.LUCK, detail));
+        }
+        if (luckDetails.isEmpty() && luckReferenced) {
             addParameter(parameterDetails, ParameterKind.LUCK, "", null);
         }
         for (ParameterKind kind : ParameterKind.values()) {
@@ -117,6 +200,31 @@ public final class PathHintAnalyzer {
             hints.add(new PathHint.ReferencesScenario(List.copyOf(scenarioConditions.values())));
         }
         return List.copyOf(hints);
+    }
+
+    /**
+     * 把逐路径幸运门槛渲染成一条静态陈述；无可陈述内容时返回 {@code null}。
+     * <p>
+     * 三种形态各自有专属文案：可填的数值门槛、只报"区间受限"不给数值、以及只有额外抽取门槛。
+     * 不可达由 {@code Probability.Unreachable} 承担，不在这里再写一遍——同一个结论两处表达
+     * 迟早会互相矛盾。
+     */
+    @Nullable
+    private static Component luckDetail(@Nullable LuckGate gate) {
+        if (gate == null || gate.isTrivial() || gate.impossible()) {
+            return null;
+        }
+        if (gate.minLuck().isPresent()) {
+            return Component.translatable(KEY_LUCK_AT_LEAST, ProbabilityFormat.formatLuck(gate.minLuck().getAsDouble()));
+        }
+        if (gate.rangeLimited()) {
+            return Component.translatable(KEY_LUCK_RANGE_LIMITED);
+        }
+        if (gate.bonusRollsGate().isPresent()) {
+            return Component.translatable(KEY_LUCK_BONUS_ROLLS,
+                    ProbabilityFormat.formatLuck(gate.bonusRollsGate().getAsDouble()));
+        }
+        return null;
     }
 
     // 递归分类单条条件；组合条件只按类型本身归类，其子条件各自递归
