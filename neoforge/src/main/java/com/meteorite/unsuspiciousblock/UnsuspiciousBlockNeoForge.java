@@ -32,6 +32,7 @@ import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.platform.DataPackReloadListener;
 import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import com.mojang.serialization.MapCodec;
@@ -76,6 +77,7 @@ import net.neoforged.neoforge.common.EffectCures;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.bus.api.EventPriority;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.AnvilUpdateEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
@@ -311,7 +313,8 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("4.3");
+        // 协议版本随目录包格式变化升级：概率值新增第 4 态与未知原因，编码布局已变
+        var registrar = event.registrar(Constants.MOD_ID).versioned("4.4");
         // 遍历 ModPayloads 统一清单注册 C2S，避免手写重复
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(registrar, c2s);
@@ -360,6 +363,14 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         UsbCommand.register(event.getDispatcher());
+    }
+
+    // 数据包重载：只置脏标记，重建交给服务端 tick 路径（D9）。
+    // 挂在这里而不是别处：/reload 与整合包换表都走服务器数据包重载，本事件是唯一能保证
+    // "重载真的发生了"的入口；在回调里同步跑全量构建会拖住重载本身。
+    @SubscribeEvent
+    public void onAddReloadListener(AddReloadListenerEvent event) {
+        event.addListener(DataPackReloadListener.INSTANCE);
     }
 
     // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）

@@ -33,6 +33,7 @@ import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
+import com.meteorite.unsuspiciousblock.platform.DataPackReloadListener;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
@@ -44,12 +45,18 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
+import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
 import net.fabricmc.fabric.api.registry.FuelRegistry;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -73,11 +80,14 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.crafting.RecipeSerializer;
+
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -253,6 +263,25 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         for (ModPayloads.S2CSpec<?> spec : ModPayloads.S2C_SPECS) {
             registerS2CSpec(spec);
         }
+
+        // 数据包重载：只置脏标记，重建交给 tick 路径（D9）。Fabric 用服务器数据包重载监听器；
+        // 启动时的首次资源加载同样会触发，但那时目录未加载，标记会被忽略。
+        ResourceManagerHelper.get(PackType.SERVER_DATA).registerReloadListener(
+                new IdentifiableResourceReloadListener() {
+                    @Override
+                    public ResourceLocation getFabricId() {
+                        return ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "loottable_reload_watch");
+                    }
+
+                    @Override
+                    public CompletableFuture<Void> reload(PreparationBarrier barrier, ResourceManager manager,
+                                                          ProfilerFiller preparationsProfiler,
+                                                          ProfilerFiller reloadProfiler,
+                                                          Executor backgroundExecutor, Executor gameExecutor) {
+                        return DataPackReloadListener.INSTANCE.reload(barrier, manager, preparationsProfiler,
+                                reloadProfiler, backgroundExecutor, gameExecutor);
+                    }
+                });
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             ServerLootTableConfigManager.start(server);
