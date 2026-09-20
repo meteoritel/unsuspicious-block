@@ -7,7 +7,6 @@ import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
@@ -90,16 +89,9 @@ public final class ArchaeologyLootRuntimeTracker {
         upsertForTrackedTables(player, trackingContext.rootTableId(), entry, null);
     }
 
-    // 解锁触发：若该表尚未纳入概率缓存，向后台工作线程插队模拟
+    // 解锁触发：若该表尚未纳入概率缓存，向后台工作线程插队模拟它的基准输入
     private static void triggerPrioritySimulation(ResourceLocation tableId) {
-        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker == null) return;
-        if (!ArchaeologyJournalServerCatalog.hasSimulatedData(tableId)) {
-            TableDefinition rawTable = ArchaeologyJournalServerCatalog.getRawTable(tableId);
-            if (rawTable != null) {
-                worker.enqueuePriority(tableId, rawTable);
-            }
-        }
+        ArchaeologyJournalServerCatalog.enqueueBaselinePriority(tableId);
     }
 
     @Nullable

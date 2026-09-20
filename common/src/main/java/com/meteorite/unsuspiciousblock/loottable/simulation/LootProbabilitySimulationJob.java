@@ -1,14 +1,8 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.SimulatedValue;
 import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics;
 import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics.Count;
 import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics.Stage;
@@ -27,20 +21,23 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * 可续跑的单表概率模拟任务。
- * 每次 {@link #advance(long)} 只执行有限批次，并保留场景、计数和动态签名状态供下个 tick 继续。
+ * 可续跑的**单个输入**概率模拟任务。
+ * <p>
+ * 与旧实现的关键区别：一次任务只跑一个 {@link SimulationInput}（即一个条件赋值 + 一组参数旋钮），
+ * 产出的是原始测量值 {@link SimulationMeasurement} 而不是填好展示概率的表定义。展示值由服务端
+ * 按当前输入与静态结构派生，因此"从缓存恢复"与"刚算完"共用同一条派生路径。
+ * <p>
+ * 每个 {@link #advance(long)} 只执行有限批次，并保留计数与动态签名状态供下个 tick 继续。
  */
 final class LootProbabilitySimulationJob {
     private static final int TIME_CHECK_BATCH_SIZE = 32;
@@ -50,7 +47,10 @@ final class LootProbabilitySimulationJob {
     private final TableDefinition rawTable;
     private final LootTable lootTable;
     private final ServerLevel level;
-    private final List<SimulationScenario> scenarios;
+    private final SimulationScenario scenario;
+    private final SimulationInput input;
+    /** 场景条件 + 输入参数的合成 profile——模拟真正使用的那一份。 */
+    private final SimulationProfile effectiveProfile;
     private final Map<Item, CandidateIndex> allRawCandidatesByItem;
     private final Map<String, LootResultSignature> discovered = new LinkedHashMap<>();
     private final Map<String, ResourceLocation> discoveredChildSources = new LinkedHashMap<>();
@@ -69,26 +69,35 @@ final class LootProbabilitySimulationJob {
     private final Set<ResourceLocation> directChildTables;
     private final Consumer<ResourceLocation> childDropRecorder = this::recordChildTableAppearance;
 
-    private int scenarioIndex;
     private int completedRolls;
     private boolean scenarioPrepared;
     private Map<LootResultSignature, CandidateCounter> candidateCounters = Map.of();
     private Map<Item, CandidateIndex> candidatesByItem = Map.of();
     private Map<ResourceLocation, RollCounter> childCounters = Map.of();
     private LootParams lootParams;
-    private LootProbabilitySimulator.SimResult result;
+    private SimulationMeasurement result;
 
     LootProbabilitySimulationJob(ResourceLocation tableId, TableDefinition rawTable,
                                  LootTable lootTable, ServerLevel level,
-                                 List<SimulationScenario> scenarios) {
+                                 SimulationScenario scenario, SimulationInput input) {
         this.tableId = tableId;
         this.rawTable = rawTable;
         this.lootTable = lootTable;
         this.level = level;
-        this.scenarios = scenarios;
+        this.scenario = scenario;
+        this.input = input;
+        // 条件赋值来自场景、参数旋钮来自输入：两者合成的 profile 才是这一份模拟的输入身份。
+        // 注入场景自带满级工具（见 SimulationScenario.keepBaseTool），因此不套用输入的工具。
+        this.effectiveProfile = input.params().applyTo(
+                scenario.profile(), level.registryAccess(), scenario.keepBaseTool());
         this.allRawCandidatesByItem = indexCandidatesByItem(
                 rawTable.items().stream().map(ItemDefinition::signature).toList());
         this.directChildTables = Set.copyOf(rawTable.childTables());
+    }
+
+    // 抽样次数取自输入身份（决策 38/39），不再是全局常量
+    private int sampleCount() {
+        return this.input.params().sampleCount();
     }
 
     // 推进到时间预算耗尽或任务完成；至少执行一个固定批次，避免极短预算导致无进展。
@@ -103,49 +112,42 @@ final class LootProbabilitySimulationJob {
 
     // 观测仅包围既有时间片，不调整截止时间、批次大小或抽取次数。
     private boolean advanceWithinSlice(long deadlineNanos) {
+        if (isComplete()) {
+            return true;
+        }
         boolean advanced = false;
-        while (!isComplete()) {
-            if (!this.scenarioPrepared) {
-                long start = LootSimulationMetrics.now();
-                prepareScenario();
-                this.metrics.end(Stage.PREPARE, start);
-                this.metrics.add(Count.SCENARIOS, 1);
-            }
-            SimulationScenario scenario = this.scenarios.get(this.scenarioIndex);
-            try (LootSimulationScope.Scope scope = LootSimulationScope.open(
-                    scenario.profile(), this.directChildTables)) {
-                try {
-                    while (this.completedRolls < LootProbabilitySimulator.getSimulationCount()) {
-                        int batchEnd = Math.min(LootProbabilitySimulator.getSimulationCount(),
-                                this.completedRolls + TIME_CHECK_BATCH_SIZE);
-                        while (this.completedRolls < batchEnd) {
-                            simulateRoll();
-                            this.completedRolls++;
-                            advanced = true;
-                        }
-                        if (this.completedRolls < LootProbabilitySimulator.getSimulationCount()
-                                && advanced && System.nanoTime() >= deadlineNanos) {
-                            return false;
-                        }
-                    }
-                } finally {
-                    // 作用域关闭前收集本片内未被场景覆盖的条件（提前返回同样需要收集）
-                    this.uncoveredConditions.addAll(scope.uncoveredConditions());
-                }
-            }
+        if (!this.scenarioPrepared) {
             long start = LootSimulationMetrics.now();
-            finishScenario(scenario);
-            this.metrics.end(Stage.FINISH, start);
-            if (this.scenarioIndex >= this.scenarios.size()) {
-                start = LootSimulationMetrics.now();
-                this.result = buildResult();
-                this.metrics.end(Stage.RESULT, start);
-                return true;
-            }
-            if (advanced && System.nanoTime() >= deadlineNanos) {
-                return false;
+            prepareScenario();
+            this.metrics.end(Stage.PREPARE, start);
+            this.metrics.add(Count.SCENARIOS, 1);
+        }
+        try (LootSimulationScope.Scope scope = LootSimulationScope.open(
+                this.effectiveProfile, this.directChildTables)) {
+            try {
+                while (this.completedRolls < sampleCount()) {
+                    int batchEnd = Math.min(sampleCount(), this.completedRolls + TIME_CHECK_BATCH_SIZE);
+                    while (this.completedRolls < batchEnd) {
+                        simulateRoll();
+                        this.completedRolls++;
+                        advanced = true;
+                    }
+                    if (this.completedRolls < sampleCount()
+                            && advanced && System.nanoTime() >= deadlineNanos) {
+                        return false;
+                    }
+                }
+            } finally {
+                // 作用域关闭前收集本片内未被场景覆盖的条件（提前返回同样需要收集）
+                this.uncoveredConditions.addAll(scope.uncoveredConditions());
             }
         }
+        long start = LootSimulationMetrics.now();
+        finishScenario();
+        this.metrics.end(Stage.FINISH, start);
+        start = LootSimulationMetrics.now();
+        this.result = buildMeasurement();
+        this.metrics.end(Stage.RESULT, start);
         return true;
     }
 
@@ -169,7 +171,7 @@ final class LootProbabilitySimulationJob {
         return this.result != null;
     }
 
-    LootProbabilitySimulator.SimResult result() {
+    SimulationMeasurement result() {
         if (this.result == null) {
             throw new IllegalStateException("模拟任务尚未完成: " + this.tableId);
         }
@@ -177,13 +179,12 @@ final class LootProbabilitySimulationJob {
     }
 
     private void prepareScenario() {
-        SimulationScenario scenario = this.scenarios.get(this.scenarioIndex);
         this.candidateCounters = new LinkedHashMap<>();
         this.candidatesByItem = new HashMap<>();
         this.childCounters = new LinkedHashMap<>();
         for (ItemDefinition item : this.rawTable.items()) {
             String storedKey = storedKey(item.signature());
-            if (scenario.applicableSignatures().contains(storedKey)) {
+            if (this.scenario.applicableSignatures().contains(storedKey)) {
                 addCandidate(item.signature(), storedKey);
             }
         }
@@ -191,7 +192,7 @@ final class LootProbabilitySimulationJob {
             this.childCounters.put(childTable, new RollCounter());
         }
         this.lootParams = LootContextParamFiller.createForSimulation(
-                this.level, this.lootTable.getParamSet(), scenario.profile());
+                this.level, this.lootTable.getParamSet(), this.effectiveProfile);
         this.scenarioPrepared = true;
     }
 
@@ -222,7 +223,7 @@ final class LootProbabilitySimulationJob {
 
     // 原始候选与场景候选使用同一匹配语义；原始索引供不适用路径的回退判断。
     private Map<Item, CandidateIndex> indexCandidatesByItem(
-            List<LootResultSignature> signatures) {
+            java.util.List<LootResultSignature> signatures) {
         Map<Item, CandidateIndex> result = new HashMap<>();
         for (LootResultSignature signature : new LinkedHashSet<>(signatures)) {
             Item item = BuiltInRegistries.ITEM.get(signature.itemId());
@@ -236,7 +237,7 @@ final class LootProbabilitySimulationJob {
         LootSimulationScope.beginRoll();
         this.metrics.end(Stage.BEGIN_ROLL, start);
         start = LootSimulationMetrics.now();
-        List<ItemStack> drops = this.lootTable.getRandomItems(this.lootParams);
+        java.util.List<ItemStack> drops = this.lootTable.getRandomItems(this.lootParams);
         this.metrics.end(Stage.GENERATE, start);
         this.metrics.add(Count.ROLLS, 1);
         start = LootSimulationMetrics.now();
@@ -295,7 +296,7 @@ final class LootProbabilitySimulationJob {
         this.metrics.end(Stage.CHILD_RECORD, start);
     }
 
-    private void finishScenario(SimulationScenario scenario) {
+    private void finishScenario() {
         Map<String, Integer> appearanceCounts = new LinkedHashMap<>();
         for (CandidateCounter counter : this.candidateCounters.values()) {
             appearanceCounts.put(counter.storedKey, counter.count());
@@ -304,9 +305,8 @@ final class LootProbabilitySimulationJob {
         for (Map.Entry<ResourceLocation, RollCounter> entry : this.childCounters.entrySet()) {
             childAppearanceCounts.put(entry.getKey(), entry.getValue().count());
         }
-        this.countsByScenario.put(scenario.key(), appearanceCounts);
-        this.childCountsByScenario.put(scenario.key(), childAppearanceCounts);
-        this.scenarioIndex++;
+        this.countsByScenario.put(this.scenario.key(), appearanceCounts);
+        this.childCountsByScenario.put(this.scenario.key(), childAppearanceCounts);
         this.completedRolls = 0;
         this.candidateCounters = Map.of();
         this.candidatesByItem = Map.of();
@@ -315,72 +315,21 @@ final class LootProbabilitySimulationJob {
         this.scenarioPrepared = false;
     }
 
-    // 基准场景 key——条件全部不成立的那个场景（决策 2）。网格上的数字只来自它。
-    // 找不到显式标记时退回第一个场景：宁可展示一个有据可查的场景，也不留空。
-    private String baselineScenarioKey() {
-        for (SimulationScenario scenario : this.scenarios) {
-            if (scenario.baseline()) {
-                return scenario.key();
-            }
+    // 原始测量值：只记"多少签名测到了多少"，把展示派生留给服务端的统一入口。
+    // 这样"刚算完"与"从缓存恢复"不可能是两套口径——这是 P1 消除重复实现的关键一步。
+    private SimulationMeasurement buildMeasurement() {
+        Map<String, Integer> counts = this.countsByScenario.getOrDefault(this.scenario.key(), Map.of());
+        Map<String, SimulatedValue> itemProbabilities = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            itemProbabilities.put(entry.getKey(), formatProbability(entry.getValue()));
         }
-        return this.scenarios.isEmpty() ? "" : this.scenarios.getFirst().key();
-    }
-
-    private LootProbabilitySimulator.SimResult buildResult() {
-        String baselineKey = baselineScenarioKey();
-        List<ItemDefinition> simulatedItems = new ArrayList<>(
-                this.rawTable.items().size() + this.discovered.size());
-        for (ItemDefinition item : this.rawTable.items()) {
-            List<ScenarioProbability> probabilities = scenarioProbabilities(item);
-            Probability display = PathHintAnalyzer.deriveDisplay(
-                    baselineMeasurement(baselineKey, probabilities), item.acquisitionPaths());
-            simulatedItems.add(new ItemDefinition(
-                    item.id(), item.displayName(), item.tooltipHint(), display,
-                    item.signature(), item.acquisitionPaths(), item.injected(), probabilities));
-        }
-        for (Map.Entry<String, LootResultSignature> entry : this.discovered.entrySet()) {
-            List<ScenarioProbability> probabilities = discoveredScenarioProbabilities(entry.getKey());
-            // 动态条目没有可供静态判定的获取路径，因此"需要条件"无从陈述；基准下没观测到就是未覆盖
-            Probability display = baselineMeasurement(baselineKey, probabilities);
-            ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(
-                    entry.getValue(), display, true, probabilities,
-                    this.previewProvider.apply(entry.getValue()).copy());
-            ResourceLocation childSource = this.discoveredDirectly.contains(entry.getKey())
-                    ? null : this.discoveredChildSources.get(entry.getKey());
-            if (childSource == null) {
-                simulatedItems.add(discoveredItem);
-            } else {
-                simulatedItems.add(new ItemDefinition(
-                        discoveredItem.id(), discoveredItem.displayName(), discoveredItem.tooltipHint(),
-                        discoveredItem.probability(), discoveredItem.signature(),
-                        List.of(new LootAcquisitionPath(childSource, List.of(), List.of())),
-                        true, discoveredItem.scenarioProbabilities()));
-            }
-        }
-
-        List<ChildTableProbability> childProbabilities = new ArrayList<>();
-        for (ResourceLocation childTable : this.rawTable.childTables()) {
-            List<ScenarioProbability> probabilities = childScenarioProbabilities(childTable);
-            childProbabilities.add(new ChildTableProbability(childTable,
-                    baselineMeasurement(baselineKey, probabilities), probabilities));
-        }
-        TableDefinition table = new TableDefinition(
-                this.tableId, this.rawTable.displayName(), this.rawTable.type(), simulatedItems,
-                LootProbabilitySimulator.getSimulationCount(), this.rawTable.childTables(), childProbabilities);
+        Map<ResourceLocation, SimulatedValue> childProbabilities = new LinkedHashMap<>();
+        this.childCountsByScenario.getOrDefault(this.scenario.key(), Map.of())
+                .forEach((childTable, appearances) ->
+                        childProbabilities.put(childTable, formatProbability(appearances)));
         logUncoveredConditions();
-        return LootProbabilitySimulator.SimResult.success(this.tableId, table);
-    }
-
-    // 基准场景下的测量值；基准场景未覆盖该签名时说明"该输入下没有可用路径"，
-    // 由 PathHintAnalyzer 决定它该显示为「需要条件」还是「未覆盖」。
-    private static Probability baselineMeasurement(String baselineKey,
-                                                    List<ScenarioProbability> probabilities) {
-        for (ScenarioProbability scenario : probabilities) {
-            if (scenario.scenarioKey().equals(baselineKey)) {
-                return scenario.probability();
-            }
-        }
-        return Probability.uncovered();
+        return new SimulationMeasurement(itemProbabilities, childProbabilities,
+                this.discovered, this.discoveredDirectly, this.discoveredChildSources);
     }
 
     // 未命中场景覆盖的场景控制类型条件只能按真实逻辑求值，数值可能偏离场景估算，完成时汇总提示一次
@@ -393,119 +342,14 @@ final class LootProbabilitySimulationJob {
                 this.tableId, this.uncoveredConditions.size(), String.join(", ", this.uncoveredConditions));
     }
 
-    private List<ScenarioProbability> scenarioProbabilities(ItemDefinition item) {
-        String storedKey = storedKey(item.signature());
-        // 代表场景数量受 MAX_SCENARIOS 限制。被截断的条件组合不会有任何场景覆盖它，此时条目在
-        // 每个场景里都是"不适用"，逐个写 "0" 会把"未覆盖"显示成"不可达"；返回空场景列表让汇总
-        // 落到 "?"（未知）。
-        if (!isApplicableInAnyScenario(storedKey)) {
-            return List.of();
-        }
-        List<PathHint> hints = PathHintAnalyzer.hintsFor(item.acquisitionPaths());
-        List<ScenarioProbability> probabilities = new ArrayList<>();
-        for (SimulationScenario scenario : this.scenarios) {
-            if (!scenario.applicableSignatures().contains(storedKey)) {
-                // D2 的拆分：某条路径在该场景下不可用**不是**"静态不可达"，它只是在这个场景的
-                // 布尔赋值下不成立。展示为「需要条件」并逐条列出引用到的条件，而不是 0%。
-                probabilities.add(new ScenarioProbability(scenario.key(),
-                        PathHintAnalyzer.inapplicableScenarioDisplay(hints),
-                        scenario.assumptions()));
-                continue;
-            }
-            Map<String, Integer> counts = this.countsByScenario.getOrDefault(scenario.key(), Map.of());
-            if (!counts.containsKey(storedKey)) {
-                continue;
-            }
-            probabilities.add(new ScenarioProbability(scenario.key(),
-                    formatProbability(counts.get(storedKey)), scenario.assumptions()));
-        }
-        return List.copyOf(probabilities);
-    }
-
-    // 子表入口的分场景概率；不可用时与物品同一口径记为「需要条件」，不用 0% 冒充"不可达"
-    private List<ScenarioProbability> childScenarioProbabilities(ResourceLocation childTable) {
-        if (!isChildApplicableInAnyScenario(childTable)) {
-            return List.of();
-        }
-        List<LootConditionInfo> childConditions = conditionsOfChildTable(childTable);
-        boolean hasHints = !childConditions.isEmpty();
-        List<ScenarioProbability> probabilities = new ArrayList<>();
-        for (SimulationScenario scenario : this.scenarios) {
-            int appearances = this.childCountsByScenario.getOrDefault(scenario.key(), Map.of())
-                    .getOrDefault(childTable, 0);
-            if (!scenario.applicableChildTables().contains(childTable)) {
-                probabilities.add(new ScenarioProbability(scenario.key(),
-                        PathHintAnalyzer.inapplicableScenarioDisplay(hasHints
-                                ? List.of(new PathHint.ReferencesScenario(childConditions))
-                                : List.of()),
-                        scenario.assumptions()));
-                continue;
-            }
-            probabilities.add(new ScenarioProbability(scenario.key(),
-                    formatProbability(appearances), scenario.assumptions()));
-        }
-        return List.copyOf(probabilities);
-    }
-
-    // 该子表入口在父表里出现过的条件；用于"这个场景下为什么拿不到"的静态陈述
-    private List<LootConditionInfo> conditionsOfChildTable(ResourceLocation childTable) {
-        LinkedHashMap<String, LootConditionInfo> conditions = new LinkedHashMap<>();
-        for (ItemDefinition item : this.rawTable.items()) {
-            for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                if (!childTable.equals(path.sourceChildTable())) {
-                    continue;
-                }
-                for (LootConditionInfo condition : path.allConditions()) {
-                    conditions.putIfAbsent(condition.conditionType() + "|" + condition.description().getString(),
-                            condition);
-                }
-            }
-        }
-        return List.copyOf(conditions.values());
-    }
-
-    // 判断签名是否至少在一个代表场景中被静态判定可达；全为否说明场景集未覆盖该条目
-    private boolean isApplicableInAnyScenario(String storedKey) {
-        for (SimulationScenario scenario : this.scenarios) {
-            if (scenario.applicableSignatures().contains(storedKey)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // 判断子表是否至少在一个代表场景中被静态判定可达
-    private boolean isChildApplicableInAnyScenario(ResourceLocation childTable) {
-        for (SimulationScenario scenario : this.scenarios) {
-            if (scenario.applicableChildTables().contains(childTable)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // 动态条目没有可供静态判定的获取路径，只展示实际观测到该签名的代表场景。
-    private List<ScenarioProbability> discoveredScenarioProbabilities(String storedKey) {
-        List<ScenarioProbability> probabilities = new ArrayList<>();
-        for (SimulationScenario scenario : this.scenarios) {
-            Map<String, Integer> counts = this.countsByScenario.getOrDefault(scenario.key(), Map.of());
-            if (!counts.containsKey(storedKey)) {
-                continue;
-            }
-            probabilities.add(new ScenarioProbability(scenario.key(),
-                    formatProbability(counts.get(storedKey)), scenario.assumptions()));
-        }
-        return List.copyOf(probabilities);
-    }
-
-    // 抽样零出现只记为测量结果 0.0（展示为「未命中」）：条目在该场景下已被静态判定可达，
+    // 抽样零出现只记为测量结果 0.0（展示为「未命中」）：条目在该输入下已被静态判定可达，
     // 剩下的零出现是真实的抽样事实，不再是"模拟可能没覆盖到"。0% 只留给静态可证明的不可达。
-    private static Probability formatProbability(int appearances) {
+    private SimulatedValue formatProbability(int appearances) {
         if (appearances == 0) {
-            return Probability.measured(0.0);
+            return new SimulatedValue.Measured(0.0, java.util.OptionalDouble.empty());
         }
-        return Probability.measured((double) appearances
-                / LootProbabilitySimulator.getSimulationCount());
+        return new SimulatedValue.Measured((double) appearances / sampleCount(),
+                java.util.OptionalDouble.empty());
     }
 
     // 附魔结果继续折叠，其他动态结果保留组件，避免药水等物品在缓存和同步后丢失变体。

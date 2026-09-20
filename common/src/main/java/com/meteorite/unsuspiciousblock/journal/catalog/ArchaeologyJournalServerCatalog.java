@@ -118,11 +118,11 @@ public final class ArchaeologyJournalServerCatalog {
     public static void ensureLoaded(MinecraftServer server) {
         if (loaded) return;
 
-        List<ResourceLocation> uncached = List.of();
+        List<LootProbabilitySimulationWorker.SimulationRequest> uncached = List.of();
         try {
             BuildResult buildResult = buildGeneration(server);
             currentGeneration = buildResult.generation();
-            uncached = buildResult.uncachedTables();
+            uncached = buildResult.uncachedRequests();
         } catch (Exception e) {
             LOGGER.error("加载考古战利品表目录失败", e);
             // 构建失败时进入明确的空状态而不是把半成品留在引用上；
@@ -311,136 +311,253 @@ public final class ArchaeologyJournalServerCatalog {
                 .toList();
         List<ChildTableProbability> children = table.childTableProbabilities().stream()
                 .map(child -> new ChildTableProbability(child.tableId(),
-                        Probability.unknown(UnknownReason.UNPARSED), List.of()))
+                        Probability.unknown(UnknownReason.UNPARSED), List.of(),
+                        // 规则未解析时仍然如实给出"入口需要什么"：那是静态声明，不依赖解析结果
+                        child.conditions()))
                 .toList();
         return new TableDefinition(table.id(), table.displayName(), table.type(), items,
                 table.simulationCount(), table.childTables(), children);
     }
 
-    // 未缓存表入队分 tick 模拟；提交与排空回调都捕获本代 generation，提交时校验。
+    // 未缓存的**基准输入**入队分 tick 模拟；提交与排空回调都捕获本代 generation，提交时校验。
     // 这里依赖既有 reload 协议：数据包重载走 pause → clearQueue → invalidate → ensureLoaded → resume，
-    // 队列与在跑任务都会被丢弃，且暂停期间不会产出结果，因此旧代结果不可能落到新代处理器上；
-    // 若将来出现"不清队列就换代"的调用路径，需要改为由工作项自身携带 generation。
+    // 队列与在跑任务都会被丢弃，且暂停期间不会产出结果，因此旧代结果不可能落到新代处理器上。
     private static void enqueueSimulation(MinecraftServer server, CatalogGeneration generation,
-                                         List<ResourceLocation> uncached) {
+                                         List<LootProbabilitySimulationWorker.SimulationRequest> uncached) {
         long generationId = generation.generation();
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if (worker == null) {
             // 工作线程未启动（异常情况）：回退到主线程同步模拟，避免功能缺失
-            LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个表", uncached.size());
-            simulateSynchronously(server, generation, uncached);
+            LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个基准输入", uncached.size());
+            simulateSynchronously(server, uncached);
+            broadcastCatalogHash(generationId, server);
             return;
         }
 
-        worker.setResultHandler((result, srv) -> commitSimulatedTable(generationId, result, srv));
-        worker.setQueueDrainedHandler(srv -> broadcastCatalogHash(generationId, srv));
-
-        Map<ResourceLocation, TableDefinition> uncachedMap = new LinkedHashMap<>();
-        for (ResourceLocation tableId : uncached) {
-            TableDefinition raw = generation.staticTable(tableId);
-            if (raw != null) {
-                uncachedMap.put(tableId, raw);
-            }
-        }
-        worker.enqueueBatch(uncachedMap);
-    }
-
-    // 同步回退模拟（仅在 worker 未启动时使用）
-    private static void simulateSynchronously(MinecraftServer server, CatalogGeneration generation,
-                                             List<ResourceLocation> tableIds) {
-        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
-        for (ResourceLocation tableId : tableIds) {
-            TableDefinition rawTable = generation.staticTable(tableId);
-            if (rawTable == null) continue;
-            LootProbabilitySimulator.SimResult result =
-                    LootProbabilitySimulator.simulateOne(tableId, rawTable, server.overworld());
-            commitSimulatedTable(generation, result, probabilityData);
-        }
-        broadcastCatalogHash(generation.generation(), server);
+        installHandlers(worker, generationId);
+        worker.enqueueBatch(uncached);
     }
 
     /**
-     * 由工作器在主线程调用：提交单表模拟结果到当代 overlay 与 SavedData，并广播哈希。
+     * 安装工作器的两个回调：结果提交与队列排空广播。
+     * <p>
+     * 结果回调携带 {@code requester}：为 {@code null} 的是启动批量填充，结果要发布到共享目录；
+     * 非空的是玩家的按需请求，结果只回给请求者——按内容去重的缓存是全服共享的，但
+     * "当前展示哪个输入"是每个玩家自己的选择，把它写进共享目录会让两个玩家互相覆盖对方的界面。
      */
-    public static void commitSimulatedTable(LootProbabilitySimulator.SimResult result, MinecraftServer server) {
+    private static void installHandlers(LootProbabilitySimulationWorker worker, long generationId) {
+        worker.setResultHandler(ArchaeologyJournalServerCatalog::commitSimulated);
+        worker.setQueueDrainedHandler(srv -> broadcastCatalogHash(generationId, srv));
+    }
+
+    // 同步回退模拟（仅在 worker 未启动时使用）
+    private static void simulateSynchronously(MinecraftServer server,
+                                             List<LootProbabilitySimulationWorker.SimulationRequest> requests) {
+        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
         CatalogGeneration generation = currentGeneration;
         if (generation == null) {
             return;
         }
-        commitSimulatedTable(generation.generation(), result, server);
+        for (LootProbabilitySimulationWorker.SimulationRequest request : requests) {
+            LootProbabilitySimulator.SimResult result = LootProbabilitySimulator.simulateOne(
+                    request.tableId(), request.rawTable(), server.overworld(),
+                    request.input(), request.scenario());
+            commitSimulated(result, generation.generation(), request.requester(), server, probabilityData);
+        }
+    }
+
+    /**
+     * 服务端处理一份按需模拟请求——校验、入队。回执与限流由调用方（网络层）负责。
+     * <p>
+     * 三条校验（决策 15/36）：表仍在追踪、哈希未变（变了说明这份输入属于上一版内容）、
+     * 输入由当前目录签发（场景、工具、附魔等级、抽样次数逐项落在约束内）。
+     */
+    public static OnDemandResult requestSimulation(ServerPlayer player, ResourceLocation tableId,
+                                                   String expectedTableHash, String scenarioKey,
+                                                   ScenarioParams params) {
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null || !generation.isTracked(tableId)) {
+            return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
+        }
+        TableDefinition raw = generation.staticTable(tableId);
+        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
+        if (raw == null || constraint == null) {
+            return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
+        }
+        String hash = generation.tableHash(tableId);
+        if (!hash.equals(expectedTableHash)) {
+            // 客户端拿的是上一版目录：拒绝而不是按旧参数算，否则结果会落在一个已失效的输入上
+            return new OnDemandResult(OnDemandOutcome.STALE_HASH, null);
+        }
+        Optional<SimulationInput> resolved = constraint.resolve(scenarioKey, params);
+        if (resolved.isEmpty()) {
+            return new OnDemandResult(OnDemandOutcome.REJECTED_INPUT, null);
+        }
+        SimulationInput input = resolved.get();
+        SimulationScenario scenario = constraint.scenario(scenarioKey);
+        if (scenario == null) {
+            return new OnDemandResult(OnDemandOutcome.REJECTED_INPUT, input);
+        }
+
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker == null) {
+            LootProbabilitySimulator.SimResult result = LootProbabilitySimulator.simulateOne(
+                    tableId, raw, player.server.overworld(), input, scenario);
+            commitSimulated(result, generation.generation(), null, player.server);
+            sendScenarioResult(player, tableId, hash, input);
+            return new OnDemandResult(OnDemandOutcome.SIMULATED_INLINE, input);
+        }
+        installHandlers(worker, generation.generation());
+        LootProbabilitySimulationWorker.EnqueueOutcome outcome = worker.enqueuePlayerRequest(
+                new LootProbabilitySimulationWorker.SimulationRequest(
+                        tableId, raw, input, scenario, generation.generation(), hash, player.getUUID()));
+        return switch (outcome) {
+            case ACCEPTED -> new OnDemandResult(OnDemandOutcome.QUEUED, input);
+            case REJECTED_QUEUE_FULL -> new OnDemandResult(OnDemandOutcome.REJECTED_QUEUE_FULL, input);
+        };
+    }
+
+    /**
+     * 玩家解锁一张表时的插队模拟——把它**基准输入**提到高优先级队列。
+     * <p>
+     * 只排基准输入：按需模型下其余场景由玩家在界面上选，而解锁时最需要的是"这张表的基本数字"。
+     * 表已有基准结果时什么也不做（{@code hasSimulated}），避免解锁动作反复触发重算。
+     */
+    public static void enqueueBaselinePriority(ResourceLocation tableId) {
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null || generation.hasSimulated(tableId)) {
+            return;
+        }
+        TableDefinition raw = generation.staticTable(tableId);
+        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
+        if (raw == null || constraint == null) {
+            return;
+        }
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker == null) {
+            return;
+        }
+        installHandlers(worker, generation.generation());
+        worker.enqueuePriority(new LootProbabilitySimulationWorker.SimulationRequest(
+                tableId, raw, constraint.baselineInput(), constraint.baselineScenario(),
+                generation.generation(), generation.tableHash(tableId), null));
+    }
+
+    /** 按需请求的受理结果——{@code input} 非空时调用方可以拿它生成回执里的输入键。 */
+    public record OnDemandResult(OnDemandOutcome outcome, @Nullable SimulationInput input) {
+    }
+
+    /** 按需模拟请求的受理结果。 */
+    public enum OnDemandOutcome {
+        /** 已入队，结果随后由 {@code SyncScenarioResultPayload} 下发。 */
+        QUEUED,
+        /** worker 未启动，已在主线程同步算完并下发。 */
+        SIMULATED_INLINE,
+        /** 表未收录或不可用。 */
+        UNKNOWN_TABLE,
+        /** 客户端持有的表哈希已过期，需要先重新同步目录。 */
+        STALE_HASH,
+        /** 输入未被当前目录签发（自造参数、超界幸运、未签发的档位）。 */
+        REJECTED_INPUT,
+        /** 玩家请求队列已满。 */
+        REJECTED_QUEUE_FULL
+    }
+
+    /** 当代目录代次；未加载时为 0（回执里用它让客户端丢弃过期消息）。 */
+    public static long currentGenerationId() {
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? 0L : generation.generation();
     }
 
     // 带 generation 校验的提交入口：旧代结果直接丢弃
-    private static void commitSimulatedTable(long generationId, LootProbabilitySimulator.SimResult result,
-                                             MinecraftServer server) {
+    private static void commitSimulated(LootProbabilitySimulator.SimResult result, long generationId,
+                                        @Nullable UUID requester, MinecraftServer server) {
         CatalogGeneration generation = currentGeneration;
         if (generation == null || generation.generation() != generationId) {
-            LOGGER.warn("丢弃来自旧 generation {} 的战利品表 {} 模拟结果（当前 generation {}）",
+            LOGGER.warn("丢弃来自旧 generation {} 的战利品表 {} 输入结果（当前 generation {}）",
                     generationId, result.tableId(),
                     generation == null ? "无" : generation.generation());
             return;
         }
-        commitSimulatedTable(generation, result, LootProbabilityData.get(server.overworld()));
+        commitSimulated(result, generationId, requester, server, LootProbabilityData.get(server.overworld()));
     }
 
-    // 实际提交逻辑（不广播，供同步回退批量调用）
-    private static void commitSimulatedTable(CatalogGeneration generation,
-                                            LootProbabilitySimulator.SimResult result,
-                                            LootProbabilityData probabilityData) {
+    // 实际提交：写缓存 → （启动）发布到共享目录 或 （按需）只回给请求者
+    private static void commitSimulated(LootProbabilitySimulator.SimResult result, long generationId,
+                                        @Nullable UUID requester, MinecraftServer server,
+                                        LootProbabilityData probabilityData) {
         if (!result.successful()) {
-            LOGGER.warn("忽略战利品表 {} 的失败模拟结果；其概率保持未知，不写入缓存，"
-                    + "将在下次数据包重载时重新尝试", result.tableId());
+            LOGGER.warn("忽略战利品表 {} 输入 {} 的失败模拟结果；其概率保持未知，不写入缓存，"
+                            + "将在下次数据包重载时重新尝试",
+                    result.tableId(), result.input().key());
+            return;
+        }
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null || generation.generation() != generationId) {
             return;
         }
         ResourceLocation tableId = result.tableId();
-        TableDefinition table = result.result();
         String hash = generation.tableHash(tableId);
+        SimulationInput input = result.input();
+        String inputKey = input.key();
 
-        // 写入 SavedData：只落测量事实（SimulatedValue），派生结论（需要条件 / 不可达）不落盘
-        Map<String, LootProbabilityData.CachedItemProbability> probabilities = new LinkedHashMap<>();
-        for (ItemDefinition item : table.items()) {
-            Map<String, SimulatedValue> scenarioProbabilities = new LinkedHashMap<>();
-            for (ScenarioProbability scenario : item.scenarioProbabilities()) {
-                // 分场景只持久化"测到了多少"；不可用场景的「需要条件」由读取时的场景规划重新派生
-                if (scenario.probability() instanceof Probability.Measured) {
-                    scenarioProbabilities.put(scenario.scenarioKey(),
-                            SimulatedValue.from(scenario.probability()));
-                }
+        // 同一个 (表, 输入) 可能被多次提交（多个等待者各收一份）：测量值只写一次。
+        // **但只有内容哈希一致时才允许跳过**——哈希不一致说明存档里那一条属于上一版内容，
+        // 此时必须写：putMeasurement 会连带把陈旧条目整体换掉，哈希也才会被更新。
+        // 曾经漏掉哈希这一半，于是形成死循环：读路径判"哈希不同 → 重算"，写路径却"已有测量值 → 跳过写入"，
+        // 哈希永远停在旧值，每次启动都全量重算（实测症状：连续三次启动都是 0 命中 / 58 待模拟，
+        // 且存档里的数值仍是修复前的旧口径）。
+        boolean alreadyStored = !probabilityData.needsResimulation(tableId, hash)
+                && probabilityData.getMeasurement(tableId, inputKey) != null;
+        if (!alreadyStored) {
+            SimulationMeasurement measurement = result.measurement();
+            Map<String, LootProbabilityData.DiscoveryRecord> discoveredNow = new LinkedHashMap<>();
+            for (String signatureKey : measurement.discoveredSignatures().keySet()) {
+                boolean hasDirectSource = measurement.discoveredDirectly().contains(signatureKey);
+                ResourceLocation childSource = measurement.discoveredChildSources().get(signatureKey);
+                discoveredNow.put(signatureKey, new LootProbabilityData.DiscoveryRecord(
+                        hasDirectSource, childSource == null ? List.of() : List.of(childSource)));
             }
-            boolean hasDirectSource = item.acquisitionPaths().isEmpty();
-            List<ResourceLocation> sourceChildTables = new ArrayList<>();
-            for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                ResourceLocation source = path.sourceChildTable();
-                if (source == null) {
-                    hasDirectSource = true;
-                } else if (!sourceChildTables.contains(source)) {
-                    sourceChildTables.add(source);
-                }
-            }
-            probabilities.put(item.signature().toStoredKey(),
-                    new LootProbabilityData.CachedItemProbability(
-                            SimulatedValue.from(item.probability()), scenarioProbabilities,
-                            hasDirectSource, sourceChildTables));
+            probabilityData.putMeasurement(tableId, hash, inputKey,
+                    new LootProbabilityData.InputMeasurement(input.params().sampleCount(),
+                            measurement.itemProbabilities(), measurement.childProbabilities()),
+                    discoveredNow);
         }
-        for (ChildTableProbability child : table.childTableProbabilities()) {
-            Map<String, SimulatedValue> scenarioProbabilities = new LinkedHashMap<>();
-            for (ScenarioProbability scenario : child.scenarioProbabilities()) {
-                if (scenario.probability() instanceof Probability.Measured) {
-                    scenarioProbabilities.put(scenario.scenarioKey(),
-                            SimulatedValue.from(scenario.probability()));
-                }
-            }
-            probabilities.put(CHILD_CACHE_PREFIX + child.tableId(),
-                    new LootProbabilityData.CachedItemProbability(
-                            SimulatedValue.from(child.probability()), scenarioProbabilities, false, List.of()));
-        }
-        probabilityData.putSimulationResult(tableId, hash, probabilities);
 
-        // 写入当代 overlay，并失效本代目录哈希缓存
-        generation.publishSimulated(table);
+        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
+        if (constraint == null) {
+            return;
+        }
+        TableDefinition derived = deriveTable(generation, tableId, constraint, input, probabilityData);
+        if (requester == null) {
+            // 启动基准填充：写进共享目录，客户端由此拿到基准数字
+            generation.publishSimulated(derived);
+            return;
+        }
+        // 按需请求：只把这一份结果回给请求者（客户端按代次/哈希/输入键校验后自行决定是否切换）
+        ServerPlayer player = server.getPlayerList().getPlayer(requester);
+        if (player != null) {
+            Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
+                    generationId, hash, inputKey, CatalogTableDto.from(derived, hash)));
+        }
     }
 
-
+    // 按需结果下发（worker 未启动的同步回退路径使用）
+    private static void sendScenarioResult(ServerPlayer player, ResourceLocation tableId,
+                                           String hash, SimulationInput input) {
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null) {
+            return;
+        }
+        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
+        if (constraint == null) {
+            return;
+        }
+        TableDefinition derived = deriveTable(generation, tableId, constraint, input,
+                LootProbabilityData.get(player.server.overworld()));
+        Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
+                generation.generation(), hash, input.key(), CatalogTableDto.from(derived, hash)));
+    }
     // 带 generation 校验的广播入口：旧代排空事件不再触发同步
     private static void broadcastCatalogHash(long generationId, MinecraftServer server) {
         CatalogGeneration generation = currentGeneration;
@@ -518,176 +635,194 @@ public final class ArchaeologyJournalServerCatalog {
         return generation == null ? 0 : generation.trackedTableCount();
     }
 
-    /** 判断指定表是否已有模拟结果（overlay 或 SavedData 任一命中即可） */
-    public static boolean hasSimulatedData(ResourceLocation tableId) {
-        CatalogGeneration generation = currentGeneration;
-        return generation != null && generation.hasSimulated(tableId);
-    }
-
-    // 从 SavedData 恢复概率到原始目录定义中。
-    // 存档里只有测量事实，因此这里必须重新派生展示状态：可适用性（需要条件 / 未覆盖）来自
-    // 重新规划出的场景与路径静态结构，与模拟完成时用的是同一份判定，避免两处各写一套。
-    private static TableDefinition restoreFromCache(
-            TableDefinition rawTable, ResourceLocation tableId, LootProbabilityData probabilityData,
-            ServerLevel level, Map<ResourceLocation, TableDefinition> staticTables) {
-        Map<String, LootProbabilityData.CachedItemProbability> cachedProbabilities =
-                probabilityData.getProbabilities(tableId);
-        List<ItemDefinition> restoredItems = new ArrayList<>(cachedProbabilities.size());
-        List<SimulationScenario> plannedScenarios = SimulationScenarioPlanner.plan(tableId, rawTable, level);
-        String baselineKey = baselineScenarioKey(plannedScenarios);
-
-        // 1. 恢复 JSON 解析出的原始条目：展示值按缓存中的分场景测量值重新派生
-        for (ItemDefinition item : rawTable.items()) {
-            LootProbabilityData.CachedItemProbability cached =
-                    cachedProbabilities.get(item.signature().toStoredKey());
-            List<ScenarioProbability> scenarioProbabilities =
-                    rebuildItemScenarioProbabilities(item, plannedScenarios, cached);
-            Probability display = PathHintAnalyzer.deriveDisplay(
-                    baselineMeasurement(baselineKey, scenarioProbabilities), item.acquisitionPaths());
-            restoredItems.add(new ItemDefinition(
-                    item.id(), item.displayName(), item.tooltipHint(),
-                    display, item.signature(), item.acquisitionPaths(), item.injected(), scenarioProbabilities));
+    /**
+     * 由静态结构与缓存中的测量值派生**展示用**的表定义。
+     * <p>
+     * 这是本轮唯一的展示派生入口：从缓存恢复与刚刚算完都走它，因此不可能出现"两条路径两套口径"。
+     * 派生输入有三样——该表的场景规划（含每个场景适用的签名集合）、指定输入下的测量值、
+     * 以及表级发现记录（动态条目）。
+     * <p>
+     * 展示值的派生规则集中在 {@link PathHintAnalyzer#deriveDisplay}：**只有**测到非零值才报数字，
+     * 零命中报「未命中」，被旋钮挡住报「需要条件」，全部路径静态不可达才报 {@code 0%}。
+     * 分场景列表里，非当前输入的场景一律是 {@code Unknown(NOT_SIMULATED)}——"没算过"与"算出来是零"
+     * 必须分得开（决策 36）。
+     */
+    private static TableDefinition deriveTable(CatalogGeneration generation, ResourceLocation tableId,
+                                               SimulationConstraintCatalog constraint, SimulationInput input,
+                                               LootProbabilityData probabilityData) {
+        TableDefinition raw = generation.staticTable(tableId);
+        if (raw == null) {
+            throw new IllegalStateException("表不在当代目录中: " + tableId);
         }
+        String displayedScenarioKey = input.scenarioKey();
+        Map<String, LootProbabilityData.InputMeasurement> byScenario = measurementsByScenario(
+                tableId, constraint, input.params(), probabilityData);
+        LootProbabilityData.InputMeasurement displayed = byScenario.get(displayedScenarioKey);
+        Map<String, LootProbabilityData.DiscoveryRecord> discovery = probabilityData.getDiscovery(tableId);
 
-        // 2. 重建缓存中存在但 JSON 里没有的"注入条目"（GLM / LootTableEvents.MODIFY 模拟期发现）
-        //    动态条目没有静态路径，无法陈述"需要什么条件"，因此直接沿用缓存中的测量值。
+        List<ItemDefinition> items = new ArrayList<>(raw.items().size() + discovery.size());
         Set<String> rawKeys = new HashSet<>();
-        for (ItemDefinition item : rawTable.items()) {
-            rawKeys.add(item.signature().toStoredKey());
+        for (ItemDefinition item : raw.items()) {
+            String storedKey = item.signature().toStoredKey();
+            rawKeys.add(storedKey);
+            List<PathHint> hints = PathHintAnalyzer.hintsFor(item.acquisitionPaths());
+            List<ScenarioProbability> scenarioProbabilities = itemScenarioProbabilities(
+                    constraint, storedKey, hints, byScenario);
+            Probability display = PathHintAnalyzer.deriveDisplay(
+                    displayedValue(displayed, storedKey, constraint, displayedScenarioKey, hints),
+                    item.acquisitionPaths());
+            items.add(new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
+                    display, item.signature(), item.acquisitionPaths(), item.injected(),
+                    scenarioProbabilities));
         }
-        Map<ResourceLocation, Set<String>> childSignatureIndex = buildCachedChildSignatureIndex(
-                rawTable, probabilityData, staticTables);
-        for (Map.Entry<String, LootProbabilityData.CachedItemProbability> cached : cachedProbabilities.entrySet()) {
-            if (rawKeys.contains(cached.getKey())) {
+
+        // 动态条目（GLM / LootTableEvents.MODIFY 模拟期注入）：没有静态路径，因此"需要什么条件"
+        // 无从陈述，展示值只取实际测量到的那一份；它们的"来源"记录挂在表级、不随 LRU 淘汰，
+        // 所以即使某个输入的测量值被淘汰，条目本身也不会从网格里消失（决策 37）。
+        for (Map.Entry<String, LootProbabilityData.DiscoveryRecord> entry : discovery.entrySet()) {
+            if (rawKeys.contains(entry.getKey())) {
                 continue;
             }
-            LootResultSignature signature = LootResultSignature.fromStoredKey(cached.getKey());
-            if (signature != null) {
-                ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(signature,
-                        cached.getValue().probability().toProbability(UnknownReason.UNCOVERED), true,
-                        restoreDiscoveredScenarioProbabilities(cached.getValue(), plannedScenarios));
-                boolean hasDirectSource = cached.getValue().hasDirectSource();
-                List<ResourceLocation> childSources = cached.getValue().sourceChildTables();
-                if (!hasDirectSource && childSources.isEmpty()) {
-                    childSources = findCachedChildSources(cached.getKey(), childSignatureIndex);
-                }
-                if (hasDirectSource && childSources.isEmpty()) {
-                    restoredItems.add(discoveredItem);
-                    continue;
-                }
-                List<LootAcquisitionPath> acquisitionPaths = new ArrayList<>(
-                        childSources.size() + (hasDirectSource ? 1 : 0));
-                if (hasDirectSource) {
-                    acquisitionPaths.add(new LootAcquisitionPath(null, List.of(), List.of()));
-                }
-                for (ResourceLocation childSource : childSources) {
-                    acquisitionPaths.add(new LootAcquisitionPath(childSource, List.of(), List.of()));
-                }
-                if (acquisitionPaths.isEmpty()) {
-                    restoredItems.add(discoveredItem);
-                    continue;
-                }
-                restoredItems.add(new ItemDefinition(
-                        discoveredItem.id(), discoveredItem.displayName(), discoveredItem.tooltipHint(),
-                        discoveredItem.probability(), discoveredItem.signature(), acquisitionPaths,
-                        discoveredItem.injected(), discoveredItem.scenarioProbabilities()));
+            LootResultSignature signature = LootResultSignature.fromStoredKey(entry.getKey());
+            if (signature == null) {
+                continue;
             }
+            List<LootAcquisitionPath> paths = discoveredPaths(entry.getValue());
+            List<ScenarioProbability> scenarioProbabilities = discoveredScenarioProbabilities(
+                    constraint, entry.getKey(), byScenario);
+            Probability display = displayedValue(displayed, entry.getKey(), constraint,
+                    displayedScenarioKey, List.of());
+            ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(
+                    signature, display, true, scenarioProbabilities);
+            items.add(paths.isEmpty() ? discoveredItem : new ItemDefinition(
+                    discoveredItem.id(), discoveredItem.displayName(), discoveredItem.tooltipHint(),
+                    discoveredItem.probability(), discoveredItem.signature(), paths,
+                    true, discoveredItem.scenarioProbabilities()));
         }
 
         List<ChildTableProbability> childProbabilities = new ArrayList<>();
-        for (ResourceLocation childTable : rawTable.childTables()) {
-            LootProbabilityData.CachedItemProbability cached =
-                    cachedProbabilities.get(CHILD_CACHE_PREFIX + childTable);
-            List<ScenarioProbability> probabilities = rebuildChildScenarioProbabilities(
-                    childTable, childTableConditions(rawTable, childTable), plannedScenarios, cached);
+        for (ResourceLocation childTable : raw.childTables()) {
+            // 两条来源合成入口的条件树：通往它的路径共同成立的条件（交集）+ 注入边门槛。
+            // 交集的理由：tooltip 的头是"父表条件"，用并集会把"只有部分路径需要"的条件说成"需要"。
+            // 门槛必须在这里补：它不写在任何 JSON 里，静态投影看不到它，缺了它被入口挡住的子表
+            // 只能显示一个没有原因的「未命中」。
+            List<LootConditionInfo> entryGates = constraint.childEntryGates()
+                    .getOrDefault(childTable, List.of());
+            List<LootConditionInfo> conditions = mergeConditions(
+                    commonChildConditions(raw, childTable), entryGates);
+            // 提示按并集派生：它要回答的是"这个入口引用了哪些可调的旋钮/条件"，比条件树宽松
+            List<PathHint> hints = PathHintAnalyzer.hintsForConditions(
+                    mergeConditions(childTableConditions(raw, childTable), entryGates));
+            List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
+            boolean applicableSomewhere = false;
+            for (SimulationScenario scenario : constraint.scenarios()) {
+                if (!scenario.applicableChildTables().contains(childTable)) {
+                    scenarioProbabilities.add(new ScenarioProbability(scenario.key(),
+                            PathHintAnalyzer.inapplicableScenarioDisplay(hints), scenario.assumptions()));
+                    continue;
+                }
+                applicableSomewhere = true;
+                LootProbabilityData.InputMeasurement measurement = byScenario.get(scenario.key());
+                SimulatedValue measured = measurement == null
+                        ? null : measurement.children().get(childTable);
+                scenarioProbabilities.add(new ScenarioProbability(scenario.key(),
+                        measured == null
+                                ? Probability.unknown(UnknownReason.NOT_SIMULATED)
+                                : measured.toProbability(UnknownReason.UNCOVERED),
+                        scenario.assumptions()));
+            }
+            if (!applicableSomewhere) {
+                scenarioProbabilities = List.of();
+            }
+            // 展示值走与物品同构的入口派生：零命中且门槛可陈述时报「需要条件」。
+            // 分场景列表保留原始测量值（与物品的列表一致）：它是"每个场景各测到多少"的事实表，
+            // 而入口这一行回答的是"当前输入下能不能进"。
             childProbabilities.add(new ChildTableProbability(childTable,
-                    baselineMeasurement(baselineKey, probabilities), probabilities));
+                    PathHintAnalyzer.deriveEntryDisplay(
+                            scenarioValue(scenarioProbabilities, displayedScenarioKey), hints),
+                    List.copyOf(scenarioProbabilities), conditions));
         }
 
-        return new TableDefinition(
-                rawTable.id(), rawTable.displayName(), rawTable.type(), restoredItems,
-                LootProbabilitySimulator.getSimulationCount(), rawTable.childTables(), childProbabilities);
+        return new TableDefinition(raw.id(), raw.displayName(), raw.type(), items,
+                input.params().sampleCount(), raw.childTables(), childProbabilities);
     }
 
-    // 基准场景 key——条件全部不成立的那个场景（与模拟完成时的判定同源）
-    private static String baselineScenarioKey(List<SimulationScenario> scenarios) {
-        for (SimulationScenario scenario : scenarios) {
-            if (scenario.baseline()) {
-                return scenario.key();
+    /**
+     * 同一份参数下、每个场景各自的测量值。
+     * <p>
+     * 缓存键是"场景的稳定身份 + 参数"，因此这里直接用 {@code scenario.key()} 构造输入——
+     * 绝不从条件指纹反算场景键：指纹跨 JVM 运行可能不重复，反算会让同一个场景每次启动换一个键
+     * （读路径按新键找不到旧的、写路径又不断新增键，存档里于是无限累积）。
+     * 只有被算过的场景才有条目——这正是按需模型下"尚未计算"能如实呈现的原因。
+     */
+    private static Map<String, LootProbabilityData.InputMeasurement> measurementsByScenario(
+            ResourceLocation tableId, SimulationConstraintCatalog constraint, ScenarioParams params,
+            LootProbabilityData probabilityData) {
+        Map<String, LootProbabilityData.InputMeasurement> result = new LinkedHashMap<>();
+        for (SimulationScenario scenario : constraint.scenarios()) {
+            String inputKey = new SimulationInput(scenario.key(),
+                    scenario.profile().conditionOutcomes(), params).key();
+            LootProbabilityData.InputMeasurement measurement =
+                    probabilityData.getMeasurement(tableId, inputKey);
+            if (measurement != null) {
+                result.put(scenario.key(), measurement);
             }
         }
-        return scenarios.isEmpty() ? "" : scenarios.getFirst().key();
+        return result;
     }
 
-    // 基准场景的测量值；基准场景未覆盖该签名时说明"该输入下没有可用路径"
-    private static Probability baselineMeasurement(String baselineKey,
-                                                   List<ScenarioProbability> probabilities) {
-        for (ScenarioProbability scenario : probabilities) {
-            if (scenario.scenarioKey().equals(baselineKey)) {
-                return scenario.probability();
-            }
+    // 当前展示输入下某个签名的展示值：测到了就是测量值，适用但没算过是"尚未计算"，
+    // 不适用则由静态提示决定「需要条件」还是「未覆盖」。
+    // hints 由调用方给出：静态条目传它自己路径的提示，动态条目传空——后者没有静态路径可引用。
+    private static Probability displayedValue(
+            @Nullable LootProbabilityData.InputMeasurement displayed, String storedKey,
+            SimulationConstraintCatalog constraint, String displayedScenarioKey, List<PathHint> hints) {
+        SimulatedValue measured = displayed == null ? null : displayed.items().get(storedKey);
+        if (measured != null) {
+            return measured.toProbability(UnknownReason.UNCOVERED);
         }
-        return Probability.uncovered();
+        SimulationScenario scenario = constraint.scenario(displayedScenarioKey);
+        boolean applicableHere = scenario != null
+                && scenario.applicableSignatures().contains(storedKey);
+        if (applicableHere) {
+            return Probability.unknown(UnknownReason.NOT_SIMULATED);
+        }
+        return PathHintAnalyzer.inapplicableScenarioDisplay(hints);
     }
 
-    // 用缓存里的测量值与重新规划出的场景，重建"每场景一个值"的展示列表：
-    // 可适用场景用缓存的测量值（缺失即尚未计算），不可用场景按静态结构报「需要条件」或未覆盖。
-    // 与模拟完成时的判定同源——两者都读同一份场景规划与同一份 PathHintAnalyzer。
-    private static List<ScenarioProbability> rebuildItemScenarioProbabilities(
-            ItemDefinition item, List<SimulationScenario> plannedScenarios,
-            @Nullable LootProbabilityData.CachedItemProbability cached) {
-        String storedKey = item.signature().toStoredKey();
-        List<PathHint> hints = PathHintAnalyzer.hintsFor(item.acquisitionPaths());
+    // 静态条目的分场景展示列表；没有任何场景覆盖该签名时返回空列表——
+    // 那是"场景被上界截断"，逐个写 0 会把"未覆盖"显示成"不可达"
+    private static List<ScenarioProbability> itemScenarioProbabilities(
+            SimulationConstraintCatalog constraint, String storedKey,
+            List<PathHint> hints, Map<String, LootProbabilityData.InputMeasurement> byScenario) {
         List<ScenarioProbability> result = new ArrayList<>();
-        for (SimulationScenario scenario : plannedScenarios) {
+        boolean applicableSomewhere = false;
+        for (SimulationScenario scenario : constraint.scenarios()) {
             if (!scenario.applicableSignatures().contains(storedKey)) {
                 result.add(new ScenarioProbability(scenario.key(),
                         PathHintAnalyzer.inapplicableScenarioDisplay(hints), scenario.assumptions()));
                 continue;
             }
-            result.add(measuredScenarioProbability(scenario, cached));
+            applicableSomewhere = true;
+            LootProbabilityData.InputMeasurement measurement = byScenario.get(scenario.key());
+            SimulatedValue measured = measurement == null ? null : measurement.items().get(storedKey);
+            result.add(new ScenarioProbability(scenario.key(),
+                    measured == null
+                            ? Probability.unknown(UnknownReason.NOT_SIMULATED)
+                            : measured.toProbability(UnknownReason.UNCOVERED),
+                    scenario.assumptions()));
         }
-        return List.copyOf(result);
-    }
-
-    private static List<ScenarioProbability> rebuildChildScenarioProbabilities(
-            ResourceLocation childTable, List<LootConditionInfo> childConditions,
-            List<SimulationScenario> plannedScenarios,
-            @Nullable LootProbabilityData.CachedItemProbability cached) {
-        List<PathHint> hints = childConditions.isEmpty()
-                ? List.of()
-                : List.of(new PathHint.ReferencesScenario(childConditions));
-        List<ScenarioProbability> result = new ArrayList<>();
-        for (SimulationScenario scenario : plannedScenarios) {
-            if (!scenario.applicableChildTables().contains(childTable)) {
-                result.add(new ScenarioProbability(scenario.key(),
-                        PathHintAnalyzer.inapplicableScenarioDisplay(hints), scenario.assumptions()));
-                continue;
-            }
-            result.add(measuredScenarioProbability(scenario, cached));
-        }
-        return List.copyOf(result);
-    }
-
-    // 适用场景的展示值：有测量值就用它，没有就是"尚未计算"——不是"不可能"
-    private static ScenarioProbability measuredScenarioProbability(
-            SimulationScenario scenario, @Nullable LootProbabilityData.CachedItemProbability cached) {
-        SimulatedValue measured = cached == null
-                ? null : cached.scenarioProbabilities().get(scenario.key());
-        return new ScenarioProbability(scenario.key(),
-                measured == null
-                        ? Probability.unknown(UnknownReason.NOT_SIMULATED)
-                        : measured.toProbability(UnknownReason.UNCOVERED),
-                scenario.assumptions());
+        return applicableSomewhere ? List.copyOf(result) : List.of();
     }
 
     // 动态条目只保留缓存里实际测到过的场景；其余场景不进列表，避免为"没观测到"编造状态
-    private static List<ScenarioProbability> restoreDiscoveredScenarioProbabilities(
-            LootProbabilityData.CachedItemProbability cached,
-            List<SimulationScenario> plannedScenarios) {
+    private static List<ScenarioProbability> discoveredScenarioProbabilities(
+            SimulationConstraintCatalog constraint, String storedKey,
+            Map<String, LootProbabilityData.InputMeasurement> byScenario) {
         List<ScenarioProbability> result = new ArrayList<>();
-        for (SimulationScenario scenario : plannedScenarios) {
-            SimulatedValue measured = cached.scenarioProbabilities().get(scenario.key());
+        for (SimulationScenario scenario : constraint.scenarios()) {
+            LootProbabilityData.InputMeasurement measurement = byScenario.get(scenario.key());
+            SimulatedValue measured = measurement == null ? null : measurement.items().get(storedKey);
             if (measured == null) {
                 continue;
             }
@@ -697,7 +832,31 @@ public final class ArchaeologyJournalServerCatalog {
         return List.copyOf(result);
     }
 
-    // 该子表入口在父表里出现过的条件；用于"这个场景下为什么拿不到"的静态陈述
+    // 动态条目的获取路径：来源记录在表级发现记录里，直接还原成路径即可
+    private static List<LootAcquisitionPath> discoveredPaths(LootProbabilityData.DiscoveryRecord record) {
+        List<LootAcquisitionPath> paths = new ArrayList<>(
+                record.sourceChildTables().size() + (record.hasDirectSource() ? 1 : 0));
+        if (record.hasDirectSource()) {
+            paths.add(new LootAcquisitionPath(null, List.of(), List.of()));
+        }
+        for (ResourceLocation childSource : record.sourceChildTables()) {
+            paths.add(new LootAcquisitionPath(childSource, List.of(), List.of()));
+        }
+        return List.copyOf(paths);
+    }
+
+    // 某个场景在分场景列表里的值；场景不在列表里（被截断或尚未规划）时如实报"未覆盖"
+    private static Probability scenarioValue(List<ScenarioProbability> probabilities, String scenarioKey) {
+        for (ScenarioProbability probability : probabilities) {
+            if (probability.scenarioKey().equals(scenarioKey)) {
+                return probability.probability();
+            }
+        }
+        return Probability.uncovered();
+    }
+
+    // 该子表入口在父表里出现过的条件（**并集**）；用于"这个场景下为什么拿不到"的静态陈述——
+    // 提示要回答的是"引用了哪些可调的旋钮/条件"，只要有一条路径引用过就该列出来
     private static List<LootConditionInfo> childTableConditions(
             TableDefinition parent, ResourceLocation childTable) {
         LinkedHashMap<String, LootConditionInfo> conditions = new LinkedHashMap<>();
@@ -707,62 +866,58 @@ public final class ArchaeologyJournalServerCatalog {
                     continue;
                 }
                 for (LootConditionInfo condition : path.allConditions()) {
-                    conditions.putIfAbsent(
-                            condition.conditionType() + "|" + condition.description().getString(), condition);
+                    conditions.putIfAbsent(LootConditionFingerprint.of(condition), condition);
                 }
             }
         }
         return List.copyOf(conditions.values());
     }
 
-    // 每张父表只构建一次临时子树签名索引，避免按动态物品重复递归。
-    private static Map<ResourceLocation, Set<String>> buildCachedChildSignatureIndex(
-            TableDefinition parent, LootProbabilityData probabilityData,
-            Map<ResourceLocation, TableDefinition> staticTables) {
-        Map<ResourceLocation, Set<String>> result = new LinkedHashMap<>();
-        for (ResourceLocation childId : parent.childTables()) {
-            Set<String> signatures = new HashSet<>();
-            collectCachedSubtreeSignatures(childId, probabilityData, staticTables, signatures, new HashSet<>());
-            result.put(childId, signatures);
+    // 通往该子表的**全部**路径共同成立的条件（交集）：这是条件树要展示的口径——
+    // 用并集会把"只有部分路径需要"的条件说成"要拿到它必须满足"。语义与提示的并集刻意不同。
+    private static List<LootConditionInfo> commonChildConditions(
+            TableDefinition parent, ResourceLocation childTable) {
+        LinkedHashMap<String, LootConditionInfo> common = null;
+        for (ItemDefinition item : parent.items()) {
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                if (!childTable.equals(path.sourceChildTable())) {
+                    continue;
+                }
+                LinkedHashMap<String, LootConditionInfo> indexed = indexConditions(path.allConditions());
+                if (common == null) {
+                    common = indexed;
+                } else {
+                    common.keySet().retainAll(indexed.keySet());
+                }
+            }
+        }
+        return common == null ? List.of() : List.copyOf(common.values());
+    }
+
+    // 与运行时的实例不同，同一条件在两条路径上是两个对象：用指纹做稳定去重键
+    private static LinkedHashMap<String, LootConditionInfo> indexConditions(
+            List<LootConditionInfo> conditions) {
+        LinkedHashMap<String, LootConditionInfo> result = new LinkedHashMap<>();
+        for (LootConditionInfo condition : conditions) {
+            result.putIfAbsent(LootConditionFingerprint.of(condition), condition);
         }
         return result;
     }
 
-    // 使用子表已有签名恢复动态条目的直接来源，避免为父表额外持久化整份来源映射。
-    private static List<ResourceLocation> findCachedChildSources(
-            String signatureKey, Map<ResourceLocation, Set<String>> childSignatureIndex) {
-        List<ResourceLocation> result = new ArrayList<>();
-        for (Map.Entry<ResourceLocation, Set<String>> entry : childSignatureIndex.entrySet()) {
-            if (entry.getValue().contains(signatureKey)) {
-                result.add(entry.getKey());
-            }
+    // 合成入口条件树的两段来源；第二段（注入门槛）排在后面，让"父表自己的条件"先读
+    private static List<LootConditionInfo> mergeConditions(List<LootConditionInfo> first,
+                                                           List<LootConditionInfo> second) {
+        if (second.isEmpty()) {
+            return first;
         }
-        return result;
-    }
-
-    // 同时收集解析期静态条目和模拟期动态条目；visited 防止数据包循环引用。
-    private static void collectCachedSubtreeSignatures(
-            ResourceLocation tableId, LootProbabilityData probabilityData,
-            Map<ResourceLocation, TableDefinition> staticTables,
-            Set<String> output, Set<ResourceLocation> visited) {
-        if (!visited.add(tableId)) {
-            return;
+        if (first.isEmpty()) {
+            return second;
         }
-        TableDefinition table = staticTables.get(tableId);
-        if (table == null) {
-            return;
+        LinkedHashMap<String, LootConditionInfo> merged = indexConditions(first);
+        for (LootConditionInfo condition : second) {
+            merged.putIfAbsent(LootConditionFingerprint.of(condition), condition);
         }
-        for (String key : probabilityData.getProbabilities(tableId).keySet()) {
-            if (!key.startsWith(CHILD_CACHE_PREFIX)) {
-                output.add(key);
-            }
-        }
-        for (ItemDefinition item : table.items()) {
-            output.add(item.signature().toStoredKey());
-        }
-        for (ResourceLocation childId : table.childTables()) {
-            collectCachedSubtreeSignatures(childId, probabilityData, staticTables, output, visited);
-        }
+        return List.copyOf(merged.values());
     }
 
     // 对每个表计算 SHA-256 哈希：缓存版本 + 该表子树的资源栈摘要、编译产物摘要与被引用附魔定义摘要。
@@ -863,8 +1018,9 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    /** 一轮构建的产物：可发布的当代目录、待入队模拟的表，以及无法模拟的表。 */
-    private record BuildResult(CatalogGeneration generation, List<ResourceLocation> uncachedTables,
+    /** 一轮构建的产物：可发布的当代目录、待入队模拟的基准输入，以及无法模拟的表。 */
+    private record BuildResult(CatalogGeneration generation,
+                               List<LootProbabilitySimulationWorker.SimulationRequest> uncachedRequests,
                                Set<ResourceLocation> unavailableTables) {
     }
 }
