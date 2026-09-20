@@ -88,10 +88,12 @@ public final class LootTableCompiler {
 
     // ==================== 编译遍历 ====================
 
+    /** 遍历当前表时临时持有的继承上下文，各池处理后恢复。 */
     private static final class CompileState {
         final List<CompiledLootTable.Event> events = new ArrayList<>();
         List<LootConditionInfo> inheritedConditions = List.of();
         List<JsonElement> inheritedFunctions = List.of();
+        boolean luckAffected;
     }
 
     private void walkNode(JsonElement element, CompileState state) {
@@ -125,13 +127,18 @@ public final class LootTableCompiler {
             List<LootConditionInfo> poolConditions = LootParseUtil.parseConditions(object, this.lootOps);
             List<LootConditionInfo> previousConditions = state.inheritedConditions;
             List<JsonElement> previousFunctions = state.inheritedFunctions;
+            boolean previousLuckAffected = state.luckAffected;
             try {
+                state.luckAffected = previousLuckAffected
+                        || mayBeNonZero(object.get("bonus_rolls"))
+                        || hasQuality(object.getAsJsonArray("entries"));
                 state.inheritedConditions = LootParseUtil.appendConditions(previousConditions, poolConditions);
                 state.inheritedFunctions = LootParseUtil.prependFunctions(previousFunctions, object);
                 walkArray(object.getAsJsonArray("entries"), state);
             } finally {
                 state.inheritedConditions = previousConditions;
                 state.inheritedFunctions = previousFunctions;
+                state.luckAffected = previousLuckAffected;
             }
             return;
         }
@@ -143,6 +150,32 @@ public final class LootTableCompiler {
         for (JsonElement child : array) {
             walkNode(child, state);
         }
+    }
+
+    // 任一候选权重随幸运变化，同池其他候选也受竞争影响；组合 entry 的叶节点同样参与。
+    private static boolean hasQuality(JsonArray entries) {
+        for (JsonElement entry : entries) {
+            if (!entry.isJsonObject()) continue;
+            JsonObject object = entry.getAsJsonObject();
+            if (object.has("quality") && object.get("quality").getAsInt() != 0) return true;
+            if (object.has("children") && object.get("children").isJsonArray()
+                    && hasQuality(object.getAsJsonArray("children"))) return true;
+        }
+        return false;
+    }
+
+    // 能证明恒零的 bonus_rolls 不标记，其余 provider 保守视为可能影响幸运抽取。
+    private static boolean mayBeNonZero(JsonElement value) {
+        if (value == null || value.isJsonNull()) return false;
+        if (value.isJsonPrimitive()) return value.getAsDouble() != 0.0;
+        if (!value.isJsonObject()) return true;
+        JsonObject object = value.getAsJsonObject();
+        return switch (LootParseUtil.getString(object, "type", "")) {
+            case "minecraft:constant", "constant" -> !object.has("value") || mayBeNonZero(object.get("value"));
+            case "minecraft:uniform", "uniform" -> !object.has("min") || !object.has("max")
+                    || mayBeNonZero(object.get("min")) || mayBeNonZero(object.get("max"));
+            default -> true;
+        };
     }
 
     private boolean walkArrayIfPresent(JsonObject object, String key, CompileState state) {
@@ -195,7 +228,7 @@ public final class LootTableCompiler {
             return;
         }
         state.events.add(new CompiledLootTable.ItemPath(itemId, null, entryConditions,
-                ownFunctions(object), state.inheritedConditions, state.inheritedFunctions));
+                ownFunctions(object), state.inheritedConditions, state.inheritedFunctions, state.luckAffected));
     }
 
     // 物品 tag 在编译期展开为具体物品；展开顺序与注册表遍历顺序一致
@@ -221,7 +254,7 @@ public final class LootTableCompiler {
         List<JsonElement> ownFunctions = ownFunctions(object);
         for (ResourceLocation itemId : itemIds) {
             state.events.add(new CompiledLootTable.ItemPath(itemId, tagId, entryConditions,
-                    ownFunctions, state.inheritedConditions, state.inheritedFunctions));
+                    ownFunctions, state.inheritedConditions, state.inheritedFunctions, state.luckAffected));
         }
     }
 
@@ -237,7 +270,7 @@ public final class LootTableCompiler {
             return;
         }
         state.events.add(new CompiledLootTable.ReferenceSite(target, entryConditions, ownFunctions(object),
-                state.inheritedConditions, state.inheritedFunctions));
+                state.inheritedConditions, state.inheritedFunctions, state.luckAffected));
     }
 
     // 该 JSON 对象自身的 functions 列表；缺失时为空列表

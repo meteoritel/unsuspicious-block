@@ -32,6 +32,8 @@ public record SimulationProfile(
         Map<String, Boolean> conditionOutcomes,
         Map<ResourceLocation, Boolean> conditionTypeDefaults
 ) {
+    public static final float CATALOG_LUCK = 1.0F;
+
     public SimulationProfile {
         tool = tool.copy();
         conditionOutcomes = Map.copyOf(conditionOutcomes);
@@ -50,7 +52,7 @@ public record SimulationProfile(
                 Blocks.AIR.defaultBlockState(),
                 level.damageSources().generic(),
                 0.0F,
-                0.0F,
+                CATALOG_LUCK,
                 fishing, Map.of(), Map.of());
     }
 

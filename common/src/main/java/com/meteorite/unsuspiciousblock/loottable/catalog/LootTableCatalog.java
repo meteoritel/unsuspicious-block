@@ -71,15 +71,26 @@ public final class LootTableCatalog {
     /**
      * 单个物品结果的获取路径。
      * sourceItemTag 标识该路径是否由物品 tag 展开，entryConditions 属于物品条目本身，
-     * inheritedConditions 来自 pool、组合 entry 或战利品表引用。
+     * inheritedConditions 来自 pool、组合 entry 或战利品表引用；functionUncertainty 单独描述函数求值的不确定性。
      */
     public record LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
                                       @Nullable ResourceLocation sourceItemTag,
                                       List<LootConditionInfo> entryConditions,
-                                      List<LootConditionInfo> inheritedConditions) {
+                                      List<LootConditionInfo> inheritedConditions,
+                                      LootConditionHandler.UncertaintyLevel functionUncertainty,
+                                      boolean luckAffected) {
         public LootAcquisitionPath {
             entryConditions = List.copyOf(entryConditions);
             inheritedConditions = List.copyOf(inheritedConditions);
+        }
+
+        // 未经投影器分析的路径保守标记；仅在条目签名近似时使用该兜底。
+        public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                   @Nullable ResourceLocation sourceItemTag,
+                                   List<LootConditionInfo> entryConditions,
+                                   List<LootConditionInfo> inheritedConditions) {
+            this(sourceChildTable, sourceItemTag, entryConditions, inheritedConditions,
+                    LootConditionHandler.UncertaintyLevel.RUNTIME, false);
         }
 
         public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
@@ -204,7 +215,7 @@ public final class LootTableCatalog {
 
         /**
          * 该条目的不确定性等级——与 {@link #hasConditions()} **同源同数据**（全部获取路径的条件树 +
-         * 近似签名），供 UI 着色与文本使用。
+         * 近似签名及各路径的函数分级），供 UI 着色与文本使用。近似签名不再直接等同于运行时条件。
          * <p>
          * 两者共用一份判定是刻意的：过去 UI 在客户端另起一套规则（只看直接路径、并用 tooltip 文案
          * 比较来识别近似条目），会出现"颜色说不确定、概率却从不显示 {@code ?}"或反过来的错配。
@@ -213,7 +224,8 @@ public final class LootTableCatalog {
          * 此时 UI 按"未知"着色而不是按等级着色。
          */
         public LootConditionHandler.UncertaintyLevel uncertaintyLevel() {
-            if (this.signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY) {
+            if (this.signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY
+                    && this.acquisitionPaths.isEmpty()) {
                 return LootConditionHandler.UncertaintyLevel.RUNTIME;
             }
             LootConditionHandler.UncertaintyLevel level = LootConditionHandler.UncertaintyLevel.NONE;
@@ -222,6 +234,10 @@ public final class LootTableCatalog {
                         LootConditionHandlers.computeUncertaintyLevel(path.allConditions(), false);
                 if (candidate.ordinal() > level.ordinal()) {
                     level = candidate;
+                }
+                if (this.signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY
+                        && path.functionUncertainty().ordinal() > level.ordinal()) {
+                    level = path.functionUncertainty();
                 }
             }
             return level;

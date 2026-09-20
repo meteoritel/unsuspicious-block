@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAc
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationProfile;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -61,8 +62,25 @@ public final class JournalTooltipBuilder {
                     .copy().withStyle(ChatFormatting.GREEN));
         }
 
-        // 概率信息
-        if (data.probability() != null) {
+        // 声明触发率与整表模拟掉落率分开展示，不把随机条件值冒充最终产出概率。
+        if (!data.declaredChances().isEmpty()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_trigger",
+                    ProbabilityFormat.formatDeclaredChances(data.declaredChances()))
+                    .withStyle(TooltipBuilder.CONDITION_PROBABILISTIC));
+            if (data.probability() != null) {
+                ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
+                Component simulated = bounds != null && !bounds.minimum().equals(bounds.maximum())
+                        ? Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_simulated_range",
+                        bounds.minimum(), bounds.maximum())
+                        : Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_simulated",
+                        ProbabilityFormat.format(data.probability()));
+                lines.add(simulated.copy().withStyle(data.probability().isUnknown()
+                        ? TooltipBuilder.LABEL : TooltipBuilder.CONDITION_PROBABILISTIC));
+            }
+        } else if (data.probability() != null) {
             boolean probUncertain = data.probability().isUnknown();
             boolean hintIsApprox = data.hint() != null && data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
@@ -105,6 +123,10 @@ public final class JournalTooltipBuilder {
             }
         }
 
+        if (data.acquisitionPaths().stream().anyMatch(LootAcquisitionPath::luckAffected)) {
+            appendLuckNote(lines);
+        }
+
         // 提示文本（近似概率等）
         if (data.discovered() && data.hint() != null) {
             boolean probUncertain = data.probability() != null && data.probability().isUnknown();
@@ -131,7 +153,8 @@ public final class JournalTooltipBuilder {
     public static List<Component> buildChildTable(Component displayName, ResourceLocation tableId,
                                                    Probability probability,
                                                    List<ScenarioProbability> scenarioProbabilities,
-                                                   List<LootConditionInfo> conditions) {
+                                                   List<LootConditionInfo> conditions,
+                                                   boolean luckAffected) {
         List<Component> lines = new ArrayList<>();
         lines.add(displayName.copy().withStyle(ChatFormatting.WHITE));
         lines.add(Component.literal(tableId.toString()).withStyle(ChatFormatting.DARK_GRAY));
@@ -147,6 +170,9 @@ public final class JournalTooltipBuilder {
             lines.add(formatProbabilityComponent(probability).copy().withStyle(
                     probability.isUnknown() ? ChatFormatting.GRAY : ChatFormatting.GREEN));
         }
+        if (luckAffected) {
+            appendLuckNote(lines);
+        }
         if (!conditions.isEmpty()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")
@@ -157,6 +183,13 @@ public final class JournalTooltipBuilder {
                 "screen.unsuspiciousblock.archaeology_journal.child_table_open")
                 .withStyle(ChatFormatting.GRAY));
         return lines;
+    }
+
+    // 说明模拟基准，不将幸运敏感误写为必须拥有幸运效果才可获得。
+    private static void appendLuckNote(List<Component> lines) {
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent",
+                Float.toString(SimulationProfile.CATALOG_LUCK)).withStyle(TooltipBuilder.HINT));
     }
 
     // 格式化概率为 tooltip Component——展示点直接格式化，不再依赖界面文本

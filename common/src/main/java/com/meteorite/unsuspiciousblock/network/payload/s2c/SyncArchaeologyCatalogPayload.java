@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.UncertaintyLevel;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ChildTableEntry;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ItemEntry;
@@ -89,6 +90,8 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
                     }
                     encodeConditionList(buf, path.entryConditions());
                     encodeConditionList(buf, path.inheritedConditions());
+                    buf.writeEnum(path.functionUncertainty());
+                    buf.writeBoolean(path.luckAffected());
                 }
                 // 外部注入标记
                 buf.writeBoolean(item.injected());
@@ -149,7 +152,8 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
                     List<LootConditionInfo> entryConditions = decodeConditionList(buf);
                     List<LootConditionInfo> inheritedConditions = decodeConditionList(buf);
                     acquisitionPaths.add(new LootAcquisitionPath(
-                            sourceChildTable, sourceItemTag, entryConditions, inheritedConditions));
+                            sourceChildTable, sourceItemTag, entryConditions, inheritedConditions,
+                            buf.readEnum(UncertaintyLevel.class), buf.readBoolean()));
                 }
                 boolean injected = buf.readBoolean();
                 items.add(new ItemEntry(itemId, itemName, tooltipHint, probability,

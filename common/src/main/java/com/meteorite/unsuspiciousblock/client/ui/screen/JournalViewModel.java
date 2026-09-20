@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
+
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
@@ -532,7 +534,10 @@ public class JournalViewModel {
                         child.id(), child.displayName(), maxScenarioProbability(
                                 childProbability.probability(), childProbability.scenarioProbabilities()),
                         childProbability.scenarioProbabilities(),
-                        childTableConditions(selectedDefinition, child.id()), previewItems));
+                        childTableConditions(selectedDefinition, child.id()), previewItems,
+                        selectedDefinition.items().stream()
+                                .flatMap(item -> item.acquisitionPaths().stream())
+                                .anyMatch(path -> child.id().equals(path.sourceChildTable()) && path.luckAffected())));
             }
         }
         List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
@@ -575,7 +580,8 @@ public class JournalViewModel {
                 item.probability(), item.scenarioProbabilities());
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
                 displayProbability, item.unlocked(), item.count(), item.signature(), highlighted,
-                directPaths, item.injected(), level, item.scenarioProbabilities());
+                directPaths, item.injected(), level, item.scenarioProbabilities(),
+                DeclaredChance.fromPaths(directPaths));
     }
 
     // 卡片只显示代表场景中的最高概率，完整的最小值与最大值由 tooltip 展示。

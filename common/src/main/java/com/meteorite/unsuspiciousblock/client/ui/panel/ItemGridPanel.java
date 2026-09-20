@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.ChatFormatting;
@@ -41,8 +42,11 @@ public final class ItemGridPanel implements PagePanel {
     // 物品名/数量角标颜色
     private static final int NAME_COLOR = 0xFF3A2A1A;
     private static final int PROB_COLOR = 0xFF8B5A2B;
-    private static final int PROB_COLOR_PROBABILISTIC = 0xFFC8A014; // 金色——有概率型条件
-    private static final int PROB_COLOR_RUNTIME = 0xFFC06040;       // 橙红色——有运行时条件
+    // 概率文字画在羊皮纸底色（含格子半透明填充，实测约 #E8DCBC）上，且不带文字阴影，
+    // 因此亮色系对比度不足：亮金 #C8A014 仅约 2.1:1、亮橙红 #C06040 仅约 3.4:1，实际看不清。
+    // 这里压暗到 4.5:1 以上，同时保留"金 = 概率型条件""橙红 = 运行时条件"的色相语义。
+    private static final int PROB_COLOR_PROBABILISTIC = 0xFF7A5700; // 深金色——有概率型条件（约 4.8:1）
+    private static final int PROB_COLOR_RUNTIME = 0xFF9E4326;       // 深橙红——有运行时条件（约 4.7:1）
     private static final int PROB_COLOR_UNKNOWN = 0xFF6B6B6B;       // 灰色——概率未知（未覆盖），与 tooltip 一致
     private static final int PENDING_COLOR = 0xFF7A6247;
     private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
@@ -381,11 +385,14 @@ public final class ItemGridPanel implements PagePanel {
                 NAME_COLOR, hovered, scrollTicks, true);
 
         // 概率（居中，颜色根据不确定性等级区分）
-        Component probComp = formatProbability(item.probability(), item.uncertaintyLevel(),
-                item.scenarioProbabilities());
+        boolean declared = !item.declaredChances().isEmpty();
+        Component probComp = declared ? Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.probability_trigger_short",
+                ProbabilityFormat.formatDeclaredChances(item.declaredChances()))
+                : formatProbability(item.probability(), item.uncertaintyLevel(), item.scenarioProbabilities());
         // 未知概率优先按"未知"着色：此时等级可能是 NONE（只有可静态求值的条件），
         // 沿用等级着色会和 tooltip 的灰色口径打架
-        int probColor = item.probability().isUnknown()
+        int probColor = declared ? PROB_COLOR_PROBABILISTIC : item.probability().isUnknown()
                 ? PROB_COLOR_UNKNOWN
                 : switch (item.uncertaintyLevel()) {
                     case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
@@ -489,12 +496,13 @@ public final class ItemGridPanel implements PagePanel {
         if (!hoveredItem.unlocked()) {
             return new TooltipData(ItemStack.EMPTY, null, -1, hoveredItem.probability(),
                     hoveredItem.acquisitionPaths(), hoveredItem.injected(),
-                    hoveredItem.uncertaintyLevel(), false, hoveredItem.scenarioProbabilities());
+                    hoveredItem.uncertaintyLevel(), false, hoveredItem.scenarioProbabilities(),
+                    hoveredItem.declaredChances());
         }
         return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
                 hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
                 hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true,
-                hoveredItem.scenarioProbabilities());
+                hoveredItem.scenarioProbabilities(), hoveredItem.declaredChances());
     }
 
     // 处理 tag 分组入口与返回入口点击；普通物品格不消费点击。
@@ -600,7 +608,7 @@ public final class ItemGridPanel implements PagePanel {
             ChildTableEntry child = this.childTables.get(i - groupCount);
             return JournalTooltipBuilder.buildChildTable(
                     child.displayName(), child.tableId(), child.probability(),
-                    child.scenarioProbabilities(), child.conditions());
+                    child.scenarioProbabilities(), child.conditions(), child.luckAffected());
         }
         return null;
     }
@@ -669,7 +677,8 @@ public final class ItemGridPanel implements PagePanel {
                                   Probability probability,
                                   List<ScenarioProbability> scenarioProbabilities,
                                   List<LootConditionInfo> conditions,
-                                  List<GridItem> previewItems) {
+                                  List<GridItem> previewItems,
+                                  boolean luckAffected) {
         public ChildTableEntry {
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
             conditions = List.copyOf(conditions);
@@ -689,11 +698,12 @@ public final class ItemGridPanel implements PagePanel {
                                boolean injected,
                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                                boolean discovered,
-                               List<ScenarioProbability> scenarioProbabilities) {
+                               List<ScenarioProbability> scenarioProbabilities,
+                               List<DeclaredChance> declaredChances) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
             this(stack, hint, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of());
+                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of());
         }
 
     }
@@ -705,7 +715,8 @@ public final class ItemGridPanel implements PagePanel {
                            List<LootAcquisitionPath> acquisitionPaths,
                            boolean injected,
                            LootConditionHandler.UncertaintyLevel uncertaintyLevel,
-                           List<ScenarioProbability> scenarioProbabilities) {
+                           List<ScenarioProbability> scenarioProbabilities,
+                           List<DeclaredChance> declaredChances) {
 
         @Nullable
         public ResourceLocation primarySourceChildTable() {

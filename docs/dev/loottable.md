@@ -31,6 +31,7 @@ loottable/
 ├── catalog/      读模型与查询
 │   ├── LootTableCatalog         跨模块共享的记录类型
 │   ├── Probability              概率值类型（未知 / 不可达 / 已测量）
+│   ├── DeclaredChance           数据表声明的 random_chance 触发率区间（网格“触发率”的唯一来源）
 │   ├── LootTableProjector       图 + 编译产物 → 静态投影
 │   ├── StaticTableProjection    静态展平物品路径与子表入口（概率为占位）
 │   ├── ItemDefinitionAccumulator 同签名多路径合并的唯一实现
@@ -60,7 +61,7 @@ loottable/
 │   ├── LootContextParamFiller      模拟用 LootParams 构建（宽松回退）
 │   ├── SimulationFakePlayer        模拟用假玩家
 │   ├── SimulationFishingHook       模拟用假钓鱼浮标（钓鱼表 THIS_ENTITY）
-│   └── ProbabilityFormat           概率值 → 展示文本（唯一格式化入口，仅 UI 边界调用）
+│   └── ProbabilityFormat           概率值与声明触发率 → 展示文本（唯一格式化入口，仅 UI 边界调用）
 ├── injection/    战利品注入
 │   ├── ArchaeologyLootInjector     注入器接口
 │   └── ArchaeologyLootInjectors    全局注册器（单例）
@@ -112,10 +113,12 @@ ItemDefinition{
 }
 
 LootAcquisitionPath{
-  sourceChildTable,    来自哪个子表
-  sourceItemTag,       来自哪个 item tag
-  entryConditions,     条目自身条件
-  inheritedConditions  继承自 pool/组合 entry/表引用的条件
+  sourceChildTable,        来自哪个子表
+  sourceItemTag,           来自哪个 item tag
+  entryConditions,         条目自身条件
+  inheritedConditions,     继承自 pool/组合 entry/表引用的条件
+  functionUncertainty,     函数求值等级——与条件树分开，只描述函数（见 6.1）
+  luckAffected             本路径所在池是否受幸运影响（见 7.1）
 }
 ```
 
@@ -241,6 +244,16 @@ capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排
 
 `LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`；条件分析、函数链拼接与多路径合并各只有一份实现（`LootParseUtil`、`ItemDefinitionAccumulator`），保证编译路径与投影路径产出逐位一致的条件指纹与签名。
 
+### 6.1 多路径物品提示
+
+`ItemDefinitionAccumulator` 对同签名条目的非空提示按 `Component` 结构（包括翻译键与参数）去重，按路径首次出现顺序保留，用本地化的 `alternative_separator` 拼接；不使用已翻译文本判断相等。展示名的分歧判断也使用组件结构。空提示不抹去其他路径的已知提示。
+
+各路径区间相同时只出现一次——内置河流淘洗的金粒两条路径同为 `数量: 1-3`，因此不出现分隔符；区间不同时按路径出现顺序拼接，形如 `数量: 1-3 / 数量: 3-6`。这些是各路径的函数效果，并非整张表一次抽取的总产量，也不表示各路径一定同时触发。`uniform` 两端相等时显示 `数量: N`。
+
+提示仍以单个 `Component` 经过目录同步协议传输，客户端只展示；目录哈希已包含提示组件，因此提示变更会触发目录更新。常量 `count` 静态应用成功后不产生额外提示的限制仍保留。
+
+`LootAcquisitionPath.functionUncertainty` 单独记录函数求值等级。`set_count` 的已知常量或等端点 `uniform` 为 `NONE`，常量端点的非退化 `uniform` 为 `PROBABILISTIC`，动态数量来源和未识别函数保守为 `RUNTIME`。投影器对函数链取最保守等级，条目再与真实条件树合并；因此已知随机数量不再单独触发“条件概率”。物品签名及其存储键保持兼容，既有发现记录无需迁移。
+
 ## 7. 概率模拟
 
 ### 7.1 模拟引擎
@@ -273,6 +286,10 @@ simulateOne(tableId, rawTable, level)
 
 物品概率口径是“单次战利品表抽取中，该签名至少出现一次的概率”。同一轮返回多个相同签名的
 `ItemStack` 时只计一次，不统计物品数量或平均产量。
+
+模拟统一采用 `SimulationProfile.CATALOG_LUCK = 1.0F`，通过 `LootParams.withLuck` 传入，资格条件场景与换工具场景均保留该值。它是固定展示基准，不读取或修改真实玩家幸运，也不是所有幸运取值的范围或最大概率；需要更高幸运阈值的条目仍可能不产出。
+
+编译器在每个 pool 检查 `bonus_rolls` 与所有候选（含组合 entry 子节点）的 `quality`：非零质量会改变同池权重竞争，因此整个池标记为幸运敏感；无法证明恒零的奖励抽取 provider 也保守标记。该标记随引用位置向子表传递，再写入 `LootAcquisitionPath.luckAffected`，独立于真实条件树、函数等级及物品签名。物品和父表中的子表入口 tooltip 显示“随幸运变化（模拟幸运值：1.0）”，不把它误写成“必须幸运才能获得”。此静态标记覆盖 JSON 的标准幸运机制；第三方运行时注入或自定义条件/函数暗中读取幸运时无法保证识别。
 
 模拟热路径按 `Item` 预先索引候选，只扫描当前掉落物的签名变体。`LootResultMatcher` 用局部状态记录
 最高优先级与歧义，不为每次匹配创建排序 Map 或临时 List；每个候选缓存 stable key，并由带轮次标记的
@@ -346,7 +363,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 动态值（`random_chance` 只在常量或 `uniform` 两端皆为常量时给出百分比），绝不展示编造的 `100%`。
 
 概率文本与颜色共用**一份**判定：`ItemDefinition.uncertaintyLevel()` 与 `hasConditions()` 读同一批数据
-（全部获取路径的条件树 + 近似签名），UI 不再在客户端另起规则、也不再用 tooltip 文案比较来识别近似条目
+（全部获取路径的条件树 + 近似签名及函数分级），UI 不再在客户端另起规则、也不再用 tooltip 文案比较来识别近似条目
 （那种做法会受语言差异影响）。两者的关系是单向蕴含：等级非 `NONE` 必然说明条目带条件或签名近似
 （即概率可能显示 `?`）；反过来，只有可静态求值的条件（如 `match_tool`）时等级为 `NONE` 而概率仍可能为
 `?`——此时网格与 tooltip 都按"未知"着色，不会出现"颜色说不确定、概率却从不显示 `?`"或反过来的错配。存在上述场景条件时，概率文字明确标为
@@ -356,8 +373,12 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 对应场景中记为 `0`，可触发但 10000 次均未出现才记为 `<0.01%`。条目或子表在**所有**代表场景中都不
 适用时（其条件组合因场景上限被截断，见 `MAX_SCENARIOS`），视为未被覆盖，摘要统一记为 `"?"` 而不是
 逐个写 `0`——否则"没算到"会被显示成"不可能获得"。目录摘要取这些场景的最小值与最大值；
-网格和 tooltip 只展示该范围，不再逐场景展开重复条件树。代表场景用于控制组合数量与 UI 长度，
+tooltip 展示该范围，不再逐场景展开重复条件树；没有声明触发率时，网格显示代表场景的最高值。代表场景用于控制组合数量与 UI 长度，
 因此范围不是所有现实条件组合的严格数学上下界。同一场景内多条路径产出同一签名时仍由整表模拟自然合并。
+
+**声明触发率与模拟掉落率分开**：`random_chance` 解析器把常量值或两端皆为常量的 `uniform` 范围写入条件 metadata 的 `declared_chance_min/max`。公共值类型 `DeclaredChance` 从当前页直接路径的条件树（含继承条件及组合条件的叶节点）收集这些值，保序去重。网格优先显示“触发率 X%”或范围；多条声明用 `/` 分隔。tooltip 同时列出“表中触发率”及“模拟掉落率”（有场景差异时为范围），后者仍为整张表抽取的统计结果。
+
+声明值描述各个 `random_chance` 节点自身，不对多个节点做乘法、并集或取反，也不把权重竞争、rolls 或多 pool 的结果混进声明值；完整条件树用于解释组合关系。动态或非法范围不作为明确声明值，未找到明确值时沿用模拟展示。声明值不套用抽样的两位有效数字或零出现阈值，因此 `0%`、小概率和明确区间均按数据值展示。
 
 嵌套子表由 `NestedLootTableMixin` 在模拟作用域中直接观测。每次父表抽取内按子表 ID 去重，
 统计“该直接子表至少产出一个物品”的概率；不通过物品签名反推，因此父子表产物重叠不会造成误判。
@@ -395,7 +416,7 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 - 存档根带 `format_version`（当前 2）。读取时先校验版本与**严格的 NBT tag 类型**——根缺少版本、版本不符、概率仍是旧版 `StringTag`（注意这并**不是**"字段缺失"，必须按类型显式判定），或单个表的条目无法解析时，一律把对应表按**缓存未命中**处理：既不报错中断，也不迁移数值、更不把类型不匹配解成 0。
 - 每表还存一份内容哈希，输入为该表**子树内每张表**的完整资源栈摘要与编译产物摘要。后者必须覆盖整棵子树而不只是本表，否则"子表引用的 item tag 成员变化"（JSON 文本不变、只有展开结果变）不会让父表失效。
-- 统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v13`。模拟异常或无法取得有效表时不写入缓存。
+- 统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v15`（固定 Luck=1）。函数分级及幸运影响标记加入目录哈希；声明触发率元数据随条件树同步并参与哈希。模拟异常或无法取得有效表时不写入缓存。
 - **失败表不会自动重试**：能确定性失败的情形（注册表里没有该表、条件求值抛异常）用同一份输入重跑只会再失败一次并持续占用 tick 预算，因此失败表只记录不重排。它的概率保持"未知"（不会显示成 0%），本轮队列排空时汇总列出一次 `N 张表的概率模拟失败…将在下次数据包重载或 /usb journal reload 时重新尝试`。
 - `/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。
 

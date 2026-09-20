@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.loottable.catalog;
 import com.google.gson.JsonElement;
 import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.UncertaintyLevel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootParseUtil;
@@ -111,7 +112,7 @@ public final class LootTableProjector {
         List<ItemDefinition> result = List.of();
         if (this.compiledTables.containsKey(rootId)) {
             LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
-            expand(this.compiledTables.get(rootId), List.of(), List.of(), null, new LinkedHashSet<>(), items);
+            expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, new LinkedHashSet<>(), items);
 
             List<ItemDefinition> definitions = new ArrayList<>(items.size());
             for (ItemDefinitionAccumulator accumulator : items.values()) {
@@ -129,15 +130,17 @@ public final class LootTableProjector {
     // 按编译产物的事件顺序展开：物品条目就地解析，引用位置递归进入子表
     private void expand(CompiledLootTable table, List<LootConditionInfo> incomingConditions,
                         List<JsonElement> incomingFunctions, @Nullable ResourceLocation sourceChildTable,
+                        boolean incomingLuckAffected,
                         LinkedHashSet<ResourceLocation> expandingStack,
                         Map<String, ItemDefinitionAccumulator> items) {
         for (CompiledLootTable.Event event : table.events()) {
             switch (event) {
                 case CompiledLootTable.ItemPath itemPath ->
-                        resolveItem(itemPath, incomingConditions, incomingFunctions, sourceChildTable, items);
+                        resolveItem(itemPath, incomingConditions, incomingFunctions, sourceChildTable,
+                                incomingLuckAffected || itemPath.luckAffected(), items);
                 case CompiledLootTable.ReferenceSite site ->
                         expandReferenceSite(site, incomingConditions, incomingFunctions,
-                                sourceChildTable, expandingStack, items);
+                                sourceChildTable, incomingLuckAffected || site.luckAffected(), expandingStack, items);
             }
         }
     }
@@ -147,6 +150,7 @@ public final class LootTableProjector {
                                      List<LootConditionInfo> incomingConditions,
                                      List<JsonElement> incomingFunctions,
                                      @Nullable ResourceLocation sourceChildTable,
+                                     boolean luckAffected,
                                      LinkedHashSet<ResourceLocation> expandingStack,
                                      Map<String, ItemDefinitionAccumulator> items) {
         ResourceLocation target = site.target();
@@ -170,7 +174,7 @@ public final class LootTableProjector {
                         site.siteConditions()),
                 concatFunctions(site.siteFunctions(), site.inheritedFunctions(), incomingFunctions),
                 sourceChildTable != null ? sourceChildTable : target,
-                nextStack, items);
+                luckAffected, nextStack, items);
     }
 
     // ==================== 单条物品路径的解析 ====================
@@ -178,6 +182,7 @@ public final class LootTableProjector {
     // 函数链拼接顺序与条件继承顺序是签名兼容的组成部分，本方法的求值次序需与解析路径逐条一致
     private void resolveItem(CompiledLootTable.ItemPath path, List<LootConditionInfo> incomingConditions,
                              List<JsonElement> incomingFunctions, @Nullable ResourceLocation sourceChildTable,
+                             boolean luckAffected,
                              Map<String, ItemDefinitionAccumulator> items) {
         List<LootConditionInfo> entryConditions = path.entryConditions();
         List<JsonElement> functions = concatFunctions(path.entryFunctions(), path.inheritedFunctions(),
@@ -186,12 +191,14 @@ public final class LootTableProjector {
         ItemStack previewStack = new ItemStack(BuiltInRegistries.ITEM.get(path.itemId()));
         LootResultSignature signature = LootResultSignature.plain(path.itemId());
         boolean entryHasConditions = !entryConditions.isEmpty();
+        UncertaintyLevel functionUncertainty = UncertaintyLevel.NONE;
         List<LootConditionInfo> resolvedConditions = new ArrayList<>(entryConditions);
         List<Component> functionHints = new ArrayList<>();
 
         for (JsonElement functionElement : functions) {
             if (!functionElement.isJsonObject()) {
                 entryHasConditions = true;
+                functionUncertainty = UncertaintyLevel.RUNTIME;
                 continue;
             }
 
@@ -207,6 +214,7 @@ public final class LootTableProjector {
             LootItemFunction function = decodeResult.result().orElse(null);
             if (function == null) {
                 entryHasConditions = true;
+                functionUncertainty = UncertaintyLevel.RUNTIME;
                 functionHints.add(unknownFunctionHint(LootParseUtil.extractTypeId(functionElement, "function")));
                 LOGGER.warn("解析战利品函数失败: function={}, error={}",
                         LootParseUtil.extractTypeId(functionElement, "function"),
@@ -220,6 +228,7 @@ public final class LootTableProjector {
             if (handler == null) {
                 // 未知 function：标记为条件 + 近似签名
                 entryHasConditions = true;
+                functionUncertainty = UncertaintyLevel.RUNTIME;
                 functionHints.add(unknownFunctionHint(functionId));
                 if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
                     String functionName = functionId != null ? functionId.toString() : "unknown";
@@ -231,6 +240,7 @@ public final class LootTableProjector {
 
             try {
                 if (!functionConditions.isEmpty()) {
+                    functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
                     Component hint = handler.describeHint(function, functionElement.getAsJsonObject());
                     if (hint != null) {
                         functionHints.add(hint);
@@ -243,6 +253,7 @@ public final class LootTableProjector {
                     previewStack = result;
                 } else {
                     entryHasConditions = true;
+                    functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
                     Component hint = handler.describeHint(function, functionElement.getAsJsonObject());
                     if (hint != null) {
                         functionHints.add(hint);
@@ -255,9 +266,11 @@ public final class LootTableProjector {
                 }
                 if (handler.addsRandomness()) {
                     entryHasConditions = true;
+                    functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
                 }
             } catch (RuntimeException exception) {
                 entryHasConditions = true;
+                functionUncertainty = UncertaintyLevel.RUNTIME;
                 functionHints.add(unknownFunctionHint(functionId));
                 if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
                     String functionName = functionId != null ? functionId.toString() : "unknown";
@@ -275,6 +288,11 @@ public final class LootTableProjector {
             signature = LootResultSignature.approximateItemOnly(currentItemId(previewStack), "function");
         }
 
+        // 保留签名键以兼容既有发现记录；仅将不确定性从签名身份中解耦。
+        if (signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY
+                && !"function".equals(signature.data())) {
+            functionUncertainty = UncertaintyLevel.RUNTIME;
+        }
         Component displayName = resolveItemDisplayName(previewStack);
         Component tooltipHint;
         if (signature.isEnchantedVariant()) {
@@ -293,7 +311,13 @@ public final class LootTableProjector {
                 ignored -> new ItemDefinitionAccumulator(resolved.itemId(), resolved.displayName(),
                         resolved.tooltipHint(), resolved.signature()));
         accumulator.merge(resolved.displayName(), resolved.tooltipHint(), new LootAcquisitionPath(
-                sourceChildTable, path.sourceItemTag(), resolved.conditions(), inheritedConditions));
+                sourceChildTable, path.sourceItemTag(), resolved.conditions(), inheritedConditions,
+                functionUncertainty, luckAffected));
+    }
+
+    // 多个函数取最保守等级，不能让后续的纯数量函数覆盖前面的未知效果。
+    private static UncertaintyLevel stronger(UncertaintyLevel first, UncertaintyLevel second) {
+        return first.ordinal() >= second.ordinal() ? first : second;
     }
 
     /** 单条物品路径的静态求值结果——打包成不可变记录，便于在累加器 lambda 中安全引用。 */

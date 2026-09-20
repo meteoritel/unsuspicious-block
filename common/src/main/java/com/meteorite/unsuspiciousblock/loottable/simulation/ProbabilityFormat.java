@@ -1,10 +1,13 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
+import net.minecraft.network.chat.Component;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.util.List;
 
 /**
  * 概率格式化工具——把 {@link Probability} 值渲染成人类可读的文本。
@@ -19,6 +22,26 @@ public final class ProbabilityFormat {
     private static final MathContext MC_2SIG = new MathContext(2, RoundingMode.HALF_UP);
 
     private ProbabilityFormat() {
+    }
+
+    // 声明值不套用抽样精度或零出现阈值，0、微小概率及区间均保留原值。
+    public static Component formatDeclaredChances(List<DeclaredChance> chances) {
+        var result = Component.empty();
+        for (int i = 0; i < chances.size(); i++) {
+            if (i > 0) {
+                result.append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.item_hint.alternative_separator"));
+            }
+            DeclaredChance chance = chances.get(i);
+            String lower = exactPercent(chance.lower());
+            result.append(chance.lower() == chance.upper()
+                    ? lower : lower + "-" + exactPercent(chance.upper()));
+        }
+        return result;
+    }
+
+    private static String exactPercent(double fraction) {
+        return BigDecimal.valueOf(fraction).movePointRight(2).stripTrailingZeros().toPlainString() + "%";
     }
 
     /**

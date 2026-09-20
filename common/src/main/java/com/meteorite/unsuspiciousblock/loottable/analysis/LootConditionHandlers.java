@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.analysis;
 
+import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
+
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationCompositeConditionAccess;
@@ -428,7 +430,11 @@ public final class LootConditionHandlers {
             if (provider instanceof ConstantValue(float value)) {
                 return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "random_chance", Math.round(value * 100)),
-                        value);
+                        value)
+                        .withMetadata(DeclaredChance.MIN_KEY,
+                                Float.toString(value))
+                        .withMetadata(DeclaredChance.MAX_KEY,
+                                Float.toString(value));
             }
             if (provider instanceof UniformGenerator(NumberProvider min, NumberProvider max)) {
                 boolean minConstant = min instanceof ConstantValue;
@@ -436,7 +442,11 @@ public final class LootConditionHandlers {
                 if (minConstant && maxConstant) {
                     return new LootConditionInfo(keyOf(condition),
                             Component.translatable(I18N_PREFIX + "random_chance_range",
-                                    percentOf(min), percentOf(max)), null);
+                                    percentOf(min), percentOf(max)), null)
+                            .withMetadata(DeclaredChance.MIN_KEY,
+                                    Float.toString(((ConstantValue) min).value()))
+                            .withMetadata(DeclaredChance.MAX_KEY,
+                                    Float.toString(((ConstantValue) max).value()));
                 }
                 if (minConstant || maxConstant) {
                     return partial(new LootConditionInfo(keyOf(condition),

@@ -33,6 +33,9 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
 
         /** 本表内已继承的函数链（不含本事件自身的函数），最内层在前。 */
         List<JsonElement> inheritedFunctions();
+
+        // 当前路径所在池的权重或奖励抽取次数受幸运影响。
+        boolean luckAffected();
     }
 
     /**
@@ -44,7 +47,8 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
                            List<LootConditionInfo> entryConditions,
                            List<JsonElement> entryFunctions,
                            List<LootConditionInfo> inheritedConditions,
-                           List<JsonElement> inheritedFunctions) implements Event {
+                           List<JsonElement> inheritedFunctions,
+                           boolean luckAffected) implements Event {
         public ItemPath {
             entryConditions = List.copyOf(entryConditions);
             entryFunctions = List.copyOf(entryFunctions);
@@ -63,7 +67,8 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
                                 List<LootConditionInfo> siteConditions,
                                 List<JsonElement> siteFunctions,
                                 List<LootConditionInfo> inheritedConditions,
-                                List<JsonElement> inheritedFunctions) implements Event {
+                                List<JsonElement> inheritedFunctions,
+                                boolean luckAffected) implements Event {
         public ReferenceSite {
             siteConditions = List.copyOf(siteConditions);
             siteFunctions = List.copyOf(siteFunctions);

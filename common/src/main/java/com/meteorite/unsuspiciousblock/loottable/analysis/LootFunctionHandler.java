@@ -46,6 +46,11 @@ public interface LootFunctionHandler {
      */
     boolean addsRandomness();
 
+    // 无法静态应用时的原因分级；默认保守处理，已知随机分布可由处理器细化。
+    default LootConditionHandler.UncertaintyLevel uncertaintyLevel(LootItemFunction function) {
+        return LootConditionHandler.UncertaintyLevel.RUNTIME;
+    }
+
     /**
      * 当 {@link #apply} 返回 null 时，提供人类可读的提示来描述该 function 的效果范围。
      * 例如 set_count 的范围 "1-3"，set_damage 的范围 "0-90%"。

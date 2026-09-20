@@ -53,6 +53,7 @@
           "type": "minecraft:item",
           "name": "minecraft:gold_nugget",
           "weight": 5,
+          "quality": 2,
           "functions": [
             {
               "function": "minecraft:set_count",
@@ -145,75 +146,6 @@
               }
             }
           ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:gold_nugget",
-          "weight": 0,
-          "quality": 4,
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {
-                "type": "minecraft:uniform",
-                "min": 3,
-                "max": 6
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "rolls": 1,
-      "entries": [
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:gold_nugget",
-          "weight": 4,
-          "quality": 2,
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {
-                "type": "minecraft:uniform",
-                "min": 1,
-                "max": 3
-              }
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:lapis_lazuli",
-          "weight": 3,
-          "quality": 2,
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {
-                "type": "minecraft:uniform",
-                "min": 1,
-                "max": 2
-              }
-            }
-          ]
-        },
-        {
-          "type": "minecraft:item",
-          "name": "minecraft:amethyst_shard",
-          "weight": 2,
-          "quality": 3,
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {
-                "type": "minecraft:uniform",
-                "min": 1,
-                "max": 1
-              }
-            }
-          ]
         }
       ]
     },
@@ -270,6 +202,7 @@
           "type": "minecraft:item",
           "name": "minecraft:gold_nugget",
           "weight": 5,
+          "quality": 2,
           "functions": [
             {
               "function": "minecraft:set_count",

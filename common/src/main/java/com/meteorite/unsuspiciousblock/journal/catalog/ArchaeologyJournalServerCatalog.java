@@ -63,7 +63,7 @@ import java.util.Set;
 public final class ArchaeologyJournalServerCatalog {
     private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v13";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v15";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;

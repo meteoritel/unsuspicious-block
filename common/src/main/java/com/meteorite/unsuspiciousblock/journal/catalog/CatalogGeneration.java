@@ -196,6 +196,8 @@ public final class CatalogGeneration {
                         ? path.sourceItemTag().toString() : "");
                 updateConditionListDigest(digest, path.entryConditions());
                 updateConditionListDigest(digest, path.inheritedConditions());
+                updateDigest(digest, path.functionUncertainty().name());
+                updateDigest(digest, Boolean.toString(path.luckAffected()));
             }
         }
         for (CatalogTableDto.ChildTableEntry child : table.childProbabilities()) {

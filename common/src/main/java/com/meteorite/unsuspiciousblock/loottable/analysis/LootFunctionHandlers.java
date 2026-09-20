@@ -435,6 +435,22 @@ public final class LootFunctionHandlers {
     /** 处理 set_count：若 count 为固定值则直接应用；若为范围则返回 null */
     private static final class SetCountHandler implements LootFunctionHandler {
         @Override
+        public LootConditionHandler.UncertaintyLevel uncertaintyLevel(LootItemFunction function) {
+            NumberProvider value = reflectField(function, "value");
+            if (value instanceof ConstantValue) {
+                return LootConditionHandler.UncertaintyLevel.NONE;
+            }
+            if (value instanceof UniformGenerator(NumberProvider min, NumberProvider max)
+                    && min instanceof ConstantValue(float lower)
+                    && max instanceof ConstantValue(float upper)
+                    && Float.isFinite(lower) && Float.isFinite(upper) && lower <= upper) {
+                return lower == upper ? LootConditionHandler.UncertaintyLevel.NONE
+                        : LootConditionHandler.UncertaintyLevel.PROBABILISTIC;
+            }
+            return LootConditionHandler.UncertaintyLevel.RUNTIME;
+        }
+
+        @Override
         @Nullable
         public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
             if (!(function instanceof SetItemCountFunction)) {
@@ -467,7 +483,8 @@ public final class LootFunctionHandlers {
                     int minInt = Math.round(value1);
                     int maxInt = Math.round(value2);
                     if (minInt == maxInt) {
-                        return null;
+                        return Component.translatable(
+                                "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count", minInt);
                     }
                     return Component.translatable(
                             "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range", minInt, maxInt);
