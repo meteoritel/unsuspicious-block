@@ -38,7 +38,6 @@
     "catfavor.ServerPlayerCatFavorStateMixin",
     "journal.ServerPlayerJournalStateMixin",
     "loottable.SimulationCompositeConditionMixin",
-    "loottable.SimulationContextConditionMixin",
     "loottable.SimulationBlockStateConditionMixin",
     "loottable.SimulationDamageSourceConditionMixin",
     "loottable.SimulationEntityPropertiesConditionMixin",
