@@ -242,9 +242,20 @@ public final class PathHintAnalyzer {
         } else if (SimulationScenarioPlanner.isScenarioControlled(type)) {
             scenarioConditions.putIfAbsent(detailKey(condition), condition);
         }
+        // 只有**组合条件**的子节点是"另一条条件"；其它类型的子节点是同一条条件的**展示子行**
+        // （例：{@code tool_enchantment} 的"概率：基础 20%，每级变化 10%"子行）。递归进去会把同一条门槛
+        // 重复列一遍，还会把概率子行写成"该路径需要工具带 概率：… 附魔"这种读不通的句子。
+        if (!isComposite(type)) {
+            return;
+        }
         for (LootConditionInfo child : condition.children()) {
             collect(child, parameterDetails, scenarioConditions);
         }
+    }
+
+    // 组合条件的三种类型——只有它们的子节点是语义上独立的另一条条件
+    private static boolean isComposite(ResourceLocation type) {
+        return ALL_OF.equals(type) || ANY_OF.equals(type) || INVERTED.equals(type);
     }
 
     // 读工具附魔等级的机制：模组的 tool_enchantment 与三处原版机制。等级是资格也是概率来源

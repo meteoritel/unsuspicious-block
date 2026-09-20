@@ -12,7 +12,6 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
-import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationProfile;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -220,11 +219,12 @@ public final class JournalTooltipBuilder {
         }
     }
 
-    // 说明模拟基准，不将幸运敏感误写为必须拥有幸运效果才可获得。
+    // 说明该路径受幸运影响；**不再**写死一个幸运数值——幸运自 P1 起是输入的一维（基准值为 0），
+    // 在 tooltip 里印一个固定数字会与玩家实际看到的那份输入不符。
     private static void appendLuckNote(List<Component> lines) {
         lines.add(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent",
-                Float.toString(SimulationProfile.CATALOG_LUCK)).withStyle(TooltipBuilder.HINT));
+                "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent")
+                .withStyle(TooltipBuilder.HINT));
     }
 
     // 只聚合已测量/静态不可达的代表场景；未知、需要条件与零命中不参与区间——它们不是数值。
@@ -331,7 +331,8 @@ public final class JournalTooltipBuilder {
             if (isFidelityIncomplete(info)) {
                 text.withStyle(ChatFormatting.ITALIC);
             }
-            lines.add(Component.literal(prefix + branch).withStyle(ChatFormatting.DARK_GRAY).append(text));
+            // 树枝前缀不再是 DARK_GRAY：它在深色 tooltip 背景上几乎不可见，而条件树正是"为什么没数字"的依据
+            lines.add(Component.literal(prefix + branch).withStyle(TooltipBuilder.HINT).append(text));
 
             if (!info.children().isEmpty()) {
                 appendConditionTree(lines, info.children(), prefix + childPrefix);

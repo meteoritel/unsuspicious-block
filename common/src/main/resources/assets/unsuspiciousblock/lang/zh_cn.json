@@ -501,7 +501,7 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range": "数量: %s-%s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count": "数量: %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_trigger_short": "触发率 %s",
-  "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent": "随幸运变化（模拟幸运值：%s）",
+  "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent": "随幸运变化：数量或概率取决于幸运值",
   "screen.unsuspiciousblock.archaeology_journal.probability_trigger": "表中触发率：%s",
   "screen.unsuspiciousblock.archaeology_journal.probability_simulated": "模拟掉落率：%s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.alternative_separator": " / ",

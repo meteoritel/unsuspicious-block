@@ -26,8 +26,14 @@ public final class TooltipBuilder {
     public static final ChatFormatting BODY = ChatFormatting.WHITE;
     /** 状态行 / 次要信息。 */
     public static final ChatFormatting LABEL = ChatFormatting.GRAY;
-    /** 操作提示 / 未激活内容。 */
-    public static final ChatFormatting HINT = ChatFormatting.DARK_GRAY;
+    /**
+     * 操作提示 / 未激活内容。
+     * <p>
+     * 用 {@code GRAY} 而不是 {@code DARK_GRAY}：tooltip 背景是接近黑的深色，{@code DARK_GRAY} 在其上
+     * 只有约 1.9:1 的对比度，几乎读不出来——而这里承载的恰恰是"为什么没有数字"这类必须读到的信息。
+     * 与 {@link #LABEL} 同色是刻意的取舍：可读性优先于层级装饰。
+     */
+    public static final ChatFormatting HINT = ChatFormatting.GRAY;
     /** 正面 / 已解锁 / 增益。 */
     public static final ChatFormatting POSITIVE = ChatFormatting.GREEN;
     /** 负面 / 警告 / 损失。 */

@@ -47,7 +47,7 @@ public final class ItemGridPanel implements PagePanel {
     // 这里压暗到 4.5:1 以上，同时保留"金 = 概率型条件""橙红 = 运行时条件"的色相语义。
     private static final int PROB_COLOR_PROBABILISTIC = 0xFF7A5700; // 深金色——有概率型条件（约 4.8:1）
     private static final int PROB_COLOR_RUNTIME = 0xFF9E4326;       // 深橙红——有运行时条件（约 4.7:1）
-    private static final int PROB_COLOR_UNKNOWN = 0xFF6B6B6B;       // 灰色——概率未知（未覆盖），与 tooltip 一致
+    private static final int PROB_COLOR_UNKNOWN = 0xFF4A4038;       // 深暖灰——状态词（需要条件／问号）约 7:1，浅色纸面上必须读得清
     private static final int PENDING_COLOR = 0xFF7A6247;
     private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
     private static final int BADGE_COLOR_ABBR = 0xFFFFC060;

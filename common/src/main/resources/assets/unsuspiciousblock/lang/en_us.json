@@ -502,7 +502,7 @@
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range": "Count: %s-%s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count": "Count: %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_trigger_short": "Trigger %s",
-  "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent": "Varies with Luck (simulated at Luck %s)",
+  "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent": "Varies with luck: counts and chances depend on the luck value",
   "screen.unsuspiciousblock.archaeology_journal.probability_trigger": "Configured trigger chance: %s",
   "screen.unsuspiciousblock.archaeology_journal.probability_simulated": "Simulated drop chance: %s",
   "screen.unsuspiciousblock.archaeology_journal.item_hint.alternative_separator": " / ",
