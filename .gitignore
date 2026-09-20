@@ -40,3 +40,4 @@ common/logs
 report
 /CONTEXT.md
 /docs/adr/
+/.zcodeignore
