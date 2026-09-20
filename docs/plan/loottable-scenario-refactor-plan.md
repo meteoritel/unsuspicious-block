@@ -529,6 +529,7 @@ P0 至 P2 是解决本次问题的最小完整交付。**调度上有两条硬�
 | 玩家自填数值导致缓存与队列增长 | 自由 float、抽样次数档位，以及参数组合 | 幸运有界（-5..10、精度 0.01）、抽样次数只取离散档位且上限 10 万、每玩家在途 ≤2、全局待处理 ≤32、每表**按参数组合**计数上限 8（实际条目 ≤ 8 × 档位数，决策 46） |
 | 场景 Tab 在多数表上信息量低 | 内置 13 张表里 11 张只有 1 个场景 | 该 Tab 定位为「模拟条件页」，参数区对每张表都有意义，不会出现空页面 |
 | 主线程 tick 占用 | 单场景约 50ms（用户实测），超过 15ms 软预算，一个场景至少跨 4 个 tick | 沿用软预算与跨 tick 续跑；基准每表只跑一个，按需部分由限流兜底 |
+| **Relics 动态随机属性签名导致候选扫描增长**（已归因并修复扫描热点） | 运行时 roller_skate / experience_disperser 产生约 1700 个精确变体，原线性匹配扫描约 91万～110万次，耗时 468～525ms；并非炖菜或原版条目数。19:15 同为 profile=v1 的热运行确认索引后 MATCH 降为 9～14ms | 冰窖 CPU 671→156ms、埋藏宝藏 671→171ms、古城 656→203ms，三表合计下降 73.5%；签名/存储键及动态发现保留。整表 <100ms 尚未达到，剩余生成阶段 82～117ms；追加目录预览复用已实现但收益待测。证据见第九节 |
 | 静态分析与运行时表不一致 | 改 JSON 后未重载，或整合包运行时改表 | D9 修好后哈希会重算；仍存在"静态按 JSON、运行时按注入后的表"的固有差异，靠"未识别注入不承诺穷尽发现"的既有边界诚实标注 |
 | 双平台重载监听的行为差异 | Fabric 与 NeoForge 的重载事件时序不同 | 监听器只置脏标记、重建走 tick 路径，把差异压到最小；P3 双平台实机验收 |
 | 附魔等级与抽样次数使缓存键取值增长 | 每多一个被引用的附魔就多一维取值，再乘上次数档位 | 决策 32 已取消候选枚举，因此这个增长只影响**缓存键的取值空间**、不影响构建成本；只对"表实际引用到"的附魔生成控件；每表按参数组合计数（决策 46）兜底 |
@@ -606,3 +607,75 @@ P0 至 P2 是解决本次问题的最小完整交付。**调度上有两条硬�
 2026-09-20（第四轮，范围收窄）：用户指出追踪范围需要在文档里写明确——不做方块破坏表与实体掉落表，陶罐（`pots/`）例外。为核实这一点读了 `platform/services/ILootTableConfig.java`（默认追踪前缀，`:25-36`）、`journal/tracking/RecentLootTableService.java`（`:27-30` 的 `entities/`、`blocks/` 排除）、`loottable/catalog/LootTableNames.java`（`:57-71` 只按配置前缀匹配、无额外校验）、全仓 13 张内置战利品表的顶层 `type` 与条件/函数清单、`blocks/pottery_wheel.json` 全文，以及 `blocks/unsuspicious_gravel.json` 与 `usb/random_potion.json` 的内容。
 
 核实结论：范围由**路径前缀**划定（`pots/` 在默认前缀内、`blocks/` 与 `entities/` 不在且被管理页拒绝）；被追踪的表里没有一张用到 `survives_explosion`、`ExplosionCondition`、`EnchantedCountIncreaseFunction` 或 `LootItemKilledByPlayerCondition`——`panning` 与 `fossil_hunter` 虽声明 `minecraft:block`，条件只用到 `random_chance`。因此 D6/D7 从缺陷列表移除，爆炸与击杀/抢夺旋钮一并删除（新增裁定 1 项：决策 49）。本轮同时发现一处留待实施时决定的遗留边界：手工在配置里添加 `blocks/`/`entities/` 前缀仍可让这两类表进入目录，因为匹配层不校验。本轮仍未修改任何代码、资源、缓存格式或网络协议。
+
+2026-09-20（P0 实施完成）：按 [执行级拆点清单](loottable-scenario-refactor-tasks.md) 的点序完成 P0 全部 8 项，`./gradlew build` 通过（IDEA MCP 会话不可用，改用编译验证）。落地内容与文件对应：
+
+- **P0-1 数据包重载监听（D9）**：新增 `platform/DataPackReloadListener`（只置脏标记），Fabric 经 `ResourceManagerHelper.get(PackType.SERVER_DATA)` 注册、NeoForge 经 `AddReloadListenerEvent` 注册，重建由 `ServerLootTableConfigManager.tick` 在主线程消费；服务端启动的首次资源加载因目录未加载而被忽略。
+- **P0-2 失效链（决策 35）**：`CompiledLootTable` 新增 `referencedEnchantments`（编译期扫 JSON 的 `enchantment` 字段，正是读附魔的五个机制），哈希逐节点并入「附魔 id + `max_level`」；`SIMULATION_CACHE_VERSION` v15→v16，并把保证范围的两句话与**已知残余**写入 `docs/dev/loottable.md` §7.4。
+- **P0-3 四态（决策 22/36）**：`Probability` 新增 `NeedsCondition` 与 `Unknown(UnknownReason)`；新增窄类型 `SimulatedValue`，存档（格式 2→3）只落 `Unknown`/`Measured`，派生状态读取时重建。
+- **P0-4/P0-5 参数填充与不可用机制（D8、决策 31）**：`LootContextParamFiller` 改为按 `allowed` 填充 required 与 optional；新增 `LootMechanismSupport` 在构建期识别「paramSet 不允许的机制引用」与不允许 ORIGIN 的 paramSet（barter），这类表不入队、标记 `Unknown(UNPARSED)`、照样发布到目录（否则会整表消失）并输出一次诊断。
+- **P0-6 基准场景与显示链（D1、决策 2/40/44）**：`SimulationScenario` 新增 `baseline` 标记，规划器把「条件全不成立」的场景标记为基准，并移除了泥地打捞的满级工具专门分支（`applyMudDredgingTool`；原版 fishing 的两个注入场景保留、标记为非基准）；网格改读服务端派生的基准值，零命中改为「未命中」，`<0.01%` 写法与 `maxScenarioProbability` 一并移除；「场景下不适用」不再写成 `0%` 而写「需要条件」。
+- **P0-7 静态信息性提示**：新增 `simulation/PathHintAnalyzer`（含基准值→展示值的派生与 `NeedsCondition` 提示），中英各新增 18 条文案 key、清理 8 条失效 key。
+- **实测修正（同日，用户首轮启动日志）**：`LootMechanismSupport` 把"缺 `type`"误判为无法识别 paramSet，导致 BetterArcheology 的 7 张宝箱表被错误排除——vanilla `LootTable.DIRECT_CODEC` 的 `type` 缺省是 `ALL_PARAMS`（generic），空串必须映射为 generic。已修，并确认这 7 张表不含 `enchantment_level`/`enchantment_active_check`，修复后不再被拦。同轮修掉一处日志错误：构建摘要把"不可用表"也算进了"从缓存恢复"的数量（它们同样走 `publishSimulated`），现改为分别计数。
+- 同轮排查"部分表有效计算时间明显变长"：当时 P0 的 `LootProbabilitySimulationJob` diff 全部落在 `buildResult` 及以下，热循环未改动；这只能说明 P0 未直接改热循环，不能证明已有实现不存在热点。当时提出的启动期 CPU 争抢解释已被后续热运行数据排除（见下文）。为区分实际计算与等待，完成日志新增**线程 CPU 时间**字段。
+- 端到端验证（改 JSON 后 `/reload` 触发重算、附魔 `max_level` 变化触发失效、泥地打捞三段式展示）属 §7.2 实机项，仍待用户实测。
+
+2026-09-20（性能归因，修正旧结论）：通过统一脚本重新解析 `latest.log` 中 17:48:15 的
+`/usb journal reload` 热运行标记至剩余队列 0，58 张表 CPU **合计 3751ms、中位数 46ms**；
+最慢三张 `ancient_city` / `ancient_city_ice_box` / `buried_treasure` 为 **593 / 578 / 375ms**，
+占合计 **41.2%**。逐表数据与原始日志行已保存至本地观测目录 `docs/plan/loot-performance/`（不入库）。
+
+- **撤回**“炖菜 122 个签名”：mc-developing-mcp 的 1.21.1 `SetStewEffectFunction.run` 先调用
+  `duration.getInt()` 再乘 20；给定 7..10 秒和两种效果只有 8 种组合，不能用旧估算解释 578ms。
+- **撤回**把启动期 312ms 混入热运行总数、把抽取密度或候选数量当作已证明成因的推断。
+  `chest_catacombs_generic` 热运行 78ms，不能仅凭与古城相同的平均 rolls 推算实际成本。
+- **代码核对**：`componentExact` 生成 JSON；`toStoredKey` 才做一次 base64，不存在二次 base64。
+  模拟期有动态新增候选和按物品线性扫描，但实际扫描数、编码次数及 CPU 占比此前未测。
+- **已完成的观测改动**：默认关闭的 `LootSimulationMetrics`；完成日志追加四项要求计数、
+  场景/抽取/分支计数与分段墙钟时间；同一脚本解析完整热运行并导出逐表 CSV / Markdown。
+  所有签名判断、存储键、概率计算、抽样次数和动态发现逻辑保留，缓存版本仍为格式 3 / v16。
+- **vanilla 核对边界**：MCP 已读取 `LootTable`、`LootContext`、`LootPool`、`UniformGenerator`、
+  `EmptyLootItem`、`SetStewEffectFunction` 和 `ItemStack`；说明见性能记录。
+  源码只能确认执行机制，不能代替分段实测。`GENERATE` 还包含平台 GLM 和既有 Mixin。
+- **当时状态**：等待新增观测数据后再决定修复，未提前实施索引、签名折叠或改键。后续进展见下。
+
+2026-09-20（19:05 实机归因与修复）：正式读取第二轮完整热运行，所有 58 张表的掉落分支计数守恒。
+观测版 CPU 合计 4052ms，中位数 31ms；该轮与早先未开启观测的基线不能直接当作修复收益对照。
+
+| 表 | CPU ms | 有效计算 ms | 扫描次数 | JSON 序列化次数 | toStoredKey 次数 | MATCH ms | GENERATE ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ancient_city_ice_box | 671 | 678 | 1096812 | 1796 | 1802 | 525.245 | 96.369 |
+| buried_treasure | 671 | 687 | 1062064 | 1705 | 1731 | 524.670 | 99.201 |
+| ancient_city | 656 | 664 | 908035 | 1645 | 1682 | 467.655 | 141.452 |
+
+进一步只读解析本轮 SavedData，计数与日志吻合：冰窖的 Relics roller_skate / experience_disperser
+签名分别 **1078 / 718** 个，埋藏宝藏 **976 / 729** 个，古城 **941 / 704** 个；data 内存在
+`relics:data` 的不同 `initialQuality` 等随机属性。冰窖的炖菜只有一个目录签名。存档摘要、
+来源 SHA-256、示例组件及完整日志见本地观测目录 `docs/plan/loot-performance/`（不入库）。
+
+**确认成因**：运行时注入的 Relics 随机属性产生大量精确签名，现有按物品线性扫描反复执行
+`previewProvider.apply` 与 `ItemStack.isSameItemSameComponents`。MATCH 占三表有效计算的
+70.4%～77.5%；其中预览构造各约 33ms，序列化另仅约 15～16ms，存储键编码明细不足 1ms。
+这是此前依据 vanilla JSON 推算时漏掉的动态输入，不是原版炖菜变体数量或二次 base64。
+比较表 `chest_catacombs_generic` 只有 68506 次扫描、MATCH 3.937ms，支持上述差异解释。
+
+**最小修复**：`CandidateIndex` 以原匹配预览的 `ItemStack.hashItemAndComponents` 分桶，
+同哈希继续完整组件比较；非精确签名与精确桶共用原优先级、歧义处理。原始回退候选同样索引化，
+动态新增时增量维护。MCP 确认原版组件相等比较及哈希来自相同组件容器；不会把哈希碰撞视为相等。
+新签名仍按既有编解码持久化，不限制变体，不降低抽样次数，存档/缓存版本不变。
+
+**索引修复构建**：IDEA 检查无报错或警告，双端 build 53s 成功。
+
+2026-09-20（19:15 索引修复验收）：同样开启观测、每次启动取第二轮完整热运行，冰窖 CPU
+**671→156ms**、埋藏宝藏 **671→171ms**、古城 **656→203ms**；MATCH 从 468～525ms 降到
+**9～14ms**，三表合计 CPU 下降 **73.5%**。58 张表合计 4052→3048ms，约下降 24.8%；
+其他短表有计时分辨率及运行波动，不能逐项将变化归给修复。
+完整逐表对照、计数及原始证据见本地观测目录 `docs/plan/loot-performance/`（不入库；索引修复对照在其 README 的「19:15 索引修复实机与剩余优化」一节）。
+
+**目标未全部达到**：三表仍高于 100ms，剩余 GENERATE 为 82～117ms，包含 vanilla、现有 Mixin
+与其他模组注入，内部归属尚未确认。RESULT 为 18～30ms；代码确认目录取名再次解码精确签名，
+已追加复用缓存预览的独占副本以去掉重复工作，保持名称、匹配及存储语义，收益待复测。
+玩家实际拿取物品路径仍可复用索引，但其成本不在本轮模拟计时中，本轮不混入修改。
+
+P1 起的功能（`SimulationInput` 与按需管线、参数区、场景 Tab、联合见证、一键填充）尚未开始；
+过渡期内原版 `minecraft:gameplay/fishing` 的注入条目显示为「未覆盖」，待 P2 的决策 42 收口。

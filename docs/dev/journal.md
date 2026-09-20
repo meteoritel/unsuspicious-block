@@ -69,8 +69,10 @@ ensureLoaded(server)
   │   ├─ 1. LootTableSourceSnapshot.capture()  一次列举拿到全表"有效原文 + 完整资源栈"
   │   ├─ 2. ArchaeologyJournalCatalog.load()   建图 → 编译 → 投影 → 静态读模型（概率为 "?" 占位）
   │   │                                        产出 LootTableAnalysisSession 与 CatalogStructure
-  │   ├─ 3. computeTableHashes()               每表子树内资源栈摘要 + 编译产物摘要
-  │   └─ 4. new CatalogGeneration(...)         整代静态部分成型
+  │   ├─ 3. 不可用机制判定                      引用本模组无法模拟的机制的表标记为 Unknown(UNPARSED)，
+  │   │                                        不入队模拟但仍发布（否则整表在客户端消失）
+  │   ├─ 4. computeTableHashes()               每表子树内资源栈摘要 + 编译产物摘要 + 被引用附魔定义摘要
+  │   └─ 5. new CatalogGeneration(...)         整代静态部分成型
   ├─ currentGeneration = ...                  单个 volatile 引用发布；构建抛异常则改为 empty()
   ├─ 从 SavedData（LootProbabilityData）恢复命中缓存的表 -> 写入当代 overlay
   │     needsResimulation(tableId, hash) 判断哈希是否变化
@@ -84,7 +86,8 @@ ensureLoaded(server)
 - **原子发布**：整代静态部分（快照 / 引用图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）在局部对象上构建完成后，经单个 volatile 引用整体替换。读取方只会看到上一代的完整状态或新一代的完整静态部分，不会读到半构建结果；构建抛异常时进入 `CatalogGeneration.empty()`，而不是留下半成品。
 - **非阻塞渐进填充**：`ensureLoaded` 立即返回，模拟结果作为当代 overlay 随模拟完成渐进增长。客户端打开笔记时，未模拟完的表概率显示为 "?"；不受模拟进度影响的解析态视图由 `getRawCatalog()` 提供，启动即完整。
 - **模拟结果持久化**：`LootProbabilityData`（SavedData，附加在 overworld）缓存每张表的概率结果，避免每次重启重新模拟。哈希变化（数据包修改战利品表）时才重新模拟。
-- **哈希覆盖间接依赖**：表哈希的输入是该表子树内每张表的完整资源栈摘要与编译产物摘要（`computeTableHashes`），覆盖 item tag 成员变化等间接依赖。
+- **哈希覆盖间接依赖**：表哈希的输入是该表子树内每张表的完整资源栈摘要、编译产物摘要与被引用附魔的定义摘要（附魔 id 与 `max_level`，`computeTableHashes`），覆盖 item tag 成员变化、附魔等级上限调整等间接依赖；已知残余不列入其中，见 [战利品表系统](loottable.md) 第 7.4 节。
+- **重载与重建**：数据包重载由 `DataPackReloadListener` 只置脏标记，真正的重建在服务端 tick 路径上消费（`ServerLootTableConfigManager.tick`）；在重载回调里同步跑全量构建会拖住重载本身。机制细节见 [战利品表系统](loottable.md) 第 7.4 节。
 - **代次校验**：模拟提交与队列排空广播都携带构建时的 `generation`，旧代结果被直接丢弃，不会写进新代。
 - **线程安全**：静态部分不可变并整体发布；只有模拟 overlay 是 `ConcurrentHashMap`，读路径无锁，写路径仅在主线程。
 - **worker 回退**：模拟工作线程未启动时回退到主线程同步模拟，避免功能缺失。

@@ -34,8 +34,8 @@
 
 | 条件 | 记录组成 | `test()` 语义 | 备注 |
 |---|---|---|---|
-| [`MudDredgingCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/MudDredgingCondition.java) `:24` | `(boolean swamp)` | 工具带有 `ModEnchantments.MUD_DREDGING` 且等级 > 0（`:32-41`） | `swamp` 字段自带注释说明"仅为旧数据包兼容保留，不再参与判断"；该类同时承载 `ResourceKey<LootTable> MUD_DREDGING`（`:28-29`）；实现了 `LootItemCondition.Builder`（`:24`） |
-| [`ToolEnchantmentChanceCondition`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentChanceCondition.java) `:24` | `(Holder<Enchantment> enchantment, LevelBasedValue chance)` | `level > 0 && random < chance.calculate(level)`（`:35-43`） | 未实现 `LootItemCondition.Builder` |
+| `MudDredgingCondition` `:24`（实施后已并入 `ToolEnchantmentCondition`，源文件不再存在，故此处只记名称） | `(boolean swamp)` | 工具带有 `ModEnchantments.MUD_DREDGING` 且等级 > 0（`:32-41`） | `swamp` 字段自带注释说明"仅为旧数据包兼容保留，不再参与判断"；该类同时承载 `ResourceKey<LootTable> MUD_DREDGING`（`:28-29`）；实现了 `LootItemCondition.Builder`（`:24`） |
+| `ToolEnchantmentChanceCondition` `:24`（实施后已并入 `ToolEnchantmentCondition`） | `(Holder<Enchantment> enchantment, LevelBasedValue chance)` | `level > 0 && random < chance.calculate(level)`（`:35-43`） | 未实现 `LootItemCondition.Builder` |
 
 周边归属：
 
@@ -61,7 +61,7 @@ if (condition instanceof LootItemRandomChanceCondition(NumberProvider chance1)) 
 }
 ```
 
-于是 `uniform` / `binomial` / `score` 会显示成"随机概率: 100%"，同时把伪造的 `1.0f` 写进 `LootConditionInfo.probability`。这与项目已经确立的"宁可承认没算到，也不装作算到了"（[`Probability`](../dev/loottable.md) 三态值类型）直接冲突。
+于是 `uniform` / `binomial` / `score` 会显示成"随机概率: 100%"，同时把伪造的 `1.0f` 写进 `LootConditionInfo.probability`。这与项目已经确立的"宁可承认没算到，也不装作算到了"（[`Probability`](../dev/loottable.md) 值类型；该类型的当前状态数见该文档，本文写作时为三态）直接冲突。
 
 #### (b) 展示已知有损，但玩家无从识别
 

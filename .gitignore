@@ -31,6 +31,7 @@ INSPIRATION.md
 .git
 .aegis
 .worktrees
+.vscode
 
 docs/aegis
 docs/archive
@@ -41,3 +42,4 @@ report
 /CONTEXT.md
 /docs/adr/
 /.zcodeignore
+/docs/plan/loot-performance/

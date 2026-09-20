@@ -120,7 +120,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("4.3");
+registrar.versioned("4.4");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：
@@ -130,7 +130,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned("4.3")` 声明 payload 协议版本；目录获取路径在条件列表后依次传输 `functionUncertainty` 枚举与 `luckAffected` 布尔值，编解码顺序一致。声明触发率范围复用条件 metadata 传输。两平台客户端与服务端均须同步更新；物品签名与发现进度的存储格式不变。解析仪继续使用结构化 HUD 条目及坐标描边同步。
+**版本化**：NeoForge 端用 `registrar.versioned("4.4")` 声明 payload 协议版本。当前版本因概率值布局变化而升级——`Probability` 的第 4 态「需要条件」会携带一串静态提示（`ParameterKind` + 引用目标 `Component`，或场景条件列表），`Unknown` 会携带原因枚举，两者都在目录包内编码，旧版客户端读不出这个布局。目录获取路径在条件列表后依次传输 `functionUncertainty` 枚举与 `luckAffected` 布尔值，编解码顺序一致。声明触发率范围复用条件 metadata 传输。两平台客户端与服务端均须同步更新；物品签名与发现进度的存储格式不变。解析仪继续使用结构化 HUD 条目及坐标描边同步。
 
 ## 8. 同步策略
 
