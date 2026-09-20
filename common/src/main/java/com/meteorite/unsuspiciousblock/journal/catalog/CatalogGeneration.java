@@ -46,17 +46,27 @@ public final class CatalogGeneration {
     private final Map<ResourceLocation, TableDefinition> simulatedTables = new ConcurrentHashMap<>();
     /** 本代查询索引——子树物品等跨表聚合的唯一入口，随模拟提交读到的 overlay 自动变化。 */
     private final CatalogQueryIndex queryIndex;
+    /**
+     * 每表的约束描述与场景规划结果。
+     * <p>
+     * 在构建这一代时就为**全部**收录表算好，不是懒加载：启动只跑基准输入，而"基准输入是什么"
+     * 需要先知道该表的场景规划结果（基准场景的条件赋值），因此这一步是缓存查询的前置条件，
+     * 不做它就无法判断某张表是否已缓存。
+     */
+    private final Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs;
     /** 本代目录哈希缓存；任一表提交新结果即失效。 */
     @SuppressWarnings("VolatileArrayField")
     private volatile String catalogHash;
 
     public CatalogGeneration(LootTableAnalysisSession session, CatalogStructure structure,
                              Map<ResourceLocation, TableDefinition> staticTables,
-                             Map<ResourceLocation, String> tableHashes) {
+                             Map<ResourceLocation, String> tableHashes,
+                             Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs) {
         this.session = session;
         this.structure = structure;
         this.staticTables = Map.copyOf(staticTables);
         this.tableHashes = Map.copyOf(tableHashes);
+        this.constraintCatalogs = Map.copyOf(constraintCatalogs);
         this.queryIndex = new CatalogQueryIndex(
                 session.referenceGraph(), session.staticProjections(), this::simulatedTables);
     }
@@ -64,7 +74,13 @@ public final class CatalogGeneration {
     /** 一个明确的空状态——构建失败时使用，避免发布半成品。 */
     public static CatalogGeneration empty(long generation) {
         return new CatalogGeneration(LootTableAnalysisSession.empty(generation),
-                CatalogStructure.empty(), Map.of(), Map.of());
+                CatalogStructure.empty(), Map.of(), Map.of(), Map.of());
+    }
+
+    /** 该表的约束描述；未收录或该表不可用时返回 {@code null}。 */
+    @Nullable
+    public SimulationConstraintCatalog constraintCatalog(ResourceLocation tableId) {
+        return this.constraintCatalogs.get(tableId);
     }
 
     public long generation() {
@@ -144,7 +160,8 @@ public final class CatalogGeneration {
                     .sorted(Comparator.comparing(table -> table.id().toString()))
                     .toList();
             for (TableDefinition table : tables) {
-                updateTableDigest(digest, CatalogTableDto.from(table));
+                updateTableDigest(digest, CatalogTableDto.from(table,
+                        this.tableHashes.getOrDefault(table.id(), "")));
             }
             this.structure.categories().forEach(category -> {
                 updateDigest(digest, category.id().toString());

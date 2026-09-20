@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootMechanismSupport;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
@@ -16,16 +17,24 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAc
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
+import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.signature.SignatureExcludedComponents;
+import com.meteorite.unsuspiciousblock.loottable.simulation.LootConditionFingerprint;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.PathHintAnalyzer;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationConstraintCatalog;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationInput;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationMeasurement;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationProfile;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenarioPlanner;
 import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import com.mojang.logging.LogUtils;
@@ -48,10 +57,12 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 服务端目录——解析所有考古战利品表，按需通过主线程 tick 工作器填充概率。
@@ -63,20 +74,33 @@ import java.util.Set;
  * <p>
  * 生命周期：
  * <ul>
- *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，构建并发布新一代目录 + 从 SavedData 恢复已缓存表 +
- *       将未缓存表入队分 tick 模拟。构建失败时保留上一代完整状态；无上一代可用时进入明确的空状态。</li>
- *   <li>{@link #commitSimulatedTable(LootProbabilitySimulator.SimResult, MinecraftServer)}：由工作器在主线程调用，
- *       将单表模拟结果写入当代 overlay 与 SavedData；整批任务结束后统一广播哈希。</li>
+ *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，构建并发布新一代目录 + 从 SavedData 恢复已缓存的
+ *       **基准输入** + 把未缓存的基准输入排进低优先级队列分 tick 模拟。构建失败时保留上一代完整状态；
+ *       无上一代可用时进入明确的空状态。</li>
+ *   <li>{@link #requestSimulation(ServerPlayer, ResourceLocation, String, String, ScenarioParams)}：
+ *       由网络层在主线程调用，校验后把玩家的按需输入排进高优先级队列。</li>
  *   <li>{@link #invalidate()}：释放当代目录（含资源快照与投影），下次 ensureLoaded 重新构建。</li>
  * </ul>
  * <p>
  * 线程安全：读取走当前 {@link CatalogGeneration}——静态部分不可变、模拟 overlay 使用
- * ConcurrentHashMap，读路径无锁；写路径仅在主线程发生（ensureLoaded / commitSimulatedTable）。
+ * ConcurrentHashMap，读路径无锁；写路径仅在主线程发生（ensureLoaded / 结果提交）。
  */
 public final class ArchaeologyJournalServerCatalog {
-    private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v17";
+    /**
+     * 统计口径版本——它的唯一用途就是"改了会影响数字的东西，就让旧测量值全部作废"。
+     * <p>
+     * v19：场景键改为**稳定身份**（{@code baseline} / {@code scene-N}），不再编码条件指纹。
+     * 指纹（{@code entity_properties} / {@code location_check} 等）跨 JVM 运行不重复，旧存档里那批
+     * 指纹键属于"同一个场景的另一个名字"，会因为 LRU 按参数组合计数而既不被覆盖也不被淘汰，
+     * 永久留在存档里。升版本让它们整体作废，避免留下一批孤儿条目。
+     * <p>
+     * v18：输入的参数旋钮（幸运、工具、附魔等级）此前**没有真正进入抽取**——任务用合成后的 profile
+     * 开条件作用域，却用场景自带的 profile 构造 {@code LootParams}，于是每次模拟实际上都跑在
+     * "默认工具 + 幸运 1.0"上。修好之后，旧存档里那批数字的统计口径与现在不同，必须整体失效，
+     * 否则它们会被当作缓存命中继续展示。
+     */
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v19";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -154,37 +178,127 @@ public final class ArchaeologyJournalServerCatalog {
         Map<ResourceLocation, String> tableHashes = computeTableHashes(
                 loadResult.session().referenceGraph(), staticTables,
                 loadResult.session().compiledTables(), server.registryAccess());
-        CatalogGeneration catalogGeneration = new CatalogGeneration(
-                loadResult.session(), loadResult.structure(), staticTables, tableHashes);
 
-        // 5. 从 SavedData 恢复已缓存表，写入当代 overlay；不可用的表既不入队也不读缓存
+        // 5. 为全部可模拟表算好约束描述（含场景规划）——启动只跑基准输入，而"基准输入是哪一个"
+        //    需要先知道基准场景的条件赋值，因此这一步是缓存查询的前置条件而不是可省的预计算。
         ServerLevel level = server.overworld();
+        Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs = new LinkedHashMap<>();
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : staticTables.entrySet()) {
+            if (unavailableReasons.containsKey(entry.getKey())) {
+                continue;
+            }
+            SimulationConstraintCatalog constraint = buildConstraintCatalog(
+                    loadResult.session(), entry.getKey(), entry.getValue(), level);
+            constraintCatalogs.put(entry.getKey(), constraint);
+            // 只为"有信息量"的表留一行：单场景且无截断的表没什么可说的，逐表刷屏会淹掉真正的异常
+            if (constraint.scenarios().size() > 1 || constraint.truncatedScenarioCount() > 0
+                    || constraint.scenarioBudgetExhausted()) {
+                LOGGER.info("战利品表 {} 的模拟约束：{}；可见旋钮 {}",
+                        entry.getKey(), constraint.describe(), constraint.parameterKinds());
+            }
+            if (constraint.scenarioBudgetExhausted()) {
+                LOGGER.warn("战利品表 {} 的条件树展开超预算，超出部分已按无约束处理（数值偏保守）",
+                        entry.getKey());
+            }
+        }
+        CatalogGeneration catalogGeneration = new CatalogGeneration(
+                loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs);
+
+        // 6. 从 SavedData 恢复已缓存的**基准输入**，写入当代 overlay；不可用的表既不入队也不读缓存
         LootProbabilityData probabilityData = LootProbabilityData.get(level);
-        List<ResourceLocation> uncached = new ArrayList<>();
+        List<LootProbabilitySimulationWorker.SimulationRequest> uncached = new ArrayList<>();
         int restored = 0;
+        // 未命中按原因分账：这两类原因的处置完全不同（哈希变化＝内容变了，本该重算；
+        // 缺少该输入的测量值＝内容没变但这条输入没算过），混成一个数字时无法判断缓存机制是否正常。
+        int hashChanged = 0;
+        int missingInput = 0;
         for (Map.Entry<ResourceLocation, TableDefinition> entry : staticTables.entrySet()) {
             ResourceLocation tableId = entry.getKey();
             if (unavailableReasons.containsKey(tableId)) {
                 // 不可用表也要发布：否则它在客户端**整表消失**，玩家连"这张表读不了"都看不到。
-                // 发布的是已标记为 UNPARSED 的版本——条目概率为「规则未解析」，tooltip 直接说明原因，
-                // 因此这里发布的是"结论"，不是"测量值"；它也不会再被入队或从缓存恢复。
                 catalogGeneration.publishSimulated(entry.getValue());
                 continue;
             }
             String hash = tableHashes.getOrDefault(tableId, "");
-            if (!probabilityData.needsResimulation(tableId, hash) && probabilityData.hasData(tableId)) {
-                catalogGeneration.publishSimulated(restoreFromCache(
-                        entry.getValue(), tableId, probabilityData, level, staticTables));
+            SimulationConstraintCatalog constraint = constraintCatalogs.get(tableId);
+            SimulationInput baseline = constraint.baselineInput();
+            if (probabilityData.needsResimulation(tableId, hash)) {
+                hashChanged++;
+            } else if (probabilityData.getMeasurement(tableId, baseline.key()) != null) {
+                catalogGeneration.publishSimulated(deriveTable(
+                        catalogGeneration, tableId, constraint, baseline, probabilityData));
                 restored++;
+                continue;
             } else {
-                uncached.add(tableId);
+                missingInput++;
+            }
+            {
+                uncached.add(new LootProbabilitySimulationWorker.SimulationRequest(
+                        tableId, entry.getValue(), baseline, constraint.baselineScenario(),
+                        generation, hash, null));
             }
         }
-        // 三个数字必须各算各的：不可用表也走 publishSimulated，直接读 overlay 大小会把它们算成"从缓存恢复"
-        LOGGER.info("概率缓存命中 {} 个表，{} 个待模拟，{} 个不可用（共 {} 个表）",
-                restored, uncached.size(), unavailableReasons.size(), staticTables.size());
+        // 四个数字必须各算各的：不可用表也走 publishSimulated，直接读 overlay 大小会把它们算成"从缓存恢复"；
+        // 两类未命中也要分开报，否则"缓存机制坏了"与"内容确实变了"看起来一模一样。
+        LOGGER.info("概率缓存命中 {} 个表的基准输入，{} 个待模拟（未命中原因：哈希变化 {} 个、缺少该输入的测量值 {} 个），"
+                        + "{} 个不可用（共 {} 个表）",
+                restored, uncached.size(), hashChanged, missingInput,
+                unavailableReasons.size(), staticTables.size());
         return new BuildResult(catalogGeneration, List.copyOf(uncached),
                 Set.copyOf(unavailableReasons.keySet()));
+    }
+
+    /**
+     * 由表内容派生约束描述——场景规划结果、工具基座与被引用附魔三份清单。
+     * <p>
+     * 工具与附魔都取自**整棵子树**：父表页签里出现的物品来自子表，其 {@code match_tool} 谓词与
+     * 读附魔的机制也都写在子表里；只看本表 JSON 会让这些旋钮在父表上凭空消失。
+     */
+    private static SimulationConstraintCatalog buildConstraintCatalog(
+            LootTableAnalysisSession session, ResourceLocation tableId, TableDefinition table,
+            ServerLevel level) {
+        SimulationScenarioPlanner.ScenarioPlan plan =
+                SimulationScenarioPlanner.plan(tableId, table, level);
+        SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type());
+
+        Map<ResourceLocation, String> tools = new LinkedHashMap<>();
+        Map<ResourceLocation, Integer> enchantmentLevels = new LinkedHashMap<>();
+        HolderLookup.RegistryLookup<Enchantment> enchantments =
+                level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+        for (ResourceLocation node : session.referenceGraph().descendantsInclusive(tableId)) {
+            CompiledLootTable compiled = session.compiledTables().get(node);
+            if (compiled == null) {
+                continue;
+            }
+            compiled.referencedTools().forEach(tools::putIfAbsent);
+            // 附魔清单与哈希摘要同源（JSON 引用 ∪ 本表注入边门槛）：门槛移到注入处之后，
+            // 父表与子表的 JSON 都不再提这个附魔，而它正是"能不能拿到注入物"的旋钮
+            for (ResourceLocation enchantmentId : summaryEnchantments(compiled, node)) {
+                if (enchantmentLevels.containsKey(enchantmentId)) {
+                    continue;
+                }
+                // 附魔定义缺失（数据包只删了定义但表还引用着）时不生成等级控件：控件范围无从确定，
+                // 而这已经由不可用诊断覆盖，不必在这里再猜一个上限
+                enchantments.get(ResourceKey.create(Registries.ENCHANTMENT, enchantmentId))
+                        .ifPresent(holder -> enchantmentLevels.put(enchantmentId,
+                                holder.value().definition().maxLevel()));
+            }
+        }
+        Map<ResourceLocation, List<LootConditionInfo>> childEntryGates = new LinkedHashMap<>();
+        for (ResourceLocation childTable : table.childTables()) {
+            // 注入边的门槛只有 common 侧那一份声明，不在任何 JSON 里；在这里翻成条件树描述，
+            // 父表页就能说明"进这张子表需要什么"，而不是只给一个没有原因的「未命中」
+            RuntimeLootLinks.injectionGate(childTable).ifPresent(gate -> childEntryGates.put(childTable,
+                    SimulationConstraintCatalog.describeGate(gate, level.registryAccess())));
+        }
+        return SimulationConstraintCatalog.build(plan, baseProfile, tools, enchantmentLevels,
+                childEntryGates);
+    }
+
+    /** 该表当前的每表内容哈希（客户端按需请求与目录下发共用）；未收录时为空串。 */
+    public static String getTableHash(ResourceLocation tableId) {
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? "" : generation.tableHash(tableId);
     }
 
     // 不可用表的条目一律标记为「规则未解析」：这是与"未覆盖""尚未计算"都不同的失败原因，

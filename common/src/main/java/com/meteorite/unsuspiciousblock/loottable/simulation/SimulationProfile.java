@@ -79,4 +79,16 @@ public record SimulationProfile(
                 this.explosionRadius, this.luck, this.fishingContext,
                 this.conditionOutcomes, this.conditionTypeDefaults);
     }
+
+    // 创建使用指定幸运的新 profile；值经 LootParams.withLuck 传入，只影响权重与抽取次数
+    public SimulationProfile withLuck(float newLuck) {
+        return new SimulationProfile(this.origin, this.tool, this.blockState, this.damageSource,
+                this.explosionRadius, newLuck, this.fishingContext,
+                this.conditionOutcomes, this.conditionTypeDefaults);
+    }
+
+    // 该表的默认工具基座物品 id——种子参数与目录的"默认工具"选项共用同一来源
+    public ResourceLocation toolItemId() {
+        return BuiltInRegistries.ITEM.getKey(this.tool.getItem());
+    }
 }
