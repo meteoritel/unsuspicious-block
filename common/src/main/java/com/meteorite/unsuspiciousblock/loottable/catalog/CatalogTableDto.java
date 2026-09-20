@@ -25,11 +25,17 @@ import java.util.TreeMap;
  * 物品与子表侧只带 key 与概率（{@link ScenarioRef}）。这消除了"每个物品重复同一个条件树"的
  * 冗余传输，也保证目录哈希的输入与实际上线内容一致。
  * <p>
+ * {@code hash} 是该表的内容哈希（子树资源栈 + 编译产物 + 被引用附魔定义）。把它一并发给客户端，
+ * 是为了让"按需模拟请求"能携带一个**精确到这张表**的版本凭据：客户端据此声明"我按的是这一版内容"，
+ * 服务端能逐表判断请求是否已过期，而不必依赖"整个目录的哈希"——后者会被任何一张表的模拟完成而改变，
+ * 用它做凭据会让并发计算时的正常请求被频繁误判为过期。
+ * <p>
  * 不变量：同一张表内同一个 {@code scenarioKey} 必然对应同一份假设条件树——它们都来自该表的一次
  * {@code SimulationScenarioPlanner.plan} 结果。若出现冲突按首次出现者保留。
  */
 public record CatalogTableDto(
         ResourceLocation id,
+        String hash,
         Component displayName,
         String type,
         int simulationCount,
@@ -96,8 +102,8 @@ public record CatalogTableDto(
         new TreeMap<>(assumptionsByScenario)
                 .forEach((key, assumptions) -> scenarios.add(new ScenarioAssumptions(key, assumptions)));
 
-        return new CatalogTableDto(table.id(), table.displayName(), table.type(), table.simulationCount(),
-                table.childTables(), scenarios, items, children);
+        return new CatalogTableDto(table.id(), hash, table.displayName(), table.type(),
+                table.simulationCount(), table.childTables(), scenarios, items, children);
     }
 
     /** 还原为内部记录；表级假设按 key 回填到每个分场景概率上。 */

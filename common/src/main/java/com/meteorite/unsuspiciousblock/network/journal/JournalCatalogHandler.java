@@ -47,9 +47,11 @@ public final class JournalCatalogHandler {
         // 若不拷贝，主线程 worker 并发 put 会导致 ConcurrentHashMap 的 size() 与迭代器不一致
         // （encode 先写 size 再遍历，并发 put 会让迭代器多出一个条目，客户端解码后剩余字节 → "bytes extra"）
         Map<ResourceLocation, TableDefinition> snapshot = new LinkedHashMap<>(catalog);
-        // 转成网络形态：场景假设按 scenarioKey 每表只发一次；按表 id 排序使线上内容顺序稳定
+        // 转成网络形态：场景假设按 scenarioKey 每表只发一次；按表 id 排序使线上内容顺序稳定。
+        // 每表内容哈希一并下发——客户端按需请求时要带上它，声明"我按的是这一版内容"。
         List<CatalogTableDto> tables = new ArrayList<>(snapshot.size());
-        snapshot.values().forEach(table -> tables.add(CatalogTableDto.from(table)));
+        snapshot.keySet().forEach(tableId -> tables.add(CatalogTableDto.from(
+                snapshot.get(tableId), ArchaeologyJournalServerCatalog.getTableHash(tableId))));
         tables.sort(Comparator.comparing(dto -> dto.id().toString()));
         Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(
                 tables, ArchaeologyJournalServerCatalog.getCatalogStructure()));

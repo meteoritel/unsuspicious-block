@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
 import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
@@ -11,6 +12,7 @@ import com.meteorite.unsuspiciousblock.network.journal.LootTableManagementHandle
 import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.network.journal.ReaderScanLevelHandler;
+import com.meteorite.unsuspiciousblock.network.journal.ScenarioSimulationHandler;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatDeterrenceTogglePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.CatLightStepTogglePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.DeleteJournalLogPayload;
@@ -18,6 +20,7 @@ import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestScenarioSimulationPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogRetentionPayload;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateLootTableTranslationsPayload;
@@ -33,7 +36,9 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapsho
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.ScenarioRequestRejectedPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioResultPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.JournalLogDeleteResultPayload;
@@ -98,7 +103,9 @@ public final class ModPayloads {
             new C2S<>(CatDeterrenceTogglePayload.TYPE, CatDeterrenceTogglePayload.STREAM_CODEC,
                     (player, payload) -> CatNetworkHandler.handleDeterrenceToggle(player)),
             new C2S<>(CatLightStepTogglePayload.TYPE, CatLightStepTogglePayload.STREAM_CODEC,
-                    (player, payload) -> CatNetworkHandler.handleLightStepToggle(player))
+                    (player, payload) -> CatNetworkHandler.handleLightStepToggle(player)),
+            new C2S<>(RequestScenarioSimulationPayload.TYPE, RequestScenarioSimulationPayload.STREAM_CODEC,
+                    ScenarioSimulationHandler::handleRequest)
     );
 
     /** S2C payload 类型列表（仅 type + streamCodec，供服务端注册编解码器，Fabric 需要） */
@@ -116,7 +123,9 @@ public final class ModPayloads {
             new S2CSpec<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC),
             new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
             new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC),
-            new S2CSpec<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC)
+            new S2CSpec<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC),
+            new S2CSpec<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC)
     );
 
     /**
@@ -164,7 +173,11 @@ public final class ModPayloads {
                 new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
                         EnchantmentRevealClientState::receive),
                 new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveTableCompletionReward)
+                        ArchaeologyJournalClientState::receiveTableCompletionReward),
+                new S2C<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC,
+                        ScenarioSimulationClientState::receive),
+                new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC,
+                        ScenarioSimulationClientState::receiveRejection)
         );
     }
 }

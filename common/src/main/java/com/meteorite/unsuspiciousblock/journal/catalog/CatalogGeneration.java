@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationConstraintCatalog;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -189,6 +190,7 @@ public final class CatalogGeneration {
 
     private static void updateTableDigest(MessageDigest digest, CatalogTableDto table) {
         updateDigest(digest, table.id().toString());
+        updateDigest(digest, table.hash());
         updateDigest(digest, table.displayName().toString());
         updateDigest(digest, table.type());
         updateDigest(digest, Integer.toString(table.simulationCount()));
