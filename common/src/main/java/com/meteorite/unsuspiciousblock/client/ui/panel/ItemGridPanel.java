@@ -278,8 +278,7 @@ public final class ItemGridPanel implements PagePanel {
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
         Component probability = formatProbability(
-                child.probability(), LootConditionHandler.UncertaintyLevel.NONE,
-                child.scenarioProbabilities());
+                child.probability(), LootConditionHandler.UncertaintyLevel.NONE, List.of());
         ScrollTextHelper.draw(guiGraphics, font, probability.getString(),
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
@@ -384,21 +383,11 @@ public final class ItemGridPanel implements PagePanel {
                 cellX + 3, cellY + NAME_Y_OFFSET, nameMaxWidth,
                 NAME_COLOR, hovered, scrollTicks, true);
 
-        // 概率（居中，颜色根据不确定性等级区分）
-        boolean declared = !item.declaredChances().isEmpty();
-        Component probComp = declared ? Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.probability_trigger_short",
-                ProbabilityFormat.formatDeclaredChances(item.declaredChances()))
-                : formatProbability(item.probability(), item.uncertaintyLevel(), item.scenarioProbabilities());
-        // 未知概率优先按"未知"着色：此时等级可能是 NONE（只有可静态求值的条件），
-        // 沿用等级着色会和 tooltip 的灰色口径打架
-        int probColor = declared ? PROB_COLOR_PROBABILISTIC : item.probability().isUnknown()
-                ? PROB_COLOR_UNKNOWN
-                : switch (item.uncertaintyLevel()) {
-                    case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
-                    case RUNTIME -> PROB_COLOR_RUNTIME;
-                    default -> PROB_COLOR;
-                };
+        // 概率（居中，颜色根据状态与不确定性等级区分）——显示优先级链见 formatProbability
+        Component probComp = formatProbability(item.probability(), item.uncertaintyLevel(),
+                item.declaredChances());
+        int probColor = probabilityColor(item.probability(), item.uncertaintyLevel(),
+                !item.declaredChances().isEmpty());
         ScrollTextHelper.draw(guiGraphics, font, probComp.getString(),
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 probColor, hovered, scrollTicks, true);
@@ -427,37 +416,51 @@ public final class ItemGridPanel implements PagePanel {
         return s;
     }
 
-    // 格式化概率为显示用 Component——这是概率值转文本的渲染边界
+    /**
+     * 网格概率文案的**显示优先级链**（决策 44）：
+     * <ol>
+     *   <li>可适用性状态优先——「需要条件」与未知一律不显示任何数字（含声明触发率），
+     *       否则一个"当前拿不到"的条目会顶着最有利场景的数字出现；</li>
+     *   <li>模拟状态可展示（已测量 / 静态不可达）时优先显示**声明触发率**——
+     *       {@code random_chance} 类条目的模拟值常是零命中，声明值反而是唯一有信息量的数字；</li>
+     *   <li>最后才是模拟值本身。</li>
+     * </ol>
+     * 客户端只做这一层渲染分派，四种状态的判定全部来自服务端派生结果。
+     */
     private static Component formatProbability(@Nullable Probability probability,
                                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
-                                               List<ScenarioProbability> scenarioProbabilities) {
-        boolean unknown = probability == null || probability.isUnknown();
-        String text = unknown ? null : ProbabilityFormat.format(probability);
-        if (hasDistinctScenarioProbabilities(scenarioProbabilities)) {
-            return unknown
-                    ? Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional")
-                    : Component.literal(text);
-        }
-        if (unknown) {
-            if (uncertaintyLevel != LootConditionHandler.UncertaintyLevel.NONE) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_conditional");
-            }
+                                               List<DeclaredChance> declaredChances) {
+        if (probability == null) {
             return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_unknown_short");
+                    "screen.unsuspiciousblock.archaeology_journal.probability_question");
         }
-        return switch (uncertaintyLevel) {
-            case PROBABILISTIC -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_estimated_short", text);
-            case RUNTIME -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional_short", text);
-            default -> Component.literal(text);
-        };
+        if (!probability.isDisplayable()) {
+            // 需要条件 / 未知：状态词直接表达"现在没有数字可给"
+            return ProbabilityFormat.formatComponent(probability);
+        }
+        if (!declaredChances.isEmpty()) {
+            return Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_trigger_short",
+                    ProbabilityFormat.formatDeclaredChances(declaredChances));
+        }
+        return ProbabilityFormat.formatComponent(probability);
     }
 
-    private static boolean hasDistinctScenarioProbabilities(List<ScenarioProbability> probabilities) {
-        return probabilities.stream().map(ScenarioProbability::probability).distinct().limit(2).count() > 1;
+    // 概率文字的颜色：状态词用灰色，数值沿用不确定性等级的既有色相语义
+    private static int probabilityColor(@Nullable Probability probability,
+                                        LootConditionHandler.UncertaintyLevel uncertaintyLevel,
+                                        boolean hasDeclaredChance) {
+        if (probability == null || !probability.isDisplayable()) {
+            return PROB_COLOR_UNKNOWN;
+        }
+        if (hasDeclaredChance) {
+            return PROB_COLOR_PROBABILISTIC;
+        }
+        return switch (uncertaintyLevel) {
+            case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
+            case RUNTIME -> PROB_COLOR_RUNTIME;
+            default -> PROB_COLOR;
+        };
     }
 
     @Nullable
@@ -497,12 +500,13 @@ public final class ItemGridPanel implements PagePanel {
             return new TooltipData(ItemStack.EMPTY, null, -1, hoveredItem.probability(),
                     hoveredItem.acquisitionPaths(), hoveredItem.injected(),
                     hoveredItem.uncertaintyLevel(), false, hoveredItem.scenarioProbabilities(),
-                    hoveredItem.declaredChances());
+                    hoveredItem.declaredChances(), hoveredItem.simulationCount());
         }
         return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
                 hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
                 hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true,
-                hoveredItem.scenarioProbabilities(), hoveredItem.declaredChances());
+                hoveredItem.scenarioProbabilities(), hoveredItem.declaredChances(),
+                hoveredItem.simulationCount());
     }
 
     // 处理 tag 分组入口与返回入口点击；普通物品格不消费点击。
@@ -678,7 +682,8 @@ public final class ItemGridPanel implements PagePanel {
                                   List<ScenarioProbability> scenarioProbabilities,
                                   List<LootConditionInfo> conditions,
                                   List<GridItem> previewItems,
-                                  boolean luckAffected) {
+                                  boolean luckAffected,
+                                  int simulationCount) {
         public ChildTableEntry {
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
             conditions = List.copyOf(conditions);
@@ -699,11 +704,12 @@ public final class ItemGridPanel implements PagePanel {
                                LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                                boolean discovered,
                                List<ScenarioProbability> scenarioProbabilities,
-                               List<DeclaredChance> declaredChances) {
+                               List<DeclaredChance> declaredChances,
+                               int simulationCount) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
             this(stack, hint, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of());
+                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of(), 0);
         }
 
     }
@@ -716,7 +722,8 @@ public final class ItemGridPanel implements PagePanel {
                            boolean injected,
                            LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                            List<ScenarioProbability> scenarioProbabilities,
-                           List<DeclaredChance> declaredChances) {
+                           List<DeclaredChance> declaredChances,
+                           int simulationCount) {
 
         @Nullable
         public ResourceLocation primarySourceChildTable() {

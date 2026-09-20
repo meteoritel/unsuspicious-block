@@ -512,9 +512,11 @@ public class JournalViewModel {
     public BuildGridResult buildGridItems() {
         ArchaeologyJournalEntry selected = selectedTable();
         if (selected == null) return null;
+        TableDefinition selectedDefinition = this.catalogDefinitions.get(selected.id());
+        int simulationCount = selectedDefinition != null ? selectedDefinition.simulationCount() : 0;
         List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
         for (ArchaeologyEntryItem item : selected.items()) {
-            ItemGridPanel.GridItem gridItem = buildDirectGridItem(item, true);
+            ItemGridPanel.GridItem gridItem = buildDirectGridItem(item, true, simulationCount);
             if (gridItem != null) {
                 gridItems.add(gridItem);
             }
@@ -523,7 +525,6 @@ public class JournalViewModel {
                         Comparator.nullsFirst(Comparator.comparing(String::valueOf)))
                 .thenComparingDouble(value -> -gridItemSortKey(value)));
         List<ItemGridPanel.ChildTableEntry> childEntries = new ArrayList<>();
-        TableDefinition selectedDefinition = this.catalogDefinitions.get(selected.id());
         if (selectedDefinition != null) {
             for (ChildTableProbability childProbability : selectedDefinition.childTableProbabilities()) {
                 ArchaeologyJournalEntry child = this.allViews.get(childProbability.tableId());
@@ -531,13 +532,15 @@ public class JournalViewModel {
                 List<ItemGridPanel.GridItem> previewItems = buildChildPreviewItems(
                         child.id(), new HashSet<>());
                 childEntries.add(new ItemGridPanel.ChildTableEntry(
-                        child.id(), child.displayName(), maxScenarioProbability(
-                                childProbability.probability(), childProbability.scenarioProbabilities()),
+                        child.id(), child.displayName(),
+                        // 子表入口与物品同口径：读服务端派生的当前输入状态，不再取跨场景最大值
+                        childProbability.probability(),
                         childProbability.scenarioProbabilities(),
                         childTableConditions(selectedDefinition, child.id()), previewItems,
                         selectedDefinition.items().stream()
                                 .flatMap(item -> item.acquisitionPaths().stream())
-                                .anyMatch(path -> child.id().equals(path.sourceChildTable()) && path.luckAffected())));
+                                .anyMatch(path -> child.id().equals(path.sourceChildTable()) && path.luckAffected()),
+                        selectedDefinition.simulationCount()));
             }
         }
         List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
@@ -565,7 +568,8 @@ public class JournalViewModel {
     }
 
     @Nullable
-    private ItemGridPanel.GridItem buildDirectGridItem(ArchaeologyEntryItem item, boolean applySearch) {
+    private ItemGridPanel.GridItem buildDirectGridItem(ArchaeologyEntryItem item, boolean applySearch,
+                                                       int simulationCount) {
         List<LootAcquisitionPath> directPaths = item.acquisitionPaths().stream()
                 .filter(path -> path.sourceChildTable() == null)
                 .toList();
@@ -576,23 +580,12 @@ public class JournalViewModel {
                 || this.currentSearch.matchesItem(item.id(), item.displayName().getString());
         // 等级来自条目自身（服务端同一份判定），不再在客户端另起规则、也不再比较 tooltip 文案
         LootConditionHandler.UncertaintyLevel level = item.uncertaintyLevel();
-        Probability displayProbability = maxScenarioProbability(
-                item.probability(), item.scenarioProbabilities());
+        // 概率直接读服务端派生的当前输入状态（可适用性 × 计算状态），客户端不再跨场景取最大值：
+        // 取最大值等于把"你站在沼泽里"那个数当作你的处境展示（D1）。
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
-                displayProbability, item.unlocked(), item.count(), item.signature(), highlighted,
+                item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
                 directPaths, item.injected(), level, item.scenarioProbabilities(),
-                DeclaredChance.fromPaths(directPaths));
-    }
-
-    // 卡片只显示代表场景中的最高概率，完整的最小值与最大值由 tooltip 展示。
-    // 未知场景值不参与取最大值；全部未知时退回摘要概率。
-    private static Probability maxScenarioProbability(
-            Probability fallback, List<ScenarioProbability> scenarioProbabilities) {
-        return scenarioProbabilities.stream()
-                .map(ScenarioProbability::probability)
-                .filter(probability -> !probability.isUnknown())
-                .max(Comparator.comparingDouble(Probability::upperBound))
-                .orElse(fallback);
+                DeclaredChance.fromPaths(directPaths), simulationCount);
     }
 
     // 从父表展开后的物品路径中提取所有子表产出共同具备的条件。
@@ -650,19 +643,20 @@ public class JournalViewModel {
         if (table == null) {
             return List.of();
         }
+        TableDefinition ownDefinition = this.catalogDefinitions.get(tableId);
+        int simulationCount = ownDefinition != null ? ownDefinition.simulationCount() : 0;
         List<ItemGridPanel.GridItem> directItems = table.items().stream()
-                .map(item -> buildDirectGridItem(item, false))
+                .map(item -> buildDirectGridItem(item, false, simulationCount))
                 .filter(java.util.Objects::nonNull)
                 .toList();
         if (!directItems.isEmpty()) {
             return directItems;
         }
-        TableDefinition definition = this.catalogDefinitions.get(tableId);
-        if (definition == null) {
+        if (ownDefinition == null) {
             return List.of();
         }
         List<ItemGridPanel.GridItem> descendants = new ArrayList<>();
-        for (ResourceLocation childId : definition.childTables()) {
+        for (ResourceLocation childId : ownDefinition.childTables()) {
             descendants.addAll(buildChildPreviewItems(childId, visited));
             if (descendants.size() >= 3) {
                 break;
@@ -671,14 +665,13 @@ public class JournalViewModel {
         return List.copyOf(descendants);
     }
 
-    // 排序只按场景数值：未知与"抽样零出现"（<0.01%）排到末尾，不再反解展示文本。
-    // 摘要概率本身由同一组场景汇总而来，因此无需再回退到它。
+    // 排序按服务端派生的当前输入值：未知与「需要条件」排到末尾，零命中排在 0%（不可达）之前。
     private static double gridItemSortKey(ItemGridPanel.GridItem item) {
-        return item.scenarioProbabilities().stream()
-                .map(ScenarioProbability::probability)
-                .filter(probability -> !probability.isUnknown() && !probability.isBelowDisplayThreshold())
-                .mapToDouble(Probability::upperBound)
-                .max().orElse(-1.0);
+        Probability probability = item.probability();
+        if (probability == null || probability.isUnknown() || probability instanceof Probability.NeedsCondition) {
+            return -1.0;
+        }
+        return probability.upperBound();
     }
 
     private int resolveSelectedIndex(@Nullable ResourceLocation selectedId, @Nullable ResourceLocation rememberedId) {

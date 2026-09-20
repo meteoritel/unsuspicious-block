@@ -8,7 +8,9 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationProfile;
 import net.minecraft.ChatFormatting;
@@ -63,65 +65,14 @@ public final class JournalTooltipBuilder {
         }
 
         // 声明触发率与整表模拟掉落率分开展示，不把随机条件值冒充最终产出概率。
+        // 网格上两者二选一（决策 44 的优先级链），tooltip 里始终并列并注明各自口径。
         if (!data.declaredChances().isEmpty()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.probability_trigger",
                     ProbabilityFormat.formatDeclaredChances(data.declaredChances()))
                     .withStyle(TooltipBuilder.CONDITION_PROBABILISTIC));
-            if (data.probability() != null) {
-                ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
-                Component simulated = bounds != null && !bounds.minimum().equals(bounds.maximum())
-                        ? Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_simulated_range",
-                        bounds.minimum(), bounds.maximum())
-                        : Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_simulated",
-                        ProbabilityFormat.format(data.probability()));
-                lines.add(simulated.copy().withStyle(data.probability().isUnknown()
-                        ? TooltipBuilder.LABEL : TooltipBuilder.CONDITION_PROBABILISTIC));
-            }
-        } else if (data.probability() != null) {
-            boolean probUncertain = data.probability().isUnknown();
-            boolean hintIsApprox = data.hint() != null && data.hint().getString().equals(
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
-            ChatFormatting probColor = switch (data.uncertaintyLevel()) {
-                case PROBABILISTIC -> ChatFormatting.GOLD;
-                case RUNTIME -> ChatFormatting.YELLOW;
-                default -> probUncertain ? ChatFormatting.GRAY : ChatFormatting.GREEN;
-            };
-            ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
-            if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
-                        .copy().withStyle(probColor));
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
-                        .copy().withStyle(probColor));
-            } else if (probUncertain && hintIsApprox) {
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_uncertain_approx")
-                        .copy().withStyle(probColor));
-            } else if (probUncertain) {
-                lines.add(Component.translatable(
-                                data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.NONE
-                                        ? "screen.unsuspiciousblock.archaeology_journal.probability_unknown"
-                                        : "screen.unsuspiciousblock.archaeology_journal.probability_uncertain")
-                        .copy().withStyle(probColor));
-            } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.PROBABILISTIC) {
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_estimated",
-                        ProbabilityFormat.format(data.probability()))
-                        .copy().withStyle(probColor));
-            } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.RUNTIME) {
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_conditional_value",
-                        ProbabilityFormat.format(data.probability()))
-                        .copy().withStyle(probColor));
-            } else {
-                lines.add(formatProbabilityComponent(data.probability())
-                        .copy().withStyle(probColor));
-            }
         }
+        appendProbabilityLines(lines, data);
 
         if (data.acquisitionPaths().stream().anyMatch(LootAcquisitionPath::luckAffected)) {
             appendLuckNote(lines);
@@ -167,8 +118,8 @@ public final class JournalTooltipBuilder {
                     "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
                     .withStyle(ChatFormatting.GREEN));
         } else {
-            lines.add(formatProbabilityComponent(probability).copy().withStyle(
-                    probability.isUnknown() ? ChatFormatting.GRAY : ChatFormatting.GREEN));
+            lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(
+                    probability.isDisplayable() ? ChatFormatting.GREEN : ChatFormatting.GRAY));
         }
         if (luckAffected) {
             appendLuckNote(lines);
@@ -185,6 +136,82 @@ public final class JournalTooltipBuilder {
         return lines;
     }
 
+    /**
+     * 概率段落：按**展示状态的类型**分派，四种状态各有独立文案（决策 36/40/44）。
+     * <ul>
+     *   <li>「需要条件」：说明引用了哪些可调整的旋钮与条件——**只是陈述**，不承诺调完就能拿到；</li>
+     *   <li>未知：按 {@code UnknownReason} 分述"为什么是问号"；</li>
+     *   <li>零命中：报本次抽样次数并提示可提高次数，不写概率上界；</li>
+     *   <li>已测量 / 静态不可达：给数值，并附其它代表场景的区间。</li>
+     * </ul>
+     */
+    private static void appendProbabilityLines(List<Component> lines, ItemGridPanel.TooltipData data) {
+        switch (data.probability()) {
+            case null -> {
+            }
+            // 需要条件：静态信息性提示逐条列出。P0 没有可点击的「填入推荐值」——
+            // 按决策 34，那必须携带整条路径联合验证过的输入，由 P2 的联合见证搜索产出。
+            case Probability.NeedsCondition(List<PathHint> hints) -> {
+                lines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_needs_condition_detail")
+                        .withStyle(TooltipBuilder.HINT));
+                for (Component hint : ProbabilityFormat.describePathHints(hints)) {
+                    lines.add(hint.copy().withStyle(TooltipBuilder.LABEL));
+                }
+            }
+            case Probability.Unknown(UnknownReason reason) -> lines.add(
+                    ProbabilityFormat.describeUnknown(reason).copy().withStyle(ChatFormatting.GRAY));
+            case Probability.Measured measured -> appendNumericProbabilityLines(lines, data, measured);
+            case Probability.Unreachable unreachable -> appendNumericProbabilityLines(lines, data, unreachable);
+        }
+    }
+
+    // 已测量 / 静态不可达：先给出数值，再附其它代表场景的区间
+    private static void appendNumericProbabilityLines(List<Component> lines, ItemGridPanel.TooltipData data,
+                                                      Probability probability) {
+        if (probability.isZeroHit()) {
+            lines.add(ProbabilityFormat.describeZeroHit(data.simulationCount())
+                    .copy().withStyle(ChatFormatting.GRAY));
+            lines.add(ProbabilityFormat.describeZeroHitHint()
+                    .copy().withStyle(TooltipBuilder.HINT));
+        }
+        boolean probUncertain = probability.isUnknown();
+        ChatFormatting probColor = switch (data.uncertaintyLevel()) {
+            case PROBABILISTIC -> ChatFormatting.GOLD;
+            case RUNTIME -> ChatFormatting.YELLOW;
+            default -> probUncertain ? ChatFormatting.GRAY : ChatFormatting.GREEN;
+        };
+        ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
+        if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
+            // 网格给的是当前输入下的值，这里的区间是**其它代表场景**的范围，两者并列不互相冒充
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_simulated",
+                    ProbabilityFormat.formatComponent(probability))
+                    .copy().withStyle(probColor));
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
+                    .copy().withStyle(probColor));
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
+                    .copy().withStyle(probColor));
+        } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.PROBABILISTIC) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_estimated",
+                    ProbabilityFormat.formatNumeric(probability))
+                    .copy().withStyle(probColor));
+        } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.RUNTIME) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional_value",
+                    ProbabilityFormat.formatNumeric(probability))
+                    .copy().withStyle(probColor));
+        } else {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.probability",
+                    ProbabilityFormat.formatComponent(probability))
+                    .copy().withStyle(probColor));
+        }
+    }
+
     // 说明模拟基准，不将幸运敏感误写为必须拥有幸运效果才可获得。
     private static void appendLuckNote(List<Component> lines) {
         lines.add(Component.translatable(
@@ -192,22 +219,13 @@ public final class JournalTooltipBuilder {
                 Float.toString(SimulationProfile.CATALOG_LUCK)).withStyle(TooltipBuilder.HINT));
     }
 
-    // 格式化概率为 tooltip Component——展示点直接格式化，不再依赖界面文本
-    private static Component formatProbabilityComponent(Probability probability) {
-        if (probability.isUnknown()) {
-            return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability_unknown");
-        }
-        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.probability",
-                ProbabilityFormat.format(probability));
-    }
-
-    // 只聚合已测量/不可达的代表场景；未知值继续沿用原有概率提示。
+    // 只聚合已测量/静态不可达的代表场景；未知、需要条件与零命中不参与区间——它们不是数值。
     private static ProbabilityBounds scenarioProbabilityBounds(List<ScenarioProbability> probabilities) {
         Probability minimum = null;
         Probability maximum = null;
         for (ScenarioProbability scenario : probabilities) {
             Probability value = scenario.probability();
-            if (value.isUnknown()) continue;
+            if (!value.isDisplayable()) continue;
             if (minimum == null || value.lowerBound() < minimum.lowerBound()) {
                 minimum = value;
             }
@@ -217,7 +235,8 @@ public final class JournalTooltipBuilder {
         }
         return minimum == null
                 ? null
-                : new ProbabilityBounds(ProbabilityFormat.format(minimum), ProbabilityFormat.format(maximum));
+                : new ProbabilityBounds(
+                ProbabilityFormat.formatNumeric(minimum), ProbabilityFormat.formatNumeric(maximum));
     }
 
     private record ProbabilityBounds(String minimum, String maximum) {
