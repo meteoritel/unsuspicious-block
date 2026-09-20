@@ -9,8 +9,12 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.Scenar
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics;
+import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics.Count;
+import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics.Stage;
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher.CandidateIndex;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -47,7 +51,7 @@ final class LootProbabilitySimulationJob {
     private final LootTable lootTable;
     private final ServerLevel level;
     private final List<SimulationScenario> scenarios;
-    private final Map<Item, List<LootResultSignature>> allRawCandidatesByItem;
+    private final Map<Item, CandidateIndex> allRawCandidatesByItem;
     private final Map<String, LootResultSignature> discovered = new LinkedHashMap<>();
     private final Map<String, ResourceLocation> discoveredChildSources = new LinkedHashMap<>();
     private final Set<String> discoveredDirectly = new HashSet<>();
@@ -57,8 +61,10 @@ final class LootProbabilitySimulationJob {
     private final Set<String> uncoveredConditions = new LinkedHashSet<>();
     private final Map<LootResultSignature, ItemStack> previewCache = new HashMap<>();
     private final Map<LootResultSignature, String> storedKeyCache = new HashMap<>();
+    private final LootSimulationMetrics metrics = new LootSimulationMetrics();
+    private final Function<LootResultSignature, ItemStack> previewFactory = this::createMeasuredPreview;
     private final Function<LootResultSignature, ItemStack> previewProvider =
-            signature -> this.previewCache.computeIfAbsent(signature, LootResultSignature::createPreviewStack);
+            signature -> this.previewCache.computeIfAbsent(signature, this.previewFactory);
     private final RandomSource injectionRandom = RandomSource.create();
     private final Set<ResourceLocation> directChildTables;
     private final Consumer<ResourceLocation> childDropRecorder = this::recordChildTableAppearance;
@@ -67,7 +73,7 @@ final class LootProbabilitySimulationJob {
     private int completedRolls;
     private boolean scenarioPrepared;
     private Map<LootResultSignature, CandidateCounter> candidateCounters = Map.of();
-    private Map<Item, List<LootResultSignature>> candidatesByItem = Map.of();
+    private Map<Item, CandidateIndex> candidatesByItem = Map.of();
     private Map<ResourceLocation, RollCounter> childCounters = Map.of();
     private LootParams lootParams;
     private LootProbabilitySimulator.SimResult result;
@@ -87,10 +93,23 @@ final class LootProbabilitySimulationJob {
 
     // 推进到时间预算耗尽或任务完成；至少执行一个固定批次，避免极短预算导致无进展。
     boolean advance(long deadlineNanos) {
+        LootSimulationMetrics previous = this.metrics.attach();
+        try {
+            return advanceWithinSlice(deadlineNanos);
+        } finally {
+            LootSimulationMetrics.restore(previous);
+        }
+    }
+
+    // 观测仅包围既有时间片，不调整截止时间、批次大小或抽取次数。
+    private boolean advanceWithinSlice(long deadlineNanos) {
         boolean advanced = false;
         while (!isComplete()) {
             if (!this.scenarioPrepared) {
+                long start = LootSimulationMetrics.now();
                 prepareScenario();
+                this.metrics.end(Stage.PREPARE, start);
+                this.metrics.add(Count.SCENARIOS, 1);
             }
             SimulationScenario scenario = this.scenarios.get(this.scenarioIndex);
             try (LootSimulationScope.Scope scope = LootSimulationScope.open(
@@ -114,9 +133,13 @@ final class LootProbabilitySimulationJob {
                     this.uncoveredConditions.addAll(scope.uncoveredConditions());
                 }
             }
+            long start = LootSimulationMetrics.now();
             finishScenario(scenario);
+            this.metrics.end(Stage.FINISH, start);
             if (this.scenarioIndex >= this.scenarios.size()) {
+                start = LootSimulationMetrics.now();
                 this.result = buildResult();
+                this.metrics.end(Stage.RESULT, start);
                 return true;
             }
             if (advanced && System.nanoTime() >= deadlineNanos) {
@@ -124,6 +147,22 @@ final class LootProbabilitySimulationJob {
             }
         }
         return true;
+    }
+
+    // 完成时输出本任务累计值，不包含结果发布、存档和广播的耗时。
+    String metricsSummary() {
+        return this.metrics.summary();
+    }
+
+    // 只对预览缓存未命中计时，作为 MATCH / RAW_MATCH 等父段的嵌套明细。
+    private ItemStack createMeasuredPreview(LootResultSignature signature) {
+        long start = LootSimulationMetrics.now();
+        try {
+            return signature.createPreviewStack();
+        } finally {
+            this.metrics.add(Count.PREVIEW_BUILDS, 1);
+            this.metrics.end(Stage.PREVIEW_DETAIL, start);
+        }
     }
 
     boolean isComplete() {
@@ -164,7 +203,9 @@ final class LootProbabilitySimulationJob {
         CandidateCounter counter = new CandidateCounter(storedKey);
         this.candidateCounters.put(signature, counter);
         Item item = BuiltInRegistries.ITEM.get(signature.itemId());
-        this.candidatesByItem.computeIfAbsent(item, ignored -> new ArrayList<>()).add(signature);
+        this.candidatesByItem.computeIfAbsent(item, ignored -> new CandidateIndex())
+                .add(signature, this.previewProvider);
+        this.metrics.add(Count.CANDIDATES_ADDED, 1);
         return counter;
     }
 
@@ -179,43 +220,62 @@ final class LootProbabilitySimulationJob {
         }
     }
 
-    private static Map<Item, List<LootResultSignature>> indexCandidatesByItem(
+    // 原始候选与场景候选使用同一匹配语义；原始索引供不适用路径的回退判断。
+    private Map<Item, CandidateIndex> indexCandidatesByItem(
             List<LootResultSignature> signatures) {
-        Map<Item, List<LootResultSignature>> result = new HashMap<>();
-        for (LootResultSignature signature : signatures) {
+        Map<Item, CandidateIndex> result = new HashMap<>();
+        for (LootResultSignature signature : new LinkedHashSet<>(signatures)) {
             Item item = BuiltInRegistries.ITEM.get(signature.itemId());
-            List<LootResultSignature> candidates = result.computeIfAbsent(
-                    item, ignored -> new ArrayList<>());
-            if (!candidates.contains(signature)) {
-                candidates.add(signature);
-            }
+            result.computeIfAbsent(item, ignored -> new CandidateIndex()).add(signature, this.previewProvider);
         }
-        result.replaceAll((item, candidates) -> List.copyOf(candidates));
         return Map.copyOf(result);
     }
 
     private void simulateRoll() {
+        long start = LootSimulationMetrics.now();
         LootSimulationScope.beginRoll();
+        this.metrics.end(Stage.BEGIN_ROLL, start);
+        start = LootSimulationMetrics.now();
         List<ItemStack> drops = this.lootTable.getRandomItems(this.lootParams);
+        this.metrics.end(Stage.GENERATE, start);
+        this.metrics.add(Count.ROLLS, 1);
+        start = LootSimulationMetrics.now();
         ArchaeologyLootInjectors.get().maybeReplace(this.tableId, drops, this.injectionRandom);
+        this.metrics.end(Stage.INJECT, start);
         for (ItemStack stack : drops) {
             if (stack.isEmpty()) {
                 continue;
             }
-            List<LootResultSignature> itemCandidates = this.candidatesByItem.get(stack.getItem());
-            LootResultSignature matched = LootResultMatcher.resolve(
-                    stack, itemCandidates != null ? itemCandidates : List.of(), this.previewProvider);
+            this.metrics.add(Count.DROPS, 1);
+            start = LootSimulationMetrics.now();
+            CandidateIndex itemCandidates = this.candidatesByItem.get(stack.getItem());
+            LootResultSignature matched = itemCandidates != null
+                    ? LootResultMatcher.resolve(stack, itemCandidates, this.previewProvider) : null;
+            this.metrics.end(Stage.MATCH, start);
             if (matched != null) {
+                start = LootSimulationMetrics.now();
                 this.candidateCounters.get(matched).mark(this.completedRolls);
+                this.metrics.end(Stage.RECORD, start);
+                this.metrics.add(Count.MATCHED, 1);
                 continue;
             }
-            List<LootResultSignature> rawCandidates = this.allRawCandidatesByItem.get(stack.getItem());
-            if (rawCandidates != null
-                    && LootResultMatcher.resolve(stack, rawCandidates, this.previewProvider) != null) {
+            start = LootSimulationMetrics.now();
+            CandidateIndex rawCandidates = this.allRawCandidatesByItem.get(stack.getItem());
+            boolean rawMatched = rawCandidates != null
+                    && LootResultMatcher.resolve(stack, rawCandidates, this.previewProvider) != null;
+            this.metrics.end(Stage.RAW_MATCH, start);
+            if (rawMatched) {
+                this.metrics.add(Count.RAW_SKIPPED, 1);
                 continue;
             }
+            start = LootSimulationMetrics.now();
             LootResultSignature derived = deriveSignature(stack);
+            this.metrics.end(Stage.DERIVE, start);
+            this.metrics.add(Count.DERIVED, 1);
+            start = LootSimulationMetrics.now();
             String derivedKey = storedKey(derived);
+            this.metrics.end(Stage.KEY_LOOKUP, start);
+            start = LootSimulationMetrics.now();
             ResourceLocation childSource = LootSimulationScope.sourceChildTable(stack);
             CandidateCounter counter = this.candidateCounters.get(derived);
             if (counter == null) {
@@ -228,8 +288,11 @@ final class LootProbabilitySimulationJob {
                 this.discoveredChildSources.putIfAbsent(derivedKey, childSource);
             }
             counter.mark(this.completedRolls);
+            this.metrics.end(Stage.RECORD, start);
         }
+        start = LootSimulationMetrics.now();
         LootSimulationScope.forEachChildTableWithDrops(this.childDropRecorder);
+        this.metrics.end(Stage.CHILD_RECORD, start);
     }
 
     private void finishScenario(SimulationScenario scenario) {

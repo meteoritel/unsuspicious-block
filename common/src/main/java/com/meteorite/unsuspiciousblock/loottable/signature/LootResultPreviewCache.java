@@ -9,7 +9,7 @@ import java.util.function.Function;
 /**
  * 签名 → 预览栈的进程内缓存。
  * <p>
- * {@link LootResultSignature#createPreviewStack()} 对 {@code COMPONENT_EXACT} 需要 base64 + JSON 解码
+ * {@link LootResultSignature#createPreviewStack()} 对 {@code COMPONENT_EXACT} 需要 JSON 解码
  * 再套用组件补丁，成本远高于其它签名类型。玩家侧的掉落实时匹配会对同一批候选反复求值
  * （每次掉落、每个容器槽位），因此这里按签名内容缓存预览栈——预览栈由签名值唯一决定，
  * 缓存结果永远有效，不需要失效策略，只需要在数据包重载时释放以限制内存。

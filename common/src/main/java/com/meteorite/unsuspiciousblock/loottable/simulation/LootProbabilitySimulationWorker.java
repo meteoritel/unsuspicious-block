@@ -34,6 +34,11 @@ public final class LootProbabilitySimulationWorker {
     /** 每 tick 用于模拟抽取的软时间预算；单次抽取本身无法被中断。 */
     private static final long TICK_BUDGET_NANOS = 15_000_000L;
 
+    /** 线程 CPU 时间计量器；不支持时相关字段退化为 0，不影响调度行为。 */
+    private static final java.lang.management.ThreadMXBean THREAD_MX =
+            java.lang.management.ManagementFactory.getThreadMXBean();
+    private static final boolean CPU_TIME_SUPPORTED = THREAD_MX.isCurrentThreadCpuTimeSupported();
+
     /** 单例，随服务端生命周期创建/销毁 */
     private static volatile LootProbabilitySimulationWorker instance;
 
@@ -219,6 +224,7 @@ public final class LootProbabilitySimulationWorker {
             item.startedNanos = System.nanoTime();
         }
         long sliceStartNanos = System.nanoTime();
+        long sliceStartCpuNanos = currentThreadCpuTime();
         LootProbabilitySimulator.SimResult completedResult;
         try {
             if (item.job == null) {
@@ -233,6 +239,7 @@ public final class LootProbabilitySimulationWorker {
             completedResult = LootProbabilitySimulator.SimResult.failure(item.tableId, item.rawTable);
         } finally {
             item.activeNanos += System.nanoTime() - sliceStartNanos;
+            item.activeCpuNanos += currentThreadCpuTime() - sliceStartCpuNanos;
         }
         complete(server, item, completedResult);
         return true;
@@ -243,27 +250,35 @@ public final class LootProbabilitySimulationWorker {
         long wallElapsedMs = item.startedNanos == 0L ? 0L
                 : (System.nanoTime() - item.startedNanos) / 1_000_000L;
         long activeElapsedMs = item.activeNanos / 1_000_000L;
+        long cpuElapsedMs = item.activeCpuNanos / 1_000_000L;
         if (result.successful()) {
             ResultHandler handler = this.resultHandler;
             if (handler != null) {
                 handler.handle(result, server);
             }
-            LOGGER.info("已完成战利品表 {} 的概率模拟，有效计算 {}ms，跨 tick 历时 {}ms，剩余队列 {}",
-                    item.tableId, activeElapsedMs, wallElapsedMs,
-                    Math.max(0, enqueued.size() - 1));
+            // 三个时间各有用处：线程 CPU 回答"这张表本身有多贵"；"有效计算"是墙钟，在服务端启动阶段
+            // 会因与区块生成等工作争抢 CPU 而虚高；"跨 tick 历时"还包含 tick 之间的等待。
+            LOGGER.info("已完成战利品表 {} 的概率模拟，有效计算 {}ms（线程 CPU {}ms），跨 tick 历时 {}ms，剩余队列 {}{}",
+                    item.tableId, activeElapsedMs, cpuElapsedMs, wallElapsedMs,
+                    Math.max(0, enqueued.size() - 1), item.job.metricsSummary());
         } else {
             // 失败表不会在本轮重试：能确定性失败的情形（注册表中没有该表、条件求值抛异常）
             // 用同一份输入重跑只会再失败一次并持续占用 tick 预算。这里只如实记录，
             // 由本轮结束时的汇总说明其后续行为。
             this.failedTables.add(item.tableId);
-            LOGGER.warn("战利品表 {} 的概率模拟未成功，不写入缓存，有效计算 {}ms，跨 tick 历时 {}ms",
-                    item.tableId, activeElapsedMs, wallElapsedMs);
+            LOGGER.warn("战利品表 {} 的概率模拟未成功，不写入缓存，有效计算 {}ms（线程 CPU {}ms），跨 tick 历时 {}ms",
+                    item.tableId, activeElapsedMs, cpuElapsedMs, wallElapsedMs);
         }
         ProgressListener listener = this.progressListener;
         if (listener != null) {
             listener.onTableSimulated(result.tableId(), result.result());
         }
         this.enqueued.remove(item.tableId);
+    }
+
+    // 当前线程已消耗的 CPU 时间；平台不支持时返回 0，日志退化为只报墙钟时间
+    private static long currentThreadCpuTime() {
+        return CPU_TIME_SUPPORTED ? THREAD_MX.getCurrentThreadCpuTime() : 0L;
     }
 
     private void promote(WorkItem item) {
@@ -284,6 +299,8 @@ public final class LootProbabilitySimulationWorker {
         private LootProbabilitySimulationJob job;
         private long startedNanos;
         private long activeNanos;
+        /** 同一批切片的线程 CPU 时间；用于把"这张表有多贵"从墙钟里分离出来。 */
+        private long activeCpuNanos;
 
         private WorkItem(ResourceLocation tableId, TableDefinition rawTable, Priority priority) {
             this.tableId = tableId;

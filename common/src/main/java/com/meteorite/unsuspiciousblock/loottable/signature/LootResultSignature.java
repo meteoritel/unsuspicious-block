@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.loottable.signature;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootSimulationMetrics;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
@@ -56,10 +57,19 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
 
     // 返回用于 NBT / 网络 / Map 键的稳定字符串
     public String toStoredKey() {
-        return STORED_KEY_PREFIX
-                + "|" + this.type.name()
-                + "|" + this.itemId
-                + "|" + encodeData(this.data);
+        LootSimulationMetrics metrics = LootSimulationMetrics.current();
+        long start = metrics != null ? LootSimulationMetrics.now() : 0L;
+        try {
+            return STORED_KEY_PREFIX
+                    + "|" + this.type.name()
+                    + "|" + this.itemId
+                    + "|" + encodeData(this.data);
+        } finally {
+            if (metrics != null) {
+                metrics.add(LootSimulationMetrics.Count.STORED_KEY_CALLS, 1);
+                metrics.end(LootSimulationMetrics.Stage.STORED_KEY_DETAIL, start);
+            }
+        }
     }
 
     // 从持久化字符串恢复签名；兼容旧版仅以 item id 存储的 key
@@ -145,10 +155,19 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
 
     @Nullable
     private static String encodeComponentPatch(DataComponentPatch patch) {
-        return DataComponentPatch.CODEC.encodeStart(JsonOps.INSTANCE, patch)
-                .result()
-                .map(JsonElement::toString)
-                .orElse(null);
+        LootSimulationMetrics metrics = LootSimulationMetrics.current();
+        long start = metrics != null ? LootSimulationMetrics.now() : 0L;
+        try {
+            return DataComponentPatch.CODEC.encodeStart(JsonOps.INSTANCE, patch)
+                    .result()
+                    .map(JsonElement::toString)
+                    .orElse(null);
+        } finally {
+            if (metrics != null) {
+                metrics.add(LootSimulationMetrics.Count.EXACT_SERIALIZATIONS, 1);
+                metrics.end(LootSimulationMetrics.Stage.SERIALIZE_DETAIL, start);
+            }
+        }
     }
 
     @Nullable
