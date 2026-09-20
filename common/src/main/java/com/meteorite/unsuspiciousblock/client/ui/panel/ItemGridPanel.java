@@ -277,8 +277,7 @@ public final class ItemGridPanel implements PagePanel {
         ScrollTextHelper.draw(guiGraphics, font, child.displayName().getString(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
-        Component probability = formatProbability(
-                child.probability(), LootConditionHandler.UncertaintyLevel.NONE, List.of());
+        Component probability = formatProbability(child.probability(), List.of());
         ScrollTextHelper.draw(guiGraphics, font, probability.getString(),
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
@@ -384,8 +383,7 @@ public final class ItemGridPanel implements PagePanel {
                 NAME_COLOR, hovered, scrollTicks, true);
 
         // 概率（居中，颜色根据状态与不确定性等级区分）——显示优先级链见 formatProbability
-        Component probComp = formatProbability(item.probability(), item.uncertaintyLevel(),
-                item.declaredChances());
+        Component probComp = formatProbability(item.probability(), item.declaredChances());
         int probColor = probabilityColor(item.probability(), item.uncertaintyLevel(),
                 !item.declaredChances().isEmpty());
         ScrollTextHelper.draw(guiGraphics, font, probComp.getString(),
@@ -428,7 +426,6 @@ public final class ItemGridPanel implements PagePanel {
      * 客户端只做这一层渲染分派，四种状态的判定全部来自服务端派生结果。
      */
     private static Component formatProbability(@Nullable Probability probability,
-                                               LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                                                List<DeclaredChance> declaredChances) {
         if (probability == null) {
             return Component.translatable(

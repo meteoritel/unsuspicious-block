@@ -17,7 +17,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
@@ -25,9 +24,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.Catalo
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.simulation.LootConditionFingerprint;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -49,10 +46,6 @@ import java.util.Set;
  * 考古笔记视图模型——管理分类首页、父子目录、搜索排序与右页数据快照。
  */
 public class JournalViewModel {
-    private static final ResourceLocation FISHING =
-            ResourceLocation.withDefaultNamespace("gameplay/fishing");
-    private static final ResourceLocation MUD_DREDGING = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "gameplay/fishing/mud_dredging");
 
     private final ArchaeologyJournalState state;
     private ArchaeologyJournalLogState logState;
@@ -536,7 +529,9 @@ public class JournalViewModel {
                         // 子表入口与物品同口径：读服务端派生的当前输入状态，不再取跨场景最大值
                         childProbability.probability(),
                         childProbability.scenarioProbabilities(),
-                        childTableConditions(selectedDefinition, child.id()), previewItems,
+                        // 入口条件由服务端派生（路径共同条件 + 注入边门槛）：注入边不在任何 JSON 里，
+                        // 客户端从物品路径本地重推必然漏掉它，泥地打捞入口就曾因此没有原因可讲
+                        childProbability.conditions(), previewItems,
                         selectedDefinition.items().stream()
                                 .flatMap(item -> item.acquisitionPaths().stream())
                                 .anyMatch(path -> child.id().equals(path.sourceChildTable()) && path.luckAffected()),
@@ -586,51 +581,6 @@ public class JournalViewModel {
                 item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
                 directPaths, item.injected(), level, item.scenarioProbabilities(),
                 DeclaredChance.fromPaths(directPaths), simulationCount);
-    }
-
-    // 从父表展开后的物品路径中提取所有子表产出共同具备的条件。
-    private List<LootConditionInfo> childTableConditions(
-            TableDefinition parent, ResourceLocation childTableId) {
-        List<List<LootConditionInfo>> paths = acquisitionConditionPaths(
-                parent, path -> childTableId.equals(path.sourceChildTable()));
-        if (paths.isEmpty() && FISHING.equals(parent.id()) && MUD_DREDGING.equals(childTableId)) {
-            TableDefinition injectedTable = this.catalogDefinitions.get(MUD_DREDGING);
-            if (injectedTable != null) {
-                paths = acquisitionConditionPaths(
-                        injectedTable, path -> path.sourceChildTable() == null);
-            }
-        }
-        return commonConditions(paths);
-    }
-
-    private static List<List<LootConditionInfo>> acquisitionConditionPaths(
-            TableDefinition table, java.util.function.Predicate<LootAcquisitionPath> filter) {
-        List<List<LootConditionInfo>> result = new ArrayList<>();
-        for (ItemDefinition item : table.items()) {
-            for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                if (filter.test(path)) {
-                    result.add(path.allConditions());
-                }
-            }
-        }
-        return result;
-    }
-
-    private static List<LootConditionInfo> commonConditions(List<List<LootConditionInfo>> paths) {
-        if (paths.isEmpty()) return List.of();
-        LinkedHashMap<String, LootConditionInfo> common = indexConditions(paths.getFirst());
-        for (int index = 1; index < paths.size() && !common.isEmpty(); index++) {
-            common.keySet().retainAll(indexConditions(paths.get(index)).keySet());
-        }
-        return List.copyOf(common.values());
-    }
-
-    private static LinkedHashMap<String, LootConditionInfo> indexConditions(List<LootConditionInfo> conditions) {
-        LinkedHashMap<String, LootConditionInfo> result = new LinkedHashMap<>();
-        for (LootConditionInfo condition : conditions) {
-            result.putIfAbsent(LootConditionFingerprint.of(condition), condition);
-        }
-        return result;
     }
 
     // 纯转发表没有直接物品时，向下寻找首批可展示后代；visited 防止循环引用。

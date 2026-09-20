@@ -229,6 +229,8 @@ public final class CatalogGeneration {
                 updateDigest(digest, ref.scenarioKey());
                 updateProbabilityDigest(digest, ref.probability());
             }
+            // 入口条件树会直接改变 tooltip 内容（"进本表需要什么"），因此与物品的路径条件同口径进摘要
+            updateConditionListDigest(digest, child.conditions());
         }
     }
 

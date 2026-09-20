@@ -955,7 +955,7 @@ public final class ArchaeologyJournalServerCatalog {
                             updateCompiledProductDigest(nodeDigest, tables.get(node));
                             // 附魔定义不在任何战利品表 JSON 里，却决定模拟用的满级工具与等级控件范围
                             updateEnchantmentDigest(nodeDigest, registries,
-                                    referencedEnchantments(compiledTables.get(node)));
+                                    summaryEnchantments(compiledTables.get(node), node));
                         });
                 hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
             } catch (IOException | RuntimeException e) {
@@ -970,6 +970,29 @@ public final class ArchaeologyJournalServerCatalog {
     // 使"从无引用变为有引用"同样能改变父表摘要
     private static Set<ResourceLocation> referencedEnchantments(@Nullable CompiledLootTable compiled) {
         return compiled == null ? Set.of() : compiled.referencedEnchantments();
+    }
+
+    /**
+     * 该节点摘要要吃到的附魔集合——JSON 里被引用的（五个读附魔的机制）+ **本表注入边门槛**引用的。
+     * <p>
+     * 后者不可省：门槛从"被注入子表自己的池条件"移到"父表注入处"之后，两端 JSON 里都不再出现
+     * {@code enchantment} 字段，而它的 {@code max_level} 仍决定模拟用的满级工具（注入场景要带满级
+     * 附魔才进得去）。不并入这一项，改 {@code max_level} 就不会让任何表失效，决策 35 那句
+     * "影响概率的所有数据变化必然失效"随之破掉。同一份集合同样用于附魔等级旋钮清单。
+     */
+    private static Set<ResourceLocation> summaryEnchantments(@Nullable CompiledLootTable compiled,
+                                                             ResourceLocation node) {
+        Set<ResourceLocation> references = referencedEnchantments(compiled);
+        Set<ResourceLocation> gates = RuntimeLootLinks.injectionGateEnchantments(node);
+        if (gates.isEmpty() || references.containsAll(gates)) {
+            return references;
+        }
+        if (references.isEmpty()) {
+            return gates;
+        }
+        Set<ResourceLocation> union = new HashSet<>(references);
+        union.addAll(gates);
+        return union;
     }
 
     /**

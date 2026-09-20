@@ -35,7 +35,12 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * NeoForge 钓鱼注入器，只负责执行泥地打捞父表；资格由 GLM condition 判断，分支由父表判断。
+ * NeoForge 钓鱼注入器，只负责执行泥地打捞父表。
+ * <p>
+ * 入口门槛（附魔 + 按等级掷概率）在 {@link #doApply} 里按
+ * {@link RuntimeLootLinks#MUD_DREDGING_GATE} 判定，而不是写成 GLM 的 {@code conditions} 数据：
+ * 这样门槛与 Fabric 端、与父表页子表入口的说明同源。判定时机与原先作为 GLM 条件时一致
+ * （每次施放一次、在抽取子表之前），随机数消耗次序也不变。
  */
 public class FishingLootModifier extends LootModifier {
     public static final MapCodec<FishingLootModifier> CODEC = RecordCodecBuilder.mapCodec(instance ->
@@ -53,6 +58,11 @@ public class FishingLootModifier extends LootModifier {
         ItemStack tool = context.getParamOrNull(LootContextParams.TOOL);
         var origin = context.getParamOrNull(LootContextParams.ORIGIN);
         if (tool == null || tool.isEmpty() || origin == null) {
+            return generatedLoot;
+        }
+        // 门槛没过就什么都不加：等价于原先"GLM 条件不成立时不执行本注入器"
+        if (!RuntimeLootLinks.MUD_DREDGING_GATE
+                .condition(context.getLevel().registryAccess()).test(context)) {
             return generatedLoot;
         }
         Entity entity = context.getParamOrNull(LootContextParams.THIS_ENTITY);

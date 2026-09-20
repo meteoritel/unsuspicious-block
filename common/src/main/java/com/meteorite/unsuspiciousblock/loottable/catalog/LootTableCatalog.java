@@ -147,16 +147,24 @@ public final class LootTableCatalog {
         }
     }
 
-    /** 父表一次抽取中，直接引用的子表至少产出一个物品的概率。 */
+    /**
+     * 父表一次抽取中，直接引用的子表至少产出一个物品的概率。
+     *
+     * @param conditions 该入口的**条件树**：通往它的各条路径共同成立的静态条件，加上注入边门槛
+     *                   （后者不在任何 JSON 里，只能由服务端给出）。客户端只渲染这一份，
+     *                   不在本地重新推导语义
+     */
     public record ChildTableProbability(ResourceLocation tableId, Probability probability,
-                                        List<ScenarioProbability> scenarioProbabilities) {
+                                        List<ScenarioProbability> scenarioProbabilities,
+                                        List<LootConditionInfo> conditions) {
         public ChildTableProbability {
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
+            conditions = List.copyOf(conditions);
         }
 
         public static ChildTableProbability pending(ResourceLocation tableId) {
             return new ChildTableProbability(tableId,
-                    Probability.unknown(UnknownReason.UNCOVERED), List.of());
+                    Probability.unknown(UnknownReason.UNCOVERED), List.of(), List.of());
         }
     }
 

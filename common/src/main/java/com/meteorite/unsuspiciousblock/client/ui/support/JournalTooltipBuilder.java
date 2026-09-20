@@ -108,22 +108,30 @@ public final class JournalTooltipBuilder {
                                                    boolean luckAffected) {
         List<Component> lines = new ArrayList<>();
         lines.add(displayName.copy().withStyle(ChatFormatting.WHITE));
-        lines.add(Component.literal(tableId.toString()).withStyle(ChatFormatting.DARK_GRAY));
-        ProbabilityBounds bounds = scenarioProbabilityBounds(scenarioProbabilities);
-        if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
-                    .withStyle(ChatFormatting.GREEN));
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
-                    .withStyle(ChatFormatting.GREEN));
+        lines.add(Component.literal(tableId.toString()).withStyle(TooltipBuilder.HINT));
+        // 显示优先级与物品同一条链：**状态词优先于数值**。子表区间是"其它代表场景的范围"，
+        // 用它顶掉「需要条件」就等于"为什么看不到数字"永远看不到；而且区间里的 0% 会与
+        // 「需要条件」互相打脸（0% 读起来像"不可能"，而它只是"当前输入下进不去"）。
+        if (!probability.isDisplayable()) {
+            lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(ChatFormatting.GRAY));
         } else {
-            lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(
-                    probability.isDisplayable() ? ChatFormatting.GREEN : ChatFormatting.GRAY));
+            ProbabilityBounds bounds = scenarioProbabilityBounds(scenarioProbabilities);
+            if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
+                lines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
+                        .withStyle(ChatFormatting.GREEN));
+                lines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
+                        .withStyle(ChatFormatting.GREEN));
+            } else {
+                lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(
+                        probability.isDisplayable() ? ChatFormatting.GREEN : ChatFormatting.GRAY));
+            }
         }
         if (luckAffected) {
             appendLuckNote(lines);
         }
+        // 入口条件（路径共同条件 + 注入边门槛）由服务端下发；不含它时"进不去"就只剩一个状态词
         if (!conditions.isEmpty()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")

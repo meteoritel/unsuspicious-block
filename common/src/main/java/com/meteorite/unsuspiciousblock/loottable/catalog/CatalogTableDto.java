@@ -73,16 +73,25 @@ public record CatalogTableDto(
         }
     }
 
-    /** 子表概率条目；同样使用引用形态。 */
+    /**
+     * 子表入口条目；同样使用引用形态。
+     *
+     * @param conditions 该入口的条件树（通往它的路径共同成立的条件 + 注入边门槛）。
+     *                   它由服务端派生并下发，客户端不再从物品路径本地重推——那种"两份实现"
+     *                   在注入边这种"不在 JSON 里的条件"上必然漏项（历史上正是如此：
+     *                   泥地打捞入口因此显示成了没有原因的「未命中」）
+     */
     public record ChildTableEntry(ResourceLocation tableId, Probability probability,
-                                  List<ScenarioRef> scenarioProbabilities) {
+                                  List<ScenarioRef> scenarioProbabilities,
+                                  List<LootConditionInfo> conditions) {
         public ChildTableEntry {
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
+            conditions = List.copyOf(conditions);
         }
     }
 
     /** 把内部记录映射为网络形态，并按 {@code scenarioKey} 抽取表级假设。 */
-    public static CatalogTableDto from(TableDefinition table) {
+    public static CatalogTableDto from(TableDefinition table, String hash) {
         Map<String, List<LootConditionInfo>> assumptionsByScenario = new LinkedHashMap<>();
         List<ItemEntry> items = new ArrayList<>(table.items().size());
         for (ItemDefinition item : table.items()) {
@@ -94,7 +103,8 @@ public record CatalogTableDto(
         List<ChildTableEntry> children = new ArrayList<>(table.childTableProbabilities().size());
         for (ChildTableProbability child : table.childTableProbabilities()) {
             children.add(new ChildTableEntry(child.tableId(), child.probability(),
-                    collectScenarioRefs(child.scenarioProbabilities(), assumptionsByScenario)));
+                    collectScenarioRefs(child.scenarioProbabilities(), assumptionsByScenario),
+                    child.conditions()));
         }
 
         // 按 key 排序，使同一份目录每次生成的网络形态与哈希输入都稳定
@@ -123,7 +133,8 @@ public record CatalogTableDto(
         List<ChildTableProbability> children = new ArrayList<>(this.childProbabilities.size());
         for (ChildTableEntry child : this.childProbabilities) {
             children.add(new ChildTableProbability(child.tableId(), child.probability(),
-                    resolveScenarioProbabilities(child.scenarioProbabilities(), assumptionsByScenario)));
+                    resolveScenarioProbabilities(child.scenarioProbabilities(), assumptionsByScenario),
+                    child.conditions()));
         }
 
         return new TableDefinition(this.id, this.displayName, this.type, items,

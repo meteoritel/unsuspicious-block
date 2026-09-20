@@ -4,10 +4,6 @@
     {
       "condition": "neoforge:loot_table_id",
       "loot_table_id": "minecraft:gameplay/fishing"
-    },
-    {
-      "condition": "unsuspiciousblock:tool_enchantment",
-      "enchantment": "unsuspiciousblock:mud_dredging"
     }
   ]
 }
