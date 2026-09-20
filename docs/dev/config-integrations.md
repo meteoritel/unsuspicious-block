@@ -20,6 +20,7 @@
 |---|---|---|---|
 | `archaeology_path_prefixes` | - | 见下 | 战利品表追踪前缀列表 |
 | `excluded_loot_tables` | - | 空 | 从宽泛规则中精确排除的战利品表 ID |
+| `signature_excluded_components` | - | `relics:data` | 不参与战利品签名的物品组件 id；含这些组件的物品按物品级收录（见 [战利品表系统](loottable.md) 第 4.1 节） |
 | `max_log_entries_per_table` | 64-4096 | 512 | 服务器全局单表日志兜底上限；玩家当前表自动保留上限不能超过此值 |
 | `tracking_timeout_ticks` | 600-60000 | 6000（5 分钟） | 战利品箱追踪超时 |
 

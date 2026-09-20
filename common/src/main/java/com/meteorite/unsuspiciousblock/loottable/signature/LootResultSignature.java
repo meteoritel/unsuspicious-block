@@ -36,11 +36,17 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
         return new LootResultSignature(itemId, SignatureType.ENCHANTED_APPROX, null);
     }
 
-    // 构造严格组件签名
+    // 构造严格组件签名；含实例态组件的物品按物品级签名收录
     public static LootResultSignature componentExact(ItemStack stack) {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         DataComponentPatch patch = stack.getComponentsPatch();
         if (patch.isEmpty()) {
+            return plain(itemId);
+        }
+        // 实例态组件随物品实例随机化或随玩家进度变化，不构成物品身份。这里直接落 PLAIN 而不是
+        // "剔除该组件后仍编 COMPONENT_EXACT"：后者的匹配比较与候选索引哈希读到的仍是未剔除的组件，
+        // 两侧不对称会让这类条目永远匹配不上（静默缺陷），而 PLAIN 匹配只比物品 id，不碰组件。
+        if (SignatureExcludedComponents.containsExcluded(patch)) {
             return plain(itemId);
         }
 

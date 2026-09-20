@@ -161,6 +161,19 @@ record LootResultSignature(ResourceLocation itemId, SignatureType type, @Nullabl
 | `ENCHANTED_RANDOM` / `ENCHANTED_LEVEL` | 旧版附魔签名 | 仅作兼容别名，加载时折叠为 `ENCHANTED_APPROX` |
 | `APPROX_ITEM_ONLY` | 近似回退 | 组件编码失败等异常情况 |
 
+**实例态组件排除**：签名派生时，若物品的组件补丁含配置声明的**实例态组件**
+（`ILootTableConfig.getSignatureExcludedComponents()`，默认 `relics:data`），该物品直接退化为 `PLAIN`（物品级）签名。
+这类组件随物品实例随机化或随玩家进度变化，不属于战利品定义。以 Relics 为例：`relics:data` 是所有 `IRelicItem`
+的**默认组件**（初值 `RelicComponent.EMPTY`，即未解析态），而该模组在 `Item.verifyComponentsAfterLoad` 里
+"读取即物化"地用未播种随机数写回品质，`ItemStack` 构造、`copy()`、`applyComponents*` 都会触发它——
+把这种组件编进签名等于把 RNG 结果当物品身份，同一件饰品会随掉落次数无限增生条目（实测冰窖表 1802 条里 1796 条
+是两件饰品的伪变体，使该表完成度不可达）。
+
+必须落 `PLAIN`、而不是"剔除该组件后仍编 `COMPONENT_EXACT`"：匹配比较（`isSameItemSameComponents`）与候选索引
+哈希（`hashItemAndComponents`）读的都是**未剔除**的组件，两侧不对称会让这类条目永远匹配不上、索引也永远查不到桶。
+`PLAIN` 匹配只比物品 id，不碰组件，且与静态路径产生的 `PLAIN` 共用同一个存储键，因此同一物品不会出现两条条目。
+代价是不再按随机变体分别收集——与附魔折叠为 `ENCHANTED_APPROX`（"避免签名爆炸"）是同一取舍。
+
 ### 4.2 稳定存储键
 
 `toStoredKey()` 生成稳定字符串，用于 NBT 持久化、网络传输与 Map key：
@@ -184,6 +197,7 @@ usb_sig|TYPE|itemId|base64(data)
 按签名内容缓存预览栈——预览栈由签名值唯一决定，缓存结果永远有效、不需要失效策略；玩家侧的掉落实时匹配
 （掉落追踪、容器已追踪状态、菜单快照三条来源）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。
 缓存只在数据包重载时清空以限制内存。概率模拟热路径不共用它：单表模拟自带 `HashMap` 缓存，单线程且无并发开销，更快。
+含实例态组件的物品已退化为 `PLAIN`（见 4.1），其预览栈是裸物品栈、不套用任何组件补丁，也不再需要预览参与精确匹配。
 
 ## 5. 收录范围匹配
 
@@ -485,9 +499,11 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 **缓存格式与失效**：
 
-候选哈希索引只用于单次任务的内存查找，不是新的签名或存储键。性能修复不合并 Relics 等动态
-变体、不限制发现数量，也不改编解码；`FORMAT_VERSION=3` 与 `SIMULATION_CACHE_VERSION=v16`
-保持不变，无需迁移玩家进度或使概率缓存失效。验证性能时通过 `/usb journal reload` 强制重算。
+候选哈希索引只用于单次任务的内存查找，不是新的签名或存储键；它不限制发现数量，也不改编解码。
+`FORMAT_VERSION=3` 与存储键格式不变。**实例态组件排除**（见 4.1）改变了签名派生结果，因此
+`SIMULATION_CACHE_VERSION` 升到 `loot-analysis-v17`，并把该组件 id 列表并入每表哈希的输入：前者覆盖
+"派生规则本身变了"（第三方 GLM 注入的饰品条目不在静态编译产物摘要里，只靠子树摘要无法失效），后者覆盖
+"改配置"。两者都只让相关表重算，不需要迁移玩家进度。验证时通过 `/usb journal reload` 强制重算。
 
 - 存档根带 `format_version`（当前 3）。读取时先校验版本与**严格的 NBT tag 类型**——根缺少版本、版本不符、概率仍是旧版 `StringTag`（注意这并**不是**"字段缺失"，必须按类型显式判定），或单个表的条目无法解析时，一律把对应表按**缓存未命中**处理：既不报错中断，也不迁移数值、更不把类型不匹配解成 0。
 - 每表还存一份内容哈希（SHA-256），输入覆盖**整棵子树**：每张表的完整资源栈摘要 + 编译产物摘要（物品签名与 id）+ **被引用附魔的定义摘要**（附魔 id 与其 `max_level`）。必须覆盖子树而不只是本表，否则"子表引用的 item tag 成员变化"（JSON 文本不变、只有展开结果变）不会让父表失效。
@@ -498,7 +514,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
   - 附魔定义的 `max_level` 之外的字段（anvil 花费、权重等）——它们不影响任何概率；
   - 其它外部注册表依赖（例如整合包用全局战利品修改器引用的第三方数据）；
   - **经核实不受影响、因此不列入残余**的两类：biome tag 成员（`location_check` 由条件指纹回答，不查真实区块与 tag）与 damage type 定义（`DAMAGE_SOURCE` 由 profile 填充，不读注册表）。
-- 统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v16`。函数分级及幸运影响标记加入目录哈希；声明触发率元数据随条件树同步并参与哈希。模拟异常或无法取得有效表时不写入缓存。
+- 统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v17`。函数分级及幸运影响标记加入目录哈希；声明触发率元数据随条件树同步并参与哈希。模拟异常或无法取得有效表时不写入缓存。
 - **数据包重载会真正触发重算（D9）**：Fabric 用 `ResourceManagerHelper.get(PackType.SERVER_DATA)`、NeoForge 用 `AddReloadListenerEvent` 注册 [`DataPackReloadListener`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/DataPackReloadListener.java)，它**只置脏标记**，重建由 `ServerLootTableConfigManager.tick` 在服务端 tick 路径上消费（在重载回调里同步跑全量构建会拖住重载，且两个平台的重载事件时序不同）。服务端启动时的首次资源加载也会触发监听器，但那时目录尚未加载，标记被忽略。
 - **不可用机制的表在构建期被拦下**：`LootMechanismSupport` 识别"paramSet 不允许的参数引用"（如 `enchantment_level` 提供器、`enchantment_active_check`）与和填充模型根本不相容的 paramSet（如 `barter`，其 allowed 集合不含 `ORIGIN`）。判定时**空 `type` 按 vanilla 语义等价于 `generic`**（`LootTable.DIRECT_CODEC` 里 `type` 缺省为 `ALL_PARAMS`）——实测有整套模组（BetterArcheology 的 7 张宝箱表）不写 `type`，把空串当成"未知 paramSet"会把它们误判为不可用。这类表不入队模拟（否则会在 `getRandomItems` 里抛异常后静默失败），而是标记为 `Unknown(UNPARSED)` 并输出一次可行动的诊断。参数填充本身也只填 paramSet `allowed` 内的参数，required 与 optional 都填——只填 required 会把"没填"伪装成"条件不成立"。
 - **失败表不会自动重试**：能确定性失败的情形（注册表里没有该表、条件求值抛异常）用同一份输入重跑只会再失败一次并持续占用 tick 预算，因此失败表只记录不重排。它的概率保持「未知」（不会显示成 0%），本轮队列排空时汇总列出一次 `N 张表的概率模拟失败…将在下次数据包重载或 /usb journal reload 时重新尝试`。
@@ -548,6 +564,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 ## 10. 扩展点
 
 - **新增收录范围**：修改配置的追踪前缀列表（`ILootTableConfig.getArchaeologyPathPrefixes()`），或通过数据包新增命中前缀的战利品表。
+- **新增实例态组件排除**：在 `ILootTableConfig.getSignatureExcludedComponents()` 里加组件 id（默认 `relics:data`），含这些组件的物品即按物品级（`PLAIN`）收录，见第 4.1 节。该列表已并入每表哈希，改配置会让相关表重算；但旧存档里按组件变体存下的进度键会成为孤儿——不渲染、不参与完成度闭包，需要按需清理（本项改动未提供存档迁移）。
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需在 `JournalNbtMigrator` 补充连续迁移步骤。
 - **新增战利品条件**：参考 `ToolEnchantmentCondition`，在 `ModLootConditions` 注册类型与展示描述，两端各自注册到注册表；资源与本批必须同批落地（见第 9 节）。展示描述只能做到"成立但有未展示约束"时，调 `LootConditionHandlers.partial(info)` 告诉客户端改用斜体，别让半懂乍看像读懂。
 - **新增场景控制类型**：把类型加入 `SimulationScenarioPlanner` 的 `SCENARIO_CONDITIONS`，并为其补一个 `test` 转交作用域的窄 Mixin；类型须实现为 record 或覆写 `toString()`，否则指纹稳定性判定会把它排除出场景规划（见 7.2）。

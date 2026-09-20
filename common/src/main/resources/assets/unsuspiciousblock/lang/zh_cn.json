@@ -152,6 +152,8 @@
   "unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes": "战利品表追踪前缀（每行一个）",
   "unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes.button": "编辑前缀列表",
   "unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes.tooltip": "需要追踪的战利品表匹配规则。语法：[命名空间:路径]。路径以 / 结尾表示前缀匹配，否则为精确匹配。直接命中的表显示为根表，仅通过引用收录的表只显示为子表。",
+  "unsuspiciousblock.configgui.loot_table.signature_excluded_components": "签名排除组件（每行一个）",
+  "unsuspiciousblock.configgui.loot_table.signature_excluded_components.tooltip": "不参与战利品签名的物品组件 id。这些组件随物品实例随机化或随玩家进度变化，不属于战利品定义；含它们的物品在考古笔记中按物品级收录，不再按组件变体分别成条目。例：relics:data。",
   "unsuspiciousblock.configgui.journal.max_log_entries_per_table": "单表日志上限",
   "unsuspiciousblock.configgui.journal.max_log_entries_per_table.tooltip": "单张战利品表保留的日志条目上限。超出后自动丢弃最旧条目。",
   "unsuspiciousblock.configgui.journal.tracking_timeout_ticks": "追踪超时（游戏刻）",

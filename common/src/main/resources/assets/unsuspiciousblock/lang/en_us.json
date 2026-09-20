@@ -101,6 +101,8 @@
   "unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes": "Loot Table Path Prefixes (one per line)",
   "unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes.button": "Edit Prefix List",
   "unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes.tooltip": "Loot table matching rules to track. Syntax: [namespace:path]. Path ending with / is prefix match; otherwise exact match. Direct matches are roots; reference-only tables appear only as children.",
+  "unsuspiciousblock.configgui.loot_table.signature_excluded_components": "Signature Excluded Components (one per line)",
+  "unsuspiciousblock.configgui.loot_table.signature_excluded_components.tooltip": "Data component ids excluded from loot signatures. Such components are randomized per item instance or change with player progress and are not part of the loot definition; items carrying them are catalogued per item instead of per component variant. e.g. relics:data.",
   "unsuspiciousblock.configgui.journal.max_log_entries_per_table": "Max Log Entries Per Table",
   "unsuspiciousblock.configgui.journal.max_log_entries_per_table.tooltip": "Max log entries kept per loot table. Oldest entries are dropped when exceeded.",
   "unsuspiciousblock.configgui.journal.tracking_timeout_ticks": "Tracking Timeout (ticks)",

@@ -35,11 +35,20 @@ public interface ILootTableConfig {
             "unsuspiciousblock:gameplay/panning/"
     );
 
+    // 默认排除的实例态组件 id：这些组件随物品实例随机化或随玩家进度变化，不属于战利品定义，
+    // 含它们的物品按物品级签名收录（实例：Relics 的 relics:data 每次掉落都会被随机化）
+    List<String> DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS = List.of("relics:data");
+
     List<String> getArchaeologyPathPrefixes();
 
     // 被前缀规则命中但由管理页明确关闭的战利品表
     default List<String> getExcludedLootTables() {
         return List.of();
+    }
+
+    // 不参与战利品签名的实例态组件 id 列表；命中这些组件的物品退化为物品级签名
+    default List<String> getSignatureExcludedComponents() {
+        return DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS;
     }
 
     // 保存管理页修改后的包含规则与精确排除项

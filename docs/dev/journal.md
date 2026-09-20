@@ -127,7 +127,7 @@ ArchaeologyJournalState
 └─ dirtyTables: LinkedHashSet<TableId>       脏表追踪
 ```
 
-物品用 `LootResultSignature.toStoredKey()` 作为 key（见 [战利品表系统](loottable.md) 的签名机制），而非物品 ID，以区分同一物品的不同组件结果。父表完成度包含其全部后代表物品，并按签名去重。
+物品用 `LootResultSignature.toStoredKey()` 作为 key（见 [战利品表系统](loottable.md) 的签名机制），而非物品 ID，以区分同一物品的不同组件结果；随实例随机化或随玩家进度变化的**实例态组件**不参与签名，含它们的物品按物品级收录（见 loottable.md 第 4.1 节）。父表完成度包含其全部后代表物品，并按签名去重。
 
 ### 4.2 持久化
 

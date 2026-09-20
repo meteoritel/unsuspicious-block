@@ -72,7 +72,8 @@ public final class ServerLootTableConfigManager {
         Snapshot previous = snapshot;
         snapshot = current;
         if (previous != null && (!previous.archaeologyPathPrefixes().equals(current.archaeologyPathPrefixes())
-                || !previous.excludedLootTables().equals(current.excludedLootTables()))) {
+                || !previous.excludedLootTables().equals(current.excludedLootTables())
+                || !previous.signatureExcludedComponents().equals(current.signatureExcludedComponents()))) {
             Constants.LOG.info("Server loot table tracking rules changed; rebuilding archaeology catalog.");
             JournalCatalogHandler.onDataPackReload(server);
         }
@@ -90,12 +91,14 @@ public final class ServerLootTableConfigManager {
 
     private record Snapshot(List<String> archaeologyPathPrefixes,
                             List<String> excludedLootTables,
+                            List<String> signatureExcludedComponents,
                             int maxLogEntriesPerTable,
                             long trackingTimeoutTicks) {
         private static Snapshot capture() {
             return new Snapshot(
                     List.copyOf(Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes()),
                     List.copyOf(Services.LOOT_TABLE_CONFIG.getExcludedLootTables()),
+                    List.copyOf(Services.LOOT_TABLE_CONFIG.getSignatureExcludedComponents()),
                     Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable(),
                     Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks());
         }

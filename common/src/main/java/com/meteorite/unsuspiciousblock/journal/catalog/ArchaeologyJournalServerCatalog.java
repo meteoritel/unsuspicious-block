@@ -18,6 +18,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableD
 import com.meteorite.unsuspiciousblock.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
+import com.meteorite.unsuspiciousblock.loottable.signature.SignatureExcludedComponents;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulator;
 import com.meteorite.unsuspiciousblock.loottable.simulation.PathHintAnalyzer;
@@ -75,7 +76,7 @@ import java.util.Set;
 public final class ArchaeologyJournalServerCatalog {
     private static final String CHILD_CACHE_PREFIX = "child_table:";
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v16";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v17";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -677,6 +678,9 @@ public final class ArchaeologyJournalServerCatalog {
             try {
                 digest.reset();
                 LootTableSourceSnapshot.updateDigest(digest, SIMULATION_CACHE_VERSION);
+                // 排除列表决定物品签名怎么派生，改配置必须让相关表失效（否则会沿用旧签名的缓存结果）
+                LootTableSourceSnapshot.updateDigest(digest,
+                        String.join(",", SignatureExcludedComponents.configuredIds()));
                 graph.updateSubtreeDigest(tableId, digest,
                         (node, nodeDigest) -> {
                             updateCompiledProductDigest(nodeDigest, tables.get(node));

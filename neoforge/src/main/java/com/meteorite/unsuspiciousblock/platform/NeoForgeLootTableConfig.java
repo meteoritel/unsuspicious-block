@@ -12,6 +12,7 @@ import java.util.List;
 public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConfig {
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> ARCHAEOLOGY_PATH_PREFIXES;
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> SIGNATURE_EXCLUDED_COMPONENTS;
     private static final ModConfigSpec.IntValue MAX_LOG_ENTRIES_PER_TABLE;
     private static final ModConfigSpec.LongValue TRACKING_TIMEOUT_TICKS;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> EXCLUDED_LOOT_TABLES;
@@ -48,6 +49,21 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
                 .translation("unsuspiciousblock.configgui.loot_table.archaeology_path_prefixes")
                 .defineListAllowEmpty("archaeology_path_prefixes",
                         () -> ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES,
+                        () -> "",
+                        obj -> obj instanceof String s && !s.isBlank());
+        SIGNATURE_EXCLUDED_COMPONENTS = serverBuilder
+                .comment("不参与战利品签名的物品组件 id 列表。",
+                        "这些组件随物品实例随机化或随玩家进度变化，不属于战利品定义；",
+                        "含这些组件的物品在考古笔记中按物品级收录，不再按组件变体分别成条目。",
+                        "例：relics:data（Relics 饰品每次掉落都会随机化该组件）。",
+                        "",
+                        "Data component ids excluded from loot signatures.",
+                        "Such components are randomized per item instance or change with player progress and are not part of the loot definition;",
+                        "items carrying them are catalogued per item instead of per component variant.",
+                        "e.g. relics:data (randomized on every Relics drop).")
+                .translation("unsuspiciousblock.configgui.loot_table.signature_excluded_components")
+                .defineListAllowEmpty("signature_excluded_components",
+                        () -> ILootTableConfig.DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS,
                         () -> "",
                         obj -> obj instanceof String s && !s.isBlank());
         serverBuilder.pop();
@@ -135,15 +151,18 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public List<String> getArchaeologyPathPrefixes() {
-        return List.copyOf((List<String>) ARCHAEOLOGY_PATH_PREFIXES.get());
+        return List.copyOf(ARCHAEOLOGY_PATH_PREFIXES.get());
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public List<String> getExcludedLootTables() {
-        return List.copyOf((List<String>) EXCLUDED_LOOT_TABLES.get());
+        return List.copyOf(EXCLUDED_LOOT_TABLES.get());
+    }
+
+    @Override
+    public List<String> getSignatureExcludedComponents() {
+        return List.copyOf(SIGNATURE_EXCLUDED_COMPONENTS.get());
     }
 
     @Override
@@ -165,12 +184,11 @@ public class NeoForgeLootTableConfig implements ILootTableConfig, ISpiritCatConf
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public void loadForServer(net.minecraft.server.MinecraftServer server) {
         if (MIGRATED_FROM_COMMON_CONFIG.get()) {
             return;
         }
-        ARCHAEOLOGY_PATH_PREFIXES.set(List.copyOf((List<String>) LEGACY_ARCHAEOLOGY_PATH_PREFIXES.get()));
+        ARCHAEOLOGY_PATH_PREFIXES.set(List.copyOf(LEGACY_ARCHAEOLOGY_PATH_PREFIXES.get()));
         MAX_LOG_ENTRIES_PER_TABLE.set(LEGACY_MAX_LOG_ENTRIES_PER_TABLE.get());
         TRACKING_TIMEOUT_TICKS.set(LEGACY_TRACKING_TIMEOUT_TICKS.get());
         MIGRATED_FROM_COMMON_CONFIG.set(true);

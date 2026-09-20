@@ -31,6 +31,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
     private final List<String> prefixes;
     private final List<String> exclusions = new ArrayList<>();
+    private final List<String> signatureExcludedComponents = new ArrayList<>();
     private final List<String> legacyPrefixes;
     private final int legacyMaxLogEntriesPerTable;
     private final long legacyTrackingTimeoutTicks;
@@ -48,6 +49,8 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         ConfigData data = loadConfig();
         this.prefixes = new ArrayList<>(data.archaeology_path_prefixes != null
                 ? data.archaeology_path_prefixes : DEFAULT_ARCHAEOLOGY_PATH_PREFIXES);
+        // 实例态组件排除列表是服务端世界级配置，加载世界前先用默认值兜底
+        this.signatureExcludedComponents.addAll(DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS);
         this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
         this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
         this.legacyPrefixes = List.copyOf(this.prefixes);
@@ -85,12 +88,18 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     }
 
     @Override
+    public synchronized List<String> getSignatureExcludedComponents() {
+        return List.copyOf(this.signatureExcludedComponents);
+    }
+
+    @Override
     public synchronized boolean saveTrackingRules(List<String> rules, List<String> excludedTables) {
         if (this.activeServerConfigPath == null) return false;
         replaceCleaned(this.prefixes, rules);
         replaceCleaned(this.exclusions, excludedTables);
         saveServerConfig(this.activeServerConfigPath, new ServerConfigData(
-                this.prefixes, this.exclusions, this.maxLogEntriesPerTable, this.trackingTimeoutTicks));
+                this.prefixes, this.exclusions, this.signatureExcludedComponents,
+                this.maxLogEntriesPerTable, this.trackingTimeoutTicks));
         return true;
     }
 
@@ -121,6 +130,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         this.prefixes.clear();
         this.prefixes.addAll(this.legacyPrefixes);
         this.exclusions.clear();
+        replaceCleaned(this.signatureExcludedComponents, DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS);
         this.maxLogEntriesPerTable = this.legacyMaxLogEntriesPerTable;
         this.trackingTimeoutTicks = this.legacyTrackingTimeoutTicks;
     }
@@ -215,7 +225,8 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         this.trackingTimeoutTicks = clampedTimeout;
 
         saveServerConfig(this.activeServerConfigPath,
-                new ServerConfigData(cleanedPrefixes, this.exclusions, clampedLog, clampedTimeout));
+                new ServerConfigData(cleanedPrefixes, this.exclusions, this.signatureExcludedComponents,
+                        clampedLog, clampedTimeout));
         Constants.LOG.info("Updated Fabric server loot table config: {} rules, {} exclusions, maxLog={}, timeout={}",
                 cleanedPrefixes.size(), this.exclusions.size(), clampedLog, clampedTimeout);
         return true;
@@ -224,6 +235,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
     private ServerConfigData loadServerConfig(Path configPath) {
         if (!Files.exists(configPath)) {
             ServerConfigData migrated = new ServerConfigData(this.legacyPrefixes, List.of(),
+                    DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS,
                     this.legacyMaxLogEntriesPerTable, this.legacyTrackingTimeoutTicks);
             saveServerConfig(configPath, migrated);
             Constants.LOG.info("Created Fabric server loot table config at {} from global defaults.", configPath);
@@ -239,6 +251,7 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
                     configPath, exception);
         }
         return new ServerConfigData(DEFAULT_ARCHAEOLOGY_PATH_PREFIXES, List.of(),
+                DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS,
                 DEFAULT_MAX_LOG_ENTRIES_PER_TABLE, DEFAULT_TRACKING_TIMEOUT_TICKS);
     }
 
@@ -246,6 +259,10 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         this.prefixes.clear();
         replaceCleaned(this.prefixes, data.archaeology_path_prefixes);
         replaceCleaned(this.exclusions, data.excluded_loot_tables != null ? data.excluded_loot_tables : List.of());
+        // 旧配置文件缺该字段时回落到默认排除列表；显式写空数组则视为"关闭排除"，需要尊重
+        replaceCleaned(this.signatureExcludedComponents,
+                data.signature_excluded_components != null
+                        ? data.signature_excluded_components : DEFAULT_SIGNATURE_EXCLUDED_COMPONENTS);
         this.maxLogEntriesPerTable = clampLogEntries(data.max_log_entries_per_table);
         this.trackingTimeoutTicks = clampTrackingTimeout(data.tracking_timeout_ticks);
     }
@@ -531,6 +548,9 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
         List<String> archaeology_path_prefixes;
         @SuppressWarnings("unused")
         List<String> excluded_loot_tables;
+        // 旧配置文件缺少该字段时反序列化为 null，由 applyServerConfig 回落到默认值
+        @SuppressWarnings("unused")
+        List<String> signature_excluded_components;
         @SuppressWarnings("unused")
         int max_log_entries_per_table;
         @SuppressWarnings("unused")
@@ -538,10 +558,12 @@ public class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig
 
         ServerConfigData(List<String> archaeology_path_prefixes,
                          List<String> excluded_loot_tables,
+                         List<String> signature_excluded_components,
                          int max_log_entries_per_table,
                          long tracking_timeout_ticks) {
             this.archaeology_path_prefixes = List.copyOf(archaeology_path_prefixes);
             this.excluded_loot_tables = List.copyOf(excluded_loot_tables);
+            this.signature_excluded_components = List.copyOf(signature_excluded_components);
             this.max_log_entries_per_table = max_log_entries_per_table;
             this.tracking_timeout_ticks = tracking_timeout_ticks;
         }
