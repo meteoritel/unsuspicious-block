@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.kit.debug.UiKitDebugScreen;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
@@ -182,6 +183,10 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_F8 && hasControlDown() && UiKitDebugScreen.enabled()) {
+            Objects.requireNonNull(this.minecraft).setScreen(new UiKitDebugScreen(this));
+            return true;
+        }
         if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
                 && this.rightPage.getScenarioPanel().focused() && keyCode != GLFW.GLFW_KEY_ESCAPE) {
             return this.rightPage.getScenarioPanel().keyPressed(keyCode, scanCode, modifiers);

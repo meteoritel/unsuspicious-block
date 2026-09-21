@@ -803,5 +803,13 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.failure.rejected_input": "参数不在服务端允许范围内。",
   "screen.unsuspiciousblock.archaeology_journal.simulation.failure.unknown_table": "服务端未收录此表。",
   "screen.unsuspiciousblock.archaeology_journal.simulation.click_find": "点击物品查找推荐输入",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.failure.simulation_failed": "模拟失败，请在数据包重载后重试。"
+  "screen.unsuspiciousblock.archaeology_journal.simulation.failure.simulation_failed": "模拟失败，请在数据包重载后重试。",
+  "screen.unsuspiciousblock.ui_kit_debug.title": "UI kit — 200 行 / 60 个图标",
+  "screen.unsuspiciousblock.ui_kit_debug.instructions": "拖动平移｜滚轮缩放｜P：外层 pose 1x/2x｜Esc 返回",
+  "screen.unsuspiciousblock.ui_kit_debug.reset": "复位视图",
+  "screen.unsuspiciousblock.ui_kit_debug.reset_tooltip": "恢复 100% 缩放和平移归零，不触发重新排版。",
+  "screen.unsuspiciousblock.ui_kit_debug.row": "条件 %s",
+  "screen.unsuspiciousblock.ui_kit_debug.row_tooltip": "第 %s 行：悬停图标时应只显示图标提示。",
+  "screen.unsuspiciousblock.ui_kit_debug.sprite": "工具栏图块：9 × 9",
+  "screen.unsuspiciousblock.ui_kit_debug.metrics": "构建/排版 %s/%s｜微秒 %s/%s/%s/%s｜%s%%｜外层 %sx"
 }

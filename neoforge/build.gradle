@@ -60,6 +60,8 @@ neoForge {
             client()
             // 慢表归因期间为开发客户端开启观测，IDEA 的 Gradle 面板启动同样生效。
             systemProperty('usb.loot.profile', 'true')
+            // 为 IDEA / Gradle 开发客户端启用 S1 UI 验证页。
+            systemProperty('unsuspiciousblock.uiKitDebug', 'true')
         }
         data {
             data()

@@ -803,5 +803,13 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.failure.rejected_input": "Parameters are outside the server's allowed range.",
   "screen.unsuspiciousblock.archaeology_journal.simulation.failure.unknown_table": "The server does not track this table.",
   "screen.unsuspiciousblock.archaeology_journal.simulation.click_find": "Click the item to find a recommended input",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.failure.simulation_failed": "Simulation failed. Retry after a data pack reload."
+  "screen.unsuspiciousblock.archaeology_journal.simulation.failure.simulation_failed": "Simulation failed. Retry after a data pack reload.",
+  "screen.unsuspiciousblock.ui_kit_debug.title": "UI kit — 200 rows / 60 icons",
+  "screen.unsuspiciousblock.ui_kit_debug.instructions": "Drag: pan | Wheel: zoom | P: outer pose 1x/2x | Esc: back",
+  "screen.unsuspiciousblock.ui_kit_debug.reset": "Reset view",
+  "screen.unsuspiciousblock.ui_kit_debug.reset_tooltip": "Reset content to 100% zoom and zero pan without relayout.",
+  "screen.unsuspiciousblock.ui_kit_debug.row": "Condition %s",
+  "screen.unsuspiciousblock.ui_kit_debug.row_tooltip": "Row %s: an icon tooltip must replace this tooltip.",
+  "screen.unsuspiciousblock.ui_kit_debug.sprite": "Toolbar sprite: 9 × 9",
+  "screen.unsuspiciousblock.ui_kit_debug.metrics": "Builds/layouts %s/%s | µs %s/%s/%s/%s | %s%% | Pose %sx"
 }
