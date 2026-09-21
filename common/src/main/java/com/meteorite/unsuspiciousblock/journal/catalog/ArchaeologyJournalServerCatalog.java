@@ -332,6 +332,17 @@ public final class ArchaeologyJournalServerCatalog {
         visited.remove(source);
     }
 
+    public static CatalogTableDto clientTable(TableDefinition table) {
+        CatalogGeneration generation = currentGeneration;
+        CatalogTableDto dto = CatalogTableDto.from(table, getTableHash(table.id()));
+        SimulationConstraintCatalog constraint = generation == null ? null : generation.constraintCatalog(table.id());
+        if (constraint == null) return dto;
+        return dto.withOptions(com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions.from(
+                generation.generation(), constraint));
+    }
+
+    public static @Nullable CatalogGeneration current() { return currentGeneration; }
+
     /** 该表当前的每表内容哈希（客户端按需请求与目录下发共用）；未收录时为空串。 */
     public static String getTableHash(ResourceLocation tableId) {
         CatalogGeneration generation = currentGeneration;
@@ -575,7 +586,7 @@ public final class ArchaeologyJournalServerCatalog {
         ServerPlayer player = server.getPlayerList().getPlayer(requester);
         if (player != null) {
             Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
-                    generationId, hash, inputKey, CatalogTableDto.from(derived, hash)));
+                    generationId, hash, inputKey, clientTable(derived)));
         }
     }
 
@@ -593,7 +604,7 @@ public final class ArchaeologyJournalServerCatalog {
         TableDefinition derived = deriveTable(generation, tableId, constraint, input,
                 LootProbabilityData.get(player.server.overworld()));
         Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
-                generation.generation(), hash, input.key(), CatalogTableDto.from(derived, hash)));
+                generation.generation(), hash, input.key(), clientTable(derived)));
     }
     // 带 generation 校验的广播入口：旧代排空事件不再触发同步
     private static void broadcastCatalogHash(long generationId, MinecraftServer server) {

@@ -4,6 +4,9 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.U
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ToolOption;
+import com.meteorite.unsuspiciousblock.network.payload.SimulationInputCodec;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ChildTableEntry;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ItemEntry;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto.ScenarioAssumptions;
@@ -45,6 +48,7 @@ final class CatalogStreamCodec {
     // ==================== 单表 ====================
 
     static void writeTable(RegistryFriendlyByteBuf buf, CatalogTableDto table) {
+        writeOptions(buf, table.options());
         buf.writeResourceLocation(table.id());
         buf.writeUtf(table.hash());
         buf.writeUtf(Component.Serializer.toJson(table.displayName(), buf.registryAccess()));
@@ -90,6 +94,7 @@ final class CatalogStreamCodec {
     }
 
     static CatalogTableDto readTable(RegistryFriendlyByteBuf buf) {
+        SimulationOptions options = readOptions(buf);
         ResourceLocation tableId = buf.readResourceLocation();
         String hash = buf.readUtf();
         Component displayName = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
@@ -138,7 +143,57 @@ final class CatalogStreamCodec {
                     readConditionList(buf)));
         }
         return new CatalogTableDto(tableId, hash, displayName, type, simulationCount,
-                childTables, scenarios, items, childProbabilities);
+                childTables, scenarios, items, childProbabilities, options);
+    }
+
+    private static void writeOptions(RegistryFriendlyByteBuf buf, @Nullable SimulationOptions options) {
+        buf.writeBoolean(options != null);
+        if (options == null) return;
+        buf.writeVarLong(options.generation());
+        buf.writeVarInt(options.scenes().size());
+        for (var scene : options.scenes()) {
+            buf.writeUtf(scene.scenarioKey());
+            writeConditionList(buf, scene.assumptions());
+        }
+        buf.writeVarInt(options.tools().size());
+        for (var tool : options.tools()) {
+            buf.writeResourceLocation(tool.id());
+            buf.writeUtf(Component.Serializer.toJson(tool.displayName(), buf.registryAccess()));
+            buf.writeBoolean(tool.predicateText() != null);
+            if (tool.predicateText() != null)
+                buf.writeUtf(Component.Serializer.toJson(tool.predicateText(), buf.registryAccess()));
+        }
+        buf.writeVarInt(options.enchantments().size());
+        options.enchantments().forEach((id, level) -> {
+            buf.writeResourceLocation(id);
+            buf.writeVarInt(level);
+        });
+        buf.writeVarInt(options.samples().size());
+        options.samples().forEach(buf::writeVarInt);
+        buf.writeVarInt(options.truncated());
+        buf.writeBoolean(options.budgetExhausted());
+    }
+
+    private static @Nullable SimulationOptions readOptions(RegistryFriendlyByteBuf buf) {
+        if (!buf.readBoolean()) return null;
+        long generation = buf.readVarLong();
+        int count = SimulationInputCodec.count(buf, 32);
+        List<ScenarioAssumptions> scenes = new ArrayList<>();
+        for (int i = 0; i < count; i++)
+            scenes.add(new ScenarioAssumptions(buf.readUtf(), readConditionList(buf)));
+        count = SimulationInputCodec.count(buf, 4096);
+        List<ToolOption> tools = new ArrayList<>();
+        for (int i = 0; i < count; i++) tools.add(new ToolOption(buf.readResourceLocation(),
+                Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess()),
+                buf.readBoolean() ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess()) : null));
+        count = SimulationInputCodec.count(buf, 256);
+        Map<ResourceLocation, Integer> enchantments = new LinkedHashMap<>();
+        for (int i = 0; i < count; i++) enchantments.put(buf.readResourceLocation(), buf.readVarInt());
+        count = SimulationInputCodec.count(buf, 3);
+        List<Integer> samples = new ArrayList<>();
+        for (int i = 0; i < count; i++) samples.add(buf.readVarInt());
+        return new SimulationOptions(generation, scenes, tools, enchantments, samples,
+                buf.readVarInt(), buf.readBoolean());
     }
 
     private static void writePath(RegistryFriendlyByteBuf buf, LootAcquisitionPath path) {

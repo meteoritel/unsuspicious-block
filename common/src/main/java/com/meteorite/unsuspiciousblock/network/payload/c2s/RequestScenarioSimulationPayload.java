@@ -65,7 +65,7 @@ public record RequestScenarioSimulationPayload(long generation, ResourceLocation
         String scenarioKey = buf.readUtf();
         float luck = buf.readFloat();
         ResourceLocation toolId = buf.readResourceLocation();
-        int enchantmentCount = buf.readVarInt();
+        int enchantmentCount = com.meteorite.unsuspiciousblock.network.payload.SimulationInputCodec.count(buf, 256);
         Map<ResourceLocation, Integer> toolEnchantments = new LinkedHashMap<>(enchantmentCount);
         for (int i = 0; i < enchantmentCount; i++) {
             toolEnchantments.put(buf.readResourceLocation(), buf.readVarInt());

@@ -50,8 +50,7 @@ public final class JournalCatalogHandler {
         // 转成网络形态：场景假设按 scenarioKey 每表只发一次；按表 id 排序使线上内容顺序稳定。
         // 每表内容哈希一并下发——客户端按需请求时要带上它，声明"我按的是这一版内容"。
         List<CatalogTableDto> tables = new ArrayList<>(snapshot.size());
-        snapshot.keySet().forEach(tableId -> tables.add(CatalogTableDto.from(
-                snapshot.get(tableId), ArchaeologyJournalServerCatalog.getTableHash(tableId))));
+        snapshot.keySet().forEach(tableId -> tables.add(ArchaeologyJournalServerCatalog.clientTable(snapshot.get(tableId))));
         tables.sort(Comparator.comparing(dto -> dto.id().toString()));
         Services.NETWORK.sendToPlayer(player, new SyncArchaeologyCatalogPayload(
                 tables, ArchaeologyJournalServerCatalog.getCatalogStructure()));

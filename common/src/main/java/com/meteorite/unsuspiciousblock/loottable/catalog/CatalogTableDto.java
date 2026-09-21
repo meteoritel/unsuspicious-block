@@ -42,7 +42,7 @@ public record CatalogTableDto(
         List<ResourceLocation> childTables,
         List<ScenarioAssumptions> scenarios,
         List<ItemEntry> items,
-        List<ChildTableEntry> childProbabilities) {
+        List<ChildTableEntry> childProbabilities, @Nullable SimulationOptions options) {
 
     public CatalogTableDto {
         childTables = List.copyOf(childTables);
@@ -113,7 +113,12 @@ public record CatalogTableDto(
                 .forEach((key, assumptions) -> scenarios.add(new ScenarioAssumptions(key, assumptions)));
 
         return new CatalogTableDto(table.id(), hash, table.displayName(), table.type(),
-                table.simulationCount(), table.childTables(), scenarios, items, children);
+                table.simulationCount(), table.childTables(), scenarios, items, children, null);
+    }
+
+    public CatalogTableDto withOptions(SimulationOptions value) {
+        return new CatalogTableDto(id, hash, displayName, type, simulationCount, childTables,
+                scenarios, items, childProbabilities, value);
     }
 
     /** 还原为内部记录；表级假设按 key 回填到每个分场景概率上。 */
