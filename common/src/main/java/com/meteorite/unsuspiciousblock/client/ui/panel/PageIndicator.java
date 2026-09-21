@@ -11,7 +11,7 @@ public final class PageIndicator {
     private int page;
     private int pageCount;
     private final int centerX;
-    private final int textY;
+    private int textY;
 
     public PageIndicator(JournalBookBackground.BookLayout layout) {
         this(layout.rightPageX() + layout.rightPageWidth() / 2,
@@ -46,4 +46,6 @@ public final class PageIndicator {
     public int textY() {
         return this.textY;
     }
+
+    public void setTextY(int textY) { this.textY = textY; }
 }

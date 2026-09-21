@@ -49,6 +49,11 @@ public final class JournalLayout {
     public static final int INTRO_TOP = TOOLBAR_Y;
     public static final int GRID_LEFT_PAD = 4;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
+    public static final int INTRO_PAGE_INDICATOR_Y = 208;
+    public static final int LOG_PAGE_INDICATOR_Y = 208;
+    public static final int SCENARIO_PAGE_INDICATOR_Y = 208;
+    public static final int SCENARIO_FRAME_TOP = 34;
+    public static final int SCENARIO_FRAME_HEIGHT = 166;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
     // —— 右侧日志页 ——
@@ -59,7 +64,7 @@ public final class JournalLayout {
     // 日志工具栏为单行，列表起点与左侧目录内容对齐
     public static final int LOG_TOOLBAR_ICON_SIZE = 14;
     public static final int LOG_LIST_TOP = LOG_TOP + LOG_TOOLBAR_ICON_SIZE + 4;
-    public static final int LOG_LIST_BOTTOM = GRID_PAGE_INDICATOR_Y - 8;
+    public static final int LOG_LIST_BOTTOM = LOG_PAGE_INDICATOR_Y - 8;
     public static final int LOG_ROW_HEIGHT = 28;
 
     // 日志条目精灵图集

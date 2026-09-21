@@ -811,5 +811,22 @@
   "screen.unsuspiciousblock.ui_kit_debug.row": "条件 %s",
   "screen.unsuspiciousblock.ui_kit_debug.row_tooltip": "第 %s 行：悬停图标时应只显示图标提示。",
   "screen.unsuspiciousblock.ui_kit_debug.sprite": "工具栏图块：9 × 9",
-  "screen.unsuspiciousblock.ui_kit_debug.metrics": "构建/排版 %s/%s｜微秒 %s/%s/%s/%s｜%s%%｜外层 %sx"
+  "screen.unsuspiciousblock.ui_kit_debug.metrics": "构建/排版 %s/%s｜微秒 %s/%s/%s/%s｜%s%%｜外层 %sx",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.title": "参数",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.current": "工具 %s · 幸运 %s · 抽样 %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.enchant_level": "%s %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.tool": "工具",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.luck": "幸运",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.samples": "抽样次数",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.confirm": "确认",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.cancel": "取消",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.zoom": "%s%%",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.zoom_hint": "点击切换缩放档位；滚轮以鼠标位置为中心缩放。",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.reset": "复位缩放与平移",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.expand": "放大条件框",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.overview_hint": "概览",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.scene.toggle": "选择场景",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.scene.previous": "上一组场景",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.overlay.close": "关闭（Esc）；页内视图保持不变",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.scroll_hint": "滚轮查看更多参数"
 }

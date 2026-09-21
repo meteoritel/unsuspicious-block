@@ -1,6 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
+import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
@@ -30,6 +33,7 @@ public final class RightPageContainer {
     private enum LogMode { LIST, DETAIL }
 
     private final ScenarioPanel scenarioPanel;
+    private final JournalBookBackground.BookLayout layout;
     private final ScenarioDetailPanel scenarioDetailPanel;
     private final BookmarkToggleButton scenarioTabBtn;
     private final ItemGridPanel gridPanel;
@@ -48,9 +52,12 @@ public final class RightPageContainer {
     @Nullable
     private UUID selectedLogEntryId;
 
-    public RightPageContainer(JournalBookBackground.BookLayout layout) {
+    public RightPageContainer(JournalBookBackground.BookLayout layout,
+                              com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer overlays,
+                              UiPanelRegistry panels) {
+        this.layout = layout;
         this.scenarioPanel = new ScenarioPanel(layout, () -> setActiveTab(Tab.ARCHAEOLOGY));
-        this.scenarioDetailPanel = new ScenarioDetailPanel(layout);
+        this.scenarioDetailPanel = panels.register("scenario", new ScenarioDetailPanel(layout, overlays));
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
         this.detailPanel = new DetailOverlayPanel(layout);
@@ -270,6 +277,37 @@ public final class RightPageContainer {
         }
     }
 
+    public boolean handleFrameScroll(double mouseX, double mouseY, double scrollY) {
+        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseScrolled(mouseX, mouseY, scrollY);
+    }
+
+    // 旧面板不迁移接口，仅由现有容器保存全部页号，避免只保存当前 tab。
+    public CompoundTag savePages() {
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("intro", detailPanel.getPage());
+        tag.putInt("grid", gridPanel.getPage());
+        tag.putInt("log", logPanel.getPage());
+        tag.putInt("logDetail", logDetailPanel.getPage());
+        return tag;
+    }
+
+    public void loadPages(CompoundTag tag) {
+        detailPanel.setPage(tag.getInt("intro"));
+        gridPanel.setPage(tag.getInt("grid"));
+        logPanel.setPage(tag.getInt("log"));
+        logDetailPanel.setPage(tag.getInt("logDetail"));
+        syncPageIndicator();
+    }
+
+    public int pageIndicatorY() {
+        return layout.rightPageY() + switch (activeTab) {
+            case INTRO -> JournalLayout.INTRO_PAGE_INDICATOR_Y;
+            case ARCHAEOLOGY -> JournalLayout.GRID_PAGE_INDICATOR_Y;
+            case LOG -> JournalLayout.LOG_PAGE_INDICATOR_Y;
+            case SCENARIO -> JournalLayout.SCENARIO_PAGE_INDICATOR_Y;
+        };
+    }
+
     public int pageCount() {
         return activePanel().pageCount();
     }
@@ -346,6 +384,7 @@ public final class RightPageContainer {
     }
 
     private void syncPageIndicator() {
+        this.pageIndicator.setTextY(pageIndicatorY());
         PagePanel panel = activePanel();
         this.pageIndicator.setPage(panel.getPage(), panel.pageCount());
     }

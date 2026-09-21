@@ -2,7 +2,11 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
+import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.kit.debug.UiKitDebugScreen;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
@@ -73,10 +77,13 @@ public class ArchaeologyJournalScreen extends Screen {
     private final CatalogToolbar catalogToolbar;
     private final LogToolbar logToolbar;
 
+    private final UiPanelRegistry panels = new UiPanelRegistry();
     private JournalViewport viewport;
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
+    /** 模态浮层：打开期间接管全部输入，是本页面唯一的浮层来源。 */
+    private final OverlayLayer overlays = new OverlayLayer();
     private WelcomeStatsPanel welcomeStatsPanel;
     private Button itemPrevButton;
     private Button itemNextButton;
@@ -103,7 +110,10 @@ public class ArchaeologyJournalScreen extends Screen {
         super.init();
         this.viewport = JournalViewport.compute(this.width, this.height);
         this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
-        this.rightPage = new RightPageContainer(this.bookLayout);
+        this.overlays.setBounds(this.viewport.logicalWidth(), this.viewport.logicalHeight());
+        this.panels.clear();
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, this.panels);
+        this.panels.applyLayout(this.bookLayout);
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         // 恢复上次关闭时持久化的 UI 状态
@@ -126,6 +136,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.viewModel.rebuildViewModels(this.rightPage, null);
         this.viewModel.initRevisions();
         this.rebuildWidgets();
+        this.panels.loadUiState(JournalUiPreferencesStore.getPanelStates());
     }
 
     // 从 ClientState 恢复跨打开/关闭的 UI 状态
@@ -154,6 +165,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public void removed() {
+        JournalUiPreferencesStore.setPanelStates(this.panels.snapshot());
+        this.overlays.close();
         com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore.flush();
         ArchaeologyJournalClientState.rememberLastSelectedTable(this.viewModel.selectedTableId());
         ArchaeologyJournalClientState.rememberDirectoryState(this.viewModel.isCategoryHomeMode(),
@@ -173,6 +186,7 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.rightPage != null) {
             ArchaeologyJournalClientState.setLastRightPageTab(this.rightPage.getActiveTab());
         }
+        JournalUiPreferencesStore.flushIfDirty();
         super.removed();
     }
 
@@ -187,6 +201,8 @@ public class ArchaeologyJournalScreen extends Screen {
             Objects.requireNonNull(this.minecraft).setScreen(new UiKitDebugScreen(this));
             return true;
         }
+        // 浮层优先：ESC 该关浮层而不是整本书
+        if (this.overlays.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
                 && this.rightPage.getScenarioPanel().focused() && keyCode != GLFW.GLFW_KEY_ESCAPE) {
             return this.rightPage.getScenarioPanel().keyPressed(keyCode, scanCode, modifiers);
@@ -209,6 +225,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if (this.overlays.charTyped(codePoint, modifiers)) return true;
         if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
                 && this.rightPage.getScenarioPanel().focused())
             return this.rightPage.getScenarioPanel().charTyped(codePoint, modifiers);
@@ -295,10 +312,14 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     protected void repositionElements() {
         UiStateSnapshot snapshot = captureUiState();
+        this.overlays.close();
 
         this.viewport = JournalViewport.compute(this.width, this.height);
         this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
-        this.rightPage = new RightPageContainer(this.bookLayout);
+        this.overlays.setBounds(this.viewport.logicalWidth(), this.viewport.logicalHeight());
+        this.panels.clear();
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, this.panels);
+        this.panels.applyLayout(this.bookLayout);
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         this.updateItemGridPanel();
@@ -319,11 +340,13 @@ public class ArchaeologyJournalScreen extends Screen {
         this.catalogToolbar.setHideLocked(snapshot.catalogHideLocked());
 
         this.rightPage.setActiveTab(snapshot.tab());
-        this.rightPage.setPage(snapshot.rightPagePage());
+
         this.rightPage.getLogPanel().restoreBatchSelection(
                 snapshot.logBatchSelectionMode(), snapshot.selectedLogEntryIds());
 
         this.rebuildWidgets();
+        this.rightPage.loadPages(snapshot.rightPagePages());
+        this.panels.loadUiState(snapshot.panelStates());
         // 仅在第一次 init 之后的 reposition 中恢复目录滚动位置。
         if (this.catalogPanel != null && snapshot.catalogScrollOffset() > 0) {
             this.catalogPanel.setScrollOffset(snapshot.catalogScrollOffset());
@@ -349,7 +372,10 @@ public class ArchaeologyJournalScreen extends Screen {
             else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
             else this.rightPage.render(guiGraphics, this.font, logicalMouseX, logicalMouseY);
             this.catalogToolbar.renderSearchBackground(guiGraphics);
-            super.render(guiGraphics, logicalMouseX, logicalMouseY, partialTick);
+            super.render(guiGraphics, this.overlays.isOpen() ? -10000 : logicalMouseX,
+                    this.overlays.isOpen() ? -10000 : logicalMouseY, partialTick);
+            // 浮层画在所有面板与原生控件之上；它自己的提示随后由 renderOverlays 处理
+            this.overlays.render(guiGraphics, this.font, logicalMouseX, logicalMouseY, partialTick);
             renderOverlays(guiGraphics, logicalMouseX, logicalMouseY);
         } finally {
             this.viewport.pop(guiGraphics);
@@ -440,6 +466,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
     // 渲染所有叠加层 tooltip（工具栏、帮助按钮、日志条目、物品网格）
     private void renderOverlays(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        // 浮层是模态的：打开期间下层一律不出提示，避免浮层之下透出物品或条目的 tooltip
+        if (this.overlays.isOpen()) return;
         this.catalogToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         if (isLogToolbarVisible()) {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
@@ -497,6 +525,7 @@ public class ArchaeologyJournalScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
+        if (this.overlays.mouseClicked(mouseX, mouseY, button)) return true;
         if (super.mouseClicked(mouseX, mouseY, button)) {
             syncButtonState();
             return true;
@@ -546,6 +575,7 @@ public class ArchaeologyJournalScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
+        if (this.overlays.mouseScrolled(mouseX, mouseY, scrollY)) return true;
         if (hasSelectedTable() && this.rightPage.getActiveTab() == RightPageContainer.Tab.ARCHAEOLOGY
                 && this.rightPage.getScenarioPanel().dropdownOpen()) {
             return true;
@@ -554,6 +584,7 @@ public class ArchaeologyJournalScreen extends Screen {
             this.catalogPanel.scrollByRows(scrollY < 0.0 ? 2 : -2);
             return true;
         }
+        if (hasSelectedTable() && this.rightPage.handleFrameScroll(mouseX, mouseY, scrollY)) return true;
         if (this.rightPage.containsMouse(mouseX, mouseY) && this.rightPage.pageCount() > 1) {
             this.rightPage.handleScroll(scrollY);
             this.syncButtonState();
@@ -564,6 +595,10 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (this.overlays.mouseReleased(this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY),
+                button)) {
+            return true;
+        }
         if (this.catalogPanel != null) {
             this.catalogPanel.endScrollbarDrag();
         }
@@ -580,6 +615,10 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button,
                                 double dragX, double dragY) {
+        if (this.overlays.mouseDragged(this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY),
+                button, this.viewport.toLogicalDistance(dragX), this.viewport.toLogicalDistance(dragY))) {
+            return true;
+        }
         if (hasSelectedTable() && this.rightPage.handleDrag(
                 this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button)) {
             return true;
@@ -646,7 +685,7 @@ public class ArchaeologyJournalScreen extends Screen {
         int buttonGap = JournalLayout.PAGE_BUTTON_CENTER_GAP;
 
         int itemIndicatorCenterX = this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() / 2;
-        int itemBottomY = this.bookLayout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y
+        int itemBottomY = this.rightPage.pageIndicatorY()
                 + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
         this.itemPrevButton = this.addRenderableWidget(
                 createPageButton(itemIndicatorCenterX - buttonGap - buttonWidth, itemBottomY, false,
@@ -823,6 +862,9 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void syncButtonState() {
+        int pageButtonY = this.rightPage.pageIndicatorY() + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
+        if (this.itemPrevButton != null) this.itemPrevButton.setY(pageButtonY);
+        if (this.itemNextButton != null) this.itemNextButton.setY(pageButtonY);
         boolean showRightPageTabs = !this.viewModel.isCategoryHome();
         applyButtonState(this.rightPage.getIntroTabButton(), showRightPageTabs, showRightPageTabs);
         applyButtonState(this.rightPage.getArchaeologyTabButton(), showRightPageTabs, showRightPageTabs);
@@ -1002,7 +1044,8 @@ public class ArchaeologyJournalScreen extends Screen {
     private UiStateSnapshot captureUiState() {
         return new UiStateSnapshot(
                 this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO,
-                this.rightPage != null ? this.rightPage.getPage() : 0,
+                this.rightPage != null ? this.rightPage.savePages() : new CompoundTag(),
+                this.panels.snapshot(),
                 this.catalogPanel != null ? this.catalogPanel.getScrollOffset() : 0,
                 this.rightPage != null ? this.rightPage.getActiveItemTag() : null,
                 this.rightPage != null && this.rightPage.isShowingLogDetail(),
@@ -1021,7 +1064,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
     // 将物理屏幕坐标转换为手册逻辑坐标，并返回当前悬停的已解锁物品。
     public Optional<net.minecraft.world.item.ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
-        if (this.viewport == null || this.rightPage == null) {
+        if (this.viewport == null || this.rightPage == null || this.overlays.isOpen()) {
             return Optional.empty();
         }
         double logicalMouseX = this.viewport.toLogicalX(mouseX);
@@ -1036,7 +1079,8 @@ public class ArchaeologyJournalScreen extends Screen {
     // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态
     private record UiStateSnapshot(
             RightPageContainer.Tab tab,
-            int rightPagePage,
+            CompoundTag rightPagePages,
+            CompoundTag panelStates,
             int catalogScrollOffset,
             @Nullable ResourceLocation activeItemTag,
             boolean logDetail,

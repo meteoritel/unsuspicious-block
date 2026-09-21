@@ -811,5 +811,22 @@
   "screen.unsuspiciousblock.ui_kit_debug.row": "Condition %s",
   "screen.unsuspiciousblock.ui_kit_debug.row_tooltip": "Row %s: an icon tooltip must replace this tooltip.",
   "screen.unsuspiciousblock.ui_kit_debug.sprite": "Toolbar sprite: 9 × 9",
-  "screen.unsuspiciousblock.ui_kit_debug.metrics": "Builds/layouts %s/%s | µs %s/%s/%s/%s | %s%% | Pose %sx"
+  "screen.unsuspiciousblock.ui_kit_debug.metrics": "Builds/layouts %s/%s | µs %s/%s/%s/%s | %s%% | Pose %sx",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.title": "Parameters",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.current": "Tool %s · Luck %s · Samples %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.enchant_level": "%s %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.tool": "Tool",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.luck": "Luck",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.samples": "Samples",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.confirm": "Apply",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.cancel": "Cancel",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.zoom": "%s%%",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.zoom_hint": "Click to cycle zoom. Use the wheel to zoom around the pointer.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.reset": "Reset zoom and pan",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.expand": "Enlarge the condition frame",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.frame.overview_hint": "Overview",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.scene.toggle": "Choose a scenario",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.scene.previous": "Previous group of scenarios",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.overlay.close": "Close (Esc); page view stays unchanged",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.scroll_hint": "Scroll to view more parameters"
 }
