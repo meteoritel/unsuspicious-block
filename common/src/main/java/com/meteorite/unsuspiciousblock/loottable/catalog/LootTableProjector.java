@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootParseUtil;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckSpec;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -114,7 +115,7 @@ public final class LootTableProjector {
         List<ItemDefinition> result = List.of();
         if (this.compiledTables.containsKey(rootId)) {
             LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
-            expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, new LinkedHashSet<>(), items);
+            expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, List.of(), new LinkedHashSet<>(), items);
 
             List<ItemDefinition> definitions = new ArrayList<>(items.size());
             for (ItemDefinitionAccumulator accumulator : items.values()) {
@@ -132,17 +133,17 @@ public final class LootTableProjector {
     // 按编译产物的事件顺序展开：物品条目就地解析，引用位置递归进入子表
     private void expand(CompiledLootTable table, List<LootConditionInfo> incomingConditions,
                         List<JsonElement> incomingFunctions, @Nullable ResourceLocation sourceChildTable,
-                        boolean incomingLuckAffected,
+                        boolean incomingLuckAffected, List<LuckSpec> incomingLuckSpecs,
                         LinkedHashSet<ResourceLocation> expandingStack,
                         Map<String, ItemDefinitionAccumulator> items) {
         for (CompiledLootTable.Event event : table.events()) {
             switch (event) {
                 case CompiledLootTable.ItemPath itemPath ->
                         resolveItem(itemPath, incomingConditions, incomingFunctions, sourceChildTable,
-                                incomingLuckAffected || itemPath.luckAffected(), items);
+                                incomingLuckAffected || itemPath.luckAffected(), appendLuck(incomingLuckSpecs, itemPath.luckSpec()), items);
                 case CompiledLootTable.ReferenceSite site ->
                         expandReferenceSite(site, incomingConditions, incomingFunctions,
-                                sourceChildTable, incomingLuckAffected || site.luckAffected(), expandingStack, items);
+                                sourceChildTable, incomingLuckAffected || site.luckAffected(), appendLuck(incomingLuckSpecs, site.luckSpec()), expandingStack, items);
             }
         }
     }
@@ -152,7 +153,7 @@ public final class LootTableProjector {
                                      List<LootConditionInfo> incomingConditions,
                                      List<JsonElement> incomingFunctions,
                                      @Nullable ResourceLocation sourceChildTable,
-                                     boolean luckAffected,
+                                     boolean luckAffected, List<LuckSpec> luckSpecs,
                                      LinkedHashSet<ResourceLocation> expandingStack,
                                      Map<String, ItemDefinitionAccumulator> items) {
         ResourceLocation target = site.target();
@@ -176,7 +177,7 @@ public final class LootTableProjector {
                         site.siteConditions()),
                 concatFunctions(site.siteFunctions(), site.inheritedFunctions(), incomingFunctions),
                 sourceChildTable != null ? sourceChildTable : target,
-                luckAffected, nextStack, items);
+                luckAffected, luckSpecs, nextStack, items);
     }
 
     // ==================== 单条物品路径的解析 ====================
@@ -184,7 +185,7 @@ public final class LootTableProjector {
     // 函数链拼接顺序与条件继承顺序是签名兼容的组成部分，本方法的求值次序需与解析路径逐条一致
     private void resolveItem(CompiledLootTable.ItemPath path, List<LootConditionInfo> incomingConditions,
                              List<JsonElement> incomingFunctions, @Nullable ResourceLocation sourceChildTable,
-                             boolean luckAffected,
+                             boolean luckAffected, List<LuckSpec> luckSpecs,
                              Map<String, ItemDefinitionAccumulator> items) {
         List<LootConditionInfo> entryConditions = path.entryConditions();
         List<JsonElement> functions = concatFunctions(path.entryFunctions(), path.inheritedFunctions(),
@@ -314,7 +315,14 @@ public final class LootTableProjector {
                         resolved.tooltipHint(), resolved.signature()));
         accumulator.merge(resolved.displayName(), resolved.tooltipHint(), new LootAcquisitionPath(
                 sourceChildTable, path.sourceItemTag(), resolved.conditions(), inheritedConditions,
-                functionUncertainty, luckAffected, luckGate(path)));
+                functionUncertainty, luckAffected, luckGate(path), luckSpecs));
+    }
+
+    // 每一层引用的权重和抽取次数都影响整条路径；联合推荐不能只检查叶子。
+    private static List<LuckSpec> appendLuck(List<LuckSpec> parents, LuckSpec current) {
+        List<LuckSpec> result = new ArrayList<>(parents);
+        result.add(current);
+        return List.copyOf(result);
     }
 
     // 逐路径最小幸运门槛（决策 34）。只读本条目自身与其所在池的数值：父池的 rolls 只增加抽取次数，

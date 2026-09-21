@@ -221,7 +221,7 @@ public final class LootConditionHandlers {
     // 写入场景规划所需的机器可读元数据：条件指纹，以及该指纹是否可跨解析期/运行时稳定复现
     private static LootConditionInfo withSimulationMetadata(LootConditionInfo info,
                                                            LootItemCondition condition) {
-        return info.withMetadata(LootConditionFingerprint.METADATA_KEY,
+        return info.withSource(condition).withMetadata(LootConditionFingerprint.METADATA_KEY,
                         LootConditionFingerprint.ofRaw(condition))
                 .withMetadata(LootConditionFingerprint.STABLE_METADATA_KEY,
                         Boolean.toString(LootConditionFingerprint.isStableSource(condition)));

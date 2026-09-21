@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LuckSpec;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -84,10 +85,22 @@ public final class LootTableCatalog {
                                       List<LootConditionInfo> inheritedConditions,
                                       LootConditionHandler.UncertaintyLevel functionUncertainty,
                                       boolean luckAffected,
-                                      @Nullable LuckGate luckGate) {
+                                      @Nullable LuckGate luckGate, List<LuckSpec> luckRequirements) {
         public LootAcquisitionPath {
             entryConditions = List.copyOf(entryConditions);
             inheritedConditions = List.copyOf(inheritedConditions);
+            luckRequirements = List.copyOf(luckRequirements);
+        }
+
+        // 完整数值约束只在服务端保留；网络读模型不参与证明。
+        public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                   @Nullable ResourceLocation sourceItemTag,
+                                   List<LootConditionInfo> entryConditions,
+                                   List<LootConditionInfo> inheritedConditions,
+                                   LootConditionHandler.UncertaintyLevel functionUncertainty,
+                                   boolean luckAffected, @Nullable LuckGate luckGate) {
+            this(sourceChildTable, sourceItemTag, entryConditions, inheritedConditions,
+                    functionUncertainty, luckAffected, luckGate, List.of());
         }
 
         /** 未经投影器分析的路径保守标记；仅在条目签名近似时使用该兜底。 */

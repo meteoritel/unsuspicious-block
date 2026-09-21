@@ -21,7 +21,8 @@ public record LootConditionInfo(
         Component description,
         @Nullable Float probability,
         List<LootConditionInfo> children,
-        Map<String, String> metadata
+        Map<String, String> metadata,
+        @Nullable net.minecraft.world.level.storage.loot.predicates.LootItemCondition source
 ) {
     public LootConditionInfo {
         if (conditionType == null) {
@@ -40,6 +41,16 @@ public record LootConditionInfo(
         metadata = Map.copyOf(metadata);
     }
 
+    // 原始谓词仅在服务端本代内保留，推荐与玩家状态读取复用它，不进入网络编码。
+    public LootConditionInfo(ResourceLocation type, Component description, @Nullable Float probability,
+                             List<LootConditionInfo> children, Map<String, String> metadata) {
+        this(type, description, probability, children, metadata, null);
+    }
+
+    public LootConditionInfo withSource(net.minecraft.world.level.storage.loot.predicates.LootItemCondition value) {
+        return new LootConditionInfo(conditionType, description, probability, children, metadata, value);
+    }
+
     // 兼容旧调用方：无 children
     public LootConditionInfo(ResourceLocation conditionType, Component description, @Nullable Float probability) {
         this(conditionType, description, probability, List.of(), Map.of());
@@ -56,6 +67,6 @@ public record LootConditionInfo(
         LinkedHashMap<String, String> merged = new LinkedHashMap<>(this.metadata);
         merged.put(key, value);
         return new LootConditionInfo(this.conditionType, this.description, this.probability,
-                this.children, merged);
+                this.children, merged, this.source);
     }
 }
