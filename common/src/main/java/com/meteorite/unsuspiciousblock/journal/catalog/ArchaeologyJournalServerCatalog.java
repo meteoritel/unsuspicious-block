@@ -33,6 +33,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationProfile;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenarioPlanner;
 import com.meteorite.unsuspiciousblock.loottable.source.LootTableSourceSnapshot;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.ScenarioRequestRejectedPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -415,10 +416,15 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     /**
-     * 服务端处理一份按需模拟请求——校验、入队。回执与限流由调用方（网络层）负责。
+     * 服务端处理一份按需模拟请求——校验、查缓存、入队。回执与限流由调用方（网络层）负责。
      * <p>
-     * 三条校验（决策 15/36）：表仍在追踪、哈希未变（变了说明这份输入属于上一版内容）、
-     * 输入由当前目录签发（场景、工具、附魔等级、抽样次数逐项落在约束内）。
+     * 四条校验（决策 15/36）：表仍在追踪、哈希未变（变了说明这份输入属于上一版内容）、
+     * 输入由当前目录签发（场景、工具、附魔等级、抽样次数逐项落在约束内）、
+     * 需要入队时该玩家的在途额度还有空位。
+     * <p>
+     * **缓存先于队列**：同一个 {@code (表, 输入)} 可能已经由别的玩家、上一次会话或启动批次算过，
+     * 而按需模型的意义正是"一个问题只算一次"。命中缓存时直接派生下发，不占队列、不烧 tick 预算，
+     * 也不受在途额度限制——额度保护的是抽取成本，而这里没有抽取。
      */
     public static OnDemandResult requestSimulation(ServerPlayer player, ResourceLocation tableId,
                                                    String expectedTableHash, String scenarioKey,
@@ -447,13 +453,33 @@ public final class ArchaeologyJournalServerCatalog {
             return new OnDemandResult(OnDemandOutcome.REJECTED_INPUT, input);
         }
 
+        // 读缓存前必须先过 needsResimulation：getMeasurement 只看输入键，不看内容哈希，
+        // 表内容变过而条目尚未被重写时，那条测量值属于上一版内容，不能拿来当答案。
+        LootProbabilityData probabilityData = LootProbabilityData.get(player.server.overworld());
+        if (!probabilityData.needsResimulation(tableId, hash)
+                && probabilityData.getMeasurement(tableId, input.key()) != null) {
+            // debug 而不是 info：切场景是高频动作，命中一次就写一行 info 会把真正的重算日志淹掉
+            LOGGER.debug("复用缓存的测量值：表 {} 输入 {}", tableId, input.key());
+            sendScenarioResult(player, tableId, hash, input);
+            return new OnDemandResult(OnDemandOutcome.CACHE_HIT, input);
+        }
+
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if (worker == null) {
             LootProbabilitySimulator.SimResult result = LootProbabilitySimulator.simulateOne(
                     tableId, raw, player.server.overworld(), input, scenario);
+            if (!result.successful()) {
+                // 失败既不写缓存也不下发：由网络层按 SIMULATION_FAILED 回执，
+                // 否则玩家只能等到 120 秒超时，而超时会把"确定的失败"说成"可能只是慢"
+                return new OnDemandResult(OnDemandOutcome.SIMULATION_FAILED, input);
+            }
             commitSimulated(result, generation.generation(), null, player.server);
             sendScenarioResult(player, tableId, hash, input);
             return new OnDemandResult(OnDemandOutcome.SIMULATED_INLINE, input);
+        }
+        // 在途额度到这一步才判：缓存命中不该因为它被拒（见方法注释）
+        if (!worker.canAcceptFor(player.getUUID())) {
+            return new OnDemandResult(OnDemandOutcome.PLAYER_LIMIT, input);
         }
         installHandlers(worker, generation.generation());
         LootProbabilitySimulationWorker.EnqueueOutcome outcome = worker.enqueuePlayerRequest(
@@ -499,6 +525,13 @@ public final class ArchaeologyJournalServerCatalog {
     public enum OnDemandOutcome {
         /** 已入队，结果随后由 {@code SyncScenarioResultPayload} 下发。 */
         QUEUED,
+        /**
+         * 该输入在当前表内容下已有测量值：当场派生并下发，未占用队列与在途额度。
+         * <p>
+         * 客户端表现与 {@link #QUEUED} 完全相同（都是一份结果包）；分开是为了让"这次到底复用了
+         * 缓存还是又算了一遍"在受理路径上是一个可判别的事实，而不是只能靠启动日志推测。
+         */
+        CACHE_HIT,
         /** worker 未启动，已在主线程同步算完并下发。 */
         SIMULATED_INLINE,
         /** 表未收录或不可用。 */
@@ -508,7 +541,11 @@ public final class ArchaeologyJournalServerCatalog {
         /** 输入未被当前目录签发（自造参数、超界幸运、未签发的档位）。 */
         REJECTED_INPUT,
         /** 玩家请求队列已满。 */
-        REJECTED_QUEUE_FULL
+        REJECTED_QUEUE_FULL,
+        /** 该玩家的在途请求已达上限；只在**确实需要入队**时判定，缓存命中不会走到这里。 */
+        PLAYER_LIMIT,
+        /** 表为空或抽取过程抛异常：本次没有测量值，不写缓存。 */
+        SIMULATION_FAILED
     }
 
     /** 当代目录代次；未加载时为 0（回执里用它让客户端丢弃过期消息）。 */
@@ -538,6 +575,10 @@ public final class ArchaeologyJournalServerCatalog {
             LOGGER.warn("忽略战利品表 {} 输入 {} 的失败模拟结果；其概率保持未知，不写入缓存，"
                             + "将在下次数据包重载时重新尝试",
                     result.tableId(), result.input().key());
+            // 失败也必须回执：不回执的话玩家只能等到请求超时，而超时提示会把"确定的失败"
+            // 说成"可能只是慢"，让人反复点同一个必然失败的计算。启动批次没有请求者，只留日志。
+            notifySimulationFailed(server, requester, generationId, result.tableId(),
+                    result.input().key());
             return;
         }
         CatalogGeneration generation = currentGeneration;
@@ -588,6 +629,26 @@ public final class ArchaeologyJournalServerCatalog {
             Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
                     generationId, hash, inputKey, clientTable(derived)));
         }
+    }
+
+    /**
+     * "这一次没有算出结果"的回执——走与拒绝同一条通道（不携带概率），原因单列。
+     * <p>
+     * 只在有请求者时发：启动批量填充的失败留在日志里就够了，没有玩家在等它的答案。
+     */
+    private static void notifySimulationFailed(MinecraftServer server, @Nullable UUID requester,
+                                               long generationId, ResourceLocation tableId,
+                                               String inputKey) {
+        if (requester == null) {
+            return;
+        }
+        ServerPlayer player = server.getPlayerList().getPlayer(requester);
+        if (player == null) {
+            return;
+        }
+        Services.NETWORK.sendToPlayer(player, new ScenarioRequestRejectedPayload(
+                generationId, tableId, inputKey,
+                ScenarioRequestRejectedPayload.Reason.SIMULATION_FAILED));
     }
 
     // 按需结果下发（worker 未启动的同步回退路径使用）

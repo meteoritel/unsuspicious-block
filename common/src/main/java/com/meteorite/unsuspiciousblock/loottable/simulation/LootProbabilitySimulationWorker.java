@@ -164,8 +164,9 @@ public final class LootProbabilitySimulationWorker {
             // 队列里已有同一个 (表, 输入)：不重复排一次，但要把这位玩家登记为等待者——
             // 否则"启动批量正在算的正好是我要的那个输入"会让玩家点了却永远收不到结果。
             promote(existing);
-            if (request.requester() != null) {
-                existing.extraRequesters.add(request.requester());
+            // 只在**确实登记成功**时加在途计数：额度按 extraRequesters 在完成时逐个释放，
+            // 同一位玩家重复请求同一个输入若加两次却只释放一次，会把自己永久挡在额度外
+            if (request.requester() != null && existing.extraRequesters.add(request.requester())) {
                 addInFlight(request.requester(), 1);
             }
             return EnqueueOutcome.ACCEPTED;
@@ -367,23 +368,26 @@ public final class LootProbabilitySimulationWorker {
                 : (System.nanoTime() - item.startedNanos) / 1_000_000L;
         long activeElapsedMs = item.activeNanos / 1_000_000L;
         long cpuElapsedMs = item.activeCpuNanos / 1_000_000L;
-        if (result.successful()) {
-            ResultHandler handler = this.resultHandler;
-            if (handler != null) {
-                // 原始触发者先收（requester 为 null 即启动批量填充，调用方据此发布到共享目录），
-                // 其余等待者各自收一份——按内容去重的缓存是全服共享的，但"当前展示哪个输入"
-                // 是每个玩家自己的选择，所以结果要回到每个提出请求的人手里。
-                handler.handle(result, item.request.generation(), item.request.requester(), server);
-                for (UUID waiter : item.extraRequesters) {
-                    if (!waiter.equals(item.request.requester())) {
-                        handler.handle(result, item.request.generation(), waiter, server);
-                    }
+        // 成功与失败都要回调：结果本身带着 successful 标志，调用方据此决定是写缓存+下发，
+        // 还是只回一份"这一次没算出来"。失败不回调用时，等待中的玩家收不到任何东西，
+        // 只能等到请求超时——那句提示会把"能确定的失败"说成"可能是慢"。
+        ResultHandler handler = this.resultHandler;
+        if (handler != null) {
+            // 原始触发者先收（requester 为 null 即启动批量填充，调用方据此发布到共享目录），
+            // 其余等待者各自收一份——按内容去重的缓存是全服共享的，但"当前展示哪个输入"
+            // 是每个玩家自己的选择，所以结果要回到每个提出请求的人手里。
+            handler.handle(result, item.request.generation(), item.request.requester(), server);
+            for (UUID waiter : item.extraRequesters) {
+                if (!waiter.equals(item.request.requester())) {
+                    handler.handle(result, item.request.generation(), waiter, server);
                 }
             }
-            // 无论成功与否都要释放每玩家在途额度，否则一次失败会让这位玩家永久被限流
-            for (UUID waiter : item.extraRequesters) {
-                addInFlight(waiter, -1);
-            }
+        }
+        // 无论成功与否都要释放每玩家在途额度，否则一次失败会让这位玩家永久被限流
+        for (UUID waiter : item.extraRequesters) {
+            addInFlight(waiter, -1);
+        }
+        if (result.successful()) {
             // 三个时间各有用处：线程 CPU 回答"这张表本身有多贵"；"有效计算"是墙钟，在服务端启动阶段
             // 会因与区块生成等工作争抢 CPU 而虚高；"跨 tick 历时"还包含 tick 之间的等待。
             LOGGER.info("已完成战利品表 {} 的输入模拟（scenario={}, {}），有效计算 {}ms（线程 CPU {}ms），"
