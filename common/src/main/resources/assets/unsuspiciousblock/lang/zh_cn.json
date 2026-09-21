@@ -780,7 +780,7 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.unavailable": "此表暂不能设置模拟参数",
   "screen.unsuspiciousblock.archaeology_journal.simulation.assumptions": "该场景假设以下条件：",
   "screen.unsuspiciousblock.archaeology_journal.simulation.no_assumptions": "无场景条件",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.more": "下一组场景 ▸",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.more": "显示下一组场景",
   "screen.unsuspiciousblock.archaeology_journal.simulation.degraded": "部分场景未展开（截断 %s）",
   "screen.unsuspiciousblock.archaeology_journal.simulation.degraded_help": "场景最多 32 个；条件展开超预算时保守降级。未列出的场景不代表不可能。",
   "screen.unsuspiciousblock.archaeology_journal.simulation.notes": "填充/推荐说明（%s 项，悬停查看）",

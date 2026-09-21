@@ -42,8 +42,11 @@ public final class JournalLayout {
     public static final int GRID_CELL_WIDTH = 74;
     public static final int GRID_CELL_HEIGHT = 48;
     public static final int GRID_COLUMN_GAP = 2;
-    // 右页内容顶部与左页工具栏行对齐（书签已移至右边缘，顶部空间回收）
+    // 网格页内容顶部：比工具栏行低 34px，为场景页头部（摘要行 + 按钮行）留位。
+    // 只有网格页与场景页该用这个值；**没有头部的页面必须各用自己的上界**，否则会被头部一起推下去。
     public static final int GRID_TOP = TOOLBAR_Y + 34;
+    /** 介绍页内容上界：该页没有场景页头部，因此与左页工具栏行同高。 */
+    public static final int INTRO_TOP = TOOLBAR_Y;
     public static final int GRID_LEFT_PAD = 4;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;

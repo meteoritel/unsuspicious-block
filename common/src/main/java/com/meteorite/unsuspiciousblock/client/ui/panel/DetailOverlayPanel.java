@@ -83,7 +83,7 @@ public final class DetailOverlayPanel implements PagePanel {
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
-        int y = this.layout.rightPageY() + JournalLayout.GRID_TOP;
+        int y = this.layout.rightPageY() + JournalLayout.INTRO_TOP;
 
         // 解析进度标题
         Component progressLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.parse_progress");
@@ -222,7 +222,7 @@ public final class DetailOverlayPanel implements PagePanel {
     public Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
-        int listY = listStartY(this.layout.rightPageY() + JournalLayout.GRID_TOP
+        int listY = listStartY(this.layout.rightPageY() + JournalLayout.INTRO_TOP
                 + 14 + BAR_HEIGHT + 10);
         if (mouseX < leftX || mouseX >= leftX + contentWidth || mouseY < listY) {
             return Optional.empty();
@@ -251,7 +251,7 @@ public final class DetailOverlayPanel implements PagePanel {
         if (this.unlockedItems.isEmpty()) {
             return 1;
         }
-        int listStartY = listStartY(this.layout.rightPageY() + JournalLayout.GRID_TOP + 14 + BAR_HEIGHT + 10);
+        int listStartY = listStartY(this.layout.rightPageY() + JournalLayout.INTRO_TOP + 14 + BAR_HEIGHT + 10);
         int maxVisibleItems = maxVisibleItems(listStartY);
         return Math.max(1, (this.unlockedItems.size() + maxVisibleItems - 1) / maxVisibleItems);
     }

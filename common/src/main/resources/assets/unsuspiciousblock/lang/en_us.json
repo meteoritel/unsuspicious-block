@@ -780,7 +780,7 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.unavailable": "Simulation controls are unavailable for this table",
   "screen.unsuspiciousblock.archaeology_journal.simulation.assumptions": "This scenario assumes:",
   "screen.unsuspiciousblock.archaeology_journal.simulation.no_assumptions": "No scenario conditions",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.more": "More scenarios ▸",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.more": "Show the next group of scenarios",
   "screen.unsuspiciousblock.archaeology_journal.simulation.degraded": "Some scenarios omitted (%s truncated)",
   "screen.unsuspiciousblock.archaeology_journal.simulation.degraded_help": "At most 32 scenarios. Expansion is bounded and falls back conservatively. An omitted scenario is not proof of impossibility.",
   "screen.unsuspiciousblock.archaeology_journal.simulation.notes": "Input notes (%s; hover to read)",

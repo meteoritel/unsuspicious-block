@@ -30,6 +30,7 @@ public final class RightPageContainer {
     private enum LogMode { LIST, DETAIL }
 
     private final ScenarioPanel scenarioPanel;
+    private final ScenarioDetailPanel scenarioDetailPanel;
     private final BookmarkToggleButton scenarioTabBtn;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
@@ -49,6 +50,7 @@ public final class RightPageContainer {
 
     public RightPageContainer(JournalBookBackground.BookLayout layout) {
         this.scenarioPanel = new ScenarioPanel(layout, () -> setActiveTab(Tab.ARCHAEOLOGY));
+        this.scenarioDetailPanel = new ScenarioDetailPanel(layout);
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
         this.detailPanel = new DetailOverlayPanel(layout);
@@ -116,6 +118,7 @@ public final class RightPageContainer {
 
         this.currentTableId = tableId;
         this.scenarioPanel.setTable(tableId);
+        this.scenarioDetailPanel.setTable(tableId);
         syncPageIndicator();
     }
 
@@ -137,6 +140,19 @@ public final class RightPageContainer {
     public BookmarkToggleButton getScenarioTabButton() { return scenarioTabBtn; }
     public ScenarioPanel getScenarioPanel() { return scenarioPanel; }
 
+    // 拖动与释放：场景页交给详情面板平移框内内容，其它页仍交给旧面板（网格页的幸运值框需要拖选）
+    public boolean handleDrag(double mouseX, double mouseY, int button) {
+        return activeTab == Tab.SCENARIO
+                ? scenarioDetailPanel.mouseDragged(mouseX, mouseY, button)
+                : scenarioPanel.mouseDragged(mouseX, mouseY, button);
+    }
+
+    public boolean handleRelease(double mouseX, double mouseY, int button) {
+        return activeTab == Tab.SCENARIO
+                ? scenarioDetailPanel.mouseReleased(button)
+                : scenarioPanel.mouseReleased(mouseX, mouseY, button);
+    }
+
     public BookmarkToggleButton getIntroTabButton() {
         return this.introTabBtn;
     }
@@ -150,7 +166,9 @@ public final class RightPageContainer {
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (activeTab == Tab.ARCHAEOLOGY || activeTab == Tab.SCENARIO)
+        syncPageIndicator();
+        // 场景页自绘读数行；旧面板的头部只服务网格页（那里的下拉与计算按钮仍在用）
+        if (activeTab == Tab.ARCHAEOLOGY)
             scenarioPanel.renderHeader(guiGraphics, font, mouseX, mouseY);
         PagePanel panel = activePanel();
         panel.render(guiGraphics, font, mouseX, mouseY);
@@ -163,7 +181,7 @@ public final class RightPageContainer {
     /** 获取当前活跃的可分页面板 */
     private PagePanel activePanel() {
         return switch (this.activeTab) {
-            case SCENARIO -> this.scenarioPanel;
+            case SCENARIO -> this.scenarioDetailPanel;
             case INTRO -> this.detailPanel;
             case ARCHAEOLOGY -> this.gridPanel;
             case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel : this.logPanel;
@@ -184,8 +202,9 @@ public final class RightPageContainer {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if ((activeTab == Tab.SCENARIO || activeTab == Tab.ARCHAEOLOGY)
-                && scenarioPanel.click(mouseX, mouseY, button, activeTab == Tab.SCENARIO)) return true;
+        if (activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseClicked(mouseX, mouseY, button)) return true;
+        // 旧面板只在网格页接收点击：那里的下拉与计算按钮仍由它处理，幸运值框在该页本就不可编辑
+        if (activeTab == Tab.ARCHAEOLOGY && scenarioPanel.click(mouseX, mouseY, button, false)) return true;
         if (this.scenarioTabBtn.isMouseOver(mouseX, mouseY)) {
             this.scenarioTabBtn.mouseClicked(mouseX, mouseY, button);
             return true;
@@ -349,10 +368,14 @@ public final class RightPageContainer {
 
     // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮、返回按钮、详情页复制按钮），需在 super.render 之后调用
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (activeTab == Tab.SCENARIO || activeTab == Tab.ARCHAEOLOGY)
+        if (activeTab == Tab.ARCHAEOLOGY) {
             scenarioPanel.renderOverlay(guiGraphics, font, mouseX, mouseY);
-        if (this.activeTab == Tab.ARCHAEOLOGY) {
-            this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
+            if (!scenarioPanel.dropdownOpen()) {
+                this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
+            }
+        } else if (activeTab == Tab.SCENARIO) {
+            // 场景页的悬停提示与命中共用同一次命中结果，不存在第二条 tooltip 路径
+            this.scenarioDetailPanel.renderTooltip(guiGraphics, font, mouseX, mouseY);
         } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.LIST) {
             this.logPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
         } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {

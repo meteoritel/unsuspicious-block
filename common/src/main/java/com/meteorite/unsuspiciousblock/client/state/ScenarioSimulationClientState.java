@@ -181,7 +181,7 @@ public final class ScenarioSimulationClientState {
     private static void apply(SyncSimulationAssistPayload payload) {
         var p = payload.selection();
         select(p.tableId(), p.scenarioKey(), new ScenarioParams(p.luck(), p.toolId(), p.toolEnchantments(), p.sampleCount()));
-        request(p.tableId(), false);
+        // 应用推荐只改变选择；用户点计算后才请求测量。
     }
     public static List<Component> notes() { return notes; }
     private static void cancelAssist() { assistId = ++sequence; assist = null; notes = List.of(); }

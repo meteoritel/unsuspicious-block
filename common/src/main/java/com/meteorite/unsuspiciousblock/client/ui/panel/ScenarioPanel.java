@@ -20,13 +20,16 @@ public final class ScenarioPanel implements PagePanel {
     private int page, dropdownPage;
     private boolean dropdown, invalidLuck;
     private EditBox luckBox;
+    private boolean draggingLuck;
+    private int luckDragAnchor;
     private String observedInput = "";
-    private long changedAt;
-    private boolean sent;
     private List<Row> rows = List.of();
     private long rowsRevision = -1;
     private List<Component> lastNotes;
     private static final int ROWS = 8, STEP = 18;
+    /** 「下一组场景」按钮：只画一个右箭头，宽度固定，说明文字走悬停提示。 */
+    private static final int NEXT_PAGE_WIDTH = 14;
+    private static final Component NEXT_PAGE_LABEL = Component.literal("▸");
     private List<Component> tooltip = List.of();
 
     /** 一行可点击的参数或场景；详细内容悬停查看。 */
@@ -40,7 +43,7 @@ public final class ScenarioPanel implements PagePanel {
 
     public void setTable(ResourceLocation value) {
         if (Objects.equals(table, value)) return;
-        table = value; page = 0; dropdown = false; luckBox = null; observedInput = "";
+        table = value; page = 0; dropdown = false; draggingLuck = false; luckBox = null; observedInput = "";
         invalidLuck = false; rowsRevision = -1;
     }
 
@@ -54,17 +57,30 @@ public final class ScenarioPanel implements PagePanel {
         return focused() && luckBox.charTyped(value, modifiers);
     }
 
+    // 原版单行输入框没有拖选实现，复用其点击定位后保留按下时的选区锚点。
+    public boolean mouseDragged(double mouseX, double mouseY, int button) {
+        if (!draggingLuck || !focused() || dropdown || page != 0 || button != 0) return false;
+        luckBox.onClick(mouseX, mouseY);
+        luckBox.setHighlightPos(luckDragAnchor);
+        return true;
+    }
+
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button != 0 || !draggingLuck) return false;
+        draggingLuck = false;
+        if (luckBox != null) luckBox.mouseReleased(mouseX, mouseY, button);
+        return true;
+    }
+
     public void tick() {
         var choice = ScenarioSimulationClientState.selection(table);
         if (choice == null) return;
         String key = ScenarioSimulationClientState.inputKey(choice);
         if (!key.equals(observedInput)) {
-            observedInput = key; changedAt = System.currentTimeMillis(); sent = false;
+            observedInput = key;
             if (luckBox != null && !luckBox.isFocused()) luckBox.setValue(format(choice.params().luck()));
         }
-        if (!sent && !invalidLuck && System.currentTimeMillis() - changedAt >= 500) {
-            sent = true; ScenarioSimulationClientState.request(table, false);
-        }
+        // 参数改变只更新展示，计算由显式按钮触发，避免切回网格时自动占用缓存。
     }
 
     public void renderHeader(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
@@ -86,8 +102,12 @@ public final class ScenarioPanel implements PagePanel {
             lines.addAll(ScenarioSimulationClientState.notes());
             tooltip = lines;
         }
-        drawButton(graphics, font, text("switch", sceneName(choice.scene())), x, y + 12, width - 40,
-                inside(mouseX, mouseY, x, y + 12, width - 40, 16));
+        drawButton(graphics, font, text("switch", sceneName(choice.scene())), x, y + 12, width - 56,
+                inside(mouseX, mouseY, x, y + 12, width - 56, 16));
+        // 下一组场景只留一个右箭头：说明文字移到悬停提示，下拉框里因此少占一行
+        boolean moreHover = inside(mouseX, mouseY, x + width - 54, y + 12, NEXT_PAGE_WIDTH, 16);
+        drawButton(graphics, font, NEXT_PAGE_LABEL, x + width - 54, y + 12, NEXT_PAGE_WIDTH, moreHover);
+        if (moreHover) tooltip = List.of(text("more"));
         drawButton(graphics, font, text("calculate"), x + width - 38, y + 12, 38,
                 inside(mouseX, mouseY, x + width - 38, y + 12, 38, 16));
     }
@@ -207,10 +227,16 @@ public final class ScenarioPanel implements PagePanel {
     }
 
     public boolean click(double mx, double my, int button, boolean scenarioTab) {
+        draggingLuck = false;
         var dto = ScenarioSimulationClientState.table(table);
         if (dto == null || dto.options() == null) return false;
         if (ScenarioSimulationClientState.hasRecommendation(table) && inside(mx, my, x, y + 192, width, 16)) {
             ScenarioSimulationClientState.applyRecommendation(table); luckBox = null; showGrid.run(); return true;
+        }
+        // 下一组场景按钮位于下拉框之外，因此先判定：展开状态下也照常可用
+        if (inside(mx, my, x + width - 54, y + 12, NEXT_PAGE_WIDTH, 16)) {
+            dropdownPage = (dropdownPage + 1) % Math.max(1, (dto.options().scenes().size() + 6) / 7);
+            return true;
         }
         if (dropdown) {
             var scenes = dto.options().scenes();
@@ -220,19 +246,21 @@ public final class ScenarioPanel implements PagePanel {
                     choose(scenes.get(index).scenarioKey()); return true;
                 }
             }
-            if (inside(mx, my, x, y + 156, width, 18)) {
-                dropdownPage = (dropdownPage + 1) % Math.max(1, (scenes.size() + 6) / 7); return true;
-            }
             dropdown = false; return true;
         }
-        if (inside(mx, my, x, y + 12, width - 40, 16)) { dropdown = true; dropdownPage = 0; return true; }
+        if (inside(mx, my, x, y + 12, width - 56, 16)) { dropdown = true; dropdownPage = 0; return true; }
         if (inside(mx, my, x + width - 38, y + 12, 38, 16)) {
             if (!invalidLuck) ScenarioSimulationClientState.request(table, true); return true;
         }
         if (!scenarioTab) return false;
         if (luckBox != null) {
             luckBox.setFocused(luckBox.isMouseOver(mx, my) && page == 0);
-            if (luckBox.isFocused()) return luckBox.mouseClicked(mx, my, button);
+            if (luckBox.isFocused()) {
+                boolean consumed = luckBox.mouseClicked(mx, my, button);
+                draggingLuck = consumed && button == 0;
+                luckDragAnchor = luckBox.getCursorPosition();
+                return consumed;
+            }
         }
         int row = (int) ((my - y - 34) / STEP);
         int index = page * ROWS + row;
@@ -252,8 +280,10 @@ public final class ScenarioPanel implements PagePanel {
             if (dto == null || dto.options() == null) return;
             var p = ScenarioSimulationClientState.selection(table).params();
             var scenes = dto.options().scenes();
-            graphics.pose().pushPose(); graphics.pose().translate(0, 0, 200);
-            graphics.fill(x - 1, y + 29, x + width + 1, y + 176, 0xFFF2E5C6);
+            // 先落盘已有顶点，再用与原生 tooltip 相同的 z：物品数量角标画在 z=200，取 200 会被它压住
+            graphics.flush();
+            graphics.pose().pushPose(); graphics.pose().translate(0, 0, 400);
+            graphics.fill(x - 1, y + 29, x + width + 1, y + 156, 0xFFF2E5C6);
             for (int n = 0; n < 7; n++) {
                 int index = dropdownPage * 7 + n;
                 if (index >= scenes.size()) break;
@@ -263,7 +293,6 @@ public final class ScenarioPanel implements PagePanel {
                         text(ScenarioSimulationClientState.status(table, key))),
                         x, y + 30 + n * 18, width, inside(mx, my, x, y + 30 + n * 18, width, 18));
             }
-            drawButton(graphics, font, text("more"), x, y + 156, width, false);
             graphics.pose().popPose();
         } else if (!tooltip.isEmpty())
             graphics.renderComponentTooltip(font, tooltip, mx, my);
@@ -297,7 +326,7 @@ public final class ScenarioPanel implements PagePanel {
     @Override public boolean containsMouse(double mx, double my) { return inside(mx, my, x, y, width, 198); }
     @Override public int pageCount() { rebuildRows(); return Math.max(1, (rows.size() + ROWS - 1) / ROWS); }
     @Override public int getPage() { return page; }
-    @Override public void setPage(int value) { page = Math.clamp(value, 0, pageCount() - 1); if (luckBox != null) luckBox.setFocused(false); }
+    @Override public void setPage(int value) { page = Math.clamp(value, 0, pageCount() - 1); draggingLuck = false; if (luckBox != null) luckBox.setFocused(false); }
     @Override public void changePage(int delta) { setPage(page + delta); }
 }
 

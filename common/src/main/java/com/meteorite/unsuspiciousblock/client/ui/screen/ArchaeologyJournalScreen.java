@@ -546,6 +546,10 @@ public class ArchaeologyJournalScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
+        if (hasSelectedTable() && this.rightPage.getActiveTab() == RightPageContainer.Tab.ARCHAEOLOGY
+                && this.rightPage.getScenarioPanel().dropdownOpen()) {
+            return true;
+        }
         if (this.catalogPanel != null && this.catalogPanel.containsMouse(mouseX, mouseY)) {
             this.catalogPanel.scrollByRows(scrollY < 0.0 ? 2 : -2);
             return true;
@@ -563,6 +567,12 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.catalogPanel != null) {
             this.catalogPanel.endScrollbarDrag();
         }
+        boolean scenarioReleased = this.rightPage != null && this.rightPage.handleRelease(
+                this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button);
+        if (scenarioReleased) {
+            this.setDragging(false);
+            return true;
+        }
         return super.mouseReleased(
                 this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button);
     }
@@ -570,6 +580,10 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button,
                                 double dragX, double dragY) {
+        if (hasSelectedTable() && this.rightPage.handleDrag(
+                this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button)) {
+            return true;
+        }
         if (this.catalogPanel != null
                 && this.catalogPanel.dragScrollbar(this.viewport.toLogicalY(mouseY))) {
             return true;
