@@ -39,6 +39,39 @@ public final class JournalUiPreferencesStore {
     private static ClientPacketListener trackedConnection;
     private static volatile boolean dirty;
     private static volatile boolean loaded;
+    private static CompoundTag panelStates = new CompoundTag();
+    private static CompoundTag simulationPreferences = new CompoundTag();
+
+    @Nullable
+    public static synchronized String getSimulationPreference(String key) {
+        refreshConnection();
+        ensureLoaded();
+        return simulationPreferences.contains(key, Tag.TAG_STRING) ? simulationPreferences.getString(key) : null;
+    }
+
+    public static synchronized void setSimulationPreference(String key, String value) {
+        refreshConnection();
+        ensureLoaded();
+        simulationPreferences.putString(key, value);
+        while (simulationPreferences.size() > 1024) {
+            simulationPreferences.remove(simulationPreferences.getAllKeys().iterator().next());
+        }
+        dirty = true;
+    }
+
+    // 面板状态使用现有按存档、按玩家隔离的偏好文件，无需每加一个面板就改序列化字段。
+    public static synchronized CompoundTag getPanelStates() {
+        refreshConnection();
+        ensureLoaded();
+        return panelStates.copy();
+    }
+
+    public static synchronized void setPanelStates(CompoundTag state) {
+        refreshConnection();
+        ensureLoaded();
+        panelStates = state.copy();
+        dirty = true;
+    }
 
     private JournalUiPreferencesStore() {
     }
@@ -63,8 +96,7 @@ public final class JournalUiPreferencesStore {
         if (!dirty) {
             return;
         }
-        refreshConnection();
-        ensureLoaded();
+        // 断线时玩家/连接可能已清空，必须仍向已加载的旧世界路径刷盘。
         if (loadedPath != null) {
             save();
             dirty = false;
@@ -77,10 +109,14 @@ public final class JournalUiPreferencesStore {
         if (connection == trackedConnection) {
             return;
         }
+        if (dirty && loadedPath != null) save();
         trackedConnection = connection;
         // 连接切换：清空已加载状态，下次 tick 重新从新世界的文件加载
         loadedPath = null;
         loaded = false;
+        panelStates = new CompoundTag();
+        simulationPreferences = new CompoundTag();
+        dirty = false;
     }
 
     private static void ensureLoaded() {
@@ -129,6 +165,8 @@ public final class JournalUiPreferencesStore {
 
     // 从 NBT 还原到 ClientState 内存字段
     private static void applyToClientState(CompoundTag tag) {
+        panelStates = tag.getCompound("panels").copy();
+        simulationPreferences = tag.getCompound("simulationPreferences").copy();
         // 加载期间抑制 markDirty，避免加载即触发回写
         ArchaeologyJournalClientState.setPersistenceSuppress(true);
         try {
@@ -189,6 +227,8 @@ public final class JournalUiPreferencesStore {
     // 从 ClientState 内存字段抓取快照
     private static CompoundTag snapshotFromClientState() {
         CompoundTag tag = new CompoundTag();
+        tag.put("panels", panelStates.copy());
+        tag.put("simulationPreferences", simulationPreferences.copy());
         // 各 getter 背后是 volatile 字段，必须先用局部变量捕获单次快照再判空，
         // 避免「判空时读到非 null、取值时读到 null」的竞态 NPE
         ResourceLocation lastSelectedTableId = ArchaeologyJournalClientState.getLastSelectedTableId();
