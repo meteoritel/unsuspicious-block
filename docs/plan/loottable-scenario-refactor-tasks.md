@@ -5,6 +5,11 @@
 > 规划记录"为什么这样改"与"裁定依据"；本文只记录"先做什么、做完没有、怎么验证"。分点粒度按可独立编译、可独立验证来切。
 >
 > 完成一项就在其标题后追加 `✅` 与提交号；验证方式写在该项内，不再单列。
+>
+> **当前状态（2026-09-21）**：P0 / PERF / P1 / P2 的代码全部在工作区，**均未提交 git**。P1 与 P2 的静态与编译验证已过
+> （IDEA MCP 无报错无警告、`./gradlew build` 通过、`:common:test` 全绿），**实机验收由用户自测中**（清单见 T2）。
+> P2 起 UI 是**临时验收实现**，验收通过后统一重构；`docs/dev/` 的 `client-ui.md` 与网络文档同步留到重构完成一次做。
+> **下一步：前端重构方案探讨（待用户指令后开始）。**
 
 ## P0 诚实化与失效链（不依赖 `SimulationInput`，不依赖新协议）
 
@@ -42,12 +47,12 @@
 | P1-5 | 条件树展开预算（决策 33） | ✅ 节点数与组合集合各一个预算，超限整表按"无约束"降级并告警一次 |
 | P1-6 | worker 去重键改 `(tableId, inputKey)`、限流、代次校验 | ✅ 含"同一输入的多个等待者都收到结果"；HIGH 待处理 ≤32、每玩家在途 ≤2（**只约束玩家触发**，启动批量与解锁插队不受约束） |
 | P1-7 | 缓存格式 3：表级发现记录 + per-Input 测量值 + 按参数组合计数的 LRU（决策 37/46） | ✅ 见"与规划的已知偏差"5（实际落到 `format_version = 4`） |
-| P1-8 | 新 C2S/S2C payload 与协议版本 | ✅ 请求/结果/拒绝三个 payload + 共享 `CatalogStreamCodec`；NeoForge 协议版本服务端 `4.5`、客户端 `4.4`；`CatalogTableDto` 增加每表哈希（按需请求的版本凭据） |
+| P1-8 | 新 C2S/S2C payload 与协议版本 | ✅ 请求/结果/拒绝三个 payload + 共享 `CatalogStreamCodec`；协议版本 P1 时服务端 `4.5`、客户端 `4.4`，**P2 已随 payload 扩充升到服务端 `4.7`、客户端 `4.6`**；`CatalogTableDto` 增加每表哈希（按需请求的版本凭据） |
 | P1-9 | 启动只跑基准 Input | ✅ 缓存命中判定改为"该表**基准输入**的测量值是否存在"；每表每代只入队一个低优先级任务 |
 | P1-10 | `match_tool` 移出 `SCENARIO_CONDITIONS`、工具改为真实求值（决策 8；布尔维度 8 类降 7 类） | ✅ `SimulationContextConditionMixin` 已删除并从 `unsuspiciousblock.mixins.json` 移除 |
 
 验收方式：`./gradlew build` 通过（52 张表规模的完整构建）；改动文件经 IDEA MCP 检查后无报错、无警告。
-实机验收（改 JSON 后 `/reload`、门槛数值、参数生效、双平台）仍待用户执行。
+实机验收（改 JSON 后 `/reload`、门槛数值、参数生效、双平台）**2026-09-21 起由用户自测中**（本机构建需带代理 JVM 参数，见 P2 状态口径）。
 
 ### P1 实机反馈修复（2026-09-20，用户首轮实机）
 
@@ -175,7 +180,34 @@
 **条件树用交集**（回答"要拿到它必须满足什么"，并集会把"只有部分路径需要"说成"需要"）。
 分场景列表仍保留原始测量值，入口那一行回答的是"当前输入下能不能进"——与物品的两层结构一致。
 
-## T2 实机验收清单（交用户执行，2026-09-20）
+### P2 后端补丁：按需复用缓存与失败回执（2026-09-21，已实施）
+
+后端链路通读时发现两个缺口，都在服务端，都会直接削弱"场景缓存存服务端"这件事的价值。
+
+**缺口 1：按需请求从不查服务端缓存。** `ArchaeologyJournalServerCatalog.requestSimulation` 在
+`resolve` 通过后直接入队，全文件没有 `getMeasurement` 查询（只有启动恢复路径读缓存）。于是同一个
+`(表, 场景, 参数)` 无论被谁算过，下一个人再选它就**完整重跑** 1 万～10 万次抽取，而 `commitSimulated`
+只让它"跳过写入"——CPU 白烧，日志照样打"已完成…模拟"。缓存实际上只加速了启动。
+
+**缺口 2：模拟失败没有任何回执。** `LootProbabilitySimulationWorker.complete()` 只在
+`result.successful()` 时回调 `resultHandler`，`commitSimulated` 对失败结果也直接 return。玩家请求的
+输入若在 `createJob`（表为空）或抽取过程抛异常时失败，客户端既收不到结果也收不到拒绝，只能停在
+`pending`，**120 秒后**显示"等待超时，可点击「计算」重试"，而重试依然不会成功。
+
+| 改动 | 位置 | 要点 |
+|---|---|---|
+| 缓存命中先于排队 | `requestSimulation` | `!needsResimulation(tableId, hash) && getMeasurement(tableId, input.key()) != null` → `sendScenarioResult` 直接下发，返回 `CACHE_HIT`。**必须先过 `needsResimulation`**：`getMeasurement` 只看输入键不看哈希，内容变过而条目尚未重写时那条测量值属于上一版内容 |
+| 在途额度改在真正入队时判定 | 同上 + `ScenarioSimulationHandler` | 删掉网络层入口的 `canAcceptFor` 预检，改由目录在需要入队时返回 `PLAYER_LIMIT`。理由：缓存命中不消耗 tick 预算，若在入口按额度拒掉，玩家会在答案就在眼前时收到"请求过多" |
+| 失败也走结果回调 | `LootProbabilitySimulationWorker.complete` | 把 `resultHandler` 回调提到 `successful` 判断之前（结果本身带 `successful` 标志），在途额度的释放保持原位置不变 |
+| 失败回执 | `commitSimulated` 失败分支 → 新增 `notifySimulationFailed` | 走与拒绝同一条通道（不携带概率），原因 `SIMULATION_FAILED`；启动批次 `requester == null` 只留日志 |
+| 同步回退路径同样处理 | `requestSimulation` 的 `worker == null` 分支 | 原来无论成败都调 `sendScenarioResult`，会把一份"什么都没测到"的结果当成结果下发；现在失败返回 `SIMULATION_FAILED` 由网络层回执 |
+| 协议 | `ScenarioRequestRejectedPayload.Reason` | 追加 `SIMULATION_FAILED`（**追加在末尾**：编码用序数，插进中间会改写已有取值的含义）。客户端文案 `failure.simulation_failed` 早已存在，无需新增 key |
+
+预期可观测行为：切换到一个已算过的场景时不再出现"已完成…输入模拟"的日志行（改为 debug 的
+`复用缓存的测量值`），而界面立即显示数字；模拟失败时不再等超时，界面直接显示
+"模拟失败，请在数据包重载后重试"，且自动重算被抑制（手动 `[计算]` 仍可重试）。
+
+## T2 实机验收清单（交用户执行，2026-09-20；**2026-09-21 起用户自测中，同时覆盖 P2 与后端补丁**）
 
 代码侧已完成编译与静态检查；下面每一步都要看**日志**或**存档**给出判读，不靠"看起来对"。
 `git` 未提交，改动都在工作区。
@@ -224,13 +256,22 @@
 
 | 点 | 交付 | 状态 |
 |---|---|---|
-| P2-1 | 参数区（工具/附魔等级/幸运/抽样次数档位）与幸运输入框 + 建议档位 | ⬜ |
-| P2-2 | `RecommendationSolver` 联合见证搜索与可点击「填入推荐值」 | ⬜ |
-| P2-3 | 场景 Tab + 网格页快捷切换下拉与三态缓存标记（决策 43） | ⬜ |
-| P2-4 | 防抖自动请求 + `[计算]` 按钮、页头状态 | ⬜ |
-| P2-5 | 一键填充当前状态与 `PlayerStateProbe`（决策 41） | ⬜ |
-| P2-6 | 注入边参与父表约束描述（决策 42） | ⬜ |
-| P2-7 | 客户端偏好的文件实现（决策 29/37） | ⬜ |
+| P2-1 | 参数区（工具/附魔等级/幸运/抽样次数档位）与幸运输入框 + 建议档位 | ✅ 代码完成（**临时验收实现**，`client/ui/panel/ScenarioPanel.java`）：工具/附魔/次数为点击轮换，幸运为 `EditBox` + 500ms 防抖；建议档位由各路径 `luckGate.minLuck()` 收集去重后取"下一个更大档"。**实机验收中** |
+| P2-2 | `RecommendationSolver` 联合见证搜索与可点击「填入推荐值」 | ✅ 代码完成：双预算（2048 次 + 15ms）、三值逻辑（未知不作结论）、逐层 `luckRequirements` 回验；客户端**仅在 `found && recommendation` 时**渲染按钮（决策 34）。已知限制：搜索顺序为 路径→场景→工具→等级，预算内可能触不到靠后的场景，表现为"没有按钮"（诚实降级） |
+| P2-3 | 场景 Tab + 网格页快捷切换下拉与三态缓存标记（决策 43） | ✅ 代码完成：新增 `RightPageContainer.Tab.SCENARIO` + 第 4 个书签；同一份下拉在网格页页头也渲染；标记为三态 + 失败标记（`cached`/`pending`/`uncomputed`，失败另给 7 种原因文案）。**实机验收中** |
+| P2-4 | 防抖自动请求 + `[计算]` 按钮、页头状态 | ✅ 代码完成：输入键变化后 500ms 自动请求，`[计算]` 走 manual（失败后可重试）；页头常显"场景 · 幸运 · 次数 · 状态"。**留口**：`/reload` 换代后不自动重发（输入键未变且 `sent` 守卫仍为真），需手点【计算】或切场景，见"已知偏差"12 |
+| P2-5 | 一键填充当前状态与 `PlayerStateProbe`（决策 41） | ✅ 代码完成：探针读主手工具 / 附魔等级 / 幸运与可读条件（`location_check`/`weather_check`/`time_check`/`entity_properties`/`entity_scores`），读不到的逐项出清单；答复 `found` 且非推荐请求时客户端自动应用 |
+| P2-6 | 注入边参与父表约束描述（决策 42） | ✅ 代码完成：`constraintTable()` 把注入子树并进父表**约束规划**，`injectionGateEnchantments` 让父表拿到门槛附魔旋钮；泥地打捞专用场景与 `keepBaseTool` 已删除，父表注入物改由参数（附魔等级）驱动发现，注入物自身仍由抽样动态发现 |
+| P2-7 | 客户端偏好的文件实现（决策 29/37） | ✅ 代码完成：`SimulationPreferenceStore` + `IClientSimulationPreference` SPI + 两端实现，properties 原子写；恢复时按当前目录重新校验，不盲信旧 `inputKey` |
+
+**P2 状态口径（2026-09-21）**：上表七项与前面的「P2 后端补丁」都只在**工作区，未提交 git**。
+
+- **编译与静态验证已过**：IDEA MCP 检查全部改动文件 0 error / 0 warning；`./gradlew build` `BUILD SUCCESSFUL`，三模块 jar 均重新产出，`:common:test` 6 个用例 `failures=0 errors=0`。
+- **实机验收：用户自测中**。判据沿用 T2 清单，另加两条本批的可观察行为——(a) 同一个"场景+参数"第二次选择时日志不再新增"已完成…输入模拟"且界面立即出数；(b) 模拟失败时界面立即报"模拟失败"而不是等 120 秒超时。
+- **构建环境注意**：本机 Gradle 的 JVM 不走 `http_proxy`，Loom 配置阶段直连 `piston-meta.mojang.com` 会报 `Failed download after 3 attempts`；构建需带
+  `-Dorg.gradle.jvmargs="-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890 -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890"`。
+- **前端说明**：P2 的 UI 是**临时验收实现**，确定后统一重构；`docs/dev/` 的 `client-ui.md` 与网络文档同步等重构完成一次做（P3-4 的欠账）。
+- **下一步**：等用户实机验证结论 → 前端重构方案探讨（待用户指令后开始）。
 
 ## P3 保真与兼容
 
@@ -248,14 +289,24 @@
 3. **`PathHint.ReferencesParameter.detail` 用 `Component` 而非规划草案的 `String`**：需要本地化文案（附魔名、工具谓词原文、幸运门槛数值），`String` 会把服务端语言固化进目录。
 4. **决策 8 未随 P0 落地**：P0 期间 `match_tool` 仍在 `SCENARIO_CONDITIONS` 内，只有泥地打捞的满级工具专门分支被移除。**P1-10 已完成**，该偏差关闭。
 5. **概率存档格式实际落到 `format_version = 4`（规划写"格式 3"）**：规划 §4.5 的编号早于 P0——P0 已把"窄类型 `SimulatedValue`"这一改动用掉了 3。P1 的结构改造（表级 `discovery` + per-Input `inputs` + 参数组合 LRU）因此是 4。旧格式读到即按缓存未命中处理，不做迁移。
-6. **抽样次数档位与参数组合上限落为可调常量**：`ScenarioParams.SAMPLE_COUNT_TIERS`（1 万 / 5 万 / 10 万，同时是白名单与硬上限）、`MAX_PARAMETER_COMBINATIONS = 8`。规划把它们定为"实机观察后再定"的可调实现参数，P1 先取建议值。
-7. **模式外的工具不被参数覆盖**：泥地打捞注入场景把"满级钓竿"写进场景定义，P1 用 `SimulationScenario.keepBaseTool` 让这类场景只接受输入的幸运、保留自带工具。规划没有这一维度——它是"注入场景本就不是玩家处境"的直接后果：若被默认工具覆盖，注入池永远抽空，注入条目再也发现不了（信息丢失，不是参数生效）。
+6. **抽样次数档位与参数组合上限落为可调常量**：`ScenarioParams.SAMPLE_COUNT_TIERS`（1 万 / 5 万 / 10 万，同时是白名单与硬上限）、`MAX_PARAMETER_COMBINATIONS = 8`。规划把它们定为"实机观察后再定"的可调实现参数，P1 先取建议值。**待确认**：LRU 的"参数组合"含场景段，因此 8 个组合对 32 场景的表偏浅（逛一圈会互相淘汰，包含基准输入）；实机观察后再决定是否按"每表 N 场景 × M 参数组"分开计数。
+7. **模式外的工具不被参数覆盖**：泥地打捞注入场景把"满级钓竿"写进场景定义，P1 用 `SimulationScenario.keepBaseTool` 让这类场景只接受输入的幸运、保留自带工具。规划没有这一维度——它是"注入场景本就不是玩家处境"的直接后果：若被默认工具覆盖，注入池永远抽空，注入条目再也发现不了（信息丢失，不是参数生效）。**P2 关闭该偏差**：决策 42 落地后门槛移到注入处、注入物改由参数（附魔等级）驱动发现，`keepBaseTool` 与泥地打捞专用场景一并删除——"所有场景都用玩家填的参数"成为唯一口径。
 8. **`CatalogTableDto` 新增每表哈希**：规划没有这一字段，但按需请求必须携带一个"我按的是这一版内容"的凭据。用整目录哈希不行——它会被任何一张表的模拟完成改变，导致并发计算时的正常请求被频繁误判为过期。
-9. **约束描述暂不下发给客户端**：`SimulationConstraintCatalog` 目前只活在服务端（构建期派生、随代次缓存），P1-4 的交付是"目录只发布约束"这一结构本身。参数区所需的约束描述下发属 P2（规划 §4.5 的投影行）。
-10. **客户端目前只做结果入库，不做界面切换**：`ScenarioSimulationClientState` 校验并缓存结果，`receiveRejection` 只写日志。规划把"结果与当前选择的匹配、界面切换"放在 P2；P1 刻意不先建一份无人读取的状态。
+9. **约束描述暂不下发给客户端**：`SimulationConstraintCatalog` 目前只活在服务端（构建期派生、随代次缓存），P1-4 的交付是"目录只发布约束"这一结构本身。参数区所需的约束描述下发属 P2（规划 §4.5 的投影行）。**P2 已交付**：`SimulationOptions` 随每表 DTO 下发（场景假设 + 工具基座 + 附魔等级上限 + 次数档位 + 截断/降级标记），客户端据此渲染参数区并在本地预校验，服务端 `resolve` 仍是唯一权威。
+10. **客户端目前只做结果入库，不做界面切换**：`ScenarioSimulationClientState` 校验并缓存结果，`receiveRejection` 只写日志。规划把"结果与当前选择的匹配、界面切换"放在 P2；P1 刻意不先建一份无人读取的状态。**P2 已交付**：状态改为"每表当前选择 + 按输入隔离的缓存/在途/失败 + 推荐状态"，`receiveRejection` 的原因现在会显示在页头（`failure.<reason>`）并参与自动重算的抑制。
 11. **`SimulationInput` 增加"场景身份"这一维（T1）**：规划 §4.2 的草案是
     `record SimulationInput(Map<String, Boolean> conditionOutcomes, ScenarioParams params)`，键由条件赋值的编码而来。
     实测该编码**跨 JVM 运行不重复**（原因见 T3 第 1 条），作为缓存键会让同一个场景每次启动换一个键，因此改为
     `record SimulationInput(String scenarioKey, Map<String, Boolean> conditionOutcomes, ScenarioParams params)`，
     键取稳定的 `scenarioKey`（`baseline` / `scene-N`）。规划未预见这一维——它把"场景"等同于"条件赋值"，
     而那个赋值里含不可复现的指纹。条件赋值仍是场景的**运行时语义**，只是不再是身份。
+12. **`/reload` 后客户端不自动重算当前选择（P2 留口，未修）**：服务端换代后客户端会因代次变化清掉本地
+    结果与在途状态，但 `ScenarioPanel.tick()` 只在**输入键变化**时发请求，而换代不改变输入键、`sent`
+    守卫仍为真，于是界面停在"未计算"，要玩家手点【计算】或切场景才会重算。后端侧无法修（客户端不知道
+    "我这份选择在新代里还没算过"），修点在客户端：`ScenarioSimulationClientState.catalog()` 检测到换代时
+    置一个"需要重发"标记，由面板消费。留待前端重构一起做。
+13. **P2 的后端链路经审查后补了两处缺口（2026-09-21）**：按需请求此前**不查服务端缓存**（缓存只加速
+    启动）、模拟失败**无回执**（玩家只能等 120 秒超时）。两处已修，详见「P2 后端补丁」一节；同时把每玩家
+    在途额度从网络层入口移到目录真正入队处（否则缓存命中的请求会被"请求过多"误拒），并修掉
+    `enqueuePlayerRequest` 重复登记导致的在途计数泄漏（同一位玩家重复请求同一输入会 +2 只 -1，
+    永久撞在额度上）。
