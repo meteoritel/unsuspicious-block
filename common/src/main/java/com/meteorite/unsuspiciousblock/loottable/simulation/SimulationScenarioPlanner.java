@@ -4,20 +4,10 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
-import com.meteorite.unsuspiciousblock.loottable.graph.RuntimeLootLinks;
-import com.meteorite.unsuspiciousblock.enchantment.ModEnchantments;
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.Holder;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.ItemEnchantments;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -67,9 +57,6 @@ public final class SimulationScenarioPlanner {
     public static final String BASELINE_SCENARIO_KEY = "baseline";
     /** 其余场景的稳定键前缀，序号即发射顺序（1 起，基准不占序号）。 */
     private static final String SCENARIO_KEY_PREFIX = "scene-";
-    private static final int FISHING_MUD_DREDGING_SCENARIOS = 2;
-    private static final ResourceLocation FISHING = RuntimeLootLinks.FISHING_TABLE;
-    private static final ResourceLocation LOCATION_CHECK = ResourceLocation.withDefaultNamespace("location_check");
     private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
     private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
@@ -153,9 +140,6 @@ public final class SimulationScenarioPlanner {
             normalizedByKey.putIfAbsent(canonical(normalized), normalized);
         }
 
-        int limit = FISHING.equals(tableId)
-                ? MAX_SCENARIOS - FISHING_MUD_DREDGING_SCENARIOS
-                : MAX_SCENARIOS;
 
         List<SimulationScenario> result = new ArrayList<>();
         // 基准先占名额：它由全假赋值产生，覆盖度天然最低，排序后会第一个被丢掉
@@ -179,7 +163,7 @@ public final class SimulationScenarioPlanner {
         int ordinal = 1;
         int truncated = 0;
         for (Map<String, Boolean> normalized : others) {
-            if (result.size() >= limit) {
+            if (result.size() >= MAX_SCENARIOS) {
                 truncated++;
                 continue;
             }
@@ -187,9 +171,6 @@ public final class SimulationScenarioPlanner {
                     pathRequirements, conditionByFingerprint, baseProfile, false));
         }
 
-        if (FISHING.equals(tableId)) {
-            appendMudDredgingScenarios(result, table, baseProfile, level, ordinal);
-        }
         if (budget.exhausted && WARNED_BUDGET_TABLES.add(tableId)) {
             LOGGER.warn("战利品表 {} 的条件树展开超出预算（节点上限 {}，组合上限 {}），"
                             + "超出的路径已按无约束处理；数值偏保守，但不会把条目伪装成确定不可达",
@@ -282,56 +263,6 @@ public final class SimulationScenarioPlanner {
             result.put(fingerprint, false);
         }
         return result;
-    }
-
-    // 原始 fishing JSON 看不到平台注入池，使用满级附魔补充普通/加成群系两个代表场景。
-    // 这两个场景**不是基准**：它们只为让运行时注入的泥地打捞条目仍被模拟发现（否则注入物在原版
-    // fishing 表里连入口都不存在）。按决策 42，P2 会把这条专门分支换成由 RuntimeLootLinks 注入边
-    // 通用派生的父表约束描述；在那之前保留它，是"注入物看得见但基准下显示未覆盖"的过渡手段。
-    // 序号接在已发射的场景之后，顺序固定（先普通群系、后加成群系），因此键同样可复现。
-    private static void appendMudDredgingScenarios(List<SimulationScenario> result, TableDefinition table,
-                                                   SimulationProfile baseProfile,
-                                                   ServerLevel level, int startOrdinal) {
-        Holder<Enchantment> enchantment = mudDredgingEnchantment(level);
-        int toolLevel = enchantment.value().definition().maxLevel();
-        ItemStack tool = toolWithEnchantment(enchantment, toolLevel);
-        Set<String> applicable = table.items().stream()
-                .map(item -> item.signature().toStoredKey())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        List<Boolean> swampVariants = List.of(false, true);
-        for (int index = 0; index < swampVariants.size(); index++) {
-            boolean swamp = swampVariants.get(index);
-            Map<ResourceLocation, Boolean> defaults = Map.of(LOCATION_CHECK, swamp);
-            SimulationProfile profile = baseProfile.withTool(tool).withConditionOutcomes(
-                    baseProfile.conditionOutcomes(), defaults);
-            List<LootConditionInfo> assumptions = List.of(
-                    mudDredgingLevelAssumption(toolLevel),
-                    new LootConditionInfo(LOCATION_CHECK, Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.condition."
-                                    + (swamp ? "mud_dredging_bonus_biome" : "mud_dredging_normal_biome")),
-                            null));
-            result.add(new SimulationScenario(
-                    SCENARIO_KEY_PREFIX + (startOrdinal + index),
-                    profile, assumptions, applicable, Set.copyOf(table.childTables()), false, true));
-        }
-    }
-
-    private static LootConditionInfo mudDredgingLevelAssumption(int toolLevel) {
-        return new LootConditionInfo(ModLootConditions.TOOL_ENCHANTMENT, Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.condition.mud_dredging_level",
-                toolLevel), null);
-    }
-
-    private static Holder<Enchantment> mudDredgingEnchantment(ServerLevel level) {
-        return level.holderLookup(Registries.ENCHANTMENT).getOrThrow(ModEnchantments.MUD_DREDGING);
-    }
-
-    private static ItemStack toolWithEnchantment(Holder<Enchantment> enchantment, int enchantmentLevel) {
-        ItemStack tool = new ItemStack(Items.FISHING_ROD);
-        ItemEnchantments.Mutable enchantments = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
-        enchantments.set(enchantment, enchantmentLevel);
-        tool.set(DataComponents.ENCHANTMENTS, enchantments.toImmutable());
-        return tool;
     }
 
     private static List<Map<String, Boolean>> requirementsFor(

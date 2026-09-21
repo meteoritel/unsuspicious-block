@@ -99,21 +99,9 @@ public record ScenarioParams(float luck, ResourceLocation toolId,
         return Map.copyOf(sorted);
     }
 
-    /**
-     * 把参数旋钮套到基座场景 profile 上。
-     * <p>
-     * 幸运总是生效；工具是否生效由 {@code keepBaseTool} 决定，因为**注入场景**（原版 fishing 的
-     * 泥地打捞场景）把"满级钓竿"写进了场景定义本身（见
-     * {@code SimulationScenarioPlanner.appendMudDredgingScenarios}）：那条场景的全部意义就是带着
-     * 能通过 {@code tool_enchantment} 的门槛去抽注入池。若用输入的默认工具覆盖它，注入池永远抽空，
-     * 注入条目就再也发现不了——那是信息丢失，不是"参数生效"。
-     *
-     * @param keepBaseTool 是否保留场景自带的工具（注入场景为 {@code true}）
-     */
-    public SimulationProfile applyTo(SimulationProfile base, @Nullable HolderLookup.Provider registries,
-                                     boolean keepBaseTool) {
-        SimulationProfile withLuck = base.withLuck(this.luck);
-        return keepBaseTool ? withLuck : withLuck.withTool(createToolStack(registries));
+    // 所有场景都使用玩家填写的工具、附魔和幸运，注入边不再暗中覆盖参数。
+    public SimulationProfile applyTo(SimulationProfile base, @Nullable HolderLookup.Provider registries) {
+        return base.withLuck(this.luck).withTool(createToolStack(registries));
     }
 
     /**

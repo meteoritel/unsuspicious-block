@@ -100,7 +100,7 @@ public final class ArchaeologyJournalServerCatalog {
      * "默认工具 + 幸运 1.0"上。修好之后，旧存档里那批数字的统计口径与现在不同，必须整体失效，
      * 否则它们会被当作缓存命中继续展示。
      */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v19";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v20";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -258,7 +258,7 @@ public final class ArchaeologyJournalServerCatalog {
             LootTableAnalysisSession session, ResourceLocation tableId, TableDefinition table,
             ServerLevel level) {
         SimulationScenarioPlanner.ScenarioPlan plan =
-                SimulationScenarioPlanner.plan(tableId, table, level);
+                SimulationScenarioPlanner.plan(tableId, constraintTable(session, table, level), level);
         SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type());
 
         Map<ResourceLocation, String> tools = new LinkedHashMap<>();
@@ -293,6 +293,43 @@ public final class ArchaeologyJournalServerCatalog {
         }
         return SimulationConstraintCatalog.build(plan, baseProfile, tools, enchantmentLevels,
                 childEntryGates);
+    }
+
+    // 注入子树只参与约束规划；共享目录中的注入物仍由实际抽样发现。
+    public static TableDefinition constraintTable(LootTableAnalysisSession session, TableDefinition table,
+                                                   ServerLevel level) {
+        List<ItemDefinition> items = new ArrayList<>(table.items());
+        appendInjectionPaths(session, table.id(), null, List.of(), items, new HashSet<>(), level);
+        return new TableDefinition(table.id(), table.displayName(), table.type(), items,
+                table.simulationCount(), table.childTables(), table.childTableProbabilities());
+    }
+
+    private static void appendInjectionPaths(LootTableAnalysisSession session, ResourceLocation source,
+            @Nullable ResourceLocation firstChild, List<LootConditionInfo> inherited,
+            List<ItemDefinition> items, Set<ResourceLocation> visited, ServerLevel level) {
+        if (!visited.add(source)) return;
+        for (var edge : RuntimeLootLinks.syntheticEdges().getOrDefault(source, List.of())) {
+            ResourceLocation target = edge.target();
+            var projection = session.staticProjections().get(target);
+            if (projection == null) continue;
+            List<LootConditionInfo> gates = new ArrayList<>(inherited);
+            RuntimeLootLinks.injectionGate(target).ifPresent(gate ->
+                    gates.addAll(SimulationConstraintCatalog.describeGate(gate, level.registryAccess())));
+            ResourceLocation child = firstChild == null ? target : firstChild;
+            for (ItemDefinition item : projection.items()) {
+                List<LootAcquisitionPath> paths = new ArrayList<>();
+                for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                    List<LootConditionInfo> parents = new ArrayList<>(gates);
+                    parents.addAll(path.inheritedConditions());
+                    paths.add(new LootAcquisitionPath(child, path.sourceItemTag(), path.entryConditions(),
+                            parents, path.functionUncertainty(), path.luckAffected(), path.luckGate(), path.luckRequirements()));
+                }
+                items.add(new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
+                        item.probability(), item.signature(), paths, true, item.scenarioProbabilities()));
+            }
+            appendInjectionPaths(session, target, child, gates, items, visited, level);
+        }
+        visited.remove(source);
     }
 
     /** 该表当前的每表内容哈希（客户端按需请求与目录下发共用）；未收录时为空串。 */

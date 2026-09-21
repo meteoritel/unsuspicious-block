@@ -87,9 +87,9 @@ final class LootProbabilitySimulationJob {
         this.scenario = scenario;
         this.input = input;
         // 条件赋值来自场景、参数旋钮来自输入：两者合成的 profile 才是这一份模拟的输入身份。
-        // 注入场景自带满级工具（见 SimulationScenario.keepBaseTool），因此不套用输入的工具。
+        // 注入场景与普通场景使用同一套输入参数。
         this.effectiveProfile = input.params().applyTo(
-                scenario.profile(), level.registryAccess(), scenario.keepBaseTool());
+                scenario.profile(), level.registryAccess());
         this.allRawCandidatesByItem = indexCandidatesByItem(
                 rawTable.items().stream().map(ItemDefinition::signature).toList());
         this.directChildTables = Set.copyOf(rawTable.childTables());
