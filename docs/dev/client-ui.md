@@ -72,7 +72,7 @@
 
 ## 4. 考古笔记 GUI 架构
 
-`client/ui/` 子包按职责分层，共约 51 个类：
+`client/ui/` 子包按职责分层：
 
 ```
 ui/
@@ -146,6 +146,70 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 分类首页右页由 `WelcomeStatsPanel` 显示紧凑的玩家统计与最近发现。刷拭次数与战利品箱次数来自日志状态按 `LootSourceType.ARCHAEOLOGY` / `LOOT_CONTAINER` 持久化的累计来源计数；同一次聚合日志只在父表计数，子表镜像不重复累计，且日志淘汰或手动清理不会减少计数。当前日志、已有标注、最近记录和最近发现物品来自客户端日志快照，Panel 按日志与目录 revision 缓存汇总结果。最近记录只参与父表日志的比较，并展示最新一条日志中的全部实际物品（无实际结果时回退预期物品）。右下角的 GitHub Issues、CurseForge 与 Modrinth 按钮使用 `ExternalLinkButton`，并经原版 `ConfirmLinkScreen` 确认后打开链接。
 
 日志详情页保留单条删除入口。列表工具栏提供保留配置、批量选择、批量执行、清空当前表和清空全部按钮；当前表没有日志时，整个日志工具栏隐藏。工具栏 widget 创建时一律保持隐藏，只由 `ArchaeologyJournalScreen.syncButtonState()` 根据统一的日志列表状态控制可见性，禁止各按钮自行判断当前表或全局日志数量。批量模式在条目与分组标题左侧显示方形选择框，点击整组会统一选择或取消，且此时不会进入详情页。所有显式删除都会先打开原版 `ConfirmScreen`。服务端成功后以权威单表历史或全量快照更新本地状态，并用 `JournalLogDeleteResultPayload` 显示结果提示。
+
+### 4.4 声明式 UI kit（S1）
+
+`client/ui/kit/` 提供 Java 声明式块序列 API，业务方给出内容，`UiDocument` 负责测量、排版、裁剪、命中和绘制。实现位于 common 客户端包，不依赖平台类，不发网络请求。场景详情页已接入；其它旧页面保留原有实现。
+
+| 类型 | 契约 |
+|---|---|
+| `UiNode.Row` | 缩进单位为内容像素，文字后跟 `List<InlineIcon>`；文字与图标各自保存 tooltip、载荷、动作；行宽为自然宽度 |
+| `UiNode.Gap` / `Divider` | 固定空白 / 跟随视口宽度的单像素分隔线 |
+| `UiNode.Frame` / `FrameSpec` | 固定大小的子视口；只允许一层，禁止 Frame 内再嵌套 Frame；边框与浮动控件由宿主绘制 |
+| `UiIcon.Item` / `Sprite` | 原版 16×16 物品 / 显式指定图集尺寸的原生大小贴图区域 |
+| `TextMeasurer` | 注入宽度和行高；`TextMeasurer.of(font)` 提供原版适配；首版不折行、不截断 |
+| `UiTarget` | `hit()` 返回的唯一目标；图标优先于行，空图标提示也不会回退到行提示；矩形属于命中文档的内容坐标系 |
+| `UiTransform` | 内容原点、平移、缩放及双向坐标转换；档位 0.5/1/2/3，鼠标锚点缩放 |
+| `UiMetrics` | 构建/排版/渲染/命中最近一次耗时（ns）与调用次数；生产宿主传 `false` 关闭计时 |
+
+数据流为 `业务版本 + 构建器 → UiDocument.setContent → layout → render / hit`。`setContent(revision, supplier)` 只在版本变化时执行构建器；传入列表的重载每次都会更新。业务方应持有稳定构建器、为所有影响内容的输入维护版本，不应在逐帧路径创建节点、列表或 lambda。节点及其 Component 快照交给文档后按只读使用。
+
+`setViewport(x, y, width, height)` 使用调用方 GUI 逻辑坐标；`hit(mouseX, mouseY)` 使用同一坐标系。文档原点随视口移动，只有内容、视口尺寸或 `invalidateLayout()` 改变时重排，平移和缩放均不重排。字体/语言/资源重载由宿主更新内容版本并失效排版。Frame 的 `UiTransform` 由宿主持有，原点由父文档排版设置；它的缩放锚点应先换算到父文档内容坐标，每个活动 Frame 使用独立变换对象。
+
+排版缓存文字视觉顺序、矩形、图标与命中目标；稳定帧的 kit 绘制/命中不创建自有对象（游戏引擎内部除外）。纵向块数组用二分定位首个可见块，框外块与完全不可见图标跳过绘制。宿主每次只取一个 `hit()` 结果派生 tooltip；动作由宿主调用 `target.action().run()`，kit 不负责输入分发、焦点、浮层或状态持久化。
+
+**裁剪边界**：1.21.1 `GuiGraphics.enableScissor` 不读取 pose（mc-developing-mcp 中原版源码已核实）。`UiTransform` 在内容变换入栈前，将当前 pose 的轴对齐平移/缩放应用到视口矩形，再设置 scissor，并在裁剪切换前提交绘制批次。支持书本整体缩放和 Frame 内缩放；不支持旋转、错切、透视。整数 GUI 像素裁剪向内取整，分数边界最多收进不足一个 GUI 像素。嵌套 scissor 使用原版交集栈恢复外层裁剪。实际双平台渲染效果和 `renderItem` 开销待 S1-t 实机验证。
+
+最小接入示例（在初始化/内容变更时构建）：
+
+```java
+UiDocument document = new UiDocument(TextMeasurer.of(font), false);
+document.setViewport(x, y, width, height);
+document.setContent(List.of(new UiNode.Row(
+        Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"),
+        UiTextPalette.Parchment.TITLE)));
+// 绘制时调用 document.render(graphics, font)，交互时调用 document.hit(mouseX, mouseY)。
+```
+
+**S1 临时验证页**：Fabric / NeoForge 的 Gradle 客户端运行配置已默认添加 `-Dunsuspiciousblock.uiKitDebug=true`；IDEA 刷新 Gradle 后运行对应 `runClient`，打开笔记后按 `Ctrl+F8`。`UiKitDebugScreen` 包含 200 行、40 个物品图标和 20 个贴图图标，支持拖动、滚轮缩放、复位，以及 `P` 切换外层 pose 1x/2x。底部依次显示构建/排版次数、四段耗时（微秒）、内容缩放、外层缩放；每 5 秒在日志输出 ns 计时。拖动/滚轮/复位时排版次数应保持不变；`P` 和 resize 允许因视口改变重排。正式发布环境或未启用开关时无法进入。S1-t 双平台验收后删除此临时类、笔记快捷入口和 `ui_kit_debug.*` 本地化键。
+
+**S0 旧页修复**：场景下拉展开时，普通物品与导航条目 tooltip 同样被屏蔽，屏幕消费滚轮防止翻页。幸运值输入框由屏幕转发拖动/释放；面板复用 `EditBox.onClick` 定位字符并保留选区锚点，补齐原版单行框缺失的拖选行为。参数确认和新浮层已在 S3 接入，自动计算已取消，见第 4.5 节。
+
+### 4.5 场景详情页与模态交互（S2–S4）
+
+`RightPageContainer.setTable` 同时向旧网格头部与 `ScenarioDetailPanel` 传递 tableId，SCENARIO tab 由新面板负责。页内布局是读数行 y=6、动作行 y=18、框 y=34（152×166），底部分页带仍由原生控件负责。各 tab 的分页带常量彼此独立，`pageIndicatorY()` 统一提供当前页指示器及按钮位置。
+
+`ScenarioPageBuilder` 仅在内容 revision 或请求状态改变时重新构建：读取 `SimulationOptions.scenes()` 的签发顺序，以场景条件指纹匹配物品路径；每层条件均可包含多个图标，根、子行及树枝全部保持自然尺寸，不折行不截断。没有正条件的场景显示「无额外条件」与物品图标。未计算输入只显示未计算；`ScenarioPresentation` 只复用同参数、同抽样档位的明确场景引用，绝不把目录的基准总概率当作其它场景的概率。当前输入的直接结果可使用其总概率作为缺失场景引用的回退。
+
+读数行、标题提示、四态角标、动作行和框角控件均使用 `UiControl`：配置时测量并缓存目标，绘制时复用固定矩形；标题过长时视觉裁剪，完整条件在 tooltip。树内命中仍走 `UiDocument.hit()`。`ScenarioFrameView` 统一提供页内和放大框的绘制与交互：框角档位/复位先于树命中，缩放档位 0.5/1/2/3，滚轮以鼠标位置为锚点，拖拽只改平移，二者均不重排。
+
+`OverlayLayer` 同时只打开一个模态，六类输入入口均先分发给它，并保留先 flush 再 z=400 的层高契约。模态期间屏幕抑制下层自绘 tooltip、原生控件悬停和 JEI 悬停物品查询。三个使用者是：
+
+- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/外部点击关闭。选中状态和屏幕页码共用 `ScenarioSimulationClientState`。
+- `ScenarioParamsOverlay`：独立草稿、确认/取消；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 EditBox，支持拖选；参数多时滚动。确认再次使用最新目录校验，不自动计算；ESC 取消，点外不关闭。
+- `ScenarioExpandedOverlay`：居中遮罩窗口，复制页内视图到独立 `ScenarioFrameView`，复用相同交互；关闭时丢弃窗口临时平移/缩放，因此页内视图保持打开前状态。关闭按钮与框角控件均置于物品之上。
+
+测量只能由显式计算按钮发起。旧网格头部的防抖自动请求已去除，应用推荐只改变选择。未新增网络包；仍复用既有请求/结果协议。
+
+贴图由 `scripts/drawer/generate_scenario_ui.py` 生成：`scenario_frame.png` 是用户确认的 24×24 九宫格（8px 四角），`UiNineSlice` 用九个四边形拉伸边和中心；`scenario_status.png` 为 48×12 四格，空心点/沙漏/勾/叉对应未计算/计算中/已缓存/失败。角标同时使用形状区分状态，详细状态和失败原因放 tooltip。
+
+### 4.6 面板状态与偏好持久化
+
+新面板实现 `LayoutAware.applyLayout(BookLayout)`、`UiStateful.saveUiState/loadUiState(CompoundTag)`，在创建处向 `UiPanelRegistry` 注册一次即可。屏幕遍历注册表完成布局与状态恢复；旧面板不迁移接口，`RightPageContainer.savePages/loadPages` 只补齐各 tab 页号，修复 resize 只保留当前 tab 的缺口。
+
+`ScenarioDetailPanel` 按 `tableId#scenarioKey` 保存框档位/平移，最多保留 512 个视图，切场景或表时先捕获旧视图。resize 快照与关闭笔记时都包含非当前 tab 的新面板状态；状态存在 `JournalUiPreferencesStore` 的 `panels` NBT 子树。窗口尺寸变化会关闭临时浮层、丢弃未确认草稿，保留已确认参数和页内视图。
+
+参数仍在每张表内跨场景共用同一套，工具清单由该表签发。`SimulationPreferenceStore` 现在通过 `JournalUiPreferencesStore` 的 `simulationPreferences` NBT 子树读写选择，和 UI 偏好共用按存档、按玩家隔离的 `journal_ui_preferences.dat`。旧的全局 `config/unsuspiciousblock-simulation.properties` 保留但不再读取或自动导入，避免把一个存档/玩家的选择带到其它存档/玩家；首次使用新存储时由当前签发清单初始化合法参数。切换连接清空本地加载缓存，断线刷盘仍使用已加载的旧世界路径。
 
 ## 5. HUD
 
