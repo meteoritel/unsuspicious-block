@@ -37,20 +37,20 @@ public final class JournalLayout {
 
     // —— 右侧网格 ——
     public static final int GRID_CELLS_PER_ROW = 2;
-    public static final int GRID_ROWS_PER_PAGE = 4;
+    public static final int GRID_ROWS_PER_PAGE = 3;
     public static final int GRID_ITEMS_PER_PAGE = GRID_CELLS_PER_ROW * GRID_ROWS_PER_PAGE;
     public static final int GRID_CELL_WIDTH = 74;
     public static final int GRID_CELL_HEIGHT = 48;
     public static final int GRID_COLUMN_GAP = 2;
     // 右页内容顶部与左页工具栏行对齐（书签已移至右边缘，顶部空间回收）
-    public static final int GRID_TOP = TOOLBAR_Y;
+    public static final int GRID_TOP = TOOLBAR_Y + 34;
     public static final int GRID_LEFT_PAD = 4;
     public static final int GRID_PAGE_INDICATOR_Y = 208;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
     // —— 右侧日志页 ——
     // 与右页网格内容同起点，对齐左页工具栏行
-    public static final int LOG_TOP = GRID_TOP;
+    public static final int LOG_TOP = TOOLBAR_Y;
     // "最近发掘记录"标签
     public static final int LOG_LIST_LABEL_Y = LOG_TOP;
     // 日志工具栏为单行，列表起点与左侧目录内容对齐

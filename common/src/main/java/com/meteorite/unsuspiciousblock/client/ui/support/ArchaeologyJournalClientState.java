@@ -114,6 +114,7 @@ public final class ArchaeologyJournalClientState {
         for (CatalogTableDto table : payload.catalog()) {
             tables.put(table.id(), table.toTableDefinition());
         }
+        com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.catalog(payload.catalog());
         serverCatalog = Collections.unmodifiableMap(tables);
         catalogStructure = payload.structure();
         catalogRevision.incrementAndGet();
@@ -271,8 +272,10 @@ public final class ArchaeologyJournalClientState {
         JournalUiPreferencesStore.tick();
     }
 
+    public static void simulationChanged() { catalogRevision.incrementAndGet(); }
+
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
-        return serverCatalog;
+        return com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.overlay(serverCatalog);
     }
 
     // 按物品注册名预检当前可见目录是否存在搜索结果，避免打开空白手册。
@@ -476,6 +479,8 @@ public final class ArchaeologyJournalClientState {
 
     // 断线时重置，使下次连入能正确处理首次同步
     public static void resetOnDisconnect() {
+        com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.clear();
+        serverCatalog = Collections.emptyMap();
         // 先把未刷盘的 UI 偏好落盘，避免退出世界时丢失最近修改
         JournalUiPreferencesStore.flushIfDirty();
         stateInitialized = false;

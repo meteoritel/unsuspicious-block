@@ -1,71 +1,195 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
-import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.ScenarioRequestRejectedPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioResultPayload;
-import com.mojang.logging.LogUtils;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.loottable.catalog.*;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.*;
+import com.meteorite.unsuspiciousblock.loottable.simulation.*;
+import com.meteorite.unsuspiciousblock.network.payload.c2s.*;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.*;
+import com.meteorite.unsuspiciousblock.platform.Services;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
+import java.util.*;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
-/**
- * 按需模拟结果的客户端缓存。
- * <p>
- * 键是 {@code (表, 输入键)}：同一个输入可能被多个玩家分别请求，但按内容去重后服务端只算一次，
- * 因此客户端这边也只按内容存。**代次与表哈希都要校验**（决策 36）——切参数或 {@code /reload}
- * 之后旧结果可能后到，不校验就会把上一代的数据画到当前界面上。
- * <p>
- * 容量有界且按插入顺序淘汰最旧项，避免玩家在一张表上反复调参把内存顶起来；
- * 被淘汰只是"要重算一次"，不影响正确性。
- */
+/** 当前选择、计算状态和结果按输入隔离；晚到答复只入缓存，不改玩家的新选择。 */
 public final class ScenarioSimulationClientState {
-    private static final Logger LOGGER = LogUtils.getLogger();
-    /** 保留的结果条数上限——纯 UI 用途，超出按最旧淘汰。 */
-    private static final int MAX_RESULTS = 64;
-
-    private static final Map<String, CatalogTableDto> RESULTS =
-            new LinkedHashMap<>(16, 0.75F, false) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, CatalogTableDto> eldest) {
-                    return size() > MAX_RESULTS;
-                }
-            };
-
-    private ScenarioSimulationClientState() {
+    private static final Map<ResourceLocation, CatalogTableDto> TABLES = new LinkedHashMap<>();
+    private static final Map<ResourceLocation, SimulationPreferenceStore.Selection> SELECTIONS = new HashMap<>();
+    private static final Map<String, CatalogTableDto> RESULTS = new LinkedHashMap<>();
+    private static final Map<String, Long> PENDING = new HashMap<>();
+    private static final Map<String, String> FAILURES = new LinkedHashMap<>();
+    private static long sequence, assistId;
+    private static String assistInput = "";
+    private static SyncSimulationAssistPayload assist;
+    private static List<Component> notes = List.of();
+    private ScenarioSimulationClientState() {}
+    public static String keyOf(ResourceLocation table, String input) { return table + "#" + input; }
+    public static CatalogTableDto table(ResourceLocation id) { return TABLES.get(id); }
+    public static SimulationPreferenceStore.Selection selection(ResourceLocation id) { return SELECTIONS.get(id); }
+    public static String inputKey(SimulationPreferenceStore.Selection selection) {
+        return new SimulationInput(selection.scene(), Map.of(), selection.params()).key();
     }
-
-    /** 结果键的构造只有一份实现：客户端与服务端的 inputKey 是同一个字符串。 */
-    public static String keyOf(ResourceLocation tableId, String inputKey) {
-        return tableId + "#" + inputKey;
+    public static void catalog(List<CatalogTableDto> tables) {
+        boolean changedGeneration = tables.stream().anyMatch(t -> {
+            var old = TABLES.get(t.id());
+            return old != null && old.options() != null && t.options() != null
+                    && old.options().generation() != t.options().generation();
+        });
+        if (changedGeneration) { RESULTS.clear(); PENDING.clear(); FAILURES.clear(); cancelAssist(); }
+        Set<ResourceLocation> ids = new HashSet<>();
+        for (CatalogTableDto table : tables) {
+            ids.add(table.id());
+            var old = TABLES.put(table.id(), table);
+            if (old != null && !old.hash().equals(table.hash())) {
+                String prefix = table.id() + "#";
+                RESULTS.keySet().removeIf(k -> k.startsWith(prefix));
+                PENDING.keySet().removeIf(k -> k.startsWith(prefix));
+                FAILURES.keySet().removeIf(k -> k.startsWith(prefix));
+            }
+            var options = table.options();
+            if (options == null || options.tools().isEmpty() || options.scenes().isEmpty()) continue;
+            var choice = SELECTIONS.get(table.id());
+            if (choice == null) choice = SimulationPreferenceStore.get(table.id());
+            if (choice == null || options.rejects(choice.scene(), choice.params()))
+                choice = new SimulationPreferenceStore.Selection("baseline",
+                        ScenarioParams.baseline(options.tools().getFirst().id()));
+            SELECTIONS.put(table.id(), choice);
+        }
+        TABLES.keySet().retainAll(ids); SELECTIONS.keySet().retainAll(ids);
     }
-
-    /** 接收按需模拟结果。 */
+    public static void select(ResourceLocation table, String scene, ScenarioParams params) {
+        var dto = TABLES.get(table);
+        if (dto == null || dto.options() == null || dto.options().rejects(scene, params)) return;
+        var choice = new SimulationPreferenceStore.Selection(scene, params);
+        if (choice.equals(SELECTIONS.put(table, choice))) return;
+        SimulationPreferenceStore.put(table, choice); cancelAssist();
+        ArchaeologyJournalClientState.simulationChanged();
+    }
+    public static RequestScenarioSimulationPayload requestOf(ResourceLocation table) {
+        var dto = TABLES.get(table); var selection = SELECTIONS.get(table);
+        if (dto == null || dto.options() == null || selection == null) return null;
+        var p = selection.params();
+        return new RequestScenarioSimulationPayload(dto.options().generation(), table, dto.hash(),
+                selection.scene(), p.luck(), p.toolId(), p.toolEnchantments(), p.sampleCount());
+    }
+    public static void request(ResourceLocation table, boolean manual) {
+        var request = requestOf(table);
+        if (request == null) return;
+        String input = inputKey(SELECTIONS.get(table)), status = status(table, input);
+        if (status.equals("pending") || status.equals("cached") || !manual && status.equals("failed")) return;
+        String key = keyOf(table, input);
+        PENDING.put(key, System.currentTimeMillis()); FAILURES.remove(key);
+        Services.NETWORK.sendToServer(request); SimulationPreferenceStore.flush();
+        ArchaeologyJournalClientState.simulationChanged();
+    }
+    public static String status(ResourceLocation table, String input) {
+        String key = keyOf(table, input);
+        if (result(table, input) != null) return "cached";
+        Long start = PENDING.get(key);
+        if (start != null) {
+            if (System.currentTimeMillis() - start <= 120_000) return "pending";
+            PENDING.remove(key); FAILURES.put(key, "timeout");
+        }
+        return FAILURES.containsKey(key) ? "failed" : "uncomputed";
+    }
+    public static String failure(ResourceLocation table, String input) {
+        return FAILURES.getOrDefault(keyOf(table, input), "timeout");
+    }
     public static void receive(SyncScenarioResultPayload payload) {
-        RESULTS.put(keyOf(payload.table().id(), payload.inputKey()), payload.table());
+        var table = TABLES.get(payload.table().id());
+        if (table == null || table.options() == null || table.options().generation() != payload.generation()
+                || !table.hash().equals(payload.tableHash())) return;
+        String key = keyOf(table.id(), payload.inputKey());
+        boolean failed = payload.table().items().stream().anyMatch(item ->
+                item.probability() instanceof Probability.Unknown(var reason)
+                        && reason == UnknownReason.SIMULATION_FAILED);
+        if (failed) {
+            PENDING.remove(key); FAILURES.put(key, "simulation_failed");
+            ArchaeologyJournalClientState.simulationChanged();
+            return;
+        }
+        RESULTS.put(key, payload.table());
+        while (RESULTS.size() > 64) RESULTS.remove(RESULTS.keySet().iterator().next());
+        PENDING.remove(key); FAILURES.remove(key); ArchaeologyJournalClientState.simulationChanged();
     }
-
-    /**
-     * 接收拒绝回执。
-     * <p>
-     * 目前只写日志：回执的**用途**（界面上解释"为什么点了没反应"）属 P2 的参数区与快捷切换下拉。
-     * 这里刻意不先建一份无人读取的状态——那会让"已受理"与"被拒绝"在下一阶段更难分辨。
-     */
     public static void receiveRejection(ScenarioRequestRejectedPayload payload) {
-        LOGGER.debug("按需模拟请求被拒绝：table={}, input={}, reason={}",
-                payload.tableId(), payload.inputKey(), payload.reason());
+        var table = TABLES.get(payload.tableId());
+        if (table == null || table.options() == null || table.options().generation() != payload.generation()) return;
+        String key = keyOf(payload.tableId(), payload.inputKey());
+        if (!PENDING.containsKey(key)) return;
+        PENDING.remove(key); FAILURES.put(key, payload.reason().name().toLowerCase(Locale.ROOT));
+        while (FAILURES.size() > 64) FAILURES.remove(FAILURES.keySet().iterator().next());
+        if (payload.reason() == ScenarioRequestRejectedPayload.Reason.STALE_HASH)
+            Services.NETWORK.sendToServer(new RequestCatalogPayload());
+        ArchaeologyJournalClientState.simulationChanged();
     }
-
-    /** 取某个输入下的结果；未收到时返回 {@code null}（界面上表现为"尚未计算"）。 */
-    @Nullable
-    public static CatalogTableDto result(ResourceLocation tableId, String inputKey) {
-        return RESULTS.get(keyOf(tableId, inputKey));
+    public static CatalogTableDto result(ResourceLocation id, String input) {
+        var found = RESULTS.get(keyOf(id, input));
+        if (found != null) return found;
+        var base = TABLES.get(id);
+        if (base != null && base.options() != null && base.simulationCount() > 0) {
+            String baseline = new SimulationInput("baseline", Map.of(),
+                    ScenarioParams.baseline(base.options().tools().getFirst().id())).key();
+            if (baseline.equals(input)) return base;
+        }
+        return null;
     }
-
-    /** 断开连接或数据包重载时清空——结果绑定在某一代目录上，跨代复用会画错数字。 */
+    public static Map<ResourceLocation, TableDefinition> overlay(Map<ResourceLocation, TableDefinition> base) {
+        Map<ResourceLocation, TableDefinition> output = new LinkedHashMap<>(base);
+        SELECTIONS.forEach((id, selection) -> {
+            if (!base.containsKey(id)) return;
+            String input = inputKey(selection);
+            var measured = result(id, input);
+            if (measured != null) output.put(id, measured.toTableDefinition());
+            else {
+                var table = base.get(id);
+                var unknown = new Probability.Unknown(status(id, input).equals("failed")
+                        ? UnknownReason.SIMULATION_FAILED : UnknownReason.NOT_SIMULATED);
+                output.put(id, new TableDefinition(id, table.displayName(), table.type(),
+                        table.items().stream().map(i -> new ItemDefinition(i.id(), i.displayName(),
+                                i.tooltipHint(), unknown, i.signature(), i.acquisitionPaths(), i.injected(), List.of())).toList(),
+                        selection.params().sampleCount(), table.childTables(),
+                        table.childTableProbabilities().stream().map(ch -> new ChildTableProbability(
+                                ch.tableId(), unknown, List.of(), ch.conditions())).toList()));
+            }
+        });
+        return output;
+    }
+    public static void requestAssist(ResourceLocation table, String target) {
+        var request = requestOf(table);
+        if (request == null) return;
+        assistId = ++sequence; assistInput = keyOf(table, inputKey(SELECTIONS.get(table)));
+        assist = null; notes = List.of(text("assist_pending"));
+        Services.NETWORK.sendToServer(new RequestSimulationAssistPayload(assistId, target, request));
+    }
+    public static void receiveAssist(SyncSimulationAssistPayload payload) {
+        var p = payload.selection(); var current = requestOf(p.tableId());
+        if (payload.requestId() != assistId || current == null || current.generation() != p.generation()
+                || !current.tableHash().equals(p.tableHash())
+                || !assistInput.equals(keyOf(p.tableId(), inputKey(SELECTIONS.get(p.tableId()))))) return;
+        notes = payload.notes(); assist = payload;
+        ArchaeologyJournalClientState.simulationChanged();
+        if (!payload.recommendation() && payload.found()) {
+            apply(payload);
+            notes = payload.notes().isEmpty() ? List.of(text("probe_done")) : payload.notes();
+        }
+    }
+    public static boolean hasRecommendation(ResourceLocation table) {
+        return assist != null && assist.recommendation() && assist.found() && assist.selection().tableId().equals(table);
+    }
+    public static void applyRecommendation(ResourceLocation table) { if (hasRecommendation(table)) apply(assist); }
+    private static void apply(SyncSimulationAssistPayload payload) {
+        var p = payload.selection();
+        select(p.tableId(), p.scenarioKey(), new ScenarioParams(p.luck(), p.toolId(), p.toolEnchantments(), p.sampleCount()));
+        request(p.tableId(), false);
+    }
+    public static List<Component> notes() { return notes; }
+    private static void cancelAssist() { assistId = ++sequence; assist = null; notes = List.of(); }
+    public static Component text(String key, Object... args) {
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.simulation." + key, args);
+    }
     public static void clear() {
-        RESULTS.clear();
+        SimulationPreferenceStore.flush();
+        TABLES.clear(); SELECTIONS.clear(); RESULTS.clear(); PENDING.clear(); FAILURES.clear(); cancelAssist();
     }
 }

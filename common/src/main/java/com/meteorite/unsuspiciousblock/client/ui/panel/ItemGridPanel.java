@@ -461,7 +461,7 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     @Nullable
-    public TooltipData getTooltipData(double mouseX, double mouseY) {
+    private GridItem hoveredItem(double mouseX, double mouseY) {
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
         GridItem hoveredItem = null;
@@ -490,6 +490,18 @@ public final class ItemGridPanel implements PagePanel {
                 }
             }
         }
+        return hoveredItem;
+    }
+
+    // 未发现物品不显示身份，但仍可按其服务端签名查找路径见证。
+    @Nullable
+    public String recommendationTarget(double mouseX, double mouseY) {
+        GridItem item = hoveredItem(mouseX, mouseY);
+        return item == null || item.acquisitionPaths().isEmpty() ? null : item.signature().toStoredKey();
+    }
+
+    public TooltipData getTooltipData(double mouseX, double mouseY) {
+        GridItem hoveredItem = hoveredItem(mouseX, mouseY);
         if (hoveredItem == null) {
             return null;
         }

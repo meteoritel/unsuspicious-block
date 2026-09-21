@@ -153,6 +153,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public void removed() {
+        com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore.flush();
         ArchaeologyJournalClientState.rememberLastSelectedTable(this.viewModel.selectedTableId());
         ArchaeologyJournalClientState.rememberDirectoryState(this.viewModel.isCategoryHomeMode(),
                 this.viewModel.selectedCategory(), this.viewModel.expandedRoots(),
@@ -181,6 +182,10 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
+                && this.rightPage.getScenarioPanel().focused() && keyCode != GLFW.GLFW_KEY_ESCAPE) {
+            return this.rightPage.getScenarioPanel().keyPressed(keyCode, scanCode, modifiers);
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
@@ -195,6 +200,14 @@ public class ArchaeologyJournalScreen extends Screen {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
+                && this.rightPage.getScenarioPanel().focused())
+            return this.rightPage.getScenarioPanel().charTyped(codePoint, modifiers);
+        return super.charTyped(codePoint, modifiers);
     }
 
     // 分类首页按网格导航；目录列表使用上下选择、左右展开折叠，Page Up/Down 跨越一个视口。
@@ -462,7 +475,10 @@ public class ArchaeologyJournalScreen extends Screen {
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
         if (tooltipData != null) {
-            List<Component> tooltipLines = JournalTooltipBuilder.build(tooltipData);
+            List<Component> tooltipLines = new ArrayList<>(JournalTooltipBuilder.build(tooltipData));
+            if (this.rightPage.getActiveTab() == RightPageContainer.Tab.ARCHAEOLOGY
+                    && !tooltipData.acquisitionPaths().isEmpty())
+                tooltipLines.add(com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("click_find"));
             if (tooltipData.discovered() && !tooltipData.stack().isEmpty()) {
                 guiGraphics.renderTooltip(this.font, tooltipLines,
                         tooltipData.stack().getTooltipImage(), mouseX, mouseY);
@@ -570,6 +586,7 @@ public class ArchaeologyJournalScreen extends Screen {
         this.addRenderableWidget(this.rightPage.getIntroTabButton());
         this.addRenderableWidget(this.rightPage.getArchaeologyTabButton());
         this.addRenderableWidget(this.rightPage.getLogTabButton());
+        this.addRenderableWidget(this.rightPage.getScenarioTabButton());
 
         // 目录工具栏
         boolean categoryHomeMode = this.viewModel.isCategoryHomeMode();
@@ -791,6 +808,7 @@ public class ArchaeologyJournalScreen extends Screen {
         applyButtonState(this.rightPage.getIntroTabButton(), showRightPageTabs, showRightPageTabs);
         applyButtonState(this.rightPage.getArchaeologyTabButton(), showRightPageTabs, showRightPageTabs);
         applyButtonState(this.rightPage.getLogTabButton(), showRightPageTabs, showRightPageTabs);
+        applyButtonState(this.rightPage.getScenarioTabButton(), showRightPageTabs, showRightPageTabs);
 
         boolean hasMultipleItemPages = !this.viewModel.isCategoryHome() && this.rightPage.pageCount() > 1;
         applyButtonState(this.itemPrevButton, hasMultipleItemPages,
