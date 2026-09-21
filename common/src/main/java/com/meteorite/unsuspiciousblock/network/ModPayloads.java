@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.network;
 
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestSimulationAssistPayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSimulationAssistPayload;
+import com.meteorite.unsuspiciousblock.network.journal.SimulationAssistHandler;
 import com.meteorite.unsuspiciousblock.cat.CatNetworkHandler;
 import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
@@ -79,6 +82,7 @@ public final class ModPayloads {
 
     /** C2S payload 列表（服务端处理） */
     public static final List<C2S<?>> C2S_PAYLOADS = List.of(
+            new C2S<>(RequestSimulationAssistPayload.TYPE, RequestSimulationAssistPayload.STREAM_CODEC, SimulationAssistHandler::handle),
             new C2S<>(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC,
                     (player, payload) -> ReaderScanLevelHandler.handleUpdateReaderScanLevel(payload, player)),
             new C2S<>(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
@@ -110,6 +114,7 @@ public final class ModPayloads {
 
     /** S2C payload 类型列表（仅 type + streamCodec，供服务端注册编解码器，Fabric 需要） */
     public static final List<S2CSpec<?>> S2C_SPECS = List.of(
+            new S2CSpec<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC),
             new S2CSpec<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC),
             new S2CSpec<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC),
             new S2CSpec<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC),
@@ -177,7 +182,8 @@ public final class ModPayloads {
                 new S2C<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC,
                         ScenarioSimulationClientState::receive),
                 new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC,
-                        ScenarioSimulationClientState::receiveRejection)
+                        ScenarioSimulationClientState::receiveRejection),
+                new S2C<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC, ScenarioSimulationClientState::receiveAssist)
         );
     }
 }

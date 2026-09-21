@@ -133,7 +133,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar(Constants.MOD_ID).versioned("4.5");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("4.6");
         // 遍历 ModPayloads 客户端清单注册 S2C，避免手写重复
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
             registerS2C(registrar, s2c);

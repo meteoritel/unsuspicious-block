@@ -314,7 +314,7 @@ public class UnsuspiciousBlockNeoForge {
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
         // 协议版本随目录包格式变化升级：概率值新增第 4 态与未知原因，编码布局已变
-        var registrar = event.registrar(Constants.MOD_ID).versioned("4.6");
+        var registrar = event.registrar(Constants.MOD_ID).versioned("4.7");
         // 遍历 ModPayloads 统一清单注册 C2S，避免手写重复
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(registrar, c2s);
