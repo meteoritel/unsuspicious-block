@@ -2,12 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    "EEE",
+    "EDE",
     "ESE",
     "EEE"
   ],
   "key": {
     "E": {"item": "minecraft:echo_shard"},
+    "D": {"item": "minecraft:dragon_breath"},
     "S": {"item": "unsuspiciousblock:spark_dust"}
   },
   "result": {

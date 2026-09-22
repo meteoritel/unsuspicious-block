@@ -8,10 +8,13 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
@@ -25,11 +28,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
+/***
  * 回溯结构的服务端任务：保留原布局，以世界生成随机种子逐区块重新放置。
  * 每台服务器只运行一个任务，避免重叠写入；任务随服务器关闭清理。
  */
 public final class StructureRewindService {
+    private static final long STRUCTURE_COOLDOWN_TICKS = 40L * 60L * 20L;
+    private static final int VISUAL_DISTORTION_TICKS = 60;
     private static final Map<MinecraftServer, RewindTask> TASKS = new HashMap<>();
 
     private StructureRewindService() {
@@ -46,32 +51,53 @@ public final class StructureRewindService {
             tell(player, "not_found");
             return false;
         }
+        ResourceLocation structureId = level.registryAccess().registryOrThrow(Registries.STRUCTURE)
+                .getKey(original.getStructure());
+        if (structureId == null) {
+            tell(player, "unsupported");
+            return false;
+        }
+        long startChunk = ChunkPos.asLong(original.getChunkPos().x, original.getChunkPos().z);
+        StructureRewindCooldownData cooldowns = StructureRewindCooldownData.get(level);
+        long remaining = cooldowns.remaining(structureId, startChunk, level.getGameTime());
+        if (remaining > 0L) {
+            tellCooldown(player, remaining);
+            return false;
+        }
         BoundingBox bounds = original.getBoundingBox();
         if (!level.getWorldBorder().isWithinBounds(new BlockPos(bounds.minX(), pos.getY(), bounds.minZ()))
                 || !level.getWorldBorder().isWithinBounds(new BlockPos(bounds.maxX(), pos.getY(), bounds.maxZ()))) {
             tell(player, "outside_border");
             return false;
         }
+        StructureStart replay;
+        int index;
         try {
             StructurePieceSerializationContext context = StructurePieceSerializationContext.fromLevel(level);
             CompoundTag tag = original.createTag(context, original.getChunkPos());
             resetPlacementState(tag.getList("Children", Tag.TAG_COMPOUND));
-            StructureStart replay = StructureStart.loadStaticStart(context, tag, level.getSeed());
+            replay = StructureStart.loadStaticStart(context, tag, level.getSeed());
             // 部分第三方部件反序列化失败时原版可能静默跳过，禁止执行残缺的任务。
             if (replay == null || !replay.isValid() || replay.getPieces().size() != original.getPieces().size()) {
                 tell(player, "unsupported");
                 return false;
             }
-            int index = decorationIndex(level, original.getStructure());
-            TASKS.put(level.getServer(), new RewindTask(level, replay, bounds, index, player.getUUID(), pos.immutable()));
-            level.playSound(null, pos, SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 0.8F, 1.3F);
-            tell(player, "started");
-            return true;
+            index = decorationIndex(level, original.getStructure());
         } catch (RuntimeException exception) {
             Constants.LOG.error("Failed to prepare structure rewind at {}", pos, exception);
             tell(player, "unsupported");
             return false;
         }
+        cooldowns.start(structureId, startChunk, level.getGameTime(), STRUCTURE_COOLDOWN_TICKS);
+        TASKS.put(level.getServer(), new RewindTask(level, replay, bounds, index, player.getUUID(), pos.immutable()));
+        showPulse(level, pos, 40, 12);
+        level.playSound(null, pos, SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 0.8F, 1.3F);
+        level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 0.6F, 0.7F);
+        // 原版 Nausea 仅提供短暂屏幕扭曲；隐藏状态图标和药水粒子，并遵循客户端扭曲效果设置。
+        player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, VISUAL_DISTORTION_TICKS,
+                0, false, false, false));
+        tell(player, "started");
+        return true;
     }
 
     // 原版按注册顺序在同一个 Decoration 阶段内单独计数，不使用全局 registry ID。
@@ -131,8 +157,11 @@ public final class StructureRewindService {
                 if (player != null) {
                     tell(player, "completed");
                 }
+                showPulse(task.level, task.origin, 56, 20);
                 task.level.playSound(null, task.origin, SoundEvents.RESPAWN_ANCHOR_SET_SPAWN,
                         SoundSource.PLAYERS, 0.8F, 1.5F);
+                task.level.playSound(null, task.origin, SoundEvents.AMETHYST_BLOCK_CHIME,
+                        SoundSource.PLAYERS, 0.7F, 1.6F);
             }
         } catch (RuntimeException exception) {
             TASKS.remove(server);
@@ -152,7 +181,22 @@ public final class StructureRewindService {
         player.displayClientMessage(Component.translatable("message.unsuspiciousblock.rewind_dust." + message), true);
     }
 
-    /** 单个回溯任务持有独立部件副本，不改动存档中的结构起点及引用计数。 */
+    private static void tellCooldown(Player player, long remainingTicks) {
+        long seconds = (remainingTicks + 19L) / 20L;
+        player.displayClientMessage(Component.translatable("message.unsuspiciousblock.rewind_dust.cooldown",
+                seconds / 60L, seconds % 60L), true);
+    }
+
+    // 起止脉冲始终围绕触发点发出，不按结构体积扩张粒子数量。
+    private static void showPulse(ServerLevel level, BlockPos pos, int portalCount, int sparkCount) {
+        double x = pos.getX() + 0.5D;
+        double y = pos.getY() + 0.5D;
+        double z = pos.getZ() + 0.5D;
+        level.sendParticles(ParticleTypes.REVERSE_PORTAL, x, y, z, portalCount, 1.0D, 1.0D, 1.0D, 0.08D);
+        level.sendParticles(ParticleTypes.END_ROD, x, y, z, sparkCount, 0.7D, 0.7D, 0.7D, 0.02D);
+    }
+
+    /*** 单个回溯任务持有独立部件副本，不改动存档中的结构起点及引用计数。 */
     private static final class RewindTask {
         private final ServerLevel level;
         private final StructureStart start;
@@ -208,9 +252,14 @@ public final class StructureRewindService {
             double maxZ = Math.min(bounds.maxZ(), chunk.getMaxBlockZ()) + 1.0;
             double minY = Math.max(bounds.minY(), level.getMinBuildHeight());
             double maxY = Math.min(bounds.maxY() + 1.0, level.getMaxBuildHeight());
-            level.sendParticles(ParticleTypes.REVERSE_PORTAL, (minX + maxX) / 2,
-                    (minY + maxY) / 2, (minZ + maxZ) / 2, 96,
+            double centerX = (minX + maxX) / 2;
+            double centerY = (minY + maxY) / 2;
+            double centerZ = (minZ + maxZ) / 2;
+            level.sendParticles(ParticleTypes.REVERSE_PORTAL, centerX,
+                    centerY, centerZ, 80,
                     (maxX - minX) / 2, (maxY - minY) / 2, (maxZ - minZ) / 2, 0.04);
+            level.sendParticles(ParticleTypes.END_ROD, centerX, centerY, centerZ, 16,
+                    (maxX - minX) / 2, (maxY - minY) / 2, (maxZ - minZ) / 2, 0.01);
         }
     }
 }

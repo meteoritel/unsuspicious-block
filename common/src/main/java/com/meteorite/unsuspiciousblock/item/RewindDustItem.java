@@ -14,7 +14,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-/**
+/***
  * 回溯粉：对结构部件使用后，在原位置逐区块重新放置结构。
  */
 public class RewindDustItem extends Item {
@@ -31,6 +31,9 @@ public class RewindDustItem extends Item {
     public @NotNull InteractionResult useOn(UseOnContext context) {
         Player player = context.getPlayer();
         if (player == null || !player.mayBuild()) {
+            return InteractionResult.FAIL;
+        }
+        if (player.getCooldowns().isOnCooldown(this)) {
             return InteractionResult.FAIL;
         }
         if (!(context.getLevel() instanceof ServerLevel level)) {
