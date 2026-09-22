@@ -4,7 +4,7 @@
 >
 > 完成一项就在其状态列标 `✅`；验证方式写在该项内。
 >
-> **状态（2026-09-21，本轮）**：用户已确认前序实机验收完成；在用户新增树干连线、浮层层高、下拉导航和介绍页上界修复的基础上，补齐 **S2 / S3 / S4**。代码与中英文文案已完成，IDEA 无错误，双平台构建已通过（1m 50s）；本轮新增功能仍待用户实机验收，S5 未实施。
+> **状态（2026-09-22 同步）**：S2 / S3 / S4 于 2026-09-21 落地；**S6**（场景页条件树与网格页头部重做）于 2026-09-22 落地并随提交 `675bafd` 进入 `1.21.1` 分支，S6 的拆点、验证与实施结果记在 `docs/archive/journal-scenario-tree-plan.md`（已随实施完成移入本地归档目录，不入库）。**S5 收尾大部分已完成**（见下方 S5 表），仅剩死资源与脱节脚本清理；本轮新增交互仍待用户实机验收。
 >
 > **贴图决策**：用户明确确认 S4-t 使用 **24×24 九宫格、8px 四角**，同一张贴图用于页内框和放大窗口。
 >
@@ -110,7 +110,7 @@
 | 项 | 内容 |
 |---|---|
 | 交付 | ① 旧 `ScenarioPanel` 的**场景 tab 部分**下线（网格页头部仍由它绘制，含它自己的下拉与计算按钮——见计划 4.4 R7）；② i18n 新增 key 中英同步；③ `docs/dev/client-ui.md`、`docs/dev/network.md` 同步（含 2.9 的文档漂移修正）；④ 清理死资源（`player_inventory.png`、`catalog_entry_pin.png`）与脱节脚本（`generate_toolbar_icons.py`、`generate_journal_icon_atlas.py`）；⑤ 按待决项决定网格页头部下拉的去留（R7） |
-| 状态 | ⬜ |
+| 状态 | ① ✅ 随 S6 落地（`ScenarioPanel` 收缩为网格页头部）；② ✅；③ ✅（`client-ui.md`、`network.md` 已同步）；④ ⬜ 未做（`player_inventory.png`、`catalog_entry_pin.png`、`generate_journal_icon_atlas.py` 仍在；`generate_toolbar_icons.py` 已不存在）；⑤ ✅ 下拉去留由 S6 裁定（网格页头部改用与场景页共享的浮层）。**S5 剩余项：④ 死资源与脱节脚本清理。** |
 
 ---
 

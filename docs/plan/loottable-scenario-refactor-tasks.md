@@ -6,10 +6,10 @@
 >
 > 完成一项就在其标题后追加 `✅` 与提交号；验证方式写在该项内，不再单列。
 >
-> **当前状态（2026-09-21）**：P0 / PERF / P1 / P2 的代码全部在工作区，**均未提交 git**。P1 与 P2 的静态与编译验证已过
-> （IDEA MCP 无报错无警告、`./gradlew build` 通过、`:common:test` 全绿），**实机验收由用户自测中**（清单见 T2）。
-> P2 起 UI 是**临时验收实现**，验收通过后统一重构；`docs/dev/` 的 `client-ui.md` 与网络文档同步留到重构完成一次做。
-> **下一步：前端重构方案探讨（待用户指令后开始）。**
+> **当前状态（2026-09-22 同步）**：**P0 / PERF / P1 / P2 已全部实施并提交**进 `1.21.1` 分支（静态与编译验证已过：IDEA MCP 无报错无警告、`./gradlew build` 通过）。**P3「保真与兼容」未开工**。
+> P2 起的 UI 是当时的**临时验收实现**，已由前端重构（S1–S6）取代：场景页与网格页头部现以 [客户端与 GUI](../dev/client-ui.md) 第 4.4–4.6 节为准，`client-ui.md` 与网络文档已同步，P3-4 的欠账只余 `config-integrations.md`。
+> **实机验收**：P1 / P2 的实测由用户自测中（判据见 T2 与 P2 状态口径）；2026-09-22 的条件树修复另见 [战利品条件树修复计划](loottable-condition-tree-plan.md)。
+> **下一步**：P3 实机验收与剩余文档同步。原列于此处的「前端重构方案探讨」已完成。
 
 ## P0 诚实化与失效链（不依赖 `SimulationInput`，不依赖新协议）
 
@@ -34,7 +34,7 @@
 | PERF-4 | IDEA 检查、双端 build；用户热运行后生成同口径逐表 CPU 对照与最终结论 | ✅ 索引版 build 53s 成功、58 表对照已生成；<100ms 未达标，残余见 PERF-5 |
 | PERF-5 | 复用目录取名预览，避免重复 JSON 解码；依据新实测继续定位 GENERATE 残余热点 | 预览复用已实现、IDEA 无警告，构建及实机收益见性能记录；GENERATE 内部分摊未确认 |
 
-操作与证据：本地观测目录 `docs/plan/loot-performance/`（不入库，见 `.gitignore`）。
+操作与证据：本地观测目录 `docs/archive/loot-performance/`（不入库，随 `docs/archive/` 一并忽略）。
 
 ## P1 模拟输入模型与按需管线
 
@@ -264,14 +264,14 @@
 | P2-6 | 注入边参与父表约束描述（决策 42） | ✅ 代码完成：`constraintTable()` 把注入子树并进父表**约束规划**，`injectionGateEnchantments` 让父表拿到门槛附魔旋钮；泥地打捞专用场景与 `keepBaseTool` 已删除，父表注入物改由参数（附魔等级）驱动发现，注入物自身仍由抽样动态发现 |
 | P2-7 | 客户端偏好的文件实现（决策 29/37） | ✅ 代码完成：`SimulationPreferenceStore` + `IClientSimulationPreference` SPI + 两端实现，properties 原子写；恢复时按当前目录重新校验，不盲信旧 `inputKey` |
 
-**P2 状态口径（2026-09-21）**：上表七项与前面的「P2 后端补丁」都只在**工作区，未提交 git**。
+**P2 状态口径（2026-09-21 记录；2026-09-22 状态同步）**：上表七项与前面的「P2 后端补丁」实施当时只在**工作区，未提交 git**；后续已随 `1.21.1` 分支的提交进入版本库。下表的 UI 描述记录的是**当时的临时验收实现**，现已由前端重构（S1–S6）取代。
 
 - **编译与静态验证已过**：IDEA MCP 检查全部改动文件 0 error / 0 warning；`./gradlew build` `BUILD SUCCESSFUL`，三模块 jar 均重新产出，`:common:test` 6 个用例 `failures=0 errors=0`。
 - **实机验收：用户自测中**。判据沿用 T2 清单，另加两条本批的可观察行为——(a) 同一个"场景+参数"第二次选择时日志不再新增"已完成…输入模拟"且界面立即出数；(b) 模拟失败时界面立即报"模拟失败"而不是等 120 秒超时。
 - **构建环境注意**：本机 Gradle 的 JVM 不走 `http_proxy`，Loom 配置阶段直连 `piston-meta.mojang.com` 会报 `Failed download after 3 attempts`；构建需带
   `-Dorg.gradle.jvmargs="-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890 -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890"`。
-- **前端说明**：P2 的 UI 是**临时验收实现**，确定后统一重构；`docs/dev/` 的 `client-ui.md` 与网络文档同步等重构完成一次做（P3-4 的欠账）。
-- **下一步**：等用户实机验证结论 → 前端重构方案探讨（待用户指令后开始）。
+- **前端说明（当时的欠账，已结清）**：P2 的 UI 是**临时验收实现**，已由前端重构（S1–S6）统一重构；`docs/dev/` 的 `client-ui.md` 与网络文档已同步，`config-integrations.md` 仍待随 P3-4 处理。
+- **下一步**：P3 实机验收与剩余文档同步（`config-integrations.md`）。原列的「前端重构方案探讨」已完成。
 
 ## P3 保真与兼容
 
