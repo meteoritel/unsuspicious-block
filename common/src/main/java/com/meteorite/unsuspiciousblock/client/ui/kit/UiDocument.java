@@ -13,10 +13,16 @@ import java.util.function.Supplier;
 /**
  * 声明式文档：内容版本门控构建，脏标记门控排版，绘制与命中复用同一份几何缓存。
  * 仅在客户端线程使用；视口及鼠标均使用调用方 GUI 坐标，外部 pose 仅支持正向轴对齐缩放和平移。
+ *
+ * <p>排版按**自然尺寸**且不折行；行文本的可用宽度以视口宽度（1 倍档参考）为上限，
+ * 超出部分不参与排版宽度，改为悬停时在带内滚动（见 {@link TextScroll}）。因此平移只在
+ * 图标本身超出可视区时才需要，且平移与缩放都不触发重排。</p>
  */
 public final class UiDocument {
     private static final int PADDING = 2;
     private static final int ICON_GAP = 3;
+    /** 行文本带的最小宽度：图标再多也留出这一截，让超宽文本仍可悬停滚动。 */
+    private static final int MIN_TEXT_BUDGET = 12;
     /** 连线柱到行左边界（即缩进起点）的水平距离。 */
     private static final int BRANCH_GAP = 6;
     private final TextMeasurer measurer;
@@ -26,6 +32,8 @@ public final class UiDocument {
     private List<UiNode> content = List.of();
     private UiRect viewport = new UiRect(0, 0, 0, 0);
     private LayoutBlock[] blocks = new LayoutBlock[0];
+    /** 每个块的下标对应一份滚动计时：悬停且文本超宽时逐帧递增，否则归零。 */
+    private int[] blockTicks = new int[0];
     private boolean dirty = true;
     private boolean versioned;
     private long revision;
@@ -136,6 +144,7 @@ public final class UiDocument {
             }
         }
         blocks = next.toArray(LayoutBlock[]::new);
+        if (blockTicks.length != blocks.length) blockTicks = new int[blocks.length];
         contentWidth = widest;
         contentHeight = y;
         dirty = false;
@@ -179,14 +188,32 @@ public final class UiDocument {
 
     private int rowHeight(UiNode.Row row) {
         int height = measurer.lineHeight();
+        if (row.leading() != null) height = Math.max(height, row.leading().icon().height());
         for (int i = 0; i < row.icons().size(); i++) height = Math.max(height, row.icons().get(i).icon().height());
         return height + PADDING * 2;
     }
 
     private LayoutBlock layoutRow(UiNode.Row row, int index, int y, @Nullable BranchPaint branch) {
         int height = rowHeight(row);
-        int textX = row.indent() + PADDING;
-        int x = textX + measurer.width(row.text());
+        int cursor = row.indent() + PADDING;
+        @Nullable UiIcon leadingIcon = null;
+        @Nullable UiTarget leadingTarget = null;
+        UiNode.InlineIcon leading = row.leading();
+        if (leading != null) {
+            leadingIcon = leading.icon();
+            leadingTarget = new UiTarget(UiTarget.Kind.ICON, index, leading.payload(),
+                    new UiRect(cursor, y + (height - leadingIcon.height()) / 2, leadingIcon.width(), leadingIcon.height()),
+                    leading.tooltip(), leading.action());
+            cursor += leadingIcon.width() + ICON_GAP;
+        }
+        int textX = cursor;
+        int textWidth = measurer.width(row.text());
+        int iconsWidth = 0;
+        for (UiNode.InlineIcon inline : row.icons()) iconsWidth += ICON_GAP + inline.icon().width();
+        // 文本带按视口宽度收敛：超宽文本不再把后续图标挤出视口，而是留在带内、悬停时滚动。
+        int textBudget = Math.max(MIN_TEXT_BUDGET, viewport.width() - textX - iconsWidth - PADDING);
+        int laidOutTextWidth = Math.min(textWidth, textBudget);
+        int x = textX + laidOutTextWidth;
         UiTarget[] iconTargets = new UiTarget[row.icons().size()];
         UiIcon[] icons = new UiIcon[iconTargets.length];
         for (int i = 0; i < icons.length; i++) {
@@ -202,14 +229,23 @@ public final class UiDocument {
         UiRect rect = new UiRect(row.indent(), y, x + PADDING - row.indent(), height);
         UiTarget target = new UiTarget(UiTarget.Kind.ROW, index, row.payload(), rect, row.tooltip(), row.action());
         RowPaint paint = new RowPaint(row.text().getVisualOrderText(), row.color(), textX,
-                y + (height - measurer.lineHeight()) / 2, target, icons, iconTargets, branch);
+                y + (height - measurer.lineHeight()) / 2, textWidth, textBudget,
+                leadingIcon, leadingTarget, target, icons, iconTargets, branch);
         return new LayoutBlock(rect, paint, 0, null);
     }
 
+    /** 无鼠标位置的绘制：等价于整篇都不悬停，长文本不滚动。 */
     public void render(GuiGraphics graphics, Font font) {
+        render(graphics, font, Double.NaN, Double.NaN);
+    }
+
+    public void render(GuiGraphics graphics, Font font, double mouseX, double mouseY) {
         layout();
         long start = metrics.start();
         if (viewport.width() > 0 && viewport.height() > 0) {
+            boolean hovering = viewport.contains(mouseX, mouseY);
+            double localX = transform.toLocalX(mouseX);
+            double localY = transform.toLocalY(mouseY);
             UiTransform.enableScissor(graphics, viewport);
             transform.push(graphics);
             try {
@@ -223,8 +259,12 @@ public final class UiDocument {
                     LayoutBlock block = blocks[i];
                     if (block.rect().y() >= bottom) break;
                     if (block.rect().right() <= left || block.rect().x() >= right) continue;
-                    if (block.row() != null) renderRow(graphics, font, block.row(), left, top, right, bottom, thickness);
-                    else if (block.frame() != null) block.frame().render(graphics, font);
+                    if (block.row() != null) {
+                        boolean hovered = hovering && block.rect().contains(localX, localY);
+                        int ticks = hovered ? blockTicks[i] + 1 : 0;
+                        blockTicks[i] = ticks;
+                        renderRow(graphics, font, block.row(), left, top, right, bottom, thickness, hovered, ticks);
+                    } else if (block.frame() != null) block.frame().render(graphics, font);
                     else graphics.fill(block.rect().x(), block.rect().y(), block.rect().right(),
                                 block.rect().bottom(), block.dividerColor());
                 }
@@ -238,9 +278,18 @@ public final class UiDocument {
     }
 
     private void renderRow(GuiGraphics graphics, Font font, RowPaint row,
-                           double left, double top, double right, double bottom, int thickness) {
+                           double left, double top, double right, double bottom, int thickness,
+                           boolean hovered, int ticks) {
         if (row.branch() != null) renderBranch(graphics, row.branch(), thickness);
-        graphics.drawString(font, row.text(), row.textX(), row.textY(), row.color(), false);
+        UiTarget leading = row.leadingTarget();
+        if (row.leading() != null && leading != null) {
+            UiRect rect = leading.rect();
+            if (rect.right() > left && rect.x() < right && rect.bottom() > top && rect.y() < bottom) {
+                row.leading().render(graphics, rect.x(), rect.y());
+            }
+        }
+        TextScroll.draw(graphics, font, row.text(), row.textWidth(), row.textX(), row.textY(),
+                row.textBand(), row.color(), hovered, ticks);
         for (int i = 0; i < row.icons().length; i++) {
             UiRect rect = row.iconTargets()[i].rect();
             if (rect.right() > left && rect.x() < right && rect.bottom() > top && rect.y() < bottom) {
@@ -283,6 +332,7 @@ public final class UiDocument {
         if (block.frame() != null) return block.frame().hit(x, y);
         RowPaint row = block.row();
         if (row == null) return null;
+        if (row.leadingTarget() != null && row.leadingTarget().rect().contains(x, y)) return row.leadingTarget();
         for (int i = 0; i < row.iconTargets().length; i++) {
             if (row.iconTargets()[i].rect().contains(x, y)) return row.iconTargets()[i];
         }
@@ -307,6 +357,7 @@ public final class UiDocument {
 
     /** 行绘制数据与命中目标共用自然坐标，避免缩放时重建矩形。 */
     private record RowPaint(FormattedCharSequence text, int color, int textX, int textY,
+                            int textWidth, int textBand, @Nullable UiIcon leading, @Nullable UiTarget leadingTarget,
                             UiTarget target, UiIcon[] icons, UiTarget[] iconTargets,
                             @Nullable BranchPaint branch) {}
 

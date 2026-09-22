@@ -117,7 +117,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     }
 
     @Nullable CatalogTableDto structure() { return table == null ? null : ScenarioSimulationClientState.table(table); }
-    @Nullable ResourceLocation table() { return table; }
     @Nullable SimulationPreferenceStore.Selection selection() {
         return table == null ? null : ScenarioSimulationClientState.selection(table);
     }
@@ -181,16 +180,21 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             title.configure(font, ScenarioSimulationClientState.text("unavailable"), UiTextPalette.Parchment.LABEL, null, List.of(), null);
         } else {
             ScenarioPresentation presentation = ScenarioPresentation.resolve(table, selection.scene(), selection.params());
-            tree = ScenarioPageBuilder.buildTree(structure, selection.scene(), presentation);
-            title.configure(font, ScenarioPageBuilder.title(structure.options(), selection.scene()), UiTextPalette.Parchment.TITLE,
-                    null, ScenarioPageBuilder.titleTooltip(structure.options(), selection.scene()), null);
+            tree = ScenarioPageBuilder.buildContent(structure, selection.scene(), presentation);
+            List<Component> titleTooltip = new ArrayList<>(ScenarioLabel.definition(structure.options(), selection.scene()));
+            titleTooltip.add(ScenarioSimulationClientState.text(presentation.status()));
+            title.configure(font, ScenarioLabel.label(structure.options(), selection.scene()), UiTextPalette.Parchment.TITLE,
+                    null, titleTooltip, null);
             List<Component> statusTooltip = new ArrayList<>();
             statusTooltip.add(ScenarioSimulationClientState.text(presentation.status()));
             if (presentation.status().equals("failed")) statusTooltip.add(ScenarioSimulationClientState.text(
                     "failure." + ScenarioSimulationClientState.failure(table, input)));
             status.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, presentation.badge(), statusTooltip, null);
+            ResourceLocation currentTable = table;
             scenesButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, icon(1, 0),
-                    List.of(ScenarioSimulationClientState.text("scene.toggle")), () -> overlays.open(new ScenarioSelectionOverlay(overlays, this)));
+                    List.of(ScenarioSimulationClientState.text("scene.toggle")),
+                    () -> overlays.open(new ScenarioSelectionOverlay(overlays, dropdownX(), dropdownY(), currentTable,
+                            structure.options(), selection.params(), getPage(), this::setPage)));
             expandButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, icon(1, 2),
                     List.of(ScenarioSimulationClientState.text("frame.expand")), () -> {
                         if (frame != null) overlays.open(new ScenarioExpandedOverlay(overlays, this, font, frame.state()));

@@ -153,14 +153,17 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
 
 | 类型 | 契约 |
 |---|---|
-| `UiNode.Row` | 缩进单位为内容像素，文字后跟 `List<InlineIcon>`；文字与图标各自保存 tooltip、载荷、动作；行宽为自然宽度 |
+| `UiNode.Row` | 缩进单位为内容像素；可选**行首图标**（`leading`，物品清单每行「图标 + 名称」用它），文字后跟 `List<InlineIcon>`；文字与图标各自保存 tooltip、载荷、动作 |
 | `UiNode.Gap` / `Divider` | 固定空白 / 跟随视口宽度的单像素分隔线 |
 | `UiNode.Frame` / `FrameSpec` | 固定大小的子视口；只允许一层，禁止 Frame 内再嵌套 Frame；边框与浮动控件由宿主绘制 |
 | `UiIcon.Item` / `Sprite` | 原版 16×16 物品 / 显式指定图集尺寸的原生大小贴图区域 |
-| `TextMeasurer` | 注入宽度和行高；`TextMeasurer.of(font)` 提供原版适配；首版不折行、不截断 |
+| `TextScroll` | 超宽文本的唯一实现：宽度够则照常画，超宽且悬停时按「起点停顿—连续位移—终点停顿—往返」滚动；`support/ScrollTextHelper` 是它的 `String` 门面 |
+| `TextMeasurer` | 注入宽度和行高；`TextMeasurer.of(font)` 提供原版适配；不折行 |
 | `UiTarget` | `hit()` 返回的唯一目标；图标优先于行，空图标提示也不会回退到行提示；矩形属于命中文档的内容坐标系 |
 | `UiTransform` | 内容原点、平移、缩放及双向坐标转换；档位 0.5/1/2/3，鼠标锚点缩放 |
 | `UiMetrics` | 构建/排版/渲染/命中最近一次耗时（ns）与调用次数；生产宿主传 `false` 关闭计时 |
+
+**行文本的宽度口径**：排版按自然尺寸不折行，但行文本的可用宽度以视口宽度（1 倍档参考）为上限——超出的部分不参与排版宽度，因此不会再被静默裁掉、也不会把后续图标挤出视口；它在**悬停时于带内滚动**（`render(graphics, font, mouseX, mouseY)` 逐行判悬停并自持滚动计时，旧的无鼠标重载等价于整篇不悬停）。`UiControl` 的标签同一口径：宽度足够时行为与过去逐像素一致，只有确实超宽才滚动。
 
 数据流为 `业务版本 + 构建器 → UiDocument.setContent → layout → render / hit`。`setContent(revision, supplier)` 只在版本变化时执行构建器；传入列表的重载每次都会更新。业务方应持有稳定构建器、为所有影响内容的输入维护版本，不应在逐帧路径创建节点、列表或 lambda。节点及其 Component 快照交给文档后按只读使用。
 
@@ -183,21 +186,32 @@ document.setContent(List.of(new UiNode.Row(
 
 **S1 临时验证页**：Fabric / NeoForge 的 Gradle 客户端运行配置已默认添加 `-Dunsuspiciousblock.uiKitDebug=true`；IDEA 刷新 Gradle 后运行对应 `runClient`，打开笔记后按 `Ctrl+F8`。`UiKitDebugScreen` 包含 200 行、40 个物品图标和 20 个贴图图标，支持拖动、滚轮缩放、复位，以及 `P` 切换外层 pose 1x/2x。底部依次显示构建/排版次数、四段耗时（微秒）、内容缩放、外层缩放；每 5 秒在日志输出 ns 计时。拖动/滚轮/复位时排版次数应保持不变；`P` 和 resize 允许因视口改变重排。正式发布环境或未启用开关时无法进入。S1-t 双平台验收后删除此临时类、笔记快捷入口和 `ui_kit_debug.*` 本地化键。
 
-**S0 旧页修复**：场景下拉展开时，普通物品与导航条目 tooltip 同样被屏蔽，屏幕消费滚轮防止翻页。幸运值输入框由屏幕转发拖动/释放；面板复用 `EditBox.onClick` 定位字符并保留选区锚点，补齐原版单行框缺失的拖选行为。参数确认和新浮层已在 S3 接入，自动计算已取消，见第 4.5 节。
+**S0 旧页修复**：下拉展开时，普通物品与导航条目 tooltip 同样被屏蔽，屏幕消费滚轮防止翻页。参数确认和新浮层已在 S3 接入，自动计算已取消，见第 4.5 节。S3 之后旧网格面板的参数行（含幸运值输入框）已无调用点，S6 连同它的自绘下拉一起删除：模态期间的下层屏蔽现由 `OverlayLayer` 统一负责（屏幕在浮层打开时跳过下层 tooltip 渲染并屏蔽原生控件悬停）。
 
-### 4.5 场景详情页与模态交互（S2–S4）
+### 4.5 场景详情页与模态交互（S2–S6）
 
-`RightPageContainer.setTable` 同时向旧网格头部与 `ScenarioDetailPanel` 传递 tableId，SCENARIO tab 由新面板负责。页内布局是读数行 y=6、动作行 y=18、框 y=34（152×166），底部分页带仍由原生控件负责。各 tab 的分页带常量彼此独立，`pageIndicatorY()` 统一提供当前页指示器及按钮位置。
+`RightPageContainer.setTable` 同时向网格页头部与 `ScenarioDetailPanel` 传递 tableId，SCENARIO tab 由新面板负责。页内布局是读数行 y=6、动作行 y=18、框 y=34（152×166），底部分页带仍由原生控件负责。各 tab 的分页带常量彼此独立，`pageIndicatorY()` 统一提供当前页指示器及按钮位置。
 
-`ScenarioPageBuilder` 仅在内容 revision 或请求状态改变时重新构建：读取 `SimulationOptions.scenes()` 的签发顺序，以场景条件指纹匹配物品路径；每层条件均可包含多个图标，根、子行及树枝全部保持自然尺寸，不折行不截断。没有正条件的场景显示「无额外条件」与物品图标。未计算输入只显示未计算；`ScenarioPresentation` 只复用同参数、同抽样档位的明确场景引用，绝不把目录的基准总概率当作其它场景的概率。当前输入的直接结果可使用其总概率作为缺失场景引用的回退。
+**框内两段**：`ScenarioPageBuilder` 只在内容 revision 或请求状态改变时重建，产出「条件区 + 可达条目区」两段块序列。
 
-读数行、标题提示、四态角标、动作行和框角控件均使用 `UiControl`：配置时测量并缓存目标，绘制时复用固定矩形；标题过长时视觉裁剪，完整条件在 tooltip。树内命中仍走 `UiDocument.hit()`。`ScenarioFrameView` 统一提供页内和放大框的绘制与交互：框角档位/复位先于树命中，缩放档位 0.5/1/2/3，滚轮以鼠标位置为锚点，拖拽只改平移，二者均不重排。
+- **条件区**：只列场景相对基准**成立**的条件（为假的合成 `inverted` 包装是基准本身，列出来只会多出整屏恒否的行）。区标题三态——表本身没有可调条件用 `no_assumptions`；基准用 `baseline_all_false`（带数量，tooltip 逐个列出被置假的条件，这是「基准」唯一的可读定义）；其余场景用 `scene_conditions`。
+- **折叠**：`ScenarioLabel` 把「父行只描述条件类别、且恰好一个子行」的节点折叠为其子行（如 `location_check{biomes}` → 「群系: X」），取值因此与条件同行。判定按本地化键后缀（`location_check` / `weather_check` / `damage_source_properties` / `all_of` / `any_of`），**不含**自带取值的 `block_state_property`、`time_check` 区间行与自带语义的 `inverted`；多子行保留分组。
+- **可达条目区**：列出本场景**确实能产出**的条目（`isMeasured()` 且非零命中，按概率降序，上限 12，其余提示见网格页），每行是「行首物品图标 + 名称 + 概率」。不可达、未命中与未知的条目留给网格页的四态展示。未算出时头部显示状态词与「点计算」提示。
+- **数字不再挂在条件行上**：同一物品在多条条件下会重复出现，挂数字极易被读成「每行各一份」，因此条件行只负责说清场景定义。
+
+`ScenarioPresentation` 只复用同参数、同抽样档位的明确场景引用，绝不把目录的基准总概率当作其它场景的概率；当前输入的直接结果可用其总概率作为缺失场景引用的回退。
+
+**场景可读名**：`ScenarioLabel.label` 由叶子条件的本地化全文拼出（「场景 N · 开阔水域 + 群系: #cis_swamp」），页标题与两处场景列表共用同一份文案；`definition` 提供完整定义（含取反叶子的「非:」前缀）供 tooltip 使用。此前作为标题的字母助记公式已删除——它既需要一份额外的键后缀契约，又只能靠 tooltip 解码。
+
+读数行、标题提示、四态角标、动作行和框角控件均使用 `UiControl`：配置时测量并缓存目标，绘制时复用固定矩形；**超宽文本在悬停时滚动**，不再静默截断。树内命中仍走 `UiDocument.hit()`。`ScenarioFrameView` 统一提供页内和放大框的绘制与交互：框角档位/复位先于树命中，缩放档位 0.5/1/2/3，滚轮以鼠标位置为锚点，拖拽只改平移，二者均不重排。
 
 `OverlayLayer` 同时只打开一个模态，六类输入入口均先分发给它，并保留先 flush 再 z=400 的层高契约。模态期间屏幕抑制下层自绘 tooltip、原生控件悬停和 JEI 悬停物品查询。三个使用者是：
 
-- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/外部点击关闭。选中状态和屏幕页码共用 `ScenarioSimulationClientState`。
+- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
 - `ScenarioParamsOverlay`：独立草稿、确认/取消；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 EditBox，支持拖选；参数多时滚动。确认再次使用最新目录校验，不自动计算；ESC 取消，点外不关闭。
 - `ScenarioExpandedOverlay`：居中遮罩窗口，复制页内视图到独立 `ScenarioFrameView`，复用相同交互；关闭时丢弃窗口临时平移/缩放，因此页内视图保持打开前状态。关闭按钮与框角控件均置于物品之上。
+
+**网格页头部**（`ScenarioPanel`）只剩读数行与「切换场景 / 计算」两个动作，文字超宽时悬停滚动；旧面板的参数行、幸运值输入框与其自绘下拉已随 S6 一并删除（自 S2 起它们已无调用点）。网格页调整参数需到场景页打开参数浮层。
 
 测量只能由显式计算按钮发起。旧网格头部的防抖自动请求已去除，应用推荐只改变选择。未新增网络包；仍复用既有请求/结果协议。
 

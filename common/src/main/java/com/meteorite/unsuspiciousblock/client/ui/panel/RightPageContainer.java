@@ -1,8 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
@@ -51,12 +54,15 @@ public final class RightPageContainer {
     private LogMode logMode = LogMode.LIST;
     @Nullable
     private UUID selectedLogEntryId;
+    private final com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer overlays;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout,
                               com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer overlays,
                               UiPanelRegistry panels) {
         this.layout = layout;
-        this.scenarioPanel = new ScenarioPanel(layout, () -> setActiveTab(Tab.ARCHAEOLOGY));
+        this.overlays = overlays;
+        this.scenarioPanel = new ScenarioPanel(layout);
+        this.scenarioPanel.setOpenScenes(this::openSceneOverlay);
         this.scenarioDetailPanel = panels.register("scenario", new ScenarioDetailPanel(layout, overlays));
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
@@ -145,19 +151,14 @@ public final class RightPageContainer {
     }
 
     public BookmarkToggleButton getScenarioTabButton() { return scenarioTabBtn; }
-    public ScenarioPanel getScenarioPanel() { return scenarioPanel; }
 
-    // 拖动与释放：场景页交给详情面板平移框内内容，其它页仍交给旧面板（网格页的幸运值框需要拖选）
+    // 拖动与释放只服务场景页的框内平移；网格页的头部不再有原生输入框。
     public boolean handleDrag(double mouseX, double mouseY, int button) {
-        return activeTab == Tab.SCENARIO
-                ? scenarioDetailPanel.mouseDragged(mouseX, mouseY, button)
-                : scenarioPanel.mouseDragged(mouseX, mouseY, button);
+        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseDragged(mouseX, mouseY, button);
     }
 
-    public boolean handleRelease(double mouseX, double mouseY, int button) {
-        return activeTab == Tab.SCENARIO
-                ? scenarioDetailPanel.mouseReleased(button)
-                : scenarioPanel.mouseReleased(mouseX, mouseY, button);
+    public boolean handleRelease(int button) {
+        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseReleased(button);
     }
 
     public BookmarkToggleButton getIntroTabButton() {
@@ -210,8 +211,8 @@ public final class RightPageContainer {
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseClicked(mouseX, mouseY, button)) return true;
-        // 旧面板只在网格页接收点击：那里的下拉与计算按钮仍由它处理，幸运值框在该页本就不可编辑
-        if (activeTab == Tab.ARCHAEOLOGY && scenarioPanel.click(mouseX, mouseY, button, false)) return true;
+        // 网格页头部：切换场景与计算按钮（头部没有原生输入框，参数在场景页的参数浮层里调整）
+        if (activeTab == Tab.ARCHAEOLOGY && scenarioPanel.click(mouseX, mouseY, button)) return true;
         if (this.scenarioTabBtn.isMouseOver(mouseX, mouseY)) {
             this.scenarioTabBtn.mouseClicked(mouseX, mouseY, button);
             return true;
@@ -239,7 +240,6 @@ public final class RightPageContainer {
                     com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState
                             .requestAssist(currentTableId, target);
                     setActiveTab(Tab.SCENARIO);
-                    scenarioPanel.setPage(0);
                     return true;
                 }
             }
@@ -383,6 +383,26 @@ public final class RightPageContainer {
         return this.selectedLogEntryId;
     }
 
+    // 网格页的「切换场景」与场景页的「场景」按钮打开同一套浮层；这里只切换选择（网格数字随之更新），
+    // 不跳页也不改参数。缺数据时静默不开，避免空浮层。
+    private void openSceneOverlay() {
+        if (currentTableId == null) return;
+        CatalogTableDto dto = ScenarioSimulationClientState.table(currentTableId);
+        var selection = ScenarioSimulationClientState.selection(currentTableId);
+        if (dto == null || dto.options() == null || selection == null) return;
+        SimulationOptions options = dto.options();
+        List<CatalogTableDto.ScenarioAssumptions> scenes = options.scenes();
+        if (scenes.isEmpty()) return;
+        int current = 0;
+        for (int i = 0; i < scenes.size(); i++) {
+            if (scenes.get(i).scenarioKey().equals(selection.scene())) current = i;
+        }
+        ResourceLocation table = currentTableId;
+        overlays.open(new ScenarioSelectionOverlay(overlays, scenarioPanel.overlayX(), scenarioPanel.overlayY(),
+                table, options, selection.params(), current,
+                index -> ScenarioSimulationClientState.select(table, scenes.get(index).scenarioKey(), selection.params())));
+    }
+
     private void syncPageIndicator() {
         this.pageIndicator.setTextY(pageIndicatorY());
         PagePanel panel = activePanel();
@@ -395,7 +415,7 @@ public final class RightPageContainer {
             ItemStack stack = this.detailPanel.getHoveredItemStack(mouseX, mouseY).orElse(ItemStack.EMPTY);
             return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
         }
-        if (this.activeTab == Tab.ARCHAEOLOGY && !scenarioPanel.dropdownOpen()) {
+        if (this.activeTab == Tab.ARCHAEOLOGY) {
             return this.gridPanel.getTooltipData(mouseX, mouseY);
         }
         if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
@@ -407,11 +427,11 @@ public final class RightPageContainer {
 
     // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮、返回按钮、详情页复制按钮），需在 super.render 之后调用
     public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        if (this.activeTab == Tab.ARCHAEOLOGY && !scenarioPanel.tooltip().isEmpty()) {
+            guiGraphics.renderComponentTooltip(font, scenarioPanel.tooltip(), mouseX, mouseY);
+        }
         if (activeTab == Tab.ARCHAEOLOGY) {
-            scenarioPanel.renderOverlay(guiGraphics, font, mouseX, mouseY);
-            if (!scenarioPanel.dropdownOpen()) {
-                this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
-            }
+            this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
         } else if (activeTab == Tab.SCENARIO) {
             // 场景页的悬停提示与命中共用同一次命中结果，不存在第二条 tooltip 路径
             this.scenarioDetailPanel.renderTooltip(guiGraphics, font, mouseX, mouseY);

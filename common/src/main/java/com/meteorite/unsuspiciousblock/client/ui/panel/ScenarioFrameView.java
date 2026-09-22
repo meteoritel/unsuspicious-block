@@ -50,7 +50,7 @@ final class ScenarioFrameView {
 
     void render(GuiGraphics graphics, int mouseX, int mouseY) {
         BORDER.render(graphics, bounds);
-        document.render(graphics, font);
+        document.render(graphics, font, mouseX, mouseY);
         if (displayedZoom != transform.zoomIndex()) {
             displayedZoom = transform.zoomIndex();
             Component label = ScenarioSimulationClientState.text("frame.zoom", (int) (transform.scale() * 100));

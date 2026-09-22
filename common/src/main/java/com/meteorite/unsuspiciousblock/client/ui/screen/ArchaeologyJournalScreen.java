@@ -203,10 +203,6 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         // 浮层优先：ESC 该关浮层而不是整本书
         if (this.overlays.keyPressed(keyCode, scanCode, modifiers)) return true;
-        if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
-                && this.rightPage.getScenarioPanel().focused() && keyCode != GLFW.GLFW_KEY_ESCAPE) {
-            return this.rightPage.getScenarioPanel().keyPressed(keyCode, scanCode, modifiers);
-        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
@@ -226,9 +222,6 @@ public class ArchaeologyJournalScreen extends Screen {
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
         if (this.overlays.charTyped(codePoint, modifiers)) return true;
-        if (this.rightPage != null && this.rightPage.getActiveTab() == RightPageContainer.Tab.SCENARIO
-                && this.rightPage.getScenarioPanel().focused())
-            return this.rightPage.getScenarioPanel().charTyped(codePoint, modifiers);
         return super.charTyped(codePoint, modifiers);
     }
 
@@ -576,10 +569,6 @@ public class ArchaeologyJournalScreen extends Screen {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
         if (this.overlays.mouseScrolled(mouseX, mouseY, scrollY)) return true;
-        if (hasSelectedTable() && this.rightPage.getActiveTab() == RightPageContainer.Tab.ARCHAEOLOGY
-                && this.rightPage.getScenarioPanel().dropdownOpen()) {
-            return true;
-        }
         if (this.catalogPanel != null && this.catalogPanel.containsMouse(mouseX, mouseY)) {
             this.catalogPanel.scrollByRows(scrollY < 0.0 ? 2 : -2);
             return true;
@@ -602,8 +591,7 @@ public class ArchaeologyJournalScreen extends Screen {
         if (this.catalogPanel != null) {
             this.catalogPanel.endScrollbarDrag();
         }
-        boolean scenarioReleased = this.rightPage != null && this.rightPage.handleRelease(
-                this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button);
+        boolean scenarioReleased = this.rightPage != null && this.rightPage.handleRelease(button);
         if (scenarioReleased) {
             this.setDragging(false);
             return true;

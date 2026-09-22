@@ -6,34 +6,64 @@ import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationInput;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.IntConsumer;
 
-/** 场景跳转浮层：按服务端签发顺序列出场景，与页码共用同一选择。 */
+/**
+ * 场景跳转浮层：按服务端签发顺序列出场景，与页码共用同一选择。
+ *
+ * <p>只吃数据与一个回调，因此场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现——
+ * 前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新）。</p>
+ */
 final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
     private static final int ROWS = 7;
+    private static final int ROW_HEIGHT = 20;
     private final OverlayLayer layer;
-    private final ScenarioDetailPanel owner;
+    private final int anchorX;
+    private final int anchorY;
+    private final ResourceLocation table;
+    private final SimulationOptions options;
+    private final List<CatalogTableDto.ScenarioAssumptions> scenes;
+    private final ScenarioParams params;
+    private final IntConsumer onSelect;
     private final List<UiControl> controls = new ArrayList<>();
     private UiRect bounds = new UiRect(0, 0, 1, 1);
     private int first;
+    private int current;
     private long revision = Long.MIN_VALUE;
     private long second = -1;
     private boolean dirty = true;
 
-    ScenarioSelectionOverlay(OverlayLayer layer, ScenarioDetailPanel owner) {
+    ScenarioSelectionOverlay(OverlayLayer layer, int anchorX, int anchorY, ResourceLocation table,
+                             SimulationOptions options, ScenarioParams params, int currentIndex,
+                             IntConsumer onSelect) {
         this.layer = layer;
-        this.owner = owner;
-        first = Math.max(0, owner.getPage() - ROWS / 2);
+        this.anchorX = anchorX;
+        this.anchorY = anchorY;
+        this.table = table;
+        this.options = options;
+        this.scenes = options.scenes();
+        this.params = params;
+        this.current = currentIndex;
+        this.onSelect = onSelect;
+        this.first = Math.max(0, currentIndex - ROWS / 2);
     }
 
     private void sync(Font font) {
@@ -41,37 +71,34 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         long nextSecond = System.currentTimeMillis() / 1000;
         if (!dirty && revision == nextRevision && second == nextSecond) return;
         dirty = false; revision = nextRevision; second = nextSecond;
-        var structure = owner.structure();
-        var selection = owner.selection();
         controls.clear();
-        if (structure == null || structure.options() == null || selection == null || owner.table() == null) {
+        if (scenes.isEmpty()) {
             layer.close();
             return;
         }
-        var scenes = owner.scenes();
         int count = Math.min(ROWS, scenes.size());
         first = Math.clamp(first, 0, Math.max(0, scenes.size() - count));
         int width = 152;
-        int height = count * 20 + 20;
-        bounds = new UiRect(Math.clamp(owner.dropdownX(), 2, Math.max(2, layer.width() - width - 2)),
-                Math.clamp(owner.dropdownY(), 2, Math.max(2, layer.height() - height - 2)), width, height);
+        int height = count * ROW_HEIGHT + ROW_HEIGHT;
+        bounds = new UiRect(Math.clamp(anchorX, 2, Math.max(2, layer.width() - width - 2)),
+                Math.clamp(anchorY, 2, Math.max(2, layer.height() - height - 2)), width, height);
         for (int i = 0; i < count; i++) {
             int index = first + i;
-            var scene = scenes.get(index);
-            var presentation = ScenarioPresentation.resolve(owner.table(), scene.scenarioKey(), selection.params());
-            Component label = ScenarioPageBuilder.title(structure.options(), scene.scenarioKey());
-            if (scene.scenarioKey().equals(selection.scene())) label = label.copy().withStyle(ChatFormatting.BOLD);
-            List<Component> tooltip = new ArrayList<>(ScenarioPageBuilder.titleTooltip(structure.options(), scene.scenarioKey()));
+            String sceneKey = scenes.get(index).scenarioKey();
+            ScenarioPresentation presentation = ScenarioPresentation.resolve(table, sceneKey, params);
+            Component label = ScenarioLabel.label(options, sceneKey);
+            if (index == current) label = label.copy().withStyle(ChatFormatting.BOLD);
+            List<Component> tooltip = new ArrayList<>(ScenarioLabel.definition(options, sceneKey));
             tooltip.add(ScenarioSimulationClientState.text(presentation.status()));
             if (presentation.status().equals("failed")) {
-                String input = new com.meteorite.unsuspiciousblock.loottable.simulation.SimulationInput(
-                        scene.scenarioKey(), java.util.Map.of(), selection.params()).key();
-                tooltip.add(ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(owner.table(), input)));
+                String input = new SimulationInput(sceneKey, Map.of(), params).key();
+                tooltip.add(ScenarioSimulationClientState.text(
+                        "failure." + ScenarioSimulationClientState.failure(table, input)));
             }
             UiControl row = new UiControl();
-            row.setBounds(bounds.x() + 2, bounds.y() + 2 + i * 20, width - 4, 18);
+            row.setBounds(bounds.x() + 2, bounds.y() + 2 + i * ROW_HEIGHT, width - 4, ROW_HEIGHT - 2);
             row.configure(font, label, UiTextPalette.Parchment.BODY, presentation.badge(), tooltip,
-                    () -> { owner.setPage(index); layer.close(); });
+                    () -> select(index));
             controls.add(row);
         }
         addPageControl(font, "◀", bounds.x() + 2, -ROWS);
@@ -85,6 +112,13 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
                 List.of(ScenarioSimulationClientState.text(delta < 0 ? "scene.previous" : "more")),
                 () -> { first += delta; dirty = true; });
         controls.add(control);
+    }
+
+    private void select(int index) {
+        if (index < 0 || index >= scenes.size()) return;
+        current = index;
+        onSelect.accept(index);
+        layer.close();
     }
 
     @Override public void render(GuiGraphics graphics, Font font, int x, int y, float partialTick) {
@@ -120,8 +154,10 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_ENTER) layer.close();
         else if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {
-            owner.changePage(key == GLFW.GLFW_KEY_DOWN ? 1 : -1);
-            first = Math.max(0, owner.getPage() - ROWS / 2);
+            int index = Math.clamp(current + (key == GLFW.GLFW_KEY_DOWN ? 1 : -1), 0, scenes.size() - 1);
+            current = index;
+            onSelect.accept(index);
+            first = Math.max(0, index - ROWS / 2);
             dirty = true;
         }
         return true;
