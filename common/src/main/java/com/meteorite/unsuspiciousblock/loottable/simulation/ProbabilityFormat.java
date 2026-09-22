@@ -66,8 +66,9 @@ public final class ProbabilityFormat {
         return switch (probability) {
             case Probability.Unknown ignored -> Component.translatable(KEY_PREFIX + "probability_question");
             case Probability.Unreachable ignored -> Component.literal("0%");
-            case Probability.NeedsCondition ignored ->
-                    Component.translatable(KEY_PREFIX + "probability_needs_condition");
+            case Probability.NeedsCondition needsCondition -> Component.translatable(KEY_PREFIX
+                    + (hasUnresolvedConditions(needsCondition.hints())
+                    ? "probability_unresolved_condition" : "probability_needs_condition"));
             // 单值零命中在这里被替换成「未命中」，避免把抽样事实写成 0%
             case Probability.Measured measured -> measured.upper().isPresent()
                     ? Component.literal(formatBound(measured.lower()) + "-"
@@ -124,9 +125,17 @@ public final class ProbabilityFormat {
                 case PathHint.ReferencesScenario scenario ->
                         lines.add(Component.translatable(KEY_PREFIX + "path_hint.scenario",
                                 joinConditionDescriptions(scenario)));
+                case PathHint.UnresolvedConditions unresolved ->
+                        lines.add(Component.translatable(KEY_PREFIX + "path_hint.unresolved",
+                                joinDescriptions(unresolved.conditions())));
             }
         }
         return List.copyOf(lines);
+    }
+
+    /** 未读到的条件可能影响抽样，但不能据此断言它必然阻止掉落。 */
+    public static boolean hasUnresolvedConditions(List<PathHint> hints) {
+        return hints.stream().anyMatch(PathHint.UnresolvedConditions.class::isInstance);
     }
 
     private static Component describeParameterReference(PathHint.ReferencesParameter parameter) {
@@ -159,8 +168,11 @@ public final class ProbabilityFormat {
 
     // 场景条件逐条列出，用与条件树相同的分隔符拼接；保留条件本身的保真度标记不动
     private static Component joinConditionDescriptions(PathHint.ReferencesScenario scenario) {
+        return joinDescriptions(scenario.conditions());
+    }
+
+    private static Component joinDescriptions(List<LootConditionInfo> conditions) {
         var result = Component.empty();
-        List<LootConditionInfo> conditions = scenario.conditions();
         for (int index = 0; index < conditions.size(); index++) {
             if (index > 0) {
                 result.append(Component.translatable(KEY_PREFIX + "item_hint.separator"));

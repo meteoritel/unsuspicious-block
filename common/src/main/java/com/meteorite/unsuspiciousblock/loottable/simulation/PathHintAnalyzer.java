@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.ParameterKind;
@@ -144,6 +145,7 @@ public final class PathHintAnalyzer {
     public static List<PathHint> hintsFor(List<LootAcquisitionPath> paths) {
         Map<ParameterKind, Map<String, Component>> parameterDetails = new EnumMap<>(ParameterKind.class);
         LinkedHashMap<String, LootConditionInfo> scenarioConditions = new LinkedHashMap<>();
+        LinkedHashMap<String, LootConditionInfo> unresolvedConditions = new LinkedHashMap<>();
         LinkedHashMap<String, Component> luckDetails = new LinkedHashMap<>();
         boolean luckReferenced = false;
 
@@ -154,10 +156,11 @@ public final class PathHintAnalyzer {
                 luckDetails.putIfAbsent(luckDetail.getString(), luckDetail);
             }
             for (LootConditionInfo condition : path.allConditions()) {
-                collect(condition, parameterDetails, scenarioConditions);
+                collect(condition, parameterDetails, scenarioConditions, unresolvedConditions);
             }
         }
-        return assembleHints(luckDetails, luckReferenced, parameterDetails, scenarioConditions);
+        return assembleHints(luckDetails, luckReferenced, parameterDetails, scenarioConditions,
+                unresolvedConditions);
     }
 
     /**
@@ -170,16 +173,19 @@ public final class PathHintAnalyzer {
     public static List<PathHint> hintsForConditions(List<LootConditionInfo> conditions) {
         Map<ParameterKind, Map<String, Component>> parameterDetails = new EnumMap<>(ParameterKind.class);
         LinkedHashMap<String, LootConditionInfo> scenarioConditions = new LinkedHashMap<>();
+        LinkedHashMap<String, LootConditionInfo> unresolvedConditions = new LinkedHashMap<>();
         for (LootConditionInfo condition : conditions) {
-            collect(condition, parameterDetails, scenarioConditions);
+            collect(condition, parameterDetails, scenarioConditions, unresolvedConditions);
         }
-        return assembleHints(new LinkedHashMap<>(), false, parameterDetails, scenarioConditions);
+        return assembleHints(new LinkedHashMap<>(), false, parameterDetails, scenarioConditions,
+                unresolvedConditions);
     }
 
     private static List<PathHint> assembleHints(LinkedHashMap<String, Component> luckDetails,
                                                 boolean luckReferenced,
                                                 Map<ParameterKind, Map<String, Component>> parameterDetails,
-                                                LinkedHashMap<String, LootConditionInfo> scenarioConditions) {
+                                                LinkedHashMap<String, LootConditionInfo> scenarioConditions,
+                                                LinkedHashMap<String, LootConditionInfo> unresolvedConditions) {
         List<PathHint> hints = new ArrayList<>();
         for (Component detail : luckDetails.values()) {
             hints.add(new PathHint.ReferencesParameter(ParameterKind.LUCK, detail));
@@ -198,6 +204,9 @@ public final class PathHintAnalyzer {
         }
         if (!scenarioConditions.isEmpty()) {
             hints.add(new PathHint.ReferencesScenario(List.copyOf(scenarioConditions.values())));
+        }
+        if (!unresolvedConditions.isEmpty()) {
+            hints.add(new PathHint.UnresolvedConditions(List.copyOf(unresolvedConditions.values())));
         }
         return List.copyOf(hints);
     }
@@ -230,8 +239,15 @@ public final class PathHintAnalyzer {
     // 递归分类单条条件；组合条件只按类型本身归类，其子条件各自递归
     private static void collect(LootConditionInfo condition,
                                 Map<ParameterKind, Map<String, Component>> parameterDetails,
-                                LinkedHashMap<String, LootConditionInfo> scenarioConditions) {
+                                LinkedHashMap<String, LootConditionInfo> scenarioConditions,
+                                LinkedHashMap<String, LootConditionInfo> unresolvedConditions) {
         ResourceLocation type = condition.conditionType();
+        boolean composite = isComposite(type);
+        if (LootConditionHandlers.FIDELITY_UNREADABLE.equals(
+                condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
+                && (!composite || condition.children().isEmpty())) {
+            unresolvedConditions.putIfAbsent(detailKey(condition), condition);
+        }
         if (MATCH_TOOL.equals(type)) {
             // 决策 8：match_tool 不再由场景伪造布尔，工具真实求值，因此它是"工具"旋钮的引用
             addParameter(parameterDetails, ParameterKind.TOOL, detailKey(condition), condition.description());
@@ -245,11 +261,10 @@ public final class PathHintAnalyzer {
         // 只有**组合条件**的子节点是"另一条条件"；其它类型的子节点是同一条条件的**展示子行**
         // （例：{@code tool_enchantment} 的"概率：基础 20%，每级变化 10%"子行）。递归进去会把同一条门槛
         // 重复列一遍，还会把概率子行写成"该路径需要工具带 概率：… 附魔"这种读不通的句子。
-        if (!isComposite(type)) {
-            return;
-        }
-        for (LootConditionInfo child : condition.children()) {
-            collect(child, parameterDetails, scenarioConditions);
+        if (composite) {
+            for (LootConditionInfo child : condition.children()) {
+                collect(child, parameterDetails, scenarioConditions, unresolvedConditions);
+            }
         }
     }
 

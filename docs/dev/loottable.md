@@ -471,10 +471,16 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 实体目标、伤害来源与计分范围提供具体描述。条件展示带**保真度三态**，由服务端解析层在
 `analyzeAll` 时以 metadata 给出（键 `analysis_fidelity`，见 `LootConditionHandlers`）：描述完整时不写该键，
 只给出"成立但有未展示约束"的描述时标 `partial`，没有解析器或解析器失败时标 `unreadable`
-（此时文案统一为"未识别：<条件 id>"，保留 id 作为唯一的定位入口）。客户端只据该标记映射样式
+（此时文案统一为"未解析条件：<条件注册名>"，保留 id 作为唯一的定位入口）。JSON 解码失败与条件对象
+缺少分析器都保留 `unreadable` 节点；无法取得注册 id 时使用明确的占位 id。编译时按表和类型去重
+告警，便于定位第三方条件。客户端只据该标记映射样式
 （`partial` 与 `unreadable` 用斜体，`unreadable` 另用 `TooltipBuilder.CONDITION_UNREADABLE` 上色），
 不推断条件语义——"解析只有一份实现"的边界不因此破开。同理，拿不到确定数值的概率条件一律承认是
 动态值（`random_chance` 只在常量或 `uniform` 两端皆为常量时给出百分比），绝不展示编造的 `100%`。
+`entity_properties` 同时展示已识别的实体类型与 `type_specific` 子谓词，未覆盖的其它字段仍标 `partial`；
+状态属性的 `min`/`max` 区间显示为可读范围。`value_check`、`table_bonus`、
+`enchantment_active_check` 和 `random_chance_with_enchanted_bonus` 已补充参数描述，动态或尚未完整解释的
+值继续标 `partial`。
 
 概率文本与颜色共用**一份**判定：`ItemDefinition.uncertaintyLevel()` 与 `hasConditions()` 读同一批数据
 （全部获取路径的条件树 + 近似签名及函数分级），UI 不再在客户端另起规则、也不再用 tooltip 文案比较来识别近似条目
@@ -488,9 +494,11 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 
 - 全部获取路径都被**逐路径幸运门槛**证明在任何可表示的幸运下拿不到 → `Unreachable`，网格 `0%`。
   这是唯一的静态不可达判据（有效权重恒为 0）；只有**所有**路径都如此才成立，任一条可达就不写 `0%`；
-- 当前输入下适用且测到非零值 → 报测量值；适用但零命中 → `Measured(0.0)`，网格显示「未命中」；
+- 当前输入下适用且测到非零值 → 报测量值；适用但零命中且无路径提示 → `Measured(0.0)`，网格显示「未命中」；
 - 当前输入下不适用或测值为零、但路径引用了可调整旋钮/场景条件 → `NeedsCondition`，网格显示「需要条件」，
   tooltip 逐条列出引用了什么（**只是陈述**，不承诺调完一定能拿到）；
+- 上述路径若含未解析条件，则同样保留提示与测量事实，但网格优先显示「条件未解析」；该文案只说明
+  解析缺口，不断言未知条件必然造成零命中。tooltip 列出条件 id，正数测量与静态不可达仍优先；
 - 条目在**所有**代表场景中都不适用（条件组合因场景上限被截断，见 `MAX_SCENARIOS`）→ `Unknown(UNCOVERED)`，
   网格 `?`，而不是逐个写 `0`——否则"没算到"会被显示成"不可能获得"；
 - 某条路径在某个场景下不可用**不是**静态不可达，它在该场景里记为「需要条件」，不再写 `0%`。
@@ -523,6 +531,9 @@ UI 继续递归展示 `LootConditionInfo` 条件树，并对工具/方块、群�
 ### 7.5.1 静态信息性提示的组成规则
 
 `PathHintAnalyzer.hintsFor` 把一个条目的获取路径翻译成"需要条件"的逐行陈述。两条易错的组成规则：
+
+未解析条件另用 `PathHint.UnresolvedConditions` 表达，与可调旋钮和场景条件分开；组合条件递归收集其
+未解析叶子，避免把组合父行和叶子重复列出。该提示由 `CatalogStreamCodec` 下发，并参与目录摘要。
 
 - **只有组合条件（`all_of` / `any_of` / `inverted`）的子节点是"另一条条件"**。其它类型的
   `LootConditionInfo.children()` 是**同一条条件的展示子行**（例：`tool_enchantment` 的

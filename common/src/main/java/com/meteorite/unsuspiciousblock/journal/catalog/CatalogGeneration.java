@@ -270,6 +270,10 @@ public final class CatalogGeneration {
                     updateDigest(digest, "scenario");
                     updateConditionListDigest(digest, scenario.conditions());
                 }
+                case PathHint.UnresolvedConditions unresolved -> {
+                    updateDigest(digest, "unresolved");
+                    updateConditionListDigest(digest, unresolved.conditions());
+                }
             }
         }
     }

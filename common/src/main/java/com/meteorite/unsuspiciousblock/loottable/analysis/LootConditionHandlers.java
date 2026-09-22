@@ -17,6 +17,7 @@ import net.minecraft.advancements.critereon.LocationPredicate;
 import net.minecraft.advancements.critereon.MinMaxBounds;
 import net.minecraft.advancements.critereon.StatePropertiesPredicate;
 import net.minecraft.advancements.critereon.TagPredicate;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -25,15 +26,20 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.LevelBasedValue;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.storage.loot.IntRange;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.predicates.AllOfCondition;
 import net.minecraft.world.level.storage.loot.predicates.AnyOfCondition;
+import net.minecraft.world.level.storage.loot.predicates.BonusLevelTableCondition;
 import net.minecraft.world.level.storage.loot.predicates.ConditionReference;
 import net.minecraft.world.level.storage.loot.predicates.DamageSourceCondition;
 import net.minecraft.world.level.storage.loot.predicates.EntityHasScoreCondition;
+import net.minecraft.world.level.storage.loot.predicates.EnchantmentActiveCheck;
 import net.minecraft.world.level.storage.loot.predicates.InvertedLootItemCondition;
 import net.minecraft.world.level.storage.loot.predicates.LocationCheck;
 import net.minecraft.world.level.storage.loot.predicates.LootItemBlockStatePropertyCondition;
@@ -43,12 +49,14 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceCon
 import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceWithEnchantedBonusCondition;
 import net.minecraft.world.level.storage.loot.predicates.MatchTool;
 import net.minecraft.world.level.storage.loot.predicates.TimeCheck;
+import net.minecraft.world.level.storage.loot.predicates.ValueCheckCondition;
 import net.minecraft.world.level.storage.loot.predicates.WeatherCheck;
 import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
 import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -92,14 +100,14 @@ public final class LootConditionHandlers {
         register("block_state_property", new BlockStatePropertyHandler());
         register("location_check", new LocationCheckHandler());
         register("time_check", new TimeCheckHandler());
-        register("value_check", simpleDesc("value_check", false));
+        register("value_check", new ValueCheckHandler());
         register("weather_check", new WeatherCheckHandler());
-        register("table_bonus", simpleDesc("table_bonus", true));
-        register("enchantment_active_check", simpleDesc("enchantment_active_check", true));
+        register("table_bonus", new TableBonusHandler());
+        register("enchantment_active_check", new EnchantmentActiveHandler());
 
         // 类别 C：纯运行时
         register("entity_properties", new EntityPropertiesHandler());
-        register("killed_by_player", runtimeDesc("killed_by_player"));
+        register("killed_by_player", runtimeDesc());
         register("entity_scores", new EntityScoresHandler());
         register("damage_source_properties", new DamageSourcePropertiesHandler());
 
@@ -210,7 +218,7 @@ public final class LootConditionHandlers {
                 }
                 results.add(withSimulationMetadata(
                         info != null ? info : unreadable(fallbackInfo(conditionId)), condition));
-            } else if (conditionId != null) {
+            } else {
                 // 该条件已成功解码但没有分析 handler：与解析失败合并为一态，保留 id 作为定位入口
                 results.add(withSimulationMetadata(unreadable(fallbackInfo(conditionId)), condition));
             }
@@ -352,7 +360,19 @@ public final class LootConditionHandlers {
         }
         List<String> values = new ArrayList<>();
         for (Map.Entry<String, JsonElement> entry : encoded.getAsJsonObject().entrySet()) {
-            values.add(entry.getKey() + "=" + compactJsonValue(entry.getValue()));
+            JsonElement value = entry.getValue();
+            if (value.isJsonObject()) {
+                JsonObject bounds = value.getAsJsonObject();
+                if ((bounds.has("min") || bounds.has("max"))
+                        && bounds.entrySet().stream().allMatch(bound ->
+                        "min".equals(bound.getKey()) || "max".equals(bound.getKey()))) {
+                    String min = bounds.has("min") ? compactJsonValue(bounds.get("min")) : "";
+                    String max = bounds.has("max") ? compactJsonValue(bounds.get("max")) : "";
+                    values.add(entry.getKey() + "=" + min + ".." + max);
+                    continue;
+                }
+            }
+            values.add(entry.getKey() + "=" + compactJsonValue(value));
         }
         return String.join(", ", values);
     }
@@ -372,34 +392,91 @@ public final class LootConditionHandlers {
 
     // ==================== 通用简单描述 handler 工厂 ====================
 
-    private static LootConditionHandler simpleDesc(String i18nKey, boolean uncertain) {
-        return new LootConditionHandler() {
-            @Override
-            public LootConditionInfo analyze(LootItemCondition condition) {
-                // value_check / table_bonus / enchantment_active_check 的参数均未展示，描述天然有保留
-                return partial(new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + i18nKey),
-                        null));
+    /** 展示 value_check 的范围和数值提供器类型；动态提供器参数仍保留。 */
+    private static final class ValueCheckHandler implements LootConditionHandler {
+        @Override
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof ValueCheckCondition(NumberProvider provider, IntRange range))) {
+                return null;
             }
+            RangeDescription describedRange = describeRange(range);
+            JsonElement encoded = net.minecraft.world.level.storage.loot.providers.number.NumberProviders.CODEC
+                    .encodeStart(JsonOps.INSTANCE, provider).result().orElse(null);
+            String providerType = provider instanceof ConstantValue(float value)
+                    ? Float.toString(value)
+                    : encoded != null && encoded.isJsonObject() && encoded.getAsJsonObject().has("type")
+                    ? compactJsonValue(encoded.getAsJsonObject().get("type")) : "?";
+            LootConditionInfo info = new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "value_check_detail",
+                            describedRange.text(), providerType), null);
+            return describedRange.lossy() || !(provider instanceof ConstantValue) ? partial(info) : info;
+        }
 
-            @Override
-            public boolean addsUncertainty() {
-                return uncertain;
-            }
-
-            @Override
-            public UncertaintyLevel uncertaintyLevel() {
-                return uncertain ? UncertaintyLevel.PROBABILISTIC : UncertaintyLevel.NONE;
-            }
-        };
+        @Override
+        public boolean addsUncertainty() {
+            return false;
+        }
     }
 
-    private static LootConditionHandler runtimeDesc(String i18nKey) {
+    /** 按附魔等级顺序展示 table_bonus 的全部概率档位。 */
+    private static final class TableBonusHandler implements LootConditionHandler {
+        @Override
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof BonusLevelTableCondition(Holder<Enchantment> enchantment,
+                    List<Float> values))) {
+                return null;
+            }
+            List<String> chances = new ArrayList<>(values.size());
+            for (int level = 0; level < values.size(); level++) {
+                chances.add(level + (level == values.size() - 1 ? "+" : "") + ": "
+                        + new BigDecimal(Float.toString(values.get(level)))
+                        .movePointRight(2).stripTrailingZeros().toPlainString() + "%");
+            }
+            return new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "table_bonus_detail",
+                            enchantment.value().description(), String.join(", ", chances)), null);
+        }
+
+        @Override
+        public boolean addsUncertainty() {
+            return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
+        }
+    }
+
+    /** 区分附魔效果处于激活与未激活两种状态。 */
+    private static final class EnchantmentActiveHandler implements LootConditionHandler {
+        @Override
+        public LootConditionInfo analyze(LootItemCondition condition) {
+            if (!(condition instanceof EnchantmentActiveCheck(boolean active))) {
+                return null;
+            }
+            return new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX
+                            + (active ? "enchantment_active_check" : "enchantment_inactive_check")), null);
+        }
+
+        @Override
+        public boolean addsUncertainty() {
+            return true;
+        }
+
+        @Override
+        public UncertaintyLevel uncertaintyLevel() {
+            return UncertaintyLevel.PROBABILISTIC;
+        }
+    }
+
+    private static LootConditionHandler runtimeDesc() {
         return new LootConditionHandler() {
             @Override
             public LootConditionInfo analyze(LootItemCondition condition) {
                 return new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + i18nKey), null);
+                        Component.translatable(I18N_PREFIX + "killed_by_player"), null);
             }
 
             @Override
@@ -482,14 +559,20 @@ public final class LootConditionHandlers {
     private static final class RandomChanceWithEnchantedBonusHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            float baseChance = 1.0f;
-            if (condition instanceof LootItemRandomChanceWithEnchantedBonusCondition c) {
-                baseChance = c.unenchantedChance();
+            if (!(condition instanceof LootItemRandomChanceWithEnchantedBonusCondition(
+                    float baseChance, LevelBasedValue enchantedChance, Holder<Enchantment> enchantment))) {
+                return null;
             }
+            JsonElement encoded = LevelBasedValue.CODEC.encodeStart(JsonOps.INSTANCE, enchantedChance)
+                    .result().orElse(null);
+            LootConditionInfo enchanted = partial(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "random_chance_with_enchanted_bonus_enchanted",
+                            enchantment.value().description(),
+                            encoded != null ? compactJsonValue(encoded) : "?"), null));
             return partial(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "random_chance_with_enchanted_bonus",
                             Math.round(baseChance * 100)),
-                    baseChance));
+                    baseChance, List.of(enchanted)));
         }
 
         @Override
@@ -524,11 +607,12 @@ public final class LootConditionHandlers {
     private static final class MatchToolHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof MatchTool matchTool) || matchTool.predicate().isEmpty()) {
+            if (!(condition instanceof MatchTool(Optional<ItemPredicate> itemPredicate))
+                    || itemPredicate.isEmpty()) {
                 return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "match_tool"), null);
             }
-            ItemPredicate predicate = matchTool.predicate().get();
+            ItemPredicate predicate = itemPredicate.get();
             LootConditionInfo info = describeItems(condition, predicate);
             return hasNonItemConstraints(predicate) ? partial(info) : info;
         }
@@ -569,18 +653,17 @@ public final class LootConditionHandlers {
     private static final class BlockStatePropertyHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof LootItemBlockStatePropertyCondition blockCondition)) {
+            if (!(condition instanceof LootItemBlockStatePropertyCondition(Holder<Block> block,
+                    Optional<StatePropertiesPredicate> properties))) {
                 return null;
             }
             List<LootConditionInfo> children = new ArrayList<>();
-            blockCondition.properties().ifPresent(properties -> {
-                children.add(new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + "block_state_properties",
-                                describeStateProperties(properties)), null));
-            });
+            properties.ifPresent(stateProperties -> children.add(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "block_state_properties",
+                            describeStateProperties(stateProperties)), null)));
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "block_state_property_value",
-                            blockCondition.block().value().getName()), null, children);
+                            block.value().getName()), null, children);
         }
 
         @Override
@@ -598,10 +681,9 @@ public final class LootConditionHandlers {
     private static final class LocationCheckHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof LocationCheck locationCheck)) {
+            if (!(condition instanceof LocationCheck(Optional<LocationPredicate> predicate, BlockPos offset))) {
                 return null;
             }
-            Optional<LocationPredicate> predicate = locationCheck.predicate();
             if (predicate.isEmpty()) {
                 return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "location_check"), null);
@@ -633,11 +715,11 @@ public final class LootConditionHandlers {
             if (locPred.position().isPresent()) {
                 children.add(partial(simpleChild(condition, "location_check_position")));
             }
-            if (!locationCheck.offset().equals(net.minecraft.core.BlockPos.ZERO)) {
+            if (!offset.equals(BlockPos.ZERO)) {
                 children.add(new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "location_check_offset",
-                                locationCheck.offset().getX(), locationCheck.offset().getY(),
-                                locationCheck.offset().getZ()), null));
+                                offset.getX(), offset.getY(),
+                                offset.getZ()), null));
             }
             locPred.smokey().ifPresent(value -> children.add(simpleChild(condition,
                     value ? "location_check_smokey" : "location_check_not_smokey")));
@@ -699,14 +781,14 @@ public final class LootConditionHandlers {
     private static final class TimeCheckHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof TimeCheck timeCheck)) {
+            if (!(condition instanceof TimeCheck(Optional<Long> periodOption, IntRange value))) {
                 return null;
             }
-            List<LootConditionInfo> children = timeCheck.period()
+            List<LootConditionInfo> children = periodOption
                     .map(period -> List.of(new LootConditionInfo(keyOf(condition),
                             Component.translatable(I18N_PREFIX + "time_check_period", period), null)))
                     .orElseGet(List::of);
-            RangeDescription range = describeRange(timeCheck.value());
+            RangeDescription range = describeRange(value);
             LootConditionInfo info = new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "time_check_range", range.text()),
                     null, children);
@@ -728,14 +810,15 @@ public final class LootConditionHandlers {
     private static final class WeatherCheckHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof WeatherCheck weatherCheck)) {
+            if (!(condition instanceof WeatherCheck(Optional<Boolean> isRaining,
+                    Optional<Boolean> isThundering))) {
                 return null;
             }
             List<LootConditionInfo> children = new ArrayList<>();
-            weatherCheck.isRaining().ifPresent(required -> children.add(new LootConditionInfo(keyOf(condition),
+            isRaining.ifPresent(required -> children.add(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX
                             + (required ? "weather_check_raining" : "weather_check_not_raining")), null)));
-            weatherCheck.isThundering().ifPresent(required -> children.add(new LootConditionInfo(keyOf(condition),
+            isThundering.ifPresent(required -> children.add(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX
                             + (required ? "weather_check_thundering" : "weather_check_not_thundering")), null)));
             return new LootConditionInfo(keyOf(condition),
@@ -760,15 +843,16 @@ public final class LootConditionHandlers {
         @Override
         @Nullable
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof LootItemEntityPropertyCondition entityCondition)) {
+            if (!(condition instanceof LootItemEntityPropertyCondition(
+                    Optional<EntityPredicate> predicate, LootContext.EntityTarget entityTarget))) {
                 return null;
             }
-            Optional<EntityPredicate> predicate = entityCondition.predicate();
             if (predicate.isEmpty()) {
-                return genericInfo(condition, entityCondition.entityTarget());
+                return genericInfo(condition, entityTarget);
             }
             EntityPredicate entityPred = predicate.get();
-            Component targetName = entityTargetName(entityCondition.entityTarget());
+            Component targetName = entityTargetName(entityTarget);
+            List<LootConditionInfo> children = new ArrayList<>();
             Optional<EntityTypePredicate> entityType = entityPred.entityType();
             if (entityType.isPresent()) {
                 List<Component> typeNames = new ArrayList<>();
@@ -777,30 +861,28 @@ public final class LootConditionHandlers {
                 entityType.get().types().unwrap().ifRight(holders -> holders.forEach(holder ->
                         typeNames.add(holder.value().getDescription())));
                 if (!typeNames.isEmpty()) {
-                    return new LootConditionInfo(keyOf(condition),
+                    children.add(new LootConditionInfo(keyOf(condition),
                             Component.translatable(I18N_PREFIX + "entity_properties_types",
-                                    targetName, joinComponents(typeNames)), null);
+                                    targetName, joinComponents(typeNames)), null));
                 }
             }
             Optional<EntitySubPredicate> subPredicate = entityPred.subPredicate();
-            if (subPredicate.isEmpty()) {
-                return genericInfo(condition, entityCondition.entityTarget());
-            }
-            EntitySubPredicate sub = subPredicate.get();
-            // 使用 instanceof 判断具体子谓词类型，读取对应字段
-            if (sub instanceof FishingHookPredicate fishingHook) {
-                String key;
-                if (fishingHook.inOpenWater().isPresent()) {
-                    key = fishingHook.inOpenWater().get()
-                            ? "entity_properties_fishing_open_water"
-                            : "entity_properties_fishing_not_open_water";
-                } else {
-                    key = "entity_properties_fishing";
+            if (subPredicate.isPresent()) {
+                EntitySubPredicate sub = subPredicate.get();
+                // 使用记录模式判断具体子谓词类型，读取对应字段
+                if (sub instanceof FishingHookPredicate(Optional<Boolean> inOpenWater)) {
+                    String key = inOpenWater.map(openWater -> openWater
+                                    ? "entity_properties_fishing_open_water"
+                                    : "entity_properties_fishing_not_open_water")
+                            .orElse("entity_properties_fishing");
+                    children.add(new LootConditionInfo(keyOf(condition),
+                            Component.translatable(I18N_PREFIX + key), null));
                 }
-                return new LootConditionInfo(keyOf(condition),
-                        Component.translatable(I18N_PREFIX + key), null);
             }
-            return genericInfo(condition, entityCondition.entityTarget());
+            // 其它实体字段仍未展示，保留 partial；已读到的两类约束都作为子行呈现。
+            return partial(new LootConditionInfo(keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "entity_properties_target", targetName),
+                    null, children));
         }
 
         // 除 entityType 与 fishing_hook 分支外，整个实体谓词都塌成一句话，因此标记有保留
@@ -825,15 +907,16 @@ public final class LootConditionHandlers {
     private static final class EntityScoresHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof EntityHasScoreCondition scoresCondition)) {
+            if (!(condition instanceof EntityHasScoreCondition(Map<String, IntRange> scores,
+                    LootContext.EntityTarget entityTarget))) {
                 return null;
             }
-            List<LootConditionInfo> children = scoresCondition.scores().entrySet().stream()
+            List<LootConditionInfo> children = scores.entrySet().stream()
                     .map(score -> scoreInfo(condition, score))
                     .toList();
             return new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "entity_scores_target",
-                            entityTargetName(scoresCondition.entityTarget())), null, children);
+                            entityTargetName(entityTarget)), null, children);
         }
 
         private LootConditionInfo scoreInfo(LootItemCondition condition, Map.Entry<String, IntRange> score) {
@@ -859,12 +942,12 @@ public final class LootConditionHandlers {
     private static final class DamageSourcePropertiesHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof DamageSourceCondition damageCondition)
-                    || damageCondition.predicate().isEmpty()) {
+            if (!(condition instanceof DamageSourceCondition(Optional<DamageSourcePredicate> predicateOptional))
+                    || predicateOptional.isEmpty()) {
                 return new LootConditionInfo(keyOf(condition),
                         Component.translatable(I18N_PREFIX + "damage_source_properties"), null);
             }
-            DamageSourcePredicate predicate = damageCondition.predicate().get();
+            DamageSourcePredicate predicate = predicateOptional.get();
             List<LootConditionInfo> children = new ArrayList<>();
             for (TagPredicate<DamageType> tag : predicate.tags()) {
                 children.add(new LootConditionInfo(keyOf(condition),

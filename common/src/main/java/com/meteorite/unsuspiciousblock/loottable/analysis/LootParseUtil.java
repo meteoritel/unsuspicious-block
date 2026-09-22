@@ -73,7 +73,8 @@ public final class LootParseUtil {
             if (condition != null) {
                 conditions.addAll(LootConditionHandlers.analyzeAll(List.of(condition)));
             } else {
-                conditions.add(LootConditionHandlers.fallbackInfo(extractTypeId(element, "condition")));
+                conditions.add(LootConditionHandlers.unreadable(
+                        LootConditionHandlers.fallbackInfo(extractTypeId(element, "condition"))));
             }
         }
         return conditions;

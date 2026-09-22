@@ -160,7 +160,10 @@ public final class JournalTooltipBuilder {
             // 按决策 34，那必须携带整条路径联合验证过的输入，由 P2 的联合见证搜索产出。
             case Probability.NeedsCondition(List<PathHint> hints) -> {
                 lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_needs_condition_detail")
+                        "screen.unsuspiciousblock.archaeology_journal."
+                                + (ProbabilityFormat.hasUnresolvedConditions(hints)
+                                ? "probability_unresolved_condition_detail"
+                                : "probability_needs_condition_detail"))
                         .withStyle(TooltipBuilder.HINT));
                 for (Component hint : ProbabilityFormat.describePathHints(hints)) {
                     lines.add(hint.copy().withStyle(TooltipBuilder.LABEL));

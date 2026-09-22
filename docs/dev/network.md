@@ -126,7 +126,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("4.4");
+registrar.versioned("4.7");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：
@@ -136,9 +136,9 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本（服务端入口 `4.6`、客户端入口 `4.5`）。当前版本因 P1 的按需模拟通道与目录形态变化而升级：
+**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本（服务端 C2S 入口 `4.7`、客户端 S2C 入口 `4.7`）。本次 S2C 目录提示新增未解析条件类型，客户端入口由 `4.6` 升至 `4.7`；此前的按需模拟通道与目录形态变化包括：
 
-- `Probability` 的第 4 态「需要条件」携带静态提示（`ParameterKind` + 引用目标 `Component`，或场景条件列表），
+- `Probability` 的第 4 态「需要条件」携带静态提示（`ParameterKind` + 引用目标 `Component`、场景条件列表，或未解析条件列表），
   `Unknown` 携带原因枚举，两者都在目录包内编码；
 - 目录获取路径在条件列表后依次传输 `functionUncertainty`、`luckAffected` 与**逐路径幸运门槛**，编解码顺序一致；
 - `CatalogTableDto` 新增**每表内容哈希**：按需请求用它声明"我按的是这一版内容"，服务端据此判断请求是否已过期。

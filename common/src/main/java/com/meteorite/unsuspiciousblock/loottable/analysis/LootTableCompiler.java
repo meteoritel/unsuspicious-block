@@ -69,11 +69,40 @@ public final class LootTableCompiler {
 
     /** 编译单张表；表声明的 {@code type} 一并记入产物，供模拟上下文判定使用。 */
     public CompiledLootTable compileTable(ResourceLocation tableId, JsonElement element) {
+        warnUnhandledConditions(tableId, element, new LinkedHashSet<>());
         CompileState state = new CompileState();
         state.referencedEnchantments.addAll(collectEnchantments(element));
         walkNode(element, state);
         return new CompiledLootTable(tableId, declaredType(element), state.events,
                 state.referencedEnchantments, collectToolReferences(element));
+    }
+
+    // 每次编译只按“表 + 类型”告警一次；重载重新编译时可以再次发现问题。
+    private static void warnUnhandledConditions(ResourceLocation tableId, JsonElement element,
+                                                Set<ResourceLocation> warnedTypes) {
+        if (element == null || element.isJsonNull()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) {
+                warnUnhandledConditions(tableId, child, warnedTypes);
+            }
+            return;
+        }
+        if (!element.isJsonObject()) {
+            return;
+        }
+        JsonObject object = element.getAsJsonObject();
+        JsonElement condition = object.get("condition");
+        if (condition != null && condition.isJsonPrimitive() && condition.getAsJsonPrimitive().isString()) {
+            ResourceLocation id = ResourceLocation.tryParse(condition.getAsString());
+            if (id != null && LootConditionHandlers.get(id) == null && warnedTypes.add(id)) {
+                LOGGER.warn("战利品表 {} 含未识别条件类型 {}；条件说明将降级，检查对应模组或数据包", tableId, id);
+            }
+        }
+        for (var member : object.entrySet()) {
+            warnUnhandledConditions(tableId, member.getValue(), warnedTypes);
+        }
     }
 
     /**

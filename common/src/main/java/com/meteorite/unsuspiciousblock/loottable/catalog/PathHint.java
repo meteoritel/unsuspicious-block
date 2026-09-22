@@ -33,4 +33,11 @@ public sealed interface PathHint {
      */
     record ReferencesParameter(ParameterKind kind, @Nullable Component detail) implements PathHint {
     }
+
+    /** 路径含未解析条件；只表示分析缺口，不断言它是零命中的原因。 */
+    record UnresolvedConditions(List<LootConditionInfo> conditions) implements PathHint {
+        public UnresolvedConditions {
+            conditions = List.copyOf(conditions);
+        }
+    }
 }

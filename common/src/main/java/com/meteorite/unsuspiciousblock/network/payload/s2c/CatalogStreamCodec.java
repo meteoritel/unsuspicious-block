@@ -292,6 +292,10 @@ final class CatalogStreamCodec {
                     buf.writeByte(1);
                     writeConditionList(buf, scenario.conditions());
                 }
+                case PathHint.UnresolvedConditions unresolved -> {
+                    buf.writeByte(2);
+                    writeConditionList(buf, unresolved.conditions());
+                }
             }
         }
     }
@@ -300,14 +304,21 @@ final class CatalogStreamCodec {
         int count = buf.readVarInt();
         List<PathHint> hints = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            if (buf.readByte() == 0) {
-                ParameterKind kind = buf.readEnum(ParameterKind.class);
+            byte kind = buf.readByte();
+            if (kind == 0) {
+                ParameterKind parameterKind = buf.readEnum(ParameterKind.class);
                 Component detail = buf.readBoolean()
                         ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess()) : null;
-                hints.add(new PathHint.ReferencesParameter(kind, detail));
+                hints.add(new PathHint.ReferencesParameter(parameterKind, detail));
                 continue;
             }
-            hints.add(new PathHint.ReferencesScenario(readConditionList(buf)));
+            if (kind == 1) {
+                hints.add(new PathHint.ReferencesScenario(readConditionList(buf)));
+            } else if (kind == 2) {
+                hints.add(new PathHint.UnresolvedConditions(readConditionList(buf)));
+            } else {
+                throw new IllegalArgumentException("未知路径提示类型: " + kind);
+            }
         }
         return List.copyOf(hints);
     }
