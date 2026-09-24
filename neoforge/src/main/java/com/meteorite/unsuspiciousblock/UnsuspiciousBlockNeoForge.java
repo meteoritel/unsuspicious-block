@@ -281,7 +281,7 @@ public class UnsuspiciousBlockNeoForge {
         // 注册 NeoForge 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
         NeoForgeInventoryPresenceAdapter.register();
 
-        Constants.LOG.info("UnsuspiciousBlock NeoForge initialized.");
+        Constants.LOG.info(Constants.LOG_TAG + "NeoForge entrypoint initialized");
     }
 
     private void syncCommonItemRefs(FMLCommonSetupEvent event) {

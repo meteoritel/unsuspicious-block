@@ -18,7 +18,7 @@ public class UnsuspiciousBlockFabricPreLaunch implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
         if (FabricLoader.getInstance().isModLoaded("lootr")) {
-            Constants.LOG.info("[UnsuspiciousBlock] Lootr detected, registering Lootr compat mixins.");
+            Constants.LOG.info(Constants.LOG_TAG + "Lootr detected, registering Lootr compat mixins");
             Mixins.addConfiguration("unsuspiciousblock.lootr.mixins.json");
         }
     }

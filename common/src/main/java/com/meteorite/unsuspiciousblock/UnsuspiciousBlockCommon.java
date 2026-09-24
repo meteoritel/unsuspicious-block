@@ -13,7 +13,7 @@ import com.meteorite.unsuspiciousblock.platform.VanillaAchievementHelper;
 /** Common 模块统一入口，由各平台模块调用 */
 public class UnsuspiciousBlockCommon {
     public static void init() {
-        Constants.LOG.info("UnsuspiciousBlockCommon init on {}", Services.PLATFORM.getPlatformName());
+        Constants.LOG.info(Constants.LOG_TAG + "Common init start (platform={})", Services.PLATFORM.getPlatformName());
         AchievementManager.init(new VanillaAchievementHelper());
         EnchantmentManager.init(Services.ENCHANTMENT);
         EnchantmentEffects.registerAll();

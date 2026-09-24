@@ -54,7 +54,6 @@ import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRe
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
 import net.fabricmc.fabric.api.registry.FuelRegistry;
 import net.minecraft.server.packs.PackType;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.core.Holder;
@@ -85,6 +84,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -274,10 +274,10 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                     }
 
                     @Override
-                    public CompletableFuture<Void> reload(PreparationBarrier barrier, ResourceManager manager,
-                                                          ProfilerFiller preparationsProfiler,
-                                                          ProfilerFiller reloadProfiler,
-                                                          Executor backgroundExecutor, Executor gameExecutor) {
+                    public @NotNull CompletableFuture<Void> reload(PreparationBarrier barrier, ResourceManager manager,
+                                                                   ProfilerFiller preparationsProfiler,
+                                                                   ProfilerFiller reloadProfiler,
+                                                                   Executor backgroundExecutor, Executor gameExecutor) {
                         return DataPackReloadListener.INSTANCE.reload(barrier, manager, preparationsProfiler,
                                 reloadProfiler, backgroundExecutor, gameExecutor);
                     }
@@ -331,7 +331,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 ))
         );
 
-        Constants.LOG.info("UnsuspiciousBlock Fabric initialized.");
+        Constants.LOG.info(Constants.LOG_TAG + "Fabric entrypoint initialized");
     }
 
     // 注册实体默认属性——非生物实体没有属性，因此仅在 attributes 非空时调用；

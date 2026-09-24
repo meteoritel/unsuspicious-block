@@ -34,7 +34,8 @@ public final class EnchantmentManager {
     // 初始化：注入平台适配器并注册事件监听
     public static void init(IEnchantmentEventAdapter adapter) {
         adapter.registerListeners();
-        Constants.LOG.info("EnchantmentManager 已初始化，适配器: {}", adapter.getClass().getSimpleName());
+        Constants.LOG.info(Constants.LOG_TAG + "Enchantment system initialized (adapter={})",
+                adapter.getClass().getSimpleName());
     }
 
     // 注册副作用效果组件

@@ -25,7 +25,8 @@ public final class CatFavorManager {
     // 初始化：注入平台适配器并注册事件监听
     public static void init(ICatEventAdapter adapter) {
         adapter.registerListeners();
-        Constants.LOG.info("CatFavorManager 已初始化，适配器: {}", adapter.getClass().getSimpleName());
+        Constants.LOG.info(Constants.LOG_TAG + "Cat favor system initialized (adapter={})",
+                adapter.getClass().getSimpleName());
     }
 
     // 服务端每 tick 处理信物绑定与关系建立，必须先于被动能力评估执行。

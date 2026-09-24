@@ -65,6 +65,6 @@ public class ModKeyBindings {
         // Fabric 和 NeoForge 各自使用平台 API 来注册，
         // 因此此方法仅用于 NeoForge 的 RegisterKeyMappingsEvent，
         // Fabric 侧直接在 UnsuspiciousBlockFabricClient 中使用 KeyBindingHelper。
-        Constants.LOG.debug("ModKeyBindings registered");
+        Constants.LOG.debug(Constants.LOG_TAG + "Key bindings registered");
     }
 }
