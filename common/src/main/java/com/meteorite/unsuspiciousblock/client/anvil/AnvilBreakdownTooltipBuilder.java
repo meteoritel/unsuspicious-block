@@ -14,7 +14,7 @@ import java.util.List;
  * 将 {@link AnvilBreakdown} 转换为可渲染的 {@link Component} 列表，
  * 供 {@link AnvilBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
  *
- * <p>样式约定遵循 docs/dev/tooltip.md 语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
+ * <p>样式约定遵循 docs/dev/foundation/text-format.md 的语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
  * 常量）：标签行 LABEL，标题/总计 TITLE，不兼容/过于昂贵/惩罚增加 NEGATIVE，
  * 拒绝原因 SEVERE，新增/升级/仅重命名标注 POSITIVE，惩罚减少新值 BODY。</p>
  */

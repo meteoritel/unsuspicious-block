@@ -2,13 +2,13 @@
 
 本文档是本 mod **全部游戏内文本格式**的唯一权威：物品 tooltip 与 Jade HUD 的行序结构（五段式 / 两段式）、GUI 内文本提示、语义色表与本地化键命名规则。所有新增/修改游戏内文本呈现的代码都必须遵循本文档。
 
-> 猫之瞳的附魔揭示（附魔台候选、铁砧/砂轮分解预览）属于附魔玩法，其机制见[附魔系统](enchantment.md)；本文档只约束它的**呈现样式**。
+> 猫之瞳的附魔揭示（附魔台候选、铁砧/砂轮分解预览）属于附魔玩法，其机制见[附魔系统](../subsystems/enchantment.md)；本文档只约束它的**呈现样式**。
 
 ## 1. 职责概述
 
 - 提供一套统一的 tooltip 行序结构（五段式），让玩家在所有物品上获得一致的阅读节奏；
 - 提供**语义色表**作为颜色的唯一出口，杜绝 `ChatFormatting` 随手挑选、`§` 格式码硬编码、hex 色值三种表示法并存的局面；
-- 约定 GUI 内文本提示（hover tooltip 与自绘文本）的语义对色与分段规则（第 8 节）；
+- 约定 GUI 内文本提示（hover tooltip 与自绘文本）的语义对色与分段规则（见「GUI 内文本规范」一节）；
 - 约定本地化键命名规则，保证 en_us / zh_cn 键集合一致。
 
 ## 2. 物品 tooltip：五段式行序
@@ -27,7 +27,7 @@
 
 ## 3. 语义色表
 
-颜色的唯一出口是 [`TooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的常量。**禁止**在新代码中直接使用 `ChatFormatting.XXX` 挑色、在 lang 值中写 `§` 格式码、或使用 `withColor(0xXXXXXX)`。
+颜色的唯一出口是 [`TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的常量。**禁止**在新代码中直接使用 `ChatFormatting.XXX` 挑色、在 lang 值中写 `§` 格式码、或使用 `withColor(0xXXXXXX)`。
 
 | 常量 | 颜色 | 语义 |
 |---|---|---|
@@ -43,11 +43,11 @@
 
 灰阶只有两档：`LABEL`（#AAAAAA）与 `HINT`（#555555）。Jade 侧历史上使用的 `0xAAAAAA` 与 `LABEL` 同值，`0xFFE040` 已归并为 `TITLE`。
 
-> **语义层与实现层分离**：第 3 节语义色表是唯一语义层，定义"语义 → ChatFormatting"的实现（原版暗底 tooltip / Jade）。GUI 自绘文本（羊皮纸 / 暗色底）沿用同一批语义槽、各自提供 int 色实现，见第 8 节。
+> **语义层与实现层分离**：「语义色表」一节是唯一语义层，定义"语义 → ChatFormatting"的实现（原版暗底 tooltip / Jade）。GUI 自绘文本（羊皮纸 / 暗色底）沿用同一批语义槽、各自提供 int 色实现，见「GUI 内文本规范」。
 
 ### 3.1 条件树映射（考古笔记 tooltip）
 
-条件树（[`JournalTooltipBuilder#appendConditionTree`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java)）的每个节点用两个**正交**维度表达信息，两者都必须从 `TooltipBuilder` 取语义槽：
+条件树（[`JournalTooltipBuilder#appendConditionTree`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java)）的每个节点用两个**正交**维度表达信息，两者都必须从 `TooltipBuilder` 取语义槽：
 
 | 维度 | 取值 | 样式 | 回答的问题 |
 |---|---|---|---|
@@ -60,16 +60,16 @@
 
 四个条件语义别名只复用既有色值（`CONDITION_STATIC`=`POSITIVE`、`CONDITION_PROBABILISTIC`=`TITLE`、`CONDITION_RUNTIME`=`NAME`、`CONDITION_UNREADABLE`=`LABEL`），**不新增颜色**。颜色已被"概率来源"占用且进入玩家阅读习惯，字重此前未被使用，故用它承载保真度。
 
-保真度由**服务端解析层**以 `LootConditionInfo.metadata()` 的 `analysis_fidelity` 给出：缺失该键表示描述完整（常规），`partial` 表示"有保留"、`unreadable` 表示"未读到"（两者都用斜体）。客户端只做样式映射，**不推断条件语义**；键与取值常量取自 [`LootConditionHandlers`](../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LootConditionHandlers.java)，禁止在客户端写字面量。
+保真度由**服务端解析层**以 `LootConditionInfo.metadata()` 的 `analysis_fidelity` 给出：缺失该键表示描述完整（常规），`partial` 表示"有保留"、`unreadable` 表示"未读到"（两者都用斜体）。客户端只做样式映射，**不推断条件语义**；键与取值常量取自 [`LootConditionHandlers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LootConditionHandlers.java)，禁止在客户端写字面量。
 
 ## 4. Jade HUD 规则
 
-Jade 注入行采用独立的**两段式**：`标签(LABEL)：值`。值直接复用第 3 节语义色表（同一批常量），不另搞一套颜色。物品名 + 数量的复合行中，数量用 `BODY`。
+Jade 注入行采用独立的**两段式**：`标签(LABEL)：值`。值直接复用「语义色表」的同一批常量，不另搞一套颜色。物品名 + 数量的复合行中，数量用 `BODY`。
 
 Jade 键命名：
 
 - Jade 专属键：`jade.unsuspiciousblock.<subject>.<seg>`（如 `jade.unsuspiciousblock.shimmer.pan_remaining`、`jade.unsuspiciousblock.suspicious_reader.prefix`）；
-- 物品 tooltip 与 Jade **真正共用**的封存信息键走中立前缀：`unsuspiciousblock.sealed.*`（由 [`SealedContentsDisplay`](../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) 统一构建，两侧共用同一组方法）。
+- 物品 tooltip 与 Jade **真正共用**的封存信息键走中立前缀：`unsuspiciousblock.sealed.*`（由 [`SealedContentsDisplay`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) 统一构建，两侧共用同一组方法）。
 
 lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 
@@ -93,22 +93,22 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 
 | 类 | 职责 |
 |---|---|
-| [`client/tooltip/TooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 可安全引用 |
-| [`item/DescribedItem`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
-| [`block/SealedContentsDisplay`](../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
-| [`client/ui/support/UiTextPalette`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) | GUI 自绘文本语义色表（羊皮纸 / 暗色两套 int 主题实现，见第 8 节） |
-| [`client/ui/support/JournalTooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记 tooltip 行构建；条件树按 3.1 的"颜色 + 字重"双维度渲染 |
-| [`client/anvil/AnvilBreakdownTooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java) | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
+| [`client/tooltip/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 可安全引用 |
+| [`item/DescribedItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
+| [`block/SealedContentsDisplay`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
+| [`client/ui/support/UiTextPalette`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) | GUI 自绘文本语义色表（羊皮纸 / 暗色两套 int 主题实现，见「GUI 内文本规范」） |
+| [`client/ui/support/JournalTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记 tooltip 行构建；条件树按「条件树映射」的颜色 + 字重双维度渲染 |
+| [`client/anvil/AnvilBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java) | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
 
 ## 7. 扩展点：新增物品 tooltip 的标准流程
 
 1. 物品有交互逻辑 → 在其 `appendHoverText` 中先调 `super`，再用 `new TooltipBuilder(tooltipLines)` 按五段式追加；
 2. 物品只是一句说明（素材类）→ 直接继承 `DescribedItem`，注册时传入 `item.unsuspiciousblock.<name>.tooltip.desc`；
 3. 需要展开详情 → 用 `tooltip.expandable(t -> { t.section(...); ... })`，不要自行读 Shift 状态；
-4. 上色 → 只从 `TooltipBuilder` 常量取，需要新语义时先在本文档第 3 节补行；
+4. 上色 → 只从 `TooltipBuilder` 常量取，需要新语义时先在本文档「语义色表」一节补行；
 5. 同步添加 en_us / zh_cn 两个键，并校验 JSON。
 
-GUI 内文本提示的新增 / 修改流程见第 8 节。
+GUI 内文本提示的新增 / 修改流程见「GUI 内文本规范」的「新增 GUI 文本的标准流程」。
 
 ## 8. GUI 内文本规范
 
@@ -120,13 +120,13 @@ GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等�
 
 ### 8.2 一语义三实现
 
-语义层只有一份（第 3 节 9 个语义槽），不同渲染介质各提供一套实现：
+语义层只有一份（「语义色表」的 9 个语义槽），不同渲染介质各提供一套实现：
 
 | 实现层 | 介质 | 颜色出口 |
 |---|---|---|
-| 1 | 原版暗底 tooltip（物品 tooltip / GUI 内 hover tooltip / Jade） | [`TooltipBuilder`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的 ChatFormatting 常量 |
-| 2 | 羊皮纸 GUI（考古笔记书页类界面） | [`UiTextPalette.Parchment`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
-| 3 | 暗色 GUI（战利品表管理等） | [`UiTextPalette.Dark`](../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
+| 1 | 原版暗底 tooltip（物品 tooltip / GUI 内 hover tooltip / Jade） | [`TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的 ChatFormatting 常量 |
+| 2 | 羊皮纸 GUI（考古笔记书页类界面） | [`UiTextPalette.Parchment`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
+| 3 | 暗色 GUI（战利品表管理等） | [`UiTextPalette.Dark`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
 
 GUI 侧 int 语义槽目标值（2026-09-15 定案；存量面板按此表逐步迁移，迁移前各组件旧常量继续可用）：
 
@@ -151,7 +151,7 @@ GUI 侧 int 语义槽目标值（2026-09-15 定案；存量面板按此表逐步
 - **违规色归并**（历史遗留色向 9 槽归并的既定结论）：`DARK_GREEN` 中"无损失标注"→ `POSITIVE`、"提示文本"→ `HINT`；`LIGHT_PURPLE` 转换标注 → `ACCENT`；概率值 YELLOW（运行时条件）→ `ACCENT`；
 - **控件结构色不属文本语义**：边框、背景、进度条、选中态色条、滚动条、子表分类标识等保留为组件本地常量，不强行塞进语义槽；
 - hover tooltip 一律走原版 `renderTooltip`，禁止自绘悬浮层；
-- lang 值一律纯文本、样式由代码控制（同第 5 节约束）。
+- lang 值一律纯文本、样式由代码控制（同「本地化键命名规则」的约束）。
 
 ### 8.4 新增 GUI 文本的标准流程
 

@@ -15,7 +15,7 @@ import java.util.List;
  * 将 {@link GrindstoneBreakdown} 转换为可渲染的 {@link Component} 列表，
  * 供 {@link GrindstoneBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
  *
- * <p>样式约定遵循 docs/dev/tooltip.md 语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
+ * <p>样式约定遵循 docs/dev/foundation/text-format.md 的语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
  * 常量）：标题 TITLE，操作类型/分区 LABEL，移除项 NEGATIVE，保留诅咒 SEVERE，
  * 经验返还/耐久变化/惩罚减少 POSITIVE，惩罚增加 NEGATIVE，附魔书转换标注 ACCENT。</p>
  */

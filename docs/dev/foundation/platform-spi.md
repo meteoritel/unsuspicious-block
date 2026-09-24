@@ -1,23 +1,25 @@
 # 平台抽象层
 
-本文档描述 `common` 如何通过 ServiceLoader SPI 机制访问 Fabric / NeoForge 平台能力，以及在依赖可选模组（Trinkets / Curios 等）时如何安全跨越类加载边界。
+> `common` 通过 ServiceLoader SPI 访问 Fabric / NeoForge 平台能力，并在依赖可选模组（Trinkets / Curios / Artifacts）时安全跨越类加载边界。
+> 本文件是 SPI 机制与可选依赖反射加载（`OptionalModIntegration`）的唯一权威。注册清单模式见 [注册架构](registration.md)。
 
-## 1. 设计动机
+## 1. 机制概览
 
-`common` 模块承载绝大部分玩法代码，但不得 import 任何平台类。当玩法逻辑需要"发包"、"查询饰品栏"、"读取配置"等平台相关能力时，采用经典的 **SPI（Service Provider Interface）模式**：
+`common` 模块承载绝大部分玩法代码，但不得 import 任何平台类。当玩法逻辑需要"发包"、"查询饰品栏"、"读取配置"等平台能力时，采用经典的 **SPI（Service Provider Interface）模式**：
 
 - `common` 定义接口（契约）
 - `fabric` / `neoforge` 各自提供实现
 - 运行时由 `ServiceLoader` 发现实现并注入
 
-这与 Architectury 的 `@ExpectPlatform` 注解方案目标一致，但本项目选择显式接口 + `ServiceLoader`，优势在于：
+这与 Architectury 的 `@ExpectPlatform` 注解方案目标一致，但本项目选择显式接口 + `ServiceLoader`，收益在于：
+
 - 无需注解处理器，构建更简单
 - 一个实现类可实现多个接口（如配置类同时实现 `ILootTableConfig` 与 `ISpiritCatConfig`）
 - 接口可携带常量与默认方法，集中表达领域约束
 
 ## 2. Services 加载器
 
-入口是 [`platform/Services.java`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/Services.java)：
+入口是 [`platform/Services.java`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/Services.java)，**9 个活跃接口**在此以静态字段暴露：
 
 ```java
 public class Services {
@@ -26,24 +28,28 @@ public class Services {
     public static final IAccessoryHelper ACCESSORY = load(IAccessoryHelper.class);
     public static final ILootTableConfig LOOT_TABLE_CONFIG = load(ILootTableConfig.class);
     public static final ISpiritCatConfig SPIRIT_CAT_CONFIG = load(ISpiritCatConfig.class);
+    public static final IPanningConfig PANNING_CONFIG = load(IPanningConfig.class);
     public static final IEnchantmentEventAdapter ENCHANTMENT = load(IEnchantmentEventAdapter.class);
     public static final ICatEventAdapter CAT = load(ICatEventAdapter.class);
     public static final IBoneBlockTracker BONE_BLOCK_TRACKER = load(IBoneBlockTracker.class);
 
     public static <T> T load(Class<T> clazz) {
-        return ServiceLoader.load(clazz).findFirst()
+        final T loadedService = ServiceLoader.load(clazz)
+                .findFirst()
                 .orElseThrow(() -> new NullPointerException("Failed to load service for " + clazz.getName()));
+        Constants.LOG.debug("Loaded {} for service {}", loadedService, clazz);
+        return loadedService;
     }
 }
 ```
 
-- 每个接口在类加载时通过 `ServiceLoader.load(clazz).findFirst()` 取第一个实现。
-- 实现的注册靠 `META-INF/services/<接口全限定名>` 文件，文件内容为实现类全限定名。
-- 由于 `fabric` 与 `neoforge` 是互斥的运行环境，每个接口在运行时只有一个实现，`findFirst()` 足够。
+- 每个接口通过 `ServiceLoader.load(clazz).findFirst()` 取第一个实现。
+- 实现靠 `META-INF/services/<接口全限定名>` 文件注册，文件内容为实现类全限定名。
+- `fabric` 与 `neoforge` 是互斥运行环境，每个接口运行时只有一个实现，`findFirst()` 足够。
 
 ### 2.1 服务注册文件
 
-每个平台在自己的 `src/main/resources/META-INF/services/` 下为每个 SPI 接口放一个文件。例如 Fabric 端：
+每个平台在自己的 `src/main/resources/META-INF/services/` 下为每个 SPI 接口放一个文件。Fabric 端（NeoForge 端结构对称，实现类名替换为 `NeoForge*`）：
 
 ```
 fabric/src/main/resources/META-INF/services/
@@ -55,14 +61,11 @@ fabric/src/main/resources/META-INF/services/
 ├── com.meteorite.unsuspiciousblock.platform.services.IPanningConfig     -> FabricPanningConfig
 ├── com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter         -> FabricCatEventAdapter
 ├── com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmentEventAdapter -> FabricEnchantmentEventAdapter
-└── com.meteorite.unsuspiciousblock.world.IBoneBlockTracker              -> FabricBoneBlockTracker
+├── com.meteorite.unsuspiciousblock.world.IBoneBlockTracker              -> FabricBoneBlockTracker
+└── ...IClientSimulationPreference -> FabricSimulationPreference（无调用点，待清理，见第 3 节）
 ```
 
-NeoForge 端结构对称，实现类替换为 `NeoForge*`。
-
-> 注意：`ICatEventAdapter` 与 `IEnchantmentEventAdapter`、`IBoneBlockTracker` 虽然放在各自子系统的包下，但同样走 `Services` 的 `ServiceLoader` 机制，是 SPI 的一部分。
-
-## 3. 九个 SPI 接口职责
+## 3. SPI 接口职责
 
 | 接口 | 所在包 | 职责 | Fabric 实现 | NeoForge 实现 |
 |---|---|---|---|---|
@@ -76,15 +79,20 @@ NeoForge 端结构对称，实现类替换为 `NeoForge*`。
 | `ICatEventAdapter` | `cat.adapter` | 猫族事件钩子（驯服、喂食、晨礼等猫相关事件） | `FabricCatEventAdapter` | `NeoForgeCatEventAdapter` |
 | `IBoneBlockTracker` | `world` | 自然骨块追踪（记录世界生成的骨块，供化石猎手附魔判定） | `FabricBoneBlockTracker`（mixin + chunk 事件） | `NeoForgeBoneBlockTracker`（DataAttachment） |
 
-> **例外**：`platform.services` 包内还有第 10 个接口 [`IAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IAchievementHelper.java)（授予/查询/撤销成就）。它**不走 ServiceLoader**，由 common 的 [`VanillaAchievementHelper`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/VanillaAchievementHelper.java) 用原版 API 直接实现，在 `UnsuspiciousBlockCommon.init()` 中以构造参数注入 `AchievementManager`，双平台共用同一实现。
+两个不在上表、但仍属 SPI 机制的接口：
+
+- **`IAchievementHelper`**（`platform.services`）：授予/查询/撤销成就。**不走 ServiceLoader**，由 common 的 [`VanillaAchievementHelper`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/VanillaAchievementHelper.java) 用原版 API 直接实现，在 `UnsuspiciousBlockCommon.init()` 中以构造参数注入 `AchievementManager`，双平台共用同一实现。详见 [进度（成就）系统](../subsystems/advancement.md)。
+- **`IClientSimulationPreference`**（`platform.services`）：客户端模拟选择的本地存储。**已无调用点**——`Services` 未加载它，唯一的实现链 `FileSimulationPreference` → `FabricSimulationPreference` / `NeoForgeSimulationPreference` 也无引用，功能已由 `JournalUiPreferencesStore` 的 `simulationPreferences` NBT 子树取代（见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)）。接口、两端实现与 service 文件均为待清理的死代码，**不要作为新代码的参考模式**。
 
 ### 3.1 配置类双接口模式
 
-注意 `ISpiritCatConfig` 在两个平台都由 `*LootTableConfig` 类实现——**同一个配置类同时实现两个接口**。这是因为项目把"战利品配置"和"灵体配置"放在同一份配置文件里管理，但 common 代码通过两个独立接口读取，保持职责分离。
+`ISpiritCatConfig` 在两个平台都由 `*LootTableConfig` 类实现——**同一个配置类同时实现两个接口**（`class FabricLootTableConfig implements ILootTableConfig, ISpiritCatConfig`）。原因是项目把"战利品配置"和"灵体配置"放在同一份配置文件里管理，但 common 代码通过两个独立接口读取，保持职责分离。
 
-`IPanningConfig` 则是反例：淘洗参数与上述配置文件无关，两个平台各用**独立的配置类**实现（`FabricPanningConfig` / `NeoForgePanningConfig`），存储位置与文件格式详见 [配置与第三方联动](config-integrations.md)。
+`IPanningConfig` 是反例：淘洗参数与上述配置文件无关，两个平台各用**独立的配置类**实现（`FabricPanningConfig` / `NeoForgePanningConfig`），存储位置与文件格式见 [配置与第三方联动](config-and-integrations.md)。
 
-接口内还集中定义了**领域约束常量**（范围与默认值），例如 `ILootTableConfig`：
+### 3.2 领域约束常量
+
+接口内集中定义**领域约束常量**（范围与默认值），例如 `ILootTableConfig`：
 
 ```java
 int MIN_MAX_LOG_ENTRIES_PER_TABLE = 64;
@@ -100,9 +108,9 @@ List<String> DEFAULT_ARCHAEOLOGY_PATH_PREFIXES = List.of(
 
 ## 4. 可选依赖的安全加载
 
-Trinkets、Curios、Artifacts 等是**可选联动**，`common` 编译期引用其 API，但运行时可能不存在。直接 `import` 会导致主入口在依赖缺失时类加载失败。
+Trinkets、Curios、Artifacts 是**可选联动**：`common` 编译期引用其 API，但运行时可能不存在。直接 `import` 会导致主入口在依赖缺失时类加载失败。
 
-解决方案是 [`OptionalModIntegration`](../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/OptionalModIntegration.java)，用反射跨越边界：
+解决方案是 [`OptionalModIntegration`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/OptionalModIntegration.java)，用反射跨越边界：
 
 ```java
 // 仅在平台确认 mod 已加载后调用
@@ -118,23 +126,30 @@ if (Services.PLATFORM.isModLoaded("trinkets")) {
 
 集成类（如 `FabricTrinketsIntegration`）在 `run()` 中才真正引用 Trinkets API，因此只有调用时才会触发对第三方类的解析。配合 `Services.PLATFORM.isModLoaded(...)` 的前置判断，保证依赖缺失时不会类加载失败。
 
-> `IAccessoryHelper` 的实现内部同样遵循此原则：Trinkets/Curios 未安装时，所有查询返回 `false` / 空流，玩法降级为"未装备饰品"。
+> `IAccessoryHelper` 的实现内部同样遵循此原则：Trinkets/Curios 未安装时所有查询返回 `false` / 空流，玩法降级为"未装备饰品"。
 
-## 5. 新增 SPI 接口的步骤
+各联动的集成类清单见 [配置与第三方联动](config-and-integrations.md)。
 
-当需要新增一个平台相关能力时：
+## 5. 扩展点：新增 SPI 接口
 
 1. **定义接口**：在 `common` 的合适包下定义接口（核心平台能力放 `platform/services/`，子系统专属能力放子系统包，如 `cat/adapter/ICatEventAdapter`）。
 2. **Fabric 实现**：在 `fabric/` 写实现类，并在 `fabric/src/main/resources/META-INF/services/<接口全限定名>` 注册。
 3. **NeoForge 实现**：在 `neoforge/` 写实现类，同样注册 service 文件。
 4. **加载**：在 `Services.java` 加一行 `public static final IXxx XXX = load(IXxx.class);`，或由子系统 Manager 自行 `load`（如 `CatFavorManager.init(Services.CAT)`）。
+5. 新接口若携带领域约束常量，把范围与默认值写在接口内，两端共用。
 
-> 如果新接口只是某个子系统的内部需求，不一定要放进 `Services` 全局字段，可以让该子系统的 Manager 在 `init` 时自行加载，减少全局耦合。
+> 若新接口只是某个子系统的内部需求，不一定要进 `Services` 全局字段，可让该子系统的 Manager 在 `init` 时自行加载，减少全局耦合。
 
-## 6. 相关文档
+## 6. 约束与陷阱
 
-- [架构总览](architecture-overview.md)
-- [注册架构](registration.md)
-- [配置与第三方联动](config-integrations.md) - 各配置项的具体可调范围
-- [猫族关系系统](cat-favor.md) - `ICatEventAdapter` 的使用
-- [附魔系统](enchantment.md) - `IEnchantmentEventAdapter` 的使用
+- 接口数量或实现类数量**不要写进标题**（如"九个 SPI 接口职责"），增减接口时标题会变成假信息。
+- 新增 SPI 必须同时补齐两个平台的实现与 service 文件，否则对端启动即抛 `NullPointerException`（`load` 的失败行为）。
+- 可选依赖相关代码不得在 common 顶层直接 import 第三方类，一律走 `OptionalModIntegration`。
+
+## 7. 相关文档
+
+- [架构总览](architecture.md) —— 三模块划分与初始化流程
+- [注册架构](registration.md) —— 清单 + 回调注册模式
+- [配置与第三方联动](config-and-integrations.md) —— 各配置项的可调范围与联动集成类清单
+- [猫族关系系统](../subsystems/cat-favor.md) —— `ICatEventAdapter` 的使用
+- [附魔系统](../subsystems/enchantment.md) —— `IEnchantmentEventAdapter` 的使用

@@ -122,7 +122,7 @@ public class ModEntities {
 
     // 闪烁的光·水域变体——无 AI 的液面淘洗点，包围盒覆盖其依附的液面方块，便于准星选中。
     // 包围盒高度不超过一格：依附于完整碰撞箱方块（如冰）的点会被准星射线截断而无法淘洗，
-    // 这是刻意保留的行为，改动 .sized(...) 会改变它，详见 docs/dev/panning.md 第 3 节。
+    // 这是刻意保留的行为，改动 .sized(...) 会改变它，详见 docs/dev/subsystems/panning.md 的「闪烁的光实体」一节。
     public static EntityType<WaterShimmerEntity> createShimmerType() {
         return EntityType.Builder.of(WaterShimmerEntity::new, MobCategory.MISC)
                 .sized(0.9f, 0.9f)

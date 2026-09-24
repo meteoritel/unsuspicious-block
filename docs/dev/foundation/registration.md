@@ -1,10 +1,11 @@
 # 注册架构
 
-本文档描述模组的"清单 + 回调"注册模式：如何在 `common` 声明注册清单，由 Fabric / NeoForge 各自完成实际注册并回写引用。
+> 如何在 `common` 声明注册清单，由 Fabric / NeoForge 各自完成实际注册并回写引用。
+> 本文件是"清单 + 回调"注册模式与**新增内容标准流程**的唯一权威。
 
 ## 1. 设计目标
 
-多平台 mod 的注册难点在于：Fabric 用 `Registry.register`，NeoForge 用 `DeferredRegister`，两者 API、时机、返回类型都不同。本项目需要一个让 `common` 玩法代码能**统一引用注册结果**、且**新增内容只改一处**的方案。
+多平台 mod 的注册难点在于：Fabric 用 `Registry.register`，NeoForge 用 `DeferredRegister`，两者 API、时机、返回类型都不同。项目需要一个让 `common` 玩法代码能**统一引用注册结果**、且**新增内容只改一处**的方案。
 
 解决方案是**清单 + 回调**：
 
@@ -53,7 +54,7 @@ public interface EntityRegistrar {
 
 ## 3. 注册清单与持有类
 
-每类内容都有一个 `ModXxx` 类，包含三部分：静态持有字段、`REGISTRY_MANIFEST` 清单、`forEach` 遍历方法。以 [`ModItems`](../../common/src/main/java/com/meteorite/unsuspiciousblock/item/ModItems.java) 为例：
+每类内容都有一个 `ModXxx` 类，包含三部分：静态持有字段、`REGISTRY_MANIFEST` 清单、`forEach` 遍历方法。以 [`ModItems`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/item/ModItems.java) 为例：
 
 ```java
 public class ModItems {
@@ -85,16 +86,22 @@ public class ModItems {
 
 ### 3.1 各 ModXxx 清单
 
-| 持有类 | 注册内容 | 条目数 | 平台回写时机 |
-|---|---|---|---|
-| `ModBlocks` | 方块 | 4 | Fabric 即时 / NeoForge static 块 |
-| `ModItems` | 物品（含 BlockItem） | 18 | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork`；淘盘另有 `PAN_ITEMS` 子清单供客户端注册物品属性 |
-| `ModBlockEntities` | 方块实体类型 | - | Fabric 即时 / NeoForge static 块 |
-| `ModEntities` | 实体类型 | 6（信使/剑士/商人/灯笼宠物/闪烁的光/幽微的光） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（两个淘洗点变体为无模型装饰实体，不注册属性） |
-| `ModEffects` | 药水效果 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
-| `ModSounds` | 声音事件 | - | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
-| `ModFeatures` | 世界生成地物类型 | 1 个类型（`unsuspiciousblock:shimmer`）+ 2 个 placed key（河流 / 下界） | 无实例回写；Fabric 即时 / NeoForge DeferredRegister，具体变体由 configured_feature 的 config 指定 |
-| `ModRecipeSerializers` | 配方序列化器 | - | Fabric 即时 / NeoForge static 块 |
+| 持有类 | 注册内容 | 平台回写时机 |
+|---|---|---|
+| `ModBlocks` | 方块 | Fabric 即时 / NeoForge static 块 |
+| `ModItems` | 物品（含 BlockItem） | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork`；淘盘另有 `PAN_ITEMS` 子清单供客户端注册物品属性 |
+| `ModBlockEntities` | 方块实体类型 | Fabric 即时 / NeoForge static 块 |
+| `ModEntities` | 实体类型（灵体猫三职业 / 灯笼宠物 / 两个淘洗点变体） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（两个淘洗点变体为无模型装饰实体，`attributes` 传 `null`，不注册属性） |
+| `ModEffects` | 药水效果 | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
+| `ModSounds` | 声音事件 | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
+| `ModFeatures` | 世界生成地物类型（`unsuspiciousblock:shimmer`）+ placed key（河流 / 下界） | 无实例回写；Fabric 即时 / NeoForge DeferredRegister，具体变体由 configured_feature 的 config 指定 |
+| `ModRecipeSerializers` | 配方序列化器 | Fabric 即时 / NeoForge static 块 |
+
+**本表刻意不列条目数**：条目数随每次新增功能变化，写进文档必然过期。需要时直接数清单源码：
+
+```bash
+grep -c "new ItemEntry(" common/src/main/java/com/meteorite/unsuspiciousblock/item/ModItems.java
+```
 
 > `ModEffects` / `ModSounds` 回写的是 `Holder<MobEffect>` / `Holder<SoundEvent>`，因为 NeoForge 的 `DeferredHolder` 即 `Holder`，可直接回写；Fabric 端通过 `BuiltInRegistries.MOB_EFFECT.getHolder(...)` 取 `Holder` 回写，两端对 common 暴露统一类型。
 
@@ -182,7 +189,7 @@ event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 | `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(BiConsumer)` |
 | `ModModelLayers` | 模型层注册清单 | `forEach(BiConsumer)` |
 
-详见 [network.md](network.md) 与 [client-ui.md](client-ui.md)。
+详见 [网络与同步](network.md) 与 [客户端与 GUI](../subsystems/client-ui.md)。
 
 ## 6. 创造模式物品栏
 
@@ -201,7 +208,7 @@ public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
 
 注意 `CREATIVE_TAB_ITEMS` 用 `Supplier<Item>` 而非直接 `Item`，因为静态字段在清单声明时还是 null，必须延迟到注册完成后求值。这是清单模式的一个固有约束：**清单内不得直接引用尚未回写的静态字段值**。
 
-## 7. 新增注册内容的步骤
+## 7. 扩展点：新增注册内容
 
 以新增一个物品为例：
 
@@ -211,12 +218,22 @@ public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
 4. 如需出现在创造模式物品栏，在 `CREATIVE_TAB_ITEMS` 加 `() -> FOO`
 5. 添加数据资源（`assets/.../models/item/foo.json`、`lang` 键、可能的 `recipe` 等）
 
-**无需修改任何平台代码**——`forEach` 会自动遍历新条目，Fabric / NeoForge 的注册逻辑都是通用的。方块、实体、效果等同理，只是条目 record 字段略有不同。
+**无需修改任何平台代码** —— `forEach` 会自动遍历新条目，Fabric / NeoForge 的注册逻辑都是通用的。方块、实体、效果等同理，只是条目 record 字段略有不同。
 
-## 8. 相关文档
+> 新增内容若带玩法逻辑，记得同步该子系统的「代码地图」与「扩展点」两节（见 [开发者文档索引](../README.md) 的写作约定）。
 
-- [架构总览](architecture-overview.md)
-- [平台抽象](platform-abstraction.md)
-- [方块与物品](blocks-items.md) - 各物品/方块类的具体行为
-- [实体与 AI](entities-world.md) - 实体注册与属性
-- [网络与同步](network.md) - `ModPayloads` 清单
+## 8. 约束与陷阱
+
+- **清单内不得引用尚未回写的静态字段**：需要延迟求值时用 `Supplier`（第 6 节）。
+- **条目数不要写进文档**：它会随每次新增功能变化（第 3.1 节给的是数条目的命令）。
+- **`EntityRegistrar` 只能用匿名内部类**，不能用 lambda（泛型方法的限制）。
+- **新注册内容的资源缺失不会在注册期报错**：缺 `lang` 键或模型只会在游戏里显示为 `item.unsuspiciousblock.foo` 字面量或紫黑方块，排查时先看 `assets/`。
+
+## 9. 相关文档
+
+- [架构总览](architecture.md) —— 三模块划分与初始化流程
+- [平台抽象](platform-spi.md) —— SPI 接口如何被加载
+- [网络与同步](network.md) —— `ModPayloads` 清单
+- [客户端与 GUI](../subsystems/client-ui.md) —— 渲染器与模型层清单
+- [方块与物品](../subsystems/blocks-items.md) —— 各物品/方块类的具体行为
+- [实体与 AI](../subsystems/entities-world.md) —— 实体注册与属性

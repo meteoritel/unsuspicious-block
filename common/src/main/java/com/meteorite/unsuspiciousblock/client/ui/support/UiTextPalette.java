@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 /**
  * GUI 自绘文本语义色表——与物品侧 {@code TooltipBuilder} 语义色一一对齐的 int 色实现。
  *
- * <p>架构约定（docs/dev/tooltip.md「GUI 文本规范」节）：语义色表是唯一语义层，
+ * <p>架构约定（docs/dev/foundation/text-format.md 的「GUI 内文本规范」）：语义色表是唯一语义层，
  * 共 9 个语义槽（TITLE / BODY / LABEL / HINT / POSITIVE / NEGATIVE / SEVERE / ACCENT / NAME），
  * 不同渲染介质各自提供实现：原版暗底 tooltip 走 {@code TooltipBuilder} 的 ChatFormatting 常量，
  * 羊皮纸 / 暗色两套 GUI 底色走本类的 int 主题常量组。</p>

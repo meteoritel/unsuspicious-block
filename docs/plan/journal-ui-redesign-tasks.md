@@ -109,7 +109,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 交付 | ① 旧 `ScenarioPanel` 的**场景 tab 部分**下线（网格页头部仍由它绘制，含它自己的下拉与计算按钮——见计划 4.4 R7）；② i18n 新增 key 中英同步；③ `docs/dev/client-ui.md`、`docs/dev/network.md` 同步（含 2.9 的文档漂移修正）；④ 清理死资源（`player_inventory.png`、`catalog_entry_pin.png`）与脱节脚本（`generate_toolbar_icons.py`、`generate_journal_icon_atlas.py`）；⑤ 按待决项决定网格页头部下拉的去留（R7） |
+| 交付 | ① 旧 `ScenarioPanel` 的**场景 tab 部分**下线（网格页头部仍由它绘制，含它自己的下拉与计算按钮——见计划 4.4 R7）；② i18n 新增 key 中英同步；③ `docs/dev/subsystems/client-ui.md`、`docs/dev/foundation/network.md` 同步（含 2.9 的文档漂移修正）；④ 清理死资源（`player_inventory.png`、`catalog_entry_pin.png`）与脱节脚本（`generate_toolbar_icons.py`、`generate_journal_icon_atlas.py`）；⑤ 按待决项决定网格页头部下拉的去留（R7） |
 | 状态 | ① ✅ 随 S6 落地（`ScenarioPanel` 收缩为网格页头部）；② ✅；③ ✅（`client-ui.md`、`network.md` 已同步）；④ ⬜ 未做（`player_inventory.png`、`catalog_entry_pin.png`、`generate_journal_icon_atlas.py` 仍在；`generate_toolbar_icons.py` 已不存在）；⑤ ✅ 下拉去留由 S6 裁定（网格页头部改用与场景页共享的浮层）。**S5 剩余项：④ 死资源与脱节脚本清理。** |
 
 ---
@@ -163,7 +163,7 @@
 
 ## i18n 新增 key（草案，S3/S4 落地时定稿）
 
-> 命名遵循 `docs/dev/tooltip.md` 第 6 节：`screen.unsuspiciousblock.<screen>.<seg>`，lang 值一律纯文本、样式由代码控制。四态状态词与失败原因已存在，无需新增。
+> 命名遵循 `docs/dev/foundation/text-format.md` 第 6 节：`screen.unsuspiciousblock.<screen>.<seg>`，lang 值一律纯文本、样式由代码控制。四态状态词与失败原因已存在，无需新增。
 
 | key 后缀 | 用途 |
 |---|---|
@@ -196,7 +196,7 @@
 
 - IDEA MCP 已检查全部改动 Java 文件及中英文 lang：无错误；保留公共 API 尚无业务调用的提示、局部提取建议和既有屏幕返回值提示。
 - 按上述代理参数执行 `./gradlew build`：**BUILD SUCCESSFUL in 1m 33s**，33 个任务（23 执行、10 最新），common / Fabric / NeoForge 均成功。未新增或修改测试文件；build 自带的既有测试任务正常执行。Gradle 提示现有弃用功能与 Gradle 9 不兼容。
-- S1-t 入口：Fabric / NeoForge 的 Gradle `runClient` 已默认带上 `-Dunsuspiciousblock.uiKitDebug=true`；IDEA 刷新 Gradle 后启动开发客户端，打开笔记按 **Ctrl+F8**。详见 [客户端与 GUI](../dev/client-ui.md) 第 4.4 节。
+- S1-t 入口：Fabric / NeoForge 的 Gradle `runClient` 已默认带上 `-Dunsuspiciousblock.uiKitDebug=true`；IDEA 刷新 Gradle 后启动开发客户端，打开笔记按 **Ctrl+F8**。详见 [客户端与 GUI](../dev/subsystems/client-ui.md) 第 4.4 节。
 - 实机重点：下拉 tooltip/滚轮不穿透；幸运值拖选；验证页拖动/缩放/复位不增加排版次数；物品与图块 tooltip 不互相穿透；内容 2x 与外层 pose 2x 下裁剪正确，记录四段耗时。
 - **未宣称实测通过**：R2 仅完成源码核实与裁剪实现，R3 的显示效果/耗时仍待双平台实测。验证页暂留，不做 S2–S5 业务迁移。
 
@@ -214,7 +214,7 @@
 - **S1-b 树干连线已实机确认通过**（用户复核截图：折线树枝与续行竖线均正确；开发耗时 HUD 读数：构建 3.8ms、排版 1.2ms、单帧渲染 110µs、命中 1µs）。
 - **浮层注册表** `client/ui/overlay/OverlayLayer.java`：模态浮层，打开期间吞掉 click / scroll / drag / release / key / char 六类输入并画在最上层；屏幕在六个入口最先转发，`renderOverlays` 在打开时直接返回。两个正面副作用：ESC 关浮层而不是关整本书；下层任何 tooltip 都不会透出（不再依赖“每条下层路径都记得加守卫”）。
 - **参数叠加层** `client/ui/overlay/ScenarioParamsOverlay.java`：工具（服务端签发清单，◀/▶ 循环）、抽样次数（按钮，当前档高亮）、附魔等级（−/＋，0..上限）、幸运（单行 `EditBox`）；确认 / 取消；越界或非数字由 `ScenarioParams` 的构造校验拦下，显示一行提示且**不改动任何已生效的选择**；点外部空白不关闭，避免误触丢掉正在编辑的内容。
-- **入口**：读数行上的固定图标（`toolbar_icons.png` 的 `GEAR` 槽位，列 0 行 2，见 `docs/dev/toolbar-icon-atlas.md`），当前生效参数在它的悬停提示里。`ScenarioDetailPanel.mouseClicked` 先跑文档级命中（可点元素）再判定框内拖动，避免与平移抢同一次按下。
+- **入口**：读数行上的固定图标（`toolbar_icons.png` 的 `GEAR` 槽位，列 0 行 2，见 `docs/dev/internals/toolbar-icon-atlas.md`），当前生效参数在它的悬停提示里。`ScenarioDetailPanel.mouseClicked` 先跑文档级命中（可点元素）再判定框内拖动，避免与平移抢同一次按下。
 - **修掉一个编译错误**：1.21 起附魔是数据驱动注册表，`BuiltInRegistries.ENCHANTMENT` 不存在；改为从世界 `registryAccess()` 取 `Registries.ENCHANTMENT`，无世界（或 id 缺失）时退回 id 路径段。
 - **i18n**：新增 8 个 `simulation.params.*` key，中英同步；错误提示复用既有 `simulation.luck_invalid`。
 - **验证**：IDEA 检查全部改动文件**无错误**（以 `error` 级别复查为空）；`./gradlew build` **BUILD SUCCESSFUL in 1m 29s**。

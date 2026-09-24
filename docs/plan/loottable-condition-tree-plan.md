@@ -1,7 +1,7 @@
 # 战利品条件树修复计划
 
 > 状态：**开发侧已实施，待用户实机验证**（2026-09-22）。
-> 当前机制的唯一权威描述是 [战利品表系统](../dev/loottable.md)；本文记录修复顺序、设计选择和验证口径，不作为现行机制说明。
+> 当前机制的唯一权威描述是 [战利品表系统](../dev/subsystems/loottable.md)；本文记录修复顺序、设计选择和验证口径，不作为现行机制说明。
 > 本计划依据 [条件树审查报告](../todo/loottable-condition-tree.md) 与工作区静态复核制定；原版 API 细节和游戏内行为仍待实施阶段验证。
 
 ## 一、现状
@@ -81,7 +81,7 @@
 
 ### 4.5 文件改动清单
 
-预计涉及 `LootParseUtil.java`、`LootConditionHandlers.java`、`PathHintAnalyzer.java`、`PathHint.java`、`ProbabilityFormat.java`、`CatalogStreamCodec.java`、`en_us.json`、`zh_cn.json`，必要时调整目录构建阶段的诊断入口与 `ScenarioLabel`。若改变机制行为，同步更新 `docs/dev/loottable.md`，客户端或网络协议变化分别核对 `docs/dev/client-ui.md`、`docs/dev/network.md`；完成后处理审查报告状态。
+预计涉及 `LootParseUtil.java`、`LootConditionHandlers.java`、`PathHintAnalyzer.java`、`PathHint.java`、`ProbabilityFormat.java`、`CatalogStreamCodec.java`、`en_us.json`、`zh_cn.json`，必要时调整目录构建阶段的诊断入口与 `ScenarioLabel`。若改变机制行为，同步更新 `docs/dev/subsystems/loottable.md`，客户端或网络协议变化分别核对 `docs/dev/subsystems/client-ui.md`、`docs/dev/foundation/network.md`；完成后处理审查报告状态。
 
 ## 五、决策记录
 

@@ -1036,7 +1036,7 @@ public final class ArchaeologyJournalServerCatalog {
     // 保证范围拆成两句（决策 35），不要读成一句更大的保证：
     //   1) "表 JSON 变化必然失效"——由资源栈摘要承担，现在成立；
     //   2) "影响概率的所有数据变化必然失效"——加上被引用附魔的定义摘要后成立。
-    // 已知残余（不列入本摘要的外部注册表依赖）见 docs/dev/loottable.md。
+    // 已知残余（不列入本摘要的外部注册表依赖）见 docs/dev/internals/loottable-mechanics.md。
     private static Map<ResourceLocation, String> computeTableHashes(
             LootTableReferenceGraph graph, Map<ResourceLocation, TableDefinition> tables,
             Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries) {
@@ -1109,7 +1109,7 @@ public final class ArchaeologyJournalServerCatalog {
      * <p>
      * 取这个字段而不是整份定义：决定模拟行为的是等级上限（它决定模拟用的满级工具与等级控件范围），
      * 其余字段（anvil 花费、权重等）不影响任何概率。因此本摘要**不覆盖**附魔定义的其它字段——
-     * 这一条残余与其余外部注册表依赖一起写进 {@code docs/dev/loottable.md}。
+     * 这一条残余与其余外部注册表依赖一起写进 {@code docs/dev/internals/loottable-mechanics.md}。
      */
     private static void updateEnchantmentDigest(MessageDigest digest, HolderLookup.Provider registries,
                                                 Set<ResourceLocation> enchantments) {

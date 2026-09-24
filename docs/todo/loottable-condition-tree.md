@@ -2,7 +2,7 @@
 
 > 状态：**实施前审查快照**（2026-09-22）；D1–D5 与 D7 已在本轮修复，D6 的通用第三方扩展点保留待办。实施记录见 [修复计划](../plan/loottable-condition-tree-plan.md)。
 >
-> 机制的唯一权威描述是 [战利品表系统](../dev/loottable.md)；本文只记录经静态阅读核实的事实、缺陷与可动项。
+> 机制的唯一权威描述是 [战利品表系统](../dev/subsystems/loottable.md)；本文只记录经静态阅读核实的事实、缺陷与可动项。
 > 本项目代码的行号以写作时的工作区为准；**原版代码的行号以 `common/build/moddev/artifacts/*-minecraft-sources.jar` 为准**
 > （MCP 的反编译视图行号与它不一致）。行号会随改动失效。
 > **全部结论未编译、未实机验证**，未验证的前提单列于第六节。
@@ -69,7 +69,7 @@
 | `location_check` 的 position/light/block/fluid | `:634-655` 只陈述"存在该约束"，标 `partial` | 见 3.2 |
 | `damage_source_properties` 的 direct_entity/source_entity | `:877-884` 只陈述"存在该约束"，标 `partial` | 嵌套整个 `EntityPredicate`；且"被玩家击杀"已有独立条件 `killed_by_player`，语义重复 |
 | 第三方条件不参与场景规划 | `SimulationScenarioPlanner:316` 返回无约束，因此也不触发"指纹不稳定"告警 | 方向保守，行为正确 |
-| 附魔定义 `max_level` 之外的字段等 | 未进入表哈希 | 不影响任何概率，见 `docs/dev/loottable.md` §7.4 的"已知残余" |
+| 附魔定义 `max_level` 之外的字段等 | 未进入表哈希 | 不影响任何概率，见 `docs/dev/subsystems/loottable.md` §7.4 的"已知残余" |
 
 ---
 
@@ -191,6 +191,6 @@ B 类的存在有现成证据：`describeStateProperties`（`:349`）是全类�
 
 ## 八、相关文档
 
-- [战利品表系统](../dev/loottable.md) — 机制权威描述（§7.2 场景策略、§7.4 缓存与"已知残余"、§9 自定义条件、§10 扩展点）
-- [客户端与 GUI](../dev/client-ui.md) — 条件树渲染与保真度三态
-- [网络与同步](../dev/network.md) — 目录同步协议
+- [战利品表系统](../dev/subsystems/loottable.md) — 机制权威描述（§7.2 场景策略、§7.4 缓存与"已知残余"、§9 自定义条件、§10 扩展点）
+- [客户端与 GUI](../dev/subsystems/client-ui.md) — 条件树渲染与保真度三态
+- [网络与同步](../dev/foundation/network.md) — 目录同步协议

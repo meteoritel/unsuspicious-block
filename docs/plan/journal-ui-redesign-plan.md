@@ -6,7 +6,7 @@
 >
 > 执行拆点、验收清单与 i18n 草案见 [journal-ui-redesign-tasks.md](journal-ui-redesign-tasks.md)。
 >
-> 2026-09-21 修订：用户确认前序实机验收后，本轮完成 S2 / S3 / S4 代码与双平台构建。第 2 节保留实施前勘察；当前机制以 [客户端与 GUI](../dev/client-ui.md) 第 4.4–4.6 节为准。后端不变；本轮新增交互待用户验收，S5 未实施。
+> 2026-09-21 修订：用户确认前序实机验收后，本轮完成 S2 / S3 / S4 代码与双平台构建。第 2 节保留实施前勘察；当前机制以 [客户端与 GUI](../dev/subsystems/client-ui.md) 第 4.4–4.6 节为准。后端不变；本轮新增交互待用户验收，S5 未实施。
 >
 > 2026-09-22 修订：**S6**（场景页条件树与网格页头部重做，见决策 4.4 的 R7 行）已落地并随提交 `675bafd` 进入 `1.21.1` 分支；R7、R9 随之关闭。S5 收尾的 ①②③⑤ 已完成，仅剩死资源与脱节脚本清理。S6 的实施记录已移入本地归档目录 `docs/archive/`（不入库）。
 >
@@ -133,7 +133,7 @@ this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
 | `textures/gui/bookmark_tab.png` | 40×66（3 态 × 22） | 改 UV 的 v + 裁剪宽度（`ui/widget/BookmarkToggleButton.java:81`） |
 | `textures/gui/catalog_entry.png` | 152×76（4 态 × 19） | 改 UV 的 v（`ui/panel/CatalogPanel.java:186-190`） |
 | `textures/gui/log_entry.png` | 148×78（3 态 × 26） | 改 UV 的 v（`ui/panel/LogPanel.java:512-518`） |
-| `textures/gui/toolbar_icons.png` | 81×27（9×9 格 atlas，27 槽） | 按 `col*9, row*9` 取块（`ui/widget/IconButton.java:166-169`）；规格见 `docs/dev/toolbar-icon-atlas.md` |
+| `textures/gui/toolbar_icons.png` | 81×27（9×9 格 atlas，27 槽） | 按 `col*9, row*9` 取块（`ui/widget/IconButton.java:166-169`）；规格见 `docs/dev/internals/toolbar-icon-atlas.md` |
 | `textures/gui/book_side_tabs/*.png` | 各 24×20 | 单图 + 悬停白色叠色 |
 
 - 惯例：自有贴图**一律 1:1 `blit`**，无 `blitNineSliced` / `blitRepeating`；`blitSprite` 只用于原版 sprite（`JournalPageButton`）。**能靠 tint 解决的就不出贴图**（`IconButton`、`BookSideTabButton`、`ScenarioPanel`、`DetailOverlayPanel` 全是代码叠色）——这是项目主流惯例。
@@ -208,8 +208,8 @@ this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
 
 ### 2.9 与文档不一致之处（漂移清单）
 
-1. `docs/dev/network.md:139` 写「服务端 4.6、客户端 4.5」，代码实际是 `4.7` / `4.6`；同段示例还写着 `versioned("4.4")`。
-2. 文档中多处仍描述 `keepBaseTool`（`docs/dev/loottable.md:462/556`、本文引用的任务文档 `:293`），代码里已删除。
+1. `docs/dev/foundation/network.md:139` 写「服务端 4.6、客户端 4.5」，代码实际是 `4.7` / `4.6`；同段示例还写着 `versioned("4.4")`。
+2. 文档中多处仍描述 `keepBaseTool`（`docs/dev/subsystems/loottable.md:462/556`、本文引用的任务文档 `:293`），代码里已删除。
 3. `scripts/drawer/generate_toolbar_icons.py` 输出的规格（14×14、56×56、14 个图标）与现行 `toolbar_icons.png`（9×9、81×27、27 槽）不符。
 4. `scripts/generate_journal_icon_atlas.py` 的产物 `journal_icon_atlas.png` 在资源目录中不存在。
 
