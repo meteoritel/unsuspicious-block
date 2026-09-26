@@ -519,6 +519,8 @@ public class ArchaeologyJournalScreen extends Screen {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
         if (this.overlays.mouseClicked(mouseX, mouseY, button)) return true;
+        // 浮层没接管这次点击：把上一次关闭浮层时还给入口按钮的焦点收掉，避免轮廓长期驻留。
+        this.overlays.clearRestoredFocus();
         if (super.mouseClicked(mouseX, mouseY, button)) {
             syncButtonState();
             return true;

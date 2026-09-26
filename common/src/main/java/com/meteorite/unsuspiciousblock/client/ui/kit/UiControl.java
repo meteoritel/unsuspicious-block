@@ -16,7 +16,7 @@ import java.util.Objects;
  * 禁用与不可见的控件不参与命中、动作与焦点序列。状态只影响绘制与命中，不触发重新测量，
  * 因此状态变化不需要重建内容树。</p>
  */
-public final class UiControl {
+public final class UiControl implements UiFocusTarget {
     private UiRect bounds = new UiRect(0, 0, 0, 0);
     private Component label = Component.empty();
     private FormattedCharSequence text = FormattedCharSequence.EMPTY;
@@ -25,6 +25,7 @@ public final class UiControl {
     @Nullable private UiIcon icon;
     private List<Component> tooltip = List.of();
     @Nullable private UiAction action;
+    @Nullable private Component accessibleName;
     private UiTarget target = new UiTarget(UiTarget.Kind.ROW, 0, null, bounds, List.of(), null);
     /** 标签超宽时的滚动计时：只在悬停期间推进，离开即归零。 */
     private int scrollTicks;
@@ -97,6 +98,20 @@ public final class UiControl {
 
     /** 可命中与可参与悬停的条件：禁用或不可见的目标不参与命中。 */
     public boolean isHittable() { return enabled && visible; }
+
+    @Override public boolean canFocus() { return isFocusable(); }
+
+    /** 供焦点调试与旁白使用的可读名称；未显式设置时按标签、再按首行提示回退。 */
+    public void setAccessibleName(@Nullable Component name) {
+        this.accessibleName = name == null ? null : name.copy();
+    }
+
+    @Override public @Nullable Component accessibleName() {
+        if (accessibleName != null) return accessibleName;
+        // 图标/符号按钮的 label 常为空或不具名，真正的名称只在提示里：回退到首行提示。
+        if (!label.getString().isEmpty()) return label;
+        return tooltip.isEmpty() ? label : tooltip.getFirst();
+    }
 
     /**
      * 可进入键盘焦点序列的条件：可命中**且确实有动作**。

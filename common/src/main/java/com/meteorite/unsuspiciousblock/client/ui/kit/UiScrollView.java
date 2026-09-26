@@ -115,6 +115,17 @@ public final class UiScrollView {
         return isScrollbarVisible() && scrollbarTrack().contains(x, y);
     }
 
+    /** 指针是否落在当前滑块上：宿主据此决定悬停反馈，几何只在这里算一次。 */
+    public boolean hitThumb(double x, double y) {
+        if (!isScrollbarVisible()) return false;
+        UiRect track = scrollbarTrack();
+        int top = thumbTop();
+        return x >= track.x() && x < track.right() && y >= top && y < top + thumbHeight();
+    }
+
+    /** 滑块拖动是否进行中：宿主据此在整个拖动期间消费输入，即使这一帧偏移没有变化。 */
+    public boolean isDragging() { return dragging; }
+
     public boolean mousePressed(double x, double y, int button) {
         if (button != 0 || !hitScrollbar(x, y)) return false;
         // 点在滑块之外（轨道空白）时先把滑块中心对到指针：否则拖动时滑块带着一个很大的抓取偏移，跟不上手。

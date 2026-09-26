@@ -194,10 +194,10 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             scenesButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, icon(1, 0),
                     List.of(ScenarioSimulationClientState.text("scene.toggle")),
                     () -> overlays.open(new ScenarioSelectionOverlay(overlays, dropdownX(), dropdownY(), currentTable,
-                            structure.options(), selection.params(), getPage(), this::setPage)));
+                            structure.options(), selection.params(), getPage(), this::setPage), scenesButton));
             expandButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, icon(1, 2),
                     List.of(ScenarioSimulationClientState.text("frame.expand")), () -> {
-                        if (frame != null) overlays.open(new ScenarioExpandedOverlay(overlays, this, font, frame.state()));
+                        if (frame != null) overlays.open(new ScenarioExpandedOverlay(overlays, this, font, frame.state()), expandButton);
                     });
             List<Component> paramsTooltip = new ArrayList<>();
             Component toolName = Component.literal(selection.params().toolId().toString());
@@ -206,7 +206,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             selection.params().toolEnchantments().forEach((id, level) -> paramsTooltip.add(ScenarioSimulationClientState.text(
                     "params.enchant_level", ScenarioParamsOverlay.enchantmentName(id), level)));
             paramsButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, icon(0, 2), paramsTooltip,
-                    () -> overlays.open(new ScenarioParamsOverlay(overlays, table, selection.scene(), structure.options(), selection.params())));
+                    () -> overlays.open(new ScenarioParamsOverlay(overlays, table, selection.scene(), structure.options(), selection.params()), paramsButton));
             calculateButton.configure(font, ScenarioSimulationClientState.text("calculate"), UiTextPalette.Parchment.TITLE, null,
                     List.of(ScenarioSimulationClientState.text("calculate")), () -> ScenarioSimulationClientState.request(table, true));
         }

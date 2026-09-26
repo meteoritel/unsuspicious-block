@@ -1,6 +1,6 @@
 # 考古笔记 UI kit 渐进扩展计划
 
-> 状态：**阶段 A/B 已实施（2026-09-27），阶段 C/D/E 待实施**；拟定日期：2026-09-25。
+> 状态：**阶段 A/B/C 已实施（2026-09-27），阶段 D/E 待实施**；拟定日期：2026-09-25。
 > 当前机制的唯一权威描述是 [客户端与 GUI](../dev/subsystems/client-ui.md) 与 [笔记 GUI 内部机制](../dev/internals/journal-ui-internals.md)；本文只记录实施前状态、拟议路线和决策依据，不构成已实现机制的说明。
 > 修订记录：2026-09-25 首版，确定先服务考古笔记、再逐步复用；2026-09-26 扩充通用布局、交互与可访问性路线，加入图片灯箱和对外 API / 独立库预留。两次修订均未修改 UI 代码。
 > 下文 `ui/` 指 `common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/`。`文件:行` 均为拟定当日的定位，实施时应以最新源码复核。
@@ -305,3 +305,50 @@ resize             → 视口变化 → 必要时重排与钳制滚动偏移
 - 参数浮层：幸运值输入与拖选、工具/抽样/附魔调节、确认/取消、滚轮翻行、resize 后按钮与输入框不重叠。
 - 打开模态时底层书页不响应点击、滚轮与 tooltip；关闭后焦点与滚动位置行为符合预期。
 - 关注 5 项可见变化：焦点轮廓、按下底色、箭头禁用态、滚动条出现条件、滚轮在面板内边距处不再滚动。
+- 阶段 C 追加：两个浮层用 **Tab / Shift+Tab** 走一遍全部可交互控件（含幸运值输入框在顺序中间）、**Space** 激活焦点控件；关闭浮层后入口按钮出现焦点轮廓，点页面其它位置应消失；参数浮层用 **PageUp / PageDown** 翻到窗口外的附魔行并继续 Tab；选择浮层的当前场景行与参数浮层的当前抽样格出现选中底色。
+- 阶段 C 追加：目录页（左页）滚动条拖动、点轨道跳转、滚轮与条目翻阅应与迁移前一致（滑块长度在小列表下可能有几像素差异）。
+- 开发环境可加 `-Dunsuspiciousblock.uiKitDebug=true` 打开调试页：`F` 切换调试叠加层（默认关闭），核对焦点边框、控件边界与布局子项矩形、滚动读数。
+
+### 9.3 阶段 C（交互与可访问性）——2026-09-27
+
+交付内容：焦点与输入路由闭环、焦点可视反馈、语义选中态、调试可视化，以及第二个复用点（目录页滚动视口）。
+
+| 文件 | 变化 |
+|---|---|
+| `ui/kit/UiFocusTarget.java` | 新增：可聚焦目标适配器（`canFocus` / `setFocused` / `activate` / `bounds` / `accessibleName`） |
+| `ui/kit/UiFocusManager.java` | 新增：按宿主**视觉顺序**登记目标、唯一焦点、Tab/Shift+Tab、可配置的 Enter/Space 激活、焦点变化通知、焦点失效清理 |
+| `ui/kit/UiControl.java` | 改：`implements UiFocusTarget`；`accessibleName` 在 label 为空时回退 tooltip 首行 |
+| `ui/kit/UiControlGroup.java` | 改：**删除**自管的焦点 API（`focused`/`setFocused`/`keyPressed`/`moveFocus`/`focusFirst`/`clearFocus`/`setKeyboardNavigation`），新增 `collectFocusTargets`；`mousePressed` 不再夺取焦点 |
+| `ui/kit/UiScrollView.java` | 改：新增 `hitThumb(x, y)` 与 `isDragging()`，宿主不再复算滑块几何 |
+| `ui/kit/debug/UiKitDebugScreen.java` | 改：新组件演示区（滚动视口 / 控件组 / 布局 / 六种状态样例 / 原生输入框适配器）+ `F` 键调试叠加层（默认关闭）+ 诊断读数 |
+| `ui/overlay/OverlayLayer.java` | 改：`open(overlay, opener)` 记录并恢复入口焦点、切模态继承返回焦点、`Overlay.closed()` 生命周期回调、`clearRestoredFocus()` |
+| `ui/overlay/ScenarioParamsOverlay.java` | 改：接入焦点管理器（EditBox 作为原生目标夹在视觉顺序中间）、`PageUp`/`PageDown` 翻窗口、语义选中态 |
+| `ui/panel/ScenarioSelectionOverlay.java` | 改：接入焦点管理器、焦点行 `ensureVisible`、语义选中态 |
+| `ui/panel/ScenarioDetailPanel.java` | 改：三处 `overlays.open(...)` 传入入口控件作为返回焦点 |
+| `ui/panel/CatalogPanel.java` | 改：滚动偏移与滚动条迁到 `UiScrollView`（公开 API 与持久化的条目数单位不变） |
+| `ui/screen/ArchaeologyJournalScreen.java` | 改：未被子层消费的鼠标点击调用 `clearRestoredFocus()` |
+| 两份 lang JSON | 改：各新增 24 个调试页文案键（键集合一致） |
+
+**构建与静态检查**：`build_project`（全项目增量）`isSuccess=true / problems=[]`；`lint_files`（15 个文件）0 error、15 条 WARNING，比阶段 A/B 的 27 条下降；剩余 12 条仍是「public API 尚未被调用」（`UiFocusManager.targets()/focusFirst()`、`UiControl.isFocused()`、`UiControlGroup.controls()/isPressed()/isPressCaptured()`、`UiLinearLayout` 的 CONTENT/REMAIN 工厂等）+ 3 条风格建议。
+
+**与计划的偏离**：
+
+1. **焦点所有权集中到 `UiFocusManager`**，`UiControlGroup` 不再自管焦点。计划 4.2 把焦点列为第三阶段候选类型；实施理由是真实 Tab 顺序会跨组件——参数浮层的原生 `EditBox` 夹在两段控件之间，只有宿主按视觉顺序统一登记才能得到正确顺序。这也让阶段 A/B 里「`UiControlGroup` 焦点 API 无调用者」的悬空状态消失（相关 API 已删除）。
+2. **鼠标点击不夺取焦点**：焦点只在 Tab 与宿主显式 `focusOn` 时改变，因此焦点轮廓只出现在键盘使用时，鼠标用户的画面与阶段 A/B 一致（只有原生 `EditBox` 由原版自身接管后同步给管理器）。
+3. **Enter 激活在业务页被模态语义占用**：两个浮层 `setEnterActivates(false)`（选择浮层 Enter=选择并关闭、参数浮层 Enter=确认），`Space` 承担激活；`UiFocusManager` 的 Enter 分支目前只在调试页启用。
+4. **参数浮层的键盘滚动用 `PageUp`/`PageDown`**：该浮层是分页窗口模型（只创建窗口内那一屏的行），Tab 只在窗口内环绕，因此窗口外的附魔行靠翻页到达；原先写的「焦点落在窗口外时自动翻页」经独立验证确认是死代码，已删除并改为上述通路。
+5. **语义选中态**：选择浮层的当前场景行与参数浮层的当前抽样格改为 `setSelected(true)`（原有加粗保留），这是本阶段新增的可见反馈。
+6. **目录页滚动条有固有视觉差异**：`UiScrollView` 的滑块高度按视口/内容像素比、最小 8px，迁移前按可见/总条目数与最小 12px；大列表下逐像素一致，小列表下有几像素差异。条目单位、持久化、命中、拖拽与悬停高亮均保持不变。
+
+**独立验证结论**（只读验证者，2026-09-27）：通过 7 组、不通过 2 项、提示 6 项。两项已修复——① 关闭浮层后还给入口控件的焦点没有任何后续生命周期（页面侧没有焦点管理器，轮廓会长期驻留），改为 `OverlayLayer.clearRestoredFocus()` + 宿主在未被子层消费的鼠标点击里收掉；② 参数浮层「焦点进视口」是死代码、窗口外的附魔行键盘不可达，改为删除该死代码 + 新增 `PageUp`/`PageDown` 翻窗口。另据提示收敛了：图标/符号按钮的 `accessibleName` 回退到 tooltip 首行。验证者手算确认：两浮层 Tab 顺序等于视觉顺序；`CatalogPanel` 对照 HEAD 的 6 组用例（含奇偶取整、`+2`/`+1` lookahead、跨模式 TABLES 5 → CATEGORIES 4）全部一致；`dragScrollbar` 返回值与宿主消费语义不变；两份 lang 键集合完全一致（各 869 键）。
+
+**复验**（同一验证者，2026-09-27）：F1 / F2 / F5 三项修复全部成立——焦点恢复的清除路径不触碰 `returnFocus` 与任何 `UiFocusManager`；`PageUp`/`PageDown` 的窗口可达性经手算完备（任意附魔行都存在覆盖它的窗口，1.21.1 原版 `EditBox.keyPressed` 不消费 PageUp/PageDown 所以输入框持焦时同样生效）；`accessibleName` 回退的判空顺序不会抛 `NoSuchElementException`。复验另提 4 项，均已收敛：把只被 `layout()` 使用的 `visibleRows`/`totalRows` 降为局部变量（lint 回到 14 条）；统一滚轮与翻页的焦点策略（都不显式清焦点，出窗目标由 `endUpdate` 丢弃）；给符号箭头控件加 `setAccessibleName` 与显式名称回退（`UiControl.setAccessibleName` 为本轮新增契约）；同步文档中因上述改动而失效的三处描述并补写 `clearRestoredFocus` 的生命周期约定。
+
+**已知未覆盖项**（留待阶段 D/E 或单独裁决）：
+
+- **旁白/辅助技术入口未接通**：`UiFocusTarget.accessibleName` 目前只被调试叠加层读取，没有 narration 或辅助 API 调用点；计划 P1 的「在 Minecraft 可用的旁白入口补语义信息」只完成了命名契约。
+- **页面侧没有焦点管理器**：恢复的入口焦点在页面上无法用键盘推进（Tab 无处可去），只能靠下一次鼠标点击清除；「无鼠标可完成试点页面主要操作」只对两个浮层与调试页成立，对整本书仍不成立。
+- **`UiLinearLayout` 的 `CONTENT` / `REMAIN` / min·max** 仍只被调试页演示区覆盖，没有真实业务页使用。
+- **`UiFocusManager.add` 的去重只在一次 `beginUpdate`/`endUpdate` 内有效**：宿主必须每次按同一顺序重新登记全部目标；漏掉配对会重复停靠（当前三处调用都成对）。
+- **焦点被 `endUpdate` 移除时不就近重定位**：下一个 Tab 从序列首位、Shift+Tab 从末位重新开始。
+- **分类模式奇数溢出时最后一屏留一个空格**：与迁移前完全一致，非本阶段引入。

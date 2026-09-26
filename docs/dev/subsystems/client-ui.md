@@ -106,7 +106,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 `client/ui/` 按职责分层（`entry/` `layout/` `panel/` `screen/` `support/` `toast/` `widget/` `tooltip/`）。**分层职责、追踪管理页、网格页展示优先级链、文本配色约束、声明式 UI kit 契约、场景详情页与模态交互、面板状态与偏好持久化见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。**
 
-新增面板的标准路径：在 `panel/` 实现 → 由对应 `screen/` 组合 → 实现 `LayoutAware` / `UiStateful` 并在创建处向 `UiPanelRegistry` 注册一次。面板内优先复用 `client/ui/kit/` 的声明式组件而不是手算坐标：静态内容走 `UiDocument` 块序列，滚动区走 `UiScrollView`，成组的可点击控件走 `UiControlGroup`，控件与原生输入框的落位走 `UiLinearLayout`；控件结构色取 `UiControlStyle`，文本色取 `UiTextPalette`（逐项契约见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)）。
+新增面板的标准路径：在 `panel/` 实现 → 由对应 `screen/` 组合 → 实现 `LayoutAware` / `UiStateful` 并在创建处向 `UiPanelRegistry` 注册一次。面板内优先复用 `client/ui/kit/` 的声明式组件而不是手算坐标：静态内容走 `UiDocument` 块序列，滚动区走 `UiScrollView`，成组的可点击控件走 `UiControlGroup`，控件与原生输入框的落位走 `UiLinearLayout`；控件结构色取 `UiControlStyle`，文本色取 `UiTextPalette`。需要键盘导航的面板把可聚焦目标按**视觉顺序**登记进 `UiFocusManager`（原生输入框用宿主侧 `UiFocusTarget` 适配器夹在中间），打开模态时用 `OverlayLayer.open(overlay, opener)` 传入打开它的目标以交接焦点（逐项契约见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)）。
 
 ## 7. HUD
 
@@ -203,8 +203,8 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 - **新增 tooltip 分解**：参考 `AnvilBreakdownTooltipAppender`，在 tooltip 事件中按条件追加；取色只从 `TooltipBuilder` 取（见 [文本格式规范](../foundation/text-format.md)）。
 - **新增 Toast**：参考 `JournalUnlockToast`，在 `ArchaeologyJournalClientState` 注册回调。
 - **新增按键**：在 `ModKeyBindings` 加 `KeyMapping`，在客户端 tick 中处理；**默认键不要写进文档当断言**，以代码为准。
-- **新增模态**：必须走 `OverlayLayer`（它同时只开一个），并在六类输入入口先分发给它。
-- **新增可滚动列表 / 控件组**：滚动内容用 `UiScrollView` + `UiControlGroup`（稳定 key 复用，不要逐帧新建控件），落位用 `UiLinearLayout`；结构色取 `UiControlStyle`。
+- **新增模态**：必须走 `OverlayLayer`（它同时只开一个），并在六类输入入口先分发给它；打开时用 `open(overlay, opener)` 登记返回焦点，关闭后会还给该目标。
+- **新增可滚动列表 / 控件组**：滚动内容用 `UiScrollView` + `UiControlGroup`（稳定 key 复用，不要逐帧新建控件），落位用 `UiLinearLayout`；结构色取 `UiControlStyle`；需要键盘导航时把可聚焦目标按视觉顺序交给 `UiFocusManager`，原生输入框走宿主侧 `UiFocusTarget` 适配器。
 
 ## 15. 约束与陷阱
 
@@ -213,13 +213,13 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 - **不要在逐帧路径创建节点、列表或 lambda**：`setContent(revision, supplier)` 只在版本变化时执行构建器，业务方要持有稳定构建器并为所有影响内容的输入维护版本。
 - **Frame 只允许一层**，禁止 Frame 内再嵌套 Frame。
 - **`GuiGraphics.enableScissor` 不读取 pose**，因此 kit 在设置 scissor 前手动把 pose 的轴对齐平移/缩放应用到视口矩形；**不支持旋转、错切、透视**。
-- **kit 不负责输入分发优先级、浮层或状态持久化**，这些属于 `OverlayLayer` 与宿主；组内的焦点与键盘导航由 `UiControlGroup` 提供（纯标签 `action == null` 不进 Tab 序列）。
+- **kit 不负责输入分发优先级、浮层或状态持久化**，这些属于 `OverlayLayer` 与宿主；焦点与键盘导航由 `UiFocusManager` 提供（`UiControlGroup` 只把可聚焦控件交给它；纯标签 `action == null` 不进 Tab 序列）。
 - **取色只从语义色表取**：`TooltipBuilder`（tooltip/Jade）或 `UiTextPalette`（GUI 自绘），不允许在渲染点直接挑色。
 - **客户端不推断条件语义**：条件树与状态词均由服务端派生下发（见 [战利品表系统](loottable.md)）。
 - **GUI 内 `C` 键要优先读查看器输入的物品**，否则 JEI 打开时会退化成读容器槽位。
 - **服务端补充名称只驻留当前连接内存**，断开即清除，不写客户端全局配置。
 - **滚动视口的两种坐标成对使用**：`UiScrollView` 的 `push` / `pop` 与 `toContentX` / `toContentY` 必须成对；指针不在视口内时不要拿宿主坐标直接命中控件。
-- **控件组只在宿主决定的优先级内消费输入**：滚动条先于内容、原生输入框先于控件组；`mouseReleased` 只结束按压捕获，不在释放时激活。
+- **控件组只在宿主决定的优先级内消费输入**：滚动条先于内容、原生输入框先于控件组；`mouseReleased` 只结束按压捕获，不在释放时激活；鼠标点击**不夺取焦点**，焦点只在键盘导航与宿主显式请求时改变。
 
 ## 16. 相关文档
 

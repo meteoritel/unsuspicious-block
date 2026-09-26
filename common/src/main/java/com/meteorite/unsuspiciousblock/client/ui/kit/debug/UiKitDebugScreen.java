@@ -2,16 +2,24 @@ package com.meteorite.unsuspiciousblock.client.ui.kit.debug;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.kit.TextMeasurer;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiControl;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlGroup;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiDocument;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusManager;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusTarget;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiIcon;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiLinearLayout;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiNode;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiTransform;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,10 +31,47 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** S1 临时人工验证页；仅开发环境显式启用，S1-t 双平台验收完成后移除。 */
+/**
+ * S1 临时人工验证页 + 阶段 A/B/C 新组件人工验证页；仅开发环境显式启用，验收完成后移除。
+ *
+ * <p>画面左列是阶段 A/B/C 新组件的演示区（{@link UiScrollView} + {@link UiControlGroup} +
+ * {@link UiLinearLayout} + {@link UiControlStyle} 状态样例 + 原生 {@code EditBox} 适配器），
+ * 右列仍是既有的 200 行 {@link UiDocument} 演示；两者共用同一套外层面板 pose。</p>
+ *
+ * <p>键盘：P 切换外层 pose 1x/2x（同时重建布局），F 切换调试叠加层（默认关闭），
+ * Tab / Shift+Tab 在演示区焦点目标间移动（顺序含原生输入框），Space / Enter 激活焦点控件。
+ * 调试叠加层关闭时不绘制任何额外内容。</p>
+ */
 public final class UiKitDebugScreen extends Screen {
     private static final String PREFIX = "screen.unsuspiciousblock.ui_kit_debug.";
     private static final int BRANCH_COLOR = 0xFF896C48;
+
+    // 演示区几何：固定停靠左侧，右侧留给既有 UiDocument 演示。
+    private static final int PANEL_X = 8;
+    private static final int PANEL_TOP = 30;
+    private static final int PANEL_WIDTH = 172;
+    private static final int ROW_SPACING = 4;
+    private static final int CONTENT_PADDING = 4;
+    private static final int ROW_HEIGHT = 18;
+    private static final int SAMPLE_ROW_HEIGHT = 16;
+    private static final int SAMPLE_ROW_FIRST = 4;
+    private static final int SAMPLE_ROW_COUNT = 4;
+    private static final int LIST_ROW_HEIGHT = 14;
+    private static final int LIST_ROW_COUNT = 12;
+    private static final int LIST_ROW_FIRST = SAMPLE_ROW_FIRST + SAMPLE_ROW_COUNT;
+
+    // 调试叠加层配色；只在 F 开关打开时用到。
+    private static final int DEBUG_PANEL_COLOR = 0xFFFFD050;
+    private static final int DEBUG_CONTROL_COLOR = 0xFF80FF80;
+    private static final int DEBUG_DISABLED_COLOR = 0xFFFF8040;
+    private static final int DEBUG_LAYOUT_COLOR = 0xFF40C0FF;
+    private static final int DEBUG_FOCUS_COLOR = 0xFFFF4040;
+
+    // 状态样例：下标与 UiControlStyle 的绘制状态一一对应（普通/悬停/按下/选中/禁用/焦点）。
+    private static final String[] SAMPLE_KEYS = {
+            "demo_sample_normal", "demo_sample_hover", "demo_sample_pressed",
+            "demo_sample_selected", "demo_sample_disabled", "demo_sample_focus"};
+
     private final Screen parent;
     private final UiTransform frameTransform = new UiTransform();
     private UiDocument document;
@@ -37,9 +82,33 @@ public final class UiKitDebugScreen extends Screen {
     private Component instructions;
     private Component diagnostics = Component.empty();
 
+    // ---------- 阶段 A/B/C 演示区状态 ----------
+    private final UiScrollView demoScroll = new UiScrollView();
+    private final UiControlGroup demoControls = new UiControlGroup();
+    private final UiFocusManager demoFocus = new UiFocusManager();
+    private final EditBoxFocusTarget editBoxTarget = new EditBoxFocusTarget();
+    /** 调试叠加层需要遍历的全部演示控件（控件组控件 + 状态样例）。 */
+    private final List<UiControl> demoControlList = new ArrayList<>();
+    /** 线性布局实例（纵向行槽与横向子布局），调试叠加层据此画每个子项矩形。 */
+    private final List<UiLinearLayout> demoLayouts = new ArrayList<>();
+    private final List<UiControl> styleSamples = new ArrayList<>();
+    private final List<UiControl> hoverSamples = new ArrayList<>();
+    private final List<UiFocusTarget> demoFocusOrder = new ArrayList<>();
+    private UiRect demoPanel = new UiRect(PANEL_X, PANEL_TOP, 0, 0);
+    private int demoHeaderHeight;
+    private EditBox demoEditBox;
+    private String demoEditText = "";
+    private boolean editBoxDragging;
+    private boolean debugOverlay;
+    private int activationCount;
+
     public UiKitDebugScreen(Screen parent) {
         super(text("title"));
         this.parent = parent;
+        // 焦点变化时把目标滚进视口；只在键盘导航与显式 focusOn 时触发，不重建内容、不重新排版。
+        demoFocus.setListener((previous, current) -> {
+            if (current != null) demoScroll.ensureVisible(current.bounds());
+        });
     }
 
     public static boolean enabled() {
@@ -53,10 +122,13 @@ public final class UiKitDebugScreen extends Screen {
         if (document == null) document = new UiDocument(TextMeasurer.of(font), true);
         // resize / 字体重载时重新测量；普通 render、拖动、缩放不经过这里。
         document.invalidateLayout();
-        int frameWidth = Math.clamp(width / outerScale - 16, 1, 152);
+        int usableWidth = Math.max(1, width / outerScale);
+        // 左列让给新组件演示区，UiDocument 停靠在剩余空间里。
+        int frameWidth = Math.clamp(usableWidth - PANEL_WIDTH - 24, 1, 152);
         int frameHeight = Math.clamp((height - 64) / outerScale - font.lineHeight - 7, 1, 166);
         int docHeight = frameHeight + font.lineHeight + 7;
-        int x = (width / outerScale - frameWidth) / 2;
+        int x = Math.max(PANEL_WIDTH + 16, (usableWidth - frameWidth) / 2);
+        if (x + frameWidth > usableWidth) x = Math.max(0, usableWidth - frameWidth);
         int y = Math.max(1, (height / outerScale - docHeight) / 2);
         document.setViewport(x, y, frameWidth, docHeight);
         frameBounds = new UiRect(x, y + font.lineHeight + 7, frameWidth, frameHeight);
@@ -68,6 +140,7 @@ public final class UiKitDebugScreen extends Screen {
                 new UiNode.Frame(new UiNode.FrameSpec(frameWidth, frameHeight, BRANCH_COLOR, frameTransform),
                         buildRows())));
         document.layout();
+        initDemoArea();
         refreshDiagnostics();
     }
 
@@ -112,12 +185,169 @@ public final class UiKitDebugScreen extends Screen {
                 icons, List.of(text("row_tooltip", label)), index, null);
     }
 
+    // ---------- 演示区构建 ----------
+
+    // 重建演示区：内容坐标原点在视口左上角，因此布局几何只依赖面板尺寸，不依赖面板在屏幕上的位置。
+    private void initDemoArea() {
+        if (demoEditBox != null) demoEditText = demoEditBox.getValue();
+        int usableWidth = Math.max(1, width / outerScale);
+        int panelWidth = Math.clamp(usableWidth - PANEL_X - 8, 48, PANEL_WIDTH);
+        demoHeaderHeight = font.lineHeight + 2;
+        int panelHeight = Math.max(demoHeaderHeight + 24, height / outerScale - PANEL_TOP - 16);
+        demoPanel = new UiRect(PANEL_X, PANEL_TOP, panelWidth, panelHeight);
+        demoScroll.setViewport(demoPanel.x(), demoPanel.y() + demoHeaderHeight, panelWidth,
+                Math.max(1, panelHeight - demoHeaderHeight));
+        demoScroll.setScrollbarVisible(true);
+        int contentWidth = Math.max(16, panelWidth - UiScrollView.SCROLLBAR_WIDTH);
+        demoControls.setStyle(UiControlStyle.PARCHMENT);
+
+        demoLayouts.clear();
+        demoControlList.clear();
+        styleSamples.clear();
+        hoverSamples.clear();
+        demoFocusOrder.clear();
+        demoControls.beginUpdate();
+
+        List<UiLinearLayout.Child> slots = new ArrayList<>();
+        for (int i = 0; i < SAMPLE_ROW_FIRST; i++) slots.add(UiLinearLayout.Child.content(ROW_HEIGHT));
+        for (int i = 0; i < SAMPLE_ROW_COUNT; i++) slots.add(UiLinearLayout.Child.content(SAMPLE_ROW_HEIGHT));
+        for (int i = 0; i < LIST_ROW_COUNT; i++) slots.add(UiLinearLayout.Child.content(LIST_ROW_HEIGHT));
+        UiLinearLayout rows = verticalLayout(contentWidth, slots);
+
+        // 行 0：主轴 FIXED + REMAIN。
+        UiLinearLayout row0 = horizontalLayout(rows.bounds(0), List.of(
+                UiLinearLayout.Child.fixed(44), UiLinearLayout.Child.remain()));
+        addDemoControl("row0.fixed", row0.bounds(0), text("demo_button_fixed"), true);
+        addDemoControl("row0.remain", row0.bounds(1), text("demo_button_remain"), true);
+
+        // 行 1：CONTENT + REMAIN(min 24, max 90) + withLeading 的纯标签列。
+        UiLinearLayout row1 = horizontalLayout(rows.bounds(1), List.of(
+                UiLinearLayout.Child.content(56),
+                UiLinearLayout.Child.remain(24, 90),
+                UiLinearLayout.Child.fixed(30).withLeading(6)));
+        addDemoControl("row1.content", row1.bounds(0), text("demo_button_content"), true);
+        addDemoControl("row1.remain", row1.bounds(1), text("demo_button_remain_range"), true);
+        addLabelControl("row1.label", row1.bounds(2), text("demo_label_static"));
+
+        // 行 2：可用按钮 + 禁用按钮（禁用控件仍在层序里，但不命中、不激活、不进焦点序列）。
+        UiLinearLayout row2 = horizontalLayout(rows.bounds(2), List.of(
+                UiLinearLayout.Child.fixed(48), UiLinearLayout.Child.remain()));
+        addDemoControl("row2.enabled", row2.bounds(0), text("demo_button_enabled"), true);
+        addDemoControl("row2.disabled", row2.bounds(1), text("demo_button_disabled"), false);
+
+        // 行 3：原生 EditBox 适配器，Tab 会经过它再回到 kit 控件。
+        UiLinearLayout row3 = horizontalLayout(rows.bounds(3), List.of(
+                UiLinearLayout.Child.fixed(44), UiLinearLayout.Child.remain()));
+        addLabelControl("row3.label", row3.bounds(0), text("demo_edit_label"));
+        UiRect box = row3.bounds(1);
+        demoEditBox = new EditBox(font, box.x(), box.y(), box.width(), box.height(), text("demo_edit_label"));
+        demoEditBox.setHint(text("demo_edit_hint"));
+        demoEditBox.setMaxLength(32);
+        demoEditBox.setValue(demoEditText);
+
+        // 行 4~7：PARCHMENT / DARK 各一组状态样例。
+        buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST), UiControlStyle.PARCHMENT,
+                UiTextPalette.Dark.BODY, "demo_style_parchment", 0);
+        buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST + 1), UiControlStyle.PARCHMENT,
+                UiTextPalette.Dark.BODY, "demo_style_parchment", 3);
+        buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST + 2), UiControlStyle.DARK,
+                UiTextPalette.Parchment.BODY, "demo_style_dark", 0);
+        buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST + 3), UiControlStyle.DARK,
+                UiTextPalette.Parchment.BODY, "demo_style_dark", 3);
+
+        // 行 8 起：纯标签列表，把内容撑高以便验证滚动偏移与滚动条。
+        for (int i = 0; i < LIST_ROW_COUNT; i++) {
+            addLabelControl("list." + i, rows.bounds(LIST_ROW_FIRST + i), text("demo_list_row", i + 1));
+        }
+
+        demoControls.endUpdate();
+        // 内容高度直接取自布局对象，不另行累加尺寸。
+        demoScroll.setContentHeight(rows.usedMain());
+
+        // 焦点按视觉顺序登记：行 0/1/2 的可聚焦控件 → 原生输入框（禁用与纯标签自动跳过）。
+        demoControls.collectFocusTargets(demoFocusOrder);
+        demoFocusOrder.add(editBoxTarget);
+        demoFocus.beginUpdate();
+        for (UiFocusTarget target : demoFocusOrder) demoFocus.add(target);
+        demoFocus.endUpdate();
+        if (demoFocus.focused() == editBoxTarget) demoEditBox.setFocused(true);
+    }
+
+    // 纵向行槽容器：高度交给布局自己算，内容高度由 usedMain() 上报。
+    private UiLinearLayout verticalLayout(int width, List<UiLinearLayout.Child> children) {
+        UiLinearLayout layout = new UiLinearLayout(UiLinearLayout.Axis.VERTICAL, ROW_SPACING, CONTENT_PADDING);
+        layout.setChildren(children);
+        layout.setBounds(0, 0, width, 0);
+        demoLayouts.add(layout);
+        return layout;
+    }
+
+    // 横向子布局：演示一行里宽度规则不同的列，也是「纵向行槽套横向行」的预期用法。
+    private UiLinearLayout horizontalLayout(UiRect row, List<UiLinearLayout.Child> children) {
+        UiLinearLayout layout = new UiLinearLayout(UiLinearLayout.Axis.HORIZONTAL, ROW_SPACING, 0);
+        layout.setChildren(children);
+        layout.setBounds(row.x(), row.y(), row.width(), row.height());
+        demoLayouts.add(layout);
+        return layout;
+    }
+
+    // 样式状态样例：每个控件只负责一种状态，悬停态用合成的鼠标位置制造，读数与状态均不依赖真实鼠标。
+    private void buildStyleSamples(UiRect row, UiControlStyle style, int textColor, String styleKey, int firstState) {
+        UiLinearLayout layout = horizontalLayout(row, List.of(
+                UiLinearLayout.Child.remain(), UiLinearLayout.Child.remain(), UiLinearLayout.Child.remain()));
+        for (int i = 0; i < 3; i++) {
+            int state = firstState + i;
+            UiRect rect = layout.bounds(i);
+            UiControl sample = new UiControl();
+            sample.setStyle(style);
+            sample.setBounds(rect.x(), rect.y(), rect.width(), rect.height());
+            sample.configure(font, text(SAMPLE_KEYS[state]), textColor, null,
+                    List.of(text("demo_sample_tooltip", text(styleKey), text(SAMPLE_KEYS[state]))),
+                    this::onDemoActivated);
+            sample.setSelected(state == 3);
+            sample.setPressed(state == 2);
+            sample.setFocused(state == 5);
+            sample.setEnabled(state != 4);
+            if (state == 1) hoverSamples.add(sample);
+            styleSamples.add(sample);
+            demoControlList.add(sample);
+        }
+    }
+
+    // 从控件组按稳定 key 取控件并配置成可激活按钮；动作只累加调试计数。
+    private void addDemoControl(Object key, UiRect bounds, Component label, boolean enabled) {
+        UiControl control = demoControls.obtain(key);
+        control.configure(font, label, UiTextPalette.Dark.BODY, null,
+                List.of(text("demo_button_tooltip")), this::onDemoActivated);
+        control.setBounds(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        control.setEnabled(enabled);
+        demoControlList.add(control);
+    }
+
+    // 纯标签：可命中、可显示 tooltip，但没有 action，因此不进 Tab 焦点序列。
+    private void addLabelControl(Object key, UiRect bounds, Component label) {
+        UiControl control = demoControls.obtain(key);
+        control.configure(font, label, UiTextPalette.Dark.BODY, null, List.of(), null);
+        control.setBounds(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        control.setEnabled(true);
+        demoControlList.add(control);
+    }
+
+    // 演示按钮的动作只累加计数：把「激活确实发生」暴露给调试叠加层，不产生业务副作用。
+    private void onDemoActivated() {
+        activationCount++;
+    }
+
+    // ---------- 渲染 ----------
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, width, height, 0xEE181818);
         graphics.drawString(font, title, 8, 6, UiTextPalette.Dark.TITLE, false);
         graphics.drawString(font, instructions, 8, 18, UiTextPalette.Dark.BODY, false);
         graphics.drawString(font, diagnostics, 8, height - 12, UiTextPalette.Dark.BODY, false);
+        double localX = mouseX / (double) outerScale;
+        double localY = mouseY / (double) outerScale;
         graphics.pose().pushPose();
         graphics.pose().scale(outerScale, outerScale, 1);
         try {
@@ -128,20 +358,130 @@ public final class UiKitDebugScreen extends Screen {
                     frameBounds.right() + 1, frameBounds.bottom() + 1, 0xFF896C48);
             graphics.fill(frameBounds.x(), frameBounds.y(), frameBounds.right(), frameBounds.bottom(), 0xFFF2E5C6);
             document.render(graphics, font);
+            renderDemoArea(graphics, localX, localY, partialTick);
         } finally {
             graphics.pose().popPose();
         }
-        UiTarget target = document.hit(mouseX / (double) outerScale, mouseY / (double) outerScale);
+        if (demoScroll.contains(localX, localY)) {
+            // 演示区同一位置只能有一个 tooltip：只画最上层命中且提示非空的目标。
+            UiTarget target = demoControls.targetAt(demoScroll.toContentX(localX), demoScroll.toContentY(localY));
+            if (target != null && !target.tooltip().isEmpty()) {
+                graphics.renderComponentTooltip(font, target.tooltip(), mouseX, mouseY);
+            }
+            return;
+        }
+        UiTarget target = document.hit(localX, localY);
         if (target != null && !target.tooltip().isEmpty()) {
             graphics.renderComponentTooltip(font, target.tooltip(), mouseX, mouseY);
         }
     }
+
+    // 演示区：面板底 → 内容（滚动裁剪内）→ 滚动条 → 调试叠加层（默认关闭时不画任何东西）。
+    private void renderDemoArea(GuiGraphics graphics, double mouseX, double mouseY, float partialTick) {
+        graphics.fill(demoPanel.x() - 1, demoPanel.y() - 1,
+                demoPanel.right() + 1, demoPanel.bottom() + 1, BRANCH_COLOR);
+        graphics.fill(demoPanel.x(), demoPanel.y(), demoPanel.right(), demoPanel.bottom(), 0xFF202020);
+        graphics.fill(demoPanel.x(), demoPanel.y(), demoPanel.right(),
+                demoPanel.y() + demoHeaderHeight, 0xFF3A2F1E);
+        graphics.drawString(font, text("demo_title"), demoPanel.x() + 2, demoPanel.y() + 1,
+                UiTextPalette.Dark.TITLE, false);
+        boolean inside = demoScroll.contains(mouseX, mouseY);
+        int hoverX = inside ? (int) demoScroll.toContentX(mouseX) : -1;
+        int hoverY = inside ? (int) demoScroll.toContentY(mouseY) : -1;
+        demoScroll.push(graphics);
+        try {
+            demoControls.render(graphics, font, hoverX, hoverY);
+            for (UiControl sample : styleSamples) {
+                UiRect rect = sample.bounds();
+                boolean forced = hoverSamples.contains(sample);
+                sample.render(graphics, font,
+                        forced ? rect.x() + rect.width() / 2 : -1,
+                        forced ? rect.y() + rect.height() / 2 : -1);
+            }
+            if (demoEditBox != null) demoEditBox.render(graphics, hoverX, hoverY, partialTick);
+            if (debugOverlay) renderDebugContent(graphics);
+        } finally {
+            demoScroll.pop(graphics);
+        }
+        demoScroll.renderScrollbar(graphics, UiControlStyle.PARCHMENT);
+        if (debugOverlay) renderDebugPanel(graphics);
+    }
+
+    // 面板级调试读数：视口矩形与滚动几何，数值全部读自已排好版的对象，不重新计算布局。
+    private void renderDebugPanel(GuiGraphics graphics) {
+        UiRect viewport = demoScroll.viewport();
+        outline(graphics, demoPanel, DEBUG_PANEL_COLOR);
+        outline(graphics, viewport, DEBUG_PANEL_COLOR);
+        graphics.drawString(font, text("debug_viewport", demoScroll.offset(), demoScroll.maxOffset(),
+                        demoScroll.contentHeight()),
+                viewport.x() + 2, viewport.bottom() - 2 * font.lineHeight - 2, DEBUG_PANEL_COLOR, false);
+        graphics.drawString(font, text("debug_activations", activationCount),
+                viewport.x() + 2, viewport.bottom() - font.lineHeight - 1, DEBUG_CONTROL_COLOR, false);
+    }
+
+    // 内容级调试叠加层：布局子项矩形、控件矩形与 accessibleName、当前焦点目标的强调边框。
+    private void renderDebugContent(GuiGraphics graphics) {
+        for (UiLinearLayout layout : demoLayouts) {
+            for (int i = 0; i < layout.size(); i++) outline(graphics, layout.bounds(i), DEBUG_LAYOUT_COLOR);
+        }
+        for (UiControl control : demoControlList) {
+            UiRect rect = control.bounds();
+            int color = control.isEnabled() ? DEBUG_CONTROL_COLOR : DEBUG_DISABLED_COLOR;
+            outline(graphics, rect, color);
+            Component name = control.accessibleName();
+            if (name != null) graphics.drawString(font, name, rect.x() + 1, rect.y() + 1, color, false);
+        }
+        if (demoEditBox != null) {
+            UiRect rect = editBoxTarget.bounds();
+            outline(graphics, rect, DEBUG_CONTROL_COLOR);
+            graphics.drawString(font, text("demo_edit_label"), rect.x() + 1,
+                    rect.y() - font.lineHeight - 1, DEBUG_CONTROL_COLOR, false);
+        }
+        // 控件自带焦点轮廓；这里只在叠加层里再套一层强调边框，便于一眼定位当前焦点目标。
+        UiFocusTarget focused = demoFocus.focused();
+        if (focused != null) {
+            UiRect rect = focused.bounds();
+            outline(graphics, new UiRect(rect.x() - 1, rect.y() - 1, rect.width() + 2, rect.height() + 2),
+                    DEBUG_FOCUS_COLOR);
+            Component name = focused.accessibleName();
+            if (name != null) {
+                graphics.drawString(font, name, rect.x() + 1, rect.bottom() + 1, DEBUG_FOCUS_COLOR, false);
+            }
+        }
+    }
+
+    // 1 像素矩形边框；退化矩形（宽或高为 0）不绘制。
+    private static void outline(GuiGraphics graphics, UiRect rect, int color) {
+        if (rect.width() <= 0 || rect.height() <= 0) return;
+        graphics.fill(rect.x(), rect.y(), rect.right(), rect.y() + 1, color);
+        graphics.fill(rect.x(), rect.bottom() - 1, rect.right(), rect.bottom(), color);
+        graphics.fill(rect.x(), rect.y() + 1, rect.x() + 1, rect.bottom() - 1, color);
+        graphics.fill(rect.right() - 1, rect.y() + 1, rect.right(), rect.bottom() - 1, color);
+    }
+
+    // ---------- 输入 ----------
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         double x = mouseX / outerScale;
         double y = mouseY / outerScale;
         if (button == 0) {
+            if (demoScroll.contains(x, y)) {
+                double contentX = demoScroll.toContentX(x);
+                double contentY = demoScroll.toContentY(y);
+                // 演示区优先：滚动条 → 原生输入框 → 控件组 → 空白处清除焦点。
+                if (demoScroll.hitScrollbar(x, y)) return demoScroll.mousePressed(x, y, button);
+                if (demoEditBox != null && demoEditBox.mouseClicked(contentX, contentY, button)) {
+                    editBoxDragging = true;
+                    demoFocus.focusOn(editBoxTarget);
+                    return true;
+                }
+                // 点到别处时原生输入框必须交出焦点，否则后续按键会继续发给它。
+                if (demoEditBox != null && demoEditBox.isFocused()) demoFocus.clearFocus();
+                if (demoControls.mousePressed(contentX, contentY, button)) return true;
+                demoFocus.clearFocus();
+                return true;
+            }
             UiTarget target = document.hit(x, y);
             if (target != null && target.action() != null) {
                 target.action().run();
@@ -157,18 +497,36 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (button == 0 && dragging) {
-            frameTransform.panBy(dragX / outerScale, dragY / outerScale);
-            return true;
+        double x = mouseX / outerScale;
+        double y = mouseY / outerScale;
+        if (button == 0) {
+            if (demoScroll.mouseDragged(y)) return true;
+            if (editBoxDragging && demoEditBox != null
+                    && demoEditBox.mouseDragged(x, y, button, dragX / outerScale, dragY / outerScale)) {
+                return true;
+            }
+            if (dragging) {
+                frameTransform.panBy(dragX / outerScale, dragY / outerScale);
+                return true;
+            }
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && dragging) {
-            dragging = false;
-            return true;
+        if (button == 0) {
+            demoScroll.mouseReleased();
+            if (editBoxDragging) {
+                editBoxDragging = false;
+                if (demoEditBox != null) {
+                    demoEditBox.mouseReleased(mouseX / outerScale, mouseY / outerScale, button);
+                }
+            }
+            if (dragging) {
+                dragging = false;
+                return true;
+            }
         }
         return super.mouseReleased(mouseX, mouseY, button);
     }
@@ -177,6 +535,7 @@ public final class UiKitDebugScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         double x = mouseX / outerScale;
         double y = mouseY / outerScale;
+        if (demoScroll.contains(x, y) && demoScroll.scrollBy(scrollY)) return true;
         if (frameBounds.contains(x, y)) {
             // Frame 变换的原点位于父文档内容坐标中。
             frameTransform.zoomBy((int) Math.signum(scrollY), document.transform().toLocalX(x),
@@ -193,7 +552,24 @@ public final class UiKitDebugScreen extends Screen {
             init();
             return true;
         }
+        if (keyCode == GLFW.GLFW_KEY_F) {
+            // 调试叠加层默认关闭；打开前不绘制任何额外内容。
+            debugOverlay = !debugOverlay;
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_TAB && demoFocus.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (demoEditBox != null && demoEditBox.isFocused()
+                && demoEditBox.keyPressed(keyCode, scanCode, modifiers)) {
+            return true;
+        }
+        if (demoFocus.keyPressed(keyCode, scanCode, modifiers)) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (demoEditBox != null && demoEditBox.charTyped(codePoint, modifiers)) return true;
+        return super.charTyped(codePoint, modifiers);
     }
 
     @Override
@@ -209,13 +585,50 @@ public final class UiKitDebugScreen extends Screen {
 
     private void refreshDiagnostics() {
         UiMetrics metrics = document.metrics();
-        diagnostics = text("metrics", metrics.builds(), metrics.layouts(), metrics.buildNanos() / 1000,
-                metrics.layoutNanos() / 1000, metrics.renderNanos() / 1000, metrics.hitNanos() / 1000,
-                (int) (frameTransform.scale() * 100), outerScale);
+        // 追加的调试读数直接取自对象（焦点管理器 / 滚动视口 / 控件组），不重新计算布局。
+        diagnostics = Component.empty()
+                .append(text("metrics", metrics.builds(), metrics.layouts(), metrics.buildNanos() / 1000,
+                        metrics.layoutNanos() / 1000, metrics.renderNanos() / 1000, metrics.hitNanos() / 1000,
+                        (int) (frameTransform.scale() * 100), outerScale))
+                .append(" ")
+                .append(text("debug_readout", demoFocus.focusedIndex(), demoFocus.size(),
+                        demoScroll.offset(), demoScroll.maxOffset(), demoScroll.contentHeight(),
+                        demoControls.size()));
     }
 
     @Override
     public void onClose() { Objects.requireNonNull(minecraft).setScreen(parent); }
+
+    /** 原生 EditBox 的焦点适配器：只代理焦点与边界，文字编辑、剪贴板与输入法仍归原版控件。 */
+    private final class EditBoxFocusTarget implements UiFocusTarget {
+        @Override
+        public boolean canFocus() {
+            return demoEditBox != null && demoEditBox.active && demoEditBox.visible;
+        }
+
+        @Override
+        public void setFocused(boolean focused) {
+            if (demoEditBox != null) demoEditBox.setFocused(focused);
+        }
+
+        @Override
+        public boolean activate() {
+            // Enter / Space 的编辑语义属于原版输入框，适配器不消费。
+            return false;
+        }
+
+        @Override
+        public UiRect bounds() {
+            if (demoEditBox == null) return new UiRect(0, 0, 0, 0);
+            return new UiRect(demoEditBox.getX(), demoEditBox.getY(),
+                    demoEditBox.getWidth(), demoEditBox.getHeight());
+        }
+
+        @Override
+        public Component accessibleName() {
+            return text("demo_edit_label");
+        }
+    }
 
     private static Component text(String key, Object... args) { return Component.translatable(PREFIX + key, args); }
 }

@@ -58,6 +58,8 @@ ui/
 
 点击子表入口后由 `JournalViewModel` 展开目录祖先并选中目标子表。左页目录使用鼠标滚轮或可拖动滚动条连续浏览，不再分页；目录树每个节点独立保存展开状态，**展开父表只显示其直接子表**，只有显式展开子表时才显示孙表。从全目录搜索结果选中条目时，`JournalViewModel` 同步切换到该条目所属分类并展开父级路径；关闭搜索后仍保留该条目与右页标签页状态。子表入口优先预览自身直接物品；纯转发表没有直接物品时递归使用后代物品作为图标，并对循环引用做保护。子表物品**不会**进入父表网格或父表的物品搜索匹配；父表 Intro 会按需递归映射全部后代物品，按物品签名去重并读取父表自身的发现记录，避免为每个树节点重复缓存完整子树物品。
 
+**左页目录的滚动实现**：`CatalogPanel` 的滚动偏移与滚动条已由 `UiScrollView` 持有（像素口径），本类只把「条目数」口径的公开 API 换算成像素——分类模式一行 2 项、表格模式一行 1 项，步长分别取卡片高度 + 纵向间距、行高 + 行间距。对外 API（`getScrollOffset` / `setScrollOffset` / `ensureIndexVisible` / `scrollByRows`）与屏幕快照里的 `catalogScrollOffset` 仍是条目数，**持久化单位不变**；切换分类/表格时先把旧模式的可见首项取出、再按新模式步长换算，避免像素偏移直接沿用而落到不同行。同一次迁移验证了同一视口的两种内容形态：两列卡片网格与单列树列表（行步长与可见行数各不相同）。滚动条轨道矩形与旧手算值逐像素重合，**但滑块几何是迁移的固有结果、不是等价实现**：新实现按「视口 / 内容」像素比算滑块高度并保底 8 像素，旧实现按「可见条目数 / 总条目数」换算并保底 12 像素，因此相同内容下滑块长度与拖动手感可能与旧版有细微差异。
+
 ## 3. 文本配色约束
 
 两类文字各有自己的底色，选色时必须按**对比度**而不是"看起来淡一点"来决定：
@@ -87,9 +89,11 @@ ui/
 | `UiMetrics` | 构建/排版/渲染/命中最近一次耗时（ns）与调用次数；生产宿主传 `false` 关闭计时 |
 | `UiControlStyle` | 控件**结构色** token：普通/悬停/按下/选中/禁用背景、焦点轮廓、滚动条轨道与滑块；内置 `PARCHMENT` 与 `DARK`，`background(State)` 按「禁用 > 按下 > 悬停 > 选中 > 普通」取色。文本色不在其中 |
 | `UiControl` 语义状态 | `enabled` / `visible` / `selected` / `focused` / `pressed` 只影响绘制与命中、不触发重新测量；禁用与不可见清掉按压与焦点；`isFocusable()` 要求 `action != null`，纯标签可命中、有 tooltip，但不作 Tab 停靠点 |
-| `UiControlGroup` | 稳定 key → 控件的 `LinkedHashMap`，迭代顺序即绘制与命中层序（后创建者在上层）；`beginUpdate` / `obtain(key)` / `endUpdate` 复用并丢弃未复用项；`controlAt` 取最上层命中、`renderTooltip` 只画该目标的提示；`mousePressed` 命中即激活并捕获按压到释放；`keyPressed` 处理 Tab/Shift+Tab 与 Enter/Space |
+| `UiControlGroup` | 稳定 key → 控件的 `LinkedHashMap`，迭代顺序即绘制与命中层序（后创建者在上层）；`beginUpdate` / `obtain(key)` / `endUpdate` 复用并丢弃未复用项；`controlAt` 取最上层命中、`renderTooltip` 只画该目标的提示；`mousePressed` 命中即激活并捕获按压到释放（**不夺取焦点**）；`collectFocusTargets` 按视觉顺序把可聚焦控件交给 `UiFocusManager`，自身不再持有焦点 |
 | `UiScrollView` | 视口矩形（宿主 GUI 坐标）+ 内容高度 + 偏移，偏移恒钳制在 `[0, maxOffset()]`；`push` / `pop` 进出内容坐标，`toContentX` / `toContentY` / `toScreenY` 做换算，`ensureVisible` 最小滚动；滚动条含点轨道跳转与拖动 |
 | `UiLinearLayout` | 有界横纵布局：主轴 `FIXED` / `CONTENT` / `REMAIN` 加 min·max 钳制，交叉轴固定/内容/拉满，统一 `spacing` 与 `padding`，`Child.leading` 覆盖单个子项前间距；`REMAIN` **先按各子项的 min 预扣再平分余量**，容器确实放不下时按 min 溢出而不是把子项压到 min 以下；`bounds(int)` 只读缓存、越界返回零矩形，`usedMain()` 供宿主换算内容高度 |
+| `UiFocusTarget` | 可聚焦目标适配器：`canFocus()` / `setFocused(boolean)` / `activate()` / `bounds()` / `accessibleName()`。kit 的焦点系统只经它读可聚焦性与边界、写焦点、请求激活，因此原生 `EditBox` 这类非 kit 控件也能按宿主给定的视觉顺序参与 Tab 导航；`setFocused` 只改绘制状态，不重建内容、不重排 |
+| `UiFocusManager` | 焦点管理器：按宿主给出的**视觉顺序**登记一组目标（`beginUpdate` / `add` / `endUpdate`，同一目标一次更新内只保留首次位置），唯一决定当前焦点，提供 Tab / Shift+Tab 移动、可配置的 Enter / Space 激活、焦点失效清理与焦点变化通知（`Listener#focusChanged`） |
 
 **行文本的宽度口径**：排版按自然尺寸不折行，但行文本的可用宽度以视口宽度（1 倍档参考）为上限——超出的部分不参与排版宽度，因此不会再被静默裁掉、也不会把后续图标挤出视口；它在**悬停时于带内滚动**（`render(graphics, font, mouseX, mouseY)` 逐行判悬停并自持滚动计时，旧的无鼠标重载等价于整篇不悬停）。`UiControl` 的标签同一口径：宽度足够时行为与过去逐像素一致，只有确实超宽才滚动。
 
@@ -122,15 +126,29 @@ document.setContent(List.of(new UiNode.Row(
 
 **命中与 tooltip 的唯一来源**：组内命中只走 `controlAt`（自上层向下取第一个命中者），`targetAt` / `renderTooltip` 派生同一目标，同一位置只画一个 tooltip。组与组之间的区域划分由宿主负责：场景选择浮层在视口内取行组目标、视口外才交给底部箭头组，二者互斥；滚动条命中排在行命中之前，滑块压在行右侧也不会穿透。
 
-**焦点与键盘导航**：`keyPressed` 只处理 Tab / Shift+Tab（`moveFocus(±1)`，用 `Math.floorMod` 环绕）与 Enter / Space（激活焦点控件），其余按键一律不消费——ESC、上下键等语义仍归模态宿主。进入序列的条件是 `isFocusable()`（`isHittable()` 且 `action != null`）：禁用与不可见控件既不可命中也不进序列，`setEnabled(false)` / `setVisible(false)` 会立刻清掉 `pressed` 与 `focused`；纯标签仍可命中、仍显示 tooltip，只是不再占用 Tab 停靠点。焦点或按压目标可能因内容更新、禁用、隐藏而失效，每个交互入口先经 `refreshInteraction()` 做一次廉价校验并清理。`setKeyboardNavigation(false)` 供宿主在原生输入框持焦期间关掉导航。
+**焦点与键盘导航**：Tab / Shift+Tab 与可配置的 Enter / Space 激活已从控件组移到 `UiFocusManager`（见「焦点所有权与视觉顺序」）；其余按键一律不消费——ESC、上下键等语义仍归模态宿主。进入序列的条件仍是 `isFocusable()`（`isHittable()` 且 `action != null`）：禁用与不可见控件既不可命中也不进序列，`setEnabled(false)` / `setVisible(false)` 会立刻清掉 `pressed` 与 `focused`；纯标签仍可命中、仍显示 tooltip，只是不再占用 Tab 停靠点。
 
 **按压捕获**：`mousePressed` 命中即激活并记录按压目标，`mouseReleased` 只结束捕获、不在释放时激活（拖动结束不应触发点击）；`isPressCaptured(x, y)` 让宿主区分这次拖动归控件还是归下层内容。
 
-**与原生 `EditBox` 的接驳边界**：`ScenarioParamsOverlay` 中幸运值 `EditBox` 仍是唯一原生输入（支持拖选），其命中优先级高于控件组，聚焦期间关闭控件组键盘导航，字符输入走 `charTyped`，可见性随所在行是否落在滚动窗口内切换。控件组只自绘标签与按钮，标签 `action == null`，因此点击只读文本没有副作用。
+**与原生 `EditBox` 的接驳边界**：`ScenarioParamsOverlay` 中幸运值 `EditBox` 仍是唯一原生输入（支持拖选），命中优先级高于控件组；它经宿主侧适配器（`LuckFocusTarget`）接进焦点序列——`setFocused` 直接转给原版控件，`activate()` 返回 `false`（Enter / Space 的编辑语义属于原版），`bounds()` 取输入框矩形供焦点调试与坐标换算使用。文字输入、剪贴板与输入法都由原版控件处理，kit 不接管；控件组只自绘标签与按钮，标签 `action == null`，因此点击只读文本没有副作用。
 
 **语义状态与样式分工**：状态解析优先级为「禁用 > 按下 > 悬停 > 选中 > 普通」，背景色从 `UiControlStyle.background(State)` 取，焦点轮廓画在矩形内侧（不侵入相邻控件、也不被控件自身裁剪吃掉）。结构色（背景、焦点轮廓、滚动条轨道/滑块）归 `UiControlStyle`，文本色仍由调用方从 `UiTextPalette` 传入，禁用态只降不透明度、保留调用方给定的色相——与「文本配色约束」的分工一致。`PARCHMENT` 的普通/悬停背景与旧硬编码值逐像素相同，按下/选中/禁用/焦点是新增态，旧界面不会触发。
 
-**口径收窄**：前述「kit 不负责输入分发、焦点、浮层或状态持久化」现在收窄为：kit 仍不决定模态优先级、不持有业务状态，只提供组内的焦点与键盘导航；输入先给谁（原生输入框、滚动条、控件组、文档命中）由宿主维护，滚轮是否消费也仍由宿主按 `UiScrollView.contains(x, y)` 判定。
+**口径收窄**：前述「kit 不负责输入分发、焦点、浮层或状态持久化」现在收窄为：kit 仍不决定模态优先级、不持有业务状态；焦点与键盘导航由 `UiFocusManager` 统一提供（`UiControlGroup` 不再自行管理焦点，只把可聚焦控件交给它）；输入先给谁（原生输入框、滚动条、控件组、文档命中）由宿主维护，滚轮是否消费也仍由宿主按 `UiScrollView.contains(x, y)` 判定。
+
+**焦点所有权与「鼠标点击不夺取焦点」**：焦点由 `UiFocusManager` 唯一持有，改变焦点只有两条路径——键盘导航（`keyPressed` 处理 Tab / Shift+Tab，用 `Math.floorMod` 环绕）与宿主显式 `focusOn`。`UiControlGroup.mousePressed` 命中后只激活动作并记录按压捕获、**不夺取焦点**，所以焦点轮廓只在键盘使用时出现，鼠标用户的画面与迁移前一致。`UiControl` 通过实现 `UiFocusTarget` 参与序列（`canFocus()` 即 `isFocusable()`），控件组不再持有任何焦点状态。唯一的例外是原生输入框：点击它时焦点由原版控件接管，宿主再把这件事同步给焦点管理器。
+
+**视觉顺序与原生输入框夹层**：Tab 顺序不由控件组内部顺序决定——宿主按**视觉顺序**把目标登记进 `UiFocusManager`（`beginUpdate` / `add` / `endUpdate`，一次更新内重复登记同一目标只保留首次位置），因此原生 `EditBox` 的适配器能夹在两段控件之间：参数浮层的顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」，验证页的顺序是「控件组的可聚焦控件 → 原生输入框」。`UiControlGroup.collectFocusTargets(out)` 只是「按绘制层序追加当前可聚焦控件」的便捷入口，插在序列的哪个位置仍由宿主决定——这正是焦点从控件组拆出来的原因。
+
+**Enter / Space 的可配置仲裁**：`setEnterActivates` / `setSpaceActivates` 由宿主按模态契约设置。两个浮层都关掉 Enter（`setEnterActivates(false)`）以保留「Enter 选择/确认并关闭」的既有语义，只让 Space 激活焦点控件；焦点管理器不消费的按键（ESC、上下键、搜索与编辑键）原样交回宿主或原生输入控件。
+
+**焦点失效清理与焦点变化通知**：目标可能因内容更新、禁用、隐藏或控件被丢弃而失效。`endUpdate()` 移除本帧未登记的目标、并在焦点目标失效时清除焦点；`refresh()` 在每个交互入口再做一次廉价校验（不在列表里或 `canFocus()` 为假即清除）。焦点变化经 `Listener#focusChanged(previous, current)` 通知宿主，且焦点目标未变时不会重复通知——场景选择浮层与验证页用它实现「滚动到焦点」；参数浮层是分页窗口模型（目标永远在窗口内），不需要该通知。
+
+**焦点进视口**：场景选择浮层把「焦点行整行可见」挂在这条通知上，用 `UiScrollView.ensureVisible` 实现，视口外的行由 `setVisible(false)` 出列、因此不会成为 Tab 停靠点。参数浮层是**分页窗口**模型：只创建并登记当前窗口那一屏的行，所以「焦点滚出视口」不会发生，Tab 永远只在窗口内环绕；窗口的移动改由 `PageUp` / `PageDown` 负责，焦点策略与滚轮翻页一致（不显式清除，目标被移出窗口时由 `endUpdate` 丢弃并自然清空），窗口之外的附魔行由此获得键盘通路。
+
+**accessibleName 的用途与边界**：`UiFocusTarget.accessibleName()` 返回可读名称：`UiControl` 优先返回调用方显式 `setAccessibleName` 的名称，其次标签，标签为空（图标按钮）时回退到首行提示；原生输入框适配器返回输入框的提示名。契约上供「焦点调试与旁白」使用；**当前落地只有调试叠加层消费它**（在控件矩形上画名称、给当前焦点目标套强调边框并输出名称）。kit 不产生任何系统级旁白或语音输出，也没有屏幕阅读器集成——`accessible` 只是命名约定，不要当作完整的无障碍支持承诺。
+
+**验证页的阶段 A/B/C 演示区**：`UiKitDebugScreen` 现在左右分栏。右列仍是既有的 200 行 `UiDocument` 演示（25 组 ×（1 根 + 3 子 + 2×2 孙）= 200 行、每 10 行 3 个图标 = 60 个图标）；左列是阶段 A/B/C 演示区——固定/内容/剩余与带 leading 的三种行、禁用控件、原生输入框适配器、`PARCHMENT` / `DARK` 的两组状态样例（普通/悬停/按下/选中/禁用/焦点）以及一段把内容撑高的纯标签列表，用来验证滚动偏移与滚动条。`F` 切换调试叠加层（默认关闭，关闭时不绘制任何额外内容）：打开后画面板与视口矩形、每个布局子项矩形、控件矩形（按启用/禁用着色）与 `accessibleName`、当前焦点目标的强调边框，并输出滚动几何与激活计数。底部读数每 20 tick 刷新，含焦点下标/目标数、滚动偏移/最大偏移/内容高与控件数。演示区与验证页新增的本地化键同时写入 `en_us.json` 与 `zh_cn.json`。
 
 ## 5. 场景详情页与模态交互
 
@@ -151,8 +169,8 @@ document.setContent(List.of(new UiNode.Row(
 
 `OverlayLayer` **同时只打开一个模态**，六类输入入口均先分发给它，并保留先 flush 再 z=400 的层高契约。模态期间屏幕抑制下层自绘 tooltip、原生控件悬停和 JEI 悬停物品查询。三个使用者是：
 
-- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；行由 `UiScrollView` + `UiControlGroup` 承载——整表行控件按场景下标稳定复用、只建一次，翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配；内容溢出才显示滚动条（行宽相应让出 4 像素），底部箭头到边界时进入禁用态。滚轮或分组箭头浏览，上下键改变当前场景，Tab/Shift+Tab 在行/箭头控件间移焦、Space 激活焦点控件，点击行后关闭，ESC/Enter/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
-- `ScenarioParamsOverlay`：独立草稿、确认/取消；控件统一由 `UiControlGroup` 按稳定 key 承载，落位由三套 `UiLinearLayout`（行槽 / 行内横排 / 底部按钮行）产出，不再手算坐标；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 `EditBox`（支持拖选，命中优先于控件组），它持焦期间控件组的 Tab/Space 导航关闭；参数多时按行滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
+- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；行由 `UiScrollView` + `UiControlGroup` 承载——整表行控件按场景下标稳定复用、只建一次，翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配；内容溢出才显示滚动条（行宽相应让出 4 像素），底部箭头到边界时进入禁用态。键盘焦点由 `UiFocusManager` 按「场景行 → ◀ → ▶」登记：Tab/Shift+Tab 在其间移动、**焦点行自动滚进视口**、Space 激活焦点控件，而 Enter 保留「选择并关闭」的既有契约；当前场景行常亮语义选中态（原有加粗保留）。滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/Enter/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
+- `ScenarioParamsOverlay`：独立草稿、确认/取消；控件统一由 `UiControlGroup` 按稳定 key 承载，落位由三套 `UiLinearLayout`（行槽 / 行内横排 / 底部按钮行）产出，不再手算坐标；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 `EditBox`（支持拖选，命中优先于控件组），由宿主侧适配器接进焦点序列、文字输入仍归原版控件。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 保持「确认」契约、Space 激活焦点控件，窗口外的附魔行用 `PageUp` / `PageDown` 翻窗口到达（Tab 只在窗口内环绕），当前抽样格常亮语义选中态（原有加粗保留）；参数多时按行滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
 - `ScenarioExpandedOverlay`：居中遮罩窗口，复制页内视图到独立 `ScenarioFrameView`，复用相同交互；关闭时丢弃窗口临时平移/缩放，因此页内视图保持打开前状态。关闭按钮与框角控件均置于物品之上。
 
 **网格页头部**（`ScenarioPanel`）只剩读数行与「切换场景 / 计算」两个动作，文字超宽时悬停滚动。网格页调整参数需到场景页打开参数浮层。
@@ -160,6 +178,8 @@ document.setContent(List.of(new UiNode.Row(
 **测量只能由显式计算按钮发起**。旧网格头部的防抖自动请求已去除，应用推荐只改变选择。未新增网络包；仍复用既有请求/结果协议。
 
 贴图由 `scripts/drawer/generate_scenario_ui.py` 生成：`scenario_frame.png` 是 24×24 九宫格（8px 四角），`UiNineSlice` 用九个四边形拉伸边和中心；`scenario_status.png` 为 48×12 四格，空心点/沙漏/勾/叉对应未计算/计算中/已缓存/失败。角标同时使用形状区分状态，详细状态和失败原因放 tooltip。
+
+**浮层的焦点交接**：`OverlayLayer.open(overlay, opener)` 记录「打开它的可聚焦目标」，打开时先把该目标的焦点清掉（避免下层残留轮廓），`close()` 时若它仍 `canFocus()` 就把焦点还回去；`ScenarioDetailPanel` 的三个入口（场景选择、放大框、参数面板）都把按下的 `UiControl` 作为 opener 传入。替换已打开的浮层（切模态）时，未显式传 opener 的一方**继承上一层记录的返回焦点**，因此模态链全部关闭后仍能回到最初的入口。浮层被关闭或被替换时都会收到一次 `Overlay.closed()` 回调，用于释放输入捕获与引用；该回调当前是默认空实现，三个浮层都还没有覆写。**恢复的焦点需要回收**：页面侧目前没有焦点管理器（只有两个浮层与验证页有），所以 `OverlayLayer` 记下最后一次还给 opener 的目标，宿主在「未被子层消费的鼠标操作」里调用 `clearRestoredFocus()` 把它收掉（`ArchaeologyJournalScreen` 的 `mouseClicked` 就是唯一调用点），再次打开浮层也会先清除；否则该控件会一直带着焦点轮廓。注意它只清「已还给 opener 的焦点」，不动 `returnFocus`，也不碰任何 `UiFocusManager` 的内部焦点。
 
 ## 6. 面板状态与偏好持久化
 

@@ -4,7 +4,10 @@ import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientStat
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiAction;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlGroup;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusManager;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusTarget;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiLinearLayout;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
@@ -44,6 +47,10 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
     private final Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
     /** 控件组：稳定 key 复用，禁止每帧新建控件。 */
     private final UiControlGroup controls = new UiControlGroup();
+    /** 键盘焦点：按视觉顺序登记「工具行 ◀/▶ → EditBox → 抽样格 → 附魔 −/+ → 取消 → 确认」。 */
+    private final UiFocusManager focus = new UiFocusManager();
+    /** 原生输入框适配器：只接驳焦点，不接管文字编辑与输入法。 */
+    private final UiFocusTarget luckTarget = new LuckFocusTarget();
     /** 行槽布局：每行固定 20 高，槽内控件顶对齐高 16。 */
     private final UiLinearLayout rowsLayout = new UiLinearLayout(UiLinearLayout.Axis.VERTICAL, 0, 0);
     /** 行内横排布局：逐行重配尺寸规则并立即消费其矩形。 */
@@ -77,6 +84,11 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         for (ResourceLocation id : enchantments) levels.put(id, Math.clamp(current.toolEnchantments().getOrDefault(id, 0),
                 0, options.enchantments().get(id)));
         draftLuck = String.format(Locale.ROOT, "%.2f", current.luck());
+        // 激活键仲裁：Enter 保持「确认」的既有契约，Space 用来激活键盘焦点控件。
+        focus.setEnterActivates(false);
+        focus.setSpaceActivates(true);
+        // 本浮层是**分页窗口**模型：只创建并登记窗口内那一屏的行，因此 Tab 永远只在窗口内环绕，
+        // 「焦点滚出视口」不可能发生，也就不需要焦点进视口的监听（窗口的移动由 PageUp/PageDown 负责）。
     }
 
     // 内容重排：仅在 dirty、字体变化或画布尺寸变化时执行；控件按稳定 key 复用。
@@ -98,6 +110,7 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         panelY = (layer.height() - panelHeight) / 2;
 
         controls.beginUpdate();
+        focus.beginUpdate();
         // 标题：固定矩形（panelX+8, panelY+6, 260, 16）。
         place(font, "title", text("params.title"), panelX + 8, panelY + 6, CONTENT_WIDTH, 16, null);
 
@@ -120,12 +133,15 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
                         UiLinearLayout.Child.fixed(128).withLeading(1),
                         UiLinearLayout.Child.fixed(16).withLeading(1)));
                 place(font, "tool.label", text("params.tool"), rowLayout, 0, null);
-                place(font, "tool.prev", Component.literal("◀"), rowLayout, 1,
+                UiControl toolPrev = place(font, "tool.prev", Component.literal("◀"), rowLayout, 1,
                         () -> { toolIndex = cycle(toolIndex, -1, tools.size()); dirty = true; });
                 Component name = tools.isEmpty() ? text("unavailable") : tools.get(toolIndex).displayName();
                 place(font, "tool.name", name, rowLayout, 2, null);
-                place(font, "tool.next", Component.literal("▶"), rowLayout, 3,
+                UiControl toolNext = place(font, "tool.next", Component.literal("▶"), rowLayout, 3,
                         () -> { toolIndex = cycle(toolIndex, 1, tools.size()); dirty = true; });
+                // 这一行只有两个箭头是停靠点：标签与工具名是只读文本。
+                focus.add(toolPrev);
+                focus.add(toolNext);
             } else if (row == 1) {
                 // 幸运值行：标签 96 + 2 + 原生输入框 76（abs x = panelX+106，高 16）。
                 rowLayout.setChildren(List.of(
@@ -136,6 +152,8 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
                 luckBox.visible = true;
                 luckBox.setX(boxSlot.x());
                 luckBox.setY(boxSlot.y());
+                // 原生输入框夹在工具行与抽样行之间：只有登记到同一序列里，Tab 才能从它移进移出。
+                focus.add(luckTarget);
             } else if (row == 2) {
                 // 抽样行：标签 96 后接等宽样本格，第 i 格 abs x = panelX+106+i*cellWidth。
                 int cellWidth = 162 / Math.max(1, samples.size());
@@ -151,8 +169,11 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
                     int sample = i;
                     Component sampleLabel = Component.literal(Integer.toString(samples.get(i)));
                     if (i == sampleIndex) sampleLabel = sampleLabel.copy().withStyle(net.minecraft.ChatFormatting.BOLD);
-                    place(font, "sample:" + i, sampleLabel, rowLayout, i + 1,
+                    UiControl cell = place(font, "sample:" + i, sampleLabel, rowLayout, i + 1,
                             () -> { sampleIndex = sample; dirty = true; });
+                    // 语义选中态：当前抽样格常亮选中底色（原有加粗保留），键盘与鼠标共用同一状态。
+                    cell.setSelected(i == sampleIndex);
+                    focus.add(cell);
                 }
             } else {
                 // 附魔行：名称 150 + 12 + − 20 + 2 + 数值 44 + 2 + ＋ 24（abs 170 / 192 / 238）。
@@ -163,11 +184,13 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
                         UiLinearLayout.Child.fixed(44).withLeading(2),
                         UiLinearLayout.Child.fixed(24).withLeading(2)));
                 place(font, "ench.label:" + id, Component.literal(enchantmentName(id)), rowLayout, 0, null);
-                place(font, "ench.minus:" + id, Component.literal("−"), rowLayout, 1,
+                UiControl minus = place(font, "ench.minus:" + id, Component.literal("−"), rowLayout, 1,
                         () -> changeLevel(id, -1));
                 place(font, "ench.level:" + id, Component.literal(Integer.toString(levels.get(id))), rowLayout, 2, null);
-                place(font, "ench.plus:" + id, Component.literal("+"), rowLayout, 3,
+                UiControl plus = place(font, "ench.plus:" + id, Component.literal("+"), rowLayout, 3,
                         () -> changeLevel(id, 1));
+                focus.add(minus);
+                focus.add(plus);
             }
         }
         if (!luckBox.visible) { luckBox.setFocused(false); draggingLuck = false; }
@@ -179,32 +202,52 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
                 UiLinearLayout.Child.fixed(68),
                 UiLinearLayout.Child.fixed(68).withLeading(8)));
         footerLayout.setBounds(panelX + 66, panelY + panelHeight - 20, 144, 16);
-        place(font, "cancel", text("params.cancel"), footerLayout, 0, layer::close);
-        place(font, "confirm", text("params.confirm"), footerLayout, 1, this::confirm);
+        UiControl cancel = place(font, "cancel", text("params.cancel"), footerLayout, 0, layer::close);
+        UiControl confirm = place(font, "confirm", text("params.confirm"), footerLayout, 1, this::confirm);
+        // 底部按钮排在最后：Tab 走完可见行才落到取消/确认。
+        focus.add(cancel);
+        focus.add(confirm);
 
         controls.endUpdate();
-        syncKeyboardNavigation();
+        // 焦点收尾必须在控件组裁剪之后：被移除的控件不能以「仍可聚焦」的旧状态留在序列里。
+        focus.endUpdate();
     }
 
     // 摆放控件：按稳定 key 取用并重配；只读标签传 action=null，保持迁移前的悬停底色与文本色。
-    private void place(Font font, Object key, Component label, int x, int y, int width, int height,
+    private UiControl place(Font font, Object key, Component label, int x, int y, int width, int height,
                        @Nullable UiAction action) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, height);
         control.configure(font, label, error != null && label == error ? UiTextPalette.Parchment.NEGATIVE : UiTextPalette.Parchment.BODY,
                 null, List.of(label), action);
+        return control;
     }
 
     // 摆放控件：坐标直接取布局产出的矩形。
-    private void place(Font font, Object key, Component label, UiLinearLayout layout, int index,
+    private UiControl place(Font font, Object key, Component label, UiLinearLayout layout, int index,
                        @Nullable UiAction action) {
         var rect = layout.bounds(index);
-        place(font, key, label, rect.x(), rect.y(), rect.width(), rect.height(), action);
+        return place(font, key, label, rect.x(), rect.y(), rect.width(), rect.height(), action);
     }
 
-    // 原生输入框持有焦点期间关闭控件组键盘导航，避免 Tab/空格被抢。
-    private void syncKeyboardNavigation() {
-        controls.setKeyboardNavigation(!(luckBox != null && luckBox.visible && luckBox.isFocused()));
+    /** 原生输入框适配器：只把可聚焦性、焦点态、矩形与名称映射给焦点管理器，文字编辑仍归原版控件。 */
+    private final class LuckFocusTarget implements UiFocusTarget {
+        @Override public boolean canFocus() { return luckBox != null && luckBox.visible; }
+
+        @Override public void setFocused(boolean focused) {
+            if (luckBox != null) luckBox.setFocused(focused);
+        }
+
+        // 输入框没有 Enter/Space 的「激活」语义：返回 false 不消费。
+        @Override public boolean activate() { return false; }
+
+        @Override public UiRect bounds() {
+            if (luckBox == null) return new UiRect(0, 0, 0, 0);
+            return new UiRect(luckBox.getX(), luckBox.getY(), luckBox.getWidth(), luckBox.getHeight());
+        }
+
+        // 收紧可空性：输入框的名称恒存在，接口上的 @Nullable 只是通用的宽松约定。
+        @Override public Component accessibleName() { return text("params.luck"); }
     }
 
     @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY, float partialTick) {
@@ -224,9 +267,13 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         if (button != 0) return true;
         // 原生输入框命中优先级高于控件组：夺焦后接管拖动选区。
         if (luckBox != null) {
-            luckBox.setFocused(luckBox.visible && luckBox.isMouseOver(x, y));
-            syncKeyboardNavigation();
-            if (luckBox.isFocused()) {
+            boolean boxHit = luckBox.visible && luckBox.isMouseOver(x, y);
+            luckBox.setFocused(boxHit);
+            // 输入框的焦点由原版自身维护，这里只把它同步给焦点管理器，避免两套焦点同时生效；
+            // 点击普通控件不夺取焦点（焦点轮廓只在键盘使用时出现）。
+            if (boxHit) focus.focusOn(luckTarget);
+            else if (focus.focused() == luckTarget) focus.clearFocus();
+            if (boxHit) {
                 draggingLuck = luckBox.mouseClicked(x, y, button);
                 dragAnchor = luckBox.getCursorPosition();
                 return true;
@@ -284,9 +331,17 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         layout(Minecraft.getInstance().font);
         if (key == GLFW.GLFW_KEY_ESCAPE) layer.close();
         else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) confirm();
-        else if (luckBox != null && luckBox.visible && luckBox.isFocused()) return luckBox.keyPressed(key, scan, modifiers);
-        // Tab/Shift+Tab 与 Space 交给控件组；模态仍按既有契约消费按键。
-        else controls.keyPressed(key, scan, modifiers);
+        // 输入框持有焦点时先让它处理（光标、退格、剪贴板、快捷键）；它不消费的键继续下传，
+        // 因此 Tab/Shift+Tab 能从这个原生控件移出去。
+        else if (luckBox != null && luckBox.visible && luckBox.isFocused() && luckBox.keyPressed(key, scan, modifiers)) return true;
+        // 键盘翻窗口：窗口外的附魔行只有这一条键盘通路（Tab 只在当前窗口内环绕）。
+        // 焦点策略与滚轮翻页保持一致：不显式清除，焦点目标若被移出窗口，由 endUpdate 丢弃并自然清空。
+        else if (key == GLFW.GLFW_KEY_PAGE_DOWN || key == GLFW.GLFW_KEY_PAGE_UP) {
+            firstRow += key == GLFW.GLFW_KEY_PAGE_DOWN ? 1 : -1;
+            dirty = true;
+        }
+        // 其余交给焦点管理器：Tab/Shift+Tab 移焦点、Space 激活焦点控件；Enter 已在上方按既有契约确认。
+        else focus.keyPressed(key, scan, modifiers);
         return true;
     }
     @Override public boolean charTyped(char value, int modifiers) {

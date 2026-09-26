@@ -2,13 +2,14 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -18,6 +19,10 @@ import java.util.Map;
 
 /**
  * 考古笔记左页目录——渲染分类网格与可连续滚动的战利品表层级列表。
+ *
+ * <p>滚动偏移与滚动条由 {@link UiScrollView} 统一持有（像素口径），本类只负责把「条目数」口径的公开 API
+ * 换算成像素：分类模式每行 2 项、步长 = 卡片高度 + 纵向间距；表格模式每行 1 项、步长 = 行高 + 行间距。
+ * 公开 API 与迁移前的像素表现保持一致。</p>
  */
 public final class CatalogPanel {
     private static final ResourceLocation ENTRY_TEXTURE =
@@ -40,57 +45,66 @@ public final class CatalogPanel {
     private static final int SCROLLBAR_TRACK_COLOR = 0x406B4C2A;
     private static final int SCROLLBAR_THUMB_COLOR = 0xB08B6914;
     private static final int SCROLLBAR_THUMB_HOVER_COLOR = 0xD07B3E18;
+    private static final UiControlStyle SCROLLBAR_STYLE = scrollbarStyle(SCROLLBAR_THUMB_COLOR);
+    private static final UiControlStyle SCROLLBAR_HOVER_STYLE = scrollbarStyle(SCROLLBAR_THUMB_HOVER_COLOR);
     public static final int CATEGORY_GRID_WIDTH = CARD_WIDTH * 2 + CARD_GAP_X;
 
     private final JournalBookBackground.BookLayout layout;
+    private final UiScrollView view = new UiScrollView();
     private final List<CategoryEntryData> categories = new ArrayList<>();
     private final List<CatalogEntryData> entries = new ArrayList<>();
     private final Map<ResourceLocation, Integer> categoryScrollTicks = new HashMap<>();
     private final Map<ResourceLocation, Integer> entryScrollTicks = new HashMap<>();
     private Mode mode = Mode.CATEGORIES;
-    private int scrollOffset;
-    private boolean draggingScrollbar;
-    private int scrollbarDragOffset;
 
+    // 视口恒定贴着列表右边界，滚动条常开（UiScrollView 内部自带 maxOffset > 0 才显示）。
     public CatalogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
+        this.view.setScrollbarVisible(true);
+        syncViewport();
+        syncContentHeight();
     }
 
+    // 迁移前 setCategories / setEntries 只换列表、不重置偏移：条目数偏移会跨模式直接带到新模式，
+    // 故先按旧模式取出条目偏移，换完模式再按新模式步长换算，避免像素口径直接沿用而落到不同行。
     public void setCategories(List<CategoryEntryData> values) {
+        int carriedOffset = firstVisibleIndex();
         this.mode = Mode.CATEGORIES;
         this.categories.clear();
         this.categories.addAll(values);
-        clampScrollOffset();
+        syncContentHeight();
+        this.view.setOffset(itemsToPixels(carriedOffset));
     }
 
     public void setEntries(List<CatalogEntryData> values) {
+        int carriedOffset = firstVisibleIndex();
         this.mode = Mode.TABLES;
         this.entries.clear();
         this.entries.addAll(values);
-        clampScrollOffset();
+        syncContentHeight();
+        this.view.setOffset(itemsToPixels(carriedOffset));
     }
 
     public Mode mode() {
         return this.mode;
     }
 
+    // 保留旧算法与两个 lookahead 常量，钳制交给 UiScrollView。
     public void ensureIndexVisible(int index) {
         if (index < 0) return;
         int first = firstVisibleIndex();
         int visible = visibleItemCount();
         if (index < first) {
-            this.scrollOffset = normalizeOffset(index);
+            this.view.setOffset(itemsToPixels(index));
         } else if (index >= first + visible) {
             int trailingOffset = index - visible + (this.mode == Mode.CATEGORIES ? 2 : 1);
-            this.scrollOffset = normalizeOffset(trailingOffset);
+            this.view.setOffset(itemsToPixels(trailingOffset));
         }
-        clampScrollOffset();
     }
 
+    // 行滚动换算成像素位移：分类模式一行 = 2 项。
     public void scrollByRows(int rowDelta) {
-        int itemDelta = this.mode == Mode.CATEGORIES ? rowDelta * 2 : rowDelta;
-        this.scrollOffset = normalizeOffset(this.scrollOffset + itemDelta);
-        clampScrollOffset();
+        this.view.setOffset(this.view.offset() + rowDelta * stride());
     }
 
     public int visibleItemCount() {
@@ -98,12 +112,11 @@ public final class CatalogPanel {
     }
 
     public int getScrollOffset() {
-        return this.scrollOffset;
+        return firstVisibleIndex();
     }
 
     public void setScrollOffset(int scrollOffset) {
-        this.scrollOffset = normalizeOffset(scrollOffset);
-        clampScrollOffset();
+        this.view.setOffset(itemsToPixels(scrollOffset));
     }
 
     public ClickResult handleClick(double mouseX, double mouseY) {
@@ -135,14 +148,16 @@ public final class CatalogPanel {
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= buttonX() && mouseX <= scrollbarTrackRect().right()
+        return mouseX >= buttonX() && mouseX <= this.view.viewport().right()
                 && mouseY >= listTop() && mouseY <= listBottom();
     }
 
     public void render(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
         if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
         else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
-        renderScrollbar(graphics, mouseX, mouseY);
+        // 高亮条件与迁移前一致：拖拽中或指针落在滑块上。滑块几何由 UiScrollView 提供，不再复算。
+        this.view.renderScrollbar(graphics, this.view.isDragging() || this.view.hitThumb(mouseX, mouseY)
+                ? SCROLLBAR_HOVER_STYLE : SCROLLBAR_STYLE);
     }
 
     private void renderCategories(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
@@ -225,80 +240,63 @@ public final class CatalogPanel {
                 listTop() + row * (CARD_HEIGHT + CARD_GAP_Y), CARD_WIDTH, CARD_HEIGHT);
     }
 
-    // 点击滚动条轨道会跳转，点击滑块后可持续拖拽。
+    // 点击滚动条轨道会跳转，点击滑块后可持续拖拽；命中、跳转与拖拽位移全部由 UiScrollView 负责。
     public boolean beginScrollbarDrag(double mouseX, double mouseY) {
-        if (!hasOverflow() || !scrollbarTrackRect().contains(mouseX, mouseY)) return false;
-        Rect thumb = scrollbarThumbRect();
-        if (thumb.contains(mouseX, mouseY)) {
-            this.scrollbarDragOffset = Mth.floor(mouseY) - thumb.y();
-        } else {
-            this.scrollbarDragOffset = thumb.height() / 2;
-            updateScrollFromThumbY(Mth.floor(mouseY) - this.scrollbarDragOffset);
-        }
-        this.draggingScrollbar = true;
-        return true;
+        return this.view.mousePressed(mouseX, mouseY, 0);
     }
 
     public boolean dragScrollbar(double mouseY) {
-        if (!this.draggingScrollbar) return false;
-        updateScrollFromThumbY(Mth.floor(mouseY) - this.scrollbarDragOffset);
-        return true;
+        this.view.mouseDragged(mouseY);
+        // 整个拖动期间都算消费（与迁移前一致）：即使这一帧已到顶/到底、偏移没有变化。
+        return this.view.isDragging();
     }
 
     public void endScrollbarDrag() {
-        this.draggingScrollbar = false;
+        this.view.mouseReleased();
     }
 
-    private void renderScrollbar(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (!hasOverflow()) return;
-        Rect track = scrollbarTrackRect();
-        Rect thumb = scrollbarThumbRect();
-        graphics.fill(track.x(), track.y(), track.right(), track.bottom(), SCROLLBAR_TRACK_COLOR);
-        int color = this.draggingScrollbar || thumb.contains(mouseX, mouseY)
-                ? SCROLLBAR_THUMB_HOVER_COLOR : SCROLLBAR_THUMB_COLOR;
-        graphics.fill(thumb.x(), thumb.y(), thumb.right(), thumb.bottom(), color);
+    // 只覆写滚动条结构色，其余 token 沿用羊皮纸主题；两份样式仅滑块色不同，轨道色一致。
+    private static UiControlStyle scrollbarStyle(int thumbColor) {
+        UiControlStyle base = UiControlStyle.PARCHMENT;
+        return new UiControlStyle(base.background(), base.hoverBackground(), base.pressedBackground(),
+                base.selectedBackground(), base.disabledBackground(), base.focusOutline(),
+                SCROLLBAR_TRACK_COLOR, thumbColor);
     }
 
-    private void updateScrollFromThumbY(int thumbY) {
-        Rect track = scrollbarTrackRect();
-        int thumbHeight = scrollbarThumbHeight();
-        int travel = Math.max(1, track.height() - thumbHeight);
-        int clampedY = Mth.clamp(thumbY, track.y(), track.bottom() - thumbHeight);
-        int maxOffset = maxScrollOffset();
-        this.scrollOffset = normalizeOffset(Math.round((clampedY - track.y()) / (float) travel * maxOffset));
-        clampScrollOffset();
+    // 视口 = 列表右边界右侧的滚动条列，与旧的手算轨道矩形逐像素重合。
+    private void syncViewport() {
+        this.view.setViewport(buttonX() + buttonWidth() + SCROLLBAR_GAP, listTop(),
+                SCROLLBAR_WIDTH, listBottom() - listTop());
     }
 
-    private Rect scrollbarTrackRect() {
-        int x = buttonX() + buttonWidth() + SCROLLBAR_GAP;
-        return new Rect(x, listTop(), SCROLLBAR_WIDTH, listBottom() - listTop());
+    // 内容高度 = 视口高度 + 旧「按条目数钳制」换算出的像素可滚距离，底部不留空白的行为与迁移前一致。
+    private void syncContentHeight() {
+        this.view.setContentHeight(this.view.viewport().height() + maxScrollOffsetPx());
     }
 
-    private Rect scrollbarThumbRect() {
-        Rect track = scrollbarTrackRect();
-        int thumbHeight = scrollbarThumbHeight();
-        int maxOffset = maxScrollOffset();
-        int travel = track.height() - thumbHeight;
-        int y = track.y() + (maxOffset > 0 ? Math.round(travel * (this.scrollOffset / (float) maxOffset)) : 0);
-        return new Rect(track.x(), y, track.width(), thumbHeight);
+    // 旧 maxScrollOffset（条目数）换算成像素：分类模式行 = maxScrollOffset / 2，表格模式行 = maxScrollOffset。
+    private int maxScrollOffsetPx() {
+        return (maxScrollOffset() / itemsPerRow()) * stride();
     }
 
-    private int scrollbarThumbHeight() {
-        Rect track = scrollbarTrackRect();
-        int size = itemCount();
-        return Mth.clamp(Math.round(track.height() * (visibleItemCount() / (float) size)), 12, track.height());
+    private int itemsToPixels(int items) {
+        return (items / itemsPerRow()) * stride();
     }
 
-    private boolean hasOverflow() {
-        return itemCount() > visibleItemCount();
+    private int firstVisibleIndex() {
+        return (this.view.offset() / stride()) * itemsPerRow();
+    }
+
+    private int itemsPerRow() {
+        return this.mode == Mode.CATEGORIES ? 2 : 1;
+    }
+
+    private int stride() {
+        return this.mode == Mode.CATEGORIES ? CARD_HEIGHT + CARD_GAP_Y : rowStride();
     }
 
     private int itemCount() {
         return this.mode == Mode.CATEGORIES ? this.categories.size() : this.entries.size();
-    }
-
-    private int firstVisibleIndex() {
-        return normalizeOffset(this.scrollOffset);
     }
 
     private int visibleCategoryRows() {
@@ -312,10 +310,6 @@ public final class CatalogPanel {
     private int maxScrollOffset() {
         int overflow = Math.max(0, itemCount() - visibleItemCount());
         return this.mode == Mode.CATEGORIES ? ((overflow + 1) / 2) * 2 : overflow;
-    }
-
-    private int normalizeOffset(int offset) {
-        return this.mode == Mode.CATEGORIES ? Math.max(0, offset - Math.floorMod(offset, 2)) : Math.max(0, offset);
     }
 
     private int rowStride() {
@@ -337,10 +331,6 @@ public final class CatalogPanel {
 
     private int buttonWidth() {
         return JournalLayout.CATALOG_TEXTURE_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_GAP - 1;
-    }
-
-    private void clampScrollOffset() {
-        this.scrollOffset = Mth.clamp(normalizeOffset(this.scrollOffset), 0, maxScrollOffset());
     }
 
     public enum Mode { CATEGORIES, TABLES }

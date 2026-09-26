@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.client.ui.kit;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,7 +13,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 控件组：按**显式层序**绘制控件、返回最上层命中目标与唯一 tooltip，并提供 Tab/Enter 键盘导航与按压捕获。
+ * 控件组：按**显式层序**绘制控件、返回最上层命中目标与唯一 tooltip，并把可聚焦控件交给
+ * {@link UiFocusManager}（见 {@link #collectFocusTargets(List)}），自身只管按压捕获。
  *
  * <p>宿主稳定持有控件实例：内容或尺寸变化时调用 {@link #beginUpdate()} / {@link #obtain(Object)} /
  * {@link #endUpdate()}，同一个稳定 key 永远拿到同一个 {@link UiControl}；滚动、悬停等逐帧操作只改状态，
@@ -30,9 +30,7 @@ public final class UiControlGroup {
     private final List<UiControl> ordered = new ArrayList<>();
     private final Set<Object> seen = new HashSet<>();
     @Nullable private UiControl pressed;
-    @Nullable private UiControl focused;
     private UiControlStyle style = UiControlStyle.PARCHMENT;
-    private boolean keyboardNavigation = true;
     /** 是否处于 beginUpdate/endUpdate 之间；不在区间内时 endUpdate 不做裁剪，避免误清空。 */
     private boolean updating;
 
@@ -76,7 +74,6 @@ public final class UiControlGroup {
         ordered.clear();
         seen.clear();
         pressed = null;
-        focused = null;
     }
 
     public int size() { return ordered.size(); }
@@ -84,6 +81,16 @@ public final class UiControlGroup {
 
     /** 只读视图，按绘制层序（底层在前）；宿主据此在浮层里叠加原生控件。 */
     public List<UiControl> controls() { return List.copyOf(ordered); }
+
+    /**
+     * 按绘制层序把可聚焦控件追加进焦点管理器：追加顺序即宿主期望的 Tab 顺序。
+     * 宿主可以在两段控件之间插入原生目标（例如 {@code EditBox} 的适配器），从而得到跨组件的正确顺序。
+     */
+    public void collectFocusTargets(List<UiFocusTarget> out) {
+        for (UiControl control : ordered) {
+            if (control.isFocusable()) out.add(control);
+        }
+    }
 
     // ---------- 样式 ----------
 
@@ -140,7 +147,7 @@ public final class UiControlGroup {
         }
         pressed = control;
         control.setPressed(true);
-        setFocused(control);
+        // 鼠标按压不夺取焦点：焦点属于键盘导航（UiFocusManager），这样焦点轮廓只在键盘使用时出现。
         control.activate();
         return true;
     }
@@ -157,75 +164,10 @@ public final class UiControlGroup {
         return pressed != null && pressed.bounds().contains(x, y);
     }
 
-    // ---------- 键盘与焦点 ----------
+    // ---------- 内部 ----------
 
-    /** 键盘导航默认开启；宿主在原生输入框获得焦点期间应关闭它，避免 Tab/空格冲突。 */
-    public void setKeyboardNavigation(boolean keyboardNavigation) {
-        this.keyboardNavigation = keyboardNavigation;
-    }
-
-    public boolean isKeyboardNavigationEnabled() { return keyboardNavigation; }
-
-    /**
-     * 处理 Tab / Shift+Tab（移动焦点）与 Enter / Space（激活焦点控件）。
-     * 其余按键不消费，交回宿主——ESC、上下键等语义属于模态宿主。
-     */
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        refreshInteraction();
-        if (!keyboardNavigation) return false;
-        if (keyCode == GLFW.GLFW_KEY_TAB) {
-            boolean backwards = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-            return moveFocus(backwards ? -1 : 1);
-        }
-        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
-                || keyCode == GLFW.GLFW_KEY_SPACE) {
-            return focused != null && focused.activate();
-        }
-        return false;
-    }
-
-    /** 在可聚焦控件间移动焦点（含环绕）。无可聚焦目标时不消费。 */
-    public boolean moveFocus(int delta) {
-        refreshInteraction();
-        List<UiControl> focusable = focusable();
-        if (focusable.isEmpty()) return false;
-        int current = focused == null ? -1 : focusable.indexOf(focused);
-        int next = current < 0
-                ? (delta < 0 ? focusable.size() - 1 : 0)
-                : Math.floorMod(current + delta, focusable.size());
-        setFocused(focusable.get(next));
-        return true;
-    }
-
-    /** 焦点交给第一个可聚焦控件；没有可选目标时返回 false。 */
-    public boolean focusFirst() {
-        refreshInteraction();
-        List<UiControl> focusable = focusable();
-        if (focusable.isEmpty()) return false;
-        setFocused(focusable.getFirst());
-        return true;
-    }
-
-    @Nullable public UiControl focused() {
-        refreshInteraction();
-        return focused;
-    }
-
-    public void clearFocus() { setFocused(null); }
-
-    public void setFocused(@Nullable UiControl control) {
-        if (focused == control) return;
-        if (focused != null) focused.setFocused(false);
-        focused = control != null && ordered.contains(control) && control.isFocusable() ? control : null;
-        if (focused != null) focused.setFocused(true);
-    }
-
-    // 焦点与按压目标可能因内容更新、禁用或隐藏而失效：每次交互入口先做一次廉价校验。
+    // 按压目标可能因内容更新、禁用或隐藏而失效：每次交互入口先做一次廉价校验。
     private void refreshInteraction() {
-        if (focused != null && (!ordered.contains(focused) || !focused.isFocusable())) {
-            focused.setFocused(false);
-            focused = null;
-        }
         if (pressed != null && (!ordered.contains(pressed) || !pressed.isFocusable())) {
             if (pressed.isPressed()) pressed.setPressed(false);
             pressed = null;
@@ -237,13 +179,5 @@ public final class UiControlGroup {
             pressed.setPressed(false);
             pressed = null;
         }
-    }
-
-    private List<UiControl> focusable() {
-        List<UiControl> result = new ArrayList<>(ordered.size());
-        for (UiControl control : ordered) {
-            if (control.isFocusable()) result.add(control);
-        }
-        return result;
     }
 }

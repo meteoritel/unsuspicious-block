@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlGroup;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusManager;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
@@ -59,6 +60,8 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
     private final List<CatalogTableDto.ScenarioAssumptions> scenes;
     private final ScenarioParams params;
     private final IntConsumer onSelect;
+    /** 键盘焦点：按视觉顺序登记「场景行 → ◀ → ▶」；鼠标点击不夺取焦点，轮廓只在键盘使用时出现。 */
+    private final UiFocusManager focus = new UiFocusManager();
     private final UiScrollView scroll = new UiScrollView();
     private final UiControlGroup rows = new UiControlGroup();
     private final UiControlGroup bar = new UiControlGroup();
@@ -87,6 +90,19 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         this.current = currentIndex;
         this.onSelect = onSelect;
         this.rowsByIndex = new UiControl[this.scenes.size()];
+        // 激活键仲裁：Enter 保持「选择并关闭」的既有契约，Space 用来激活键盘焦点目标。
+        focus.setEnterActivates(false);
+        focus.setSpaceActivates(true);
+        // 焦点进视口：键盘把焦点移到某一行时，保证该行整行可见。
+        focus.setListener((previousTarget, focusedTarget) -> {
+            if (focusedTarget == null) return;
+            for (int index = 0; index < rowsByIndex.length; index++) {
+                if (rowsByIndex[index] != focusedTarget) continue;
+                scroll.ensureVisible(new UiRect(0, index * ROW_HEIGHT, 0, ROW_HEIGHT - PANEL_PADDING));
+                refreshArrows();
+                return;
+            }
+        });
     }
 
     // 内容门控与迁移前一致：目录 revision、秒或显式 dirty 变化才重建控件内容。
@@ -128,6 +144,12 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         nextArrow = configureArrow(font, bar.obtain("next"), PAGE_ROWS,
                 bounds.right() - ARROW_WIDTH - PANEL_PADDING);
         bar.endUpdate();
+        // 焦点序列按视觉顺序登记：场景行（即绘制层序）→ ◀ → ▶；禁用与不可见的行由 canFocus() 自动出列。
+        focus.beginUpdate();
+        for (UiControl row : rowsByIndex) focus.add(row);
+        if (previousArrow != null) focus.add(previousArrow);
+        if (nextArrow != null) focus.add(nextArrow);
+        focus.endUpdate();
         if (pendingCenter) {
             pendingCenter = false;
             centerOn(current);
@@ -150,18 +172,22 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         }
         row.configure(font, label, UiTextPalette.Parchment.BODY, presentation.badge(), tooltip,
                 () -> select(index));
+        // 语义选中态：当前场景行常亮选中底色（原有加粗保留），键盘上下键改选中时同步跟随。
+        row.setSelected(index == current);
     }
 
     // 底部翻页箭头：尺寸与落位与迁移前相同，动作改为滚动一页。
     private UiControl configureArrow(Font font, UiControl arrow, int deltaRows, int x) {
         arrow.setBounds(x, bounds.bottom() - 17, ARROW_WIDTH, ARROW_HEIGHT);
+        Component name = ScenarioSimulationClientState.text(deltaRows < 0 ? "scene.previous" : "more");
         arrow.configure(font, Component.literal(deltaRows < 0 ? "◀" : "▶"), UiTextPalette.Parchment.TITLE,
-                null,
-                List.of(ScenarioSimulationClientState.text(deltaRows < 0 ? "scene.previous" : "more")),
+                null, List.of(name),
                 () -> {
                     scroll.setOffset(scroll.offset() + deltaRows * ROW_HEIGHT);
                     refreshArrows();
                 });
+        // 符号按钮本身不具名：显式给一个可读名称，供焦点调试与旁白使用。
+        arrow.setAccessibleName(name);
         return arrow;
     }
 
@@ -283,7 +309,7 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
             dirty = true;
             return true;
         }
-        // Tab / Shift+Tab 移焦点、Space 激活焦点行；Enter 已在上面按既有契约关闭浮层。
-        return rows.keyPressed(key, scan, modifiers) || bar.keyPressed(key, scan, modifiers);
+        // Tab / Shift+Tab 移焦点、Space 激活焦点行；Enter 与上下键已在上方按既有契约处理。
+        return focus.keyPressed(key, scan, modifiers);
     }
 }
