@@ -25,6 +25,8 @@ final class ScenarioFrameView {
     private final Font font;
     private int displayedZoom = -1;
     private boolean dragging;
+    /** 是否绘制并命中自带的档位/复位角控件：灯箱自己提供缩放与适应窗口，用它关掉这两颗。 */
+    private boolean controlsVisible = true;
     private double lastX, lastY;
 
     ScenarioFrameView(Font font) {
@@ -48,9 +50,20 @@ final class ScenarioFrameView {
     FrameState state() { return FrameState.capture(transform); }
     void restore(FrameState state) { state.apply(transform); dragging = false; }
 
+    // 灯箱适配器的只读入口：变换、真实内容视口与内容尺寸。
+    UiTransform transform() { return transform; }
+    UiRect contentViewport() { return document.viewport(); }
+    int contentWidth() { return document.contentWidth(); }
+    int contentHeight() { return document.contentHeight(); }
+
+    // 关掉自带的档位/复位角控件后，render 与 hit 都跳过它们（灯箱自己提供缩放与适应窗口）。
+    // 页内路径保持字段默认值（显示），不需要重新打开。
+    void hideCornerControls() { this.controlsVisible = false; }
+
     void render(GuiGraphics graphics, int mouseX, int mouseY) {
         BORDER.render(graphics, bounds);
         document.render(graphics, font, mouseX, mouseY);
+        if (!controlsVisible) return;
         if (displayedZoom != transform.zoomIndex()) {
             displayedZoom = transform.zoomIndex();
             Component label = ScenarioSimulationClientState.text("frame.zoom", (int) (transform.scale() * 100));
@@ -77,9 +90,12 @@ final class ScenarioFrameView {
 
     @Nullable UiTarget hit(double x, double y) {
         if (!bounds.contains(x, y)) return null;
-        UiTarget target = zoom.hit(x, y);
-        if (target == null) target = reset.hit(x, y);
-        return target != null ? target : document.hit(x, y);
+        if (controlsVisible) {
+            UiTarget target = zoom.hit(x, y);
+            if (target == null) target = reset.hit(x, y);
+            if (target != null) return target;
+        }
+        return document.hit(x, y);
     }
 
     void renderTooltip(GuiGraphics graphics, int x, int y) {

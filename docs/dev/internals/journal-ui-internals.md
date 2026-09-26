@@ -94,6 +94,11 @@ ui/
 | `UiLinearLayout` | 有界横纵布局：主轴 `FIXED` / `CONTENT` / `REMAIN` 加 min·max 钳制，交叉轴固定/内容/拉满，统一 `spacing` 与 `padding`，`Child.leading` 覆盖单个子项前间距；`REMAIN` **先按各子项的 min 预扣再平分余量**，容器确实放不下时按 min 溢出而不是把子项压到 min 以下；`bounds(int)` 只读缓存、越界返回零矩形，`usedMain()` 供宿主换算内容高度 |
 | `UiFocusTarget` | 可聚焦目标适配器：`canFocus()` / `setFocused(boolean)` / `activate()` / `bounds()` / `accessibleName()`。kit 的焦点系统只经它读可聚焦性与边界、写焦点、请求激活，因此原生 `EditBox` 这类非 kit 控件也能按宿主给定的视觉顺序参与 Tab 导航；`setFocused` 只改绘制状态，不重建内容、不重排 |
 | `UiFocusManager` | 焦点管理器：按宿主给出的**视觉顺序**登记一组目标（`beginUpdate` / `add` / `endUpdate`，同一目标一次更新内只保留首次位置），唯一决定当前焦点，提供 Tab / Shift+Tab 移动、可配置的 Enter / Space 激活、焦点失效清理与焦点变化通知（`Listener#focusChanged`） |
+| `UiLightbox` | 可复用模态查看器**外壳**：遮罩、内容视口、标题与描述、底部控制栏（图集导航与页码、缩放读数、缩放与适应窗口按钮）、控件组与焦点、关闭语义；文案由宿主的 `Labels` 注入（kit 不持有文案键）。**只做外壳与输入分派，不做内容几何** |
+| `UiLightbox.Content` | 内容契约：`contentWidth/Height`、`setViewport`、`render`、`zoom` / `zoomBy` / `fit`、`panBy`、`mousePressed` / `mouseReleased`、`zoomPercent`、`hit`、`placeholder`、`invalidateResources`；实现方必须把绘制**严格裁剪在视口内** |
+| `UiLightbox.Gallery` | 图集：宿主报 `index` / `total`，并在 `navigate(delta)` 里换内容；外壳只在 `total > 1` 时创建导航控件与页码 |
+| `LightboxImage` | 图片描述 record：稳定 `id`、贴图与区域（uv + 原始宽高 + 贴图总尺寸）、可本地化标题与描述；区域必须落在贴图内，非法尺寸在**构造期**就被拒绝；只接受客户端已可用的贴图来源 |
+| `UiImageView` | `UiLightbox.Content` 的图片实现：contain 适配（默认不放大）、1.25 有限步进缩放、指针锚点缩放、平移钳制、严格裁剪绘制与缺图占位；尺寸与缩放状态只在它自己这里，图集/文案/按钮都在外壳 |
 
 **行文本的宽度口径**：排版按自然尺寸不折行，但行文本的可用宽度以视口宽度（1 倍档参考）为上限——超出的部分不参与排版宽度，因此不会再被静默裁掉、也不会把后续图标挤出视口；它在**悬停时于带内滚动**（`render(graphics, font, mouseX, mouseY)` 逐行判悬停并自持滚动计时，旧的无鼠标重载等价于整篇不悬停）。`UiControl` 的标签同一口径：宽度足够时行为与过去逐像素一致，只有确实超宽才滚动。
 
@@ -150,6 +155,28 @@ document.setContent(List.of(new UiNode.Row(
 
 **验证页的阶段 A/B/C 演示区**：`UiKitDebugScreen` 现在左右分栏。右列仍是既有的 200 行 `UiDocument` 演示（25 组 ×（1 根 + 3 子 + 2×2 孙）= 200 行、每 10 行 3 个图标 = 60 个图标）；左列是阶段 A/B/C 演示区——固定/内容/剩余与带 leading 的三种行、禁用控件、原生输入框适配器、`PARCHMENT` / `DARK` 的两组状态样例（普通/悬停/按下/选中/禁用/焦点）以及一段把内容撑高的纯标签列表，用来验证滚动偏移与滚动条。`F` 切换调试叠加层（默认关闭，关闭时不绘制任何额外内容）：打开后画面板与视口矩形、每个布局子项矩形、控件矩形（按启用/禁用着色）与 `accessibleName`、当前焦点目标的强调边框，并输出滚动几何与激活计数。底部读数每 20 tick 刷新，含焦点下标/目标数、滚动偏移/最大偏移/内容高与控件数。演示区与验证页新增的本地化键同时写入 `en_us.json` 与 `zh_cn.json`。
 
+**灯箱的分工：外壳不做内容几何**：`UiLightbox` 只负责遮罩、内容视口、标题与描述、底部控制栏、控件组与焦点、输入分派；内容的尺寸、缩放、平移与裁剪全在 `Content` 实现里。图片场景用 `UiImageView`（由 `LightboxImage` 描述一张图），条件树这类自绘内容由宿主适配器实现——因此同一个外壳既能看图，也能放大整棵树。`Labels` 与 `Gallery` 都由宿主注入，kit 不持有任何文案 key；外壳默认用暗底样式（`UiControlStyle.DARK`）。
+
+**为什么不依赖 `OverlayLayer`**：kit 里没有任何对浮层层的引用，宿主用 `LightboxOverlay` 这个模态适配器把外壳接进 `OverlayLayer`——渲染前写入 `layer.width/height`、转发六类输入、在 `Overlay.closed()` 里调外壳的 `onClosed()` 释放按压与焦点。依赖方向因此保持「宿主层 → kit」单向：外壳可以独立复用与验证，也不会被浮层契约牵着走；宿主打开适配器即获得遮罩、独占输入与关闭语义。
+
+**视口与裁剪口径**：外壳按宿主可用区留 12 像素外边距，顶部让给标题与描述，底部固定 22 像素控制栏（内容视口在它上方，控制栏不会被内容盖住），剩下的矩形通过 `Content.setViewport` 写入内容；内容必须把绘制严格裁剪在该视口内（`UiImageView` 用 `UiTransform.enableScissor`，条件树沿用文档自己的裁剪）。坐标一律是宿主 GUI 逻辑坐标，缩放读数画在按钮组左侧以免压住按钮。
+
+**fit 与 resize 的区别**：外壳只在「首次布局」与「换内容（`setContent`）」时调用一次 `Content.fit()`（`needFit` 标记）；resize 只重新 `setViewport`，由内容自己重新钳制平移并**保留用户缩放**。`UiImageView.fit` 是 contain：按视口与图片尺寸取较小比例，默认不放大（`allowUpscale` 为 false 时上限 1.0），再钳进 [0.05, 8.0] 并把偏移归零居中。条件树适配器的 `fit` 不同：它从最大档位往小试，取第一个能把整幅内容放进可见区的档位，都不行就用最小档位再居中。
+
+**缩放：有限步进与上下限**：滚轮与按钮走同一个「一档」步进（`UiImageView.STEP = 1.25`），比例钳制在 [0.05, 8.0]；滚轮以指针为锚点（缩放前后指针下的同一内容点保持不动），按钮则以视口中心为锚点（`zoomBy`）。到顶 / 到底或结果无变化时返回 `false`，不产生空消费；指针不在内容视口内时外壳不做缩放（输入仍由模态层吞掉，不会漏到下层）。
+
+**平移钳制**：`UiImageView` 的偏移是「图片中心相对视口中心的屏幕像素偏移」——任一轴目标尺寸不超过视口时该轴偏移锁死为 0（居中），超过时钳制在 ±(目标尺寸 − 视口尺寸)/2，因此图片永远不会被拖出视口留下空白；只有从视口内按下的拖动才平移。条件树适配器按内容坐标钳制（可见内容范围 X = [−pan, vw/s − pan]，内容占 [0, cw]），灯箱模式下列出整幅内容、只有超出轴才允许平移；页内框不走这套钳制，保持自由平移。
+
+**缺图占位与资源重载**：`UiImageView` 只在构造、内容变更与 `invalidateResources()` 时用资源管理器判定一次贴图可用性（绘制路径不做 IO）；不可用时 `placeholder()` 返回占位文案，外壳把它居中画在视口里。资源重载时外壳调 `content.invalidateResources()` 并重新求 fit，`UiImageView` 只在「不可用 → 可用」时重新 fit（尺寸这时才真正可用），其余情况保留用户缩放；条件树不依赖贴图，沿用默认 no-op。
+
+**图集 API**：`Gallery` 由宿主实现（报当前下标与总数、在 `navigate(delta)` 里换内容），外壳只请求切换并刷新布局。导航按钮、页码与左右方向键都只在 `total > 1` 时出现；宿主可在切图时一并换掉标题与描述（`setText`）。`setContent` 会把 fit 标记置真，因此每张图进入时都是「适应窗口」的初始状态。
+
+**焦点、激活与关闭语义**：焦点由 `UiFocusManager` 按**视觉顺序**登记——关闭（右上角）→ 上一张 / 下一张（控制栏左侧）→ 缩小 → 放大 → 适应窗口；外壳里 Enter 没有其它语义，因此与 Space 一起用于激活焦点控件。ESC 与 × 都请求关闭（真正的关闭动作是宿主传入的 `onClose`）；点遮罩**默认不关闭**（`setMaskClickCloses` 默认 false，避免拖图时误触退出）。外壳的 `onClosed()` 由模态适配器在 `Overlay.closed()` 里调用，释放按压捕获与焦点。
+
+**灯箱的 tooltip 唯一来源**：同一位置只出一个 tooltip——先问控件组（`controls.targetAt`），命中就只画控件的提示；没有控件命中才问 `content.hit`（例如条件树里的行），为空则不画。内容实现因此**不要自己画 tooltip**，只把命中契约暴露给外壳。
+
+**验证页的阶段 D 演示**：`UiKitDebugScreen` 的演示区新增一个「灯箱」按钮，打开的是**复用生产模态路径**的图片灯箱——页面自己持有一个 `OverlayLayer` + `LightboxOverlay`，内容视图是 `UiImageView`，页内图集放两张图（256×256 的陶轮界面整图与 152×76 的目录条目整图，用来对照「大图 contain 后仍可放大」与「小图 fit 保持 100%」）。灯箱按**未缩放的真实屏幕坐标**画在所有内容之上并独占输入，ESC 由灯箱消费（关灯箱而不是关调试页）；页面在打开时收掉下层焦点与正在进行的拖动，模态期间不再画自己的 tooltip。底部读数在灯箱打开时追加「图序号 / 总数 | 缩放百分比」。通用文案键 `screen.unsuspiciousblock.lightbox.*`（8 个：close / zoom_in / zoom_out / fit / previous / next / position / missing）与调试页新增的 7 个键同时写入 `en_us.json` 与 `zh_cn.json`。
+
 ## 5. 场景详情页与模态交互
 
 `RightPageContainer.setTable` 同时向网格页头部与 `ScenarioDetailPanel` 传递 tableId，SCENARIO tab 由新面板负责。页内布局是读数行 y=6、动作行 y=18、框 y=34（152×166），底部分页带仍由原生控件负责。各 tab 的分页带常量彼此独立，`pageIndicatorY()` 统一提供当前页指示器及按钮位置。
@@ -171,7 +198,7 @@ document.setContent(List.of(new UiNode.Row(
 
 - `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；行由 `UiScrollView` + `UiControlGroup` 承载——整表行控件按场景下标稳定复用、只建一次，翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配；内容溢出才显示滚动条（行宽相应让出 4 像素），底部箭头到边界时进入禁用态。键盘焦点由 `UiFocusManager` 按「场景行 → ◀ → ▶」登记：Tab/Shift+Tab 在其间移动、**焦点行自动滚进视口**、Space 激活焦点控件，而 Enter 保留「选择并关闭」的既有契约；当前场景行常亮语义选中态（原有加粗保留）。滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/Enter/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
 - `ScenarioParamsOverlay`：独立草稿、确认/取消；控件统一由 `UiControlGroup` 按稳定 key 承载，落位由三套 `UiLinearLayout`（行槽 / 行内横排 / 底部按钮行）产出，不再手算坐标；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 `EditBox`（支持拖选，命中优先于控件组），由宿主侧适配器接进焦点序列、文字输入仍归原版控件。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 保持「确认」契约、Space 激活焦点控件，窗口外的附魔行用 `PageUp` / `PageDown` 翻窗口到达（Tab 只在窗口内环绕），当前抽样格常亮语义选中态（原有加粗保留）；参数多时按行滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
-- `ScenarioExpandedOverlay`：居中遮罩窗口，复制页内视图到独立 `ScenarioFrameView`，复用相同交互；关闭时丢弃窗口临时平移/缩放，因此页内视图保持打开前状态。关闭按钮与框角控件均置于物品之上。
+- `ScenarioExpandedOverlay`：**放大页已改为灯箱模式**——它不再是浮层，而是 `UiLightbox.Content` 适配器：内部持有一个独立的 `ScenarioFrameView`，只把视口 / 绘制 / 缩放 / 平移 / 命中按契约暴露出来，遮罩、控制栏、适应窗口、焦点与关闭语义全部交给 `UiLightbox` + `LightboxOverlay`。构造时调用 `frame.hideCornerControls()` 关掉框自带的档位与复位角控件（灯箱自己提供缩放与适应窗口，避免两套控件与两处命中）；打开即适应窗口（首次布局触发一次 `fit()`），平移按灯箱规则钳制（内容小于视口时该轴居中锁定，超出轴才可拖动），点遮罩不关闭。视图是独立实例，**关闭灯箱不会改动页内框的平移 / 缩放**；`ScenarioDetailPanel` 用 `LightboxOverlay` 打开，并把 `expandButton` 作为返回焦点。为此 `ScenarioFrameView` 增加了包内只读访问器 `transform()` / `contentViewport()` / `contentWidth()` / `contentHeight()`，以及只关闭绘制与命中的 `hideCornerControls()`（内部 `controlsVisible` 开关，没有重新打开的 setter，页内路径保持默认显示）。
 
 **网格页头部**（`ScenarioPanel`）只剩读数行与「切换场景 / 计算」两个动作，文字超宽时悬停滚动。网格页调整参数需到场景页打开参数浮层。
 

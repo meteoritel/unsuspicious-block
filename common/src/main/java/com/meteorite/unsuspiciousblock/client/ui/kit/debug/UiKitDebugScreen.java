@@ -1,7 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.kit.debug;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.client.ui.kit.LightboxImage;
 import com.meteorite.unsuspiciousblock.client.ui.kit.TextMeasurer;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiAction;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlGroup;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
@@ -9,6 +11,10 @@ import com.meteorite.unsuspiciousblock.client.ui.kit.UiDocument;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusManager;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusTarget;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiIcon;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiImageView;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiLightbox;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.LightboxOverlay;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiLinearLayout;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiNode;
@@ -22,6 +28,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -41,6 +48,9 @@ import java.util.Objects;
  * <p>键盘：P 切换外层 pose 1x/2x（同时重建布局），F 切换调试叠加层（默认关闭），
  * Tab / Shift+Tab 在演示区焦点目标间移动（顺序含原生输入框），Space / Enter 激活焦点控件。
  * 调试叠加层关闭时不绘制任何额外内容。</p>
+ *
+ * <p>阶段 D：演示区里还有一个按钮打开 {@link UiLightbox} 图片灯箱（内容视图是 {@link UiImageView}，
+ * 页内图集放两张图）；灯箱按未缩放的真实屏幕坐标画在所有内容之上并独占输入，ESC 由灯箱消费。</p>
  */
 public final class UiKitDebugScreen extends Screen {
     private static final String PREFIX = "screen.unsuspiciousblock.ui_kit_debug.";
@@ -54,7 +64,7 @@ public final class UiKitDebugScreen extends Screen {
     private static final int CONTENT_PADDING = 4;
     private static final int ROW_HEIGHT = 18;
     private static final int SAMPLE_ROW_HEIGHT = 16;
-    private static final int SAMPLE_ROW_FIRST = 4;
+    private static final int SAMPLE_ROW_FIRST = 5;
     private static final int SAMPLE_ROW_COUNT = 4;
     private static final int LIST_ROW_HEIGHT = 14;
     private static final int LIST_ROW_COUNT = 12;
@@ -66,6 +76,7 @@ public final class UiKitDebugScreen extends Screen {
     private static final int DEBUG_DISABLED_COLOR = 0xFFFF8040;
     private static final int DEBUG_LAYOUT_COLOR = 0xFF40C0FF;
     private static final int DEBUG_FOCUS_COLOR = 0xFFFF4040;
+
 
     // 状态样例：下标与 UiControlStyle 的绘制状态一一对应（普通/悬停/按下/选中/禁用/焦点）。
     private static final String[] SAMPLE_KEYS = {
@@ -101,6 +112,14 @@ public final class UiKitDebugScreen extends Screen {
     private boolean editBoxDragging;
     private boolean debugOverlay;
     private int activationCount;
+
+    // ---------- 阶段 D 灯箱状态 ----------
+    /** 用生产路径的模态适配器承载灯箱，调试页与业务页共用同一套遮罩/独占输入/层高实现。 */
+    private final OverlayLayer lightboxLayer = new OverlayLayer();
+    private UiLightbox lightbox;
+    private UiImageView lightboxView;
+    private LightboxImage[] lightboxImages;
+    private int lightboxIndex;
 
     public UiKitDebugScreen(Screen parent) {
         super(text("title"));
@@ -245,7 +264,12 @@ public final class UiKitDebugScreen extends Screen {
         demoEditBox.setMaxLength(32);
         demoEditBox.setValue(demoEditText);
 
-        // 行 4~7：PARCHMENT / DARK 各一组状态样例。
+        // 行 4：阶段 D 灯箱入口；按钮打开图片灯箱（2 张图的图集，验证 fit/缩放/拖动与图集导航）。
+        UiLinearLayout row4 = horizontalLayout(rows.bounds(4), List.of(UiLinearLayout.Child.remain()));
+        addDemoControl("open_lightbox", row4.bounds(0), text("demo_lightbox"), true,
+                List.of(text("lightbox_button_tooltip")), this::openLightbox);
+
+        // 行 5~8：PARCHMENT / DARK 各一组状态样例。
         buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST), UiControlStyle.PARCHMENT,
                 UiTextPalette.Dark.BODY, "demo_style_parchment", 0);
         buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST + 1), UiControlStyle.PARCHMENT,
@@ -255,7 +279,7 @@ public final class UiKitDebugScreen extends Screen {
         buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST + 3), UiControlStyle.DARK,
                 UiTextPalette.Parchment.BODY, "demo_style_dark", 3);
 
-        // 行 8 起：纯标签列表，把内容撑高以便验证滚动偏移与滚动条。
+        // 行 9 起：纯标签列表，把内容撑高以便验证滚动偏移与滚动条。
         for (int i = 0; i < LIST_ROW_COUNT; i++) {
             addLabelControl("list." + i, rows.bounds(LIST_ROW_FIRST + i), text("demo_list_row", i + 1));
         }
@@ -314,11 +338,16 @@ public final class UiKitDebugScreen extends Screen {
         }
     }
 
-    // 从控件组按稳定 key 取控件并配置成可激活按钮；动作只累加调试计数。
+    // 从控件组按稳定 key 取控件并配置成可激活按钮；默认动作只累加调试计数。
     private void addDemoControl(Object key, UiRect bounds, Component label, boolean enabled) {
+        addDemoControl(key, bounds, label, enabled, List.of(text("demo_button_tooltip")), this::onDemoActivated);
+    }
+
+    // 带自定义提示与动作的重载（例如打开灯箱的入口按钮）。
+    private void addDemoControl(Object key, UiRect bounds, Component label, boolean enabled,
+                                List<Component> tooltip, UiAction action) {
         UiControl control = demoControls.obtain(key);
-        control.configure(font, label, UiTextPalette.Dark.BODY, null,
-                List.of(text("demo_button_tooltip")), this::onDemoActivated);
+        control.configure(font, label, UiTextPalette.Dark.BODY, null, tooltip, action);
         control.setBounds(bounds.x(), bounds.y(), bounds.width(), bounds.height());
         control.setEnabled(enabled);
         demoControlList.add(control);
@@ -336,6 +365,98 @@ public final class UiKitDebugScreen extends Screen {
     // 演示按钮的动作只累加计数：把「激活确实发生」暴露给调试叠加层，不产生业务副作用。
     private void onDemoActivated() {
         activationCount++;
+    }
+
+    // ---------- 阶段 D 灯箱 ----------
+
+    // 打开灯箱：初始内容是图集第一张，图集与文案都交给外壳；页面只保留引用与下标。
+    private void openLightbox() {
+        if (lightbox != null) return;
+        // 打开时结束可能正在进行的 Frame 拖动，并收掉下层焦点：
+        // 灯箱独占输入期间，原生输入框必须失焦，否则字符还会悄悄打进后台字段。
+        dragging = false;
+        demoFocus.clearFocus();
+        lightboxImages = buildLightboxImages();
+        lightboxIndex = 0;
+        lightboxView = new UiImageView(lightboxImages[0], missingText());
+        UiLightbox box = new UiLightbox(lightboxLabels(), lightboxView, this::closeLightbox);
+        box.setGallery(new DebugGallery());
+        box.setText(lightboxImages[0].title(), lightboxImages[0].description());
+        lightbox = box;
+        lightboxLayer.setBounds(width, height);
+        lightboxLayer.open(new LightboxOverlay(lightboxLayer, box));
+        refreshDiagnostics();
+    }
+
+    // 关闭灯箱：模态层会回调 LightboxOverlay.closed()（外壳在那里释放焦点与按压捕获），页面只清引用。
+    private void closeLightbox() {
+        lightboxLayer.close();
+        lightbox = null;
+        lightboxView = null;
+        refreshDiagnostics();
+    }
+
+    // 图集切换：换内容（新视图重新求 fit）并同步标题与描述；外壳只负责显示与请求切换。
+    private void applyLightboxImage() {
+        UiLightbox box = lightbox;
+        if (box == null || lightboxImages == null || lightboxImages.length == 0) return;
+        LightboxImage image = lightboxImages[lightboxIndex];
+        lightboxView = new UiImageView(image, missingText());
+        box.setContent(lightboxView);
+        box.setText(image.title(), image.description());
+        refreshDiagnostics();
+    }
+
+    // 缺图占位沿用阶段 D 已就位的通用灯箱键，不再重复新增。
+    private static Component missingText() {
+        return Component.translatable("screen.unsuspiciousblock.lightbox.missing");
+    }
+
+    // 两张图的图集：pottery_wheel_gui.png（256×256 整图）与 catalog_entry.png（152×76 整图）。
+    private static LightboxImage[] buildLightboxImages() {
+        ResourceLocation potteryWheel = ResourceLocation.fromNamespaceAndPath(
+                Constants.MOD_ID, "textures/gui/pottery_wheel_gui.png");
+        ResourceLocation catalogEntry = ResourceLocation.fromNamespaceAndPath(
+                Constants.MOD_ID, "textures/gui/catalog_entry.png");
+        return new LightboxImage[]{
+                LightboxImage.whole(
+                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "debug/lightbox_pottery_wheel"),
+                        potteryWheel, 256, 256,
+                        text("lightbox_image_pottery_title"), text("lightbox_image_pottery_desc")),
+                LightboxImage.whole(
+                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "debug/lightbox_catalog_entry"),
+                        catalogEntry, 152, 76,
+                        text("lightbox_image_catalog_title"), text("lightbox_image_catalog_desc"))};
+    }
+
+    // 外壳文案复用阶段 D 的通用灯箱键（kit 不持有文案 key）。
+    private static UiLightbox.Labels lightboxLabels() {
+        return new UiLightbox.Labels() {
+            @Override public Component close() { return lightboxText("close"); }
+            @Override public Component zoomIn() { return lightboxText("zoom_in"); }
+            @Override public Component zoomOut() { return lightboxText("zoom_out"); }
+            @Override public Component fit() { return lightboxText("fit"); }
+            @Override public Component previous() { return lightboxText("previous"); }
+            @Override public Component next() { return lightboxText("next"); }
+            @Override public Component position(int index, int total) {
+                return Component.translatable("screen.unsuspiciousblock.lightbox.position", index, total);
+            }
+        };
+    }
+
+    private static Component lightboxText(String key) {
+        return Component.translatable("screen.unsuspiciousblock.lightbox." + key);
+    }
+
+    /** 页内图集：下标由页面持有，导航时换内容；外壳只请求切换、不关心图从哪来。 */
+    private final class DebugGallery implements UiLightbox.Gallery {
+        @Override public int index() { return lightboxIndex; }
+        @Override public int total() { return lightboxImages == null ? 0 : lightboxImages.length; }
+        @Override public void navigate(int delta) {
+            if (lightboxImages == null || lightboxImages.length == 0) return;
+            lightboxIndex = Math.floorMod(lightboxIndex + delta, lightboxImages.length);
+            applyLightboxImage();
+        }
     }
 
     // ---------- 渲染 ----------
@@ -361,6 +482,13 @@ public final class UiKitDebugScreen extends Screen {
             renderDemoArea(graphics, localX, localY, partialTick);
         } finally {
             graphics.pose().popPose();
+        }
+        if (lightboxLayer.isOpen()) {
+            // 模态层负责 flush、层高与遮罩；坐标用未缩放的真实屏幕坐标。
+            lightboxLayer.setBounds(width, height);
+            lightboxLayer.render(graphics, font, mouseX, mouseY, partialTick);
+            // 模态期间页面不再画自己的 tooltip，避免与灯箱的提示叠加。
+            return;
         }
         if (demoScroll.contains(localX, localY)) {
             // 演示区同一位置只能有一个 tooltip：只画最上层命中且提示非空的目标。
@@ -463,6 +591,7 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (lightboxLayer.mouseClicked(mouseX, mouseY, button)) return true;
         double x = mouseX / outerScale;
         double y = mouseY / outerScale;
         if (button == 0) {
@@ -497,6 +626,7 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (lightboxLayer.mouseDragged(mouseX, mouseY, button, dragX, dragY)) return true;
         double x = mouseX / outerScale;
         double y = mouseY / outerScale;
         if (button == 0) {
@@ -515,6 +645,7 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (lightboxLayer.mouseReleased(mouseX, mouseY, button)) return true;
         if (button == 0) {
             demoScroll.mouseReleased();
             if (editBoxDragging) {
@@ -533,6 +664,7 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (lightboxLayer.mouseScrolled(mouseX, mouseY, scrollY)) return true;
         double x = mouseX / outerScale;
         double y = mouseY / outerScale;
         if (demoScroll.contains(x, y) && demoScroll.scrollBy(scrollY)) return true;
@@ -547,6 +679,8 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // ESC 由灯箱消费（关灯箱而不是关整个调试页）；其余按键也被模态吞掉。
+        if (lightboxLayer.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (keyCode == GLFW.GLFW_KEY_P) {
             outerScale = outerScale == 1 ? 2 : 1;
             init();
@@ -568,6 +702,7 @@ public final class UiKitDebugScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if (lightboxLayer.charTyped(codePoint, modifiers)) return true;
         if (demoEditBox != null && demoEditBox.charTyped(codePoint, modifiers)) return true;
         return super.charTyped(codePoint, modifiers);
     }
@@ -585,8 +720,8 @@ public final class UiKitDebugScreen extends Screen {
 
     private void refreshDiagnostics() {
         UiMetrics metrics = document.metrics();
-        // 追加的调试读数直接取自对象（焦点管理器 / 滚动视口 / 控件组），不重新计算布局。
-        diagnostics = Component.empty()
+        // 追加的调试读数直接取自对象（焦点管理器 / 滚动视口 / 控件组 / 灯箱内容），不重新计算布局。
+        MutableComponent line = Component.empty()
                 .append(text("metrics", metrics.builds(), metrics.layouts(), metrics.buildNanos() / 1000,
                         metrics.layoutNanos() / 1000, metrics.renderNanos() / 1000, metrics.hitNanos() / 1000,
                         (int) (frameTransform.scale() * 100), outerScale))
@@ -594,6 +729,12 @@ public final class UiKitDebugScreen extends Screen {
                 .append(text("debug_readout", demoFocus.focusedIndex(), demoFocus.size(),
                         demoScroll.offset(), demoScroll.maxOffset(), demoScroll.contentHeight(),
                         demoControls.size()));
+        if (lightbox != null && lightboxView != null && lightboxImages != null) {
+            // 灯箱读数：图集下标与内容视图自己上报的缩放百分比。
+            line.append(" ").append(text("lightbox_readout", lightboxIndex + 1, lightboxImages.length,
+                    lightboxView.zoomPercent()));
+        }
+        diagnostics = line;
     }
 
     @Override

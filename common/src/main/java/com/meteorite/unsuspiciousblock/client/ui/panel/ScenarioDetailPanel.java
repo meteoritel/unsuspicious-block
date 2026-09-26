@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground.BookLayou
 import com.meteorite.unsuspiciousblock.client.ui.kit.*;
 import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.LightboxOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
@@ -47,6 +48,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private String input = "";
     private String requestStatus = "";
     private List<UiNode> tree = List.of();
+    /** 当前场景标签：与 title 控件同源，供灯箱标题复用，避免打开时重复解析。 */
+    @Nullable private Component lastTitleLabel;
 
     public ScenarioDetailPanel(BookLayout layout, OverlayLayer overlays) {
         this.layout = layout;
@@ -177,13 +180,16 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             tree = List.of(new UiNode.Row(ScenarioSimulationClientState.text("unavailable"), UiTextPalette.Parchment.LABEL));
             for (UiControl control : controls) control.configure(font, Component.empty(), UiTextPalette.Parchment.BODY,
                     null, List.of(), null);
+            lastTitleLabel = null;
             title.configure(font, ScenarioSimulationClientState.text("unavailable"), UiTextPalette.Parchment.LABEL, null, List.of(), null);
         } else {
             ScenarioPresentation presentation = ScenarioPresentation.resolve(table, selection.scene(), selection.params());
             tree = ScenarioPageBuilder.buildContent(structure, selection.scene(), presentation);
             List<Component> titleTooltip = new ArrayList<>(ScenarioLabel.definition(structure.options(), selection.scene()));
             titleTooltip.add(ScenarioSimulationClientState.text(presentation.status()));
-            title.configure(font, ScenarioLabel.label(structure.options(), selection.scene()), UiTextPalette.Parchment.TITLE,
+            // 灯箱标题复用同一份场景标签：缓存下来供放大按钮使用。
+            lastTitleLabel = ScenarioLabel.label(structure.options(), selection.scene());
+            title.configure(font, lastTitleLabel, UiTextPalette.Parchment.TITLE,
                     null, titleTooltip, null);
             List<Component> statusTooltip = new ArrayList<>();
             statusTooltip.add(ScenarioSimulationClientState.text(presentation.status()));
@@ -197,7 +203,12 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                             structure.options(), selection.params(), getPage(), this::setPage), scenesButton));
             expandButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, icon(1, 2),
                     List.of(ScenarioSimulationClientState.text("frame.expand")), () -> {
-                        if (frame != null) overlays.open(new ScenarioExpandedOverlay(overlays, this, font, frame.state()), expandButton);
+                        // 放大页改为灯箱模式：内容持有独立视图（首次布局即适应窗口），点遮罩不关闭。
+                        ScenarioExpandedOverlay content = new ScenarioExpandedOverlay(this, font);
+                        UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
+                        lightbox.setText(lastTitleLabel, null);
+                        lightbox.setMaskClickCloses(false);
+                        overlays.open(new LightboxOverlay(overlays, lightbox), expandButton);
                     });
             List<Component> paramsTooltip = new ArrayList<>();
             Component toolName = Component.literal(selection.params().toolId().toString());
