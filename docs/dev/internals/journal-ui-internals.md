@@ -85,6 +85,11 @@ ui/
 | `UiTarget` | `hit()` 返回的唯一目标；图标优先于行，空图标提示也不会回退到行提示；矩形属于命中文档的内容坐标系 |
 | `UiTransform` | 内容原点、平移、缩放及双向坐标转换；档位 0.5/1/2/3，鼠标锚点缩放 |
 | `UiMetrics` | 构建/排版/渲染/命中最近一次耗时（ns）与调用次数；生产宿主传 `false` 关闭计时 |
+| `UiControlStyle` | 控件**结构色** token：普通/悬停/按下/选中/禁用背景、焦点轮廓、滚动条轨道与滑块；内置 `PARCHMENT` 与 `DARK`，`background(State)` 按「禁用 > 按下 > 悬停 > 选中 > 普通」取色。文本色不在其中 |
+| `UiControl` 语义状态 | `enabled` / `visible` / `selected` / `focused` / `pressed` 只影响绘制与命中、不触发重新测量；禁用与不可见清掉按压与焦点；`isFocusable()` 要求 `action != null`，纯标签可命中、有 tooltip，但不作 Tab 停靠点 |
+| `UiControlGroup` | 稳定 key → 控件的 `LinkedHashMap`，迭代顺序即绘制与命中层序（后创建者在上层）；`beginUpdate` / `obtain(key)` / `endUpdate` 复用并丢弃未复用项；`controlAt` 取最上层命中、`renderTooltip` 只画该目标的提示；`mousePressed` 命中即激活并捕获按压到释放；`keyPressed` 处理 Tab/Shift+Tab 与 Enter/Space |
+| `UiScrollView` | 视口矩形（宿主 GUI 坐标）+ 内容高度 + 偏移，偏移恒钳制在 `[0, maxOffset()]`；`push` / `pop` 进出内容坐标，`toContentX` / `toContentY` / `toScreenY` 做换算，`ensureVisible` 最小滚动；滚动条含点轨道跳转与拖动 |
+| `UiLinearLayout` | 有界横纵布局：主轴 `FIXED` / `CONTENT` / `REMAIN` 加 min·max 钳制，交叉轴固定/内容/拉满，统一 `spacing` 与 `padding`，`Child.leading` 覆盖单个子项前间距；`REMAIN` **先按各子项的 min 预扣再平分余量**，容器确实放不下时按 min 溢出而不是把子项压到 min 以下；`bounds(int)` 只读缓存、越界返回零矩形，`usedMain()` 供宿主换算内容高度 |
 
 **行文本的宽度口径**：排版按自然尺寸不折行，但行文本的可用宽度以视口宽度（1 倍档参考）为上限——超出的部分不参与排版宽度，因此不会再被静默裁掉、也不会把后续图标挤出视口；它在**悬停时于带内滚动**（`render(graphics, font, mouseX, mouseY)` 逐行判悬停并自持滚动计时，旧的无鼠标重载等价于整篇不悬停）。`UiControl` 的标签同一口径：宽度足够时行为与过去逐像素一致，只有确实超宽才滚动。
 
@@ -109,6 +114,24 @@ document.setContent(List.of(new UiNode.Row(
 
 **S1 临时验证页**：Fabric / NeoForge 的 Gradle 客户端运行配置默认带 `-Dunsuspiciousblock.uiKitDebug=true`；IDEA 刷新 Gradle 后运行 `runClient`，打开笔记后按 `Ctrl+F8`。`UiKitDebugScreen` 包含 200 行、40 个物品图标和 20 个贴图图标，支持拖动、滚轮缩放、复位，以及 `P` 切换外层 pose 1x/2x。底部依次显示构建/排版次数、四段耗时（微秒）、内容缩放、外层缩放；每 5 秒在日志输出 ns 计时。拖动/滚轮/复位时排版次数应保持不变；`P` 和 resize 允许因视口改变重排。正式发布环境或未启用开关时无法进入。
 
+**滚动视口的坐标与裁剪口径**：`UiScrollView.setViewport` 使用宿主 GUI 逻辑坐标，与 `UiControl` 矩形同坐标系；`push(graphics)` 先 `flush`、再按当前 pose 设置视口 scissor，最后 `translate(viewport.x(), viewport.y() - offset)` 进入内容坐标，`pop(graphics)` 先弹回宿主 pose 再恢复上一层裁剪（原版 scissor 交集栈）。内容坐标系的原点是「内容顶部、与视口左边界对齐」；命中用 `toContentX` / `toContentY` 把屏幕坐标换算成内容坐标后再交给 `UiControlGroup`，`toScreenY` 用于反向定位。指针不在视口内时宿主传视口外的占位坐标（`ScenarioSelectionOverlay` 的 `NO_HOVER = -1000`）或直接跳过命中，避免视口外内容被命中。偏移在视口尺寸与内容高度变化后重新钳制；内容不超过一屏时 `maxOffset()` 为 0、滚动条不显示。`SCROLLBAR_WIDTH = 4`，滚动条始终贴视口右边界，溢出时宿主让出这 4 像素。
+
+**布局只产出落位**：`UiLinearLayout` 不绘制、不持有控件，只产出逻辑矩形：`bounds(int)` 只读缓存、越界返回零矩形，`usedMain()` 供宿主换算内容高度。预期用法是「纵向容器里每行一个横向容器」——一层嵌套即可表达标签列 + 控件列的表格行，子布局各自 `setBounds` 到父布局给出的矩形。一行里宽度规则不同时用 per-child 的 `withLeading` 给间距，不再手算绝对坐标；`ScenarioParamsOverlay` 的三套布局分别是行槽（每行固定 20 高）、行内横排（逐行重配尺寸规则）与底部按钮行。
+
+**稳定 key 复用与「稳定帧不重建」**：`UiControlGroup` 以稳定 key 持有控件，只在内容变化时走一遍 `beginUpdate` / `obtain(key)` / `endUpdate`：同一 key 永远返回同一个 `UiControl`，本次未复用的 key 连同落在其上的按压与焦点引用一起丢弃；滚动、悬停等逐帧操作只改状态。`UiControl.configure` 在标签文案未变时不重置滚动计时，因此「浮层按秒重配控件」不会让超宽文本每秒跳回起点；`setBounds` 在矩形未变时直接返回。`ScenarioSelectionOverlay` 据此把整表行控件只建一次（key 为场景下标），翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配。
+
+**命中与 tooltip 的唯一来源**：组内命中只走 `controlAt`（自上层向下取第一个命中者），`targetAt` / `renderTooltip` 派生同一目标，同一位置只画一个 tooltip。组与组之间的区域划分由宿主负责：场景选择浮层在视口内取行组目标、视口外才交给底部箭头组，二者互斥；滚动条命中排在行命中之前，滑块压在行右侧也不会穿透。
+
+**焦点与键盘导航**：`keyPressed` 只处理 Tab / Shift+Tab（`moveFocus(±1)`，用 `Math.floorMod` 环绕）与 Enter / Space（激活焦点控件），其余按键一律不消费——ESC、上下键等语义仍归模态宿主。进入序列的条件是 `isFocusable()`（`isHittable()` 且 `action != null`）：禁用与不可见控件既不可命中也不进序列，`setEnabled(false)` / `setVisible(false)` 会立刻清掉 `pressed` 与 `focused`；纯标签仍可命中、仍显示 tooltip，只是不再占用 Tab 停靠点。焦点或按压目标可能因内容更新、禁用、隐藏而失效，每个交互入口先经 `refreshInteraction()` 做一次廉价校验并清理。`setKeyboardNavigation(false)` 供宿主在原生输入框持焦期间关掉导航。
+
+**按压捕获**：`mousePressed` 命中即激活并记录按压目标，`mouseReleased` 只结束捕获、不在释放时激活（拖动结束不应触发点击）；`isPressCaptured(x, y)` 让宿主区分这次拖动归控件还是归下层内容。
+
+**与原生 `EditBox` 的接驳边界**：`ScenarioParamsOverlay` 中幸运值 `EditBox` 仍是唯一原生输入（支持拖选），其命中优先级高于控件组，聚焦期间关闭控件组键盘导航，字符输入走 `charTyped`，可见性随所在行是否落在滚动窗口内切换。控件组只自绘标签与按钮，标签 `action == null`，因此点击只读文本没有副作用。
+
+**语义状态与样式分工**：状态解析优先级为「禁用 > 按下 > 悬停 > 选中 > 普通」，背景色从 `UiControlStyle.background(State)` 取，焦点轮廓画在矩形内侧（不侵入相邻控件、也不被控件自身裁剪吃掉）。结构色（背景、焦点轮廓、滚动条轨道/滑块）归 `UiControlStyle`，文本色仍由调用方从 `UiTextPalette` 传入，禁用态只降不透明度、保留调用方给定的色相——与「文本配色约束」的分工一致。`PARCHMENT` 的普通/悬停背景与旧硬编码值逐像素相同，按下/选中/禁用/焦点是新增态，旧界面不会触发。
+
+**口径收窄**：前述「kit 不负责输入分发、焦点、浮层或状态持久化」现在收窄为：kit 仍不决定模态优先级、不持有业务状态，只提供组内的焦点与键盘导航；输入先给谁（原生输入框、滚动条、控件组、文档命中）由宿主维护，滚轮是否消费也仍由宿主按 `UiScrollView.contains(x, y)` 判定。
+
 ## 5. 场景详情页与模态交互
 
 `RightPageContainer.setTable` 同时向网格页头部与 `ScenarioDetailPanel` 传递 tableId，SCENARIO tab 由新面板负责。页内布局是读数行 y=6、动作行 y=18、框 y=34（152×166），底部分页带仍由原生控件负责。各 tab 的分页带常量彼此独立，`pageIndicatorY()` 统一提供当前页指示器及按钮位置。
@@ -128,8 +151,8 @@ document.setContent(List.of(new UiNode.Row(
 
 `OverlayLayer` **同时只打开一个模态**，六类输入入口均先分发给它，并保留先 flush 再 z=400 的层高契约。模态期间屏幕抑制下层自绘 tooltip、原生控件悬停和 JEI 悬停物品查询。三个使用者是：
 
-- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
-- `ScenarioParamsOverlay`：独立草稿、确认/取消；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 EditBox，支持拖选；参数多时滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
+- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；行由 `UiScrollView` + `UiControlGroup` 承载——整表行控件按场景下标稳定复用、只建一次，翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配；内容溢出才显示滚动条（行宽相应让出 4 像素），底部箭头到边界时进入禁用态。滚轮或分组箭头浏览，上下键改变当前场景，Tab/Shift+Tab 在行/箭头控件间移焦、Space 激活焦点控件，点击行后关闭，ESC/Enter/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
+- `ScenarioParamsOverlay`：独立草稿、确认/取消；控件统一由 `UiControlGroup` 按稳定 key 承载，落位由三套 `UiLinearLayout`（行槽 / 行内横排 / 底部按钮行）产出，不再手算坐标；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 `EditBox`（支持拖选，命中优先于控件组），它持焦期间控件组的 Tab/Space 导航关闭；参数多时按行滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
 - `ScenarioExpandedOverlay`：居中遮罩窗口，复制页内视图到独立 `ScenarioFrameView`，复用相同交互；关闭时丢弃窗口临时平移/缩放，因此页内视图保持打开前状态。关闭按钮与框角控件均置于物品之上。
 
 **网格页头部**（`ScenarioPanel`）只剩读数行与「切换场景 / 计算」两个动作，文字超宽时悬停滚动。网格页调整参数需到场景页打开参数浮层。

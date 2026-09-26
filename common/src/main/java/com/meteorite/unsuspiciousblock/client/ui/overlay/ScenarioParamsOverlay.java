@@ -1,8 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiAction;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControl;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlGroup;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiLinearLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
@@ -24,9 +26,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** 参数草稿模态：只有确认才提交；除幸运值原生输入框外，按钮、标签和提示均走 kit。 */
+/**
+ * 参数草稿模态：只有确认才提交；除幸运值原生输入框外，控件统一由 {@link UiControlGroup} 按稳定 key 承载，
+ * 落位由三套 {@link UiLinearLayout}（行槽、行内横排、底部按钮行）产出，不再手算控件坐标。
+ */
 public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
     private static final int PANEL_WIDTH = 276;
+    /** 内容宽：panelX+8 … panelX+268。 */
+    private static final int CONTENT_WIDTH = PANEL_WIDTH - 16;
     private final OverlayLayer layer;
     private final ResourceLocation table;
     private final String scene;
@@ -35,7 +42,14 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
     private final List<Integer> samples;
     private final List<ResourceLocation> enchantments;
     private final Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
-    private final List<UiControl> controls = new ArrayList<>();
+    /** 控件组：稳定 key 复用，禁止每帧新建控件。 */
+    private final UiControlGroup controls = new UiControlGroup();
+    /** 行槽布局：每行固定 20 高，槽内控件顶对齐高 16。 */
+    private final UiLinearLayout rowsLayout = new UiLinearLayout(UiLinearLayout.Axis.VERTICAL, 0, 0);
+    /** 行内横排布局：逐行重配尺寸规则并立即消费其矩形。 */
+    private final UiLinearLayout rowLayout = new UiLinearLayout(UiLinearLayout.Axis.HORIZONTAL, 0, 0);
+    /** 底部按钮行：取消 68 + 8 间距 + 确认 68。 */
+    private final UiLinearLayout footerLayout = new UiLinearLayout(UiLinearLayout.Axis.HORIZONTAL, 0, 0);
     private String draftLuck;
     private int toolIndex, sampleIndex, firstRow;
     private int panelX, panelY, panelHeight;
@@ -65,6 +79,7 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         draftLuck = String.format(Locale.ROOT, "%.2f", current.luck());
     }
 
+    // 内容重排：仅在 dirty、字体变化或画布尺寸变化时执行；控件按稳定 key 复用。
     private void layout(Font font) {
         if (!dirty && measuredFont == font && lastWidth == layer.width() && lastHeight == layer.height()) return;
         if (luckBox == null || measuredFont != font) {
@@ -81,58 +96,115 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         panelHeight = 64 + visibleRows * 20;
         panelX = (layer.width() - PANEL_WIDTH) / 2;
         panelY = (layer.height() - panelHeight) / 2;
-        controls.clear();
-        control(font, text("params.title"), panelX + 8, panelY + 6, PANEL_WIDTH - 16, 16, null);
+
+        controls.beginUpdate();
+        // 标题：固定矩形（panelX+8, panelY+6, 260, 16）。
+        place(font, "title", text("params.title"), panelX + 8, panelY + 6, CONTENT_WIDTH, 16, null);
+
+        // 行槽：y = panelY+26+(row-firstRow)*20、槽高 20 全部交给纵向布局。
+        List<UiLinearLayout.Child> slots = new ArrayList<>(visibleRows);
+        for (int i = 0; i < visibleRows; i++) slots.add(UiLinearLayout.Child.fixed(20));
+        rowsLayout.setChildren(slots);
+        rowsLayout.setBounds(panelX + 8, panelY + 26, CONTENT_WIDTH, visibleRows * 20);
+
         luckBox.visible = false;
-        int labelX = panelX + 8;
-        int controlX = panelX + 106;
-        int controlWidth = PANEL_WIDTH - 114;
         for (int row = firstRow; row < firstRow + visibleRows; row++) {
-            int y = panelY + 26 + (row - firstRow) * 20;
+            var slot = rowsLayout.bounds(row - firstRow);
+            // 行内横排：高度 16（槽内顶对齐），x/宽直接取槽位。
+            rowLayout.setBounds(slot.x(), slot.y(), slot.width(), 16);
             if (row == 0) {
-                control(font, text("params.tool"), labelX, y, 96, 16, null);
-                control(font, Component.literal("◀"), controlX, y, 16, 16,
+                // 工具行：标签 96 + 2 + ◀ 16 + 1 + 名称 128 + 1 + ▶ 16 = 260。
+                rowLayout.setChildren(List.of(
+                        UiLinearLayout.Child.fixed(96),
+                        UiLinearLayout.Child.fixed(16).withLeading(2),
+                        UiLinearLayout.Child.fixed(128).withLeading(1),
+                        UiLinearLayout.Child.fixed(16).withLeading(1)));
+                place(font, "tool.label", text("params.tool"), rowLayout, 0, null);
+                place(font, "tool.prev", Component.literal("◀"), rowLayout, 1,
                         () -> { toolIndex = cycle(toolIndex, -1, tools.size()); dirty = true; });
                 Component name = tools.isEmpty() ? text("unavailable") : tools.get(toolIndex).displayName();
-                control(font, name, controlX + 17, y, controlWidth - 34, 16, null);
-                control(font, Component.literal("▶"), controlX + controlWidth - 16, y, 16, 16,
+                place(font, "tool.name", name, rowLayout, 2, null);
+                place(font, "tool.next", Component.literal("▶"), rowLayout, 3,
                         () -> { toolIndex = cycle(toolIndex, 1, tools.size()); dirty = true; });
             } else if (row == 1) {
-                control(font, text("params.luck"), labelX, y, 96, 16, null);
+                // 幸运值行：标签 96 + 2 + 原生输入框 76（abs x = panelX+106，高 16）。
+                rowLayout.setChildren(List.of(
+                        UiLinearLayout.Child.fixed(96),
+                        UiLinearLayout.Child.fixed(76).withLeading(2)));
+                place(font, "luck.label", text("params.luck"), rowLayout, 0, null);
+                var boxSlot = rowLayout.bounds(1);
                 luckBox.visible = true;
-                luckBox.setX(controlX); luckBox.setY(y);
+                luckBox.setX(boxSlot.x());
+                luckBox.setY(boxSlot.y());
             } else if (row == 2) {
-                control(font, text("params.samples"), labelX, y, 96, 16, null);
-                int cellWidth = controlWidth / Math.max(1, samples.size());
+                // 抽样行：标签 96 后接等宽样本格，第 i 格 abs x = panelX+106+i*cellWidth。
+                int cellWidth = 162 / Math.max(1, samples.size());
+                List<UiLinearLayout.Child> cells = new ArrayList<>(samples.size() + 1);
+                cells.add(UiLinearLayout.Child.fixed(96));
                 for (int i = 0; i < samples.size(); i++) {
-                    int index = i;
-                    Component label = Component.literal(Integer.toString(samples.get(i)));
-                    if (i == sampleIndex) label = label.copy().withStyle(net.minecraft.ChatFormatting.BOLD);
-                    control(font, label, controlX + i * cellWidth, y, cellWidth - 2, 16,
-                            () -> { sampleIndex = index; dirty = true; });
+                    // 样本数极端多时 cellWidth-2 会为负，钳到 0 避免布局拒绝。
+                    cells.add(UiLinearLayout.Child.fixed(Math.max(0, cellWidth - 2)).withLeading(2));
+                }
+                rowLayout.setChildren(cells);
+                place(font, "samples.label", text("params.samples"), rowLayout, 0, null);
+                for (int i = 0; i < samples.size(); i++) {
+                    int sample = i;
+                    Component sampleLabel = Component.literal(Integer.toString(samples.get(i)));
+                    if (i == sampleIndex) sampleLabel = sampleLabel.copy().withStyle(net.minecraft.ChatFormatting.BOLD);
+                    place(font, "sample:" + i, sampleLabel, rowLayout, i + 1,
+                            () -> { sampleIndex = sample; dirty = true; });
                 }
             } else {
+                // 附魔行：名称 150 + 12 + − 20 + 2 + 数值 44 + 2 + ＋ 24（abs 170 / 192 / 238）。
                 ResourceLocation id = enchantments.get(row - 3);
-                control(font, Component.literal(enchantmentName(id)), labelX, y, 150, 16, null);
-                control(font, Component.literal("−"), panelX + 170, y, 20, 16, () -> changeLevel(id, -1));
-                control(font, Component.literal(Integer.toString(levels.get(id))), panelX + 192, y, 44, 16, null);
-                control(font, Component.literal("+"), panelX + 238, y, 24, 16, () -> changeLevel(id, 1));
+                rowLayout.setChildren(List.of(
+                        UiLinearLayout.Child.fixed(150),
+                        UiLinearLayout.Child.fixed(20).withLeading(12),
+                        UiLinearLayout.Child.fixed(44).withLeading(2),
+                        UiLinearLayout.Child.fixed(24).withLeading(2)));
+                place(font, "ench.label:" + id, Component.literal(enchantmentName(id)), rowLayout, 0, null);
+                place(font, "ench.minus:" + id, Component.literal("−"), rowLayout, 1,
+                        () -> changeLevel(id, -1));
+                place(font, "ench.level:" + id, Component.literal(Integer.toString(levels.get(id))), rowLayout, 2, null);
+                place(font, "ench.plus:" + id, Component.literal("+"), rowLayout, 3,
+                        () -> changeLevel(id, 1));
             }
         }
         if (!luckBox.visible) { luckBox.setFocused(false); draggingLuck = false; }
+
+        // 提示行固定矩形；底部按钮行由横排布局产出（panelX+66 起，取消 68 + 8 + 确认 68）。
         Component hint = error != null ? error : (visibleRows < totalRows ? text("params.scroll_hint") : Component.empty());
-        control(font, hint, panelX + 8, panelY + panelHeight - 36, PANEL_WIDTH - 16, 14, null);
-        control(font, text("params.cancel"), panelX + 66, panelY + panelHeight - 20, 68, 16, layer::close);
-        control(font, text("params.confirm"), panelX + 142, panelY + panelHeight - 20, 68, 16, this::confirm);
+        place(font, "hint", hint, panelX + 8, panelY + panelHeight - 36, CONTENT_WIDTH, 14, null);
+        footerLayout.setChildren(List.of(
+                UiLinearLayout.Child.fixed(68),
+                UiLinearLayout.Child.fixed(68).withLeading(8)));
+        footerLayout.setBounds(panelX + 66, panelY + panelHeight - 20, 144, 16);
+        place(font, "cancel", text("params.cancel"), footerLayout, 0, layer::close);
+        place(font, "confirm", text("params.confirm"), footerLayout, 1, this::confirm);
+
+        controls.endUpdate();
+        syncKeyboardNavigation();
     }
 
-    private void control(Font font, Component label, int x, int y, int width, int height,
-                         @Nullable com.meteorite.unsuspiciousblock.client.ui.kit.UiAction action) {
-        UiControl control = new UiControl();
+    // 摆放控件：按稳定 key 取用并重配；只读标签传 action=null，保持迁移前的悬停底色与文本色。
+    private void place(Font font, Object key, Component label, int x, int y, int width, int height,
+                       @Nullable UiAction action) {
+        UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, height);
         control.configure(font, label, error != null && label == error ? UiTextPalette.Parchment.NEGATIVE : UiTextPalette.Parchment.BODY,
                 null, List.of(label), action);
-        controls.add(control);
+    }
+
+    // 摆放控件：坐标直接取布局产出的矩形。
+    private void place(Font font, Object key, Component label, UiLinearLayout layout, int index,
+                       @Nullable UiAction action) {
+        var rect = layout.bounds(index);
+        place(font, key, label, rect.x(), rect.y(), rect.width(), rect.height(), action);
+    }
+
+    // 原生输入框持有焦点期间关闭控件组键盘导航，避免 Tab/空格被抢。
+    private void syncKeyboardNavigation() {
+        controls.setKeyboardNavigation(!(luckBox != null && luckBox.visible && luckBox.isFocused()));
     }
 
     @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY, float partialTick) {
@@ -140,32 +212,28 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         graphics.fill(0, 0, layer.width(), layer.height(), 0xC0101010);
         graphics.fill(panelX - 1, panelY - 1, panelX + PANEL_WIDTH + 1, panelY + panelHeight + 1, 0xFF896C48);
         graphics.fill(panelX, panelY, panelX + PANEL_WIDTH, panelY + panelHeight, 0xFFF2E5C6);
-        UiTarget hovered = null;
-        for (UiControl control : controls) {
-            control.render(graphics, font, mouseX, mouseY);
-            UiTarget target = control.hit(mouseX, mouseY);
-            if (target != null) hovered = target;
-        }
+        controls.render(graphics, font, mouseX, mouseY);
         if (luckBox != null && luckBox.visible) luckBox.render(graphics, mouseX, mouseY, partialTick);
-        if (hovered != null && !hovered.tooltip().isEmpty()) graphics.renderComponentTooltip(font, hovered.tooltip(), mouseX, mouseY);
+        // 唯一 tooltip：只取最上层命中控件，避免标签与按钮重复绘制。
+        controls.renderTooltip(graphics, font, mouseX, mouseY);
     }
 
     @Override public boolean mouseClicked(double x, double y, int button) {
         layout(Minecraft.getInstance().font);
         draggingLuck = false;
         if (button != 0) return true;
+        // 原生输入框命中优先级高于控件组：夺焦后接管拖动选区。
         if (luckBox != null) {
             luckBox.setFocused(luckBox.visible && luckBox.isMouseOver(x, y));
+            syncKeyboardNavigation();
             if (luckBox.isFocused()) {
                 draggingLuck = luckBox.mouseClicked(x, y, button);
                 dragAnchor = luckBox.getCursorPosition();
                 return true;
             }
         }
-        for (UiControl control : controls) {
-            UiTarget target = control.hit(x, y);
-            if (target != null && target.action() != null) { target.action().run(); return true; }
-        }
+        // 命中控件即激活；只读标签无 action，不产生副作用。
+        controls.mousePressed(x, y, button);
         return true;
     }
 
@@ -178,6 +246,7 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
     }
     @Override public boolean mouseReleased(double x, double y, int button) {
         if (button == 0) draggingLuck = false;
+        controls.mouseReleased(button);
         return true;
     }
     @Override public boolean mouseScrolled(double x, double y, double amount) {
@@ -215,7 +284,9 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         layout(Minecraft.getInstance().font);
         if (key == GLFW.GLFW_KEY_ESCAPE) layer.close();
         else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) confirm();
-        else if (luckBox != null && luckBox.visible) return luckBox.keyPressed(key, scan, modifiers);
+        else if (luckBox != null && luckBox.visible && luckBox.isFocused()) return luckBox.keyPressed(key, scan, modifiers);
+        // Tab/Shift+Tab 与 Space 交给控件组；模态仍按既有契约消费按键。
+        else controls.keyPressed(key, scan, modifiers);
         return true;
     }
     @Override public boolean charTyped(char value, int modifiers) {
