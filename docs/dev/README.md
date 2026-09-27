@@ -26,6 +26,7 @@
 | 改战利品收录范围 / 签名 / 概率 / 注入 | [战利品表系统](subsystems/loottable.md)；模拟与缓存细节见 [机制细节](internals/loottable-mechanics.md) |
 | 改笔记目录 / 进度 / 追踪 / 日志 | [考古笔记系统](subsystems/journal.md) |
 | 新增 GUI 面板 / HUD / 渲染器 / 按键 | [客户端与 GUI](subsystems/client-ui.md)；UI kit 契约见 [笔记 GUI 内部机制](internals/journal-ui-internals.md) |
+| 接入 UI kit / 查公开 API 与兼容策略 | [UI kit 公开 API 与兼容策略](internals/ui-kit-api.md) 的「公开入口清单」与「接入指南」 |
 | 新增 / 修改进度条目 | [进度（成就）系统](subsystems/advancement.md) |
 | 新增附魔 / 附魔效果 | [附魔系统](subsystems/enchantment.md) |
 | 改猫族羁绊行为 / 新增恩惠能力 | [猫族关系系统](subsystems/cat-favor.md) |

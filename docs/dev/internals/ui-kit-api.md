@@ -1,0 +1,120 @@
+# UI kit 公开 API 与兼容策略
+
+> 面向第三方宿主的公开契约：公开入口清单、依赖边界与可执行检查、接入步骤与最小示例、行为约定、兼容策略，以及未来拆包的逐条门槛结论。
+> **机制与实现口径**（排版缓存、裁剪边界、命中与 tooltip 的唯一来源、焦点失效与变化通知的时序、灯箱 fit 与 resize 的区别、平移钳制公式等）的权威是 [笔记 GUI 内部机制](journal-ui-internals.md)；本页只声明**对外契约**，不复制那些推导过程。
+> 本文件属于 `internals/` 层，不参与任务导航，只被 [开发者文档](../README.md)、[笔记 GUI 内部机制](journal-ui-internals.md) 与 [客户端与 GUI](../subsystems/client-ui.md) 链接。
+
+## 1. 定位与权威分工
+
+| 主题 | 权威 | 说明 |
+|---|---|---|
+| 机制与实现口径 | [笔记 GUI 内部机制](journal-ui-internals.md) | 为什么这样做、实际怎么算、性能与坐标口径 |
+| 公开入口、接入步骤、行为约定与兼容策略 | 本页 | 第三方宿主可以依赖什么、怎么接、什么会变 |
+| 公开边界的**代码声明** | `common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/kit/package-info.java` | 清单以它为准；本页「公开入口清单」与它必须一致 |
+| 依赖方向的**可执行检查** | `scripts/check-ui-kit-boundaries.ps1` | 四条边界规则，退出码 0/1 |
+| 跨子系统契约（注册、网络、平台抽象、文本规范） | `docs/dev/foundation/` 对应篇 | 见 [开发者文档](../README.md) 的任务导航 |
+
+三条声明：
+
+- 本页只描述**已落地**的代码；尚未落地的能力一律写在「拆包就绪门槛」的结论里，不当作现状。
+- 「公开」= **接口稳定性承诺**，不等于物理拆包：kit 目前仍在 mod 的 `common` 客户端包里（见「本轮范围声明」）。
+- 三处描述冲突时：机制细节以 [笔记 GUI 内部机制](journal-ui-internals.md) 为准，接口与兼容承诺以本页为准，清单以 `package-info.java` 为准。
+
+## 2. 公开入口清单
+
+第三方宿主可直接依赖的入口，按能力分组（与 `package-info.java` 的分类一致）：
+
+| 分组 | 入口 |
+|---|---|
+| 内容排版 | `UiDocument`、`UiNode`（`Row` / `Gap` / `Divider` / `Frame` / `FrameSpec` / `InlineIcon`）、`UiIcon`（`Item` / `Sprite`）、`UiTransform`、`UiMetrics`、`TextMeasurer`、`TextScroll` |
+| 控件与交互 | `UiControl`、`UiControlStyle`、`UiControlGroup`、`UiScrollView`、`UiLinearLayout` |
+| 焦点 | `UiFocusTarget`、`UiFocusManager` |
+| 灯箱 | `UiLightbox`（含 `Content` / `Gallery` / `Labels`）、`UiImageView`、`LightboxImage` |
+| 命中与几何 | `UiRect`、`UiTarget`、`UiAction` |
+
+**内部实现**（同为 `public`，但**不承诺兼容**，宿主不应依赖）：`UiNineSlice`；`UiDocument` 的排版缓存与私有几何公式；`UiMetrics` 的计时细节；以及各类里标注为内部的口径。它们可以随实现改动而不进变更记录。
+
+**不属于 API**：`client/ui/overlay/`（`OverlayLayer`、`LightboxOverlay` 等宿主适配层）与 `client/ui/sample/`（`UiKitDebugScreen`、`UiKitSampleScreen` 示例层）都允许依赖项目常量与平台服务，是**宿主层代码**，不是可发布的库入口。
+
+同步要求：新增/删除公开入口时，同时改 `package-info.java` 与本页「公开入口清单」；只改一处会导致第三方照着过期的清单接入。
+
+## 3. 依赖方向与可执行检查
+
+kit 允许依赖：Minecraft 客户端通用类型（`Component` / `ResourceLocation` / `GuiGraphics` / `Font` 等）、Java 标准库、JOML 与 annotations（LWJGL 的按键常量）。kit 不得依赖：任何项目包、两端 loader/平台 API、项目资源常量。
+
+| 规则 | 内容 |
+|---|---|
+| 1 | kit 内不得 `import` 任何项目包（`com.meteorite.unsuspiciousblock.*`） |
+| 2 | kit 内不得出现两端 loader / 平台 API（`net.neoforged` / `net.fabricmc` / `net.minecraftforge` / `cpw.mods`） |
+| 3 | kit 内不得出现 `Constants.MOD_ID` 或 `unsuspiciousblock:` 命名空间字面量（忽略注释行，避免 javadoc 里的说明被误判） |
+| 4 | `client/` 以外的代码不得 `import` kit（服务端加载路径不得链接客户端 kit 类） |
+
+检查命令与退出码：
+
+```powershell
+pwsh -File scripts/check-ui-kit-boundaries.ps1
+# 可选：-Root <仓库根>；默认取脚本上一级目录
+# 退出码 0 = 全部通过；1 = 有违规（逐条打印 文件:行）；2 = 找不到 kit 目录
+```
+
+当前结论：**四条规则全部通过（exit 0）**。这条检查是「边界靠可执行脚本守住」而不是靠人工记忆——改 kit 时先跑它。
+
+## 4. 接入指南
+
+分步接入一个非笔记界面（每步给出用到的公开入口；完整的可运行版本见「最小示例」）：
+
+1. **声明内容**：`TextMeasurer.of(font)` → `new UiDocument(measurer, profiling)`；需要独立变换或分支色时用 `new UiDocument(measurer, transform, branchColor, profiling)`。内容用 `setContent(revision, supplier)`（版本不变就不重建构建器）或 `setContent(List)`。
+2. **视口与坐标**：`setViewport(x, y, width, height)`、`render(graphics, font)`、`hit(mouseX, mouseY)` 全部使用 Screen 逻辑 GUI 坐标；只有内容、视口尺寸或 `invalidateLayout()` 变化才会重排。需要读数时用 `metrics()`、`viewport()`、`contentWidth()` / `contentHeight()`。
+3. **滚动**：`UiScrollView.setViewport` + `setContentHeight` + `setStep`（`SCROLLBAR_WIDTH` 常量供让出内容宽度）；绘制时 `push(graphics)` / `pop(graphics)` 进出内容坐标，命中先用 `toContentX` / `toContentY` 换算，滚轮先用 `contains(x, y)` 判断是否属于本视口；滚动条由 `renderScrollbar(graphics, style)` 画，拖动走 `hitScrollbar` / `mousePressed` / `mouseDragged` / `mouseReleased` / `isDragging`。
+4. **控件组**：`beginUpdate()` → `obtain(stableKey)` → `configure(font, label, color, icon, tooltip, action)` + `setBounds(...)` → `endUpdate()`；命中用 `targetAt` / `controlAt`，按压与释放走 `mousePressed` / `mouseReleased`，同一位置只画一个 tooltip（`renderTooltip`）。`action == null` 是只读标签：可命中、有提示，但不进 Tab 序列。
+5. **焦点**：宿主按**视觉顺序** `focus.beginUpdate()` → `add(target)` → `focus.endUpdate()`；`UiControl` 本身就是 `UiFocusTarget`，原生 `EditBox` 用宿主侧适配器实现 `UiFocusTarget` 夹在中间。`keyPressed` 只处理 Tab / Shift+Tab 与可配置的 Enter / Space；`setListener` 里做宿主策略（典型是 `scroll.ensureVisible(target.bounds())`）。
+6. **灯箱**：`new UiLightbox(labels, content, onClose)`；图片内容用 `LightboxImage.whole(id, texture, width, height, title, description)` + `new UiImageView(image, missingText)`（允许小图放大时用三参重载）。`setText` / `setGallery` / `setMaskClickCloses` 由宿主按需设置；外壳文案全部来自 `UiLightbox.Labels`。
+7. **模态接入**：`overlays.setBounds(width, height)`，`overlays.open(new LightboxOverlay(overlays, lightbox))`；自定义模态实现 `OverlayLayer.Overlay` 并同样用 `open(overlay, opener)` 登记返回焦点。六类输入（click / drag / release / scroll / key / char）先交给模态层，打开期间它一律消费（下层点不到也不会弹提示）。
+8. **本地化**：kit 不持有任何文案键。宿主自己维护键（灯箱通用键的命名与用法见「最小示例」）；命名与取色规范见 [文本格式规范](../foundation/text-format.md)。
+
+**最小示例**：`common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/sample/UiKitSampleScreen.java`。它是第三方视角的最小 Screen：只 import 13 个 kit 公开入口 + `OverlayLayer` / `LightboxOverlay` + Minecraft/GLFW/JDK，不引用宿主状态类、`support` 包与资源常量，贴图与语义色自带；覆盖按钮（`UiControlGroup` + `UiControlStyle`，含禁用按钮）、滚动（`UiScrollView` 视口内的控件组）、灯箱（`UiLightbox` + `UiImageView`）与焦点（`UiFocusManager` + `UiLinearLayout` 摆放）。进入方式：运行客户端（开发环境带 `-Dunsuspiciousblock.uiKitDebug=true`）→ 打开笔记按 `Ctrl+F8` → 演示区「最小示例页」按钮。
+
+## 5. 公开 API 的行为约定
+
+- **线程**：只在客户端主线程调用（`init` / `render` / 输入回调所在线程）；kit 不自建线程、不做异步解码。
+- **坐标**：一律 Screen 逻辑 GUI 坐标。滚动内容用 `UiScrollView` 的内容坐标（`toContentX` / `toContentY` 换算）；灯箱内容必须把绘制严格裁剪在外壳写入的视口内。
+- **尺寸与资源通知**：宿主在可用区变化时调用 `setBounds` / `setViewport`，资源重载时调用 `UiLightbox.invalidateResources()`（内容实现按契约丢弃派生缓存）；`Content.fit()` 由外壳在首次布局与换内容时求一次，内容尺寸尚未就绪时会推迟到能报告非零尺寸的那一帧，resize 只重新钳制、**保留用户缩放**。
+- **所有权与生命周期**：组件的生命周期由宿主持有；`UiLightbox` 的关闭动作是构造时传入的 `onClose`，外壳在 `Overlay.closed()` 回调里执行 `onClosed()`（释放按压捕获与焦点）。模态被替换时，旧实例同样会收到一次 `closed()`。
+- **事件消费**：所有输入入口返回 `boolean` 表示是否消费；宿主按「模态 → 滚动条 → 内容」的优先级分发。模态打开期间 `OverlayLayer` 对六类输入一律返回消费，被接管的下层不会收到事件。
+- **空值与非法输入**：`LightboxImage` 在构造期拒绝非正尺寸与越界区域（`IllegalArgumentException`）；未知/缺失贴图不抛异常，由 `placeholder()` 返回占位文案，外壳把它居中画在视口里。`action == null` 表示纯标签；`UiControlGroup.obtain` / `UiFocusManager.add` 传 `null` 抛 NPE。
+- **回调内容**：`UiAction` 只表达语义动作（`void run()`），不接收也不持有 `Minecraft`、玩家状态或平台事件对象；需要业务数据时由宿主在闭包里捕获，kit 不反向回调宿主状态。
+- **焦点与鼠标**：鼠标点击**不夺取焦点**，而且按下时会收掉键盘焦点（避免轮廓留在被点过的控件上）；焦点只在 Tab 导航与宿主显式 `focusOn` 时改变。模态入口只有在**当前确实持有焦点**时才会被登记为返回焦点，因此键盘路径（Tab → Space/Enter 打开）关闭后恢复焦点，鼠标打开则不留下轮廓。**两个焦点层要一起清**：`OverlayLayer.clearRestoredFocus()` 只清「已经还给入口的焦点」，宿主若同时用 `UiFocusManager`，必须在同一次点击里也调用 `focus.clearFocus()`，否则管理器记录的当前焦点会与控件上的标志失配（最小示例页与本模组笔记页就是这两种情形）。
+
+## 6. 兼容策略草案（0.x）
+
+- **稳定入口与实验性入口**：本页「公开入口清单」是稳定入口（0.x 内尽量只增不改）；「内部实现」即使 `public` 也不承诺兼容；`client/ui/sample/` 与 `client/ui/overlay/` 属宿主/示例层，接口随宿主需要变化；标注为开发用/调试用的屏（`Ctrl+F8` 与最小示例页）随时可能移除。
+- **支持范围**：这是 **Minecraft 1.21.1 客户端库**，不是脱离游戏的纯 Java UI 库——它使用 `Component`、`ResourceLocation`、`GuiGraphics`、`Font` 等客户端类型。当前构建目标是 NeoForge 21.1.195 与 Fabric 0.116.0+1.21.1（见 `gradle.properties`）；换 Minecraft 版本需要重新验证，不在 0.x 的兼容承诺内。
+- **升级规则**：新增 API 属向后兼容；删除、改签名、改语义（包括默认行为）属破坏性变更。破坏性变更必须同时记入 `CHANGELOG.md` 与本页的一节，说明「改了什么 / 怎么迁移」；只有内部实现变动不进变更记录。
+- **版本号与变更记录草案**：kit 目前没有独立版本号，随模组版本（`gradle.properties` 的 `version`，当前 `1.5.2`）走；未来独立发布时再引入自己的 0.x 语义化版本。变更记录草案如下表，本页新增行时按时间倒序追加：
+
+| 日期 | 类型 | 变更 | 迁移 |
+|---|---|---|---|
+| 本轮 | 边界冻结 | 声明公开入口清单、加入依赖方向检查脚本、示例层迁出 kit | 无 API 签名变更；宿主无需迁移 |
+
+## 7. 拆包就绪门槛（逐条结论）
+
+门槛取自 UI kit 扩展计划的「对外 API 与未来拆包约束」一节（五条），逐条核对当前状态：
+
+| 门槛 | 结论 | 证据 |
+|---|---|---|
+| ① kit 不 import 项目业务包、资源常量及两端 loader API | **已满足** | `scripts/check-ui-kit-boundaries.ps1` 规则 1–3，实测 exit 0 |
+| ② 开发调试示例移到示例/宿主适配层，资源由调用方提供 | **已满足** | `client/ui/sample/UiKitDebugScreen.java`（包名 `client.ui.sample`，自带贴图路径）；kit 内不再有开发用资源常量 |
+| ③ 最小第三方 Screen 示例只依赖公开包完成按钮、滚动与灯箱 | **已满足** | `client/ui/sample/UiKitSampleScreen.java`（13 个 kit 导入 + `OverlayLayer` / `LightboxOverlay`） |
+| ④ 明确版本号、变更记录和兼容策略，区分实验性与稳定入口 | **已满足** | 本页「兼容策略草案」与「公开入口清单」；模组版本见 `gradle.properties` |
+| ⑤ 分离构建验证两端消费同一库产物，且专用服务端不加载客户端类 | **未满足** | 见下方「剩余阻碍」，两部分都还没有验证手段 |
+
+**剩余阻碍**（本轮明确留下、不属于本计划交付）：
+
+- kit 尚未**物理拆包**：仍是 `client/ui/kit` 单一包，没有 `api/` 与 `internal/` 子包；当前「公开/内部」只是清单与注释层面的约定。
+- 没有**独立 Gradle 模块与发布脚本**：kit 不是独立产物，无法被外部工程以依赖坐标消费。
+- 没有**「两端消费同一库产物」的构建验证**：NeoForge 与 Fabric 目前各自编译同一份源码，尚未验证同一份发布产物被两端同时消费。
+- 没有**「专用服务端不加载客户端类」的运行时验证**：规则 4 只做了源码层的 `import` 检查，缺少专用服务端启动加载路径的实测证据。
+
+## 8. 本轮范围声明
+
+本轮**只冻结边界与检查方式**：写下公开入口清单、加入可执行的四条依赖边界检查、把开发/最小示例迁到 `client/ui/sample/`、记录兼容策略与门槛结论。**不拆包、不发布**——不新建 Gradle 模块、不写发布脚本、不改包结构、不声明对外版本号。以上「剩余阻碍」全部完成并有实测证据后，才进入独立的拆包立项。

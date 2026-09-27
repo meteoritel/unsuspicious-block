@@ -19,6 +19,9 @@ public interface UiFocusTarget {
     /** 焦点状态变化通知；焦点只在键盘导航与宿主显式请求时改变。 */
     void setFocused(boolean focused);
 
+    /** 当前是否持有焦点；模态入口据此判断「这个入口是不是键盘到达的」，避免鼠标点击也留下焦点轮廓。 */
+    boolean isFocused();
+
     /** Enter / Space 的激活语义；不适用（例如原生输入框）时返回 {@code false} 不消费。 */
     boolean activate();
 

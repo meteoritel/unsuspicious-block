@@ -106,7 +106,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 `client/ui/` 按职责分层（`entry/` `layout/` `panel/` `screen/` `support/` `toast/` `widget/` `tooltip/`）。**分层职责、追踪管理页、网格页展示优先级链、文本配色约束、声明式 UI kit 契约、场景详情页与模态交互、面板状态与偏好持久化见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。**
 
-新增面板的标准路径：在 `panel/` 实现 → 由对应 `screen/` 组合 → 实现 `LayoutAware` / `UiStateful` 并在创建处向 `UiPanelRegistry` 注册一次。面板内优先复用 `client/ui/kit/` 的声明式组件而不是手算坐标：静态内容走 `UiDocument` 块序列，滚动区走 `UiScrollView`，成组的可点击控件走 `UiControlGroup`，控件与原生输入框的落位走 `UiLinearLayout`；控件结构色取 `UiControlStyle`，文本色取 `UiTextPalette`。需要键盘导航的面板把可聚焦目标按**视觉顺序**登记进 `UiFocusManager`（原生输入框用宿主侧 `UiFocusTarget` 适配器夹在中间），打开模态时用 `OverlayLayer.open(overlay, opener)` 传入打开它的目标以交接焦点；图片 / 内容查看器走 `UiLightbox` + `LightboxOverlay`（自绘内容实现 `UiLightbox.Content`，图片用 `LightboxImage` + `UiImageView`），外壳不直接依赖 `OverlayLayer`（逐项契约见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)）。
+新增面板的标准路径：在 `panel/` 实现 → 由对应 `screen/` 组合 → 实现 `LayoutAware` / `UiStateful` 并在创建处向 `UiPanelRegistry` 注册一次。面板内优先复用 `client/ui/kit/` 的声明式组件而不是手算坐标：静态内容走 `UiDocument` 块序列，滚动区走 `UiScrollView`，成组的可点击控件走 `UiControlGroup`，控件与原生输入框的落位走 `UiLinearLayout`；控件结构色取 `UiControlStyle`，文本色取 `UiTextPalette`。需要键盘导航的面板把可聚焦目标按**视觉顺序**登记进 `UiFocusManager`（原生输入框用宿主侧 `UiFocusTarget` 适配器夹在中间），打开模态时用 `OverlayLayer.open(overlay, opener)` 传入打开它的目标以交接焦点；图片 / 内容查看器走 `UiLightbox` + `LightboxOverlay`（自绘内容实现 `UiLightbox.Content`，图片用 `LightboxImage` + `UiImageView`），外壳不直接依赖 `OverlayLayer`。接入步骤与公开入口清单见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)，机制口径见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。
 
 ## 7. HUD
 
@@ -203,7 +203,7 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 - **新增 tooltip 分解**：参考 `AnvilBreakdownTooltipAppender`，在 tooltip 事件中按条件追加；取色只从 `TooltipBuilder` 取（见 [文本格式规范](../foundation/text-format.md)）。
 - **新增 Toast**：参考 `JournalUnlockToast`，在 `ArchaeologyJournalClientState` 注册回调。
 - **新增按键**：在 `ModKeyBindings` 加 `KeyMapping`，在客户端 tick 中处理；**默认键不要写进文档当断言**，以代码为准。
-- **新增模态**：必须走 `OverlayLayer`（它同时只开一个），并在六类输入入口先分发给它；打开时用 `open(overlay, opener)` 登记返回焦点，关闭后会还给该目标；大图 / 内容查看器优先用 `UiLightbox` + `LightboxOverlay`，自绘内容实现 `UiLightbox.Content`，图片直接用 `LightboxImage` + `UiImageView`。
+- **新增模态**：必须走 `OverlayLayer`（它同时只开一个），并在六类输入入口先分发给它；打开时用 `open(overlay, opener)` 交接焦点：**只有 opener 当前确实持有焦点**（键盘到达）才登记为返回焦点，关闭后还给它；鼠标点击不夺取焦点，因此鼠标打开的模态关闭后不会留下轮廓；大图 / 内容查看器优先用 `UiLightbox` + `LightboxOverlay`，自绘内容实现 `UiLightbox.Content`，图片直接用 `LightboxImage` + `UiImageView`。
 - **新增可滚动列表 / 控件组**：滚动内容用 `UiScrollView` + `UiControlGroup`（稳定 key 复用，不要逐帧新建控件），落位用 `UiLinearLayout`；结构色取 `UiControlStyle`；需要键盘导航时把可聚焦目标按视觉顺序交给 `UiFocusManager`，原生输入框走宿主侧 `UiFocusTarget` 适配器。
 
 ## 15. 约束与陷阱

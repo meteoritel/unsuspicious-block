@@ -90,7 +90,7 @@ public final class UiControl implements UiFocusTarget {
     public boolean isSelected() { return selected; }
 
     public void setFocused(boolean focused) { this.focused = focused && isFocusable(); }
-    public boolean isFocused() { return focused; }
+    @Override public boolean isFocused() { return focused; }
 
     // 按下态是「这个目标可被激活」的反馈：纯标签（无 action）按住时不应显示按钮底色。
     public void setPressed(boolean pressed) { this.pressed = pressed && isFocusable(); }

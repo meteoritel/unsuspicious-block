@@ -1,6 +1,6 @@
 # 考古笔记 UI kit 渐进扩展计划
 
-> 状态：**阶段 A/B/C/D 已实施（2026-09-27），阶段 E 待实施**；拟定日期：2026-09-25。
+> 状态：**阶段 A–E 已实施（2026-09-27）**；拟定日期：2026-09-25。后续独立立项（P2 候选能力、独立 Gradle 模块、发布与跨版本维护）不在本轮，按 4.8 表格由真实需求另行裁决。
 > 当前机制的唯一权威描述是 [客户端与 GUI](../dev/subsystems/client-ui.md) 与 [笔记 GUI 内部机制](../dev/internals/journal-ui-internals.md)；本文只记录实施前状态、拟议路线和决策依据，不构成已实现机制的说明。
 > 修订记录：2026-09-25 首版，确定先服务考古笔记、再逐步复用；2026-09-26 扩充通用布局、交互与可访问性路线，加入图片灯箱和对外 API / 独立库预留。两次修订均未修改 UI 代码。
 > 下文 `ui/` 指 `common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/`。`文件:行` 均为拟定当日的定位，实施时应以最新源码复核。
@@ -308,7 +308,8 @@ resize             → 视口变化 → 必要时重排与钳制滚动偏移
 - 阶段 C 追加：两个浮层用 **Tab / Shift+Tab** 走一遍全部可交互控件（含幸运值输入框在顺序中间）、**Space** 激活焦点控件；关闭浮层后入口按钮出现焦点轮廓，点页面其它位置应消失；参数浮层用 **PageUp / PageDown** 翻到窗口外的附魔行并继续 Tab；选择浮层的当前场景行与参数浮层的当前抽样格出现选中底色。
 - 阶段 C 追加：目录页（左页）滚动条拖动、点轨道跳转、滚轮与条目翻阅应与迁移前一致（滑块长度在小列表下可能有几像素差异）。
 - 开发环境可加 `-Dunsuspiciousblock.uiKitDebug=true` 打开调试页：`F` 切换调试叠加层（默认关闭），核对焦点边框、控件边界与布局子项矩形、滚动读数。
-- 阶段 D 追加（图片灯箱）：调试页点「打开灯箱」按钮 → 核对打开即整图适应窗口（不放大）、滚轮以指针为锚点缩放、拖动平移在边缘不露白、点「↺」复位、`←`/`→` 切图与页码、`Tab` 走过全部按钮、`Space`/`Enter` 激活、`ESC` 与 `×` 关闭、点遮罩不关闭、关闭后焦点回到按钮。
+- 阶段 D 追加（图片灯箱）：调试页点「打开灯箱」按钮 → 核对打开即整图适应窗口（不放大）、滚轮以指针为锚点缩放、拖动平移在边缘不露白、点「↺」复位、`←`/`→` 切图与页码、`Tab` 走过全部按钮、`Space`/`Enter` 激活、`ESC` 与 `×` 关闭、点遮罩不关闭。
+- 阶段 E 追加（焦点交接）：**鼠标**点入口按钮打开模态 → 关闭后入口**不应**出现焦点轮廓；**键盘** Tab 到入口 → `Space`/`Enter` 打开 → 关闭后焦点**应**回到入口。最小示例页（Ctrl+F8 → 演示区按钮）两条路径都可走。
 - 阶段 D 追加（条件树灯箱）：场景页点框角「放大」按钮 → 核对**打开即适应窗口**（能看到整棵树，而不是放大到 300%）、拖动平移、`↺` 复位、`ESC`/`×` 关闭、关闭后页内框的平移与缩放保持打开前的状态；深浅树各试一次。
 - 阶段 D 追加（缺图）：临时移除某张贴图后重开灯箱，应显示「图片不可用」占位且仍可关闭。
 
@@ -367,7 +368,7 @@ resize             → 视口变化 → 必要时重排与钳制滚动偏移
 | `ui/overlay/LightboxOverlay.java` | 新增：模态适配器，把 kit 的灯箱接进 `OverlayLayer`（保持 overlay → kit 单向依赖） |
 | `ui/panel/ScenarioExpandedOverlay.java` | 改为 `UiLightbox.Content` 适配器：独立 `ScenarioFrameView`、隐藏自带角控件、灯箱模式平移钳制、打开即适应窗口 |
 | `ui/panel/ScenarioFrameView.java` | 改：新增包内访问器（`transform` / `contentViewport` / `contentWidth` / `contentHeight`）与 `hideCornerControls()`；页内行为不变 |
-| `ui/panel/ScenarioDetailPanel.java` | 改：放大按钮改为经 `LightboxOverlay` 打开灯箱，`expandButton` 作为返回焦点 |
+| `ui/panel/ScenarioDetailPanel.java` | 改：放大按钮改为经 `LightboxOverlay` 打开灯箱，`expandButton` 作为 opener 传入（仅键盘到达时登记为返回焦点） |
 | `ui/kit/debug/UiKitDebugScreen.java` | 改：灯箱验证入口（两张图构成图集），复用生产模态路径 `OverlayLayer` + `LightboxOverlay` |
 | 两份 lang JSON | 改：通用灯箱 8 键 + 调试页 7 键（各 884 键，键集合一致） |
 
@@ -390,3 +391,37 @@ resize             → 视口变化 → 必要时重排与钳制滚动偏移
 - **「受控绘制提供者」入口未实现**：`LightboxImage` 只接受贴图区域；需要动态绘制时走 `UiLightbox.Content`（条件树就是这么做的），但没有独立的 draw-provider 描述类型。
 - **超大纹理上限与降采样未实现**：8.0 倍缩放由 GPU 完成，没有尺寸上限或降采样处理（计划要求在实施时测量，尚未测量）。
 - **「加载中状态」未实现**：只有「缺图占位」；本地贴图场景下可视为不适用。
+### 9.5 阶段 E（公开边界、示例层、兼容策略）+ 焦点回交 bug 修复——2026-09-27
+
+**用户实测 bug**：点击场景页条件树的放大按钮、关闭灯箱后，焦点轮廓仍留在放大按钮上。根因是 `OverlayLayer.open` **无条件**把 opener 登记为返回焦点，而设计上鼠标点击根本不夺取焦点——鼠标打开的浮层关闭时却把焦点「恢复」到了从未聚焦过的按钮上。修复：
+
+| 位置 | 变化 |
+|---|---|
+| `ui/kit/UiFocusTarget.java` | 新增 `isFocused()`：目标必须能回答「我现在是否持有焦点」 |
+| `ui/overlay/OverlayLayer.java` | `open(...)` 只在 `opener.isFocused()` 为真时登记返回焦点（键盘路径仍恢复，鼠标路径不再留下轮廓） |
+| 三个宿主 + 灯箱 + 示例页 | 鼠标按下即 `clearFocus()`：点击被消费后不再保留键盘焦点轮廓 |
+| `ui/sample/UiKitSampleScreen.java` | 把灯箱按钮作为 opener 传入，并在未被子层消费的点击里 `clearRestoredFocus()` + `focus.clearFocus()`，让「返回焦点」契约有活路径与回归覆盖 |
+
+**阶段 E 交付物**：
+
+| 文件 | 变化 |
+|---|---|
+| `ui/kit/package-info.java` | 新增：公开入口清单（内容排版 / 控件与交互 / 焦点 / 灯箱 / 命中与几何）与内部实现（`UiNineSlice`、排版缓存与私有几何公式）的边界声明，并写明依赖方向与「尚未物理拆包」 |
+| `scripts/check-ui-kit-boundaries.ps1` | 新增：可执行的依赖方向检查，四条规则（kit 不得 import 项目包 / 平台 API / 资源常量；client 以外不得引用 kit），退出码 0/1，已实测通过 |
+| `ui/sample/UiKitDebugScreen.java` | 从 `ui/kit/debug/` 迁到示例层（包名 `client.ui.sample`；`Ctrl+F8` 与 dev 开关不变）——拆包门槛②③ |
+| `ui/sample/UiKitSampleScreen.java` | 新增：第三方视角的最小非笔记 Screen，只 import 13 个公开入口 + `OverlayLayer`/`LightboxOverlay`，覆盖按钮 / 滚动 / 灯箱 / 焦点 |
+| `docs/dev/internals/ui-kit-api.md` | 新增：公开入口清单、依赖方向与检查方式、8 步接入指南 + 最小示例、行为约定、0.x 兼容策略草案、拆包就绪门槛①–⑤逐条结论 |
+| `docs/dev/README.md` / `journal-ui-internals.md` / `client-ui.md` | 改：导航与「机制 / 公开契约」分工、返回焦点新语义对齐 |
+
+**验证与静态检查**：`build_project`（全项目）`isSuccess=true / problems=[]`；`scripts/check-ui-kit-boundaries.ps1` 扫描 **22 个 kit 文件 + 420 个非 client 文件**（含 fabric/neoforge 源集）→ `exit 0`；两份 lang 各 897 键、键集合一致；`lint_files` 0 error（余下告警仍是「public API 尚未被调用」类）。
+
+**与计划的偏离**：
+
+1. **未物理拆成 `api/` 与 `internal/` 子包**：本轮只冻结边界与检查方式（`package-info` + 脚本 + 文档），因为搬动 20 余个类的包名会牵动全仓 import；计划 4.5 拆包就绪门槛⑤（独立 Gradle 模块、两端消费同一产物、专用服务端不加载客户端类）**如实标为未满足**，留给独立立项。
+2. **「返回焦点」契约在真实笔记页仍无活路径**：笔记页面侧没有页面级 `UiFocusManager`（阶段 C 结论），因此三个 opener 的 `isFocused()` 恒为 false。本轮让**最小示例页**走通两条路径（键盘恢复 / 鼠标不留轮廓），并在文档里写明该契约的前提；页面侧接管理器属后续可选项。
+3. **示例页贴图用本模组命名空间**：示例位于本模组内，故直接使用 `unsuspiciousblock` 命名空间（保持「不引 kit 之外的业务常量」），它不是独立的第三方工程。
+4. **检查脚本的局限已写明**：只匹配 import 语句与资源常量字面量，不解析全限定名调用；注释行已剔除但块注释中间行不剔除；只扫 src/main/java。
+
+**独立验证结论**（只读验证者，2026-09-27）：通过 8 组、不通过 0 项（无阻断）、需处理 6 项，**全部已处理**——示例页接入 opener 与 `clearRestoredFocus()`（G1）、示例页点击清焦点（G2）、文档写明「两个焦点层要一起清」（G3）、三处旧语义文档对齐（G4）、脚本加固（G5：支持 `import static`、剔除行内注释、覆盖裸命名空间字面量、扫描根扩到 fabric/neoforge）、调试页文档节点点击也清焦点（G6）。验证者用临时假文件实测了脚本四条规则的有效性与四类局限，并逐条核对：kit 零项目依赖/零平台 API、迁移无 `kit.debug` 残留、`Ctrl+F8` 门控逐字未变、示例恰好 13 个 kit 公开 import、`ui-kit-api.md` 的入口清单与签名逐条真实存在、门槛①–④证据成立且⑤如实标未满足。
+
+**阶段收尾**：A–E 全部实施完毕。剩余可选项（P2 候选能力、页面级焦点管理器、独立 Gradle 模块与发布、超大纹理上限）都已在 9.3–9.5 与 `docs/dev/internals/ui-kit-api.md` 的「拆包就绪门槛」里逐条记录，不在本轮范围内。

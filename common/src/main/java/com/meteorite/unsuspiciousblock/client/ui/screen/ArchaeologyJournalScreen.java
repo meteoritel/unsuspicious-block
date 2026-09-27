@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
 import net.minecraft.nbt.CompoundTag;
-import com.meteorite.unsuspiciousblock.client.ui.kit.debug.UiKitDebugScreen;
+import com.meteorite.unsuspiciousblock.client.ui.sample.UiKitDebugScreen;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;

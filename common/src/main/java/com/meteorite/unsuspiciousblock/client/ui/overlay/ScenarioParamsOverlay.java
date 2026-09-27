@@ -238,6 +238,8 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
             if (luckBox != null) luckBox.setFocused(focused);
         }
 
+        @Override public boolean isFocused() { return luckBox != null && luckBox.isFocused(); }
+
         // 输入框没有 Enter/Space 的「激活」语义：返回 false 不消费。
         @Override public boolean activate() { return false; }
 
@@ -280,6 +282,8 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
             }
         }
         // 命中控件即激活；只读标签无 action，不产生副作用。
+        // 鼠标点击不夺取焦点：先收掉键盘焦点，避免轮廓留在被点过的控件上。
+        focus.clearFocus();
         controls.mousePressed(x, y, button);
         return true;
     }

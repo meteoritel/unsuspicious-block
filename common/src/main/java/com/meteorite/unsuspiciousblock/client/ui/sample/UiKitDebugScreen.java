@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.kit.debug;
+package com.meteorite.unsuspiciousblock.client.ui.sample;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.kit.LightboxImage;
@@ -39,7 +39,10 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * S1 临时人工验证页 + 阶段 A/B/C 新组件人工验证页；仅开发环境显式启用，验收完成后移除。
+ * S1 临时人工验证页 + 阶段 A/B/C/D 新组件人工验证页；仅开发环境显式启用，验收完成后移除。
+ *
+ * <p>本类位于示例层（{@code client/ui/sample}）而不是 kit：它依赖宿主资源常量与非 kit 的语义色表，
+ * 因此 kit 保持零项目依赖，脚本 {@code scripts/check-ui-kit-boundaries.ps1} 据此守住边界。</p>
  *
  * <p>画面左列是阶段 A/B/C 新组件的演示区（{@link UiScrollView} + {@link UiControlGroup} +
  * {@link UiLinearLayout} + {@link UiControlStyle} 状态样例 + 原生 {@code EditBox} 适配器），
@@ -51,9 +54,13 @@ import java.util.Objects;
  *
  * <p>阶段 D：演示区里还有一个按钮打开 {@link UiLightbox} 图片灯箱（内容视图是 {@link UiImageView}，
  * 页内图集放两张图）；灯箱按未缩放的真实屏幕坐标画在所有内容之上并独占输入，ESC 由灯箱消费。</p>
+ *
+ * <p>阶段 E：新增一个入口打开 {@link UiKitSampleScreen}——第三方视角的最小接入示例
+ * （按钮 / 滚动 / 灯箱 / 焦点），关闭后回到本页。</p>
  */
 public final class UiKitDebugScreen extends Screen {
     private static final String PREFIX = "screen.unsuspiciousblock.ui_kit_debug.";
+    private static final String SAMPLE_PREFIX = "screen.unsuspiciousblock.ui_kit_sample.";
     private static final int BRANCH_COLOR = 0xFF896C48;
 
     // 演示区几何：固定停靠左侧，右侧留给既有 UiDocument 演示。
@@ -264,10 +271,13 @@ public final class UiKitDebugScreen extends Screen {
         demoEditBox.setMaxLength(32);
         demoEditBox.setValue(demoEditText);
 
-        // 行 4：阶段 D 灯箱入口；按钮打开图片灯箱（2 张图的图集，验证 fit/缩放/拖动与图集导航）。
-        UiLinearLayout row4 = horizontalLayout(rows.bounds(4), List.of(UiLinearLayout.Child.remain()));
+        // 行 4：阶段 D 灯箱入口 + 阶段 E 最小示例页入口（两个半宽按钮）。
+        UiLinearLayout row4 = horizontalLayout(rows.bounds(4), List.of(
+                UiLinearLayout.Child.remain(), UiLinearLayout.Child.remain()));
         addDemoControl("open_lightbox", row4.bounds(0), text("demo_lightbox"), true,
                 List.of(text("lightbox_button_tooltip")), this::openLightbox);
+        addDemoControl("open_sample", row4.bounds(1), sampleText("open"), true,
+                List.of(sampleText("open_tooltip")), this::openSampleScreen);
 
         // 行 5~8：PARCHMENT / DARK 各一组状态样例。
         buildStyleSamples(rows.bounds(SAMPLE_ROW_FIRST), UiControlStyle.PARCHMENT,
@@ -365,6 +375,18 @@ public final class UiKitDebugScreen extends Screen {
     // 演示按钮的动作只累加计数：把「激活确实发生」暴露给调试叠加层，不产生业务副作用。
     private void onDemoActivated() {
         activationCount++;
+    }
+
+    // ---------- 阶段 E 最小示例页 ----------
+
+    // 打开最小示例页（第三方视角，只依赖 kit 公开入口与模态适配层）；关闭后回到本页。
+    private void openSampleScreen() {
+        Objects.requireNonNull(minecraft).setScreen(new UiKitSampleScreen(this));
+    }
+
+    // 示例页文案复用 ui_kit_sample.* 前缀。
+    private static Component sampleText(String key) {
+        return Component.translatable(SAMPLE_PREFIX + key);
     }
 
     // ---------- 阶段 D 灯箱 ----------
@@ -605,12 +627,14 @@ public final class UiKitDebugScreen extends Screen {
                     demoFocus.focusOn(editBoxTarget);
                     return true;
                 }
-                // 点到别处时原生输入框必须交出焦点，否则后续按键会继续发给它。
-                if (demoEditBox != null && demoEditBox.isFocused()) demoFocus.clearFocus();
-                if (demoControls.mousePressed(contentX, contentY, button)) return true;
+                // 鼠标点击不夺取焦点：点控件或空白都立即收掉键盘焦点，
+                // 否则轮廓会留在被点过的按钮上，关闭模态后仍然可见。
                 demoFocus.clearFocus();
+                if (demoControls.mousePressed(contentX, contentY, button)) return true;
                 return true;
             }
+            // 鼠标点击不夺取焦点：落在 UiDocument 树上时同样收掉键盘焦点，避免轮廓留在上一次 Tab 的控件上。
+            demoFocus.clearFocus();
             UiTarget target = document.hit(x, y);
             if (target != null && target.action() != null) {
                 target.action().run();
@@ -750,6 +774,11 @@ public final class UiKitDebugScreen extends Screen {
         @Override
         public void setFocused(boolean focused) {
             if (demoEditBox != null) demoEditBox.setFocused(focused);
+        }
+
+        @Override
+        public boolean isFocused() {
+            return demoEditBox != null && demoEditBox.isFocused();
         }
 
         @Override

@@ -370,6 +370,8 @@ public final class UiLightbox {
 
     public boolean mouseClicked(double x, double y, int button) {
         layoutIfPossible();
+        // 鼠标点击不夺取焦点：按下就收掉键盘焦点，避免轮廓留在被点过的按钮上。
+        focus.clearFocus();
         if (controls.mousePressed(x, y, button)) return true;
         if (viewport.contains(x, y)) return content.mousePressed(x, y, button);
         if (maskClickCloses) onClose.run();

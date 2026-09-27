@@ -257,6 +257,8 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
             return true;
         }
         if (button != 0) return true;
+        // 鼠标点击不夺取焦点：先把键盘焦点收掉，避免轮廓「粘」在被点过的控件上。
+        focus.clearFocus();
         // 滚动条先于行命中：滑块压在行右侧，同一次点击不能穿透到行。
         if (scroll.mousePressed(x, y, button)) {
             refreshArrows();

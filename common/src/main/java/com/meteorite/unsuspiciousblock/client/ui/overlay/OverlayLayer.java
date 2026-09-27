@@ -95,7 +95,10 @@ public final class OverlayLayer {
         Objects.requireNonNull(overlay, "Overlay");
         clearRestoredFocus();
         Overlay replaced = this.open;
-        UiFocusTarget nextReturn = opener != null ? opener : returnFocus;
+        // 只有**当前确实持有焦点**的入口才登记为返回焦点：鼠标点击不夺取焦点，
+        // 因此鼠标打开的浮层关闭后不该把焦点（以及轮廓）留在入口按钮上；
+        // 键盘导航到的入口（Tab 后按 Space/Enter）仍需在关闭后拿回焦点。
+        UiFocusTarget nextReturn = opener != null && opener.isFocused() ? opener : returnFocus;
         if (replaced != null) replaced.closed();
         if (returnFocus != null && returnFocus != nextReturn) returnFocus.setFocused(false);
         this.open = overlay;

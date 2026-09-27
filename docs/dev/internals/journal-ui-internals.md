@@ -161,7 +161,7 @@ document.setContent(List.of(new UiNode.Row(
 
 **视口与裁剪口径**：外壳按宿主可用区留 12 像素外边距，顶部让给标题与描述，底部固定 22 像素控制栏（内容视口在它上方，控制栏不会被内容盖住），剩下的矩形通过 `Content.setViewport` 写入内容；内容必须把绘制严格裁剪在该视口内（`UiImageView` 用 `UiTransform.enableScissor`，条件树沿用文档自己的裁剪）。坐标一律是宿主 GUI 逻辑坐标，缩放读数画在按钮组左侧以免压住按钮。
 
-**fit 与 resize 的区别**：外壳只在「首次布局」与「换内容（`setContent`）」时调用一次 `Content.fit()`（`needFit` 标记）；resize 只重新 `setViewport`，由内容自己重新钳制平移并**保留用户缩放**。`UiImageView.fit` 是 contain：按视口与图片尺寸取较小比例，默认不放大（`allowUpscale` 为 false 时上限 1.0），再钳进 [0.05, 8.0] 并把偏移归零居中。条件树适配器的 `fit` 不同：它从最大档位往小试，取第一个能把整幅内容放进可见区的档位，都不行就用最小档位再居中。
+**fit 与 resize 的区别**：外壳只在「首次布局」与「换内容（`setContent`）」时调用一次 `Content.fit()`（`needFit` 标记）——内容尺寸尚未就绪时这次 fit 会推迟到能报告非零尺寸的那一帧，避免空文档被误判为「放得下」而选中最大档位；resize 只重新 `setViewport`，由内容自己重新钳制平移并**保留用户缩放**。`UiImageView.fit` 是 contain：按视口与图片尺寸取较小比例，默认不放大（`allowUpscale` 为 false 时上限 1.0），再钳进 [0.05, 8.0] 并把偏移归零居中。条件树适配器的 `fit` 不同：它从最大档位往小试，取第一个能把整幅内容放进可见区的档位，都不行就用最小档位再居中。
 
 **缩放：有限步进与上下限**：滚轮与按钮走同一个「一档」步进（`UiImageView.STEP = 1.25`），比例钳制在 [0.05, 8.0]；滚轮以指针为锚点（缩放前后指针下的同一内容点保持不动），按钮则以视口中心为锚点（`zoomBy`）。到顶 / 到底或结果无变化时返回 `false`，不产生空消费；指针不在内容视口内时外壳不做缩放（输入仍由模态层吞掉，不会漏到下层）。
 
@@ -176,6 +176,8 @@ document.setContent(List.of(new UiNode.Row(
 **灯箱的 tooltip 唯一来源**：同一位置只出一个 tooltip——先问控件组（`controls.targetAt`），命中就只画控件的提示；没有控件命中才问 `content.hit`（例如条件树里的行），为空则不画。内容实现因此**不要自己画 tooltip**，只把命中契约暴露给外壳。
 
 **验证页的阶段 D 演示**：`UiKitDebugScreen` 的演示区新增一个「灯箱」按钮，打开的是**复用生产模态路径**的图片灯箱——页面自己持有一个 `OverlayLayer` + `LightboxOverlay`，内容视图是 `UiImageView`，页内图集放两张图（256×256 的陶轮界面整图与 152×76 的目录条目整图，用来对照「大图 contain 后仍可放大」与「小图 fit 保持 100%」）。灯箱按**未缩放的真实屏幕坐标**画在所有内容之上并独占输入，ESC 由灯箱消费（关灯箱而不是关调试页）；页面在打开时收掉下层焦点与正在进行的拖动，模态期间不再画自己的 tooltip。底部读数在灯箱打开时追加「图序号 / 总数 | 缩放百分比」。通用文案键 `screen.unsuspiciousblock.lightbox.*`（8 个：close / zoom_in / zoom_out / fit / previous / next / position / missing）与调试页新增的 7 个键同时写入 `en_us.json` 与 `zh_cn.json`。
+
+**机制与公开契约的分工**：本节的职责是**机制与实现口径**的权威——排版缓存、裁剪边界、命中与 tooltip 的唯一来源、焦点失效清理、fit 与 resize 的区别、平移钳制等「为什么这样做、实际怎么算」。面向第三方宿主的**公开入口清单、依赖边界检查、接入步骤、行为约定与兼容策略**另见 [UI kit 公开 API 与兼容策略](ui-kit-api.md)：公开边界以 `client/ui/kit/package-info.java` 为准，依赖方向由 `scripts/check-ui-kit-boundaries.ps1` 检查，开发与最小示例已迁到 `client/ui/sample/`。两处描述冲突时，机制细节以本节为准，接口与兼容承诺以那篇为准。
 
 ## 5. 场景详情页与模态交互
 
@@ -198,7 +200,7 @@ document.setContent(List.of(new UiNode.Row(
 
 - `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；行由 `UiScrollView` + `UiControlGroup` 承载——整表行控件按场景下标稳定复用、只建一次，翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配；内容溢出才显示滚动条（行宽相应让出 4 像素），底部箭头到边界时进入禁用态。键盘焦点由 `UiFocusManager` 按「场景行 → ◀ → ▶」登记：Tab/Shift+Tab 在其间移动、**焦点行自动滚进视口**、Space 激活焦点控件，而 Enter 保留「选择并关闭」的既有契约；当前场景行常亮语义选中态（原有加粗保留）。滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/Enter/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
 - `ScenarioParamsOverlay`：独立草稿、确认/取消；控件统一由 `UiControlGroup` 按稳定 key 承载，落位由三套 `UiLinearLayout`（行槽 / 行内横排 / 底部按钮行）产出，不再手算坐标；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 `EditBox`（支持拖选，命中优先于控件组），由宿主侧适配器接进焦点序列、文字输入仍归原版控件。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 保持「确认」契约、Space 激活焦点控件，窗口外的附魔行用 `PageUp` / `PageDown` 翻窗口到达（Tab 只在窗口内环绕），当前抽样格常亮语义选中态（原有加粗保留）；参数多时按行滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
-- `ScenarioExpandedOverlay`：**放大页已改为灯箱模式**——它不再是浮层，而是 `UiLightbox.Content` 适配器：内部持有一个独立的 `ScenarioFrameView`，只把视口 / 绘制 / 缩放 / 平移 / 命中按契约暴露出来，遮罩、控制栏、适应窗口、焦点与关闭语义全部交给 `UiLightbox` + `LightboxOverlay`。构造时调用 `frame.hideCornerControls()` 关掉框自带的档位与复位角控件（灯箱自己提供缩放与适应窗口，避免两套控件与两处命中）；打开即适应窗口（首次布局触发一次 `fit()`），平移按灯箱规则钳制（内容小于视口时该轴居中锁定，超出轴才可拖动），点遮罩不关闭。视图是独立实例，**关闭灯箱不会改动页内框的平移 / 缩放**；`ScenarioDetailPanel` 用 `LightboxOverlay` 打开，并把 `expandButton` 作为返回焦点。为此 `ScenarioFrameView` 增加了包内只读访问器 `transform()` / `contentViewport()` / `contentWidth()` / `contentHeight()`，以及只关闭绘制与命中的 `hideCornerControls()`（内部 `controlsVisible` 开关，没有重新打开的 setter，页内路径保持默认显示）。
+- `ScenarioExpandedOverlay`：**放大页已改为灯箱模式**——它不再是浮层，而是 `UiLightbox.Content` 适配器：内部持有一个独立的 `ScenarioFrameView`，只把视口 / 绘制 / 缩放 / 平移 / 命中按契约暴露出来，遮罩、控制栏、适应窗口、焦点与关闭语义全部交给 `UiLightbox` + `LightboxOverlay`。构造时调用 `frame.hideCornerControls()` 关掉框自带的档位与复位角控件（灯箱自己提供缩放与适应窗口，避免两套控件与两处命中）；打开即适应窗口（首次布局触发一次 `fit()`），平移按灯箱规则钳制（内容小于视口时该轴居中锁定，超出轴才可拖动），点遮罩不关闭。视图是独立实例，**关闭灯箱不会改动页内框的平移 / 缩放**；`ScenarioDetailPanel` 用 `LightboxOverlay` 打开，并把 `expandButton` 作为 opener 传入（仅当它当前持有焦点时才登记为返回焦点）。为此 `ScenarioFrameView` 增加了包内只读访问器 `transform()` / `contentViewport()` / `contentWidth()` / `contentHeight()`，以及只关闭绘制与命中的 `hideCornerControls()`（内部 `controlsVisible` 开关，没有重新打开的 setter，页内路径保持默认显示）。
 
 **网格页头部**（`ScenarioPanel`）只剩读数行与「切换场景 / 计算」两个动作，文字超宽时悬停滚动。网格页调整参数需到场景页打开参数浮层。
 
@@ -206,7 +208,7 @@ document.setContent(List.of(new UiNode.Row(
 
 贴图由 `scripts/drawer/generate_scenario_ui.py` 生成：`scenario_frame.png` 是 24×24 九宫格（8px 四角），`UiNineSlice` 用九个四边形拉伸边和中心；`scenario_status.png` 为 48×12 四格，空心点/沙漏/勾/叉对应未计算/计算中/已缓存/失败。角标同时使用形状区分状态，详细状态和失败原因放 tooltip。
 
-**浮层的焦点交接**：`OverlayLayer.open(overlay, opener)` 记录「打开它的可聚焦目标」，打开时先把该目标的焦点清掉（避免下层残留轮廓），`close()` 时若它仍 `canFocus()` 就把焦点还回去；`ScenarioDetailPanel` 的三个入口（场景选择、放大框、参数面板）都把按下的 `UiControl` 作为 opener 传入。替换已打开的浮层（切模态）时，未显式传 opener 的一方**继承上一层记录的返回焦点**，因此模态链全部关闭后仍能回到最初的入口。浮层被关闭或被替换时都会收到一次 `Overlay.closed()` 回调，用于释放输入捕获与引用；该回调当前是默认空实现，三个浮层都还没有覆写。**恢复的焦点需要回收**：页面侧目前没有焦点管理器（只有两个浮层与验证页有），所以 `OverlayLayer` 记下最后一次还给 opener 的目标，宿主在「未被子层消费的鼠标操作」里调用 `clearRestoredFocus()` 把它收掉（`ArchaeologyJournalScreen` 的 `mouseClicked` 就是唯一调用点），再次打开浮层也会先清除；否则该控件会一直带着焦点轮廓。注意它只清「已还给 opener 的焦点」，不动 `returnFocus`，也不碰任何 `UiFocusManager` 的内部焦点。
+**浮层的焦点交接**：`OverlayLayer.open(overlay, opener)` 只在 opener **当前确实持有焦点**（键盘到达，见 `UiFocusTarget.isFocused()`）时把它登记为返回焦点——鼠标点击不夺取焦点，所以鼠标打开的浮层不会被登记、关闭后也不会留下轮廓；登记后打开时先把该目标的焦点清掉（避免下层残留轮廓），`close()` 时若它仍 `canFocus()` 就把焦点还回去；`ScenarioDetailPanel` 的三个入口（场景选择、放大框、参数面板）都把按下的 `UiControl` 作为 opener 传入。替换已打开的浮层（切模态）时，未显式传 opener 的一方**继承上一层记录的返回焦点**，因此模态链全部关闭后仍能回到最初的入口。浮层被关闭或被替换时都会收到一次 `Overlay.closed()` 回调，用于释放输入捕获与引用；该回调当前是默认空实现，三个浮层都还没有覆写。**恢复的焦点需要回收**：页面侧目前没有焦点管理器（只有两个浮层与验证页有），所以 `OverlayLayer` 记下最后一次还给 opener 的目标，宿主在「未被子层消费的鼠标操作」里调用 `clearRestoredFocus()` 把它收掉（`ArchaeologyJournalScreen` 的 `mouseClicked` 就是唯一调用点），再次打开浮层也会先清除；否则该控件会一直带着焦点轮廓。注意它只清「已还给 opener 的焦点」，不动 `returnFocus`，也不碰任何 `UiFocusManager` 的内部焦点。
 
 ## 6. 面板状态与偏好持久化
 
