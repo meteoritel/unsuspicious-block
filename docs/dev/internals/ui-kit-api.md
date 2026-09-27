@@ -30,9 +30,9 @@
 | 控件与交互 | `UiControl`、`UiControlStyle`、`UiControlGroup`、`UiScrollView`、`UiLinearLayout` |
 | 焦点 | `UiFocusTarget`、`UiFocusManager` |
 | 灯箱 | `UiLightbox`（含 `Content` / `Gallery` / `Labels`）、`UiImageView`、`LightboxImage` |
-| 命中与几何 | `UiRect`、`UiTarget`、`UiAction` |
+| 命中与几何 | `UiRect`、`UiTarget`、`UiAction`、`UiNineSlice` |
 
-**内部实现**（同为 `public`，但**不承诺兼容**，宿主不应依赖）：`UiNineSlice`；`UiDocument` 的排版缓存与私有几何公式；`UiMetrics` 的计时细节；以及各类里标注为内部的口径。它们可以随实现改动而不进变更记录。
+**内部实现**（同为 `public`，但**不承诺兼容**，宿主不应依赖）：kit 里没有独立的内部类型，内部口径都落在各类的非公开成员上——`UiDocument` 的排版缓存与私有几何公式、`UiMetrics` 的计时细节、`UiTransform` 的裁剪工具等。它们可以随实现改动而不进变更记录。
 
 **不属于 API**：`client/ui/overlay/`（`OverlayLayer`、`LightboxOverlay` 等宿主适配层）与 `client/ui/sample/`（`UiKitDebugScreen`、`UiKitSampleScreen` 示例层）都允许依赖项目常量与平台服务，是**宿主层代码**，不是可发布的库入口。
 
@@ -98,7 +98,7 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 
 ## 7. 拆包就绪门槛（逐条结论）
 
-门槛取自 UI kit 扩展计划的「对外 API 与未来拆包约束」一节（五条），逐条核对当前状态：
+门槛取自「考古笔记 UI kit 渐进扩展计划」的「对外 API 与未来拆包约束」一节（五条），逐条核对当前状态（该计划于 2026-09-27 阶段 A–E 实施完毕后移入本地归档目录 `docs/archive/`，不入库，故不提供链接）：
 
 | 门槛 | 结论 | 证据 |
 |---|---|---|
@@ -110,7 +110,7 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 
 **剩余阻碍**（本轮明确留下、不属于本计划交付）：
 
-- kit 尚未**物理拆包**：仍是 `client/ui/kit` 单一包，没有 `api/` 与 `internal/` 子包；当前「公开/内部」只是清单与注释层面的约定。
+- kit **不拆分 `api/` 与 `internal/` 子包**（已评估，2026-09-27 决定不采纳）：kit 内部存在 4 组双向依赖（`UiDocument` ↔ `TextScroll`、`UiControl` ↔ `TextScroll`、`UiControlGroup` ↔ `UiScrollView`、`UiLightbox` ↔ `UiImageView`），任何按功能域的分包都会把它们从「包内耦合」升级成「跨包循环」；且 `UiTransform` 的 3 个裁剪工具与 `UiMetrics` 的 5 个计时钩子是 package-private，拆包须提权为 `public`，等于用扩大公开面换目录美观；22 个类型约 2.6k 行也未到需要分包的规模。因此「公开 / 内部」继续由本页清单与 `package-info.java` 约定，子包拆分留到独立 Gradle 模块时一次到位。
 - 没有**独立 Gradle 模块与发布脚本**：kit 不是独立产物，无法被外部工程以依赖坐标消费。
 - 没有**「两端消费同一库产物」的构建验证**：NeoForge 与 Fabric 目前各自编译同一份源码，尚未验证同一份发布产物被两端同时消费。
 - 没有**「专用服务端不加载客户端类」的运行时验证**：规则 4 只做了源码层的 `import` 检查，缺少专用服务端启动加载路径的实测证据。

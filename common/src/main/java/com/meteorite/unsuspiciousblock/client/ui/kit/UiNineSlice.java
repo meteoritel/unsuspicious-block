@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.kit;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 
-/** 九宫格贴图：四角保持原生尺寸，边和中心各一次拉伸绘制，总计九个四边形。 */
+/** 九宫格贴图：四角保持原生尺寸，边和中心各一次拉伸绘制，总计九个四边形。kit 公开绘制入口之一。 */
 public record UiNineSlice(ResourceLocation texture, int size, int corner) {
     public UiNineSlice {
         if (corner <= 0 || size <= corner * 2) throw new IllegalArgumentException("Invalid nine slice");

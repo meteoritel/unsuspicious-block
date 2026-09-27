@@ -22,12 +22,14 @@
  *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.LightboxImage}</li>
  *   <li>命中与几何：{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiRect}、
  *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget}、
- *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiAction}</li>
+ *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiAction}、
+ *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiNineSlice}</li>
  * </ul>
  *
- * <p><b>内部实现</b>（同为 {@code public}，但不承诺兼容，宿主不应依赖）：{@code UiNineSlice} 以及
- * 各个类里标注为内部的口径（排版缓存、私有几何公式等）。{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiDocument}
- * 的排版缓存、{@code UiMetrics} 的计时细节属实现细节。</p>
+ * <p><b>内部实现</b>（同为 {@code public}，但不承诺兼容，宿主不应依赖）：没有独立的内部类型，
+ * 内部口径都落在各类的非公开成员上——{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiDocument}
+ * 的排版缓存与私有几何公式、{@code UiMetrics} 的计时细节、{@code UiTransform} 的裁剪工具等。
+ * 它们可以随实现改动而不进变更记录。</p>
  *
  * <p><b>依赖方向</b>：本包只依赖 Minecraft 客户端通用类型、Java 标准库与 JOML/annotations——
  * 不 import 任何项目包、不 import 两端 loader API、不引用 {@code Constants.MOD_ID}；
@@ -37,7 +39,8 @@
  * {@code LightboxOverlay}）与 {@code client/ui/sample/}（开发用示例页）属于宿主/示例层，
  * 允许依赖项目常量与平台服务；它们依赖 kit，而不是反过来。</p>
  *
- * <p><b>尚未完成</b>：把本包物理拆成 {@code api/} 与 {@code internal/} 子包、独立 Gradle 模块与发布脚本，
- * 需要另立拆包任务；当前只冻结边界与检查方式，详见 {@code docs/dev/internals/ui-kit-api.md}。</p>
+ * <p><b>尚未完成</b>：独立 Gradle 模块与发布脚本，需要另立拆包任务；当前只冻结边界与检查方式。
+ * 子包拆分（{@code api/} 与 {@code internal/}）已评估并决定不做，理由见
+ * {@code docs/dev/internals/ui-kit-api.md} 的「拆包就绪门槛」。</p>
  */
 package com.meteorite.unsuspiciousblock.client.ui.kit;
