@@ -83,7 +83,8 @@ public final class ItemGridPanel implements PagePanel {
         this.childTables.addAll(childTables);
         this.navigationTarget = null;
         rebuildTagGroups();
-        if (this.activeTag != null && !this.tagGroups.containsKey(this.activeTag)) {
+        if (this.activeTag != null && (this.tagGroups.get(this.activeTag) == null
+                || !this.tagGroups.get(this.activeTag).unlocked())) {
             this.activeTag = null;
         }
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
@@ -135,7 +136,8 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     public void setActiveTag(@Nullable ResourceLocation tagId) {
-        this.activeTag = tagId != null && this.tagGroups.containsKey(tagId) ? tagId : null;
+        this.activeTag = tagId != null && this.tagGroups.containsKey(tagId)
+                && this.tagGroups.get(tagId).unlocked() ? tagId : null;
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
         resetHoverState();
     }
@@ -243,6 +245,11 @@ public final class ItemGridPanel implements PagePanel {
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
         guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
 
+        if (!group.unlocked()) {
+            renderLockedCollectionCell(guiGraphics, font, cellX, cellY);
+            return;
+        }
+
         renderTagPreview(guiGraphics, group, cellX + cellW / 2, cellY + ICON_TOP);
         ScrollTextHelper.draw(guiGraphics, font, group.id().toString(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
@@ -273,7 +280,11 @@ public final class ItemGridPanel implements PagePanel {
                 hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
         guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
-        renderPreview(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
+        if (!child.unlocked()) {
+            renderLockedCollectionCell(guiGraphics, font, cellX, cellY);
+            return;
+        }
+        renderPreviewStacks(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
         ScrollTextHelper.draw(guiGraphics, font, child.displayName().getString(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
@@ -284,17 +295,21 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     private void renderPreview(GuiGraphics guiGraphics, List<GridItem> items, int centerX, int iconY) {
-        List<GridItem> discovered = items.stream().filter(GridItem::unlocked).limit(3).toList();
-        if (discovered.isEmpty()) {
+        renderPreviewStacks(guiGraphics, items.stream().filter(GridItem::unlocked).limit(3)
+                .map(GridItem::stack).toList(), centerX, iconY);
+    }
+
+    private void renderPreviewStacks(GuiGraphics guiGraphics, List<ItemStack> stacks, int centerX, int iconY) {
+        if (stacks.isEmpty()) {
             guiGraphics.blit(UNKNOWN_TEXTURE, centerX - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE,
                     0f, 0f, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE,
                     UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
             return;
         }
-        int totalWidth = ICON_SIZE + (discovered.size() - 1) * 8;
+        int totalWidth = ICON_SIZE + (stacks.size() - 1) * 8;
         int startX = centerX - totalWidth / 2;
-        for (int i = 0; i < discovered.size(); i++) {
-            ItemStack stack = discovered.get(i).stack();
+        for (int i = 0; i < stacks.size(); i++) {
+            ItemStack stack = stacks.get(i);
             int iconX = startX + i * 8;
             guiGraphics.pose().pushPose();
             guiGraphics.pose().translate(iconX, iconY, i * 5f);
@@ -303,6 +318,17 @@ public final class ItemGridPanel implements PagePanel {
             guiGraphics.renderItem(stack, 0, 0);
             guiGraphics.pose().popPose();
         }
+    }
+
+    // 未解锁合集与普通未发现物品共用未知图标；在首个成员被发现前不透露名称与概率。
+    private void renderLockedCollectionCell(GuiGraphics graphics, Font font, int cellX, int cellY) {
+        int cellW = JournalLayout.GRID_CELL_WIDTH;
+        graphics.blit(UNKNOWN_TEXTURE, cellX + (cellW - ICON_SIZE) / 2, cellY + ICON_TOP,
+                ICON_SIZE, ICON_SIZE, 0f, 0f, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE,
+                UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
+        Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked");
+        graphics.drawString(font, label, cellX + (cellW - font.width(label)) / 2,
+                cellY + NAME_Y_OFFSET, PENDING_COLOR, false);
     }
 
     private void renderTagBackCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
@@ -550,9 +576,12 @@ public final class ItemGridPanel implements PagePanel {
             int cellY = cellY(gridY, visualIndex);
             if (isMouseOverCell(cellX, cellY, mouseX, mouseY)) {
                 if (i < groupCount) {
-                    this.activeTag = tagIds.get(i);
-                    this.page = 0;
-                    resetHoverState();
+                    ResourceLocation tagId = tagIds.get(i);
+                    if (this.tagGroups.get(tagId).unlocked()) {
+                        this.activeTag = tagId;
+                        this.page = 0;
+                        resetHoverState();
+                    }
                 } else {
                     this.navigationTarget = this.childTables.get(i - groupCount).tableId();
                 }
@@ -609,6 +638,8 @@ public final class ItemGridPanel implements PagePanel {
             }
             if (i < groupCount) {
                 TagGroup group = groups.get(i);
+                if (!group.unlocked()) return List.of(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.collection_locked"));
                 return List.of(
                         Component.literal(group.id().toString()).withStyle(ChatFormatting.AQUA),
                         Component.translatable(
@@ -619,6 +650,8 @@ public final class ItemGridPanel implements PagePanel {
                                 .withStyle(ChatFormatting.GRAY));
             }
             ChildTableEntry child = this.childTables.get(i - groupCount);
+            if (!child.unlocked()) return List.of(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.collection_locked"));
             return JournalTooltipBuilder.buildChildTable(
                     child.displayName(), child.tableId(), child.probability(),
                     child.scenarioProbabilities(), child.conditions(), child.luckAffected());
@@ -676,6 +709,10 @@ public final class ItemGridPanel implements PagePanel {
 
     /** tag 分组入口所需的不可变展示数据。 */
     private record TagGroup(ResourceLocation id, List<GridItem> members) {
+        private boolean unlocked() {
+            return this.members.stream().anyMatch(GridItem::unlocked);
+        }
+
         private int discoveredCount() {
             return (int) this.members.stream().filter(GridItem::unlocked).count();
         }
@@ -686,11 +723,11 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     /** 子表导航入口展示数据。 */
-    public record ChildTableEntry(ResourceLocation tableId, Component displayName,
+    public record ChildTableEntry(ResourceLocation tableId, Component displayName, boolean unlocked,
                                   Probability probability,
                                   List<ScenarioProbability> scenarioProbabilities,
                                   List<LootConditionInfo> conditions,
-                                  List<GridItem> previewItems,
+                                  List<ItemStack> previewItems,
                                   boolean luckAffected,
                                   int simulationCount) {
         public ChildTableEntry {

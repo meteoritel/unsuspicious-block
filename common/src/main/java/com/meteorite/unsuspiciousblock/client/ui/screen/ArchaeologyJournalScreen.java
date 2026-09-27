@@ -821,7 +821,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
     private void navigateToChildTable(ResourceLocation tableId) {
         ResourceLocation parentTableId = this.viewModel.selectedTableId();
-        if (!this.viewModel.prepareNavigationTo(tableId)) {
+        if (parentTableId == null || !this.viewModel.prepareNavigationToChild(parentTableId, tableId)) {
             return;
         }
         this.catalogToolbar.setCurrentSearch(JournalSearchQuery.EMPTY);

@@ -159,6 +159,20 @@ public class JournalViewModel {
         return true;
     }
 
+    // 从当前父表的子表入口跳转时，保留当前目录路径，先展开父表再查找其下的子表行。
+    public boolean prepareNavigationToChild(ResourceLocation parentId, ResourceLocation childId) {
+        TableDefinition parent = this.catalogDefinitions.get(parentId);
+        if (parent == null || !parent.childTables().contains(childId) || !prepareNavigationTo(childId)) {
+            return false;
+        }
+        if (this.selectedIndex >= 0 && this.selectedIndex < this.rowMetadata.size()
+                && this.tableViews.get(this.selectedIndex).id().equals(parentId)) {
+            this.expandedRoots.addAll(this.rowMetadata.get(this.selectedIndex).parentPath());
+        }
+        this.expandedRoots.add(parentId);
+        return true;
+    }
+
     // 优先返回指定父表路径下的子表行，避免同一表同时作为分类根表时跳到错误位置。
     public int findNavigationRow(ResourceLocation tableId, @Nullable ResourceLocation parentTableId) {
         int fallback = -1;
@@ -509,7 +523,7 @@ public class JournalViewModel {
         int simulationCount = selectedDefinition != null ? selectedDefinition.simulationCount() : 0;
         List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
         for (ArchaeologyEntryItem item : selected.items()) {
-            ItemGridPanel.GridItem gridItem = buildDirectGridItem(item, true, simulationCount);
+            ItemGridPanel.GridItem gridItem = buildDirectGridItem(item, simulationCount);
             if (gridItem != null) {
                 gridItems.add(gridItem);
             }
@@ -522,10 +536,12 @@ public class JournalViewModel {
             for (ChildTableProbability childProbability : selectedDefinition.childTableProbabilities()) {
                 ArchaeologyJournalEntry child = this.allViews.get(childProbability.tableId());
                 if (child == null) continue;
-                List<ItemGridPanel.GridItem> previewItems = buildChildPreviewItems(
-                        child.id(), new HashSet<>());
+                List<DetailOverlayPanel.IntroItem> discoveredItems = buildIntroItems(child.id()).stream()
+                        .filter(DetailOverlayPanel.IntroItem::unlocked).toList();
+                List<ItemStack> previewItems = discoveredItems.stream().limit(3)
+                        .map(DetailOverlayPanel.IntroItem::stack).toList();
                 childEntries.add(new ItemGridPanel.ChildTableEntry(
-                        child.id(), child.displayName(),
+                        child.id(), child.displayName(), !discoveredItems.isEmpty(),
                         // 子表入口与物品同口径：读服务端派生的当前输入状态，不再取跨场景最大值
                         childProbability.probability(),
                         childProbability.scenarioProbabilities(),
@@ -563,15 +579,14 @@ public class JournalViewModel {
     }
 
     @Nullable
-    private ItemGridPanel.GridItem buildDirectGridItem(ArchaeologyEntryItem item, boolean applySearch,
-                                                       int simulationCount) {
+    private ItemGridPanel.GridItem buildDirectGridItem(ArchaeologyEntryItem item, int simulationCount) {
         List<LootAcquisitionPath> directPaths = item.acquisitionPaths().stream()
                 .filter(path -> path.sourceChildTable() == null)
                 .toList();
         if (!item.acquisitionPaths().isEmpty() && directPaths.isEmpty()) {
             return null;
         }
-        boolean highlighted = !applySearch || this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
+        boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
                 || this.currentSearch.matchesItem(item.id(), item.displayName().getString());
         // 等级来自条目自身（服务端同一份判定），不再在客户端另起规则、也不再比较 tooltip 文案
         LootConditionHandler.UncertaintyLevel level = item.uncertaintyLevel();
@@ -581,38 +596,6 @@ public class JournalViewModel {
                 item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
                 directPaths, item.injected(), level, item.scenarioProbabilities(),
                 DeclaredChance.fromPaths(directPaths), simulationCount);
-    }
-
-    // 纯转发表没有直接物品时，向下寻找首批可展示后代；visited 防止循环引用。
-    private List<ItemGridPanel.GridItem> buildChildPreviewItems(
-            ResourceLocation tableId, Set<ResourceLocation> visited) {
-        if (!visited.add(tableId)) {
-            return List.of();
-        }
-        ArchaeologyJournalEntry table = this.allViews.get(tableId);
-        if (table == null) {
-            return List.of();
-        }
-        TableDefinition ownDefinition = this.catalogDefinitions.get(tableId);
-        int simulationCount = ownDefinition != null ? ownDefinition.simulationCount() : 0;
-        List<ItemGridPanel.GridItem> directItems = table.items().stream()
-                .map(item -> buildDirectGridItem(item, false, simulationCount))
-                .filter(java.util.Objects::nonNull)
-                .toList();
-        if (!directItems.isEmpty()) {
-            return directItems;
-        }
-        if (ownDefinition == null) {
-            return List.of();
-        }
-        List<ItemGridPanel.GridItem> descendants = new ArrayList<>();
-        for (ResourceLocation childId : ownDefinition.childTables()) {
-            descendants.addAll(buildChildPreviewItems(childId, visited));
-            if (descendants.size() >= 3) {
-                break;
-            }
-        }
-        return List.copyOf(descendants);
     }
 
     // 排序按服务端派生的当前输入值：未知与「需要条件」排到末尾，零命中排在 0%（不可达）之前。

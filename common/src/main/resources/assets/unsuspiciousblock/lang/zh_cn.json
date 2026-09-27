@@ -293,6 +293,7 @@
   "screen.unsuspiciousblock.archaeology_journal.from_child_table": "来自: %s",
   "screen.unsuspiciousblock.archaeology_journal.from_item_tag": "来自标签：%s",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_progress_short": "已发现 %s/%s",
+  "screen.unsuspiciousblock.archaeology_journal.collection_locked": "未解锁",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_progress": "已发现：%s/%s",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_open": "点击查看标签物品",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_back": "返回",

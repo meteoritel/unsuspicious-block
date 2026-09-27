@@ -293,6 +293,7 @@
   "screen.unsuspiciousblock.archaeology_journal.from_child_table": "From: %s",
   "screen.unsuspiciousblock.archaeology_journal.from_item_tag": "From tag: %s",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_progress_short": "Found %s/%s",
+  "screen.unsuspiciousblock.archaeology_journal.collection_locked": "Locked",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_progress": "Discovered: %s/%s",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_open": "Click to view tag items",
   "screen.unsuspiciousblock.archaeology_journal.tag_group_back": "Back",
