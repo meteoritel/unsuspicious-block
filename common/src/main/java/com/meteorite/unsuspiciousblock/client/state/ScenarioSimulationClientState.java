@@ -4,11 +4,13 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.loottable.catalog.*;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.*;
 import com.meteorite.unsuspiciousblock.loottable.simulation.*;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.*;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.*;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 /** 当前选择、计算状态和结果按输入隔离；晚到答复只入缓存，不改玩家的新选择。 */
@@ -134,16 +136,47 @@ public final class ScenarioSimulationClientState {
         }
         return null;
     }
+
+    /** 同参数的已缓存结果可包含其他场景的明确概率引用；此处统一详情页、列表与网格的来源。 */
+    public record SceneSource(@Nullable CatalogTableDto source, boolean exactInput, String status) {}
+
+    public static SceneSource sceneSource(ResourceLocation id, String scene, ScenarioParams params) {
+        String input = new SimulationInput(scene, Map.of(), params).key();
+        CatalogTableDto direct = result(id, input);
+        if (direct != null) return new SceneSource(direct, true, "cached");
+        CatalogTableDto structure = table(id);
+        if (structure != null && structure.options() != null) {
+            for (var candidate : structure.options().scenes()) {
+                String key = new SimulationInput(candidate.scenarioKey(), Map.of(), params).key();
+                CatalogTableDto other = result(id, key);
+                if (other != null && hasSceneReference(other, scene)) {
+                    return new SceneSource(other, false, "cached");
+                }
+            }
+        }
+        return new SceneSource(null, false, status(id, input));
+    }
+
+    private static boolean hasSceneReference(CatalogTableDto source, String scene) {
+        return source.items().stream().anyMatch(item -> item.scenarioProbabilities().stream()
+                .anyMatch(ref -> ref.scenarioKey().equals(scene)))
+                || source.childProbabilities().stream().anyMatch(child -> child.scenarioProbabilities().stream()
+                .anyMatch(ref -> ref.scenarioKey().equals(scene)));
+    }
+
     public static Map<ResourceLocation, TableDefinition> overlay(Map<ResourceLocation, TableDefinition> base) {
         Map<ResourceLocation, TableDefinition> output = new LinkedHashMap<>(base);
         SELECTIONS.forEach((id, selection) -> {
             if (!base.containsKey(id)) return;
-            String input = inputKey(selection);
-            var measured = result(id, input);
-            if (measured != null) output.put(id, measured.toTableDefinition());
+            SceneSource resolved = sceneSource(id, selection.scene(), selection.params());
+            if (resolved.source() != null) {
+                output.put(id, resolved.exactInput()
+                        ? resolved.source().toTableDefinition()
+                        : projectScene(base.get(id), resolved.source(), selection.scene(), selection.params().sampleCount()));
+            }
             else {
                 var table = base.get(id);
-                var unknown = new Probability.Unknown(status(id, input).equals("failed")
+                var unknown = new Probability.Unknown(resolved.status().equals("failed")
                         ? UnknownReason.SIMULATION_FAILED : UnknownReason.NOT_SIMULATED);
                 output.put(id, new TableDefinition(id, table.displayName(), table.type(),
                         table.items().stream().map(i -> new ItemDefinition(i.id(), i.displayName(),
@@ -154,6 +187,45 @@ public final class ScenarioSimulationClientState {
             }
         });
         return output;
+    }
+
+    // 非当前输入的缓存只借用明确的分场景引用；总概率仍属于它原本的场景，绝不复制过来。
+    private static TableDefinition projectScene(TableDefinition base, CatalogTableDto source,
+                                                String scene, int sampleCount) {
+        TableDefinition measured = source.toTableDefinition();
+        Map<LootResultSignature, ItemDefinition> bySignature = new HashMap<>();
+        for (ItemDefinition item : measured.items()) bySignature.putIfAbsent(item.signature(), item);
+        Map<ResourceLocation, ChildTableProbability> byChild = new HashMap<>();
+        for (ChildTableProbability child : measured.childTableProbabilities()) {
+            byChild.putIfAbsent(child.tableId(), child);
+        }
+        Probability unknown = new Probability.Unknown(UnknownReason.NOT_SIMULATED);
+        List<ItemDefinition> items = base.items().stream().map(original -> {
+            ItemDefinition candidate = bySignature.get(original.signature());
+            Probability probability = candidate == null ? unknown
+                    : sceneProbability(candidate.scenarioProbabilities(), scene, unknown);
+            return new ItemDefinition(original.id(), original.displayName(), original.tooltipHint(), probability,
+                    original.signature(), original.acquisitionPaths(), original.injected(),
+                    candidate == null ? original.scenarioProbabilities() : candidate.scenarioProbabilities());
+        }).toList();
+        List<ChildTableProbability> children = base.childTableProbabilities().stream().map(original -> {
+            ChildTableProbability candidate = byChild.get(original.tableId());
+            Probability probability = candidate == null ? unknown
+                    : sceneProbability(candidate.scenarioProbabilities(), scene, unknown);
+            return new ChildTableProbability(original.tableId(), probability,
+                    candidate == null ? original.scenarioProbabilities() : candidate.scenarioProbabilities(),
+                    original.conditions());
+        }).toList();
+        return new TableDefinition(base.id(), base.displayName(), base.type(), items, sampleCount,
+                base.childTables(), children);
+    }
+
+    private static Probability sceneProbability(List<ScenarioProbability> probabilities, String scene,
+                                                 Probability fallback) {
+        for (ScenarioProbability probability : probabilities) {
+            if (probability.scenarioKey().equals(scene)) return probability.probability();
+        }
+        return fallback;
     }
     public static void requestAssist(ResourceLocation table, String target) {
         var request = requestOf(table);

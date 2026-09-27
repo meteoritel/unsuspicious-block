@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -23,8 +24,8 @@ import static com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationCli
 /**
  * 网格页头部：读数行（场景 · 参数 · 状态）与「切换场景 / 计算」两个动作。
  *
- * <p>场景列表不再由本类自绘：切换按钮打开与场景页共用的 {@link ScenarioSelectionOverlay}
- * （锚点见 {@link #overlayX()} / {@link #overlayY()}），因此两页的下拉是同一套交互与同一份文案。
+ * <p>场景列表不再由本类自绘：切换按钮打开与场景页共用的 {@link ScenarioSelectionOverlay}，
+ * 因此两页使用同一套选择交互与同一份文案。
  * 头部文字超宽时悬停滚动，不做静默截断。</p>
  */
 public final class ScenarioPanel {
@@ -59,10 +60,6 @@ public final class ScenarioPanel {
     /** 由容器注入：打开共享的场景列表浮层。 */
     public void setOpenScenes(@Nullable Runnable value) { this.openScenes = value; }
 
-    int overlayX() { return x; }
-
-    int overlayY() { return y + ACTION_TOP + ACTION_HEIGHT + 2; }
-
     private int switchWidth() { return width - 42; }
 
     int calculateX() { return x + width - 38; }
@@ -73,7 +70,7 @@ public final class ScenarioPanel {
         if (choice == null) return;
         var dto = ScenarioSimulationClientState.table(table);
         String input = ScenarioSimulationClientState.inputKey(choice);
-        String status = ScenarioSimulationClientState.status(table, input);
+        String status = ScenarioPresentation.resolve(table, choice.scene(), choice.params()).status();
         Component scene = dto == null || dto.options() == null
                 ? Component.literal(choice.scene())
                 : sceneLabel(dto.options(), choice.scene());

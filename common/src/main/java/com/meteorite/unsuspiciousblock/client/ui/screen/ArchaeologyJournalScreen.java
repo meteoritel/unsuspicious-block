@@ -359,18 +359,19 @@ public class ArchaeologyJournalScreen extends Screen {
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int logicalMouseX = (int) this.viewport.toLogicalX(mouseX);
         int logicalMouseY = (int) this.viewport.toLogicalY(mouseY);
+        int underlayMouseX = this.overlays.isOpen() ? -10000 : logicalMouseX;
+        int underlayMouseY = this.overlays.isOpen() ? -10000 : logicalMouseY;
         this.viewport.push(guiGraphics);
         try {
             refreshAndSync();
             JournalBookBackground.render(guiGraphics, this.bookLayout);
-            renderCatalogArea(guiGraphics, logicalMouseX, logicalMouseY);
+            renderCatalogArea(guiGraphics, underlayMouseX, underlayMouseY);
             if (this.viewModel.isCategoryHome()) this.welcomeStatsPanel.render(
-                    guiGraphics, this.font, logicalMouseX, logicalMouseY);
+                    guiGraphics, this.font, underlayMouseX, underlayMouseY);
             else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
-            else this.rightPage.render(guiGraphics, this.font, logicalMouseX, logicalMouseY);
+            else this.rightPage.render(guiGraphics, this.font, underlayMouseX, underlayMouseY);
             this.catalogToolbar.renderSearchBackground(guiGraphics);
-            super.render(guiGraphics, this.overlays.isOpen() ? -10000 : logicalMouseX,
-                    this.overlays.isOpen() ? -10000 : logicalMouseY, partialTick);
+            super.render(guiGraphics, underlayMouseX, underlayMouseY, partialTick);
             // 浮层画在所有面板与原生控件之上；它自己的提示随后由 renderOverlays 处理
             this.overlays.render(guiGraphics, this.font, logicalMouseX, logicalMouseY, partialTick);
             renderOverlays(guiGraphics, logicalMouseX, logicalMouseY);
