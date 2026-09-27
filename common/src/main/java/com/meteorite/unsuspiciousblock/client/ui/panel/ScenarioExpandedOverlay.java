@@ -30,7 +30,7 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
 
     private final ScenarioDetailPanel owner;
     private final ScenarioFrameView frame;
-    private List<UiNode> tree = List.of();
+    private List<UiNode> tree;
     private UiRect viewport = new UiRect(0, 0, 1, 1);
     /** 内容区拖动状态：只有按下后拖动中才让 panBy 生效，避免点击与拖动互相误触。 */
     private boolean dragging;
@@ -38,6 +38,8 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
     ScenarioExpandedOverlay(ScenarioDetailPanel owner, Font font) {
         this.owner = owner;
         this.frame = new ScenarioFrameView(font);
+        this.tree = owner.tree();
+        this.frame.setContent(tree);
         // 灯箱自己提供缩放与适应窗口：关掉框内自带的档位/复位角控件，避免两套控件与两处命中。
         this.frame.hideCornerControls();
     }

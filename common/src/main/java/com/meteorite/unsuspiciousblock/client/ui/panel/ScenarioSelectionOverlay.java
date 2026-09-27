@@ -4,9 +4,11 @@ import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientStat
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlGroup;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusManager;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiIcon;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
+import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
@@ -40,9 +42,10 @@ import java.util.function.IntConsumer;
  * 翻页与滚轮只改滚动偏移、不重建控件；行内容仍在「目录 revision / 秒 / dirty」变化时才重配。</p>
  */
 final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
-    private static final int ROWS = 7;
-    private static final int ROW_HEIGHT = 20;
-    private static final int PANEL_WIDTH = 152;
+    private static final int ROWS = 5;
+    private static final int ROW_HEIGHT = 32;
+    private static final int HEADER_HEIGHT = 20;
+    private static final int PANEL_WIDTH = 268;
     /** 面板内边距：行区域左右各留 2 像素，行与行之间留 2 像素。 */
     private static final int PANEL_PADDING = 2;
     private static final int ARROW_WIDTH = 22;
@@ -53,8 +56,6 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
     private static final int NO_HOVER = -1000;
 
     private final OverlayLayer layer;
-    private final int anchorX;
-    private final int anchorY;
     private final ResourceLocation table;
     private final SimulationOptions options;
     private final List<CatalogTableDto.ScenarioAssumptions> scenes;
@@ -67,6 +68,8 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
     private final UiControlGroup bar = new UiControlGroup();
     /** 按场景下标持有行控件引用，用于逐帧标记可见窗口（不清空、不重建）。 */
     private final UiControl[] rowsByIndex;
+    private final RowDisplay[] displays;
+    private final int[] detailTicks;
     @Nullable private UiControl previousArrow;
     @Nullable private UiControl nextArrow;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
@@ -77,12 +80,10 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
     /** 首次同步后把当前项居中一次；之后滚动位置保持到关闭为止。 */
     private boolean pendingCenter = true;
 
-    ScenarioSelectionOverlay(OverlayLayer layer, int anchorX, int anchorY, ResourceLocation table,
+    ScenarioSelectionOverlay(OverlayLayer layer, ResourceLocation table,
                              SimulationOptions options, ScenarioParams params, int currentIndex,
                              IntConsumer onSelect) {
         this.layer = layer;
-        this.anchorX = anchorX;
-        this.anchorY = anchorY;
         this.table = table;
         this.options = options;
         this.scenes = options.scenes();
@@ -90,6 +91,8 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         this.current = currentIndex;
         this.onSelect = onSelect;
         this.rowsByIndex = new UiControl[this.scenes.size()];
+        this.displays = new RowDisplay[this.scenes.size()];
+        this.detailTicks = new int[this.scenes.size()];
         // 激活键仲裁：Enter 保持「选择并关闭」的既有契约，Space 用来激活键盘焦点目标。
         focus.setEnterActivates(false);
         focus.setSpaceActivates(true);
@@ -118,11 +121,12 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
             return;
         }
         int visibleRows = Math.min(ROWS, scenes.size());
-        int height = visibleRows * ROW_HEIGHT + ROW_HEIGHT;
-        bounds = new UiRect(Math.clamp(anchorX, 2, Math.max(2, layer.width() - PANEL_WIDTH - 2)),
-                Math.clamp(anchorY, 2, Math.max(2, layer.height() - height - 2)), PANEL_WIDTH, height);
-        int viewportWidth = PANEL_WIDTH - PANEL_PADDING * 2;
-        scroll.setViewport(bounds.x() + PANEL_PADDING, bounds.y() + PANEL_PADDING,
+        int panelWidth = Math.clamp(layer.width() - 4, 1, PANEL_WIDTH);
+        int height = visibleRows * ROW_HEIGHT + HEADER_HEIGHT + ROW_HEIGHT;
+        bounds = new UiRect((layer.width() - panelWidth) / 2,
+                (layer.height() - height) / 2, panelWidth, height);
+        int viewportWidth = panelWidth - PANEL_PADDING * 2;
+        scroll.setViewport(bounds.x() + PANEL_PADDING, bounds.y() + HEADER_HEIGHT,
                 viewportWidth, visibleRows * ROW_HEIGHT);
         scroll.setStep(ROW_HEIGHT);
         scroll.setContentHeight(scenes.size() * ROW_HEIGHT);
@@ -157,21 +161,24 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         refreshArrows();
     }
 
-    // 行内容与迁移前逐项一致：当前项加粗，tooltip = 定义 + 状态 + 失败原因。
+    // 行控件承载背景、命中和提示；主名称、状态与条件摘要在两个独立文本区绘制。
     private void configureRow(Font font, UiControl row, int index) {
         String sceneKey = scenes.get(index).scenarioKey();
         ScenarioPresentation presentation = ScenarioPresentation.resolve(table, sceneKey, params);
-        Component label = ScenarioLabel.label(options, sceneKey);
-        if (index == current) label = label.copy().withStyle(ChatFormatting.BOLD);
+        Component name = ScenarioLabel.shortLabel(sceneKey);
+        if (index == current) name = name.copy().withStyle(ChatFormatting.BOLD);
         List<Component> tooltip = new ArrayList<>(ScenarioLabel.definition(options, sceneKey));
+        tooltip.addFirst(ScenarioLabel.label(options, sceneKey));
         tooltip.add(ScenarioSimulationClientState.text(presentation.status()));
         if (presentation.status().equals("failed")) {
             String input = new SimulationInput(sceneKey, Map.of(), params).key();
             tooltip.add(ScenarioSimulationClientState.text(
                     "failure." + ScenarioSimulationClientState.failure(table, input)));
         }
-        row.configure(font, label, UiTextPalette.Parchment.BODY, presentation.badge(), tooltip,
-                () -> select(index));
+        row.configure(font, Component.empty(), UiTextPalette.Parchment.BODY, null, tooltip, () -> select(index));
+        displays[index] = new RowDisplay(name, ScenarioLabel.detailLabel(options, sceneKey),
+                ScenarioSimulationClientState.text("results.status." + presentation.status()),
+                presentation.badge());
         // 语义选中态：当前场景行常亮选中底色（原有加粗保留），键盘上下键改选中时同步跟随。
         row.setSelected(index == current);
     }
@@ -225,15 +232,37 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
 
     @Override public void render(GuiGraphics graphics, Font font, int x, int y, float partialTick) {
         sync(font);
+        graphics.fill(0, 0, layer.width(), layer.height(), 0x88000000);
         graphics.fill(bounds.x() - 1, bounds.y() - 1, bounds.right() + 1, bounds.bottom() + 1, 0xFF896C48);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xFFF2E5C6);
-        boolean inViewport = scroll.contains(x, y);
+        graphics.drawString(font, ScenarioSimulationClientState.text("scene.toggle"),
+                bounds.x() + 8, bounds.y() + 6, UiTextPalette.Parchment.TITLE, false);
+        boolean inViewport = scroll.contains(x, y) && !scroll.hitScrollbar(x, y);
         updateVisibleRows();
         scroll.push(graphics);
         try {
             rows.render(graphics, font,
                     inViewport ? (int) scroll.toContentX(x) : NO_HOVER,
                     inViewport ? (int) scroll.toContentY(y) : NO_HOVER);
+            int first = scroll.offset() / ROW_HEIGHT;
+            int end = Math.min(scenes.size(),
+                    (scroll.offset() + scroll.viewport().height() + ROW_HEIGHT - 1) / ROW_HEIGHT);
+            int width = scroll.viewport().width()
+                    - (scroll.isScrollbarVisible() ? UiScrollView.SCROLLBAR_WIDTH : 0);
+            for (int index = first; index < end; index++) {
+                RowDisplay display = displays[index];
+                int top = index * ROW_HEIGHT;
+                graphics.drawString(font, display.name(), 5, top + 3, UiTextPalette.Parchment.TITLE, false);
+                display.badge().render(graphics, width - 85, top + 2);
+                TextScroll.draw(graphics, font, display.status().getVisualOrderText(), font.width(display.status()),
+                        width - 70, top + 4, 65, UiTextPalette.Parchment.LABEL, false, 0);
+                boolean detailHovered = inViewport && scroll.toContentY(y) >= top + 15
+                        && scroll.toContentY(y) < top + ROW_HEIGHT;
+                detailTicks[index] = detailHovered ? detailTicks[index] + 1 : 0;
+                TextScroll.draw(graphics, font, display.detail().getVisualOrderText(), font.width(display.detail()),
+                        5, top + 18, width - 10, UiTextPalette.Parchment.BODY,
+                        detailHovered, detailTicks[index]);
+            }
         } finally {
             scroll.pop(graphics);
         }
@@ -249,6 +278,8 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
             bar.renderTooltip(graphics, font, x, y);
         }
     }
+
+    private record RowDisplay(Component name, Component detail, Component status, UiIcon badge) {}
 
     @Override public boolean mouseClicked(double x, double y, int button) {
         sync(Minecraft.getInstance().font);

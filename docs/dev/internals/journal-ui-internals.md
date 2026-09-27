@@ -24,7 +24,7 @@ ui/
 
 **screen/**：`ArchaeologyJournalScreen` 是主屏幕；`LootTableManagementScreen` 是与手册 TAB 分离的追踪管理页；`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏；`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕；`JournalLogNoteEditScreen` 与 `JournalLogRetentionScreen` 分别编辑日志备注和当前表保留策略。
 
-**panel/**：`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）、`WelcomeStatsPanel`（首页统计）、`ScenarioPanel` / `ScenarioDetailPanel` / `ScenarioPageBuilder` / `ScenarioFrameView`（场景页与网格页头部）、`ScenarioSelectionOverlay` / `ScenarioParamsOverlay` / `ScenarioExpandedOverlay`（三类模态）、`FrameState`。
+**panel/**：`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）、`WelcomeStatsPanel`（首页统计）、`ScenarioPanel` / `ScenarioDetailPanel` / `ScenarioPageBuilder` / `ScenarioResultView` / `ScenarioConditionView`（场景页与网格页头部）、`ScenarioSelectionOverlay` / `ScenarioParamsOverlay` / `ScenarioExpandedOverlay`（三类模态）；`ScenarioFrameView` 与 `FrameState` 由条件灯箱路径使用。
 
 **widget/**：`IconButton`、`BookmarkToggleButton`（收藏）、`CopyCoordinateButton`（复制传送指令）、`JournalPageButton`（翻页）、`PotteryWheelModeButton`（陶轮模式切换）、`ShadowlessEditBox`（无阴影输入框）、`ExternalLinkButton`、`BookSideTabButton`。
 
@@ -181,40 +181,31 @@ document.setContent(List.of(new UiNode.Row(
 
 ## 5. 场景详情页与模态交互
 
-`RightPageContainer.setTable` 同时向网格页头部与 `ScenarioDetailPanel` 传递 tableId，SCENARIO tab 由新面板负责。页内布局是读数行 y=6、动作行 y=18、框 y=34（152×166），底部分页带仍由原生控件负责。各 tab 的分页带常量彼此独立，`pageIndicatorY()` 统一提供当前页指示器及按钮位置。
+`RightPageContainer.setTable` 向网格页与 `ScenarioDetailPanel` 传递 tableId；场景页由详情面板负责，书本底部的场景页码带仍由原有容器管理。页内依次是短场景名与状态、当前输入摘要、「场景 / 参数 / 计算」动作、「结果 / 条件」切换、内容视口。操作与内容都限制在右页内；结果是默认视图，页内滚轮只做纵向阅读。
 
-**框内两段**：`ScenarioPageBuilder` 只在内容 revision 或请求状态改变时重建，产出「条件区 + 可达条目区」两段块序列。
+**结果与条件分离**：`ScenarioPageBuilder.buildConditions` 只生成条件树；`outcomes` 给出全部已测得且非零的可达条目，不再截为 12 项。结果区由 `ScenarioResultView` 使用 `UiScrollView`、`UiControlGroup` 和 `UiLinearLayout` 排列物品图标、可悬停滚动的名称与固定右侧概率列；极长的区间概率只在该列内悬停滚动，完整值也在行提示中，不侵入名称区。仅配置视口内的行。未计算、请求中、失败、已计算但无可达结果分别显示空态，不在新输入下沿用旧概率。条件区由 `ScenarioConditionView` 把 `UiDocument` 放在滚动视口中，以自然字号阅读；复杂树仍可通过条件页的放大按钮进入 `UiLightbox`。主视图不再需要缩放才能阅读结果。
 
-- **条件区**：只列场景相对基准**成立**的条件（为假的合成 `inverted` 包装是基准本身，列出来只会多出整屏恒否的行）。区标题三态——表本身没有可调条件用 `no_assumptions`；基准用 `baseline_all_false`（带数量，tooltip 逐个列出被置假的条件，这是「基准」唯一的可读定义）；其余场景用 `scene_conditions`。
-- **折叠**：`ScenarioLabel` 把「父行只描述条件类别、且恰好一个子行」的节点折叠为其子行（如 `location_check{biomes}` → 「群系: X」），取值因此与条件同行。判定按本地化键后缀（`location_check` / `weather_check` / `damage_source_properties` / `all_of` / `any_of`），**不含**自带取值的 `block_state_property`、`time_check` 区间行与自带语义的 `inverted`；多子行保留分组。
-- **可达条目区**：列出本场景**确实能产出**的条目（`isMeasured()` 且非零命中，按概率降序，上限 12，其余提示见网格页），每行是「行首物品图标 + 名称 + 概率」。不可达、未命中与未知的条目留给网格页的四态展示。未算出时头部显示状态词与「点计算」提示。
-- **数字不再挂在条件行上**：同一物品在多条条件下会重复出现，挂数字极易被读成「每行各一份」，因此条件行只负责说清场景定义。
+- **条件定义**：只列场景相对基准成立的条件；基准说明其余可调条件不成立。`ScenarioLabel` 将只有一个子项、父项仅表示类别的条件折叠成可读行；完整定义可在场景标题或场景列表的 tooltip 中查看。
+- **结果口径**：`ScenarioSimulationClientState.sceneSource` 统一详情页、选择列表与网格页的缓存来源。同参数、同抽样档位的其他缓存只有带目标场景明确引用时才能复用；`overlay` 将物品与子表的目标场景引用投影到网格当前概率，缺引用的条目仍为未知，不借用来源场景的总概率。当前输入的直接结果仍优先。条件行不附概率，同一物品不会因为多个条件节点而重复显示概率。
+- **输入门控**：详情面板以输入 key、目录 revision、请求状态决定是否重建。标题、状态、摘要、结果与提示在同次重建中取同一选择；切表重置到结果页，切场景保留当前分区。结果与条件的滚动偏移分别按 `tableId#inputKey` 保存。
 
-`ScenarioPresentation` 只复用同参数、同抽样档位的明确场景引用，**绝不把目录的基准总概率当作其它场景的概率**；当前输入的直接结果可用其总概率作为缺失场景引用的回退。
+`ScenarioLabel.shortLabel` 给页头和列表提供短场景名，`detailLabel` 给列表第二行提供条件摘要，`definition` 保留完整定义。详情页的文字与操作用 `UiControl`，并通过 `UiFocusManager` 将可操作控件按视觉顺序登记；`RightPageContainer.handleKey` 与 `ArchaeologyJournalScreen.keyPressed` 将 Tab、Shift+Tab、Enter、Space 送到当前页。超宽说明可悬停滚动或通过 tooltip 阅读。
 
-**场景可读名**：`ScenarioLabel.label` 由叶子条件的本地化全文拼出（「场景 N · 开阔水域 + 群系: #cis_swamp」），页标题与两处场景列表共用同一份文案；`definition` 提供完整定义（含取反叶子的「非:」前缀）供 tooltip 使用。此前作为标题的字母助记公式已删除——它既需要一份额外的键后缀契约，又只能靠 tooltip 解码。
+`OverlayLayer` 同时只打开一个模态；模态期间屏幕把视口外的占位鼠标坐标传给下层目录、右页与原生控件，下层不会随真实鼠标绘制悬停高亮；浮层自身仍收到真实坐标。屏幕同时抑制下层 tooltip 与 JEI 悬停物品查询。三个使用者：
 
-读数行、标题提示、四态角标、动作行和框角控件均使用 `UiControl`：配置时测量并缓存目标，绘制时复用固定矩形；**超宽文本在悬停时滚动**，不再静默截断。树内命中仍走 `UiDocument.hit()`。`ScenarioFrameView` 统一提供页内和放大框的绘制与交互：框角档位/复位先于树命中，缩放档位 0.5/1/2/3，滚轮以鼠标位置为锚点，拖拽只改平移，二者均不重排。
+- `ScenarioSelectionOverlay`：居中宽面板，至多五个双行条目可见；第一行显示短名和计算状态，第二行显示条件摘要，完整定义和失败原因放在 tooltip。行仍按服务端场景顺序，由 `UiScrollView` + `UiControlGroup` 稳定复用；滚动条和翻页箭头按溢出与边界显示。键盘焦点按「场景行 → ◀ → ▶」登记，Tab/Shift+Tab 移动并自动滚入视口，Space 激活；上下键改变当前场景，Enter/ESC 关闭，点击行选择并关闭，点击外部关闭。场景页与网格页共用此浮层，前者映射到页码，后者直接切换选择。
+- `ScenarioParamsOverlay`：独立草稿，确认/取消；控件由 `UiControlGroup` 与 `UiLinearLayout` 布局，幸运值使用原生 `EditBox`。工具、抽样、附魔等级由签发清单约束。无错误时不绘制空提示带；抽样次数带单位，确认的 tooltip 说明只保存输入，仍需按「计算」请求结果。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 确认、Space 激活焦点、ESC 取消，窗口外附魔行由 PageUp/PageDown 翻到。确认前仍用最新目录校验。
+- `ScenarioExpandedOverlay`：条件树的 `UiLightbox.Content` 适配器，使用独立 `ScenarioFrameView`；遮罩、控制栏、适应窗口、焦点与关闭语义由 `UiLightbox` + `LightboxOverlay` 提供。打开时适应窗口，滚轮在灯箱内缩放，拖拽平移并钳制。关闭不改变页内条件滚动位置，点击遮罩不关闭。框自身角控件在灯箱中隐藏，避免重复控制。
 
-`OverlayLayer` **同时只打开一个模态**，六类输入入口均先分发给它，并保留先 flush 再 z=400 的层高契约。模态期间屏幕抑制下层自绘 tooltip、原生控件悬停和 JEI 悬停物品查询。三个使用者是：
+网格页头部（`ScenarioPanel`）保留读数与「切换场景 / 计算」动作；状态改用同一 `ScenarioPresentation.resolve` 投影。**测量只由显式计算按钮发起**；参数确认和场景选择不自动请求，网络协议未改。
 
-- `ScenarioSelectionOverlay`：最多七行可见，使用服务端场景顺序；行由 `UiScrollView` + `UiControlGroup` 承载——整表行控件按场景下标稳定复用、只建一次，翻页与滚轮只改滚动偏移，行内容仍只在「目录 revision / 秒 / dirty」变化时重配；内容溢出才显示滚动条（行宽相应让出 4 像素），底部箭头到边界时进入禁用态。键盘焦点由 `UiFocusManager` 按「场景行 → ◀ → ▶」登记：Tab/Shift+Tab 在其间移动、**焦点行自动滚进视口**、Space 激活焦点控件，而 Enter 保留「选择并关闭」的既有契约；当前场景行常亮语义选中态（原有加粗保留）。滚轮或分组箭头浏览，上下键改变当前场景，点击行后关闭，ESC/Enter/外部点击关闭。它只吃「表 + 签发清单 + 当前场景 + 参数 + 一个回调」，因此**场景页的「场景」按钮与网格页头部的「切换场景」按钮共用同一实现**：前者把选择映射到页码（会保存框内视图），后者只切换选择（网格数字随之更新，不跳页）。网格页不再自绘下拉。
-- `ScenarioParamsOverlay`：独立草稿、确认/取消；控件统一由 `UiControlGroup` 按稳定 key 承载，落位由三套 `UiLinearLayout`（行槽 / 行内横排 / 底部按钮行）产出，不再手算坐标；工具、抽样、附魔等级由签发清单约束，幸运值是唯一原生 `EditBox`（支持拖选，命中优先于控件组），由宿主侧适配器接进焦点序列、文字输入仍归原版控件。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 保持「确认」契约、Space 激活焦点控件，窗口外的附魔行用 `PageUp` / `PageDown` 翻窗口到达（Tab 只在窗口内环绕），当前抽样格常亮语义选中态（原有加粗保留）；参数多时按行滚动。确认再次使用最新目录校验，**不自动计算**；ESC 取消，点外不关闭。
-- `ScenarioExpandedOverlay`：**放大页已改为灯箱模式**——它不再是浮层，而是 `UiLightbox.Content` 适配器：内部持有一个独立的 `ScenarioFrameView`，只把视口 / 绘制 / 缩放 / 平移 / 命中按契约暴露出来，遮罩、控制栏、适应窗口、焦点与关闭语义全部交给 `UiLightbox` + `LightboxOverlay`。构造时调用 `frame.hideCornerControls()` 关掉框自带的档位与复位角控件（灯箱自己提供缩放与适应窗口，避免两套控件与两处命中）；打开即适应窗口（首次布局触发一次 `fit()`），平移按灯箱规则钳制（内容小于视口时该轴居中锁定，超出轴才可拖动），点遮罩不关闭。视图是独立实例，**关闭灯箱不会改动页内框的平移 / 缩放**；`ScenarioDetailPanel` 用 `LightboxOverlay` 打开，并把 `expandButton` 作为 opener 传入（仅当它当前持有焦点时才登记为返回焦点）。为此 `ScenarioFrameView` 增加了包内只读访问器 `transform()` / `contentViewport()` / `contentWidth()` / `contentHeight()`，以及只关闭绘制与命中的 `hideCornerControls()`（内部 `controlsVisible` 开关，没有重新打开的 setter，页内路径保持默认显示）。
-
-**网格页头部**（`ScenarioPanel`）只剩读数行与「切换场景 / 计算」两个动作，文字超宽时悬停滚动。网格页调整参数需到场景页打开参数浮层。
-
-**测量只能由显式计算按钮发起**。旧网格头部的防抖自动请求已去除，应用推荐只改变选择。未新增网络包；仍复用既有请求/结果协议。
-
-贴图由 `scripts/drawer/generate_scenario_ui.py` 生成：`scenario_frame.png` 是 24×24 九宫格（8px 四角），`UiNineSlice` 用九个四边形拉伸边和中心；`scenario_status.png` 为 48×12 四格，空心点/沙漏/勾/叉对应未计算/计算中/已缓存/失败。角标同时使用形状区分状态，详细状态和失败原因放 tooltip。
-
-**浮层的焦点交接**：`OverlayLayer.open(overlay, opener)` 只在 opener **当前确实持有焦点**（键盘到达，见 `UiFocusTarget.isFocused()`）时把它登记为返回焦点——鼠标点击不夺取焦点，所以鼠标打开的浮层不会被登记、关闭后也不会留下轮廓；登记后打开时先把该目标的焦点清掉（避免下层残留轮廓），`close()` 时若它仍 `canFocus()` 就把焦点还回去；`ScenarioDetailPanel` 的三个入口（场景选择、放大框、参数面板）都把按下的 `UiControl` 作为 opener 传入。替换已打开的浮层（切模态）时，未显式传 opener 的一方**继承上一层记录的返回焦点**，因此模态链全部关闭后仍能回到最初的入口。浮层被关闭或被替换时都会收到一次 `Overlay.closed()` 回调，用于释放输入捕获与引用；该回调当前是默认空实现，三个浮层都还没有覆写。**恢复的焦点需要回收**：页面侧目前没有焦点管理器（只有两个浮层与验证页有），所以 `OverlayLayer` 记下最后一次还给 opener 的目标，宿主在「未被子层消费的鼠标操作」里调用 `clearRestoredFocus()` 把它收掉（`ArchaeologyJournalScreen` 的 `mouseClicked` 就是唯一调用点），再次打开浮层也会先清除；否则该控件会一直带着焦点轮廓。注意它只清「已还给 opener 的焦点」，不动 `returnFocus`，也不碰任何 `UiFocusManager` 的内部焦点。
+**焦点交接**：`OverlayLayer.open(overlay, opener)` 只在 opener 当前持有焦点时记录返回目标，打开时清掉下层轮廓，关闭时若目标仍可聚焦则恢复；鼠标打开不登记。替换已打开的浮层可继承上一层返回目标，`Overlay.closed()` 用于释放输入捕获。页面自身现在也有 `UiFocusManager`；屏幕处理未被子层消费的鼠标点击时清理模态恢复的焦点。焦点管理器每次更新用本轮目标顺序替换旧列表，避免重复登记造成 Tab 序列膨胀。
 
 ## 6. 面板状态与偏好持久化
 
 新面板实现 `LayoutAware.applyLayout(BookLayout)`、`UiStateful.saveUiState/loadUiState(CompoundTag)`，**在创建处向 `UiPanelRegistry` 注册一次即可**。屏幕遍历注册表完成布局与状态恢复；旧面板不迁移接口，`RightPageContainer.savePages/loadPages` 只补齐各 tab 页号，修复 resize 只保留当前 tab 的缺口。
 
-`ScenarioDetailPanel` 按 `tableId#scenarioKey` 保存框档位/平移，最多保留 512 个视图，切场景或表时先捕获旧视图。resize 快照与关闭笔记时都包含非当前 tab 的新面板状态；状态存在 `JournalUiPreferencesStore` 的 `panels` NBT 子树。窗口尺寸变化会关闭临时浮层、丢弃未确认草稿，保留已确认参数和页内视图。
+`ScenarioDetailPanel` 按 `tableId#inputKey` 分别保存结果和条件的纵向滚动偏移，最多各保留 512 个输入视图，并保存当前「结果 / 条件」分区；切场景或表前先捕获旧偏移。resize 快照与关闭笔记时都包含非当前 tab 的新面板状态；状态存在 `JournalUiPreferencesStore` 的 `panels` NBT 子树。窗口尺寸变化会关闭临时浮层、丢弃未确认草稿，保留已确认参数与页内滚动位置。
 
 参数仍在每张表内跨场景共用同一套，工具清单由该表签发。`SimulationPreferenceStore` 现在通过 `JournalUiPreferencesStore` 的 `simulationPreferences` NBT 子树读写选择，和 UI 偏好共用按存档、按玩家隔离的 `journal_ui_preferences.dat`。**旧的全局 `config/unsuspiciousblock-simulation.properties` 保留但不再读取或自动导入**，避免把一个存档/玩家的选择带到其它存档/玩家；首次使用新存储时由当前签发清单初始化合法参数。切换连接清空本地加载缓存，断线刷盘仍使用已加载的旧世界路径。
 

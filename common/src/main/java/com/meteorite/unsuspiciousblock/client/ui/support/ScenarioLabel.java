@@ -42,13 +42,32 @@ public final class ScenarioLabel {
 
     public static boolean isBaseline(String sceneKey) { return BASELINE.equals(sceneKey); }
 
+    /** 有限宽页头的短名称；完整定义仍由 label 与 definition 提供。 */
+    public static Component shortLabel(String sceneKey) {
+        return isBaseline(sceneKey)
+                ? ScenarioSimulationClientState.text("baseline")
+                : ScenarioSimulationClientState.text("scene", ordinal(sceneKey));
+    }
+
     /** 场景显示名：基准、或「场景 N · 叶子条件」；没有叶子条件时只留序号。 */
     public static Component label(SimulationOptions options, String sceneKey) {
-        if (isBaseline(sceneKey)) return ScenarioSimulationClientState.text("baseline");
-        Component name = ScenarioSimulationClientState.text("scene", ordinal(sceneKey));
+        if (isBaseline(sceneKey)) return shortLabel(sceneKey);
+        Component name = shortLabel(sceneKey);
         List<String> leaves = leafTexts(positiveAssumptions(options, sceneKey));
         if (leaves.isEmpty()) return name;
         return name.copy().append(Component.literal(" · " + String.join(" + ", leaves)));
+    }
+
+    /** 列表第二行的条件摘要，不重复场景序号。 */
+    public static Component detailLabel(SimulationOptions options, String sceneKey) {
+        if (isBaseline(sceneKey)) {
+            int count = negativeAssumptions(options, sceneKey).size();
+            return count == 0 ? ScenarioSimulationClientState.text("no_assumptions")
+                    : ScenarioSimulationClientState.text("baseline_all_false", count);
+        }
+        List<String> leaves = leafTexts(positiveAssumptions(options, sceneKey));
+        return leaves.isEmpty() ? ScenarioSimulationClientState.text("no_assumptions")
+                : Component.literal(String.join(" + ", leaves));
     }
 
     /** 场景的完整定义（tooltip）：基准列出全部被置假的条件，其余场景列出为真者与「其余不成立」。 */

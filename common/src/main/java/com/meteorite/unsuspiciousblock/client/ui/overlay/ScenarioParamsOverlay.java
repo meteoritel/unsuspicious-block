@@ -195,15 +195,19 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         }
         if (!luckBox.visible) { luckBox.setFocused(false); draggingLuck = false; }
 
-        // 提示行固定矩形；底部按钮行由横排布局产出（panelX+66 起，取消 68 + 8 + 确认 68）。
+        // 只有实际存在提示或错误时才绘制提示行；空控件会留下无意义的横带。
         Component hint = error != null ? error : (visibleRows < totalRows ? text("params.scroll_hint") : Component.empty());
-        place(font, "hint", hint, panelX + 8, panelY + panelHeight - 36, CONTENT_WIDTH, 14, null);
+        if (!hint.getString().isEmpty()) {
+            place(font, "hint", hint, panelX + 8, panelY + panelHeight - 36, CONTENT_WIDTH, 14, null);
+        }
         footerLayout.setChildren(List.of(
                 UiLinearLayout.Child.fixed(68),
                 UiLinearLayout.Child.fixed(68).withLeading(8)));
         footerLayout.setBounds(panelX + 66, panelY + panelHeight - 20, 144, 16);
         UiControl cancel = place(font, "cancel", text("params.cancel"), footerLayout, 0, layer::close);
         UiControl confirm = place(font, "confirm", text("params.confirm"), footerLayout, 1, this::confirm);
+        confirm.configure(font, text("params.confirm"), UiTextPalette.Parchment.BODY, null,
+                List.of(text("params.confirm_help")), this::confirm);
         // 底部按钮排在最后：Tab 走完可见行才落到取消/确认。
         focus.add(cancel);
         focus.add(confirm);

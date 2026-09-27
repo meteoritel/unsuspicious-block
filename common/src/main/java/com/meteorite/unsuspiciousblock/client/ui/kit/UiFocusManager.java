@@ -31,6 +31,7 @@ public final class UiFocusManager {
     }
 
     private final List<UiFocusTarget> targets = new ArrayList<>();
+    private final List<UiFocusTarget> nextTargets = new ArrayList<>();
     private final Set<UiFocusTarget> seen = Collections.newSetFromMap(new IdentityHashMap<>());
     @Nullable private UiFocusTarget focused;
     @Nullable private Listener listener;
@@ -43,6 +44,7 @@ public final class UiFocusManager {
     /** 开始一次目标更新：随后未再 {@link #add} 的目标会在 {@link #endUpdate()} 时移除。 */
     public void beginUpdate() {
         seen.clear();
+        nextTargets.clear();
         updating = true;
     }
 
@@ -50,23 +52,27 @@ public final class UiFocusManager {
     public void add(UiFocusTarget target) {
         Objects.requireNonNull(target, "Focus target");
         if (!seen.add(target)) return;
-        targets.add(target);
+        nextTargets.add(target);
     }
 
     /** 结束目标更新：移除本帧未登记的目标，并在焦点目标失效时清除焦点。 */
     public void endUpdate() {
         if (updating) {
-            targets.removeIf(target -> !seen.contains(target));
+            targets.clear();
+            targets.addAll(nextTargets);
         }
         updating = false;
         seen.clear();
+        nextTargets.clear();
         refresh();
     }
 
     /** 清空目标与焦点；重新登记前焦点序列为空。 */
     public void clear() {
         targets.clear();
+        nextTargets.clear();
         seen.clear();
+        updating = false;
         setFocusedInternal(null);
     }
 

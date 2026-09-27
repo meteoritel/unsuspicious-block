@@ -152,13 +152,17 @@ public final class RightPageContainer {
 
     public BookmarkToggleButton getScenarioTabButton() { return scenarioTabBtn; }
 
-    // 拖动与释放只服务场景页的框内平移；网格页的头部不再有原生输入框。
-    public boolean handleDrag(double mouseX, double mouseY, int button) {
-        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseDragged(mouseX, mouseY, button);
+    // 场景页内容视口的滚动条独占拖动与释放；网格页头部没有原生输入框。
+    public boolean handleDrag(double mouseY, int button) {
+        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseDragged(mouseY, button);
     }
 
     public boolean handleRelease(int button) {
         return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseReleased(button);
+    }
+
+    public boolean handleKey(int key, int scan, int modifiers) {
+        return activeTab == Tab.SCENARIO && scenarioDetailPanel.keyPressed(key, scan, modifiers);
     }
 
     public BookmarkToggleButton getIntroTabButton() {
@@ -398,7 +402,7 @@ public final class RightPageContainer {
             if (scenes.get(i).scenarioKey().equals(selection.scene())) current = i;
         }
         ResourceLocation table = currentTableId;
-        overlays.open(new ScenarioSelectionOverlay(overlays, scenarioPanel.overlayX(), scenarioPanel.overlayY(),
+        overlays.open(new ScenarioSelectionOverlay(overlays,
                 table, options, selection.params(), current,
                 index -> ScenarioSimulationClientState.select(table, scenes.get(index).scenarioKey(), selection.params())));
     }
@@ -421,6 +425,10 @@ public final class RightPageContainer {
         if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
             ItemStack stack = this.logDetailPanel.getTooltipStack(mouseX, mouseY);
             return stack != null ? new ItemGridPanel.TooltipData(stack, null) : null;
+        }
+        if (this.activeTab == Tab.SCENARIO) {
+            ItemStack stack = this.scenarioDetailPanel.hoveredItem(mouseX, mouseY);
+            return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
         }
         return null;
     }

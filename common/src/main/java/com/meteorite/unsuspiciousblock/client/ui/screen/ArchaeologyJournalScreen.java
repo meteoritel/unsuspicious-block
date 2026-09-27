@@ -213,6 +213,10 @@ public class ArchaeologyJournalScreen extends Screen {
             this.onClose();
             return true;
         }
+        if (!this.catalogToolbar.isSearchFocused() && this.rightPage != null
+                && this.rightPage.handleKey(keyCode, scanCode, modifiers)) {
+            return true;
+        }
         if (!this.catalogToolbar.isSearchFocused() && handleCatalogNavigation(keyCode)) {
             return true;
         }
@@ -610,7 +614,7 @@ public class ArchaeologyJournalScreen extends Screen {
             return true;
         }
         if (hasSelectedTable() && this.rightPage.handleDrag(
-                this.viewport.toLogicalX(mouseX), this.viewport.toLogicalY(mouseY), button)) {
+                this.viewport.toLogicalY(mouseY), button)) {
             return true;
         }
         if (this.catalogPanel != null

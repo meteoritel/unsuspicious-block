@@ -73,7 +73,7 @@ public final class UiLightbox {
         /** 滚轮缩放，锚点为宿主 GUI 坐标；返回是否消费。 */
         boolean zoom(double amount, double anchorX, double anchorY);
 
-        /** 以视口中心缩放：direction < 0 缩小、> 0 放大。 */
+        /** 以视口中心缩放：direction &lt; 0 缩小、&gt; 0 放大。 */
         boolean zoomBy(int direction);
 
         /** 适应窗口（复位）。 */
