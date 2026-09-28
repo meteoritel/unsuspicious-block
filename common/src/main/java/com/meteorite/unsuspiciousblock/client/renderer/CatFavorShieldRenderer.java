@@ -38,8 +38,14 @@ public final class CatFavorShieldRenderer {
     private static final int LON_SEGMENTS = 24;
     private static final int LAT_SEGMENTS = 16;
 
+    // 球面顶点（坐标已乘半径，每面两个三角形，共 LON×LAT×6 个顶点 × 3 分量）。
+    // 几何完全静态：静态初始化一次，每帧只写顶点与 alpha，不再做每周期的 sin/cos 与坐标计算。
+    private static final float[] SPHERE_VERTICES = buildSphereVertices();
+
     // 自定义半透明 RenderType：POSITION_COLOR + TRIANGLES，无背面剔除，深度写入禁用。
     // 通过匿名子类访问 protected 构造器（与 SuspiciousReaderRangeHighlight.NO_DEPTH_LINES 同范式）。
+    // sortOnUpload 保留 true：球体禁用背面剔除后自身三角形互相重叠，上传时排序决定混合顺序；
+    // 关掉排序会让混色顺序退化为提交顺序，随视角出现块状混色差异（收益是多边形排序时间，风险是可见回归）。
     private static final RenderType SHIELD_TYPE = new RenderType(
             "unsuspicious_cat_favor_shield",
             DefaultVertexFormat.POSITION_COLOR,
@@ -89,7 +95,7 @@ public final class CatFavorShieldRenderer {
 
         // 呼吸闪烁：alpha 随 tickCount 正弦波动
         float breath = BREATH_AMPLITUDE * Mth.sin(player.tickCount * 0.1F);
-        int alpha = Math.max(0, Math.min(255, (int) ((BASE_ALPHA + breath) * 255)));
+        int alpha = Mth.clamp((int) ((BASE_ALPHA + breath) * 255), 0, 255);
 
         VertexConsumer consumer = mc.renderBuffers().bufferSource().getBuffer(SHIELD_TYPE);
         renderSphere(consumer, poseStack.last(), alpha);
@@ -99,9 +105,10 @@ public final class CatFavorShieldRenderer {
         poseStack.popPose();
     }
 
-    // 绘制 UV 球体：每面拆为两个三角形，经线×纬线网格
-    private static void renderSphere(VertexConsumer consumer, PoseStack.Pose pose,
-                                     int alpha) {
+    // 静态构建球面顶点序列：每面拆为两个三角形，经线×纬线网格
+    private static float[] buildSphereVertices() {
+        float[] vertices = new float[LON_SEGMENTS * LAT_SEGMENTS * 6 * 3];
+        int index = 0;
         for (int lat = 0; lat < LAT_SEGMENTS; lat++) {
             float phi0 = (float) (lat * Math.PI / LAT_SEGMENTS - Math.PI / 2);
             float phi1 = (float) ((lat + 1) * Math.PI / LAT_SEGMENTS - Math.PI / 2);
@@ -115,26 +122,36 @@ public final class CatFavorShieldRenderer {
                 float cosT1 = Mth.cos(theta1), sinT1 = Mth.sin(theta1);
 
                 // 四角顶点：a(上左) b(上右) c(下右) d(下左)
-                float ax = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi0 * cosT0, ay = CatFavorShieldRenderer.SHIELD_RADIUS * sinPhi0, az = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi0 * sinT0;
-                float bx = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi0 * cosT1, by = CatFavorShieldRenderer.SHIELD_RADIUS * sinPhi0, bz = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi0 * sinT1;
-                float cx = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi1 * cosT1, cy = CatFavorShieldRenderer.SHIELD_RADIUS * sinPhi1, cz = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi1 * sinT1;
-                float dx = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi1 * cosT0, dy = CatFavorShieldRenderer.SHIELD_RADIUS * sinPhi1, dz = CatFavorShieldRenderer.SHIELD_RADIUS * cosPhi1 * sinT0;
+                float ax = SHIELD_RADIUS * cosPhi0 * cosT0, ay = SHIELD_RADIUS * sinPhi0, az = SHIELD_RADIUS * cosPhi0 * sinT0;
+                float bx = SHIELD_RADIUS * cosPhi0 * cosT1, by = SHIELD_RADIUS * sinPhi0, bz = SHIELD_RADIUS * cosPhi0 * sinT1;
+                float cx = SHIELD_RADIUS * cosPhi1 * cosT1, cy = SHIELD_RADIUS * sinPhi1, cz = SHIELD_RADIUS * cosPhi1 * sinT1;
+                float dx = SHIELD_RADIUS * cosPhi1 * cosT0, dy = SHIELD_RADIUS * sinPhi1, dz = SHIELD_RADIUS * cosPhi1 * sinT0;
 
                 // 三角形 1: a -> b -> c
-                putVertex(consumer, pose, ax, ay, az, alpha);
-                putVertex(consumer, pose, bx, by, bz, alpha);
-                putVertex(consumer, pose, cx, cy, cz, alpha);
+                index = writeVertex(vertices, index, ax, ay, az);
+                index = writeVertex(vertices, index, bx, by, bz);
+                index = writeVertex(vertices, index, cx, cy, cz);
                 // 三角形 2: a -> c -> d
-                putVertex(consumer, pose, ax, ay, az, alpha);
-                putVertex(consumer, pose, cx, cy, cz, alpha);
-                putVertex(consumer, pose, dx, dy, dz, alpha);
+                index = writeVertex(vertices, index, ax, ay, az);
+                index = writeVertex(vertices, index, cx, cy, cz);
+                index = writeVertex(vertices, index, dx, dy, dz);
             }
         }
+        return vertices;
     }
 
-    // 写入单个 POSITION_COLOR 顶点
-    private static void putVertex(VertexConsumer consumer, PoseStack.Pose pose,
-                                   float x, float y, float z, int alpha) {
-        consumer.addVertex(pose, x, y, z).setColor(COLOR_R, COLOR_G, COLOR_B, alpha);
+    private static int writeVertex(float[] vertices, int index, float x, float y, float z) {
+        vertices[index] = x;
+        vertices[index + 1] = y;
+        vertices[index + 2] = z;
+        return index + 3;
+    }
+
+    // 绘制预设球面：每帧只有 alpha 不同
+    private static void renderSphere(VertexConsumer consumer, PoseStack.Pose pose, int alpha) {
+        for (int i = 0; i < SPHERE_VERTICES.length; i += 3) {
+            consumer.addVertex(pose, SPHERE_VERTICES[i], SPHERE_VERTICES[i + 1], SPHERE_VERTICES[i + 2])
+                    .setColor(COLOR_R, COLOR_G, COLOR_B, alpha);
+        }
     }
 }

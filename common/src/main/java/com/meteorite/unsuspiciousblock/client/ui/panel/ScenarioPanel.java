@@ -6,6 +6,8 @@ import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -43,6 +45,12 @@ public final class ScenarioPanel {
     /** 场景显示名的缓存键与值：头部每帧绘制，而标签要遍历假设树，不能逐帧重建。 */
     private String labelKey = "";
     private Component label = Component.empty();
+    /** 读数行与「切换场景」按钮文案的缓存键与值（键 = 表 + 选择输入 + 状态 + 目录版本 + 语言）。 */
+    private String headerKey = "";
+    private Component summary = Component.empty();
+    private Component switchLabel = Component.empty();
+    // 已测宽度缓存（P-10）：代 = 语言 + Font 实例，与文案缓存同一失效事件（见 PanelTextMetrics）
+    private final PanelTextMetrics metrics = new PanelTextMetrics();
 
     public ScenarioPanel(JournalBookBackground.BookLayout layout) {
         x = layout.rightPageX() + 4;
@@ -65,6 +73,7 @@ public final class ScenarioPanel {
     int calculateX() { return x + width - 38; }
 
     public void renderHeader(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
+        this.metrics.beginFrame(font);
         tooltip = List.of();
         var choice = ScenarioSimulationClientState.selection(table);
         if (choice == null) return;
@@ -74,11 +83,12 @@ public final class ScenarioPanel {
         Component scene = dto == null || dto.options() == null
                 ? Component.literal(choice.scene())
                 : sceneLabel(dto.options(), choice.scene());
-        Component summary = text("summary", scene, format(choice.params().luck()),
-                choice.params().sampleCount(), text(status));
+        refreshHeaderText(input, choice, status, scene);
+        Component summary = this.summary;
         boolean summaryHover = inside(mouseX, mouseY, x, y, width, SUMMARY_HEIGHT);
         summaryTicks = summaryHover ? summaryTicks + 1 : 0;
-        drawScrolling(graphics, font, summary, x, y, width, summaryHover, summaryTicks);
+        int summaryWidth = this.metrics.measure(summary.getString(), font).width();
+        drawScrolling(graphics, font, summary, summaryWidth, x, y, width, summaryHover, summaryTicks);
         if (summaryHover) {
             List<Component> lines = new ArrayList<>();
             lines.add(summary);
@@ -90,7 +100,7 @@ public final class ScenarioPanel {
         }
         boolean switchHover = inside(mouseX, mouseY, x, y + ACTION_TOP, switchWidth(), ACTION_HEIGHT);
         switchTicks = switchHover ? switchTicks + 1 : 0;
-        drawButton(graphics, font, text("switch", scene), x, y + ACTION_TOP, switchWidth(), switchHover, switchTicks);
+        drawButton(graphics, font, this.switchLabel, x, y + ACTION_TOP, switchWidth(), switchHover, switchTicks);
         boolean calculateHover = inside(mouseX, mouseY, calculateX(), y + ACTION_TOP, 38, ACTION_HEIGHT);
         drawButton(graphics, font, text("calculate"), calculateX(), y + ACTION_TOP, 38, calculateHover, 0);
     }
@@ -113,9 +123,10 @@ public final class ScenarioPanel {
     /** 头部自己的悬停提示（读数行已展开工具/附魔/失败原因）。 */
     public List<Component> tooltip() { return tooltip; }
 
-    // 场景显示名按「表 + 场景 + 目录版本」缓存：头部每帧绘制，标签却要遍历假设树。
+    // 场景显示名按「表 + 场景 + 目录版本 + 语言」缓存：头部每帧绘制，标签却要遍历假设树。
     private Component sceneLabel(SimulationOptions options, String sceneKey) {
-        String key = table + "#" + sceneKey + "#" + ArchaeologyJournalClientState.getCatalogRevision();
+        String key = table + "#" + sceneKey + "#" + ArchaeologyJournalClientState.getCatalogRevision()
+                + "#" + language();
         if (!key.equals(labelKey)) {
             labelKey = key;
             label = ScenarioLabel.label(options, sceneKey);
@@ -123,17 +134,39 @@ public final class ScenarioPanel {
         return label;
     }
 
+    // 读数行与「切换场景」按钮文案按 key 缓存（P-12）：头部每帧绘制，不能逐帧 format/translatable 解析。
+    // 失效点 = 表 / 选择输入 / 状态 / 目录版本 / 语言 任一变（键覆盖全部输入）。
+    private void refreshHeaderText(String input, SimulationPreferenceStore.Selection choice,
+                                   String status, Component scene) {
+        String key = table + "#" + input + "#" + status + "#"
+                + ArchaeologyJournalClientState.getCatalogRevision() + "#" + language();
+        if (key.equals(this.headerKey)) {
+            return;
+        }
+        this.headerKey = key;
+        var params = choice.params();
+        this.summary = text("summary", scene, format(params.luck()), params.sampleCount(), text(status));
+        this.switchLabel = text("switch", scene);
+    }
+
+    // 语言代码：翻译结果随它变化，是文本缓存的失效键之一。
+    private static String language() {
+        return Minecraft.getInstance().getLanguageManager().getSelected();
+    }
+
     private void drawButton(GuiGraphics graphics, Font font, Component label, int bx, int by, int bw,
                             boolean hover, int ticks) {
         graphics.fill(bx, by, bx + bw, by + ACTION_HEIGHT, hover ? 0x55A3875B : 0x22896C48);
-        drawScrolling(graphics, font, label, bx + 3, by + 4, bw - 6, hover, ticks);
+        // 按钮文字宽度按 P-10 缓存传入，绘制路径不再逐帧 font.width
+        drawScrolling(graphics, font, label, this.metrics.measure(label.getString(), font).width(),
+                bx + 3, by + 4, bw - 6, hover, ticks);
     }
 
-    // 头部文字一律走悬停滚动：超宽时不再被静默截断。
-    private static void drawScrolling(GuiGraphics graphics, Font font, Component label, int tx, int ty,
-                                      int maxWidth, boolean hovered, int ticks) {
-        TextScroll.draw(graphics, font, label.getVisualOrderText(), font.width(label),
-                tx, ty, maxWidth, 0xFF3A2A1A, hovered, ticks);
+    // 头部文字一律走悬停滚动：超宽时不再被静默截断；宽度由调用方按 P-10 缓存后传入。
+    private static void drawScrolling(GuiGraphics graphics, Font font, Component label, int textWidth,
+                                      int tx, int ty, int maxWidth, boolean hovered, int ticks) {
+        TextScroll.draw(graphics, font, label.getVisualOrderText(), textWidth,
+                tx, ty, maxWidth, UiTextPalette.Parchment.NAME, hovered, ticks);
     }
 
     private static boolean inside(double mx, double my, int x, int y, int w, int h) {

@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
@@ -14,6 +15,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -25,8 +27,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** 右侧物品网格面板 —— 渲染物品图标、名称、概率与数量角标，补充信息通过 tooltip 展示 */
@@ -40,15 +44,19 @@ public final class ItemGridPanel implements PagePanel {
     private static final int NAME_Y_OFFSET = 25;        // 物品名文字 y 偏移
     private static final int PROB_Y_OFFSET = 37;        // 概率文字 y 偏移
     // 物品名/数量角标颜色
-    private static final int NAME_COLOR = 0xFF3A2A1A;
-    private static final int PROB_COLOR = 0xFF8B5A2B;
+    // 与语义色表 NAME 同值，直接引用以消除重复字面量（值未变）
+    private static final int NAME_COLOR = UiTextPalette.Parchment.NAME;
+    // 模拟值：原 #8B5A2B 在纸面底色 #E8DCBC 上仅 4.28:1，压暗到 #7F4E1F 后为 5.11:1。
+    private static final int PROB_COLOR = 0xFF7F4E1F;
     // 概率文字画在羊皮纸底色（含格子半透明填充，实测约 #E8DCBC）上，且不带文字阴影，
     // 因此亮色系对比度不足：亮金 #C8A014 仅约 2.1:1、亮橙红 #C06040 仅约 3.4:1，实际看不清。
-    // 这里压暗到 4.5:1 以上，同时保留"金 = 概率型条件""橙红 = 运行时条件"的色相语义。
+    // 这里压暗到 4.5:1 以上（WCAG 相对亮度公式），同时保留"金 = 概率型条件""橙红 = 运行时条件"的色相语义。
     private static final int PROB_COLOR_PROBABILISTIC = 0xFF7A5700; // 深金色——有概率型条件（约 4.8:1）
     private static final int PROB_COLOR_RUNTIME = 0xFF9E4326;       // 深橙红——有运行时条件（约 4.7:1）
-    private static final int PROB_COLOR_UNKNOWN = 0xFF4A4038;       // 深暖灰——状态词（需要条件／问号）约 7:1，浅色纸面上必须读得清
-    private static final int PENDING_COLOR = 0xFF7A6247;
+    private static final int PROB_COLOR_UNKNOWN = 0xFF4A4038;       // 深暖灰——状态词（需要条件／问号）约 7.4:1，浅色纸面上必须读得清
+    // 「待解析／未解锁」与「需要条件／问号」同属"给不出数字"的状态词，直接复用同一深暖灰（7.40:1），
+    // 不再单独取只有 4.20:1 的 #7A6247。
+    private static final int PENDING_COLOR = PROB_COLOR_UNKNOWN;
     private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
     private static final int BADGE_COLOR_ABBR = 0xFFFFC060;
     private static final int TAG_GROUP_BORDER_COLOR = 0x806B7D46;
@@ -69,6 +77,16 @@ public final class ItemGridPanel implements PagePanel {
     // 每个可视格子的滚动文字状态（物品名走马灯），按 visualIndex 索引
     private final int[] slotScrollTicks = new int[JournalLayout.GRID_ITEMS_PER_PAGE];
     private final boolean[] slotWasHovered = new boolean[JournalLayout.GRID_ITEMS_PER_PAGE];
+    // 绘制用的不可变条目视图：在 rebuildTagGroups 中随数据重建，逐帧只读，不再每帧 List.copyOf。
+    private List<TagGroup> tagGroupView = List.of();
+    private List<ResourceLocation> tagIdView = List.of();
+    // 逐帧格子文案缓存：GridItem / ChildTableEntry 都是不可变数据，同一实例的文案只取决于语言代码。
+    // 失效点：setTable（换表数据）或语言代码变化（整表重算）。
+    private final Map<Object, String> probabilityTextCache = new IdentityHashMap<>();
+    private final Map<Object, String> displayNameTextCache = new IdentityHashMap<>();
+    // 已测宽度缓存（P-10）：与文案缓存同一失效事件（语言/字体实例、setTable）
+    private final PanelTextMetrics metrics = new PanelTextMetrics();
+    private String cachedLanguage = "";
 
     public ItemGridPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -82,6 +100,9 @@ public final class ItemGridPanel implements PagePanel {
         this.childTables.clear();
         this.childTables.addAll(childTables);
         this.navigationTarget = null;
+        this.probabilityTextCache.clear();
+        this.displayNameTextCache.clear();
+        this.metrics.clear();
         rebuildTagGroups();
         if (this.activeTag != null && (this.tagGroups.get(this.activeTag) == null
                 || !this.tagGroups.get(this.activeTag).unlocked())) {
@@ -142,18 +163,21 @@ public final class ItemGridPanel implements PagePanel {
         resetHoverState();
     }
 
-    // 判断鼠标是否在物品网格面板区域内
+    // 判断鼠标是否在物品网格面板区域内：边界口径统一走 PagePanel.containsPageBounds（R-4）
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= layout.rightPageX() && mouseX <= layout.rightPageRight()
-                && mouseY >= layout.rightPageY() && mouseY <= layout.rightPageBottom();
+        return PagePanel.containsPageBounds(mouseX, mouseY,
+                layout.rightPageX(), layout.rightPageY(),
+                layout.rightPageRight(), layout.rightPageBottom());
     }
 
     // 渲染物品网格（仅图标，不含进度/页码）
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        refreshTextCacheLanguage();
+        this.metrics.beginFrame(font);
         if (this.items.isEmpty() && this.childTables.isEmpty()) {
             int leftX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_entries"),
-                    leftX, layout.rightPageY() + JournalLayout.GRID_TOP, 0x7A6247, false);
+                    leftX, layout.rightPageY() + JournalLayout.GRID_TOP, UiTextPalette.Parchment.LABEL, false);
             return;
         }
 
@@ -185,7 +209,7 @@ public final class ItemGridPanel implements PagePanel {
             int entryCount = groupCount + childCount + this.directItems.size();
             int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
             int to = Math.min(entryCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
-            List<TagGroup> groups = List.copyOf(this.tagGroups.values());
+            List<TagGroup> groups = this.tagGroupView;
             for (int i = from; i < to; i++) {
                 int visualIndex = i - from;
                 int cellX = cellX(gridX, visualIndex);
@@ -251,7 +275,8 @@ public final class ItemGridPanel implements PagePanel {
         }
 
         renderTagPreview(guiGraphics, group, cellX + cellW / 2, cellY + ICON_TOP);
-        ScrollTextHelper.draw(guiGraphics, font, group.id().toString(),
+        PanelTextMetrics.Measured groupId = this.metrics.measure(group.id().toString(), font);
+        ScrollTextHelper.draw(guiGraphics, font, groupId.text(), groupId.width(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
 
@@ -259,7 +284,7 @@ public final class ItemGridPanel implements PagePanel {
         Component progress = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.tag_group_progress_short",
                 discovered, group.members().size());
-        int progressWidth = font.width(progress);
+        int progressWidth = this.metrics.measure(progress.getString(), font).width();
         guiGraphics.drawString(font, progress, cellX + (cellW - progressWidth) / 2,
                 cellY + PROB_Y_OFFSET, TAG_GROUP_TEXT_COLOR, false);
 
@@ -269,7 +294,7 @@ public final class ItemGridPanel implements PagePanel {
     }
 
     private void renderTagPreview(GuiGraphics guiGraphics, TagGroup group, int centerX, int iconY) {
-        renderPreview(guiGraphics, group.members(), centerX, iconY);
+        renderPreviewStacks(guiGraphics, group.previewStacks(), centerX, iconY);
     }
 
     private void renderChildTableCell(GuiGraphics guiGraphics, Font font, int cellX, int cellY,
@@ -285,18 +310,16 @@ public final class ItemGridPanel implements PagePanel {
             return;
         }
         renderPreviewStacks(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
-        ScrollTextHelper.draw(guiGraphics, font, child.displayName().getString(),
+        PanelTextMetrics.Measured childName = this.metrics.measure(
+                displayNameText(child, child.displayName()), font);
+        ScrollTextHelper.draw(guiGraphics, font, childName.text(), childName.width(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
-        Component probability = formatProbability(child.probability(), List.of());
-        ScrollTextHelper.draw(guiGraphics, font, probability.getString(),
+        PanelTextMetrics.Measured probability = this.metrics.measure(
+                probabilityText(child, child.probability(), List.of()), font);
+        ScrollTextHelper.draw(guiGraphics, font, probability.text(), probability.width(),
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
-    }
-
-    private void renderPreview(GuiGraphics guiGraphics, List<GridItem> items, int centerX, int iconY) {
-        renderPreviewStacks(guiGraphics, items.stream().filter(GridItem::unlocked).limit(3)
-                .map(GridItem::stack).toList(), centerX, iconY);
     }
 
     private void renderPreviewStacks(GuiGraphics guiGraphics, List<ItemStack> stacks, int centerX, int iconY) {
@@ -327,7 +350,8 @@ public final class ItemGridPanel implements PagePanel {
                 ICON_SIZE, ICON_SIZE, 0f, 0f, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE,
                 UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked");
-        graphics.drawString(font, label, cellX + (cellW - font.width(label)) / 2,
+        int labelWidth = this.metrics.measure(label.getString(), font).width();
+        graphics.drawString(font, label, cellX + (cellW - labelWidth) / 2,
                 cellY + NAME_Y_OFFSET, PENDING_COLOR, false);
     }
 
@@ -338,15 +362,18 @@ public final class ItemGridPanel implements PagePanel {
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
                 hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
         Component backIcon = Component.literal("<");
+        int backIconWidth = this.metrics.measure(backIcon.getString(), font).width();
         guiGraphics.drawString(font, backIcon,
-                cellX + (cellW - font.width(backIcon)) / 2, cellY + ICON_TOP + 5,
+                cellX + (cellW - backIconWidth) / 2, cellY + ICON_TOP + 5,
                 TAG_GROUP_TEXT_COLOR, false);
-        ScrollTextHelper.draw(guiGraphics, font, tagId.toString(),
+        PanelTextMetrics.Measured tagText = this.metrics.measure(tagId.toString(), font);
+        ScrollTextHelper.draw(guiGraphics, font, tagText.text(), tagText.width(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
                 TAG_GROUP_TEXT_COLOR, hovered, scrollTicks, true);
         Component back = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.tag_group_back");
-        guiGraphics.drawString(font, back, cellX + (cellW - font.width(back)) / 2,
+        int backWidth = this.metrics.measure(back.getString(), font).width();
+        guiGraphics.drawString(font, back, cellX + (cellW - backWidth) / 2,
                 cellY + PROB_Y_OFFSET, TAG_GROUP_TEXT_COLOR, false);
     }
 
@@ -372,7 +399,7 @@ public final class ItemGridPanel implements PagePanel {
                     UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
             Component pendingText = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.pending_analysis");
-            int textW = font.width(pendingText);
+            int textW = this.metrics.measure(pendingText.getString(), font).width();
             guiGraphics.drawString(font, pendingText, centerX - textW / 2,
                     cellY + NAME_Y_OFFSET, PENDING_COLOR, false);
             return;
@@ -394,7 +421,7 @@ public final class ItemGridPanel implements PagePanel {
         if (item.count() > 0) {
             String countText = formatCountBadge(item.count());
             int badgeColor = item.count() >= 1000 ? BADGE_COLOR_ABBR : BADGE_COLOR_NORMAL;
-            int badgeX = iconX + ICON_SIZE - font.width(countText);
+            int badgeX = iconX + ICON_SIZE - this.metrics.measure(countText, font).width();
             int badgeY = iconY + ICON_SIZE - font.lineHeight + 1;
             guiGraphics.pose().pushPose();
             guiGraphics.pose().translate(0f, 0f, 200f);
@@ -404,15 +431,18 @@ public final class ItemGridPanel implements PagePanel {
 
         // 物品名（悬停时走马灯滚动，与 intro/Catalog 风格一致；非悬停时居中静态）
         int nameMaxWidth = cellW - 6;
-        ScrollTextHelper.draw(guiGraphics, font, item.displayName().getString(),
+        PanelTextMetrics.Measured name = this.metrics.measure(
+                displayNameText(item, item.displayName()), font);
+        ScrollTextHelper.draw(guiGraphics, font, name.text(), name.width(),
                 cellX + 3, cellY + NAME_Y_OFFSET, nameMaxWidth,
                 NAME_COLOR, hovered, scrollTicks, true);
 
         // 概率（居中，颜色根据状态与不确定性等级区分）——显示优先级链见 formatProbability
-        Component probComp = formatProbability(item.probability(), item.declaredChances());
+        PanelTextMetrics.Measured probText = this.metrics.measure(
+                probabilityText(item, item.probability(), item.declaredChances()), font);
         int probColor = probabilityColor(item.probability(), item.uncertaintyLevel(),
                 !item.declaredChances().isEmpty());
-        ScrollTextHelper.draw(guiGraphics, font, probComp.getString(),
+        ScrollTextHelper.draw(guiGraphics, font, probText.text(), probText.width(),
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 probColor, hovered, scrollTicks, true);
 
@@ -433,7 +463,7 @@ public final class ItemGridPanel implements PagePanel {
 
     // 保留 1 位小数，去除整数的 .0 后缀
     private static String formatOneDecimal(double v) {
-        String s = String.format("%.1f", v);
+        String s = String.format(Locale.ROOT, "%.1f", v);
         if (s.endsWith(".0")) {
             s = s.substring(0, s.length() - 2);
         }
@@ -569,7 +599,7 @@ public final class ItemGridPanel implements PagePanel {
         if (from >= navigationCount) {
             return false;
         }
-        List<ResourceLocation> tagIds = List.copyOf(this.tagGroups.keySet());
+        List<ResourceLocation> tagIds = this.tagIdView;
         for (int i = from; i < to; i++) {
             int visualIndex = i - from;
             int cellX = cellX(gridX, visualIndex);
@@ -630,7 +660,7 @@ public final class ItemGridPanel implements PagePanel {
         if (from >= navigationCount) {
             return null;
         }
-        List<TagGroup> groups = List.copyOf(this.tagGroups.values());
+        List<TagGroup> groups = this.tagGroupView;
         for (int i = from; i < to; i++) {
             int visualIndex = i - from;
             if (!isMouseOverCell(cellX(gridX, visualIndex), cellY(gridY, visualIndex), mouseX, mouseY)) {
@@ -682,9 +712,40 @@ public final class ItemGridPanel implements PagePanel {
             }
         }
         for (Map.Entry<ResourceLocation, LinkedHashMap<String, GridItem>> entry : groupedItems.entrySet()) {
-            this.tagGroups.put(entry.getKey(),
-                    new TagGroup(entry.getKey(), List.copyOf(entry.getValue().values())));
+            List<GridItem> members = List.copyOf(entry.getValue().values());
+            this.tagGroups.put(entry.getKey(), new TagGroup(
+                    entry.getKey(),
+                    members,
+                    members.stream().anyMatch(GridItem::unlocked),
+                    (int) members.stream().filter(GridItem::unlocked).count(),
+                    members.stream().anyMatch(GridItem::highlighted),
+                    members.stream().filter(GridItem::unlocked).limit(3).map(GridItem::stack).toList()));
         }
+        this.tagGroupView = List.copyOf(this.tagGroups.values());
+        this.tagIdView = List.copyOf(this.tagGroups.keySet());
+    }
+
+    // 语言代码变化时丢弃逐帧文案缓存：文字随语言变，几何与数据不随。
+    // 资源重载而语言代码不变的情况仍由目录增量/setTable 兜底（与 ScenarioPanel.sceneLabel 同口径）。
+    private void refreshTextCacheLanguage() {
+        String language = Minecraft.getInstance().getLanguageManager().getSelected();
+        if (!language.equals(this.cachedLanguage)) {
+            this.cachedLanguage = language;
+            this.probabilityTextCache.clear();
+            this.displayNameTextCache.clear();
+        }
+    }
+
+    // 概率文案按数据实例缓存：实例字段（概率/声明触发率/不确定性等级）不可变，只随语言变化。
+    private String probabilityText(Object key, @Nullable Probability probability,
+                                   List<DeclaredChance> declaredChances) {
+        return this.probabilityTextCache.computeIfAbsent(key,
+                ignored -> formatProbability(probability, declaredChances).getString());
+    }
+
+    // 名称文案按数据实例缓存：Component 的解析结果只随语言变化。
+    private String displayNameText(Object key, Component name) {
+        return this.displayNameTextCache.computeIfAbsent(key, ignored -> name.getString());
     }
 
     private void resetHoverState() {
@@ -707,19 +768,14 @@ public final class ItemGridPanel implements PagePanel {
                 && mouseY >= cellY && mouseY < cellY + JournalLayout.GRID_CELL_HEIGHT;
     }
 
-    /** tag 分组入口所需的不可变展示数据。 */
-    private record TagGroup(ResourceLocation id, List<GridItem> members) {
-        private boolean unlocked() {
-            return this.members.stream().anyMatch(GridItem::unlocked);
-        }
-
-        private int discoveredCount() {
-            return (int) this.members.stream().filter(GridItem::unlocked).count();
-        }
-
-        private boolean hasHighlightedMember() {
-            return this.members.stream().anyMatch(GridItem::highlighted);
-        }
+    /**
+     * tag 分组入口所需的不可变展示数据。
+     * <p>成员都是不可变 record，因此 unlocked / discoveredCount / hasHighlightedMember 与预览栈
+     * 在构造时一次算出，绘制路径只读字段，不再逐帧 stream。</p>
+     */
+    private record TagGroup(ResourceLocation id, List<GridItem> members, boolean unlocked,
+                            int discoveredCount, boolean hasHighlightedMember,
+                            List<ItemStack> previewStacks) {
     }
 
     /** 子表导航入口展示数据。 */

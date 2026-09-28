@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
@@ -35,7 +36,8 @@ public final class LogPanel implements PagePanel {
     // 精灵图集状态纵向偏移：normal=0, hovered=26, selected=52
     private static final int[] STATE_V = {0, JournalLayout.LOG_ENTRY_STATE_HEIGHT, JournalLayout.LOG_ENTRY_STATE_HEIGHT * 2};
 
-    private static final int MUTED_COLOR = 0x7A6247;
+    // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）
+    private static final int MUTED_COLOR = UiTextPalette.Parchment.LABEL;
     private static final int SELECTED_TEXT_COLOR = 0x7B3E18;
 
     // 复制坐标按钮命中盒（缓存最近一帧的悬停按钮位置，用于 tooltip 渲染与点击判定）
@@ -60,33 +62,35 @@ public final class LogPanel implements PagePanel {
     private record IntRange(int start, int end) {
     }
 
-    /** 计算指定页码下可见行索引区间 [start, end) */
+    /** 计算指定页码下可见行索引区间 [start, end)；越界返回空区间 */
     private IntRange computeVisibleRows(int page) {
-        if (this.displayRows.isEmpty()) {
+        if (page < 0 || page >= this.pageRanges.size()) {
             return new IntRange(0, 0);
         }
-        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
-        int currentY = 0;
-        int currentPage = 0;
-        int startRow = 0;
-        int endRow = 0;
+        return this.pageRanges.get(page);
+    }
 
+    // 按行高把 displayRows 切成页区间：渲染、命中与总页数读同一份结果（R-5）。
+    // 切分规则（与原 computeVisibleRows 逐行判定等价）：行放不下就在该行之前断页，该行成为下一页首行。
+    private List<IntRange> buildPageRanges() {
+        List<IntRange> ranges = new ArrayList<>();
+        if (this.displayRows.isEmpty()) {
+            return ranges;
+        }
+        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
+        int start = 0;
+        int usedHeight = 0;
         for (int i = 0; i < this.displayRows.size(); i++) {
             int rowHeight = this.displayRows.get(i).height();
-            if (currentY + rowHeight > availableHeight) {
-                currentPage++;
-                currentY = 0;
+            if (usedHeight + rowHeight > availableHeight) {
+                ranges.add(new IntRange(start, i));
+                start = i;
+                usedHeight = 0;
             }
-            if (currentPage == page) {
-                if (startRow == 0 && currentY == 0) {
-                    startRow = i;
-                }
-                endRow = i + 1;
-            }
-            currentY += rowHeight;
-            if (currentPage > page) break;
+            usedHeight += rowHeight;
         }
-        return new IntRange(startRow, endRow);
+        ranges.add(new IntRange(start, this.displayRows.size()));
+        return ranges;
     }
 
     /**
@@ -115,6 +119,10 @@ public final class LogPanel implements PagePanel {
     private final List<LogEntryState> allEntries = new ArrayList<>();
     private final List<LogEntryState> filteredEntries = new ArrayList<>();
     private final List<DisplayRow> displayRows = new ArrayList<>();
+    // 分页几何缓存：只在 applyFilterAndSort 重建，render/handleClick 不再逐帧走一遍行高累加
+    private List<IntRange> pageRanges = List.of();
+    // 已测宽度缓存（P-10）：与行文案缓存同一失效事件（语言/字体实例、setData）
+    private final PanelTextMetrics metrics = new PanelTextMetrics();
     private final PaginationState pagination = new PaginationState(this::computePageCount);
     // 排序方向：true=降序（最新在前），false=升序（最旧在前）
     private boolean sortDescending = true;
@@ -143,6 +151,7 @@ public final class LogPanel implements PagePanel {
         Set<UUID> availableIds = new LinkedHashSet<>();
         this.allEntries.forEach(state -> availableIds.add(state.entry.entryId()));
         this.selectedEntryIds.retainAll(availableIds);
+        this.metrics.clear();
         applyFilterAndSort();
     }
 
@@ -281,11 +290,13 @@ public final class LogPanel implements PagePanel {
             }
         }
 
+        this.pageRanges = buildPageRanges();
         this.pagination.setPage(this.pagination.getPage());
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        this.metrics.beginFrame(font);
         int leftX = this.layout.rightPageX() + 8;
         int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
         // 重置按钮悬停缓存（在 renderEntry 中重新填充）
@@ -346,8 +357,9 @@ public final class LogPanel implements PagePanel {
 
     @Override
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= this.layout.rightPageX() && mouseX <= this.layout.rightPageRight()
-                && mouseY >= this.layout.rightPageY() && mouseY <= this.layout.rightPageBottom();
+        return PagePanel.containsPageBounds(mouseX, mouseY,
+                this.layout.rightPageX(), this.layout.rightPageY(),
+                this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
     @Nullable
@@ -447,17 +459,8 @@ public final class LogPanel implements PagePanel {
     }
 
     // 判定鼠标是否落在某条目的备注图标上（命中盒比字符略大，提升可点击性）
-    private static boolean isNoteBadgeHit(int bgX, int rowY, double mouseX, double mouseY) {
-        Font font = Minecraft.getInstance().font;
-        String badge = "✎";
-        int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - font.width(badge) - 3;
-        int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
-        int hitX = badgeX - 3;
-        int hitY = badgeY - 2;
-        int hitW = font.width(badge) + 6;
-        int hitH = font.lineHeight + 3;
-        return mouseX >= hitX && mouseX <= hitX + hitW
-                && mouseY >= hitY && mouseY <= hitY + hitH;
+    private boolean isNoteBadgeHit(int bgX, int rowY, double mouseX, double mouseY) {
+        return noteBadge(Minecraft.getInstance().font, bgX, rowY).hit(mouseX, mouseY);
     }
 
     @Nullable
@@ -554,42 +557,33 @@ public final class LogPanel implements PagePanel {
             }
         }
 
-        // 行1：时间（左侧，主色——最高优先级）
-        String timeText = JournalFormatHelper.formatGameTime(
-                "screen.unsuspiciousblock.archaeology_journal.log_time_short",
-                state.entry.createdGameTime(), state.entry.createdDayTime()).getString();
+        // 行1：时间（左侧，主色——最高优先级）；文案按语言缓存，不逐帧重解析翻译（P-12）
+        String timeText = entryTimeText(state);
         int timeMaxWidth = Math.max(0, btnX - textX - 4);
         int timeColor = selected ? SELECTED_TEXT_COLOR : JournalLayout.LOG_ENTRY_TIME_COLOR;
-        ScrollTextHelper.draw(guiGraphics, font, timeText,
+        PanelTextMetrics.Measured time = this.metrics.measure(timeText, font);
+        ScrollTextHelper.draw(guiGraphics, font, time.text(), time.width(),
                 textX, rowY + 3, timeMaxWidth, timeColor, hovered, state.scrollTicks, false);
 
-        // 行2：维度名称（x,y,z）
-        var pos = state.entry.pos();
-        String dimensionText = JournalFormatHelper.formatDimensionName(state.entry.dimensionId());
-        String posText = String.format("(%d,%d,%d)", pos.getX(), pos.getY(), pos.getZ());
-        String line2 = dimensionText + " " + posText;
-        ScrollTextHelper.draw(guiGraphics, font, line2,
+        // 行2：维度名称 + 坐标（坐标走统一格式化入口）
+        String line2 = entryDimensionPosText(state);
+        PanelTextMetrics.Measured dimensionPos = this.metrics.measure(line2, font);
+        ScrollTextHelper.draw(guiGraphics, font, dimensionPos.text(), dimensionPos.width(),
                 textX, rowY + 14, textWidth, JournalLayout.LOG_ENTRY_DIM_POS_COLOR, hovered, state.scrollTicks, false);
 
-        // 已备注标记：右下角绘制小铅笔字符，悬停时高亮提示可点击编辑
+        // 已备注标记：右下角绘制小铅笔字符，悬停时高亮提示可点击编辑（几何与命中盒同一来源）
         if (state.entry.hasNote() && !this.batchSelectionMode) {
-            String badge = "✎";
-            int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - font.width(badge) - 3;
-            int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
-            boolean badgeHovered = isNoteBadgeHit(bgX, rowY, mouseX, mouseY);
+            NoteBadge badge = noteBadge(font, bgX, rowY);
+            boolean badgeHovered = badge.hit(mouseX, mouseY);
             if (badgeHovered) {
                 // 半透明背景 + 暖橙字符，提示可点击
-                int hitX = badgeX - 3;
-                int hitY = badgeY - 2;
-                int hitW = font.width(badge) + 6;
-                int hitH = font.lineHeight + 3;
-                guiGraphics.fill(hitX, hitY, hitX + hitW, hitY + hitH,
-                        JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);
-                guiGraphics.drawString(font, badge, badgeX, badgeY,
+                guiGraphics.fill(badge.hitX(), badge.hitY(), badge.hitX() + badge.hitW(),
+                        badge.hitY() + badge.hitH(), JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);
+                guiGraphics.drawString(font, badge.text(), badge.x(), badge.y(),
                         JournalLayout.LOG_ENTRY_NOTE_BADGE_HOVER_COLOR, false);
                 this.noteBadgeHoveredEntry = state;
             } else {
-                guiGraphics.drawString(font, badge, badgeX, badgeY,
+                guiGraphics.drawString(font, badge.text(), badge.x(), badge.y(),
                         JournalLayout.LOG_ENTRY_NOTE_BADGE_COLOR, false);
             }
         }
@@ -639,27 +633,63 @@ public final class LogPanel implements PagePanel {
     }
 
     private int computePageCount() {
-        if (this.displayRows.isEmpty()) {
-            return 1;
+        return Math.max(1, this.pageRanges.size());
+    }
+
+    /** 备注铅笔图标的绘制位置与命中盒——绘制、悬停底色与点击命中共用同一几何来源（R-5）。 */
+    private record NoteBadge(String text, int x, int y, int hitX, int hitY, int hitW, int hitH) {
+        private boolean hit(double mouseX, double mouseY) {
+            return mouseX >= this.hitX && mouseX <= this.hitX + this.hitW
+                    && mouseY >= this.hitY && mouseY <= this.hitY + this.hitH;
         }
-        int availableHeight = JournalLayout.LOG_LIST_BOTTOM - JournalLayout.LOG_LIST_TOP;
-        int pages = 1;
-        int usedHeight = 0;
-        for (DisplayRow displayRow : this.displayRows) {
-            int h = displayRow.height();
-            if (usedHeight + h > availableHeight) {
-                pages++;
-                usedHeight = 0;
-            }
-            usedHeight += h;
+    }
+
+    // 语言中立图形符号，不属漏本地化（O-17）
+    private static final String NOTE_BADGE_TEXT = "✎";
+
+    // 行内备注图标的唯一几何来源：绘制、悬停底色与命中盒都从这里取；宽度按 P-10 缓存
+    private NoteBadge noteBadge(Font font, int bgX, int rowY) {
+        int badgeWidth = this.metrics.measure(NOTE_BADGE_TEXT, font).width();
+        int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - badgeWidth - 3;
+        int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
+        return new NoteBadge(NOTE_BADGE_TEXT, badgeX, badgeY, badgeX - 3, badgeY - 2,
+                badgeWidth + 6, font.lineHeight + 3);
+    }
+
+    // 行文案按语言缓存：entry 数据不可变（位置/时间/维度都是值），同一实例只有语言会变（P-12）。
+    // 实例在 setData 中重建，因此换数据即天然失效。
+    private static void syncEntryText(LogEntryState state) {
+        String language = Minecraft.getInstance().getLanguageManager().getSelected();
+        if (language.equals(state.cachedLanguage) && state.timeText != null) {
+            return;
         }
-        return pages;
+        state.cachedLanguage = language;
+        state.timeText = JournalFormatHelper.formatGameTime(
+                "screen.unsuspiciousblock.archaeology_journal.log_time_short",
+                state.entry.createdGameTime(), state.entry.createdDayTime()).getString();
+        var pos = state.entry.pos();
+        state.dimensionPosText = JournalFormatHelper.formatDimensionName(state.entry.dimensionId())
+                + " " + CopyCoordinateButton.formatCoordinates(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    private static String entryTimeText(LogEntryState state) {
+        syncEntryText(state);
+        return state.timeText;
+    }
+
+    private static String entryDimensionPosText(LogEntryState state) {
+        syncEntryText(state);
+        return state.dimensionPosText;
     }
 
     private static final class LogEntryState {
         private final ExcavationLogEntry entry;
         private int scrollTicks;
         private boolean wasHovered;
+        // 逐帧行文案缓存（语言失效点见 syncEntryText）
+        private String cachedLanguage = "";
+        @Nullable private String timeText;
+        @Nullable private String dimensionPosText;
 
         private LogEntryState(ExcavationLogEntry entry) {
             this.entry = entry;

@@ -56,6 +56,8 @@ public final class ArchaeologyJournalLogLocalStore {
     private static final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private static long lastAppliedSequence;
     private static long revision;
+    // 待落盘标记：单条增量只置脏，由 tick() 每刻合并写一次；写失败保留脏标记下刻重试。
+    private static boolean dirty;
     // 日志快照重同步请求限流时间戳（ms），防止极端场景下请求风暴
     private static long lastSnapshotRequestMs;
     // 重同步请求最小间隔
@@ -84,6 +86,18 @@ public final class ArchaeologyJournalLogLocalStore {
         }
         tryCommitSnapshot();
         flushPending();
+        // 同一 tick 内的多条增量合并成一次整份写盘（与 JournalUiPreferencesStore 同范式）
+        flush();
+    }
+
+    // 把未落盘的状态写入当前已加载的文件；写失败时保留脏标记，由下个 tick 或下次 flush 重试
+    public static synchronized void flush() {
+        if (!dirty || loadedPath == null) {
+            return;
+        }
+        if (save()) {
+            dirty = false;
+        }
     }
 
     // 开始接收服务端权威分片快照，旧状态在完整校验前继续可用
@@ -159,7 +173,7 @@ public final class ArchaeologyJournalLogLocalStore {
             currentSessionId = payload.sessionId();
             lastAppliedSequence = payload.sequence();
             revision++;
-            save();
+            dirty = true;
         } else {
             if (currentSessionId == null) {
                 currentSessionId = payload.sessionId();
@@ -174,6 +188,8 @@ public final class ArchaeologyJournalLogLocalStore {
         if (connection == trackedConnection) {
             return;
         }
+        // 断连时玩家与连接可能已清空，必须仍向已加载的旧路径刷盘
+        flush();
         trackedConnection = connection;
         resetSessionState();
         loadedPath = null;
@@ -228,7 +244,7 @@ public final class ArchaeologyJournalLogLocalStore {
         }
         if (anyChanged) {
             revision++;
-            save();
+            dirty = true;
         }
         pendingIncrementals.clear();
     }
@@ -249,7 +265,7 @@ public final class ArchaeologyJournalLogLocalStore {
         lastAppliedSequence = snapshot.sequence;
         pendingSnapshot = null;
         revision++;
-        save();
+        dirty = true;
         flushPending();
     }
 
@@ -309,6 +325,8 @@ public final class ArchaeologyJournalLogLocalStore {
         Path currentPath = resolveCurrentPath();
         if (currentPath == null) {
             if (loadedPath != null) {
+                // 离开世界：玩家/世界已不可解析，但仍要先把未落盘的增量写回旧路径
+                flush();
                 loadedPath = null;
                 logState = new ArchaeologyJournalLogState();
                 revision++;
@@ -318,6 +336,8 @@ public final class ArchaeologyJournalLogLocalStore {
         if (currentPath.equals(loadedPath)) {
             return;
         }
+        // 切换存档/服务器：旧路径的未落盘增量必须先写回
+        flush();
         loadedPath = currentPath;
         logState = load(currentPath);
         revision++;

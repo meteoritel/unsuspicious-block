@@ -10,11 +10,13 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,9 +28,12 @@ public final class ReaderScanHudState {
     private static final long DISPLAY_MS = 10_000L;
     private static final long MAX_DISPLAY_MS = 30_000L;
     private static final long FADE_MS = 500L;
-    private static final Snapshot EMPTY = new Snapshot(List.of(), List.of(), List.of(), 0, false, 0, 0);
+    private static final Snapshot EMPTY =
+            new Snapshot(List.of(), List.of(), List.of(), 0, false, 0, 0, new HudLayout());
     private static volatile Snapshot current = EMPTY;
     private static volatile Target focused;
+    // HUD 开关只作用于本次客户端会话，刻意不写入任何持久化文件：
+    // 断开连接后由 {@link #reset()} 恢复为显示，避免「上次关掉后忘了打开」的困惑状态。
     // 仅客户端 Render 线程读写（tick 与渲染同线程），无需 volatile。
     private static boolean hudEnabled = true;
     private static ClientLevel scanLevel;
@@ -80,7 +85,7 @@ public final class ReaderScanHudState {
                     (old == null ? 0L : old.count()) + entry.count()));
         }
         return new Snapshot(List.copyOf(blocks), List.copyOf(containers), List.copyOf(groups.values()),
-                emptyCount, range, born, expires);
+                emptyCount, range, born, expires, new HudLayout());
     }
 
     public static void tick() {
@@ -126,8 +131,9 @@ public final class ReaderScanHudState {
         if (focused != null) {
             // 阅读时延长整批显示，最多保留 30 秒；expires 恒不超过 born + MAX_DISPLAY_MS，clamp 安全。
             long expires = Math.clamp(time + 1500L, snapshot.expires(), snapshot.born() + MAX_DISPLAY_MS);
+            // 只延长显示时间，数据与文本都没变，沿用同一派生量缓存
             current = new Snapshot(snapshot.blocks(), snapshot.containers(), snapshot.groups(), snapshot.emptyCount(),
-                    snapshot.range(), snapshot.born(), expires);
+                    snapshot.range(), snapshot.born(), expires, snapshot.hud());
         }
     }
 
@@ -187,18 +193,25 @@ public final class ReaderScanHudState {
         scanLevel = null;
     }
 
+    // 断连/切世界时重置：结果清空，HUD 开关按设计恢复为显示（开关本身不持久化）
     public static void reset() {
         clearResults();
         hudEnabled = true;
     }
 
-    /** 不可修改的批次快照；图标只供渲染读取。 */
+    /** 不可修改的批次快照；图标与派生量缓存只供渲染读取。 */
     public record Snapshot(List<Target> blocks, List<Target> containers, List<ItemGroup> groups,
-                           int emptyCount, boolean range, long born, long expires) {
+                           int emptyCount, boolean range, long born, long expires, HudLayout hud) {
         public float alpha(long time) {
             if (expires <= time) return 0;
             return Math.min(1.0F, (expires - time) / (float) FADE_MS)
                     * Math.clamp((time - born) / 150.0F, 0.0F, 1.0F);
+        }
+
+        // 淡出尾部直接跳过绘制：HUD 汇总/详情与透视描边共用同一阈值（alpha * 255 < 4）。
+        // 原版字体会把极低 alpha 强制改为不透明，所以不能只判 alpha <= 0。
+        public boolean visible(long time) {
+            return alpha(time) * 255.0F >= 4.0F;
         }
     }
 
@@ -212,5 +225,97 @@ public final class ReaderScanHudState {
 
     /** 同名但来源或封存者不同的物品分开统计。 */
     private record GroupKey(String itemId, Component name, boolean sealed, String crafter) {
+    }
+
+    /** 汇总面板的派生布局与文本；文本已按面板宽度截断，绘制方只需落笔。 */
+    public record SummaryLayout(int x, int y, int width, int height, String title,
+                                @Nullable String message, String more, boolean footer,
+                                List<GroupRow> groupRows) {
+        public int rows() {
+            return groupRows.size();
+        }
+    }
+
+    /** 汇总面板中的一行分组：图标、名称与数量文本及已算好的绘制坐标。 */
+    public record GroupRow(ItemGroup group, String nameText, int nameX, int nameWidth,
+                           String countText, int countX, int countWidth, int y) {
+    }
+
+    /** 目标详情面板的派生布局与文本；距离行随玩家位置逐帧变化，只借用它的宽度参与几何决策。 */
+    public record DetailLayout(int x, int y, int width, int height, int textOffset, int horizontalPadding,
+                               boolean hasIcon, List<String> nameLines, @Nullable String sealedLine) {
+        // 详情面板内每行可用的文本宽度
+        public int lineWidth() {
+            return width - horizontalPadding;
+        }
+    }
+
+    /**
+     * HUD 派生量缓存：翻译字符串、逐行文本、测量宽度与分组行布局。
+     * <p>
+     * 生命周期与所属 {@link Snapshot} 一致——扫描数据变化时随快照换新，tick 只延长显示时间时沿用同一实例，
+     * 因此不会逐帧重算。缓存键是「语言实例 + 窗口尺寸」：资源重载会替换 {@link Language} 单例，
+     * 身份比较即可廉价判定语言切换；窗口尺寸变化则重算面板几何。仅渲染线程访问，无需同步。
+     */
+    public static final class HudLayout {
+        private Language language;
+        private long viewport = Long.MIN_VALUE;
+        @Nullable
+        private SummaryLayout summary;
+        @Nullable
+        private Target detailTarget;
+        private int detailKeyWidth = Integer.MIN_VALUE;
+        private int detailKeyPositionWidth = Integer.MIN_VALUE;
+        @Nullable
+        private DetailLayout detail;
+
+        // 语言实例或窗口尺寸变化时整体失效
+        private void rekey(Language current, int screenWidth, int screenHeight) {
+            long key = ((long) screenWidth << 32) | (screenHeight & 0xFFFFFFFFL);
+            if (this.language == current && this.viewport == key) {
+                return;
+            }
+            this.language = current;
+            this.viewport = key;
+            this.summary = null;
+            this.detail = null;
+            this.detailTarget = null;
+            this.detailKeyWidth = Integer.MIN_VALUE;
+            this.detailKeyPositionWidth = Integer.MIN_VALUE;
+        }
+
+        // 命中则返回汇总布局，未命中返回 null，由调用方重算后回填
+        @Nullable
+        public SummaryLayout summaryIfValid(Language current, int screenWidth, int screenHeight) {
+            rekey(current, screenWidth, screenHeight);
+            return summary;
+        }
+
+        public void putSummary(Language current, int screenWidth, int screenHeight, SummaryLayout value) {
+            rekey(current, screenWidth, screenHeight);
+            summary = value;
+        }
+
+        // 命中则返回详情布局；聚焦目标、可用宽度或距离行宽度变化都会未命中
+        // （距离行宽度参与面板宽度决策，所以它变化时必须重算几何）
+        @Nullable
+        public DetailLayout detailIfValid(Language current, int screenWidth, int screenHeight,
+                                          @Nullable Target target, int textWidth, int positionWidth) {
+            rekey(current, screenWidth, screenHeight);
+            if (target == null) {
+                return null;
+            }
+            return target.equals(detailTarget) && detailKeyWidth == textWidth
+                    && detailKeyPositionWidth == positionWidth ? detail : null;
+        }
+
+        public void putDetail(Language current, int screenWidth, int screenHeight, Target target,
+                              int textWidth, int positionWidth, DetailLayout value) {
+            rekey(current, screenWidth, screenHeight);
+            detailTarget = target;
+            detailKeyWidth = textWidth;
+            detailKeyPositionWidth = positionWidth;
+            detail = value;
+        }
     }
 }

@@ -149,8 +149,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     }
 
     @Override public boolean containsMouse(double x, double y) {
-        return x >= layout.rightPageX() && x < layout.rightPageRight()
-                && y >= layout.rightPageY() && y < layout.rightPageBottom();
+        return PagePanel.containsPageBounds(x, y,
+                layout.rightPageX(), layout.rightPageY(),
+                layout.rightPageRight(), layout.rightPageBottom());
     }
 
     List<CatalogTableDto.ScenarioAssumptions> scenes() {

@@ -29,7 +29,9 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -87,6 +89,10 @@ public abstract class ShimmerEntity extends Entity {
     private int clientWorkTicks;
     // 服务端权威的淘洗者集合：玩家 UUID -> 最近一次刷新时刻
     private final Map<UUID, Long> panners = new HashMap<>();
+    // 客户端：{@link #getPanners()} 的解析缓存，快照字符串未变时直接复用
+    @Nullable
+    private String parsedPannerSnapshot;
+    private List<UUID> parsedPanners = List.of();
 
     // 是否有寿命：世界生成来源恒为 false，它不自然消散也不计入自然生成上限。
     private boolean hasLifetime = true;
@@ -235,6 +241,28 @@ public abstract class ShimmerEntity extends Entity {
     // 同步给客户端的淘洗者集合快照，供物品属性选用摇洗帧组
     public String getPannersSnapshot() {
         return this.entityData.get(DATA_PANNERS);
+    }
+
+    // 解析后的淘洗者集合；快照字符串只在集合变化时更新（见 publishPanners），
+    // 因此按字符串缓存解析结果，避免渲染线程每帧重复 split 与 UUID.fromString。仅客户端渲染线程访问。
+    public List<UUID> getPanners() {
+        String snapshot = this.getPannersSnapshot();
+        if (snapshot.equals(this.parsedPannerSnapshot)) {
+            return this.parsedPanners;
+        }
+        List<UUID> players = new ArrayList<>();
+        if (!snapshot.isEmpty()) {
+            for (String part : snapshot.split(",")) {
+                try {
+                    players.add(UUID.fromString(part));
+                } catch (IllegalArgumentException ignored) {
+                    // 容忍格式错误的单条记录，不影响同一快照里的其它玩家
+                }
+            }
+        }
+        this.parsedPannerSnapshot = snapshot;
+        this.parsedPanners = List.copyOf(players);
+        return this.parsedPanners;
     }
 
     // 剔除超时未刷新的淘洗者；集合变化时同步一次

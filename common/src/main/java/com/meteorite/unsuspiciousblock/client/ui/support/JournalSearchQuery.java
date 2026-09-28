@@ -105,9 +105,14 @@ public final class JournalSearchQuery {
 
     // 判断目录条目（战利品表）是否匹配此查询
     public boolean matchesCatalogEntry(ResourceLocation id, String displayName, String type) {
+        return matchesTableLowercase(id, displayName.toLowerCase(Locale.ROOT), type);
+    }
+
+    // 表级匹配（显示名已由调用方小写化）：与 matchesCatalogEntry 同一口径，只省掉重复的 toLowerCase
+    public boolean matchesTableLowercase(ResourceLocation id, String lowercaseDisplayName, String type) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
-            case TABLE_NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
+            case TABLE_NAME -> lowercaseDisplayName.contains(this.normalizedQuery)
                     || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             case NAMESPACE -> id.getNamespace().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
             case TYPE -> type.toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
@@ -118,20 +123,25 @@ public final class JournalSearchQuery {
 
     // 判断物品条目是否匹配此查询（用于高亮等）
     public boolean matchesItem(ResourceLocation id, String displayName) {
+        return matchesItemLowercase(LowercaseItem.of(id, displayName));
+    }
+
+    // 物品级匹配：名称与 id 文本已小写化（调用方可按目录 revision 预建，避免逐次 getString()+toLowerCase）
+    public boolean matchesItemLowercase(LowercaseItem item) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
-            case TABLE_NAME -> displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
-                    || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
-            case NAMESPACE -> id.getNamespace().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
+            case TABLE_NAME -> item.lowercaseDisplayName().contains(this.normalizedQuery)
+                    || item.lowercasePath().contains(this.normalizedQuery);
+            case NAMESPACE -> item.lowercaseNamespace().contains(this.normalizedQuery);
             case TYPE -> true;
             case ITEM_NAME -> {
                 // # 开头 → 标签搜索
                 if (this.normalizedQuery.startsWith("#")) {
-                    yield matchesByTag(id, this.normalizedQuery.substring(1));
+                    yield matchesByTag(item.id(), this.normalizedQuery.substring(1));
                 }
-                yield id.toString().toLowerCase(Locale.ROOT).equals(this.normalizedQuery)
-                        || displayName.toLowerCase(Locale.ROOT).contains(this.normalizedQuery)
-                        || id.getPath().toLowerCase(Locale.ROOT).contains(this.normalizedQuery);
+                yield item.lowercaseId().equals(this.normalizedQuery)
+                        || item.lowercaseDisplayName().contains(this.normalizedQuery)
+                        || item.lowercasePath().contains(this.normalizedQuery);
             }
         };
     }
@@ -151,6 +161,42 @@ public final class JournalSearchQuery {
                 yield false;
             }
         };
+    }
+
+    // 表级物品搜索：表名与物品文本均已小写化（物品文本可由宿主按目录 revision 预建）
+    public boolean matchesTableByItemLowercase(ResourceLocation tableId, String lowercaseDisplayName, String type,
+                                               Iterable<LowercaseItem> items) {
+        if (this.isEmpty()) return true;
+        return switch (this.mode) {
+            case TABLE_NAME, NAMESPACE, TYPE -> matchesTableLowercase(tableId, lowercaseDisplayName, type);
+            case ITEM_NAME -> {
+                for (LowercaseItem item : items) {
+                    if (matchesItemLowercase(item)) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+        };
+    }
+
+    /**
+     * 物品的小写匹配文本（id 全名、命名空间、路径与显示名各一份）。
+     * <p>
+     * 由调用方按目录 revision 预建：物品显示名的 {@code getString()} 是一次翻译查询，
+     * 每次匹配都重做一遍会随目录规模放大；缓存失效点由调用方声明。
+     */
+    public record LowercaseItem(ResourceLocation id, String lowercaseId, String lowercaseNamespace,
+                                String lowercasePath, String lowercaseDisplayName) {
+
+        // 从物品 id 与显示名生成小写匹配文本
+        public static LowercaseItem of(ResourceLocation id, String displayName) {
+            return new LowercaseItem(id,
+                    id.toString().toLowerCase(Locale.ROOT),
+                    id.getNamespace().toLowerCase(Locale.ROOT),
+                    id.getPath().toLowerCase(Locale.ROOT),
+                    displayName.toLowerCase(Locale.ROOT));
+        }
     }
 
     // 通过标签匹配物品（tagQuery 不包含 # 前缀）

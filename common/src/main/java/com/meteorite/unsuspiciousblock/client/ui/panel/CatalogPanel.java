@@ -6,6 +6,8 @@ import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -14,6 +16,7 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,10 +32,14 @@ public final class CatalogPanel {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/catalog_entry.png");
     private static final int[] UNLOCKED_STATE_V = {0, 19, 38};
     private static final int LOCKED_STATE_V = 57;
-    private static final int CHILD_COLOR = 0x6B7D46;
-    private static final int NORMAL_COLOR = 0x5A422C;
+    // 子表行名称与 ∈ 标记：原 #6B7D46 在纸面 #E8DCBC 上仅 3.31:1，压暗到 #4F6033 后为 5.04:1，
+    // 保留"子表 = 绿"的色相语义，不与父行的暖棕混淆。
+    private static final int CHILD_COLOR = 0xFF4F6033;
+    // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
+    private static final int NORMAL_COLOR = UiTextPalette.Parchment.BODY;
     private static final int SELECTED_COLOR = 0x7B3E18;
-    private static final int FAVORITE_COLOR = 0xC8A014;
+    // 收藏星标：原字面量 #C8A014 在纸面 #E8DCBC 上仅 1.81:1，改引语义色表的 ACCENT（压暗后 4.82:1）
+    private static final int FAVORITE_COLOR = UiTextPalette.Parchment.ACCENT;
     private static final int CARD_BORDER = 0x8B6914;
     private static final int CARD_BG = 0x18A67C42;
     private static final int CARD_HOVER = 0x30C8A050;
@@ -55,6 +62,13 @@ public final class CatalogPanel {
     private final List<CatalogEntryData> entries = new ArrayList<>();
     private final Map<ResourceLocation, Integer> categoryScrollTicks = new HashMap<>();
     private final Map<ResourceLocation, Integer> entryScrollTicks = new HashMap<>();
+    // 逐帧文案缓存：CategoryEntryData / CatalogEntryData 都是不可变 record，同一实例的文案只取决于语言代码。
+    // 失效点：setCategories / setEntries（换数据）或语言代码变化（整表重算）。
+    private final Map<Object, String> nameTextCache = new IdentityHashMap<>();
+    private final Map<Object, String> progressTextCache = new IdentityHashMap<>();
+    // 已测宽度缓存（P-10）：与文案缓存同一失效事件（语言/字体实例、setCategories/setEntries）
+    private final PanelTextMetrics metrics = new PanelTextMetrics();
+    private String cachedLanguage = "";
     private Mode mode = Mode.CATEGORIES;
 
     // 视口恒定贴着列表右边界，滚动条常开（UiScrollView 内部自带 maxOffset > 0 才显示）。
@@ -72,6 +86,9 @@ public final class CatalogPanel {
         this.mode = Mode.CATEGORIES;
         this.categories.clear();
         this.categories.addAll(values);
+        this.nameTextCache.clear();
+        this.progressTextCache.clear();
+        this.metrics.clear();
         syncContentHeight();
         this.view.setOffset(itemsToPixels(carriedOffset));
     }
@@ -81,6 +98,9 @@ public final class CatalogPanel {
         this.mode = Mode.TABLES;
         this.entries.clear();
         this.entries.addAll(values);
+        this.nameTextCache.clear();
+        this.progressTextCache.clear();
+        this.metrics.clear();
         syncContentHeight();
         this.view.setOffset(itemsToPixels(carriedOffset));
     }
@@ -153,6 +173,8 @@ public final class CatalogPanel {
     }
 
     public void render(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
+        refreshTextCacheLanguage();
+        this.metrics.beginFrame(font);
         if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
         else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
         // 高亮条件与迁移前一致：拖拽中或指针落在滑块上。滑块几何由 UiScrollView 提供，不再复算。
@@ -174,13 +196,13 @@ public final class CatalogPanel {
             graphics.renderItem(category.icon(), rect.x() + (rect.width() - 16) / 2, rect.y() + 3);
             int ticks = hovered ? this.categoryScrollTicks.merge(category.id(), 1, Integer::sum) : 0;
             if (!hovered) this.categoryScrollTicks.put(category.id(), 0);
-            ScrollTextHelper.draw(graphics, font, category.name().getString(), rect.x() + 4, rect.y() + 22,
+            PanelTextMetrics.Measured name = this.metrics.measure(categoryNameText(category), font);
+            ScrollTextHelper.draw(graphics, font, name.text(), name.width(), rect.x() + 4, rect.y() + 22,
                     rect.width() - 8, NORMAL_COLOR, hovered, ticks, true);
-            Component progress = Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.category.progress",
-                    category.unlocked(), category.total());
-            ScrollTextHelper.draw(graphics, font, progress.getString(), rect.x() + 4, rect.bottom() - 13,
-                    rect.width() - 8, 0x7A6247, hovered, ticks, true);
+            PanelTextMetrics.Measured progress = this.metrics.measure(categoryProgressText(category), font);
+            ScrollTextHelper.draw(graphics, font, progress.text(), progress.width(),
+                    rect.x() + 4, rect.bottom() - 13,
+                    rect.width() - 8, UiTextPalette.Parchment.LABEL, hovered, ticks, true);
         }
     }
 
@@ -210,10 +232,11 @@ public final class CatalogPanel {
         }
         int textX = markerX + (entry.hasChildren() ? 10 : 3);
         int rightReserve = (entry.child() ? 12 : 0) + (entry.favorite() ? 9 : 0) + 5;
-        String text = entry.unlocked() ? entry.displayName().getString() : "";
+        String text = entry.unlocked() ? entryNameText(entry) : "";
         int ticks = hovered ? this.entryScrollTicks.merge(entry.id(), 1, Integer::sum) : 0;
         if (!hovered) this.entryScrollTicks.put(entry.id(), 0);
-        ScrollTextHelper.draw(graphics, font, text, textX, y + 7,
+        PanelTextMetrics.Measured measured = this.metrics.measure(text, font);
+        ScrollTextHelper.draw(graphics, font, measured.text(), measured.width(), textX, y + 7,
                 Math.max(8, x + buttonWidth() - rightReserve - textX),
                 entry.child() ? CHILD_COLOR : selected ? SELECTED_COLOR : NORMAL_COLOR,
                 hovered, ticks, false);
@@ -223,6 +246,34 @@ public final class CatalogPanel {
             right -= 9;
         }
         if (entry.child()) graphics.drawString(font, "∈", right - 6, y + 6, CHILD_COLOR, false);
+    }
+
+    // 语言代码变化时丢弃逐帧文案缓存：文字随语言变，滚动与悬停状态不随。
+    // 资源重载而语言代码不变的情况仍由 setCategories / setEntries 兜底（与 ScenarioPanel.sceneLabel 同口径）。
+    private void refreshTextCacheLanguage() {
+        String language = Minecraft.getInstance().getLanguageManager().getSelected();
+        if (!language.equals(this.cachedLanguage)) {
+            this.cachedLanguage = language;
+            this.nameTextCache.clear();
+            this.progressTextCache.clear();
+        }
+    }
+
+    // 分类名文案按数据实例缓存（Component 的解析结果只随语言变化）
+    private String categoryNameText(CategoryEntryData category) {
+        return this.nameTextCache.computeIfAbsent(category, ignored -> category.name().getString());
+    }
+
+    // 分类进度文案按数据实例缓存（数值来自不可变 record，只有语言会变）
+    private String categoryProgressText(CategoryEntryData category) {
+        return this.progressTextCache.computeIfAbsent(category, ignored -> Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.category.progress",
+                category.unlocked(), category.total()).getString());
+    }
+
+    // 目录条目名文案按数据实例缓存
+    private String entryNameText(CatalogEntryData entry) {
+        return this.nameTextCache.computeIfAbsent(entry, ignored -> entry.displayName().getString());
     }
 
     private static void drawBorder(GuiGraphics graphics, Rect rect, int color) {

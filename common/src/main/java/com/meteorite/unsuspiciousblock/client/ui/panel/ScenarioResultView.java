@@ -12,6 +12,7 @@ import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -41,6 +42,17 @@ final class ScenarioResultView {
     private int probabilityWidth = 36;
     private int[] hoverTicks = new int[0];
     private int[] probabilityTicks = new int[0];
+    // 列矩形缓存：与 syncRows 的「可见区间 + 行宽」同一次重建，逐帧不再 new UiRect×3/行（P-12）
+    private UiRect[] iconRects = new UiRect[0];
+    private UiRect[] nameRects = new UiRect[0];
+    private UiRect[] probabilityRects = new UiRect[0];
+    // 标题文案缓存键与值：键 = 状态 + 条目数 + 语言（P-12）
+    private String headingKey = "";
+    private Component heading = Component.empty();
+    // 行文本宽度缓存（P-10）：与可见区间/行宽/语言/字体同批重建，render 不再逐行 font.width
+    private int[] nameWidths = new int[0];
+    private int[] probabilityWidths = new int[0];
+    private String rowsGeneration = "";
 
     ScenarioResultView(Font font) {
         this.font = font;
@@ -71,6 +83,11 @@ final class ScenarioResultView {
         this.failure = failure;
         hoverTicks = new int[content.size()];
         probabilityTicks = new int[content.size()];
+        iconRects = new UiRect[content.size()];
+        nameRects = new UiRect[content.size()];
+        probabilityRects = new UiRect[content.size()];
+        nameWidths = new int[content.size()];
+        probabilityWidths = new int[content.size()];
         scroll.setOffset(0);
         rebuildViewport();
     }
@@ -103,10 +120,17 @@ final class ScenarioResultView {
                 ? Math.min(content.size(), (scroll.offset() + scroll.viewport().height() + ROW_HEIGHT - 1) / ROW_HEIGHT)
                 : 0;
         int width = scroll.viewport().width() - (scroll.isScrollbarVisible() ? UiScrollView.SCROLLBAR_WIDTH : 0);
-        if (first == visibleFirst && end == visibleEnd && width == rowWidth) return;
+        // 宽度的失效点与行缓存同一代：语言代码 + Font 实例（字体宽度只在同一实例内可比）
+        String generation = Minecraft.getInstance().getLanguageManager().getSelected()
+                + "#" + System.identityHashCode(this.font);
+        if (first == visibleFirst && end == visibleEnd && width == rowWidth
+                && generation.equals(this.rowsGeneration)) {
+            return;
+        }
         visibleFirst = first;
         visibleEnd = end;
         rowWidth = width;
+        rowsGeneration = generation;
         rows.beginUpdate();
         for (int i = first; i < end; i++) {
             DisplayRow row = content.get(i);
@@ -114,16 +138,21 @@ final class ScenarioResultView {
             control.setBounds(0, i * ROW_HEIGHT, width, ROW_HEIGHT - 1);
             control.configure(font, Component.empty(), UiTextPalette.Parchment.BODY, null,
                     List.of(row.name(), row.probability()), null);
+            // 列矩形与可见区间同步重算（行宽变化时失效），绘制循环只读缓存
+            columns.setBounds(2, i * ROW_HEIGHT + 1, Math.max(0, width - 4), 17);
+            iconRects[i] = columns.bounds(0);
+            nameRects[i] = columns.bounds(1);
+            probabilityRects[i] = columns.bounds(2);
+            // 文本宽度与列矩形同批测一次（P-10）：同代内 render 只读数组
+            nameWidths[i] = this.font.width(row.name());
+            probabilityWidths[i] = this.font.width(row.probability());
         }
         rows.endUpdate();
     }
 
     void render(GuiGraphics graphics, int mouseX, int mouseY) {
         BORDER.render(graphics, bounds);
-        Component heading = "cached".equals(status) && !content.isEmpty()
-                ? ScenarioSimulationClientState.text("outcome_header", content.size())
-                : ScenarioSimulationClientState.text("results.heading");
-        graphics.drawString(font, heading, bounds.x() + 8, bounds.y() + 8, UiTextPalette.Parchment.TITLE, false);
+        graphics.drawString(font, heading(), bounds.x() + 8, bounds.y() + 8, UiTextPalette.Parchment.TITLE, false);
         if (!"cached".equals(status) || content.isEmpty()) {
             renderEmpty(graphics);
             return;
@@ -137,17 +166,16 @@ final class ScenarioResultView {
             rows.render(graphics, font, contentX, contentY);
             for (int i = visibleFirst; i < visibleEnd; i++) {
                 DisplayRow row = content.get(i);
-                columns.setBounds(2, i * ROW_HEIGHT + 1, Math.max(0, rowWidth - 4), 17);
-                UiRect icon = columns.bounds(0);
-                UiRect name = columns.bounds(1);
-                UiRect probability = columns.bounds(2);
+                UiRect icon = iconRects[i];
+                UiRect name = nameRects[i];
+                UiRect probability = probabilityRects[i];
                 graphics.renderItem(row.stack(), icon.x(), icon.y());
                 boolean nameHovered = hovered && name.contains(contentX, contentY);
                 hoverTicks[i] = nameHovered ? hoverTicks[i] + 1 : 0;
-                TextScroll.draw(graphics, font, row.name().getVisualOrderText(), font.width(row.name()),
+                TextScroll.draw(graphics, font, row.name().getVisualOrderText(), nameWidths[i],
                         name.x(), name.y() + 4, name.width(), UiTextPalette.Parchment.NAME,
                         nameHovered, hoverTicks[i]);
-                int textWidth = font.width(row.probability());
+                int textWidth = probabilityWidths[i];
                 boolean probabilityHovered = hovered && probability.contains(contentX, contentY);
                 probabilityTicks[i] = probabilityHovered ? probabilityTicks[i] + 1 : 0;
                 TextScroll.draw(graphics, font, row.probability().getVisualOrderText(), textWidth,
@@ -159,6 +187,19 @@ final class ScenarioResultView {
             scroll.pop(graphics);
         }
         scroll.renderScrollbar(graphics, rows.style());
+    }
+
+    // 标题文案按「状态 + 条目数 + 语言」缓存：原实现每帧重建 Component（P-12）
+    private Component heading() {
+        String key = this.status + "#" + this.content.size() + "#"
+                + Minecraft.getInstance().getLanguageManager().getSelected();
+        if (!key.equals(this.headingKey)) {
+            this.headingKey = key;
+            this.heading = "cached".equals(this.status) && !this.content.isEmpty()
+                    ? ScenarioSimulationClientState.text("outcome_header", this.content.size())
+                    : ScenarioSimulationClientState.text("results.heading");
+        }
+        return this.heading;
     }
 
     private void renderEmpty(GuiGraphics graphics) {

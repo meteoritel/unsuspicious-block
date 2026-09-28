@@ -181,8 +181,9 @@ public final class LogDetailPanel implements PagePanel {
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= this.layout.rightPageX() && mouseX <= this.layout.rightPageRight()
-                && mouseY >= this.layout.rightPageY() && mouseY <= this.layout.rightPageBottom();
+        return PagePanel.containsPageBounds(mouseX, mouseY,
+                this.layout.rightPageX(), this.layout.rightPageY(),
+                this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
     // 仅处理复制坐标按钮点击；返回按钮由 IconButton widget 自行处理
@@ -194,11 +195,12 @@ public final class LogDetailPanel implements PagePanel {
         return false;
     }
 
+    // 悬停时才从展示条目取栈：渲染路径不再为每个图标复制 ItemStack（P-11）
     @Nullable
     public ItemStack getTooltipStack(double mouseX, double mouseY) {
         for (IconSlot slot : this.renderTooltipSlots) {
             if (slot.contains(mouseX, mouseY)) {
-                return slot.stack();
+                return slot.entry().stack();
             }
         }
         return null;
@@ -270,7 +272,8 @@ public final class LogDetailPanel implements PagePanel {
         String biomeValue = JournalFormatHelper.formatBiomeName(entry.biomeId());
         String dimValue = JournalFormatHelper.formatDimensionName(entry.dimensionId());
         var pos = entry.pos();
-        String coordsValue = pos.getX() + " " + pos.getY() + " " + pos.getZ();
+        // 坐标显示统一走 CopyCoordinateButton 的格式化入口（与日志列表页同一写法，I-11）
+        String coordsValue = CopyCoordinateButton.formatCoordinates(pos.getX(), pos.getY(), pos.getZ());
 
         // 动态计算标签列宽度：取所有标签的最大宽度，保证值列对齐
         int labelWidth = maxWidth(font, createdLabel, updatedLabel, structLabel, biomeLabel, dimensionLabel, coordsLabel);
@@ -382,22 +385,18 @@ public final class LogDetailPanel implements PagePanel {
         int bottomReserve = this.cachedLoot.isEmpty() ? 0 : (progressGap + progressBarH + pad);
 
         int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
-        int availableHeight = pageBottom - titleY - bottomReserve;
         // 标题行高 + 标题与网格的额外间距
         int labelH = lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
         int gridTop = titleY + labelH;
-        int gridAvailable = Math.max(0, availableHeight - labelH);
-
-        int iconsPerRow = Math.max(1, (w - pad * 2 + ICON_GAP) / stride);
-        int rowsPerPage = Math.max(1, gridAvailable / stride);
-        int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
+        // 网格几何与 computePageCount 共用同一来源（R-5）
+        GridGeometry grid = lootGrid(gridTop, w, pageBottom, bottomReserve);
 
         int page = this.pagination.getPage();
-        int from = Math.min(this.cachedLoot.size(), page * iconsPerPage);
-        int to = Math.min(this.cachedLoot.size(), from + iconsPerPage);
+        int from = Math.min(this.cachedLoot.size(), page * grid.iconsPerPage());
+        int to = Math.min(this.cachedLoot.size(), from + grid.iconsPerPage());
 
         // 计算卡片总高度（用于绘制卡片背景）
-        int gridHeight = this.cachedLoot.isEmpty() ? 0 : gridAvailable;
+        int gridHeight = this.cachedLoot.isEmpty() ? 0 : grid.gridAvailable();
         int cardH = pad + labelH + gridHeight + bottomReserve;
 
         // 绘制卡片背景，明确区域边界
@@ -422,19 +421,23 @@ public final class LogDetailPanel implements PagePanel {
         int gridX = x + pad;
         for (int i = from; i < to; i++) {
             LootDisplayEntry loot = this.cachedLoot.get(i);
-            int row = (i - from) / iconsPerRow;
-            int col = (i - from) % iconsPerRow;
+            int row = (i - from) / grid.iconsPerRow();
+            int col = (i - from) % grid.iconsPerRow();
             int iconX = gridX + col * stride;
             int iconY = gridTop + row * stride;
 
             // 不再使用原版数量角标，所有角标改为自定义绘制
-            ItemStack stack = loot.stack().copy();
+            // 展示条目持有的栈只读（渲染与 tooltip 都不改它），不再逐图标 copy()
+            ItemStack stack = loot.stack();
 
             int actual = loot.actualCount();
             int expected = loot.expectedCount();
 
             // 状态(1)：已解析 未获得——以低透明度渲染物品贴图呈现幽灵虚影，不再覆盖遮罩
             if (actual == 0) {
+                // 先按当前颜色提交已入队的不透明内容（前面的图标与角标），
+                // 否则它们会跟着下面的半透明着色器颜色一起被染色。
+                g.flush();
                 RenderSystem.enableBlend();
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.35F);
             }
@@ -445,10 +448,11 @@ public final class LogDetailPanel implements PagePanel {
             g.pose().scale(scale, scale, 1.0f);
             g.renderItem(stack, 0, 0);
             g.pose().popPose();
-            // 刷新物品渲染缓冲，确保后续角标绘制在物品之上
-            g.flush();
 
+            // 幽灵虚影的 alpha 由着色器颜色在**提交时**生效，所以只有这一支需要立刻 flush 再复位；
+            // 其余图标不再逐图标 flush（原实现在循环内无条件 flush，会打断批次；提交顺序不变）。
             if (actual == 0) {
+                g.flush();
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
                 RenderSystem.disableBlend();
             } else if (loot.isFullyObtained()) {
@@ -460,7 +464,7 @@ public final class LogDetailPanel implements PagePanel {
                 drawBadge(g, font, iconX, iconY, actual + "/" + expected,
                         JournalLayout.LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR);
             }
-            this.renderTooltipSlots.add(new IconSlot(iconX, iconY, stack.copy()));
+            this.renderTooltipSlots.add(new IconSlot(iconX, iconY, loot));
         }
 
         // 底部进度条 + 文字（文字直接渲染在进度条本体上）
@@ -470,23 +474,15 @@ public final class LogDetailPanel implements PagePanel {
         drawProgressBar(g, font, barX, barY, barWidth, this.obtainedLootCount, this.totalLootCount);
     }
 
-    // 绘制物品角标（右下角，z=200 确保位于物品图标图层之上）
+    // 绘制物品角标（右下角，z=200 确保位于物品图标图层之上）。
+    // 可读性改用原版文字阴影（1 次 drawString），替代原 8 向黑色描边（9 次 drawString）：
+    // 阴影本身就是暗色 1px 偏移副本，与原版数量角标同口径，任何图标底色都能读清。
     private static void drawBadge(GuiGraphics g, Font font, int iconX, int iconY, String text, int color) {
         int badgeX = iconX + ICON_SIZE - font.width(text);
         int badgeY = iconY + ICON_SIZE - font.lineHeight;
         g.pose().pushPose();
         g.pose().translate(0, 0, 200);
-        // 黑色描边（八向偏移）提升任何背景下的可读性
-        g.drawString(font, text, badgeX - 1, badgeY, 0xFF000000, false);
-        g.drawString(font, text, badgeX + 1, badgeY, 0xFF000000, false);
-        g.drawString(font, text, badgeX, badgeY - 1, 0xFF000000, false);
-        g.drawString(font, text, badgeX, badgeY + 1, 0xFF000000, false);
-        g.drawString(font, text, badgeX - 1, badgeY - 1, 0xFF000000, false);
-        g.drawString(font, text, badgeX + 1, badgeY - 1, 0xFF000000, false);
-        g.drawString(font, text, badgeX - 1, badgeY + 1, 0xFF000000, false);
-        g.drawString(font, text, badgeX + 1, badgeY + 1, 0xFF000000, false);
-        // 主文字
-        g.drawString(font, text, badgeX, badgeY, color, false);
+        g.drawString(font, text, badgeX, badgeY, color, true);
         g.pose().popPose();
     }
 
@@ -549,36 +545,42 @@ public final class LogDetailPanel implements PagePanel {
         return true;
     }
 
+    /** 图标网格几何：分页计算与渲染共用的唯一来源，每页行数/列数只在这里算一次（R-5）。 */
+    private record GridGeometry(int iconsPerRow, int rowsPerPage, int iconsPerPage, int gridAvailable) {
+    }
+
+    // 由「网格起点 y + 卡片宽 + 页底 + 进度条预留」推导每页可放的图标数。
+    private static GridGeometry lootGrid(int gridTop, int cardWidth, int pageBottom, int bottomReserve) {
+        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        int stride = ICON_SIZE + ICON_GAP;
+        int gridAvailable = Math.max(0, pageBottom - gridTop - bottomReserve);
+        int iconsPerRow = Math.max(1, (cardWidth - pad * 2 + ICON_GAP) / stride);
+        int rowsPerPage = Math.max(1, gridAvailable / stride);
+        return new GridGeometry(iconsPerRow, rowsPerPage,
+                Math.max(1, iconsPerRow * rowsPerPage), gridAvailable);
+    }
+
     // —— 分页计算 ——
     private int computePageCount() {
         if (this.entry == null || this.cachedLoot.isEmpty()) {
             return 1;
         }
         Font font = Minecraft.getInstance().font;
-        int lineHeight = font.lineHeight;
-        int contentWidth = this.layout.rightPageWidth() - 20;
-
-        // 固定内容高度（与 render 中一致）
-        int fixedHeight = getFixedHeight(lineHeight);
-
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
-        int gridTop = this.layout.rightPageY() + JournalLayout.LOG_TOP + fixedHeight;
+        int contentWidth = this.layout.rightPageWidth() - 20;
         int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
-        int progressBarH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
-        int progressGap = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP;
-        int bottomReserve = progressGap + progressBarH + pad;
-        int gridAvailable = Math.max(0, (pageBottom - bottomReserve) - gridTop);
-        if (gridAvailable <= 0) {
+        int bottomReserve = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP
+                + JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT + pad;
+        // 网格起点与 render 中逐卡片累加的结果一致：固定偏移不含底部预留，故这里不含 bottomReserve
+        int gridTop = this.layout.rightPageY() + JournalLayout.LOG_TOP + getFixedHeight(font.lineHeight);
+        GridGeometry grid = lootGrid(gridTop, contentWidth, pageBottom, bottomReserve);
+        if (grid.gridAvailable() <= 0) {
             return 1;
         }
-
-        int stride = ICON_SIZE + ICON_GAP;
-        int iconsPerRow = Math.max(1, (contentWidth - pad * 2 + ICON_GAP) / stride);
-        int rowsPerPage = Math.max(1, gridAvailable / stride);
-        int iconsPerPage = Math.max(1, iconsPerRow * rowsPerPage);
-        return Math.max(1, (this.cachedLoot.size() + iconsPerPage - 1) / iconsPerPage);
+        return Math.max(1, (this.cachedLoot.size() + grid.iconsPerPage() - 1) / grid.iconsPerPage());
     }
 
+    // 网格起点相对页顶的固定偏移：返回按钮 + 时空卡片 + 卡片间距 + 卡片内边距 + 标题行（不含底部预留）
     private static int getFixedHeight(int lineHeight) {
         int backHeight = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
         // Spacetime 卡片：6 行文字（行高 = lineHeight + 行间距）
@@ -587,11 +589,8 @@ public final class LogDetailPanel implements PagePanel {
                 + JournalLayout.LOG_DETAIL_META_LINE_GAP * (JournalLayout.LOG_DETAIL_META_ROWS - 1);
         // 标题行高 + 标题与网格的额外间距
         int labelH = lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
-        int progressBarH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
-        int progressGap = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP;
-        int bottomReserve = progressGap + progressBarH + JournalLayout.LOG_DETAIL_CARD_PAD;
         return backHeight + spacetimeCardH + JournalLayout.LOG_DETAIL_CARD_GAP
-                + JournalLayout.LOG_DETAIL_CARD_PAD + labelH + bottomReserve;
+                + JournalLayout.LOG_DETAIL_CARD_PAD + labelH;
     }
 
     // —— 卡片背景 ——
@@ -607,7 +606,7 @@ public final class LogDetailPanel implements PagePanel {
         }
     }
 
-    private record IconSlot(int x, int y, ItemStack stack) {
+    private record IconSlot(int x, int y, LootDisplayEntry entry) {
         private boolean contains(double mouseX, double mouseY) {
             return mouseX >= this.x && mouseX < this.x + ICON_SIZE
                     && mouseY >= this.y && mouseY < this.y + ICON_SIZE;
