@@ -23,11 +23,11 @@
 | 4 | 操作提示行 | DARK_GRAY | 按键 / 右键等交互提示；按键名用 ACCENT 高亮 |
 | 5 | Shift 展开详情 | 分区标题 GOLD + 明细 | 见下方展开规则 |
 
-**Shift 展开规则**：详情 ≥ 4 行或属"能力清单"类内容时使用展开模式；未按 Shift 时只显示通用提示行（`tooltip.unsuspiciousblock.expand_hint`）。展开/收起逻辑统一走 `TooltipBuilder#expandable`，不要在物品里各自判断 `Screen.hasShiftDown()`。
+**Shift 展开规则**：详情 ≥ 4 行或属"能力清单"类内容时使用展开模式；未按 Shift 时只显示通用提示行（`tooltip.unsuspiciousblock.expand_hint`）。展开/收起逻辑统一走 `TooltipBuilder#expandable`，不要在物品里各自判断 `Screen.hasShiftDown()`；`expandable` 的按键状态经 `text/ClientTooltipBridge` 由客户端入口注入，专用服务端取缺省值、不加载客户端类。
 
 ## 3. 语义色表
 
-颜色的唯一出口是 [`TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的常量。**禁止**在新代码中直接使用 `ChatFormatting.XXX` 挑色、在 lang 值中写 `§` 格式码、或使用 `withColor(0xXXXXXX)`。
+颜色的唯一出口是 [`text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/text/TooltipBuilder.java) 的常量。**禁止**在新代码中直接使用 `ChatFormatting.XXX` 挑色、在 lang 值中写 `§` 格式码、或使用 `withColor(0xXXXXXX)`。
 
 | 常量 | 颜色 | 语义 |
 |---|---|---|
@@ -93,7 +93,7 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 
 | 类 | 职责 |
 |---|---|
-| [`client/tooltip/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 可安全引用 |
+| [`text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/text/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 与专用服务端都可安全引用；客户端能力（Shift 检测）经 `text/ClientTooltipBridge` 桥接 |
 | [`item/DescribedItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
 | [`block/SealedContentsDisplay`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
 | [`client/ui/support/UiTextPalette`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) | GUI 自绘文本语义色表（羊皮纸 / 暗色两套 int 主题实现，见「GUI 内文本规范」） |
@@ -124,7 +124,7 @@ GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等�
 
 | 实现层 | 介质 | 颜色出口 |
 |---|---|---|
-| 1 | 原版暗底 tooltip（物品 tooltip / GUI 内 hover tooltip / Jade） | [`TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/TooltipBuilder.java) 的 ChatFormatting 常量 |
+| 1 | 原版暗底 tooltip（物品 tooltip / GUI 内 hover tooltip / Jade） | [`text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/text/TooltipBuilder.java) 的 ChatFormatting 常量 |
 | 2 | 羊皮纸 GUI（考古笔记书页类界面） | [`UiTextPalette.Parchment`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
 | 3 | 暗色 GUI（战利品表管理等） | [`UiTextPalette.Dark`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
 

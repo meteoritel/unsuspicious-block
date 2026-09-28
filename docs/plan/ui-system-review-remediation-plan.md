@@ -188,6 +188,7 @@ S0–S1 的正确性任务不依赖大规模重构，可优先提交。S1-3 的�
 | D7 | 设计开放项 | I-3、I-7、H-5 隐身语义保留待确认；在用户未裁定前，不以静态审查建议直接改变玩家可见规则。 |
 | D8 | 已修正的审查错误 | O-5 已被撤销；R-4、I-10、P-7、O-10 等按复核版本理解。本计划不把原始审查者统计当成完成百分比。 |
 | D9 | 与现有计划的关系 | 已完成的考古笔记 GUI 翻新 P0–P2 不重做；仍待的逐页实机核验可同时验证本计划相关页面，结果分别记录。 |
+| D10 | 灵体猫范围 | 需求方 2026-09-28 裁定「灵体猫未来要重新设计，本轮不做」。H-5/O-2（可见性/发光分支）、R-3（三份 tint 包装）与衣服层复核移出本轮（见 2.4），避免与重设计冲突；本轮其余编号不受影响。 |
 
 ## 六、风险与限制
 
@@ -228,4 +229,75 @@ S0–S1 的正确性任务不依赖大规模重构，可优先提交。S1-3 的�
 
 ## 九、实施结果
 
-> 尚未开始代码实施。每批完成后在此追加日期、实际改动、IDEA/Gradle/边界检查结果、与计划的偏离及仍待用户实机验证的路径。
+> 实施日期：2026-09-28。执行方式：Agent Teams 按文件作用域分四批并行（笔记屏幕 / UI kit / 面板与浮层 / 状态与渲染），Lead 承担服务端边界（A-1）、Mixin 职责（A-6）、i18n 合并、文档收尾与最终构建验证。**H-5/O-2 与 R-3 按 2.4 本轮不做。**
+
+### 9.1 验证记录（开发执行）
+
+| 项 | 命令 / 手段 | 结果 |
+|---|---|---|
+| IDEA 检查 | IDEA MCP `lint_files`（error 级），覆盖 git 工作区全部 82 个改动 Java 文件 | **0 error**；warning 级仅剩既有风格项（`Math.clamp` 建议、未使用的公开槽位、形参值恒定等），已修掉本轮引入的 2 条 |
+| 边界脚本 | `scripts/check-ui-kit-boundaries.ps1` | **exit 0**：kit 无项目依赖 / 无平台 API / 无资源常量 / import 白名单通过；扫描 22 个 kit + 422 个非 client 文件 |
+| 编译构建 | `./gradlew build`（单次、等待至结束） | **BUILD SUCCESSFUL in 55s**；common / fabric / neoforge 均通过，javadoc 任务通过 |
+| i18n | 两份 JSON 严格解析 + 双向差集 | 各 **898** 键（原 909，删 21 个死键、增 10 个新键）、**双向差集为空** |
+| 灵体猫文件 | 全流程未修改 | `MessengerCatRenderer` / `SwordsmanCatRenderer` / `MerchantCatRenderer` / `MessengerCatClothesLayer` / `MessengerCatClothesModel` 无改动 |
+
+### 9.2 完成的批次
+
+- **S0-1 搜索与状态**：H-1/O-3 宿主焦点交接（鼠标事件尾部兑现 + `setInitialFocus` 覆盖 C 键路径 + overlay 打开清焦点）、O-4 `LootTableManagementClientState.reset()` 与两端断连清单、O-6 三个子屏 resize 输入快照、P-3 搜索 200ms 防抖与关系索引/小写名称按 revision 缓存、P-4 网格与子表闭包按版本缓存。
+- **S0-2 可读性**：H-2/I-1 灯箱默认暗底 + 文本色按底色反推；H-3/I-2 六处全部按真实底色复算达标（并追加 7 处同底色不达标项）；`UiTextPalette.Parchment` 全 9 槽 ≥4.5:1（最低 NEGATIVE 4.68:1）；三处 `JournalLayout` 常量改引语义色。
+- **S0-3 渲染正确性**：H-4/O-1 `CatFavorHud` try/finally 成对恢复（tint 在 `blit` 同步上传后复位，不影响图标颜色）、O-7 透视描边补 `depthMask(false/true)`。**灵体可见性本轮不做。**
+- **S1-1 服务端边界**：A-1 `TooltipBuilder` 迁至 `text/` 包、新增 `text/ClientTooltipBridge` + `client/tooltip/ClientTooltipHooks`，`ArchaeologyJournalItem` / `HandOfCatItem` 改为走桥接，15 处引用统一切换；A-6 `EnchantmentScreenMixin` 70 行业务逻辑外移到 `client/enchantment/EnchantmentRevealTooltipBuilder`。
+- **S1-2 目录与日志性能**：H-6/P-1 `getCatalog()` 按 `catalogRevision` 缓存（含断连推进版本这一新增失效点）、P-5 日志脏标记 + tick 合并落盘 + 三处强制 flush。
+- **S1-3 绘制热路径**：P-2 控件按需裁剪、P-6 解析仪 HUD 派生量缓存、P-8 淘洗索引按快照缓存、P-9 护盾球体静态几何、P-10 `TextScroll` 已测宽度重载 + 6 个面板调用点、P-11 日志图标槽改持条目/去 flush 循环、P-12 面板文案与布局按版本缓存、P-14 灯箱重复测量。
+- **S2-1 管理页与输入体验**：A-4 抽出 `LootTableManagementActions` / `LootTableImportValidator`、R-2 列表几何共用 `ListScrollState`、I-5 空态、I-6 资源包来源（`%s`）、O-13 导入失败四类分流 + 日志。
+- **S2-2 中性项**：I-10 禁用态不提示/不展开、I-12 alpha 阈值统一为 `alpha*255 >= 4`。**I-3、I-7 待设计裁定，本轮不改。**
+- **S3 部分**：R-1 `BreakdownPreview`（保留两套 Calculator 与 record，grindstone 不再 import anvil）、R-4 边界口径统一为半开区间、R-5 分页/几何单一来源、R-7 语义核对后仅合并换算核心（保留两套取整/flush 策略）、R-8 取色统一到语义色表、R-9/R-10 部分、O-8/O-9/O-11/O-12/O-14/O-16/O-17/O-18。
+- **S4 文档收尾**：O-10 的 12 处不一致全部修订；O-15 删除 21 个死键；`client-ui.md` 压缩到 **199 行**（≤200 约定）；`text-format.md` / `journal-ui-internals.md` / `ui-kit-api.md` / `config-and-integrations.md` / `cat-favor.md` 同步；CHANGELOG 增「未发布」段。
+
+### 9.3 与计划的偏离（有意收窄，附理由）
+
+| 项 | 计划口径 | 实际处理与理由 |
+|---|---|---|
+| P-11 | 「`flush()` 移出循环」 | 幽灵虚影依赖着色器颜色在提交时生效，改成「幽灵分支：先 flush 不透明内容→着色→渲染→立即 flush→复位」，全获得场景 0 次 flush；字面建议被有意收窄，理由写在代码注释 |
+| R-4 | 抽取公共 `containsMouse` | 先统一为半开区间 `[left,right)×[top,bottom)`（另四处原为 `<=`，会让边界像素双命中），四个面板边界行为变化恰 1px；tooltip 入口收敛留待后续 |
+| R-7 | 删 `TextScroll` 自带裁剪、统一 `UiTransform.enableScissor` | 复核 1.21.1 原版语义后判定两套策略必要（文本走 `drawString` 会自行 flush、`blit` 不会），只合并 pose→像素换算核心 |
+| P-12 | 全部逐帧文本缓存 | 2 处 hover-only（导航 tooltip、场景悬停 tooltip）记录不改：悬停才发生，缓存成本高于收益 |
+| P-7 / P-13 | 先测量再决定 | 本轮无法启动客户端采样，按「记录不改 + 说明测量条件」处理；需用户侧 f3/Spark 采样 |
+| P-9 | 评估关 `sortOnUpload` | 保留 `true`：去 cull 后自重叠混合顺序依赖排序，收益小、可见回归风险实在 |
+| A-2 | 完全收敛双向依赖 | 剩余两条反向边（`SimulationPreferenceStore → JournalUiPreferencesStore`、`RightPageContainer/ArchaeologyEntry`）不在本轮作用域，第三条回调已补（state 不再依赖 `ui.toast`），其余记为后续 |
+| O-11 | 至少一端 `require = 1` | 同包双端共用一个 mixin，对任一端提级会让另一端整包加载失败；改为共享包装方法 + 启动期自检告警，要求拆分平台 mixin 才能提级 |
+| R-2 | 管理页直接用 `UiScrollView` | 管理页是按行 `drawString` 的列表，套 `UiScrollView` 会改变滚动条视觉与命中口径；改为抽共用 `ListScrollState` 并统一 `TextScroll.trimToWidth` |
+| DetailOverlayPanel 进度读数 | H-3 建议"白字改画在条外" | 按用户实机反馈修正：读数移回**条内**居中，改为按填充边界分色（填充侧 `0xFF2E2114`：暖棕 6.40:1 / 完成绿 5.04:1；未填充侧白字：条底 7.46:1），位置与 ≥4.5:1 同时满足 |
+| 灵体猫 | H-5/O-2、R-3、衣服层复核 | 需求方裁定本轮不做（2.4），随重设计处理 |
+
+### 9.4 编号去向
+
+| 编号 | 去向 |
+|---|---|
+| H-1/O-3 | 已修复（待实机复测两条打开路径） |
+| H-2/I-1、H-3/I-2、H-4/O-1、O-4、O-6、O-7 | 已修复 |
+| H-5/O-2、R-3 | **本轮不做**（灵体猫待重设计，2.4） |
+| H-6/P-1、P-2~P-6、P-8~P-12 | 已实施（P-12 两处 hover-only 记录不改） |
+| P-7、P-13 | 记录不改（缺真实采样），待用户 Profiler 数据 |
+| P-14 | 已实施（kit 内） |
+| A-1、A-6 | 已修复 |
+| A-2 | 主体已修复（第三条回调 + 依赖方向声明），剩余两条反向边记后续 |
+| A-3、A-5 | 未实施（职责拆分列入 S3 后续；避免与热路径改动同批） |
+| A-4、R-2 | 已修复（管理页动作/校验抽出、列表几何共用） |
+| A-7、R-3 之外的 R-1、R-5、R-6、R-9、R-10 | R-1/R-5 已实施；R-6（模态 chrome）部分沿用；R-9/R-10 已处理本轮触及的部分，其余记后续 |
+| R-4、R-7、R-8 | R-4 边界统一 + 抽取；R-7 仅合并换算核心；R-8 已统一取色 |
+| I-1、I-2、I-4~I-6、I-8~I-14 | 已实施，除 I-3 / I-7 待设计裁定 |
+| I-3、I-7 | **待设计裁定**（披露口径、阶段名与九命为零的表达），本轮不改 |
+| O-1、O-3~O-4、O-6~O-9、O-11~O-18 | 已实施（O-18 的 `hudEnabled` 判定为会话级有意设计并写明注释） |
+| O-5 | 撤销，不实施 |
+| O-10 | 12 处全部修订 |
+
+### 9.5 仍需用户实机验证
+
+1. NeoForge 与 Fabric：点放大镜后直接输入；再点输入框、退格、收起/展开、Tab、调整窗口；另用 C 键带物品打开确认首字不丢失；打开浮层时字符不落入搜索框。
+2. 场景条件灯箱逐个按钮的普通/悬停/按下/禁用态；中英与小窗口下核对纸面文字；GUI Scale=2 下悬停超宽文本确认不越出文本带（R-7 的两套裁剪策略）。
+3. 非封顶与封顶恩惠下观察 HUD 及随后绘制的其它元素；解析仪透视描边不再遮挡后续世界绘制。
+4. 连接服务器 A 打开管理页，再断连进入服务器 B，确认无 A 的条目/翻译/编辑权限；空结果提示、资源包来源 id、导入失败三类文案；resize 后备注/保留上限/搜索草稿保留。
+5. 较大目录下重复搜索、切表、查看日志详情；制造多条日志增量后退出重进确认记录完整；核对日志详情最后一页不空页（分页口径已与渲染统一）。
+6. 未裁定项：I-3（未发现物品 tooltip 是否披露概率）、I-7（阶段名与九命为零的表达）需先给玩法口径。
+

@@ -11,7 +11,7 @@
 | 机制与实现口径 | [笔记 GUI 内部机制](journal-ui-internals.md) | 为什么这样做、实际怎么算、性能与坐标口径 |
 | 公开入口、接入步骤、行为约定与兼容策略 | 本页 | 第三方宿主可以依赖什么、怎么接、什么会变 |
 | 公开边界的**代码声明** | `common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/kit/package-info.java` | 清单以它为准；本页「公开入口清单」与它必须一致 |
-| 依赖方向的**可执行检查** | `scripts/check-ui-kit-boundaries.ps1` | 四条边界规则，退出码 0/1 |
+| 依赖方向的**可执行检查** | `scripts/check-ui-kit-boundaries.ps1` | 五条边界规则，退出码 0/1 |
 | 跨子系统契约（注册、网络、平台抽象、文本规范） | `docs/dev/foundation/` 对应篇 | 见 [开发者文档](../README.md) 的任务导航 |
 
 三条声明：
@@ -40,7 +40,7 @@
 
 ## 3. 依赖方向与可执行检查
 
-kit 允许依赖：Minecraft 客户端通用类型（`Component` / `ResourceLocation` / `GuiGraphics` / `Font` 等）、Java 标准库、JOML 与 annotations（LWJGL 的按键常量）。kit 不得依赖：任何项目包、两端 loader/平台 API、项目资源常量。
+kit 允许依赖：Minecraft 客户端通用类型（`Component` / `ResourceLocation` / `GuiGraphics` / `Font` 等）、Java 标准库、JOML、LWJGL（`org.lwjgl.glfw.GLFW` 按键常量）与 JetBrains annotations。kit 不得依赖：任何项目包、两端 loader/平台 API、项目资源常量。
 
 | 规则 | 内容 |
 |---|---|
@@ -48,6 +48,7 @@ kit 允许依赖：Minecraft 客户端通用类型（`Component` / `ResourceLoca
 | 2 | kit 内不得出现两端 loader / 平台 API（`net.neoforged` / `net.fabricmc` / `net.minecraftforge` / `cpw.mods`） |
 | 3 | kit 内不得出现 `Constants.MOD_ID` 或 `unsuspiciousblock:` 命名空间字面量（忽略注释行，避免 javadoc 里的说明被误判） |
 | 4 | `client/` 以外的代码不得 `import` kit（服务端加载路径不得链接客户端 kit 类） |
+| 5 | kit 的每条 `import` 必须落在 `java.*` / `net.minecraft.*` / `org.jetbrains.*` / `org.joml.*` / `org.lwjgl.*` 之内（**白名单**；规则 1–3 是黑名单，拦不住新增的任意第三方依赖） |
 
 检查命令与退出码：
 
@@ -57,7 +58,7 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 # 退出码 0 = 全部通过；1 = 有违规（逐条打印 文件:行）；2 = 找不到 kit 目录
 ```
 
-当前结论：**四条规则全部通过（exit 0）**。这条检查是「边界靠可执行脚本守住」而不是靠人工记忆——改 kit 时先跑它。
+当前结论：**五条规则全部通过（exit 0）**。规则 5 已用「临时插入一条白名单外 `import`」的探针验证会被拦下并报 `文件:行`。这条检查是「边界靠可执行脚本守住」而不是靠人工记忆——改 kit 时先跑它。
 
 ## 4. 接入指南
 
@@ -82,6 +83,12 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 - **所有权与生命周期**：组件的生命周期由宿主持有；`UiLightbox` 的关闭动作是构造时传入的 `onClose`，外壳在 `Overlay.closed()` 回调里执行 `onClosed()`（释放按压捕获与焦点）。模态被替换时，旧实例同样会收到一次 `closed()`。
 - **事件消费**：所有输入入口返回 `boolean` 表示是否消费；宿主按「模态 → 滚动条 → 内容」的优先级分发。模态打开期间 `OverlayLayer` 对六类输入一律返回消费，被接管的下层不会收到事件。
 - **空值与非法输入**：`LightboxImage` 在构造期拒绝非正尺寸与越界区域（`IllegalArgumentException`）；未知/缺失贴图不抛异常，由 `placeholder()` 返回占位文案，外壳把它居中画在视口里。`action == null` 表示纯标签；`UiControlGroup.obtain` / `UiFocusManager.add` 传 `null` 抛 NPE。
+- **负尺寸一律钳制**：`UiControl.setBounds` 与 `UiDocument.setViewport` 把负宽高钳到 `0`（此前抛 `IllegalArgumentException`），`UiScrollView.setViewport` 同口径，`UiLightbox.setBounds` 钳到 `1`（外壳至少要一像素才排得出面板）。只有 `UiRect` 自身在构造期拒绝负尺寸——那是矩形的不变式，kit 的入口不会把负尺寸透传给它。宿主不需要在调用前自行钳制。
+- **灯箱默认样式（本轮变更）**：`new UiLightbox(...)` 的控制栏默认用 `UiControlStyle.DARK`；文本默认色不再固定为近白 `0xFFE0E0E0`，而是按结构底色的相对亮度在近白/近黑两候选中取对比度更高者。`setStyle(style)` 后文本色随之重算（标脏，下一帧重配控件标签时生效），先调用 `setTextColor(int)` 则固定不再跟随。此前默认是 `UiControlGroup` 的浅底 `PARCHMENT`，与近白字对比度约 1.06:1。
+- **Frame 内子文档参与悬停**：`UiDocument.render(graphics, font, mouseX, mouseY)` 把鼠标坐标换算到内容坐标后**透传**给 Frame 内子文档，子文档的悬停滚动与 `hit` 与根文档同口径；无鼠标重载 `render(graphics, font)` 仍等价于整篇（含 Frame 内）都不悬停。Frame 的悬停坐标由父文档排版决定，子文档不需要额外接线。
+- **滚动文本的宽度口径**：`TextScroll` 的 `String` 门面保留原签名（内部测一次宽度），并新增带 `textWidth` 的重载；传已测宽度的一方负责口径与失效（字体、语言、资源重载后重测）——kit 不为 `String` 建全局宽度缓存。
+- **灯箱读数格式**：`UiLightbox.Labels` 新增 default 方法 `zoomReadout(int percent)`，默认输出既有画面 `"100%"`；既有 `Labels` 实现无需改动，需要本地化读数的宿主覆盖它。
+- **超宽文本的两个口径**：需要交互时用 `TextScroll.draw(...)`（悬停带内滚动）；列表行这类不接交互的位置用新增的 `TextScroll.trimToWidth(Font font, String value, int maxWidth)`——宽度足够原样返回，连 `"..."` 都放不下时退化为纯宽度截断，否则截到 `maxWidth - font.width("...")` 再补 ASCII 三点省略号（`maxWidth <= 0` 返回空串）。它返回新字符串、不绘制，宽度按 `Font.width(String)` 逐次测量；省略号口径以它为准，宿主不要再自写一份。
 - **回调内容**：`UiAction` 只表达语义动作（`void run()`），不接收也不持有 `Minecraft`、玩家状态或平台事件对象；需要业务数据时由宿主在闭包里捕获，kit 不反向回调宿主状态。
 - **焦点与鼠标**：鼠标点击**不夺取焦点**，而且按下时会收掉键盘焦点（避免轮廓留在被点过的控件上）；焦点只在 Tab 导航与宿主显式 `focusOn` 时改变。模态入口只有在**当前确实持有焦点**时才会被登记为返回焦点，因此键盘路径（Tab → Space/Enter 打开）关闭后恢复焦点，鼠标打开则不留下轮廓。**两个焦点层要一起清**：`OverlayLayer.clearRestoredFocus()` 只清「已经还给入口的焦点」，宿主若同时用 `UiFocusManager`，必须在同一次点击里也调用 `focus.clearFocus()`，否则管理器记录的当前焦点会与控件上的标志失配（最小示例页与本模组笔记页就是这两种情形）。
 
@@ -94,6 +101,12 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 
 | 日期 | 类型 | 变更 | 迁移 |
 |---|---|---|---|
+| 本轮 | 默认行为变更 | `UiLightbox` 控制栏默认样式改为 `UiControlStyle.DARK`，文本默认色按结构底色反推（见「公开 API 的行为约定」） | 需要浅底画面的宿主显式 `setStyle(UiControlStyle.PARCHMENT)` 并自行 `setTextColor` |
+| 本轮 | 行为变更 | 几何入口统一钳制负尺寸：`UiControl.setBounds` / `UiDocument.setViewport` 由抛 `IllegalArgumentException` 改为钳到 `0` | 依赖该异常的宿主需自行校验；现有调用点都已自行钳制，画面不变 |
+| 本轮 | 新增 API | `UiLightbox.Labels.zoomReadout(int)`（default 方法，默认 `"100%"`）；`TextScroll.draw(String, …, int textWidth, …)` 与 `ScrollTextHelper` 的对应重载 | 向后兼容；现有 `Labels` 实现与调用点可不变 |
+| 本轮 | 新增 API | `TextScroll.trimToWidth(Font, String, int)`：超宽文本截断为带 ASCII 省略号的返回串（非交互场景的统一口径），语义取宿主既有的管理页 / 语言选择列表私有实现 | 向后兼容；宿主可删掉各自的私有 `trimToWidth`，返回值与边界口径一致 |
+| 本轮 | 行为修正 | `UiDocument` 把鼠标透传给 Frame 内子文档（此前恒不悬停）；控件只在内容越界时设裁剪（不再每控件两次 `flush()`） | 无 API 变更；Frame 内超宽文本现在可悬停滚动 |
+| 本轮 | 检查加强 | 边界脚本新增规则 5（import 白名单）；`package-info` 与本文补上 LWJGL | 无 API 变更 |
 | 本轮 | 边界冻结 | 声明公开入口清单、加入依赖方向检查脚本、示例层迁出 kit | 无 API 签名变更；宿主无需迁移 |
 
 ## 7. 拆包就绪门槛（逐条结论）
@@ -102,7 +115,7 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 
 | 门槛 | 结论 | 证据 |
 |---|---|---|
-| ① kit 不 import 项目业务包、资源常量及两端 loader API | **已满足** | `scripts/check-ui-kit-boundaries.ps1` 规则 1–3，实测 exit 0 |
+| ① kit 不 import 项目业务包、资源常量及两端 loader API | **已满足** | `scripts/check-ui-kit-boundaries.ps1` 规则 1–3 与 5（import 白名单），实测 exit 0 |
 | ② 开发调试示例移到示例/宿主适配层，资源由调用方提供 | **已满足** | `client/ui/sample/UiKitDebugScreen.java`（包名 `client.ui.sample`，自带贴图路径）；kit 内不再有开发用资源常量 |
 | ③ 最小第三方 Screen 示例只依赖公开包完成按钮、滚动与灯箱 | **已满足** | `client/ui/sample/UiKitSampleScreen.java`（13 个 kit 导入 + `OverlayLayer` / `LightboxOverlay`） |
 | ④ 明确版本号、变更记录和兼容策略，区分实验性与稳定入口 | **已满足** | 本页「兼容策略草案」与「公开入口清单」；模组版本见 `gradle.properties` |
@@ -110,11 +123,11 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 
 **剩余阻碍**（本轮明确留下、不属于本计划交付）：
 
-- kit **不拆分 `api/` 与 `internal/` 子包**（已评估，2026-09-27 决定不采纳）：kit 内部存在 4 组双向依赖（`UiDocument` ↔ `TextScroll`、`UiControl` ↔ `TextScroll`、`UiControlGroup` ↔ `UiScrollView`、`UiLightbox` ↔ `UiImageView`），任何按功能域的分包都会把它们从「包内耦合」升级成「跨包循环」；且 `UiTransform` 的 3 个裁剪工具与 `UiMetrics` 的 5 个计时钩子是 package-private，拆包须提权为 `public`，等于用扩大公开面换目录美观；22 个类型约 2.6k 行也未到需要分包的规模。因此「公开 / 内部」继续由本页清单与 `package-info.java` 约定，子包拆分留到独立 Gradle 模块时一次到位。
+- kit **不拆分 `api/` 与 `internal/` 子包**（已评估，2026-09-27 决定不采纳）：kit 内部实测只有 2 组单向代码依赖（`UiDocument` → `TextScroll`、`UiControl` → `TextScroll`）与 1 组实现关系（`UiImageView implements UiLightbox.Content`）；`UiControlGroup` ↔ `UiScrollView`、`UiLightbox` ↔ `UiImageView` 仅有 javadoc 提及、没有代码引用（2026-09-28 复核），任何按功能域的分包都会把它们从「包内耦合」升级成「跨包循环」；且 `UiTransform` 的 3 个裁剪工具与 `UiMetrics` 的 5 个计时钩子是 package-private，拆包须提权为 `public`，等于用扩大公开面换目录美观；22 个类型约 2.6k 行也未到需要分包的规模。因此「公开 / 内部」继续由本页清单与 `package-info.java` 约定，子包拆分留到独立 Gradle 模块时一次到位。
 - 没有**独立 Gradle 模块与发布脚本**：kit 不是独立产物，无法被外部工程以依赖坐标消费。
 - 没有**「两端消费同一库产物」的构建验证**：NeoForge 与 Fabric 目前各自编译同一份源码，尚未验证同一份发布产物被两端同时消费。
 - 没有**「专用服务端不加载客户端类」的运行时验证**：规则 4 只做了源码层的 `import` 检查，缺少专用服务端启动加载路径的实测证据。
 
 ## 8. 本轮范围声明
 
-本轮**只冻结边界与检查方式**：写下公开入口清单、加入可执行的四条依赖边界检查、把开发/最小示例迁到 `client/ui/sample/`、记录兼容策略与门槛结论。**不拆包、不发布**——不新建 Gradle 模块、不写发布脚本、不改包结构、不声明对外版本号。以上「剩余阻碍」全部完成并有实测证据后，才进入独立的拆包立项。
+本轮**只冻结边界与检查方式**：写下公开入口清单、加入可执行的多条依赖边界检查、把开发/最小示例迁到 `client/ui/sample/`、记录兼容策略与门槛结论。**不拆包、不发布**——不新建 Gradle 模块、不写发布脚本、不改包结构、不声明对外版本号。以上「剩余阻碍」全部完成并有实测证据后，才进入独立的拆包立项。

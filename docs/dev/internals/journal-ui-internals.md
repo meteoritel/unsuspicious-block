@@ -13,13 +13,15 @@ ui/
 ├── JournalBookBackground         书本背景渲染
 ├── PotteryPreviewRenderer        陶轮预览渲染
 ├── entry/      目录条目（ArchaeologyJournalEntry / ItemEntryLike / ArchaeologyEntryItem / ArchaeologyEntryLogRef）
-├── layout/     布局（JournalLayout 书本双页布局 / JournalViewport 视口与滚动区域 / LayoutAware / LayoutAware 接口）
+├── layout/     布局（JournalLayout 书本双页布局 / JournalViewport 视口与滚动区域 / LayoutAware 接口）
 ├── panel/      可复用面板
 ├── screen/     顶层 Screen
 ├── support/    业务支持类
 ├── toast/      Toast 通知
 ├── widget/     交互组件
-└── tooltip/    tooltip
+├── tooltip/    tooltip 基础与分解预览共用件
+├── overlay/    模态层（OverlayLayer 与各浮层）
+└── sample/     开发调试示例页（UiKitDebugScreen 等）
 ```
 
 **screen/**：`ArchaeologyJournalScreen` 是主屏幕；`LootTableManagementScreen` 是与手册 TAB 分离的追踪管理页；`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏；`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕；`JournalLogNoteEditScreen` 与 `JournalLogRetentionScreen` 分别编辑日志备注和当前表保留策略。
@@ -71,6 +73,7 @@ ui/
 | 网格/纸张上的状态词与数值 | `ItemGridPanel` 的 `*_COLOR` | 浅色纸面 | ≥ 4.5:1。状态词（「需要条件」「?」「尚未计算」）原为 `0xFF6B6B6B`（约 3.9:1，实测难以辨读），已改为深暖灰 `0xFF4A4038`（约 7:1） |
 | tooltip 副文本 | `TooltipBuilder.HINT` | 近黑的深色 tooltip 背景 | ≥ 4.5:1。**不要用 `DARK_GRAY`**：它在该背景上只有约 1.9:1，几乎读不出来；而这里承载的恰恰是"为什么没有数字"这类必须读到的信息。与 `LABEL`（`GRAY`）同色是刻意的取舍——可读性优先于层级装饰 |
 | tooltip 条件树的树枝前缀 | `TooltipBuilder.HINT` | 同上 | 同上；条件树正是"为什么没数字"的依据，前缀不可用 `DARK_GRAY` |
+| 进度条上的读数（解析进度、日志总进度） | `DetailOverlayPanel.READOUT_*_COLOR` | 条内底色（深灰）/填充色（暖棕、完成绿） | ≥ 4.5:1。读数画在**条内**，并按填充边界分色：填充侧用深色 `0xFF2E2114`（暖棕 6.40:1 / 完成绿 5.04:1），未填充侧用白色（深灰底 7.46:1） |
 
 `TooltipBuilder` 的语义色表是唯一取色入口（规范见 [文本格式规范](../foundation/text-format.md)）；新增语义应加别名而不是在渲染点临时挑色。
 
@@ -91,7 +94,7 @@ ui/
 | `UiMetrics` | 构建/排版/渲染/命中最近一次耗时（ns）与调用次数；生产宿主传 `false` 关闭计时 |
 | `UiControlStyle` | 控件**结构色** token：普通/悬停/按下/选中/禁用背景、焦点轮廓、滚动条轨道与滑块；内置 `PARCHMENT` 与 `DARK`，`background(State)` 按「禁用 > 按下 > 悬停 > 选中 > 普通」取色。文本色不在其中 |
 | `UiControl` 语义状态 | `enabled` / `visible` / `selected` / `focused` / `pressed` 只影响绘制与命中、不触发重新测量；禁用与不可见清掉按压与焦点；`isFocusable()` 要求 `action != null`，纯标签可命中、有 tooltip，但不作 Tab 停靠点 |
-| `UiControlGroup` | 稳定 key → 控件的 `LinkedHashMap`，迭代顺序即绘制与命中层序（后创建者在上层）；`beginUpdate` / `obtain(key)` / `endUpdate` 复用并丢弃未复用项；`controlAt` 取最上层命中、`renderTooltip` 只画该目标的提示；`mousePressed` 命中即激活并捕获按压到释放（**不夺取焦点**）；`collectFocusTargets` 按视觉顺序把可聚焦控件交给 `UiFocusManager`，自身不再持有焦点 |
+| `UiControlGroup` | 稳定 key → 控件的 `LinkedHashMap`，迭代顺序即绘制与命中层序（后创建者在上层）；`beginUpdate` / `obtain(key)` / `endUpdate` 复用并丢弃未复用项；`controlAt` 取最上层命中、`renderTooltip` 只画该目标的提示；`mousePressed` 命中即激活并捕获按压到释放（**不夺取焦点**）；`collectFocusTargets` 按视觉顺序把可聚焦控件交给 `UiFocusManager`，自身不再持有焦点；渲染跳过不可见控件，控件只在标签/图标确实越界时才设置裁剪（不再每控件两次 `flush()`） |
 | `UiScrollView` | 视口矩形（宿主 GUI 坐标）+ 内容高度 + 偏移，偏移恒钳制在 `[0, maxOffset()]`；`push` / `pop` 进出内容坐标，`toContentX` / `toContentY` / `toScreenY` 做换算，`ensureVisible` 最小滚动；滚动条含点轨道跳转与拖动 |
 | `UiLinearLayout` | 有界横纵布局：主轴 `FIXED` / `CONTENT` / `REMAIN` 加 min·max 钳制，交叉轴固定/内容/拉满，统一 `spacing` 与 `padding`，`Child.leading` 覆盖单个子项前间距；`REMAIN` **先按各子项的 min 预扣再平分余量**，容器确实放不下时按 min 溢出而不是把子项压到 min 以下；`bounds(int)` 只读缓存、越界返回零矩形，`usedMain()` 供宿主换算内容高度 |
 | `UiFocusTarget` | 可聚焦目标适配器：`canFocus()` / `setFocused(boolean)` / `activate()` / `bounds()` / `accessibleName()`。kit 的焦点系统只经它读可聚焦性与边界、写焦点、请求激活，因此原生 `EditBox` 这类非 kit 控件也能按宿主给定的视觉顺序参与 Tab 导航；`setFocused` 只改绘制状态，不重建内容、不重排 |
@@ -102,15 +105,15 @@ ui/
 | `LightboxImage` | 图片描述 record：稳定 `id`、贴图与区域（uv + 原始宽高 + 贴图总尺寸）、可本地化标题与描述；区域必须落在贴图内，非法尺寸在**构造期**就被拒绝；只接受客户端已可用的贴图来源 |
 | `UiImageView` | `UiLightbox.Content` 的图片实现：contain 适配（默认不放大）、1.25 有限步进缩放、指针锚点缩放、平移钳制、严格裁剪绘制与缺图占位；尺寸与缩放状态只在它自己这里，图集/文案/按钮都在外壳 |
 
-**行文本的宽度口径**：排版按自然尺寸不折行，但行文本的可用宽度以视口宽度（1 倍档参考）为上限——超出的部分不参与排版宽度，因此不会再被静默裁掉、也不会把后续图标挤出视口；它在**悬停时于带内滚动**（`render(graphics, font, mouseX, mouseY)` 逐行判悬停并自持滚动计时，旧的无鼠标重载等价于整篇不悬停）。`UiControl` 的标签同一口径：宽度足够时行为与过去逐像素一致，只有确实超宽才滚动。
+**行文本的宽度口径**：排版按自然尺寸不折行，但行文本的可用宽度以视口宽度（1 倍档参考）为上限——超出的部分不参与排版宽度，因此不会再被静默裁掉、也不会把后续图标挤出视口；它在**悬停时于带内滚动**（`render(graphics, font, mouseX, mouseY)` 逐行判悬停并自持滚动计时，无鼠标重载等价于整篇不悬停）。Frame 子文档与父文档同坐标系，鼠标会透传到 Frame 内，因此 Frame 里的超宽文本也能悬停滚动。`UiControl` 的标签同一口径：宽度足够时行为与过去逐像素一致，只有确实超宽才滚动。
 
 数据流为 `业务版本 + 构建器 → UiDocument.setContent → layout → render / hit`。`setContent(revision, supplier)` **只在版本变化时执行构建器**；传入列表的重载每次都会更新。业务方应持有稳定构建器、为所有影响内容的输入维护版本，**不应在逐帧路径创建节点、列表或 lambda**。节点及其 Component 快照交给文档后按只读使用。
 
-`setViewport(x, y, width, height)` 使用调用方 GUI 逻辑坐标；`hit(mouseX, mouseY)` 使用同一坐标系。文档原点随视口移动，只有内容、视口尺寸或 `invalidateLayout()` 改变时重排，平移和缩放均不重排。字体/语言/资源重载由宿主更新内容版本并失效排版。Frame 的 `UiTransform` 由宿主持有，原点由父文档排版设置；它的缩放锚点应先换算到父文档内容坐标，每个活动 Frame 使用独立变换对象。
+`setViewport(x, y, width, height)` 使用调用方 GUI 逻辑坐标；`hit(mouseX, mouseY)` 使用同一坐标系。几何入口对负尺寸统一**钳制**（`UiControl.setBounds` / `UiDocument.setViewport` 钳到 0，`UiScrollView` 同口径，`UiLightbox.setBounds` 钳到 1）；只有 `UiRect` 仍在构造期拒绝负尺寸（矩形自身不变式）。文档原点随视口移动，只有内容、视口尺寸或 `invalidateLayout()` 改变时重排，平移和缩放均不重排。字体/语言/资源重载由宿主更新内容版本并失效排版。Frame 的 `UiTransform` 由宿主持有，原点由父文档排版设置；它的缩放锚点应先换算到父文档内容坐标，每个活动 Frame 使用独立变换对象。
 
 排版缓存文字视觉顺序、矩形、图标与命中目标；稳定帧的 kit 绘制/命中不创建自有对象（游戏引擎内部除外）。纵向块数组用二分定位首个可见块，框外块与完全不可见图标跳过绘制。宿主每次只取一个 `hit()` 结果派生 tooltip；动作由宿主调用 `target.action().run()`，**kit 不负责输入分发、焦点、浮层或状态持久化**。
 
-**裁剪边界**：1.21.1 `GuiGraphics.enableScissor` 不读取 pose（已核实原版源码）。`UiTransform` 在内容变换入栈前，将当前 pose 的轴对齐平移/缩放应用到视口矩形，再设置 scissor，并在裁剪切换前提交绘制批次。支持书本整体缩放和 Frame 内缩放；**不支持旋转、错切、透视**。整数 GUI 像素裁剪向内取整，分数边界最多收进不足一个 GUI 像素。嵌套 scissor 使用原版交集栈恢复外层裁剪。
+**裁剪边界**：1.21.1 `GuiGraphics.enableScissor` 不读取 pose（已核实原版源码）。`UiTransform` 在内容变换入栈前，将当前 pose 的轴对齐平移/缩放应用到视口矩形，再设置 scissor，并在裁剪切换前提交绘制批次。支持书本整体缩放和 Frame 内缩放；**不支持旋转、错切、透视**。整数 GUI 像素裁剪向内取整，分数边界最多收进不足一个 GUI 像素。嵌套 scissor 使用原版交集栈恢复外层裁剪。**两套裁剪入口的取整与 flush 策略是有意区分的**：`TextScroll` 的文本带裁剪向外取整且不主动 flush（文本走 `drawString`，`GuiGraphics` 会在无托管批次时自行 flush），`UiTransform` 的图片裁剪向内取整并在切换前 flush（`blit` 不会自行 flush）；两者共用同一套 pose→GUI 像素换算，策略差异写在各自入口的注释里。
 
 最小接入示例（在初始化/内容变更时构建）：
 
@@ -157,7 +160,7 @@ document.setContent(List.of(new UiNode.Row(
 
 **验证页的阶段 A/B/C 演示区**：`UiKitDebugScreen` 现在左右分栏。右列仍是既有的 200 行 `UiDocument` 演示（25 组 ×（1 根 + 3 子 + 2×2 孙）= 200 行、每 10 行 3 个图标 = 60 个图标）；左列是阶段 A/B/C 演示区——固定/内容/剩余与带 leading 的三种行、禁用控件、原生输入框适配器、`PARCHMENT` / `DARK` 的两组状态样例（普通/悬停/按下/选中/禁用/焦点）以及一段把内容撑高的纯标签列表，用来验证滚动偏移与滚动条。`F` 切换调试叠加层（默认关闭，关闭时不绘制任何额外内容）：打开后画面板与视口矩形、每个布局子项矩形、控件矩形（按启用/禁用着色）与 `accessibleName`、当前焦点目标的强调边框，并输出滚动几何与激活计数。底部读数每 20 tick 刷新，含焦点下标/目标数、滚动偏移/最大偏移/内容高与控件数。演示区与验证页新增的本地化键同时写入 `en_us.json` 与 `zh_cn.json`。
 
-**灯箱的分工：外壳不做内容几何**：`UiLightbox` 只负责遮罩、内容视口、标题与描述、底部控制栏、控件组与焦点、输入分派；内容的尺寸、缩放、平移与裁剪全在 `Content` 实现里。图片场景用 `UiImageView`（由 `LightboxImage` 描述一张图），条件树这类自绘内容由宿主适配器实现——因此同一个外壳既能看图，也能放大整棵树。`Labels` 与 `Gallery` 都由宿主注入，kit 不持有任何文案 key；外壳默认用暗底样式（`UiControlStyle.DARK`）。
+**灯箱的分工：外壳不做内容几何**：`UiLightbox` 只负责遮罩、内容视口、标题与描述、底部控制栏、控件组与焦点、输入分派；内容的尺寸、缩放、平移与裁剪全在 `Content` 实现里。图片场景用 `UiImageView`（由 `LightboxImage` 描述一张图），条件树这类自绘内容由宿主适配器实现——因此同一个外壳既能看图，也能放大整棵树。`Labels` 与 `Gallery` 都由宿主注入，kit 不持有任何文案 key；外壳默认用暗底样式（`UiControlStyle.DARK`），文本默认色按结构底色的 WCAG 相对亮度在近白/近黑之间反推，`setTextColor` 可覆盖并固定。
 
 **为什么不依赖 `OverlayLayer`**：kit 里没有任何对浮层层的引用，宿主用 `LightboxOverlay` 这个模态适配器把外壳接进 `OverlayLayer`——渲染前写入 `layer.width/height`、转发六类输入、在 `Overlay.closed()` 里调外壳的 `onClosed()` 释放按压与焦点。依赖方向因此保持「宿主层 → kit」单向：外壳可以独立复用与验证，也不会被浮层契约牵着走；宿主打开适配器即获得遮罩、独占输入与关闭语义。
 
