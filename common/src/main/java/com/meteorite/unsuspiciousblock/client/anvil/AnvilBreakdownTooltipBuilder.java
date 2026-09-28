@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -21,20 +21,6 @@ import java.util.List;
 public final class AnvilBreakdownTooltipBuilder {
 
     private AnvilBreakdownTooltipBuilder() {}
-
-    /**
-     * 构建输入槽物品的附魔惩罚值 tooltip 行。
-     * 用于铁砧左右两个输入槽物品，展示其当前 REPAIR_COST（prior work 累积值）。
-     */
-    public static List<Component> buildInputPenalty(int repairCost) {
-        List<Component> lines = new ArrayList<>();
-        // 空行分隔原版 tooltip
-        lines.add(Component.empty());
-        lines.add(Component.translatable(
-                "unsuspiciousblock.container.anvil.reveal.input_penalty", repairCost)
-                .withStyle(TooltipBuilder.LABEL));
-        return lines;
-    }
 
     /** 构建完整的分解 tooltip 行列表（不含原版物品 tooltip）。 */
     public static List<Component> build(AnvilBreakdown bd) {

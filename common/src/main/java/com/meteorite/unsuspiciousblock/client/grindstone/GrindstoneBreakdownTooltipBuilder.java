@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.grindstone;
 
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;

@@ -1,10 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
-import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
-import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.unsuspiciousblock.client.tooltip.BreakdownPreview;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AnvilScreen;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AnvilMenu;
@@ -21,11 +19,11 @@ import java.util.List;
  * <p>介入条件（全部满足）：
  * <ol>
  *   <li>当前屏幕为 {@link AnvilScreen}</li>
- *   <li>玩家背包持有「猫之瞳」（{@link ModItems#EYE_OF_CAT}）</li>
+ *   <li>玩家背包持有「猫之瞳」（{@link com.meteorite.unsuspiciousblock.item.ModItems#EYE_OF_CAT}）</li>
  *   <li>触发 tooltip 的物品栈 == 铁砧槽位物品栈（引用相等）</li>
  * </ol>
  *
- * <p>行为分流：
+ * <p>行为分流（槽位编排见 {@link BreakdownPreview}）：
  * <ul>
  *   <li>结果槽：追加完整成本分解（见 {@link AnvilBreakdownCalculator}）</li>
  *   <li>输入槽/附加槽：追加该物品当前的附魔惩罚值（REPAIR_COST），仅惩罚值 &gt; 0 时显示</li>
@@ -41,7 +39,7 @@ public final class AnvilBreakdownTooltipAppender {
      * 在物品 tooltip 上追加铁砧成本分解。
      * 由平台事件监听器调用，不满足介入条件时直接返回。
      */
-    // 平台事件回调入口：判断 + 计算 + 追加，无业务逻辑外泄
+    // 平台事件回调入口：只做屏幕判定，槽位分流与追加委托 BreakdownPreview
     public static void appendIfApplicable(ItemStack stack, List<Component> tooltip) {
         Minecraft mc = Minecraft.getInstance();
         if (!(mc.screen instanceof AnvilScreen anvilScreen)) {
@@ -49,33 +47,11 @@ public final class AnvilBreakdownTooltipAppender {
         }
         AnvilMenu menu = anvilScreen.getMenu();
         Player player = mc.player;
-        if (player == null || !hasEyeOfCat(player)) {
+        if (player == null || !BreakdownPreview.hasRevealItem(player)) {
             return;
         }
-
-        // 结果槽：追加完整成本分解
-        // 引用比较：事件中的 stack 来自 hoveredSlot.getItem()，与结果槽物品同一引用
-        if (stack == menu.getSlot(AnvilMenu.RESULT_SLOT).getItem()) {
-            AnvilBreakdown breakdown = AnvilBreakdownCalculator.calculate(menu, player);
-            tooltip.addAll(AnvilBreakdownTooltipBuilder.build(breakdown));
-            return;
-        }
-
-        // 输入槽/附加槽：追加当前物品的附魔惩罚值（仅惩罚值 > 0 时显示）
-        if (stack == menu.getSlot(AnvilMenu.INPUT_SLOT).getItem()
-                || stack == menu.getSlot(AnvilMenu.ADDITIONAL_SLOT).getItem()) {
-            int repairCost = stack.getOrDefault(DataComponents.REPAIR_COST, 0);
-            if (repairCost > 0) {
-                tooltip.addAll(AnvilBreakdownTooltipBuilder.buildInputPenalty(repairCost));
-            }
-        }
-    }
-
-    // 客户端背包检查：持有猫之瞳才显示分解
-    private static boolean hasEyeOfCat(Player player) {
-        if (ModItems.EYE_OF_CAT == null) {
-            return false;
-        }
-        return InventoryPresenceRegistry.isPresent(player, ModItems.EYE_OF_CAT);
+        BreakdownPreview.appendIfApplicable(stack, tooltip, menu,
+                AnvilMenu.RESULT_SLOT, AnvilMenu.INPUT_SLOT, AnvilMenu.ADDITIONAL_SLOT,
+                () -> AnvilBreakdownTooltipBuilder.build(AnvilBreakdownCalculator.calculate(menu, player)));
     }
 }
