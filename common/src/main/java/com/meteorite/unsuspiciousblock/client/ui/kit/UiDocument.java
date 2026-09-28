@@ -17,6 +17,9 @@ import java.util.function.Supplier;
  * <p>排版按**自然尺寸**且不折行；行文本的可用宽度以视口宽度（1 倍档参考）为上限，
  * 超出部分不参与排版宽度，改为悬停时在带内滚动（见 {@link TextScroll}）。因此平移只在
  * 图标本身超出可视区时才需要，且平移与缩放都不触发重排。</p>
+ *
+ * <p>Frame 内的子文档与父文档共用同一坐标系：父文档把收到的鼠标坐标换算到内容坐标后透传，
+ * 子文档的悬停滚动与命中使用同一套几何。</p>
  */
 public final class UiDocument {
     private static final int PADDING = 2;
@@ -77,11 +80,13 @@ public final class UiDocument {
         metrics.built(start);
     }
 
+    // 负宽高按 0 钳制（与 UiScrollView 同口径）：容器过小时仍能安全排版，不把防御推给调用方。
     public void setViewport(int x, int y, int width, int height) {
-        if (viewport.x() == x && viewport.y() == y && viewport.width() == width && viewport.height() == height) return;
-        UiRect next = new UiRect(x, y, width, height);
-        if (viewport.width() != width || viewport.height() != height) dirty = true;
-        viewport = next;
+        int w = Math.max(0, width);
+        int h = Math.max(0, height);
+        if (viewport.x() == x && viewport.y() == y && viewport.width() == w && viewport.height() == h) return;
+        if (viewport.width() != w || viewport.height() != h) dirty = true;
+        viewport = new UiRect(x, y, w, h);
         transform.setOrigin(x, y);
     }
 
@@ -234,7 +239,7 @@ public final class UiDocument {
         return new LayoutBlock(rect, paint, 0, null);
     }
 
-    /** 无鼠标位置的绘制：等价于整篇都不悬停，长文本不滚动。 */
+    /** 无鼠标位置的绘制：等价于整篇（含 Frame 内子文档）都不悬停，长文本不滚动。 */
     public void render(GuiGraphics graphics, Font font) {
         render(graphics, font, Double.NaN, Double.NaN);
     }
@@ -264,9 +269,13 @@ public final class UiDocument {
                         int ticks = hovered ? blockTicks[i] + 1 : 0;
                         blockTicks[i] = ticks;
                         renderRow(graphics, font, block.row(), left, top, right, bottom, thickness, hovered, ticks);
-                    } else if (block.frame() != null) block.frame().render(graphics, font);
-                    else graphics.fill(block.rect().x(), block.rect().y(), block.rect().right(),
+                    } else if (block.frame() != null) {
+                        // 鼠标坐标先换算到内容坐标再透传，Frame 内子文档才能像根文档一样判悬停。
+                        block.frame().render(graphics, font, localX, localY);
+                    } else {
+                        graphics.fill(block.rect().x(), block.rect().y(), block.rect().right(),
                                 block.rect().bottom(), block.dividerColor());
+                    }
                 }
             } finally {
                 // 先提交仍受裁剪约束的顶点，再恢复外层状态，避免延迟批次泄漏。

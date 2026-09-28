@@ -104,9 +104,13 @@ public final class UiControlGroup {
 
     // ---------- 绘制 / 命中 ----------
 
+    // 不可见控件直接跳过（UiControl.render 同样会提前返回），省掉一次逐帧虚调用。
+    // 本类不自行设置视口裁剪：宿主把它放在 UiScrollView 的平移 pose 内时，裁剪已由滚动视口给出。
     public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
         refreshInteraction();
-        for (UiControl control : ordered) control.render(graphics, font, mouseX, mouseY);
+        for (UiControl control : ordered) {
+            if (control.isVisible()) control.render(graphics, font, mouseX, mouseY);
+        }
     }
 
     /** 最上层命中控件；被上层控件遮挡时不会命中下层，与绘制层序一致。 */

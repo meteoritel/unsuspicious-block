@@ -28,7 +28,7 @@ public final class UiImageView implements UiLightbox.Content {
     private static final double MIN_SCALE = 0.05;
     private static final double MAX_SCALE = 8.0;
 
-    /** 缺图重查间隔（帧）：约 1 秒。 */
+    /** 缺图重查间隔（帧）：20 帧，60 FPS 下约 0.33 秒。 */
     private static final int RECHECK_INTERVAL = 20;
 
     private final LightboxImage image;

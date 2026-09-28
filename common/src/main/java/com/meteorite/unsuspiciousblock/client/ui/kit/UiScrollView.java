@@ -35,6 +35,7 @@ public final class UiScrollView {
     // ---------- 几何与偏移 ----------
 
     // 视口尺寸变化立即重新钳制：内容不足一屏时偏移必须回到 0。
+    // 负宽高按 0 钳制——kit 的几何入口统一钳制，UiRect 只在构造期拒绝负尺寸（那是矩形自身的不变式）。
     public void setViewport(int x, int y, int width, int height) {
         viewport = new UiRect(x, y, Math.max(0, width), Math.max(0, height));
         clampOffset();

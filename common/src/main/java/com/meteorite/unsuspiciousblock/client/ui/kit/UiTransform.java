@@ -58,21 +58,44 @@ public final class UiTransform {
     // 1.21.1 的 enableScissor 不读 pose；先将轴对齐矩形换算为 GUI 屏幕坐标。
     // 在内容变换入栈前调用，因此裁剪框不会随内容平移、缩放而移动。
     static void enableScissor(GuiGraphics graphics, UiRect viewport) {
-        Matrix4f matrix = graphics.pose().last().pose();
-        double left = matrix.m00() * viewport.x() + matrix.m30();
-        double top = matrix.m11() * viewport.y() + matrix.m31();
-        double right = matrix.m00() * viewport.right() + matrix.m30();
-        double bottom = matrix.m11() * viewport.bottom() + matrix.m31();
-        // GuiGraphics 使用整数 GUI 像素；向内取整保证边界外不泄漏。
-        int x = (int) Math.ceil(Math.min(left, right));
-        int y = (int) Math.ceil(Math.min(top, bottom));
-        graphics.flush();
-        graphics.enableScissor(x, y, Math.max(x, (int) Math.floor(Math.max(left, right))),
-                Math.max(y, (int) Math.floor(Math.max(top, bottom))));
+        // 向内取整保证边界外不泄漏；切换前提交绘制批次，因为 blit 这类绘制在非 managed
+        // 上下文里不会自动 endBatch（GuiGraphics.flushIfUnmanaged 只覆盖 fill/drawString）。
+        pushScissor(graphics, viewport.x(), viewport.y(), viewport.right(), viewport.bottom(), false, true);
+    }
+
+    // 在已入栈的 pose 内绘制文本时使用（传入的矩形就是该 pose 坐标系下的矩形）。
+    // 向外取整避免分数缩放时啃掉字形边缘；不提交批次是因为文本走 drawString，
+    // 它在非 managed 上下文里会立刻 endBatch，额外 flush 只会多切一次批次。
+    static void enableScissorInPose(GuiGraphics graphics, int left, int top, int right, int bottom) {
+        pushScissor(graphics, left, top, right, bottom, true, false);
     }
 
     static void disableScissor(GuiGraphics graphics) {
         graphics.flush();
         graphics.disableScissor();
+    }
+
+    /*
+     * 两条裁剪入口共用的换算核心：把当前 pose 坐标系里的矩形换算成整型 GUI 像素后设置 scissor。
+     * 这里用完整 2x2 变换（含 m01/m10）；kit 只支持轴对齐的平移与缩放，此时与只取对角线等价。
+     * outward=true 向外取整（floor/ceil，宁可多留 1 像素），false 向内取整（ceil/floor，宁可少留）。
+     */
+    private static void pushScissor(GuiGraphics graphics, double left, double top, double right, double bottom,
+                                    boolean outward, boolean flush) {
+        Matrix4f matrix = graphics.pose().last().pose();
+        double x1 = matrix.m00() * left + matrix.m10() * top + matrix.m30();
+        double y1 = matrix.m01() * left + matrix.m11() * top + matrix.m31();
+        double x2 = matrix.m00() * right + matrix.m10() * bottom + matrix.m30();
+        double y2 = matrix.m01() * right + matrix.m11() * bottom + matrix.m31();
+        double minX = Math.min(x1, x2);
+        double minY = Math.min(y1, y2);
+        double maxX = Math.max(x1, x2);
+        double maxY = Math.max(y1, y2);
+        int x = (int) (outward ? Math.floor(minX) : Math.ceil(minX));
+        int y = (int) (outward ? Math.floor(minY) : Math.ceil(minY));
+        int rightPx = (int) (outward ? Math.ceil(maxX) : Math.floor(maxX));
+        int bottomPx = (int) (outward ? Math.ceil(maxY) : Math.floor(maxY));
+        if (flush) graphics.flush();
+        graphics.enableScissor(x, y, Math.max(x, rightPx), Math.max(y, bottomPx));
     }
 }

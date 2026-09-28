@@ -15,6 +15,8 @@ import java.util.Objects;
  * <p>控件自带语义状态（普通/悬停/按下/选中/禁用/焦点）：颜色从 {@link UiControlStyle} 取，
  * 禁用与不可见的控件不参与命中、动作与焦点序列。状态只影响绘制与命中，不触发重新测量，
  * 因此状态变化不需要重建内容树。</p>
+ *
+ * <p>绘制只在文字或图标确实越出控件矩形时才设置裁剪，未越界时不提交绘制批次。</p>
  */
 public final class UiControl implements UiFocusTarget {
     private UiRect bounds = new UiRect(0, 0, 0, 0);
@@ -55,9 +57,12 @@ public final class UiControl implements UiFocusTarget {
         rebuildTarget();
     }
 
+    // 负宽高按 0 钳制（与 UiDocument.setViewport / UiScrollView 同口径）；零宽高控件不可命中。
     public void setBounds(int x, int y, int width, int height) {
-        if (bounds.x() == x && bounds.y() == y && bounds.width() == width && bounds.height() == height) return;
-        bounds = new UiRect(x, y, width, height);
+        int w = Math.max(0, width);
+        int h = Math.max(0, height);
+        if (bounds.x() == x && bounds.y() == y && bounds.width() == w && bounds.height() == h) return;
+        bounds = new UiRect(x, y, w, h);
         rebuildTarget();
     }
 
@@ -137,27 +142,42 @@ public final class UiControl implements UiFocusTarget {
         return true;
     }
 
+    // 只在内容确实越出控件矩形时才设裁剪：无裁剪快路径必须保证文字与图标都在边界内（见 needsClip）。
     public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
         if (!visible) return;
         boolean hovered = enabled && bounds.contains(mouseX, mouseY);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), style.background(stateFor(hovered)));
-        UiTransform.enableScissor(graphics, bounds);
+        int iconWidth = icon == null ? 0 : icon.width();
+        int iconHeight = icon == null ? 0 : icon.height();
+        int contentWidth = textWidth + (icon == null ? 0 : iconWidth + (textWidth == 0 ? 0 : 3));
+        int x = bounds.x() + Math.max(2, (bounds.width() - contentWidth) / 2);
+        int iconY = bounds.y() + (bounds.height() - iconHeight) / 2;
+        int textX = icon == null ? x : x + iconWidth + 3;
+        int textY = bounds.y() + (bounds.height() - font.lineHeight) / 2;
+        int textMax = Math.max(0, bounds.right() - 2 - textX);
+        boolean clip = needsClip(x, iconY, iconWidth, iconHeight, textX, textY, font.lineHeight);
+        if (clip) UiTransform.enableScissor(graphics, bounds);
         try {
-            int width = textWidth + (icon == null ? 0 : icon.width() + (textWidth == 0 ? 0 : 3));
-            int x = bounds.x() + Math.max(2, (bounds.width() - width) / 2);
-            if (icon != null) {
-                icon.render(graphics, x, bounds.y() + (bounds.height() - icon.height()) / 2);
-                x += icon.width() + 3;
-            }
+            if (icon != null) icon.render(graphics, x, iconY);
             // 放不下时不再静默裁掉：留在矩形内、悬停滚动。
             scrollTicks = hovered ? scrollTicks + 1 : 0;
-            TextScroll.draw(graphics, font, text, textWidth, x,
-                    bounds.y() + (bounds.height() - font.lineHeight) / 2,
-                    Math.max(0, bounds.right() - 2 - x), textColor(), hovered, scrollTicks);
+            TextScroll.draw(graphics, font, text, textWidth, textX, textY, textMax, textColor(), hovered, scrollTicks);
         } finally {
-            UiTransform.disableScissor(graphics);
+            if (clip) UiTransform.disableScissor(graphics);
         }
         if (focused) renderFocusOutline(graphics);
+    }
+
+    // 需要外层裁剪的条件：图标或文字实际占用的矩形越出控件边界。文本超宽时 TextScroll 自带带内裁剪
+    // （带右界为 bounds.right() - 2），这里只补它不覆盖的部分：图标越界与垂直越界。
+    private boolean needsClip(int iconX, int iconY, int iconWidth, int iconHeight,
+                              int textX, int textY, int lineHeight) {
+        if (icon != null && (iconX < bounds.x() || iconX + iconWidth > bounds.right()
+                || iconY < bounds.y() || iconY + iconHeight > bounds.bottom())) {
+            return true;
+        }
+        // +1 是 TextScroll 文本带下沿多出的 1 像素；空标签不绘制，不因此触发裁剪。
+        return textWidth > 0 && (textX < bounds.x() || textY < bounds.y() || textY + lineHeight + 1 > bounds.bottom());
     }
 
     private UiControlStyle.State stateFor(boolean hovered) {

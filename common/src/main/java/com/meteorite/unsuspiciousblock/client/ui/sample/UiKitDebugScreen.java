@@ -500,7 +500,8 @@ public final class UiKitDebugScreen extends Screen {
             graphics.fill(frameBounds.x() - 1, frameBounds.y() - 1,
                     frameBounds.right() + 1, frameBounds.bottom() + 1, 0xFF896C48);
             graphics.fill(frameBounds.x(), frameBounds.y(), frameBounds.right(), frameBounds.bottom(), 0xFFF2E5C6);
-            document.render(graphics, font);
+            // 传真实鼠标坐标：Frame 子文档按 O-9 的新契约参与悬停与命中
+            document.render(graphics, font, localX, localY);
             renderDemoArea(graphics, localX, localY, partialTick);
         } finally {
             graphics.pose().popPose();

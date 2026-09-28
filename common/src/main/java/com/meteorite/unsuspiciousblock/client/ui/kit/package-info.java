@@ -31,13 +31,27 @@
  * 的排版缓存与私有几何公式、{@code UiMetrics} 的计时细节、{@code UiTransform} 的裁剪工具等。
  * 它们可以随实现改动而不进变更记录。</p>
  *
- * <p><b>依赖方向</b>：本包只依赖 Minecraft 客户端通用类型、Java 标准库与 JOML/annotations——
- * 不 import 任何项目包、不 import 两端 loader API、不引用 {@code Constants.MOD_ID}；
- * {@code client/} 以外的代码不得引用本包。该约束由 {@code scripts/check-ui-kit-boundaries.ps1} 检查。</p>
+ * <p><b>依赖方向</b>：本包只依赖 Minecraft 客户端通用类型、Java 标准库、JOML、LWJGL（按键常量）与
+ * JetBrains annotations——不 import 任何项目包、不 import 两端 loader API、不引用 {@code Constants.MOD_ID}；
+ * {@code client/} 以外的代码不得引用本包。该约束由 {@code scripts/check-ui-kit-boundaries.ps1} 检查：
+ * 规则 1–4 是黑名单，规则 5 是 import 白名单（只允许 {@code java.*} / {@code net.minecraft.*} /
+ * {@code org.jetbrains.*} / {@code org.joml.*} / {@code org.lwjgl.*}）。</p>
  *
  * <p><b>宿主适配层</b>：{@code client/ui/overlay/}（模态与 `OverlayLayer` 适配、
  * {@code LightboxOverlay}）与 {@code client/ui/sample/}（开发用示例页）属于宿主/示例层，
  * 允许依赖项目常量与平台服务；它们依赖 kit，而不是反过来。</p>
+ *
+ * <p><b>公开行为约定</b>：几何入口对负尺寸一律**钳制**而不是抛异常——{@code UiControl.setBounds} 与
+ * {@code UiDocument.setViewport} 钳到 ≥0，{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView}
+ * 同口径，{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiLightbox#setBounds(int, int)} 钳到 ≥1；
+ * 只有 {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiRect} 自身在构造期拒绝负尺寸。
+ * {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiLightbox} 默认用
+ * {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle#DARK} 暗底，文本默认色按结构底色反推，
+ * {@code setStyle} 覆盖样式后文本色随之重算（除非先调用 {@code setTextColor}）；
+ * 其 {@code Labels} 新增 default 方法 {@code zoomReadout(int)}，既有实现无需改动。
+ * {@link com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll} 另有非交互工具方法
+ * {@code trimToWidth(Font, String, int)}（超宽时截断并补 ASCII 省略号），与悬停滚动入口并存。
+ * 条目与兼容说明见 {@code docs/dev/internals/ui-kit-api.md}。</p>
  *
  * <p><b>尚未完成</b>：独立 Gradle 模块与发布脚本，需要另立拆包任务；当前只冻结边界与检查方式。
  * 子包拆分（{@code api/} 与 {@code internal/}）已评估并决定不做，理由见

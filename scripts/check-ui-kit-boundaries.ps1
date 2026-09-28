@@ -1,13 +1,15 @@
 <#
 UI kit 依赖方向检查（阶段 E）。
 
-用途：在拆包/发布之前，用可执行的方式守住四条边界，避免它们靠人工记忆退化：
+用途：在拆包/发布之前，用可执行的方式守住五条边界，避免它们靠人工记忆退化：
 
-  1) kit 内部不得 import 任何项目包（kit 只依赖 Minecraft 客户端类型、Java 标准库与 JOML/annotations），
-     这样 kit 才可能被抽成独立库；
+  1) kit 内部不得 import 任何项目包（kit 只依赖 Minecraft 客户端类型、Java 标准库、JOML、LWJGL（按键常量）
+     与 annotations），这样 kit 才可能被抽成独立库；
   2) kit 内部不得出现两端 loader / 平台 API（neoforged、fabricmc、minecraftforge、mods）；
   3) kit 内部不得出现 Constants.MOD_ID、模组命名空间字面量这类项目资源常量；
-  4) client/ 以外的代码不得 import kit（服务端加载路径不得链接客户端 kit 类）。
+  4) client/ 以外的代码不得 import kit（服务端加载路径不得链接客户端 kit 类）；
+  5) 白名单：kit 的每条 import 必须落在 java.* / net.minecraft.* / org.jetbrains.* / org.joml.* / org.lwjgl.*
+     之内——规则 1–3 是黑名单，拦不住任意新增的第三方依赖，本规则把它兜住。
 
 用法：pwsh -File scripts/check-ui-kit-boundaries.ps1 [-Root <仓库根>]
 退出码：0 全部通过；1 有违规（逐条打印 文件:行）；2 环境异常（找不到 kit 目录）。
@@ -15,7 +17,8 @@ UI kit 依赖方向检查（阶段 E）。
 已知局限（有意保留，请按需加强）：
   · 规则 1/2 只匹配 import 语句，不解析同包引用；import static 已覆盖；
   · 规则 3 会剔除整行注释与行内注释，但不会剔除块注释中间的行；
-  · 规则 4 扫描 common / fabric / neoforge 的 src/main/java，不扫描 test 源集与构建产物。
+  · 规则 4 扫描 common / fabric / neoforge 的 src/main/java，不扫描 test 源集与构建产物；
+  · 规则 5 只校验 import 语句（同包引用与全限定名用法不在覆盖内），与规则 1/2 的口径一致。
 #>
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -36,6 +39,20 @@ function Test-LinePattern($title, $pattern, $files) {
         $lines = Get-Content -LiteralPath $file
         for ($i = 0; $i -lt $lines.Count; $i++) {
             if ($lines[$i] -match $pattern) { Add-Hit $title $file ($i + 1) $lines[$i] }
+        }
+    }
+}
+
+# 白名单：规则 1–3 覆盖不了"新引入的任意第三方 import"，这里逐条 import 校验允许的前缀。
+function Test-AllowListedImports($files) {
+    $allowed = '^\s*import\s+(static\s+)?(java\.|net\.minecraft\.|org\.jetbrains\.|org\.joml\.|org\.lwjgl\.)'
+    foreach ($file in $files) {
+        $lines = Get-Content -LiteralPath $file
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line -notmatch '^\s*import\s') { continue }
+            if ($line -match $allowed) { continue }
+            Add-Hit "kit-import-outside-allowlist" $file ($i + 1) $line
         }
     }
 }
@@ -62,6 +79,7 @@ $kitFiles = Get-ChildItem -Path $kitDir -Recurse -Filter *.java | Select-Object 
 Test-LinePattern "kit-imports-project" '^\s*import\s+(static\s+)?com\.meteorite\.unsuspiciousblock\.' $kitFiles
 Test-LinePattern "kit-imports-platform" '^\s*import\s+(static\s+)?(net\.neoforged|net\.fabricmc|net\.minecraftforge|cpw\.mods)\.' $kitFiles
 Test-ModConstants $kitFiles
+Test-AllowListedImports $kitFiles
 
 $sourceRoots = @("common", "fabric", "neoforge") |
     ForEach-Object { Join-Path $Root ($_ + "/src/main/java") } |
@@ -74,7 +92,7 @@ $otherFiles = foreach ($root in $sourceRoots) {
 Test-LinePattern "non-client-imports-kit" '^\s*import\s+(static\s+)?com\.meteorite\.unsuspiciousblock\.client\.ui\.kit\.' $otherFiles
 
 if ($violations.Count -eq 0) {
-    Write-Host "UI kit 边界检查通过：kit 无项目依赖 / 无平台 API / 无资源常量；client 以外未引用 kit。"
+    Write-Host "UI kit 边界检查通过：kit 无项目依赖 / 无平台 API / 无资源常量 / import 全部在白名单内；client 以外未引用 kit。"
     Write-Host ("扫描范围：" + $kitFiles.Count + " 个 kit 文件 + " + ($otherFiles | Measure-Object).Count + " 个非 client 文件。")
     exit 0
 }
