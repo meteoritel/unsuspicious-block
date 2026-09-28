@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.item;
 
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.pan.PanningLootService;
 import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;

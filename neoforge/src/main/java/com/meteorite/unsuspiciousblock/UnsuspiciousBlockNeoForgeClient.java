@@ -16,6 +16,7 @@ import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHigh
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.ShimmerSurfaceRenderer;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
+import com.meteorite.unsuspiciousblock.client.tooltip.ClientTooltipHooks;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
@@ -26,9 +27,11 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
+import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.text.ClientTooltipBridge;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
@@ -62,12 +65,17 @@ public final class UnsuspiciousBlockNeoForgeClient {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
+            // 桥接客户端 tooltip/界面能力：服务端可达类不直接引用 client 包；
+            // 必须在任何物品 tooltip 渲染前安装，所以放在初始化入口而不是懒加载
+            ClientTooltipBridge.install(new ClientTooltipHooks());
             ClientLootTableLanguageStore.initialize();
             PanningVisuals.register();
             ArchaeologyJournalUi.registerOpener((state, itemId) ->
                     Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
             // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
             ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
+            // 注册 100% 完成奖励通知回调：与上一条同源，避免 ClientState 直接依赖 toast 包
+            ArchaeologyJournalClientState.registerTableCompletionNotifier(JournalUnlockToast::addTableCompletion);
             ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {
                 java.util.List<JournalUnlockToast.Entry> entries = new java.util.ArrayList<>();
                 for (int i = 0; i < names.size(); i++) {
@@ -175,6 +183,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         ArchaeologyJournalClientState.resetOnDisconnect();
         ClientLootTableLanguageStore.resetOnDisconnect();
+        LootTableManagementClientState.reset();
         HandOfCatClientState.reset();
         ReaderScanHudState.reset();
         PanningSoundController.reset();

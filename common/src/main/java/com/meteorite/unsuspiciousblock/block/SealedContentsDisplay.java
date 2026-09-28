@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.block;
 
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.ItemStack;

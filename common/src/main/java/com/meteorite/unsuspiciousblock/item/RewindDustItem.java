@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.item;
 
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.world.StructureRewindService;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;

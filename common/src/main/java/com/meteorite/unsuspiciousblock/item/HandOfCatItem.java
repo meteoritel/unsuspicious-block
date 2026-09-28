@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.item;
 
 import com.meteorite.unsuspiciousblock.cat.CatFavorAbility;
 import com.meteorite.unsuspiciousblock.cat.CatBondStage;
-import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.ClientTooltipBridge;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -84,8 +84,9 @@ public class HandOfCatItem extends Item {
         // WIP 提示：物品仍在开发中，效果可能变更，置于首行醒目提示
         tooltip.wip();
 
-        int favor = HandOfCatClientState.getCachedFavor();
-        int lives = HandOfCatClientState.getCachedNineLivesCount();
+        // 客户端缓存经桥接读取；专用服务端未安装实现时取缺省值
+        int favor = ClientTooltipBridge.handOfCatFavor();
+        int lives = ClientTooltipBridge.handOfCatLives();
         Optional<UUID> ownerUuid = getOwnerUuid(stack);
 
         if (ownerUuid.isEmpty()) {
@@ -97,7 +98,7 @@ public class HandOfCatItem extends Item {
         tooltip.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip.owner", ownerName)
                 .withStyle(TooltipBuilder.NAME));
 
-        if (!HandOfCatClientState.isLocalPlayer(ownerUuid.get())) {
+        if (!ClientTooltipBridge.isLocalPlayer(ownerUuid.get())) {
             return;
         }
 

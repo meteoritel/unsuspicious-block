@@ -1,7 +1,6 @@
-package com.meteorite.unsuspiciousblock.client.tooltip;
+package com.meteorite.unsuspiciousblock.text;
 
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -14,7 +13,8 @@ import java.util.function.Consumer;
  * 操作提示行 → Shift 展开详情。物品侧约定先调用 {@code super.appendHoverText} 再追加自定义内容。
  *
  * <p>仅依赖共享类（Component / ChatFormatting），common 代码可安全引用；
- * 仅 {@link #expandable} 使用客户端 Shift 按键检测，同样只在客户端 tooltip 渲染路径中被调用。
+ * 仅 {@link #expandable} 需要 Shift 按键状态，通过 {@link ClientTooltipBridge} 桥接，
+ * 专用服务端未安装实现时视为未按下，不加载任何客户端类。
  */
 public final class TooltipBuilder {
 
@@ -100,7 +100,7 @@ public final class TooltipBuilder {
 
     // Shift 展开区块：按下 Shift 时执行 details 填充明细，否则显示通用提示行
     public void expandable(Consumer<TooltipBuilder> details) {
-        if (Screen.hasShiftDown()) {
+        if (ClientTooltipBridge.isExpandKeyDown()) {
             details.accept(this);
         } else {
             hint(EXPAND_HINT_KEY);

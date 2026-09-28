@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.block.SealedContentsDisplay;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlock;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;

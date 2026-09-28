@@ -28,6 +28,16 @@ public final class LootTableManagementClientState {
         ClientLootTableLanguageStore.receiveServerTranslations(translations);
     }
 
+    // 断开连接时清空连接级快照：切服后首个管理页响应到来前不应展示上一台服务器的条目或编辑权限。
+    // 生成 key 的资源翻译由 ClientLootTableLanguageStore.resetOnDisconnect() 单独清理，两端入口都已调用。
+    public static void reset() {
+        entries = List.of();
+        recentEntries = List.of();
+        translations = Map.of();
+        canEdit = false;
+        revision.incrementAndGet();
+    }
+
     public static List<SyncLootTableManagementPayload.Entry> entries() {
         return entries;
     }

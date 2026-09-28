@@ -21,7 +21,6 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncre
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.JournalLogDeleteResultPayload;
-import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.Minecraft;
@@ -49,10 +48,11 @@ import java.util.function.Consumer;
  */
 public final class ArchaeologyJournalClientState {
 
-    // 解锁通知回调：表解锁通知、物品解锁通知
-    // 由平台代码注入，将状态层与 UI 层解耦
+    // 解锁通知回调：表解锁、物品解锁、单表 100% 完成奖励
+    // 由平台代码注入，将状态层与 UI 层解耦（状态层不直接引用 ui.toast）
     private static volatile Consumer<List<Component>> tableUnlockNotifier;
     private static volatile BiConsumer<List<Component>, List<ItemStack>> itemUnlockNotifier;
+    private static volatile Consumer<Component> tableCompletionNotifier;
     private static volatile Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
     private static volatile CatalogStructure catalogStructure = CatalogStructure.empty();
     private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
@@ -82,6 +82,9 @@ public final class ArchaeologyJournalClientState {
     private static volatile boolean persistenceSuppress;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
+    // getCatalog() 的只读投影缓存：与 catalogRevision 一致时直接复用，避免渲染路径每帧重建整份 overlay
+    private static volatile Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
+    private static volatile long catalogProjectionRevision = -1L;
     // 客户端缓存的目录哈希，用于按需同步比对
     @Nullable
     private static volatile String cachedCatalogHash;
@@ -105,6 +108,11 @@ public final class ArchaeologyJournalClientState {
     // 注册物品解锁通知回调
     public static void registerItemUnlockNotifier(BiConsumer<List<Component>, List<ItemStack>> notifier) {
         itemUnlockNotifier = notifier;
+    }
+
+    // 注册表 100% 完成奖励的通知回调
+    public static void registerTableCompletionNotifier(Consumer<Component> notifier) {
+        tableCompletionNotifier = notifier;
     }
 
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
@@ -258,13 +266,16 @@ public final class ArchaeologyJournalClientState {
         minecraft.player.displayClientMessage(message, true);
     }
 
-    // 收到服务端的 100% 完成奖励通知：解析表名并弹 Toast
+    // 收到服务端的 100% 完成奖励通知：解析表名后走回调（与另两条解锁通知同一解耦方式）
     public static void receiveTableCompletionReward(NotifyTableCompletionRewardPayload payload) {
         ResourceLocation tableId = payload.tableId();
         TableDefinition def = serverCatalog.get(tableId);
         Component tableName = def != null ? def.displayName()
                 : Component.literal(tableId.getPath());
-        JournalUnlockToast.addTableCompletion(tableName);
+        Consumer<Component> notifier = tableCompletionNotifier;
+        if (notifier != null) {
+            notifier.accept(tableName);
+        }
     }
 
     public static void tick() {
@@ -274,8 +285,25 @@ public final class ArchaeologyJournalClientState {
 
     public static void simulationChanged() { catalogRevision.incrementAndGet(); }
 
+    /**
+     * 目录投影：在原始目录上叠加当前模拟选择与结果，供日志详情、tooltip 与网格共用。
+     * <p>
+     * 缓存键就是 {@link #catalogRevision}，全部输入变化点都推进它：
+     * 收到完整目录（{@link #receiveCatalog}）、模拟选择/结果变化（{@link #simulationChanged}）、
+     * 断连重置（{@link #resetOnDisconnect}）。命中时返回同一份**不可修改**映射，
+     * 调用方只能读取。语言切换无需失效：投影只持有 {@code Component} 与 record，翻译在渲染时解析。
+     */
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
-        return com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.overlay(serverCatalog);
+        long revision = catalogRevision.get();
+        if (catalogProjectionRevision == revision) {
+            return catalogProjection;
+        }
+        Map<ResourceLocation, TableDefinition> projection = Collections.unmodifiableMap(
+                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.overlay(serverCatalog));
+        // 先发布投影再发布版本号，读取方看到新版本号时必然能看到对应投影
+        catalogProjection = projection;
+        catalogProjectionRevision = revision;
+        return projection;
     }
 
     // 按物品注册名预检当前可见目录是否存在搜索结果，避免打开空白手册。
@@ -481,7 +509,10 @@ public final class ArchaeologyJournalClientState {
     public static void resetOnDisconnect() {
         com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.clear();
         serverCatalog = Collections.emptyMap();
-        // 先把未刷盘的 UI 偏好落盘，避免退出世界时丢失最近修改
+        // 目录本身被清空，但 catalogRevision 未必变化，必须显式推进，否则投影缓存会继续返回上一服务器内容
+        catalogRevision.incrementAndGet();
+        // 先把未刷盘的本地日志与 UI 偏好落盘，避免退出世界/关闭客户端时丢失最近记录
+        ArchaeologyJournalLogLocalStore.flush();
         JournalUiPreferencesStore.flushIfDirty();
         stateInitialized = false;
         lastNotifiedRevision = -1L;
