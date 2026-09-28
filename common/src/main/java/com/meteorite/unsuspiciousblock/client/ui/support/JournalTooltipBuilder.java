@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.tooltip.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
@@ -49,18 +49,18 @@ public final class JournalTooltipBuilder {
 
         // 未发现物品只展示状态与获取条件，避免提前泄露物品身份
         if (data.discovered()) {
-            lines.add(data.stack().getHoverName().copy().withStyle(ChatFormatting.WHITE));
+            lines.add(data.stack().getHoverName().copy().withStyle(TooltipBuilder.BODY));
             JournalItemDetailAppender.append(lines, data.stack());
         } else {
             lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered")
-                    .copy().withStyle(ChatFormatting.GRAY));
+                    .copy().withStyle(TooltipBuilder.LABEL));
         }
 
         // 获取数量
         if (data.discovered() && data.count() >= 0) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.acquired", data.count())
-                    .copy().withStyle(ChatFormatting.GREEN));
+                    .copy().withStyle(TooltipBuilder.POSITIVE));
         }
 
         // 声明触发率与整表模拟掉落率分开展示，不把随机条件值冒充最终产出概率。
@@ -83,7 +83,8 @@ public final class JournalTooltipBuilder {
             boolean hintIsApprox = data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
             if (!(probUncertain && hintIsApprox)) {
-                lines.add(data.hint().copy().withStyle(ChatFormatting.DARK_GREEN, ChatFormatting.ITALIC));
+                // 提示文本：色表归并规则下 DARK_GREEN 归 HINT（文案规范 8.3）
+                lines.add(data.hint().copy().withStyle(TooltipBuilder.HINT, ChatFormatting.ITALIC));
             }
         }
 
@@ -91,7 +92,7 @@ public final class JournalTooltipBuilder {
         if (data.discovered() && data.injected()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.injected_loot")
-                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
+                    .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));
         }
 
         appendAcquisitionPaths(lines, data.acquisitionPaths());
@@ -106,25 +107,25 @@ public final class JournalTooltipBuilder {
                                                    List<LootConditionInfo> conditions,
                                                    boolean luckAffected) {
         List<Component> lines = new ArrayList<>();
-        lines.add(displayName.copy().withStyle(ChatFormatting.WHITE));
+        lines.add(displayName.copy().withStyle(TooltipBuilder.BODY));
         lines.add(Component.literal(tableId.toString()).withStyle(TooltipBuilder.HINT));
         // 显示优先级与物品同一条链：**状态词优先于数值**。子表区间是"其它代表场景的范围"，
         // 用它顶掉「需要条件」就等于"为什么看不到数字"永远看不到；而且区间里的 0% 会与
         // 「需要条件」互相打脸（0% 读起来像"不可能"，而它只是"当前输入下进不去"）。
         if (!probability.isDisplayable()) {
-            lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(ChatFormatting.GRAY));
+            lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(TooltipBuilder.LABEL));
         } else {
             ProbabilityBounds bounds = scenarioProbabilityBounds(scenarioProbabilities);
             if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
                 lines.add(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
-                        .withStyle(ChatFormatting.GREEN));
+                        .withStyle(TooltipBuilder.POSITIVE));
                 lines.add(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
-                        .withStyle(ChatFormatting.GREEN));
+                        .withStyle(TooltipBuilder.POSITIVE));
             } else {
                 lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(
-                        probability.isDisplayable() ? ChatFormatting.GREEN : ChatFormatting.GRAY));
+                        probability.isDisplayable() ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL));
             }
         }
         if (luckAffected) {
@@ -134,12 +135,12 @@ public final class JournalTooltipBuilder {
         if (!conditions.isEmpty()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.parent_table_conditions_header")
-                    .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+                    .withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
             appendConditionTree(lines, conditions, "");
         }
         lines.add(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.child_table_open")
-                .withStyle(ChatFormatting.GRAY));
+                .withStyle(TooltipBuilder.LABEL));
         return lines;
     }
 
@@ -170,7 +171,7 @@ public final class JournalTooltipBuilder {
                 }
             }
             case Probability.Unknown(UnknownReason reason) -> lines.add(
-                    ProbabilityFormat.describeUnknown(reason).copy().withStyle(ChatFormatting.GRAY));
+                    ProbabilityFormat.describeUnknown(reason).copy().withStyle(TooltipBuilder.LABEL));
             case Probability.Measured measured -> appendNumericProbabilityLines(lines, data, measured);
             case Probability.Unreachable unreachable -> appendNumericProbabilityLines(lines, data, unreachable);
         }
@@ -181,15 +182,16 @@ public final class JournalTooltipBuilder {
                                                       Probability probability) {
         if (probability.isZeroHit()) {
             lines.add(ProbabilityFormat.describeZeroHit(data.simulationCount())
-                    .copy().withStyle(ChatFormatting.GRAY));
+                    .copy().withStyle(TooltipBuilder.LABEL));
             lines.add(ProbabilityFormat.describeZeroHitHint()
                     .copy().withStyle(TooltipBuilder.HINT));
         }
         boolean probUncertain = probability.isUnknown();
         ChatFormatting probColor = switch (data.uncertaintyLevel()) {
-            case PROBABILISTIC -> ChatFormatting.GOLD;
-            case RUNTIME -> ChatFormatting.YELLOW;
-            default -> probUncertain ? ChatFormatting.GRAY : ChatFormatting.GREEN;
+            // 不确定度等级复用条件树的语义别名：概率型=金、运行时=黄、其余按是否未知取灰/绿
+            case PROBABILISTIC -> TooltipBuilder.CONDITION_PROBABILISTIC;
+            case RUNTIME -> TooltipBuilder.CONDITION_RUNTIME;
+            default -> probUncertain ? TooltipBuilder.LABEL : TooltipBuilder.POSITIVE;
         };
         ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
         if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
@@ -264,18 +266,18 @@ public final class JournalTooltipBuilder {
 
         lines.add(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_header")
-                .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+                .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
         for (int i = 0; i < paths.size(); i++) {
             LootAcquisitionPath path = paths.get(i);
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.acquisition_path", i + 1)
-                    .copy().withStyle(ChatFormatting.AQUA));
+                    .copy().withStyle(TooltipBuilder.ACCENT));
             if (path.hasConditions()) {
                 appendConditionTree(lines, path.allConditions(), "  ");
             } else if (path.sourceChildTable() == null) {
                 lines.add(Component.literal("  ").append(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.acquisition_path_unconditional"))
-                        .withStyle(ChatFormatting.GREEN));
+                        .withStyle(TooltipBuilder.POSITIVE));
             }
             appendSourceTable(lines, path.sourceChildTable(), "  ");
             appendSourceItemTag(lines, path.sourceItemTag(), "  ");
@@ -286,13 +288,13 @@ public final class JournalTooltipBuilder {
         if (!path.entryConditions().isEmpty()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.conditions_header")
-                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+                    .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
             appendConditionTree(lines, path.entryConditions(), "");
         }
         if (!path.inheritedConditions().isEmpty()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.inherited_conditions_header")
-                    .copy().withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE));
+                    .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
             appendConditionTree(lines, path.inheritedConditions(), "");
         }
         appendSourceTable(lines, path.sourceChildTable(), "");
@@ -307,7 +309,7 @@ public final class JournalTooltipBuilder {
         Component childTableName = LootTableNames.resolveDisplayName(sourceChildTable);
         lines.add(Component.literal(prefix).append(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName))
-                .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
+                .withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));
     }
 
     private static void appendSourceItemTag(List<Component> lines,
@@ -319,7 +321,7 @@ public final class JournalTooltipBuilder {
         lines.add(Component.literal(prefix).append(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.from_item_tag",
                 Component.literal(sourceItemTag.toString())))
-                .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC));
+                .withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));
     }
 
     // 递归渲染条件树到 tooltip 行列表；颜色表示不确定性等级，斜体表示描述保真度

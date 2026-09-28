@@ -77,6 +77,9 @@ public class IconButton extends AbstractButton {
     // 文字颜色
     private static final int TEXT_COLOR_NORMAL = 0xFF5A3D23;
     private static final int TEXT_COLOR_HOVERED = 0xFF3D2810;
+    // 禁用态灰纱（I-10）：按钮内容照常绘制后覆一层半透明暖灰，明确"不可操作"，
+    // 与 BookmarkToggleButton 的禁用口径一致；当前无调用点把按钮置为禁用，此分支是契约保障。
+    private static final int DISABLED_VEIL = 0x80B5B0A8;
 
     private char iconChar;
     private @Nullable Icon icon;
@@ -175,6 +178,10 @@ public class IconButton extends AbstractButton {
             int textY = y + (h - 8) / 2;
             guiGraphics.drawString(font, text, textX, textY, textColor, false);
         }
+        // 禁用态：盖住全部内容（含图标与文字），避免看起来仍可点击
+        if (!this.active) {
+            guiGraphics.fill(x, y, x + w, y + h, DISABLED_VEIL);
+        }
     }
 
     private static Component firstTooltipLine(@Nullable List<Component> tooltipLines) {
@@ -183,7 +190,8 @@ public class IconButton extends AbstractButton {
 
     /** 由 Screen.render 调用，在所有 widget 之后绘制 tooltip */
     public void renderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.tooltipLines != null && !this.tooltipLines.isEmpty() && this.isHovered()) {
+        // 禁用态不显示 tooltip：提示文案会暗示"可操作"（I-10）
+        if (this.active && this.tooltipLines != null && !this.tooltipLines.isEmpty() && this.isHovered()) {
             Font font = Minecraft.getInstance().font;
             guiGraphics.renderTooltip(font, this.tooltipLines.stream().map(Component::getVisualOrderText).toList(), mouseX, mouseY);
         }

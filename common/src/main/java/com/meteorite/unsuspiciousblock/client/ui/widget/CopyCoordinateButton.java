@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * 复制坐标按钮——统一的渲染 + 命中检测 + 指令复制逻辑。
+ * 复制坐标按钮——统一的渲染 + 命中检测 + 指令复制逻辑，同时是坐标**显示文本**的唯一格式化入口。
  * 用于日志列表页条目行与日志详情页坐标信息行。
  * 复制指令格式：/execute as @s in <维度注册名> run tp @s x (y+1) z
  */
@@ -37,6 +37,13 @@ public final class CopyCoordinateButton {
                 : JournalLayout.LOG_ENTRY_COPY_BTN_ICON_COLOR;
         drawSquareOutline(g, btnX + 3, btnY + 2, 5, iconColor);
         drawSquareOutline(g, btnX + 6, btnY + 3, 5, iconColor);
+    }
+
+    // 坐标显示文本的唯一格式化入口：日志列表页与详情页共用，避免同一坐标出现 "(x,y,z)" 与 "x y z" 两种写法。
+    // 走 i18n 格式串；复制指令仍按命令语法用空格分隔，不经过这里。
+    public static String formatCoordinates(int x, int y, int z) {
+        return Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.coords_format", x, y, z).getString();
     }
 
     // 命中检测

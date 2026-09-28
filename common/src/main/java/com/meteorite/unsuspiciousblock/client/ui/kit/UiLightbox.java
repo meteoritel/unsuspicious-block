@@ -18,6 +18,9 @@ import java.util.Objects;
  * <p>本类刻意**不依赖** {@code OverlayLayer}：宿主用 {@code LightboxOverlay} 适配器把它接进
  * 模态层，从而保持 kit 与宿主层单向依赖（overlay → kit）。坐标一律为宿主 GUI 逻辑坐标。</p>
  *
+ * <p>控制栏默认使用 {@link UiControlStyle#DARK}（灯箱遮罩下是暗底），文本默认色由该结构底色反推；
+ * 宿主可用 {@link #setStyle(UiControlStyle)} / {@link #setTextColor(int)} 覆盖。</p>
+ *
  * <p>焦点由 {@link UiFocusManager} 按视觉顺序登记（关闭 → 上一张/下一张 → 缩小/放大/适应窗口），
  * Enter 与 Space 都用于激活焦点控件；ESC 与关闭按钮请求关闭，具体关闭动作由宿主传入的 {@code onClose} 执行。</p>
  */
@@ -31,6 +34,12 @@ public final class UiLightbox {
     /** 默认遮罩色：与既有浮层一致的半透明黑。 */
     private static final int DEFAULT_MASK = 0xC0101010;
 
+    /** 默认结构样式：灯箱是暗底，控制栏按钮必须在暗底上可辨（暗底 + 近白字曾约 1.06:1）。 */
+    private static final UiControlStyle DEFAULT_STYLE = UiControlStyle.DARK;
+    /** 反推文本色的两个候选：实际取与结构底色对比度更高的一档。 */
+    private static final int TEXT_ON_DARK = 0xFFF0F0F0;
+    private static final int TEXT_ON_LIGHT = 0xFF1A1A1A;
+
     /** 宿主提供的本地化文案；kit 自身不持有任何文案 key。 */
     public interface Labels {
         Component close();
@@ -42,6 +51,12 @@ public final class UiLightbox {
         Component next();
         /** 「当前 / 总数」；无图集时不会调用。 */
         Component position(int index, int total);
+
+        // 缩放读数格式；默认沿用既有画面（"100%"），宿主可覆盖以本地化读数。
+        // 以 default 方法新增：既有 Labels 实现无需改动即可编译。
+        default Component zoomReadout(int percent) {
+            return Component.literal(percent + "%");
+        }
     }
 
     /** 图集：宿主持有图片列表与当前下标，灯箱只负责显示与请求切换。 */
@@ -111,7 +126,9 @@ public final class UiLightbox {
     @Nullable private Font font;
     @Nullable private Component title;
     @Nullable private Component description;
-    private int textColor = 0xFFE0E0E0;
+    /** 文本色：默认按默认结构底色的相对亮度反推；调用方 setTextColor 后固定，不再跟随样式。 */
+    private int textColor = readableTextOn(DEFAULT_STYLE.background());
+    private boolean textColorPinned;
     private int maskColor = DEFAULT_MASK;
     private boolean maskClickCloses;
     private boolean dirty = true;
@@ -137,6 +154,9 @@ public final class UiLightbox {
         this.labels = Objects.requireNonNull(labels);
         this.content = Objects.requireNonNull(content);
         this.onClose = Objects.requireNonNull(onClose);
+        // 构造期显式注入暗底：UiControlGroup 的默认样式是浅底 PARCHMENT，灯箱不沿用该默认值。
+        // 调用方仍可用 setStyle 覆盖，覆盖后文本色未固定时会随之重算。
+        this.controls.setStyle(DEFAULT_STYLE);
         // 灯箱里 Enter 没有其它语义，因此与 Space 一起用于激活焦点控件。
         focus.setEnterActivates(true);
         focus.setSpaceActivates(true);
@@ -166,12 +186,28 @@ public final class UiLightbox {
         this.dirty = true;
     }
 
-    /** 控件结构色；默认 {@link UiControlStyle#DARK}（灯箱是暗底）。设置后对已有与后续控件一并生效。 */
+    /**
+     * 控件结构色；默认 {@link UiControlStyle#DARK}（灯箱是暗底）。设置后对已有与后续控件一并生效；
+     * 文本色未被 {@link #setTextColor(int)} 固定时，会按新底色的相对亮度重新反推。
+     */
     public void setStyle(UiControlStyle style) {
-        this.controls.setStyle(Objects.requireNonNull(style));
+        UiControlStyle next = Objects.requireNonNull(style);
+        this.controls.setStyle(next);
+        if (!textColorPinned) applyTextColor(readableTextOn(next.background()));
     }
 
-    public void setTextColor(int textColor) { this.textColor = textColor; }
+    /** 固定文本色；此后 {@link #setStyle(UiControlStyle)} 不再改写它。 */
+    public void setTextColor(int textColor) {
+        this.textColorPinned = true;
+        applyTextColor(textColor);
+    }
+
+    // 控件标签色只在配置时写入控件，因此改色后要标脏让下一帧重配一次（几何不变，只是同一 key 重配）。
+    private void applyTextColor(int color) {
+        if (this.textColor == color) return;
+        this.textColor = color;
+        this.dirty = true;
+    }
 
     public void setMaskColor(int maskColor) { this.maskColor = maskColor; }
 
@@ -180,7 +216,10 @@ public final class UiLightbox {
 
     public UiRect viewport() { return viewport; }
 
-    /** 宿主可用区域（逻辑 GUI 坐标，左上角为原点）；由模态适配层在每次渲染前写入。 */
+    /**
+     * 宿主可用区域（逻辑 GUI 坐标，左上角为原点）；由模态适配层在每次渲染前写入。
+     * 负宽高按 1 钳制：外壳至少要有一像素才排得出面板与内容视口。
+     */
     public void setBounds(int width, int height) {
         int w = Math.max(1, width);
         int h = Math.max(1, height);
@@ -227,13 +266,15 @@ public final class UiLightbox {
         renderBar(graphics, font);
         controls.render(graphics, font, mouseX, mouseY);
         // 同一位置只允许一个 tooltip 来源：控件优先，没有控件命中时才问内容（例如条件树里的行）。
-        if (controls.targetAt(mouseX, mouseY) == null) {
+        // 命中只查一次：原实现先用 targetAt 判空、再交给 renderTooltip 重扫同一坐标。
+        UiTarget hoveredControl = controls.targetAt(mouseX, mouseY);
+        if (hoveredControl == null) {
             UiTarget target = content.hit(mouseX, mouseY);
             if (target != null && !target.tooltip().isEmpty()) {
                 graphics.renderComponentTooltip(font, target.tooltip(), mouseX, mouseY);
             }
-        } else {
-            controls.renderTooltip(graphics, font, mouseX, mouseY);
+        } else if (!hoveredControl.tooltip().isEmpty()) {
+            graphics.renderComponentTooltip(font, hoveredControl.tooltip(), mouseX, mouseY);
         }
     }
 
@@ -306,7 +347,7 @@ public final class UiLightbox {
         displayedIndex = Integer.MIN_VALUE;
         displayedTotal = Integer.MIN_VALUE;
         refreshPositionText();
-        zoomTextWidth = font.width(zoomText);
+        // 宽度由 refreshZoomText 在读数变化时测一次；此处不再重复测量同一字符串。
         refreshZoomText();
     }
 
@@ -357,12 +398,12 @@ public final class UiLightbox {
         positionText = labels.position(displayedIndex + 1, displayedTotal);
     }
 
-    // 缩放读数只在变化时重建字符串与宽度。
+    // 缩放读数只在变化时重建字符串与宽度；格式由 Labels.zoomReadout 提供，kit 不再硬编码 "%" 拼接。
     private void refreshZoomText() {
         int percent = content.zoomPercent();
         if (percent == displayedZoom) return;
         displayedZoom = percent;
-        zoomText = percent + "%";
+        zoomText = labels.zoomReadout(percent).getString();
         zoomTextWidth = font == null ? 0 : font.width(zoomText);
     }
 
@@ -416,6 +457,34 @@ public final class UiLightbox {
 
     public boolean charTyped(char codePoint, int modifiers) {
         return false;
+    }
+
+    // 文本默认色从结构底色反推：在近白/近黑两个候选里取 WCAG 对比度更高的一档，
+    // 这样默认暗底（DARK）与调用方自行换的浅底都能保持可读，而不是固定用近白色。
+    private static int readableTextOn(int background) {
+        double backgroundLuminance = relativeLuminance(background);
+        double onDark = contrast(TEXT_ON_DARK, backgroundLuminance);
+        double onLight = contrast(TEXT_ON_LIGHT, backgroundLuminance);
+        return onDark >= onLight ? TEXT_ON_DARK : TEXT_ON_LIGHT;
+    }
+
+    // WCAG 相对亮度：sRGB 分量线性化后按 0.2126 / 0.7152 / 0.0722 加权。
+    private static double relativeLuminance(int argb) {
+        double r = linearize((argb >> 16 & 0xFF) / 255.0);
+        double g = linearize((argb >> 8 & 0xFF) / 255.0);
+        double b = linearize((argb & 0xFF) / 255.0);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    private static double linearize(double channel) {
+        return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+    }
+
+    private static double contrast(int textColor, double backgroundLuminance) {
+        double textLuminance = relativeLuminance(textColor);
+        double lighter = Math.max(textLuminance, backgroundLuminance);
+        double darker = Math.min(textLuminance, backgroundLuminance);
+        return (lighter + 0.05) / (darker + 0.05);
     }
 
     // 输入可能先于首帧渲染到达：没有字体就无法配置控件，此时保持未布局状态。

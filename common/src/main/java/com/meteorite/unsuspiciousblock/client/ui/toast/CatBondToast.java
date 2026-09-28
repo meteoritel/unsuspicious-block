@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
 import com.meteorite.unsuspiciousblock.cat.CatBondStage;
+import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -10,6 +11,7 @@ import net.minecraft.client.gui.components.toasts.ToastComponent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
@@ -25,6 +27,8 @@ public class CatBondToast implements Toast {
             ResourceLocation.withDefaultNamespace("toast/advancement");
     private static final long DISPLAY_TIME = 6000L;
     private static final Object TOKEN = new Object();
+    // 详情最多三行；超出时末行加省略号，不做静默截断（I-4）
+    private static final int MAX_DETAIL_LINES = 3;
 
     private final Component title;
     private final Component detail;
@@ -41,9 +45,16 @@ public class CatBondToast implements Toast {
         graphics.blitSprite(BACKGROUND_SPRITE, 0, 0, this.width(), this.height());
         Font font = toastComponent.getMinecraft().font;
         graphics.drawString(font, this.title, 30, 7, 0xFFFFFF, true);
-        List<net.minecraft.util.FormattedCharSequence> lines = font.split(this.detail, this.width() - 36);
-        for (int i = 0; i < Math.min(3, lines.size()); i++) {
-            graphics.drawString(font, lines.get(i), 30, 19 + i * 10, 0xFFFFD0, false);
+        List<FormattedCharSequence> lines = font.split(this.detail, this.width() - 36);
+        boolean truncated = lines.size() > MAX_DETAIL_LINES;
+        for (int i = 0; i < Math.min(MAX_DETAIL_LINES, lines.size()); i++) {
+            if (truncated && i == MAX_DETAIL_LINES - 1) {
+                // 末行显式加省略号，避免玩家完全看不到"还有内容"；截断口径只留 kit 一份
+                String last = TextScroll.trimToWidth(font, plainText(lines.get(i)), this.width() - 36);
+                graphics.drawString(font, last, 30, 19 + i * 10, 0xFFFFD0, false);
+            } else {
+                graphics.drawString(font, lines.get(i), 30, 19 + i * 10, 0xFFFFD0, false);
+            }
         }
         ItemStack icon = ModItems.HAND_OF_CAT == null
                 ? new ItemStack(Items.CAT_SPAWN_EGG)
@@ -125,6 +136,16 @@ public class CatBondToast implements Toast {
             case HONORED_GUEST -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.ancient_gift");
             case BEST_FRIEND -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.best_friend_access");
         };
+    }
+
+    // 把已换行的格式化序列还原成纯文本，仅用于末行加省略号（详情正文无样式，还原不丢格式）
+    private static String plainText(FormattedCharSequence line) {
+        StringBuilder builder = new StringBuilder();
+        line.accept((index, style, codePoint) -> {
+            builder.appendCodePoint(codePoint);
+            return true;
+        });
+        return builder.toString();
     }
 
     private static void show(Component title, Component detail) {

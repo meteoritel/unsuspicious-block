@@ -1,8 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
@@ -24,8 +26,10 @@ import java.util.Map;
  * 考古笔记分类首页的信息面板，负责汇总并渲染玩家统计与最近发现。
  */
 public final class WelcomeStatsPanel {
-    private static final int TITLE_COLOR = 0x3A2818;
-    private static final int LABEL_COLOR = 0x8A7358;
+    // 与语义色表同值，直接引用以消除重复字面量（值未变）
+    private static final int TITLE_COLOR = UiTextPalette.Parchment.TITLE;
+    // 次要标签：原字面量 0x8A7358 在书页底色 #E8DCBC 上只有 3.29:1，改引语义色表的 LABEL（5.03:1）。
+    private static final int LABEL_COLOR = UiTextPalette.Parchment.LABEL;
     private static final int VALUE_COLOR = 0x5A3D23;
     private static final int SEPARATOR_COLOR = 0x608B6914;
     private static final int COLUMN_GAP = 8;
@@ -207,7 +211,7 @@ public final class WelcomeStatsPanel {
         Component label = Component.translatable(labelKey);
         int valueWidth = font.width(value);
         int labelWidth = Math.max(0, width - valueWidth - 4);
-        String labelText = font.plainSubstrByWidth(label.getString(), labelWidth);
+        String labelText = TextScroll.trimToWidth(font, label.getString(), labelWidth);
         graphics.drawString(font, labelText, x, y, LABEL_COLOR, false);
         graphics.drawString(font, value, x + width - valueWidth, y, VALUE_COLOR, false);
     }
@@ -218,14 +222,14 @@ public final class WelcomeStatsPanel {
         graphics.drawString(font, labelText, x, y, LABEL_COLOR, false);
         int valueX = x + font.width(labelText) + 5;
         int valueWidth = Math.max(0, x + width - valueX);
-        String valueText = font.plainSubstrByWidth(value.getString(), valueWidth);
+        String valueText = TextScroll.trimToWidth(font, value.getString(), valueWidth);
         graphics.drawString(font, valueText, valueX, y, VALUE_COLOR, false);
         return font.width(value) > valueWidth;
     }
 
     private static void drawCenteredTrimmed(GuiGraphics graphics, Font font, Component text,
                                              int x, int y, int width, int color) {
-        String rendered = font.plainSubstrByWidth(text.getString(), width);
+        String rendered = TextScroll.trimToWidth(font, text.getString(), width);
         graphics.drawString(font, rendered, x + (width - font.width(rendered)) / 2, y, color, false);
     }
 

@@ -2,8 +2,10 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
@@ -23,9 +25,15 @@ public final class DetailOverlayPanel implements PagePanel {
     private static final int BAR_HEIGHT = 12;
     private static final int BAR_BG_COLOR = 0xFF555555;
     private static final int BAR_FG_COLOR = 0xFFC8A050;
+    private static final int BAR_DONE_COLOR = 0xFF6BA050;
+    // 条内读数按填充边界分色：填充侧深色（金色上 6.40:1 / 完成绿上 5.04:1），未填充侧浅色（条底上 7.46:1）
+    private static final int READOUT_ON_FILL_COLOR = 0xFF2E2114;
+    private static final int READOUT_ON_BAR_COLOR = 0xFFFFFFFF;
     private static final int TEXT_COLOR = 0x4A3320;
-    private static final int LABEL_COLOR = 0x5A422C;
-    private static final int MUTED_COLOR = 0x7A6247;
+    // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
+    private static final int LABEL_COLOR = UiTextPalette.Parchment.BODY;
+    // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）。
+    private static final int MUTED_COLOR = UiTextPalette.Parchment.LABEL;
     private static final int ITEM_ROW_HEIGHT = 16;
     private static final int FOOTER_HEIGHT = 32;
     private static final int MOD_SOURCE_TOP_OFFSET = 42;
@@ -36,10 +44,11 @@ public final class DetailOverlayPanel implements PagePanel {
     private int totalCount;
     private String modSource;
     private int progressLabelScrollTicks;
-    private int progressValueScrollTicks;
     private int discoveredLabelScrollTicks;
     private int emptyStateScrollTicks;
     private List<DiscoveredItemEntry> unlockedItems = List.of();
+    // 已测宽度缓存（P-10）：与 setData 同一失效事件（外加语言/字体实例变化）
+    private final PanelTextMetrics metrics = new PanelTextMetrics();
 
     public DetailOverlayPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -52,11 +61,13 @@ public final class DetailOverlayPanel implements PagePanel {
                         List<IntroItem> allItems) {
         this.parsedCount = parsedCount;
         this.totalCount = totalCount;
+        this.metrics.clear();
         this.pagination.reset();
         if (tableId != null) {
             this.modSource = Services.PLATFORM.getModDisplayName(tableId.getNamespace());
         } else {
-            this.modSource = "???";
+            this.modSource = Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.mod_source_unknown").getString();
         }
         this.unlockedItems = new ArrayList<>();
         List<DiscoveredItemEntry> highlightedEntries = new ArrayList<>();
@@ -76,42 +87,73 @@ public final class DetailOverlayPanel implements PagePanel {
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= this.layout.rightPageX() && mouseX <= this.layout.rightPageRight()
-                && mouseY >= this.layout.rightPageY() && mouseY <= this.layout.rightPageBottom();
+        return PagePanel.containsPageBounds(mouseX, mouseY,
+                this.layout.rightPageX(), this.layout.rightPageY(),
+                this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+        this.metrics.beginFrame(font);
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
         int y = this.layout.rightPageY() + JournalLayout.INTRO_TOP;
 
         // 解析进度标题
         Component progressLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.parse_progress");
+        PanelTextMetrics.Measured progressLabelText = this.metrics.measure(progressLabel.getString(), font);
+        int progressLabelWidth = progressLabelText.width();
         boolean progressLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
         this.progressLabelScrollTicks = progressLabelHovered ? this.progressLabelScrollTicks + 1 : 0;
-        ScrollTextHelper.draw(guiGraphics, font, progressLabel.getString(), leftX, y, contentWidth,
+        ScrollTextHelper.draw(guiGraphics, font, progressLabelText.text(), progressLabelWidth,
+                leftX, y, contentWidth,
                 LABEL_COLOR, progressLabelHovered, this.progressLabelScrollTicks, false);
+
         y += 14;
 
-        guiGraphics.fill(leftX, y, leftX + contentWidth, y + BAR_HEIGHT, BAR_BG_COLOR);
+        // 进度条本体
+        int barTop = y;
+        guiGraphics.fill(leftX, barTop, leftX + contentWidth, barTop + BAR_HEIGHT, BAR_BG_COLOR);
 
+        int filledWidth = 0;
         if (this.totalCount > 0) {
             double ratio = (double) this.parsedCount / this.totalCount;
-            int filledWidth = (int) (contentWidth * ratio);
+            filledWidth = (int) (contentWidth * ratio);
             if (filledWidth > 0) {
-                int progressColor = ratio >= 1.0 ? 0xFF6BA050 : BAR_FG_COLOR;
-                guiGraphics.fill(leftX + 1, y + 1, leftX + filledWidth - 1, y + BAR_HEIGHT - 1, progressColor);
+                int progressColor = ratio >= 1.0 ? BAR_DONE_COLOR : BAR_FG_COLOR;
+                guiGraphics.fill(leftX + 1, barTop + 1, leftX + filledWidth - 1, barTop + BAR_HEIGHT - 1, progressColor);
             }
+        }
 
-            int percent = (int) (ratio * 100.0);
-            String percentText = percent + "%  (" + this.parsedCount + "/" + this.totalCount + ")";
-            boolean valueHovered = isTextHovered(mouseX, mouseY, leftX + 2, y + 1,
-                    contentWidth - 4, BAR_HEIGHT - 2);
-            this.progressValueScrollTicks = valueHovered ? this.progressValueScrollTicks + 1 : 0;
-            ScrollTextHelper.draw(guiGraphics, font, percentText, leftX + 2, y + 2, contentWidth - 4,
-                    0xFFFFFFFF, valueHovered, this.progressValueScrollTicks, true);
-        } else {
-            this.progressValueScrollTicks = 0;
+        // 读数画在**条内**并与填充边界分色：填充侧深色、未填充侧浅色，两侧都满足 ≥4.5:1
+        if (this.totalCount > 0) {
+            int percent = (int) ((double) this.parsedCount / this.totalCount * 100.0);
+            String valueText = Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.parse_progress_value",
+                    percent, this.parsedCount, this.totalCount).getString();
+            // 条内可用宽度（左右各留 4 像素内边距），超宽按统一省略号口径截断
+            String readout = TextScroll.trimToWidth(font, valueText, Math.max(0, contentWidth - 8));
+            int readoutWidth = font.width(readout);
+            int readoutX = leftX + (contentWidth - readoutWidth) / 2;
+            int readoutY = barTop + (BAR_HEIGHT - font.lineHeight + 1) / 2;
+            // 找出跨过填充边界的字符下标；两段各自用原版测量定位，避免逐字符累加带来的偏移
+            int fillEnd = leftX + filledWidth;
+            int split = readout.length();
+            int accumulated = 0;
+            for (int i = 0; i < readout.length(); i++) {
+                accumulated += font.width(String.valueOf(readout.charAt(i)));
+                if (readoutX + accumulated > fillEnd) {
+                    split = i;
+                    break;
+                }
+            }
+            String onFill = readout.substring(0, split);
+            String onBar = readout.substring(split);
+            if (!onFill.isEmpty()) {
+                guiGraphics.drawString(font, onFill, readoutX, readoutY, READOUT_ON_FILL_COLOR, false);
+            }
+            if (!onBar.isEmpty()) {
+                guiGraphics.drawString(font, onBar, readoutX + font.width(onFill), readoutY, READOUT_ON_BAR_COLOR, false);
+            }
         }
         y += BAR_HEIGHT + 10;
 
@@ -119,7 +161,9 @@ public final class DetailOverlayPanel implements PagePanel {
         Component discoveredLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.discovered_items");
         boolean discoveredLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
         this.discoveredLabelScrollTicks = discoveredLabelHovered ? this.discoveredLabelScrollTicks + 1 : 0;
-        ScrollTextHelper.draw(guiGraphics, font, discoveredLabel.getString(), leftX, y, contentWidth,
+        PanelTextMetrics.Measured discoveredText = this.metrics.measure(discoveredLabel.getString(), font);
+        ScrollTextHelper.draw(guiGraphics, font, discoveredText.text(), discoveredText.width(),
+                leftX, y, contentWidth,
                 LABEL_COLOR, discoveredLabelHovered, this.discoveredLabelScrollTicks, false);
         y = listStartY(y);
 
@@ -127,8 +171,9 @@ public final class DetailOverlayPanel implements PagePanel {
             int emptyWidth = contentWidth - 4;
             boolean emptyHovered = isTextHovered(mouseX, mouseY, leftX + 2, y, emptyWidth, font.lineHeight);
             this.emptyStateScrollTicks = emptyHovered ? this.emptyStateScrollTicks + 1 : 0;
-            ScrollTextHelper.draw(guiGraphics, font,
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.no_discoveries").getString(),
+            PanelTextMetrics.Measured emptyText = this.metrics.measure(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.no_discoveries").getString(), font);
+            ScrollTextHelper.draw(guiGraphics, font, emptyText.text(), emptyText.width(),
                     leftX + 2, y, emptyWidth, MUTED_COLOR, emptyHovered, this.emptyStateScrollTicks, false);
             y += 12;
         } else {
@@ -140,8 +185,8 @@ public final class DetailOverlayPanel implements PagePanel {
             int showCount = Math.max(0, to - from);
             int countColumnWidth = 0;
             for (int i = from; i < to; i++) {
-                countColumnWidth = Math.max(countColumnWidth,
-                        font.width(formatCount(this.unlockedItems.get(i).item.count())));
+                countColumnWidth = Math.max(countColumnWidth, this.metrics.measure(
+                        formatCount(this.unlockedItems.get(i).item.count()), font).width());
             }
 
             for (int i = 0; i < showCount; i++) {
@@ -155,9 +200,9 @@ public final class DetailOverlayPanel implements PagePanel {
                 guiGraphics.renderItemDecorations(font, stack, leftX + 2, rowY - 1);
 
                 // 获得次数
-                String countText = formatCount(item.count());
+                PanelTextMetrics.Measured count = this.metrics.measure(formatCount(item.count()), font);
                 int countX = leftX + contentWidth - countColumnWidth;
-                guiGraphics.drawString(font, countText, countX + countColumnWidth - font.width(countText),
+                guiGraphics.drawString(font, count.text(), countX + countColumnWidth - count.width(),
                         rowY + 2, LABEL_COLOR, false);
 
                 // 名称
@@ -174,7 +219,8 @@ public final class DetailOverlayPanel implements PagePanel {
                 }
                 // 名称（搜索不匹配时变暗）
                 int nameColor = entry.highlighted ? TEXT_COLOR : MUTED_COLOR;
-                ScrollTextHelper.draw(guiGraphics, font, item.displayName().getString(),
+                PanelTextMetrics.Measured name = this.metrics.measure(item.displayName().getString(), font);
+                ScrollTextHelper.draw(guiGraphics, font, name.text(), name.width(),
                         nameX, rowY + 2, nameMaxWidth, nameColor, hovered, entry.scrollTicks, false);
             }
             y += showCount * ITEM_ROW_HEIGHT + 6;
@@ -183,15 +229,15 @@ public final class DetailOverlayPanel implements PagePanel {
         // 模组来源：名称足够短时与标签同行，过长时从下一行开始换行
         y = Math.max(y, this.layout.rightPageBottom() - MOD_SOURCE_TOP_OFFSET);
         Component modLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.mod_source");
-        String labelText = modLabel.getString();
-        int labelWidth = font.width(labelText);
-        int gap = font.width(" ");
-        int sourceWidth = font.width(this.modSource);
+        PanelTextMetrics.Measured labelText = this.metrics.measure(modLabel.getString(), font);
+        int labelWidth = labelText.width();
+        int gap = this.metrics.measure(" ", font).width();
+        int sourceWidth = this.metrics.measure(this.modSource, font).width();
         if (labelWidth + gap + sourceWidth <= contentWidth) {
-            guiGraphics.drawString(font, labelText, leftX, y, LABEL_COLOR, false);
+            guiGraphics.drawString(font, labelText.text(), leftX, y, LABEL_COLOR, false);
             guiGraphics.drawString(font, this.modSource, leftX + labelWidth + gap, y, TEXT_COLOR, false);
         } else {
-            guiGraphics.drawString(font, labelText, leftX, y, LABEL_COLOR, false);
+            guiGraphics.drawString(font, labelText.text(), leftX, y, LABEL_COLOR, false);
             int sourceY = y + font.lineHeight + 2;
             List<FormattedCharSequence> sourceLines = font.split(
                     Component.literal(this.modSource), contentWidth);

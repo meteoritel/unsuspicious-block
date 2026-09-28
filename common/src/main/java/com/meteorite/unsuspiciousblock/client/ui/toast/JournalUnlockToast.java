@@ -33,6 +33,9 @@ public class JournalUnlockToast implements Toast {
             Component.translatable("toast.unsuspiciousblock.journal_unlock.title");
     private static final Component COMPLETION_TITLE =
             Component.translatable("toast.unsuspiciousblock.journal_completion.title");
+    // 物品解锁有自己的标题：原来复用表解锁标题，会把"新物品"说成"表更新"（I-13）
+    private static final Component ITEM_UNLOCK_TITLE =
+            Component.translatable("toast.unsuspiciousblock.journal_unlock.item_title");
 
     private final Queue<Entry> entries = new ArrayDeque<>();
     private final Object token;
@@ -93,9 +96,11 @@ public class JournalUnlockToast implements Toast {
             guiGraphics.renderItem(new ItemStack(Items.BOOK), 8, 8);
         }
 
-        // 轮换指示器：有多条待显示时，在右下角显示 "x/n"
+        // 轮换指示器：多条待显示时在右下角提示**剩余条数**（当前这条已在展示，故减一）。
+        // 不走 "x/n"：队列会随新解锁增长，没有稳定的总数；文案改由 i18n 提供（I-13）。
         if (this.entries.size() > 1) {
-            String indicator = "x" + this.entries.size();
+            String indicator = Component.translatable(
+                    "toast.unsuspiciousblock.journal_unlock.remaining", this.entries.size() - 1).getString();
             guiGraphics.drawString(font, indicator, this.width() - font.width(indicator) - 4, this.height() - 10, 0xAAAAAA, false);
         }
 
@@ -141,7 +146,7 @@ public class JournalUnlockToast implements Toast {
         if (itemEntries.isEmpty()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN, TABLE_UNLOCK_TITLE);
+            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN, ITEM_UNLOCK_TITLE);
             for (Entry entry : itemEntries) {
                 toast.addEntry(entry);
             }

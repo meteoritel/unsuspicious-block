@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.layout;
 
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+
 /** 考古笔记 GUI 所有布局参数集中定义，便于手动调整测试 */
 public final class JournalLayout {
 
@@ -90,7 +92,8 @@ public final class JournalLayout {
 
     // 日志条目文字配色（区分优先级）
     public static final int LOG_ENTRY_TIME_COLOR = 0x3A2A1A;       // 时间：最高优先级（深棕）
-    public static final int LOG_ENTRY_DIM_POS_COLOR = 0x7A6247;    // 维度+坐标：次要信息（暖灰棕）
+    // 维度+坐标：次要信息，取语义色表 LABEL（书页底色 #E8DCBC 上 5.03:1；原 #7A6247 只有 4.20:1）
+    public static final int LOG_ENTRY_DIM_POS_COLOR = UiTextPalette.Parchment.LABEL;
     public static final int LOG_ENTRY_NOTE_BADGE_COLOR = 0xFF7B3E18; // 已备注标记颜色（红棕，醒目）
     public static final int LOG_ENTRY_NOTE_BADGE_HOVER_COLOR = 0xFFE09040; // 已备注标记悬停色（暖橙，提示可点击）
     public static final int LOG_ENTRY_NOTE_BADGE_BG_HOVER = 0x60A08060;    // 已备注标记悬停背景（半透明暖色）
@@ -124,9 +127,11 @@ public final class JournalLayout {
     public static final int LOG_DETAIL_META_ROWS = 6;             // 元信息行数（创建时间/更新时间/结构/群系/维度/坐标）
 
     // 文字配色：区分信息权重
-    public static final int LOG_DETAIL_LABEL_COLOR = 0x7A6247;    // 标签（次要）
+    // 标签（次要）：语义色表 LABEL（5.03:1；原 #7A6247 只有 4.20:1）
+    public static final int LOG_DETAIL_LABEL_COLOR = UiTextPalette.Parchment.LABEL;
     public static final int LOG_DETAIL_VALUE_COLOR = 0x4A3320;    // 值（主要）
-    public static final int LOG_DETAIL_UNKNOWN_COLOR = 0x9A8A70;  // 未知值（最低视觉权重）
+    // 未知值（最低视觉权重）：语义色表 HINT（压暗后 4.87:1；原 #9A8A70 只有 2.47:1）
+    public static final int LOG_DETAIL_UNKNOWN_COLOR = UiTextPalette.Parchment.HINT;
 
     // 战利品角标颜色
     public static final int LOG_DETAIL_LOOT_BADGE_FULL_COLOR = 0xFF3A8C3A;    // 完全获得角标（绿）

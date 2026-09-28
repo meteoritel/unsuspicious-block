@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -36,7 +37,7 @@ public final class PageIndicator {
         int textWidth = font.width(pageText);
         guiGraphics.drawString(font, pageText,
                 centerX() - textWidth / 2,
-                textY(), 0x6E5A42, false);
+                textY(), UiTextPalette.Parchment.LABEL, false);
     }
 
     public int centerX() {

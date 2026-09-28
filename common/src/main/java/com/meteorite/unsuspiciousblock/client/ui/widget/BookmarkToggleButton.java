@@ -33,6 +33,9 @@ public class BookmarkToggleButton extends AbstractButton {
     private static final int BOOKMARK_TAB_WIDTH = 14;      // 正常态：贴在书边缘的窄条
     private static final int BOOKMARK_POPOUT_WIDTH = 38;   // 展开态：完整显示材质尖角
     private static final int BOOKMARK_HEIGHT = 22;
+    // 展开态标签文字色（O-17：原内联 0x3D2B1F 提为常量）；禁用时用压暗的中性色
+    private static final int LABEL_COLOR = 0xFF3D2B1F;
+    private static final int LABEL_COLOR_DISABLED = 0xFF6E6459;
 
     private boolean toggled;
     private @Nullable Component tooltip;
@@ -72,7 +75,9 @@ public class BookmarkToggleButton extends AbstractButton {
     protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int x = this.getX();
         int y = this.getY();
-        boolean isExpanded = this.toggled || this.isHovered();
+        // 悬停展开只在可用时生效（I-10）：禁用态不再随指针展开，避免暗示可操作；
+        // toggled 的固定展开是选中态展示，保留。
+        boolean isExpanded = this.toggled || (this.active && this.isHovered());
         int renderWidth = isExpanded ? BOOKMARK_POPOUT_WIDTH : BOOKMARK_TAB_WIDTH;
 
         int textureV = !this.active ? NORMAL_STATE_V
@@ -86,7 +91,8 @@ public class BookmarkToggleButton extends AbstractButton {
             int textWidth = Minecraft.getInstance().font.width(text);
             int textX = x + Math.max(3, (renderWidth - textWidth) / 2);
             int textY = y + (BOOKMARK_HEIGHT - 8) / 2;
-            guiGraphics.drawString(Minecraft.getInstance().font, text, textX, textY, 0x3D2B1F, false);
+            int labelColor = this.active ? LABEL_COLOR : LABEL_COLOR_DISABLED;
+            guiGraphics.drawString(Minecraft.getInstance().font, text, textX, textY, labelColor, false);
         }
     }
 }

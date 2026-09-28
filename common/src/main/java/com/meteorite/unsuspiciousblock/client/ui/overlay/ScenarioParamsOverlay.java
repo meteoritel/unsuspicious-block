@@ -218,11 +218,13 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
     }
 
     // 摆放控件：按稳定 key 取用并重配；只读标签传 action=null，保持迁移前的悬停底色与文本色。
+    // 错误文案（标签 error）用语义色表的 SEVERE：NEGATIVE(#C06040) 在模态底 #F2E5C6 上只有 3.37:1，
+    // SEVERE(#9A3520) 为 5.78:1（书页底色 #E8DCBC 上 5.30:1），且仍保留"红 = 负面"的语义。
     private UiControl place(Font font, Object key, Component label, int x, int y, int width, int height,
                        @Nullable UiAction action) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, height);
-        control.configure(font, label, error != null && label == error ? UiTextPalette.Parchment.NEGATIVE : UiTextPalette.Parchment.BODY,
+        control.configure(font, label, error != null && label == error ? UiTextPalette.Parchment.SEVERE : UiTextPalette.Parchment.BODY,
                 null, List.of(label), action);
         return control;
     }
