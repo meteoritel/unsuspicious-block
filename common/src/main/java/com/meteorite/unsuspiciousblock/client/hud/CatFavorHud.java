@@ -20,7 +20,7 @@ import net.minecraft.resources.ResourceLocation;
  * 供玩家不打开物品栏即可快捷查看当前状态。仅当玩家背包含「猫之手」时显示。
  * 渲染入口由各平台客户端（Fabric HudRenderCallback / NeoForge RenderGuiEvent）调用。
  * 恩惠值显示在图标左侧以避开快捷栏遮挡；封顶时图标叠加紫色呼吸 tint；
- * 九命命数以半尺寸数字角标显示在图标右下角。
+ * 九命命数以数字角标显示在图标右下角（尺寸与原版物品堆叠数量角标一致，不做缩放）。
  */
 public final class CatFavorHud {
 
@@ -33,8 +33,8 @@ public final class CatFavorHud {
     private static final int OFFSET_FROM_HOTBAR = 26;
     // 恩惠值文字相对图标的水平间距（文字在图标左侧）
     private static final int TEXT_GAP = 2;
-    // 数字角标缩放比例（与物品堆叠数量角标一致）
-    private static final float BADGE_SCALE = 1.0F;
+    // 角标文字颜色：青色，与九命命数的表现色系一致
+    private static final int BADGE_COLOR = -12525360;
 
     private CatFavorHud() {
     }
@@ -69,22 +69,31 @@ public final class CatFavorHud {
         float green = ((stageColor >> 8) & 0xFF) / 255.0F;
         float blue = (stageColor & 0xFF) / 255.0F;
 
-        // 猫爪图标与数值使用当前关系阶段配色。
-        RenderSystem.setShaderColor(red, green, blue, 1.0F);
-        gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
-
-        // 封顶时叠加紫色呼吸 tint——纹理自身 alpha 作蒙版，无需操作 framebuffer
-        if (favor >= CatFavorState.MAX_FAVOR) {
-            long millis = Util.getMillis();
-            // alpha 在 0.25~0.75 之间呼吸
-            float breath = 0.5F + 0.25F * (float) Math.sin(millis / 350.0);
-            RenderSystem.enableBlend();
-            RenderSystem.defaultBlendFunc();
-            RenderSystem.setShaderColor(red, green, blue, breath);
+        // 猫爪图标与呼吸 tint 使用当前关系阶段配色。
+        // GuiGraphics.blit 内部走 BufferUploader.drawWithShader，调用返回时顶点批次已上传，
+        // 因此着色器颜色只需在 blit 期间有效；在 finally 中复位不会改变图标颜色，
+        // 却能让后续绘制（本 HUD 的文字、其它 HUD 注入点）回到白色调制。
+        boolean capped = favor >= CatFavorState.MAX_FAVOR;
+        try {
+            RenderSystem.setShaderColor(red, green, blue, 1.0F);
             gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
+
+            // 封顶时叠加紫色呼吸 tint——纹理自身 alpha 作蒙版，无需操作 framebuffer
+            if (capped) {
+                long millis = Util.getMillis();
+                // alpha 在 0.25~0.75 之间呼吸
+                float breath = 0.5F + 0.25F * (float) Math.sin(millis / 350.0);
+                RenderSystem.enableBlend();
+                RenderSystem.defaultBlendFunc();
+                RenderSystem.setShaderColor(red, green, blue, breath);
+                gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
+            }
+        } finally {
             // 复位颜色与混合状态，避免污染后续渲染
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.disableBlend();
+            if (capped) {
+                RenderSystem.disableBlend();
+            }
         }
 
         Font font = minecraft.font;
@@ -99,20 +108,14 @@ public final class CatFavorHud {
         }
     }
 
-    // 在图标右下角绘制半尺寸数字角标——仿物品堆叠数量角标范式（pose scale + drawString）
+    // 在图标右下角绘制数字角标——仿原版物品堆叠数量角标范式，同尺寸不缩放；
+    // 若将来要缩小，在此加 pose scale 并同步类注释即可。
     private static void drawCornerBadge(GuiGraphics gui, Font font, int iconX, int iconY,
                                         String text) {
-        float textWidth = font.width(text);
-        float textHeight = font.lineHeight;
         // 角标右下角对齐到图标右下角，留 1px 内边距
-        float x = iconX + ICON_SIZE - textWidth * BADGE_SCALE - 1.0F;
-        float y = iconY + ICON_SIZE - textHeight * BADGE_SCALE - 1.0F;
-
-        gui.pose().pushPose();
-        gui.pose().scale(BADGE_SCALE, BADGE_SCALE, 1.0F);
-        // 缩放后坐标需除以缩放比例还原到字体坐标系
-        gui.drawString(font, text, Math.round(x / BADGE_SCALE), Math.round(y / BADGE_SCALE), -12525360, true);
-        gui.pose().popPose();
+        int x = iconX + ICON_SIZE - font.width(text) - 1;
+        int y = iconY + ICON_SIZE - font.lineHeight - 1;
+        gui.drawString(font, text, x, y, BADGE_COLOR, true);
     }
 
     // 客户端侧检查背包（含标本箱等便携容器与饰品栏）是否存在猫之手

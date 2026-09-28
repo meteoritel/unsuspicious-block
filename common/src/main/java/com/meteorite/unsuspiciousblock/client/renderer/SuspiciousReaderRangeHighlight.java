@@ -45,7 +45,10 @@ public final class SuspiciousReaderRangeHighlight {
     // 直接调用 RenderSystem.disableDepthTest() 无效——RenderType.lines() 在 endBatch
     // 时会通过 setupRenderState() 重新启用深度测试覆盖手动禁用，故必须用自定义 RenderType。
     // 由于 RenderType.create(...) 为包级私有，这里通过 public 构造器创建匿名子类：
-    // setup 阶段复用 lines() 的全部状态（着色器、线宽、混合等），再禁用深度测试。
+    // setup 阶段复用 lines() 的全部状态（着色器、线宽、混合等），再禁用深度测试与深度写入。
+    // lines() 带 COLOR_DEPTH_WRITE，其 write-mask shard 在"写深度"时不会调用 depthMask，
+    // 因此必须在自定义 setup 里显式 depthMask(false)，否则穿透描边仍会写入深度缓冲、
+    // 遮挡其后绘制的世界几何（原版同类穿透渲染 TEXT_SEE_THROUGH 用的是 COLOR_WRITE）。
     private static final RenderType NO_DEPTH_LINES = new RenderType(
             "unsuspicious_no_depth_lines",
             DefaultVertexFormat.POSITION_COLOR_NORMAL,
@@ -56,9 +59,14 @@ public final class SuspiciousReaderRangeHighlight {
             () -> {
                 RenderType.lines().setupRenderState();
                 RenderSystem.disableDepthTest();
+                RenderSystem.depthMask(false);
                 RenderSystem.lineWidth(3.0F);
             },
-            RenderType.lines()::clearRenderState
+            () -> {
+                RenderType.lines().clearRenderState();
+                // 还原全局深度写入，避免泄漏到后续批次
+                RenderSystem.depthMask(true);
+            }
     ) {
     };
 
@@ -104,9 +112,8 @@ public final class SuspiciousReaderRangeHighlight {
         Direction faceDir = blockHit.getDirection();
         // 复用服务端的几何计算，保证高亮范围与实际扫描范围一致
         BlockPos cubeCenter = SuspiciousReaderItem.getRangeScanCenter(clickedPos, faceDir, scanLevel);
-        int half = scanLevel;
-        BlockPos min = cubeCenter.offset(-half, -half, -half);
-        BlockPos max = cubeCenter.offset(half, half, half);
+        BlockPos min = cubeCenter.offset(-scanLevel, -scanLevel, -scanLevel);
+        BlockPos max = cubeCenter.offset(scanLevel, scanLevel, scanLevel);
 
         // PoseStack 处于世界原点，需要传入相机相对坐标
         LevelRenderer.renderLineBox(poseStack, consumer,
@@ -119,8 +126,10 @@ public final class SuspiciousReaderRangeHighlight {
     // 所有目标保持稳定描边；空方块弱化，当前聚焦目标增加外框。
     private static boolean renderScanResults(PoseStack poseStack, VertexConsumer consumer, Vec3 camPos) {
         var snapshot = ReaderScanHudState.snapshot();
-        float alpha = snapshot.alpha(ReaderScanHudState.now());
-        if (alpha <= 0) return false;
+        long now = ReaderScanHudState.now();
+        // 与 HUD 共用同一淡出阈值，避免在不可见的尾部继续构建顶点
+        if (!snapshot.visible(now)) return false;
+        float alpha = snapshot.alpha(now);
         boolean rendered = false;
         if (snapshot.range()) {
             for (var target : snapshot.blocks()) {
