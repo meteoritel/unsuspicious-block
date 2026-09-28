@@ -1,16 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManagementPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateLootTableTranslationsPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -23,13 +17,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,13 +45,16 @@ public final class LootTableManagementScreen extends Screen {
     private static final int LANGUAGE_BUTTON_WIDTH = 20;
     private static final int LANGUAGE_CONTROL_GAP = 3;
     private static final ResourceLocation LANGUAGE_ICON = ResourceLocation.withDefaultNamespace("icon/language");
-    private static final String LANGUAGE_CODE_PATTERN = "[a-z0-9_-]{2,16}";
     private static final long TEXT_SCROLL_PAUSE_MILLIS = 1_200L;
     private static final long TEXT_SCROLL_PIXEL_MILLIS = 35L;
-    private static final long MAX_IMPORT_FILE_BYTES = 2L * 1024L * 1024L;
-    private static final int MAX_IMPORT_ENTRIES = 4096;
+    private static final int IMPORT_STATUS_OK_COLOR = 0x78D66A;
+    private static final int IMPORT_STATUS_ERROR_COLOR = 0xFF5555;
 
     private final Screen parent;
+    /** 客户端动作层：协议组包、原生文件对话框与导入流程都在这里，Screen 只转调。 */
+    private final LootTableManagementActions actions = new LootTableManagementActions();
+    /** 列表视口与滚动几何；与内部语言选择窗口共用同一份实现。 */
+    private final ListScrollState list = new ListScrollState(ROW_HEIGHT, 0xFF202020, 0xFF909090, 0xFFE0E0E0);
     private final List<SyncLootTableManagementPayload.Entry> filteredEntries = new ArrayList<>();
     private final List<TreeRow> visibleRows = new ArrayList<>();
     private final Set<String> expandedPaths = new HashSet<>();
@@ -78,8 +69,6 @@ public final class LootTableManagementScreen extends Screen {
     private Button saveNameButton;
     private Button importButton;
     private Filter filter = Filter.ALL;
-    private int scrollRow;
-    private boolean draggingScrollbar;
     private boolean populatingName;
     private long observedRevision = -1L;
     private long textScrollStartedAt;
@@ -90,6 +79,7 @@ public final class LootTableManagementScreen extends Screen {
     private ResourceLocation hoveredTableId;
     @Nullable
     private Component importStatus;
+    private int importStatusColor = IMPORT_STATUS_OK_COLOR;
 
     public LootTableManagementScreen(Screen parent) {
         super(Component.translatable("screen.unsuspiciousblock.loot_table_management.title"));
@@ -162,9 +152,29 @@ public final class LootTableManagementScreen extends Screen {
         this.addRenderableWidget(Button.builder(Component.translatable("gui.back"), button -> onClose())
                 .bounds(detailsX + actionWidth + 5, backY, detailsWidth - actionWidth - 5, 20).build());
 
-        Services.NETWORK.sendToServer(new RequestLootTableManagementPayload());
+        this.actions.requestSnapshot();
         refreshSnapshot();
         syncControls();
+    }
+
+    // 窗口 resize 会经 rebuildWidgets -> init() 重建三个输入框；先取出未提交草稿再放回，避免静默丢输入
+    @Override
+    protected void repositionElements() {
+        String searchDraft = this.searchBox != null ? this.searchBox.getValue() : "";
+        String languageDraft = this.languageBox != null ? this.languageBox.getValue() : "";
+        String nameDraft = this.nameBox != null ? this.nameBox.getValue() : "";
+        super.repositionElements();
+        if (this.searchBox != null) {
+            this.searchBox.setValue(searchDraft);
+        }
+        if (this.languageBox != null) {
+            this.languageBox.setValue(languageDraft);
+        }
+        if (this.nameBox != null) {
+            this.populatingName = true;
+            this.nameBox.setValue(nameDraft);
+            this.populatingName = false;
+        }
     }
 
     @Override
@@ -179,14 +189,13 @@ public final class LootTableManagementScreen extends Screen {
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(this.font, this.title, this.width / 2, top + 9, 0xFFFFFF);
 
-        int capacity = visibleRowCapacity();
-        int end = Math.min(this.visibleRows.size(), this.scrollRow + capacity);
-        for (int index = this.scrollRow; index < end; index++) {
+        syncListGeometry();
+        for (int index = this.list.scrollRow(); index < this.list.visibleEndIndex(); index++) {
             renderTreeRow(graphics, this.visibleRows.get(index),
-                    left + INNER_MARGIN, listTop() + (index - this.scrollRow) * ROW_HEIGHT,
-                    listWidth, mouseX, mouseY);
+                    left + INNER_MARGIN, this.list.rowY(index), listWidth, mouseX, mouseY);
         }
-        renderScrollbar(graphics, left + INNER_MARGIN + listWidth - SCROLLBAR_WIDTH, listTop());
+        this.list.renderScrollbar(graphics);
+        renderEmptyState(graphics, left, listWidth);
         renderDetails(graphics, left + INNER_MARGIN + listWidth + COLUMN_GAP, top, detailsWidth());
         graphics.blitSprite(LANGUAGE_ICON, this.languageButton.getX() + 2,
                 this.languageButton.getY() + 2, 16, 16);
@@ -232,15 +241,16 @@ public final class LootTableManagementScreen extends Screen {
         if (hovered && row.entry() != null) this.hoveredTableId = row.entry().tableId();
     }
 
-    private void renderScrollbar(GuiGraphics graphics, int x, int y) {
-        int height = listHeight();
-        graphics.fill(x, y, x + SCROLLBAR_WIDTH, y + height, 0xFF202020);
-        int maxScroll = maxScrollRow();
-        if (maxScroll <= 0) return;
-        int thumbHeight = scrollbarThumbHeight();
-        int thumbY = y + (height - thumbHeight) * this.scrollRow / maxScroll;
-        graphics.fill(x, thumbY, x + SCROLLBAR_WIDTH, thumbY + thumbHeight,
-                this.draggingScrollbar ? 0xFFE0E0E0 : 0xFF909090);
+    // 筛选/搜索无匹配或服务端尚未下发条目时，在列表区居中给出本地化空态，避免看起来像界面损坏
+    private void renderEmptyState(GuiGraphics graphics, int left, int listWidth) {
+        if (!this.visibleRows.isEmpty()) return;
+        boolean filtered = this.filter != Filter.ALL
+                || (this.searchBox != null && !this.searchBox.getValue().isBlank());
+        Component message = Component.translatable(filtered
+                ? "screen.unsuspiciousblock.loot_table_management.empty_search"
+                : "screen.unsuspiciousblock.loot_table_management.empty");
+        graphics.drawCenteredString(this.font, message, left + INNER_MARGIN + listWidth / 2,
+                listTop() + Math.max(0, listHeight() - this.font.lineHeight) / 2, 0xAAAAAA);
     }
 
     private void renderDetails(GuiGraphics graphics, int x, int top, int width) {
@@ -288,20 +298,20 @@ public final class LootTableManagementScreen extends Screen {
         }
         if (this.importStatus != null) {
             renderOverflowText(graphics, this.importStatus.getString(),
-                    x, warningY + 12, width, 0x78D66A, true);
+                    x, warningY + 12, width, this.importStatusColor, true);
         }
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        syncListGeometry();
         if (button == 0 && !isOverTextBox(mouseX, mouseY)) this.setFocused(null);
-        if (button == 0 && isOverScrollbar(mouseX, mouseY) && maxScrollRow() > 0) {
-            this.draggingScrollbar = true;
-            setScrollFromMouse(mouseY);
+        if (button == 0 && this.list.hitScrollbar(mouseX, mouseY) && this.list.maxScrollRow() > 0) {
+            this.list.beginDrag(mouseY);
             return true;
         }
-        if (button == 0 && isOverList(mouseX, mouseY)) {
-            int index = this.scrollRow + (int) ((mouseY - listTop()) / ROW_HEIGHT);
+        if (button == 0 && this.list.contains(mouseX, mouseY)) {
+            int index = this.list.rowIndexAt(mouseY);
             if (index >= 0 && index < this.visibleRows.size()) {
                 TreeRow row = this.visibleRows.get(index);
                 int toggleRight = panelLeft() + INNER_MARGIN + 5 + row.depth() * INDENT_WIDTH + 14;
@@ -328,8 +338,9 @@ public final class LootTableManagementScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (this.draggingScrollbar && button == 0) {
-            setScrollFromMouse(mouseY);
+        if (this.list.isDragging() && button == 0) {
+            syncListGeometry();
+            this.list.dragTo(mouseY);
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -337,8 +348,8 @@ public final class LootTableManagementScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && this.draggingScrollbar) {
-            this.draggingScrollbar = false;
+        if (button == 0 && this.list.isDragging()) {
+            this.list.endDrag();
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -346,9 +357,10 @@ public final class LootTableManagementScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta, double verticalDelta) {
-        if (isOverList(mouseX, mouseY) && verticalDelta != 0.0) {
+        syncListGeometry();
+        if (this.list.contains(mouseX, mouseY) && verticalDelta != 0.0) {
             int direction = verticalDelta > 0.0 ? -1 : 1;
-            this.scrollRow = clampScroll(this.scrollRow + direction * 3);
+            this.list.scrollByRows(direction * 3);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalDelta, verticalDelta);
@@ -391,7 +403,8 @@ public final class LootTableManagementScreen extends Screen {
 
         this.visibleRows.clear();
         for (TreeNode namespace : namespaces.values()) flattenNode(namespace, 0, expandSearchResults);
-        this.scrollRow = clampScroll(this.scrollRow);
+        // 行数变化后重新钳制偏移：同时按当前面板尺寸刷新视口，resize 后的首次重建也拿到正确容量
+        syncListGeometry();
         if (selectedEntry() == null) this.selectedTableId = null;
         populateName();
         syncControls();
@@ -426,17 +439,17 @@ public final class LootTableManagementScreen extends Screen {
     private void applySelection() {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         if (entry == null || !LootTableManagementClientState.canEdit()) return;
-        Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(entry.tableId(), !entry.tracked()));
+        this.actions.submitTracking(entry.tableId(), !entry.tracked());
     }
 
     private void saveName() {
         if (!LootTableManagementClientState.canEdit() || this.nameDrafts.isEmpty()
                 || hasInvalidEnglishDraft()) return;
-        List<UpdateLootTableTranslationsPayload.Entry> entries = this.nameDrafts.entrySet().stream()
-                .map(entry -> new UpdateLootTableTranslationsPayload.Entry(
-                        entry.getKey().tableId(), entry.getKey().languageCode(), entry.getValue()))
-                .toList();
-        Services.NETWORK.sendToServer(new UpdateLootTableTranslationsPayload(entries));
+        // 这里只做草稿到提交项的数据转换，协议组包交给动作层
+        this.actions.submitNameDrafts(this.nameDrafts.entrySet().stream()
+                .map(entry -> new LootTableManagementActions.NameDraft(
+                        entry.getKey().languageCode(), entry.getKey().tableId(), entry.getValue()))
+                .toList());
     }
 
     private void populateName() {
@@ -587,8 +600,9 @@ public final class LootTableManagementScreen extends Screen {
         return hasValidLanguageCode() ? currentLanguageCode() : this.selectedLanguageCode;
     }
 
+    // 语言码口径与导入文件名推断共用同一份实现
     private static boolean isValidLanguageCode(String languageCode) {
-        return languageCode != null && languageCode.matches(LANGUAGE_CODE_PATTERN);
+        return LootTableImportValidator.isValidLanguageCode(languageCode);
     }
 
     private boolean requiresEnglishName() {
@@ -655,88 +669,36 @@ public final class LootTableManagementScreen extends Screen {
         return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.missing");
     }
 
+    // 导入流程只做转调：文件对话框、读取校验、预览统计都在动作层，失败原因按分类给独立文案
     private void importJson() {
-        String selectedPath;
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            PointerBuffer filters = stack.mallocPointer(1);
-            filters.put(stack.UTF8("*.json")).flip();
-            selectedPath = TinyFileDialogs.tinyfd_openFileDialog(
-                    Component.translatable("screen.unsuspiciousblock.loot_table_management.import_dialog").getString(),
-                    Services.PLATFORM.getGameDir().toAbsolutePath().toString(), filters, "JSON", false);
-        }
+        String selectedPath = this.actions.chooseImportFile();
         if (selectedPath == null) return;
-        try {
-            ImportPreview preview = buildImportPreview(Path.of(selectedPath));
-            openImportPreview(preview);
-        } catch (IOException | RuntimeException exception) {
-            this.importStatus = Component.translatable(
+        LootTableManagementActions.ImportResult result =
+                this.actions.prepareImport(Path.of(selectedPath), validLanguageCodeOrFallback());
+        if (result instanceof LootTableManagementActions.ImportResult.Failed(var reason)) {
+            this.importStatus = importFailureMessage(reason);
+            this.importStatusColor = IMPORT_STATUS_ERROR_COLOR;
+            return;
+        }
+        openImportPreview(((LootTableManagementActions.ImportResult.Ready) result).preview());
+    }
+
+    // 导入失败原因分类：格式无效只是兜底，文件过大 / 读取失败 / 条目超限各有独立文案键
+    private static Component importFailureMessage(LootTableImportValidator.Failure failure) {
+        return switch (failure) {
+            case TOO_LARGE -> Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.import_failed.too_large");
+            case TOO_MANY_ENTRIES -> Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.import_failed.entries",
+                    LootTableImportValidator.MAX_ENTRIES);
+            case IO_ERROR, NOT_A_FILE -> Component.translatable(
+                    "screen.unsuspiciousblock.loot_table_management.import_failed.io");
+            case INVALID_JSON, ROOT_NOT_OBJECT -> Component.translatable(
                     "screen.unsuspiciousblock.loot_table_management.import_failed");
-        }
+        };
     }
 
-    private ImportPreview buildImportPreview(Path file) throws IOException {
-        if (!Files.isRegularFile(file) || Files.size(file) > MAX_IMPORT_FILE_BYTES) {
-            throw new IOException("Invalid or oversized JSON file");
-        }
-        JsonElement root;
-        try (Reader reader = Files.newBufferedReader(file)) {
-            root = JsonParser.parseReader(reader);
-        }
-        if (!root.isJsonObject()) throw new IOException("Language JSON root must be an object");
-
-        String languageCode = inferImportLanguage(file);
-        Map<String, ResourceLocation> tableByKey = new LinkedHashMap<>();
-        Set<String> ambiguousKeys = new HashSet<>();
-        for (SyncLootTableManagementPayload.Entry entry : LootTableManagementClientState.entries()) {
-            String key = LootTableNames.createTranslationKey(entry.tableId());
-            if (tableByKey.putIfAbsent(key, entry.tableId()) != null) ambiguousKeys.add(key);
-        }
-
-        List<UpdateLootTableTranslationsPayload.Entry> accepted = new ArrayList<>();
-        int added = 0;
-        int updated = 0;
-        int resourceSkipped = 0;
-        int unmatched = 0;
-        int invalid = 0;
-        JsonObject object = root.getAsJsonObject();
-        if (object.size() > MAX_IMPORT_ENTRIES) throw new IOException("Too many JSON entries");
-        for (Map.Entry<String, JsonElement> jsonEntry : object.entrySet()) {
-            ResourceLocation tableId = tableByKey.get(jsonEntry.getKey());
-            if (tableId == null || ambiguousKeys.contains(jsonEntry.getKey())) {
-                unmatched++;
-                continue;
-            }
-            if (!jsonEntry.getValue().isJsonPrimitive()
-                    || !jsonEntry.getValue().getAsJsonPrimitive().isString()) {
-                invalid++;
-                continue;
-            }
-            String value = jsonEntry.getValue().getAsString().trim();
-            if (value.isEmpty() || value.length() > 128) {
-                invalid++;
-                continue;
-            }
-            DraftKey draftKey = new DraftKey(languageCode, tableId);
-            if (resourceName(draftKey) != null) {
-                resourceSkipped++;
-                continue;
-            }
-            if (storedName(draftKey).isEmpty()) added++;
-            else updated++;
-            accepted.add(new UpdateLootTableTranslationsPayload.Entry(tableId, languageCode, value));
-        }
-        return new ImportPreview(languageCode, List.copyOf(accepted),
-                added, updated, resourceSkipped, unmatched, invalid);
-    }
-
-    private String inferImportLanguage(Path file) {
-        String fileName = file.getFileName().toString().toLowerCase(Locale.ROOT);
-        int extension = fileName.lastIndexOf('.');
-        String inferred = extension > 0 ? fileName.substring(0, extension) : fileName;
-        return isValidLanguageCode(inferred) ? inferred : validLanguageCodeOrFallback();
-    }
-
-    private void openImportPreview(ImportPreview preview) {
+    private void openImportPreview(LootTableManagementActions.ImportPreview preview) {
         Component message = Component.translatable(
                 "screen.unsuspiciousblock.loot_table_management.import_preview.message",
                 preview.languageCode(), preview.added(), preview.updated(), preview.resourceSkipped(),
@@ -744,47 +706,19 @@ public final class LootTableManagementScreen extends Screen {
         Minecraft.getInstance().setScreen(new ConfirmScreen(confirmed -> {
             Minecraft.getInstance().setScreen(this);
             if (confirmed && !preview.entries().isEmpty()) {
-                Services.NETWORK.sendToServer(new UpdateLootTableTranslationsPayload(preview.entries()));
+                this.actions.submitImport(preview);
                 this.importStatus = Component.translatable(
                         "screen.unsuspiciousblock.loot_table_management.import_submitted",
                         preview.entries().size());
+                this.importStatusColor = IMPORT_STATUS_OK_COLOR;
             }
         }, Component.translatable("screen.unsuspiciousblock.loot_table_management.import_preview.title"), message));
     }
 
-    private boolean isOverList(double mouseX, double mouseY) {
-        return mouseX >= panelLeft() + INNER_MARGIN && mouseX < panelLeft() + INNER_MARGIN + listWidth()
-                && mouseY >= listTop() && mouseY < listTop() + listHeight();
-    }
-
-    private boolean isOverScrollbar(double mouseX, double mouseY) {
-        int x = panelLeft() + INNER_MARGIN + listWidth() - SCROLLBAR_WIDTH;
-        return mouseX >= x && mouseX < x + SCROLLBAR_WIDTH
-                && mouseY >= listTop() && mouseY < listTop() + listHeight();
-    }
-
-    private void setScrollFromMouse(double mouseY) {
-        int maxScroll = maxScrollRow();
-        if (maxScroll <= 0) {
-            this.scrollRow = 0;
-            return;
-        }
-        int travel = listHeight() - scrollbarThumbHeight();
-        double relative = mouseY - listTop() - scrollbarThumbHeight() / 2.0;
-        this.scrollRow = clampScroll((int) Math.round(relative * maxScroll / Math.max(1, travel)));
-    }
-
-    private int scrollbarThumbHeight() {
-        if (this.visibleRows.isEmpty()) return listHeight();
-        return Math.max(12, listHeight() * visibleRowCapacity() / this.visibleRows.size());
-    }
-
-    private int maxScrollRow() {
-        return Math.max(0, this.visibleRows.size() - visibleRowCapacity());
-    }
-
-    private int clampScroll(int value) {
-        return Math.max(0, Math.min(maxScrollRow(), value));
+    // 列表视口随面板尺寸变化：把矩形与当前行数交给共用几何组件，它会重新钳制偏移
+    private void syncListGeometry() {
+        this.list.setViewport(panelLeft() + INNER_MARGIN, listTop(), listWidth(), listHeight());
+        this.list.setRowCount(this.visibleRows.size());
     }
 
     private int panelLeft() {
@@ -820,24 +754,11 @@ public final class LootTableManagementScreen extends Screen {
         return Math.max(ROW_HEIGHT, panelTop() + panelHeight() - INNER_MARGIN - listTop());
     }
 
-    private int visibleRowCapacity() {
-        return Math.max(1, listHeight() / ROW_HEIGHT);
-    }
-
     private static String readableName(ResourceLocation id) {
         String path = id.getPath();
         int slash = path.lastIndexOf('/');
         if (slash >= 0) path = path.substring(slash + 1);
         return path.replace('_', ' ').replace('-', ' ');
-    }
-
-    private String trimToWidth(String value, int maxWidth) {
-        if (this.font.width(value) <= maxWidth) return value;
-        String suffix = "...";
-        if (maxWidth <= this.font.width(suffix)) {
-            return this.font.plainSubstrByWidth(value, Math.max(0, maxWidth));
-        }
-        return this.font.plainSubstrByWidth(value, maxWidth - this.font.width(suffix)) + suffix;
     }
 
     private void renderOverflowText(GuiGraphics graphics, String value, int x, int y,
@@ -848,7 +769,7 @@ public final class LootTableManagementScreen extends Screen {
             return;
         }
         if (!scrolling) {
-            graphics.drawString(this.font, trimToWidth(value, maxWidth), x, y, color, false);
+            graphics.drawString(this.font, TextScroll.trimToWidth(this.font, value, maxWidth), x, y, color, false);
             return;
         }
 
@@ -882,12 +803,12 @@ public final class LootTableManagementScreen extends Screen {
         private static final int LIST_TOP = 36;
         private static final int LIST_BOTTOM_MARGIN = 38;
         private static final int ROW_HEIGHT = 20;
-        private static final int SCROLLBAR_WIDTH = 5;
 
         private final LootTableManagementScreen parent;
         private final List<String> languageCodes;
+        /** 与外层管理页共用同一份列表滚动几何。 */
+        private final ListScrollState list = new ListScrollState(ROW_HEIGHT, 0xFF202020, 0xFF909090, 0xFF909090);
         private String selectedLanguageCode;
-        private int scrollRow;
 
         private LanguageSelectionScreen(LootTableManagementScreen parent, List<String> languageCodes,
                                         String selectedLanguageCode) {
@@ -900,9 +821,10 @@ public final class LootTableManagementScreen extends Screen {
 
         @Override
         protected void init() {
+            syncListGeometry();
             int selectedIndex = this.languageCodes.indexOf(this.selectedLanguageCode);
             if (selectedIndex >= 0) {
-                this.scrollRow = clampScroll(selectedIndex - visibleRowCapacity() / 2);
+                this.list.setScrollRow(selectedIndex - this.list.visibleRowCapacity() / 2);
             }
             this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> confirm())
                     .bounds((this.width - 150) / 2, this.height - 28, 150, 20)
@@ -920,9 +842,10 @@ public final class LootTableManagementScreen extends Screen {
             graphics.fill(left - 1, LIST_TOP - 1, left + width + 1, bottom + 1, 0xFF909090);
             graphics.fill(left, LIST_TOP, left + width, bottom, 0xFF181818);
 
-            int end = Math.min(this.languageCodes.size(), this.scrollRow + visibleRowCapacity());
-            for (int index = this.scrollRow; index < end; index++) {
-                int y = LIST_TOP + (index - this.scrollRow) * ROW_HEIGHT;
+            syncListGeometry();
+            int end = this.list.visibleEndIndex();
+            for (int index = this.list.scrollRow(); index < end; index++) {
+                int y = this.list.rowY(index);
                 String code = this.languageCodes.get(index);
                 boolean selected = code.equals(this.selectedLanguageCode);
                 boolean hovered = mouseX >= left && mouseX < left + width - SCROLLBAR_WIDTH
@@ -932,17 +855,18 @@ public final class LootTableManagementScreen extends Screen {
                             selected ? 0xFF4C6278 : 0xFF353535);
                 }
                 graphics.drawString(this.font,
-                        trimToWidth(this.font, languageOptionLabel(code).getString(),
+                        TextScroll.trimToWidth(this.font, languageOptionLabel(code).getString(),
                                 width - SCROLLBAR_WIDTH - 8),
                         left + 4, y + 6, selected ? 0xFFFFFF : 0xD0D0D0, false);
             }
-            renderScrollbar(graphics, left + width - SCROLLBAR_WIDTH);
+            this.list.renderScrollbar(graphics);
         }
 
         @Override
         public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            if (button == 0 && isOverList(mouseX, mouseY)) {
-                int index = this.scrollRow + (int) ((mouseY - LIST_TOP) / ROW_HEIGHT);
+            syncListGeometry();
+            if (button == 0 && this.list.containsRowArea(mouseX, mouseY)) {
+                int index = this.list.rowIndexAt(mouseY);
                 if (index >= 0 && index < this.languageCodes.size()) {
                     this.selectedLanguageCode = this.languageCodes.get(index);
                     return true;
@@ -954,8 +878,9 @@ public final class LootTableManagementScreen extends Screen {
         @Override
         public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta,
                                      double verticalDelta) {
-            if (isOverList(mouseX, mouseY) && verticalDelta != 0.0) {
-                this.scrollRow = clampScroll(this.scrollRow + (verticalDelta > 0.0 ? -3 : 3));
+            syncListGeometry();
+            if (this.list.containsRowArea(mouseX, mouseY) && verticalDelta != 0.0) {
+                this.list.scrollByRows(verticalDelta > 0.0 ? -3 : 3);
                 return true;
             }
             return super.mouseScrolled(mouseX, mouseY, horizontalDelta, verticalDelta);
@@ -971,19 +896,10 @@ public final class LootTableManagementScreen extends Screen {
             Minecraft.getInstance().setScreen(this.parent);
         }
 
-        private void renderScrollbar(GuiGraphics graphics, int x) {
-            int height = listHeight();
-            graphics.fill(x, LIST_TOP, x + SCROLLBAR_WIDTH, LIST_TOP + height, 0xFF202020);
-            int maxScroll = maxScrollRow();
-            if (maxScroll <= 0) return;
-            int thumbHeight = Math.max(12, height * visibleRowCapacity() / this.languageCodes.size());
-            int thumbY = LIST_TOP + (height - thumbHeight) * this.scrollRow / maxScroll;
-            graphics.fill(x, thumbY, x + SCROLLBAR_WIDTH, thumbY + thumbHeight, 0xFF909090);
-        }
-
-        private boolean isOverList(double mouseX, double mouseY) {
-            return mouseX >= listLeft() && mouseX < listLeft() + listWidth() - SCROLLBAR_WIDTH
-                    && mouseY >= LIST_TOP && mouseY < listBottom();
+        // 语言列表的视口随窗口尺寸变化：几何统一交给共用几何组件
+        private void syncListGeometry() {
+            this.list.setViewport(listLeft(), LIST_TOP, listWidth(), listHeight());
+            this.list.setRowCount(this.languageCodes.size());
         }
 
         private int listLeft() {
@@ -1002,25 +918,124 @@ public final class LootTableManagementScreen extends Screen {
             return listBottom() - LIST_TOP;
         }
 
-        private int visibleRowCapacity() {
-            return Math.max(1, listHeight() / ROW_HEIGHT);
+    }
+
+    /**
+     * 列表滚动几何——管理页与内部语言选择窗口共用同一份"视口 + 行高 + 偏移"计算与滚动条绘制。
+     * <p>
+     * 两处原先各写一套 isOverList/maxScrollRow/clampScroll/renderScrollbar，任何一处改口径都会失配。
+     * kit 的 {@code UiScrollView} 面向 UiControl 控件树并自带 UiControlStyle，而本页直接按行绘制文本，
+     * 因此抽这个私有组件而不是套 kit；颜色与行高由调用方给出，以保留各自的视觉。
+     */
+    private static final class ListScrollState {
+        private static final int MIN_THUMB_HEIGHT = 12;
+
+        private final int rowHeight;
+        private final int trackColor;
+        private final int thumbColor;
+        private final int draggingThumbColor;
+
+        private int x;
+        private int y;
+        private int width;
+        private int height;
+        private int rowCount;
+        private int scrollRow;
+        private boolean dragging;
+
+        ListScrollState(int rowHeight, int trackColor, int thumbColor, int draggingThumbColor) {
+            this.rowHeight = Math.max(1, rowHeight);
+            this.trackColor = trackColor;
+            this.thumbColor = thumbColor;
+            this.draggingThumbColor = draggingThumbColor;
         }
 
-        private int maxScrollRow() {
-            return Math.max(0, this.languageCodes.size() - visibleRowCapacity());
+        // 视口矩形与行数都会重新钳制偏移：内容变短后偏移不会停在越界位置
+        void setViewport(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = Math.max(0, width);
+            this.height = Math.max(0, height);
+            this.scrollRow = clamp(this.scrollRow);
         }
 
-        private int clampScroll(int value) {
-            return Math.max(0, Math.min(maxScrollRow(), value));
+        void setRowCount(int rowCount) {
+            this.rowCount = Math.max(0, rowCount);
+            this.scrollRow = clamp(this.scrollRow);
         }
 
-        private static String trimToWidth(net.minecraft.client.gui.Font font, String value, int maxWidth) {
-            if (font.width(value) <= maxWidth) return value;
-            String suffix = "...";
-            if (maxWidth <= font.width(suffix)) {
-                return font.plainSubstrByWidth(value, Math.max(0, maxWidth));
+        int scrollRow() { return this.scrollRow; }
+
+        void setScrollRow(int value) { this.scrollRow = clamp(value); }
+
+        void scrollByRows(int delta) { setScrollRow(this.scrollRow + delta); }
+
+        int visibleRowCapacity() { return Math.max(1, this.height / this.rowHeight); }
+
+        int maxScrollRow() { return Math.max(0, this.rowCount - visibleRowCapacity()); }
+
+        int clamp(int value) { return Math.clamp(value, 0, maxScrollRow()); }
+
+        int visibleEndIndex() { return Math.min(this.rowCount, this.scrollRow + visibleRowCapacity()); }
+
+        int rowIndexAt(double mouseY) { return this.scrollRow + (int) ((mouseY - this.y) / this.rowHeight); }
+
+        int rowY(int index) { return this.y + (index - this.scrollRow) * this.rowHeight; }
+
+        // 整块列表区域（含滚动条列）：管理页的滚轮与列表判定沿用它
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= this.x && mouseX < this.x + this.width
+                    && mouseY >= this.y && mouseY < this.y + this.height;
+        }
+
+        // 只算行区域（排除滚动条列）：语言选择窗口的点击口径
+        boolean containsRowArea(double mouseX, double mouseY) {
+            return mouseX >= this.x && mouseX < this.x + this.width - SCROLLBAR_WIDTH
+                    && mouseY >= this.y && mouseY < this.y + this.height;
+        }
+
+        int scrollbarX() { return this.x + this.width - SCROLLBAR_WIDTH; }
+
+        boolean hitScrollbar(double mouseX, double mouseY) {
+            return mouseX >= scrollbarX() && mouseX < scrollbarX() + SCROLLBAR_WIDTH
+                    && mouseY >= this.y && mouseY < this.y + this.height;
+        }
+
+        boolean isDragging() { return this.dragging; }
+
+        // 按下滚动条进入拖动：滑块中心先对齐指针，之后按位移映射偏移
+        void beginDrag(double mouseY) {
+            this.dragging = true;
+            dragTo(mouseY);
+        }
+
+        void dragTo(double mouseY) {
+            int maxScroll = maxScrollRow();
+            if (maxScroll <= 0) {
+                this.scrollRow = 0;
+                return;
             }
-            return font.plainSubstrByWidth(value, maxWidth - font.width(suffix)) + suffix;
+            int travel = this.height - thumbHeight();
+            double relative = mouseY - this.y - thumbHeight() / 2.0;
+            this.scrollRow = clamp((int) Math.round(relative * maxScroll / Math.max(1, travel)));
+        }
+
+        void endDrag() { this.dragging = false; }
+
+        int thumbHeight() {
+            if (this.rowCount == 0) return this.height;
+            return Math.max(MIN_THUMB_HEIGHT, this.height * visibleRowCapacity() / this.rowCount);
+        }
+
+        void renderScrollbar(GuiGraphics graphics) {
+            int trackX = scrollbarX();
+            graphics.fill(trackX, this.y, trackX + SCROLLBAR_WIDTH, this.y + this.height, this.trackColor);
+            int maxScroll = maxScrollRow();
+            if (maxScroll <= 0) return;
+            int thumbHeight = thumbHeight();
+            int thumbY = this.y + (this.height - thumbHeight) * this.scrollRow / maxScroll;
+            graphics.fill(trackX, thumbY, trackX + SCROLLBAR_WIDTH, thumbY + thumbHeight,
+                    this.dragging ? this.draggingThumbColor : this.thumbColor);
         }
     }
 
@@ -1039,11 +1054,6 @@ public final class LootTableManagementScreen extends Screen {
 
     /** 页面内未提交名称的复合键。 */
     private record DraftKey(String languageCode, ResourceLocation tableId) {
-    }
-
-    /** JSON 导入预览及其可提交条目。 */
-    private record ImportPreview(String languageCode, List<UpdateLootTableTranslationsPayload.Entry> entries,
-                                 int added, int updated, int resourceSkipped, int unmatched, int invalid) {
     }
 
     private record TreeRow(String label, String key, int depth, boolean expandable,

@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.MissingTranslationKeyEx
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -45,9 +46,21 @@ public final class ClientLootTableLanguageStore {
         serverTranslations = Map.of();
     }
 
-    // 实际资源重载时失效来源索引，下次查询按新的资源栈重新构建
-    public static synchronized void clearResourceCache() {
+    /**
+     * 资源重载时预热语言索引：失效旧索引，并用**即将生效**的资源栈重建本次语言栈的索引。
+     * <p>
+     * 由 {@code ClientLanguageMixin} 挂在 {@code ClientLanguage.loadFrom} 入口：把"首次命中生成 key 时
+     * 在调用线程（可能是渲染线程）同步遍历资源栈 + GSON 解析全部同语言 JSON"的开销挪到资源重载路径。
+     * 同时预热 en_us，避免英文回退查询触发同样的同步扫描。
+     */
+    public static synchronized void prewarmResourceIndex(ResourceManager resourceManager, List<String> languageCodes) {
         resourceLanguages.clear();
+        for (String languageCode : languageCodes) {
+            resourceLanguages.put(languageCode, loadResourceLanguage(resourceManager, languageCode));
+        }
+        if (!resourceLanguages.containsKey("en_us")) {
+            resourceLanguages.put("en_us", loadResourceLanguage(resourceManager, "en_us"));
+        }
     }
 
     // 仅在游戏资源缺少对应语言 key 时返回服务端补充值；null 表示沿用原版查询结果
@@ -81,13 +94,18 @@ public final class ClientLootTableLanguageStore {
         return resourceLanguages.computeIfAbsent(languageCode, ClientLootTableLanguageStore::loadResourceLanguage);
     }
 
-    // 扫描当前资源栈中的所有同语言 JSON，并记录最终提供每个战利品表 key 的资源包
+    // 懒加载路径：使用当前生效的资源管理器按需构建
     private static ResourceLanguage loadResourceLanguage(String languageCode) {
+        return loadResourceLanguage(Minecraft.getInstance().getResourceManager(), languageCode);
+    }
+
+    // 扫描资源栈中的所有同语言 JSON，并记录最终提供每个战利品表 key 的资源包
+    private static ResourceLanguage loadResourceLanguage(ResourceManager resourceManager, String languageCode) {
         Map<String, String> values = new LinkedHashMap<>();
         Map<String, String> sourcePacks = new LinkedHashMap<>();
         String expectedPath = "lang/" + languageCode + ".json";
         try {
-            var stacks = Minecraft.getInstance().getResourceManager().listResourceStacks(
+            var stacks = resourceManager.listResourceStacks(
                     "lang", location -> location.getPath().equals(expectedPath));
             for (Map.Entry<ResourceLocation, List<Resource>> stackEntry : stacks.entrySet()) {
                 for (Resource resource : stackEntry.getValue()) {
