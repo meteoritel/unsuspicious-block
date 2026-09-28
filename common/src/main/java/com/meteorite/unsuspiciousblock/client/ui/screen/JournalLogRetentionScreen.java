@@ -68,6 +68,20 @@ public final class JournalLogRetentionScreen extends Screen {
                 .build());
     }
 
+    // 窗口 resize 会经 rebuildWidgets -> init() 把两个数值框重置成初始值；先取出未提交草稿再放回
+    @Override
+    protected void repositionElements() {
+        String limitDraft = this.retentionLimitBox != null ? this.retentionLimitBox.getValue() : null;
+        String keepDraft = this.keepRecentBox != null ? this.keepRecentBox.getValue() : null;
+        super.repositionElements();
+        if (limitDraft != null && this.retentionLimitBox != null) {
+            this.retentionLimitBox.setValue(limitDraft);
+        }
+        if (keepDraft != null && this.keepRecentBox != null) {
+            this.keepRecentBox.setValue(keepDraft);
+        }
+    }
+
     private EditBox numericField(int x, int y, int value) {
         EditBox field = new EditBox(this.font, x, y, FIELD_WIDTH, 20, Component.empty());
         field.setMaxLength(10);

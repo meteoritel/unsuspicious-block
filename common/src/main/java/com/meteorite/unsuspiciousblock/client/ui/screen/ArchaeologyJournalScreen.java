@@ -31,6 +31,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -96,6 +97,9 @@ public class ArchaeologyJournalScreen extends Screen {
     private int catalogProgressScrollTicks;
     @Nullable
     private final ResourceLocation initialItemSearch;
+    // 自绘浮层焦点同步：记录上次观察到的开关状态与打开前搜索框是否持焦点
+    private boolean overlayOpenLastSync;
+    private boolean searchFocusBeforeOverlay;
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
@@ -197,6 +201,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        syncOverlayFocus();
         if (keyCode == GLFW.GLFW_KEY_F8 && hasControlDown() && UiKitDebugScreen.enabled()) {
             Objects.requireNonNull(this.minecraft).setScreen(new UiKitDebugScreen(this));
             return true;
@@ -225,6 +230,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        syncOverlayFocus();
         if (this.overlays.charTyped(codePoint, modifiers)) return true;
         return super.charTyped(codePoint, modifiers);
     }
@@ -357,6 +363,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // 浮层开关先于绘制同步搜索框焦点归属，模态期间不在下层残留光标与轮廓
+        syncOverlayFocus();
         int logicalMouseX = (int) this.viewport.toLogicalX(mouseX);
         int logicalMouseY = (int) this.viewport.toLogicalY(mouseY);
         int underlayMouseX = this.overlays.isOpen() ? -10000 : logicalMouseX;
@@ -382,13 +390,15 @@ public class ArchaeologyJournalScreen extends Screen {
 
     // 检测服务端数据变更并按需刷新
     private void refreshAndSync() {
+        // 搜索输入防抖：到点才提交一次，避免逐字符重建整份目录投影
+        this.catalogToolbar.flushPendingSearchIfDue();
         if (this.viewModel.refreshIfNeeded()) {
             this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
             this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
             this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
             this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
             this.viewModel.setHideLocked(this.catalogToolbar.hideLocked());
-            this.viewModel.setCurrentSearch(this.catalogToolbar.currentSearch());
+            this.viewModel.setCurrentSearch(this.catalogToolbar.effectiveSearch());
             this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
             this.updateItemGridPanel();
             this.syncButtonState();
@@ -523,10 +533,16 @@ public class ArchaeologyJournalScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
+        // 浮层开关先同步一次，再作废上一轮未兑现的焦点请求，避免迟到请求夺走本次点击的焦点
+        syncOverlayFocus();
+        this.catalogToolbar.clearSearchFocusRequest();
         if (this.overlays.mouseClicked(mouseX, mouseY, button)) return true;
         // 浮层没接管这次点击：把上一次关闭浮层时还给入口按钮的焦点收掉，避免轮廓长期驻留。
         this.overlays.clearRestoredFocus();
-        if (super.mouseClicked(mouseX, mouseY, button)) {
+        boolean handledByWidgets = super.mouseClicked(mouseX, mouseY, button);
+        // 原版点击分发已在按钮回调返回后把焦点设回被点击的旧按钮，这里补上本次重建登记的搜索框焦点
+        applySearchFocusRequest(true);
+        if (handledByWidgets) {
             syncButtonState();
             return true;
         }
@@ -631,8 +647,8 @@ public class ArchaeologyJournalScreen extends Screen {
     protected void rebuildWidgets() {
         int previousCatalogScrollOffset = this.catalogPanel != null
                 ? this.catalogPanel.getScrollOffset() : this.restoredCatalogScrollOffset;
-        // 重建 widget 前，同步工具栏搜索/排序状态到 ViewModel，
-        this.rebuildViewModels();
+        // 重建 widget 前，同步工具栏搜索/排序状态到 ViewModel；目录面板紧接着会被替换，跳过对旧面板的装配
+        this.rebuildViewModels(false);
         this.clearWidgets();
 
         // 分组首页发起搜索时只刷新 ViewModel，因此书签必须预先注册，再通过可见性同步状态。
@@ -651,6 +667,9 @@ public class ArchaeologyJournalScreen extends Screen {
         this.catalogToolbar.setHorizontalOffset(toolbarOffset);
         this.catalogToolbar.setExpandedSearchFieldWidth(searchRightEdge - JournalLayout.SEARCH_ICON_SIZE);
         this.catalogToolbar.createWidgets(this, this.bookLayout, this.font);
+        // 鼠标事件之外的重建（C 键打开、切页、resize、退出子屏）在这里立即兑现搜索框焦点请求；
+        // 鼠标事件内的重建随后会被原版点击分发覆盖，由 mouseClicked 尾部再交接一次
+        applySearchFocusRequest(false);
         this.catalogToolbar.setCategoryHomeMode(categoryHomeMode);
 
         if (showDirectoryBack) {
@@ -796,17 +815,76 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void rebuildViewModels() {
+        rebuildViewModels(true);
+    }
+
+    // syncCatalogPanel=false 供 rebuildWidgets 使用：目录面板紧接着会被新实例替换，无需先装配旧实例
+    private void rebuildViewModels(boolean syncCatalogPanel) {
         // 同步日志工具栏状态到 ViewModel，避免 rebuildViewModels 覆盖
         this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
         this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
-        // 同步目录工具栏状态到 ViewModel
+        // 同步目录工具栏状态到 ViewModel（含防抖窗口内尚未提交的搜索草稿）
         this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
         this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
         this.viewModel.setHideLocked(this.catalogToolbar.hideLocked());
-        this.viewModel.setCurrentSearch(this.catalogToolbar.currentSearch());
-        this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
+        this.viewModel.setCurrentSearch(this.catalogToolbar.effectiveSearch());
+        this.viewModel.rebuildViewModels(this.rightPage, syncCatalogPanel ? this.catalogPanel : null);
         updateItemGridPanel();
         syncButtonState();
+    }
+
+    // 把工具栏登记的搜索框焦点请求交给宿主。
+    // consumeRequest=false：控件重建处立即兑现（鼠标事件之外的重建）；
+    // consumeRequest=true：super.mouseClicked 返回后兑现，覆盖原版刚设给旧按钮的焦点。
+    private void applySearchFocusRequest(boolean consumeRequest) {
+        if (!this.catalogToolbar.isSearchFocusRequested()) return;
+        if (consumeRequest) this.catalogToolbar.clearSearchFocusRequest();
+        EditBox field = this.catalogToolbar.searchField();
+        if (field != null && this.catalogToolbar.searchExpanded()) {
+            setFocused(field);
+        }
+    }
+
+    // 收起搜索框后清空指向已移除输入框的宿主焦点，避免键盘事件继续发给已移除控件
+    public void clearSearchFocus(EditBox removedField) {
+        if (getFocused() == removedField) {
+            setFocused(null);
+        }
+    }
+
+    // 自绘模态与搜索框焦点互斥：浮层打开时收回宿主焦点与待兑现请求；关闭时只在打开前搜索框曾持焦点才交还。
+    // 键盘与字符输入本就由 OverlayLayer 整体吞掉（三个输入入口都无条件返回 true），这里解决的是焦点轮廓/
+    // 光标在模态下层残留，以及关闭后的恢复口径。检测放在 render 开头，因此残留最多存在到当帧绘制之前。
+    private void syncOverlayFocus() {
+        boolean open = this.overlays.isOpen();
+        if (open == this.overlayOpenLastSync) return;
+        this.overlayOpenLastSync = open;
+        EditBox field = this.catalogToolbar.searchField();
+        if (open) {
+            this.searchFocusBeforeOverlay = this.catalogToolbar.isSearchFocused();
+            this.catalogToolbar.clearSearchFocusRequest();
+            if (field != null) {
+                clearSearchFocus(field);
+            }
+        } else if (this.searchFocusBeforeOverlay) {
+            this.searchFocusBeforeOverlay = false;
+            if (field != null && this.catalogToolbar.searchExpanded()) {
+                setFocused(field);
+            }
+        }
+    }
+
+    // C 键带物品打开时初始焦点属于搜索框；原版会按 Tab 顺序把焦点交给第一枚书签按钮
+    @Override
+    protected void setInitialFocus() {
+        if (this.initialItemSearch != null) {
+            EditBox field = this.catalogToolbar.searchField();
+            if (field != null && this.catalogToolbar.searchExpanded()) {
+                setFocused(field);
+                return;
+            }
+        }
+        super.setInitialFocus();
     }
 
     private void updateItemGridPanel() {
@@ -1037,6 +1115,8 @@ public class ArchaeologyJournalScreen extends Screen {
 
     // 捕获当前 UI 状态快照，用于窗口 resize 后恢复
     private UiStateSnapshot captureUiState() {
+        // 未提交的搜索草稿先落定，resize 才能把最后几个字符一起带走
+        this.catalogToolbar.flushPendingSearch();
         return new UiStateSnapshot(
                 this.rightPage != null ? this.rightPage.getActiveTab() : RightPageContainer.Tab.INTRO,
                 this.rightPage != null ? this.rightPage.savePages() : new CompoundTag(),

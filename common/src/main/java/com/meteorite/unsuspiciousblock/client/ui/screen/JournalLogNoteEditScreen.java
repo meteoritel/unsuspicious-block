@@ -80,6 +80,20 @@ public class JournalLogNoteEditScreen extends Screen {
                 .build());
     }
 
+    // 窗口 resize 会经 rebuildWidgets -> init() 把输入框重置成初始备注；这里把草稿与焦点归属一起恢复
+    @Override
+    protected void repositionElements() {
+        String draft = this.editBox != null ? this.editBox.getValue() : this.initialNote;
+        boolean hadFocus = this.editBox != null && this.editBox.isFocused();
+        super.repositionElements();
+        if (this.editBox != null) {
+            this.editBox.setValue(draft);
+            if (hadFocus) {
+                this.editBox.setFocused(true);
+            }
+        }
+    }
+
     // 保存：发送 C2S 更新包并返回父界面
     private void onSave() {
         String value = this.editBox.getValue();

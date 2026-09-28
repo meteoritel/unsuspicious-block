@@ -11,6 +11,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -19,12 +20,18 @@ import java.util.List;
  * <p>
  * 管理目录页面的搜索/排序 widget 组（搜索切换按钮、搜索框、排序按钮、排序方向按钮）
  * 及其状态（搜索查询、排序方式、排序方向、搜索展开状态）。
+ * <p>
+ * 搜索框的宿主焦点不在展开回调里当场设置：原版 {@code ContainerEventHandler.mouseClicked}
+ * 会在按钮回调返回后才把焦点设回被点击的旧按钮。工具栏只登记"本次展开要聚焦的输入框"，
+ * 由宿主在鼠标事件尾部或控件重建后兑现。
  */
 public class CatalogToolbar {
     private static final int SEARCH_TEXT_HORIZONTAL_PADDING = 3;
     private static final int SEARCH_BORDER_COLOR = 0xFF8B6914;
     private static final int SEARCH_BG_COLOR = 0xFFD8C0A0;
     private static final int SEARCH_TEXT_COLOR = 0xFF5A3D23;
+    // 搜索输入防抖窗口：逐字符提交会重建整份目录投影，200ms 内连打只提交一次
+    private static final long SEARCH_DEBOUNCE_MILLIS = 200L;
 
     // 状态
     private JournalSearchQuery currentSearch = JournalSearchQuery.EMPTY;
@@ -32,8 +39,14 @@ public class CatalogToolbar {
     private boolean sortDescending = false;
     private boolean searchExpanded = false;
     private boolean hideLocked = false;
-    // 标记搜索框是否因用户点击刚被打开，需要在 createWidgets 时自动聚焦
-    private boolean searchJustOpened = false;
+    // 本次展开需要在控件创建后把宿主焦点交给搜索框（点击放大镜、C 键带物品打开）
+    private boolean focusSearchOnCreate = false;
+    // 已创建但尚未兑现的宿主焦点请求；宿主在鼠标事件尾部或重建后兑现并清理
+    private boolean searchFocusRequested = false;
+    // 防抖中的搜索草稿；null 表示当前没有未提交输入
+    @Nullable
+    private String pendingSearchText;
+    private long pendingSearchChangedAt;
     private int horizontalOffset;
     private int expandedSearchFieldWidth = JournalLayout.SEARCH_FIELD_WIDTH;
 
@@ -83,10 +96,16 @@ public class CatalogToolbar {
 
     public void setCurrentSearch(JournalSearchQuery search) {
         this.currentSearch = search;
+        // 从快照/外部恢复状态时丢弃尚未提交的草稿，避免旧输入在新状态下迟到生效
+        this.pendingSearchText = null;
     }
 
     public void setSearchExpanded(boolean expanded) {
         this.searchExpanded = expanded;
+        if (!expanded) {
+            this.pendingSearchText = null;
+            this.searchFocusRequested = false;
+        }
     }
 
     public boolean hideLocked() {
@@ -105,21 +124,65 @@ public class CatalogToolbar {
         return this.searchExpanded && this.searchField != null && this.searchField.isFocused();
     }
 
-    // —— 事件处理 ——
+    // —— 搜索输入的防抖与焦点请求 ——
 
-    /** 搜索框内容变化 */
-    public void onSearchChanged(String text) {
+    /** 含未提交草稿的当前搜索：宿主在目录动作前一律用它，避免读到防抖窗口内的旧值 */
+    public JournalSearchQuery effectiveSearch() {
+        return this.pendingSearchText == null
+                ? this.currentSearch : JournalSearchQuery.parse(this.pendingSearchText);
+    }
+
+    /** 防抖到点才提交搜索输入；由宿主逐帧调用 */
+    public void flushPendingSearchIfDue() {
+        if (this.pendingSearchText == null
+                || System.currentTimeMillis() - this.pendingSearchChangedAt < SEARCH_DEBOUNCE_MILLIS) {
+            return;
+        }
+        commitPendingSearch();
+    }
+
+    /** 立即提交未生效的搜索输入（resize 快照、退出子屏、其它目录动作前） */
+    public void flushPendingSearch() {
+        if (this.pendingSearchText != null) {
+            commitPendingSearch();
+        }
+    }
+
+    // 提交草稿：先落定查询再重建，保证重建读到的就是同一份输入
+    private void commitPendingSearch() {
+        String text = this.pendingSearchText;
+        this.pendingSearchText = null;
         this.currentSearch = JournalSearchQuery.parse(text);
         this.onContentChanged.run();
+    }
+
+    /** 是否存在等待宿主兑现的搜索框焦点请求 */
+    public boolean isSearchFocusRequested() {
+        return this.searchFocusRequested;
+    }
+
+    /** 作废未兑现的焦点请求：模态打开、收起搜索、切页与控件重建后由宿主调用 */
+    public void clearSearchFocusRequest() {
+        this.searchFocusRequested = false;
+    }
+
+    // —— 事件处理 ——
+
+    /** 搜索框内容变化：只登记草稿，等防抖窗口到点或宿主显式提交 */
+    public void onSearchChanged(String text) {
+        this.pendingSearchText = text;
+        this.pendingSearchChangedAt = System.currentTimeMillis();
     }
 
     /** 切换搜索框展开/收起 */
     public void toggleSearch() {
         this.searchExpanded = !this.searchExpanded;
         if (this.searchExpanded) {
-            this.searchJustOpened = true;
+            this.focusSearchOnCreate = true;
         } else {
             this.currentSearch = JournalSearchQuery.EMPTY;
+            this.pendingSearchText = null;
+            this.searchFocusRequested = false;
         }
         this.onLayoutChanged.run();
     }
@@ -226,6 +289,7 @@ public class CatalogToolbar {
      * @param font       字体
      */
     public void createWidgets(ArchaeologyJournalScreen screen, JournalBookBackground.BookLayout bookLayout, Font font) {
+        EditBox previousField = this.searchField;
         int toolbarY = bookLayout.leftPageY() + JournalLayout.TOOLBAR_Y;
         int toolbarX = bookLayout.leftPageX()
                 + (bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
@@ -290,8 +354,9 @@ public class CatalogToolbar {
 
         // 搜索框
         if (this.searchExpanded) {
-            String savedText = this.currentSearch.rawQuery();
-            boolean hadFocus = this.searchField != null && this.searchField.isFocused();
+            // 重建前保留输入文本与焦点归属：只有原本就属于搜索框的焦点才自动恢复
+            String savedText = this.pendingSearchText != null ? this.pendingSearchText : this.currentSearch.rawQuery();
+            boolean hadFocus = previousField != null && previousField.isFocused();
             this.searchBackgroundX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
             this.searchBackgroundY = toolbarY;
             int searchFieldX = this.searchBackgroundX + SEARCH_TEXT_HORIZONTAL_PADDING;
@@ -308,13 +373,18 @@ public class CatalogToolbar {
             // 初始化值会同步触发 responder，必须在绑定回调前恢复文本，避免重建递归
             this.searchField.setValue(savedText);
             this.searchField.setResponder(this::onSearchChanged);
-            // 仅在用户刚点击搜索按钮展开，或原来搜索框就有焦点时，才自动聚焦
-            if (this.searchJustOpened || hadFocus) {
-                this.searchField.setFocused(true);
-            }
-            this.searchJustOpened = false;
+            // 只登记焦点请求：原版点击分发会在按钮回调返回后把焦点设回被点击的旧按钮，
+            // 因此真正的 setFocused 交给宿主在鼠标事件尾部（或非鼠标重建处）完成
+            this.searchFocusRequested = this.focusSearchOnCreate || hadFocus;
+            this.focusSearchOnCreate = false;
             screen.registerWidget(this.searchField);
         } else {
+            this.searchFocusRequested = false;
+            this.focusSearchOnCreate = false;
+            // 宿主焦点若仍指向被移除的输入框，交由宿主清空，避免键盘事件继续发给已移除控件
+            if (previousField != null) {
+                screen.clearSearchFocus(previousField);
+            }
             this.searchField = new EditBox(font, 0, 0, 0, 0, Component.empty());
             this.searchField.setVisible(false);
             this.searchField.setResponder(this::onSearchChanged);

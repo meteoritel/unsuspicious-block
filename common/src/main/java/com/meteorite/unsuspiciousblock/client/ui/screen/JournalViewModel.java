@@ -25,6 +25,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildT
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -39,6 +40,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -74,6 +76,31 @@ public class JournalViewModel {
     private long lastStateRevision;
     private long lastLogRevision;
 
+    // —— 目录派生数据缓存（键均为 loadedCatalogRevision，即当前 catalogDefinitions 的版本）——
+    // 已加载目录定义的版本：reloadCatalog 时更新，作为所有目录派生缓存的失效点
+    private long loadedCatalogRevision = -1L;
+    // 关系索引（子表 -> 父表、表 -> 分类）只在目录定义或分类结构变化时重建
+    private long relationshipIndexRevision = Long.MIN_VALUE;
+    // 目录内每张表的首条父路径；搜索与子表跳转共用
+    private Map<ResourceLocation, List<ResourceLocation>> firstPathsByTableCache = Map.of();
+    private long firstPathsRevision = Long.MIN_VALUE;
+    // 表子树物品闭包；值来自 CatalogQueryIndex.subtreeItems，本身即为不可变列表
+    private final Map<ResourceLocation, List<ItemDefinition>> subtreeItemsCache = new LinkedHashMap<>();
+    private long subtreeItemsRevision = Long.MIN_VALUE;
+    // 网格装配结果缓存：输入不变时直接返回同一份不可变结果
+    @Nullable private GridCacheKey gridCacheKey;
+    @Nullable private BuildGridResult gridCacheResult;
+
+    // —— 名称文本缓存 ——
+    // 输入 = 目录定义 + 客户端语言（显示名的 getString() 是一次翻译查询）；
+    // 版本键 = (loadedCatalogRevision, 客户端语言码)，任一变化即整体失效
+    private final Map<ResourceLocation, String> displayNameTexts = new LinkedHashMap<>();
+    private final Map<ResourceLocation, String> lowercaseTableNames = new LinkedHashMap<>();
+    private final Map<ResourceLocation, List<JournalSearchQuery.LowercaseItem>> lowercaseTableItems =
+            new LinkedHashMap<>();
+    private long nameCacheRevision = Long.MIN_VALUE;
+    private String nameCacheLanguage = "";
+
     public JournalViewModel(ArchaeologyJournalState state) {
         this.state = state;
         this.logState = ArchaeologyJournalClientState.getLogState();
@@ -85,7 +112,13 @@ public class JournalViewModel {
         this.lastLogRevision = ArchaeologyJournalClientState.getLogRevision();
     }
 
-    public void setCurrentSearch(JournalSearchQuery search) { this.currentSearch = search; }
+    public void setCurrentSearch(JournalSearchQuery search) {
+        this.currentSearch = search;
+        // 物品文本缓存只服务搜索匹配：离开搜索态即释放，避免大目录长期驻留整份物品小写名
+        if (search.isEmpty()) {
+            this.lowercaseTableItems.clear();
+        }
+    }
     public void setCurrentSortOrder(CatalogSorter.SortOrder order) { this.currentSortOrder = order; }
     public void setSortDescending(boolean descending) { this.sortDescending = descending; }
     public void setHideLocked(boolean hideLocked) { this.hideLocked = hideLocked; }
@@ -261,6 +294,7 @@ public class JournalViewModel {
         this.catalogDefinitions.clear();
         this.catalogDefinitions.putAll(ArchaeologyJournalClientState.getCatalog());
         this.structure = ArchaeologyJournalClientState.getCatalogStructure();
+        this.loadedCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
     }
 
     public boolean refreshIfNeeded() {
@@ -375,11 +409,8 @@ public class JournalViewModel {
         Map<ResourceLocation, List<ResourceLocation>> firstPaths = firstPathsByTable();
         List<ArchaeologyJournalEntry> matches = this.allViews.values().stream()
                 .filter(view -> !this.hideLocked || view.unlocked())
-                .filter(view -> view.unlocked()
-                        ? this.currentSearch.matchesTableByItem(view.id(), view.displayName().getString(),
-                        view.type(), view.items())
-                        : this.currentSearch.matchesLockedTableId(view.id()))
-                .sorted(CatalogSorter.getComparator(this.currentSortOrder, this.sortDescending))
+                .filter(this::matchesCurrentSearch)
+                .sorted(sorter())
                 .toList();
         for (ArchaeologyJournalEntry view : matches) {
             List<ResourceLocation> parentPath = firstPaths.getOrDefault(view.id(), List.of());
@@ -400,8 +431,7 @@ public class JournalViewModel {
                 .filter(view -> !this.hideLocked || view.unlocked())
                 .sorted(Comparator
                         .comparing((ArchaeologyJournalEntry view) -> !hasChildTables(view.id()))
-                        .thenComparing(CatalogSorter.getComparator(
-                                this.currentSortOrder, this.sortDescending)))
+                        .thenComparing(sorter()))
                 .toList();
         for (ArchaeologyJournalEntry child : children) {
             addRow(child, depth, true, path, List.of(this.selectedCategory));
@@ -427,8 +457,75 @@ public class JournalViewModel {
         return table != null && !table.childTables().isEmpty();
     }
 
+    // —— 名称缓存与排序 ——
+
+    // 让名称缓存与当前"目录定义版本 + 客户端语言"对齐；不一致就整体失效重建。
+    // 服务端补充译名不推进 catalogRevision，因此匹配文本最多滞后到下一次目录或语言变化（显示本身仍走实时 Component）。
+    private void syncNameCaches() {
+        String language = Minecraft.getInstance().getLanguageManager().getSelected();
+        if (this.nameCacheRevision == this.loadedCatalogRevision && this.nameCacheLanguage.equals(language)) {
+            return;
+        }
+        this.nameCacheRevision = this.loadedCatalogRevision;
+        this.nameCacheLanguage = language;
+        this.displayNameTexts.clear();
+        this.lowercaseTableNames.clear();
+        this.lowercaseTableItems.clear();
+    }
+
+    // 目录显示名文本（原样大小写，供排序比较）
+    private String displayNameText(ResourceLocation tableId) {
+        syncNameCaches();
+        return this.displayNameTexts.computeIfAbsent(tableId, id -> {
+            ArchaeologyJournalEntry view = this.allViews.get(id);
+            return view != null ? view.displayName().getString() : id.getPath();
+        });
+    }
+
+    // 目录显示名的小写文本（供表级搜索匹配）
+    private String lowercaseTableName(ResourceLocation tableId) {
+        syncNameCaches();
+        return this.lowercaseTableNames.computeIfAbsent(tableId,
+                id -> displayNameText(id).toLowerCase(Locale.ROOT));
+    }
+
+    // 表内物品的小写匹配文本（供物品级搜索匹配）；只在物品级搜索时才构建，避免普通搜索预建整份物品文本
+    private List<JournalSearchQuery.LowercaseItem> lowercaseTableItems(ResourceLocation tableId) {
+        syncNameCaches();
+        return this.lowercaseTableItems.computeIfAbsent(tableId, id -> {
+            ArchaeologyJournalEntry view = this.allViews.get(id);
+            if (view == null) return List.of();
+            List<JournalSearchQuery.LowercaseItem> items = new ArrayList<>(view.items().size());
+            for (ArchaeologyEntryItem item : view.items()) {
+                items.add(JournalSearchQuery.LowercaseItem.of(item.id(), item.displayName().getString()));
+            }
+            return List.copyOf(items);
+        });
+    }
+
+    // 表级搜索匹配：锁定表只按完整 id 命中；物品级模式才构建物品文本缓存
+    private boolean matchesCurrentSearch(ArchaeologyJournalEntry view) {
+        if (!view.unlocked()) {
+            return this.currentSearch.matchesLockedTableId(view.id());
+        }
+        if (this.currentSearch.isEmpty()) {
+            return true;
+        }
+        if (this.currentSearch.mode() == JournalSearchQuery.Mode.ITEM_NAME) {
+            return this.currentSearch.matchesTableByItemLowercase(view.id(),
+                    lowercaseTableName(view.id()), view.type(), lowercaseTableItems(view.id()));
+        }
+        return this.currentSearch.matchesTableLowercase(view.id(), lowercaseTableName(view.id()), view.type());
+    }
+
+    // 排序比较器：名称文本走缓存，避免每次比较都做一次翻译查询
+    private Comparator<ArchaeologyJournalEntry> sorter() {
+        return CatalogSorter.getComparator(this.currentSortOrder, this.sortDescending,
+                view -> displayNameText(view.id()));
+    }
+
     private Comparator<ArchaeologyJournalEntry> rootComparator() {
-        Comparator<ArchaeologyJournalEntry> base = CatalogSorter.getComparator(this.currentSortOrder, this.sortDescending);
+        Comparator<ArchaeologyJournalEntry> base = sorter();
         if (this.currentSortOrder != CatalogSorter.SortOrder.FAVORITE) return base;
         return Comparator.comparing((ArchaeologyJournalEntry view) -> !subtreeContainsFavorite(view.id()))
                 .thenComparing(base);
@@ -446,7 +543,12 @@ public class JournalViewModel {
         if (table != null) table.childTables().forEach(child -> collectDescendants(child, output));
     }
 
+    // 关系索引只由目录定义与分类结构派生：目录 revision 未变时直接复用，逐字符/逐次选择不再重建
     private void rebuildRelationshipIndexes() {
+        if (this.relationshipIndexRevision == this.loadedCatalogRevision) {
+            return;
+        }
+        this.relationshipIndexRevision = this.loadedCatalogRevision;
         this.parentIdsByChild.clear();
         Map<ResourceLocation, LinkedHashSet<ResourceLocation>> parents = new LinkedHashMap<>();
         for (TableDefinition parent : this.catalogDefinitions.values()) {
@@ -468,11 +570,16 @@ public class JournalViewModel {
         });
     }
 
+    // 目录内每张表的首条父路径（搜索与子表跳转都要用），按目录 revision 缓存一次 DFS
     private Map<ResourceLocation, List<ResourceLocation>> firstPathsByTable() {
-        Map<ResourceLocation, List<ResourceLocation>> result = new LinkedHashMap<>();
-        this.structure.rootCategories().keySet().stream().sorted(Comparator.comparing(ResourceLocation::toString))
-                .forEach(root -> collectFirstPaths(root, List.of(), result, new HashSet<>()));
-        return result;
+        if (this.firstPathsRevision != this.loadedCatalogRevision) {
+            Map<ResourceLocation, List<ResourceLocation>> result = new LinkedHashMap<>();
+            this.structure.rootCategories().keySet().stream().sorted(Comparator.comparing(ResourceLocation::toString))
+                    .forEach(root -> collectFirstPaths(root, List.of(), result, new HashSet<>()));
+            this.firstPathsByTableCache = Map.copyOf(result);
+            this.firstPathsRevision = this.loadedCatalogRevision;
+        }
+        return this.firstPathsByTableCache;
     }
 
     private void collectFirstPaths(ResourceLocation current, List<ResourceLocation> parentPath,
@@ -518,7 +625,26 @@ public class JournalViewModel {
     @Nullable
     public BuildGridResult buildGridItems() {
         ArchaeologyJournalEntry selected = selectedTable();
-        if (selected == null) return null;
+        if (selected == null) {
+            this.gridCacheKey = null;
+            this.gridCacheResult = null;
+            return null;
+        }
+        // 缓存键覆盖格子装配的全部输入：表 id、目录定义版本、进度/日志版本、搜索（决定高亮）；
+        // 命中即返回上次装配好的不可变结果，方向键在同一表上来回移动不再重建
+        GridCacheKey key = new GridCacheKey(selected.id(), this.loadedCatalogRevision, this.lastStateRevision,
+                this.lastLogRevision, this.currentSearch.mode(), this.currentSearch.rawQuery());
+        if (key.equals(this.gridCacheKey) && this.gridCacheResult != null) {
+            return this.gridCacheResult;
+        }
+        BuildGridResult result = rebuildGridItems(selected);
+        this.gridCacheKey = key;
+        this.gridCacheResult = result;
+        return result;
+    }
+
+    // 装配网格数据；返回的列表一律不可变，可安全交给缓存与面板复用
+    private BuildGridResult rebuildGridItems(ArchaeologyJournalEntry selected) {
         TableDefinition selectedDefinition = this.catalogDefinitions.get(selected.id());
         int simulationCount = selectedDefinition != null ? selectedDefinition.simulationCount() : 0;
         List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
@@ -556,13 +682,24 @@ public class JournalViewModel {
         }
         List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
         int parsedCount = (int) introItems.stream().filter(DetailOverlayPanel.IntroItem::unlocked).count();
-        return new BuildGridResult(selected.id(), gridItems, childEntries, introItems,
+        return new BuildGridResult(selected.id(), List.copyOf(gridItems), List.copyOf(childEntries), introItems,
                 parsedCount, introItems.size(), selected.logRef());
+    }
+
+    // 表子树物品闭包：CatalogQueryIndex.subtreeItems 是一次整棵子树的 DFS，选中表与每个直接子表各调一次；
+    // 按目录 revision 缓存，目录未变时复用同一份不可变列表
+    private List<ItemDefinition> subtreeItems(ResourceLocation tableId) {
+        if (this.subtreeItemsRevision != this.loadedCatalogRevision) {
+            this.subtreeItemsCache.clear();
+            this.subtreeItemsRevision = this.loadedCatalogRevision;
+        }
+        return this.subtreeItemsCache.computeIfAbsent(tableId,
+                id -> CatalogQueryIndex.subtreeItems(this.catalogDefinitions, id));
     }
 
     // Intro 按需映射当前表及全部后代物品，避免在每个树节点重复缓存完整子树视图。
     private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId) {
-        List<ItemDefinition> definitions = CatalogQueryIndex.subtreeItems(this.catalogDefinitions, tableId);
+        List<ItemDefinition> definitions = subtreeItems(tableId);
         ArchaeologyJournalState.TableProgress progress = this.state.getTable(tableId);
         List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitions.size());
         for (ItemDefinition definition : definitions) {
@@ -634,6 +771,11 @@ public class JournalViewModel {
 
     private record RowMeta(int depth, boolean child, boolean hasChildren, boolean expanded,
                            List<ResourceLocation> parentPath, List<ResourceLocation> categoryIds) {
+    }
+
+    // 网格缓存键：表 id + 目录定义版本 + 进度/日志版本 + 搜索模式与原始输入（共同决定格子高亮）
+    private record GridCacheKey(ResourceLocation tableId, long catalogRevision, long stateRevision,
+                                long logRevision, JournalSearchQuery.Mode searchMode, String searchRawQuery) {
     }
 
     public record BuildGridResult(ResourceLocation tableId, List<ItemGridPanel.GridItem> gridItems,
