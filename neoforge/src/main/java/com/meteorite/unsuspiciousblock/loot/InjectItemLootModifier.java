@@ -40,6 +40,7 @@ public class InjectItemLootModifier extends LootModifier {
     private final Item item;
     private final int count;
     private final float chance;
+    private final long descriptionEpoch = LootInjectionDescriptions.epoch();
 
     public InjectItemLootModifier(LootItemCondition[] conditionsIn, Item item, int count, float chance) {
         super(conditionsIn);
@@ -50,6 +51,7 @@ public class InjectItemLootModifier extends LootModifier {
 
     @Override
     protected @NotNull ObjectArrayList<ItemStack> doApply(@NotNull ObjectArrayList<ItemStack> generatedLoot, LootContext context) {
+        LootInjectionDescriptions.record(descriptionEpoch, this, context.getQueriedLootTableId(), item, chance, "append", conditions);
         if (context.getRandom().nextFloat() < chance) {
             // 追加目标物品，保留原版战利品
             generatedLoot.add(new ItemStack(item, count));
@@ -61,4 +63,5 @@ public class InjectItemLootModifier extends LootModifier {
     public @NotNull MapCodec<? extends IGlobalLootModifier> codec() {
         return CODEC;
     }
+
 }

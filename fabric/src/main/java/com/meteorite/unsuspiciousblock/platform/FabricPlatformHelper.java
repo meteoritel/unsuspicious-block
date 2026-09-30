@@ -15,6 +15,12 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public java.util.List<com.meteorite.unsuspiciousblock.loottable.injection.DeclaredLootInjection> describeLootInjections(
+            net.minecraft.resources.ResourceLocation table) {
+        return com.meteorite.unsuspiciousblock.loot.FabricLootInjectionDescriptions.describe(table);
+    }
+
+    @Override
     public boolean isModLoaded(String modId) {
         return FabricLoader.getInstance().isModLoaded(modId);
     }

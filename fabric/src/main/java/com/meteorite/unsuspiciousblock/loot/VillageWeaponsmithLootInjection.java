@@ -22,6 +22,8 @@ public final class VillageWeaponsmithLootInjection {
 
     public static void register() {
         LootTableEvents.MODIFY.register((lootTableId, tableBuilder, source, registries) -> {
+            if (lootTableId.location().equals(VILLAGE_WEAPONSMITH_ID))
+                FabricLootInjectionDescriptions.builtin(VILLAGE_WEAPONSMITH_ID, ModItems.SPECIMEN_BOX, 0.3F, source.isBuiltin());
             // 仅修改原版内置表，避免误伤数据包自定义表
             if (!source.isBuiltin() || !lootTableId.location().equals(VILLAGE_WEAPONSMITH_ID)) {
                 return;

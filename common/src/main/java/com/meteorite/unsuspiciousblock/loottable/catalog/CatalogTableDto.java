@@ -42,13 +42,26 @@ public record CatalogTableDto(
         List<ResourceLocation> childTables,
         List<ScenarioAssumptions> scenarios,
         List<ItemEntry> items,
-        List<ChildTableEntry> childProbabilities, @Nullable SimulationOptions options) {
+        List<ChildTableEntry> childProbabilities, @Nullable SimulationOptions options,
+        List<ScenarioBranch> branches) {
 
     public CatalogTableDto {
         childTables = List.copyOf(childTables);
         scenarios = List.copyOf(scenarios);
         items = List.copyOf(items);
         childProbabilities = List.copyOf(childProbabilities);
+        branches = List.copyOf(branches);
+    }
+
+    public CatalogTableDto(ResourceLocation id, String hash, Component displayName, String type,
+                           int simulationCount, List<ResourceLocation> childTables, List<ScenarioAssumptions> scenarios,
+                           List<ItemEntry> items, List<ChildTableEntry> children, @Nullable SimulationOptions options) {
+        this(id, hash, displayName, type, simulationCount, childTables, scenarios, items, children, options, List.of());
+    }
+
+    public CatalogTableDto withBranches(List<ScenarioBranch> value) {
+        return new CatalogTableDto(id, hash, displayName, type, simulationCount, childTables, scenarios,
+                items, childProbabilities, options, value);
     }
 
     /** 表级场景假设：{@code scenarioKey} → 该场景的假设条件树（每表一次）。 */
@@ -118,7 +131,7 @@ public record CatalogTableDto(
 
     public CatalogTableDto withOptions(SimulationOptions value) {
         return new CatalogTableDto(id, hash, displayName, type, simulationCount, childTables,
-                scenarios, items, childProbabilities, value);
+                scenarios, items, childProbabilities, value, branches);
     }
 
     /** 还原为内部记录；表级假设按 key 回填到每个分场景概率上。 */

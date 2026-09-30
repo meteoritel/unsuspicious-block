@@ -27,6 +27,8 @@ public final class BuriedTreasureLootInjection {
     // 【临时方案】该获取方式是暂时的，未来会更改到自定义结构中
     public static void register() {
         LootTableEvents.MODIFY.register((lootTableId, tableBuilder, source, registries) -> {
+            if (lootTableId.location().equals(BURIED_TREASURE_ID))
+                FabricLootInjectionDescriptions.builtin(BURIED_TREASURE_ID, ModItems.EYE_OF_CAT, 1.0F, source.isBuiltin());
             // 仅修改原版内置表，避免误伤数据包自定义表
             if (!source.isBuiltin()) {
                 return;

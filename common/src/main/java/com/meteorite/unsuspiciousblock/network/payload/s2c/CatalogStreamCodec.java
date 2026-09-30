@@ -91,6 +91,18 @@ final class CatalogStreamCodec {
             // 条件树追加在最后：条件列表的顺序由本类独裁，追加字段必须同步升协议版本
             writeConditionList(buf, child.conditions());
         }
+        buf.writeVarInt(table.branches().size());
+        for (var branch : table.branches()) {
+            buf.writeUtf(branch.kind());
+            buf.writeUtf(branch.target());
+            writeConditionList(buf, branch.conditions());
+            writeConditionList(buf, branch.requirements());
+            writeLuckGate(buf, branch.luck());
+            buf.writeCollection(branch.activeScenes(), (output, scene) -> output.writeUtf(scene));
+            buf.writeBoolean(branch.uncertain());
+            buf.writeUtf(branch.injectionSource());
+            buf.writeUtf(branch.injectionMode());
+        }
     }
 
     static CatalogTableDto readTable(RegistryFriendlyByteBuf buf) {
@@ -142,8 +154,15 @@ final class CatalogStreamCodec {
                     buf.readResourceLocation(), readProbability(buf), readScenarioRefs(buf),
                     readConditionList(buf)));
         }
+        int branchCount = buf.readVarInt();
+        List<com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranch> branches = new ArrayList<>(branchCount);
+        for (int index = 0; index < branchCount; index++) {
+            branches.add(new com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranch(
+                    buf.readUtf(), buf.readUtf(), readConditionList(buf), readConditionList(buf), readLuckGate(buf),
+                    buf.readList(input -> input.readUtf()), buf.readBoolean(), buf.readUtf(), buf.readUtf()));
+        }
         return new CatalogTableDto(tableId, hash, displayName, type, simulationCount,
-                childTables, scenarios, items, childProbabilities, options);
+                childTables, scenarios, items, childProbabilities, options, branches);
     }
 
     private static void writeOptions(RegistryFriendlyByteBuf buf, @Nullable SimulationOptions options) {

@@ -168,7 +168,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions,
 - **修改概率口径**：`Probability` 是不变式载体，新增状态需同时更新存档与网络的穷尽 codec 与 `ProbabilityFormat`；任何情况下都不要把展示文本写回数据层。
 - **新增存档字段**：`format_version` 必须 +1，并在读取路径上把"旧版本/类型不符"一律按**缓存未命中**处理。`discovery` 层的东西**永远不能进会被 LRU 淘汰的层**——那会让条目在淘汰后从界面上消失。
 - **平台注入器**：Fabric 端如需新注入逻辑，实现 `ArchaeologyLootInjector` 并在 `onInitialize` 调 `ArchaeologyLootInjectors.register`。
-- **模拟调优**：`ScenarioParams.SAMPLE_COUNT_TIERS`（精度 vs 性能，同时是档位白名单与硬上限）、`MAX_PARAMETER_COMBINATIONS`（缓存规模）、`TICK_BUDGET_NANOS` 与批次大小（吞吐 vs tick 占用）、`MAX_SCENARIOS` / 展开预算（场景规模 vs 构建成本）。**抽样次数不再是全局常量**：它进了输入身份，改档位会让同一参数的旧缓存键失效（刻意行为——换了精度就是换了一个问题）。
+- **模拟调优**：`ScenarioParams.DEFAULT_SAMPLE_COUNT` 固定为 10,000，并同时作为输入身份的一部分用于缓存一致性；`MAX_PARAMETER_COMBINATIONS`（缓存规模）、`TICK_BUDGET_NANOS` 与批次大小（吞吐 vs tick 占用）、`MAX_SCENARIOS` / 展开预算（场景规模 vs 构建成本）仍需按性能约束调整。抽样次数不再是玩家旋钮，也不提供旧档位迁移。
 
 ## 9. 约束与陷阱
 
@@ -182,6 +182,8 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions,
 - **概率的落盘只用 `SimulatedValue` 窄类型**，派生结论不进存档（否则改静态规则就要迁移存档）。
 - **按需结果不写共享目录**：写进去会让两个玩家互相覆盖对方的界面。
 - **注入门槛只能声明一处**（`RuntimeLootLinks`），两端注入实现与 tooltip 都取自它——各写一份必然导致"玩法与 tooltip 各说一套"。
+- **抽样次数固定为 10,000**：玩家不再编辑抽样档位；`ScenarioParams` 仍将该值纳入输入身份，用于服务端缓存一致性与结果口径校验。
+- **缓存查询不等于模拟**：`RequestScenarioCachePayload` 只读取服务端共享缓存，只有显式“应用并计算”才会启动模拟；客户端状态必须按 generation、表哈希和输入键校验响应。
 
 ## 10. 相关文档
 

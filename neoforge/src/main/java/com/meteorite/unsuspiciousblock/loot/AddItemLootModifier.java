@@ -37,6 +37,7 @@ public class AddItemLootModifier extends LootModifier {
 
     private final Item item;
     private final float chance;
+    private final long descriptionEpoch = LootInjectionDescriptions.epoch();
 
     public AddItemLootModifier(LootItemCondition[] conditionsIn, Item item, float chance) {
         super(conditionsIn);
@@ -46,6 +47,7 @@ public class AddItemLootModifier extends LootModifier {
 
     @Override
     protected @NotNull ObjectArrayList<ItemStack> doApply(@NotNull ObjectArrayList<ItemStack> generatedLoot, LootContext context) {
+        LootInjectionDescriptions.record(descriptionEpoch, this, context.getQueriedLootTableId(), item, chance, "replace", conditions);
         if (context.getRandom().nextFloat() < chance) {
             // 考古表只允许 1 个物品：清空原版结果后放入目标物品，避免被 BrushableBlockEntity 丢弃
             generatedLoot.clear();
@@ -58,4 +60,5 @@ public class AddItemLootModifier extends LootModifier {
     public @NotNull MapCodec<? extends IGlobalLootModifier> codec() {
         return CODEC;
     }
+
 }
