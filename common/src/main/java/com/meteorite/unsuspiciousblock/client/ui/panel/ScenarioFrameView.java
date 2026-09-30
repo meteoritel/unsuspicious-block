@@ -1,22 +1,20 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.kit.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
 /** 页内框与放大窗口共用的呈现和交互；每个实例拥有独立视图，关闭放大窗口不改变页内视图。 */
 final class ScenarioFrameView {
-    private static final UiNineSlice BORDER = new UiNineSlice(ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/scenario_frame.png"), 24, 8);
+    private List<UiNode> content = List.of();
     private final UiTransform transform = new UiTransform();
     private final UiControl zoom = new UiControl();
     private final UiControl reset = new UiControl();
@@ -31,7 +29,7 @@ final class ScenarioFrameView {
 
     ScenarioFrameView(Font font) {
         this.font = font;
-        this.document = new UiDocument(TextMeasurer.of(font), transform, UiTextPalette.Parchment.LABEL,
+        this.document = new UiDocument(TextMeasurer.of(font), transform, ScenarioUi.BRANCH,
                 Services.PLATFORM.isDevelopmentEnvironment() && Boolean.getBoolean("unsuspiciousblock.uiKitDebug"));
         reset.configure(font, Component.literal("↺"), UiTextPalette.Parchment.TITLE, null,
                 List.of(ScenarioSimulationClientState.text("frame.reset")), transform::reset);
@@ -40,13 +38,17 @@ final class ScenarioFrameView {
     void setBounds(int x, int y, int width, int height) {
         if (bounds.x() != x || bounds.y() != y || bounds.width() != width || bounds.height() != height) {
             bounds = new UiRect(x, y, width, height);
-            document.setViewport(x + 8, y + 8, Math.max(1, width - 16), Math.max(1, height - 16));
+            document.setViewport(x + 4, y + 4, Math.max(1, width - 8), Math.max(1, height - 8));
+            document.setContent(ScenarioConditionLayout.wrap(content, font, Math.max(1, width - 8)));
             zoom.setBounds(bounds.right() - 70, bounds.bottom() - 21, 44, 13);
             reset.setBounds(bounds.right() - 25, bounds.bottom() - 21, 17, 13);
         }
     }
 
-    void setContent(List<UiNode> content) { document.setContent(content); }
+    void setContent(List<UiNode> content) {
+        this.content = List.copyOf(content);
+        document.setContent(ScenarioConditionLayout.wrap(content, font, Math.max(1, bounds.width() - 8)));
+    }
     FrameState state() { return FrameState.capture(transform); }
     void restore(FrameState state) { state.apply(transform); dragging = false; }
 
@@ -61,7 +63,7 @@ final class ScenarioFrameView {
     void hideCornerControls() { this.controlsVisible = false; }
 
     void render(GuiGraphics graphics, int mouseX, int mouseY) {
-        BORDER.render(graphics, bounds);
+        ScenarioUi.PANEL.render(graphics, bounds);
         document.render(graphics, font, mouseX, mouseY);
         if (!controlsVisible) return;
         if (displayedZoom != transform.zoomIndex()) {

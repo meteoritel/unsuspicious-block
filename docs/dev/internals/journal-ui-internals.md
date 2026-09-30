@@ -166,13 +166,13 @@ document.setContent(List.of(new UiNode.Row(
 
 **视口与裁剪口径**：外壳按宿主可用区留 12 像素外边距，顶部让给标题与描述，底部固定 22 像素控制栏（内容视口在它上方，控制栏不会被内容盖住），剩下的矩形通过 `Content.setViewport` 写入内容；内容必须把绘制严格裁剪在该视口内（`UiImageView` 用 `UiTransform.enableScissor`，条件树沿用文档自己的裁剪）。坐标一律是宿主 GUI 逻辑坐标，缩放读数画在按钮组左侧以免压住按钮。
 
-**fit 与 resize 的区别**：外壳只在「首次布局」与「换内容（`setContent`）」时调用一次 `Content.fit()`（`needFit` 标记）——内容尺寸尚未就绪时这次 fit 会推迟到能报告非零尺寸的那一帧，避免空文档被误判为「放得下」而选中最大档位；resize 只重新 `setViewport`，由内容自己重新钳制平移并**保留用户缩放**。`UiImageView.fit` 是 contain：按视口与图片尺寸取较小比例，默认不放大（`allowUpscale` 为 false 时上限 1.0），再钳进 [0.05, 8.0] 并把偏移归零居中。条件树适配器的 `fit` 不同：它从最大档位往小试，取第一个能把整幅内容放进可见区的档位，都不行就用最小档位再居中。
+**fit 与 resize 的区别**：外壳只在「首次布局」与「换内容（`setContent`）」时调用一次 `Content.fit()`（`needFit` 标记）——尺寸尚未就绪时延后，resize 只重新 `setViewport` 并保留手动缩放。`UiImageView.fit` 是 contain：默认不放大，钳进 [0.05, 8.0] 后归零居中。条件树只在不超过 100% 的档位中选能放下内容的最大档，放不下用 50%，起点始终是左上角；手动仍可放到 200%/300%。
 
 **缩放：有限步进与上下限**：滚轮与按钮走同一个「一档」步进（`UiImageView.STEP = 1.25`），比例钳制在 [0.05, 8.0]；滚轮以指针为锚点（缩放前后指针下的同一内容点保持不动），按钮则以视口中心为锚点（`zoomBy`）。到顶 / 到底或结果无变化时返回 `false`，不产生空消费；指针不在内容视口内时外壳不做缩放（输入仍由模态层吞掉，不会漏到下层）。
 
-**平移钳制**：`UiImageView` 的偏移是「图片中心相对视口中心的屏幕像素偏移」——任一轴目标尺寸不超过视口时该轴偏移锁死为 0（居中），超过时钳制在 ±(目标尺寸 − 视口尺寸)/2，因此图片永远不会被拖出视口留下空白；只有从视口内按下的拖动才平移。条件树适配器按内容坐标钳制（可见内容范围 X = [−pan, vw/s − pan]，内容占 [0, cw]），灯箱模式下列出整幅内容、只有超出轴才允许平移；页内框不走这套钳制，保持自由平移。
+**平移钳制**：`UiImageView` 的偏移是「图片中心相对视口中心的屏幕像素偏移」，小内容居中，超过时钳制在 ±(目标尺寸 − 视口尺寸)/2。条件树按内容坐标钳制（可见范围 X = [−pan, vw/s − pan]，内容占 [0, cw]），小内容左上锁定，超出轴才允许平移；只有在视口内按下后才拖动。页内条件区使用纵向滚动，不提供自由平移。
 
-**缺图占位与资源重载**：`UiImageView` 只在构造、内容变更与 `invalidateResources()` 时用资源管理器判定一次贴图可用性（绘制路径不做 IO）；不可用时 `placeholder()` 返回占位文案，外壳把它居中画在视口里。资源重载时外壳调 `content.invalidateResources()` 并重新求 fit，`UiImageView` 只在「不可用 → 可用」时重新 fit（尺寸这时才真正可用），其余情况保留用户缩放；条件树不依赖贴图，沿用默认 no-op。
+**缺图占位与资源重载**：`UiImageView` 只在构造、内容变更与 `invalidateResources()` 时检查贴图可用性，绘制路径不做 IO；缺图返回占位文案，只在「不可用 → 可用」时重新 fit。条件树正文是原生文本，边框/图标经资源管理器绘制；字体、语言和宽度变化由宿主触发布局失效，不通过贴图尺寸决定树的缩放。
 
 **图集 API**：`Gallery` 由宿主实现（报当前下标与总数、在 `navigate(delta)` 里换内容），外壳只请求切换并刷新布局。导航按钮、页码与左右方向键都只在 `total > 1` 时出现；宿主可在切图时一并换掉标题与描述（`setText`）。`setContent` 会把 fit 标记置真，因此每张图进入时都是「适应窗口」的初始状态。
 
@@ -186,23 +186,26 @@ document.setContent(List.of(new UiNode.Row(
 
 ## 5. 场景详情页与模态交互
 
-`RightPageContainer.setTable` 向网格页与 `ScenarioDetailPanel` 传递 tableId；场景页由详情面板负责，书本底部的场景页码带仍由原有容器管理。页内依次是短场景名与状态、当前输入摘要、「场景 / 参数 / 计算」动作、「结果 / 条件」切换、内容视口。操作与内容都限制在右页内；结果是默认视图，页内滚轮只做纵向阅读。
+`RightPageContainer.setTable` 向网格页与 `ScenarioDetailPanel` 传递 tableId；书本底部场景页码不变。152 像素正文内依次是可点的短场景名与状态、工具与参数图标、分列的幸运/抽样读数、单独强调的计算按钮、「结果 / 条件」切换及约 123 像素正文。长工具名可悬停滚动；数值标签放不下时移入 tooltip，数字保留。结果为默认视图，页内滚轮只做纵向阅读。
 
-**结果与条件分离**：`ScenarioPageBuilder.buildConditions` 只生成条件树；`outcomes` 给出全部已测得且非零的可达条目，不再截为 12 项。结果区由 `ScenarioResultView` 使用 `UiScrollView`、`UiControlGroup` 和 `UiLinearLayout` 排列物品图标、可悬停滚动的名称与固定右侧概率列；极长的区间概率只在该列内悬停滚动，完整值也在行提示中，不侵入名称区。仅配置视口内的行。未计算、请求中、失败、已计算但无可达结果分别显示空态，不在新输入下沿用旧概率。条件区由 `ScenarioConditionView` 把 `UiDocument` 放在滚动视口中，以自然字号阅读；复杂树仍可通过条件页的放大按钮进入 `UiLightbox`。主视图不再需要缩放才能阅读结果。
+**结果与条件分离**：`ScenarioPageBuilder.buildConditions` 只生成条件树；`outcomes` 收集已测得且非零的条目，标题为「已命中」，不将零命中宣称为不可达。结果区由 `ScenarioResultView` 使用 `UiScrollView`、`UiControlGroup` 和 `UiLinearLayout` 排列物品图标、名称与右侧概率列，仅配置视口内的行；未计算、请求中、失败和零命中分别显示空态。条件区以自然字号纵向阅读，复杂树可展开灯箱。`ScenarioConditionLayout` 按字体与宽度拆成保留样式的视觉行，将父节点映射到首行，续行不重复连线、图标或动作；不改变通用 `UiNode.Row` 契约。
 
-- **条件定义**：只列场景相对基准成立的条件；基准说明其余可调条件不成立。`ScenarioLabel` 将只有一个子项、父项仅表示类别的条件折叠成可读行；完整定义可在场景标题或场景列表的 tooltip 中查看。
+- **条件定义**：区分「场景假设」和按子表分组的「入口要求」。基准展示全部不成立假设，其他场景可展开/收起不成立项；组合逻辑、取反、实体目标、partial/unreadable 均保留。入口要求来自服务端静态 DTO，未计算也可阅读；入口提供推荐和参数动作，不把不同子表门槛合成全表 AND。已知 `#c:is_swamp` 用显式本地化名显示，tooltip 保留原描述与 id，未知 tag 不猜名称。
 - **结果口径**：`ScenarioSimulationClientState.sceneSource` 统一详情页、选择列表与网格页的缓存来源。同参数、同抽样档位的其他缓存只有带目标场景明确引用时才能复用；`overlay` 将物品与子表的目标场景引用投影到网格当前概率，缺引用的条目仍为未知，不借用来源场景的总概率。当前输入的直接结果仍优先。条件行不附概率，同一物品不会因为多个条件节点而重复显示概率。
-- **输入门控**：详情面板以输入 key、目录 revision、请求状态决定是否重建。标题、状态、摘要、结果与提示在同次重建中取同一选择；切表重置到结果页，切场景保留当前分区。结果与条件的滚动偏移分别按 `tableId#inputKey` 保存。
+- **输入门控**：详情面板以输入 key、目录 revision、请求状态、语言、字体、布局变化决定重建。标题、状态、参数、结果与提示在同次重建中取同一选择；切表重置到结果页并取消辅助请求，切场景保留分区。结果与条件的滚动偏移分别按 `tableId#inputKey` 保存。
 
 `ScenarioLabel.shortLabel` 给页头和列表提供短场景名，`detailLabel` 给列表第二行提供条件摘要，`definition` 保留完整定义。详情页的文字与操作用 `UiControl`，并通过 `UiFocusManager` 将可操作控件按视觉顺序登记；`RightPageContainer.handleKey` 与 `ArchaeologyJournalScreen.keyPressed` 将 Tab、Shift+Tab、Enter、Space 送到当前页。超宽说明可悬停滚动或通过 tooltip 阅读。
 
-`OverlayLayer` 同时只打开一个模态；模态期间屏幕把视口外的占位鼠标坐标传给下层目录、右页与原生控件，下层不会随真实鼠标绘制悬停高亮；浮层自身仍收到真实坐标。屏幕同时抑制下层 tooltip 与 JEI 悬停物品查询。三个使用者：
+`OverlayLayer` 同时只打开一个模态；模态期间屏幕把视口外的占位鼠标坐标传给下层目录、右页与原生控件，下层不会随真实鼠标绘制悬停高亮；浮层自身仍收到真实坐标。屏幕同时抑制下层 tooltip 与 JEI 悬停物品查询。场景界面的使用者：
 
-- `ScenarioSelectionOverlay`：居中宽面板，至多五个双行条目可见；第一行显示短名和计算状态，第二行显示条件摘要，完整定义和失败原因放在 tooltip。行仍按服务端场景顺序，由 `UiScrollView` + `UiControlGroup` 稳定复用；滚动条和翻页箭头按溢出与边界显示。键盘焦点按「场景行 → ◀ → ▶」登记，Tab/Shift+Tab 移动并自动滚入视口，Space 激活；上下键改变当前场景，Enter/ESC 关闭，点击行选择并关闭，点击外部关闭。场景页与网格页共用此浮层，前者映射到页码，后者直接切换选择。
+- `ScenarioSelectionOverlay`：纸面标题栏含关闭图标；条目为短名/状态与最多两行条件摘要，完整定义和失败原因在 tooltip。最多五项，实际按窗口高度收敛；当前项有左侧色条，仅溢出时显示导航和可见项范围。行按服务端顺序稳定复用。Tab/Shift+Tab 移焦、Space 激活；上下键改变当前场景，Enter/ESC 关闭，点击行选择并关闭。场景页与网格页共用此浮层。
 - `ScenarioParamsOverlay`：独立草稿，确认/取消；控件由 `UiControlGroup` 与 `UiLinearLayout` 布局，幸运值使用原生 `EditBox`。工具、抽样、附魔等级由签发清单约束。无错误时不绘制空提示带；抽样次数带单位，确认的 tooltip 说明只保存输入，仍需按「计算」请求结果。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 确认、Space 激活焦点、ESC 取消，窗口外附魔行由 PageUp/PageDown 翻到。确认前仍用最新目录校验。
-- `ScenarioExpandedOverlay`：条件树的 `UiLightbox.Content` 适配器，使用独立 `ScenarioFrameView`；遮罩、控制栏、适应窗口、焦点与关闭语义由 `UiLightbox` + `LightboxOverlay` 提供。打开时适应窗口，滚轮在灯箱内缩放，拖拽平移并钳制。关闭不改变页内条件滚动位置，点击遮罩不关闭。框自身角控件在灯箱中隐藏，避免重复控制。
+- `ScenarioExpandedOverlay`：独立 `ScenarioFrameView` + `UiLightbox`，宿主注入纸面、图标与短标题。初次和适应窗口最大 100%，短树左上对齐；手动仍支持 50/100/200/300%。滚轮缩放、拖动平移、resize 保留手动档位并钳制；关闭不改页内滚动，点击遮罩不关闭。默认通用灯箱的暗色外壳和字符控件保持兼容。
+- `ScenarioRecommendationOverlay`：物品点击、已解锁子表卡片右上图标或条件页入口打开；等待/失败/超时有明确状态，可重试。预览列出当前→推荐的场景、工具、幸运、抽样及附魔（包括移除为 0 的项），随后显示完整场景定义。应用只选择合法输入，必须再点击计算；关闭、切表、切输入或目录变更后，旧请求无权覆盖选择。正文可滚动，按钮可键盘操作，网络目标约定见 [网络与同步](../foundation/network.md)。
 
-网格页头部（`ScenarioPanel`）保留读数与「切换场景 / 计算」动作；状态改用同一 `ScenarioPresentation.resolve` 投影。**测量只由显式计算按钮发起**；参数确认和场景选择不自动请求，网络协议未改。
+网格页头部（`ScenarioPanel`）固定两行约 28 像素：短名/状态、参数/计算；使用相同控件与焦点体系，不改变 2×3 物品布局。状态统一取 `ScenarioPresentation.resolve`，**测量只由显式计算发起**；正常点击子表卡片仍是导航，小推荐图标不劫持整个卡片。条件页通过 Tab 进入节点动作，方向键定位动作，PageUp/PageDown 阅读，Enter/Space 激活。
+
+**场景专属资源**：`ScenarioUi` 集中纸面、结构色与图标，不改全局主题。`scenario_controls.png` 为 81×9，九个 9×9 槽依次是关闭、展开、缩小、放大、适应、下拉、参数、计算、推荐；`scenario_panel.png` 为 12×12、角宽 3 的轻边框。`scripts/drawer/generate_scenario_ui.py` 可确定性重建；旧 `toolbar_icons.png` UV 不变。
 
 **焦点交接**：`OverlayLayer.open(overlay, opener)` 只在 opener 当前持有焦点时记录返回目标，打开时清掉下层轮廓，关闭时若目标仍可聚焦则恢复；鼠标打开不登记。替换已打开的浮层可继承上一层返回目标，`Overlay.closed()` 用于释放输入捕获。页面自身现在也有 `UiFocusManager`；屏幕处理未被子层消费的鼠标点击时清理模态恢复的焦点。焦点管理器每次更新用本轮目标顺序替换旧列表，避免重复登记造成 Tab 序列膨胀。
 

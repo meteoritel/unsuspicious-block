@@ -76,9 +76,10 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
 
     @Override public boolean zoom(double amount, double anchorX, double anchorY) {
         if (amount == 0) return false;
+        int previous = frame.transform().zoomIndex();
         frame.transform().zoomBy((int) Math.signum(amount), anchorX, anchorY);
         clampPan();
-        return true;
+        return previous != frame.transform().zoomIndex();
     }
 
     // 无锚点的缩放（灯箱按钮）以视口中心为锚点：等价于围绕可见内容中心放大/缩小。
@@ -86,14 +87,13 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
         if (direction == 0) return false;
         double centerX = viewport.x() + viewport.width() / 2.0;
         double centerY = viewport.y() + viewport.height() / 2.0;
+        int previous = frame.transform().zoomIndex();
         frame.transform().zoomBy(direction, centerX, centerY);
         clampPan();
-        return true;
+        return previous != frame.transform().zoomIndex();
     }
 
-    // 适应窗口：从最大档位往小选，取第一个能整幅放进可见区的档位；都不行就用最小档位。
-    // 视图原点固定在内容左上角（pan=0）：能整幅放下时钳制会把该轴居中；放不下时停在左上角，
-    // 这对条件树是合适的起始位置（树从根部往下读），用户可自行拖动。
+    // 自动适应不超过自然字号；所有树从左上角阅读，手动缩放仍允许更大档位。
     // 档位总数由 restore 的钳制行为反推（kit 未暴露档位表），这样不复制内部常量。
     @Override public void fit() {
         UiTransform transform = frame.transform();
@@ -107,7 +107,7 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
         int chosen = 0;
         for (int index = maxIndex; index >= 0; index--) {
             transform.restore(index, 0, 0);
-            if (frame.contentWidth() * transform.scale() <= visible.width()
+            if (transform.scale() <= 1.0 && frame.contentWidth() * transform.scale() <= visible.width()
                     && frame.contentHeight() * transform.scale() <= visible.height()) {
                 chosen = index;
                 break;
@@ -159,7 +159,7 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
         return inner.width() > 0 && inner.height() > 0 ? inner : viewport;
     }
 
-    // 灯箱模式下的平移钳制：内容小于视口时该轴居中锁定，否则限制在内容边缘内（页内框保持自由平移）。
+    // 灯箱模式下的平移钳制：小内容锁定左上角，大内容限制在边缘内。
     private void clampPan() {
         UiTransform transform = frame.transform();
         UiRect visible = visibleViewport();
@@ -175,7 +175,7 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
     // 该轴放不下时不居中，保留 pan=0（左上角），只保证拖动过程不露出内容边界外的空白。
     private static double clampAxis(double pan, double content, double viewportSize, double scale) {
         double visible = viewportSize / scale;
-        if (content * scale <= viewportSize) return (visible - content) / 2.0;
+        if (content * scale <= viewportSize) return 0;
         return Math.clamp(pan, visible - content, 0.0);
     }
 }

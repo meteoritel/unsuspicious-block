@@ -63,6 +63,7 @@ public final class RightPageContainer {
         this.overlays = overlays;
         this.scenarioPanel = new ScenarioPanel(layout);
         this.scenarioPanel.setOpenScenes(this::openSceneOverlay);
+        this.scenarioPanel.setOpenParams(this::openParamsOverlay);
         this.scenarioDetailPanel = panels.register("scenario", new ScenarioDetailPanel(layout, overlays));
         this.gridPanel = new ItemGridPanel(layout);
         this.pageIndicator = new PageIndicator(layout);
@@ -124,6 +125,8 @@ public final class RightPageContainer {
             this.logPanel.setPage(logListPage);
             restoreLogSelection(savedSelectedLogEntryId, savedLogMode == LogMode.DETAIL);
         } else {
+            overlays.close();
+            ScenarioSimulationClientState.cancelAssist();
             this.logPanel.setBatchSelectionMode(false);
             this.gridPanel.resetPage();
             restoreLogSelection(null, false);
@@ -162,7 +165,8 @@ public final class RightPageContainer {
     }
 
     public boolean handleKey(int key, int scan, int modifiers) {
-        return activeTab == Tab.SCENARIO && scenarioDetailPanel.keyPressed(key, scan, modifiers);
+        return activeTab == Tab.SCENARIO ? scenarioDetailPanel.keyPressed(key, scan, modifiers)
+                : activeTab == Tab.ARCHAEOLOGY && scenarioPanel.keyPressed(key, scan, modifiers);
     }
 
     public BookmarkToggleButton getIntroTabButton() {
@@ -234,6 +238,12 @@ public final class RightPageContainer {
             return true;
         }
         if (this.activeTab == Tab.ARCHAEOLOGY) {
+            ResourceLocation childTarget = button == 0 ? gridPanel.childRecommendationTarget(mouseX, mouseY) : null;
+            if (childTarget != null && currentTableId != null) {
+                com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(overlays,
+                        currentTableId, com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.childTable(childTarget));
+                return true;
+            }
             boolean changed = this.gridPanel.handleClick(mouseX, mouseY, button);
             if (changed) {
                 syncPageIndicator();
@@ -241,9 +251,10 @@ public final class RightPageContainer {
             if (!changed && button == 0 && this.currentTableId != null) {
                 String target = gridPanel.recommendationTarget(mouseX, mouseY);
                 if (target != null) {
-                    com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState
-                            .requestAssist(currentTableId, target);
                     setActiveTab(Tab.SCENARIO);
+                    com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(
+                            overlays, currentTableId,
+                            com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.item(target));
                     return true;
                 }
             }
@@ -411,6 +422,15 @@ public final class RightPageContainer {
         this.pageIndicator.setTextY(pageIndicatorY());
         PagePanel panel = activePanel();
         this.pageIndicator.setPage(panel.getPage(), panel.pageCount());
+    }
+
+    private void openParamsOverlay() {
+        if (currentTableId == null) return;
+        var structure = ScenarioSimulationClientState.table(currentTableId);
+        var selection = ScenarioSimulationClientState.selection(currentTableId);
+        if (structure == null || structure.options() == null || selection == null) return;
+        overlays.open(new com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay(overlays,
+                currentTableId, selection.scene(), structure.options(), selection.params()));
     }
 
     @Nullable

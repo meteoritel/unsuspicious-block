@@ -6,11 +6,9 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.StringJoiner;
 
 /**
@@ -21,41 +19,23 @@ import java.util.StringJoiner;
  * 否则每个场景页都会多出整屏恒为「不成立」的重复行（基准页本身除外，见
  * {@link #definition}）。</p>
  *
- * <p>「纯分组父行」的判定基于本地化键后缀，是本类唯一的隐式契约（「服务端恰好这么拼 Component」）：
- * 认不出时一律不折叠，宁可多一行也不把取值折掉。</p>
+ * <p>摘要保留服务端的组合结构；标题不再拼接叶子，实体目标与不完整描述不折叠。</p>
  */
 public final class ScenarioLabel {
     private static final String CONDITION_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
     private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final String BASELINE = "baseline";
-    /**
-     * 父行只描述「哪一类条件」、取值全在子行里的条件键后缀。
-     * 这类父行在只有一个子行时折叠掉，取值才与条件同处一行。
-     * <b>不含</b> {@code block_state_property}（父行「方块：X」自带取值）与 {@code time_check}
-     * 的区间行，也不含 {@code inverted}（父行「非: X」自带语义）。
-     */
-    private static final Set<String> GROUPING_PARENTS = Set.of(
-            "location_check", "weather_check", "damage_source_properties", "all_of", "any_of");
 
     private ScenarioLabel() {
     }
 
     public static boolean isBaseline(String sceneKey) { return BASELINE.equals(sceneKey); }
 
-    /** 有限宽页头的短名称；完整定义仍由 label 与 definition 提供。 */
+    /** 有限宽页头的短名称；条件摘要与完整定义单独提供。 */
     public static Component shortLabel(String sceneKey) {
         return isBaseline(sceneKey)
                 ? ScenarioSimulationClientState.text("baseline")
                 : ScenarioSimulationClientState.text("scene", ordinal(sceneKey));
-    }
-
-    /** 场景显示名：基准、或「场景 N · 叶子条件」；没有叶子条件时只留序号。 */
-    public static Component label(SimulationOptions options, String sceneKey) {
-        if (isBaseline(sceneKey)) return shortLabel(sceneKey);
-        Component name = shortLabel(sceneKey);
-        List<String> leaves = leafTexts(positiveAssumptions(options, sceneKey));
-        if (leaves.isEmpty()) return name;
-        return name.copy().append(Component.literal(" · " + String.join(" + ", leaves)));
     }
 
     /** 列表第二行的条件摘要，不重复场景序号。 */
@@ -65,9 +45,9 @@ public final class ScenarioLabel {
             return count == 0 ? ScenarioSimulationClientState.text("no_assumptions")
                     : ScenarioSimulationClientState.text("baseline_all_false", count);
         }
-        List<String> leaves = leafTexts(positiveAssumptions(options, sceneKey));
-        return leaves.isEmpty() ? ScenarioSimulationClientState.text("no_assumptions")
-                : Component.literal(String.join(" + ", leaves));
+        List<LootConditionInfo> atoms = positiveAssumptions(options, sceneKey);
+        if (atoms.isEmpty()) return ScenarioSimulationClientState.text("no_assumptions");
+        return Component.literal(String.join("; ", atoms.stream().map(ScenarioLabel::describe).toList()));
     }
 
     /** 场景的完整定义（tooltip）：基准列出全部被置假的条件，其余场景列出为真者与「其余不成立」。 */
@@ -89,14 +69,14 @@ public final class ScenarioLabel {
         return List.copyOf(lines);
     }
 
-    /** 场景相对基准**成立**的条件；为假的合成包装在此剔除，纯分组父行折叠为它的子行。 */
+    /** 场景相对基准成立的条件；只过滤合成取反包装，保留完整逻辑树。 */
     public static List<LootConditionInfo> positiveAssumptions(SimulationOptions options, String sceneKey) {
         for (var scene : options.scenes()) {
             if (!scene.scenarioKey().equals(sceneKey)) continue;
             List<LootConditionInfo> atoms = new ArrayList<>();
             for (LootConditionInfo assumption : scene.assumptions()) {
                 if (isInverted(assumption)) continue;
-                atoms.add(fold(assumption));
+                atoms.add(assumption);
             }
             return List.copyOf(atoms);
         }
@@ -116,54 +96,30 @@ public final class ScenarioLabel {
         return List.of();
     }
 
-    /**
-     * 折叠纯分组父行：父行只描述条件类别、且**恰好一个**子行时，用子行替换父行。
-     * 多子行保留分组（那是真正的合取），未知键后缀一律不折叠。
-     */
-    public static LootConditionInfo fold(LootConditionInfo node) {
-        if (node.children().size() != 1) return node;
-        String suffix = keySuffix(node.description());
-        if (suffix == null || !GROUPING_PARENTS.contains(suffix)) return node;
-        return fold(node.children().getFirst());
-    }
-
-    /** 逐条列出条件下的全文：分组父行后接括号内的子行，取反行自带内层描述、不再展开子行。 */
+    /** 逐条列出完整结构；取反和组合节点也保留子树。 */
     private static String describe(LootConditionInfo node) {
-        if (node.children().isEmpty() || isInverted(node)) return node.description().getString();
+        if (node.children().isEmpty()) return displayDescription(node).getString();
         StringJoiner joiner = new StringJoiner("、");
         for (LootConditionInfo child : node.children()) joiner.add(describe(child));
-        return node.description().getString() + "(" + joiner + ")";
+        return displayDescription(node).getString() + "(" + joiner + ")";
     }
 
-    // 叶子条件的本地化全文；取反叶子保留「非:」前缀，避免把「不成立」读成「成立」。
-    private static List<String> leafTexts(List<LootConditionInfo> atoms) {
-        List<String> out = new ArrayList<>();
-        for (LootConditionInfo atom : atoms) collectLeafText(atom, out);
-        return out;
-    }
-
-    private static void collectLeafText(LootConditionInfo node, List<String> out) {
-        if (isInverted(node) && node.children().size() == 1) {
-            List<String> inner = new ArrayList<>(1);
-            collectLeafText(node.children().getFirst(), inner);
-            for (String text : inner) {
-                out.add(Component.translatable(CONDITION_PREFIX + "inverted", text).getString());
-            }
-            return;
+    public static Component displayDescription(LootConditionInfo node) {
+        Component description = node.description();
+        if (description.getContents() instanceof TranslatableContents contents
+                && contents.getKey().equals(CONDITION_PREFIX + "location_check_biomes")
+                && contents.getArgs().length == 1) {
+            Object value = contents.getArgs()[0];
+            String id = value instanceof Component component ? component.getString() : String.valueOf(value);
+            if (id.equals("#c:is_swamp")) return Component.translatable(contents.getKey(),
+                    Component.translatable(CONDITION_PREFIX + "tag.c.is_swamp")).setStyle(description.getStyle());
         }
-        if (!node.children().isEmpty()) {
-            for (LootConditionInfo child : node.children()) collectLeafText(child, out);
-            return;
-        }
-        out.add(node.description().getString());
+        return description.copy();
     }
 
-    @Nullable
-    private static String keySuffix(Component description) {
-        if (!(description.getContents() instanceof TranslatableContents contents)) return null;
-        String key = contents.getKey();
-        if (!key.startsWith(CONDITION_PREFIX)) return null;
-        return key.substring(CONDITION_PREFIX.length());
+    public static List<LootConditionInfo> negativeConditions(SimulationOptions options, String sceneKey) {
+        return options.scenes().stream().filter(scene -> scene.scenarioKey().equals(sceneKey))
+                .flatMap(scene -> scene.assumptions().stream()).filter(ScenarioLabel::isInverted).toList();
     }
 
     private static boolean isInverted(LootConditionInfo info) {

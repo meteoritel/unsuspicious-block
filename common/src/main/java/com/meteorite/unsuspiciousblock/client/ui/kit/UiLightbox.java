@@ -122,6 +122,9 @@ public final class UiLightbox {
     private final UiControlGroup controls = new UiControlGroup();
     private final UiFocusManager focus = new UiFocusManager();
     private Content content;
+    @Nullable private UiNineSlice surface;
+    @Nullable private Component barHint;
+    private java.util.Map<String, UiIcon> icons = java.util.Map.of();
     @Nullable private Gallery gallery;
     @Nullable private Font font;
     @Nullable private Component title;
@@ -211,6 +214,18 @@ public final class UiLightbox {
 
     public void setMaskColor(int maskColor) { this.maskColor = maskColor; }
 
+    public void setSurface(@Nullable UiNineSlice surface) {
+        this.surface = surface;
+        this.dirty = true;
+    }
+
+    public void setIcons(java.util.Map<String, UiIcon> icons) {
+        this.icons = java.util.Map.copyOf(icons);
+        this.dirty = true;
+    }
+
+    public void setBarHint(@Nullable Component hint) { this.barHint = hint; }
+
     /** 点遮罩是否关闭；默认 false，避免拖动图片时误触退出。 */
     public void setMaskClickCloses(boolean maskClickCloses) { this.maskClickCloses = maskClickCloses; }
 
@@ -249,6 +264,8 @@ public final class UiLightbox {
         this.font = font;
         layout(font);
         graphics.fill(0, 0, width, height, maskColor);
+        if (surface != null) surface.render(graphics,
+                new UiRect(panelX - 6, panelY - 6, panelWidth + 12, panelHeight + 12));
         if (title != null) {
             graphics.drawString(font, title, panelX, panelY, textColor, false);
         }
@@ -285,6 +302,7 @@ public final class UiLightbox {
         // 读数画在按钮组左侧/右侧；面板过窄时宁可不画，也不让两段文字重叠。
         int positionX = panelX + (BUTTON + BUTTON_GAP) * 2 + 4;
         int zoomX = right - (BUTTON * 3 + BUTTON_GAP * 2) - 6 - zoomTextWidth;
+        if (surface != null) zoomX = right - 84 + (42 - zoomTextWidth) / 2;
         // 面板过窄时宁可不画读数；阈值按「右侧有没有页码」决定，无图集时不因页码位置白让出空间。
         boolean withGallery = gallery != null && gallery.total() > 1;
         if (zoomX < (withGallery ? positionX + 8 : panelX)) return;
@@ -292,6 +310,9 @@ public final class UiLightbox {
             graphics.drawString(font, positionText, positionX, y, textColor, false);
         }
         graphics.drawString(font, zoomText, zoomX, y, textColor, false);
+        if (barHint != null && !withGallery && font.width(barHint) < right - 112 - panelX) {
+            graphics.drawString(font, barHint, panelX, y, textColor, false);
+        }
     }
 
     // ---------- 布局 ----------
@@ -311,6 +332,7 @@ public final class UiLightbox {
         int textHeight = 0;
         if (title != null) textHeight += font.lineHeight + TEXT_GAP;
         if (description != null) textHeight += font.lineHeight + TEXT_GAP;
+        if (surface != null) textHeight = Math.max(BUTTON + 4, textHeight);
         viewport = new UiRect(panelX, panelY + textHeight, panelWidth,
                 Math.max(1, panelHeight - textHeight - BAR_HEIGHT));
         content.setViewport(viewport);
@@ -331,9 +353,9 @@ public final class UiLightbox {
         UiControl fit = place(font, "fit", Component.literal("↺"), labels.fit(),
                 right - BUTTON, barY);
         UiControl zoomIn = place(font, "zoom_in", Component.literal("+"), labels.zoomIn(),
-                right - BUTTON * 2 - BUTTON_GAP, barY);
+                surface == null ? right - BUTTON * 2 - BUTTON_GAP : right - 38, barY);
         UiControl zoomOut = place(font, "zoom_out", Component.literal("−"), labels.zoomOut(),
-                right - BUTTON * 3 - BUTTON_GAP * 2, barY);
+                surface == null ? right - BUTTON * 3 - BUTTON_GAP * 2 : right - 104, barY);
         // Tab 顺序 = 视觉顺序：关闭在右上角，其余按控制栏从左到右。
         focus.add(close);
         if (previous != null) focus.add(previous);
@@ -351,11 +373,12 @@ public final class UiLightbox {
         refreshZoomText();
     }
 
-    private UiControl place(Font font, Object key, Component symbol, Component name, int x, int y) {
+    private UiControl place(Font font, String key, Component symbol, Component name, int x, int y) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, BUTTON, BUTTON);
-        control.configure(font, symbol, textColor, null, List.of(name), () -> {
-            switch ((String) key) {
+        UiIcon icon = icons.get(key);
+        control.configure(font, icon == null ? symbol : Component.empty(), textColor, icon, List.of(name), () -> {
+            switch (key) {
                 case "close" -> onClose.run();
                 case "previous" -> navigate(-1);
                 case "next" -> navigate(1);

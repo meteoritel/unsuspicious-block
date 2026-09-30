@@ -23,6 +23,7 @@ public final class ScenarioSimulationClientState {
     private static long sequence, assistId;
     private static String assistInput = "";
     private static SyncSimulationAssistPayload assist;
+    private static long assistStarted;
     private static List<Component> notes = List.of();
     private ScenarioSimulationClientState() {}
     public static String keyOf(ResourceLocation table, String input) { return table + "#" + input; }
@@ -43,6 +44,7 @@ public final class ScenarioSimulationClientState {
             ids.add(table.id());
             var old = TABLES.put(table.id(), table);
             if (old != null && !old.hash().equals(table.hash())) {
+                cancelAssist();
                 String prefix = table.id() + "#";
                 RESULTS.keySet().removeIf(k -> k.startsWith(prefix));
                 PENDING.keySet().removeIf(k -> k.startsWith(prefix));
@@ -227,10 +229,11 @@ public final class ScenarioSimulationClientState {
         }
         return fallback;
     }
-    public static void requestAssist(ResourceLocation table, String target) {
+    public static void requestAssist(ResourceLocation table, SimulationAssistTarget target) {
         var request = requestOf(table);
         if (request == null) return;
         assistId = ++sequence; assistInput = keyOf(table, inputKey(SELECTIONS.get(table)));
+        assistStarted = System.currentTimeMillis();
         assist = null; notes = List.of(text("assist_pending"));
         Services.NETWORK.sendToServer(new RequestSimulationAssistPayload(assistId, target, request));
     }
@@ -240,6 +243,7 @@ public final class ScenarioSimulationClientState {
                 || !current.tableHash().equals(p.tableHash())
                 || !assistInput.equals(keyOf(p.tableId(), inputKey(SELECTIONS.get(p.tableId()))))) return;
         notes = payload.notes(); assist = payload;
+        assistStarted = 0;
         ArchaeologyJournalClientState.simulationChanged();
         if (!payload.recommendation() && payload.found()) {
             apply(payload);
@@ -247,7 +251,23 @@ public final class ScenarioSimulationClientState {
         }
     }
     public static boolean hasRecommendation(ResourceLocation table) {
-        return assist != null && assist.recommendation() && assist.found() && assist.selection().tableId().equals(table);
+        var current = requestOf(table);
+        return assist != null && assist.recommendation() && assist.found() && current != null
+                && assist.selection().tableId().equals(table)
+                && assist.selection().generation() == current.generation()
+                && assist.selection().tableHash().equals(current.tableHash())
+                && assistInput.equals(keyOf(table, inputKey(SELECTIONS.get(table))));
+    }
+    @Nullable
+    public static RequestScenarioSimulationPayload recommendation(ResourceLocation table) {
+        return hasRecommendation(table) ? assist.selection() : null;
+    }
+    public static boolean assistPending() {
+        if (assistStarted != 0 && System.currentTimeMillis() - assistStarted > 15_000) {
+            cancelAssist();
+            notes = List.of(text("assist_timeout"));
+        }
+        return assistStarted != 0;
     }
     public static void applyRecommendation(ResourceLocation table) { if (hasRecommendation(table)) apply(assist); }
     private static void apply(SyncSimulationAssistPayload payload) {
@@ -256,7 +276,9 @@ public final class ScenarioSimulationClientState {
         // 应用推荐只改变选择；用户点计算后才请求测量。
     }
     public static List<Component> notes() { return notes; }
-    private static void cancelAssist() { assistId = ++sequence; assist = null; notes = List.of(); }
+    public static void cancelAssist() {
+        assistId = ++sequence; assist = null; assistStarted = 0; assistInput = ""; notes = List.of();
+    }
     public static Component text(String key, Object... args) {
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.simulation." + key, args);
     }

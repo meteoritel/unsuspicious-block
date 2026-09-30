@@ -104,6 +104,7 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 | 本轮 | 默认行为变更 | `UiLightbox` 控制栏默认样式改为 `UiControlStyle.DARK`，文本默认色按结构底色反推（见「公开 API 的行为约定」） | 需要浅底画面的宿主显式 `setStyle(UiControlStyle.PARCHMENT)` 并自行 `setTextColor` |
 | 本轮 | 行为变更 | 几何入口统一钳制负尺寸：`UiControl.setBounds` / `UiDocument.setViewport` 由抛 `IllegalArgumentException` 改为钳到 `0` | 依赖该异常的宿主需自行校验；现有调用点都已自行钳制，画面不变 |
 | 本轮 | 新增 API | `UiLightbox.Labels.zoomReadout(int)`（default 方法，默认 `"100%"`）；`TextScroll.draw(String, …, int textWidth, …)` 与 `ScrollTextHelper` 的对应重载 | 向后兼容；现有 `Labels` 实现与调用点可不变 |
+| 2026-09-30 | 新增 API | `UiLightbox.setSurface(UiNineSlice)`、`setIcons(Map<String, UiIcon>)`、`setBarHint(Component)`；图标键沿用 `close` / `fit` / `zoom_in` / `zoom_out` / `previous` / `next` | opt-in 纸面、图标与底栏提示；默认暗色外壳、字符按钮不变，资源与文案仍由宿主提供 |
 | 本轮 | 新增 API | `TextScroll.trimToWidth(Font, String, int)`：超宽文本截断为带 ASCII 省略号的返回串（非交互场景的统一口径），语义取宿主既有的管理页 / 语言选择列表私有实现 | 向后兼容；宿主可删掉各自的私有 `trimToWidth`，返回值与边界口径一致 |
 | 本轮 | 行为修正 | `UiDocument` 把鼠标透传给 Frame 内子文档（此前恒不悬停）；控件只在内容越界时设裁剪（不再每控件两次 `flush()`） | 无 API 变更；Frame 内超宽文本现在可悬停滚动 |
 | 本轮 | 检查加强 | 边界脚本新增规则 5（import 白名单）；`package-info` 与本文补上 LWJGL | 无 API 变更 |

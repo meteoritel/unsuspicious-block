@@ -310,6 +310,9 @@ public final class ItemGridPanel implements PagePanel {
             return;
         }
         renderPreviewStacks(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
+        com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi.icon(
+                com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi.Icon.RECOMMEND)
+                .render(guiGraphics, cellX + cellW - 11, cellY + 3);
         PanelTextMetrics.Measured childName = this.metrics.measure(
                 displayNameText(child, child.displayName()), font);
         ScrollTextHelper.draw(guiGraphics, font, childName.text(), childName.width(),
@@ -556,6 +559,24 @@ public final class ItemGridPanel implements PagePanel {
         return item == null || item.acquisitionPaths().isEmpty() ? null : item.signature().toStoredKey();
     }
 
+    @Nullable
+    public ResourceLocation childRecommendationTarget(double mouseX, double mouseY) {
+        if (activeTag != null) return null;
+        int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
+        int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
+        int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
+        int end = Math.min(tagGroups.size() + childTables.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
+        for (int index = Math.max(from, tagGroups.size()); index < end; index++) {
+            ChildTableEntry child = childTables.get(index - tagGroups.size());
+            int left = cellX(gridX, index - from) + JournalLayout.GRID_CELL_WIDTH - 13;
+            int top = cellY(gridY, index - from) + 1;
+            if (child.unlocked() && mouseX >= left && mouseX < left + 12 && mouseY >= top && mouseY < top + 13) {
+                return child.tableId();
+            }
+        }
+        return null;
+    }
+
     public TooltipData getTooltipData(double mouseX, double mouseY) {
         GridItem hoveredItem = hoveredItem(mouseX, mouseY);
         if (hoveredItem == null) {
@@ -639,6 +660,8 @@ public final class ItemGridPanel implements PagePanel {
 
     @Nullable
     private List<Component> navigationTooltip(double mouseX, double mouseY) {
+        if (childRecommendationTarget(mouseX, mouseY) != null) return List.of(
+                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("recommend.title"));
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
         if (this.activeTag != null) {
