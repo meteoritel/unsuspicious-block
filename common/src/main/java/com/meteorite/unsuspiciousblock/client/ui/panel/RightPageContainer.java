@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** 右侧页面容器 —— 通过三枚书签 Tab 切换介绍信息/考古信息/日志 */
+/** 右侧页面容器 —— 通过四枚书签 Tab 切换介绍信息/考古信息/日志/场景 */
 public final class RightPageContainer {
 
     // 书签尺寸与间距
@@ -63,9 +63,11 @@ public final class RightPageContainer {
         this.overlays = overlays;
         this.scenarioPanel = new ScenarioPanel(layout);
         this.scenarioPanel.setOpenScenes(this::openSceneOverlay);
-        this.scenarioPanel.setOpenParams(this::openParamsOverlay);
         this.scenarioDetailPanel = panels.register("scenario", new ScenarioDetailPanel(layout, overlays));
         this.gridPanel = new ItemGridPanel(layout);
+        this.scenarioDetailPanel.setTargetNavigation(gridPanel::targetVisible, (kind, target) -> {
+            if (gridPanel.locateTarget(kind, target)) setActiveTab(Tab.ARCHAEOLOGY);
+        }, () -> setActiveTab(Tab.ARCHAEOLOGY));
         this.pageIndicator = new PageIndicator(layout);
         this.detailPanel = new DetailOverlayPanel(layout);
         this.logPanel = new LogPanel(layout);
@@ -412,15 +414,6 @@ public final class RightPageContainer {
         this.pageIndicator.setTextY(pageIndicatorY());
         PagePanel panel = activePanel();
         this.pageIndicator.setPage(panel.getPage(), panel.pageCount());
-    }
-
-    private void openParamsOverlay() {
-        if (currentTableId == null) return;
-        var structure = ScenarioSimulationClientState.table(currentTableId);
-        var selection = ScenarioSimulationClientState.selection(currentTableId);
-        if (structure == null || structure.options() == null || selection == null) return;
-        overlays.open(new com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay(overlays,
-                currentTableId, selection.scene(), structure.options(), selection.params()));
     }
 
     @Nullable

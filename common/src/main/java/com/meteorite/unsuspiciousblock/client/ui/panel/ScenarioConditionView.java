@@ -67,7 +67,15 @@ final class ScenarioConditionView implements UiFocusTarget {
                 if (row.leading() != null) rowHeight = Math.max(rowHeight, row.leading().icon().height());
                 for (var icon : row.icons()) rowHeight = Math.max(rowHeight, icon.icon().height());
                 rowHeight += 4;
-                if (row.action() != null) actions.add(new ActionRow(row, new UiRect(0, top, width, rowHeight)));
+                if (row.action() != null) actions.add(new ActionRow(row.action(), row.text(), new UiRect(0, top, width, rowHeight)));
+                int iconX = row.indent() + 2 + (row.leading() == null ? 0 : row.leading().icon().width() + 3) + font.width(row.text());
+                for (var icon : row.icons()) {
+                    iconX += 3;
+                    if (icon.action() != null) actions.add(new ActionRow(icon.action(),
+                            icon.tooltip().isEmpty() ? row.text() : icon.tooltip().getFirst(),
+                            new UiRect(iconX, top + (rowHeight - icon.icon().height()) / 2, icon.icon().width(), icon.icon().height())));
+                    iconX += icon.icon().width();
+                }
                 if (row.payload() instanceof ScenarioPageBuilder.Heading kind) {
                     headings.add(new HeadingRow(new UiRect(0, top, width, rowHeight), kind));
                 }
@@ -176,7 +184,7 @@ final class ScenarioConditionView implements UiFocusTarget {
     @Override public boolean isFocused() { return focused; }
     @Override public boolean activate() {
         if (actions.isEmpty()) return false;
-        var action = actions.get(actionIndex).row().action();
+        var action = actions.get(actionIndex).action();
         if (action == null) return false;
         action.run();
         return true;
@@ -185,11 +193,11 @@ final class ScenarioConditionView implements UiFocusTarget {
     @Override public Component accessibleName() {
         return actions.isEmpty()
                 ? com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("conditions.heading")
-                : actions.get(actionIndex).row().text();
+                : actions.get(actionIndex).name();
     }
 
     /** 可执行节点在折行后内容坐标内的位置。 */
-    private record ActionRow(UiNode.Row row, UiRect rect) {}
+    private record ActionRow(com.meteorite.unsuspiciousblock.client.ui.kit.UiAction action, Component name, UiRect rect) {}
 
     /** 分组标题的底纹边界，在内容变化或宽度变化时统一重建。 */
     private record HeadingRow(UiRect rect, ScenarioPageBuilder.Heading kind) {}

@@ -41,13 +41,68 @@ public final class ScenarioLabel {
     /** 列表第二行的条件摘要，不重复场景序号。 */
     public static Component detailLabel(SimulationOptions options, String sceneKey) {
         if (isBaseline(sceneKey)) {
-            int count = negativeAssumptions(options, sceneKey).size();
-            return count == 0 ? ScenarioSimulationClientState.text("no_assumptions")
-                    : ScenarioSimulationClientState.text("baseline_all_false", count);
+            var negatives = negativeConditions(options, sceneKey);
+            if (negatives.isEmpty()) return ScenarioSimulationClientState.text("no_assumptions");
+            var label = Component.empty();
+            for (int index = 0; index < negatives.size(); index++) {
+                if (index > 0) label.append(symbol(" ∧ "));
+                label.append(expression(negatives.get(index)));
+            }
+            return label;
         }
         List<LootConditionInfo> atoms = positiveAssumptions(options, sceneKey);
         if (atoms.isEmpty()) return ScenarioSimulationClientState.text("no_assumptions");
-        return Component.literal(String.join("; ", atoms.stream().map(ScenarioLabel::describe).toList()));
+        var summary = Component.empty();
+        for (int index = 0; index < atoms.size(); index++) {
+            if (index > 0) summary.append(symbol(" ∧ "));
+            summary.append(expression(atoms.get(index)));
+        }
+        return summary;
+    }
+
+    public static Component symbol(String value) {
+        return Component.literal(value).withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT));
+    }
+
+    public static Component expression(LootConditionInfo condition) {
+        String type = condition.conditionType().toString();
+        if (type.equals("minecraft:inverted") && condition.children().size() == 1)
+            return symbol("¬(").copy().append(expression(condition.children().getFirst())).append(symbol(")"));
+        if (type.equals("minecraft:any_of") || type.equals("minecraft:all_of")) {
+            var result = Component.empty().append(symbol("("));
+            for (int index = 0; index < condition.children().size(); index++) {
+                if (index > 0) result.append(symbol(type.equals("minecraft:any_of") ? " ∨ " : " ∧ "));
+                result.append(expression(condition.children().get(index)));
+            }
+            return result.append(symbol(")"));
+        }
+        var label = conditionText(condition).copy();
+        if (!condition.children().isEmpty()) {
+            label.append(symbol("("));
+            for (int index = 0; index < condition.children().size(); index++) {
+                if (index > 0) label.append(symbol(" · "));
+                label.append(expression(condition.children().get(index)));
+            }
+            label.append(symbol(")"));
+        }
+        return label;
+    }
+
+    public static Component conditionText(LootConditionInfo condition) {
+        var label = displayDescription(condition).copy().withStyle(style -> style.withColor(UiTextPalette.Parchment.BODY));
+        if (label.getContents() instanceof TranslatableContents contents) {
+            Object[] values = contents.getArgs().clone();
+            for (int index = 0; index < values.length; index++) {
+                Component value = values[index] instanceof Component component ? component.copy()
+                        : Component.literal(String.valueOf(values[index]));
+                values[index] = value.copy().withStyle(style -> style.withColor(UiTextPalette.Parchment.POSITIVE));
+            }
+            String shortKey = contents.getKey().startsWith(CONDITION_PREFIX)
+                    ? "screen.unsuspiciousblock.archaeology_journal.simulation.short." + contents.getKey().substring(CONDITION_PREFIX.length()) : "";
+            label = Component.translatable(net.minecraft.locale.Language.getInstance().has(shortKey)
+                    ? shortKey : contents.getKey(), values).setStyle(label.getStyle());
+        }
+        return label;
     }
 
     /** 场景的完整定义（tooltip）：基准列出全部被置假的条件，其余场景列出为真者与「其余不成立」。 */
@@ -66,6 +121,18 @@ public final class ScenarioLabel {
             for (LootConditionInfo atom : atoms) lines.add(Component.literal(describe(atom)));
         }
         lines.add(ScenarioSimulationClientState.text("conditions_others_false"));
+        return List.copyOf(lines);
+    }
+
+    // 场景 tooltip 按标题、条件分组和逐条定义组织，避免多个条件挤在同一行。
+    public static List<Component> tooltip(SimulationOptions options, String sceneKey) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(shortLabel(sceneKey));
+        lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions"));
+        for (Component definition : definition(options, sceneKey)) {
+            lines.add(Component.literal("• ").withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT))
+                    .append(definition.copy()));
+        }
         return List.copyOf(lines);
     }
 

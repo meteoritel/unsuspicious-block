@@ -34,7 +34,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private final OverlayLayer overlays;
     private final UiFocusManager focus = new UiFocusManager();
     private final UiControl title = new UiControl();
-    private final UiControl status = new UiControl();
     private final UiControl summary = new UiControl();
     private final UiControl luck = new UiControl();
     private final UiControl samples = new UiControl();
@@ -42,7 +41,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private final UiControl calculateButton = new UiControl();
     private final UiControl conditionsHeading = new UiControl();
     private final UiControl expandButton = new UiControl();
-    private final List<UiControl> controls = List.of(title, status, summary, luck, samples, paramsButton,
+    private final List<UiControl> controls = List.of(title, summary, luck, samples, paramsButton,
             calculateButton, conditionsHeading, expandButton);
     private final Map<String, Integer> conditionPositions = new LinkedHashMap<>();
     private BookLayout layout;
@@ -57,6 +56,16 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private boolean showOther;
     private List<UiNode> conditionTree = List.of();
     @Nullable private Component fullSceneLabel;
+    private java.util.function.BiPredicate<String, String> targetVisible = (kind, target) -> false;
+    private java.util.function.BiConsumer<String, String> locateTarget = (kind, target) -> {};
+    private Runnable viewDrops = () -> {};
+
+    public void setTargetNavigation(java.util.function.BiPredicate<String, String> visible,
+                                    java.util.function.BiConsumer<String, String> locate, Runnable viewDrops) {
+        this.targetVisible = visible;
+        this.locateTarget = (kind, target) -> { if (overlays.isOpen()) overlays.close(); locate.accept(kind, target); };
+        this.viewDrops = viewDrops;
+    }
 
     public ScenarioDetailPanel(BookLayout layout, OverlayLayer overlays) {
         this.layout = layout;
@@ -171,6 +180,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     @Override public void changePage(int delta) { setPage(getPage() + delta); }
 
     private void sync(Font font) {
+        if (table != null) ScenarioSimulationClientState.ensureCacheQuery(table);
         if (conditions == null || measuredFont != font) {
             saveCurrentPosition();
             measuredFont = font;
@@ -181,8 +191,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
         int width = layout.rightPageWidth() - 8;
-        title.setBounds(x, y + 3, width - 66, 14);
-        status.setBounds(x + width - 64, y + 3, 64, 14);
+        title.setBounds(x, y + 3, width, 14);
         summary.setBounds(x, y + 19, 20, 16);
         paramsButton.setBounds(x + width - 16, y + 19, 16, 16);
         int readoutWidth = Math.max(0, width - 42);
@@ -246,32 +255,25 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             control.setStyle(ScenarioUi.QUIET);
         }
         ResourceLocation currentTable = Objects.requireNonNull(table);
-        ScenarioPresentation presentation = ScenarioPresentation.resolve(currentTable, choice.scene(), choice.params());
         UiAction openParams = () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.scene(),
                 options, choice.params()), paramsButton);
         conditionTree = ScenarioPageBuilder.buildConditions(structure, choice.scene(), showOther,
                 () -> { showOther = !showOther; revision = Long.MIN_VALUE; },
                 child -> ScenarioRecommendationOverlay.open(overlays, currentTable,
-                        SimulationAssistTarget.childTable(child)));
+                        SimulationAssistTarget.childTable(child)), targetVisible, locateTarget);
         conditionView.setContent(conditionTree);
-        Component failure = "failed".equals(presentation.status())
+        Component failure = "failed".equals(rawStatus)
                 ? ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(currentTable, input))
                 : null;
 
         Component sceneLabel = ScenarioLabel.shortLabel(choice.scene());
         fullSceneLabel = sceneLabel;
         List<Component> titleTooltip = new ArrayList<>();
-        titleTooltip.add(sceneLabel);
-        titleTooltip.addAll(ScenarioLabel.definition(options, choice.scene()));
+        titleTooltip.addAll(ScenarioLabel.tooltip(options, choice.scene()));
         title.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextPalette.Parchment.TITLE,
                 ScenarioUi.icon(ScenarioUi.Icon.DOWN), titleTooltip, () ->
                         overlays.open(new ScenarioSelectionOverlay(overlays, currentTable,
                                 options, choice.params(), getPage(), this::setPage), title));
-        List<Component> statusTooltip = new ArrayList<>();
-        statusTooltip.add(ScenarioSimulationClientState.text(presentation.status()));
-        if (failure != null) statusTooltip.add(failure);
-        status.configure(font, ScenarioSimulationClientState.text("results.status." + presentation.status()),
-                UiTextPalette.Parchment.BODY, presentation.badge(), statusTooltip, null);
 
         Component toolName = Component.literal(choice.params().toolId().toString());
         for (var tool : options.tools()) {
@@ -291,16 +293,18 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                 new UiIcon.Item(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(choice.params().toolId()))),
                 List.of(toolName), null);
         configureValue(font, luck, "params.luck_short", String.format(Locale.ROOT, "%s", choice.params().luck()));
-        configureValue(font, samples, "params.samples_short", String.format(Locale.ROOT, "%,d", choice.params().sampleCount()));
+        configureValue(font, samples, "params.enchantments_short", String.valueOf(choice.params().toolEnchantments().size()));
         paramsButton.configure(font, Component.empty(),
                 UiTextPalette.Parchment.TITLE, ScenarioUi.icon(ScenarioUi.Icon.PARAMS), paramsTooltip, openParams);
         paramsButton.setAccessibleName(ScenarioSimulationClientState.text("params.title"));
         calculateButton.setStyle(ScenarioUi.ACTION);
-        calculateButton.configure(font, ScenarioSimulationClientState.text("cached".equals(presentation.status())
-                        ? "results.status.cached" : "pending".equals(rawStatus) ? "results.status.pending" : "calculate"),
-                UiTextPalette.Parchment.TITLE, ScenarioUi.icon(ScenarioUi.Icon.CALCULATE), List.of(ScenarioSimulationClientState.text("calculate")),
-                () -> ScenarioSimulationClientState.request(currentTable, true));
-        calculateButton.setEnabled(!"pending".equals(rawStatus) && !"cached".equals(presentation.status()));
+        calculateButton.configure(font, ScenarioSimulationClientState.text("cached".equals(rawStatus)
+                        ? "view_drops" : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
+                        || "query_failed".equals(rawStatus) ? "calculate" : "results.status." + rawStatus),
+                UiTextPalette.Parchment.TITLE, ScenarioUi.icon(ScenarioUi.Icon.CALCULATE),
+                failure == null ? List.of(ScenarioSimulationClientState.text("calculate"), ScenarioSimulationClientState.text(rawStatus)) : List.of(failure),
+                () -> { if ("cached".equals(rawStatus)) viewDrops.run(); else ScenarioSimulationClientState.request(currentTable, true); });
+        calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(rawStatus));
 
         conditionsHeading.setStyle(ScenarioUi.READOUT);
         conditionsHeading.configure(font, ScenarioSimulationClientState.text("conditions.heading"),

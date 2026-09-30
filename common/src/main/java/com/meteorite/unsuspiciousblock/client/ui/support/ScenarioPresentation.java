@@ -22,7 +22,8 @@ public record ScenarioPresentation(@Nullable CatalogTableDto source, boolean exa
     public UiIcon badge() { return badge(status); }
 
     public static UiIcon badge(String status) {
-        int slot = switch (status) { case "pending" -> 1; case "cached" -> 2; case "failed" -> 3; default -> 0; };
+        int slot = switch (status) { case "pending", "querying", "retrieving" -> 1;
+            case "cached", "available" -> 2; case "failed", "query_failed" -> 3; default -> 0; };
         return new UiIcon.Sprite(BADGES, slot * 12, 0, 12, 12, 48, 12);
     }
 }

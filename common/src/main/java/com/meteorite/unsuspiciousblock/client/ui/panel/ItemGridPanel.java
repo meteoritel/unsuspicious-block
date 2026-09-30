@@ -80,6 +80,7 @@ public final class ItemGridPanel implements PagePanel {
     // 绘制用的不可变条目视图：在 rebuildTagGroups 中随数据重建，逐帧只读，不再每帧 List.copyOf。
     private List<TagGroup> tagGroupView = List.of();
     private List<ResourceLocation> tagIdView = List.of();
+    private String locatedKind = "", locatedTarget = "";
     // 逐帧格子文案缓存：GridItem / ChildTableEntry 都是不可变数据，同一实例的文案只取决于语言代码。
     // 失效点：setTable（换表数据）或语言代码变化（整表重算）。
     private final Map<Object, String> probabilityTextCache = new IdentityHashMap<>();
@@ -126,6 +127,49 @@ public final class ItemGridPanel implements PagePanel {
 
     public int getPage() {
         return page;
+    }
+
+    public boolean locateTarget(String kind, String target) {
+        locatedKind = kind; locatedTarget = target;
+        int index = -1;
+        if (kind.equals("tag")) {
+            index = tagIdView.indexOf(ResourceLocation.tryParse(target));
+        } else if (kind.equals("table")) {
+            for (int position = 0; position < childTables.size(); position++)
+                if (childTables.get(position).tableId().toString().equals(target)) index = tagGroups.size() + position;
+        } else {
+            for (int position = 0; position < directItems.size(); position++)
+                if (directItems.get(position).signature().toStoredKey().equals(target))
+                    index = tagGroups.size() + childTables.size() + position;
+            if (index < 0) {
+                for (var entry : tagGroups.entrySet()) {
+                    var members = entry.getValue().members();
+                    for (int position = 0; position < members.size(); position++) {
+                        if (!members.get(position).signature().toStoredKey().equals(target)) continue;
+                        if (!entry.getValue().unlocked()) return false;
+                        activeTag = entry.getKey();
+                        setPage(position / TAG_GROUP_MEMBERS_PER_PAGE);
+                        resetHoverState();
+                        return true;
+                    }
+                }
+            }
+        }
+        if (index < 0) return false;
+        activeTag = null;
+        setPage(index / JournalLayout.GRID_ITEMS_PER_PAGE);
+        resetHoverState();
+        return true;
+    }
+
+    public boolean targetVisible(String kind, String target) {
+        if (kind.equals("table")) return childTables.stream().anyMatch(child -> child.unlocked()
+                && child.tableId().toString().equals(target));
+        if (kind.equals("tag")) {
+            var group = tagGroups.get(ResourceLocation.tryParse(target));
+            return group != null && group.unlocked();
+        }
+        return items.stream().anyMatch(item -> item.unlocked() && item.signature().toStoredKey().equals(target));
     }
 
     public void changePage(int delta) {
@@ -219,14 +263,17 @@ public final class ItemGridPanel implements PagePanel {
                 if (i < groupCount) {
                     renderTagGroupCell(guiGraphics, font, cellX, cellY,
                             groups.get(i), hovered, slotScrollTicks[visualIndex]);
+                    renderLocation(guiGraphics, cellX, cellY, "tag", groups.get(i).id().toString());
                 } else if (i < groupCount + childCount) {
                     renderChildTableCell(guiGraphics, font, cellX, cellY,
                             this.childTables.get(i - groupCount), hovered,
                             slotScrollTicks[visualIndex]);
+                    renderLocation(guiGraphics, cellX, cellY, "table", this.childTables.get(i - groupCount).tableId().toString());
                 } else {
                     renderItemCell(guiGraphics, font, cellX, cellY,
                             this.directItems.get(i - groupCount - childCount), hovered,
                             slotScrollTicks[visualIndex]);
+                    renderLocation(guiGraphics, cellX, cellY, "item", this.directItems.get(i - groupCount - childCount).signature().toStoredKey());
                 }
             }
             visibleEntryCount = to - from;
@@ -248,6 +295,18 @@ public final class ItemGridPanel implements PagePanel {
         boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
         updateHoverState(visualIndex, hovered);
         renderItemCell(guiGraphics, font, cellX, cellY, item, hovered, slotScrollTicks[visualIndex]);
+        renderLocation(guiGraphics, cellX, cellY, "item", item.signature().toStoredKey());
+    }
+
+    private void renderLocation(GuiGraphics graphics, int cellX, int cellY, String kind, String target) {
+        if (!locatedKind.equals(kind) || !locatedTarget.equals(target)) return;
+        int right = cellX + JournalLayout.GRID_CELL_WIDTH;
+        int bottom = cellY + JournalLayout.GRID_CELL_HEIGHT;
+        int color = UiTextPalette.Parchment.ACCENT;
+        graphics.fill(cellX, cellY, right, cellY + 1, color);
+        graphics.fill(cellX, bottom - 1, right, bottom, color);
+        graphics.fill(cellX, cellY, cellX + 1, bottom, color);
+        graphics.fill(right - 1, cellY, right, bottom, color);
     }
 
     private void updateHoverState(int visualIndex, boolean hovered) {

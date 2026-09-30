@@ -89,6 +89,7 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         this.layer = layer;
         this.table = table;
         this.options = options;
+        ScenarioSimulationClientState.queryCache(table, true);
         this.scenes = options.scenes();
         this.params = params;
         this.current = currentIndex;
@@ -185,8 +186,7 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         ScenarioPresentation presentation = ScenarioPresentation.resolve(table, sceneKey, params);
         Component name = ScenarioLabel.shortLabel(sceneKey);
         if (index == current) name = name.copy().withStyle(ChatFormatting.BOLD);
-        List<Component> tooltip = new ArrayList<>(ScenarioLabel.definition(options, sceneKey));
-        tooltip.addFirst(ScenarioLabel.shortLabel(sceneKey));
+        List<Component> tooltip = new ArrayList<>(ScenarioLabel.tooltip(options, sceneKey));
         tooltip.add(ScenarioSimulationClientState.text(presentation.status()));
         if (presentation.status().equals("failed")) {
             String input = new SimulationInput(sceneKey, Map.of(), params).key();
@@ -199,7 +199,10 @@ final class ScenarioSelectionOverlay implements OverlayLayer.Overlay {
         List<FormattedCharSequence> detail = new ArrayList<>(wrapped.subList(0, Math.min(2, wrapped.size())));
         if (wrapped.size() > 2) detail.set(1, FormattedCharSequence.composite(detail.get(1), Component.literal("…").getVisualOrderText()));
         displays[index] = new RowDisplay(name, List.copyOf(detail),
-                ScenarioSimulationClientState.text("results.status." + presentation.status()),
+                ScenarioSimulationClientState.text("results.status." + presentation.status()).copy().withStyle(style -> style.withColor(
+                        List.of("cached", "available").contains(presentation.status()) ? UiTextPalette.Parchment.POSITIVE
+                                : List.of("failed", "query_failed").contains(presentation.status()) ? UiTextPalette.Parchment.NEGATIVE
+                                : UiTextPalette.Parchment.LABEL)),
                 presentation.badge());
         // 语义选中态：当前场景行常亮选中底色（原有加粗保留），键盘上下键改选中时同步跟随。
         row.setSelected(index == current);

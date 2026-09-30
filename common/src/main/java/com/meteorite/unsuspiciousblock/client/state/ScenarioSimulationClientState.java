@@ -20,6 +20,10 @@ public final class ScenarioSimulationClientState {
     private static final Map<String, CatalogTableDto> RESULTS = new LinkedHashMap<>();
     private static final Map<String, Long> PENDING = new HashMap<>();
     private static final Map<String, String> FAILURES = new LinkedHashMap<>();
+    private static final Map<ResourceLocation, CacheQuery> CACHE_QUERIES = new LinkedHashMap<>();
+    /** 一次只读查询的版本凭据与当前参数，不存跨玩家进度。 */
+    private record CacheQuery(long id, String input, ScenarioParams params, long started,
+                              Set<String> available, boolean complete, String error) {}
     private static long sequence, assistId;
     private static String assistInput = "";
     private static SyncSimulationAssistPayload assist;
@@ -38,12 +42,13 @@ public final class ScenarioSimulationClientState {
             return old != null && old.options() != null && t.options() != null
                     && old.options().generation() != t.options().generation();
         });
-        if (changedGeneration) { RESULTS.clear(); PENDING.clear(); FAILURES.clear(); cancelAssist(); }
+        if (changedGeneration) { RESULTS.clear(); PENDING.clear(); FAILURES.clear(); CACHE_QUERIES.clear(); cancelAssist(); }
         Set<ResourceLocation> ids = new HashSet<>();
         for (CatalogTableDto table : tables) {
             ids.add(table.id());
             var old = TABLES.put(table.id(), table);
             if (old != null && !old.hash().equals(table.hash())) {
+                CACHE_QUERIES.remove(table.id());
                 cancelAssist();
                 String prefix = table.id() + "#";
                 RESULTS.keySet().removeIf(k -> k.startsWith(prefix));
@@ -60,6 +65,7 @@ public final class ScenarioSimulationClientState {
             SELECTIONS.put(table.id(), choice);
         }
         TABLES.keySet().retainAll(ids); SELECTIONS.keySet().retainAll(ids);
+        CACHE_QUERIES.keySet().retainAll(ids);
     }
     public static void select(ResourceLocation table, String scene, ScenarioParams params) {
         var dto = TABLES.get(table);
@@ -67,6 +73,40 @@ public final class ScenarioSimulationClientState {
         var choice = new SimulationPreferenceStore.Selection(scene, params);
         if (choice.equals(SELECTIONS.put(table, choice))) return;
         SimulationPreferenceStore.put(table, choice); cancelAssist();
+        ArchaeologyJournalClientState.simulationChanged();
+        queryCache(table, true);
+    }
+    public static void queryCache(ResourceLocation table, boolean force) {
+        var request = requestOf(table);
+        var selected = selection(table);
+        if (request == null || selected == null) return;
+        String input = inputKey(selected);
+        CacheQuery old = CACHE_QUERIES.get(table);
+        long now = System.currentTimeMillis();
+        if (!force && old != null && old.input().equals(input) && now - old.started() < 15_000) return;
+        CACHE_QUERIES.put(table, new CacheQuery(++sequence, input, selected.params(), now, Set.of(), false, ""));
+        while (CACHE_QUERIES.size() > 64) CACHE_QUERIES.remove(CACHE_QUERIES.keySet().iterator().next());
+        Services.NETWORK.sendToServer(new RequestScenarioCachePayload(sequence, force || result(table, input) == null, request));
+        ArchaeologyJournalClientState.simulationChanged();
+    }
+    public static void ensureCacheQuery(ResourceLocation table) {
+        var choice = selection(table);
+        var query = CACHE_QUERIES.get(table);
+        if (choice != null && (query == null || !query.input().equals(inputKey(choice)))) queryCache(table, false);
+        else if (query != null && query.error().equals("busy") && System.currentTimeMillis() - query.started() >= 250)
+            queryCache(table, true);
+    }
+    public static void receiveCache(SyncScenarioCachePayload payload) {
+        var table = TABLES.get(payload.tableId());
+        var current = selection(payload.tableId());
+        CacheQuery query = CACHE_QUERIES.get(payload.tableId());
+        if (table == null || table.options() == null || current == null || query == null
+                || query.id() != payload.requestId() || !query.input().equals(payload.inputKey())
+                || !inputKey(current).equals(payload.inputKey()) || !table.hash().equals(payload.tableHash())
+                || table.options().generation() != payload.generation()) return;
+        CACHE_QUERIES.put(table.id(), new CacheQuery(query.id(), query.input(), query.params(), query.started(),
+                Set.copyOf(payload.availableScenes()), true, payload.error()));
+        if (payload.error().equals("stale_hash")) Services.NETWORK.sendToServer(new RequestCatalogPayload());
         ArchaeologyJournalClientState.simulationChanged();
     }
     public static RequestScenarioSimulationPayload requestOf(ResourceLocation table) {
@@ -94,7 +134,20 @@ public final class ScenarioSimulationClientState {
             if (System.currentTimeMillis() - start <= 120_000) return "pending";
             PENDING.remove(key); FAILURES.put(key, "timeout");
         }
-        return FAILURES.containsKey(key) ? "failed" : "uncomputed";
+        if (FAILURES.containsKey(key)) return "failed";
+        CacheQuery query = CACHE_QUERIES.get(table);
+        var structure = TABLES.get(table);
+        if (query != null && structure != null && structure.options() != null) {
+            for (var scene : structure.options().scenes()) {
+                if (!new SimulationInput(scene.scenarioKey(), Map.of(), query.params()).key().equals(input)) continue;
+                if (!query.complete()) return System.currentTimeMillis() - query.started() < 15_000 ? "querying" : "query_failed";
+                if (!query.error().isEmpty()) return "query_failed";
+                if (query.available().contains(scene.scenarioKey()))
+                    return query.input().equals(input) ? System.currentTimeMillis() - query.started() > 15_000
+                            ? "query_failed" : "retrieving" : "available";
+            }
+        }
+        return "uncomputed";
     }
     public static String failure(ResourceLocation table, String input) {
         return FAILURES.getOrDefault(keyOf(table, input), "timeout");
@@ -113,8 +166,27 @@ public final class ScenarioSimulationClientState {
             return;
         }
         RESULTS.put(key, payload.table());
+        mergeStructure(table, payload.table());
         while (RESULTS.size() > 64) RESULTS.remove(RESULTS.keySet().iterator().next());
         PENDING.remove(key); FAILURES.remove(key); ArchaeologyJournalClientState.simulationChanged();
+    }
+
+    private static void mergeStructure(CatalogTableDto baseline, CatalogTableDto incoming) {
+        Map<LootResultSignature, CatalogTableDto.ItemEntry> items = new LinkedHashMap<>();
+        baseline.items().forEach(item -> items.put(item.signature(), item));
+        for (var item : incoming.items()) items.putIfAbsent(item.signature(), new CatalogTableDto.ItemEntry(
+                item.id(), item.displayName(), item.tooltipHint(), Probability.unknown(UnknownReason.NOT_SIMULATED),
+                item.signature(), item.acquisitionPaths(), item.injected(), List.of()));
+        Set<ScenarioBranch> branches = new LinkedHashSet<>(baseline.branches());
+        branches.addAll(incoming.branches());
+        Set<String> identified = new HashSet<>();
+        for (var branch : branches) if (!branch.injectionSource().isEmpty() && !branch.injectionSource().equals("observed"))
+            identified.add(branch.kind() + "#" + branch.target());
+        branches.removeIf(branch -> branch.injectionSource().equals("observed")
+                && identified.contains(branch.kind() + "#" + branch.target()));
+        TABLES.put(baseline.id(), new CatalogTableDto(baseline.id(), baseline.hash(), baseline.displayName(), baseline.type(),
+                baseline.simulationCount(), baseline.childTables(), baseline.scenarios(), List.copyOf(items.values()),
+                baseline.childProbabilities(), baseline.options(), List.copyOf(branches)));
     }
     public static void receiveRejection(ScenarioRequestRejectedPayload payload) {
         var table = TABLES.get(payload.tableId());
@@ -177,7 +249,8 @@ public final class ScenarioSimulationClientState {
                         : projectScene(base.get(id), resolved.source(), selection.scene(), selection.params().sampleCount()));
             }
             else {
-                var table = base.get(id);
+                var structure = TABLES.get(id);
+                var table = structure == null ? base.get(id) : structure.toTableDefinition();
                 var unknown = new Probability.Unknown(resolved.status().equals("failed")
                         ? UnknownReason.SIMULATION_FAILED : UnknownReason.NOT_SIMULATED);
                 output.put(id, new TableDefinition(id, table.displayName(), table.type(),
@@ -284,6 +357,6 @@ public final class ScenarioSimulationClientState {
     }
     public static void clear() {
         SimulationPreferenceStore.flush();
-        TABLES.clear(); SELECTIONS.clear(); RESULTS.clear(); PENDING.clear(); FAILURES.clear(); cancelAssist();
+        TABLES.clear(); SELECTIONS.clear(); RESULTS.clear(); PENDING.clear(); FAILURES.clear(); CACHE_QUERIES.clear(); cancelAssist();
     }
 }

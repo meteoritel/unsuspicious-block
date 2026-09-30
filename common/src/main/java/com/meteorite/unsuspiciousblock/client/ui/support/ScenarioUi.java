@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiIcon;
 import com.meteorite.unsuspiciousblock.client.ui.kit.UiLightbox;
@@ -35,6 +36,21 @@ public final class ScenarioUi {
 
     public static UiIcon icon(Icon icon) {
         return ICONS[icon.ordinal()];
+    }
+
+    // 绘制带内页边线和装饰角标的纸页，避免参数浮层变成一块空白矩形。
+    public static void renderPage(net.minecraft.client.gui.GuiGraphics graphics, UiRect rect) {
+        PANEL.render(graphics, rect);
+        int left = rect.x() + 6;
+        int top = rect.y() + 6;
+        int right = rect.right() - 6;
+        int bottom = rect.bottom() - 6;
+        graphics.fill(left, top, right, top + 1, 0x40A99370);
+        graphics.fill(left, bottom - 1, right, bottom, 0x40A99370);
+        graphics.fill(left, top, left + 1, bottom, 0x28A99370);
+        graphics.fill(right - 1, top, right, bottom, 0x28A99370);
+        graphics.fill(left + 5, top + 4, left + 8, top + 5, 0x70A99370);
+        graphics.fill(right - 8, bottom - 5, right - 5, bottom - 4, 0x70A99370);
     }
 
     public static void styleLightbox(UiLightbox lightbox) {

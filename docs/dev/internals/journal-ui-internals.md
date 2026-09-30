@@ -203,7 +203,7 @@ document.setContent(List.of(new UiNode.Row(
 - `ScenarioExpandedOverlay`：独立 `ScenarioFrameView` + `UiLightbox`，宿主注入纸面、图标与短标题。初次和适应窗口最大 100%，短树左上对齐；手动仍支持 50/100/200/300%。滚轮缩放、拖动平移、resize 保留手动档位并钳制；关闭不改页内滚动，点击遮罩不关闭。默认通用灯箱的暗色外壳和字符控件保持兼容。
 - `ScenarioRecommendationOverlay`：已解锁子表卡片右上图标或条件页入口打开；普通物品卡片不提供推荐入口。等待/失败/超时有明确状态，可重试。预览列出当前→推荐的场景、工具、幸运、抽样及附魔（包括移除为 0 的项），随后显示完整场景定义。应用只选择合法输入，必须再点击计算；关闭、切表、切输入或目录变更后，旧请求无权覆盖选择。正文可滚动，按钮可键盘操作，网络目标约定见 [网络与同步](../foundation/network.md)。
 
-网格页头部（`ScenarioPanel`）固定两行约 28 像素：短名/状态、参数/计算；使用相同控件与焦点体系，不改变 2×3 物品布局。状态统一取 `ScenarioPresentation.resolve`，**测量只由显式计算发起**；正常点击子表卡片仍是导航，小推荐图标不劫持整个卡片。条件页通过 Tab 进入节点动作，方向键定位动作，PageUp/PageDown 阅读，Enter/Space 激活。
+网格页头部（`ScenarioPanel`）在原有约 28 像素预留区内居中排列一行场景选择与计算按钮，不再提供参数入口或独立状态提示；参数调整由场景 Tab 承担，不改变 2×3 物品布局。状态统一取 `ScenarioPresentation.resolve`，已计算时按钮显示「已计算」并禁用，计算期间同样禁用，状态与失败原因合并到按钮 tooltip；使用相同控件与焦点体系，**测量只由显式计算发起**。正常点击子表卡片仍是导航，小推荐图标不劫持整个卡片。条件页通过 Tab 进入节点动作，方向键定位动作，PageUp/PageDown 阅读，Enter/Space 激活。
 
 **场景专属资源**：`ScenarioUi` 集中纸面、结构色与图标，不改全局主题。`scenario_controls.png` 为 81×9，九个 9×9 槽依次是关闭、展开、缩小、放大、适应、下拉、参数、计算、推荐；`scenario_panel.png` 为 12×12、角宽 3 的轻边框。`scripts/drawer/generate_scenario_ui.py` 可确定性重建；旧 `toolbar_icons.png` UV 不变。
 
@@ -218,3 +218,8 @@ document.setContent(List.of(new UiNode.Row(
 参数仍在每张表内跨场景共用同一套，工具清单由该表签发。`SimulationPreferenceStore` 现在通过 `JournalUiPreferencesStore` 的 `simulationPreferences` NBT 子树读写选择，和 UI 偏好共用按存档、按玩家隔离的 `journal_ui_preferences.dat`。**旧的全局 `config/unsuspiciousblock-simulation.properties` 保留但不再读取或自动导入**，避免把一个存档/玩家的选择带到其它存档/玩家；首次使用新存储时由当前签发清单初始化合法参数。切换连接清空本地加载缓存，断线刷盘仍使用已加载的旧世界路径。
 
 > 该旧存储的 SPI 链（`IClientSimulationPreference` → `FileSimulationPreference` → 两端实现）已无调用点，属待清理的死代码，**不要作为新代码的参考模式**（见 [平台抽象](../foundation/platform-spi.md)）。
+### 场景分支与导航
+
+场景页将主条件、工具/附魔/幸运/随机等次要要求分开显示，并以语义色区分正文、逻辑符号、条件值、警告与不确定信息；条件成立假设下的候选产物可以定位到当前物品网格，但不代表必得。表与 tag 保持聚合，未知条件保留为假设分支。场景页固定展示 10,000 次抽样，网格页只负责场景选择、查看结果和显式计算。
+
+本模组 GUI 的 Backspace 按“文本输入优先 → 浮层关闭 → 导航历史回退 → 无历史时关闭当前界面”处理，不撤销已提交参数或服务端操作。
