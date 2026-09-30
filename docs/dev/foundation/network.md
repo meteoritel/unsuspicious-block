@@ -87,7 +87,7 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `DeleteJournalLogPayload` | `JournalLogHandler::handleDeleteLogs` | 删除单条、批量选择、当前表或全部日志 |
 | `UpdateJournalLogRetentionPayload` | `JournalLogHandler::handleUpdateRetention` | 设置当前表自动上限或仅保留最近 N 条 |
 | `RequestScenarioSimulationPayload` | `ScenarioSimulationHandler::handleRequest` | 请求按需模拟一个输入（携带目录代次、表哈希、场景 key 与参数） |
-| `RequestSimulationAssistPayload` | `SimulationAssistHandler::handle` | 带请求序号的"推荐参数"或"读取当前选择"请求；`target` 为空表示读取玩家当前状态 |
+| `RequestSimulationAssistPayload` | `SimulationAssistHandler::handle` | 请求序号 + `SimulationAssistTarget(kind, value)` + 原输入；目标明确区分 `PLAYER_STATE`、`ITEM`、`CHILD_TABLE`，子表目标必须是当前表的直接子表 |
 | `CatDeterrenceTogglePayload` | `CatNetworkHandler::handleDeterrenceToggle` | 切换威慑开关 |
 | `CatLightStepTogglePayload` | `CatNetworkHandler::handleLightStepToggle` | 切换轻步开关 |
 
@@ -130,7 +130,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("4.7");
+registrar.versioned("4.8");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：
@@ -140,7 +140,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，当前两端入口均为 `4.7`。**任何追加/删除线字段都是协议版本变更**，两个平台客户端与服务端必须同步更新。
+**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，客户端/服务端入口均为 `4.8`。此版辅助请求从单个目标字符串变为枚举种类 + 目标值；Fabric 使用同一 common codec，两个平台的客户端与服务端必须配套更新。**任何追加/删除线字段都是协议版本变更**。
 
 ### 7.1 线格式的两条硬约束
 
@@ -157,6 +157,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 - **被拒绝的请求一定回执**：这些情形都不会产出结果包，没有回执的话"点了没反应"与"还在计算中"在界面上无法区分。回执不携带任何概率，也不进缓存。
 - **结果只回给请求者**，不写共享目录：按内容去重的缓存是全服共享的，但"当前展示哪个输入"是每个玩家自己的选择，写进共享目录会让两个玩家互相覆盖对方的界面。
 - **推荐/读取（assist）与模拟请求分开**：`SimulationAssistHandler` 只在主动请求时执行，用版本校验 + 每玩家 500ms 冷却拒绝过期或过频请求，通过 `notes` 回传 `assist_busy` / `assist_stale`，不产出概率。
+- **推荐先预览后应用**：答复仍绑定原请求序号、目录代次、表哈希及原输入。关闭预览或切表会取消客户端接收资格；15 秒无答复显示超时并允许重试，不能由迟到答复覆盖当前选择。应用只修改输入，模拟仍需显式计算。
 
 ## 8. 同步模式
 

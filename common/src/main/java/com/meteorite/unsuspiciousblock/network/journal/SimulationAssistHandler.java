@@ -16,7 +16,7 @@ public final class SimulationAssistHandler {
 
     public static void handle(ServerPlayer player, RequestSimulationAssistPayload request) {
         var selected = request.selection();
-        boolean recommendation = !request.target().isEmpty();
+        boolean recommendation = request.target().recommendation();
         var generation = ArchaeologyJournalServerCatalog.current();
         var notes = new ArrayList<Component>();
         boolean found = false;
@@ -35,13 +35,19 @@ public final class SimulationAssistHandler {
                     var params = new ScenarioParams(selected.luck(), selected.toolId(),
                             selected.toolEnchantments(), selected.sampleCount());
                     var previous = catalog.resolve(selected.scenarioKey(), params);
-                    if (previous.isPresent()) {
+                    boolean validTarget = switch (request.target().kind()) {
+                        case PLAYER_STATE -> request.target().value().isEmpty();
+                        case ITEM -> !request.target().value().isBlank();
+                        case CHILD_TABLE -> raw.childTables().stream()
+                                .anyMatch(child -> child.toString().equals(request.target().value()));
+                    };
+                    if (previous.isPresent() && validTarget) {
                         var table = ArchaeologyJournalServerCatalog.constraintTable(
                                 generation.session(), raw, player.serverLevel());
                         SimulationInput result = null;
                         if (recommendation) {
                             var witness = RecommendationSolver.solve(table, request.target(),
-                                    catalog, params, player.serverLevel());
+                                    catalog, previous.get(), player.serverLevel());
                             if (witness.isPresent()) result = witness.get().input();
                             else notes.add(note("no_witness"));
                         } else {
@@ -70,4 +76,3 @@ public final class SimulationAssistHandler {
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.simulation." + key);
     }
 }
-

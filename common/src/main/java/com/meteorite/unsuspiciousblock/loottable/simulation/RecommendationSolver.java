@@ -19,29 +19,46 @@ public final class RecommendationSolver {
     private static final int MAX_ATTEMPTS = 2048;
     private RecommendationSolver() {}
 
-    public static Optional<Recommendation> solve(TableDefinition table, String target,
-            SimulationConstraintCatalog catalog, ScenarioParams current, ServerLevel level) {
+    public static Optional<Recommendation> solve(TableDefinition table, SimulationAssistTarget target,
+            SimulationConstraintCatalog catalog, SimulationInput currentInput, ServerLevel level) {
         Budget budget = new Budget();
+        ScenarioParams current = currentInput.params();
+        List<SimulationScenario> scenes = new ArrayList<>(catalog.scenarios());
+        scenes.sort(Comparator.comparing(scene -> !scene.key().equals(currentInput.scenarioKey())));
+        List<ToolOption> tools = new ArrayList<>(catalog.tools());
+        tools.sort(Comparator.comparing(tool -> !tool.id().equals(current.toolId())));
+        List<ResourceLocation> ids = catalog.enchantmentMaxLevels().keySet().stream()
+                .sorted(Comparator.comparing(ResourceLocation::toString)).toList();
+        List<CandidatePath> candidates = new ArrayList<>();
         for (ItemDefinition item : table.items()) {
-            if (!item.signature().toStoredKey().equals(target)) continue;
+            if (target.kind() == SimulationAssistTarget.Kind.ITEM
+                    && !item.signature().toStoredKey().equals(target.value())) continue;
             for (int pathIndex = 0; pathIndex < item.acquisitionPaths().size(); pathIndex++) {
+                if (budget.exhausted()) return Optional.empty();
                 LootAcquisitionPath path = item.acquisitionPaths().get(pathIndex);
+                if (target.kind() == SimulationAssistTarget.Kind.CHILD_TABLE
+                        && (path.sourceChildTable() == null
+                        || !path.sourceChildTable().toString().equals(target.value()))) continue;
                 Float luck = jointLuck(path, current.luck(), budget);
                 if (luck == null) continue;
-                for (SimulationScenario scene : catalog.scenarios()) {
-                    for (ToolOption tool : catalog.tools()) {
-                        List<ResourceLocation> ids = catalog.enchantmentMaxLevels().keySet().stream()
-                                .sorted(Comparator.comparing(ResourceLocation::toString)).toList();
-                        SimulationInput found = searchLevels(catalog, scene, path, ids, 0,
-                                new LinkedHashMap<>(), luck, tool.id(), current.sampleCount(), level, budget);
-                        if (found != null) return Optional.of(new Recommendation(found, pathIndex));
-                        if (budget.exhausted()) return Optional.empty();
-                    }
+                candidates.add(new CandidatePath(path, pathIndex, luck));
+            }
+        }
+        for (SimulationScenario scene : scenes) {
+            for (ToolOption tool : tools) {
+                for (CandidatePath candidate : candidates) {
+                    SimulationInput found = searchLevels(catalog, scene, candidate.path(), ids, 0,
+                            new LinkedHashMap<>(), candidate.luck(), tool.id(), current.sampleCount(), level, budget);
+                    if (found != null) return Optional.of(new Recommendation(found, candidate.index()));
+                    if (budget.exhausted()) return Optional.empty();
                 }
             }
         }
         return Optional.empty();
     }
+
+    /** 保留路径的原序号和联合幸运见证，优先搜索当前环境而非第一个物品的环境。 */
+    private record CandidatePath(LootAcquisitionPath path, int index, float luck) {}
 
     // 用路径上每层的真实权重/抽取公式回验同一个幸运值；未知 provider 不作证明。
     private static Float jointLuck(LootAcquisitionPath path, float current, Budget budget) {
