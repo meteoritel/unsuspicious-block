@@ -119,6 +119,10 @@ public class JournalLogNoteEditScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE && !this.editBox.isFocused() && parent != null) {
+            Objects.requireNonNull(this.minecraft).setScreen(parent);
+            return true;
+        }
         // ESC 返回父界面（与原版 Screen 行为一致）
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
             Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")

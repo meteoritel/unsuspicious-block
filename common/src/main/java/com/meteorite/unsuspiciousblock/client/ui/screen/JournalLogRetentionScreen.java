@@ -138,6 +138,10 @@ public final class JournalLogRetentionScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE
+                && !retentionLimitBox.isFocused() && !keepRecentBox.isFocused()) {
+            closeToParent(); return true;
+        }
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
             closeToParent();
             return true;

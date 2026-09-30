@@ -125,6 +125,10 @@ public class JournalViewModel {
     public void setLogSortDescending(boolean descending) { this.logSortDescending = descending; }
     public void setCurrentGroupMode(LogGrouper.GroupMode mode) { this.currentGroupMode = mode; }
     public List<ArchaeologyJournalEntry> tableViews() { return this.tableViews; }
+    public boolean isNavigationTargetValid(ResourceLocation table) {
+        var entry = allViews.get(table);
+        return entry != null && entry.unlocked();
+    }
     public List<CatalogPanel.CategoryEntryData> categoryViews() { return this.categoryViews; }
     public int selectedIndex() { return this.selectedIndex; }
     public void setSelectedIndex(int index) {

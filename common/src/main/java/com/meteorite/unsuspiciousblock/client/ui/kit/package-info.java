@@ -17,6 +17,7 @@
  *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiLinearLayout}</li>
  *   <li>焦点：{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusTarget}、
  *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusManager}</li>
+ *   <li>导航：{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiNavigationHistory}（泛型快照、有界历史与有效性过滤）</li>
  *   <li>灯箱：{@link com.meteorite.unsuspiciousblock.client.ui.kit.UiLightbox}（含 Content / Gallery / Labels）、
  *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.UiImageView}、
  *       {@link com.meteorite.unsuspiciousblock.client.ui.kit.LightboxImage}</li>

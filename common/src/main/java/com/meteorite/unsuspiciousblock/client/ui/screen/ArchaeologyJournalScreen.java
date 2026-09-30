@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
@@ -100,6 +101,65 @@ public class ArchaeologyJournalScreen extends Screen {
     // 自绘浮层焦点同步：记录上次观察到的开关状态与打开前搜索框是否持焦点
     private boolean overlayOpenLastSync;
     private boolean searchFocusBeforeOverlay;
+    private final com.meteorite.unsuspiciousblock.client.ui.kit.UiNavigationHistory<NavigationState> history =
+            new com.meteorite.unsuspiciousblock.client.ui.kit.UiNavigationHistory<>(64);
+    private IconButton backButton;
+    /** 只恢复阅读状态与场景选择，不回滚参数提交或服务端操作。 */
+    private record NavigationState(@Nullable ResourceLocation table, String scene, UiStateSnapshot view,
+                                   boolean home, @Nullable ResourceLocation category, java.util.Set<ResourceLocation> expanded) {}
+
+    private NavigationState navigationState() {
+        ResourceLocation table = viewModel.selectedTableId();
+        var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
+        return rightPage == null ? null : new NavigationState(table, selection == null ? "" : selection.scene(),
+                captureUiState(), viewModel.isCategoryHomeMode(), viewModel.selectedCategory(), viewModel.expandedRoots());
+    }
+
+    private void rememberNavigation(NavigationState before) {
+        NavigationState after = navigationState();
+        if (before == null || after == null) return;
+        if (!Objects.equals(before.table(), after.table()) || before.home() != after.home()
+                || !Objects.equals(before.category(), after.category()) || !before.scene().equals(after.scene())
+                || before.view().tab() != after.view().tab() || before.view().logDetail() != after.view().logDetail()
+                || !Objects.equals(before.view().logEntryId(), after.view().logEntryId())
+                || !Objects.equals(before.view().activeItemTag(), after.view().activeItemTag())) history.push(before);
+        if (backButton != null) backButton.active = history.canGoBack(this::validNavigation);
+    }
+
+    private boolean validNavigation(NavigationState state) {
+        return state.home() || state.table() == null && viewModel.categoryViews().stream().anyMatch(category -> category.id().equals(state.category()))
+                || state.table() != null && ScenarioSimulationClientState.table(state.table()) != null
+                && viewModel.isNavigationTargetValid(state.table());
+    }
+
+    private void goBack() {
+        history.back(this::validNavigation, state -> {
+            var snapshot = state.view();
+            catalogToolbar.setCurrentSearch(snapshot.catalogSearch());
+            catalogToolbar.setSearchExpanded(snapshot.catalogSearchExpanded());
+            catalogToolbar.setHideLocked(snapshot.catalogHideLocked());
+            catalogToolbar.setCurrentSortOrder(snapshot.catalogSortOrder());
+            catalogToolbar.setSortDescending(snapshot.catalogSortDescending());
+            viewModel.restoreDirectoryState(state.home(), state.category(), state.expanded());
+            rebuildViewModels();
+            if (state.table() != null) setSelectedTable(state.table());
+            var choice = ScenarioSimulationClientState.selection(state.table());
+            if (choice != null && !state.scene().isEmpty())
+                ScenarioSimulationClientState.select(state.table(), state.scene(), choice.params());
+            rightPage.setActiveTab(snapshot.tab());
+            rightPage.setActiveItemTag(snapshot.activeItemTag());
+            rightPage.restoreLogSelection(snapshot.logEntryId(), snapshot.logDetail());
+            logToolbar.setSortDescending(snapshot.logSortDescending());
+            logToolbar.setGroupMode(snapshot.groupMode());
+            rightPage.getLogPanel().setSortDescending(snapshot.logSortDescending());
+            rightPage.getLogPanel().setGroupMode(snapshot.groupMode());
+            rightPage.getLogPanel().restoreBatchSelection(snapshot.logBatchSelectionMode(), snapshot.selectedLogEntryIds());
+            rightPage.loadPages(snapshot.rightPagePages());
+            panels.loadUiState(snapshot.panelStates());
+            catalogPanel.setScrollOffset(snapshot.catalogScrollOffset());
+            syncButtonState();
+        });
+    }
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
@@ -201,6 +261,12 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        NavigationState before = navigationState();
+        try { return dispatchKey(keyCode, scanCode, modifiers); }
+        finally { if (keyCode != GLFW.GLFW_KEY_BACKSPACE) rememberNavigation(before); }
+    }
+
+    private boolean dispatchKey(int keyCode, int scanCode, int modifiers) {
         syncOverlayFocus();
         if (keyCode == GLFW.GLFW_KEY_F8 && hasControlDown() && UiKitDebugScreen.enabled()) {
             Objects.requireNonNull(this.minecraft).setScreen(new UiKitDebugScreen(this));
@@ -208,6 +274,10 @@ public class ArchaeologyJournalScreen extends Screen {
         }
         // 浮层优先：ESC 该关浮层而不是整本书
         if (this.overlays.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !catalogToolbar.isSearchFocused()) {
+            goBack();
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
@@ -477,6 +547,7 @@ public class ArchaeologyJournalScreen extends Screen {
         // 浮层是模态的：打开期间下层一律不出提示，避免浮层之下透出物品或条目的 tooltip
         if (this.overlays.isOpen()) return;
         this.catalogToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
+        if (backButton != null) backButton.renderTooltip(guiGraphics, mouseX, mouseY);
         if (isLogToolbarVisible()) {
             this.logToolbar.renderTooltips(guiGraphics, mouseX, mouseY);
         }
@@ -528,6 +599,13 @@ public class ArchaeologyJournalScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        NavigationState before = navigationState();
+        try { return dispatchClick(mouseX, mouseY, button); }
+        finally { if (!backWasClicked) rememberNavigation(before); backWasClicked = false; }
+    }
+
+    private boolean backWasClicked;
+    private boolean dispatchClick(double mouseX, double mouseY, int button) {
         mouseX = this.viewport.toLogicalX(mouseX);
         mouseY = this.viewport.toLogicalY(mouseY);
         // 浮层开关先同步一次，再作废上一轮未兑现的焦点请求，避免迟到请求夺走本次点击的焦点
@@ -749,6 +827,13 @@ public class ArchaeologyJournalScreen extends Screen {
                 () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
         ));
         int helpY = managementY + JournalLayout.SIDE_TAB_HEIGHT + JournalLayout.SIDE_TAB_GAP;
+        this.backButton = this.addRenderableWidget(new IconButton(
+                this.bookLayout.rightPageX() + 2, this.bookLayout.rightPageBottom() - 14, 14, '←',
+                List.of(Component.translatable("screen.unsuspiciousblock.navigation.back")), () -> {
+                    backWasClicked = true;
+                    goBack();
+                }));
+        this.backButton.setMessage(Component.translatable("screen.unsuspiciousblock.navigation.back"));
         this.helpButton = this.addRenderableWidget(new BookSideTabButton(
                 sideTabX, helpY,
                 JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
@@ -932,6 +1017,7 @@ public class ArchaeologyJournalScreen extends Screen {
     }
 
     private void syncButtonState() {
+        if (backButton != null) backButton.active = history.canGoBack(this::validNavigation);
         int pageButtonY = this.rightPage.pageIndicatorY() + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
         if (this.itemPrevButton != null) this.itemPrevButton.setY(pageButtonY);
         if (this.itemNextButton != null) this.itemNextButton.setY(pageButtonY);

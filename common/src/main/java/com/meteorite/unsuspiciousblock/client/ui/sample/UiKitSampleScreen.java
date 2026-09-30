@@ -310,6 +310,7 @@ public final class UiKitSampleScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // 灯箱打开时 ESC / 方向键 / Tab 都由它处理：ESC 关灯箱而不是关本页。
         if (overlays.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (keyCode == GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
         if (focus.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             onClose();

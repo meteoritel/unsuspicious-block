@@ -367,6 +367,15 @@ public final class LootTableManagementScreen extends Screen {
     }
 
     @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE
+                && !(getFocused() instanceof EditBox) && !(getFocused() instanceof net.minecraft.client.gui.components.MultiLineEditBox)) {
+            onClose(); return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public void onClose() {
         Minecraft.getInstance().setScreen(this.parent);
     }
@@ -894,6 +903,11 @@ public final class LootTableManagementScreen extends Screen {
         private void confirm() {
             this.parent.selectLanguage(this.selectedLanguageCode);
             Minecraft.getInstance().setScreen(this.parent);
+        }
+
+        @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
+            return super.keyPressed(keyCode, scanCode, modifiers);
         }
 
         // 语言列表的视口随窗口尺寸变化：几何统一交给共用几何组件

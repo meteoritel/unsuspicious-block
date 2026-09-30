@@ -706,6 +706,9 @@ public final class UiKitDebugScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // ESC 由灯箱消费（关灯箱而不是关整个调试页）；其余按键也被模态吞掉。
         if (lightboxLayer.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (keyCode == GLFW.GLFW_KEY_BACKSPACE && (demoEditBox == null || !demoEditBox.isFocused())) {
+            onClose(); return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_P) {
             outerScale = outerScale == 1 ? 2 : 1;
             init();

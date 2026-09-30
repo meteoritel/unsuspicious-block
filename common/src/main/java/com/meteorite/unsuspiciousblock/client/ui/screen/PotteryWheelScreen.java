@@ -51,6 +51,14 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         this.inventoryLabelY = 72;
     }
 
+    @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
+            onClose();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
     @Override
     protected void init() {
         super.init();
