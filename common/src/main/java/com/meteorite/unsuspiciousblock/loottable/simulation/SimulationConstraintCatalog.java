@@ -180,7 +180,6 @@ public record SimulationConstraintCatalog(
         if (!this.enchantmentMaxLevels.isEmpty()) {
             kinds.add(ParameterKind.ENCHANT_LEVEL);
         }
-        kinds.add(ParameterKind.SAMPLE_COUNT);
         return List.copyOf(kinds);
     }
 

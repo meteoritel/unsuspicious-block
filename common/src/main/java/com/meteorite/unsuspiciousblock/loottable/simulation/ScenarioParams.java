@@ -22,7 +22,7 @@ import java.util.TreeMap;
 /**
  * {@link SimulationInput} 的参数旋钮部分——玩家真实能选、且直接改变掉落结果的那几个值。
  * <p>
- * 白名单经第四轮收窄为四项（决策 49）：幸运、工具基座、工具附魔等级、抽样次数。
+ * 玩家可编辑幸运、工具基座和工具附魔等级；抽样次数全流程固定为 10,000。
  * **不做爆炸与击杀/抢夺**——它们分别只服务于方块破坏表与实体掉落表，而两类都不在追踪范围内
  * （见规划 §2.3）。同样的理由使 {@code enchanted_count_increase} /
  * {@code random_chance_with_enchanted_bonus} 的附魔不参与等级旋钮：它们读的是
@@ -46,10 +46,9 @@ import java.util.TreeMap;
 public record ScenarioParams(float luck, ResourceLocation toolId,
                              Map<ResourceLocation, Integer> toolEnchantments, int sampleCount) {
     /**
-     * 可行的抽样次数档位（决策 39）——同时也是**硬上限 10 万**的执行处：档位是白名单，
-     * 越界值在构造点被拒绝，因此不存在"自由输入把服务端压垮"的路径。档位本身是可调实现参数。
+     * 唯一签发的抽样次数：旧档位和客户端自造次数在构造点直接拒绝，不做迁移。
      */
-    public static final List<Integer> SAMPLE_COUNT_TIERS = List.of(10_000, 50_000, 100_000);
+    public static final List<Integer> SAMPLE_COUNT_TIERS = List.of(10_000);
     /** 基准档位：启动时每表只跑这一个（决策 17）。 */
     public static final int DEFAULT_SAMPLE_COUNT = 10_000;
     /** 附魔等级的数值边界；vanilla 组件 codec 与构造器都用 0..255（见规划 §3.2）。 */
