@@ -19,12 +19,15 @@ import java.util.List;
 
 /** 页内条件树使用自然字号纵向阅读；复杂条件仍可从页面入口打开灯箱。 */
 final class ScenarioConditionView implements UiFocusTarget {
+    private static final int SECTION_BACKGROUND = 0x40B99A60;
+    private static final int ENTRY_BACKGROUND = 0x18B99A60;
     private List<UiNode> content = List.of();
     private final UiScrollView scroll = new UiScrollView();
     private final UiDocument document;
     private final Font font;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
     private final List<ActionRow> actions = new ArrayList<>();
+    private final List<HeadingRow> headings = new ArrayList<>();
     private boolean focused;
     private int actionIndex;
 
@@ -38,7 +41,7 @@ final class ScenarioConditionView implements UiFocusTarget {
         UiRect next = new UiRect(x, y, width, height);
         if (bounds.equals(next)) return;
         bounds = next;
-        scroll.setViewport(x + 4, y + 4, Math.max(1, width - 8), Math.max(1, height - 8));
+        scroll.setViewport(x + 6, y + 6, Math.max(1, width - 12), Math.max(1, height - 12));
         layoutDocument();
     }
 
@@ -56,6 +59,7 @@ final class ScenarioConditionView implements UiFocusTarget {
         List<UiNode> wrapped = ScenarioConditionLayout.wrap(content, font, width);
         document.setContent(wrapped);
         actions.clear();
+        headings.clear();
         int top = 0;
         for (UiNode node : wrapped) {
             if (node instanceof UiNode.Row row) {
@@ -64,6 +68,9 @@ final class ScenarioConditionView implements UiFocusTarget {
                 for (var icon : row.icons()) rowHeight = Math.max(rowHeight, icon.icon().height());
                 rowHeight += 4;
                 if (row.action() != null) actions.add(new ActionRow(row, new UiRect(0, top, width, rowHeight)));
+                if (row.payload() instanceof ScenarioPageBuilder.Heading kind) {
+                    headings.add(new HeadingRow(new UiRect(0, top, width, rowHeight), kind));
+                }
                 top += rowHeight;
             } else if (node instanceof UiNode.Gap(var height)) top += height;
             else if (node instanceof UiNode.Divider) top++;
@@ -83,6 +90,23 @@ final class ScenarioConditionView implements UiFocusTarget {
         int contentY = hovered ? (int) scroll.toContentY(mouseY) : -1000;
         scroll.push(graphics);
         try {
+            for (HeadingRow heading : headings) {
+                UiRect rect = heading.rect();
+                if (rect.bottom() <= scroll.offset() || rect.y() >= scroll.offset() + scroll.viewport().height()) continue;
+                boolean section = heading.kind() == ScenarioPageBuilder.Heading.SECTION;
+                graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(),
+                        section ? SECTION_BACKGROUND : ENTRY_BACKGROUND);
+                if (section) graphics.fill(rect.x(), rect.y(), rect.x() + 2, rect.bottom(), ScenarioUi.BRANCH);
+            }
+            if (hovered) {
+                for (ActionRow action : actions) {
+                    UiRect rect = action.rect();
+                    if (rect.contains(contentX, contentY)) {
+                        graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), ScenarioUi.QUIET.hoverBackground());
+                        break;
+                    }
+                }
+            }
             if (focused && !actions.isEmpty()) {
                 UiRect selected = actions.get(actionIndex).rect();
                 graphics.fill(selected.x(), selected.y(), selected.right(), selected.bottom(), ScenarioUi.QUIET.selectedBackground());
@@ -159,9 +183,14 @@ final class ScenarioConditionView implements UiFocusTarget {
     }
     @Override public UiRect bounds() { return bounds; }
     @Override public Component accessibleName() {
-        return actions.isEmpty() ? Component.empty() : actions.get(actionIndex).row().text();
+        return actions.isEmpty()
+                ? com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("conditions.heading")
+                : actions.get(actionIndex).row().text();
     }
 
     /** 可执行节点在折行后内容坐标内的位置。 */
     private record ActionRow(UiNode.Row row, UiRect rect) {}
+
+    /** 分组标题的底纹边界，在内容变化或宽度变化时统一重建。 */
+    private record HeadingRow(UiRect rect, ScenarioPageBuilder.Heading kind) {}
 }

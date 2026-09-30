@@ -52,7 +52,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 | `client/ui/screen/ArchaeologyJournalScreen` / `JournalViewModel` | 主屏幕：组合书本背景与各面板；视图状态：分类切换、展开路径、右页标签页 |
 | `client/ui/kit/UiDocument` | 声明式 UI 的测量/排版/裁剪/命中/绘制中心 |
 | `client/ui/overlay/OverlayLayer` | 模态层（同时只开一个），统一输入分发与层高契约 |
-| `client/ui/panel/ScenarioDetailPanel` / `ScenarioConditionLayout` | 短场景名、独立参数读数、结果/条件分区；局部折行并保留逻辑树 |
+| `client/ui/panel/ScenarioDetailPanel` / `ScenarioConditionLayout` | 短场景名、只读工具图标与参数读数、分组条件树；局部折行并保留逻辑树 |
 | `client/ui/overlay/ScenarioRecommendationOverlay` | 物品/子表入口推荐的变更预览，应用参数后仍需显式计算 |
 | `client/ui/support/UiPanelRegistry` / `UiStateful` / `LayoutAware` | 面板的布局/状态恢复注册表与接口 |
 | `client/ui/support/JournalUiPreferencesStore` | UI 偏好与面板状态持久化（按存档、按玩家隔离） |
@@ -92,7 +92,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 `client/ui/` 按职责分层（`entry/` `layout/` `panel/` `screen/` `support/` `toast/` `widget/` `tooltip/` `overlay/` `sample/`）。**分层职责、追踪管理页、网格页展示优先级链、文本配色约束、声明式 UI kit 契约、场景详情页与模态交互、面板状态与偏好持久化见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。**
 
-场景详情页以结果为默认视图，固定概率列；条件树在独立滚动视图中阅读，复杂内容可进入灯箱。居中场景列表用双行展示短名称、状态与条件摘要；确认参数后仍需显式点击「计算」。当前迁移按 [考古笔记 GUI 翻新计划](../../plan/journal-gui-refresh-plan.md) 分阶段进行，机制细节以内部文档为准。
+场景详情页只展示条件树，按场景假设与子表入口分组，在独立滚动视图中阅读，复杂内容可进入灯箱；物品和概率统一由网格页展示。未发现物品只显示占位状态，tooltip 不泄露概率或路径，普通物品卡片不提供点击跳转。居中场景列表用双行展示短名称、状态与条件摘要；确认参数后仍需显式点击「计算」。当前迁移按 [考古笔记 GUI 翻新计划](../../plan/journal-gui-refresh-plan.md) 分阶段进行，机制细节以内部文档为准。
 
 新增面板的标准路径：在 `panel/` 实现 → 由对应 `screen/` 组合 → 实现 `LayoutAware` / `UiStateful` 并在创建处向 `UiPanelRegistry` 注册一次。面板内优先复用 `client/ui/kit/` 的声明式组件而不是手算坐标：静态内容走 `UiDocument` 块序列，滚动区走 `UiScrollView`，成组的可点击控件走 `UiControlGroup`，控件与原生输入框的落位走 `UiLinearLayout`；控件结构色取 `UiControlStyle`，文本色取 `UiTextPalette`。需要键盘导航的面板把可聚焦目标按**视觉顺序**登记进 `UiFocusManager`（原生输入框用宿主侧 `UiFocusTarget` 适配器夹在中间），打开模态时用 `OverlayLayer.open(overlay, opener)` 传入打开它的目标以交接焦点；图片 / 内容查看器走 `UiLightbox` + `LightboxOverlay`（自绘内容实现 `UiLightbox.Content`，图片用 `LightboxImage` + `UiImageView`），外壳不直接依赖 `OverlayLayer`。战利品表管理页的协议组包与文件导入校验已抽到 `screen/LootTableManagementActions` / `LootTableImportValidator`，列表几何与截断走共用实现。接入步骤与公开入口清单见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)，机制口径见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。
 

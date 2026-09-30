@@ -552,13 +552,6 @@ public final class ItemGridPanel implements PagePanel {
         return hoveredItem;
     }
 
-    // 未发现物品不显示身份，但仍可按其服务端签名查找路径见证。
-    @Nullable
-    public String recommendationTarget(double mouseX, double mouseY) {
-        GridItem item = hoveredItem(mouseX, mouseY);
-        return item == null || item.acquisitionPaths().isEmpty() ? null : item.signature().toStoredKey();
-    }
-
     @Nullable
     public ResourceLocation childRecommendationTarget(double mouseX, double mouseY) {
         if (activeTag != null) return null;
@@ -583,10 +576,8 @@ public final class ItemGridPanel implements PagePanel {
             return null;
         }
         if (!hoveredItem.unlocked()) {
-            return new TooltipData(ItemStack.EMPTY, null, -1, hoveredItem.probability(),
-                    hoveredItem.acquisitionPaths(), hoveredItem.injected(),
-                    hoveredItem.uncertaintyLevel(), false, hoveredItem.scenarioProbabilities(),
-                    hoveredItem.declaredChances(), hoveredItem.simulationCount());
+            return new TooltipData(ItemStack.EMPTY, null, -1, null, List.of(), false,
+                    LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0);
         }
         return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
                 hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
@@ -821,7 +812,7 @@ public final class ItemGridPanel implements PagePanel {
      * <p>
      * count 为 -1 表示无获取统计（如日志详情页），不追加 "Acquired" 行；
      * probability 为 null 时不追加 "Drop Chance" 行。
-     * discovered=false 时不携带真实物品身份，仅展示未发现状态与获取条件。
+     * discovered=false 时只展示未发现状态，不携带物品身份、概率或获取路径。
      */
     public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable Probability probability,
                                List<LootAcquisitionPath> acquisitionPaths,

@@ -248,16 +248,6 @@ public final class RightPageContainer {
             if (changed) {
                 syncPageIndicator();
             }
-            if (!changed && button == 0 && this.currentTableId != null) {
-                String target = gridPanel.recommendationTarget(mouseX, mouseY);
-                if (target != null) {
-                    setActiveTab(Tab.SCENARIO);
-                    com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(
-                            overlays, currentTableId,
-                            com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.item(target));
-                    return true;
-                }
-            }
             return changed;
         }
         if (this.activeTab != Tab.LOG) {
@@ -445,10 +435,6 @@ public final class RightPageContainer {
         if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
             ItemStack stack = this.logDetailPanel.getTooltipStack(mouseX, mouseY);
             return stack != null ? new ItemGridPanel.TooltipData(stack, null) : null;
-        }
-        if (this.activeTab == Tab.SCENARIO) {
-            ItemStack stack = this.scenarioDetailPanel.hoveredItem(mouseX, mouseY);
-            return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
         }
         return null;
     }

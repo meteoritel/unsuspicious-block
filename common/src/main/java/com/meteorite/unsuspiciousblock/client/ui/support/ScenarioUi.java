@@ -17,6 +17,8 @@ public final class ScenarioUi {
     public static final UiNineSlice PANEL = new UiNineSlice(ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/gui/scenario_panel.png"), 12, 3);
     public static final int BRANCH = 0xFFA99370;
+    public static final UiControlStyle READOUT = new UiControlStyle(
+            0, 0, 0, 0, 0, 0, 0, 0);
     public static final UiControlStyle QUIET = new UiControlStyle(
             0x00000000, 0x35A3875B, 0x55A3875B, 0x50B29150, 0x00000000,
             0xFF3A6EA5, 0xFFDCD0B4, 0xFF8A7350);

@@ -28,10 +28,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-/** 场景详情页：结果优先，条件独立阅读；同一输入驱动标题、状态、结果与提示。 */
+/** 场景详情页：紧凑参数栏与条件树；物品及其概率统一在物品网格阅读。 */
 public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStateful {
-    private enum Section { RESULTS, CONDITIONS }
-
     private static final int MAX_SAVED_POSITIONS = 512;
     private final OverlayLayer overlays;
     private final UiFocusManager focus = new UiFocusManager();
@@ -42,20 +40,16 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private final UiControl samples = new UiControl();
     private final UiControl paramsButton = new UiControl();
     private final UiControl calculateButton = new UiControl();
-    private final UiControl resultsTab = new UiControl();
-    private final UiControl conditionsTab = new UiControl();
+    private final UiControl conditionsHeading = new UiControl();
     private final UiControl expandButton = new UiControl();
     private final List<UiControl> controls = List.of(title, status, summary, luck, samples, paramsButton,
-            calculateButton, resultsTab, conditionsTab, expandButton);
-    private final Map<String, Integer> resultPositions = new LinkedHashMap<>();
+            calculateButton, conditionsHeading, expandButton);
     private final Map<String, Integer> conditionPositions = new LinkedHashMap<>();
     private BookLayout layout;
     @Nullable private ResourceLocation table;
     @Nullable private Font measuredFont;
-    @Nullable private ScenarioResultView results;
     @Nullable private ScenarioConditionView conditions;
     @Nullable private String viewKey;
-    private Section section = Section.RESULTS;
     private long revision = Long.MIN_VALUE;
     private String input = "";
     private String requestStatus = "";
@@ -80,7 +74,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         saveCurrentPosition();
         table = value;
         viewKey = null;
-        section = Section.RESULTS;
         revision = Long.MIN_VALUE;
         focus.clearFocus();
         showOther = false;
@@ -89,8 +82,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
         sync(font);
         for (UiControl control : controls) control.render(graphics, font, mouseX, mouseY);
-        if (section == Section.RESULTS && results != null) results.render(graphics, mouseX, mouseY);
-        if (section == Section.CONDITIONS && conditions != null) conditions.render(graphics, mouseX, mouseY);
+        if (conditions != null) conditions.render(graphics, mouseX, mouseY);
     }
 
     @Nullable private UiTarget hit(double x, double y) {
@@ -107,14 +99,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             if (!target.tooltip().isEmpty()) graphics.renderComponentTooltip(font, target.tooltip(), x, y);
             return;
         }
-        if (section == Section.RESULTS && results != null) results.renderTooltip(graphics, x, y);
-        if (section == Section.CONDITIONS && conditions != null) conditions.renderTooltip(graphics, x, y);
-    }
-
-    public ItemStack hoveredItem(double x, double y) {
-        if (section != Section.RESULTS || results == null) return ItemStack.EMPTY;
-        sync(Minecraft.getInstance().font);
-        return results.hoveredItem(x, y);
+        if (conditions != null) conditions.renderTooltip(graphics, x, y);
     }
 
     public boolean mouseClicked(double x, double y, int button) {
@@ -126,29 +111,26 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             if (target.action() != null) target.action().run();
             return true;
         }
-        if (section == Section.RESULTS && results != null) return results.mouseClicked(x, y, button);
-        return section == Section.CONDITIONS && conditions != null && conditions.mouseClicked(x, y, button);
+        focus.clearFocus();
+        return conditions != null && conditions.mouseClicked(x, y, button);
     }
 
     public boolean mouseDragged(double y, int button) {
         if (button != 0) return false;
-        if (section == Section.RESULTS && results != null) return results.mouseDragged(y);
-        return section == Section.CONDITIONS && conditions != null && conditions.mouseDragged(y);
+        return conditions != null && conditions.mouseDragged(y);
     }
 
     public boolean mouseReleased(int button) {
-        if (section == Section.RESULTS && results != null) return results.mouseReleased(button);
-        return section == Section.CONDITIONS && conditions != null && conditions.mouseReleased();
+        return button == 0 && conditions != null && conditions.mouseReleased();
     }
 
     public boolean mouseScrolled(double x, double y, double amount) {
-        if (section == Section.RESULTS && results != null) return results.mouseScrolled(x, y, amount);
-        return section == Section.CONDITIONS && conditions != null && conditions.mouseScrolled(x, y, amount);
+        return conditions != null && conditions.mouseScrolled(x, y, amount);
     }
 
     public boolean keyPressed(int key, int scan, int modifiers) {
         sync(Minecraft.getInstance().font);
-        if (section == Section.CONDITIONS && conditions != null && conditions.keyPressed(key)) return true;
+        if (conditions != null && conditions.keyPressed(key)) return true;
         return focus.keyPressed(key, scan, modifiers);
     }
 
@@ -189,10 +171,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     @Override public void changePage(int delta) { setPage(getPage() + delta); }
 
     private void sync(Font font) {
-        if (results == null || conditions == null || measuredFont != font) {
+        if (conditions == null || measuredFont != font) {
             saveCurrentPosition();
             measuredFont = font;
-            results = new ScenarioResultView(font);
             conditions = new ScenarioConditionView(font);
             viewKey = null;
             revision = Long.MIN_VALUE;
@@ -202,17 +183,17 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         int width = layout.rightPageWidth() - 8;
         title.setBounds(x, y + 3, width - 66, 14);
         status.setBounds(x + width - 64, y + 3, 64, 14);
-        summary.setBounds(x, y + 17, width - 18, 16);
-        paramsButton.setBounds(x + width - 16, y + 17, 16, 16);
-        luck.setBounds(x, y + 33, width / 2, 11);
-        samples.setBounds(x + width / 2, y + 33, width - width / 2, 11);
-        calculateButton.setBounds(x, y + 45, width, 14);
-        resultsTab.setBounds(x, y + 61, 62, 14);
-        conditionsTab.setBounds(x + 64, y + 61, 62, 14);
-        expandButton.setBounds(x + 128, y + 61, width - 128, 14);
-        int contentHeight = Math.max(1, layout.rightPageBottom() - 24 - (y + 77));
-        results.setBounds(x, y + 77, width, contentHeight);
-        conditions.setBounds(x, y + 77, width, contentHeight);
+        summary.setBounds(x, y + 19, 20, 16);
+        paramsButton.setBounds(x + width - 16, y + 19, 16, 16);
+        int readoutWidth = Math.max(0, width - 42);
+        int luckWidth = readoutWidth * 2 / 5;
+        luck.setBounds(x + 22, y + 19, luckWidth, 16);
+        samples.setBounds(x + 22 + luckWidth, y + 19, readoutWidth - luckWidth, 16);
+        calculateButton.setBounds(x, y + 37, width, 14);
+        conditionsHeading.setBounds(x, y + 53, width - 20, 12);
+        expandButton.setBounds(x + width - 18, y + 52, 18, 14);
+        int contentHeight = Math.max(1, layout.rightPageBottom() - 24 - (y + 67));
+        conditions.setBounds(x, y + 67, width, contentHeight);
 
         var choice = selection();
         CatalogTableDto structure = structure();
@@ -236,7 +217,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             configureAvailable(font, structure, choice, nextStatus);
         }
         if (viewKey != null) {
-            results.setOffset(resultPositions.getOrDefault(viewKey, 0));
             conditions.setOffset(conditionPositions.getOrDefault(viewKey, 0));
         }
         rebuildFocus();
@@ -244,11 +224,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
 
     private void configureUnavailable(Font font) {
         ScenarioConditionView conditionView = Objects.requireNonNull(conditions);
-        ScenarioResultView resultView = Objects.requireNonNull(results);
         conditionTree = List.of(new UiNode.Row(ScenarioSimulationClientState.text("unavailable"),
                 UiTextPalette.Parchment.LABEL));
         conditionView.setContent(conditionTree);
-        resultView.setContent(List.of(), "uncomputed", null);
         for (UiControl control : controls) {
             control.configure(font, Component.empty(), UiTextPalette.Parchment.BODY, null, List.of(), null);
             control.setVisible(false);
@@ -262,7 +240,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private void configureAvailable(Font font, CatalogTableDto structure,
                                     SimulationPreferenceStore.Selection choice, String rawStatus) {
         ScenarioConditionView conditionView = Objects.requireNonNull(conditions);
-        ScenarioResultView resultView = Objects.requireNonNull(results);
         var options = Objects.requireNonNull(structure.options());
         for (UiControl control : controls) {
             control.setVisible(true);
@@ -273,14 +250,13 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         UiAction openParams = () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.scene(),
                 options, choice.params()), paramsButton);
         conditionTree = ScenarioPageBuilder.buildConditions(structure, choice.scene(), showOther,
-                () -> { showOther = !showOther; revision = Long.MIN_VALUE; }, openParams,
+                () -> { showOther = !showOther; revision = Long.MIN_VALUE; },
                 child -> ScenarioRecommendationOverlay.open(overlays, currentTable,
                         SimulationAssistTarget.childTable(child)));
         conditionView.setContent(conditionTree);
         Component failure = "failed".equals(presentation.status())
                 ? ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(currentTable, input))
                 : null;
-        resultView.setContent(ScenarioPageBuilder.outcomes(choice.scene(), presentation), presentation.status(), failure);
 
         Component sceneLabel = ScenarioLabel.shortLabel(choice.scene());
         fullSceneLabel = sceneLabel;
@@ -310,11 +286,12 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         choice.params().toolEnchantments().forEach((id, level) -> paramsTooltip.add(
                 ScenarioSimulationClientState.text("params.enchant_level",
                         ScenarioParamsOverlay.enchantmentName(id), level)));
-        summary.configure(font, toolName, UiTextPalette.Parchment.NAME,
+        summary.setStyle(ScenarioUi.READOUT);
+        summary.configure(font, Component.empty(), UiTextPalette.Parchment.NAME,
                 new UiIcon.Item(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(choice.params().toolId()))),
-                paramsTooltip, openParams);
-        configureValue(font, luck, "params.luck_short", String.format(Locale.ROOT, "%s", choice.params().luck()), openParams);
-        configureValue(font, samples, "params.samples_short", String.format(Locale.ROOT, "%,d", choice.params().sampleCount()), openParams);
+                List.of(toolName), null);
+        configureValue(font, luck, "params.luck_short", String.format(Locale.ROOT, "%s", choice.params().luck()));
+        configureValue(font, samples, "params.samples_short", String.format(Locale.ROOT, "%,d", choice.params().sampleCount()));
         paramsButton.configure(font, Component.empty(),
                 UiTextPalette.Parchment.TITLE, ScenarioUi.icon(ScenarioUi.Icon.PARAMS), paramsTooltip, openParams);
         paramsButton.setAccessibleName(ScenarioSimulationClientState.text("params.title"));
@@ -325,10 +302,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                 () -> ScenarioSimulationClientState.request(currentTable, true));
         calculateButton.setEnabled(!"pending".equals(rawStatus) && !"cached".equals(presentation.status()));
 
-        resultsTab.configure(font, ScenarioSimulationClientState.text("results.tab"),
-                UiTextPalette.Parchment.TITLE, null, List.of(), () -> switchSection(Section.RESULTS));
-        conditionsTab.configure(font, ScenarioSimulationClientState.text("conditions.tab"),
-                UiTextPalette.Parchment.TITLE, null, List.of(), () -> switchSection(Section.CONDITIONS));
+        conditionsHeading.setStyle(ScenarioUi.READOUT);
+        conditionsHeading.configure(font, ScenarioSimulationClientState.text("conditions.heading"),
+                UiTextPalette.Parchment.TITLE, null, List.of(), null);
         expandButton.configure(font, Component.empty(), UiTextPalette.Parchment.TITLE, ScenarioUi.icon(ScenarioUi.Icon.EXPAND),
                 List.of(ScenarioSimulationClientState.text("frame.expand")), () -> {
                     ScenarioExpandedOverlay content = new ScenarioExpandedOverlay(this, font);
@@ -339,27 +315,13 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                     overlays.open(new LightboxOverlay(overlays, lightbox), expandButton);
                 });
         expandButton.setAccessibleName(ScenarioSimulationClientState.text("frame.expand"));
-        updateSectionControls();
     }
 
-    private static void configureValue(Font font, UiControl control, String key, String value, UiAction action) {
+    private static void configureValue(Font font, UiControl control, String key, String value) {
         Component full = ScenarioSimulationClientState.text(key, value);
         Component label = font.width(full) <= control.bounds().width() - 6 ? full : Component.literal(value);
-        control.configure(font, label, UiTextPalette.Parchment.LABEL, null, List.of(full), action);
-    }
-
-    private void switchSection(Section next) {
-        if (section == next) return;
-        saveCurrentPosition();
-        section = next;
-        updateSectionControls();
-        rebuildFocus();
-    }
-
-    private void updateSectionControls() {
-        resultsTab.setSelected(section == Section.RESULTS);
-        conditionsTab.setSelected(section == Section.CONDITIONS);
-        expandButton.setVisible(section == Section.CONDITIONS);
+        control.setStyle(ScenarioUi.READOUT);
+        control.configure(font, label, UiTextPalette.Parchment.BODY, null, List.of(full), null);
     }
 
     private void rebuildFocus() {
@@ -367,17 +329,14 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         focus.add(title);
         focus.add(paramsButton);
         focus.add(calculateButton);
-        focus.add(resultsTab);
-        focus.add(conditionsTab);
         if (expandButton.isVisible()) focus.add(expandButton);
-        if (section == Section.CONDITIONS && conditions != null) focus.add(conditions);
+        if (conditions != null) focus.add(conditions);
         focus.endUpdate();
     }
 
     List<UiNode> tree() { return conditionTree; }
     private void saveCurrentPosition() {
-        if (viewKey == null || results == null || conditions == null) return;
-        remember(resultPositions, viewKey, results.offset());
+        if (viewKey == null || conditions == null) return;
         remember(conditionPositions, viewKey, conditions.offset());
     }
 
@@ -388,21 +347,12 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
 
     @Override public void saveUiState(CompoundTag tag) {
         saveCurrentPosition();
-        tag.putString("section", section.name());
-        tag.put("resultOffsets", savePositions(resultPositions));
         tag.put("conditionOffsets", savePositions(conditionPositions));
     }
 
     @Override public void loadUiState(CompoundTag tag) {
-        resultPositions.clear();
         conditionPositions.clear();
-        loadPositions(tag.getCompound("resultOffsets"), resultPositions);
         loadPositions(tag.getCompound("conditionOffsets"), conditionPositions);
-        try {
-            section = Section.valueOf(tag.getString("section"));
-        } catch (IllegalArgumentException exception) {
-            section = Section.RESULTS;
-        }
         viewKey = null;
         revision = Long.MIN_VALUE;
     }

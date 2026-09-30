@@ -16,6 +16,12 @@ final class ScenarioConditionLayout {
     static List<UiNode> wrap(List<UiNode> source, Font font, int width) {
         List<UiNode> output = new ArrayList<>();
         int[] firstRows = new int[source.size()];
+        boolean[] hasChildren = new boolean[source.size()];
+        for (int index = 0; index < source.size(); index++) {
+            if (source.get(index) instanceof UiNode.Row row && row.parentRow() >= 0 && row.parentRow() < index) {
+                hasChildren[row.parentRow()] = true;
+            }
+        }
         for (int index = 0; index < source.size(); index++) {
             firstRows[index] = output.size();
             if (!(source.get(index) instanceof UiNode.Row row)) {
@@ -25,7 +31,9 @@ final class ScenarioConditionLayout {
             int indent = Math.clamp(width - 60, 0, row.indent());
             int leading = row.leading() == null ? 0 : row.leading().icon().width() + 3;
             int trailing = row.icons().stream().mapToInt(icon -> icon.icon().width() + 3).sum();
-            int budget = Math.max(12, width - indent - leading - trailing - 4);
+            // 父行的续行稍向右缩进，给从首行延伸到子节点的树枝留出空隙。
+            int continuationIndent = leading + (hasChildren[index] ? 4 : 0);
+            int budget = Math.max(12, width - indent - continuationIndent - trailing - 4);
             var lines = font.getSplitter().splitLines(row.text(), budget, Style.EMPTY);
             int parent = row.parentRow() >= 0 && row.parentRow() < index
                     ? firstRows[row.parentRow()] : UiNode.NO_PARENT;
@@ -35,7 +43,7 @@ final class ScenarioConditionLayout {
                     text.append(Component.literal(value).setStyle(style));
                     return Optional.empty();
                 }, Style.EMPTY);
-                output.add(new UiNode.Row(indent + (line == 0 ? 0 : leading),
+                output.add(new UiNode.Row(indent + (line == 0 ? 0 : continuationIndent),
                         line == 0 ? parent : UiNode.NO_PARENT, line == 0 ? row.leading() : null,
                         text, row.color(), line == 0 ? row.icons() : List.of(), row.tooltip(),
                         row.payload(), line == 0 ? row.action() : null));

@@ -516,10 +516,7 @@ public class ArchaeologyJournalScreen extends Screen {
 
         ItemGridPanel.TooltipData tooltipData = this.rightPage.getTooltipData(mouseX, mouseY);
         if (tooltipData != null) {
-            List<Component> tooltipLines = new ArrayList<>(JournalTooltipBuilder.build(tooltipData));
-            if (this.rightPage.getActiveTab() == RightPageContainer.Tab.ARCHAEOLOGY
-                    && !tooltipData.acquisitionPaths().isEmpty())
-                tooltipLines.add(com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("click_find"));
+            List<Component> tooltipLines = JournalTooltipBuilder.build(tooltipData);
             if (tooltipData.discovered() && !tooltipData.stack().isEmpty()) {
                 guiGraphics.renderTooltip(this.font, tooltipLines,
                         tooltipData.stack().getTooltipImage(), mouseX, mouseY);

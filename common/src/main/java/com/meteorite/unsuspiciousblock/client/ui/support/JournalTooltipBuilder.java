@@ -47,17 +47,16 @@ public final class JournalTooltipBuilder {
     public static List<Component> build(ItemGridPanel.TooltipData data) {
         List<Component> lines = new ArrayList<>();
 
-        // 未发现物品只展示状态与获取条件，避免提前泄露物品身份
-        if (data.discovered()) {
-            lines.add(data.stack().getHoverName().copy().withStyle(TooltipBuilder.BODY));
-            JournalItemDetailAppender.append(lines, data.stack());
-        } else {
-            lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered")
-                    .copy().withStyle(TooltipBuilder.LABEL));
+        // 发现之前只显示占位状态，随机条件与路径详情也可能泄露概率。
+        if (!data.discovered()) {
+            return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered")
+                    .withStyle(TooltipBuilder.LABEL));
         }
+        lines.add(data.stack().getHoverName().copy().withStyle(TooltipBuilder.BODY));
+        JournalItemDetailAppender.append(lines, data.stack());
 
         // 获取数量
-        if (data.discovered() && data.count() >= 0) {
+        if (data.count() >= 0) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.acquired", data.count())
                     .copy().withStyle(TooltipBuilder.POSITIVE));
@@ -78,7 +77,7 @@ public final class JournalTooltipBuilder {
         }
 
         // 提示文本（近似概率等）
-        if (data.discovered() && data.hint() != null) {
+        if (data.hint() != null) {
             boolean probUncertain = data.probability() != null && data.probability().isUnknown();
             boolean hintIsApprox = data.hint().getString().equals(
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
@@ -89,7 +88,7 @@ public final class JournalTooltipBuilder {
         }
 
         // 外部注入标记
-        if (data.discovered() && data.injected()) {
+        if (data.injected()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.injected_loot")
                     .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));

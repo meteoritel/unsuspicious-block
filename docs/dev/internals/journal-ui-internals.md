@@ -26,7 +26,7 @@ ui/
 
 **screen/**：`ArchaeologyJournalScreen` 是主屏幕；`LootTableManagementScreen` 是与手册 TAB 分离的追踪管理页；`JournalViewModel` 持有视图状态，`CatalogToolbar` / `LogToolbar` 是工具栏；`SpecimenBoxScreen` / `PotteryWheelScreen` 是容器屏幕；`JournalLogNoteEditScreen` 与 `JournalLogRetentionScreen` 分别编辑日志备注和当前表保留策略。
 
-**panel/**：`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）、`WelcomeStatsPanel`（首页统计）、`ScenarioPanel` / `ScenarioDetailPanel` / `ScenarioPageBuilder` / `ScenarioResultView` / `ScenarioConditionView`（场景页与网格页头部）、`ScenarioSelectionOverlay` / `ScenarioParamsOverlay` / `ScenarioExpandedOverlay`（三类模态）；`ScenarioFrameView` 与 `FrameState` 由条件灯箱路径使用。
+**panel/**：`CatalogPanel`（连续滚动目录）、`LogPanel`（日志）、`DetailOverlayPanel`（详情浮层）、`ItemGridPanel`（物品网格）、`LogDetailPanel`（日志详情）、`PagePanel` / `PageIndicator`（右页分页）、`RightPageContainer`（右侧标签页容器）、`WelcomeStatsPanel`（首页统计）、`ScenarioPanel` / `ScenarioDetailPanel` / `ScenarioPageBuilder` / `ScenarioConditionView`（场景页与网格页头部）、`ScenarioSelectionOverlay` / `ScenarioParamsOverlay` / `ScenarioExpandedOverlay`（三类模态）；`ScenarioFrameView` 与 `FrameState` 由条件灯箱路径使用。
 
 **widget/**：`IconButton`、`BookmarkToggleButton`（收藏）、`CopyCoordinateButton`（复制传送指令）、`JournalPageButton`（翻页）、`PotteryWheelModeButton`（陶轮模式切换）、`ShadowlessEditBox`（无阴影输入框）、`ExternalLinkButton`、`BookSideTabButton`。
 
@@ -50,7 +50,7 @@ ui/
 
 `ItemGridPanel` 只展示**当前表自身**的获取路径。直接引用的子表以与物品 tag 分组相近的预览入口参与分页，物品卡片与子表入口显示同一个**服务端派生的当前输入展示状态**（`Probability` 四态），客户端不参与判定、也不跨代表场景取最大值。
 
-显示优先级链为「可适用性状态 → 可展示时的声明触发率 → 模拟值」：
+单件物品先按发现状态门控：未发现时卡片只绘制未知图标与「待解析」，tooltip 只显示「未发现」，不携带真实物品、概率、声明触发率、场景区间或获取路径。普通物品卡片不响应点击，不跳转场景页或请求推荐。已发现物品的显示优先级链为「可适用性状态 → 可展示时的声明触发率 → 模拟值」：
 
 - 「需要条件」与未知**只显示状态词、不显示任何数字**（否则一个当前拿不到的条目会顶着最有利场景的数字出现）；
 - 零命中显示「未命中」；`0%` 只留给静态不可达；
@@ -186,13 +186,13 @@ document.setContent(List.of(new UiNode.Row(
 
 ## 5. 场景详情页与模态交互
 
-`RightPageContainer.setTable` 向网格页与 `ScenarioDetailPanel` 传递 tableId；书本底部场景页码不变。152 像素正文内依次是可点的短场景名与状态、工具与参数图标、分列的幸运/抽样读数、单独强调的计算按钮、「结果 / 条件」切换及约 123 像素正文。长工具名可悬停滚动；数值标签放不下时移入 tooltip，数字保留。结果为默认视图，页内滚轮只做纵向阅读。
+`RightPageContainer.setTable` 向网格页与 `ScenarioDetailPanel` 传递 tableId；书本底部场景页码不变。152 像素正文内依次是可点的短场景名与状态、单行参数栏、计算按钮、条件树标题与放大入口、条件树正文。参数栏最左侧只绘制代表工具的物品图标，悬停显示名称，无点击动作、按钮底色或键盘停靠点；中间是幸运/抽样读数，最右侧是配置按钮。数值标签放不下时移入 tooltip，数字保留。场景页不再有结果分栏，页内滚轮只做纵向阅读。
 
-**结果与条件分离**：`ScenarioPageBuilder.buildConditions` 只生成条件树；`outcomes` 收集已测得且非零的条目，标题为「已命中」，不将零命中宣称为不可达。结果区由 `ScenarioResultView` 使用 `UiScrollView`、`UiControlGroup` 和 `UiLinearLayout` 排列物品图标、名称与右侧概率列，仅配置视口内的行；未计算、请求中、失败和零命中分别显示空态。条件区以自然字号纵向阅读，复杂树可展开灯箱。`ScenarioConditionLayout` 按字体与宽度拆成保留样式的视觉行，将父节点映射到首行，续行不重复连线、图标或动作；不改变通用 `UiNode.Row` 契约。
+**条件树阅读**：`ScenarioPageBuilder.buildConditions` 只生成条件树，物品和概率交由网格页展示。场景假设与子表入口用加粗分组标题、浅色底纹和段间留白区分，各子表标题使用更浅底纹，子节点以缩进和父子连线展示逻辑关系。可执行节点使用深色下划线与悬停底色；分组几何只在内容或宽度变化时重建。条件区以自然字号纵向阅读，复杂树可展开灯箱。`ScenarioConditionLayout` 按字体与宽度拆成保留样式的视觉行，将父节点映射到首行，续行不重复连线、图标或动作；不改变通用 `UiNode.Row` 契约。
 
-- **条件定义**：区分「场景假设」和按子表分组的「入口要求」。基准展示全部不成立假设，其他场景可展开/收起不成立项；组合逻辑、取反、实体目标、partial/unreadable 均保留。入口要求来自服务端静态 DTO，未计算也可阅读；入口提供推荐和参数动作，不把不同子表门槛合成全表 AND。已知 `#c:is_swamp` 用显式本地化名显示，tooltip 保留原描述与 id，未知 tag 不猜名称。
+- **条件定义**：区分「场景假设」和按子表分组的「入口要求」。基准展示全部不成立假设，其他场景可展开/收起不成立项；组合逻辑、取反、实体目标、partial/unreadable 均保留。入口要求来自服务端静态 DTO，未计算也可阅读；入口提供推荐动作，手动参数统一通过页头配置按钮修改，不把不同子表门槛合成全表 AND。已知 `#c:is_swamp` 用显式本地化名显示，tooltip 保留原描述与 id，未知 tag 不猜名称。
 - **结果口径**：`ScenarioSimulationClientState.sceneSource` 统一详情页、选择列表与网格页的缓存来源。同参数、同抽样档位的其他缓存只有带目标场景明确引用时才能复用；`overlay` 将物品与子表的目标场景引用投影到网格当前概率，缺引用的条目仍为未知，不借用来源场景的总概率。当前输入的直接结果仍优先。条件行不附概率，同一物品不会因为多个条件节点而重复显示概率。
-- **输入门控**：详情面板以输入 key、目录 revision、请求状态、语言、字体、布局变化决定重建。标题、状态、参数、结果与提示在同次重建中取同一选择；切表重置到结果页并取消辅助请求，切场景保留分区。结果与条件的滚动偏移分别按 `tableId#inputKey` 保存。
+- **输入门控**：详情面板以输入 key、目录 revision、请求状态、语言、字体、布局变化决定重建。标题、状态、参数、条件与提示在同次重建中取同一选择；切表取消辅助请求并收起其他假设。条件树滚动偏移按 `tableId#inputKey` 保存，读取旧偏好时忽略已移除的结果分栏及其偏移字段。
 
 `ScenarioLabel.shortLabel` 给页头和列表提供短场景名，`detailLabel` 给列表第二行提供条件摘要，`definition` 保留完整定义。详情页的文字与操作用 `UiControl`，并通过 `UiFocusManager` 将可操作控件按视觉顺序登记；`RightPageContainer.handleKey` 与 `ArchaeologyJournalScreen.keyPressed` 将 Tab、Shift+Tab、Enter、Space 送到当前页。超宽说明可悬停滚动或通过 tooltip 阅读。
 
@@ -201,7 +201,7 @@ document.setContent(List.of(new UiNode.Row(
 - `ScenarioSelectionOverlay`：纸面标题栏含关闭图标；条目为短名/状态与最多两行条件摘要，完整定义和失败原因在 tooltip。最多五项，实际按窗口高度收敛；当前项有左侧色条，仅溢出时显示导航和可见项范围。行按服务端顺序稳定复用。Tab/Shift+Tab 移焦、Space 激活；上下键改变当前场景，Enter/ESC 关闭，点击行选择并关闭。场景页与网格页共用此浮层。
 - `ScenarioParamsOverlay`：独立草稿，确认/取消；控件由 `UiControlGroup` 与 `UiLinearLayout` 布局，幸运值使用原生 `EditBox`。工具、抽样、附魔等级由签发清单约束。无错误时不绘制空提示带；抽样次数带单位，确认的 tooltip 说明只保存输入，仍需按「计算」请求结果。Tab 顺序是「工具行 ◀/▶ → 幸运值输入框 → 抽样格 → 附魔 −/+ → 取消 → 确认」；Enter 确认、Space 激活焦点、ESC 取消，窗口外附魔行由 PageUp/PageDown 翻到。确认前仍用最新目录校验。
 - `ScenarioExpandedOverlay`：独立 `ScenarioFrameView` + `UiLightbox`，宿主注入纸面、图标与短标题。初次和适应窗口最大 100%，短树左上对齐；手动仍支持 50/100/200/300%。滚轮缩放、拖动平移、resize 保留手动档位并钳制；关闭不改页内滚动，点击遮罩不关闭。默认通用灯箱的暗色外壳和字符控件保持兼容。
-- `ScenarioRecommendationOverlay`：物品点击、已解锁子表卡片右上图标或条件页入口打开；等待/失败/超时有明确状态，可重试。预览列出当前→推荐的场景、工具、幸运、抽样及附魔（包括移除为 0 的项），随后显示完整场景定义。应用只选择合法输入，必须再点击计算；关闭、切表、切输入或目录变更后，旧请求无权覆盖选择。正文可滚动，按钮可键盘操作，网络目标约定见 [网络与同步](../foundation/network.md)。
+- `ScenarioRecommendationOverlay`：已解锁子表卡片右上图标或条件页入口打开；普通物品卡片不提供推荐入口。等待/失败/超时有明确状态，可重试。预览列出当前→推荐的场景、工具、幸运、抽样及附魔（包括移除为 0 的项），随后显示完整场景定义。应用只选择合法输入，必须再点击计算；关闭、切表、切输入或目录变更后，旧请求无权覆盖选择。正文可滚动，按钮可键盘操作，网络目标约定见 [网络与同步](../foundation/network.md)。
 
 网格页头部（`ScenarioPanel`）固定两行约 28 像素：短名/状态、参数/计算；使用相同控件与焦点体系，不改变 2×3 物品布局。状态统一取 `ScenarioPresentation.resolve`，**测量只由显式计算发起**；正常点击子表卡片仍是导航，小推荐图标不劫持整个卡片。条件页通过 Tab 进入节点动作，方向键定位动作，PageUp/PageDown 阅读，Enter/Space 激活。
 
