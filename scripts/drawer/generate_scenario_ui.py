@@ -8,6 +8,7 @@ OUTPUT = Path(__file__).resolve().parents[2] / "common/src/main/resources/assets
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    generate_controls()
     frame = Image.new("RGBA", (24, 24), "#f7ecd2")
     draw = ImageDraw.Draw(frame)
     draw.rectangle((0, 0, 23, 23), outline="#594230", width=1)
@@ -35,6 +36,33 @@ def main():
             draw.line((x + 3, 3, x + 8, 8), fill=color, width=2)
             draw.line((x + 8, 3, x + 3, 8), fill=color, width=2)
     badges.save(OUTPUT / "scenario_status.png")
+
+
+def generate_controls():
+    patterns = [
+        [".........", ".#.....#.", "..#...#..", "...#.#...", "....#....", "...#.#...", "..#...#..", ".#.....#.", "........."],
+        [".........", ".###.###.", ".#.....#.", ".#.....#.", ".........", ".#.....#.", ".#.....#.", ".###.###.", "........."],
+        [".........", ".........", ".........", ".........", ".#######.", ".........", ".........", ".........", "........."],
+        [".........", "....#....", "....#....", "....#....", ".#######.", "....#....", "....#....", "....#....", "........."],
+        [".........", ".##...##.", ".#.....#.", "...###...", "...#.#...", "...###...", ".#.....#.", ".##...##.", "........."],
+        [".........", ".........", ".........", ".#.....#.", "..#...#..", "...#.#...", "....#....", ".........", "........."],
+        ["...###...", ".#.###.#.", "#########", ".##...##.", ".##.#.##.", ".##...##.", "#########", ".#.###.#.", "...###..."],
+        [".........", "..#......", "..###....", "..#####..", "..######.", "..#####..", "..###....", "..#......", "........."],
+        [".....#...", "...#...#.", "......#..", ".....#...", "....#....", "...#.....", "..#......", ".#.......", "........."],
+    ]
+    atlas = Image.new("RGBA", (len(patterns) * 9, 9), (0, 0, 0, 0))
+    for slot, pattern in enumerate(patterns):
+        for row, pixels in enumerate(pattern):
+            for column, pixel in enumerate(pixels):
+                if pixel == "#":
+                    atlas.putpixel((slot * 9 + column, row), (90, 66, 44, 255))
+    atlas.save(OUTPUT / "scenario_controls.png")
+    panel = Image.new("RGBA", (12, 12), "#f2e5c6")
+    draw = ImageDraw.Draw(panel)
+    draw.rectangle((0, 0, 11, 11), outline="#b49b73")
+    draw.line((1, 1, 10, 1), fill="#fff4d9")
+    draw.line((1, 1, 1, 10), fill="#fff4d9")
+    panel.save(OUTPUT / "scenario_panel.png")
 
 
 if __name__ == "__main__":
