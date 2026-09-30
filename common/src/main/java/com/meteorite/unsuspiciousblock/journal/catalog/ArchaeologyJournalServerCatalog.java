@@ -101,7 +101,7 @@ public final class ArchaeologyJournalServerCatalog {
      * "默认工具 + 幸运 1.0"上。修好之后，旧存档里那批数字的统计口径与现在不同，必须整体失效，
      * 否则它们会被当作缓存命中继续展示。
      */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v20";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v21";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -152,7 +152,23 @@ public final class ArchaeologyJournalServerCatalog {
         // 2. 建图 → 编译 → 投影 → 组装静态读模型
         ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
                 generation, sourceSnapshot, server.getResourceManager(), server.registryAccess());
-        Map<ResourceLocation, TableDefinition> staticTables = loadResult.staticTables();
+        Map<ResourceLocation, TableDefinition> enrichedTables = new LinkedHashMap<>();
+        loadResult.staticTables().forEach((id, table) -> {
+            List<ItemDefinition> items = new ArrayList<>(table.items());
+            for (var rule : Services.PLATFORM.describeLootInjections(id)) {
+                LootResultSignature signature = LootResultSignature.plain(rule.item());
+                if (items.stream().anyMatch(item -> item.signature().equals(signature))) continue;
+                ItemDefinition definition = LootTableCatalog.buildDiscoveredDefinition(signature,
+                        Probability.unknown(UnknownReason.NOT_SIMULATED), true, List.of());
+                items.add(new ItemDefinition(definition.id(), definition.displayName(), definition.tooltipHint(),
+                        definition.probability(), definition.signature(), List.of(new LootAcquisitionPath(null,
+                        com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of())),
+                        true, List.of()));
+            }
+            enrichedTables.put(id, new TableDefinition(table.id(), table.displayName(), table.type(), items,
+                    table.simulationCount(), table.childTables(), table.childTableProbabilities()));
+        });
+        Map<ResourceLocation, TableDefinition> staticTables = enrichedTables;
         LOGGER.info("解析到 {} 个考古战利品表原始目录", staticTables.size());
 
         // 3. 先判不可用机制（决策 31）：这类表不能入队模拟，否则会在 getRandomItems 里抛异常后
@@ -178,7 +194,7 @@ public final class ArchaeologyJournalServerCatalog {
         // 4. 计算哈希（吃子树内每张表的资源栈摘要、编译产物摘要与被引用附魔定义摘要）
         Map<ResourceLocation, String> tableHashes = computeTableHashes(
                 loadResult.session().referenceGraph(), staticTables,
-                loadResult.session().compiledTables(), server.registryAccess());
+                loadResult.session().compiledTables(), server.registryAccess(), server.getResourceManager());
 
         // 5. 为全部可模拟表算好约束描述（含场景规划）——启动只跑基准输入，而"基准输入是哪一个"
         //    需要先知道基准场景的条件赋值，因此这一步是缓存查询的前置条件而不是可省的预计算。
@@ -338,6 +354,17 @@ public final class ArchaeologyJournalServerCatalog {
         CatalogTableDto dto = CatalogTableDto.from(table, getTableHash(table.id()));
         SimulationConstraintCatalog constraint = generation == null ? null : generation.constraintCatalog(table.id());
         if (constraint == null) return dto;
+        List<CatalogTableDto.ItemEntry> displayItems = new ArrayList<>(dto.items());
+        for (var rule : Services.PLATFORM.describeLootInjections(table.id())) {
+            LootResultSignature signature = LootResultSignature.plain(rule.item());
+            if (displayItems.stream().anyMatch(item -> item.signature().equals(signature))) continue;
+            var definition = LootTableCatalog.buildDiscoveredDefinition(signature,
+                    Probability.unknown(UnknownReason.NOT_SIMULATED), true, List.of());
+            displayItems.add(new CatalogTableDto.ItemEntry(definition.id(), definition.displayName(), definition.tooltipHint(),
+                    definition.probability(), signature, List.of(new LootAcquisitionPath(null,
+                    com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of())),
+                    true, List.of()));
+        }
         TableDefinition raw = generation.staticTable(table.id());
         Map<ResourceLocation, CatalogTableDto.ChildTableEntry> existing = new LinkedHashMap<>();
         dto.childProbabilities().forEach(child -> existing.put(child.tableId(), child));
@@ -353,7 +380,8 @@ public final class ArchaeologyJournalServerCatalog {
                     previous == null ? conditions : mergeConditions(previous.conditions(), conditions)));
         }
         dto = new CatalogTableDto(dto.id(), dto.hash(), dto.displayName(), dto.type(), dto.simulationCount(),
-                dto.childTables(), dto.scenarios(), dto.items(), children, dto.options());
+                dto.childTables(), dto.scenarios(), displayItems, children, dto.options());
+        dto = dto.withBranches(com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.build(dto, constraint));
         return dto.withOptions(com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions.from(
                 generation.generation(), constraint));
     }
@@ -442,6 +470,26 @@ public final class ArchaeologyJournalServerCatalog {
      * 而按需模型的意义正是"一个问题只算一次"。命中缓存时直接派生下发，不占队列、不烧 tick 预算，
      * 也不受在途额度限制——额度保护的是抽取成本，而这里没有抽取。
      */
+    public static List<String> cachedScenes(ServerPlayer player, ResourceLocation tableId, String hash,
+                                           String scene, ScenarioParams params, boolean fetchSelected) {
+        CatalogGeneration generation = currentGeneration;
+        if (generation == null || !generation.isTracked(tableId) || !hash.equals(generation.tableHash(tableId)))
+            throw new IllegalArgumentException("stale_hash");
+        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
+        if (constraint == null || constraint.resolve(scene, params).isEmpty())
+            throw new IllegalArgumentException("rejected_input");
+        LootProbabilityData data = LootProbabilityData.get(player.server.overworld());
+        if (data.needsResimulation(tableId, hash)) return List.of();
+        List<String> available = new ArrayList<>();
+        for (SimulationScenario candidate : constraint.scenarios()) {
+            SimulationInput input = constraint.resolve(candidate.key(), params).orElseThrow();
+            if (!data.hasMeasurement(tableId, input.key())) continue;
+            available.add(candidate.key());
+            if (fetchSelected && candidate.key().equals(scene)) sendScenarioResult(player, tableId, hash, input);
+        }
+        return List.copyOf(available);
+    }
+
     public static OnDemandResult requestSimulation(ServerPlayer player, ResourceLocation tableId,
                                                    String expectedTableHash, String scenarioKey,
                                                    ScenarioParams params) {
@@ -1049,8 +1097,17 @@ public final class ArchaeologyJournalServerCatalog {
     // 已知残余（不列入本摘要的外部注册表依赖）见 docs/dev/internals/loottable-mechanics.md。
     private static Map<ResourceLocation, String> computeTableHashes(
             LootTableReferenceGraph graph, Map<ResourceLocation, TableDefinition> tables,
-            Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries) {
+            Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries,
+            net.minecraft.server.packs.resources.ResourceManager resources) {
         Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
+        List<String> injectionInputs;
+        try { injectionInputs = Services.PLATFORM.lootInjectionHashInputs(resources); }
+        catch (IOException | RuntimeException exception) {
+            LOGGER.warn("读取平台注入摘要失败，本代不复用旧缓存", exception);
+            String unavailableHash = "injection-unavailable-" + UUID.randomUUID();
+            tables.keySet().forEach(id -> hashes.put(id, unavailableHash));
+            return hashes;
+        }
         MessageDigest digest;
         try {
             digest = MessageDigest.getInstance("SHA-256");
@@ -1066,12 +1123,19 @@ public final class ArchaeologyJournalServerCatalog {
             try {
                 digest.reset();
                 LootTableSourceSnapshot.updateDigest(digest, SIMULATION_CACHE_VERSION);
+                injectionInputs.forEach(value -> LootTableSourceSnapshot.updateDigest(digest, value));
                 // 排除列表决定物品签名怎么派生，改配置必须让相关表失效（否则会沿用旧签名的缓存结果）
                 LootTableSourceSnapshot.updateDigest(digest,
                         String.join(",", SignatureExcludedComponents.configuredIds()));
                 graph.updateSubtreeDigest(tableId, digest,
                         (node, nodeDigest) -> {
                             updateCompiledProductDigest(nodeDigest, tables.get(node));
+                            for (var rule : Services.PLATFORM.describeLootInjections(node)) {
+                                LootTableSourceSnapshot.updateDigest(nodeDigest, rule.item() + "|" + rule.source()
+                                        + "|" + rule.mode() + "|" + rule.chance());
+                                for (var condition : rule.conditions())
+                                    LootTableSourceSnapshot.updateDigest(nodeDigest, LootConditionFingerprint.of(condition));
+                            }
                             // 附魔定义不在任何战利品表 JSON 里，却决定模拟用的满级工具与等级控件范围
                             updateEnchantmentDigest(nodeDigest, registries,
                                     summaryEnchantments(compiledTables.get(node), node));

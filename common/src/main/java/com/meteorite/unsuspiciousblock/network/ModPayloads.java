@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.network;
 
+import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestScenarioCachePayload;
+import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioCachePayload;
+
 import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestSimulationAssistPayload;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncSimulationAssistPayload;
 import com.meteorite.unsuspiciousblock.network.journal.SimulationAssistHandler;
@@ -108,6 +111,8 @@ public final class ModPayloads {
                     (player, payload) -> CatNetworkHandler.handleDeterrenceToggle(player)),
             new C2S<>(CatLightStepTogglePayload.TYPE, CatLightStepTogglePayload.STREAM_CODEC,
                     (player, payload) -> CatNetworkHandler.handleLightStepToggle(player)),
+            new C2S<>(RequestScenarioCachePayload.TYPE, RequestScenarioCachePayload.STREAM_CODEC,
+                    ScenarioSimulationHandler::handleCache),
             new C2S<>(RequestScenarioSimulationPayload.TYPE, RequestScenarioSimulationPayload.STREAM_CODEC,
                     ScenarioSimulationHandler::handleRequest)
     );
@@ -129,6 +134,7 @@ public final class ModPayloads {
             new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
             new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC),
             new S2CSpec<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC),
+            new S2CSpec<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC),
             new S2CSpec<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC),
             new S2CSpec<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC)
     );
@@ -179,6 +185,8 @@ public final class ModPayloads {
                         EnchantmentRevealClientState::receive),
                 new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,
                         ArchaeologyJournalClientState::receiveTableCompletionReward),
+                new S2C<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC,
+                        ScenarioSimulationClientState::receiveCache),
                 new S2C<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC,
                         ScenarioSimulationClientState::receive),
                 new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC,

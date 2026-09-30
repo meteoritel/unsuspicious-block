@@ -25,8 +25,37 @@ import org.slf4j.Logger;
  */
 public final class ScenarioSimulationHandler {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final java.util.Map<ServerPlayer, Long> CACHE_REQUESTS = new java.util.WeakHashMap<>();
 
     private ScenarioSimulationHandler() {
+    }
+
+    public static void handleCache(ServerPlayer player,
+            com.meteorite.unsuspiciousblock.network.payload.c2s.RequestScenarioCachePayload payload) {
+        var request = payload.selection();
+        String inputKey = "";
+        String error = "";
+        java.util.List<String> scenes = java.util.List.of();
+        try {
+            ScenarioParams params = new ScenarioParams(request.luck(), request.toolId(),
+                    request.toolEnchantments(), request.sampleCount());
+            inputKey = new com.meteorite.unsuspiciousblock.loottable.simulation.SimulationInput(
+                    request.scenarioKey(), java.util.Map.of(), params).key();
+            long now = System.currentTimeMillis();
+            Long last = CACHE_REQUESTS.put(player, now);
+            if (last != null && now - last < 100) throw new IllegalArgumentException("busy");
+            if (request.generation() != ArchaeologyJournalServerCatalog.currentGenerationId())
+                throw new IllegalArgumentException("stale_hash");
+            scenes = ArchaeologyJournalServerCatalog.cachedScenes(player, request.tableId(),
+                    request.tableHash(), request.scenarioKey(), params, payload.fetchSelected());
+        } catch (IllegalArgumentException exception) {
+            error = "stale_hash".equals(exception.getMessage()) ? "stale_hash"
+                    : "busy".equals(exception.getMessage()) ? "busy" : "rejected_input";
+        }
+        Services.NETWORK.sendToPlayer(player,
+                new com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioCachePayload(
+                        payload.requestId(), request.generation(), request.tableId(), request.tableHash(),
+                        inputKey, scenes, error));
     }
 
     /** 处理一次按需模拟请求（在服务端主线程调用）。 */

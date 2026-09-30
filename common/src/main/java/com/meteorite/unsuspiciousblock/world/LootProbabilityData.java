@@ -375,6 +375,11 @@ public final class LootProbabilityData extends SavedData {
         return entry.inputs().get(inputKey);
     }
 
+    public synchronized boolean hasMeasurement(ResourceLocation tableId, String inputKey) {
+        TableProbabilityEntry entry = entries.get(tableId);
+        return entry != null && entry.inputs().containsKey(inputKey);
+    }
+
     /**
      * 写入一次模拟的结果：表哈希、表级发现记录与该输入的测量值。
      * <p>

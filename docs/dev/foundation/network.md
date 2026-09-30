@@ -5,11 +5,12 @@
 
 ## 1. 机制概览
 
-模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 **31 个自定义 payload（14 个 C2S + 17 个 S2C）**，覆盖：
+模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 **33 个自定义 payload（15 个 C2S + 18 个 S2C）**，覆盖：
 
 - **考古笔记同步**：目录、进度状态（增量/全量）、日志（更新/快照）、完成奖励通知。
 - **目录按需同步**：哈希比对，不一致时客户端主动请求全量目录。
 - **按需概率模拟**：玩家选定的模拟输入（场景 + 参数）请求计算、结果回执、拒绝回执；以及"推荐 / 读取当前选择"的辅助请求。
+- **缓存状态查询**：客户端可按目录代次、表哈希和完整输入查询服务端已有场景结果；查询只读缓存，不会隐式启动模拟。
 - **解析仪交互**：扫描等级切换、扫描结果高亮同步。
 - **猫族关系**：羁绊/命数同步、威慑/轻步开关切换。
 - **附魔揭示**：完整候选列表下发。
@@ -80,6 +81,7 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `RequestCatalogPayload` | `JournalCatalogHandler::handleRequestCatalog` | 请求全量目录 |
 | `RequestLootTableManagementPayload` | `LootTableManagementHandler::handleRequest` | 请求服务端权威管理索引 |
 | `UpdateTrackedLootTablePayload` | `LootTableManagementHandler::handleUpdate` | 修改单张表的追踪状态 |
+| `RequestScenarioCachePayload` | `ScenarioSimulationHandler::handleCache` | 查询当前表与参数下服务端已有场景缓存，不触发模拟 |
 | `UpdateLootTableTranslationsPayload` | `LootTableManagementHandler::handleTranslationUpdate` | 批量提交手工草稿或 JSON 导入名称 |
 | `RequestJournalStateFullPayload` | `JournalStateHandler::handleRequestFull` | 请求全量状态重同步 |
 | `RequestJournalLogSnapshotPayload` | `JournalLogHandler::handleRequestSnapshot` | 请求日志快照 |
@@ -130,7 +132,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 **NeoForge**（`UnsuspiciousBlockNeoForge`）：
 ```java
 // RegisterPayloadHandlersEvent 中
-registrar.versioned("4.8");
+registrar.versioned("4.9");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：
@@ -140,7 +142,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，客户端/服务端入口均为 `4.8`。此版辅助请求从单个目标字符串变为枚举种类 + 目标值；Fabric 使用同一 common codec，两个平台的客户端与服务端必须配套更新。**任何追加/删除线字段都是协议版本变更**。
+**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，客户端/服务端入口均为 `4.9`。此版追加服务端只读缓存查询 payload；Fabric 使用同一 common codec，两个平台的客户端与服务端必须配套更新。**任何追加/删除线字段都是协议版本变更**。
 
 ### 7.1 线格式的两条硬约束
 
