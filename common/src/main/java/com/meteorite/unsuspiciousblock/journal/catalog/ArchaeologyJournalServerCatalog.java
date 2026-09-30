@@ -338,6 +338,22 @@ public final class ArchaeologyJournalServerCatalog {
         CatalogTableDto dto = CatalogTableDto.from(table, getTableHash(table.id()));
         SimulationConstraintCatalog constraint = generation == null ? null : generation.constraintCatalog(table.id());
         if (constraint == null) return dto;
+        TableDefinition raw = generation.staticTable(table.id());
+        Map<ResourceLocation, CatalogTableDto.ChildTableEntry> existing = new LinkedHashMap<>();
+        dto.childProbabilities().forEach(child -> existing.put(child.tableId(), child));
+        List<CatalogTableDto.ChildTableEntry> children = new ArrayList<>();
+        for (ResourceLocation child : table.childTables()) {
+            CatalogTableDto.ChildTableEntry previous = existing.get(child);
+            List<LootConditionInfo> conditions = mergeConditions(
+                    commonChildConditions(raw == null ? table : raw, child),
+                    constraint.childEntryGates().getOrDefault(child, List.of()));
+            children.add(new CatalogTableDto.ChildTableEntry(child,
+                    previous == null ? Probability.unknown(UnknownReason.NOT_SIMULATED) : previous.probability(),
+                    previous == null ? List.of() : previous.scenarioProbabilities(),
+                    previous == null ? conditions : mergeConditions(previous.conditions(), conditions)));
+        }
+        dto = new CatalogTableDto(dto.id(), dto.hash(), dto.displayName(), dto.type(), dto.simulationCount(),
+                dto.childTables(), dto.scenarios(), dto.items(), children, dto.options());
         return dto.withOptions(com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions.from(
                 generation.generation(), constraint));
     }
@@ -753,8 +769,7 @@ public final class ArchaeologyJournalServerCatalog {
      * <p>
      * 展示值的派生规则集中在 {@link PathHintAnalyzer#deriveDisplay}：**只有**测到非零值才报数字，
      * 零命中报「未命中」，被旋钮挡住报「需要条件」，全部路径静态不可达才报 {@code 0%}。
-     * 分场景列表里，非当前输入的场景一律是 {@code Unknown(NOT_SIMULATED)}——"没算过"与"算出来是零"
-     * 必须分得开（决策 36）。
+     * 分场景列表仅包含同参数下有测量缓存的场景，且采用相同展示派生；缺少引用表示尚未计算。
      */
     private static TableDefinition deriveTable(CatalogGeneration generation, ResourceLocation tableId,
                                                SimulationConstraintCatalog constraint, SimulationInput input,
@@ -776,7 +791,7 @@ public final class ArchaeologyJournalServerCatalog {
             rawKeys.add(storedKey);
             List<PathHint> hints = PathHintAnalyzer.hintsFor(item.acquisitionPaths());
             List<ScenarioProbability> scenarioProbabilities = itemScenarioProbabilities(
-                    constraint, storedKey, hints, byScenario);
+                    constraint, storedKey, item.acquisitionPaths(), hints, byScenario);
             Probability display = PathHintAnalyzer.deriveDisplay(
                     displayedValue(displayed, storedKey, constraint, displayedScenarioKey, hints),
                     item.acquisitionPaths());
@@ -825,27 +840,27 @@ public final class ArchaeologyJournalServerCatalog {
             List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
             boolean applicableSomewhere = false;
             for (SimulationScenario scenario : constraint.scenarios()) {
+                applicableSomewhere |= scenario.applicableChildTables().contains(childTable);
+                if (!byScenario.containsKey(scenario.key())) continue;
                 if (!scenario.applicableChildTables().contains(childTable)) {
                     scenarioProbabilities.add(new ScenarioProbability(scenario.key(),
                             PathHintAnalyzer.inapplicableScenarioDisplay(hints), scenario.assumptions()));
                     continue;
                 }
-                applicableSomewhere = true;
                 LootProbabilityData.InputMeasurement measurement = byScenario.get(scenario.key());
                 SimulatedValue measured = measurement == null
                         ? null : measurement.children().get(childTable);
                 scenarioProbabilities.add(new ScenarioProbability(scenario.key(),
-                        measured == null
+                        PathHintAnalyzer.deriveEntryDisplay(measured == null
                                 ? Probability.unknown(UnknownReason.NOT_SIMULATED)
-                                : measured.toProbability(UnknownReason.UNCOVERED),
+                                : measured.toProbability(UnknownReason.UNCOVERED), hints),
                         scenario.assumptions()));
             }
             if (!applicableSomewhere) {
                 scenarioProbabilities = List.of();
             }
             // 展示值走与物品同构的入口派生：零命中且门槛可陈述时报「需要条件」。
-            // 分场景列表保留原始测量值（与物品的列表一致）：它是"每个场景各测到多少"的事实表，
-            // 而入口这一行回答的是"当前输入下能不能进"。
+            // 分场景引用与当前行采用同一服务端展示口径；原始计数仍留在测量缓存中。
             childProbabilities.add(new ChildTableProbability(childTable,
                     PathHintAnalyzer.deriveEntryDisplay(
                             scenarioValue(scenarioProbabilities, displayedScenarioKey), hints),
@@ -903,22 +918,17 @@ public final class ArchaeologyJournalServerCatalog {
     // 那是"场景被上界截断"，逐个写 0 会把"未覆盖"显示成"不可达"
     private static List<ScenarioProbability> itemScenarioProbabilities(
             SimulationConstraintCatalog constraint, String storedKey,
-            List<PathHint> hints, Map<String, LootProbabilityData.InputMeasurement> byScenario) {
+            List<LootAcquisitionPath> paths, List<PathHint> hints,
+            Map<String, LootProbabilityData.InputMeasurement> byScenario) {
         List<ScenarioProbability> result = new ArrayList<>();
         boolean applicableSomewhere = false;
         for (SimulationScenario scenario : constraint.scenarios()) {
-            if (!scenario.applicableSignatures().contains(storedKey)) {
-                result.add(new ScenarioProbability(scenario.key(),
-                        PathHintAnalyzer.inapplicableScenarioDisplay(hints), scenario.assumptions()));
-                continue;
-            }
-            applicableSomewhere = true;
+            applicableSomewhere |= scenario.applicableSignatures().contains(storedKey);
             LootProbabilityData.InputMeasurement measurement = byScenario.get(scenario.key());
-            SimulatedValue measured = measurement == null ? null : measurement.items().get(storedKey);
+            if (measurement == null) continue;
             result.add(new ScenarioProbability(scenario.key(),
-                    measured == null
-                            ? Probability.unknown(UnknownReason.NOT_SIMULATED)
-                            : measured.toProbability(UnknownReason.UNCOVERED),
+                    PathHintAnalyzer.deriveDisplay(displayedValue(measurement, storedKey, constraint,
+                            scenario.key(), hints), paths),
                     scenario.assumptions()));
         }
         return applicableSomewhere ? List.copyOf(result) : List.of();

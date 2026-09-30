@@ -161,9 +161,9 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 
 后果是：这类条件在运行时查不到对应指纹，按**真实逻辑**求值并计入"未覆盖"汇总告警，数值口径因此与场景估算不同。告警本身按 `条件 id + (简单类名)` 去重，所以"有 N 个"报的是**类型数**而不是条件条数，不能读成"只有 N 条条件未覆盖"。
 
-**该告警的常见来源不止一处**：追加的泥地打捞注入场景有意只带 `location_check` 的类型默认值、**不带**基础场景的条件指纹表，好让注入路径上的 `entity_properties`（`in_open_water`）交给真实逻辑（假浮标 `SimulationFishingHook`）判定——若把基础场景的指纹表传进去，"默认"场景会把 `in_open_water` 归一到 `false`，反而把宝箱与泥地打捞的条目强制判成不可达；同时，基础场景里**任何**指纹不稳的条件（如带标签的 `location_check`）也会计入同一条告警。它只在该表**实际发生模拟**时输出（缓存命中时不会出现），无需处理。
+**注入入口参与约束规划，不另造满级工具场景**：`ArchaeologyJournalServerCatalog.constraintTable` 将注入子树的路径和继承门槛补入规划/求解输入。场景只描述受控环境假设；工具与附魔来自 `ScenarioParams`，`tool_enchantment` 不被强制置真，最低等级与随机曲线保持真实判定。旧文档里的 `keepBaseTool` 满级钓竿描述已不适用，不能据此忽略玩家参数。
 
-**注入场景的自带工具不被参数覆盖**：原版 fishing 的泥地打捞注入场景把"满级钓竿"写进了场景定义本身（`SimulationScenario.keepBaseTool = true`），因为那条场景的全部意义就是带着能通过 `tool_enchantment` 门槛的工具去抽注入池。若用输入的默认工具覆盖它，注入池永远抽空、注入条目再也发现不了——那是信息丢失，不是"参数生效"。因此这类场景只接受输入的幸运，工具保持场景自带的设定。
+**子表推荐是完整输入的联合见证**：`SimulationAssistTarget.CHILD_TABLE` 按路径的首跳 `sourceChildTable` 筛选，复用 `RecommendationSolver` 的幸运、环境、工具、附魔与随机非零支持检查；候选优先当前场景与当前工具，等级从合法最小值搜索，不默认满级。搜索仍受 2,048 次尝试与 15ms 预算约束，未找到只表示不能证明，不表示不可达。总入口可通过不含额外环境条件的直接物品路径，因此不会一概附加沼泽/开阔水域；加成物品的推荐保留对应路径要求。预览、应用与显式计算交互见 [笔记 GUI 内部机制](journal-ui-internals.md)。
 
 `LootSimulationScope` 通过 `ThreadLocal` 仅在当前主线程该输入的全部抽取期间暴露 profile，并由 try-with-resources 确保异常时清理。窄 Mixin 只把场景控制叶条件的 `test` 转交作用域；`all_of` / `any_of` / `inverted` 始终由原版逻辑根据叶子结果求值，随机条件、权重和 rolls 不覆盖。
 
@@ -333,7 +333,9 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 ## 7. 展示值的派生规则
 
-`ItemDefinition.probability` 是**服务端派生的当前输入展示状态**（`Probability` 四态，可适用性 × 计算状态两轴），`ItemDefinition.scenarioProbabilities` 保存各代表场景的内部统计结果（**同一份参数**下逐个场景查缓存，没算过的场景是 `Unknown(NOT_SIMULATED)`）。
+`ItemDefinition.probability` 是**服务端派生的当前输入展示状态**（`Probability` 四态，可适用性 × 计算状态两轴）。物品与子表的 `scenarioProbabilities` 仅携带**同一份参数下存在测量缓存**的场景引用，并分别走与主行相同的 `deriveDisplay` / `deriveEntryDisplay`，原始计数仍保存在测量缓存。没有计算的场景不下发引用，客户端缺引用时显示 `Unknown(NOT_SIMULATED)`，不能仅凭静态候选存在就标成已缓存。这样跨场景缓存投影不会将入口的「需要条件」降回原始零命中的「未命中」，也不需要客户端重新评估门槛。
+
+**未计算也有入口说明**：`clientTable` 为每个直接子表补齐「路径共同条件 + 注入边门槛」，保留已有概率、引用与条件；该静态说明与环境假设分开展示，不把各子表要求拼成全表 AND。入口随机条件只描述曲线，不承诺应用配置就必过。
 
 判定规则（`PathHintAnalyzer.deriveDisplay`）：
 
