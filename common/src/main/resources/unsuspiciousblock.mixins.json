@@ -37,6 +37,8 @@
     "container.RandomizableContainerMixin",
     "catfavor.ServerPlayerCatFavorStateMixin",
     "journal.ServerPlayerJournalStateMixin",
+    "loottable.LootItemConditionalFunctionMixin",
+    "loottable.LootTableSplitterMixin",
     "loottable.SimulationCompositeConditionMixin",
     "loottable.SimulationBlockStateConditionMixin",
     "loottable.SimulationDamageSourceConditionMixin",

@@ -28,22 +28,35 @@ import java.util.Set;
  * @param discoveredSignatures    模拟期动态发现的签名（GLM / LootTableEvents.MODIFY 注入的条目）
  * @param discoveredDirectly      其中直接在根表产出（而非来自子表）的签名存储键
  * @param discoveredChildSources  动态签名 → 它实际来自的直接子表
+ * @param observedFunctions       结果签名存储键 → 该结果的运行时函数观测摘要；无观测的结果不出现在这里
  */
 public record SimulationMeasurement(Map<String, SimulatedValue> itemProbabilities,
                                     Map<ResourceLocation, SimulatedValue> childProbabilities,
                                     Map<String, LootResultSignature> discoveredSignatures,
                                     Set<String> discoveredDirectly,
-                                    Map<String, ResourceLocation> discoveredChildSources) {
+                                    Map<String, ResourceLocation> discoveredChildSources,
+                                    Map<String, FunctionObservationSummary> observedFunctions) {
     public SimulationMeasurement {
         itemProbabilities = Map.copyOf(itemProbabilities);
         childProbabilities = Map.copyOf(childProbabilities);
         discoveredSignatures = Map.copyOf(discoveredSignatures);
         discoveredDirectly = Set.copyOf(discoveredDirectly);
         discoveredChildSources = Map.copyOf(discoveredChildSources);
+        observedFunctions = observedFunctions == null ? Map.of() : Map.copyOf(observedFunctions);
+    }
+
+    // 不含运行时函数观测的兼容构造：保持既有 5 参调用点不改也能编译
+    public SimulationMeasurement(Map<String, SimulatedValue> itemProbabilities,
+                                 Map<ResourceLocation, SimulatedValue> childProbabilities,
+                                 Map<String, LootResultSignature> discoveredSignatures,
+                                 Set<String> discoveredDirectly,
+                                 Map<String, ResourceLocation> discoveredChildSources) {
+        this(itemProbabilities, childProbabilities, discoveredSignatures, discoveredDirectly,
+                discoveredChildSources, Map.of());
     }
 
     /** 没有任何测量值（空表）的实例——恢复路径用它表示"这张表算过但什么都没测到"。 */
     public static SimulationMeasurement empty() {
-        return new SimulationMeasurement(Map.of(), Map.of(), Map.of(), Set.of(), Map.of());
+        return new SimulationMeasurement(Map.of(), Map.of(), Map.of(), Set.of(), Map.of(), Map.of());
     }
 }

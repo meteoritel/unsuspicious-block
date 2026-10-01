@@ -68,6 +68,13 @@ final class LootProbabilitySimulationJob {
     private final RandomSource injectionRandom = RandomSource.create();
     private final Set<ResourceLocation> directChildTables;
     private final Consumer<ResourceLocation> childDropRecorder = this::recordChildTableAppearance;
+    /** 本任务的函数执行捕获会话：任务级持有，跨时间片复用，每轮由 beginRoll 清空栈关联。 */
+    private final FunctionTraceSession captureSession = new FunctionTraceSession();
+    /** 结果签名存储键 → 运行时观测摘要聚合器；任务级聚合，不依赖上一个时间片的 ThreadLocal。 */
+    private final Map<String, FunctionObservationSummary.Accumulator> observedChains = new LinkedHashMap<>();
+    /** 本轮的观测键，用于把本轮触发的预算截断只标记到本轮观测到的结果上。 */
+    private final Set<String> rollObservationKeys = new LinkedHashSet<>();
+    private int observedChainEntries;
 
     private int completedRolls;
     private boolean scenarioPrepared;
@@ -123,7 +130,7 @@ final class LootProbabilitySimulationJob {
             this.metrics.add(Count.SCENARIOS, 1);
         }
         try (LootSimulationScope.Scope scope = LootSimulationScope.open(
-                this.effectiveProfile, this.directChildTables)) {
+                this.effectiveProfile, this.directChildTables, this.captureSession)) {
             try {
                 while (this.completedRolls < sampleCount()) {
                     int batchEnd = Math.min(sampleCount(), this.completedRolls + TIME_CHECK_BATCH_SIZE);
@@ -255,18 +262,23 @@ final class LootProbabilitySimulationJob {
             this.metrics.end(Stage.MATCH, start);
             if (matched != null) {
                 start = LootSimulationMetrics.now();
-                this.candidateCounters.get(matched).mark(this.completedRolls);
+                CandidateCounter matchedCounter = this.candidateCounters.get(matched);
+                matchedCounter.mark(this.completedRolls);
                 this.metrics.end(Stage.RECORD, start);
                 this.metrics.add(Count.MATCHED, 1);
+                // 早退分支同样聚合观测摘要：已有候选命中不等于没有函数执行
+                recordCapture(stack, matchedCounter.storedKey);
                 continue;
             }
             start = LootSimulationMetrics.now();
             CandidateIndex rawCandidates = this.allRawCandidatesByItem.get(stack.getItem());
-            boolean rawMatched = rawCandidates != null
-                    && LootResultMatcher.resolve(stack, rawCandidates, this.previewProvider) != null;
+            LootResultSignature rawResolved = rawCandidates != null
+                    ? LootResultMatcher.resolve(stack, rawCandidates, this.previewProvider) : null;
             this.metrics.end(Stage.RAW_MATCH, start);
-            if (rawMatched) {
+            if (rawResolved != null) {
                 this.metrics.add(Count.RAW_SKIPPED, 1);
+                // 早退分支同样聚合观测摘要：键沿用原始候选的稳定存储键
+                recordCapture(stack, storedKey(rawResolved));
                 continue;
             }
             start = LootSimulationMetrics.now();
@@ -290,10 +302,58 @@ final class LootProbabilitySimulationJob {
             }
             counter.mark(this.completedRolls);
             this.metrics.end(Stage.RECORD, start);
+            // 动态签名创建路径同样聚合观测摘要
+            recordCapture(stack, derivedKey);
         }
         start = LootSimulationMetrics.now();
         LootSimulationScope.forEachChildTableWithDrops(this.childDropRecorder);
         this.metrics.end(Stage.CHILD_RECORD, start);
+        this.metrics.add(Count.CAPTURE_STACKS, this.captureSession.drainStackLinks());
+        this.metrics.add(Count.CAPTURE_NODES, this.captureSession.drainNodes());
+        this.metrics.add(Count.CAPTURE_TRUNCATED, this.captureSession.drainTruncations());
+        // 本轮触发预算上限时，只对本轮观测到的结果标截断；掉落与概率计数不受影响
+        if (this.captureSession.isRollTruncated()) {
+            for (String observedKey : this.rollObservationKeys) {
+                FunctionObservationSummary.Accumulator accumulator = this.observedChains.get(observedKey);
+                if (accumulator != null) {
+                    accumulator.markTruncated();
+                }
+            }
+        }
+        this.rollObservationKeys.clear();
+    }
+
+    // 在全部计入结果的路径上聚合运行时函数观测；不参与概率计数，也不改变抽样次数与批次
+    private void recordCapture(ItemStack stack, String storedKey) {
+        if (storedKey == null) {
+            return;
+        }
+        long start = LootSimulationMetrics.now();
+        try {
+            this.rollObservationKeys.add(storedKey);
+            FunctionObservationSummary.Accumulator accumulator = this.observedChains
+                    .computeIfAbsent(storedKey, key -> new FunctionObservationSummary.Accumulator());
+            if (this.captureSession.isUnavailable()) {
+                // 记录器自有异常：降级为"观测不可用"，不影响掉落与概率计数
+                accumulator.markUnavailable();
+                return;
+            }
+            ObservedFunctionChain chain = this.captureSession.observe(stack);
+            if (chain == null) {
+                // 对象关系断裂：不做"相同物品 + 相同组件"回退归因，标为未完整
+                accumulator.markUnlinked();
+                return;
+            }
+            if (this.observedChainEntries >= FunctionTraceSession.MAX_CHAIN_ENTRIES) {
+                accumulator.markTruncated();
+                return;
+            }
+            if (accumulator.add(chain)) {
+                this.observedChainEntries++;
+            }
+        } finally {
+            this.metrics.end(Stage.CAPTURE, start);
+        }
     }
 
     private void finishScenario() {
@@ -327,9 +387,13 @@ final class LootProbabilitySimulationJob {
         this.childCountsByScenario.getOrDefault(this.scenario.key(), Map.of())
                 .forEach((childTable, appearances) ->
                         childProbabilities.put(childTable, formatProbability(appearances)));
+        Map<String, FunctionObservationSummary> observedFunctions = new LinkedHashMap<>();
+        for (Map.Entry<String, FunctionObservationSummary.Accumulator> entry : this.observedChains.entrySet()) {
+            observedFunctions.put(entry.getKey(), entry.getValue().toSummary());
+        }
         logUncoveredConditions();
         return new SimulationMeasurement(itemProbabilities, childProbabilities,
-                this.discovered, this.discoveredDirectly, this.discoveredChildSources);
+                this.discovered, this.discoveredDirectly, this.discoveredChildSources, observedFunctions);
     }
 
     // 未命中场景覆盖的场景控制类型条件只能按真实逻辑求值，数值可能偏离场景估算，完成时汇总提示一次
