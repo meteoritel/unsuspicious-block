@@ -352,22 +352,6 @@
           ]
         }
       ]
-    },
-    {
-      "rolls": 1,
-      "entries": [
-        {
-          "type": "minecraft:loot_table",
-          "value": "unsuspiciousblock:archaeology/debug/child_echo",
-          "weight": 1,
-          "functions": [
-            {
-              "function": "minecraft:set_damage",
-              "damage": 0.25
-            }
-          ]
-        }
-      ]
     }
   ]
 }

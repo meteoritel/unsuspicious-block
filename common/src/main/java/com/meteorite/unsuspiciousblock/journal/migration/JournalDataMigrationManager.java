@@ -94,8 +94,11 @@ public final class JournalDataMigrationManager {
                 catalogSignatures.add(item.signature());
             }
             for (LootResultSignature stored : progressEntry.getValue().getItemSignatures()) {
+                // 旧版把随机数量也标为近似；只在当前目录唯一归属时合并，歧义记录保持原样。
+                boolean legacyQuantityFallback = stored.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY
+                        && "function".equals(stored.data());
                 if (catalogSignatures.contains(stored)
-                        || stored.type() != LootResultSignature.SignatureType.PLAIN) {
+                        || stored.type() != LootResultSignature.SignatureType.PLAIN && !legacyQuantityFallback) {
                     continue;
                 }
                 LootResultSignature canonical = ArchaeologyLootRuntimeTracker.canonicalizeSignature(tableId, stored);

@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescriptio
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionPreviewContext;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootParseUtil;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckSpec;
@@ -52,7 +53,7 @@ import java.util.Set;
  *   <li><b>条件继承顺序</b>：继承条件链自外向内追加为
  *       {@code 上层传入 ++ 本表内已继承 ++ 本事件自身条件}，{@code allConditions()} 的展示顺序依赖它；</li>
  *   <li><b>函数继承与降级</b>：函数链为 {@code 本事件自身 ++ 本表内已继承 ++ 上层传入}，
- *       无法静态求值的函数按既有规则降级为 {@code APPROX_ITEM_ONLY} 近似签名。</li>
+ *       未能预览的组件/身份变化降级为近似签名，数量变化保持结果身份。</li>
  * </ol>
  * 函数相关语义（规划 F02/F04/F05）：
  * <ul>
@@ -75,6 +76,8 @@ public final class LootTableProjector {
     private final Map<ResourceLocation, CompiledLootTable> compiledTables;
     private final Set<ResourceLocation> excludedReferences;
     private final DynamicOps<JsonElement> lootOps;
+    @Nullable
+    private final LootFunctionPreviewContext previewContext;
 
     /** 单表展平结果缓存；同一轮重载内多次查询只算一次。 */
     private final Map<ResourceLocation, List<ItemDefinition>> itemsCache = new HashMap<>();
@@ -89,10 +92,20 @@ public final class LootTableProjector {
                               Map<ResourceLocation, CompiledLootTable> compiledTables,
                               Set<ResourceLocation> excludedReferences,
                               HolderLookup.Provider registries) {
+        this(referenceGraph, compiledTables, excludedReferences, registries, null);
+    }
+
+    // 当前服务器视图只用于预览，不参与实际掉落执行。
+    public LootTableProjector(LootTableReferenceGraph referenceGraph,
+                              Map<ResourceLocation, CompiledLootTable> compiledTables,
+                              Set<ResourceLocation> excludedReferences,
+                              HolderLookup.Provider registries,
+                              @Nullable LootFunctionPreviewContext previewContext) {
         this.referenceGraph = referenceGraph;
         this.compiledTables = Map.copyOf(compiledTables);
         this.excludedReferences = Set.copyOf(excludedReferences);
         this.lootOps = RegistryOps.create(JsonOps.INSTANCE, registries);
+        this.previewContext = previewContext;
     }
 
     /** 取该表的静态投影；表不在编译产物中时返回 {@code null}。 */
@@ -130,11 +143,12 @@ public final class LootTableProjector {
             LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
             // 安装条件解析上下文：包装函数的内层条件要靠 RegistryOps 才能解，而 describe 的冻结签名没有 ops。
             // 安装点覆盖整棵展开（递归重入会保存并恢复外层上下文），运行时捕获路径不安装、内层条件因此为空。
-            LootFunctionDescriptions.withConditionOps(this.lootOps, () -> {
+            LootFunctionDescriptions.withPreviewContext(this.previewContext,
+                    () -> LootFunctionDescriptions.withConditionOps(this.lootOps, () -> {
                 expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, List.of(),
                         new LinkedHashSet<>(), items);
                 return null;
-            });
+            }));
 
             List<ItemDefinition> definitions = new ArrayList<>(items.size());
             for (ItemDefinitionAccumulator accumulator : items.values()) {
@@ -212,9 +226,8 @@ public final class LootTableProjector {
 
         ItemStack previewStack = new ItemStack(BuiltInRegistries.ITEM.get(path.itemId()));
         LootResultSignature signature = LootResultSignature.plain(path.itemId());
-        // 只表示"物品生成条件"：条目自身条件，或无法证明不改变物品身份的变换。
-        // 函数自身的条件不再计入这里（F04：函数不执行通常不代表原物品不掉落，有条件 set_count 是直接反例）
-        boolean entryHasConditions = !entryConditions.isEmpty();
+        // 掉落条件和数量变化不改变结果身份；未能预览的组件或身份变化才需要近似签名。
+        boolean signatureUncertain = false;
         UncertaintyLevel functionUncertainty = UncertaintyLevel.NONE;
         // 描述与预览解耦：只要解码成功就保留结构化描述，预览失败只额外提升不确定性（F02）
         List<LootFunctionInfo> resolvedFunctions = new ArrayList<>();
@@ -224,7 +237,7 @@ public final class LootTableProjector {
             JsonObject functionObject = LootFunctionDescriptions.normalizeSource(rawFunction);
             if (functionObject == null) {
                 // 既不是对象也不是数组：连类型都取不到，按未知函数降级
-                entryHasConditions = true;
+                signatureUncertain = true;
                 functionUncertainty = UncertaintyLevel.RUNTIME;
                 resolvedFunctions.add(LootFunctionDescriptions.unresolved(null, null));
                 functionHints.add(unknownFunctionHint(null));
@@ -239,7 +252,7 @@ public final class LootTableProjector {
             var decodeResult = LootItemFunctions.TYPED_CODEC.parse(this.lootOps, functionObject);
             LootItemFunction function = decodeResult.result().orElse(null);
             if (function == null) {
-                entryHasConditions = true;
+                signatureUncertain = true;
                 functionUncertainty = UncertaintyLevel.RUNTIME;
                 ResourceLocation failedId = LootParseUtil.extractTypeId(functionObject, "function");
                 resolvedFunctions.add(withFunctionConditions(
@@ -254,6 +267,15 @@ public final class LootTableProjector {
             // 描述走统一入口，替代各 handler 直接给摘要；预览成功与否都保留描述
             LootFunctionInfo described = withFunctionConditions(
                     LootFunctionDescriptions.describe(functionId, function, functionObject), functionConditions);
+            // 空附魔映射对非书物品没有效果；书仍可能被原版转换成附魔书，不能一概隐藏。
+            if (ResourceLocation.withDefaultNamespace("set_enchantments").equals(functionId)
+                    && "empty".equals(described.metadata().get("enchantments"))
+                    && !previewStack.is(net.minecraft.world.item.Items.BOOK)
+                    && resolvedFunctions.stream().noneMatch(LootTableProjector::mayChangeBaseItem)) {
+                described = described.withMetadata(LootFunctionInfo.METADATA_DISPLAY_NO_OP, "true");
+                resolvedFunctions.add(described);
+                continue;
+            }
             resolvedFunctions.add(described);
             // 描述与预览解耦：预览成功也保留描述，提示因此不再只覆盖"求值失败"的那些函数（F02）
             addDescriptionHint(functionHints, described);
@@ -262,7 +284,7 @@ public final class LootTableProjector {
 
             if (handler == null) {
                 // 未知 function：标记为条件 + 近似签名
-                entryHasConditions = true;
+                signatureUncertain = true;
                 functionUncertainty = UncertaintyLevel.RUNTIME;
                 functionHints.add(unknownFunctionHint(functionId));
                 if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
@@ -276,11 +298,10 @@ public final class LootTableProjector {
             try {
                 if (!functionConditions.isEmpty()) {
                     // 函数条件无法在静态层证明：不预览，但描述与不确定性都要保留。
-                    // 只改数量/组件的可选效果不改变"基础物品可掉落"，因此不置 entryHasConditions（F04）；
-                    // 可能换物品或效果未知的变换才影响物品身份，保守标为带条件
+                    // 可选数量变化沿用结果身份；可选组件和变换则保守使用近似签名。
                     functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
-                    if (uncertainItemIdentity(described)) {
-                        entryHasConditions = true;
+                    if (uncertainSignature(described)) {
+                        signatureUncertain = true;
                     }
                     continue;
                 }
@@ -289,7 +310,7 @@ public final class LootTableProjector {
                 if (result != null) {
                     previewStack = result;
                 } else {
-                    entryHasConditions = true;
+                    signatureUncertain |= uncertainSignature(described);
                     functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
                 }
                 LootResultSignature derived = handler.deriveSignature(
@@ -298,11 +319,11 @@ public final class LootTableProjector {
                     signature = derived;
                 }
                 if (handler.addsRandomness()) {
-                    entryHasConditions = true;
+                    signatureUncertain |= uncertainSignature(described);
                     functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
                 }
             } catch (RuntimeException exception) {
-                entryHasConditions = true;
+                signatureUncertain = true;
                 functionUncertainty = UncertaintyLevel.RUNTIME;
                 functionHints.add(unknownFunctionHint(functionId));
                 if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
@@ -314,14 +335,14 @@ public final class LootTableProjector {
             }
         }
 
-        if (!entryHasConditions && signature.type() == LootResultSignature.SignatureType.PLAIN
+        if (!signatureUncertain && signature.type() == LootResultSignature.SignatureType.PLAIN
                 && !previewStack.getComponentsPatch().isEmpty()) {
             signature = LootResultSignature.componentExact(previewStack);
-        } else if (entryHasConditions && signature.type() == LootResultSignature.SignatureType.PLAIN) {
+        } else if (signatureUncertain && signature.type() == LootResultSignature.SignatureType.PLAIN) {
             signature = LootResultSignature.approximateItemOnly(currentItemId(previewStack), "function");
         }
 
-        // 保留签名键以兼容既有发现记录；仅将不确定性从签名身份中解耦。
+        // 未知处理器的回退仍保持运行时不确定性。
         if (signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY
                 && !"function".equals(signature.data())) {
             functionUncertainty = UncertaintyLevel.RUNTIME;
@@ -337,7 +358,7 @@ public final class LootTableProjector {
             hints.addAll(functionHints);
             tooltipHint = joinFunctionHints(hints);
         } else {
-            tooltipHint = resolveItemTooltipHint(entryHasConditions);
+            tooltipHint = resolveItemTooltipHint(signatureUncertain);
         }
 
         List<LootConditionInfo> inheritedConditions =
@@ -362,22 +383,22 @@ public final class LootTableProjector {
                 info.effect(), conditions, info.children(), info.metadata());
     }
 
-    // 条件变换是否可能改变物品身份：数量/组件类可选效果不影响"基础物品可掉落"（F04）；
-    // 包装器看内层效果；容器内容不并入外层掉落，故不影响外层物品身份
-    private static boolean uncertainItemIdentity(LootFunctionInfo info) {
-        if (info.effect() == FunctionEffectKind.ITEM_TRANSFORM
-                || info.effect() == FunctionEffectKind.UNKNOWN) {
+    // 数量和已证明的空操作不改变身份；包装器递归检查子效果，未展开的节点保持保守。
+    private static boolean uncertainSignature(LootFunctionInfo info) {
+        if (info.effect() == FunctionEffectKind.COUNT
+                || "true".equals(info.metadata().get(LootFunctionInfo.METADATA_DISPLAY_NO_OP))) return false;
+        if (!info.effect().isWrapper() || info.children().isEmpty()
+                || info.fidelity() != FunctionFidelity.FULL) return true;
+        return info.children().stream().anyMatch(LootTableProjector::uncertainSignature);
+    }
+
+    // 前序变换存在时不能仅凭预览栈证明空附魔无效果：实际产物仍可能是普通书。
+    private static boolean mayChangeBaseItem(LootFunctionInfo info) {
+        if (info.effect() == FunctionEffectKind.ITEM_TRANSFORM || info.effect() == FunctionEffectKind.UNKNOWN) {
             return true;
         }
-        if (!info.effect().isWrapper()) {
-            return false;
-        }
-        for (LootFunctionInfo child : info.children()) {
-            if (uncertainItemIdentity(child)) {
-                return true;
-            }
-        }
-        return false;
+        if (!info.effect().isWrapper()) return false;
+        return info.children().isEmpty() || info.children().stream().anyMatch(LootTableProjector::mayChangeBaseItem);
     }
 
     // 由结构化描述派生兼容提示；未解析说明连摘要都取不到，与旧 describeHint == null 的降级口径一致

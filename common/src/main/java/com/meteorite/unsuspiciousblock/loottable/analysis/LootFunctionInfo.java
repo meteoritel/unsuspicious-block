@@ -41,6 +41,8 @@ public record LootFunctionInfo(
     public static final String METADATA_TRUNCATED = "truncated";
     /** 静态函数语义未完整分析时置位；场景规划不得把缺失条件当成无条件。 */
     public static final String METADATA_ANALYSIS_INCOMPLETE = "analysis_incomplete";
+    /** 已结合输入物品证明无效果的节点，普通 tooltip 可省略。 */
+    public static final String METADATA_DISPLAY_NO_OP = "display_no_op";
 
     public LootFunctionInfo {
         if (functionType == null) {

@@ -58,6 +58,9 @@ import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDes
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.bool;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.describeNested;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.enchantName;
+import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.enchantmentLevel;
+import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.itemDisplay;
+import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.containerContents;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.filterableText;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.fn;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.fnVariant;
@@ -323,7 +326,7 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             ResourceLocation itemId = idOf(field(source, "item"));
             return info(typeId(function, "set_item"),
-                    fn("set_item", itemId != null ? literalOf(itemId) : param("dynamic")),
+                    fn("set_item", itemId != null ? itemDisplay(itemId) : param("dynamic")),
                     itemId != null ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.ITEM_TRANSFORM,
                     "item", itemId != null ? itemId.toString() : "dynamic");
@@ -582,7 +585,8 @@ public final class LootFunctionHandlers {
                     ResourceLocation enchantmentId = ResourceLocation.tryParse(entry.getKey());
                     Component name = enchantmentId != null
                             ? enchantName(enchantmentId) : Component.literal(entry.getKey());
-                    parts.add(append(append(name, Component.literal("=")), numberText(entry.getValue())));
+                    parts.add(add ? fnVariant("set_enchantments", "increase", name, numberText(entry.getValue()))
+                            : append(append(name, Component.literal(" ")), enchantmentLevel(entry.getValue())));
                     metaParts.add(entry.getKey() + "=" + numberMeta(entry.getValue()));
                 }
             }
@@ -596,9 +600,7 @@ public final class LootFunctionHandlers {
                         "enchantments", "empty", "add", Boolean.toString(add));
             }
             Component joined = join(Component.literal(", "), parts);
-            Component description = add
-                    ? fnVariant("set_enchantments", "add", joined)
-                    : fn("set_enchantments", joined);
+            Component description = add ? joined : fn("set_enchantments", joined);
             return info(typeId(function, "set_enchantments"), description, FunctionEffectKind.COMPONENT,
                     "enchantments", joinIds(metaParts), "add", Boolean.toString(add));
         }
@@ -1261,15 +1263,16 @@ public final class LootFunctionHandlers {
         }
     }
 
-    /** 处理 furnace_smelt：熔炼物品（产物由运行时配方决定） */
+    /** 处理 furnace_smelt：从当前服务器配方读取熔炼预览。 */
     private static final class FurnaceSmeltHandler implements LootFunctionHandler {
         @Override
         @Nullable
         public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
+            LootFunctionPreviewContext context = LootFunctionDescriptions.previewContext();
+            return context != null ? context.smelt(previewStack) : null;
         }
 
-        // 描述：只说明"按熔炼配方变换"，不另建静态配方执行器（§4.4）
+        // 描述遵循熔炼语义；具体图标由同代服务器配方解析。
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             return info(typeId(function, "furnace_smelt"), fn("furnace_smelt"),
@@ -1278,7 +1281,7 @@ public final class LootFunctionHandlers {
 
         @Override
         public boolean addsRandomness() {
-            return true;
+            return false;
         }
     }
 
@@ -1295,9 +1298,7 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             String component = string(source, "component", "");
             int entries = listSize(source, "entries");
-            Component componentText = component.isEmpty() ? param("dynamic") : Component.literal(component);
-            Component entryText = entries >= 0 ? Component.literal(Integer.toString(entries)) : param("dynamic");
-            return info(typeId(function, "set_contents"), fn("set_contents", componentText, entryText),
+            return info(typeId(function, "set_contents"), fn("set_contents", containerContents(field(source, "entries"))),
                     FunctionEffectKind.CONTAINER,
                     "component", component.isEmpty() ? "dynamic" : component,
                     "entry_count", entries >= 0 ? Integer.toString(entries) : "dynamic");
@@ -1352,9 +1353,10 @@ public final class LootFunctionHandlers {
             ResourceLocation tableId = idOf(field(source, "name"));
             String type = string(source, "type", "");
             long seed = longValue(source, "seed", 0L);
-            Component typeText = type.isEmpty() ? param("absent") : Component.literal(type);
             return info(typeId(function, "set_loot_table"),
-                    fn("set_loot_table", literalOf(tableId), typeText, seed),
+                    fn("set_loot_table", tableId != null
+                            ? com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames.resolveDisplayName(tableId)
+                            : param("dynamic")),
                     tableId != null ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.CONTAINER,
                     "name", tableId != null ? tableId.toString() : "dynamic",
@@ -1397,7 +1399,7 @@ public final class LootFunctionHandlers {
                     Double probability = parameterSource != null
                             ? numberOrNull(parameterSource.get("probability")) : null;
                     params = fnVariant("apply_bonus", "binomial", extra,
-                            trimNumber(probability != null ? probability : 0));
+                            trimNumber(100 * (probability != null ? probability : 0)));
                     paramsMeta = "extra=" + extra + ",probability=" + trimNumber(probability != null ? probability : 0);
                     known = true;
                 }
@@ -1418,7 +1420,7 @@ public final class LootFunctionHandlers {
                     known = false;
                 }
             }
-            Component description = known ? append(base, fnVariant("apply_bonus", "params", params)) : base;
+            Component description = known ? fnVariant("apply_bonus", "tool", enchantName(enchantmentId), params) : base;
             return info(typeId(function, "apply_bonus"), description,
                     known ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.COUNT,
@@ -1884,25 +1886,41 @@ public final class LootFunctionHandlers {
         @Override
         @Nullable
         public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
+            var context = LootFunctionDescriptions.previewContext();
+            var ops = LootFunctionDescriptions.conditionOps();
+            if (context == null || ops == null) return null;
+            JsonObject source = LootFunctionDescriptions.normalizeSource(
+                    net.minecraft.world.level.storage.loot.functions.LootItemFunctions.ROOT_CODEC
+                            .encodeStart(ops, function).result().orElse(null));
+            ResourceLocation id = idOf(field(source, "name"));
+            LootItemFunction target = id != null ? context.modifier(id) : null;
+            return target != null ? LootFunctionDescriptions.preview(previewStack, target) : null;
         }
 
-        // 描述：保留 modifier id；引用目标位于数据包注册表，describe 阶段没有注册表视图，
-        // 不反射整个服务器注册表，因此标部分解析（§4.4）
+        // 从投影器提供的服务器视图展开引用，递归深度由 describeNested 统一限制。
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             ResourceLocation modifierId = idOf(field(source, "name"));
             Component description = modifierId != null
                     ? fn("reference", literalOf(modifierId))
                     : fnVariant("reference", "unresolved");
-            return info(typeId(function, "reference"), description, FunctionFidelity.PARTIAL,
+            LootFunctionInfo base = info(typeId(function, "reference"), description, FunctionFidelity.PARTIAL,
                     FunctionEffectKind.WRAPPER,
                     "modifier", modifierId != null ? modifierId.toString() : "unknown");
+            LootFunctionPreviewContext context = LootFunctionDescriptions.previewContext();
+            var ops = LootFunctionDescriptions.conditionOps();
+            if (context == null || ops == null || modifierId == null) return base;
+            LootItemFunction target = context.modifier(modifierId);
+            if (target == null) return base;
+            JsonElement targetSource = net.minecraft.world.level.storage.loot.functions.LootItemFunctions.ROOT_CODEC
+                    .encodeStart(ops, target).result().orElse(null);
+            LootFunctionInfo child = describeNested(target, targetSource);
+            return child != null ? withFidelity(withChildren(base, List.of(child)), child.fidelity()) : base;
         }
 
         @Override
         public boolean addsRandomness() {
-            return true;
+            return false;
         }
     }
 
@@ -1911,7 +1929,14 @@ public final class LootFunctionHandlers {
         @Override
         @Nullable
         public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
+            List<LootItemFunction> inner = reflectField(function, "functions");
+            if (inner == null || inner.size() > LootFunctionInfo.MAX_CHILDREN_PER_NODE) return null;
+            ItemStack result = previewStack.copy();
+            for (LootItemFunction child : inner) {
+                result = LootFunctionDescriptions.preview(result, child);
+                if (result == null) return null;
+            }
+            return result;
         }
 
         // 描述：按原顺序递归描述内部函数，顺序与重复次数保留在 children 中；
@@ -1931,7 +1956,7 @@ public final class LootFunctionHandlers {
                         complete = false;
                     } else {
                         children.add(child);
-                        if (!child.isResolved()) {
+                        if (child.fidelity() != FunctionFidelity.FULL) {
                             complete = false;
                         }
                     }
@@ -1948,7 +1973,7 @@ public final class LootFunctionHandlers {
 
         @Override
         public boolean addsRandomness() {
-            return true;
+            return false;
         }
     }
 }

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.mojang.serialization.DynamicOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,8 +30,60 @@ public final class LootFunctionDescriptions {
      * 运行时捕获路径**不**安装，内层条件保持为空——运行时对象本来就没有对应的静态 JSON。
      */
     private static final ThreadLocal<DynamicOps<JsonElement>> CONDITION_OPS = new ThreadLocal<>();
+    private static final ThreadLocal<LootFunctionPreviewContext> PREVIEW_CONTEXT = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> PREVIEW_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<Integer> PREVIEW_NODES = ThreadLocal.withInitial(() -> 0);
 
     private LootFunctionDescriptions() {
+    }
+
+    // 上下文仅在静态目录构建期间安装，退出时恢复，避免影响运行时掉落与捕获。
+    public static void withPreviewContext(@Nullable LootFunctionPreviewContext context, Runnable action) {
+        LootFunctionPreviewContext previous = PREVIEW_CONTEXT.get();
+        PREVIEW_CONTEXT.set(context);
+        try {
+            action.run();
+        } finally {
+            if (previous == null) PREVIEW_CONTEXT.remove();
+            else PREVIEW_CONTEXT.set(previous);
+        }
+    }
+
+    @Nullable
+    public static LootFunctionPreviewContext previewContext() {
+        return PREVIEW_CONTEXT.get();
+    }
+
+    // 包装函数的预览有界递归；数量不确定不会改变组件身份，其他失败则保守返回空。
+    @Nullable
+    static ItemStack preview(ItemStack stack, LootItemFunction function) {
+        DynamicOps<JsonElement> ops = conditionOps();
+        int depth = PREVIEW_DEPTH.get();
+        if (ops == null || depth >= 8) return null;
+        if (depth == 0) PREVIEW_NODES.set(128);
+        int remaining = PREVIEW_NODES.get();
+        if (remaining <= 0) return null;
+        PREVIEW_NODES.set(remaining - 1);
+        PREVIEW_DEPTH.set(depth + 1);
+        try {
+            JsonElement source = net.minecraft.world.level.storage.loot.functions.LootItemFunctions.ROOT_CODEC
+                    .encodeStart(ops, function).result().orElse(null);
+            JsonObject object = normalizeSource(source);
+            if (object == null || object.has("conditions") && !object.getAsJsonArray("conditions").isEmpty()) {
+                return null;
+            }
+            ResourceLocation id = LootFunctionHandlers.keyOf(function);
+            LootFunctionHandler handler = id != null ? LootFunctionHandlers.get(id) : null;
+            if (handler == null) return null;
+            LootFunctionInfo info = describe(id, function, object);
+            if (!info.isResolved()) return null;
+            if (handler.addsRandomness() && info.effect() != FunctionEffectKind.COUNT) return null;
+            ItemStack result = handler.apply(stack.copy(), function);
+            return result != null ? result : (info.effect() == FunctionEffectKind.COUNT ? stack.copy() : null);
+        } finally {
+            PREVIEW_DEPTH.set(depth);
+            if (depth == 0) PREVIEW_NODES.remove();
+        }
     }
 
     // ROOT_CODEC 的数组是内联 sequence；只新建包装对象，不修改原始 JSON。

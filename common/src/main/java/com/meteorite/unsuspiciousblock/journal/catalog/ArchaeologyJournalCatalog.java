@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.journal.catalog;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableCompiler;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionPreviewContext;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
@@ -43,6 +44,13 @@ public final class ArchaeologyJournalCatalog {
      */
     public static LoadResult load(long generation, LootTableSourceSnapshot sourceSnapshot,
                                   ResourceManager resourceManager, HolderLookup.Provider registries) {
+        return load(generation, sourceSnapshot, resourceManager, registries, null);
+    }
+
+    // 服务器加载入口提供当前配方及修饰器视图；原有纯资源入口仍可用于无世界的解析。
+    public static LoadResult load(long generation, LootTableSourceSnapshot sourceSnapshot,
+                                  ResourceManager resourceManager, HolderLookup.Provider registries,
+                                  @org.jetbrains.annotations.Nullable LootFunctionPreviewContext previewContext) {
         LootTableReferenceGraph referenceGraph = LootTableReferenceGraph.build(
                 sourceSnapshot, RuntimeLootLinks.syntheticEdges());
 
@@ -63,7 +71,7 @@ public final class ArchaeologyJournalCatalog {
         Map<ResourceLocation, CompiledLootTable> compiledTables =
                 new LootTableCompiler(registries).compile(sourceSnapshot, validClosure);
         LootTableProjector projector = new LootTableProjector(
-                referenceGraph, compiledTables, cycleTables, registries);
+                referenceGraph, compiledTables, cycleTables, registries, previewContext);
 
         // 按表 id 排序遍历，保持与原解析路径一致的展示名登记顺序
         List<ResourceLocation> orderedTables = new ArrayList<>(validClosure);

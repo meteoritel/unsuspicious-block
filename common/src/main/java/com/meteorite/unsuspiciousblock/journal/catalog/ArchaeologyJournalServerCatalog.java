@@ -115,7 +115,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 沿用会展示过期口径；{@code LootProbabilityData} 的 {@code format_version} 同时升到 5，
      * 两者共同保证旧数据不会被当成缓存命中。
      */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v23";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v24";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -165,7 +165,8 @@ public final class ArchaeologyJournalServerCatalog {
 
         // 2. 建图 → 编译 → 投影 → 组装静态读模型
         ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
-                generation, sourceSnapshot, server.getResourceManager(), server.registryAccess());
+                generation, sourceSnapshot, server.getResourceManager(), server.registryAccess(),
+                new com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionPreviewContext(server.overworld()));
         Map<ResourceLocation, TableDefinition> enrichedTables = new LinkedHashMap<>();
         loadResult.staticTables().forEach((id, table) -> {
             List<ItemDefinition> items = new ArrayList<>(table.items());

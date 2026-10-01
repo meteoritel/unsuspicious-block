@@ -51,6 +51,7 @@ final class LootFunctionDescribeSupport {
     private static final Set<String> TARGET_NAMES = Set.of("custom_name", "item_name");
 
     private static final ThreadLocal<Integer> NESTED_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<Integer> NESTED_NODES = ThreadLocal.withInitial(() -> 0);
 
     private LootFunctionDescribeSupport() {
     }
@@ -89,6 +90,119 @@ final class LootFunctionDescribeSupport {
     // 注册名以原样文本展示：语言无关且不会出现缺失 key 的裸文本
     static Component literalOf(@Nullable ResourceLocation id) {
         return Component.literal(id != null ? id.toString() : "?");
+    }
+
+    // 已注册物品复用原版描述名，注册表缺项时才退回资源名。
+    static Component itemDisplay(ResourceLocation id) {
+        return BuiltInRegistries.ITEM.containsKey(id)
+                ? BuiltInRegistries.ITEM.get(id).getDescription() : literalOf(id);
+    }
+
+    // 常量和整数范围用原版附魔等级文本；复杂数值提供器保留原来的可读表达。
+    static Component enchantmentLevel(JsonElement value) {
+        double[] range = knownRange(value);
+        if (range == null) return numberText(value);
+        double lower = range[0];
+        double upper = range.length > 1 ? range[1] : lower;
+        if (lower != Math.rint(lower) || upper != Math.rint(upper) || lower < 1 || upper > 10) {
+            return numberText(value);
+        }
+        Component first = Component.translatable("enchantment.level." + (int) lower);
+        return lower == upper ? first : fnVariant("set_enchantments", "level_range", first,
+                Component.translatable("enchantment.level." + (int) upper));
+    }
+
+    // 容器内容是内层产物；只列有界的声明摘要，绝不加入外层物品概率或收集进度。
+    static Component containerContents(@Nullable JsonElement entries) {
+        JsonArray array = arrayOf(entries);
+        if (array == null || array.isEmpty()) return fnVariant("set_contents", "empty");
+        List<Component> parts = new ArrayList<>();
+        int[] budget = {32};
+        for (int index = 0; index < Math.min(array.size(), MAX_LIST_ITEMS); index++) {
+            parts.add(containerEntry(array.get(index), 0, budget));
+        }
+        if (array.size() > MAX_LIST_ITEMS) parts.add(fnVariant("set_contents", "more", array.size() - MAX_LIST_ITEMS));
+        return join(Component.literal(", "), parts);
+    }
+
+    // 包装条目的分支关系保留在摘要中；不熟悉的类型用生成内容说明，避免暴露原始 JSON。
+    private static Component containerEntry(JsonElement element, int depth, int[] budget) {
+        JsonObject entry = objectOf(element);
+        if (entry == null || depth >= MAX_NESTED_DEPTH || budget[0]-- <= 0) {
+            return fnVariant("set_contents", "generated");
+        }
+        String type = LootParseUtil.normalizeType(string(entry, "type", ""));
+        Component result;
+        ResourceLocation name = idOf(field(entry, "name"));
+        if ("item".equals(type) && name != null) {
+            result = itemDisplay(name);
+        } else if ("tag".equals(type) && name != null) {
+            result = tagDisplay("item", name.toString());
+        } else if ("loot_table".equals(type)) {
+            ResourceLocation table = idOf(field(entry, "value"));
+            result = table != null ? com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames.resolveDisplayName(table)
+                    : fnVariant("set_contents", "generated");
+        } else if ("empty".equals(type)) {
+            result = fnVariant("set_contents", "empty");
+        } else {
+            JsonArray children = arrayOf(field(entry, "children"));
+            if (children == null) return fnVariant("set_contents", "generated");
+            List<Component> parts = new ArrayList<>();
+            for (int index = 0; index < Math.min(children.size(), MAX_LIST_ITEMS); index++) {
+                parts.add(containerEntry(children.get(index), depth + 1, budget));
+            }
+            if (children.size() > MAX_LIST_ITEMS) {
+                parts.add(fnVariant("set_contents", "more", children.size() - MAX_LIST_ITEMS));
+            }
+            String variant = switch (type) {
+                case "alternatives" -> "first_match";
+                case "sequence" -> "sequence";
+                default -> "group";
+            };
+            result = fnVariant("set_contents", variant,
+                    join(Component.literal(", "), parts));
+        }
+        var ops = LootFunctionDescriptions.conditionOps();
+        if (ops != null) {
+            List<LootConditionInfo> conditions = LootParseUtil.parseConditions(entry, ops);
+            if (!conditions.isEmpty()) {
+                result = fnVariant("set_contents", "conditional", result,
+                        join(Component.literal(", "), conditions.stream().map(LootConditionInfo::description).toList()));
+            }
+            JsonArray functions = arrayOf(field(entry, "functions"));
+            if (functions != null) {
+                List<Component> effects = new ArrayList<>();
+                for (int index = 0; index < Math.min(functions.size(), MAX_LIST_ITEMS); index++) {
+                    JsonElement source = functions.get(index);
+                    LootItemFunction function = net.minecraft.world.level.storage.loot.functions.LootItemFunctions.ROOT_CODEC
+                            .parse(ops, source).result().orElse(null);
+                    LootFunctionInfo info = describeNested(function, source);
+                    effects.add(info != null ? containerFunction(info, 0) : fnVariant("set_contents", "generated"));
+                }
+                if (functions.size() > MAX_LIST_ITEMS) {
+                    effects.add(fnVariant("set_contents", "more", functions.size() - MAX_LIST_ITEMS));
+                }
+                if (!effects.isEmpty()) result = fnVariant("set_contents", "effects", result,
+                        join(Component.literal(", "), effects));
+            }
+        }
+        return result;
+    }
+
+    // 内层效果必须带上自己的生效条件和包装子效果，不能把可选数量写成固定内容。
+    private static Component containerFunction(LootFunctionInfo info, int depth) {
+        Component result = info.description();
+        if (depth >= MAX_NESTED_DEPTH) return result;
+        if (!info.children().isEmpty()) {
+            result = fnVariant("set_contents", "effects", result,
+                    join(Component.literal(", "), info.children().stream().limit(MAX_LIST_ITEMS)
+                            .map(child -> containerFunction(child, depth + 1)).toList()));
+        }
+        if (info.hasConditions()) {
+            result = fnVariant("set_contents", "conditional", result,
+                    join(Component.literal(", "), info.conditions().stream().map(LootConditionInfo::description).toList()));
+        }
+        return result;
     }
 
     // 布尔参数统一走 param 文案，避免把 true/false 写进句子
@@ -603,11 +717,14 @@ final class LootFunctionDescribeSupport {
         }
         int depth = NESTED_DEPTH.get();
         ResourceLocation id = LootFunctionHandlers.keyOf(function);
-        if (depth >= MAX_NESTED_DEPTH) {
+        if (depth == 0) NESTED_NODES.set(128);
+        int remaining = NESTED_NODES.get();
+        if (depth >= MAX_NESTED_DEPTH || remaining <= 0) {
             return LootFunctionDescriptions.unresolved(id, function)
-                    .withMetadata(LootFunctionInfo.METADATA_ANALYSIS_INCOMPLETE, "depth")
-                    .withMetadata(LootFunctionInfo.METADATA_TRUNCATED, "depth");
+                    .withMetadata(LootFunctionInfo.METADATA_ANALYSIS_INCOMPLETE, "budget")
+                    .withMetadata(LootFunctionInfo.METADATA_TRUNCATED, "budget");
         }
+        NESTED_NODES.set(remaining - 1);
         LootFunctionHandler handler = id != null ? LootFunctionHandlers.get(id) : null;
         if (handler == null) {
             return LootFunctionDescriptions.unresolved(id, function);
@@ -630,6 +747,7 @@ final class LootFunctionDescribeSupport {
             // 内层描述失败不得影响外层描述，继续降级
         } finally {
             NESTED_DEPTH.set(depth);
+            if (depth == 0) NESTED_NODES.remove();
         }
         return LootFunctionDescriptions.unresolved(id, function);
     }
