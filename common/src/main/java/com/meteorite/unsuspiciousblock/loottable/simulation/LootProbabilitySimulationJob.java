@@ -340,7 +340,8 @@ final class LootProbabilitySimulationJob {
             }
             ObservedFunctionChain chain = this.captureSession.observe(stack);
             if (chain == null) {
-                // 对象关系断裂：不做"相同物品 + 相同组件"回退归因，标为未完整
+                // 没有可归因的链：可能未执行被捕获的函数，也可能关联丢失，不据此断定对象关系断裂。
+                // 保守标为未完整，不做"相同物品 + 相同组件"回退归因；概率计数独立处理。
                 accumulator.markUnlinked();
                 return;
             }

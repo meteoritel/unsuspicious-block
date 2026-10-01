@@ -4,9 +4,12 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.DynamicOps;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
 import org.jetbrains.annotations.Nullable;
 
@@ -74,11 +77,13 @@ final class LootFunctionDescribeSupport {
         return Component.translatable(KEY_PREFIX + "function.param." + name, args);
     }
 
-    // 附魔名称沿用原版 key，与既有实现口径一致
+    // 由客户端按当前语言解析原版附魔 key；缺少翻译时保留完整注册名。
     static Component enchantName(@Nullable ResourceLocation id) {
         return id == null
                 ? param("unknown")
-                : Component.translatable("enchantment." + id.getNamespace() + "." + id.getPath());
+                : Component.translatableWithFallback(
+                        "enchantment." + id.getNamespace() + "." + id.getPath().replace('/', '.'),
+                        id.toString());
     }
 
     // 注册名以原样文本展示：语言无关且不会出现缺失 key 的裸文本
@@ -202,7 +207,7 @@ final class LootFunctionDescribeSupport {
         }
         if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
             String raw = clip(element.getAsString());
-            return new Options(Component.literal(raw), raw);
+            return new Options(enchantOptionDisplay(raw), raw);
         }
         if (element.isJsonArray()) {
             JsonArray array = element.getAsJsonArray();
@@ -216,9 +221,35 @@ final class LootFunctionDescribeSupport {
                 }
             }
             String joined = joinIds(ids);
-            return new Options(Component.literal(joined), joined);
+            List<Component> names = new ArrayList<>();
+            for (int index = 0; index < Math.min(ids.size(), MAX_LIST_ITEMS); index++) {
+                names.add(enchantOptionDisplay(ids.get(index)));
+            }
+            Component text = join(param("list_separator"), names);
+            if (ids.size() > MAX_LIST_ITEMS) {
+                text = append(text, Component.literal("…"));
+            }
+            return new Options(text, joined);
         }
         return new Options(param("dynamic"), "dynamic");
+    }
+
+    // 附魔标签与具体附魔都先查本地化；元数据仍使用原始 id，不受客户端语言影响。
+    private static Component enchantOptionDisplay(String raw) {
+        if (raw.startsWith("#")) {
+            return tagDisplay("enchantment", raw.substring(1));
+        }
+        ResourceLocation id = ResourceLocation.tryParse(raw);
+        return id != null ? enchantName(id) : Component.literal(clip(raw));
+    }
+
+    // 标签使用通用 tag.<注册表>.<命名空间>.<路径> key，未知标签回退到 #注册名。
+    private static Component tagDisplay(String registry, String raw) {
+        ResourceLocation id = ResourceLocation.tryParse(raw);
+        return id == null ? Component.literal(clip("#" + raw))
+                : Component.translatableWithFallback(
+                        "tag." + registry + "." + id.getNamespace() + "." + id.getPath().replace('/', '.'),
+                        "#" + id);
     }
 
     // ==================== JSON 读取 ====================
@@ -344,7 +375,80 @@ final class LootFunctionDescribeSupport {
         return clip(element.toString());
     }
 
-    // 物品过滤器摘要：优先取 items/tag 这类稳定字段，取不到时退回有界 JSON 文本
+    // 物品过滤器的**展示**文本：items/tag 逐项解析成物品名（客户端本地化）或标签名。
+    // 旧实现把 {"items":["minecraft:coal"]} 原样印进 tooltip，既占行宽又读不出是什么物品。
+    static Component predicateDisplay(@Nullable JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return param("unknown");
+        }
+        if (element.isJsonPrimitive()) {
+            return predicateEntryDisplay(element.getAsString());
+        }
+        JsonObject object = objectOf(element);
+        if (object != null) {
+            List<Component> parts = new ArrayList<>();
+            JsonElement items = object.get("items");
+            if (items != null && items.isJsonArray()) {
+                for (JsonElement entry : items.getAsJsonArray()) {
+                    if (entry.isJsonPrimitive()) {
+                        parts.add(predicateEntryDisplay(entry.getAsString()));
+                    }
+                }
+            }
+            JsonElement tag = object.get("tag");
+            if (tag != null && tag.isJsonPrimitive()) {
+                parts.add(predicateEntryDisplay("#" + tag.getAsString()));
+            }
+            if (!parts.isEmpty()) {
+                return join(Component.translatable(KEY_PREFIX + "function.param.list_separator"), parts);
+            }
+        }
+        return Component.literal(clip(element.toString()));
+    }
+
+    // 单个过滤器条目：标签查本地化，其余按注册名取物品展示名；解析不出时退回原文。
+    private static Component predicateEntryDisplay(String raw) {
+        if (raw.startsWith("#")) {
+            return tagDisplay("item", raw.substring(1));
+        }
+        ResourceLocation id = ResourceLocation.tryParse(raw);
+        if (id == null) {
+            return Component.literal(clip(raw));
+        }
+        Item item = BuiltInRegistries.ITEM.get(id);
+        if (item == Items.AIR && !"minecraft:air".equals(raw)) {
+            return Component.literal(clip(raw));
+        }
+        return Component.translatableWithFallback(item.getDescriptionId(), id.toString());
+    }
+
+    // 文本组件字段（如 set_name 的 name）的展示：translate / text 形态还原成玩家读到的那句话，
+    // 其余形态退回有界 JSON 文本。旧实现直接印 {"translate":"..."} 这样的原始 JSON。
+    static Component componentDisplay(@Nullable JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return param("absent");
+        }
+        if (element.isJsonPrimitive()) {
+            return Component.literal(clip(element.getAsString()));
+        }
+        JsonObject object = objectOf(element);
+        if (object != null) {
+            String translate = string(object, "translate", "");
+            if (!translate.isEmpty()) {
+                String fallback = string(object, "fallback", "");
+                return fallback.isEmpty()
+                        ? Component.translatable(translate)
+                        : Component.translatableWithFallback(translate, fallback);
+            }
+            String text = string(object, "text", "");
+            if (!text.isEmpty()) {
+                return Component.literal(clip(text));
+            }
+        }
+        return Component.literal(clip(element.toString()));
+    }
+
+    // 物品过滤器摘要（元数据用）：优先取 items/tag 这类稳定字段，取不到时退回有界 JSON 文本
     static String predicateText(@Nullable JsonElement element) {
         if (element == null || element.isJsonNull()) {
             return "unknown";

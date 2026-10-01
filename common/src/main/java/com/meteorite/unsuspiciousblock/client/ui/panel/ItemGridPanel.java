@@ -637,13 +637,15 @@ public final class ItemGridPanel implements PagePanel {
         }
         if (!hoveredItem.unlocked()) {
             return new TooltipData(ItemStack.EMPTY, null, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0, null);
+                    LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0, null,
+                    null, null);
         }
         return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
                 hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
                 hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true,
                 hoveredItem.scenarioProbabilities(), hoveredItem.declaredChances(),
-                hoveredItem.simulationCount(), hoveredItem.observedFunctions());
+                hoveredItem.simulationCount(), hoveredItem.observedFunctions(),
+                hoveredItem.displayName(), hoveredItem.signature());
     }
 
     // 处理 tag 分组入口与返回入口点击；普通物品格不消费点击。
@@ -882,11 +884,13 @@ public final class ItemGridPanel implements PagePanel {
                                List<ScenarioProbability> scenarioProbabilities,
                                List<DeclaredChance> declaredChances,
                                int simulationCount,
-                               @Nullable FunctionObservationSummary observedFunctions) {
+                               @Nullable FunctionObservationSummary observedFunctions,
+                               @Nullable Component displayName,
+                               @Nullable LootResultSignature signature) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
             this(stack, hint, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of(), 0, null);
+                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of(), 0, null, null, null);
         }
 
         // 兼容构造：无函数观测摘要
@@ -896,7 +900,7 @@ public final class ItemGridPanel implements PagePanel {
                            List<ScenarioProbability> scenarioProbabilities,
                            List<DeclaredChance> declaredChances, int simulationCount) {
             this(stack, hint, count, probability, acquisitionPaths, injected, uncertaintyLevel, discovered,
-                    scenarioProbabilities, declaredChances, simulationCount, null);
+                    scenarioProbabilities, declaredChances, simulationCount, null, null, null);
         }
     }
 

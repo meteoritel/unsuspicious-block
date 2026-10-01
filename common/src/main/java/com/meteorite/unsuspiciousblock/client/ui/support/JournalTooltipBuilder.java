@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
@@ -14,6 +13,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ObservedFunctionChain;
+import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -43,6 +43,17 @@ public final class JournalTooltipBuilder {
     // 与原版描述侧的 MAX_NESTED_DEPTH 取同一口径：递归必须有界，防止异常数据造成无限递归或超长 tooltip。
     private static final int MAX_FUNCTION_RULE_DEPTH = 8;
 
+    // 签名级标记的文案 key：与服务端派生提示（LootTableProjector / LootTableCatalog）共用同一组键
+    private static final String ENCHANTED_HINT_KEY =
+            "screen.unsuspiciousblock.archaeology_journal.item_hint.enchanted";
+    private static final String APPROXIMATE_HINT_KEY =
+            "screen.unsuspiciousblock.archaeology_journal.item_hint.approximate";
+    private static final String KEY_PROBABILITY = "screen.unsuspiciousblock.archaeology_journal.probability";
+    private static final String KEY_PROBABILITY_MIN =
+            "screen.unsuspiciousblock.archaeology_journal.probability_minimum";
+    private static final String KEY_PROBABILITY_MAX =
+            "screen.unsuspiciousblock.archaeology_journal.probability_maximum";
+
     private JournalTooltipBuilder() {
     }
 
@@ -60,7 +71,10 @@ public final class JournalTooltipBuilder {
             return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.undiscovered")
                     .withStyle(TooltipBuilder.LABEL));
         }
-        lines.add(data.stack().getHoverName().copy().withStyle(TooltipBuilder.BODY));
+        // 标题取目录下发的展示名：签名预览栈会丢掉函数产生的自定义名称（例如熔炼后再改名），
+        // 直接用它当标题会出现"格子上叫 A、tooltip 里叫 B"的错位；只有缺展示名时才退回预览栈名。
+        Component title = data.displayName() != null ? data.displayName() : data.stack().getHoverName();
+        lines.add(title.copy().withStyle(TooltipBuilder.BODY));
         JournalItemDetailAppender.append(lines, data.stack());
 
         // 获取数量
@@ -84,15 +98,12 @@ public final class JournalTooltipBuilder {
             appendLuckNote(lines);
         }
 
-        // 提示文本（近似概率等）
-        if (data.hint() != null) {
-            boolean probUncertain = data.probability() != null && data.probability().isUnknown();
-            boolean hintIsApprox = data.hint().getString().equals(
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_hint.approximate").getString());
-            if (!(probUncertain && hintIsApprox)) {
-                // 提示文本：色表归并规则下 DARK_GREEN 归 HINT（文案规范 8.3）
-                lines.add(data.hint().copy().withStyle(TooltipBuilder.HINT, ChatFormatting.ITALIC));
-            }
+        // 签名级标记：附魔变体 / 近似条目都是**结构化事实**，从签名直接判定，不从提示文本反解。
+        // 旧提示行是各条函数描述的拼接，与路径中的生成函数重复（两条效果还会被拼成一句假的因果链），
+        // 因此不再渲染；只有拿不到签名的调用方（日志详情页等）才原样保留自定义提示。
+        appendSignatureMarkers(lines, data.signature());
+        if (data.signature() == null && data.hint() != null) {
+            lines.add(data.hint().copy().withStyle(TooltipBuilder.HINT, ChatFormatting.ITALIC));
         }
 
         // 外部注入标记
@@ -103,47 +114,34 @@ public final class JournalTooltipBuilder {
         }
 
         appendAcquisitionPaths(lines, data.acquisitionPaths());
-        // 规则与观测分区（规划 §4.8）：静态规则回答"声明了什么"，观测回答"本输入的模拟里进过哪些执行体"。
-        // 两者分开渲染，观测绝不写成"必然生效"，也不与规则拼成同一条因果链。
+        // 静态函数挂到所属获取路径；执行记录独立展示，不能推断它属于哪条静态路径。
         appendObservedFunctions(lines, data.observedFunctions());
-        appendFunctionRules(lines, data.acquisitionPaths());
 
         return lines;
     }
 
-    // ==================== 函数规则与运行时观测 ====================
-
-    // 静态"生成规则"：逐条路径列出其声明的有序函数树；每个函数单独一行，顺序即执行顺序。
-    // 函数自身的条件缩进列在该函数下面——它**不是**物品的掉落条件（规划 F04）。
-    // 包装函数的内层规则必须一起递归展开：只渲染顶层的话，sequence 只剩"依次执行 N 个函数"，
-    // 内层规则与内层条件完全不可见（规划 §4.5.3 的有序函数树）。
-    private static void appendFunctionRules(List<Component> lines, List<LootAcquisitionPath> paths) {
-        List<List<LootFunctionInfo>> rulePaths = new ArrayList<>();
-        for (LootAcquisitionPath path : paths) {
-            if (!path.functions().isEmpty()) {
-                rulePaths.add(path.functions());
-            }
-        }
-        if (rulePaths.isEmpty()) {
+    // 签名级标记：附魔变体与近似条目的判定只看签名，与颜色/文本比较无关（服务端与客户端语言差异不影响行为）
+    private static void appendSignatureMarkers(List<Component> lines,
+                                               @Nullable LootResultSignature signature) {
+        if (signature == null) {
             return;
         }
-        lines.add(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.function.rules_header")
-                .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
-        for (int index = 0; index < rulePaths.size(); index++) {
-            List<LootFunctionInfo> chain = rulePaths.get(index);
-            String prefix = rulePaths.size() > 1 ? "  " : "";
-            if (rulePaths.size() > 1) {
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.acquisition_path", index + 1)
-                        .copy().withStyle(TooltipBuilder.ACCENT));
-            }
-            appendFunctionChain(lines, chain, prefix, 0);
+        if (signature.isEnchantedVariant()) {
+            lines.add(Component.translatable(ENCHANTED_HINT_KEY)
+                    .withStyle(TooltipBuilder.HINT, ChatFormatting.ITALIC));
+        }
+        if (signature.type() == LootResultSignature.SignatureType.APPROX_ITEM_ONLY) {
+            lines.add(Component.translatable(APPROXIMATE_HINT_KEY)
+                    .withStyle(TooltipBuilder.HINT, ChatFormatting.ITALIC));
         }
     }
 
+    // ==================== 函数规则与运行时观测 ====================
+
     // 递归渲染一层函数链：每个节点先给自己的描述（单独一行，顺序即执行顺序），
     // 再是它自身的条件树（缩进随层级递增），最后递归展开它的内层包装函数。
+    // 连续且渲染完全相同的兄弟节点折叠为「同上 ×N」：动辄数十个相同函数（超长样例、批量 set_count）
+    // 逐行铺开会把 tooltip 撑满整屏，反而看不见末尾的截断提示；折叠不改变顺序语义。
     private static void appendFunctionChain(List<Component> lines, List<LootFunctionInfo> chain,
                                             String prefix, int depth) {
         if (chain.isEmpty()) {
@@ -151,35 +149,81 @@ public final class JournalTooltipBuilder {
         }
         // 递归必须有界：到达深度上限只报一行省略提示，既不继续深入也不会无限递归
         if (depth >= MAX_FUNCTION_RULE_DEPTH) {
-            lines.add(Component.literal(prefix).append(Component.translatable(
+            lines.add(Component.literal(prefix + "└─ ").append(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.function.rules_nested_truncated",
                     MAX_FUNCTION_RULE_DEPTH)).withStyle(TooltipBuilder.LABEL));
             return;
         }
+        List<List<Component>> rendered = new ArrayList<>(chain.size());
         for (LootFunctionInfo info : chain) {
-            lines.add(Component.literal(prefix).append(info.description())
-                    .withStyle(TooltipBuilder.HINT));
-            if (info.hasConditions()) {
-                appendConditionTree(lines, info.conditions(), prefix + "  ");
+            // 比较不带当前层树枝的内容，否则末尾节点会因树枝不同而无法折叠。
+            rendered.add(renderFunctionNode(info, depth));
+        }
+        int index = 0;
+        while (index < chain.size()) {
+            List<Component> first = rendered.get(index);
+            int run = 1;
+            while (index + run < chain.size() && sameLines(first, rendered.get(index + run))) {
+                run++;
             }
-            appendFunctionChain(lines, info.children(), prefix + "  ", depth + 1);
-            if (info.metadata().containsKey(LootFunctionInfo.METADATA_TRUNCATED)) {
-                lines.add(Component.literal(prefix + "  ").append(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.function.rules_truncated"))
+            boolean isLast = index + run == chain.size();
+            for (int lineIndex = 0; lineIndex < first.size(); lineIndex++) {
+                String branch = lineIndex == 0
+                        ? (isLast ? "└─ " : "├─ ") : (isLast ? "   " : "│  ");
+                lines.add(Component.literal(prefix + branch).withStyle(TooltipBuilder.HINT)
+                        .append(first.get(lineIndex)));
+            }
+            if (run > 1) {
+                lines.add(Component.literal(prefix + (isLast ? "   " : "│  ")).append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.function.rules_repeat", run - 1))
                         .withStyle(TooltipBuilder.LABEL));
             }
+            index += run;
         }
     }
 
-    /**
-     * 本次模拟观测到的函数链。
-     * <p>
-     * 多条链是**备选**（不同轮次/不同生成方式各走一条），因此逐条分行，绝不用分隔符拼成一条因果链。
-     * 空链列表只说明"没观测到"，不是"没有函数"；未完整与截断各有独立提示（规划 D12）。
-     */
+    // 单个函数节点的渲染结果（描述 + 自身条件树 + 内层函数 + 截断提示），供折叠比较与最终输出共用
+    private static List<Component> renderFunctionNode(LootFunctionInfo info, int depth) {
+        List<Component> nodeLines = new ArrayList<>();
+        nodeLines.add(info.description().copy().withStyle(TooltipBuilder.HINT));
+        boolean truncated = info.metadata().containsKey(LootFunctionInfo.METADATA_TRUNCATED);
+        if (info.hasConditions()) {
+            boolean hasFollowingNodes = !info.children().isEmpty() || truncated;
+            appendTreeLabel(nodeLines, "", !hasFollowingNodes,
+                    "screen.unsuspiciousblock.archaeology_journal.function.conditions_header");
+            appendConditionTree(nodeLines, info.conditions(), hasFollowingNodes ? "│  " : "   ");
+        }
+        if (!info.children().isEmpty()) {
+            appendTreeLabel(nodeLines, "", !truncated,
+                    "screen.unsuspiciousblock.archaeology_journal.function.children_header");
+            appendFunctionChain(nodeLines, info.children(), truncated ? "│  " : "   ", depth + 1);
+        }
+        if (truncated) {
+            nodeLines.add(Component.literal("└─ ").append(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.rules_truncated"))
+                    .withStyle(TooltipBuilder.LABEL));
+        }
+        return nodeLines;
+    }
+
+    // 逐行比较渲染结果：样式不影响折叠判定，比的是玩家真正读到的文本与行序
+    private static boolean sameLines(List<Component> first, List<Component> second) {
+        if (first.size() != second.size()) {
+            return false;
+        }
+        for (int index = 0; index < first.size(); index++) {
+            if (!first.get(index).getString().equals(second.get(index).getString())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // 只展示实际记录到的函数链；没有记录时不输出空分区，也不据此推断物品没有函数。
+    // 多条链逐条分行，不能拼成一条因果链；缺失或裁剪只在有记录可读时提示。
     private static void appendObservedFunctions(List<Component> lines,
                                                 @Nullable FunctionObservationSummary summary) {
-        if (summary == null) {
+        if (summary == null || summary.chains().isEmpty()) {
             return;
         }
         lines.add(Component.translatable(
@@ -191,39 +235,46 @@ public final class JournalTooltipBuilder {
                     .withStyle(TooltipBuilder.LABEL));
             return;
         }
-        if (summary.chains().isEmpty()) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.function.observed_none")
-                    .withStyle(TooltipBuilder.LABEL));
-        } else {
-            for (ObservedFunctionChain chain : summary.chains()) {
-                lines.add(describeObservedChain(chain).copy().withStyle(TooltipBuilder.HINT));
-            }
-        }
-        if (summary.incomplete()) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.function.observed_incomplete")
-                    .withStyle(TooltipBuilder.LABEL));
+        for (ObservedFunctionChain chain : summary.chains()) {
+            lines.add(describeObservedChain(chain).copy().withStyle(TooltipBuilder.HINT));
         }
         if (summary.truncated()) {
             lines.add(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.function.observed_truncated")
                     .withStyle(TooltipBuilder.LABEL));
+        } else if (summary.incomplete()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.observed_incomplete")
+                    .withStyle(TooltipBuilder.LABEL));
         }
-        lines.add(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.function.observed_note")
-                .withStyle(TooltipBuilder.LABEL));
     }
 
-    // 一条观测链按执行顺序渲染；链上的函数只有注册名可用，取 path 段即可读
+    // 一条观测链按执行顺序渲染；类型名优先本地化，缺失时保留完整注册名。
+    // 连续同名节点折叠成"名字 ×N"：超长样例的观测链可达 64 个同名节点，铺开会变成一行几百字符。
     private static Component describeObservedChain(ObservedFunctionChain chain) {
         Component result = Component.empty();
-        for (int index = 0; index < chain.functionTypes().size(); index++) {
+        List<ResourceLocation> types = chain.functionTypes();
+        int index = 0;
+        while (index < types.size()) {
+            ResourceLocation type = types.get(index);
+            int run = 1;
+            while (index + run < types.size() && types.get(index + run).equals(type)) {
+                run++;
+            }
             if (index > 0) {
                 result = result.copy().append(Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.function.chain_separator"));
             }
-            result = result.copy().append(Component.literal(chain.functionTypes().get(index).getPath()));
+            Component node = Component.translatableWithFallback(
+                    "screen.unsuspiciousblock.archaeology_journal.function.name."
+                            + type.getNamespace() + "." + type.getPath().replace('/', '.'),
+                    type.toString());
+            if (run > 1) {
+                node = node.copy().append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.function.chain_repeat", run));
+            }
+            result = result.copy().append(node);
+            index += run;
         }
         if (!chain.contentExpanded()) {
             result = result.copy().append(Component.literal(" "))
@@ -326,33 +377,17 @@ public final class JournalTooltipBuilder {
             case RUNTIME -> TooltipBuilder.CONDITION_RUNTIME;
             default -> probUncertain ? TooltipBuilder.LABEL : TooltipBuilder.POSITIVE;
         };
+        // 数值口径统一成一个标签：数字都是**当前输入下的模拟结果**，玩家不需要分辨
+        // "概率 / 估算概率 / 条件概率"三种叫法；不确定性由颜色（概率型=金、运行时=黄、其余=绿）
+        // 以及下方的条件区、生成规则区表达。旧文案里"条件概率"会被误读成统计意义上的条件概率。
+        lines.add(Component.translatable(KEY_PROBABILITY, ProbabilityFormat.formatComponent(probability))
+                .copy().withStyle(probColor));
         ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
         if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
-            // 网格给的是当前输入下的值，这里的区间是**其它代表场景**的范围，两者并列不互相冒充
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_simulated",
-                    ProbabilityFormat.formatComponent(probability))
+            // 网格给的是当前输入下的值，这里的区间是**其它代表场景**的范围，两者并列但不互相冒充
+            lines.add(Component.translatable(KEY_PROBABILITY_MIN, bounds.minimum())
                     .copy().withStyle(probColor));
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
-                    .copy().withStyle(probColor));
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
-                    .copy().withStyle(probColor));
-        } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.PROBABILISTIC) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_estimated",
-                    ProbabilityFormat.formatNumeric(probability))
-                    .copy().withStyle(probColor));
-        } else if (data.uncertaintyLevel() == LootConditionHandler.UncertaintyLevel.RUNTIME) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability_conditional_value",
-                    ProbabilityFormat.formatNumeric(probability))
-                    .copy().withStyle(probColor));
-        } else {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.probability",
-                    ProbabilityFormat.formatComponent(probability))
+            lines.add(Component.translatable(KEY_PROBABILITY_MAX, bounds.maximum())
                     .copy().withStyle(probColor));
         }
     }
@@ -389,71 +424,93 @@ public final class JournalTooltipBuilder {
     }
 
     private static void appendAcquisitionPaths(List<Component> lines, List<LootAcquisitionPath> paths) {
-        if (paths.isEmpty()) {
+        // 没有掉落条件或生成函数时，路径区没有需要玩家阅读的规则。
+        // 混合路径保留无条件分支及原始编号，否则会隐藏一种确实可用的获取方式。
+        if (paths.stream().noneMatch(path -> path.hasConditions() || !path.functions().isEmpty())) {
             return;
         }
-        if (paths.size() == 1) {
-            appendSinglePath(lines, paths.getFirst());
-            return;
-        }
-
         lines.add(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_header")
+                paths.size() > 1
+                        ? "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_alternatives_header"
+                        : "screen.unsuspiciousblock.archaeology_journal.acquisition_paths_header")
                 .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
+        if (paths.size() == 1) {
+            appendPathDetails(lines, paths.getFirst(), "");
+            return;
+        }
         for (int i = 0; i < paths.size(); i++) {
-            LootAcquisitionPath path = paths.get(i);
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.acquisition_path", i + 1)
-                    .copy().withStyle(TooltipBuilder.ACCENT));
-            if (path.hasConditions()) {
-                appendConditionTree(lines, path.allConditions(), "  ");
-            } else if (path.sourceChildTable() == null) {
-                lines.add(Component.literal("  ").append(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.acquisition_path_unconditional"))
-                        .withStyle(TooltipBuilder.POSITIVE));
+            boolean isLast = i == paths.size() - 1;
+            appendTreeLabel(lines, "", isLast,
+                    "screen.unsuspiciousblock.archaeology_journal.acquisition_path", i + 1);
+            appendPathDetails(lines, paths.get(i), isLast ? "   " : "│  ");
+        }
+    }
+
+    // 每条路径先列掉落条件与来源，再列该路径的生成函数，始终共用同一条路径编号。
+    private static void appendPathDetails(List<Component> lines, LootAcquisitionPath path, String prefix) {
+        List<Component> sources = new ArrayList<>();
+        appendSourceTable(sources, path.sourceChildTable());
+        appendSourceItemTag(sources, path.sourceItemTag());
+        boolean hasFunctions = !path.functions().isEmpty();
+        boolean conditionsLast = sources.isEmpty() && !hasFunctions;
+        String conditionsPrefix = prefix + (conditionsLast ? "   " : "│  ");
+        if (path.hasConditions()) {
+            appendTreeLabel(lines, prefix, conditionsLast,
+                    "screen.unsuspiciousblock.archaeology_journal.conditions_header");
+            // 继承条件继续保留归属，避免把父表的门槛误当作本条目的额外条件。
+            if (!path.inheritedConditions().isEmpty()) {
+                boolean inheritedLast = path.entryConditions().isEmpty();
+                appendTreeLabel(lines, conditionsPrefix, inheritedLast,
+                        "screen.unsuspiciousblock.archaeology_journal.inherited_conditions_header");
+                appendConditionTree(lines, path.inheritedConditions(),
+                        conditionsPrefix + (inheritedLast ? "   " : "│  "));
             }
-            appendSourceTable(lines, path.sourceChildTable(), "  ");
-            appendSourceItemTag(lines, path.sourceItemTag(), "  ");
+            appendConditionTree(lines, path.entryConditions(), conditionsPrefix);
+        } else {
+            appendTreeLabel(lines, prefix, conditionsLast,
+                    "screen.unsuspiciousblock.archaeology_journal.acquisition_path_conditions_unconditional");
+        }
+        for (int index = 0; index < sources.size(); index++) {
+            boolean isLast = index == sources.size() - 1 && !hasFunctions;
+            lines.add(Component.literal(prefix + (isLast ? "└─ " : "├─ "))
+                    .withStyle(TooltipBuilder.HINT).append(sources.get(index)));
+        }
+        if (hasFunctions) {
+            appendTreeLabel(lines, prefix, true,
+                    "screen.unsuspiciousblock.archaeology_journal.function.rules_header");
+            appendFunctionChain(lines, path.functions(), prefix + "   ", 0);
         }
     }
 
-    private static void appendSinglePath(List<Component> lines, LootAcquisitionPath path) {
-        if (!path.entryConditions().isEmpty()) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.conditions_header")
-                    .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
-            appendConditionTree(lines, path.entryConditions(), "");
-        }
-        if (!path.inheritedConditions().isEmpty()) {
-            lines.add(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.inherited_conditions_header")
-                    .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
-            appendConditionTree(lines, path.inheritedConditions(), "");
-        }
-        appendSourceTable(lines, path.sourceChildTable(), "");
-        appendSourceItemTag(lines, path.sourceItemTag(), "");
+    // 树枝采用次要色，分组标题采用强调色，所有文案继续使用本地化 key。
+    private static void appendTreeLabel(List<Component> lines, String prefix, boolean isLast,
+                                        String key, Object... args) {
+        lines.add(Component.literal(prefix + (isLast ? "└─ " : "├─ "))
+                .withStyle(TooltipBuilder.HINT)
+                .append(Component.translatable(key, args).withStyle(TooltipBuilder.ACCENT)));
     }
 
-    private static void appendSourceTable(List<Component> lines, ResourceLocation sourceChildTable, String prefix) {
+    private static void appendSourceTable(List<Component> lines, ResourceLocation sourceChildTable) {
         if (sourceChildTable == null
                 || !ArchaeologyJournalClientState.getCatalog().containsKey(sourceChildTable)) {
             return;
         }
         Component childTableName = LootTableNames.resolveDisplayName(sourceChildTable);
-        lines.add(Component.literal(prefix).append(Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName))
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
                 .withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));
     }
 
-    private static void appendSourceItemTag(List<Component> lines,
-                                            @org.jetbrains.annotations.Nullable ResourceLocation sourceItemTag,
-                                            String prefix) {
+    private static void appendSourceItemTag(List<Component> lines, @Nullable ResourceLocation sourceItemTag) {
         if (sourceItemTag == null) {
             return;
         }
-        lines.add(Component.literal(prefix).append(Component.translatable(
+        lines.add(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.from_item_tag",
-                Component.literal(sourceItemTag.toString())))
+                Component.translatableWithFallback(
+                        "tag.item." + sourceItemTag.getNamespace() + "."
+                                + sourceItemTag.getPath().replace('/', '.'),
+                        "#" + sourceItemTag))
                 .withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));
     }
 

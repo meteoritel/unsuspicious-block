@@ -78,10 +78,12 @@ import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDes
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.numberText;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.objectOf;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.Options;
+import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.componentDisplay;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.operationParam;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.options;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.param;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.plainText;
+import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.predicateDisplay;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.predicateText;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.slotList;
 import static com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescribeSupport.slotNames;
@@ -445,9 +447,10 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             String target = string(source, "target", "custom_name");
             JsonElement nameElement = field(source, "name");
+            // 名称按组件渲染：translate 形态会解析成玩家读到的名字，不再印原始 JSON
             Component nameText = nameElement == null
                     ? param("absent")
-                    : Component.literal(plainText(nameElement));
+                    : componentDisplay(nameElement);
             return info(typeId(function, "set_name"), fn("set_name", nameText, targetParam(target)),
                     FunctionEffectKind.COMPONENT,
                     "target", target,
@@ -576,7 +579,10 @@ public final class LootFunctionHandlers {
                     if (index++ >= 8) {
                         break;
                     }
-                    parts.add(append(Component.literal(entry.getKey() + "="), numberText(entry.getValue())));
+                    ResourceLocation enchantmentId = ResourceLocation.tryParse(entry.getKey());
+                    Component name = enchantmentId != null
+                            ? enchantName(enchantmentId) : Component.literal(entry.getKey());
+                    parts.add(append(append(name, Component.literal("=")), numberText(entry.getValue())));
                     metaParts.add(entry.getKey() + "=" + numberMeta(entry.getValue()));
                 }
             }
@@ -1854,7 +1860,7 @@ public final class LootFunctionHandlers {
             LootItemFunction inner = reflectField(function, "modifier");
             LootFunctionInfo child = describeNested(inner, field(source, "modifier"));
             LootFunctionInfo base = info(typeId(function, "filtered"),
-                    fn("filtered", Component.literal(filter)),
+                    fn("filtered", predicateDisplay(field(source, "item_filter"))),
                     FunctionEffectKind.WRAPPER,
                     "item_filter", filter,
                     "child_count", child != null ? "1" : "0");
