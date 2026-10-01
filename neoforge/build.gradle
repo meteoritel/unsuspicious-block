@@ -62,6 +62,8 @@ neoForge {
             systemProperty('usb.loot.profile', 'true')
             // 为 IDEA / Gradle 开发客户端启用 S1 UI 验证页。
             systemProperty('unsuspiciousblock.uiKitDebug', 'true')
+            // 为 IDEA / Gradle 开发客户端开启战利品调试模式，考古笔记出现「开发者调试」分类。
+            systemProperty('usb.loot.debug', 'true')
         }
         data {
             data()
