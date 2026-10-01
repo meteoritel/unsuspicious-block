@@ -5,7 +5,7 @@
 
 ## 1. 机制概览
 
-模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信，共 **33 个自定义 payload（15 个 C2S + 18 个 S2C）**，覆盖：
+模组用 1.21 的 `CustomPacketPayload` 机制实现网络通信：payload 分 C2S（客户端→服务端）与 S2C（服务端→客户端）两类，具体条目以 `ModPayloads` 清单源码为准，本文只做索引。覆盖：
 
 - **考古笔记同步**：目录、进度状态（增量/全量）、日志（更新/快照）、完成奖励通知。
 - **目录按需同步**：哈希比对，不一致时客户端主动请求全量目录。
@@ -31,8 +31,8 @@ network/
 │   ├── SimulationAssistHandler    推荐 / 读取当前选择（版本校验 + 每玩家冷却）
 │   └── ReaderScanLevelHandler   扫描等级更新处理
 ├── payload/
-│   ├── c2s/                   14 个客户端->服务端 payload
-│   ├── s2c/                   17 个服务端->客户端 payload
+│   ├── c2s/                   客户端->服务端 payload
+│   ├── s2c/                   服务端->客户端 payload
 │   └── s2c/CatalogStreamCodec   目录数据的线格式编解码（全量目录与按需结果共用一份）
 └── (cat/CatNetworkHandler 在 cat/ 包)
 ```
@@ -111,6 +111,7 @@ JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务
 | `SyncReaderScanResultPayload` | `ReaderScanHudState::receive` | 紧凑扫描结果 HUD 与方块高亮 |
 | `SyncEnchantmentRevealListPayload` | `EnchantmentRevealClientState::receive` | 附魔揭示候选 |
 | `NotifyTableCompletionRewardPayload` | `receiveTableCompletionReward` | 100% 完成奖励通知 |
+| `SyncScenarioCachePayload` | `ScenarioSimulationClientState::receiveCache` | 缓存查询结果（只读命中时回传场景结果，未命中只回状态，不启动模拟） |
 | `SyncScenarioResultPayload` | `ScenarioSimulationClientState::receive` | 某个输入的模拟结果（单表 DTO + 代次/表哈希/输入键） |
 | `ScenarioRequestRejectedPayload` | `ScenarioSimulationClientState::receiveRejection` | 请求被拒绝的回执与原因 |
 | `SyncSimulationAssistPayload` | `ScenarioSimulationClientState::receiveAssist` | 推荐/读取请求的答复：回传请求上下文与候选输入，客户端只应用仍匹配当前选择的答复；`notes` 携带 `assist_busy` / `assist_stale` 等提示 |

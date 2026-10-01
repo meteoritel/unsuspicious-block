@@ -2,6 +2,7 @@
 
 > `cat/` 包的架构：玩家与猫族之间的长期关系如何建立、累积、惩罚，以及由关系派生的被动能力（猫之恩惠）、灵体猫（信使/剑士/商人）如何被召唤与管理。
 > 本文件是猫族关系子系统的唯一权威。灵体实体与 AI 见 [实体与 AI](entities-world.md)，Mixin 注入点清单见 [Mixin](../foundation/mixin.md)，网络 payload 清单见 [网络与同步](../foundation/network.md)。
+> 羁绊行为的数值与冷却、被动能力的每 tick 评估与位掩码、玩家状态的持久化字段见 [猫族关系机制细节](../internals/cat-favor-mechanics.md)。
 >
 > 玩法设计见 `docs/cat-bond-design.md` 与 `docs/spirit-cat-npc-design.md`。本文聚焦代码实现，涉及的领域术语在正文中就地定义。
 
@@ -81,43 +82,9 @@ serverTick(player)
 
 `hasOwnedHandOfCat` 通过 `InventoryPresenceRegistry.containsMatching` 检查玩家个人携带范围（含标本箱等便携容器），而非仅主背包。
 
-## 5. 羁绊累积与惩罚
+## 5. 恩惠能力与阶段
 
-[`CatFavorAction`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatFavorAction.java) 枚举统一管理所有行为。
-
-### 5.1 正向行为（关系建立后生效，独立冷却）
-
-| 行为 | 增量 | 冷却 | 触发场景 |
-|---|---|---|---|
-| `FEED_CAT` | +5 | 12000t | 喂食猫（延迟到 tick 末结算，驯服时取消） |
-| `TAME_CAT` | +10 | 12000t | 成功驯服一只猫 |
-| `SLEEP_WITH_CAT` | +20 | 6000t | 与驯服的猫一同入睡 |
-| `SIT_ON_BLOCK` | +10 | 24000t | 驯服的猫坐在床/箱子/熔炉上持续 30s |
-| `REPEL_RAID` | +20 | 12000t | 获得村庄英雄效果（击退袭击上升沿） |
-
-正向行为经 `tryAccumulate` 处理：校验关系已建立 → 校验冷却 → `addCatBond` → `markTriggered` → 显示变化 + 同步。
-
-### 5.2 惩罚行为（不要求持有猫之手，无冷却）
-
-| 行为 | 增量 | 触发 |
-|---|---|---|
-| `HIT_CAT` | -5 | 玩家对猫造成伤害 |
-| `OWN_CAT_DEATH` | -10 | 玩家所属驯服猫死亡 |
-| `KILL_CAT` | -50 | 玩家杀死猫 |
-
-**击杀去重**：`onKillCat` 时检查是否同 tick 已扣过 `HIT_CAT` 的 5 分（`consumeMatchingCatHit`），若已扣则只补扣 45 分，避免一次击杀双重惩罚。
-
-### 5.3 喂食奖励的延迟结算
-
-喂食与驯服可能由同一次交互触发（喂食后驯服成功）。为避免重复奖励：
-
-- 喂食时 `queueFeedReward` 标记待结算，延迟到 tick 末。
-- 成功驯服时 `cancelPendingFeedReward` 取消待结算的喂食奖励。
-- `serverTick` 末尾 `consumePendingFeedReward` 取出并结算。
-
-## 6. 恩惠能力与阶段
-
-### 6.1 羁绊阶段
+### 5.1 羁绊阶段
 
 [`CatBondStage`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatBondStage.java) 把 0-100 的连续羁绊映射为 6 个阶段：
 
@@ -130,7 +97,7 @@ serverTick(player)
 | 猫国贵客 HONORED_GUEST | 80-99 | 红 |
 | 猫国挚友 BEST_FRIEND | 100 | 紫 |
 
-### 6.2 恩惠能力
+### 5.2 恩惠能力
 
 [`CatFavorAbility`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatFavorAbility.java) 定义 6 项能力及其解锁阈值：
 
@@ -143,53 +110,9 @@ serverTick(player)
 | 猫国往礼 ANCIENT_GIFT | 80 | 晨礼由猫猫信使送来特殊礼物 |
 | 猫之九命 NINE_LIVES | 100 | 储存命数抵挡致命伤害 |
 
-威慑与轻步有服务端持久化的开关，由玩家按键切换（C2S payload）。
+威慑与轻步有服务端持久化的开关，由玩家按键切换（C2S payload）。被动能力的每 tick 评估、位掩码缓存与夜视分级检测见 [猫族关系机制细节](../internals/cat-favor-mechanics.md)。
 
-## 7. 被动能力评估
-
-[`CatPassiveAbilities.serverTick`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatPassiveAbilities.java) 每玩家每 tick 评估，**服务端权威**：
-
-```
-serverTick(player)
-  ├─ updateAbilityMask     计算能力位掩码，缓存到 state
-  ├─ updateStepHeight      柔软肉垫：步高修饰符 +0.65（潜行时不应用）
-  ├─ updateNightVision     猫的眼：分级检测夜视
-  ├─ detectRaidVictory     击退袭击：村庄英雄上升沿检测
-  └─ grantNineLivesOnCap   首次成为挚友时授予 1 命
-```
-
-### 7.1 能力位掩码
-
-为避免 mixin 高频查询时反复扫描背包与计算阈值，每 tick 计算一次位掩码缓存到 `CatFavorState.abilityMask`：
-
-```
-FLAG_DETERRENCE              威慑
-FLAG_LIGHT_STEP_TRAMPLE      轻步-耕地
-FLAG_LIGHT_STEP_NO_PRESSURE  轻步-压力板/绊线
-FLAG_SOFT_PAWS               柔软肉垫
-```
-
-mixin 通过 `hasActiveDeterrence(player)` / `hasLightStep(player)` 等静态方法廉价查询位掩码，无需库存扫描。
-
-### 7.2 夜视分级检测
-
-`猫的眼` 用分级检测降低高频亮度查询开销：
-
-- **空闲态**：每 20t（1s）检测一次是否进入黑暗（`getMaxLocalRawBrightness < 9`）。
-- **激活态**：授予 320t（16s）夜视，每 100t（5s）刷新一次。
-- 条件不再满足时不再续期，夜视自然过期，回到空闲态高频侦测。
-
-### 7.3 mixin 查询接口
-
-`CatPassiveAbilities` 提供多个静态方法供 mixin 调用：
-
-- `hasActiveDeterrence` / `hasPhantomDeterrence`：苦力怕回避、幻翼不生成/不索敌
-- `hasLightStep` / `hasLightStepPressurePlateIgnored`：耕地不退化、压力板/绊线忽略
-- `hasSoftPaws`：摔落减伤
-- `isNineLivesInvulnerable`：九命无敌窗口（由 `CAT_FAVOR` 效果驱动）
-- `canSummonAncientGift` / `canTriggerNineLives`：往礼与九命触发条件
-
-## 8. 猫之九命
+## 6. 猫之九命
 
 九命是最高阶段（100）的恩惠，流程见 [`CatPassiveAbilities.triggerNineLives`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatPassiveAbilities.java)：
 
@@ -211,7 +134,7 @@ triggerNineLives(player, source)   // 由 LivingEntityNineLivesMixin 在致命�
 
 保护效果的时长由 `ISpiritCatConfig` 配置（见 [配置与第三方联动](../foundation/config-and-integrations.md)）。
 
-## 9. 古国往礼（猫猫信使）
+## 7. 古国往礼（猫猫信使）
 
 [`CatGiftService.tryGhostGift`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatGiftService.java) 在玩家触发原版晨礼时调用：
 
@@ -232,7 +155,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 
 实体细节（`MessengerCat` 的 AI、阶段、行为）见 [实体与 AI](entities-world.md)。
 
-## 10. 猫猫商人
+## 8. 猫猫商人
 
 `cat/merchant/` 子包实现猫国挚友阶段的商人系统：
 
@@ -241,27 +164,15 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - `TaggedMerchantOffer`：支持物品标签作为交易输入（如 `#unsuspiciousblock:random/discs`），通过 `random/*` 包装 tag 实现随机陶片/唱片/盔甲纹饰模板，并纳入 `c:` Conventional Tag。
 - 商人主要收取古代金币，也提供少量高成本、严格限量的古代金币交易。
 
-## 11. 状态持久化与迁移
-
-[`CatFavorState`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/state/CatFavorState.java) 通过 mixin 附加到玩家 NBT：
-
-**持久化字段**（随存档保存）：`relationshipEstablished`、`catBond`（0-100）、`lastTriggerGameTime`（各行为冷却 `EnumMap<CatFavorAction, Long>`）、`deterrenceDisabled` / `lightStepDisabled`（偏好开关）、`nineLivesCount`（0-9）、`initialBestFriendLifeGranted`。
-
-**瞬态字段**（不序列化，重生后重置）：`abilityMask`、`hadHeroEffect`、`nightVisionCheckCooldown`、`pendingFeedReward`、`recentlyHitCatUuid` / `GameTime`、`activeMessengerUuid` / `activeSwordsmanUuid`。
-
-**数据迁移**：`CURRENT_DATA_VERSION = 2`，`readLegacy` 处理旧 `favor` 格式（冷却清空，旧压力板偏好映射为轻步总开关）。
-
-**重生保留**：`copyFrom` 复制持久化字段，不复制瞬态字段。关系与偏好跨重生保留。
-
-## 12. 扩展点：新增行为 / 恩惠能力 / 灵体职责 / 交易
+## 9. 扩展点：新增行为 / 恩惠能力 / 灵体职责 / 交易
 
 - **新增正向行为**：在 `CatFavorAction` 加枚举值（增量、冷却、是否惩罚），在对应事件/mixin 中调 `CatFavorManager.tryAccumulate`。
-- **新增恩惠能力**：在 `CatFavorAbility` 加枚举值（阈值），在 `CatPassiveAbilities.serverTick` 实现能力逻辑；如需 mixin 高频查询则加位掩码 flag 并补一个静态查询方法。
+- **新增恩惠能力**：在 `CatFavorAbility` 加枚举值（阈值），在 `CatPassiveAbilities.serverTick` 实现能力逻辑；如需 mixin 高频查询则加位掩码 flag 并补一个静态查询方法（见 [猫族关系机制细节](../internals/cat-favor-mechanics.md)）。
 - **新增灵体职责**：参考 `MessengerCat` / `SwordsmanCat`，继承 `SpiritCat`，实现 AI Goal/Behavior，在 `ModEntities` 注册；预览灵体需注册到 `SpiritCatDebugRegistry`（见 [实体与 AI](entities-world.md)）。
 - **新增商人交易**：在 `data/unsuspiciousblock/merchant_cat_trades/` 添加 JSON，不需要改代码。
 - **调整灵体生命周期与效果时长**：通过 `ISpiritCatConfig`（见 [配置与第三方联动](../foundation/config-and-integrations.md)）。
 
-## 13. 约束与陷阱
+## 10. 约束与陷阱
 
 - **顺序约束**：关系建立与喂食结算必须先于被动能力评估（同一 tick 内）。
 - **`CatFavorAbility` 的枚举声明顺序 = tooltip 展示顺序**，插入新能力时注意位置。
@@ -271,8 +182,9 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - 信物绑定**不可覆盖**；已绑定信物不能被他人接管，遗失后需绑定新的空白信物。
 - **猫之手结构的自然生成当前停用**（自 1.4.1 起），因此新玩家拿到猫之手的路径受限；相关结构见 [实体与 AI](entities-world.md)。
 
-## 14. 相关文档
+## 11. 相关文档
 
+- [猫族关系机制细节](../internals/cat-favor-mechanics.md) —— 羁绊行为数值、被动能力评估、状态持久化字段
 - [实体与 AI](entities-world.md) —— 灵体猫实体、AI 与猫之手结构
 - [方块与物品](blocks-items.md) —— 猫之手物品与便携容器检测
 - [网络与同步](../foundation/network.md) —— `SyncCatFavorPayload` 等

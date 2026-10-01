@@ -1,8 +1,7 @@
 # 客户端与 GUI
 
 > `client/` 包的架构：客户端初始化、状态管理、考古笔记 GUI 层级、HUD、渲染、铁砧/砂轮成本分解、附魔揭示展示与 Toast 通知。
-> 本文件是**客户端通用基础设施**（状态框架、按键、Toast、HUD/渲染接入）与**考古笔记 GUI** 的唯一权威。GUI 内部分层、UI kit 契约、场景页与模态、面板状态持久化见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。
-> 各玩法子系统的客户端表现，其**机制**权威在对应子系统文档（猫 HUD 数据流见 [猫族关系系统](cat-favor.md)、淘盘动画与水声见 [淘洗系统](panning.md)、附魔揭示服务端机制见 [附魔系统](enchantment.md)）；本篇只保留客户端侧的接入方式与渲染细节。
+> 本文件是**客户端通用基础设施**（状态框架、按键、Toast、HUD/渲染接入）与**考古笔记 GUI** 的唯一权威；GUI 内部分层、UI kit 契约、场景页与模态、面板状态持久化见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。各玩法子系统的客户端表现，其**机制**权威在对应子系统文档（猫 HUD 数据流见 [猫族关系系统](cat-favor.md)、淘盘动画与水声见 [淘洗系统](panning.md)、附魔揭示服务端机制见 [附魔系统](enchantment.md)），本篇只保留客户端侧的接入方式与渲染细节。
 
 ## 1. 代码地图
 
@@ -64,9 +63,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 ## 4. 客户端初始化
 
-两个平台客户端入口职责高度对称（见 [架构总览](../foundation/architecture.md) 的客户端初始化），都完成：按键注册、渲染器/模型层注册、Screen 注册、S2C 接收器注册、Tooltip 组件注册、HUD/世界渲染注册、客户端 tick 驱动、断连重置，以及 `ClientTooltipBridge.install(...)` 与三条解锁/完成通知回调的注册。
-
-关键清单模式（与 [注册架构](../foundation/registration.md) 一致，平台客户端自动遍历）：`ModEntityRenderers.REGISTRY_MANIFEST`（实体渲染器，4 个灵体/宠物）、`ModModelLayers`（模型层 `LayerDefinition`）、`ModPayloads.Client.S2C_PAYLOADS`（S2C 接收器）。
+两个平台客户端入口职责高度对称（见 [架构总览](../foundation/architecture.md) 的客户端初始化），都完成：按键注册、渲染器/模型层注册、Screen 注册、S2C 接收器注册、Tooltip 组件注册、HUD/世界渲染注册、客户端 tick 驱动、断连重置，以及 `ClientTooltipBridge.install(...)` 与三条解锁/完成通知回调的注册。关键清单模式（与 [注册架构](../foundation/registration.md) 一致，平台客户端自动遍历）：`ModEntityRenderers.REGISTRY_MANIFEST`（实体渲染器，4 个灵体/宠物）、`ModModelLayers`（模型层 `LayerDefinition`）、`ModPayloads.Client.S2C_PAYLOADS`（S2C 接收器）。
 
 ## 5. 客户端状态管理
 

@@ -111,25 +111,7 @@ EnchantmentManager.registerValueEffect(BRUSH_ITEM_DROP, PRECISION_EXCAVATION, ne
 
 ### 5.1 化石猎手（FossilHunterEffect）
 
-[`FossilHunterEffect`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/enchantment/framework/builtin/FossilHunterEffect.java) 在破坏骨块时触发，是附魔效果与战利品追踪系统交互的典型示例：
-
-```
-apply(ctx)
-  ├─ 仅骨块触发（state.is(BONE_BLOCK)）
-  ├─ NaturalBoneBlockTracker.consumeNatural(level, pos)  消费自然生成标记
-  │     无论是否发奖励，被破坏的自然骨块都不应保留标记
-  ├─ 创造模式 / 关闭方块掉落 -> 不触发
-  ├─ 非自然生成 -> 不触发（玩家/机器放置的骨块不奖励）
-  ├─ 50% 概率未命中 -> 不触发
-  └─ rollExtraLoot:
-       ├─ 按维度选表（主世界 overworld_bone_block / 下界 nether_bone_block）
-       ├─ 构建 LootParams（BLOCK paramSet）
-       ├─ LootTrackingContext.root(..., FOSSIL_HUNTER, ...)  建立追踪上下文
-       ├─ LootTrackingContextHolder.open(scope)  开启会话
-       ├─ lootTable.getRandomItems  抽取
-       └─ LootTrackingEvents.submit(session, generated, immediate())  提交追踪
-            接入考古笔记系统：解锁化石采集分类条目、记录日志
-```
+[`FossilHunterEffect`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/enchantment/framework/builtin/FossilHunterEffect.java) 在破坏骨块时触发，流程为：仅骨块触发 → `NaturalBoneBlockTracker.consumeNatural` 消费自然生成标记（无论是否发奖励都要消费）→ 排除创造模式 / 关闭方块掉落 / 非自然生成（玩家或机器放置的骨块不奖励）/ 50% 未命中 → `rollExtraLoot` 按维度选表（主世界 `overworld_bone_block` / 下界 `nether_bone_block`）、构建 `BLOCK` paramSet 的 `LootParams`、经 `LootTrackingContext.root(..., FOSSIL_HUNTER, ...)` 与 `LootTrackingEvents.submit(..., immediate())` 抽取并提交追踪。
 
 > 关键点：化石猎手通过 `LootTrackingContext` + `LootTrackingEvents` 把额外掉落接入考古笔记的追踪流程，玩家用化石猎手获得的化石会自动解锁目录条目。详见 [考古笔记系统](journal.md) 与 [战利品表系统](loottable.md)。
 
@@ -140,12 +122,11 @@ apply(ctx)
 
 ## 6. 泥底打捞（条件注入）
 
-泥底打捞不通过效果框架，而是通过**自定义战利品条件**实现：
+泥底打捞**不通过效果框架**，而是通过自定义战利品条件在钓鱼 loot roll 时注入实现——这是它与其他三种附魔的根本差异。条件类型定义（[`ToolEnchantmentCondition`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentCondition.java)）、门槛声明位置与"条件挂在注入处、不写在子表"的完整机制以 [战利品表系统](loottable.md) 的「自定义战利品条件」一节为权威；本节只记附魔侧要点：
 
-- [`ToolEnchantmentCondition`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/condition/ToolEnchantmentCondition.java) 用**一个**条件表达完整语义："需要钓鱼竿带有泥底打捞（可选等级门槛）+ 按该附魔等级掷概率（`0.2 + 0.1/级`）"。它不拆成"资格条件"与"概率条件"两条并列条件，因此 tooltip 上是一行附魔名加按需的等级/概率子行。
-- **门槛只有一份声明**：[`RuntimeLootLinks.MUD_DREDGING_GATE`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/graph/RuntimeLootLinks.java) 一处声明构造（附魔 + 最低等级 + 概率曲线），Fabric 的 `FishingLootInjection` 与 NeoForge 的 `FishingLootModifier` 都引用它，GLM 数据里只留 `loot_table_id` 过滤。玩法与 tooltip 因此不可能各说一套；`injectionGateEnchantments` 记在**发起注入的表**上，每表哈希与附魔等级旋钮清单据此并入该附魔，保住"改 `max_level` 会失效"。
-- **条件挂在注入处，不写在子表里**：被注入的子表 `gameplay/fishing/mud_dredging` 自己的池**不写任何条件**，只描述"进来之后产出什么"。两个页面因此各回答一个明确的问题：父表（钓鱼）页答"能不能进本表"——基准输入下显示「需要条件」，tooltip 用同一份声明分析出的条件树给出附魔与概率行；子表自己的页答"进了本表之后各物品的份额"——五个直接物品显示各自占比，不被入口门槛判成「需要条件」。
-- 开放水域/沼泽群系分支仍由子表自己的两个子表引用上的 `entity_properties`(fishing_hook) 与 `location_check`(`#c:is_swamp`) 处理——它们是**条目级**门槛，按既有规则照常显示「需要条件」。
+- 门槛 `RuntimeLootLinks.MUD_DREDGING_GATE`（附魔 + 最低等级缺省 1 + 概率曲线 `0.2 + 0.1/级`）由 Fabric 的 `FishingLootInjection` 与 NeoForge 的 `FishingLootModifier` 共用，GLM 数据只留 `loot_table_id` 过滤，玩法与 tooltip 因此不可能各说一套。
+- `injectionGateEnchantments` 记在**发起注入的表**上，每表哈希与附魔等级旋钮清单据此并入该附魔，保住"改 `max_level` 会失效"。
+- 开放水域 / 沼泽群系分支由被注入子表 `gameplay/fishing/mud_dredging` 自身的 `entity_properties`(fishing_hook) 与 `location_check`(`#c:is_swamp`) 处理——它们是**条目级**门槛，按既有规则显示「需要条件」。
 
 条件类型注册有时序约束（必须在 `init` 前完成），见 [架构总览](../foundation/architecture.md) 的「服务端初始化」与 [战利品表系统](loottable.md) 的「自定义战利品条件」。
 
