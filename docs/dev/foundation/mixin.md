@@ -18,7 +18,7 @@ Mixin 用于四类需求：
 
 | 配置文件 | 位置 | 条目数 | 说明 |
 |---|---|---|---|
-| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 43 + 5 client = 48 | 跨平台通用 mixin，两端共用 |
+| `unsuspiciousblock.mixins.json` | `common/src/main/resources/` | 45 + 5 client = 50 | 跨平台通用 mixin，两端共用 |
 | `unsuspiciousblock.fabric.mixins.json` | `fabric/src/main/resources/` | 6 + 1 client = 7 | Fabric 独有，补齐原生事件缺失 |
 | `unsuspiciousblock.lootr.mixins.json` | `common/src/main/resources/` | 5 | Lootr 兼容 |
 
@@ -94,8 +94,12 @@ requiredMods = ["lootr"]
 |---|---|---|
 | `Simulation*ConditionMixin`（7 个单目标入口） | 七类原版场景条件 | 模拟作用域存在时把 `test` 转交 `LootSimulationScope`；单目标保证 Fabric remap 正确 |
 | `SimulationCompositeConditionMixin` | `CompositeLootItemCondition` | 仅暴露只读 terms 供静态条件分析；运行时不覆盖组合结果 |
+| `LootItemConditionalFunctionMixin` | `LootItemConditionalFunction` | 函数执行捕获入口：`@WrapOperation` 包装 `apply` 内对 `run` 的调用，语义＝外层条件通过进入执行体；不重掷条件、不额外消费随机数，作用域外直接透传 |
+| `LootTableSplitterMixin` | `LootTable` | `@ModifyVariable` 包装拆栈器的输出 `Consumer`、`@ModifyReturnValue` 包装拆栈器本身，让拆栈副本按对象身份继承来源观测链；拆栈算法仍由原版执行 |
 
 这些 Mixin 都只作入口：profile、场景规划、条件指纹和线程作用域全部位于 `loottable/simulation/` 的普通 Java 类。作用域只覆盖有精确指纹或类型默认值的叶条件；组合与取反由原版求值，作用域外完整执行原版逻辑，不影响实际战利品生成。
+
+两个函数捕获 Mixin 同样只转交参数与返回值，捕获逻辑全在 `FunctionTraceSession`（见 [战利品表系统](../subsystems/loottable.md) 的「函数规则描述与运行时观测」）。**拆栈为什么包装 `Consumer` 而不是 lambda 窄注入**：`copyWithCount` 位于编译器生成的合成方法内——vanilla / neoforge merged jar 里是 `lambda$createStackSplitter$5`，但 Fabric loom named jar 中同一合成方法名是 `method_331`，该 lambda 名在 Fabric 命名空间中根本不存在，只能依赖 refmap 对合成 lambda 名重映射，而 lambda 序号不是稳定 API；且两个平台的 `createStackSplitter` 调用点并不一致（vanilla 在 `public getRandomItems(LootContext, Consumer)` 内，neoforge 在返回 `ObjectArrayList` 的私有 `getRandomItems(LootContext)` 内），单一 common Mixin 无法窄注入两处。因此改为在两平台一致的非 lambda 静态方法 `createStackSplitter` 上包装它的输入/输出 `Consumer`：两种方案只选一种、不叠加，也不对 `ItemStack.copy` / `copyWithCount` 做全局注入。
 
 > **`tool` 不是场景布尔控制类型**（场景布尔维度共 7 类，无 `match_tool`）。工具匹配由 `ItemPredicate` 对 profile 填充的真实 `TOOL` 栈求值，附魔等级由参数旋钮写进工具栈——若把它做成场景布尔，会出现"条件说匹配成功、而读真实 `TOOL` 的 `apply_bonus` 拿到的是一把无附魔镐"的分裂。新增场景维度前先确认它是否只在 `test` 层可观察。
 

@@ -293,7 +293,7 @@ return compositePredicates.test(context) ? run(stack, context) : stack;
 
 **缓存层次**：静态描述由当前资源/注册表投影产生；本输入函数观测进入 `InputMeasurement`，随该输入测量缓存被 LRU 淘汰。表级 `discovery` 继续保留动态物品存在性与来源类别，不因观测摘要淘汰而删除物品。不能把跨输入汇总的观测冒充当前输入事实。
 
-**版本与依赖**：当前 `FORMAT_VERSION=4`、`SIMULATION_CACHE_VERSION=loot-analysis-v21`；实施时读取最新值并递增，旧测量按缓存未命中处理，不迁移旧数值。函数描述规则版本、静态函数结构、被展开的 item modifier、相关 tag/附魔定义以及新增依赖必须纳入失效口径。熔炼等运行时外部依赖若无法可靠形成摘要，采用重载代次/会话盐让受影响的输入重算，牺牲命中率；不能继续承诺持久缓存完全有效。只影响展示的数据也要让目录 hash/同步内容发生相应变化。
+**版本与依赖**：规划基线为 `FORMAT_VERSION=4`、`SIMULATION_CACHE_VERSION=loot-analysis-v21`；当前实现为 `5` / `loot-analysis-v23`，后续变更仍读取最新值并递增，旧测量按缓存未命中处理，不迁移旧数值。函数描述规则版本、静态函数结构、被展开的 item modifier、相关 tag/附魔定义以及新增依赖必须纳入失效口径。熔炼等运行时外部依赖若无法可靠形成摘要，采用重载代次/会话盐让受影响的输入重算，牺牲命中率；不能继续承诺持久缓存完全有效。只影响展示的数据也要让目录 hash/同步内容发生相应变化。
 
 **玩家进度**：不新增签名枚举和函数参数进度键。`enchanted_count_increase` 修正会改变错误预览产生的候选集合；历史同名附魔键可能也来自真实附魔路径，不能批量转换。保留既有进度，消失的错误候选按原有孤儿键口径处理，并列入用户回归检查。
 
@@ -436,4 +436,67 @@ P0 若发现窄入口不能稳定实现，先说明原因并停在已完成的�
 
 ## 九、实施结果
 
-截至 2026-10-01：**仅完成本规划文档；P0–P4 均未实施。** 未运行 IDEA 代码检查、Gradle 构建或 Minecraft 实机验证。本节待各阶段实际完成后追加日期、检查结果、产物、偏离原因和仍待用户验证的项目。
+**2026-10-01：P0–P3 已实施并完成编译验证；P4 的双平台编译已通过，实机验证待用户执行。**
+
+### 9.1 各阶段结论
+
+| 阶段 | 结论 | 证据 |
+|---|---|---|
+| P0 契约与入口确认 | 完成 | 冻结 `LootFunctionInfo` / `FunctionFidelity` / `FunctionEffectKind` / `LootOriginKind` / `LootFunctionDescriptions`；两个候选捕获点的目标方法经反编译核对 |
+| P1 静态说明与语义 | 完成 | 40/40 内置函数实现 `describe`；F01/F03/F05/F08/F09 全部落实；投影侧完成 F02/F04 解耦 |
+| P2 最小运行时闭环 | 完成 | `run` 捕获 + 拆栈传递 + 容器隔离 + 全结果分支聚合 |
+| P3 缓存与来源 | 完成 | 观测进入输入级测量缓存；`FORMAT_VERSION` 4→5；动态来源与平台注入分离 |
+| P4 双平台验证与知识收尾 | 编译验证通过；实机待用户 | `common` / `fabric` / `neoforge` 三模块编译通过；详见 9.3 |
+
+### 9.2 与规划的偏离
+
+| 项 | 规划 | 实际 | 理由 |
+|---|---|---|---|
+| splitter 注入点 | 首选 `createStackSplitter` 内 `copyWithCount` 的 lambda 窄注入 | 改为在稳定静态方法 `createStackSplitter` 上包装输入/输出 Consumer | `copyWithCount` 位于合成方法内；Fabric loom named jar 中该合成方法名为 `method_331` 而非 `lambda$createStackSplitter$5`，且两平台调用点不同，单一 common Mixin 无法窄注入两处。方案二选一，未叠加，未对 `ItemStack.copy` 做全局注入 |
+| 函数数组形式（F05 的数组分支） | 规划列在描述层 | 由投影层把数组规范化为 `{"function":"minecraft:sequence"}` 后走同一描述与解析通道 | `analysis` 层没有 `DynamicOps`/`RegistryOps`，序列语义属链接期 |
+
+### 9.3 验证记录
+
+- **IDEA MCP 检查**：全部改动文件与 42 个受记录类型签名影响的消费端 `lint_files(min_severity=error)` 均无错误。
+- **Gradle 构建**：一次完整 `gradlew build`（Windows wrapper，前台等待到结束）。`common`、`fabric`（含 remapJar / remapSourcesJar）、`neoforge` 三模块编译与打包通过；仅有 `FishingLootModifier` 的既有 deprecation 提示，与本轮改动无关。
+- **i18n 一致性**：`en_us.json` 与 `zh_cn.json` 各 1104 个 key（本轮 +105），两侧 key 集合一致，均通过 JSON 解析；静态 `screen.*` 字面量引用全部命中（其余为运行期拼接的前缀）。
+- **Mixin 配置**：`unsuspiciousblock.mixins.json` JSON 合法，两个新 Mixin 已登记。
+
+### 9.4 编译通过**不**代表以下事项成立
+
+- 未做 Minecraft 实机验证：Mixin 能否在启动期正确应用、注入点是否命中、观测 JSON 与实际游戏行为是否一致，均未验证。
+- 未做性能测量：捕获开销、唯一链数与截断数尚无实机数据；本规划明确不声称"零开销"。
+- 单输入**编码总量 256 KiB** 硬上限未实现，当前只有结构上限（每链 ≤64 节点、每结果 ≤16 链、每输入 ≤4096 条目、元数据 ≤32 项、嵌套 ≤16 层）。
+- 观测链只承载函数注册名与捕获状态，不含参数级文本；参数级信息来自静态描述树。
+- 完整运行时位置映射、第三方修改器内部追踪、容器内容逐物品归因仍为范围外（规划 §2.3 未变）。
+
+### 9.5 复核修复轮（同日第二轮）
+
+首轮交付后用户逐条复核，提出 8 项缺陷与 2 项未闭环验收项。**全部先核对源码与原版字节码确认存在，再修复**，
+明细见 [分点任务书](loottable-function-capture-tasks.md) 的「复核修复轮」一节。摘要：
+
+| 类别 | 修复 |
+|---|---|
+| 编解码预算 | 子函数上限统一为 `LootFunctionInfo.MAX_CHILDREN_PER_NODE=64`，写包时裁剪并写 `metadata.truncated`，服务端分析树保留完整列表，写读同界 |
+| 观测归属 | 客户端三处不再把非当前输入的观测当作本次观测；只有精确命中当前 input key 的 DTO 才携带 |
+| 条件语义 | 函数条件接入场景候选枚举，但**不参与**物品可达性判定；包装函数内层条件原位补挂并递归展示（深度上限 8） |
+| 函数语义 | `apply_bonus` 按原版 `formula`(字符串) + 同级 `parameters` 读取；`set_enchantments` 空映射更正为「空操作」 |
+| 捕获预算 | 追加节点时即消耗预算；链改为有界增量构造，消除随长度平方增长的工作量 |
+| 缓存失效 | 复审后改为 `reference` / `furnace_smelt` 敏感表及父表的按代重载盐；`SIMULATION_CACHE_VERSION` → `loot-analysis-v23` |
+| 来源分型 | 同签名的普通来源与「模组联动」改为合并，不再跳过 |
+
+同时新增**开发模式调试表**：`-Dusb.loot.debug=true`（或 `USB_LOOT_DEBUG`）时，考古笔记出现「开发者调试」分类，
+内含覆盖 §7.3 核对场景的调试战利品表；关闭时该分类与调试表都不进目录。详见分点任务书 §11.2。
+
+第二轮实施时的验证（不覆盖后续修改）：IDEA `lint_files` 38 个改动 Java 文件 0 错误；一次完整 `gradlew build` 三模块通过；
+两个语言文件各 1109 key 且集合一致；所有新增 JSON 资源解析通过。
+
+### 9.6 仍待用户执行
+
+按 §7.3 的实机验证矩阵执行。开发侧准备的临时数据包样例不等于替用户启动测试。
+
+### 9.7 第三轮修复交接（2026-10-01）
+
+本轮修复外部依赖失效遗漏、展示裁剪污染模拟条件、filtered 数组 modifier 描述缺失，并补静态截断提示、祖先函数条件继承与分析超限停用。调试资源已扩展，详细修复和实机预期集中在 [分点任务书](loottable-function-capture-tasks.md) 的「第三轮修复与实机验收」。
+
+本轮 Gradle 尚未运行：自动审批服务返回 404，命令在执行前被阻止；旧轮次 BUILD SUCCESSFUL 不作为本轮验证依据。用户应先本机构建成功，再进入双平台实机验收。

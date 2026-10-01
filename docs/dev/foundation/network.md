@@ -143,11 +143,14 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
-**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，客户端/服务端入口均为 `4.9`。此版追加服务端只读缓存查询 payload；Fabric 使用同一 common codec，两个平台的客户端与服务端必须配套更新。**任何追加/删除线字段都是协议版本变更**。
+**版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，客户端/服务端入口均为 `4.10`；Fabric 使用同一 common codec，两个平台的客户端与服务端必须配套更新。**任何追加/删除线字段都是协议版本变更**：本批在 `CatalogTableDto` 的结构末尾追加了三个线字段（见「线格式的两条硬约束」），协议版本已随之提升到 `4.10`（上一版 `4.9` 追加的是服务端只读缓存查询 payload），旧端读到的字节流会整体错位，因此**新旧读写不兼容，客户端与服务端必须同版本发布**。此后把函数树各节点的子函数上限收敛为写读共用的同一常量并补上写包时裁剪与显式省略标记（服务端语义树不裁剪），属**上限口径对齐**：字段形状与顺序未变，故协议版本保持 `4.10`。
 
 ### 7.1 线格式的两条硬约束
 
-1. **传输目录数据必须走 `CatalogStreamCodec`。** 全量目录与按需结果传的是同一个 `CatalogTableDto`：各写一份编解码，症状是"改了字段只更新了一处"，客户端读到错位字节流——这是最难从现象反推成因的一类错误。
+1. **传输目录数据必须走 `CatalogStreamCodec`。** 全量目录与按需结果传的是同一个 `CatalogTableDto`：各写一份编解码，症状是"改了字段只更新了一处"，客户端读到错位字节流——这是最难从现象反推成因的一类错误。本批新增的三个字段一律**排在各自结构末尾**，读写必须成套发布：
+   - 物品条目的 `origins` 来源位图，紧随兼容字段 `injected` 之后——承载来源**集合**语义（一个结果可同时有静态来源与确认的模组联动来源），取代原先的互斥布尔；`injected` 只是它的兼容投影。
+   - 获取路径末尾的**有界静态函数树**：类型 + 本地化描述 + 保真度 + 效果类别 + 函数自身条件 + 子函数 + 有界元数据；嵌套 ≤ 16 层、元数据 ≤ 32 项、每条路径函数 ≤ 64 个、**每个节点的子函数同样 ≤ 64 个**（写端与读端共用 `LootFunctionInfo.MAX_CHILDREN_PER_NODE`）。只传结构化摘要，不传 `LootItemFunction` 对象、`LootContext`、`ItemStack` 或完整原始 JSON。超限时写端按同一常量裁剪，并在该节点 metadata 写 `truncated=children`；读端按同一常量校验长度，越界即拒绝整包——两端预算不一致会让一个合法的 65 个子函数节点在客户端整包解码失败。
+   - 物品条目的**函数观测摘要**（`observedFunctions`，排在 `scenarioProbabilities` 之后）：观测链列表 + `truncated` / `incomplete` / `unavailable` 三个降级标志；最多 16 条链、每条链 ≤ 64 个节点。它是输入级观测事实，与静态规则树分开传输。
 2. **条件入口树由服务端派生下发，客户端不本地重推。** 子表入口的条件（路径共同条件 + 注入边门槛）中，注入边不写在任何 JSON 里，本地重推必然漏项。
 
 ### 7.2 按需概率模拟的网络侧约定
@@ -185,9 +188,9 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 3. S2C：在 `S2C_SPECS` 加类型描述（服务端注册编解码），在 `Client.S2C_PAYLOADS` 加完整描述（客户端注册接收器）。
 4. **无需修改平台代码**，两端自动遍历注册。
 5. 传输目录数据时**必须**走 `CatalogStreamCodec`，不要另写一份字段顺序。
-6. 追加线字段时同步提升 `registrar.versioned(...)` 的协议版本，并在本文件第 5、6 节的表里补一行。
+6. 追加线字段时同步提升 `registrar.versioned(...)` 的协议版本，并在「C2S payload」与「S2C payload」两张表里补一行。
 
-> 新增同步策略时，参考第 8 节的三种模式，不要把状态推拉逻辑写进 handler —— handler 只做校验与转交。
+> 新增同步策略时，参考「同步模式」的三种模式，不要把状态推拉逻辑写进 handler —— handler 只做校验与转交。
 
 ## 10. 约束与陷阱
 
