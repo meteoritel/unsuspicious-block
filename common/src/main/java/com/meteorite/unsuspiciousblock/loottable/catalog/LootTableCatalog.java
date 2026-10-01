@@ -4,8 +4,10 @@ import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckSpec;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -15,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 战利品表目录数据记录——TableDefinition 与 ItemDefinition 为跨模块共享的基础类型，
@@ -78,6 +81,10 @@ public final class LootTableCatalog {
      * luckGate 是这条路径的**逐路径最小幸运门槛**（由 {@code LuckGateAnalysis} 在投影期从条目与池的
      * weight/quality/rolls/bonus_rolls 推出）。它按路径分别保留而不是取多路径的最小值：合并后的数字
      * 无法指回是哪条路径需要它（决策 34）。为 {@code null} 表示该路径与幸运无关。
+     * <p>
+     * functions 是这条路径**声明**的有序函数树（规划 §4.2）。它是规则描述，不是执行次数；
+     * 函数自身的条件保存在各自节点内，绝不并入 entryConditions（F04：函数不执行通常不代表原物品不掉落）。
+     * 它参与路径相等性——条件相同、函数不同的两条路径必须分别保留。
      */
     public record LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
                                       @Nullable ResourceLocation sourceItemTag,
@@ -85,11 +92,26 @@ public final class LootTableCatalog {
                                       List<LootConditionInfo> inheritedConditions,
                                       LootConditionHandler.UncertaintyLevel functionUncertainty,
                                       boolean luckAffected,
-                                      @Nullable LuckGate luckGate, List<LuckSpec> luckRequirements) {
+                                      @Nullable LuckGate luckGate, List<LuckSpec> luckRequirements,
+                                      List<LootFunctionInfo> functions) {
         public LootAcquisitionPath {
             entryConditions = List.copyOf(entryConditions);
             inheritedConditions = List.copyOf(inheritedConditions);
             luckRequirements = List.copyOf(luckRequirements);
+            // 函数树纳入相等性与去重：条件相同、函数不同的路径不得被合并
+            functions = List.copyOf(functions);
+        }
+
+        // 兼容既有调用方：不带函数树（该路径没有声明函数）
+        public LootAcquisitionPath(@Nullable ResourceLocation sourceChildTable,
+                                   @Nullable ResourceLocation sourceItemTag,
+                                   List<LootConditionInfo> entryConditions,
+                                   List<LootConditionInfo> inheritedConditions,
+                                   LootConditionHandler.UncertaintyLevel functionUncertainty,
+                                   boolean luckAffected, @Nullable LuckGate luckGate,
+                                   List<LuckSpec> luckRequirements) {
+            this(sourceChildTable, sourceItemTag, entryConditions, inheritedConditions,
+                    functionUncertainty, luckAffected, luckGate, luckRequirements, List.of());
         }
 
         // 完整数值约束只在服务端保留；网络读模型不参与证明。
@@ -100,7 +122,7 @@ public final class LootTableCatalog {
                                    LootConditionHandler.UncertaintyLevel functionUncertainty,
                                    boolean luckAffected, @Nullable LuckGate luckGate) {
             this(sourceChildTable, sourceItemTag, entryConditions, inheritedConditions,
-                    functionUncertainty, luckAffected, luckGate, List.of());
+                    functionUncertainty, luckAffected, luckGate, List.of(), List.of());
         }
 
         /** 未经投影器分析的路径保守标记；仅在条目签名近似时使用该兜底。 */
@@ -181,26 +203,85 @@ public final class LootTableCatalog {
         }
     }
 
-    /** 战利品表物品条目定义 */
+    /**
+     * 战利品表物品条目定义。
+     * <p>
+     * {@code origins} 是**来源真实语义**（一个结果可同时有普通静态来源与确认的模组联动来源，规划 §4.2 / D09）；
+     * {@code injected} 保留为它的**兼容投影**，只回答"是否含已确认的平台注入"，不再承担全部来源表达。
+     * 两者在规范构造器里一次归一化，不会出现"布尔说注入、集合说不是"的分叉。
+     */
     public record ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                                  Probability probability, LootResultSignature signature,
                                  List<LootAcquisitionPath> acquisitionPaths,
                                  boolean injected,
-                                 List<ScenarioProbability> scenarioProbabilities) {
+                                 List<ScenarioProbability> scenarioProbabilities,
+                                 Set<LootOriginKind> origins,
+                                 @Nullable FunctionObservationSummary observedFunctions) {
         public ItemDefinition {
             acquisitionPaths = List.copyOf(acquisitionPaths);
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
+            // 先按兼容布尔补齐来源（injected=true ⇒ 集合必含 MOD_INTEGRATION），再由集合反投影布尔，
+            // 使 injected 始终与来源语义一致；集合为空时按既有口径回退（静态来源）
+            origins = LootOriginKind.normalize(origins, injected);
+            injected = origins.contains(LootOriginKind.MOD_INTEGRATION);
         }
 
+        /** 该条目在当前输入下观测到的函数执行摘要；{@code null} 表示无观测（不是"没有函数"）。 */
+        @Nullable
+        public FunctionObservationSummary observedFunctions() {
+            return this.observedFunctions;
+        }
+
+        // 兼容既有调用方：来源由注入布尔投影，分场景概率为空
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                               Probability probability, LootResultSignature signature,
                               List<LootAcquisitionPath> acquisitionPaths, boolean injected) {
             this(id, displayName, tooltipHint, probability, signature,
-                    acquisitionPaths, injected, List.of());
+                    acquisitionPaths, injected, List.of(), null, null);
         }
 
+        // 兼容既有调用方：显式分场景概率 + 注入布尔
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              Probability probability, LootResultSignature signature,
+                              List<LootAcquisitionPath> acquisitionPaths, boolean injected,
+                              List<ScenarioProbability> scenarioProbabilities) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    acquisitionPaths, injected, scenarioProbabilities, null, null);
+        }
 
+        // 显式来源集合入口：不经过互斥的注入布尔（D09），injected 由集合投影
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              Probability probability, LootResultSignature signature,
+                              List<LootAcquisitionPath> acquisitionPaths, Set<LootOriginKind> origins) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    acquisitionPaths, false, List.of(), origins, null);
+        }
 
+        // 显式来源集合 + 分场景概率
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              Probability probability, LootResultSignature signature,
+                              List<LootAcquisitionPath> acquisitionPaths, Set<LootOriginKind> origins,
+                              List<ScenarioProbability> scenarioProbabilities) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    acquisitionPaths, false, scenarioProbabilities, origins, null);
+        }
+
+        // 服务端派生：来源集合 + 分场景概率 + 本输入的函数观测摘要
+        public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                              Probability probability, LootResultSignature signature,
+                              List<LootAcquisitionPath> acquisitionPaths, Set<LootOriginKind> origins,
+                              List<ScenarioProbability> scenarioProbabilities,
+                              @Nullable FunctionObservationSummary observedFunctions) {
+            this(id, displayName, tooltipHint, probability, signature,
+                    acquisitionPaths, false, scenarioProbabilities, origins, observedFunctions);
+        }
+
+        // 覆盖观测摘要，其余字段保持不变（派生期逐输入挂接）
+        public ItemDefinition withObservedFunctions(@Nullable FunctionObservationSummary value) {
+            return new ItemDefinition(this.id, this.displayName, this.tooltipHint, this.probability,
+                    this.signature, this.acquisitionPaths, this.injected, this.scenarioProbabilities,
+                    this.origins, value);
+        }
 
 
         public ItemDefinition(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
@@ -314,6 +395,35 @@ public final class LootTableCatalog {
         Component tooltipHint = resolveMergedTooltipHint(signature);
         return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature,
                 List.of(), injected, scenarioProbabilities);
+    }
+
+    /**
+     * 为带多场景概率的**动态发现**条目构建目录定义，来源由调用方显式声明。
+     * <p>
+     * 动态发现 ≠ 平台注入（规划 F07 / D09）：原版未理解的变换、第三方后处理同样会产生动态条目，
+     * 因此这里不默认 {@code MOD_INTEGRATION}；调用方未声明来源时保守记为
+     * {@link LootOriginKind#UNKNOWN_RUNTIME}。
+     */
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, Probability probability,
+                                                            Set<LootOriginKind> origins,
+                                                            List<ScenarioProbability> scenarioProbabilities) {
+        return buildDiscoveredDefinition(signature, probability, origins, scenarioProbabilities,
+                signature.createPreviewStack());
+    }
+
+    // 显式来源版本；已有预览的调用方复用解码结果
+    public static ItemDefinition buildDiscoveredDefinition(LootResultSignature signature, Probability probability,
+                                                            Set<LootOriginKind> origins,
+                                                            List<ScenarioProbability> scenarioProbabilities,
+                                                            ItemStack previewStack) {
+        ResourceLocation itemId = signature.itemId();
+        Component displayName = resolveMergedDisplayName(itemId, previewStack);
+        Component tooltipHint = resolveMergedTooltipHint(signature);
+        Set<LootOriginKind> declared = origins == null || origins.isEmpty()
+                ? Set.of(LootOriginKind.UNKNOWN_RUNTIME)
+                : origins;
+        return new ItemDefinition(itemId, displayName, tooltipHint, probability, signature,
+                List.of(), declared, scenarioProbabilities);
     }
 
     // 根据签名解析合并后的展示名（取预览栈的 hoverName）

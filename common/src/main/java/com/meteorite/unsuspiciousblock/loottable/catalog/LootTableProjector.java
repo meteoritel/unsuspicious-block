@@ -1,11 +1,16 @@
 package com.meteorite.unsuspiciousblock.loottable.catalog;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
+import com.meteorite.unsuspiciousblock.loottable.analysis.FunctionEffectKind;
+import com.meteorite.unsuspiciousblock.loottable.analysis.FunctionFidelity;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.UncertaintyLevel;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionDescriptions;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionHandlers;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootParseUtil;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckSpec;
@@ -49,6 +54,14 @@ import java.util.Set;
  *   <li><b>函数继承与降级</b>：函数链为 {@code 本事件自身 ++ 本表内已继承 ++ 上层传入}，
  *       无法静态求值的函数按既有规则降级为 {@code APPROX_ITEM_ONLY} 近似签名。</li>
  * </ol>
+ * 函数相关语义（规划 F02/F04/F05）：
+ * <ul>
+ *   <li>函数自身的 conditions 原位保存到对应函数的结构化描述，<b>不并入</b>物品生成条件——
+ *       函数不执行通常不代表原物品不掉落（有条件 {@code set_count} 是直接反例）；</li>
+ *   <li>描述与预览解耦：解码成功即保留 {@code LootFunctionInfo}，预览失败只额外提升不确定性；</li>
+ *   <li>JSON 中的 functions 为数组时按 {@code ROOT_CODEC} 的内联 sequence 语义规范化后走同一条通道；</li>
+ *   <li>每条路径保留有序函数树，供目录派生与展示使用。</li>
+ * </ul>
  * 引用位置按编译产物的出现顺序逐个进入，不去重也不合并——同一子表在两处被引用且条件不同时，
  * 两条获取路径都要保留。运行时注入边不参与静态链接，因此本类不消费它。
  */
@@ -115,7 +128,13 @@ public final class LootTableProjector {
         List<ItemDefinition> result = List.of();
         if (this.compiledTables.containsKey(rootId)) {
             LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
-            expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, List.of(), new LinkedHashSet<>(), items);
+            // 安装条件解析上下文：包装函数的内层条件要靠 RegistryOps 才能解，而 describe 的冻结签名没有 ops。
+            // 安装点覆盖整棵展开（递归重入会保存并恢复外层上下文），运行时捕获路径不安装、内层条件因此为空。
+            LootFunctionDescriptions.withConditionOps(this.lootOps, () -> {
+                expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, List.of(),
+                        new LinkedHashSet<>(), items);
+                return null;
+            });
 
             List<ItemDefinition> definitions = new ArrayList<>(items.size());
             for (ItemDefinitionAccumulator accumulator : items.values()) {
@@ -193,39 +212,52 @@ public final class LootTableProjector {
 
         ItemStack previewStack = new ItemStack(BuiltInRegistries.ITEM.get(path.itemId()));
         LootResultSignature signature = LootResultSignature.plain(path.itemId());
+        // 只表示"物品生成条件"：条目自身条件，或无法证明不改变物品身份的变换。
+        // 函数自身的条件不再计入这里（F04：函数不执行通常不代表原物品不掉落，有条件 set_count 是直接反例）
         boolean entryHasConditions = !entryConditions.isEmpty();
         UncertaintyLevel functionUncertainty = UncertaintyLevel.NONE;
-        List<LootConditionInfo> resolvedConditions = new ArrayList<>(entryConditions);
+        // 描述与预览解耦：只要解码成功就保留结构化描述，预览失败只额外提升不确定性（F02）
+        List<LootFunctionInfo> resolvedFunctions = new ArrayList<>();
         List<Component> functionHints = new ArrayList<>();
 
-        for (JsonElement functionElement : functions) {
-            if (!functionElement.isJsonObject()) {
+        for (JsonElement rawFunction : functions) {
+            JsonObject functionObject = LootFunctionDescriptions.normalizeSource(rawFunction);
+            if (functionObject == null) {
+                // 既不是对象也不是数组：连类型都取不到，按未知函数降级
                 entryHasConditions = true;
                 functionUncertainty = UncertaintyLevel.RUNTIME;
+                resolvedFunctions.add(LootFunctionDescriptions.unresolved(null, null));
+                functionHints.add(unknownFunctionHint(null));
                 continue;
             }
 
+            // 函数自身的条件原位保存到对应函数节点，绝不并入物品生成条件（F04）
             List<LootConditionInfo> functionConditions =
-                    LootParseUtil.parseConditions(functionElement.getAsJsonObject(), this.lootOps);
-            if (!functionConditions.isEmpty()) {
-                entryHasConditions = true;
-                resolvedConditions.addAll(functionConditions);
-            }
+                    LootParseUtil.parseConditions(functionObject, this.lootOps);
 
             // 使用原版 Codec 解析 function
-            var decodeResult = LootItemFunctions.TYPED_CODEC.parse(this.lootOps, functionElement);
+            var decodeResult = LootItemFunctions.TYPED_CODEC.parse(this.lootOps, functionObject);
             LootItemFunction function = decodeResult.result().orElse(null);
             if (function == null) {
                 entryHasConditions = true;
                 functionUncertainty = UncertaintyLevel.RUNTIME;
-                functionHints.add(unknownFunctionHint(LootParseUtil.extractTypeId(functionElement, "function")));
+                ResourceLocation failedId = LootParseUtil.extractTypeId(functionObject, "function");
+                resolvedFunctions.add(withFunctionConditions(
+                        LootFunctionDescriptions.unresolved(failedId, null), functionConditions));
+                functionHints.add(unknownFunctionHint(failedId));
                 LOGGER.warn("解析战利品函数失败: function={}, error={}",
-                        LootParseUtil.extractTypeId(functionElement, "function"),
-                        decodeResult.error().map(Object::toString).orElse("unknown"));
+                        failedId, decodeResult.error().map(Object::toString).orElse("unknown"));
                 continue;
             }
 
             ResourceLocation functionId = BuiltInRegistries.LOOT_FUNCTION_TYPE.getKey(function.getType());
+            // 描述走统一入口，替代各 handler 直接给摘要；预览成功与否都保留描述
+            LootFunctionInfo described = withFunctionConditions(
+                    LootFunctionDescriptions.describe(functionId, function, functionObject), functionConditions);
+            resolvedFunctions.add(described);
+            // 描述与预览解耦：预览成功也保留描述，提示因此不再只覆盖"求值失败"的那些函数（F02）
+            addDescriptionHint(functionHints, described);
+
             LootFunctionHandler handler = LootFunctionHandlers.get(functionId);
 
             if (handler == null) {
@@ -243,10 +275,12 @@ public final class LootTableProjector {
 
             try {
                 if (!functionConditions.isEmpty()) {
+                    // 函数条件无法在静态层证明：不预览，但描述与不确定性都要保留。
+                    // 只改数量/组件的可选效果不改变"基础物品可掉落"，因此不置 entryHasConditions（F04）；
+                    // 可能换物品或效果未知的变换才影响物品身份，保守标为带条件
                     functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
-                    Component hint = handler.describeHint(function, functionElement.getAsJsonObject());
-                    if (hint != null) {
-                        functionHints.add(hint);
+                    if (uncertainItemIdentity(described)) {
+                        entryHasConditions = true;
                     }
                     continue;
                 }
@@ -257,10 +291,6 @@ public final class LootTableProjector {
                 } else {
                     entryHasConditions = true;
                     functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
-                    Component hint = handler.describeHint(function, functionElement.getAsJsonObject());
-                    if (hint != null) {
-                        functionHints.add(hint);
-                    }
                 }
                 LootResultSignature derived = handler.deriveSignature(
                         previewStack, currentItemId(previewStack));
@@ -297,11 +327,15 @@ public final class LootTableProjector {
             functionUncertainty = UncertaintyLevel.RUNTIME;
         }
         Component displayName = resolveItemDisplayName(previewStack);
+        // 提示由结构化描述派生：附魔通用摘要保留为前置摘要，但**不再覆盖**参数描述（F02/D15）
         Component tooltipHint;
-        if (signature.isEnchantedVariant()) {
-            tooltipHint = Component.translatable(ENCHANTED_HINT_KEY);
-        } else if (!functionHints.isEmpty()) {
-            tooltipHint = joinFunctionHints(functionHints);
+        if (signature.isEnchantedVariant() || !functionHints.isEmpty()) {
+            List<Component> hints = new ArrayList<>(functionHints.size() + 1);
+            if (signature.isEnchantedVariant()) {
+                hints.add(Component.translatable(ENCHANTED_HINT_KEY));
+            }
+            hints.addAll(functionHints);
+            tooltipHint = joinFunctionHints(hints);
         } else {
             tooltipHint = resolveItemTooltipHint(entryHasConditions);
         }
@@ -309,13 +343,48 @@ public final class LootTableProjector {
         List<LootConditionInfo> inheritedConditions =
                 LootParseUtil.appendConditions(incomingConditions, path.inheritedConditions());
         ResolvedEntry resolved = new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint,
-                signature, List.copyOf(resolvedConditions));
+                signature, List.copyOf(entryConditions), List.copyOf(resolvedFunctions));
         ItemDefinitionAccumulator accumulator = items.computeIfAbsent(resolved.signature().toStoredKey(),
                 ignored -> new ItemDefinitionAccumulator(resolved.itemId(), resolved.displayName(),
                         resolved.tooltipHint(), resolved.signature()));
         accumulator.merge(resolved.displayName(), resolved.tooltipHint(), new LootAcquisitionPath(
                 sourceChildTable, path.sourceItemTag(), resolved.conditions(), inheritedConditions,
-                functionUncertainty, luckAffected, luckGate(path), luckSpecs));
+                functionUncertainty, luckAffected, luckGate(path), luckSpecs, resolved.functions()));
+    }
+
+    // 函数自身条件原位保存到对应函数节点；描述通道已给出条件时以它为准，避免出现两份条件来源
+    private static LootFunctionInfo withFunctionConditions(LootFunctionInfo info,
+                                                          List<LootConditionInfo> conditions) {
+        if (conditions.isEmpty() || !info.conditions().isEmpty()) {
+            return info;
+        }
+        return new LootFunctionInfo(info.functionType(), info.description(), info.fidelity(),
+                info.effect(), conditions, info.children(), info.metadata());
+    }
+
+    // 条件变换是否可能改变物品身份：数量/组件类可选效果不影响"基础物品可掉落"（F04）；
+    // 包装器看内层效果；容器内容不并入外层掉落，故不影响外层物品身份
+    private static boolean uncertainItemIdentity(LootFunctionInfo info) {
+        if (info.effect() == FunctionEffectKind.ITEM_TRANSFORM
+                || info.effect() == FunctionEffectKind.UNKNOWN) {
+            return true;
+        }
+        if (!info.effect().isWrapper()) {
+            return false;
+        }
+        for (LootFunctionInfo child : info.children()) {
+            if (uncertainItemIdentity(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 由结构化描述派生兼容提示；未解析说明连摘要都取不到，与旧 describeHint == null 的降级口径一致
+    private static void addDescriptionHint(List<Component> hints, LootFunctionInfo info) {
+        if (info.fidelity() != FunctionFidelity.UNRESOLVED) {
+            hints.add(info.description());
+        }
     }
 
     // 每一层引用的权重和抽取次数都影响整条路径；联合推荐不能只检查叶子。
@@ -338,10 +407,21 @@ public final class LootTableProjector {
         return first.ordinal() >= second.ordinal() ? first : second;
     }
 
-    /** 单条物品路径的静态求值结果——打包成不可变记录，便于在累加器 lambda 中安全引用。 */
+    /**
+     * 单条物品路径的静态求值结果——打包成不可变记录，便于在累加器 lambda 中安全引用。
+     * <p>
+     * {@code conditions} 只含**物品条目自身**的条件（F04）；函数自身的条件在
+     * {@code functions} 各自的节点上。{@code functions} 是这条路径声明的有序函数树，
+     * 随获取路径进入目录，供展示"生成规则"。
+     */
     private record ResolvedEntry(ResourceLocation itemId, Component displayName,
                                  @Nullable Component tooltipHint, LootResultSignature signature,
-                                 List<LootConditionInfo> conditions) {
+                                 List<LootConditionInfo> conditions,
+                                 List<LootFunctionInfo> functions) {
+        private ResolvedEntry {
+            conditions = List.copyOf(conditions);
+            functions = List.copyOf(functions);
+        }
     }
 
     // ==================== 工具方法 ====================

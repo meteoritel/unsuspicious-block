@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -23,6 +24,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -188,6 +190,23 @@ public final class CatalogGeneration {
         }
     }
 
+    // 函数树摘要：按出现顺序递归，元数据按键排序以保证同一份目录每次摘要稳定
+    private static void updateFunctionListDigest(MessageDigest digest, List<LootFunctionInfo> functions) {
+        updateDigest(digest, Integer.toString(functions.size()));
+        for (LootFunctionInfo info : functions) {
+            updateDigest(digest, info.functionType().toString());
+            updateDigest(digest, info.fidelity().name());
+            updateDigest(digest, info.effect().name());
+            updateDigest(digest, info.description().toString());
+            updateConditionListDigest(digest, info.conditions());
+            new TreeMap<>(info.metadata()).forEach((key, value) -> {
+                updateDigest(digest, key);
+                updateDigest(digest, value);
+            });
+            updateFunctionListDigest(digest, info.children());
+        }
+    }
+
     private static void updateTableDigest(MessageDigest digest, CatalogTableDto table) {
         updateDigest(digest, table.id().toString());
         updateDigest(digest, table.hash());
@@ -206,6 +225,8 @@ public final class CatalogGeneration {
             updateProbabilityDigest(digest, item.probability());
             updateDigest(digest, item.signature().toStoredKey());
             updateDigest(digest, Boolean.toString(item.injected()));
+            // 来源集合与注入布尔分开进食：一个结果可同时是普通来源与模组联动（规划 §4.2 / D09）
+            item.origins().stream().map(Enum::name).sorted().forEach(kind -> updateDigest(digest, kind));
             for (CatalogTableDto.ScenarioRef ref : item.scenarioProbabilities()) {
                 updateDigest(digest, ref.scenarioKey());
                 updateProbabilityDigest(digest, ref.probability());
@@ -220,6 +241,8 @@ public final class CatalogGeneration {
                 updateDigest(digest, path.functionUncertainty().name());
                 updateDigest(digest, Boolean.toString(path.luckAffected()));
                 updateLuckGateDigest(digest, path.luckGate());
+                // 静态函数规则变化必须让目录 hash 与同步内容一起变化（规划 §4.8）
+                updateFunctionListDigest(digest, path.functions());
             }
         }
         for (CatalogTableDto.ChildTableEntry child : table.childProbabilities()) {
