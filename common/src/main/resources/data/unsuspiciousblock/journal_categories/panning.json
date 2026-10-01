@@ -4,6 +4,7 @@
   "description_key": "screen.unsuspiciousblock.archaeology_journal.category.panning.description",
   "description_fallback": "Sediment panned out of river water with the Copper Pan.",
   "icon": "unsuspiciousblock:copper_pan",
+  "default_tool": "unsuspiciousblock:copper_pan",
   "order": 45,
   "types": [],
   "special_rules": [

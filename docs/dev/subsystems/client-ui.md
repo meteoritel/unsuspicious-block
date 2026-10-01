@@ -54,6 +54,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 | `client/ui/overlay/OverlayLayer` | 模态层（同时只开一个），统一输入分发与层高契约 |
 | `client/ui/panel/ScenarioDetailPanel` / `ScenarioConditionLayout` | 短场景名、只读工具图标与参数读数、分组条件树；局部折行并保留逻辑树 |
 | `client/ui/overlay/ScenarioRecommendationOverlay` | 物品/子表入口推荐的变更预览，应用参数后仍需显式计算 |
+| `client/ui/widget/SimulationToolDropdown` / `client/ui/support/SimulationCatMascot` | 参数窗口内的小型工具下拉层；坐姿三花猫与头部骨骼附着的工具预览 |
 | `client/ui/support/UiPanelRegistry` / `UiStateful` / `LayoutAware` | 面板的布局/状态恢复注册表与接口 |
 | `client/ui/support/JournalUiPreferencesStore` | UI 偏好与面板状态持久化（按存档、按玩家隔离） |
 | `client/hud/CatFavorHud` / `SuspiciousReaderHud` | 猫之恩惠 HUD；解析仪扫描汇总与目标详情 HUD |

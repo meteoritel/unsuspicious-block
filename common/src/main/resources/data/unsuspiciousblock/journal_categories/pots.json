@@ -4,6 +4,7 @@
   "description_key": "screen.unsuspiciousblock.archaeology_journal.category.pots.description",
   "description_fallback": "Loot stored in decorated pots.",
   "icon": "minecraft:decorated_pot",
+  "default_tool": "minecraft:air",
   "order": 40,
   "types": [],
   "special_rules": [

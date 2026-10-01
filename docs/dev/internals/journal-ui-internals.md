@@ -140,7 +140,9 @@ document.setContent(List.of(new UiNode.Row(
 
 **按压捕获**：`mousePressed` 命中即激活并记录按压目标，`mouseReleased` 只结束捕获、不在释放时激活（拖动结束不应触发点击）；`isPressCaptured(x, y)` 让宿主区分这次拖动归控件还是归下层内容。
 
-**与原生 `EditBox` 的接驳边界**：`ScenarioParamsOverlay` 中幸运值 `EditBox` 仍是唯一原生输入（支持拖选），命中优先级高于控件组；它经宿主侧适配器（`LuckFocusTarget`）接进焦点序列——`setFocused` 直接转给原版控件，`activate()` 返回 `false`（Enter / Space 的编辑语义属于原版），`bounds()` 取输入框矩形供焦点调试与坐标换算使用。文字输入、剪贴板与输入法都由原版控件处理，kit 不接管；控件组只自绘标签与按钮，标签 `action == null`，因此点击只读文本没有副作用。
+**与原生 `EditBox` 的接驳边界**：`ScenarioParamsOverlay` 的幸运值和附魔搜索使用原生 `EditBox`（支持拖选），命中优先级高于控件组；它们经宿主侧适配器（`InputFocus`）接进焦点序列——`setFocused` 直接转给原版控件，`activate()` 返回 `false`（Enter / Space 的编辑语义属于原版），`bounds()` 取输入框矩形供焦点调试与坐标换算使用。文字输入、剪贴板与输入法都由原版控件处理，kit 不接管；控件组只自绘标签与按钮，标签 `action == null`，因此点击只读文本没有副作用。
+
+**参数工具与吉祥物**：工具按钮只在服务端签发 `toolSelectionAllowed` 时出现。`SimulationToolDropdown` 锚定按钮下方，宽 132、最多六行，不替换附魔列表；打开时优先接管输入，外部点击只关闭下拉，Escape 先关闭下拉，再次按下才关闭参数窗口，方向键与 Tab 切换候选、Enter/Space 选中。窗口下部由 `SimulationCatMascot` 绘制原版坐姿猫模型与三花纹理：虚拟实体和模型仅创建一次，不加入世界、不 tick；头部与身体随鼠标调整方向，所选工具附着于头部骨骼，空手不绘制物品。附魔列表行数和猫模型尺寸按可用高度调整。
 
 **语义状态与样式分工**：状态解析优先级为「禁用 > 按下 > 悬停 > 选中 > 普通」，背景色从 `UiControlStyle.background(State)` 取，焦点轮廓画在矩形内侧（不侵入相邻控件、也不被控件自身裁剪吃掉）。结构色（背景、焦点轮廓、滚动条轨道/滑块）归 `UiControlStyle`，文本色仍由调用方从 `UiTextPalette` 传入，禁用态只降不透明度、保留调用方给定的色相——与「文本配色约束」的分工一致。`PARCHMENT` 的普通/悬停背景与旧硬编码值逐像素相同，按下/选中/禁用/焦点是新增态，旧界面不会触发。
 

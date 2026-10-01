@@ -46,6 +46,7 @@ public record SimulationConstraintCatalog(
         int truncatedScenarioCount,
         boolean scenarioBudgetExhausted,
         List<ToolOption> tools,
+        boolean toolSelectionAllowed,
         Map<ResourceLocation, Integer> enchantmentMaxLevels,
         List<Integer> sampleCounts,
         Map<ResourceLocation, List<LootConditionInfo>> childEntryGates) {
@@ -75,6 +76,7 @@ public record SimulationConstraintCatalog(
     public static SimulationConstraintCatalog build(SimulationScenarioPlanner.ScenarioPlan plan,
                                                     SimulationProfile baseProfile,
                                                     Map<ResourceLocation, String> subtreeTools,
+                                                    boolean toolSelectionAllowed,
                                                     Map<ResourceLocation, Integer> enchantmentMaxLevels,
                                                     Map<ResourceLocation, List<LootConditionInfo>> childEntryGates) {
         List<ToolOption> tools = new ArrayList<>(subtreeTools.size() + 1);
@@ -91,7 +93,7 @@ public record SimulationConstraintCatalog(
                     Component.literal(entry.getValue())));
         }
         return new SimulationConstraintCatalog(plan.scenarios(), plan.truncatedCount(),
-                plan.budgetExhausted(), tools, enchantmentMaxLevels,
+                plan.budgetExhausted(), tools, toolSelectionAllowed, enchantmentMaxLevels,
                 ScenarioParams.SAMPLE_COUNT_TIERS, childEntryGates);
     }
 
@@ -107,7 +109,9 @@ public record SimulationConstraintCatalog(
     /** 默认工具基座——与基准输入用的是同一份 profile，两者不会漂移。 */
     public static ToolOption defaultTool(SimulationProfile baseProfile) {
         ItemStack tool = baseProfile.tool();
-        return new ToolOption(baseProfile.toolItemId(), tool.getHoverName().copy(), null);
+        Component name = tool.isEmpty() ? Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.simulation.params.empty_hand") : tool.getHoverName().copy();
+        return new ToolOption(baseProfile.toolItemId(), name, null);
     }
 
     /** 基准参数：默认工具 + 幸运 0 + 基准档位 + 无附魔（决策 17）。 */
@@ -170,13 +174,14 @@ public record SimulationConstraintCatalog(
     /**
      * 客户端可用的旋钮种类。
      * <p>
-     * 前三个恒可见；{@code ENCHANT_LEVEL} **只在该表子树确实引用了附魔时**才出现——
+     * 幸运恒可见；工具选择只在子树引用 {@code match_tool} 时出现，
+     * {@code ENCHANT_LEVEL} **只在该表子树确实引用了附魔时**才出现——
      * 不会出现"没被引用却给控件"的情形（决策 23/26）。
      */
     public List<ParameterKind> parameterKinds() {
         List<ParameterKind> kinds = new ArrayList<>(4);
         kinds.add(ParameterKind.LUCK);
-        kinds.add(ParameterKind.TOOL);
+        if (toolSelectionAllowed) kinds.add(ParameterKind.TOOL);
         if (!this.enchantmentMaxLevels.isEmpty()) {
             kinds.add(ParameterKind.ENCHANT_LEVEL);
         }

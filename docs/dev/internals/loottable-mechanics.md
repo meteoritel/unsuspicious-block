@@ -297,7 +297,9 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 ## 6. 约束目录与按需管线
 
-**目录只发布约束，不枚举候选输入**。[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/SimulationConstraintCatalog.java) 是一张表的四份清单：场景候选（≤32，附截断数量）、工具基座、被引用附魔的等级上限、抽样次数档位。
+**目录只发布约束，不枚举候选输入**。[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/SimulationConstraintCatalog.java) 是一张表的四份清单：场景候选（≤32，附截断数量）、工具基座、被引用附魔的等级上限、抽样次数档位。`toolSelectionAllowed` 由服务端检查整棵子树的 `match_tool` 引用后签发，客户端不以候选数量判断是否显示工具选择；只有附魔或组件谓词、没有可枚举物品的 `match_tool` 也会开启选择。
+
+默认工具复用 `JournalCategoryLoader` 的分类结果，取分类 JSON 的 `default_tool`，缺失或物品无效时回退空手（`minecraft:air`）。当前考古为刷子、钓鱼为钓竿、化石采集为钻石镐、淘洗为铜淘盘，箱子、陶罐及其他为空手。每张子表按自身分类设置默认值。工具只作为 `TOOL` 输入，不自动叠加淘盘的实际幸运加成；幸运仍由模拟参数单独指定。
 
 为什么不枚举：首版计划让目录生成"场景 × 基座工具 × 附魔等级赋值"的完整集合，但那是一个**乘积**——32 的上限只约束其中一维，6 个附魔各 4 档就是 4⁶ × 32 = 131,072 个组合。关键认识是缓存 LRU 限制的是**结果数量**，限制不了这部分**计算**，所以必须从源头取消枚举：单个输入在请求时构造，由 `SimulationConstraintCatalog.resolve` 逐项校验（场景已签发、幸运有限且在界内且已量化到 0.01、工具已签发、每个附魔等级在 `0..max_level`、抽样次数在档位内）。任何一项越权即**整体拒绝，不做部分修正**——把一个越权值悄悄改成最近合法值，会让玩家看到的数字与他填的参数不一致，那比直接拒绝更坏。
 

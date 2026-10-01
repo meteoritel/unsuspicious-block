@@ -8,7 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 /** 每表一次下发的参数约束；不包含服务端条件赋值或预生成输入组合。 */
 public record SimulationOptions(long generation, List<CatalogTableDto.ScenarioAssumptions> scenes,
         List<ToolOption> tools, Map<ResourceLocation, Integer> enchantments,
-        List<Integer> samples, int truncated, boolean budgetExhausted) {
+        List<Integer> samples, int truncated, boolean budgetExhausted, boolean toolSelectionAllowed) {
     public SimulationOptions {
         scenes = List.copyOf(scenes);
         tools = List.copyOf(tools);
@@ -20,7 +20,7 @@ public record SimulationOptions(long generation, List<CatalogTableDto.ScenarioAs
         return new SimulationOptions(generation, catalog.scenarios().stream()
                 .map(s -> new CatalogTableDto.ScenarioAssumptions(s.key(), s.assumptions())).toList(),
                 catalog.tools(), catalog.enchantmentMaxLevels(), catalog.sampleCounts(),
-                catalog.truncatedScenarioCount(), catalog.scenarioBudgetExhausted());
+                catalog.truncatedScenarioCount(), catalog.scenarioBudgetExhausted(), catalog.toolSelectionAllowed());
     }
 
     public boolean rejects(String scene, ScenarioParams params) {

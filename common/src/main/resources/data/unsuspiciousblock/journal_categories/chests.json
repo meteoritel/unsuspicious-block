@@ -4,6 +4,7 @@
   "description_key": "screen.unsuspiciousblock.archaeology_journal.category.chests.description",
   "description_fallback": "Container loot found in ruins and structures.",
   "icon": "minecraft:chest",
+  "default_tool": "minecraft:air",
   "order": 20,
   "types": ["minecraft:chest"]
 }

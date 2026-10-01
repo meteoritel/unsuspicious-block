@@ -4,6 +4,7 @@
   "description_key": "screen.unsuspiciousblock.archaeology_journal.category.fossils.description",
   "description_fallback": "Loot uncovered with the Fossil Hunter enchantment.",
   "icon": "minecraft:bone_block",
+  "default_tool": "minecraft:diamond_pickaxe",
   "order": 50,
   "types": [],
   "special_rules": [

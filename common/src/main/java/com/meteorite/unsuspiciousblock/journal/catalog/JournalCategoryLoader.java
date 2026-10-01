@@ -7,6 +7,8 @@ import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Items;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
@@ -76,7 +78,12 @@ final class JournalCategoryLoader {
                 specials.add(parseSpecial(element.getAsJsonObject()));
             }
         }
-        return new CategoryRule(definition, Set.copyOf(types), List.copyOf(specials),
+        ResourceLocation defaultTool = parseId(string(object, "default_tool", "minecraft:air"), "minecraft:air");
+        if (!BuiltInRegistries.ITEM.containsKey(defaultTool)) {
+            Constants.LOG.warn("目录分类 {} 的默认工具 {} 不存在，使用空手", id, defaultTool);
+            defaultTool = BuiltInRegistries.ITEM.getKey(Items.AIR);
+        }
+        return new CategoryRule(definition, defaultTool, Set.copyOf(types), List.copyOf(specials),
                 integer(object, "priority", 0));
     }
 
@@ -123,6 +130,13 @@ final class JournalCategoryLoader {
     }
 
     record CategorySet(List<CategoryRule> rules) {
+        // 复用目录的分类结果，默认工具不另建一套路径匹配规则。
+        ResourceLocation defaultTool(ResourceLocation categoryId) {
+            return rules.stream().filter(rule -> rule.definition().id().equals(categoryId))
+                    .map(CategoryRule::defaultTool).findFirst()
+                    .orElse(BuiltInRegistries.ITEM.getKey(Items.AIR));
+        }
+
         List<CatalogCategoryDefinition> definitions() {
             return this.rules.stream().map(CategoryRule::definition).toList();
         }
@@ -171,7 +185,7 @@ final class JournalCategoryLoader {
         }
     }
 
-    private record CategoryRule(CatalogCategoryDefinition definition, Set<ResourceLocation> types,
+    private record CategoryRule(CatalogCategoryDefinition definition, ResourceLocation defaultTool, Set<ResourceLocation> types,
                                 List<SpecialRule> specials, int priority) {
     }
 

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableCompiler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootMechanismSupport;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
@@ -40,9 +41,11 @@ import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -187,7 +190,7 @@ public final class ArchaeologyJournalServerCatalog {
             unavailableReasons.keySet().forEach(tableId ->
                     marked.put(tableId, markUnparsed(marked.get(tableId))));
             staticTables = Map.copyOf(marked);
-            LOGGER.warn("{} 张战利品表无法被本模组模拟，已按不可用上报（不做猜测）：{}",
+            LOGGER.warn("{} 张战利品表无法被本模组模拟，已按不可用上报：{}",
                     unavailableReasons.size(), unavailableReasons);
         }
 
@@ -205,7 +208,8 @@ public final class ArchaeologyJournalServerCatalog {
                 continue;
             }
             SimulationConstraintCatalog constraint = buildConstraintCatalog(
-                    loadResult.session(), entry.getKey(), entry.getValue(), level);
+                    loadResult.session(), entry.getKey(), entry.getValue(), level,
+                    loadResult.defaultTools().get(entry.getKey()));
             constraintCatalogs.put(entry.getKey(), constraint);
             // 只为"有信息量"的表留一行：单场景且无截断的表没什么可说的，逐表刷屏会淹掉真正的异常
             if (constraint.scenarios().size() > 1 || constraint.truncatedScenarioCount() > 0
@@ -273,16 +277,19 @@ public final class ArchaeologyJournalServerCatalog {
      */
     private static SimulationConstraintCatalog buildConstraintCatalog(
             LootTableAnalysisSession session, ResourceLocation tableId, TableDefinition table,
-            ServerLevel level) {
+            ServerLevel level, ResourceLocation defaultToolId) {
         SimulationScenarioPlanner.ScenarioPlan plan =
                 SimulationScenarioPlanner.plan(tableId, constraintTable(session, table, level), level);
-        SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type());
+        SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type())
+                .withTool(new ItemStack(BuiltInRegistries.ITEM.get(defaultToolId)));
 
         Map<ResourceLocation, String> tools = new LinkedHashMap<>();
+        boolean toolSelectionAllowed = false;
         Map<ResourceLocation, Integer> enchantmentLevels = new LinkedHashMap<>();
         HolderLookup.RegistryLookup<Enchantment> enchantments =
                 level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
         for (ResourceLocation node : session.referenceGraph().descendantsInclusive(tableId)) {
+            toolSelectionAllowed |= LootTableCompiler.hasMatchTool(session.sourceSnapshot().effectiveJson(node));
             CompiledLootTable compiled = session.compiledTables().get(node);
             if (compiled == null) {
                 continue;
@@ -308,7 +315,7 @@ public final class ArchaeologyJournalServerCatalog {
             RuntimeLootLinks.injectionGate(childTable).ifPresent(gate -> childEntryGates.put(childTable,
                     SimulationConstraintCatalog.describeGate(gate, level.registryAccess())));
         }
-        return SimulationConstraintCatalog.build(plan, baseProfile, tools, enchantmentLevels,
+        return SimulationConstraintCatalog.build(plan, baseProfile, tools, toolSelectionAllowed, enchantmentLevels,
                 childEntryGates);
     }
 

@@ -151,6 +151,18 @@ public final class LootTableCompiler {
         }
     }
 
+    // 检查是否引用 match_tool，包括没有可枚举物品的附魔或组件谓词。
+    public static boolean hasMatchTool(JsonElement element) {
+        if (element == null || element.isJsonNull()) return false;
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) if (hasMatchTool(child)) return true;
+        } else if (element.isJsonObject()) {
+            if (isMatchTool(element.getAsJsonObject())) return true;
+            for (var entry : element.getAsJsonObject().entrySet()) if (hasMatchTool(entry.getValue())) return true;
+        }
+        return false;
+    }
+
     // 条件实体的类型字段在条件数组里叫 "condition"，在独立条件对象里也可能是 "type"
     private static boolean isMatchTool(JsonObject object) {
         for (String key : List.of("condition", "type")) {

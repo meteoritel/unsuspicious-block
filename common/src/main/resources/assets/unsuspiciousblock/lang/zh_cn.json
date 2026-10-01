@@ -13,6 +13,7 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.search": "搜索附魔名称或 ID",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.apply_calculate": "应用并计算",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.apply_only": "仅应用",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.empty_hand": "空手",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.simulation_only": "只影响模拟，不改变实际装备",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.fixed_samples": "固定 10,000 次",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.choose_tool": "选择工具 · 滚轮浏览",

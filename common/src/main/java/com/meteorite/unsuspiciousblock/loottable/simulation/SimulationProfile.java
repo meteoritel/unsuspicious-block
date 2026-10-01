@@ -45,7 +45,9 @@ public record SimulationProfile(
     public static SimulationProfile eligibleConditions(ServerLevel level, String declaredType) {
         boolean fishing = RuntimeLootLinks.contextKind(declaredType)
                 == RuntimeLootLinks.SimulationContext.FISHING;
-        ItemStack defaultTool = new ItemStack(fishing ? Items.FISHING_ROD : Items.DIAMOND_PICKAXE);
+        String type = declaredType.startsWith("minecraft:") ? declaredType.substring("minecraft:".length()) : declaredType;
+        ItemStack defaultTool = new ItemStack(fishing ? Items.FISHING_ROD
+                : type.equals("archaeology") ? Items.BRUSH : Items.AIR);
         return new SimulationProfile(
                 Vec3.ZERO,
                 defaultTool,

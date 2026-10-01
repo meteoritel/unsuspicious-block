@@ -191,6 +191,7 @@ final class CatalogStreamCodec {
         options.samples().forEach(buf::writeVarInt);
         buf.writeVarInt(options.truncated());
         buf.writeBoolean(options.budgetExhausted());
+        buf.writeBoolean(options.toolSelectionAllowed());
     }
 
     private static @Nullable SimulationOptions readOptions(RegistryFriendlyByteBuf buf) {
@@ -212,7 +213,7 @@ final class CatalogStreamCodec {
         List<Integer> samples = new ArrayList<>();
         for (int i = 0; i < count; i++) samples.add(buf.readVarInt());
         return new SimulationOptions(generation, scenes, tools, enchantments, samples,
-                buf.readVarInt(), buf.readBoolean());
+                buf.readVarInt(), buf.readBoolean(), buf.readBoolean());
     }
 
     private static void writePath(RegistryFriendlyByteBuf buf, LootAcquisitionPath path) {

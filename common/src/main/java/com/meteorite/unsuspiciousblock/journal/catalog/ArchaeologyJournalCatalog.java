@@ -96,9 +96,12 @@ public final class ArchaeologyJournalCatalog {
             rootCategories.put(table.id(), categories.classify(table.id(), table.type()));
         }
         CatalogStructure structure = new CatalogStructure(categories.definitions(), rootCategories);
+        Map<ResourceLocation, ResourceLocation> defaultTools = new LinkedHashMap<>();
+        tables.forEach((id, table) -> defaultTools.put(id, categories.defaultTool(
+                rootCategories.containsKey(id) ? rootCategories.get(id) : categories.classify(id, table.type()))));
         LootTableAnalysisSession session = new LootTableAnalysisSession(generation, sourceSnapshot,
                 referenceGraph, compiledTables, projections);
-        return new LoadResult(session, structure, Map.copyOf(tables));
+        return new LoadResult(session, structure, Map.copyOf(tables), Map.copyOf(defaultTools));
     }
 
     /**
@@ -122,6 +125,7 @@ public final class ArchaeologyJournalCatalog {
      * 会话持有引用图与编译产物，哈希等下游据此复用同一份拓扑，不必再解析。
      */
     public record LoadResult(LootTableAnalysisSession session, CatalogStructure structure,
-                             Map<ResourceLocation, TableDefinition> staticTables) {
+                             Map<ResourceLocation, TableDefinition> staticTables,
+                             Map<ResourceLocation, ResourceLocation> defaultTools) {
     }
 }

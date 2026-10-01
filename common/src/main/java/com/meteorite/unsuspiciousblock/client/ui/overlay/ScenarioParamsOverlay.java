@@ -3,8 +3,10 @@ package com.meteorite.unsuspiciousblock.client.ui.overlay;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.kit.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.support.SimulationCatMascot;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.widget.ShadowlessEditBox;
+import com.meteorite.unsuspiciousblock.client.ui.widget.SimulationToolDropdown;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ToolOption;
@@ -38,7 +40,10 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
     private String query = "";
     private int toolIndex;
     private int firstRow;
-    private boolean browsingTools;
+    @Nullable private SimulationToolDropdown toolDropdown;
+    @Nullable private SimulationCatMascot mascot;
+    private ItemStack previewTool = ItemStack.EMPTY;
+    private ResourceLocation previewToolId;
     private boolean dirty = true;
     private int panelX, panelY, panelHeight, lastWidth, lastHeight;
     private Font measuredFont;
@@ -77,8 +82,9 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         measuredFont = font;
         lastWidth = layer.width();
         lastHeight = layer.height();
-        panelHeight = Math.clamp(188 + Math.min(6, Math.max(1, enchantments.size())) * ROW_HEIGHT,
-                208, 250);
+        int availableHeight = Math.max(208, layer.height() - 12);
+        int enchantmentRows = Math.min(enchantments.size(), Math.clamp((availableHeight - 228) / ROW_HEIGHT, 1, 4));
+        panelHeight = Math.min(244 + enchantmentRows * ROW_HEIGHT, availableHeight);
         panelX = (layer.width() - WIDTH) / 2;
         panelY = (layer.height() - panelHeight) / 2;
         if (replaceInputs) {
@@ -93,44 +99,42 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         }
         luckBox.setPosition(panelX + 166, panelY + 36);
         searchBox.setPosition(panelX + 14, panelY + 67);
-        searchBox.visible = !browsingTools && !enchantments.isEmpty();
+        searchBox.visible = !enchantments.isEmpty();
         luckBox.setFocused(luckFocused);
         searchBox.setFocused(searchFocused && searchBox.visible);
-        listBounds = new UiRect(panelX + 10, panelY + 91, WIDTH - 20, Math.max(20, panelHeight - 129));
+        listBounds = new UiRect(panelX + 10, panelY + 91, WIDTH - 20, enchantmentRows * ROW_HEIGHT);
         List<ResourceLocation> filtered = filteredEnchantments();
-        int rowCount = browsingTools ? options.tools().size() : filtered.size();
+        int rowCount = filtered.size();
         int visible = Math.max(1, listBounds.height() / ROW_HEIGHT);
         firstRow = Math.clamp(firstRow, 0, Math.max(0, rowCount - visible));
         controls.beginUpdate();
         focus.beginUpdate();
         ToolOption tool = options.tools().get(toolIndex);
-        add(font, "tool", new UiRect(panelX + 10, panelY + 34, 120, 20), tool.displayName().copy().append(" ▾"),
-                new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(tool.id()))), () -> {
-                    browsingTools = !browsingTools; firstRow = 0; dirty = true;
-                }, false);
+        if (!tool.id().equals(previewToolId)) {
+            previewToolId = tool.id();
+            previewTool = new ItemStack(BuiltInRegistries.ITEM.get(tool.id()));
+        }
+        if (options.toolSelectionAllowed()) {
+            add(font, "tool", new UiRect(panelX + 10, panelY + 34, 112, 20),
+                    tool.displayName().copy().append(" ▾"), previewTool.isEmpty() ? null : new UiIcon.Item(previewTool),
+                    this::openToolDropdown, false);
+        }
+        if (toolDropdown != null) toolDropdown.setPosition(panelX + 10, panelY + 56);
         focus.add(luckFocus);
         if (searchBox.visible) focus.add(searchFocus);
         for (int position = firstRow; position < Math.min(rowCount, firstRow + visible); position++) {
             int rowY = listBounds.y() + (position - firstRow) * ROW_HEIGHT;
-            if (browsingTools) {
-                int selectedTool = position;
-                ToolOption candidate = options.tools().get(position);
-                add(font, "tool:" + candidate.id(), new UiRect(listBounds.x(), rowY, listBounds.width(), 18),
-                        candidate.displayName(), new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(candidate.id()))),
-                        () -> { toolIndex = selectedTool; browsingTools = false; firstRow = 0; dirty = true; }, false);
-            } else {
-                ResourceLocation id = filtered.get(position);
-                int level = levels.getOrDefault(id, 0);
-                Component label = ScenarioSimulationClientState.text("params.enchant_level", enchantmentName(id), level)
-                        .copy().withStyle(style -> style.withColor(level > 0 ? UiTextPalette.Parchment.POSITIVE : UiTextPalette.Parchment.BODY));
-                add(font, "name:" + id, new UiRect(listBounds.x(), rowY, listBounds.width() - 44, 18), label, null, null, false);
-                UiControl minus = add(font, "minus:" + id, new UiRect(listBounds.right() - 42, rowY, 18, 18),
-                        Component.literal("−"), null, () -> changeLevel(id, -1), false);
-                UiControl plus = add(font, "plus:" + id, new UiRect(listBounds.right() - 20, rowY, 18, 18),
-                        Component.literal("+"), null, () -> changeLevel(id, 1), false);
-                minus.setEnabled(level > 0);
-                plus.setEnabled(level < options.enchantments().get(id));
-            }
+            ResourceLocation id = filtered.get(position);
+            int level = levels.getOrDefault(id, 0);
+            Component label = ScenarioSimulationClientState.text("params.enchant_level", enchantmentName(id), level)
+                    .copy().withStyle(style -> style.withColor(level > 0 ? UiTextPalette.Parchment.POSITIVE : UiTextPalette.Parchment.BODY));
+            add(font, "name:" + id, new UiRect(listBounds.x(), rowY, listBounds.width() - 44, 18), label, null, null, false);
+            UiControl minus = add(font, "minus:" + id, new UiRect(listBounds.right() - 42, rowY, 18, 18),
+                    Component.literal("−"), null, () -> changeLevel(id, -1), false);
+            UiControl plus = add(font, "plus:" + id, new UiRect(listBounds.right() - 20, rowY, 18, 18),
+                    Component.literal("+"), null, () -> changeLevel(id, 1), false);
+            minus.setEnabled(level > 0);
+            plus.setEnabled(level < options.enchantments().get(id));
         }
         int footerY = panelY + panelHeight - 26;
         add(font, "calculate", new UiRect(panelX + 10, footerY, 100, 18), text("params.apply_calculate"),
@@ -142,6 +146,20 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         controls.endUpdate();
         focus.endUpdate();
         dirty = false;
+    }
+
+    // 下拉层只覆盖按钮下方区域；外部点击或 Escape 先关闭下拉，不触发窗口底层操作。
+    private void openToolDropdown() {
+        focus.clearFocus();
+        luckBox.setFocused(false);
+        searchBox.setFocused(false);
+        dragInput = null;
+        toolDropdown = new SimulationToolDropdown(options.tools(), toolIndex, selected -> {
+            toolIndex = selected;
+            toolDropdown = null;
+            dirty = true;
+        }, () -> toolDropdown = null);
+        toolDropdown.setPosition(panelX + 10, panelY + 56);
     }
 
     private List<ResourceLocation> filteredEnchantments() {
@@ -179,15 +197,22 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         graphics.drawString(font, text("params.simulation_only"), panelX + 10, panelY + 21, UiTextPalette.Parchment.HINT, false);
         graphics.drawString(font, text("params.luck"), panelX + 134, panelY + 41, UiTextPalette.Parchment.LABEL, false);
         graphics.drawString(font, text("params.fixed_samples"), panelX + 228, panelY + 41, UiTextPalette.Parchment.HINT, false);
-        if (browsingTools || enchantments.isEmpty()) graphics.drawString(font,
-                text(browsingTools ? "params.choose_tool" : "params.no_enchantments"), panelX + 12, panelY + 72,
+        if (enchantments.isEmpty()) graphics.drawString(font,
+                text("params.no_enchantments"), panelX + 12, panelY + 72,
                 UiTextPalette.Parchment.LABEL, false);
+        if (Minecraft.getInstance().level != null) {
+            if (mascot == null) mascot = new SimulationCatMascot(Minecraft.getInstance());
+            int mascotSize = Math.clamp((panelY + panelHeight - 52 - listBounds.bottom()) * 2L / 3, 28, 68);
+            mascot.render(graphics, panelX + WIDTH / 2, panelY + panelHeight - 48, mascotSize,
+                    mouseX, mouseY, previewTool);
+        }
         controls.render(graphics, font, mouseX, mouseY);
         renderInput(graphics, luckBox, mouseX, mouseY, partialTick);
         if (searchBox.visible) renderInput(graphics, searchBox, mouseX, mouseY, partialTick);
         if (error != null) graphics.drawString(font, error, panelX + 10, panelY + panelHeight - 42,
                 UiTextPalette.Parchment.SEVERE, false);
-        controls.renderTooltip(graphics, font, mouseX, mouseY);
+        if (toolDropdown == null) controls.renderTooltip(graphics, font, mouseX, mouseY);
+        else toolDropdown.render(graphics, font, mouseX, mouseY);
     }
 
     private static void renderInput(GuiGraphics graphics, EditBox box, int mouseX, int mouseY, float partialTick) {
@@ -220,6 +245,10 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
 
     @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
         layout(Minecraft.getInstance().font);
+        if (toolDropdown != null) {
+            toolDropdown.mouseClicked(Minecraft.getInstance().font, mouseX, mouseY, button);
+            return true;
+        }
         if (button != 0) return true;
         focus.clearFocus();
         luckBox.setFocused(false);
@@ -236,6 +265,7 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         return true;
     }
     @Override public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        if (toolDropdown != null) return true;
         if (button == 0 && dragInput != null) { dragInput.onClick(mouseX, mouseY); dragInput.setHighlightPos(dragAnchor); }
         return true;
     }
@@ -243,11 +273,13 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         dragInput = null; controls.mouseReleased(button); return true;
     }
     @Override public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        if (toolDropdown != null) { toolDropdown.mouseScrolled(amount); return true; }
         if (listBounds.contains(mouseX, mouseY)) { firstRow -= (int) Math.signum(amount); dirty = true; }
         return true;
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         layout(Minecraft.getInstance().font);
+        if (toolDropdown != null) { toolDropdown.keyPressed(key, modifiers); return true; }
         if (key == GLFW.GLFW_KEY_ESCAPE) { layer.close(); return true; }
         for (EditBox box : List.of(luckBox, searchBox)) {
             if (box.visible && box.isFocused()) {
@@ -261,6 +293,7 @@ public final class ScenarioParamsOverlay implements OverlayLayer.Overlay {
         return true;
     }
     @Override public boolean charTyped(char value, int modifiers) {
+        if (toolDropdown != null) return true;
         for (EditBox box : List.of(luckBox, searchBox)) if (box.visible && box.isFocused()) return box.charTyped(value, modifiers);
         return true;
     }

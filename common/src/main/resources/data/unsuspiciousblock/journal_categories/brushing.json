@@ -4,6 +4,7 @@
   "description_key": "screen.unsuspiciousblock.archaeology_journal.category.brushing.description",
   "description_fallback": "Loot discovered by brushing suspicious blocks.",
   "icon": "minecraft:brush",
+  "default_tool": "minecraft:brush",
   "order": 10,
   "types": ["minecraft:archaeology"]
 }
