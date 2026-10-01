@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
@@ -30,7 +31,7 @@ import java.util.TreeMap;
  *   <li><b>展开本身也有预算</b>（决策 33）：{@code all_of} 走叉乘、{@code any_of} 累加，因此
  *       "all_of 里嵌多个 any_of"的条件树会在 32 的截断**之前**就指数膨胀。场景上限约束的是展开的
  *       <i>结果数量</i>，约束不了展开的<i>过程成本</i>，所以两者各有一个独立预算；超预算的路径按
- *       "无约束"降级（与指纹不稳定时的既有降级同型：数值偏保守，但不会把条目伪装成确定不可达）；</li>
+ *       "无约束"结束规划，再由服务端停用该表数值模拟，避免缺失条件回退真实环境；</li>
  *   <li><b>基准场景必须在截断之前产出</b>：它是"条件全部不成立"的那个赋值（决策 2），
  *       网格上的数字只来自它。按覆盖度排序会让它排到末尾，因此先产出它再排其余。</li>
  * </ul>
@@ -95,7 +96,7 @@ public final class SimulationScenarioPlanner {
      *
      * @param scenarios      代表场景（含基准），数量不超过 {@link #MAX_SCENARIOS}
      * @param truncatedCount 因超出上界而未列出的场景数；{@code 0} 表示全部列出
-     * @param budgetExhausted 是否有路径因展开预算耗尽而按"无约束"降级
+     * @param budgetExhausted 语义分析不完整或展开预算耗尽；服务端应停用该表数值模拟
      */
     public record ScenarioPlan(List<SimulationScenario> scenarios, int truncatedCount,
                                boolean budgetExhausted) {
@@ -123,7 +124,7 @@ public final class SimulationScenarioPlanner {
         candidates.put("default", Map.of());
         Set<String> allFingerprints = new LinkedHashSet<>();
         for (PathRequirements path : pathRequirements) {
-            for (Map<String, Boolean> requirement : path.requirements()) {
+            for (Map<String, Boolean> requirement : path.scenarioRequirements()) {
                 if (!requirement.isEmpty()) {
                     allFingerprints.addAll(requirement.keySet());
                     candidates.putIfAbsent(canonical(requirement), requirement);
@@ -173,15 +174,25 @@ public final class SimulationScenarioPlanner {
 
         if (budget.exhausted && WARNED_BUDGET_TABLES.add(tableId)) {
             LOGGER.warn("战利品表 {} 的条件树展开超出预算（节点上限 {}，组合上限 {}），"
-                            + "超出的路径已按无约束处理；数值偏保守，但不会把条目伪装成确定不可达",
+                            + "或函数语义分析不完整；该表将停止数值模拟",
                     tableId, EXPANSION_NODE_BUDGET, EXPANSION_COMBINATION_BUDGET);
         }
         return new ScenarioPlan(result, truncated, budget.exhausted);
     }
 
-    /** 一条获取路径预计算出的需求集合，以及它归属的物品签名与直接子表。 */
+    /**
+     * 一条获取路径预计算出的需求集合，以及它归属的物品签名与直接子表。
+     *
+     * @param requirements         物品**生成条件**（条目条件 + 继承条件）的需求析取：决定本条路径在哪些
+     *                             场景里拿得到物品，也是 {@link #satisfiedBy(Map)} 与覆盖度的唯一依据
+     * @param scenarioRequirements 供场景规划枚举候选的需求：生成条件本身，加上"生成条件 ∧ 函数自身条件"
+     *                             的合取。函数条件只用来决定**哪些场景需要被规划出来**（把函数条件钉成
+     *                             场景内的确定赋值，避免回退到真实天气/时间求值而让同一输入键时好时坏），
+     *                             **不参与**物品可达性判定——函数条件不成立时物品照常掉落，只是函数不生效
+     */
     private record PathRequirements(String storedKey, @Nullable ResourceLocation sourceChildTable,
-                                    List<Map<String, Boolean>> requirements) {
+                                    List<Map<String, Boolean>> requirements,
+                                    List<Map<String, Boolean>> scenarioRequirements) {
         // 该路径的需求是否被当前布尔赋值满足；需求集合为空即"条件自相矛盾"，任何场景都不满足
         boolean satisfiedBy(Map<String, Boolean> scenario) {
             for (Map<String, Boolean> requirement : this.requirements) {
@@ -199,11 +210,97 @@ public final class SimulationScenarioPlanner {
         List<PathRequirements> result = new ArrayList<>();
         for (ItemDefinition item : table.items()) {
             for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                // 生成条件：决定物品在哪些场景里可拿
+                List<Map<String, Boolean>> requirements =
+                        requirementsFor(path.allConditions(), conditionByFingerprint, budget);
+                // 函数条件：只补进候选枚举，函数条件不成立时物品仍可掉落
                 result.add(new PathRequirements(item.signature().toStoredKey(), path.sourceChildTable(),
-                        requirementsFor(path.allConditions(), conditionByFingerprint, budget)));
+                        requirements, mergeScenarioRequirements(requirements,
+                                collectFunctionConditionGroups(path.functions(), budget),
+                                conditionByFingerprint, budget)));
             }
         }
         return List.copyOf(result);
+    }
+
+    // 遍历完整语义树；展示限制不参与场景分析。内层条件继承包装函数的门槛，
+    // 但仍不并入物品生成条件。节点预算或解析深度超限时明确停止该表数值模拟。
+    private static List<List<LootConditionInfo>> collectFunctionConditionGroups(
+            List<LootFunctionInfo> functions, ExpansionBudget budget) {
+        List<List<LootConditionInfo>> result = new ArrayList<>();
+        for (LootFunctionInfo function : functions) {
+            appendFunctionConditionGroups(function, List.of(), result, budget);
+            if (budget.exhausted) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private static void appendFunctionConditionGroups(LootFunctionInfo function,
+                                                      List<LootConditionInfo> ancestors,
+                                                      List<List<LootConditionInfo>> target,
+                                                      ExpansionBudget budget) {
+        if (budget.exhausted || !budget.visitNode()) {
+            return;
+        }
+        if (function.metadata().containsKey(LootFunctionInfo.METADATA_ANALYSIS_INCOMPLETE)) {
+            budget.markExhausted();
+            return;
+        }
+        List<LootConditionInfo> conditions = new ArrayList<>(ancestors);
+        conditions.addAll(function.conditions());
+        if (!function.conditions().isEmpty()) {
+            target.add(List.copyOf(conditions));
+        }
+        for (LootFunctionInfo child : function.children()) {
+            appendFunctionConditionGroups(child, conditions, target, budget);
+            if (budget.exhausted) {
+                break;
+            }
+        }
+    }
+
+    /**
+     * 合并两类场景候选需求：物品的生成条件本身，以及"生成条件 ∧ 某个函数的条件"的合取。
+     * <p>
+     * 生成条件那一份**必须完整保留**：函数条件展开一旦超预算，合取会整体降级为"无约束"，
+     * 若只留合取结果，物品的可拿场景会被一并挤掉，条目看起来就"不可达"了。
+     * 合取那一份才是把函数条件钉进场景的候选（例如"下雨时 set_count(0)"需要一个
+     * 下雨且物品可拿的代表场景），缺少它则该函数条件只能回退到真实世界求值，
+     * 同一个输入键因此会在不同时刻给出不同数字。
+     * <p>
+     * 无场景控制类型的函数条件时每个分组的需求都是"无约束"，本方法退化为原样返回生成条件；
+     * 没有函数条件的表连分组都为空，候选集合与发射顺序与改造前完全一致。
+     */
+    private static List<Map<String, Boolean>> mergeScenarioRequirements(
+            List<Map<String, Boolean>> requirements,
+            List<List<LootConditionInfo>> functionConditionGroups,
+            Map<String, LootConditionInfo> conditionByFingerprint, ExpansionBudget budget) {
+        Map<String, Map<String, Boolean>> unique = new LinkedHashMap<>();
+        for (Map<String, Boolean> requirement : requirements) {
+            unique.putIfAbsent(canonical(requirement), requirement);
+        }
+        // 生成条件自相矛盾（需求集合为空）时任何场景都拿不到物品，函数条件也就不必再规划
+        if (requirements.isEmpty()) {
+            return List.of();
+        }
+        // 逐节点展开：任一函数条件成立时都对应至少一个候选场景，不会因彼此矛盾整组丢失
+        for (List<LootConditionInfo> group : functionConditionGroups) {
+            List<Map<String, Boolean>> groupRequirements =
+                    requirementsFor(group, conditionByFingerprint, budget);
+            List<Map<String, Boolean>> combined = combineAnd(requirements, groupRequirements);
+            if (budget.exhausted || combined.size() > EXPANSION_COMBINATION_BUDGET) {
+                return budget.markExhausted();
+            }
+            for (Map<String, Boolean> requirement : combined) {
+                unique.putIfAbsent(canonical(requirement), requirement);
+            }
+            if (unique.size() > EXPANSION_COMBINATION_BUDGET) {
+                return budget.markExhausted();
+            }
+        }
+        return List.copyOf(unique.values());
     }
 
     private static SimulationScenario buildScenario(String key, Map<String, Boolean> normalized,
@@ -271,6 +368,9 @@ public final class SimulationScenarioPlanner {
         List<Map<String, Boolean>> result = List.of(Map.of());
         for (LootConditionInfo condition : conditions) {
             result = combineAnd(result, requirementsFor(condition, false, conditionByFingerprint, budget));
+            if (result.size() > EXPANSION_COMBINATION_BUDGET) {
+                return budget.markExhausted();
+            }
             if (result.isEmpty() || budget.exhausted) {
                 break;
             }
@@ -331,14 +431,14 @@ public final class SimulationScenarioPlanner {
      * 条件树展开的预算计数器。
      * <p>
      * {@code exhausted} 一旦置位就**不可恢复**：后续所有展开一律返回"无约束"。这是刻意的——
-     * 只丢弃超限的那一支会让"哪些路径被降级"取决于遍历顺序，而按无约束处理是保守方向，
-     * 至少不会把可达条目伪装成不可达。
+     * 这里只负责终止展开，服务端看到此标志后不发布该表的可执行约束，也不恢复旧测量，
+     * 避免部分条件缺失后得到依赖真实环境的数值。
      */
     private static final class ExpansionBudget {
         private int nodes;
         private boolean exhausted;
 
-        // 访问一个条件节点；返回 false 表示已超节点预算
+        // 访问一个函数或条件节点；返回 false 表示已超节点预算
         boolean visitNode() {
             if (++this.nodes > EXPANSION_NODE_BUDGET) {
                 this.exhausted = true;

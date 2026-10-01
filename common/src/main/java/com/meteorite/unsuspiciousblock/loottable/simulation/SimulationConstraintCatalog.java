@@ -32,7 +32,7 @@ import java.util.Optional;
  *
  * @param scenarios               代表场景（含基准），≤ {@link SimulationScenarioPlanner#MAX_SCENARIOS}
  * @param truncatedScenarioCount  因超出上界而未列出的场景数；{@code 0} 表示全部列出
- * @param scenarioBudgetExhausted 是否有路径因条件树展开超预算而按"无约束"降级
+ * @param scenarioBudgetExhausted 语义分析不完整或展开超预算；该表不发布到可执行约束目录
  * @param tools                   工具基座清单，第一项恒为默认工具
  * @param enchantmentMaxLevels    该表子树实际引用到的附魔 → 其 {@code max_level}；等级旋钮的范围就是 0..它
  * @param sampleCounts            签发的抽样次数档位
