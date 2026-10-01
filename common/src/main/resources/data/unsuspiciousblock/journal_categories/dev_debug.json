@@ -1,0 +1,19 @@
+{
+  "translation_key": "screen.unsuspiciousblock.archaeology_journal.category.dev_debug",
+  "fallback": "Dev Debug",
+  "description_key": "screen.unsuspiciousblock.archaeology_journal.category.dev_debug.description",
+  "description_fallback": "Development-only tables used to verify loot function capture.",
+  "icon": "minecraft:command_block",
+  "default_tool": "minecraft:air",
+  "order": -100,
+  "types": [],
+  "priority": 100,
+  "special_rules": [
+    {
+      "path_prefixes": [
+        "archaeology/debug/"
+      ],
+      "priority": 100
+    }
+  ]
+}

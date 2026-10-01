@@ -1,0 +1,28 @@
+{
+  "type": "minecraft:generic",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:emerald",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": 4
+            },
+            {
+              "function": "minecraft:limit_count",
+              "limit": {
+                "min": 1,
+                "max": 8
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

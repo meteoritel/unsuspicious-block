@@ -48,7 +48,9 @@ public final class ArchaeologyJournalCatalog {
 
         Set<ResourceLocation> trackedRoots = new LinkedHashSet<>();
         for (ResourceLocation tableId : referenceGraph.nodes()) {
-            if (LootTableNames.isArchaeologyLootTable(tableId)) {
+            // 调试表只在调试模式下进入收录闭包：关闭时它连"可被抽取的表"都不是，目录里完全不出现
+            if (LootTableNames.isArchaeologyLootTable(tableId)
+                    && com.meteorite.unsuspiciousblock.loottable.diagnostics.LootDebugMode.allows(tableId)) {
                 trackedRoots.add(tableId);
             }
         }

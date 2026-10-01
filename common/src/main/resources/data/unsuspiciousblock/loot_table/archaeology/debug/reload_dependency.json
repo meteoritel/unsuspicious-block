@@ -1,0 +1,44 @@
+{
+  "type": "minecraft:generic",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:copper_ingot",
+          "functions": [
+            {
+              "function": "minecraft:filtered",
+              "item_filter": {
+                "items": [
+                  "minecraft:copper_ingot"
+                ]
+              },
+              "modifier": [
+                {
+                  "function": "minecraft:reference",
+                  "name": "unsuspiciousblock:debug_chain_a"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:raw_iron",
+          "functions": [
+            {
+              "function": "minecraft:furnace_smelt"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

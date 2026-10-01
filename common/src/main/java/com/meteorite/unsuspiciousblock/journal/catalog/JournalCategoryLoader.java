@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
+import com.meteorite.unsuspiciousblock.loottable.diagnostics.LootDebugMode;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Items;
@@ -27,6 +28,8 @@ final class JournalCategoryLoader {
     private static final String DIRECTORY = "journal_categories";
     private static final ResourceLocation OTHER_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "other");
+    // 调试分类的资源文件名；与 LootDebugMode 共用同一个常量，避免两处写法漂移
+    private static final String DEBUG_CATEGORY_PATH = LootDebugMode.DEBUG_CATEGORY_FILE;
 
     private JournalCategoryLoader() {
     }
@@ -37,6 +40,10 @@ final class JournalCategoryLoader {
                 DIRECTORY, id -> id.getPath().endsWith(".json"));
         for (Map.Entry<ResourceLocation, Resource> entry : resources.entrySet()) {
             ResourceLocation categoryId = fileToCategoryId(entry.getKey());
+            // 调试分类只在调试模式下加载；关闭时它连定义都不存在，客户端也就看不到这个页签
+            if (!LootDebugMode.isEnabled() && DEBUG_CATEGORY_PATH.equals(categoryId.getPath())) {
+                continue;
+            }
             try (Reader reader = entry.getValue().openAsReader()) {
                 loaded.add(parse(categoryId, JsonParser.parseReader(reader).getAsJsonObject()));
             } catch (Exception exception) {

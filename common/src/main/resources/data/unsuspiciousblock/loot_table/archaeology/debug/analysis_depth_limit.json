@@ -1,0 +1,76 @@
+{
+  "type": "minecraft:generic",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:flint",
+          "functions": [
+            {
+              "function": "minecraft:sequence",
+              "functions": [
+                {
+                  "function": "minecraft:sequence",
+                  "functions": [
+                    {
+                      "function": "minecraft:sequence",
+                      "functions": [
+                        {
+                          "function": "minecraft:sequence",
+                          "functions": [
+                            {
+                              "function": "minecraft:sequence",
+                              "functions": [
+                                {
+                                  "function": "minecraft:sequence",
+                                  "functions": [
+                                    {
+                                      "function": "minecraft:sequence",
+                                      "functions": [
+                                        {
+                                          "function": "minecraft:sequence",
+                                          "functions": [
+                                            {
+                                              "function": "minecraft:sequence",
+                                              "functions": [
+                                                {
+                                                  "function": "minecraft:sequence",
+                                                  "functions": [
+                                                    {
+                                                      "function": "minecraft:set_count",
+                                                      "count": 0,
+                                                      "conditions": [
+                                                        {
+                                                          "condition": "minecraft:weather_check",
+                                                          "raining": true
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
