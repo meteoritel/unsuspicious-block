@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.world;
 
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulatedValue;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ObservedFunctionChain;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationInputKey;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
@@ -28,7 +30,7 @@ import java.util.Set;
 /**
  * 战利品概率数据持久化——按表存储内容哈希、表级发现记录与**按输入**的测量值。
  * <p>
- * 存储格式（{@code format_version = 4}）：
+ * 存储格式（{@code format_version = 5}）：
  * <pre>
  * root tag:
  *   "format_version" -> int
@@ -43,7 +45,16 @@ import java.util.Set;
  *                       "input_key" -> String,
  *                       "sample_count" -> int,
  *                       "items"    -> ListTag of { "key" -> String, "value" -> valueTag },
- *                       "children" -> ListTag of { "table_id" -> String, "value" -> valueTag } }
+ *                       "children" -> ListTag of { "table_id" -> String, "value" -> valueTag },
+ *                       "observations" -> ListTag of {   // 本输入的函数观测摘要（规划 §4.8）
+ *                           "key" -> String (signature storedKey),
+ *                           "chains" -> ListTag of { "functions" -> ListTag&lt;StringTag&gt;,
+ *                                                    "state" -> String, "content_expanded" -> boolean },
+ *                           "truncated" / "incomplete" / "unavailable" -> boolean } }
+
+ * 观测摘要属于**输入级测量层**：它随该输入一起被 LRU 淘汰，绝不提升到表级 discovery。
+ * 理由与发现记录恰好相反——观测回答的是"这个输入算出过什么"，换个输入就不成立（规划 D13）。
+ * 它也只承载"观测事实"（进过哪些函数执行体、是否截断/未完整），不含任何静态派生结论。
  *
  * 测量值 valueTag（{@link SimulatedValue}，只表达"算没算、算出多少"）:
  *   { "state": "unknown" }
@@ -68,8 +79,13 @@ import java.util.Set;
 public final class LootProbabilityData extends SavedData {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String FILE_NAME = "unsuspiciousblock_loot_probability";
-    /** 概率存储格式版本；旧文件没有该字段，因此"缺失"即视为不兼容。 */
-    private static final int FORMAT_VERSION = 4;
+    /**
+     * 概率存储格式版本；旧文件没有该字段，因此"缺失"即视为不兼容。
+     * <p>
+     * v5：输入级测量新增函数观测摘要（规划 §4.8）。旧测量按缓存未命中处理、不迁移——
+     * 观测是"依据哪一版函数描述规则算出来的"结论之一，沿用旧文件会展示过期口径。
+     */
+    private static final int FORMAT_VERSION = 5;
     /**
      * 每表最多保留的参数组合数（决策 46，可调实现参数）。
      * 抽样次数的档位不占用这个额度：同一个"问题"的不同精度一起保留。
@@ -91,6 +107,17 @@ public final class LootProbabilityData extends SavedData {
     private static final String TAG_SAMPLE_COUNT = "sample_count";
     private static final String TAG_ITEMS = "items";
     private static final String TAG_CHILDREN = "children";
+    private static final String TAG_OBSERVATIONS = "observations";
+    private static final String TAG_CHAINS = "chains";
+    private static final String TAG_CHAIN_FUNCTIONS = "functions";
+    private static final String TAG_CHAIN_STATE = "state";
+    private static final String TAG_CHAIN_CONTENT_EXPANDED = "content_expanded";
+    private static final String TAG_TRUNCATED = "truncated";
+    private static final String TAG_INCOMPLETE = "incomplete";
+    private static final String TAG_UNAVAILABLE = "unavailable";
+    /** 读端硬上限，与写入端的捕获预算同源；越界即按该表缓存未命中，不把异常数据交给下游。 */
+    private static final int MAX_OBSERVED_CHAINS = 16;
+    private static final int MAX_CHAIN_NODES = 64;
 
     private static final String STATE_UNKNOWN = "unknown";
     private static final String STATE_MEASURED = "measured";
@@ -206,9 +233,64 @@ public final class LootProbabilityData extends SavedData {
                 }
                 children.put(childId, value);
             }
-            inputs.put(inputKey, new InputMeasurement(inputTag.getInt(TAG_SAMPLE_COUNT), items, children));
+            Map<String, FunctionObservationSummary> observations = readObservations(inputTag);
+            if (observations == null) {
+                return null;
+            }
+            inputs.put(inputKey, new InputMeasurement(inputTag.getInt(TAG_SAMPLE_COUNT), items, children,
+                    observations));
         }
         return inputs;
+    }
+
+    // 读取函数观测摘要；**缺失即视为空**（本版本之前写入的条目本已被整体作废），
+    // 但结构存在却无法解析时返回 null，让该表按缓存未命中处理
+    @Nullable
+    private static Map<String, FunctionObservationSummary> readObservations(CompoundTag inputTag) {
+        Map<String, FunctionObservationSummary> observations = new LinkedHashMap<>();
+        if (!inputTag.contains(TAG_OBSERVATIONS, Tag.TAG_LIST)) {
+            return observations;
+        }
+        ListTag listTag = inputTag.getList(TAG_OBSERVATIONS, Tag.TAG_COMPOUND);
+        for (int i = 0; i < listTag.size(); i++) {
+            CompoundTag summaryTag = listTag.getCompound(i);
+            String key = summaryTag.getString(TAG_KEY);
+            if (key.isEmpty()) {
+                return null;
+            }
+            ListTag chainsTag = summaryTag.getList(TAG_CHAINS, Tag.TAG_COMPOUND);
+            if (chainsTag.size() > MAX_OBSERVED_CHAINS) {
+                return null;
+            }
+            List<ObservedFunctionChain> chains = new ArrayList<>(chainsTag.size());
+            for (int k = 0; k < chainsTag.size(); k++) {
+                CompoundTag chainTag = chainsTag.getCompound(k);
+                ListTag functionsTag = chainTag.getList(TAG_CHAIN_FUNCTIONS, Tag.TAG_STRING);
+                if (functionsTag.size() > MAX_CHAIN_NODES) {
+                    return null;
+                }
+                List<ResourceLocation> functionTypes = new ArrayList<>(functionsTag.size());
+                for (int n = 0; n < functionsTag.size(); n++) {
+                    ResourceLocation functionId = ResourceLocation.tryParse(functionsTag.getString(n));
+                    if (functionId == null) {
+                        return null;
+                    }
+                    functionTypes.add(functionId);
+                }
+                ObservedFunctionChain.State state;
+                try {
+                    state = ObservedFunctionChain.State.valueOf(chainTag.getString(TAG_CHAIN_STATE));
+                } catch (IllegalArgumentException exception) {
+                    return null;
+                }
+                chains.add(new ObservedFunctionChain(functionTypes, state,
+                        chainTag.getBoolean(TAG_CHAIN_CONTENT_EXPANDED)));
+            }
+            observations.put(key, new FunctionObservationSummary(chains,
+                    summaryTag.getBoolean(TAG_TRUNCATED), summaryTag.getBoolean(TAG_INCOMPLETE),
+                    summaryTag.getBoolean(TAG_UNAVAILABLE)));
+        }
+        return observations;
     }
 
     // 条目列表里每项形如 { "key": String, "value": valueTag }
@@ -315,6 +397,7 @@ public final class LootProbabilityData extends SavedData {
                 childrenTag.add(childTag);
             }
             inputTag.put(TAG_CHILDREN, childrenTag);
+            inputTag.put(TAG_OBSERVATIONS, writeObservations(measurement.observations()));
             inputsTag.add(inputTag);
         }
         return inputsTag;
@@ -329,6 +412,34 @@ public final class LootProbabilityData extends SavedData {
             itemsTag.add(itemTag);
         }
         return itemsTag;
+    }
+
+    // 函数观测摘要：只写"进过哪些函数执行体"与捕获状态，不写任何静态派生结论
+    private static ListTag writeObservations(Map<String, FunctionObservationSummary> observations) {
+        ListTag listTag = new ListTag();
+        for (Map.Entry<String, FunctionObservationSummary> entry : observations.entrySet()) {
+            FunctionObservationSummary summary = entry.getValue();
+            CompoundTag summaryTag = new CompoundTag();
+            summaryTag.putString(TAG_KEY, entry.getKey());
+            ListTag chainsTag = new ListTag();
+            for (ObservedFunctionChain chain : summary.chains()) {
+                CompoundTag chainTag = new CompoundTag();
+                ListTag functionsTag = new ListTag();
+                for (ResourceLocation functionId : chain.functionTypes()) {
+                    functionsTag.add(StringTag.valueOf(functionId.toString()));
+                }
+                chainTag.put(TAG_CHAIN_FUNCTIONS, functionsTag);
+                chainTag.putString(TAG_CHAIN_STATE, chain.state().name());
+                chainTag.putBoolean(TAG_CHAIN_CONTENT_EXPANDED, chain.contentExpanded());
+                chainsTag.add(chainTag);
+            }
+            summaryTag.put(TAG_CHAINS, chainsTag);
+            summaryTag.putBoolean(TAG_TRUNCATED, summary.truncated());
+            summaryTag.putBoolean(TAG_INCOMPLETE, summary.incomplete());
+            summaryTag.putBoolean(TAG_UNAVAILABLE, summary.unavailable());
+            listTag.add(summaryTag);
+        }
+        return listTag;
     }
 
     // 只写测量事实：Unknown 与 Measured 两态，派生结论（不可达 / 需要条件）绝不落盘
@@ -465,12 +576,27 @@ public final class LootProbabilityData extends SavedData {
         }
     }
 
-    /** 单个输入下的测量值——只有"算没算、算出多少"，没有派生结论。 */
+    /**
+     * 单个输入下的测量值——只有"算没算、算出多少"与"观测到哪些函数执行"，没有派生结论。
+     *
+     * @param observations 签名存储键 → 该结果的函数观测摘要；随本输入一起被 LRU 淘汰，
+     *                     绝不提升到表级（决策 13）。空表表示"该输入没有观测"，不是"没有函数"
+     */
     public record InputMeasurement(int sampleCount, Map<String, SimulatedValue> items,
-                                   Map<ResourceLocation, SimulatedValue> children) {
+                                   Map<ResourceLocation, SimulatedValue> children,
+                                   Map<String, FunctionObservationSummary> observations) {
         public InputMeasurement {
             items = Collections.unmodifiableMap(new LinkedHashMap<>(items));
             children = Collections.unmodifiableMap(new LinkedHashMap<>(children));
+            observations = observations == null
+                    ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(observations));
+        }
+
+        // 兼容既有调用方：该输入没有函数观测摘要
+        public InputMeasurement(int sampleCount, Map<String, SimulatedValue> items,
+                                Map<ResourceLocation, SimulatedValue> children) {
+            this(sampleCount, items, children, Map.of());
         }
     }
 }

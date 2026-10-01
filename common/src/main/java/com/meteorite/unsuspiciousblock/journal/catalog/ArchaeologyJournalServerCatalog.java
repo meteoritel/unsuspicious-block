@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootMechanismSupport;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootOriginKind;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
@@ -29,6 +30,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.PathHintAnalyzer;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationConstraintCatalog;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationInput;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationMeasurement;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationProfile;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationScenario;
@@ -39,6 +41,8 @@ import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayloa
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncScenarioResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.world.LootProbabilityData;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -47,6 +51,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -61,6 +66,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 
 import java.util.List;
 import java.util.Map;
@@ -103,8 +109,13 @@ public final class ArchaeologyJournalServerCatalog {
      * 开条件作用域，却用场景自带的 profile 构造 {@code LootParams}，于是每次模拟实际上都跑在
      * "默认工具 + 幸运 1.0"上。修好之后，旧存档里那批数字的统计口径与现在不同，必须整体失效，
      * 否则它们会被当作缓存命中继续展示。
+     * <p>
+     * v22：函数规则描述改为结构化（{@code LootFunctionInfo}）后，静态规则参与目录摘要、条目 tooltip
+     * 与函数条件归属都变了，且测量里新增了运行时函数观测摘要。旧测量是按旧描述规则算出来的，
+     * 沿用会展示过期口径；{@code LootProbabilityData} 的 {@code format_version} 同时升到 5，
+     * 两者共同保证旧数据不会被当成缓存命中。
      */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v21";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v23";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -160,13 +171,19 @@ public final class ArchaeologyJournalServerCatalog {
             List<ItemDefinition> items = new ArrayList<>(table.items());
             for (var rule : Services.PLATFORM.describeLootInjections(id)) {
                 LootResultSignature signature = LootResultSignature.plain(rule.item());
-                if (items.stream().anyMatch(item -> item.signature().equals(signature))) continue;
+                LootAcquisitionPath injectionPath = new LootAcquisitionPath(null,
+                        com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of());
+                int existing = indexOfSignature(items, signature);
+                if (existing >= 0) {
+                    // 同签名的普通来源与「模组联动」必须**并列**保留（规划 §4.6）：既有声明只说明该物可能被注入，
+                    // 不能因为静态路径已经产出同名物品就把注入来源整条丢掉——那会让"来源分型"永远只剩普通来源。
+                    items.set(existing, mergeInjectionPath(items.get(existing), injectionPath));
+                    continue;
+                }
                 ItemDefinition definition = LootTableCatalog.buildDiscoveredDefinition(signature,
-                        Probability.unknown(UnknownReason.NOT_SIMULATED), true, List.of());
-                items.add(new ItemDefinition(definition.id(), definition.displayName(), definition.tooltipHint(),
-                        definition.probability(), definition.signature(), List.of(new LootAcquisitionPath(null,
-                        com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of())),
-                        true, List.of()));
+                        Probability.unknown(UnknownReason.NOT_SIMULATED),
+                        Set.of(LootOriginKind.MOD_INTEGRATION), List.of());
+                items.add(mergeInjectionPath(definition, injectionPath));
             }
             enrichedTables.put(id, new TableDefinition(table.id(), table.displayName(), table.type(), items,
                     table.simulationCount(), table.childTables(), table.childTableProbabilities()));
@@ -210,7 +227,6 @@ public final class ArchaeologyJournalServerCatalog {
             SimulationConstraintCatalog constraint = buildConstraintCatalog(
                     loadResult.session(), entry.getKey(), entry.getValue(), level,
                     loadResult.defaultTools().get(entry.getKey()));
-            constraintCatalogs.put(entry.getKey(), constraint);
             // 只为"有信息量"的表留一行：单场景且无截断的表没什么可说的，逐表刷屏会淹掉真正的异常
             if (constraint.scenarios().size() > 1 || constraint.truncatedScenarioCount() > 0
                     || constraint.scenarioBudgetExhausted()) {
@@ -218,9 +234,20 @@ public final class ArchaeologyJournalServerCatalog {
                         entry.getKey(), constraint.describe(), constraint.parameterKinds());
             }
             if (constraint.scenarioBudgetExhausted()) {
-                LOGGER.warn("战利品表 {} 的条件树展开超预算，超出部分已按无约束处理（数值偏保守）",
+                unavailableReasons.put(entry.getKey(), "函数/条件分析不完整或超预算");
+                LOGGER.warn("战利品表 {} 的函数/条件分析不完整或超预算，已停止数值模拟",
                         entry.getKey());
+            } else {
+                // 按需请求与只读缓存查询都通过约束目录准入；不可用表不发布可执行输入。
+                constraintCatalogs.put(entry.getKey(), constraint);
             }
+        }
+        // 语义不完整的表保留静态规则，但不读缓存、不入队、不接受按需模拟。
+        if (!unavailableReasons.isEmpty()) {
+            Map<ResourceLocation, TableDefinition> marked = new LinkedHashMap<>(staticTables);
+            unavailableReasons.keySet().forEach(tableId ->
+                    marked.put(tableId, markUnparsed(marked.get(tableId))));
+            staticTables = Map.copyOf(marked);
         }
         CatalogGeneration catalogGeneration = new CatalogGeneration(
                 loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs);
@@ -345,8 +372,10 @@ public final class ArchaeologyJournalServerCatalog {
                 for (LootAcquisitionPath path : item.acquisitionPaths()) {
                     List<LootConditionInfo> parents = new ArrayList<>(gates);
                     parents.addAll(path.inheritedConditions());
+                    // 函数树必须一起透传：重建路径时丢掉它会让注入子树的"生成规则"整段消失
                     paths.add(new LootAcquisitionPath(child, path.sourceItemTag(), path.entryConditions(),
-                            parents, path.functionUncertainty(), path.luckAffected(), path.luckGate(), path.luckRequirements()));
+                            parents, path.functionUncertainty(), path.luckAffected(), path.luckGate(),
+                            path.luckRequirements(), path.functions()));
                 }
                 items.add(new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
                         item.probability(), item.signature(), paths, true, item.scenarioProbabilities()));
@@ -364,13 +393,30 @@ public final class ArchaeologyJournalServerCatalog {
         List<CatalogTableDto.ItemEntry> displayItems = new ArrayList<>(dto.items());
         for (var rule : Services.PLATFORM.describeLootInjections(table.id())) {
             LootResultSignature signature = LootResultSignature.plain(rule.item());
-            if (displayItems.stream().anyMatch(item -> item.signature().equals(signature))) continue;
+            LootAcquisitionPath injectionPath = new LootAcquisitionPath(null,
+                    com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of());
+            int existing = indexOfEntry(displayItems, signature);
+            if (existing >= 0) {
+                // 与 buildGeneration 同一条口径：同签名时把注入路径与来源并入既有条目，而不是跳过
+                CatalogTableDto.ItemEntry entry = displayItems.get(existing);
+                List<LootAcquisitionPath> paths = new ArrayList<>(entry.acquisitionPaths());
+                if (!paths.contains(injectionPath)) {
+                    paths.add(injectionPath);
+                }
+                Set<LootOriginKind> origins = new LinkedHashSet<>(entry.origins());
+                origins.add(LootOriginKind.MOD_INTEGRATION);
+                displayItems.set(existing, new CatalogTableDto.ItemEntry(entry.id(), entry.displayName(),
+                        entry.tooltipHint(), entry.probability(), entry.signature(), List.copyOf(paths),
+                        entry.injected(), entry.scenarioProbabilities(), Set.copyOf(origins),
+                        entry.observedFunctions()));
+                continue;
+            }
             var definition = LootTableCatalog.buildDiscoveredDefinition(signature,
-                    Probability.unknown(UnknownReason.NOT_SIMULATED), true, List.of());
-            displayItems.add(new CatalogTableDto.ItemEntry(definition.id(), definition.displayName(), definition.tooltipHint(),
-                    definition.probability(), signature, List.of(new LootAcquisitionPath(null,
-                    com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of())),
-                    true, List.of()));
+                    Probability.unknown(UnknownReason.NOT_SIMULATED),
+                    Set.of(LootOriginKind.MOD_INTEGRATION), List.of());
+            displayItems.add(new CatalogTableDto.ItemEntry(definition.id(), definition.displayName(),
+                    definition.tooltipHint(), definition.probability(), signature, List.of(injectionPath),
+                    true, List.of(), Set.of(LootOriginKind.MOD_INTEGRATION), null));
         }
         TableDefinition raw = generation.staticTable(table.id());
         Map<ResourceLocation, CatalogTableDto.ChildTableEntry> existing = new LinkedHashMap<>();
@@ -401,13 +447,46 @@ public final class ArchaeologyJournalServerCatalog {
         return generation == null ? "" : generation.tableHash(tableId);
     }
 
+    // 在条目列表里按签名定位；找不到返回 -1
+    private static int indexOfSignature(List<ItemDefinition> items, LootResultSignature signature) {
+        for (int index = 0; index < items.size(); index++) {
+            if (items.get(index).signature().equals(signature)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    // 在显示条目列表里按签名定位；找不到返回 -1
+    private static int indexOfEntry(List<CatalogTableDto.ItemEntry> items, LootResultSignature signature) {
+        for (int index = 0; index < items.size(); index++) {
+            if (items.get(index).signature().equals(signature)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    // 把一条注入路径与 MOD_INTEGRATION 来源并入既有条目：路径并列保留，来源集合取并集，其余字段不变（规划 §4.2 / §4.6）
+    private static ItemDefinition mergeInjectionPath(ItemDefinition item, LootAcquisitionPath injectionPath) {
+        List<LootAcquisitionPath> paths = new ArrayList<>(item.acquisitionPaths());
+        if (!paths.contains(injectionPath)) {
+            paths.add(injectionPath);
+        }
+        Set<LootOriginKind> origins = new LinkedHashSet<>(item.origins());
+        origins.add(LootOriginKind.MOD_INTEGRATION);
+        return new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(), item.probability(),
+                item.signature(), List.copyOf(paths), Set.copyOf(origins),
+                item.scenarioProbabilities(), item.observedFunctions());
+    }
+
     // 不可用表的条目一律标记为「规则未解析」：这是与"未覆盖""尚未计算"都不同的失败原因，
     // 玩家据此知道该表的规则本模组读不了，而不是自己的处境问题
     private static TableDefinition markUnparsed(TableDefinition table) {
         List<ItemDefinition> items = table.items().stream()
                 .map(item -> new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
                         Probability.unknown(UnknownReason.UNPARSED), item.signature(),
-                        item.acquisitionPaths(), item.injected(), List.of()))
+                        item.acquisitionPaths(), item.injected(), List.of(), item.origins(), null))
                 .toList();
         List<ChildTableProbability> children = table.childTableProbabilities().stream()
                 .map(child -> new ChildTableProbability(child.tableId(),
@@ -678,9 +757,12 @@ public final class ArchaeologyJournalServerCatalog {
                 discoveredNow.put(signatureKey, new LootProbabilityData.DiscoveryRecord(
                         hasDirectSource, childSource == null ? List.of() : List.of(childSource)));
             }
+            // 函数观测属于**输入级测量**：它与概率一起按 (表哈希, 输入键) 落盘、一起被 LRU 淘汰。
+            // 动态条目的存在性仍在表级 discovery 里，不因观测被淘汰而消失（决策 13）。
             probabilityData.putMeasurement(tableId, hash, inputKey,
                     new LootProbabilityData.InputMeasurement(input.params().sampleCount(),
-                            measurement.itemProbabilities(), measurement.childProbabilities()),
+                            measurement.itemProbabilities(), measurement.childProbabilities(),
+                            measurement.observedFunctions()),
                     discoveredNow);
         }
 
@@ -850,9 +932,10 @@ public final class ArchaeologyJournalServerCatalog {
             Probability display = PathHintAnalyzer.deriveDisplay(
                     displayedValue(displayed, storedKey, constraint, displayedScenarioKey, hints),
                     item.acquisitionPaths());
+            // 规则与观测分区：静态路径照常派生；观测只来自**当前展示输入**，不与别的输入混用（决策 13）
             items.add(new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
-                    display, item.signature(), item.acquisitionPaths(), item.injected(),
-                    scenarioProbabilities));
+                    display, item.signature(), item.acquisitionPaths(), item.origins(),
+                    scenarioProbabilities, observedFor(displayed, storedKey)));
         }
 
         // 动态条目（GLM / LootTableEvents.MODIFY 模拟期注入）：没有静态路径，因此"需要什么条件"
@@ -871,12 +954,21 @@ public final class ArchaeologyJournalServerCatalog {
                     constraint, entry.getKey(), byScenario);
             Probability display = displayedValue(displayed, entry.getKey(), constraint,
                     displayedScenarioKey, List.of());
+            // 动态发现**不等于**平台注入（F07 / D09）：模拟期新出现的签名只说明"有东西改了掉落"，
+            // 既可能是已声明的模组联动，也可能是本模组尚未理解的原版变换（如熔炼后再改组件）。
+            // 这里没有可靠证据，因此来源记为 UNKNOWN_RUNTIME，绝不冒充 MOD_INTEGRATION。
+            Set<LootOriginKind> discoveredOrigins = Set.of(LootOriginKind.UNKNOWN_RUNTIME);
             ItemDefinition discoveredItem = LootTableCatalog.buildDiscoveredDefinition(
-                    signature, display, true, scenarioProbabilities);
-            items.add(paths.isEmpty() ? discoveredItem : new ItemDefinition(
-                    discoveredItem.id(), discoveredItem.displayName(), discoveredItem.tooltipHint(),
-                    discoveredItem.probability(), discoveredItem.signature(), paths,
-                    true, discoveredItem.scenarioProbabilities()));
+                    signature, display, discoveredOrigins, scenarioProbabilities);
+            FunctionObservationSummary discoveredObservation = observedFor(displayed, entry.getKey());
+            if (paths.isEmpty()) {
+                items.add(discoveredItem.withObservedFunctions(discoveredObservation));
+            } else {
+                items.add(new ItemDefinition(discoveredItem.id(), discoveredItem.displayName(),
+                        discoveredItem.tooltipHint(), discoveredItem.probability(),
+                        discoveredItem.signature(), paths, discoveredItem.origins(),
+                        discoveredItem.scenarioProbabilities(), discoveredObservation));
+            }
         }
 
         List<ChildTableProbability> childProbabilities = new ArrayList<>();
@@ -948,6 +1040,14 @@ public final class ArchaeologyJournalServerCatalog {
             }
         }
         return result;
+    }
+
+    // 当前展示输入下某签名的函数观测摘要；null 表示当前输入没有观测——
+    // 那是"没观测到"，不是"没有函数执行过"，界面不得把它写成结论（规划 D12）
+    @Nullable
+    private static FunctionObservationSummary observedFor(
+            @Nullable LootProbabilityData.InputMeasurement displayed, String storedKey) {
+        return displayed == null ? null : displayed.observations().get(storedKey);
     }
 
     // 当前展示输入下某个签名的展示值：测到了就是测量值，适用但没算过是"尚未计算"，
@@ -1094,18 +1194,64 @@ public final class ArchaeologyJournalServerCatalog {
         return List.copyOf(merged.values());
     }
 
+    // 外部依赖按代失效：reference 的间接引用与 furnace_smelt 的配方、标签、组件
+    // 不做不完整的内容摘要。只给相关表及其父表加盐，同一代内仍复用输入缓存。
+    // 遍历原始函数 JSON，避免展示树的裁剪、深度限制影响依赖识别。
+    private static boolean hasReloadSensitiveFunctions(@Nullable CompiledLootTable compiled) {
+        if (compiled == null) {
+            return true;
+        }
+        java.util.Deque<java.util.Iterator<JsonElement>> pending = new java.util.ArrayDeque<>();
+        int visited = 0;
+        for (CompiledLootTable.Event event : compiled.events()) {
+            List<List<JsonElement>> chains = switch (event) {
+                case CompiledLootTable.ItemPath path -> List.of(path.entryFunctions(), path.inheritedFunctions());
+                case CompiledLootTable.ReferenceSite site -> List.of(site.siteFunctions(), site.inheritedFunctions());
+            };
+            for (List<JsonElement> chain : chains) {
+                pending.push(chain.iterator());
+                while (!pending.isEmpty()) {
+                    var iterator = pending.peek();
+                    if (!iterator.hasNext()) {
+                        pending.pop();
+                        continue;
+                    }
+                    if (++visited > 4096) {
+                        return true;
+                    }
+                    JsonElement element = iterator.next();
+                    if (element.isJsonArray()) {
+                        pending.push(element.getAsJsonArray().iterator());
+                    } else if (element.isJsonObject()) {
+                        JsonObject object = element.getAsJsonObject();
+                        JsonElement type = object.get("function");
+                        if (type != null && type.isJsonPrimitive() && type.getAsJsonPrimitive().isString()) {
+                            String id = type.getAsString();
+                            if (id.equals("minecraft:reference") || id.equals("reference")
+                                    || id.equals("minecraft:furnace_smelt") || id.equals("furnace_smelt")) {
+                                return true;
+                            }
+                        }
+                        pending.push(object.asMap().values().iterator());
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     // 对每个表计算 SHA-256 哈希：缓存版本 + 该表子树的资源栈摘要、编译产物摘要与被引用附魔定义摘要。
     // 摘要按 descendantsInclusive 覆盖后代每一张表，因此子表引用的 item tag 成员变化
     // （子表 JSON 文本不变、只有 tag 展开结果变）同样会让父表失效。
     //
     // 保证范围拆成两句（决策 35），不要读成一句更大的保证：
     //   1) "表 JSON 变化必然失效"——由资源栈摘要承担，现在成立；
-    //   2) "影响概率的所有数据变化必然失效"——加上被引用附魔的定义摘要后成立。
+    //   2) 附魔定义走内容摘要；reference / furnace_smelt 的外部依赖走保守重载盐。
     // 已知残余（不列入本摘要的外部注册表依赖）见 docs/dev/internals/loottable-mechanics.md。
     private static Map<ResourceLocation, String> computeTableHashes(
             LootTableReferenceGraph graph, Map<ResourceLocation, TableDefinition> tables,
             Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries,
-            net.minecraft.server.packs.resources.ResourceManager resources) {
+            ResourceManager resources) {
         Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
         List<String> injectionInputs;
         try { injectionInputs = Services.PLATFORM.lootInjectionHashInputs(resources); }
@@ -1125,6 +1271,9 @@ public final class ArchaeologyJournalServerCatalog {
             }
             return hashes;
         }
+
+        String reloadSalt = UUID.randomUUID().toString();
+        Map<ResourceLocation, Boolean> reloadSensitive = new LinkedHashMap<>();
 
         for (ResourceLocation tableId : tables.keySet()) {
             try {
@@ -1146,6 +1295,10 @@ public final class ArchaeologyJournalServerCatalog {
                             // 附魔定义不在任何战利品表 JSON 里，却决定模拟用的满级工具与等级控件范围
                             updateEnchantmentDigest(nodeDigest, registries,
                                     summaryEnchantments(compiledTables.get(node), node));
+                            if (reloadSensitive.computeIfAbsent(node,
+                                    id -> hasReloadSensitiveFunctions(compiledTables.get(id)))) {
+                                LootTableSourceSnapshot.updateDigest(nodeDigest, reloadSalt);
+                            }
                         });
                 hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
             } catch (IOException | RuntimeException e) {
