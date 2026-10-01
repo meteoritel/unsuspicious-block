@@ -14,6 +14,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -636,13 +637,13 @@ public final class ItemGridPanel implements PagePanel {
         }
         if (!hoveredItem.unlocked()) {
             return new TooltipData(ItemStack.EMPTY, null, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0);
+                    LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0, null);
         }
         return new TooltipData(hoveredItem.stack(), hoveredItem.tooltipHint(),
                 hoveredItem.count(), hoveredItem.probability(), hoveredItem.acquisitionPaths(),
                 hoveredItem.injected(), hoveredItem.uncertaintyLevel(), true,
                 hoveredItem.scenarioProbabilities(), hoveredItem.declaredChances(),
-                hoveredItem.simulationCount());
+                hoveredItem.simulationCount(), hoveredItem.observedFunctions());
     }
 
     // 处理 tag 分组入口与返回入口点击；普通物品格不消费点击。
@@ -880,13 +881,23 @@ public final class ItemGridPanel implements PagePanel {
                                boolean discovered,
                                List<ScenarioProbability> scenarioProbabilities,
                                List<DeclaredChance> declaredChances,
-                               int simulationCount) {
+                               int simulationCount,
+                               @Nullable FunctionObservationSummary observedFunctions) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
             this(stack, hint, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of(), 0);
+                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of(), 0, null);
         }
 
+        // 兼容构造：无函数观测摘要
+        public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable Probability probability,
+                           List<LootAcquisitionPath> acquisitionPaths, boolean injected,
+                           LootConditionHandler.UncertaintyLevel uncertaintyLevel, boolean discovered,
+                           List<ScenarioProbability> scenarioProbabilities,
+                           List<DeclaredChance> declaredChances, int simulationCount) {
+            this(stack, hint, count, probability, acquisitionPaths, injected, uncertaintyLevel, discovered,
+                    scenarioProbabilities, declaredChances, simulationCount, null);
+        }
     }
 
     // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）
@@ -898,7 +909,8 @@ public final class ItemGridPanel implements PagePanel {
                            LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                            List<ScenarioProbability> scenarioProbabilities,
                            List<DeclaredChance> declaredChances,
-                           int simulationCount) {
+                           int simulationCount,
+                           @Nullable FunctionObservationSummary observedFunctions) {
 
         @Nullable
         public ResourceLocation primarySourceChildTable() {

@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.Scenar
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -28,7 +29,8 @@ public record ArchaeologyEntryItem(
         List<LootAcquisitionPath> acquisitionPaths,
         boolean injected,
         List<ScenarioProbability> scenarioProbabilities,
-        LootConditionHandler.UncertaintyLevel uncertaintyLevel
+        LootConditionHandler.UncertaintyLevel uncertaintyLevel,
+        @Nullable FunctionObservationSummary observedFunctions
 ) implements ItemEntryLike {
 
     @Override

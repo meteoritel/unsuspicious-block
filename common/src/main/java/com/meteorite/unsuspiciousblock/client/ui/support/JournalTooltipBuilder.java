@@ -5,17 +5,21 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ObservedFunctionChain;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +38,10 @@ import java.util.List;
  * </ul>
  */
 public final class JournalTooltipBuilder {
+
+    // 生成规则里包装函数（sequence / filtered / reference）的递归展开上限，
+    // 与原版描述侧的 MAX_NESTED_DEPTH 取同一口径：递归必须有界，防止异常数据造成无限递归或超长 tooltip。
+    private static final int MAX_FUNCTION_RULE_DEPTH = 8;
 
     private JournalTooltipBuilder() {
     }
@@ -95,8 +103,134 @@ public final class JournalTooltipBuilder {
         }
 
         appendAcquisitionPaths(lines, data.acquisitionPaths());
+        // 规则与观测分区（规划 §4.8）：静态规则回答"声明了什么"，观测回答"本输入的模拟里进过哪些执行体"。
+        // 两者分开渲染，观测绝不写成"必然生效"，也不与规则拼成同一条因果链。
+        appendObservedFunctions(lines, data.observedFunctions());
+        appendFunctionRules(lines, data.acquisitionPaths());
 
         return lines;
+    }
+
+    // ==================== 函数规则与运行时观测 ====================
+
+    // 静态"生成规则"：逐条路径列出其声明的有序函数树；每个函数单独一行，顺序即执行顺序。
+    // 函数自身的条件缩进列在该函数下面——它**不是**物品的掉落条件（规划 F04）。
+    // 包装函数的内层规则必须一起递归展开：只渲染顶层的话，sequence 只剩"依次执行 N 个函数"，
+    // 内层规则与内层条件完全不可见（规划 §4.5.3 的有序函数树）。
+    private static void appendFunctionRules(List<Component> lines, List<LootAcquisitionPath> paths) {
+        List<List<LootFunctionInfo>> rulePaths = new ArrayList<>();
+        for (LootAcquisitionPath path : paths) {
+            if (!path.functions().isEmpty()) {
+                rulePaths.add(path.functions());
+            }
+        }
+        if (rulePaths.isEmpty()) {
+            return;
+        }
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.function.rules_header")
+                .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
+        for (int index = 0; index < rulePaths.size(); index++) {
+            List<LootFunctionInfo> chain = rulePaths.get(index);
+            String prefix = rulePaths.size() > 1 ? "  " : "";
+            if (rulePaths.size() > 1) {
+                lines.add(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.acquisition_path", index + 1)
+                        .copy().withStyle(TooltipBuilder.ACCENT));
+            }
+            appendFunctionChain(lines, chain, prefix, 0);
+        }
+    }
+
+    // 递归渲染一层函数链：每个节点先给自己的描述（单独一行，顺序即执行顺序），
+    // 再是它自身的条件树（缩进随层级递增），最后递归展开它的内层包装函数。
+    private static void appendFunctionChain(List<Component> lines, List<LootFunctionInfo> chain,
+                                            String prefix, int depth) {
+        if (chain.isEmpty()) {
+            return;
+        }
+        // 递归必须有界：到达深度上限只报一行省略提示，既不继续深入也不会无限递归
+        if (depth >= MAX_FUNCTION_RULE_DEPTH) {
+            lines.add(Component.literal(prefix).append(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.rules_nested_truncated",
+                    MAX_FUNCTION_RULE_DEPTH)).withStyle(TooltipBuilder.LABEL));
+            return;
+        }
+        for (LootFunctionInfo info : chain) {
+            lines.add(Component.literal(prefix).append(info.description())
+                    .withStyle(TooltipBuilder.HINT));
+            if (info.hasConditions()) {
+                appendConditionTree(lines, info.conditions(), prefix + "  ");
+            }
+            appendFunctionChain(lines, info.children(), prefix + "  ", depth + 1);
+            if (info.metadata().containsKey(LootFunctionInfo.METADATA_TRUNCATED)) {
+                lines.add(Component.literal(prefix + "  ").append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.function.rules_truncated"))
+                        .withStyle(TooltipBuilder.LABEL));
+            }
+        }
+    }
+
+    /**
+     * 本次模拟观测到的函数链。
+     * <p>
+     * 多条链是**备选**（不同轮次/不同生成方式各走一条），因此逐条分行，绝不用分隔符拼成一条因果链。
+     * 空链列表只说明"没观测到"，不是"没有函数"；未完整与截断各有独立提示（规划 D12）。
+     */
+    private static void appendObservedFunctions(List<Component> lines,
+                                                @Nullable FunctionObservationSummary summary) {
+        if (summary == null) {
+            return;
+        }
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.function.observed_header")
+                .copy().withStyle(TooltipBuilder.ACCENT, ChatFormatting.UNDERLINE));
+        if (summary.unavailable()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.capture_unavailable")
+                    .withStyle(TooltipBuilder.LABEL));
+            return;
+        }
+        if (summary.chains().isEmpty()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.observed_none")
+                    .withStyle(TooltipBuilder.LABEL));
+        } else {
+            for (ObservedFunctionChain chain : summary.chains()) {
+                lines.add(describeObservedChain(chain).copy().withStyle(TooltipBuilder.HINT));
+            }
+        }
+        if (summary.incomplete()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.observed_incomplete")
+                    .withStyle(TooltipBuilder.LABEL));
+        }
+        if (summary.truncated()) {
+            lines.add(Component.translatable(
+                    "screen.unsuspiciousblock.archaeology_journal.function.observed_truncated")
+                    .withStyle(TooltipBuilder.LABEL));
+        }
+        lines.add(Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.function.observed_note")
+                .withStyle(TooltipBuilder.LABEL));
+    }
+
+    // 一条观测链按执行顺序渲染；链上的函数只有注册名可用，取 path 段即可读
+    private static Component describeObservedChain(ObservedFunctionChain chain) {
+        Component result = Component.empty();
+        for (int index = 0; index < chain.functionTypes().size(); index++) {
+            if (index > 0) {
+                result = result.copy().append(Component.translatable(
+                        "screen.unsuspiciousblock.archaeology_journal.function.chain_separator"));
+            }
+            result = result.copy().append(Component.literal(chain.functionTypes().get(index).getPath()));
+        }
+        if (!chain.contentExpanded()) {
+            result = result.copy().append(Component.literal(" "))
+                    .append(Component.translatable(
+                            "screen.unsuspiciousblock.archaeology_journal.function.container_not_expanded"));
+        }
+        return result;
     }
 
     // 构建子表入口 tooltip；概率与物品使用相同摘要格式，并展示父表中的公共触发条件。

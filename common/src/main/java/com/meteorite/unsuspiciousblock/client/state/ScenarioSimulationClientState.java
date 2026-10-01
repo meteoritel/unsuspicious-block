@@ -174,9 +174,14 @@ public final class ScenarioSimulationClientState {
     private static void mergeStructure(CatalogTableDto baseline, CatalogTableDto incoming) {
         Map<LootResultSignature, CatalogTableDto.ItemEntry> items = new LinkedHashMap<>();
         baseline.items().forEach(item -> items.put(item.signature(), item));
+        // 结构合并只补"条目存在性"：概率置未知，来源集合必须原样保留（否则来源分型会退化），但**观测必须清空**。
+        // 判定口径：观测是输入级数据，只有精确命中当前 input key 的 DTO（overlay 中 resolved.exactInput() 为 true、
+        // 走 source.toTableDefinition() 的那条路径）才允许携带 observedFunctions；公共结构 TABLES 由任意输入共享，
+        // 携带观测就等于把别的输入的观测冒充成"本次模拟观测"。
         for (var item : incoming.items()) items.putIfAbsent(item.signature(), new CatalogTableDto.ItemEntry(
                 item.id(), item.displayName(), item.tooltipHint(), Probability.unknown(UnknownReason.NOT_SIMULATED),
-                item.signature(), item.acquisitionPaths(), item.injected(), List.of()));
+                item.signature(), item.acquisitionPaths(), item.injected(), List.of(), item.origins(),
+                null));
         Set<ScenarioBranch> branches = new LinkedHashSet<>(baseline.branches());
         branches.addAll(incoming.branches());
         Set<String> identified = new HashSet<>();
@@ -253,9 +258,12 @@ public final class ScenarioSimulationClientState {
                 var table = structure == null ? base.get(id) : structure.toTableDefinition();
                 var unknown = new Probability.Unknown(resolved.status().equals("failed")
                         ? UnknownReason.SIMULATION_FAILED : UnknownReason.NOT_SIMULATED);
+                // 当前输入未计算：概率置未知，观测同样必须置 null。table 取自公共结构 TABLES，
+                // 它携带的观测属于别的输入，冒充"本次模拟观测"就是 C1 的那个缺陷。
                 output.put(id, new TableDefinition(id, table.displayName(), table.type(),
                         table.items().stream().map(i -> new ItemDefinition(i.id(), i.displayName(),
-                                i.tooltipHint(), unknown, i.signature(), i.acquisitionPaths(), i.injected(), List.of())).toList(),
+                                i.tooltipHint(), unknown, i.signature(), i.acquisitionPaths(), i.origins(),
+                                List.of(), null)).toList(),
                         selection.params().sampleCount(), table.childTables(),
                         table.childTableProbabilities().stream().map(ch -> new ChildTableProbability(
                                 ch.tableId(), unknown, List.of(), ch.conditions())).toList()));
@@ -279,9 +287,12 @@ public final class ScenarioSimulationClientState {
             ItemDefinition candidate = bySignature.get(original.signature());
             Probability probability = candidate == null ? unknown
                     : sceneProbability(candidate.scenarioProbabilities(), scene, unknown);
+            // 跨场景只借明确的分场景引用；candidate 来自别的场景、original 来自公共结构 TABLES，
+            // 两者的观测都属于别的输入，一律置 null（只有精确命中当前 input key 的 DTO 可携带观测）。
             return new ItemDefinition(original.id(), original.displayName(), original.tooltipHint(), probability,
-                    original.signature(), original.acquisitionPaths(), original.injected(),
-                    candidate == null ? original.scenarioProbabilities() : candidate.scenarioProbabilities());
+                    original.signature(), original.acquisitionPaths(), original.origins(),
+                    candidate == null ? original.scenarioProbabilities() : candidate.scenarioProbabilities(),
+                    null);
         }).toList();
         List<ChildTableProbability> children = base.childTableProbabilities().stream().map(original -> {
             ChildTableProbability candidate = byChild.get(original.tableId());

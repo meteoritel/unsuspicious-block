@@ -736,7 +736,7 @@ public class JournalViewModel {
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
                 item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
                 directPaths, item.injected(), level, item.scenarioProbabilities(),
-                DeclaredChance.fromPaths(directPaths), simulationCount);
+                DeclaredChance.fromPaths(directPaths), simulationCount, item.observedFunctions());
     }
 
     // 排序按服务端派生的当前输入值：未知与「需要条件」排到末尾，零命中排在 0%（不可达）之前。
