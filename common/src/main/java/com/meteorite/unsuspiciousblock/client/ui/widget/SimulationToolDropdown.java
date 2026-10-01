@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.ToolOption;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
@@ -15,13 +16,14 @@ import java.util.function.IntConsumer;
 
 /*** 工具按钮下方的小型下拉层；打开时由宿主优先分发输入，不替换附魔列表。 */
 public final class SimulationToolDropdown {
+    public static final int WIDTH = 32;
     private static final int ROW_HEIGHT = 18;
     private static final int MAX_ROWS = 6;
     private final List<ToolOption> tools;
     private final IntConsumer select;
     private final Runnable close;
     private final UiControlGroup controls = new UiControlGroup();
-    private UiRect bounds = new UiRect(0, 0, 132, 0);
+    private UiRect bounds = new UiRect(0, 0, WIDTH, 0);
     private int highlighted;
     private int firstRow;
     private boolean dirty = true;
@@ -37,7 +39,7 @@ public final class SimulationToolDropdown {
 
     // 位置由参数窗口锚定；滚动最多显示六行。
     public void setPosition(int x, int y) {
-        UiRect next = new UiRect(x, y, 132, 6 + Math.min(MAX_ROWS, tools.size()) * ROW_HEIGHT);
+        UiRect next = new UiRect(x, y, WIDTH, 6 + Math.min(MAX_ROWS, tools.size()) * ROW_HEIGHT);
         if (!next.equals(bounds)) { bounds = next; dirty = true; }
     }
 
@@ -54,10 +56,11 @@ public final class SimulationToolDropdown {
             row.setStyle(ScenarioUi.QUIET);
             row.setSelected(index == highlighted);
             int selected = index;
-            row.configure(font, tool.displayName(), UiTextPalette.Parchment.BODY,
+            row.configure(font, stack.isEmpty() ? Component.literal("—") : Component.empty(), UiTextPalette.Parchment.BODY,
                     stack.isEmpty() ? null : new UiIcon.Item(stack),
                     tool.predicateText() == null ? List.of(tool.displayName())
                             : List.of(tool.displayName(), tool.predicateText()), () -> select.accept(selected));
+            row.setAccessibleName(tool.displayName());
         }
         controls.endUpdate();
         dirty = false;
