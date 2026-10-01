@@ -1,8 +1,12 @@
 package com.meteorite.unsuspiciousblock.network.payload.s2c;
 
+import com.meteorite.unsuspiciousblock.loottable.analysis.FunctionEffectKind;
+import com.meteorite.unsuspiciousblock.loottable.analysis.FunctionFidelity;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.UncertaintyLevel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
+import com.meteorite.unsuspiciousblock.loottable.catalog.LootOriginKind;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ToolOption;
@@ -18,6 +22,8 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.loottable.simulation.ObservedFunctionChain;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -25,10 +31,12 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
+import java.util.Set;
 
 /**
  * 目录数据的线格式编解码——<b>全量目录同步</b>与<b>按需结果下发</b>共用这一份实现。
@@ -40,6 +48,12 @@ import java.util.OptionalDouble;
  * <p>
  * 概率值编码为 1 字节状态 + 按需载荷：{@code Unknown} 带原因枚举、{@code NeedsCondition}
  * 带静态信息性提示、{@code Measured} 带单值或区间、{@code Unreachable} 无载荷。
+ * <p>
+ * 本轮新增两个字段，都是**追加在各自结构的末尾**，因此新旧读写必须成套发布（同版本客户端/服务端）：
+ * 物品条目的 {@code origins} 来源位图（紧随兼容字段 {@code injected} 之后），以及获取路径末尾的
+ * **有界静态函数树**（类型 + 本地化描述 + 保真度 + 效果类别 + 函数自身条件 + 子函数 + 有界元数据）。
+ * 函数树只传结构化摘要：不传 {@code LootItemFunction} 对象、{@code LootContext}、{@code ItemStack}
+ * 或完整原始 JSON（规划 §4.8）。
  */
 final class CatalogStreamCodec {
     private CatalogStreamCodec() {
@@ -80,7 +94,11 @@ final class CatalogStreamCodec {
                 writePath(buf, path);
             }
             buf.writeBoolean(item.injected());
+            // 来源集合追加在注入布尔之后：injected 是兼容投影，origins 才是真实语义（D09）
+            writeOrigins(buf, item.origins());
             writeScenarioRefs(buf, item.scenarioProbabilities());
+            // 观测摘要追加在最后：它是"当前输入观测到的事实"，与静态规则分开传输（规划 §4.8）
+            writeObservedFunctions(buf, item.observedFunctions());
         }
 
         buf.writeVarInt(table.childProbabilities().size());
@@ -143,8 +161,11 @@ final class CatalogStreamCodec {
                 paths.add(readPath(buf));
             }
             boolean injected = buf.readBoolean();
+            Set<LootOriginKind> origins = readOrigins(buf);
+            List<ScenarioRef> scenarioRefs = readScenarioRefs(buf);
+            FunctionObservationSummary observedFunctions = readObservedFunctions(buf);
             items.add(new ItemEntry(itemId, itemName, tooltipHint, probability,
-                    signature, paths, injected, readScenarioRefs(buf)));
+                    signature, paths, injected, scenarioRefs, origins, observedFunctions));
         }
 
         int childProbabilityCount = buf.readVarInt();
@@ -230,6 +251,8 @@ final class CatalogStreamCodec {
         buf.writeEnum(path.functionUncertainty());
         buf.writeBoolean(path.luckAffected());
         writeLuckGate(buf, path.luckGate());
+        // 静态函数树追加在最后：条件列表与新字段的顺序由本类独裁，追加字段必须同步升协议版本
+        writeFunctionList(buf, path.functions());
     }
 
     private static LootAcquisitionPath readPath(RegistryFriendlyByteBuf buf) {
@@ -239,7 +262,7 @@ final class CatalogStreamCodec {
         List<LootConditionInfo> inheritedConditions = readConditionList(buf);
         return new LootAcquisitionPath(sourceChildTable, sourceItemTag, entryConditions,
                 inheritedConditions, buf.readEnum(UncertaintyLevel.class), buf.readBoolean(),
-                readLuckGate(buf));
+                readLuckGate(buf), List.of(), readFunctionList(buf));
     }
 
     private static void writeScenarioRefs(RegistryFriendlyByteBuf buf, List<ScenarioRef> refs) {
@@ -369,6 +392,179 @@ final class CatalogStreamCodec {
         OptionalDouble bonusRollsGate = buf.readBoolean()
                 ? OptionalDouble.of(buf.readDouble()) : OptionalDouble.empty();
         return new LuckGate(impossible, minLuck, rangeLimited, bonusRollsGate);
+    }
+
+    // ==================== 函数观测摘要 ====================
+
+    // 单结果最多 16 条观测链、每条链最多 64 个节点——与捕获预算和存档读端同源，
+    // 让"有界结构化摘要"三处（捕获 / 存档 / 网络）用同一组上限
+    private static final int MAX_OBSERVED_CHAINS = 16;
+    private static final int MAX_CHAIN_NODES = 64;
+
+    private static void writeObservedFunctions(RegistryFriendlyByteBuf buf,
+                                               @Nullable FunctionObservationSummary summary) {
+        buf.writeBoolean(summary != null);
+        if (summary == null) {
+            return;
+        }
+        List<ObservedFunctionChain> chains = summary.chains().size() > MAX_OBSERVED_CHAINS
+                ? summary.chains().subList(0, MAX_OBSERVED_CHAINS)
+                : summary.chains();
+        buf.writeVarInt(chains.size());
+        for (ObservedFunctionChain chain : chains) {
+            List<ResourceLocation> functions = chain.functionTypes().size() > MAX_CHAIN_NODES
+                    ? chain.functionTypes().subList(0, MAX_CHAIN_NODES)
+                    : chain.functionTypes();
+            buf.writeVarInt(functions.size());
+            for (ResourceLocation functionId : functions) {
+                buf.writeResourceLocation(functionId);
+            }
+            buf.writeEnum(chain.state());
+            buf.writeBoolean(chain.contentExpanded());
+        }
+        buf.writeBoolean(summary.truncated());
+        buf.writeBoolean(summary.incomplete());
+        buf.writeBoolean(summary.unavailable());
+    }
+
+    @Nullable
+    private static FunctionObservationSummary readObservedFunctions(RegistryFriendlyByteBuf buf) {
+        if (!buf.readBoolean()) {
+            return null;
+        }
+        int chainCount = SimulationInputCodec.count(buf, MAX_OBSERVED_CHAINS);
+        List<ObservedFunctionChain> chains = new ArrayList<>(chainCount);
+        for (int i = 0; i < chainCount; i++) {
+            int functionCount = SimulationInputCodec.count(buf, MAX_CHAIN_NODES);
+            List<ResourceLocation> functions = new ArrayList<>(functionCount);
+            for (int k = 0; k < functionCount; k++) {
+                functions.add(buf.readResourceLocation());
+            }
+            chains.add(new ObservedFunctionChain(functions,
+                    buf.readEnum(ObservedFunctionChain.State.class), buf.readBoolean()));
+        }
+        return new FunctionObservationSummary(chains, buf.readBoolean(), buf.readBoolean(),
+                buf.readBoolean());
+    }
+
+    // ==================== 来源集合 ====================
+
+    // 来源集合按位图编码：枚举顺序变化会让旧客户端读错来源，因此只追加、不重排
+    private static void writeOrigins(RegistryFriendlyByteBuf buf, Set<LootOriginKind> origins) {
+        int mask = 0;
+        for (LootOriginKind kind : origins) {
+            mask |= 1 << kind.ordinal();
+        }
+        buf.writeVarInt(mask);
+    }
+
+    private static Set<LootOriginKind> readOrigins(RegistryFriendlyByteBuf buf) {
+        int mask = buf.readVarInt();
+        Set<LootOriginKind> origins = EnumSet.noneOf(LootOriginKind.class);
+        for (LootOriginKind kind : LootOriginKind.values()) {
+            if ((mask & (1 << kind.ordinal())) != 0) {
+                origins.add(kind);
+            }
+        }
+        return origins;
+    }
+
+    // ==================== 函数树 ====================
+
+    // 单条路径最多 64 个函数节点、嵌套最多 16 层、元数据最多 32 项——与捕获预算同源，
+    // 保证"有界结构化摘要"：编解码两侧都不接受无界输入
+    private static final int MAX_FUNCTIONS_PER_PATH = 64;
+    private static final int MAX_FUNCTION_DEPTH = 16;
+    private static final int MAX_FUNCTION_METADATA = 32;
+
+    private static void writeFunctionList(RegistryFriendlyByteBuf buf, List<LootFunctionInfo> functions) {
+        int size = Math.min(functions.size(), MAX_FUNCTIONS_PER_PATH);
+        buf.writeVarInt(size);
+        for (int i = 0; i < size; i++) {
+            LootFunctionInfo info = functions.get(i);
+            if (i == size - 1 && functions.size() > size) {
+                info = info.withMetadata(LootFunctionInfo.METADATA_TRUNCATED, "siblings");
+            }
+            writeFunction(buf, info, 0);
+        }
+    }
+
+    private static List<LootFunctionInfo> readFunctionList(RegistryFriendlyByteBuf buf) {
+        int count = SimulationInputCodec.count(buf, MAX_FUNCTIONS_PER_PATH);
+        List<LootFunctionInfo> functions = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            functions.add(readFunction(buf, 0));
+        }
+        return List.copyOf(functions);
+    }
+
+    // 递归写函数节点；到达深度上限时不再写子节点（读端按同样的上限解释）
+    private static void writeFunction(RegistryFriendlyByteBuf buf, LootFunctionInfo info, int depth) {
+        buf.writeResourceLocation(info.functionType());
+        buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
+        buf.writeEnum(info.fidelity());
+        buf.writeEnum(info.effect());
+        writeConditionList(buf, info.conditions());
+        // 子节点必须与读端同界：读端按 LootFunctionInfo.MAX_CHILDREN_PER_NODE 校验长度并拒绝越界。
+        // 写端若不裁剪，一个合法的 65 个子函数的 sequence 就会让客户端整包解码失败。
+        List<LootFunctionInfo> children = depth >= MAX_FUNCTION_DEPTH
+                ? List.of()
+                : info.children();
+        Map<String, String> metadata = info.metadata();
+        if (depth >= MAX_FUNCTION_DEPTH && !info.children().isEmpty()) {
+            Map<String, String> marked = new LinkedHashMap<>(metadata);
+            marked.put(LootFunctionInfo.METADATA_TRUNCATED, "depth");
+            metadata = marked;
+        }
+        if (children.size() > LootFunctionInfo.MAX_CHILDREN_PER_NODE) {
+            children = children.subList(0, LootFunctionInfo.MAX_CHILDREN_PER_NODE);
+            Map<String, String> marked = new LinkedHashMap<>(metadata);
+            marked.put(LootFunctionInfo.METADATA_TRUNCATED, "children");
+            metadata = marked;
+        }
+        buf.writeVarInt(children.size());
+        for (LootFunctionInfo child : children) {
+            writeFunction(buf, child, depth + 1);
+        }
+        writeFunctionMetadata(buf, metadata);
+    }
+
+    private static LootFunctionInfo readFunction(RegistryFriendlyByteBuf buf, int depth) {
+        ResourceLocation functionType = buf.readResourceLocation();
+        Component description = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+        FunctionFidelity fidelity = buf.readEnum(FunctionFidelity.class);
+        FunctionEffectKind effect = buf.readEnum(FunctionEffectKind.class);
+        List<LootConditionInfo> conditions = readConditionList(buf);
+        int childCount = SimulationInputCodec.count(buf, LootFunctionInfo.MAX_CHILDREN_PER_NODE);
+        List<LootFunctionInfo> children = new ArrayList<>(depth >= MAX_FUNCTION_DEPTH ? 0 : childCount);
+        for (int i = 0; i < childCount; i++) {
+            LootFunctionInfo child = readFunction(buf, depth + 1);
+            if (depth < MAX_FUNCTION_DEPTH) {
+                children.add(child);
+            }
+        }
+        Map<String, String> metadata = readFunctionMetadata(buf);
+        return new LootFunctionInfo(functionType, description, fidelity, effect, conditions, children, metadata);
+    }
+
+    private static void writeFunctionMetadata(RegistryFriendlyByteBuf buf, Map<String, String> metadata) {
+        List<Map.Entry<String, String>> entries = new ArrayList<>(metadata.entrySet());
+        int size = Math.min(entries.size(), MAX_FUNCTION_METADATA);
+        buf.writeVarInt(size);
+        for (int i = 0; i < size; i++) {
+            Map.Entry<String, String> entry = entries.get(i);
+            buf.writeUtf(entry.getKey(), 64);
+            buf.writeUtf(entry.getValue(), 512);
+        }
+    }
+
+    private static Map<String, String> readFunctionMetadata(RegistryFriendlyByteBuf buf) {
+        int count = SimulationInputCodec.count(buf, MAX_FUNCTION_METADATA);
+        Map<String, String> metadata = new LinkedHashMap<>();
+        for (int i = 0; i < count; i++) {
+            metadata.put(buf.readUtf(64), buf.readUtf(512));
+        }
+        return metadata;
     }
 
     // ==================== 条件树 ====================

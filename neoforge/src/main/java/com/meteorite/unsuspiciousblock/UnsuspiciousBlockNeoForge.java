@@ -313,8 +313,10 @@ public class UnsuspiciousBlockNeoForge {
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        // 协议版本随目录包格式变化升级：概率值新增第 4 态与未知原因，编码布局已变
-        var registrar = event.registrar(Constants.MOD_ID).versioned("4.9");
+        // 协议版本随目录包格式变化升级。4.10：CatalogTableDto 追加三个末尾字段
+        // （物品来源位图 origins、获取路径末尾的有界静态函数树、物品条目观测摘要 observedFunctions），
+        // 旧端读到会整体错位，因此客户端与服务端必须同版本发布
+        var registrar = event.registrar(Constants.MOD_ID).versioned("4.10");
         // 遍历 ModPayloads 统一清单注册 C2S，避免手写重复
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(registrar, c2s);

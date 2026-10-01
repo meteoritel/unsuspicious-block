@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAc
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -75,14 +77,42 @@ public record CatalogTableDto(
     public record ScenarioRef(String scenarioKey, Probability probability) {
     }
 
-    /** 物品条目；与内部记录同形，但场景概率为引用形态。 */
+    /**
+     * 物品条目；与内部记录同形，但场景概率为引用形态。
+     * <p>
+     * {@code origins} 承载**真实来源语义**（一个结果可同时有普通静态来源与确认的模组联动来源）；
+     * {@code injected} 保留为它的兼容投影，只回答"是否含已确认的平台注入"（规划 §4.2 / D09）。
+     */
     public record ItemEntry(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
                             Probability probability, LootResultSignature signature,
                             List<LootAcquisitionPath> acquisitionPaths, boolean injected,
-                            List<ScenarioRef> scenarioProbabilities) {
+                            List<ScenarioRef> scenarioProbabilities, Set<LootOriginKind> origins,
+                            @Nullable FunctionObservationSummary observedFunctions) {
         public ItemEntry {
             acquisitionPaths = List.copyOf(acquisitionPaths);
             scenarioProbabilities = List.copyOf(scenarioProbabilities);
+            origins = LootOriginKind.normalize(origins, injected);
+            injected = origins.contains(LootOriginKind.MOD_INTEGRATION);
+        }
+
+        // @param observedFunctions 当前输入下观测到的函数执行摘要；null 表示无观测（不是"没有函数"）
+
+        // 兼容既有调用方：来源由注入布尔投影
+        public ItemEntry(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                         Probability probability, LootResultSignature signature,
+                         List<LootAcquisitionPath> acquisitionPaths, boolean injected,
+                         List<ScenarioRef> scenarioProbabilities) {
+            this(id, displayName, tooltipHint, probability, signature, acquisitionPaths, injected,
+                    scenarioProbabilities, null, null);
+        }
+
+        // 显式来源集合：不过互斥布尔（D09）
+        public ItemEntry(ResourceLocation id, Component displayName, @Nullable Component tooltipHint,
+                         Probability probability, LootResultSignature signature,
+                         List<LootAcquisitionPath> acquisitionPaths, boolean injected,
+                         List<ScenarioRef> scenarioProbabilities, Set<LootOriginKind> origins) {
+            this(id, displayName, tooltipHint, probability, signature, acquisitionPaths, injected,
+                    scenarioProbabilities, origins, null);
         }
     }
 
@@ -110,7 +140,8 @@ public record CatalogTableDto(
         for (ItemDefinition item : table.items()) {
             items.add(new ItemEntry(item.id(), item.displayName(), item.tooltipHint(), item.probability(),
                     item.signature(), item.acquisitionPaths(), item.injected(),
-                    collectScenarioRefs(item.scenarioProbabilities(), assumptionsByScenario)));
+                    collectScenarioRefs(item.scenarioProbabilities(), assumptionsByScenario), item.origins(),
+                    item.observedFunctions()));
         }
 
         List<ChildTableEntry> children = new ArrayList<>(table.childTableProbabilities().size());
@@ -145,7 +176,8 @@ public record CatalogTableDto(
         for (ItemEntry item : this.items) {
             items.add(new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(), item.probability(),
                     item.signature(), item.acquisitionPaths(), item.injected(),
-                    resolveScenarioProbabilities(item.scenarioProbabilities(), assumptionsByScenario)));
+                    resolveScenarioProbabilities(item.scenarioProbabilities(), assumptionsByScenario),
+                    item.origins(), item.observedFunctions()));
         }
 
         List<ChildTableProbability> children = new ArrayList<>(this.childProbabilities.size());
