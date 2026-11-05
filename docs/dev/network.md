@@ -122,11 +122,17 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(s2c); // C
 // RegisterPayloadHandlersEvent 中
 registrar.versioned("4.0");
 for (C2S<?> c2s : ModPayloads.C2S_PAYLOADS) registerC2S(registrar, c2s);  // playToServer
+// 独立服务端必须补齐 clientbound 类型，否则握手时客户端声明的必需通道在服务端注册表缺失，连接被拒
+if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+    for (S2CSpec<?> spec : ModPayloads.S2C_SPECS) registerS2CSpec(registrar, spec);  // playToClient，仅类型与编解码
+}
 ```
 客户端（`UnsuspiciousBlockNeoForgeClient`）：
 ```java
 for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar, s2c); // playToClient
 ```
+
+**为什么两端都要登记**：NeoForge 握手时把服务端本地注册表与客户端上报的通道清单逐条比对，客户端声明为非 optional 的通道只要在服务端缺失，连接就会在 configuration 阶段被断开（`This channel is missing on the server side, but required on the client!`）。独立服务端不加载 `Dist.CLIENT` 限定的客户端入口类，因此服务端必须自行登记 clientbound 类型（只登记类型与编解码，接收器仍在客户端）；同一通道不得在两侧重复登记，重复注册会直接抛异常。
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 

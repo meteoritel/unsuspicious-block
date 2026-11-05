@@ -58,12 +58,14 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.BasicItemListing;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.EffectCures;
@@ -298,6 +300,25 @@ public class UnsuspiciousBlockNeoForge {
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(registrar, c2s);
         }
+        // 独立服务端必须同样登记 clientbound 通道：NeoForge 握手时要求客户端声明的必需通道
+        // 全部存在于服务端注册表中，缺任一条即断开连接。接收器仍由客户端侧的
+        // UnsuspiciousBlockNeoForgeClient 注册，此处只补类型与编解码，并限制在独立服务端，
+        // 避免同一通道在客户端被重复注册（重复注册会直接抛异常）
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            for (ModPayloads.S2CSpec<?> spec : ModPayloads.S2C_SPECS) {
+                registerS2CSpec(registrar, spec);
+            }
+        }
+    }
+
+    // 独立服务端登记 clientbound payload：只登记类型与编解码；该方向的包不会发往服务端，handler 不会被调用
+    @SuppressWarnings("unchecked")
+    private static <T extends CustomPacketPayload> void registerS2CSpec(
+            net.neoforged.neoforge.network.registration.PayloadRegistrar registrar,
+            ModPayloads.S2CSpec<?> specRaw) {
+        ModPayloads.S2CSpec<T> spec = (ModPayloads.S2CSpec<T>) specRaw;
+        registrar.playToClient(spec.type(), spec.streamCodec(), (payload, context) -> {
+        });
     }
 
     // 注册单个 C2S payload 到 NeoForge 网络注册器

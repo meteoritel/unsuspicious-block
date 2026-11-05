@@ -1,0 +1,82 @@
+import groovy.json.JsonOutput
+
+// Export the project's development launch configuration without starting Minecraft in Gradle.
+gradle.projectsEvaluated {
+    if (gradle.rootProject.findProject(':fabric') == null) {
+        return
+    }
+    def loader = gradle.startParameter.projectProperties['connectionSmokeLoader']
+    def outputPath = gradle.startParameter.projectProperties['connectionSmokeDirectory']
+    if (!(loader in ['fabric', 'neoforge']) || !outputPath) {
+        throw new GradleException('Supply connectionSmokeLoader and connectionSmokeDirectory.')
+    }
+    def target = gradle.rootProject.project(":${loader}")
+    def output = new File(outputPath)
+    def runs = loader == 'fabric' ? target.extensions.getByName('loom').runs : target.extensions.getByName('neoForge').runs
+    ['server', 'client'].each { side ->
+        def directory = new File(output, side)
+        if (loader == 'fabric') {
+            runs.getByName(side).runDir(target.relativePath(directory).replace(File.separator, '/'))
+        } else {
+            runs.getByName(side).gameDirectory.set(directory)
+        }
+    }
+    def runTasks = ['runServer', 'runClient'].collect { target.tasks.named(it).get() }
+    target.tasks.register('prepareConnectionSmoke') {
+        group = 'verification'
+        description = 'Compile and export isolated dedicated-server/client launch commands.'
+        dependsOn(target.tasks.named('classes'))
+        runTasks.each { run -> dependsOn(run.taskDependencies.getDependencies(run)) }
+        doLast {
+            output.mkdirs()
+            runTasks.each { run ->
+                def side = run.name == 'runServer' ? 'server' : 'client'
+                def classpath = target.files(run.classpath)
+                if (loader == 'neoforge') {
+                    classpath = target.files(classpath, run.classpathProvider)
+                }
+                def jvm = new ArrayList<String>(run.allJvmArgs)
+                def argumentFiles = []
+                if (loader == 'neoforge') {
+                    argumentFiles.add(target.tasks.getByName('prepare' + side.capitalize() + 'Run').vmArgsFile.get().asFile.absolutePath)
+                } else {
+                    jvm.addAll(run.jvmArguments.getOrElse([]))
+                }
+                jvm = jvm.findAll { argument ->
+                    if (argument.startsWith('@')) {
+                        argumentFiles.add(argument.substring(1))
+                        return false
+                    }
+                    return true
+                }.unique()
+                if (loader == 'fabric' && target.property('lootr_compat_fabric').toBoolean()) {
+                    jvm.add('-Dfabric.addMods=' + target.configurations.lootrFabricRuntime.singleFile.absolutePath)
+                }
+                def arguments = new ArrayList<String>(jvm)
+                arguments.addAll(['-classpath', classpath.asPath, run.mainClass.get()])
+                arguments.addAll(run.args)
+                run.argumentProviders.each { provider -> arguments.addAll(provider.asArguments()) }
+                if (side == 'client') {
+                    ['--username', '--uuid'].each { option ->
+                        def index = arguments.indexOf(option)
+                        if (index >= 0) {
+                            arguments.remove(index)
+                            arguments.remove(index)
+                        }
+                    }
+                }
+                def environment = [:]
+                if (loader == 'neoforge') {
+                    environment.putAll(run.environmentProperty.get())
+                } else {
+                    environment.putAll(runs.getByName(side).environmentVariables)
+                }
+                def command = [java: run.javaLauncher.get().executablePath.asFile.absolutePath,
+                               arguments: arguments, argumentFiles: argumentFiles, environment: environment,
+                               directory: new File(output, side).absolutePath]
+                new File(output, side + '-launch.json').setText(
+                        JsonOutput.prettyPrint(JsonOutput.toJson(command)), 'UTF-8')
+            }
+        }
+    }
+}

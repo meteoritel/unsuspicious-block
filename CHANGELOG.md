@@ -1,5 +1,10 @@
 # 更新日志 Change log
 
+## [1.5.3-hotfix]
+修复了远程服务端连接失败的问题。
+
+Resolved the issue of failed connections to the remote server.
+
 ## [1.0.0]
 添加了可疑扫描仪，实现与jade的联动。
 
