@@ -11,12 +11,11 @@
 
 ## 实现约束
 
+- 代码编写规范与架构红线见[代码风格规范](style-code.md)，禁止在源码中编写全限定类名，严格遵循 `common` 模块 Loader 隔离与端隔离禁令。
+- 文档撰写与维护遵循[文档撰写风格指南](style-documentation.md)，保持单一事实源与上下文指针规范。
 - `common/` 使用跨平台契约，Loader API 留在相应平台模块；Fabric 与 NeoForge 接入互相隔离。
 - 服务端执行面使用公共类型。客户端入口、客户端 Mixin 和惰性绑定边界见[网络与同步](../dev/foundation/network.md)与[依赖检查](../../tools/README.md)。
-- 先考虑线程、分配、扫描与缓存成本，再选择实现。复用真实共有的能力，保持业务状态的所有者清晰。
 - 优先使用 Event API；Mixin 只保留必要入口，业务逻辑放普通类。已有事件可表达同等或相近行为时使用事件。
-- 允许两个 Loader 采用不同接入方案实现相同玩家语义。
-- 注释使用简体中文，专有名词保留英文，说明设计原因和业务边界。
 - HUD / GUI 文本使用本地化 key，`en_us.json` 和 `zh_cn.json` 同步更新；文本结构见[文本格式](../dev/foundation/text-format.md)。
 - API 不确定时按 [API 查询](../agents/api-lookup.md)获取依据。
 
@@ -37,6 +36,8 @@ Gradle 构建等待至少 120 秒；返回运行中任务 ID 时持续等待至�
 
 ## 相关文档
 
+- [代码风格规范](style-code.md)
+- [文档撰写风格指南](style-documentation.md)
 - [文档维护](../README.md)
 - [架构总览](../dev/foundation/architecture.md)
 - [API 查询](../agents/api-lookup.md)

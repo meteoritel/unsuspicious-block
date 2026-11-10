@@ -1,70 +1,73 @@
-# 文档入口与维护约定
+# 文档体系与维护约定
 
-Unsuspicious Block 的文档按读者和职责组织。修改机制时，从开发导航找到状态所有者与源码声明；写作时更新对应事实源和必要链接。
+Unsuspicious Block 采用五层文档架构，严格区分面向读者、单一事实源（Single Source of Truth）与语言策略。各层文档职责清晰、单向引用，杜绝交叉冗余。
 
-## 按任务阅读
+## 1. 文档架构分层
 
-| 任务 | 入口 |
-|---|---|
-| 安装、配置和游玩 | [玩家 Wiki](wiki/Home.md)、[项目 README](../README.md)、[英文 README](readme/README_EN.md) |
-| 判断代码改动落点 | [开发导航](dev/README.md)、[架构总览](dev/foundation/architecture.md) |
-| 修改跨子系统机制 | 开发导航中的 foundation 文档 |
-| 修改某个玩法或客户端模块 | 开发导航中的子系统篇，再按链接读取 internals |
-| 编写笔记分类数据包 | [笔记分类格式](api/journal-categories.md) |
-| 查当前玩法规格 | [猫族关系](design/cat-bond.md)、[猫国灵体](design/spirit-cat-npc.md) |
-| 开发、查询 API 或选择验证 | [开发流程](guides/development.md)、[API 查询](agents/api-lookup.md) |
-| 运行或修改校验、生成、诊断工具 | [仓库工具](../tools/README.md) |
-| 读写任务或讨论领域概念 | [issue 约定](agents/issue-tracker.md)、[triage 标签](agents/triage-labels.md)、[领域资料](agents/domain.md) |
-| 查实施目标与验收条件 | [Issue 追踪器](agents/issue-tracker.md)|
-| 查发布记录 | [变更记录](../CHANGELOG.md) |
+| 层级 | 覆盖目录 | 核心职责 | 主要读者 | 语言规范 |
+|---|---|---|---|---|
+| **玩家层** | 根目录 `README.md`、`README_EN.md`、`docs/wiki/` | 安装、配置、玩法指南与常见问题 | 玩家、整合包作者 | 中英双语并行维护 |
+| **外部扩展层** | `docs/api/` | 数据包格式、外部集成协议与扩展点规范 | 数据包作者、联动模组作者 | 中文说明 + 英文字段/契约 |
+| **设计与规格层** | `docs/design/` | 纯玩法规则、机制设计与数值体验规格 | 策划、玩法设计者、开发者 | 简体中文（专有名词保留英文） |
+| **代码与架构层** | `docs/dev/` | 多平台底座、子系统代码流、内部实现细节 | 模组核心开发者、代码贡献者 | 简体中文 + 英文代码标识符 |
+| **工程与治理层** | `docs/guides/`、`docs/agents/`、`tools/` | 开发流程、编码规范、写作规范、Agent 协作与工具 | 协作者、代码审查者、Agent | 简体中文 + 规范英文状态/引导词 |
 
-## 文档职责
+---
 
-| 位置 | 内容 |
-|---|---|
-| `dev/foundation/` | 初始化、SPI、注册、网络、Mixin、配置及文本的跨子系统契约 |
-| `dev/subsystems/` | 子系统入口、数据流、状态所有者、扩展点与约束 |
-| `dev/internals/` | 被子系统篇引用的算法、缓存、存储、线程与资源细节 |
-| `api/` | 数据包作者与集成方使用的格式和匹配语义 |
-| `design/` | 已实现玩法的可观察规则；实现结构由开发文档描述 |
-| `guides/`、`agents/` | 开发操作与 Agent 按任务读取的工作约定 |
-| `wiki/`、`readme/` | 玩家使用说明；Wiki 页面按语言前缀平铺发布 |
-| `roadmap.md` | 产品方向与候选能力；具体执行和验收由本地 Issue 追踪器管理 |
+## 2. 全局语言策略 (Language Policy)
 
-临时计划、spec 与 Issue 放在 `.scratch/`，完成材料归档到 `.local/archive/`；两者均不纳入 Git。公开资料的链接指向入库文档，生命周期说明使用行内代码记录本地去向。
+1. **玩家可见内容中英对齐**：
+   - 根目录提供 [`README.md`](../README.md)（中文）与 [`README_EN.md`](../README_EN.md)（英文），顶部提供相互切换链接。
+   - [`玩家 Wiki`](wiki/Home.md) 遵循 GitHub Wiki 平铺机制，页面使用 `zh-*` 与 `en-*` 命名，由 [`Home.md`](wiki/Home.md) 与 [`_Sidebar.md`](wiki/_Sidebar.md) 集中索引。
+2. **技术与架构文档以中文为事实源**：
+   - 开发者文档（`docs/dev/`）、设计规格（`docs/design/`）与工程指南（`docs/guides/`）统一使用简体中文编写，代码类型名、方法名、资源路径保留原版英文标识符。
+3. **领域术语单一源头**：
+   - 所有玩法专有名词以根目录 [`GLOSSARY.md`](../GLOSSARY.md) 为唯一事实源，文档与本地化键严格遵循术语定义。
 
-## 事实归属
+---
 
-| 事实 | 事实源 | Markdown 的职责 |
+## 3. 按任务导航
+
+| 任务 | 目标入口 | 说明 |
 |---|---|---|
-| 注册项和注册依赖 | `bootstrap/ModContent`、各 `ModXxx` 声明 | [注册架构](dev/foundation/registration.md)解释模式与扩展步骤 |
-| payload、codec、处理绑定及协议版本 | `network/ModPayloads` 与实际 codec | [网络与同步](dev/foundation/network.md)解释端边界与线格式约束 |
-| Mixin 条目与目标 | mixin JSON、Mixin 类和构建条件 | [Mixin](dev/foundation/mixin.md)解释用途、侵入边界和平台差异 |
-| 配置键、默认值与范围 | 平台配置声明及 common 配置接口 | [配置与联动](dev/foundation/config-and-integrations.md)解释作用域、生命周期与接入 |
-| 分类格式与匹配顺序 | [笔记分类格式](api/journal-categories.md)、`JournalCategoryLoader` | 子系统篇链接契约，实现篇解释装配 |
-| 状态归属、提交和恢复 | 对应子系统及存储细节篇 | 网络和客户端篇链接状态所有者 |
-| UI Kit 公开 API | 固定版本的 sources/JavaDoc 与库工程 | [宿主接入](dev/internals/ui-kit-api.md)解释业务归属与生命周期 |
-| 类与方法的局部契约 | 源码注释 | 文档列关键入口、职责与设计原因 |
-| 校验判定和 CLI 参数 | 工具实现与 `--help` | [工具入口](../tools/README.md)解释用途、运行时和输入输出 |
+| 玩家安装、配置与玩法 | [中文 README](../README.md) · [English README](../README_EN.md) · [玩家 Wiki](wiki/Home.md) | 面向最终用户 |
+| 查看或修改代码架构 | [开发导航](dev/README.md) | 子系统地图、代码包拓扑与代码修改入口 |
+| 查阅玩法设计与规则规格 | [猫族关系规格](design/cat-bond.md) · [猫国灵体规格](design/spirit-cat-npc.md) | 纯玩法机制与体验规则 |
+| 编写自定义数据包 | [笔记分类格式](api/journal-categories.md) | 笔记外部扩展契约 |
+| 编写与审校文档风格 | [文档撰写风格指南](guides/style-documentation.md) | 信息阶梯、上下文指针与单一事实源 |
+| 编写与修改 Java 源码风格 | [代码风格规范](guides/style-code.md) | Java 21、多平台隔离、禁止全限定名与契约 |
+| 开发流程与构建验证 | [开发流程](guides/development.md) | 工作流、IDEA 检查与构建验证 |
+| 运行或修改校验与构建工具 | [仓库工具](../tools/README.md) | Python/PowerShell 检查与生成入口 |
+| 规划、任务与 Issue 流转 | [Issue 追踪器](agents/issue-tracker.md) · [Triage 标签](agents/triage-labels.md) | 本地 Markdown 任务规范 |
+| 查询原版/Loader API 或领域建模 | [API 查询依据](agents/api-lookup.md) · [领域文档布局](agents/domain.md) | 外部查询分级与 ADR 决策 |
+| 查阅版本历史 | [变更记录](../CHANGELOG.md) | 各版本特性与修复清单 |
 
-同一规则只维护一处。枚举项查声明，其他文档保留当前任务需要的概括和链接。玩家文档按使用场景说明操作；技术文档提供维护依据。
+---
 
-## 写作规则
+## 4. 事实归属与维护准则
 
-- 首句说明职责或结论，正文围绕边界、数据流、扩展点和有效限制组织。
-- 正式文档只描述源码和项目现状已确认的行为；临时状态、候选方案与待验收事项写入计划。
-- 保留协议限额、配置范围和性能硬约束，并紧贴相应机制。源码文件数、LOC、字节大小与符号计数等探索快照留在工具上下文。
-- 技术选择说明当前机制和必要原因；修改流水、AI 工作记录、修订自述和防御性冗词从正文删除。
-- 链接使用相对文件路径；交叉引用写文件链接与小节名称。源码位置优先用类型、方法、资源 ID。
-- 子系统篇按“代码地图、数据流、关键入口、机制、扩展点、约束、相关文档”组织。按职责分叉和重复内容拆篇，细节由 internals 承接。
-- 数据格式按契约列字段与语义；方法签名、完整源码清单和配置表优先链接实际声明。
-- 文风与证据强度按 `direct-prose-guard` 审校；机械检查核对链接、导航和结构事实。
+| 事实 | 事实源 | 文档职责 |
+|---|---|---|
+| 注册项与依赖关系 | `bootstrap/ModContent` 及各 `ModXxx` 声明 | [注册架构](dev/foundation/registration.md) 说明注册模式与扩展步骤 |
+| 网络 Payload 与 Codec | `network/ModPayloads` 与实际 Codec | [网络与同步](dev/foundation/network.md) 说明端边界与线格式约束 |
+| Mixin 注入点与平台差异 | Mixin 配置文件与 Mixin 类 | [Mixin](dev/foundation/mixin.md) 说明注入意图与平台隔离 |
+| 配置项与默认值 | 平台配置声明与通用配置接口 | [配置与联动](dev/foundation/config-and-integrations.md) 说明配置项作用域与生命周期 |
+| 数据包分类格式 | `JournalCategoryLoader` | [笔记分类格式](api/journal-categories.md) 说明数据格式与加载语义 |
+| 运行时状态归属 | 对应子系统 Manager/State 类 | 开发子系统文档说明所有者与同步机制 |
+| 校验规则与命令行参数 | 各脚本实现与 `--help` | [仓库工具](../tools/README.md) 解释用途、运行时与诊断代码 |
 
-## 计划生命周期
+同一事实只维护一处。代码中可直接读出的信息不作冗余镜像，文档重点解释**设计意图、架构约束与扩展方法**。
 
-计划统一按[Issue 追踪器](agents/issue-tracker.md)管理，实施与验收结果以对应 Issue 为准；归档条件、命名和索引更新遵循该约定。
+---
 
-## 相关文档
+## 5. 计划生命周期
+
+临时计划、规格设计与任务 Issue 统一保存在 `.scratch/<feature-slug>/` 目录，执行完成后归档至 `.local/archive/<feature-slug>/`，均不纳入 Git 版本控制。
+具体操作标准遵循 [Issue 追踪器](agents/issue-tracker.md)。
+
+---
+
+## 6. 相关文档
 
 - [开发导航](dev/README.md)
 - [开发流程](guides/development.md)

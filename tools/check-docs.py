@@ -55,7 +55,7 @@ def check(root: Path, include_local_rules: bool = False) -> list[Finding]:
             except ValueError:
                 findings.append(Finding(relative, 'docs.target', f'本地目标未入库、被忽略或不存在：{link.target}', link.line))
     reached = set()
-    pending = [root / name for name in ('docs/README.md', 'README.md', *WIKI_ROOTS)]
+    pending = [root / name for name in ('docs/README.md', 'README.md', 'README_EN.md', *WIKI_ROOTS) if (root / name).is_file()]
     while pending:
         current = pending.pop()
         if current in reached:

@@ -2,7 +2,7 @@
 
 **Unsuspicious Block** 是一个围绕考古探索、战利品收集与发现记录展开的 Minecraft 模组。它为可疑方块带来扫描和快速发掘工具，并用一本会随探索逐渐完善的考古笔记，记录战利品、概率、发现地点与每次发掘经历。
 
-> English: [README_EN](docs/readme/README_EN.md)
+> English: [README_EN](README_EN.md)
 
 <!-- SCREENSHOT PLACEHOLDER
 文件：docs/image/readme/overview.png

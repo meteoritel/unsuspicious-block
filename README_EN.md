@@ -2,16 +2,16 @@
 
 **Unsuspicious Block** is a Minecraft mod about archaeology, loot collection, and documenting discoveries. It adds tools for scanning and quickly excavating suspicious blocks, plus an Archaeology Journal that grows into a detailed record of loot, probabilities, locations, and excavation history.
 
-> 中文版: [README](../../README.md)
+> 中文版: [README](README.md)
 
 <!-- SCREENSHOT PLACEHOLDER
 File: docs/image/readme/overview.png
 Scene: Hold a Suspicious Reader in a Trail Ruins site with highlighted suspicious blocks visible. Put the Archaeology Journal and Archaeological Shovel on the hotbar.
 Suggested format: 16:9, 1920x1080, debug overlay hidden, HUD visible.
-Replace the placeholder below with: ![Unsuspicious Block overview](../image/readme/overview.png)
+Replace the placeholder below with: ![Unsuspicious Block overview](docs/image/readme/overview.png)
 -->
 
-![Unsuspicious Block overview](../image/readme/overview.png)
+![Unsuspicious Block overview](docs/image/readme/overview.png)
 
 ## Requirements
 
@@ -39,11 +39,11 @@ The Fabric build requires [Fabric API](https://modrinth.com/mod/fabric-api). The
 ## Documentation
 
 - **[Player Wiki](https://github.com/meteoritel/unsuspicious-block/wiki)**: Installation, getting started, detailed mechanics for each system, optional integrations, and FAQ.
-- **[Developer Docs](../dev/README.md)**: Architecture overview and per-subsystem design documents, aimed at contributors and modders.
+- **[Developer Docs](docs/dev/README.md)**: Architecture overview and per-subsystem design documents, aimed at contributors and modders.
 
 ## Links
 
 - [CurseForge](https://www.curseforge.com/minecraft/mc-mods/unsuspicious-block)
 - [Source Code](https://github.com/meteoritel/unsuspicious-block)
 - [Issue Tracker](https://github.com/meteoritel/unsuspicious-block/issues)
-- [MIT License](../../LICENSE.txt)
+- [MIT License](LICENSE.txt)

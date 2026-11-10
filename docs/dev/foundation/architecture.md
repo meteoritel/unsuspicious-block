@@ -188,6 +188,7 @@ common/src/main/resources/
 
 ## 7. 相关文档
 
+- [代码风格规范](../../guides/style-code.md) —— Java 21、多平台隔离、端边界与硬性约束
 - [开发者文档索引](../README.md) —— 任务导航与子系统地图
 - [平台抽象](platform-spi.md) —— Services SPI 机制与可选依赖反射加载
 - [注册架构](registration.md) —— 清单 + 回调模式与新增内容流程
