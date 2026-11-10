@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.locale.Language;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
@@ -17,7 +18,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -500,7 +501,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         }
 
         // 来源图标（竖直居中）
-        var sourceStack = state.entry.lootSource() != null ? state.entry.lootSource().iconItem() : net.minecraft.world.item.ItemStack.EMPTY;
+        var sourceStack = state.entry.lootSource() != null ? state.entry.lootSource().iconItem() : ItemStack.EMPTY;
         int textX = leftX;
         int textWidth = JournalLayout.LOG_ENTRY_TEXT_WIDTH;
         if (this.batchSelectionMode) {

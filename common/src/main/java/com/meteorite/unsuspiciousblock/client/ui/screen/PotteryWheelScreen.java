@@ -1,10 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.meteosuikit.api.render.UiFlatText;
+import com.meteorite.meteosuikit.api.style.UiControlRole;
+import org.lwjgl.glfw.GLFW;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.PotteryPreviewRenderer;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.blockentity.PotteryWheelBlockEntity;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.core.blockentity.PotteryWheelBlockEntity;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
@@ -61,7 +64,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         this.inventoryLabelY = 72;
         content.add(modeButton); content.add(previewRotation);
         modeButton.setFocusable(true);
-        modeButton.setTheme(UnsuspiciousUiTheme.DARK, com.meteorite.meteosuikit.api.style.UiControlRole.SECONDARY);
+        modeButton.setTheme(UnsuspiciousUiTheme.DARK, UiControlRole.SECONDARY);
         scope.setEscape(this::onClose);
     }
 
@@ -99,9 +102,9 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     }
 
     @Override protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
-        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, title,
+        UiFlatText.drawWrapped(graphics, font, title,
                 titleLabelX, titleLabelY, imageWidth - titleLabelX - 6, 0x404040);
-        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
+        UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
                 inventoryLabelX, inventoryLabelY, imageWidth - inventoryLabelX - 6, 0x404040);
     }
 
@@ -193,7 +196,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         prepareUi();
         if (bridge.keyPressed(key, scan, modifiers)) return true;
-        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
+        if (key == GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
         return super.keyPressed(key, scan, modifiers);
     }
     @Override public boolean keyReleased(int key, int scan, int modifiers) {

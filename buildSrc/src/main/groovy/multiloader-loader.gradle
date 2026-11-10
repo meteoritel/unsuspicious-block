@@ -28,8 +28,8 @@ tasks.named('compileJava', JavaCompile) {
     dependsOn(configurations.commonJava)
     source(configurations.commonJava)
     if (!lootrCompat) {
-        exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
     }
 }
 
@@ -46,8 +46,8 @@ tasks.named('javadoc', Javadoc).configure {
     dependsOn(configurations.commonJava)
     source(configurations.commonJava)
     if (!lootrCompat) {
-        exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
     }
 }
 
@@ -55,8 +55,8 @@ tasks.named('sourcesJar', Jar) {
     dependsOn(configurations.commonJava)
     from(configurations.commonJava)
     if (!lootrCompat) {
-        exclude 'com/meteorite/unsuspiciousblock/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/plugin/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
+        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
         exclude 'unsuspiciousblock.lootr.mixins.json'
         exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
     }

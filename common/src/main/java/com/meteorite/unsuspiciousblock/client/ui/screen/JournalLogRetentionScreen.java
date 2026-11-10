@@ -7,8 +7,8 @@ import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogRetentionPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogRetentionPayload;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -99,7 +99,7 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
             validationMessage = Component.translatable(PREFIX + "invalid_number");
             return;
         }
-        Services.NETWORK.sendToServer(new UpdateJournalLogRetentionPayload(tableId, action, value));
+        ClientNetwork.sendToServer(new UpdateJournalLogRetentionPayload(tableId, action, value));
         onClose();
     }
 

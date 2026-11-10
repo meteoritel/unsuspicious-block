@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.enchantment;
 
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncEnchantmentRevealListPayload;
+import java.util.ArrayList;
+import java.util.HashMap;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncEnchantmentRevealListPayload;
 
 import java.util.List;
 import java.util.Map;
@@ -32,9 +34,9 @@ public final class EnchantmentRevealClientState {
             return;
         }
         // 按 slot 分组
-        Map<Integer, List<SyncEnchantmentRevealListPayload.Entry>> bySlot = new java.util.HashMap<>();
+        Map<Integer, List<SyncEnchantmentRevealListPayload.Entry>> bySlot = new HashMap<>();
         for (SyncEnchantmentRevealListPayload.Entry e : payload.entries()) {
-            bySlot.computeIfAbsent(e.slot(), k -> new java.util.ArrayList<>()).add(e);
+            bySlot.computeIfAbsent(e.slot(), k -> new ArrayList<>()).add(e);
         }
         current = new CachedReveal(payload.containerId(), Map.copyOf(bySlot));
     }

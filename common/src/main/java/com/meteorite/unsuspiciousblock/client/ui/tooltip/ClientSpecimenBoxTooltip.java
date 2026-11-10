@@ -4,7 +4,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
+import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTooltip;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;

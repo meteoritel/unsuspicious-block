@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.tooltip;
 
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
-import com.meteorite.unsuspiciousblock.text.ClientTooltipBridge;
+import com.meteorite.unsuspiciousblock.core.text.ClientTooltipBridge;
 import net.minecraft.client.gui.screens.Screen;
 
 import java.util.UUID;

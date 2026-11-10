@@ -1,12 +1,12 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
-import com.meteorite.unsuspiciousblock.loottable.catalog.*;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.*;
-import com.meteorite.unsuspiciousblock.loottable.simulation.*;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.*;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.*;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.*;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.*;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.*;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.*;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.*;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -92,7 +92,7 @@ public final class ScenarioSimulationClientState {
         if (!force && old != null && old.input().equals(input) && now - old.started() < 15_000) return;
         state.CACHE_QUERIES.put(table, new CacheQuery(++sequence, input, selected.params(), now, Set.of(), false, ""));
         while (state.CACHE_QUERIES.size() > 64) state.CACHE_QUERIES.remove(state.CACHE_QUERIES.keySet().iterator().next());
-        Services.NETWORK.sendToServer(new RequestScenarioCachePayload(sequence, force || result(table, input) == null, request));
+        ClientNetwork.sendToServer(new RequestScenarioCachePayload(sequence, force || result(table, input) == null, request));
         revision++;
     }
     public static void ensureCacheQuery(ResourceLocation table) {
@@ -112,7 +112,7 @@ public final class ScenarioSimulationClientState {
                 || table.options().generation() != payload.generation()) return;
         state.CACHE_QUERIES.put(table.id(), new CacheQuery(query.id(), query.input(), query.params(), query.started(),
                 Set.copyOf(payload.availableScenes()), true, payload.error()));
-        if (payload.error().equals("stale_hash")) Services.NETWORK.sendToServer(new RequestCatalogPayload());
+        if (payload.error().equals("stale_hash")) ClientNetwork.sendToServer(new RequestCatalogPayload());
         revision++;
     }
     public static RequestScenarioSimulationPayload requestOf(ResourceLocation table) {
@@ -129,7 +129,7 @@ public final class ScenarioSimulationClientState {
         if (status.equals("pending") || status.equals("cached") || !manual && status.equals("failed")) return;
         String key = keyOf(table, input);
         state.PENDING.put(key, System.currentTimeMillis()); state.FAILURES.remove(key);
-        Services.NETWORK.sendToServer(request);
+        ClientNetwork.sendToServer(request);
         revision++;
     }
     public static String status(ResourceLocation table, String input) {
@@ -207,7 +207,7 @@ public final class ScenarioSimulationClientState {
         state.PENDING.remove(key); state.FAILURES.put(key, payload.reason().name().toLowerCase(Locale.ROOT));
         while (state.FAILURES.size() > 64) state.FAILURES.remove(state.FAILURES.keySet().iterator().next());
         if (payload.reason() == ScenarioRequestRejectedPayload.Reason.STALE_HASH)
-            Services.NETWORK.sendToServer(new RequestCatalogPayload());
+            ClientNetwork.sendToServer(new RequestCatalogPayload());
         revision++;
     }
     public static CatalogTableDto result(ResourceLocation id, String input) {
@@ -325,7 +325,7 @@ public final class ScenarioSimulationClientState {
         state.assistId = ++sequence; state.assistInput = keyOf(table, inputKey(state.SELECTIONS.get(table)));
         state.assistStarted = System.currentTimeMillis();
         state.assist = null; state.notes = List.of(text("assist_pending"));
-        Services.NETWORK.sendToServer(new RequestSimulationAssistPayload(state.assistId, target, request));
+        ClientNetwork.sendToServer(new RequestSimulationAssistPayload(state.assistId, target, request));
     }
     public static void receiveAssist(SyncSimulationAssistPayload payload) {
         var p = payload.selection(); var current = requestOf(p.tableId());

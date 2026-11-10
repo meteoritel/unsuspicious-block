@@ -1,11 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
-import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.FunctionObservationSummary;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;

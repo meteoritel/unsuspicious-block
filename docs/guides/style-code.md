@@ -28,7 +28,7 @@
 ## 3. 命名与包结构规范
 
 1. **包结构划分**：
-   - 统一遵循 `com.meteorite.unsuspiciousblock.<subsystem>` 拓扑；
+   - 根包保留 `Constants` 与 Loader 公共入口；common 的生产代码按 `core / client / platform` 划分，core 内继续按玩法子系统组织；
    - 客户端专有逻辑必须置于 `client/` 或其子包下；
    - 跨平台抽象服务接口置于 `platform/services/`。
 2. **标识符命名**：
@@ -74,7 +74,7 @@ unsuspiciousBlock-1.21.1-multi/
    - 服务端逻辑与公用数据类型严禁直接静态引用客户端类，防止在专用服务端（Dedicated Server）启动时触发 `NoClassDefFoundError`。
 3. **网络包跨端解耦**：
    - 网络 Payload（`CustomPacketPayload`）仅承载序列化数据，其实例属于跨端共用。
-   - 客户端收到包后的处理逻辑必须剥离到单独的客户端处理器（如 `ClientHandlers` 或嵌套客户端隔离类），通过惰性机制绑定。
+   - `core.network.ModPayloads` 通过公共 `ClientPayloadReceiver` 契约声明 S2C 分发；`client.network.ClientPayloadHandlers` 实现状态处理，客户端入口显式绑定。C2S 发送由客户端入口安装到 `ClientNetwork`。
 
 ---
 

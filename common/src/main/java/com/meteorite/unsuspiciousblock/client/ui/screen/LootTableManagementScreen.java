@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import net.minecraft.Util;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
@@ -9,8 +10,8 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -254,7 +255,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
 
     private void renderOverflowText(GuiGraphics graphics, String text, int x, int y, int width, int color) {
         TextScroll.draw(graphics, font, text, x, y, width, color, true,
-                (int) (net.minecraft.Util.getMillis() / 50), false);
+                (int) (Util.getMillis() / 50), false);
     }
 
     private void renderDetails(GuiGraphics graphics, int x, int top, int width) {

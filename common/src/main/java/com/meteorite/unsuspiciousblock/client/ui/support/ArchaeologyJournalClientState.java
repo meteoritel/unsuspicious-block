@@ -1,27 +1,29 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
-import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalStateFullPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncArchaeologyCatalogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatalogHashPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStateIncrementalPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalStatePayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.NotifyTableCompletionRewardPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.JournalLogDeleteResultPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestCatalogPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalStateFullPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogTableChunkPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStateIncrementalPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.NotifyTableCompletionRewardPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogDeleteResultPayload;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -117,7 +119,7 @@ public final class ArchaeologyJournalClientState {
         for (CatalogTableDto table : payload.catalog()) {
             tables.put(table.id(), table.toTableDefinition());
         }
-        com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.catalog(payload.catalog());
+        ScenarioSimulationClientState.catalog(payload.catalog());
         connectionState.serverCatalog = Collections.unmodifiableMap(tables);
         connectionState.catalogStructure = payload.structure();
         catalogRevision.incrementAndGet();
@@ -133,7 +135,7 @@ public final class ArchaeologyJournalClientState {
             return;
         }
         // 哈希不一致或首次收到，请求完整目录
-        Services.NETWORK.sendToServer(new RequestCatalogPayload());
+        ClientNetwork.sendToServer(new RequestCatalogPayload());
         connectionState.cachedCatalogHash = newHash;
     }
 
@@ -224,7 +226,7 @@ public final class ArchaeologyJournalClientState {
             return;
         }
         connectionState.lastFullStateRequestMs = now;
-        Services.NETWORK.sendToServer(new RequestJournalStateFullPayload());
+        ClientNetwork.sendToServer(new RequestJournalStateFullPayload());
     }
 
     public static void receiveLogUpdate(SyncJournalLogPayload payload) {
@@ -290,7 +292,7 @@ public final class ArchaeologyJournalClientState {
             return connectionState.catalogProjection;
         }
         Map<ResourceLocation, TableDefinition> projection = Collections.unmodifiableMap(
-                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.overlay(connectionState.serverCatalog));
+                ScenarioSimulationClientState.overlay(connectionState.serverCatalog));
         // 先发布投影再发布版本号，读取方看到新版本号时必然能看到对应投影
         connectionState.catalogProjection = projection;
         connectionState.catalogProjectionRevision = revision;
@@ -322,7 +324,7 @@ public final class ArchaeologyJournalClientState {
 
     public static long getCatalogRevision() {
         return catalogRevision.get()
-                + com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.revision();
+                + ScenarioSimulationClientState.revision();
     }
 
     public static long getStateRevision() {
@@ -544,7 +546,7 @@ public final class ArchaeologyJournalClientState {
     // 仅对增量包中变更的表做 Diff 检测并通知
     private static void detectAndNotifyUnlocksForTables(ArchaeologyJournalState oldState,
                                                         ArchaeologyJournalState newState,
-                                                        net.minecraft.nbt.CompoundTag changedTables) {
+                                                        CompoundTag changedTables) {
         Map<ResourceLocation, TableDefinition> catalog = connectionState.serverCatalog;
         List<Component> newTables = new ArrayList<>();
         List<Component> itemNames = new ArrayList<>();
@@ -595,7 +597,7 @@ public final class ArchaeologyJournalClientState {
                                           List<Component> outNames,
                                           List<ItemStack> outIcons) {
         TableDefinition tableDef = catalog.get(tableId);
-        for (LootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : java.util.List.<LootTableCatalog.ItemDefinition>of()) {
+        for (LootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : List.<LootTableCatalog.ItemDefinition>of()) {
             if (newProgress.isItemUnlocked(itemDef.signature())
                     && !oldProgress.isItemUnlocked(itemDef.signature())) {
                 ItemStack icon = itemDef.signature().createPreviewStack();

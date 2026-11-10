@@ -1,0 +1,230 @@
+package com.meteorite.unsuspiciousblock.core.loottable.signature;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.core.loottable.diagnostics.LootSimulationMetrics;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import org.jetbrains.annotations.Nullable;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.Locale;
+
+/**
+ * 表示考古笔记中一个可匹配的战利品结果签名。
+ */
+public record LootResultSignature(ResourceLocation itemId, SignatureType type, @Nullable String data) {
+    private static final String STORED_KEY_PREFIX = "usb_sig";
+
+    public LootResultSignature {
+        data = normalizeData(data);
+    }
+
+    // 构造普通物品签名
+    public static LootResultSignature plain(ResourceLocation itemId) {
+        return new LootResultSignature(itemId, SignatureType.PLAIN, null);
+    }
+
+    // 构造附魔近似签名
+    public static LootResultSignature enchantedApprox(ResourceLocation itemId) {
+        return new LootResultSignature(itemId, SignatureType.ENCHANTED_APPROX, null);
+    }
+
+    // 构造严格组件签名；含实例态组件的物品按物品级签名收录
+    public static LootResultSignature componentExact(ItemStack stack) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        DataComponentPatch patch = stack.getComponentsPatch();
+        if (patch.isEmpty()) {
+            return plain(itemId);
+        }
+        // 实例态组件随物品实例随机化或随玩家进度变化，不构成物品身份。这里直接落 PLAIN 而不是
+        // "剔除该组件后仍编 COMPONENT_EXACT"：后者的匹配比较与候选索引哈希读到的仍是未剔除的组件，
+        // 两侧不对称会让这类条目永远匹配不上（静默缺陷），而 PLAIN 匹配只比物品 id，不碰组件。
+        if (SignatureExcludedComponents.containsExcluded(patch)) {
+            return plain(itemId);
+        }
+
+        String patchData = encodeComponentPatch(patch);
+        return patchData != null
+                ? new LootResultSignature(itemId, SignatureType.COMPONENT_EXACT, patchData)
+                : approximateItemOnly(itemId, "component_encode_failed");
+    }
+
+    // 构造近似回退签名
+    public static LootResultSignature approximateItemOnly(ResourceLocation itemId, @Nullable String reason) {
+        return new LootResultSignature(itemId, SignatureType.APPROX_ITEM_ONLY, reason);
+    }
+
+    // 返回用于 NBT / 网络 / Map 键的稳定字符串
+    public String toStoredKey() {
+        LootSimulationMetrics metrics = LootSimulationMetrics.current();
+        long start = metrics != null ? LootSimulationMetrics.now() : 0L;
+        try {
+            return STORED_KEY_PREFIX
+                    + "|" + this.type.name()
+                    + "|" + this.itemId
+                    + "|" + encodeData(this.data);
+        } finally {
+            if (metrics != null) {
+                metrics.add(LootSimulationMetrics.Count.STORED_KEY_CALLS, 1);
+                metrics.end(LootSimulationMetrics.Stage.STORED_KEY_DETAIL, start);
+            }
+        }
+    }
+
+    // 从持久化字符串恢复签名；兼容旧版仅以 item id 存储的 key
+    @Nullable
+    public static LootResultSignature fromStoredKey(String storedKey) {
+        if (storedKey == null || storedKey.isBlank()) {
+            return null;
+        }
+        if (!storedKey.startsWith(STORED_KEY_PREFIX + "|")) {
+            ResourceLocation legacyItemId = ResourceLocation.tryParse(storedKey);
+            return legacyItemId != null ? plain(legacyItemId) : null;
+        }
+
+        String[] parts = storedKey.split("\\|", 4);
+        if (parts.length < 4) {
+            return null;
+        }
+
+        SignatureType type;
+        try {
+            type = SignatureType.valueOf(parts[1].toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+
+        ResourceLocation itemId = ResourceLocation.tryParse(parts[2]);
+        if (itemId == null) {
+            return null;
+        }
+
+        // 历史上保存过的 ENCHANTED_RANDOM / ENCHANTED_LEVEL 统一折叠为 ENCHANTED_APPROX。
+        // 它们仅作为兼容旧数据的别名存在，不再以原始类型恢复。
+        if (type == SignatureType.ENCHANTED_RANDOM || type == SignatureType.ENCHANTED_LEVEL) {
+            return enchantedApprox(itemId);
+        }
+        String data = decodeData(parts[3]);
+        // COMPONENT_EXACT 的组件数据缺失/损坏时降级为近似签名：
+        // 否则会得到 data=null 的严格组件签名，匹配时以空组件预览栈参与最高优先级判定，
+        // 把无组件的普通掉落错误归到该条目上
+        if (type == SignatureType.COMPONENT_EXACT && data == null) {
+            return approximateItemOnly(itemId, "component_data_missing");
+        }
+        return new LootResultSignature(itemId, type, data);
+    }
+
+    public boolean isEnchantedVariant() {
+        return this.type == SignatureType.ENCHANTED_RANDOM
+                || this.type == SignatureType.ENCHANTED_LEVEL
+                || this.type == SignatureType.ENCHANTED_APPROX;
+    }
+
+    // 判断 stack 是否实际带有附魔（非空 ENCHANTMENTS 或 STORED_ENCHANTMENTS）。
+    // 不能用 stack.has(ENCHANTMENTS)，因为工具/武器默认带有空的 ENCHANTMENTS 组件，has() 会误返回 true。
+    public static boolean isActuallyEnchanted(ItemStack stack) {
+        if (stack.isEnchanted()) {
+            return true;
+        }
+        ItemEnchantments stored = stack.get(DataComponents.STORED_ENCHANTMENTS);
+        return stored != null && !stored.isEmpty();
+    }
+
+    // 根据签名重建用于 UI 展示或精确匹配的预览物品
+    public ItemStack createPreviewStack() {
+        ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(this.itemId));
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+
+        if (this.type == SignatureType.COMPONENT_EXACT) {
+            DataComponentPatch patch = decodeComponentPatch(this.data);
+            if (patch != null) {
+                try {
+                    stack.applyComponentsAndValidate(patch);
+                } catch (RuntimeException exception) {
+                    return ItemStack.EMPTY;
+                }
+            }
+        } else if (this.isEnchantedVariant()) {
+            stack.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+        }
+        return stack;
+    }
+
+    @Nullable
+    private static String encodeComponentPatch(DataComponentPatch patch) {
+        LootSimulationMetrics metrics = LootSimulationMetrics.current();
+        long start = metrics != null ? LootSimulationMetrics.now() : 0L;
+        try {
+            return DataComponentPatch.CODEC.encodeStart(JsonOps.INSTANCE, patch)
+                    .result()
+                    .map(JsonElement::toString)
+                    .orElse(null);
+        } finally {
+            if (metrics != null) {
+                metrics.add(LootSimulationMetrics.Count.EXACT_SERIALIZATIONS, 1);
+                metrics.end(LootSimulationMetrics.Stage.SERIALIZE_DETAIL, start);
+            }
+        }
+    }
+
+    @Nullable
+    public static DataComponentPatch decodeComponentPatch(@Nullable String patchData) {
+        if (patchData == null || patchData.isBlank()) {
+            return null;
+        }
+        try {
+            return DataComponentPatch.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(patchData))
+                    .result()
+                    .orElse(null);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private static String encodeData(@Nullable String data) {
+        if (data == null) {
+            return "";
+        }
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(data.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Nullable
+    private static String decodeData(String encoded) {
+        if (encoded == null || encoded.isEmpty()) {
+            return null;
+        }
+        try {
+            byte[] bytes = Base64.getUrlDecoder().decode(encoded);
+            return normalizeData(new String(bytes, StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    @Nullable
+    private static String normalizeData(@Nullable String data) {
+        if (data == null) {
+            return null;
+        }
+        String trimmed = data.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    public enum SignatureType {
+        PLAIN,
+        COMPONENT_EXACT,
+        ENCHANTED_RANDOM,
+        ENCHANTED_LEVEL,
+        ENCHANTED_APPROX,
+        APPROX_ITEM_ONLY
+    }
+}

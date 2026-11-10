@@ -1,5 +1,13 @@
 package com.meteorite.unsuspiciousblock.platform;
 
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.platform.loot.LootInjectionDescriptions;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.ResourceManager;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
@@ -17,17 +25,17 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public java.util.List<com.meteorite.unsuspiciousblock.loottable.injection.DeclaredLootInjection> describeLootInjections(
-            net.minecraft.resources.ResourceLocation table) {
-        return com.meteorite.unsuspiciousblock.loot.LootInjectionDescriptions.observed(table);
+    public List<DeclaredLootInjection> describeLootInjections(
+            ResourceLocation table) {
+        return LootInjectionDescriptions.observed(table);
     }
 
     @Override
-    public java.util.List<String> lootInjectionHashInputs(net.minecraft.server.packs.resources.ResourceManager resources)
-            throws java.io.IOException {
-        var input = new java.util.ArrayList<String>();
+    public List<String> lootInjectionHashInputs(ResourceManager resources)
+            throws IOException {
+        var input = new ArrayList<String>();
         var entries = resources.listResources("loot_modifiers", location -> location.getPath().endsWith(".json"));
-        for (var location : entries.keySet().stream().sorted(java.util.Comparator.comparing(Object::toString)).toList()) {
+        for (var location : entries.keySet().stream().sorted(Comparator.comparing(Object::toString)).toList()) {
             for (var resource : resources.getResourceStack(location)) {
                 try (var reader = resource.openAsReader()) {
                     input.add(location + "|" + resource.sourcePackId() + "|"
@@ -35,7 +43,7 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
                 }
             }
         }
-        return java.util.List.copyOf(input);
+        return List.copyOf(input);
     }
 
     @Override

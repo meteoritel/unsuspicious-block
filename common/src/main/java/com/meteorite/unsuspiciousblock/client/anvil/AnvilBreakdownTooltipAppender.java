@@ -19,7 +19,7 @@ import java.util.List;
  * <p>介入条件（全部满足）：
  * <ol>
  *   <li>当前屏幕为 {@link AnvilScreen}</li>
- *   <li>玩家背包持有「猫之瞳」（{@link com.meteorite.unsuspiciousblock.item.ModItems#EYE_OF_CAT}）</li>
+ *   <li>玩家背包持有「猫之瞳」（{@link com.meteorite.unsuspiciousblock.core.item.ModItems#EYE_OF_CAT}）</li>
  *   <li>触发 tooltip 的物品栈 == 铁砧槽位物品栈（引用相等）</li>
  * </ol>
  *

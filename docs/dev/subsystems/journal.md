@@ -1,6 +1,6 @@
 # 考古笔记系统
 
-> `journal/` 包的架构：服务端如何构建战利品表目录、玩家进度如何持久化、战利品发现如何被追踪并解锁目录条目、以及状态如何同步到客户端。
+> `core/journal/` 包的架构：服务端如何构建战利品表目录、玩家进度如何持久化、战利品发现如何被追踪并解锁目录条目、以及状态如何同步到客户端。
 > 本文件是考古笔记子系统的唯一权威。底层解析、签名与概率模拟见 [战利品表系统](loottable.md)，payload 清单见 [网络与同步](../foundation/network.md)，界面实现见 [客户端与 GUI](client-ui.md)。
 > 日志的分片存储、保留策略与版本迁移见 [考古日志存储与迁移](../internals/journal-log-storage.md)；追踪上下文、命名结算链与宿主状态见 [战利品追踪核心数据流](../internals/journal-tracking.md)。
 
@@ -8,16 +8,16 @@
 
 | 层 | 位置 |
 |---|---|
-| 生命周期入口 | `journal/JournalPlayerDataService.java`（玩家数据生命周期、恢复与迁移的统一入口） |
-| 目录构建 | `journal/catalog/`：`ArchaeologyJournalServerCatalog`（服务端入口：构建、模拟调度、缓存、查询索引）、`ArchaeologyJournalCatalog`（单轮分析）、`LootTableAnalysisSession`（一代的分析结果）、`CatalogGeneration` / `CatalogReadSnapshot`（一代目录状态，原子发布）、`JournalCategoryLoader`（分类规则） |
-| 玩家状态 | `journal/state/`：`ArchaeologyJournalState`、`ArchaeologyJournalStateHolder`（mixin 接口）、`ArchaeologyJournalLogState`、`ExcavationLogEntry`、`LootSourceType` |
-| 迁移 | `journal/migration/`：`JournalDataMigrationManager`、`JournalDataVersion`、`JournalNbtMigrator`、`LegacyJournalLogAccess` |
-| 追踪 | `journal/tracking/`：`LootTrackingContext`(+`Holder`)、`LootSession`、`ArchaeologyLootRuntimeTracker`、`RecentLootTableService`、三个 TrackingService、`MenuTrackingSnapshot(Service)`、`WorldContextResolver`、`JournalLogRecorder`、`ArchaeologyChallengeChecker`、`JournalCompletionRewardChecker`、`event/`（命名结算链与兼容订阅）、`PendingJournal`、`ContainerLootTracking`（宿主状态）、`settlement/`（结算策略） |
-| 日志存储 | `world/JournalLogStorage.java`（分片权威存储）、`world/JournalLogSavedData.java`（旧单文件迁移读取器）、`journal/sync/ArchaeologyJournalLogSyncSession(Holder)` |
-| 网络 | `network/journal/`（各 Handler）；payload 见 [网络与同步](../foundation/network.md) |
+| 生命周期入口 | `core/journal/JournalPlayerDataService.java`（玩家数据生命周期、恢复与迁移的统一入口） |
+| 目录构建 | `core/journal/catalog/`：`ArchaeologyJournalServerCatalog`（服务端入口：构建、模拟调度、缓存、查询索引）、`ArchaeologyJournalCatalog`（单轮分析）、`LootTableAnalysisSession`（一代的分析结果）、`CatalogGeneration` / `CatalogReadSnapshot`（一代目录状态，原子发布）、`JournalCategoryLoader`（分类规则） |
+| 玩家状态 | `core/journal/state/`：`ArchaeologyJournalState`、`ArchaeologyJournalStateHolder`（mixin 接口）、`ArchaeologyJournalLogState`、`ExcavationLogEntry`、`LootSourceType` |
+| 迁移 | `core/journal/migration/`：`JournalDataMigrationManager`、`JournalDataVersion`、`JournalNbtMigrator`、`LegacyJournalLogAccess` |
+| 追踪 | `core/journal/tracking/`：`LootTrackingContext`(+`Holder`)、`LootSession`、`ArchaeologyLootRuntimeTracker`、`RecentLootTableService`、三个 TrackingService、`MenuTrackingSnapshot(Service)`、`WorldContextResolver`、`JournalLogRecorder`、`ArchaeologyChallengeChecker`、`JournalCompletionRewardChecker`、`event/`（命名结算链与兼容订阅）、`PendingJournal`、`ContainerLootTracking`（宿主状态）、`settlement/`（结算策略） |
+| 日志存储 | `core/world/JournalLogStorage.java`（分片权威存储）、`core/world/JournalLogSavedData.java`（旧单文件迁移读取器）、`core/journal/sync/ArchaeologyJournalLogSyncSession(Holder)` |
+| 网络 | `core/network/journal/`（各 Handler）；payload 见 [网络与同步](../foundation/network.md) |
 | 数据资源 | `data/<namespace>/journal_categories/`（分类规则，任意命名空间可加） |
-| 调试命令 | `command/JournalCommand.java`（`/usb journal ...`） |
-| Mixin | `journal/PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin` / `PlayerJournalLogStateMixin`、`interaction/NestedLootTableMixin`、`container/*`（容器追踪）、`interaction/FishingHookMixin`（钓鱼追踪）；全清单见 [Mixin](../foundation/mixin.md) |
+| 调试命令 | `core/command/JournalCommand.java`（`/usb journal ...`） |
+| Mixin | `core/mixin/journal/PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin` / `PlayerJournalLogStateMixin`、`core/mixin/interaction/NestedLootTableMixin`、`container/*`（容器追踪）、`core/mixin/interaction/FishingHookMixin`（钓鱼追踪）；全清单见 [Mixin](../foundation/mixin.md) |
 | 平台差异 | 无核心分叉（追踪入口由各平台事件转交同一个 common 实现） |
 
 ## 2. 数据流
@@ -50,33 +50,33 @@ loot roll 后 ──► LootTrackingEvents.submit(session, counts, 结算策略)
 
 | 类 | 职责 |
 |---|---|
-| `journal/JournalPlayerDataService` | 玩家数据生命周期统一入口：服务端启停与 tick、玩家登录/退出/重生 |
-| `journal/catalog/ArchaeologyJournalServerCatalog` | 服务端目录入口：构建、模拟调度、SavedData 缓存、查询索引 |
-| `journal/catalog/CatalogGeneration` | 一代目录状态：静态部分 + 模拟 overlay，由服务端**原子发布** |
-| `journal/state/ArchaeologyJournalState` | 玩家进度核心（表/物品解锁、最近表、revision、脏表） |
-| `journal/tracking/LootTrackingContext` | 不可变 record，描述当前追踪的根表与子表链路 |
-| `journal/tracking/LootSession` | 一次 loot roll 的会话，`complete(...)` 产出 `Commit` |
-| `journal/tracking/event/LootTrackingEvents` | 战利品发现事件总线（`submit` / `register`） |
-| `journal/tracking/settlement/LootSettlementStrategy` | 结算策略接口（立即 / 延迟） |
-| `world/JournalLogStorage` | 日志的服务端权威分片存储 |
-| `journal/migration/JournalDataVersion` / `JournalNbtMigrator` | 两个版本轴的定义与逐版本迁移链 |
+| `core/journal/JournalPlayerDataService` | 玩家数据生命周期统一入口：服务端启停与 tick、玩家登录/退出/重生 |
+| `core/journal/catalog/ArchaeologyJournalServerCatalog` | 服务端目录入口：构建、模拟调度、SavedData 缓存、查询索引 |
+| `core/journal/catalog/CatalogGeneration` | 一代目录状态：静态部分 + 模拟 overlay，由服务端**原子发布** |
+| `core/journal/state/ArchaeologyJournalState` | 玩家进度核心（表/物品解锁、最近表、revision、脏表） |
+| `core/journal/tracking/LootTrackingContext` | 不可变 record，描述当前追踪的根表与子表链路 |
+| `core/journal/tracking/LootSession` | 一次 loot roll 的会话，`complete(...)` 产出 `Commit` |
+| `core/journal/tracking/event/LootTrackingEvents` | 战利品发现事件总线（`submit` / `register`） |
+| `core/journal/tracking/settlement/LootSettlementStrategy` | 结算策略接口（立即 / 延迟） |
+| `core/world/JournalLogStorage` | 日志的服务端权威分片存储 |
+| `core/journal/migration/JournalDataVersion` / `JournalNbtMigrator` | 两个版本轴的定义与逐版本迁移链 |
 | `client/ui/support/ArchaeologyJournalClientState` | 客户端目录快照与本地状态 |
 
 ## 4. 目录构建（服务端）
 
-服务端在 `SERVER_STARTED` 时由 [`ArchaeologyJournalServerCatalog.ensureLoaded`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/ArchaeologyJournalServerCatalog.java) 构建目录：快照全表原文 → 建图 / 编译 / 投影出**上下文无关**的静态读模型（概率先占位 `"?"`）→ 计算每表哈希 → 整代静态部分经单个 volatile 引用**原子发布**；未命中缓存的表入队模拟 worker 分 tick 填充 overlay，整批结束后广播目录哈希。解析、签名与模拟口径见 [战利品表机制细节](../internals/loottable-mechanics.md)。
+服务端在 `SERVER_STARTED` 时由 [`ArchaeologyJournalServerCatalog.ensureLoaded`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/catalog/ArchaeologyJournalServerCatalog.java) 构建目录：快照全表原文 → 建图 / 编译 / 投影出**上下文无关**的静态读模型（概率先占位 `"?"`）→ 计算每表哈希 → 整代静态部分经单个 volatile 引用**原子发布**；未命中缓存的表入队模拟 worker 分 tick 填充 overlay，整批结束后广播目录哈希。解析、签名与模拟口径见 [战利品表机制细节](../internals/loottable-mechanics.md)。
 
 构建流程的完整展开、关键设计（原子发布 / 渐进填充 / 哈希覆盖 / 代次校验 / 线程安全）、按需哈希同步与 `/usb journal` 调试命令见 [笔记目录构建细节](../internals/journal-catalog-build.md)。
 
 ### 4.1 分类结构
 
-分类结构（`CatalogGeneration.structure()`）由 [`JournalCategoryLoader`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描**所有命名空间**的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则见 [笔记分类格式](../../api/journal-categories.md)。
+分类结构（`CatalogGeneration.structure()`）由 [`JournalCategoryLoader`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/catalog/JournalCategoryLoader.java) 扫描**所有命名空间**的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则见 [笔记分类格式](../../api/journal-categories.md)。
 
 ## 5. 玩家进度状态
 
 ### 5.1 状态结构
 
-[`ArchaeologyJournalState`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/state/ArchaeologyJournalState.java) 是玩家进度的核心，三层结构：
+[`ArchaeologyJournalState`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/state/ArchaeologyJournalState.java) 是玩家进度的核心，三层结构：
 
 ```
 ArchaeologyJournalState
@@ -117,11 +117,11 @@ ArchaeologyJournalState
 
 ## 6. 日志与追踪
 
-日志采用**按玩家 UUID、战利品表分片压缩**的权威存储（`world/JournalLogStorage`），带延迟写盘与双版本轴迁移；战利品发现经 `LootTrackingContext` 上下文 + `LootTrackingEvents` 事件总线，由命名步骤依序解锁、记录、结算与判定成就。两者的完整实现细则见 [考古日志存储与迁移](../internals/journal-log-storage.md) 与 [战利品追踪核心数据流](../internals/journal-tracking.md)。
+日志采用**按玩家 UUID、战利品表分片压缩**的权威存储（`core/world/JournalLogStorage`），带延迟写盘与双版本轴迁移；战利品发现经 `LootTrackingContext` 上下文 + `LootTrackingEvents` 事件总线，由命名步骤依序解锁、记录、结算与判定成就。两者的完整实现细则见 [考古日志存储与迁移](../internals/journal-log-storage.md) 与 [战利品追踪核心数据流](../internals/journal-tracking.md)。
 
 ## 7. 加入时同步序列
 
-玩家加入入口是 [`JournalPlayerDataService.onPlayerJoined`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/JournalPlayerDataService.java)，按序执行：
+玩家加入入口是 [`JournalPlayerDataService.onPlayerJoined`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/JournalPlayerDataService.java)，按序执行：
 
 ```
 onPlayerJoined(player)
@@ -188,6 +188,6 @@ onPlayerJoined(player)
 - [Mixin](../foundation/mixin.md) —— `PlayerJournalStateMixin` / `NestedLootTableMixin` 等
 - [客户端与 GUI](client-ui.md) —— 考古笔记界面实现
 - [配置与第三方联动](../foundation/config-and-integrations.md) —— 追踪前缀、日志上限等配置项
-- [实体与 AI](entities-world.md) —— `JournalLogStorage` 等 `world/` 持久化类的位置索引
+- [实体与 AI](entities-world.md) —— `JournalLogStorage` 等 `core/world/` 持久化类的位置索引
 - [进度（成就）系统](advancement.md) —— 收集类进度的判定依赖本篇状态
 - [笔记分类格式](../../api/journal-categories.md)

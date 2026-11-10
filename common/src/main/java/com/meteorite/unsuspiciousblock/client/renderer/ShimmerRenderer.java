@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;

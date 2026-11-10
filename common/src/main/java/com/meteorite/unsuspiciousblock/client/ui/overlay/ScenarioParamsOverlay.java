@@ -9,9 +9,9 @@ import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientStat
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGateAnalysis;
-import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
-import com.meteorite.unsuspiciousblock.loottable.simulation.*;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;

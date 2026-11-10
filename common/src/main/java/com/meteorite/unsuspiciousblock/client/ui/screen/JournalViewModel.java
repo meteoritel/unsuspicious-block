@@ -1,7 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import java.util.Objects;
+import java.util.stream.Collectors;
 import net.minecraft.locale.Language;
-import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
@@ -15,17 +17,17 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
-import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ChildTableProbability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -373,7 +375,7 @@ public class JournalViewModel {
             Set<ResourceLocation> members = this.categoryIdsByTable.entrySet().stream()
                     .filter(entry -> entry.getValue().contains(definition.id()))
                     .map(Map.Entry::getKey)
-                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
             if (members.isEmpty()) continue;
             int unlocked = (int) members.stream().map(this.allViews::get)
                     .filter(view -> view != null && view.unlocked()).count();
@@ -402,7 +404,7 @@ public class JournalViewModel {
         if (this.selectedCategory == null) return;
         List<ArchaeologyJournalEntry> roots = this.structure.rootCategories().entrySet().stream()
                 .filter(entry -> entry.getValue().equals(this.selectedCategory))
-                .map(Map.Entry::getKey).map(this.allViews::get).filter(java.util.Objects::nonNull)
+                .map(Map.Entry::getKey).map(this.allViews::get).filter(Objects::nonNull)
                 .filter(view -> !this.hideLocked || view.unlocked())
                 .sorted(rootComparator())
                 .toList();
@@ -436,7 +438,7 @@ public class JournalViewModel {
         TableDefinition parent = this.catalogDefinitions.get(parentId);
         if (parent == null) return;
         List<ArchaeologyJournalEntry> children = parent.childTables().stream().map(this.allViews::get)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .filter(view -> !this.hideLocked || view.unlocked())
                 .sorted(Comparator
                         .comparing((ArchaeologyJournalEntry view) -> !hasChildTables(view.id()))

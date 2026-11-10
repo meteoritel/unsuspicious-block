@@ -1,15 +1,15 @@
 package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.cat.adapter.ICatEventAdapter;
+import com.meteorite.unsuspiciousblock.platform.services.ICatEventAdapter;
 import com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPanningConfig;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
-import com.meteorite.unsuspiciousblock.enchantment.framework.adapter.IEnchantmentEventAdapter;
-import com.meteorite.unsuspiciousblock.world.IBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.platform.services.IEnchantmentEventAdapter;
+import com.meteorite.unsuspiciousblock.platform.services.IBoneBlockTracker;
 
 import java.util.ServiceLoader;
 

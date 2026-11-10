@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.platform.services;
 
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTablePattern;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.resources.ResourceLocation;
 
@@ -64,7 +65,7 @@ public interface ILootTableConfig {
         exclusions.removeIf(id::equals);
         if (tracked) {
             boolean matched = rules.stream()
-                    .map(com.meteorite.unsuspiciousblock.loottable.catalog.LootTablePattern::parse)
+                    .map(LootTablePattern::parse)
                     .anyMatch(pattern -> pattern != null && pattern.matches(tableId));
             if (!matched) rules.add(id);
         } else {

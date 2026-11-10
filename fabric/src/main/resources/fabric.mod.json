@@ -1,56 +1,64 @@
 {
-    "schemaVersion": 1,
-    "id": "${mod_id}",
-    "version": "${version}",
-    "name": "${mod_name}",
-    "description": "${description}",
-    "authors": [
-        "${mod_author}"
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "${description}",
+  "authors": [
+    "${mod_author}"
+  ],
+  "contact": {
+    "sources": "https://github.com/meteoritel/unsuspicious-block",
+    "issues": "https://github.com/meteoritel/unsuspicious-block/issues",
+    "homepage": "https://github.com/meteoritel/unsuspicious-block"
+  },
+  "license": "${license}",
+  "environment": "*",
+  "accessWidener": "unsuspiciousblock.accesswidener",
+  "entrypoints": {
+    "main": [
+      "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabric"
     ],
-    "contact": {
-        "sources": "https://github.com/meteoritel/unsuspicious-block",
-        "issues": "https://github.com/meteoritel/unsuspicious-block/issues",
-        "homepage": "https://github.com/meteoritel/unsuspicious-block"
-    },
-    "license": "${license}",
-    "environment": "*",
-    "accessWidener": "unsuspiciousblock.accesswidener",
-    "entrypoints": {
-        "main": [
-            "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabric"
-        ],
-        "client": [
-            "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricClient"
-        ],
-        "preLaunch": [
-            "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricPreLaunch"
-        ],
-        "jade": [
-            "com.meteorite.unsuspiciousblock.plugin.jade.JadePlugin"
-        ],
-        "jei_mod_plugin": [
-            "com.meteorite.unsuspiciousblock.plugin.jei.JeiPlugin"
-        ],
-        "modmenu": [
-            "com.meteorite.unsuspiciousblock.modmenu.ModMenuIntegration"
-        ]
-    },
-    "mixins": [
-        "unsuspiciousblock.mixins.json",
-        "unsuspiciousblock.fabric.mixins.json"
+    "client": [
+      "com.meteorite.unsuspiciousblock.client.UnsuspiciousBlockFabricClient"
     ],
-    "depends": {
-        "meteos_ui_kit": ">=${meteos_ui_kit_version} <0.2.0",
-        "fabricloader": ">=${fabric_loader_version}",
-        "fabric-api": "*",
-        "minecraft": "${minecraft_version}",
-        "java": ">=${java_version}"
+    "preLaunch": [
+      "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricPreLaunch"
+    ],
+    "jade": [
+      "com.meteorite.unsuspiciousblock.platform.plugin.jade.JadePlugin"
+    ],
+    "jei_mod_plugin": [
+      "com.meteorite.unsuspiciousblock.client.plugin.jei.JeiPlugin"
+    ],
+    "modmenu": [
+      "com.meteorite.unsuspiciousblock.client.modmenu.ModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "unsuspiciousblock.mixins.json",
+    "unsuspiciousblock.fabric.mixins.json",
+    {
+      "config": "unsuspiciousblock.client.mixins.json",
+      "environment": "client"
     },
-    "suggests": {
-        "jade": "*",
-        "trinkets": ">=3.10.0",
-        "artifacts": ">=13.1.0",
-        "modmenu": ">=11.0.4",
-        "lootr": ">=1.11.37.121"
+    {
+      "config": "unsuspiciousblock.fabric.client.mixins.json",
+      "environment": "client"
     }
+  ],
+  "depends": {
+    "meteos_ui_kit": ">=${meteos_ui_kit_version} <0.2.0",
+    "fabricloader": ">=${fabric_loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=${java_version}"
+  },
+  "suggests": {
+    "jade": "*",
+    "trinkets": ">=3.10.0",
+    "artifacts": ">=13.1.0",
+    "modmenu": ">=11.0.4",
+    "lootr": ">=1.11.37.121"
+  }
 }

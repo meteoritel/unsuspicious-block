@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
@@ -204,8 +205,8 @@ public final class AnvilBreakdownCalculator {
 
     /** 判断材料是否为古代金币（本 mod 物品，避免在 common 引用平台类）。 */
     private static boolean isAncientCoin(ItemStack stack) {
-        return com.meteorite.unsuspiciousblock.item.ModItems.ANCIENT_COIN != null
-                && stack.is(com.meteorite.unsuspiciousblock.item.ModItems.ANCIENT_COIN);
+        return ModItems.ANCIENT_COIN != null
+                && stack.is(ModItems.ANCIENT_COIN);
     }
 
     /** 向上取整除法，用于计算修复消耗份数。 */

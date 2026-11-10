@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.pan;
 
-import com.meteorite.unsuspiciousblock.item.PanItem;
+import com.meteorite.unsuspiciousblock.core.item.PanItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.model.HumanoidModel;

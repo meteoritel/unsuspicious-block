@@ -44,14 +44,14 @@
 
 ### 2.4 ModMenu 配置界面
 
-Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/modmenu/ModMenuConfigScreen.java) 提供分层图形化配置界面：
+Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuConfigScreen.java) 提供分层图形化配置界面：
 
 - **通用配置**：编辑灵体猫的六项全局参数，保存到 `config/unsuspiciousblock/unsuspiciousblock.json`，供本机托管的集成服务器使用。
 - **服务端配置**：编辑当前世界的战利品追踪规则、日志上限与追踪超时。重置时同时清空管理页面产生的精确排除项。只有当前客户端正在运行集成服务器时允许写入；主菜单和多人客户端显示为服务端管理，避免本地修改造成误导。
 
 ### 2.5 运行时变更
 
-[`ServerLootTableConfigManager`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/ServerLootTableConfigManager.java) 统一管理服务端配置生命周期：
+[`ServerLootTableConfigManager`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/ServerLootTableConfigManager.java) 统一管理服务端配置生命周期：
 
 - 服务端启动时在目录首次解析前加载当前世界配置，停止时清除世界绑定。
 - 每秒比较一次配置快照。日志上限和追踪超时由业务代码实时读取，不需要重建。
@@ -110,15 +110,16 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 
 ### 4.1 Jade（方块与实体信息）
 
-[`JadePlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/plugin/jade/JadePlugin.java)（common，通过 `fabric.mod.json` 的 `jade` entrypoint 与 NeoForge 事件注册）：
+[`JadePlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/jade/JadePlugin.java)（common 的 platform 接入桥，通过 Fabric `jade` entrypoint 与 NeoForge `@WailaPlugin` 扫描发现）：
 
 - 在 Jade 的方块信息中显示已扫描出的可疑方块战利品。
 - 闪烁的光：通过实体服务端数据提供器按需同步剩余游戏刻，客户端显示距离自然消失的分钟与秒数（秒向上取整），世界生成点显示“不会自然消失”。未收到服务端数据时不显示寿命；显示随 Jade 数据刷新更新。
-- Jade API 跨平台一致，故放在 common。
+- `core.plugin.jade.JadeServerProviders` 注册服务端数据提供者，`client.plugin.jade.JadeClientProviders` 注册显示组件，共享字段由 `JadeData` 声明。
+- `ModClientLifecycle.install` 确认 Jade 存在后惰性安装展示回调。Fabric 的插件发现在 `CLIENT_STARTED`，NeoForge 在 `FMLLoadCompleteEvent`；安装分别位于客户端初始化和 client setup。中立发现桥只引用公共契约。
 
 ### 4.2 JEI（配方查看）
 
-[`JeiPlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/plugin/jei/JeiPlugin.java) + `PotteryWheelJeiCategory` + `PotteryWheelJeiRecipe`（common）：
+[`JeiPlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jei/JeiPlugin.java) + `PotteryWheelJeiCategory` + `PotteryWheelJeiRecipe`（common）：
 
 - 注册陶轮配方的 JEI 类别。
 - 注册 `JournalJeiGuiHandler`，将考古笔记中的已解锁物品条目暴露为 JEI clickable ingredient，支持 U/R 查看配方与用法；JEI 关闭后按其原生 Screen 返回链回到考古笔记。
@@ -128,11 +129,11 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 
 ### 4.3 Lootr（每人独立战利品）
 
-`common/plugin/lootr/`（可选，构建时可通过 `lootr_compat_*` 排除）：
+`common/core/plugin/lootr/`（可选，构建时可通过 `lootr_compat_*` 排除）：
 
-- [`LootrArchaeologyFilterProvider`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/plugin/lootr/LootrArchaeologyFilterProvider.java)：实现 Lootr 的 `ILootrFilterProvider`，通过 `META-INF/services` 注册。
+- [`LootrArchaeologyFilterProvider`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrArchaeologyFilterProvider.java)：实现 Lootr 的 `ILootrFilterProvider`，通过 `META-INF/services` 注册。
 - `LootrBrushableTrackingAccess` / `LootrTrackingBridge`：桥接 Lootr 的每人独立战利品机制与模组的追踪系统。
-- 配套 5 个 mixin（见 [Mixin](mixin.md) 的「Lootr 兼容 mixin」一节）。
+- 配套 Lootr Mixin 由独立配置登记，接线见 [Mixin](mixin.md)。
 - 当前发布配置：NeoForge 带 Lootr 兼容，Fabric 不带。
 
 ### 4.4 Trinkets / Curios（饰品栏）
@@ -141,11 +142,11 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 
 | 平台 | 集成类 | 职责 |
 |---|---|---|
-| Fabric | [`FabricTrinketsIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/plugin/trinket/FabricTrinketsIntegration.java) | 入口，通过 `OptionalModIntegration` 反射加载 |
+| Fabric | [`FabricTrinketsIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/trinket/FabricTrinketsIntegration.java) | 入口，通过 `OptionalModIntegration` 反射加载 |
 | | `SpecimenBoxTrinket` | 标本箱作为 Trinkets 饰品 |
 | | `TrinketSlotResolver` | 饰品槽解析 |
 | | `TrinketsAccessoryHelper` | 实现 `IAccessoryHelper`（查询饰品栏） |
-| NeoForge | [`NeoForgeCuriosIntegration`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/plugin/curio/NeoForgeCuriosIntegration.java) | 入口 |
+| NeoForge | [`NeoForgeCuriosIntegration`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/curio/NeoForgeCuriosIntegration.java) | 入口 |
 | | `SpecimenBoxCurio` | 标本箱作为 Curios 饰品 |
 | | `CuriosAccessoryHelper` | 实现 `IAccessoryHelper` |
 
@@ -153,14 +154,14 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 
 ### 4.5 Artifacts（饰品效果代理）
 
-`fabric/plugin/artifacts/` 与 `neoforge/plugin/artifacts/` 各有 `ArtifactsSpecimenBoxSlotProvider`：
+`fabric/platform/plugin/artifacts/` 与 `neoforge/platform/plugin/artifacts/` 各有 `ArtifactsSpecimenBoxSlotProvider`：
 
 - 标本箱代理箱内 Artifacts 兼容饰品的装备效果。
 - 仅编译其装备 provider API，运行时保持可选联动。
 
 ### 4.6 ModMenu（配置界面入口）
 
-`fabric/modmenu/`（仅 Fabric）：
+`fabric/client/modmenu/`（仅 Fabric）：
 
 - `ModMenuIntegration`：注册 ModMenu 入口。
 - `ModMenuConfigScreen`：区分通用配置与当前世界服务端配置的入口页面。
@@ -180,7 +181,7 @@ NeoForge 页面从本模组已注册的 `ModConfigSpec` 派生配置文件入口
 - **新增数据驱动内容**：在 `data/unsuspiciousblock/` 对应目录添加 JSON（战利品表、配方、商人交易、目录分类等）。
 - **新增第三方联动**：
   1. `compileOnly` 引用第三方 API（两端 build.gradle）。
-  2. 在 `plugin/` 下写集成类，通过 `OptionalModIntegration` 反射加载（机制见 [平台抽象](platform-spi.md) 的「可选依赖的安全加载」一节）。
+  2. 按职责在 core/plugin、client/plugin 或 Loader platform/plugin 放置实现；需要惰性加载时使用 `OptionalModIntegration`，机制见[平台抽象](platform-spi.md)。
   3. 跨平台 API 放 common，平台专属 API 放 fabric/neoforge。
 - **调整 Lootr 兼容**：通过 `gradle.properties` 的 `lootr_compat_*` 属性控制构建。
 

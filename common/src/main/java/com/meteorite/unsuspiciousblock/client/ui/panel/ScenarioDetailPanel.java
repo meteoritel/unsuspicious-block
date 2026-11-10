@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
@@ -15,9 +18,9 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
-import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
-import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -62,12 +65,12 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private boolean showOther;
     private List<UiNode> conditionTree = List.of();
     @Nullable private Component fullSceneLabel;
-    private java.util.function.BiPredicate<String, String> targetVisible = (kind, target) -> false;
-    private java.util.function.BiConsumer<String, String> locateTarget = (kind, target) -> {};
+    private BiPredicate<String, String> targetVisible = (kind, target) -> false;
+    private BiConsumer<String, String> locateTarget = (kind, target) -> {};
     private Runnable viewDrops = () -> {};
 
-    public void setTargetNavigation(java.util.function.BiPredicate<String, String> visible,
-                                    java.util.function.BiConsumer<String, String> locate, Runnable viewDrops) {
+    public void setTargetNavigation(BiPredicate<String, String> visible,
+                                    BiConsumer<String, String> locate, Runnable viewDrops) {
         this.targetVisible = visible;
         this.locateTarget = (kind, target) -> { if (overlays.isOpen()) overlays.close(); locate.accept(kind, target); };
         this.viewDrops = viewDrops;
@@ -250,7 +253,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                         ScenarioParamsOverlay.enchantmentName(id), level)));
         summary.setStyle(ScenarioUi.READOUT);
         summary.configure(font, Component.empty(), UiTextPalette.Parchment.NAME,
-                new UiIcon.Item(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(choice.params().toolId()))),
+                new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(choice.params().toolId()))),
                 List.of(toolName), null);
         configureValue(font, luck, "params.luck_short", String.format(Locale.ROOT, "%s", choice.params().luck()));
         configureValue(font, samples, "params.enchantments_short", String.valueOf(choice.params().toolEnchantments().size()));

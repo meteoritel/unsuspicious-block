@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestJournalLogSnapshotPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalLogSnapshotPayload;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import org.jetbrains.annotations.Nullable;
@@ -31,7 +31,7 @@ public final class JournalClientConnection {
             this.epoch = epoch;
             this.mirror = new JournalMirror(System::currentTimeMillis, () -> {
                 if (current == this && Minecraft.getInstance().getConnection() == source) {
-                    Services.NETWORK.sendToServer(new RequestJournalLogSnapshotPayload());
+                    ClientNetwork.sendToServer(new RequestJournalLogSnapshotPayload());
                 }
             });
         }

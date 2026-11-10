@@ -25,7 +25,9 @@
 
 Java 引用读取屏蔽注释、字符串、字符与 text block，解析 import/static import、全限定引用及源码可确定的同包、通配导入类型。Loader API 和平台实现类型留在可见源集，客户端类型由客户端所有者消费。
 
-客户端路径包括 `client/`、实际平台客户端入口、ModMenu 和已确认的 JEI 类；精确表在 [boundaries.py](toolslib/boundaries.py)。`ModPayloads` 的客户端状态引用归 `ClientHandlers`，绑定视图归嵌套 `Client`，共享 codec 与惰性工厂的运行时加载顺序按平台入口审查。
+客户端所有者统一按模组根包下的 `client` 包及其子包识别，规则见 [boundaries.py](toolslib/boundaries.py)。core、公共 platform 和公共 Loader 入口只使用共享契约；Minecraft、Loader 客户端 API、渲染类型和 UI Kit 由客户端所有者消费。`ModPayloads` 使用中立接收契约，客户端入口提供处理实现。
+
+隔离检查同时核对 common 的 core/client/platform 归属、Loader 的 client/platform 归属、保留的根入口以及 package 与源码路径的一致性。接线检查要求 Mixin package 限于专属注入包，客户端 Mixin 登记在 client 数组；SPI、元数据与反射加载的运行时语义按对应入口及实机验收核对。
 
 UI Kit 检查覆盖公开包消费、客户端归属、旧 kit 目录/包和自有原生控件。静态引用与可定位结构由脚本判定；环境守卫、反射、回调和游戏效果按源码及实机验收核对。
 

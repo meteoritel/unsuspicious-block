@@ -1,17 +1,22 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
-import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -30,7 +35,7 @@ public final class RightPageContainer implements UiInputTarget {
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
         activePanel().renderControls(graphics, font, pointer);
     }
-    @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) { activePanel().addFocusTargets(out); }
+    @Override public void addFocusTargets(Consumer<UiFocusTarget> out) { activePanel().addFocusTargets(out); }
     @Override public long focusRevision() { return activePanel().focusRevision() * 31 + activeTab.ordinal() * 2L + logMode.ordinal(); }
     @Override public UiPointerHit hitTest(double x, double y) {
         UiPointerHit hit = activePanel().hitTest(x, y);
@@ -63,7 +68,7 @@ public final class RightPageContainer implements UiInputTarget {
     private final List<UiControl> bookmarks;
     private final List<SavedPage> savedPages;
 
-    private record PageDescriptor(Tab tab, java.util.function.Supplier<PagePanel> content,
+    private record PageDescriptor(Tab tab, Supplier<PagePanel> content,
             int indicatorOffset, boolean alwaysIndicator, Runnable enter, Runnable leave, UiControl bookmark) {}
     private record SavedPage(String key, PagePanel panel) {}
 
@@ -73,10 +78,10 @@ public final class RightPageContainer implements UiInputTarget {
     private LogMode logMode = LogMode.LIST;
     @Nullable
     private UUID selectedLogEntryId;
-    private final com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays overlays;
+    private final JournalOverlays overlays;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout,
-                              com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays overlays,
+                              JournalOverlays overlays,
                               UiPanelRegistry panels) {
         this.layout = layout;
         this.overlays = overlays;
@@ -110,8 +115,8 @@ public final class RightPageContainer implements UiInputTarget {
                 new SavedPage("log", logPanel), new SavedPage("logDetail", logDetailPanel));
         syncBookmarks();
         gridPanel.setActions(this::syncPageIndicator, target -> {
-            if (currentTableId != null) com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(
-                    overlays, currentTableId, com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.childTable(target));
+            if (currentTableId != null) ScenarioRecommendationOverlay.open(
+                    overlays, currentTableId, SimulationAssistTarget.childTable(target));
         });
         logPanel.setOnOpenEntry(entry -> restoreLogSelection(entry.entryId(), true));
     }
@@ -120,7 +125,7 @@ public final class RightPageContainer implements UiInputTarget {
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_" + name);
     }
 
-    private PageDescriptor page(Tab tab, java.util.function.Supplier<PagePanel> content, int indicatorOffset,
+    private PageDescriptor page(Tab tab, Supplier<PagePanel> content, int indicatorOffset,
             boolean alwaysIndicator, Component label, Runnable enter, Runnable leave) {
         UiControl bookmark = JournalControls.bookmark(layout.rightPageX() + layout.rightPageWidth(),
                 layout.rightPageY() + BOOKMARK_TOP_OFFSET + tab.ordinal() * (BOOKMARK_HEIGHT + BOOKMARK_GAP),
@@ -361,7 +366,7 @@ public final class RightPageContainer implements UiInputTarget {
             grid.renderControls(graphics, font, pointer);
             scenario.renderControls(graphics, font, pointer);
         }
-        @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) {
+        @Override public void addFocusTargets(Consumer<UiFocusTarget> out) {
             grid.addFocusTargets(out); scenario.addFocusTargets(out);
         }
         @Override public long focusRevision() { return grid.focusRevision() * 31 + 17 * scenario.focusRevision(); }

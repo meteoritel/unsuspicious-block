@@ -8,8 +8,8 @@ import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientStat
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import com.meteorite.unsuspiciousblock.loottable.catalog.*;
-import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.*;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;

@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.meteorite.unsuspiciousblock.mixin.compat.lootr",
+  "package": "com.meteorite.unsuspiciousblock.core.mixin.compat.lootr",
   "compatibilityLevel": "JAVA_21",
   "refmap": "${mod_id}.refmap.json",
   "mixins": [

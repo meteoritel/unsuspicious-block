@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateReaderScanLevelPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.item.SuspiciousReaderItem;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateReaderScanLevelPayload;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
@@ -46,7 +46,7 @@ public class SuspiciousReaderClientState {
         SuspiciousReaderItem.setScanLevel(readerStack, newLevel);
 
         // 同步到服务端
-        Services.NETWORK.sendToServer(new UpdateReaderScanLevelPayload(newLevel));
+        ClientNetwork.sendToServer(new UpdateReaderScanLevelPayload(newLevel));
 
         // 向玩家 action bar 显示当前扫描等级
         String modeKey = switch (newLevel) {

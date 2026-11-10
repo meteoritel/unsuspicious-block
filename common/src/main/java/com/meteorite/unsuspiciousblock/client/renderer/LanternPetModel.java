@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
-import com.meteorite.unsuspiciousblock.entity.LanternPet;
+import com.meteorite.unsuspiciousblock.core.entity.LanternPet;
 import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.model.geom.ModelPart;

@@ -1,25 +1,25 @@
 # 战利品表系统
 
-> `loottable/` 包的架构：如何解析、收录、注入战利品表，如何为物品生成稳定签名，以及如何估算概率。
+> `core/loottable/` 包的架构：如何解析、收录、注入战利品表，如何为物品生成稳定签名，以及如何估算概率。
 > 本文件是战利品表子系统的唯一权威（**功能技术路线**）。解析细则、签名派生、场景规划、缓存格式与展示派生规则见 [战利品表机制细节](../internals/loottable-mechanics.md)；目录构建的上层调度与玩家进度见 [考古笔记系统](journal.md)。
 
 ## 1. 代码地图
 
 | 层 | 位置 |
 |---|---|
-| 资源快照 | `loottable/source/LootTableSourceSnapshot.java`（一次列举拿到全表"有效原文 + 完整资源栈"） |
-| 引用图 | `loottable/graph/`：`LootTableReferenceGraph`（直接子表/可达集/子树/SCC/子树摘要）、`LootTableEdge`（边类型）、`RuntimeLootLinks`（平台注入关系与钓鱼上下文判定的**唯一来源**） |
-| 编译 | `loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`+`LootConditionInfo`、`LootFunctionHandler(s)`+`describe` 通道、`LootFunctionInfo`（`FunctionSemantics` / `FunctionFidelity` / `FunctionEffectKind`）、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil`（条件分析/函数链/类型规范化的唯一实现） |
-| 读模型与查询 | `loottable/catalog/`：`LootTableCatalog`（跨模块共享记录类型）、`LootOriginKind`（来源集合语义）、`Probability`、`DeclaredChance`、`LootTableProjector`、`StaticTableProjection`、`ItemDefinitionAccumulator`、`CatalogQueryIndex`、`CatalogTableDto`、`LootTablePattern`、`LootTableNames`、`LootTableTranslationStore`、`MissingTranslationKeyExporter` |
-| 签名 | `loottable/signature/`：`LootResultSignature`（核心）、`LootResultMatcher`、`LootResultPreviewCache`、`LootCounts`、`SignatureExcludedComponents` |
-| 模拟 | `loottable/simulation/`：输入与参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、场景规划（`SimulationScenarioPlanner` / `SimulationScenario` / `LootConditionFingerprint`）、引擎（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement`）、调度（`LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与协助（`SimulationAssistTarget` / `RecommendationSolver`）、函数捕获（`FunctionTraceSession` / `TraceNode` / `TraceHandle` / `ObservedFunctionChain` / `FunctionObservationSummary`）、展示（`PathHintAnalyzer` / `ProbabilityFormat`） |
-| 注入 | `loottable/injection/`：`ArchaeologyLootInjector`（接口）、`ArchaeologyLootInjectors`（全局单例） |
-| 自定义条件 | `loottable/condition/`：`ModLootConditions`、`ToolEnchantmentCondition`（唯一自定义条件） |
-| 诊断 | `loottable/diagnostics/LootSimulationMetrics.java`（可选性能观测，默认关闭） |
-| 上层合作者 | `journal/catalog/`：`ArchaeologyJournalCatalog`（组装静态读模型）、`LootTableAnalysisSession`（一代分析结果）、`CatalogGeneration`（原子发布整代目录） |
+| 资源快照 | `core/loottable/source/LootTableSourceSnapshot.java`（一次列举拿到全表"有效原文 + 完整资源栈"） |
+| 引用图 | `core/loottable/graph/`：`LootTableReferenceGraph`（直接子表/可达集/子树/SCC/子树摘要）、`LootTableEdge`（边类型）、`RuntimeLootLinks`（平台注入关系与钓鱼上下文判定的**唯一来源**） |
+| 编译 | `core/loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`+`LootConditionInfo`、`LootFunctionHandler(s)`+`describe` 通道、`LootFunctionInfo`（`FunctionSemantics` / `FunctionFidelity` / `FunctionEffectKind`）、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil`（条件分析/函数链/类型规范化的唯一实现） |
+| 读模型与查询 | `core/loottable/catalog/`：`LootTableCatalog`（跨模块共享记录类型）、`LootOriginKind`（来源集合语义）、`Probability`、`DeclaredChance`、`LootTableProjector`、`StaticTableProjection`、`ItemDefinitionAccumulator`、`CatalogQueryIndex`、`CatalogTableDto`、`LootTablePattern`、`LootTableNames`、`LootTableTranslationStore`、`MissingTranslationKeyExporter` |
+| 签名 | `core/loottable/signature/`：`LootResultSignature`（核心）、`LootResultMatcher`、`LootResultPreviewCache`、`LootCounts`、`SignatureExcludedComponents` |
+| 模拟 | `core/loottable/simulation/`：输入与参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、场景规划（`SimulationScenarioPlanner` / `SimulationScenario` / `LootConditionFingerprint`）、引擎（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement`）、调度（`LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与协助（`SimulationAssistTarget` / `RecommendationSolver`）、函数捕获（`FunctionTraceSession` / `TraceNode` / `TraceHandle` / `ObservedFunctionChain` / `FunctionObservationSummary`）、展示（`PathHintAnalyzer` / `ProbabilityFormat`） |
+| 注入 | `core/loottable/injection/`：`ArchaeologyLootInjector`（接口）、`ArchaeologyLootInjectors`（全局单例） |
+| 自定义条件 | `core/loottable/condition/`：`ModLootConditions`、`ToolEnchantmentCondition`（唯一自定义条件） |
+| 诊断 | `core/loottable/diagnostics/LootSimulationMetrics.java`（可选性能观测，默认关闭） |
+| 上层合作者 | `core/journal/catalog/`：`ArchaeologyJournalCatalog`（组装静态读模型）、`LootTableAnalysisSession`（一代分析结果）、`CatalogGeneration`（原子发布整代目录） |
 | 数据资源 | `data/unsuspiciousblock/loot_table/`（含 `gameplay/`、`chests/`…）；名称补充 `config/unsuspiciousblock/loot_table_lang/<language>.json` |
 | 网络 | `CatalogTableDto` 由 `CatalogStreamCodec` 编解码（清单见 [网络与同步](../foundation/network.md)） |
-| Mixin | `interaction/NestedLootTableMixin`（嵌套表观测）、`loottable/Simulation*ConditionMixin`（7 个单目标，条件作用域转交）、`loottable/LootItemConditionalFunctionMixin`（包装 `run` 调用＝外层条件通过进入执行体）、`loottable/LootTableSplitterMixin`（包装拆栈器的输入/输出 `Consumer`，拆栈副本继承观测链） |
+| Mixin | `core/mixin/interaction/NestedLootTableMixin`（嵌套表观测）、`core/mixin/loottable/Simulation*ConditionMixin`（7 个单目标，条件作用域转交）、`core/mixin/loottable/LootItemConditionalFunctionMixin`（包装 `run` 调用＝外层条件通过进入执行体）、`core/mixin/loottable/LootTableSplitterMixin`（包装拆栈器的输入/输出 `Consumer`，拆栈副本继承观测链） |
 | 平台差异 | 注入器：Fabric 显式 `maybeReplace`，NeoForge 空实现（GLM 在 `getRandomItems` 内完成）；重载监听：`ResourceManagerHelper` vs `AddReloadListenerEvent` |
 
 ## 2. 数据流
@@ -54,26 +54,26 @@ StaticTableProjection ─→ 概率模拟 / 缓存恢复 ─→ 测量值 → Ca
 
 | 类 | 职责 |
 |---|---|
-| `source/LootTableSourceSnapshot` | 一次列举拿到全表有效原文 + 完整资源栈，解析/建图/哈希共用 |
-| `graph/LootTableReferenceGraph` | 引用关系唯一权威：直接子表 / 可达集 / 子树 / 强连通环 / 子树摘要 |
-| `graph/RuntimeLootLinks` | 平台注入关系与"钓鱼上下文"判定的唯一来源；注入门槛（`MUD_DREDGING_GATE`）也在此声明 |
-| `analysis/LootTableCompiler` | 单表 JSON → 上下文无关的编译产物 |
-| `analysis/LootParseUtil` | 条件分析、函数链拼接与类型规范化的唯一实现 |
-| `catalog/LootTableProjector` | 沿引用把编译产物链接起来（首跳归属、条件继承顺序、函数继承与降级） |
-| `catalog/Probability` | 概率值 sealed 类型（四态），构造即校验 |
-| `catalog/CatalogQueryIndex` | 子树物品等跨表聚合的唯一入口 |
-| `signature/LootResultSignature` | 进度匹配与持久化的核心 |
-| `simulation/LootProbabilitySimulator` | 单输入模拟引擎 |
-| `simulation/LootProbabilitySimulationWorker` | 主线程 tick 驱动（双优先级队列、去重键 `(表, 输入键)`） |
-| `simulation/SimulationConstraintCatalog` | 目录签发的约束描述（场景/工具/附魔上限/抽样档位），**不枚举候选输入** |
-| `simulation/PathHintAnalyzer` | 静态信息性提示 + 基准值→展示值派生 |
-| `simulation/ProbabilityFormat` | 概率值与声明触发率 → 展示文本（唯一格式化入口，仅 UI 边界调用） |
-| `injection/ArchaeologyLootInjectors` | 全局注入器单例（平台差异化） |
-| `condition/ModLootConditions` | 自定义条件类型的注册与展示描述 |
+| `core/loottable/source/LootTableSourceSnapshot` | 一次列举拿到全表有效原文 + 完整资源栈，解析/建图/哈希共用 |
+| `core/loottable/graph/LootTableReferenceGraph` | 引用关系唯一权威：直接子表 / 可达集 / 子树 / 强连通环 / 子树摘要 |
+| `core/loottable/graph/RuntimeLootLinks` | 平台注入关系与"钓鱼上下文"判定的唯一来源；注入门槛（`MUD_DREDGING_GATE`）也在此声明 |
+| `core/loottable/analysis/LootTableCompiler` | 单表 JSON → 上下文无关的编译产物 |
+| `core/loottable/analysis/LootParseUtil` | 条件分析、函数链拼接与类型规范化的唯一实现 |
+| `core/loottable/catalog/LootTableProjector` | 沿引用把编译产物链接起来（首跳归属、条件继承顺序、函数继承与降级） |
+| `core/loottable/catalog/Probability` | 概率值 sealed 类型（四态），构造即校验 |
+| `core/loottable/catalog/CatalogQueryIndex` | 子树物品等跨表聚合的唯一入口 |
+| `core/loottable/signature/LootResultSignature` | 进度匹配与持久化的核心 |
+| `core/loottable/simulation/LootProbabilitySimulator` | 单输入模拟引擎 |
+| `core/loottable/simulation/LootProbabilitySimulationWorker` | 主线程 tick 驱动（双优先级队列、去重键 `(表, 输入键)`） |
+| `core/loottable/simulation/SimulationConstraintCatalog` | 目录签发的约束描述（场景/工具/附魔上限/抽样档位），**不枚举候选输入** |
+| `core/loottable/simulation/PathHintAnalyzer` | 静态信息性提示 + 基准值→展示值派生 |
+| `core/loottable/simulation/ProbabilityFormat` | 概率值与声明触发率 → 展示文本（唯一格式化入口，仅 UI 边界调用） |
+| `core/loottable/injection/ArchaeologyLootInjectors` | 全局注入器单例（平台差异化） |
+| `core/loottable/condition/ModLootConditions` | 自定义条件类型的注册与展示描述 |
 
 ## 4. 目录数据结构
 
-[`LootTableCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/catalog/LootTableCatalog.java) 定义跨模块共享的记录类型，供 `journal`、`network`、`client`、`command` 统一引用：
+[`LootTableCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/catalog/LootTableCatalog.java) 定义跨模块共享的记录类型，供 `journal`、`network`、`client`、`command` 统一引用：
 
 ```
 TableDefinition{ id, displayName, type, items, simulationCount,
@@ -92,7 +92,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 
 ### 4.1 概率值类型
 
-概率**不是**字符串。[`Probability`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/catalog/Probability.java) 是 sealed 值类型，**四个**互斥状态取代了原先共用一个字符串的五种语义：
+概率**不是**字符串。[`Probability`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/catalog/Probability.java) 是 sealed 值类型，**四个**互斥状态取代了原先共用一个字符串的五种语义：
 
 | 状态 | 含义 | 展示文本 |
 |---|---|---|
@@ -108,7 +108,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 
 ## 5. 收录范围匹配
 
-[`LootTablePattern`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/catalog/LootTablePattern.java) 把配置字符串解析为可匹配的规则：
+[`LootTablePattern`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/catalog/LootTablePattern.java) 把配置字符串解析为可匹配的规则：
 
 | 语法 | 含义 | 示例 |
 |---|---|---|
@@ -127,7 +127,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 
 ## 6. 战利品注入
 
-[`ArchaeologyLootInjectors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/injection/ArchaeologyLootInjectors.java) 是全局单例注入器（接口 `ArchaeologyLootInjector` 为 `@FunctionalInterface`，签名 `(tableId, drops, random) -> {}`；Fabric 实现在 `fabric/.../loot/`，NeoForge GLM 在 `neoforge/.../loot/`），**平台差异化**：
+[`ArchaeologyLootInjectors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/injection/ArchaeologyLootInjectors.java) 是全局单例注入器（接口 `ArchaeologyLootInjector` 为 `@FunctionalInterface`，签名 `(tableId, drops, random) -> {}`；Fabric 实现在 `fabric/.../loot/`，NeoForge GLM 在 `neoforge/.../loot/`），**平台差异化**：
 
 | 平台 | 注入器 | 机制 |
 |---|---|---|
@@ -142,7 +142,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 
 - `ModLootConditions` 注册唯一规范名 `unsuspiciousblock:tool_enchantment` 并登记展示描述（Fabric 用 `Registry.register`，NeoForge 用 `DeferredRegister`）。`ToolEnchantmentCondition` 是**一个类型表达完整语义**的条件：`enchantment` 必填、`min_level` 可选默认 1（`Codec.intRange(1, 255)`）、`chance`（`LevelBasedValue`）缺省表示纯资格门槛。因此"需要工具附魔"与"按该附魔等级掷概率"不再需要并列两条条件，tooltip 也从相邻两行变成"一行附魔展示名 + 按需的等级/概率子行"。
 - **门槛只有一份声明**：`RuntimeLootLinks.MUD_DREDGING_GATE`（`enchantment` = 泥地打捞、`min_level` 缺省 1、`chance` = `linear(0.2, 0.1)`）。Fabric 在 fishing 表追加父表 pool；NeoForge 的 GLM 数据只留 `loot_table_id` 过滤，同一门槛在 `FishingLootModifier.doApply` 判定。**被注入子表 `gameplay/fishing/mud_dredging` 自己的池不写条件**，只描述"进来之后产出什么"——父表页答"能不能进本表"，子表页答"进来之后各物品的份额"。
-- **条件类型的注册时序约束**：必须在 `UnsuspiciousBlockCommon.init()` 之前完成（见 [架构总览](../foundation/architecture.md) 的初始化流程）。
+- **条件类型的注册时序约束**：必须在 `core/bootstrap/UnsuspiciousBlockCommon.init()` 之前完成（见 [架构总览](../foundation/architecture.md) 的初始化流程）。
 - 引用未注册条件类型会让**整张表**解析失败并不注册，因此**资源与注册名必须同批发布**。旧注册名 `mud_dredging` / `random_chance_with_tool_enchantment` 与旧 `swamp` 字段都已删除，不承诺跨版本兼容。
 
 ## 8. 函数规则描述与运行时观测

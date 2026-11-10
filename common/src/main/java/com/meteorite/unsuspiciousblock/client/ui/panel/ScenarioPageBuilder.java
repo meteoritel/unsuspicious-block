@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import net.minecraft.network.chat.MutableComponent;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.meteosuikit.api.control.*;
@@ -10,13 +11,13 @@ import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.meteosuikit.api.style.*;
 import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
-import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranch;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -193,7 +194,7 @@ final class ScenarioPageBuilder {
                 List.of(condition.description(), Component.literal(condition.conditionType().toString())), null, null));
         for (var child : ConditionTree.displayChildren(condition)) addCondition(nodes, child, indent + INDENT_STEP, self, secondary);
     }
-    private static net.minecraft.network.chat.MutableComponent text(String key, Object... args) {
+    private static MutableComponent text(String key, Object... args) {
         return ScenarioSimulationClientState.text(key, args).copy();
     }
 }

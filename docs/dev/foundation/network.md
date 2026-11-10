@@ -4,33 +4,34 @@
 
 ## 声明与数据流
 
-[`ModPayloads`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/network/ModPayloads.java) 是通道与协议版本的声明源：
+[`core.network.ModPayloads`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/network/ModPayloads.java) 统一维护通道与协议版本：
 
 | 声明 | 消费方式 |
 |---|---|
-| `C2S_PAYLOADS` | 类型、codec 与服务端 handler，处理器校验请求并转交业务服务 |
-| `S2C_DECLARATIONS` | 类型、codec 与惰性客户端 handler 工厂 |
-| `S2C_SPECS` | 服务端使用的类型与 codec 视图 |
-| `Client.S2C_PAYLOADS` | 客户端使用的接收绑定视图 |
+| `C2S_PAYLOADS` | 类型、codec 与服务端 handler，校验请求后转交业务服务 |
+| `S2C_PAYLOADS` | 类型、codec 与基于 `ClientPayloadReceiver` 的中立分发函数 |
+| `S2C_SPECS` | 从同一 S2C 声明派生的服务端类型与 codec 视图 |
 
-初始化检查同方向通道唯一，客户端绑定缺失时报告通道。具体 payload 直接查声明；笔记同步见[考古笔记系统](../subsystems/journal.md)，模拟见[战利品表系统](../subsystems/loottable.md)，猫族与附魔同步见对应子系统。
+公共 [`ClientPayloadReceiver`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/network/ClientPayloadReceiver.java) 只使用共享 payload。客户端 [`ClientPayloadHandlers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/network/ClientPayloadHandlers.java) 实现接收契约，将消息交给既有状态所有者。平台客户端入口在接收回调中提供该实现；公共声明初始化保持独立于客户端 Implementation。
+
+初始化检查同方向通道唯一。具体 payload 查声明；笔记、模拟、猫族与附魔的状态归属和同步时机见对应子系统。
 
 ## 端隔离与平台注册
-
-`S2C_DECLARATIONS` 的工厂通过 lambda 函数体访问 `ClientHandlers`，构造声明和服务端视图时保持惰性。客户端状态的 method reference 在 `ClientHandlers` 初始化时构造，`Client` 由平台客户端入口消费。
 
 | 平台入口 | 注册职责 |
 |---|---|
 | Fabric 公共入口 | 登记 C2S/S2C 类型与 codec，安装 C2S receiver |
-| Fabric 客户端入口 | 遍历 `Client.S2C_PAYLOADS` 安装 S2C receiver |
+| Fabric 客户端入口 | 遍历 `S2C_PAYLOADS`，绑定客户端 receiver |
 | NeoForge 公共入口 | 登记 C2S；专用服务端登记 S2C 类型与 codec |
-| NeoForge 客户端入口 | 登记 S2C 类型、codec 与 handler |
+| NeoForge 客户端入口 | 登记 S2C 类型、codec 与客户端 receiver |
 
-NeoForge 握手要求服务端具备客户端声明的必需通道。客户端入口受环境限制，专用服务端因此自行登记 clientbound codec；同一通道在一个物理端登记一次。两端 registrar 使用 `ModPayloads.PROTOCOL_VERSION`。
+NeoForge 握手要求服务端具备客户端声明的必需通道。同一通道在一个物理端登记一次，两端 registrar 使用 `ModPayloads.PROTOCOL_VERSION`。
 
-Fabric C2S 通过 `context.server().execute(...)` 调度到服务器线程；NeoForge handler 使用主线程执行。状态修改由服务端业务入口负责。
+客户端发送通过 [`ClientNetwork`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/network/ClientNetwork.java)；`ModClientLifecycle.install` 接收当前 Loader 的发送函数。Fabric 客户端直接使用 `ClientPlayNetworking`，NeoForge 客户端使用 `PacketDistributor`。公共 `Services.NETWORK` 仅提供服务端向玩家发送消息的能力。
 
-源码检查按实际客户端所有者判断引用，规则见[仓库工具](../../../tools/README.md)。惰性工厂的执行与类加载顺序按平台入口审查。
+Fabric C2S 调度到服务器线程，NeoForge handler 使用主线程执行。S2C 保留原连接身份，经 `JournalClientConnection` 在客户端 tick 应用；断连清理维持连接代次，迟到回调按归属丢弃。
+
+源码引用与端归属规则见[仓库工具](../../../tools/README.md)，动态接入和加载相位由平台入口及运行验收核对。
 
 ## 目录线格式
 
@@ -77,7 +78,7 @@ Fabric C2S 通过 `context.server().execute(...)` 调度到服务器线程；Neo
 
 1. 在 `payload/c2s/` 或 `payload/s2c/` 创建 payload 类（含 `TYPE` 与 `STREAM_CODEC`）。
 2. C2S：在 `ModPayloads.C2S_PAYLOADS` 加条目（type + codec + handler）。
-3. S2C：在 `S2C_DECLARATIONS` 加一条类型、codec 与惰性 handler 工厂，在 `ClientHandlers` 提供客户端绑定；两个消费视图自动派生。
+3. S2C：在 `S2C_PAYLOADS` 加一条类型、codec 与接收契约分发函数；在 `ClientPayloadReceiver` 声明对应接收方法，由 `ClientPayloadHandlers` 实现。服务端 codec 视图从同一声明派生。
 4. **无需修改平台代码**，两端自动遍历注册。
 5. 传输目录数据时**必须**走 `CatalogStreamCodec`，不要另写一份字段顺序。
 6. 线字段变更时同步更新 `ModPayloads.PROTOCOL_VERSION`，核对共用 codec 和两端接收绑定。
@@ -87,7 +88,7 @@ Fabric C2S 通过 `context.server().execute(...)` 调度到服务器线程；Neo
 ## 约束与陷阱
 
 - payload 完整声明以 `ModPayloads` 为准，扩展后核对类型、codec 和绑定视图。
-- 服务端不得引用 `ModPayloads.Client`，否则服务端 classpath 会引入客户端类。
+- 公共声明和服务端入口只使用共享接收契约，客户端 Implementation 由客户端入口显式提供。
 - 需要"每玩家独立"的数据不要写进共享缓存或共享目录（见「按需模拟的网络约定」）。
 
 ## 相关文档

@@ -5,7 +5,7 @@
 
 ## 1. 羁绊累积与惩罚
 
-[`CatFavorAction`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatFavorAction.java) 枚举统一管理所有行为。
+[`CatFavorAction`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/CatFavorAction.java) 枚举统一管理所有行为。
 
 ### 1.1 正向行为（关系建立后生效，独立冷却）
 
@@ -39,7 +39,7 @@
 
 ## 2. 被动能力评估
 
-[`CatPassiveAbilities.serverTick`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/CatPassiveAbilities.java) 每玩家每 tick 评估，**服务端权威**：
+[`CatPassiveAbilities.serverTick`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/CatPassiveAbilities.java) 每玩家每 tick 评估，**服务端权威**：
 
 ```
 serverTick(player)
@@ -83,7 +83,7 @@ mixin 通过 `hasActiveDeterrence(player)` / `hasLightStep(player)` 等静态方
 
 ## 3. 状态持久化与迁移
 
-[`CatFavorState`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/state/CatFavorState.java) 通过 mixin 附加到玩家 NBT：
+[`CatFavorState`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/state/CatFavorState.java) 通过 mixin 附加到玩家 NBT：
 
 **持久化字段**（随存档保存）：`relationshipEstablished`、`catBond`（0-100）、`lastTriggerGameTime`（各行为冷却 `EnumMap<CatFavorAction, Long>`）、`deterrenceDisabled` / `lightStepDisabled`（偏好开关）、`nineLivesCount`（0-9）、`initialBestFriendLifeGranted`。
 

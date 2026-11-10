@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import java.util.Objects;
+import java.util.function.Consumer;
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.control.UiControl;
@@ -16,15 +20,15 @@ import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
-import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
-import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.FunctionObservationSummary;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -50,8 +54,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
     private boolean controlsDirty = true;
     private Runnable onNavigate = () -> { };
-    private java.util.function.Consumer<ResourceLocation> onRecommend = target -> { };
-    public void setActions(Runnable navigate, java.util.function.Consumer<ResourceLocation> recommend) {
+    private Consumer<ResourceLocation> onRecommend = target -> { };
+    public void setActions(Runnable navigate, Consumer<ResourceLocation> recommend) {
         onNavigate = navigate; onRecommend = recommend;
     }
     @Override public UiChildren<UiControl> inputChildren() { return controls.inputChildren(); }
@@ -74,7 +78,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 UiRect r = recommendationBounds(cell);
                 control.setBounds(r.x(), r.y(), r.width(), r.height());
                 JournalControls.configureHotspot(control,
-                        com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("recommend.title"),
+                        ScenarioSimulationClientState.text("recommend.title"),
                         () -> onRecommend.accept(child.tableId()));
             }
         }
@@ -489,8 +493,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             return;
         }
         renderPreviewStacks(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
-        com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi.icon(
-                com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi.Icon.RECOMMEND)
+        ScenarioUi.icon(
+                ScenarioUi.Icon.RECOMMEND)
                 .render(guiGraphics, cellX + cellW - 11, cellY + 3);
         PanelTextMetrics.Measured childName = this.metrics.measure(
                 displayNameText(child, child.displayName()), font);
@@ -728,7 +732,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (!(cell.content() instanceof ChildTableEntry child)) return null;
         if (!child.unlocked()) return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
         if (recommendationBounds(cell).contains(mouseX, mouseY)) return List.of(
-                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("recommend.title"));
+                ScenarioSimulationClientState.text("recommend.title"));
         return JournalTooltipBuilder.buildChildTable(child.displayName(), child.tableId(), child.probability(),
                 child.scenarioProbabilities(), child.conditions(), child.luckAffected());
     }
@@ -889,7 +893,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             }
             return this.acquisitionPaths.stream()
                     .map(LootAcquisitionPath::sourceChildTable)
-                    .filter(java.util.Objects::nonNull)
+                    .filter(Objects::nonNull)
                     .findFirst()
                     .orElse(null);
         }

@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
-import com.meteorite.unsuspiciousblock.entity.SwordsmanCat;
+import com.meteorite.unsuspiciousblock.core.entity.SwordsmanCat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.CatModel;

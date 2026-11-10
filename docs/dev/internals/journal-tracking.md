@@ -5,7 +5,7 @@
 
 ## 1. 追踪上下文
 
-[`LootTrackingContext`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/tracking/LootTrackingContext.java) 是不可变 record，描述当前追踪的根表与子表链路：
+[`LootTrackingContext`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/tracking/LootTrackingContext.java) 是不可变 record，描述当前追踪的根表与子表链路：
 
 ```
 LootTrackingContext{

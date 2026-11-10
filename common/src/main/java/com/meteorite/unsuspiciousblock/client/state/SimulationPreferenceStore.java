@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.state;
 import com.google.gson.*;
-import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
 import net.minecraft.resources.ResourceLocation;
 import java.util.*;

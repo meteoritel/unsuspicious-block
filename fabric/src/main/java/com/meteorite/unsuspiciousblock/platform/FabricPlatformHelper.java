@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.platform;
 
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.platform.loot.FabricLootInjectionDescriptions;
+import java.util.List;
+import net.minecraft.resources.ResourceLocation;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import org.jetbrains.annotations.Nullable;
@@ -15,9 +19,9 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public java.util.List<com.meteorite.unsuspiciousblock.loottable.injection.DeclaredLootInjection> describeLootInjections(
-            net.minecraft.resources.ResourceLocation table) {
-        return com.meteorite.unsuspiciousblock.loot.FabricLootInjectionDescriptions.describe(table);
+    public List<DeclaredLootInjection> describeLootInjections(
+            ResourceLocation table) {
+        return FabricLootInjectionDescriptions.describe(table);
     }
 
     @Override

@@ -44,7 +44,7 @@ event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
 | 清单类 | 用途 | 遍历方法 |
 |---|---|---|
-| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `Client.S2C_PAYLOADS` |
+| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `S2C_PAYLOADS` |
 | `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(BiConsumer)` |
 | `ModModelLayers` | 模型层注册清单 | `forEach(BiConsumer)` |
 

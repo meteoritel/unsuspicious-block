@@ -7,7 +7,7 @@
 
 | 层 | 位置 |
 |---|---|
-| 入口 | `UnsuspiciousBlockFabricClient` / `UnsuspiciousBlockNeoForgeClient`（两端职责对称） |
+| 入口 | `client/UnsuspiciousBlockFabricClient` / `client/UnsuspiciousBlockNeoForgeClient`（两端职责对称） |
 | UI 根与分层 | `client/ui/ArchaeologyJournalUi`（注册 opener）、`JournalBookBackground`、`PotteryPreviewRenderer`；分层目录 `client/ui/{entry,layout,panel,screen,support,toast,widget,tooltip,overlay,theme}/`（清单见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)） |
 | 独立 UI kit | Maven 消费 `com.meteorite.meteosuikit.api`；`client/ui/theme/` 提供宿主主题与控件皮肤 |
 | 客户端状态 | `client/state/`：`ArchaeologyJournalKeyHandler`、`HandOfCatClientState`、`CatHandClientState`、`ReaderScanHudState`、`SuspiciousReaderClientState`、`ScenarioSimulationClientState`、`SimulationPreferenceStore`、`JournalHoveredItemProvider` |
@@ -15,9 +15,9 @@
 | HUD 与模型 | `client/hud/`：`CatFavorHud`、`SuspiciousReaderHud`；`client/model/MessengerCatClothesModel`、`client/renderer/layer/`（项圈与职业装饰层） |
 | 渲染 | `client/renderer/`：`ModEntityRenderers`、`ModModelLayers`、各实体渲染器、`SuspiciousReaderRangeHighlight`、`CatFavorShieldRenderer`、`ShimmerSurfaceRenderer`（淘洗，见 [淘洗系统](panning.md)） |
 | 分解预览 | `client/anvil/`、`client/grindstone/`（各含 `Breakdown` / `Calculator` / 行构建器 / `TooltipAppender`）；两者共用的编排层为 `client/tooltip/BreakdownPreview` |
-| tooltip 基础 | `text/TooltipBuilder`（语义色表唯一出口，规范见 [文本格式规范](../foundation/text-format.md)）；`client/tooltip/` 另有 `BreakdownPreview` 与客户端桥实现 `ClientTooltipHooks` |
-| 按键与网络 | `client/keybind/ModKeyBindings`；S2C 接收器遍历 `ModPayloads.Client.S2C_PAYLOADS`（清单见 [网络与同步](../foundation/network.md)） |
-| Mixin | `mixin/client/`：`AbstractContainerScreenAccessor`、`EnchantmentScreenMixin`、`ClientLanguageMixin`、`HumanoidPanningMixin`；Fabric 另有 `ItemInHandPanningMixin`。全清单见 [Mixin](../foundation/mixin.md) |
+| tooltip 基础 | `core/text/TooltipBuilder`（语义色表唯一出口，规范见 [文本格式规范](../foundation/text-format.md)）；`client/tooltip/` 另有 `BreakdownPreview` 与客户端桥实现 `ClientTooltipHooks` |
+| 按键与网络 | `client/keybind/ModKeyBindings`；S2C 接收器遍历 `ModPayloads.S2C_PAYLOADS`（清单见 [网络与同步](../foundation/network.md)） |
+| Mixin | `client/mixin/`：`AbstractContainerScreenAccessor`、`EnchantmentScreenMixin`、`ClientLanguageMixin`、`HumanoidPanningMixin`；Fabric 另有 `ItemInHandPanningMixin`。全清单见 [Mixin](../foundation/mixin.md) |
 | 平台差异 | 按键注册：`KeyBindingHelper` vs `RegisterKeyMappingsEvent`；GUI 内按键：`ScreenKeyboardEvents` vs `ScreenEvent.KeyPressed.Pre`；第一人称淘盘动画：事件 vs mixin；世界/HUD 渲染阶段事件名不同 |
 
 共享安装与连接生命周期由 `client/ModClientLifecycle` 负责：`install` 安装 tooltip 桥、语言存储、淘洗表现、笔记打开器和通知；`tick` 驱动客户端状态；`disconnect` 统一复位。Fabric 客户端初始化与 NeoForge client setup 各绑定一次；按键、渲染、菜单和 tooltip 工厂仍遵守平台事件相位。
@@ -61,11 +61,11 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 | `client/hud/CatFavorHud` / `SuspiciousReaderHud` | 猫之恩惠 HUD；解析仪扫描汇总与目标详情 HUD |
 | `client/state/ReaderScanHudState` | 扫描结果、图标分组、聚焦目标与描边的统一生命周期 |
 | `client/keybind/ModKeyBindings` | 客户端按键定义与注册清单 |
-| `text/TooltipBuilder` | 语义色常量 + 五段式构建器；客户端能力（Shift 检测、打开界面、猫族缓存）经 `text/ClientTooltipBridge` 桥接 |
+| `core/text/TooltipBuilder` | 语义色常量 + 五段式构建器；客户端能力（Shift 检测、打开界面、猫族缓存）经 `core/text/ClientTooltipBridge` 桥接 |
 
 ## 4. 客户端初始化
 
-两个平台客户端入口职责高度对称（见 [架构总览](../foundation/architecture.md) 的客户端初始化），都完成：按键注册、渲染器/模型层注册、Screen 注册、S2C 接收器注册、Tooltip 组件注册、HUD/世界渲染注册、客户端 tick 驱动、断连重置，以及 `ClientTooltipBridge.install(...)` 与三条解锁/完成通知回调的注册。关键清单模式（与 [注册架构](../foundation/registration.md) 一致，平台客户端自动遍历）：`ModEntityRenderers.REGISTRY_MANIFEST`（实体渲染器）、`ModModelLayers`（模型层 `LayerDefinition`）、`ModPayloads.Client.S2C_PAYLOADS`（S2C 接收器）。
+两个平台客户端入口职责高度对称（见 [架构总览](../foundation/architecture.md) 的客户端初始化），都完成：按键注册、渲染器/模型层注册、Screen 注册、S2C 接收器注册、Tooltip 组件注册、HUD/世界渲染注册、客户端 tick 驱动、断连重置，以及 `ClientTooltipBridge.install(...)` 与三条解锁/完成通知回调的注册。关键清单模式（与 [注册架构](../foundation/registration.md) 一致，平台客户端自动遍历）：`ModEntityRenderers.REGISTRY_MANIFEST`（实体渲染器）、`ModModelLayers`（模型层 `LayerDefinition`）、`ModPayloads.S2C_PAYLOADS`（S2C 接收器）。
 
 ## 5. 客户端状态管理
 
@@ -185,7 +185,7 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 
 ## 15. 约束与陷阱
 
-- **服务端严禁引用 `client/`**：客户端类只在客户端入口或被环境守卫的路径引用；两端可达的物品/方块类需要客户端能力（Shift 检测、打开笔记界面、猫族缓存）时，一律走 `text/ClientTooltipBridge`，实现由客户端入口安装。
+- **服务端严禁引用 `client/`**：客户端类只在客户端入口或被环境守卫的路径引用；两端可达的物品/方块类需要客户端能力（Shift 检测、打开笔记界面、猫族缓存）时，一律走 `core/text/ClientTooltipBridge`，实现由客户端入口安装。
 - **超宽文本**：交互区使用 kit 滚动或完整 tooltip；非交互行使用带省略号裁剪。
 - **缓存失效**：业务树按目录/请求版本构建，字体、语言和资源变化时刷新文本与几何；不逐帧重建节点。
 - **唯一输入所有权**：当前 scope 持有焦点和持续交互；隐藏、禁用、切域和关屏结束会话。按钮在配对释放时激活。

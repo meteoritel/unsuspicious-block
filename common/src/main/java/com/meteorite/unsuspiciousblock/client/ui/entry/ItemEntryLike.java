@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import net.minecraft.resources.ResourceLocation;
 
 public interface ItemEntryLike {

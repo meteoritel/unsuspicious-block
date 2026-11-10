@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
-import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncReaderScanResultPayload.ScanEntry;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncReaderScanResultPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncReaderScanResultPayload.ScanEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;

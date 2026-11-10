@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
-import com.meteorite.unsuspiciousblock.entity.LanternPet;
+import com.meteorite.unsuspiciousblock.core.entity.LanternPet;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.renderer.MultiBufferSource;

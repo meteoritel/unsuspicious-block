@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.item.SuspiciousReaderItem;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.item.SuspiciousReaderItem;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;

@@ -13,7 +13,7 @@ import java.util.stream.Stream;
  */
 public final class FabricAccessoryHelper implements IAccessoryHelper {
     private static final String TRINKETS_HELPER =
-            "com.meteorite.unsuspiciousblock.plugin.trinket.TrinketsAccessoryHelper";
+            "com.meteorite.unsuspiciousblock.platform.plugin.trinket.TrinketsAccessoryHelper";
 
     private final IAccessoryHelper delegate;
 

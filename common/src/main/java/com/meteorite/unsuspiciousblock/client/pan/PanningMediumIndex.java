@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.pan;
 
-import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
-import com.meteorite.unsuspiciousblock.pan.variant.PanningMedium;
+import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.core.pan.variant.PanningMedium;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;

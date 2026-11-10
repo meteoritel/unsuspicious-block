@@ -40,14 +40,14 @@
 
 | 子系统 | 一句话职责 | 主要代码包 |
 |---|---|---|
-| [考古笔记](subsystems/journal.md) | 笔记目录构建、玩家进度、战利品追踪、日志 | `journal/` `network/journal/` |
-| [战利品表](subsystems/loottable.md) | 表解析、签名、收录判定、概率模拟、注入 | `loottable/` |
-| [进度（成就）](subsystems/advancement.md) | 手写进度 JSON 与代码授予桥 | `achievement/` |
-| [附魔](subsystems/enchantment.md) | 附魔效果框架、四种附魔、失落书页锻造、揭示 | `enchantment/` |
-| [猫族关系](subsystems/cat-favor.md) | 羁绊阶段、恩惠能力、九命、往礼、猫猫商人 | `cat/` |
-| [实体与 AI](subsystems/entities-world.md) | 灵体猫三职业与 AI、灯笼宠物、骨块追踪、猫之手结构 | `entity/` `world/` |
-| [淘洗](subsystems/panning.md) | 淘洗点变体、生成与账本、淘洗结算、客户端表现 | `pan/` `entity/`（WaterShimmer） |
-| [方块与物品](subsystems/blocks-items.md) | 可疑方块、陶轮、标本箱、回溯粉、便携容器、自定义配方 | `block/` `item/` `blockentity/` `specimen/` `pottery/` `recipe/` `inventory/` |
+| [考古笔记](subsystems/journal.md) | 笔记目录构建、玩家进度、战利品追踪、日志 | `core/journal/` `core/network/journal/` |
+| [战利品表](subsystems/loottable.md) | 表解析、签名、收录判定、概率模拟、注入 | `core/loottable/` |
+| [进度（成就）](subsystems/advancement.md) | 手写进度 JSON 与代码授予桥 | `core/achievement/` |
+| [附魔](subsystems/enchantment.md) | 附魔效果框架、四种附魔、失落书页锻造、揭示 | `core/enchantment/` |
+| [猫族关系](subsystems/cat-favor.md) | 羁绊阶段、恩惠能力、九命、往礼、猫猫商人 | `core/cat/` |
+| [实体与 AI](subsystems/entities-world.md) | 灵体猫三职业与 AI、灯笼宠物、骨块追踪、猫之手结构 | `core/entity/` `core/world/` |
+| [淘洗](subsystems/panning.md) | 淘洗点变体、生成与账本、淘洗结算、客户端表现 | `core/pan/` `core/entity/`（WaterShimmer） |
+| [方块与物品](subsystems/blocks-items.md) | 可疑方块、陶轮、标本箱、回溯粉、便携容器、自定义配方 | `core/block/` `core/item/` `core/blockentity/` `core/specimen/` `core/pottery/` `core/recipe/` `core/inventory/` |
 | [客户端与 GUI](subsystems/client-ui.md) | 客户端基础设施、笔记 GUI、HUD、渲染器、按键 | `client/` |
 | （底座，非子系统） | 三模块划分、初始化、构建、横切原则 | [架构总览](foundation/architecture.md) |
 

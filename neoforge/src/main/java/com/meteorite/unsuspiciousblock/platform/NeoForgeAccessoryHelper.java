@@ -12,7 +12,7 @@ import java.util.stream.Stream;
  */
 public final class NeoForgeAccessoryHelper implements IAccessoryHelper {
     private static final String CURIOS_HELPER =
-            "com.meteorite.unsuspiciousblock.plugin.curio.CuriosAccessoryHelper";
+            "com.meteorite.unsuspiciousblock.platform.plugin.curio.CuriosAccessoryHelper";
 
     private final IAccessoryHelper delegate;
 

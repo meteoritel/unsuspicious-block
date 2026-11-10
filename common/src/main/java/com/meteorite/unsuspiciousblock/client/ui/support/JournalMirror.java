@@ -1,14 +1,15 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import net.minecraft.resources.ResourceLocation;
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.network.journal.JournalLogSnapshotCodec;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncJournalLogTableChunkPayload;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogSnapshotCodec;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -272,8 +273,8 @@ public final class JournalMirror {
         private final UUID snapshotId;
         private final int expectedTableCount;
         private final ArchaeologyJournalLogState state = new ArchaeologyJournalLogState();
-        private final Map<net.minecraft.resources.ResourceLocation, ChunkAccumulator> tables = new HashMap<>();
-        private final Set<net.minecraft.resources.ResourceLocation> completedTables = new HashSet<>();
+        private final Map<ResourceLocation, ChunkAccumulator> tables = new HashMap<>();
+        private final Set<ResourceLocation> completedTables = new HashSet<>();
         private int compressedBytes;
         private boolean ended;
 

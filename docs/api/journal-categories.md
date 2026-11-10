@@ -44,6 +44,6 @@
 
 ## 实现与相关文档
 
-- [分类加载器](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java)
+- [分类加载器](../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/catalog/JournalCategoryLoader.java)
 - [考古笔记系统](../dev/subsystems/journal.md)
 - [战利品表系统](../dev/subsystems/loottable.md)

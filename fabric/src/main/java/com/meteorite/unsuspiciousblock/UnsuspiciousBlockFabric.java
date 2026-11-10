@@ -1,34 +1,36 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.bootstrap.ModServerLifecycle;
-import com.meteorite.unsuspiciousblock.bootstrap.ModContent;
+import com.meteorite.unsuspiciousblock.core.bootstrap.UnsuspiciousBlockCommon;
+
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModServerLifecycle;
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.flag.FeatureFlags;
 import java.util.function.BiFunction;
-import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
-import com.meteorite.unsuspiciousblock.blockentity.BlockEntityRegistrar;
-import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
-import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.world.ModFeatures;
+import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlockInteractions;
+import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntityRegistrar;
+import com.meteorite.unsuspiciousblock.core.command.UsbCommand;
+import com.meteorite.unsuspiciousblock.core.entity.EntityRegistrar;
+import com.meteorite.unsuspiciousblock.core.world.NaturalBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.core.world.ModFeatures;
 import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
 import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.levelgen.GenerationStep;
-import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
-import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
-import com.meteorite.unsuspiciousblock.loot.BuriedTreasureLootInjection;
-import com.meteorite.unsuspiciousblock.loot.FabricArchaeologyLootInjector;
-import com.meteorite.unsuspiciousblock.loot.FishingLootInjection;
-import com.meteorite.unsuspiciousblock.loot.VillageWeaponsmithLootInjection;
-import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
-import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
+import com.meteorite.unsuspiciousblock.platform.inventory.FabricInventoryPresenceAdapter;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.loottable.injection.ArchaeologyLootInjectors;
+import com.meteorite.unsuspiciousblock.platform.loot.BuriedTreasureLootInjection;
+import com.meteorite.unsuspiciousblock.platform.loot.FabricArchaeologyLootInjector;
+import com.meteorite.unsuspiciousblock.platform.loot.FishingLootInjection;
+import com.meteorite.unsuspiciousblock.platform.loot.VillageWeaponsmithLootInjection;
+import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
+import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
+import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
-import com.meteorite.unsuspiciousblock.platform.DataPackReloadListener;
+import com.meteorite.unsuspiciousblock.core.bootstrap.DataPackReloadListener;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -136,7 +138,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         // 通过反射跨越可选依赖边界，避免主入口在 Trinkets 缺失时解析其 API。
         if (Services.PLATFORM.isModLoaded("trinkets")) {
             OptionalModIntegration.instantiate(
-                    "com.meteorite.unsuspiciousblock.plugin.trinket.FabricTrinketsIntegration",
+                    "com.meteorite.unsuspiciousblock.platform.plugin.trinket.FabricTrinketsIntegration",
                     Runnable.class).run();
         }
 

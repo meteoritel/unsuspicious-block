@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.block.PotteryWheelBlock;
-import com.meteorite.unsuspiciousblock.blockentity.PotteryWheelBlockEntity;
+import com.meteorite.unsuspiciousblock.core.block.PotteryWheelBlock;
+import com.meteorite.unsuspiciousblock.core.blockentity.PotteryWheelBlockEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;

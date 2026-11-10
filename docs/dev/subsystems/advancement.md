@@ -1,6 +1,6 @@
 # 进度（成就）系统
 
-> 手写进度 JSON + 代码授予桥，覆盖 `achievement/` 包、`IAchievementHelper` 平台抽象与收集类判定。
+> 手写进度 JSON + 代码授予桥，覆盖 `core/achievement/` 包、`IAchievementHelper` 平台抽象与收集类判定。
 > 玩家可见入口：原版进度树（`Esc` → 进度），以及配方解锁提示。
 > 本文件是进度子系统的唯一权威；收集类进度依赖的玩家状态与目录见 [考古笔记系统](journal.md)，文本与本地化键规范见 [文本格式规范](../foundation/text-format.md)。
 
@@ -9,12 +9,12 @@
 | 层 | 位置 |
 |---|---|
 | 进度数据 | `common/src/main/resources/data/unsuspiciousblock/advancement/`（`adventure/` 10 条、`challenges/` 3 条、`recipes/unsuspiciousblock/` 7 条配方解锁） |
-| 授予桥 | `achievement/AchievementManager.java`（静态桥）、`achievement/ModAchievements.java`（枚举清单）、`achievement/ModAchievement.java`（元数据接口） |
-| 平台 SPI | `platform/services/IAchievementHelper.java`；实现 `platform/VanillaAchievementHelper.java`（common 自实现，**双平台共用**） |
-| 收集类判定 | `journal/tracking/ArchaeologyChallengeChecker.java` |
-| 授予调用点 | `blockentity/PotteryWheelBlockEntity.java:262`、`item/SuspiciousReaderItem.java:327`、`mixin/container/SmithingMenuMixin.java:48`、`network/journal/JournalLogHandler.java:93`、`ArchaeologyChallengeChecker.java` |
+| 授予桥 | `core/achievement/AchievementManager.java`（静态桥）、`core/achievement/ModAchievements.java`（枚举清单）、`core/achievement/ModAchievement.java`（元数据接口） |
+| 平台 SPI | `platform/services/IAchievementHelper.java`；实现 `core/achievement/VanillaAchievementHelper.java`（common 自实现，**双平台共用**） |
+| 收集类判定 | `core/journal/tracking/ArchaeologyChallengeChecker.java` |
+| 授予调用点 | `core/blockentity/PotteryWheelBlockEntity.java:262`、`core/item/SuspiciousReaderItem.java:327`、`core/mixin/container/SmithingMenuMixin.java:48`、`core/network/journal/JournalLogHandler.java:93`、`ArchaeologyChallengeChecker.java` |
 | 网络 | 无（走原版进度同步） |
-| Mixin | `mixin/container/SmithingMenuMixin.java`（仅用于 `ancient_scholarship` 的授予；全清单见 [Mixin 总览](../foundation/mixin.md)） |
+| Mixin | `core/mixin/container/SmithingMenuMixin.java`（仅用于 `ancient_scholarship` 的授予；全清单见 [Mixin 总览](../foundation/mixin.md)） |
 | 平台差异 | 无。原版 Advancement API 在 Fabric 与 NeoForge 上完全一致，因此不需要按平台分叉 |
 
 ## 2. 数据流
@@ -26,7 +26,7 @@
 AchievementManager.grantIfNotAlready(player, ModAchievements.XXX)
         │  静态桥；未注入平台实现时静默返回
         ▼
-IAchievementHelper ──► VanillaAchievementHelper（common/platform，无平台差异）
+IAchievementHelper ──► VanillaAchievementHelper（core/achievement，无平台差异）
         │                  server.getAdvancements().get(id)
         ▼                  player.getAdvancements().award(holder, criterion)
 原版 Advancement 系统
@@ -37,18 +37,18 @@ IAchievementHelper ──► VanillaAchievementHelper（common/platform，无平
               └─► AchievementManager.grantIfNotAlready(...)
 ```
 
-`AchievementManager.init(new VanillaAchievementHelper())` 由 `UnsuspiciousBlockCommon.init()` 调用（见 [架构总览](../foundation/architecture.md)）。
+`AchievementManager.init(new VanillaAchievementHelper())` 由 `core/bootstrap/UnsuspiciousBlockCommon.init()` 调用（见 [架构总览](../foundation/architecture.md)）。
 
 ## 3. 关键类
 
 | 类 | 职责 |
 |---|---|
-| `achievement/ModAchievement` | 进度元数据接口：`path()` / `criterion()` / `id()` |
-| `achievement/ModAchievements` | 全部需要**代码授予**的进度枚举，共 10 项，给出 advancement 路径与 criterion 键 |
-| `achievement/AchievementManager` | 静态桥：`init` / `grant` / `has` / `grantIfNotAlready` |
+| `core/achievement/ModAchievement` | 进度元数据接口：`path()` / `criterion()` / `id()` |
+| `core/achievement/ModAchievements` | 全部需要**代码授予**的进度枚举，共 10 项，给出 advancement 路径与 criterion 键 |
+| `core/achievement/AchievementManager` | 静态桥：`init` / `grant` / `has` / `grantIfNotAlready` |
 | `platform/services/IAchievementHelper` | 平台抽象 SPI：`grant` / `has` / `revoke` |
-| `platform/VanillaAchievementHelper` | 唯一实现，直接用原版 API |
-| `journal/tracking/ArchaeologyChallengeChecker` | 三项考古收集类进度的判定器，含实时检测与登录补发两个入口 |
+| `core/achievement/VanillaAchievementHelper` | 唯一实现，直接用原版 API |
+| `core/journal/tracking/ArchaeologyChallengeChecker` | 三项考古收集类进度的判定器，含实时检测与登录补发两个入口 |
 
 `ModAchievements` 枚举**只收录需要代码授予的进度**（10 项）。纯触发器驱动的进度（`eye_of_cat`、`it_belongs_in_a_museum`、`see_through_the_sand`）不在此枚举内，由数据包条件自行完成。
 

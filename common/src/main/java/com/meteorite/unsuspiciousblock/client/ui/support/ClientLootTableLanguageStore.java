@@ -2,8 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.loottable.catalog.MissingTranslationKeyExporter;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.MissingTranslationKeyExporter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;

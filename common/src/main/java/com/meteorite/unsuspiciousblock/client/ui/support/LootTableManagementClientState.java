@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
+import java.util.LinkedHashMap;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 
 import java.util.List;
 import java.util.Map;
@@ -60,7 +61,7 @@ public final class LootTableManagementClientState {
 
     private static Map<String, Map<String, String>> copyTranslations(
             Map<String, Map<String, String>> source) {
-        java.util.LinkedHashMap<String, Map<String, String>> copy = new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, Map<String, String>> copy = new LinkedHashMap<>();
         source.forEach((language, values) -> copy.put(language, Map.copyOf(values)));
         return Map.copyOf(copy);
     }

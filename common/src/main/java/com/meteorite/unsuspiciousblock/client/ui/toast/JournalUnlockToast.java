@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
-import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;

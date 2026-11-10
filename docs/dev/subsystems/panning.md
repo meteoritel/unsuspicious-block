@@ -1,6 +1,6 @@
 # 淘洗系统
 
-> `pan/` 包（含变体系统）、`PanItem` 与三把淘盘、`ShimmerEntity` 及其两个变体子类，以及对应的客户端表现、配置与调试指令。
+> `core/pan/` 包（含变体系统）、`PanItem` 与三把淘盘、`ShimmerEntity` 及其两个变体子类，以及对应的客户端表现、配置与调试指令。
 > 本文件是淘洗子系统的唯一权威。逐项配置参数见 [配置与第三方联动](../foundation/config-and-integrations.md)，Mixin 注入点清单见 [Mixin](../foundation/mixin.md)。
 > 自然生成与世界生成算法、每维度账本、客户端渲染细节与生成调试指令见 [淘洗生成、账本与客户端细节](../internals/panning-details.md)。
 
@@ -8,17 +8,17 @@
 
 | 层 | 位置 |
 |---|---|
-| 淘洗点实体 | `entity/ShimmerEntity.java`（抽象基类）、`entity/WaterShimmerEntity.java`、`entity/GlimmerEntity.java` |
-| 变体注册表 | `pan/variant/`：`ShimmerVariant`、`ShimmerVariants`、`AnchorRule`、`SpawnDomain`、`GlowStyle`、`PanningMedium`、`RiverDomain`/`WaterAnchor`、`NetherDomain`/`LavaAnchor` |
-| 生成服务 | `pan/ShimmerSpawnService.java`（静态服务，由平台入口把服务器 tick/停止事件转交）、`pan/ShimmerSpawnStatistics.java`（速率测试） |
-| 世界生成 | `pan/ShimmerFeature.java` + `pan/ShimmerFeatureConfig.java`（变体 id 写在 config）、`pan/ShimmerPlacement.java`（落点采样，两条来源共用） |
-| 账本 | `pan/ShimmerLedger.java`（`SavedData`，按维度存 `unsuspiciousblock_shimmer`） |
-| 结算 | `pan/PanningLootService.java` |
-| 物品 | `item/PanItem.java`（全部淘盘基类）、`item/PanProfile.java`（每把盘的差异） |
+| 淘洗点实体 | `core/entity/ShimmerEntity.java`（抽象基类）、`core/entity/WaterShimmerEntity.java`、`core/entity/GlimmerEntity.java` |
+| 变体注册表 | `core/pan/variant/`：`ShimmerVariant`、`ShimmerVariants`、`AnchorRule`、`SpawnDomain`、`GlowStyle`、`PanningMedium`、`RiverDomain`/`WaterAnchor`、`NetherDomain`/`LavaAnchor` |
+| 生成服务 | `core/pan/ShimmerSpawnService.java`（静态服务，由平台入口把服务器 tick/停止事件转交）、`core/pan/ShimmerSpawnStatistics.java`（速率测试） |
+| 世界生成 | `core/pan/ShimmerFeature.java` + `core/pan/ShimmerFeatureConfig.java`（变体 id 写在 config）、`core/pan/ShimmerPlacement.java`（落点采样，两条来源共用） |
+| 账本 | `core/pan/ShimmerLedger.java`（`SavedData`，按维度存 `unsuspiciousblock_shimmer`） |
+| 结算 | `core/pan/PanningLootService.java` |
+| 物品 | `core/item/PanItem.java`（全部淘盘基类）、`core/item/PanProfile.java`（每把盘的差异） |
 | 数据资源 | `data/unsuspiciousblock/loot_table/gameplay/panning/{river,lava}.json`、`data/unsuspiciousblock/worldgen/{configured_feature,placed_feature}/*shimmer*.json`、`assets/minecraft/atlases/blocks.json`（盘面帧 unstitch） |
 | 客户端 | `client/pan/`（`PanningAnimation` / `PanningVisuals` / `PanningSound` / `PanningSoundController` / `PanningMediumIndex`）、`client/renderer/ShimmerSurfaceRenderer`、`client/renderer/ShimmerRenderer`（空实现占位） |
-| 指令 | `command/ShimmerDebugCommand.java`（`/usb shimmer`，OP 2） |
-| Mixin | `client/HumanoidPanningMixin`（第三人称）、`client/ItemInHandPanningMixin`（Fabric 第一人称） |
+| 指令 | `core/command/ShimmerDebugCommand.java`（`/usb shimmer`，OP 2） |
+| Mixin | `client/mixin/HumanoidPanningMixin`（第三人称）、`client/mixin/fabric/ItemInHandPanningMixin`（Fabric 第一人称） |
 | 平台差异 | 世界生成注入：Fabric 用 `BiomeModifications`，NeoForge 用 `neoforge/biome_modifier/*.json`；第一人称动画：NeoForge 用 `RenderHandEvent`，Fabric 用 mixin；配置：`IPanningConfig` 两端实现（见 [平台抽象](../foundation/platform-spi.md)） |
 
 ## 2. 数据流
@@ -55,15 +55,15 @@
 
 | 类 | 职责 |
 |---|---|
-| `entity/ShimmerEntity` | 淘洗点抽象基类，继承 `Entity`（非生物、不注册属性），继承深度固定 1 层；核心是**锚定** |
-| `pan/variant/ShimmerVariant` | 变体数据：id / anchor / spawnDomain / glow / lootTable / entityType |
-| `pan/variant/ShimmerVariants` | 变体注册表：`ResourceLocation` → 变体，含 id 编解码器与指令用的路径名查询 |
-| `pan/ShimmerSpawnService` | 自然生成与再生的静态服务；`SpawnTrigger` 区分 `NATURAL` / `SPECIAL` / `MANUAL` / `WORLDGEN` |
-| `pan/ShimmerPlacement` | 落点采样，自然生成与世界生成共用，保证"能生成的点"与"能存活的点"一致 |
-| `pan/ShimmerLedger` | 每维度持久化现存点、变体、寿命与采空冷却；含区块空间索引与按变体计数 |
-| `pan/PanningLootService` | 按目标变体抽表结算 |
-| `item/PanItem` / `item/PanProfile` | 全部淘盘的基类 / 每把盘的差异（可采变体、幸运加成、再生概率） |
-| `command/ShimmerDebugCommand` | 生成、统计、冷却、清除四组调试子指令 |
+| `core/entity/ShimmerEntity` | 淘洗点抽象基类，继承 `Entity`（非生物、不注册属性），继承深度固定 1 层；核心是**锚定** |
+| `core/pan/variant/ShimmerVariant` | 变体数据：id / anchor / spawnDomain / glow / lootTable / entityType |
+| `core/pan/variant/ShimmerVariants` | 变体注册表：`ResourceLocation` → 变体，含 id 编解码器与指令用的路径名查询 |
+| `core/pan/ShimmerSpawnService` | 自然生成与再生的静态服务；`SpawnTrigger` 区分 `NATURAL` / `SPECIAL` / `MANUAL` / `WORLDGEN` |
+| `core/pan/ShimmerPlacement` | 落点采样，自然生成与世界生成共用，保证"能生成的点"与"能存活的点"一致 |
+| `core/pan/ShimmerLedger` | 每维度持久化现存点、变体、寿命与采空冷却；含区块空间索引与按变体计数 |
+| `core/pan/PanningLootService` | 按目标变体抽表结算 |
+| `core/item/PanItem` / `core/item/PanProfile` | 全部淘盘的基类 / 每把盘的差异（可采变体、幸运加成、再生概率） |
+| `core/command/ShimmerDebugCommand` | 生成、统计、冷却、清除四组调试子指令 |
 
 ## 4. 变体系统
 
@@ -92,7 +92,7 @@
 
 ## 5. 闪烁的光实体（锚定与来源）
 
-[`ShimmerEntity`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/entity/ShimmerEntity.java) 是抽象基类，具体变体由子类实现 `getVariant()` 声明。核心约束是**锚定**：
+[`ShimmerEntity`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/ShimmerEntity.java) 是抽象基类，具体变体由子类实现 `getVariant()` 声明。核心约束是**锚定**：
 
 - 位置永远锚定在绑定的介质方块（`anchorPos`，存 NBT `AnchorPos`）；任何外力偏移在服务端 tick 中立刻被 `snapToAnchor` 纠正。
 - 绑定方块不再是该变体的依附介质，或上方被占据（`AnchorRule.isValid` 失败）时立刻 `discard`，不产出任何东西。
@@ -120,14 +120,14 @@
 
 ## 6. 淘洗流程与结算
 
-[`PanItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/item/PanItem.java) 是全部淘盘的基类，差异由 [`PanProfile`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/item/PanProfile.java) 提供（三把盘的差异见 [方块与物品](blocks-items.md) 的淘盘一节）：
+[`PanItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/PanItem.java) 是全部淘盘的基类，差异由 [`PanProfile`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/PanProfile.java) 提供（三把盘的差异见 [方块与物品](blocks-items.md) 的淘盘一节）：
 
 - 长按右键对准**本工具可采的**淘洗点，达到 `pan_duration_ticks` 后 `finishUsingItem` 完成一次淘洗：`consumePanUse` 扣次数 → `grantPanningLoot` 结算 → `hurtAndBreak` 消耗 1 点耐久。准星离开目标、提前松手，或目标变体不被本工具支持时立即中断，不消耗任何东西。
 - 工具与点是**能力交集**：`PanItem` 本身就是"是淘盘"的判据，`PanProfile.harvestTargets` 声明可采的变体集合，`canHarvest` 把"能采这个变体"与"该点当前可淘洗"合成同一条判定，**起手、持续与结算三处共用**，避免在起手处通过而在结算处漏检。
 - 准星命中判定用 `ProjectileUtil.getHitResultOnViewVector` 且过滤器只放行 `ShimmerEntity`——对普通水体、其它实体或空气使用无任何效果。
 - 移动迟缓**复用原版「正在使用物品」表现**（客户端 `LocalPlayer.aiStep` 对移动输入按 0.2 缩放并重置冲刺），不施加药水效果；`getUseAnimation` 返回 `NONE`，动画由客户端渲染入口接管。
 
-[`PanningLootService`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/pan/PanningLootService.java)：
+[`PanningLootService`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/pan/PanningLootService.java)：
 
 - 战利品表由**目标变体**决定（不是由工具决定）：水域用 `unsuspiciousblock:gameplay/panning/river`，幽微的光用 `gameplay/panning/lava`（`LootContextParamSets.BLOCK`，参数含 ORIGIN/BLOCK_STATE/TOOL/THIS_ENTITY 与幸运值）。两张表都列入 `ILootTableConfig` 默认追踪前缀，被考古笔记目录自动收录为"淘洗"分类。
 - **考古笔记采用 `immediate` 立即结算**（与钓鱼一致），按本次淘洗产出记录，不等物品被拾取。
@@ -153,7 +153,7 @@
 
 **新增淘盘**
 
-在 `item/ModItems` 加一条 + 一个 `PanProfile`（可采变体、幸运加成、再生概率），并在 `PAN_ITEMS` 里登记（客户端属性注册遍历它）。`PanningVisuals` 与 `PanningLootService` 不需要改动。
+在 `core/item/ModItems` 加一条 + 一个 `PanProfile`（可采变体、幸运加成、再生概率），并在 `PAN_ITEMS` 里登记（客户端属性注册遍历它）。`PanningVisuals` 与 `PanningLootService` 不需要改动。
 
 **新增淘洗产出**：改对应变体的产出表；产出分化用原版幸运机制（`weight` / `quality` / `bonus_rolls`），不要往代码里加分支。
 

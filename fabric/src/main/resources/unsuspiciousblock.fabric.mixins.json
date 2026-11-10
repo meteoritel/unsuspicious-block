@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.meteorite.unsuspiciousblock.mixin",
+  "package": "com.meteorite.unsuspiciousblock.platform.mixin",
   "compatibilityLevel": "JAVA_21",
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
@@ -12,7 +12,7 @@
     "interaction.BrushableBlockEntityMixin",
     "interaction.SheepMixin"
   ],
-  "client": ["client.ItemInHandPanningMixin"],
+  "client": [],
   "server": [],
   "injectors": {
     "defaultRequire": 1

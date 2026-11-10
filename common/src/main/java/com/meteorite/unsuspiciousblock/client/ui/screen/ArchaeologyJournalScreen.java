@@ -1,5 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
+import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+import java.util.Set;
+import java.util.function.Consumer;
+import net.minecraft.world.item.ItemStack;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.*;
@@ -24,10 +29,10 @@ import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.meteosuikit.api.text.TextScroll;
-import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.DeleteJournalLogPayload;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -99,7 +104,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private UiControl backButton;
     /** 只恢复阅读状态与场景选择，不回滚参数提交或服务端操作。 */
     private record NavigationState(@Nullable ResourceLocation table, String scene, UiStateSnapshot view,
-                                   boolean home, @Nullable ResourceLocation category, java.util.Set<ResourceLocation> expanded) {}
+                                   boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {}
 
     private NavigationState navigationState() {
         ResourceLocation table = viewModel.selectedTableId();
@@ -225,7 +230,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         JournalUiPreferencesStore.setPanelStates(this.panels.snapshot());
         this.overlays.close();
         this.confirmations.clear();
-        com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore.flush();
+        SimulationPreferenceStore.flush();
         ArchaeologyJournalClientState.rememberLastSelectedTable(this.viewModel.selectedTableId());
         ArchaeologyJournalClientState.rememberDirectoryState(this.viewModel.isCategoryHomeMode(),
                 this.viewModel.selectedCategory(), this.viewModel.expandedRoots(),
@@ -545,7 +550,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             return hit.withTextTooltip(List.of(category.name(), category.description()), catalogPanel.bounds());
         }
         if (!viewModel.rowIsChild(index)) return hit;
-        List<Component> lines = new java.util.ArrayList<>();
+        List<Component> lines = new ArrayList<>();
         List<Component> parents = viewModel.rowReferencingParentNames(index);
         lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_references", parents.size()));
         parents.forEach(name -> lines.add(Component.literal("∈ ").append(name)));
@@ -584,7 +589,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     // 书页内容与控件共用根命中；页内业务由当前页容器处理。
     private final class JournalContent implements UiInputContainer {
         @Override public UiChildren<UiWidget> inputChildren() { return widgets; }
-        @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) {
+        @Override public void addFocusTargets(Consumer<UiFocusTarget> out) {
             widgets.addFocusTargets(out);
             if (catalogPanel != null) catalogPanel.addFocusTargets(out);
             if (hasSelectedTable()) rightPage.addFocusTargets(out);
@@ -999,7 +1004,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         var history = ArchaeologyJournalClientState.getLogState().getTable(tableId);
         int retentionLimit = history != null
                 ? history.getRetentionLimit()
-                : com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
+                : ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
         int entryCount = history != null ? history.getTotalEntryCount() : 0;
         Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
                 .setScreen(new JournalLogRetentionScreen(this, tableId, retentionLimit, entryCount));
@@ -1029,7 +1034,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                          from += DeleteJournalLogPayload.MAX_BATCH_ENTRIES) {
                         int to = Math.min(selectedEntryIds.size(),
                                 from + DeleteJournalLogPayload.MAX_BATCH_ENTRIES);
-                        Services.NETWORK.sendToServer(DeleteJournalLogPayload.batch(
+                        ClientNetwork.sendToServer(DeleteJournalLogPayload.batch(
                                 tableId, selectedEntryIds.subList(from, to)));
                     }
                     this.rightPage.getLogPanel().setBatchSelectionMode(false);
@@ -1049,7 +1054,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_message"),
                 () -> {
-                    Services.NETWORK.sendToServer(DeleteJournalLogPayload.entry(tableId, entry.entryId()));
+                    ClientNetwork.sendToServer(DeleteJournalLogPayload.entry(tableId, entry.entryId()));
                     this.rightPage.restoreLogSelection(null, false);
                 });
     }
@@ -1066,7 +1071,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_message",
                         tableId.toString(), count),
-                () -> Services.NETWORK.sendToServer(DeleteJournalLogPayload.table(tableId)));
+                () -> ClientNetwork.sendToServer(DeleteJournalLogPayload.table(tableId)));
     }
 
     // 二次确认后清空当前玩家的全部日志历史
@@ -1075,7 +1080,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         openDeleteConfirmation(
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_message", count),
-                () -> Services.NETWORK.sendToServer(DeleteJournalLogPayload.all()));
+                () -> ClientNetwork.sendToServer(DeleteJournalLogPayload.all()));
     }
 
     private void openDeleteConfirmation(Component title, Component message, Runnable confirmedAction) {
@@ -1112,7 +1117,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     // 将物理屏幕坐标转换为手册逻辑坐标，并返回当前悬停的已解锁物品。
-    public Optional<net.minecraft.world.item.ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
+    public Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
         if (this.viewport == null || this.rightPage == null || (this.overlays.isOpen() || !confirmations.isEmpty())) {
             return Optional.empty();
         }

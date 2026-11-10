@@ -4,12 +4,13 @@ import com.google.gson.JsonElement;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestLootTableManagementPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateLootTableTranslationsPayload;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateTrackedLootTablePayload;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateLootTableTranslationsPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateTrackedLootTablePayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -38,12 +39,12 @@ final class LootTableManagementActions {
 
     /** 请求服务端下发管理页快照。 */
     void requestSnapshot() {
-        Services.NETWORK.sendToServer(new RequestLootTableManagementPayload());
+        ClientNetwork.sendToServer(new RequestLootTableManagementPayload());
     }
 
     /** 提交追踪状态切换。 */
     void submitTracking(ResourceLocation tableId, boolean tracked) {
-        Services.NETWORK.sendToServer(new UpdateTrackedLootTablePayload(tableId, tracked));
+        ClientNetwork.sendToServer(new UpdateTrackedLootTablePayload(tableId, tracked));
     }
 
     /** 提交本地化名称草稿：Screen 只把草稿转成提交项，协议组包在这里。 */
@@ -53,13 +54,13 @@ final class LootTableManagementActions {
             entries.add(new UpdateLootTableTranslationsPayload.Entry(
                     draft.tableId(), draft.languageCode(), draft.value()));
         }
-        Services.NETWORK.sendToServer(new UpdateLootTableTranslationsPayload(entries));
+        ClientNetwork.sendToServer(new UpdateLootTableTranslationsPayload(entries));
     }
 
     /** 提交已确认的导入预览；空预览不发包。 */
     void submitImport(ImportPreview preview) {
         if (preview.entries().isEmpty()) return;
-        Services.NETWORK.sendToServer(new UpdateLootTableTranslationsPayload(preview.entries()));
+        ClientNetwork.sendToServer(new UpdateLootTableTranslationsPayload(preview.entries()));
     }
 
     /** 原生文件选择框；返回 null 表示用户取消。 */

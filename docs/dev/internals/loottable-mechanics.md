@@ -5,7 +5,7 @@
 
 ## 1. 解析管线细则
 
-[`ArchaeologyJournalCatalog.load`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/ArchaeologyJournalCatalog.java)（位于 `journal/catalog/`）按四层管线构建目录：
+[`ArchaeologyJournalCatalog.load`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/catalog/ArchaeologyJournalCatalog.java)（位于 `core/journal/catalog/`）按四层管线构建目录：
 
 ```
 capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排除集 → compile 闭包内每张表
@@ -31,7 +31,7 @@ capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排
 
 ## 2. 签名机制
 
-[`LootResultSignature`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/signature/LootResultSignature.java) 是进度匹配与持久化的核心：它让"目录中的物品"与"玩家实际获得的物品"能对应起来。
+[`LootResultSignature`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultSignature.java) 是进度匹配与持久化的核心：它让"目录中的物品"与"玩家实际获得的物品"能对应起来。
 
 ```
 record LootResultSignature(ResourceLocation itemId, SignatureType type, @Nullable String data)
@@ -71,7 +71,7 @@ usb_sig|TYPE|itemId|base64(data)
 
 `createPreviewStack()` 根据签名重建用于 UI 展示或精确匹配的物品栈：`COMPONENT_EXACT` 应用组件 patch，附魔变体设置附魔光效覆盖。
 
-`COMPONENT_EXACT` 的预览栈需要把签名的 `data` 当 JSON 解码再套用组件补丁（**`data` 本身不是 base64**，base64 只出现在 `toStoredKey` 的存储键里），成本远高于其它类型的匹配。因此 [`LootResultPreviewCache`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/signature/LootResultPreviewCache.java) 按签名内容缓存预览栈——预览栈由签名值唯一决定，**缓存结果永远有效、不需要失效策略**；玩家侧的掉落实时匹配（掉落追踪、容器已追踪状态、菜单快照三条来源）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。缓存只在数据包重载时清空以限制内存。
+`COMPONENT_EXACT` 的预览栈需要把签名的 `data` 当 JSON 解码再套用组件补丁（**`data` 本身不是 base64**，base64 只出现在 `toStoredKey` 的存储键里），成本远高于其它类型的匹配。因此 [`LootResultPreviewCache`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultPreviewCache.java) 按签名内容缓存预览栈——预览栈由签名值唯一决定，**缓存结果永远有效、不需要失效策略**；玩家侧的掉落实时匹配（掉落追踪、容器已追踪状态、菜单快照三条来源）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。缓存只在数据包重载时清空以限制内存。
 
 概率模拟热路径**不共用它**：单表模拟自带 `HashMap` 缓存，单线程且无并发开销，更快。含实例态组件的物品已退化为 `PLAIN`，其预览栈是裸物品栈、不套用任何组件补丁，也不再需要预览参与精确匹配。
 
@@ -87,7 +87,7 @@ scenario=baseline|luck=0.00|tool=minecraft:diamond_pickaxe|ench=|n=10000
 
 ### 3.1 模拟引擎
 
-[`LootProbabilitySimulator`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/LootProbabilitySimulator.java) 对**单个输入**执行模拟抽取：
+[`LootProbabilitySimulator`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulator.java) 对**单个输入**执行模拟抽取：
 
 ```
 simulateOne/createJob(tableId, rawTable, level, input, scenario)
@@ -171,7 +171,7 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 
 ### 3.3 逐路径幸运门槛
 
-[`LuckGateAnalysis`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LuckGateAnalysis.java) 从编译期记下的 [`LuckSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/analysis/LuckSpec.java) 推出每条路径的最小幸运门槛，结果按**路径分别保留**（`LootAcquisitionPath.luckGate`）——取多路径的最小值会得到一个无法指回是哪条路径需要它的数字。tooltip 因此**逐条目、逐路径**各自显示自己的门槛（同一物品的不同路径门槛不同时两条都会出现），不合并成一条全表通用的说明。
+[`LuckGateAnalysis`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckGateAnalysis.java) 从编译期记下的 [`LuckSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckSpec.java) 推出每条路径的最小幸运门槛，结果按**路径分别保留**（`LootAcquisitionPath.luckGate`）——取多路径的最小值会得到一个无法指回是哪条路径需要它的数字。tooltip 因此**逐条目、逐路径**各自显示自己的门槛（同一物品的不同路径门槛不同时两条都会出现），不合并成一条全表通用的说明。
 
 判定读原版的两条真实公式（1.21.1）：权重竞争 `max(floor(weight + quality × luck), 0)`（只有 ≥ 1 才进入抽取），奖励抽取 `rolls + floor(bonus_rolls × luck)`（额外抽取只在 `floor(bonus_rolls × luck) ≥ 1` 时出现）。**没有任何原版战利品条件直接读幸运**，因此这两条就是"幸运能不能改变这条路径"的全部入口。
 
@@ -209,7 +209,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 ## 4. 概率模拟：主线程 tick 驱动
 
-[`LootProbabilitySimulationWorker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/LootProbabilitySimulationWorker.java) 是模拟的调度器。**关键约束**：`LootTable.getRandomItems` 与 `LootContextParamFiller` 会触碰 `ServerLevel` 关联的 `LegacyRandomSource`，后者不是线程安全的，后台线程与主线程 tick 并发会触发 `ThreadingDetector` 报错。因此**不用后台线程**，改为：
+[`LootProbabilitySimulationWorker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulationWorker.java) 是模拟的调度器。**关键约束**：`LootTable.getRandomItems` 与 `LootContextParamFiller` 会触碰 `ServerLevel` 关联的 `LegacyRandomSource`，后者不是线程安全的，后台线程与主线程 tick 并发会触发 `ThreadingDetector` 报错。因此**不用后台线程**，改为：
 
 - 在服务端每 tick 末尾（`END_SERVER_TICK`）由 `tick(server)` 消费队列。
 - 任务由 `LootProbabilitySimulationJob` 保存抽取次数、签名与计数，可跨 tick 续跑；一个任务只跑**一个输入**。
@@ -289,7 +289,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 **按需结果只回给请求者，不写共享目录**：按内容去重的缓存是全服共享的，但"当前展示哪个输入"是每个玩家自己的选择，写进共享目录会让两个玩家互相覆盖对方的界面。共享目录里的数字始终是**基准输入**的。
 
-**数据包重载会真正触发重算**：Fabric 用 `ResourceManagerHelper.get(PackType.SERVER_DATA)`、NeoForge 用 `AddReloadListenerEvent` 注册 [`DataPackReloadListener`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/DataPackReloadListener.java)，它**只置脏标记**，重建由 `ServerLootTableConfigManager.tick` 在服务端 tick 路径上消费（在重载回调里同步跑全量构建会拖住重载，且两个平台的重载事件时序不同）。服务端启动时的首次资源加载也会触发监听器，但那时目录尚未加载，标记被忽略。
+**数据包重载会真正触发重算**：Fabric 用 `ResourceManagerHelper.get(PackType.SERVER_DATA)`、NeoForge 用 `AddReloadListenerEvent` 注册 [`DataPackReloadListener`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/bootstrap/DataPackReloadListener.java)，它**只置脏标记**，重建由 `ServerLootTableConfigManager.tick` 在服务端 tick 路径上消费（在重载回调里同步跑全量构建会拖住重载，且两个平台的重载事件时序不同）。服务端启动时的首次资源加载也会触发监听器，但那时目录尚未加载，标记被忽略。
 
 **不可用机制的表在构建期被拦下**：`LootMechanismSupport` 识别"paramSet 不允许的参数引用"（如 `enchantment_level` 提供器、`enchantment_active_check`）与和填充模型根本不相容的 paramSet（如 `barter`，其 allowed 集合不含 `ORIGIN`）。判定时**空 `type` 按 vanilla 语义等价于 `generic`**（`LootTable.DIRECT_CODEC` 里 `type` 缺省为 `ALL_PARAMS`）——实测有整套模组（BetterArcheology 的 7 张宝箱表）不写 `type`，把空串当成"未知 paramSet"会把它们误判为不可用。这类表不入队模拟（否则会在 `getRandomItems` 里抛异常后静默失败），而是标记为 `Unknown(UNPARSED)` 并输出一次可行动的诊断。
 
@@ -301,7 +301,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 ## 6. 约束目录与按需管线
 
-**目录只发布约束，不枚举候选输入**。[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/loottable/simulation/SimulationConstraintCatalog.java) 是一张表的四份清单：场景候选（≤32，附截断数量）、工具基座、被引用附魔的等级上限、抽样次数档位。`toolSelectionAllowed` 由服务端检查整棵子树的 `match_tool` 引用后签发，客户端不以候选数量判断是否显示工具选择；只有附魔或组件谓词、没有可枚举物品的 `match_tool` 也会开启选择。
+**目录只发布约束，不枚举候选输入**。[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 是一张表的四份清单：场景候选（≤32，附截断数量）、工具基座、被引用附魔的等级上限、抽样次数档位。`toolSelectionAllowed` 由服务端检查整棵子树的 `match_tool` 引用后签发，客户端不以候选数量判断是否显示工具选择；只有附魔或组件谓词、没有可枚举物品的 `match_tool` 也会开启选择。
 
 默认工具复用 `JournalCategoryLoader` 的分类结果，取分类 JSON 的 `default_tool`，缺失或物品无效时回退空手（`minecraft:air`）。当前考古为刷子、钓鱼为钓竿、化石采集为钻石镐、淘洗为铜淘盘，箱子、陶罐及其他为空手。每张子表按自身分类设置默认值。工具只作为 `TOOL` 输入，不自动叠加淘盘的实际幸运加成；幸运仍由模拟参数单独指定。
 
@@ -442,7 +442,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 ### 9.6 开发模式调试表
 
-`LootDebugMode`（`loottable/diagnostics/`）是调试内容的**进程级开关**：先读系统属性 `usb.loot.debug`，其次读环境变量 `USB_LOOT_DEBUG`，进程内只解析一次。
+`LootDebugMode`（`core/loottable/diagnostics/`）是调试内容的**进程级开关**：先读系统属性 `usb.loot.debug`，其次读环境变量 `USB_LOOT_DEBUG`，进程内只解析一次。
 
 - **开启**（`-Dusb.loot.debug=true` 或 `USB_LOOT_DEBUG=true`）：路径前缀 `archaeology/debug/` 下的调试表进入考古笔记目录，调试分类资源生效，可逐项核对函数捕获、包装嵌套与截断表现。
 - **关闭**（默认）：`ArchaeologyJournalCatalog` 的收录门禁把调试表挡在收录闭包之外，`JournalCategoryLoader` 跳过调试分类资源，普通玩家的目录里不会出现任何调试条目。表本身仍是正常注册的战利品表（数据包资源无法按运行时开关条件化），只是没有游戏内路径会抽取它。

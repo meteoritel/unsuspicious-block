@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
-import com.meteorite.unsuspiciousblock.cat.CatBondStage;
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.client.ui.toast.CatBondToast;
-import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncCatFavorPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatFavorPayload;
 import net.minecraft.client.Minecraft;
 
 import java.util.UUID;

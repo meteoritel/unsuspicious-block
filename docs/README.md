@@ -48,8 +48,8 @@ Unsuspicious Block 采用五层文档架构，严格区分面向读者、单一�
 
 | 事实 | 事实源 | 文档职责 |
 |---|---|---|
-| 注册项与依赖关系 | `bootstrap/ModContent` 及各 `ModXxx` 声明 | [注册架构](dev/foundation/registration.md) 说明注册模式与扩展步骤 |
-| 网络 Payload 与 Codec | `network/ModPayloads` 与实际 Codec | [网络与同步](dev/foundation/network.md) 说明端边界与线格式约束 |
+| 注册项与依赖关系 | `core/bootstrap/ModContent` 及各 `ModXxx` 声明 | [注册架构](dev/foundation/registration.md) 说明注册模式与扩展步骤 |
+| 网络 Payload 与 Codec | `core/network/ModPayloads` 与实际 Codec | [网络与同步](dev/foundation/network.md) 说明端边界与线格式约束 |
 | Mixin 注入点与平台差异 | Mixin 配置文件与 Mixin 类 | [Mixin](dev/foundation/mixin.md) 说明注入意图与平台隔离 |
 | 配置项与默认值 | 平台配置声明与通用配置接口 | [配置与联动](dev/foundation/config-and-integrations.md) 说明配置项作用域与生命周期 |
 | 数据包分类格式 | `JournalCategoryLoader` | [笔记分类格式](api/journal-categories.md) 说明数据格式与加载语义 |

@@ -12,7 +12,7 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;

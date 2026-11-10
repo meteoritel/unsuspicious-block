@@ -1,0 +1,98 @@
+package com.meteorite.unsuspiciousblock.core.loottable.analysis;
+
+import com.google.gson.JsonObject;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * 战利品函数处理器——将 loot function 静态应用到预览栈并派生签名。
+ * <p>
+ * 外部模组可通过 {@link LootFunctionHandlers#register} 注册自定义处理逻辑，
+ * 无需修改本模组的 JSON 解析代码。
+ * <p>
+ * 自函数描述通道（{@link #describe}）引入后，本接口的职责被明确拆成三块，三者互相独立：
+ * <ol>
+ *   <li><b>描述</b>（{@link #describe}）——这条规则声明了什么，静态权威，永远尝试生成；</li>
+ *   <li><b>预览</b>（{@link #apply}）——能否在静态层把效果算出来，失败不影响描述；</li>
+ *   <li><b>签名派生</b>（{@link #deriveSignature}）——只影响进度匹配，不因描述而改变。</li>
+ * </ol>
+ * 旧 {@link #describeHint} 保留为**兼容摘要**，不再是独立的信息来源：新的实现应当写
+ * {@code describe}，由调用方从结构化描述派生展示文本。
+ */
+public interface LootFunctionHandler {
+
+    /**
+     * 尝试将 function 静态应用到预览栈。
+     *
+     * @param previewStack 预览物品栈（handler 可直接修改其组件，或通过 transmuteCopy 替换）
+     * @param function     通过 {@link LootItemFunction} Codec 解析后的类型化 function 对象
+     * @return 处理后的预览栈（可能与传入的栈为同一实例，也可能是 transmuteCopy 产生的新栈）；
+     *         返回 null 表示无法静态求值（需标记条件）
+     */
+    @Nullable
+    ItemStack apply(ItemStack previewStack, LootItemFunction function);
+
+    /**
+     * 生成该 function 的**结构化静态描述**——静态规则侧的唯一权威来源。
+     * <p>
+     * 实现要求：无论 {@link #apply} 是否会失败，只要规则能被如实表达就应返回非 null；
+     * 动态数值用动态表达记录，保真度仍可为 {@link FunctionFidelity#FULL}。
+     *
+     * @param function 通过 Codec 解析后的类型化 function 对象
+     * @param source   该 function 的原始 JSON（用于读取 Codec 未公开的稳定字段）
+     * @return 结构化描述；返回 null 表示该 handler 尚未迁移到描述通道（由调用方回退到
+     *         {@link #describeHint} 并标记为部分解析）
+     */
+    @Nullable
+    default LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
+        return null;
+    }
+
+    /**
+     * 应用后派生签名类型。
+     *
+     * @param previewStack 经过 apply 修改后的预览栈
+     * @param itemId       当前物品 id
+     * @return 新的签名；返回 null 表示不改变签名（由调用方根据最终栈状态决定）
+     */
+    @Nullable
+    default LootResultSignature deriveSignature(ItemStack previewStack, ResourceLocation itemId) {
+        return null;
+    }
+
+    /**
+     * 该 function 是否引入随机性/条件（无法静态确定最终结果）。
+     *
+     * @return true 表示结果不可静态确定
+     */
+    default boolean addsRandomness() {
+        return true;
+    }
+
+    // 无法静态应用时的原因分级；默认保守处理，已知随机分布可由处理器细化。
+    default LootConditionHandler.UncertaintyLevel uncertaintyLevel(LootItemFunction ignoredFunction) {
+        return LootConditionHandler.UncertaintyLevel.RUNTIME;
+    }
+
+    /**
+     * 当 {@link #apply} 返回 null 时，提供人类可读的提示来描述该 function 的效果范围。
+     * 例如 set_count 的范围 "1-3"，set_damage 的范围 "0-90%"。
+     * 返回 null 表示无额外提示（使用默认的"近似物品"）。
+     * <p>
+     * 兼容用途：仅当 {@link #describe} 返回 null 时被调用。已迁移的 handler 不应再依赖它。
+     */
+    @Nullable
+    default Component describeHint(LootItemFunction ignoredFunction) {
+        return null;
+    }
+
+    // 需要读取 Codec 未公开字段时，优先从原始 JSON 提取稳定的结构化信息。
+    @Nullable
+    default Component describeHint(LootItemFunction function, JsonObject ignoredSource) {
+        return describeHint(function);
+    }
+}

@@ -1,9 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.client.pan.PanningMediumIndex;
-import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
-import com.meteorite.unsuspiciousblock.pan.variant.GlowStyle;
-import com.meteorite.unsuspiciousblock.pan.variant.ShimmerVariant;
+import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.core.pan.variant.GlowStyle;
+import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;

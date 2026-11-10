@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.renderer.layer;
 
 import com.meteorite.unsuspiciousblock.client.model.MessengerCatClothesModel;
-import com.meteorite.unsuspiciousblock.entity.MessengerCat;
+import com.meteorite.unsuspiciousblock.core.entity.MessengerCat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.CatModel;

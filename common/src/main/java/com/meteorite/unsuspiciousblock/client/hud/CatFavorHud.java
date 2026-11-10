@@ -2,12 +2,12 @@ package com.meteorite.unsuspiciousblock.client.hud;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.render.UiIcon;
-import com.meteorite.unsuspiciousblock.cat.CatBondStage;
-import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
+import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
-import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
-import com.meteorite.unsuspiciousblock.item.HandOfCatItem;
-import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
+import com.meteorite.unsuspiciousblock.core.item.HandOfCatItem;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;

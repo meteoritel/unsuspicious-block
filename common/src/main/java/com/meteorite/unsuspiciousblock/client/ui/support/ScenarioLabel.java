@@ -1,9 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
-import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 
@@ -98,7 +99,7 @@ public final class ScenarioLabel {
             }
             String shortKey = contents.getKey().startsWith(CONDITION_PREFIX)
                     ? "screen.unsuspiciousblock.archaeology_journal.simulation.short." + contents.getKey().substring(CONDITION_PREFIX.length()) : "";
-            label = Component.translatable(net.minecraft.locale.Language.getInstance().has(shortKey)
+            label = Component.translatable(Language.getInstance().has(shortKey)
                     ? shortKey : contents.getKey(), values).setStyle(label.getStyle());
         }
         return label;

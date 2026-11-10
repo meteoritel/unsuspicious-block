@@ -5,7 +5,7 @@
 
 ## 1. 分片存储
 
-[`JournalLogStorage`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/world/JournalLogStorage.java) 是日志的服务端权威存储。它不把所有玩家日志写进同一个 `SavedData` NBT，而是按玩家 UUID、战利品表拆分压缩文件：
+[`JournalLogStorage`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/JournalLogStorage.java) 是日志的服务端权威存储。它不把所有玩家日志写进同一个 `SavedData` NBT，而是按玩家 UUID、战利品表拆分压缩文件：
 
 ```text
 <world>/data/unsuspiciousblock/journal_logs/

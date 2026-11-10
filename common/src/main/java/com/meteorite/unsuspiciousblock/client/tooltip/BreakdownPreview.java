@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.tooltip;
 
-import com.meteorite.unsuspiciousblock.inventory.InventoryPresenceRegistry;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;

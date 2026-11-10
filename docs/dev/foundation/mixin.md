@@ -6,11 +6,13 @@ Mixin 负责原版状态附加、事件入口补齐与必要的访问扩展，�
 
 | 配置 | 作用 |
 |---|---|
-| [common 配置](../../../common/src/main/resources/unsuspiciousblock.mixins.json) | 两端共用的状态、追踪、模拟与客户端注入 |
+| [common 公共配置](../../../common/src/main/resources/unsuspiciousblock.mixins.json) | 两端共用的状态、追踪与模拟注入 |
 | [Fabric 配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.mixins.json) | Fabric 事件补齐与平台接入 |
 | [Lootr 配置](../../../common/src/main/resources/unsuspiciousblock.lootr.mixins.json) | 按构建和可选依赖条件启用容器追踪 |
+| [common 客户端配置](../../../common/src/main/resources/unsuspiciousblock.client.mixins.json) | `client.mixin` 下的客户端注入 |
+| [Fabric 客户端配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.client.mixins.json) | `client.mixin.fabric` 下的原生客户端接入 |
 
-完整类名从配置中的 package、mixins 和 client 组合，目标与注入点由对应类声明。源码接线由[仓库工具](../../../tools/README.md)检查，生成的 refmap 由构建产出。
+完整类名从配置中的 package、mixins 和 client 组合，目标与注入点由对应类声明。源码接线由[仓库工具](../../../tools/README.md)检查。Fabric 的 Loom 构建生成共享的 `unsuspiciousblock.refmap.json`，覆盖公共、平台与客户端注入；NeoForge 使用现有 ModDev 构建接线。
 
 Lootr 的 `requiredMods` 与 NeoForge 元数据接线由 `multiloader-common.gradle` 展开，构建属性同时控制相关代码、服务声明和资源排除。Fabric 当前不声明 Lootr 配置；作用域见[配置与联动](config-and-integrations.md)。
 
@@ -32,7 +34,7 @@ Lootr 的 `requiredMods` 与 NeoForge 元数据接线由 `multiloader-common.gra
 
 ### 状态附加型
 
-以 [`PlayerJournalStateMixin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/mixin/journal/PlayerJournalStateMixin.java) 为例：
+以 [`PlayerJournalStateMixin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/mixin/journal/PlayerJournalStateMixin.java) 为例：
 
 ```java
 @Mixin(Player.class)
@@ -56,7 +58,7 @@ public abstract class PlayerJournalStateMixin implements ArchaeologyJournalState
 
 ### 行为修改型
 
-以 [`AnvilMenuMixin`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/mixin/container/AnvilMenuMixin.java) 为例（Fabric 独有）：
+以 [`AnvilMenuMixin`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/mixin/container/AnvilMenuMixin.java) 为例（Fabric 独有）：
 
 ```java
 @Mixin(AnvilMenu.class)
@@ -83,9 +85,9 @@ public abstract class AnvilMenuMixin {
 
 **先自问是否真的需要 mixin**：能由 Event API 表达的一律不用 mixin；只有 Fabric 原生事件缺失时才补 mixin，且优先只加在 Fabric 端（NeoForge 用事件）。
 
-1. **确定归属**：common 通用 → `common/.../mixin/<子系统>/`；仅 Fabric 需要 → `fabric/.../mixin/<子系统>/`；Lootr 相关 → `mixin/compat/lootr/`。
+1. **确定归属**：common 公共注入 → `core/mixin/<子系统>/`；common 客户端 → `client/mixin/`；Fabric 公共注入 → `platform/mixin/`，客户端 → `client/mixin/fabric/`；Lootr → `core/mixin/compat/lootr/`。
 2. **写入口**：只做"捕获时机 + 转交"，把参数整理后交给子系统里的普通类处理（如 `CatFavorManager`、`PanningAnimation`、`LootSimulationScope`）。不要在此写业务分支。
-3. **注册进对应配置**：common mixin 加到 `unsuspiciousblock.mixins.json`（客户端类放 `client` 数组），Fabric 独有加到 `unsuspiciousblock.fabric.mixins.json`。
+3. **注册进对应配置**：公共注入使用 common 或 Fabric 公共配置；客户端分别使用 `unsuspiciousblock.client.mixins.json` 或 `unsuspiciousblock.fabric.client.mixins.json` 的 `client` 数组。配置 package 限于专属 Mixin 包，保持目标与 refmap 配套。
 4. 在对应子系统篇说明新增入口和业务所有者；跨子系统边界变化时同步本页。
 5. 若需要访问原版私有成员，检查 `accesstransformer.cfg` / `unsuspiciousblock.accesswidener` 是否已放开（见「AccessTransformer / AccessWidener」）。
 
@@ -110,7 +112,7 @@ public abstract class AnvilMenuMixin {
 
 ## 相关文档
 
-- [架构总览](architecture.md) —— 三套 mixin 配置与构建占位符
+- [架构总览](architecture.md) —— 公共、客户端与 Lootr Mixin 配置与构建占位符
 - [考古笔记系统](../subsystems/journal.md) —— journal/ 包 mixin
 - [猫族关系系统](../subsystems/cat-favor.md) —— catfavor/ 包 mixin
 - [战利品表系统](../subsystems/loottable.md) —— `NestedLootTableMixin` 与模拟条件作用域

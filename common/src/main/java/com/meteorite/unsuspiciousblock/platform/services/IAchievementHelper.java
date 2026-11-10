@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.platform.services;
 
-import com.meteorite.unsuspiciousblock.achievement.ModAchievement;
+import com.meteorite.unsuspiciousblock.core.achievement.ModAchievement;
 import net.minecraft.server.level.ServerPlayer;
 
 /**

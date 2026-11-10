@@ -1,0 +1,96 @@
+package com.meteorite.unsuspiciousblock.core.loottable.simulation;
+
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
+import net.minecraft.world.phys.Vec3;
+
+import java.util.Map;
+
+/**
+ * 单次战利品模拟使用的不可变场景配置。
+ * <p>
+ * profile 一方面为 LootParams 提供工具、方块状态、伤害源等具体值，另一方面声明哪些
+ * 场景门槛按“满足条件时”统计。后者不修改真实世界天气、时间或计分板，输出的是
+ * 资格条件调整后的单值估算，不表示群系、天气等场景本身的自然发生概率。
+ */
+public record SimulationProfile(
+        Vec3 origin,
+        ItemStack tool,
+        BlockState blockState,
+        DamageSource damageSource,
+        float explosionRadius,
+        float luck,
+        boolean fishingContext,
+        Map<String, Boolean> conditionOutcomes,
+        Map<ResourceLocation, Boolean> conditionTypeDefaults
+) {
+    public static final float CATALOG_LUCK = 1.0F;
+
+    public SimulationProfile {
+        tool = tool.copy();
+        conditionOutcomes = Map.copyOf(conditionOutcomes);
+        conditionTypeDefaults = Map.copyOf(conditionTypeDefaults);
+    }
+
+    // 创建当前目录概率统计使用的“满足获取条件”场景；上下文由表自己声明的 type 决定，
+    // 不再按表 id 的 path 猜测，避免命名里带 fishing 的非钓鱼表被误判。
+    public static SimulationProfile eligibleConditions(ServerLevel level, String declaredType) {
+        boolean fishing = RuntimeLootLinks.contextKind(declaredType)
+                == RuntimeLootLinks.SimulationContext.FISHING;
+        String type = declaredType.startsWith("minecraft:") ? declaredType.substring("minecraft:".length()) : declaredType;
+        ItemStack defaultTool = new ItemStack(fishing ? Items.FISHING_ROD
+                : type.equals("archaeology") ? Items.BRUSH : Items.AIR);
+        return new SimulationProfile(
+                Vec3.ZERO,
+                defaultTool,
+                Blocks.AIR.defaultBlockState(),
+                level.damageSources().generic(),
+                0.0F,
+                CATALOG_LUCK,
+                fishing, Map.of(), Map.of());
+    }
+
+    // 精确条件结果优先；类型默认值只用于解析期看不到的运行时注入条件
+    public Boolean conditionOutcome(LootItemCondition condition) {
+        Boolean exact = this.conditionOutcomes.get(LootConditionFingerprint.ofRaw(condition));
+        if (exact != null) {
+            return exact;
+        }
+        ResourceLocation conditionId = BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(condition.getType());
+        return conditionId == null ? null : this.conditionTypeDefaults.get(conditionId);
+    }
+
+    // 创建仅替换条件结果的新 profile
+    public SimulationProfile withConditionOutcomes(Map<String, Boolean> outcomes,
+                                                   Map<ResourceLocation, Boolean> typeDefaults) {
+        return new SimulationProfile(this.origin, this.tool, this.blockState, this.damageSource,
+                this.explosionRadius, this.luck, this.fishingContext, outcomes, typeDefaults);
+    }
+
+    // 创建使用指定工具的新 profile
+    public SimulationProfile withTool(ItemStack newTool) {
+        return new SimulationProfile(this.origin, newTool, this.blockState, this.damageSource,
+                this.explosionRadius, this.luck, this.fishingContext,
+                this.conditionOutcomes, this.conditionTypeDefaults);
+    }
+
+    // 创建使用指定幸运的新 profile；值经 LootParams.withLuck 传入，只影响权重与抽取次数
+    public SimulationProfile withLuck(float newLuck) {
+        return new SimulationProfile(this.origin, this.tool, this.blockState, this.damageSource,
+                this.explosionRadius, newLuck, this.fishingContext,
+                this.conditionOutcomes, this.conditionTypeDefaults);
+    }
+
+    // 该表的默认工具基座物品 id——种子参数与目录的"默认工具"选项共用同一来源
+    public ResourceLocation toolItemId() {
+        return BuiltInRegistries.ITEM.getKey(this.tool.getItem());
+    }
+}

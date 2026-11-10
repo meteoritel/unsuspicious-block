@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
@@ -7,7 +9,7 @@ import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -276,7 +278,7 @@ public final class DetailOverlayPanel implements PagePanel {
             return Optional.empty();
         }
         int maxVisibleItems = maxVisibleItems(listY);
-        int visibleIndex = com.meteorite.meteosuikit.api.layout.UiRowMetrics.fixedRowIndex(mouseY - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT, maxVisibleItems);
+        int visibleIndex = UiRowMetrics.fixedRowIndex(mouseY - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT, maxVisibleItems);
         if (visibleIndex < 0 || visibleIndex >= maxVisibleItems) {
             return Optional.empty();
         }
@@ -288,15 +290,15 @@ public final class DetailOverlayPanel implements PagePanel {
     }
 
     @Override
-    public ItemGridPanel.TooltipData tooltip(com.meteorite.meteosuikit.api.input.UiPointerHit hit) {
+    public ItemGridPanel.TooltipData tooltip(UiPointerHit hit) {
         if (hit == null || !hit.owns(this)) return null;
         ItemStack stack = getHoveredItemStack(hit.x(), hit.y()).orElse(ItemStack.EMPTY);
         return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
     }
 
-    @Override public com.meteorite.meteosuikit.api.input.UiPointerHit hitTest(double x, double y) {
+    @Override public UiPointerHit hitTest(double x, double y) {
         ItemStack stack = getHoveredItemStack(x, y).orElse(ItemStack.EMPTY);
-        return stack.isEmpty() ? null : com.meteorite.meteosuikit.api.input.UiPointerHit.leaf(this, x, y)
+        return stack.isEmpty() ? null : UiPointerHit.leaf(this, x, y)
                 .withPresentation((g, font, px, py) -> g.renderTooltip(font, stack, px, py));
     }
 

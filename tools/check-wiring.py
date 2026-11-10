@@ -4,6 +4,7 @@ import re
 import sys
 
 from toolslib.checks import Finding, run
+from toolslib.boundaries import is_client_source
 from toolslib.java_references import Source, TypeIndex
 from toolslib.json_input import read_json
 from toolslib.repo import java_files, properties, repository_files
@@ -50,12 +51,18 @@ def check(root: Path) -> list[Finding]:
                         report(path, 'mixin.config', 'Mixin 配置须声明 package')
                         continue
                     declared = []
+                    if not data['package'].startswith(PROJECT) or 'mixin' not in data['package'].split('.'):
+                        report(path, 'mixin.package', 'Mixin package 须指向专属注入包')
                     for side in ('mixins', 'client', 'server'):
                         values = data.get(side, [])
                         if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
                             report(path, 'mixin.config', f'{side} 须为类名数组')
                             continue
                         declared.extend(data['package'] + '.' + value for value in values)
+                        for value in values:
+                            class_name = data['package'] + '.' + value
+                            if side != 'client' and any(is_client_source(source) for source in index.types.get(class_name, [])):
+                                report(path, 'mixin.side', f'客户端 Mixin 须登记在 client 数组：{class_name}')
                     if data.get('plugin') and isinstance(data['plugin'], str):
                         declared.append(data['plugin'])
                     elif data.get('plugin'):

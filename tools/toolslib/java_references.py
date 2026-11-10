@@ -9,7 +9,7 @@ PACKAGE = re.compile(r'\bpackage\s+([\w.]+)\s*;')
 IMPORT = re.compile(r'\bimport\s+(?:static\s+)?([\w.]+(?:\*)?)\s*;')
 TYPE = re.compile(r'\b(?:class|interface|enum|record)\s+([A-Za-z_$][\w$]*)')
 NAME = re.compile(r'\b[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*')
-PREFIXES = ('com.meteorite.', 'net.fabricmc.', 'net.neoforged.', 'net.minecraftforge.', 'net.minecraft.', 'cpw.mods.')
+PREFIXES = ('com.meteorite.', 'com.mojang.blaze3d.', 'org.lwjgl.', 'net.fabricmc.', 'net.neoforged.', 'net.minecraftforge.', 'net.minecraft.', 'cpw.mods.')
 
 
 def code_only(text: str) -> str:

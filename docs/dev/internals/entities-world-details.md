@@ -5,7 +5,7 @@
 
 ## 1. 自然骨块追踪
 
-[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/world/NaturalBoneBlockTracker.java) 是静态门面，抹平平台差异，委托 [`IBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/world/IBoneBlockTracker.java) SPI 实现：
+[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/NaturalBoneBlockTracker.java) 是静态门面，抹平平台差异，委托 [`IBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IBoneBlockTracker.java) SPI 实现：
 
 | 方法 | 职责 |
 |---|---|

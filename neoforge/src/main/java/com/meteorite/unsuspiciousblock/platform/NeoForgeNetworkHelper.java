@@ -12,8 +12,4 @@ public class NeoForgeNetworkHelper implements INetworkHelper {
         PacketDistributor.sendToPlayer(player, payload);
     }
 
-    @Override
-    public <T extends CustomPacketPayload> void sendToServer(T payload) {
-        PacketDistributor.sendToServer(payload);
-    }
 }

@@ -15,17 +15,30 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
-import com.meteorite.unsuspiciousblock.text.ClientTooltipBridge;
+import com.meteorite.unsuspiciousblock.core.text.ClientTooltipBridge;
+import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import java.util.function.Consumer;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/** 客户端安装、tick 与断连清理的公共生命周期入口。 */
 public final class ModClientLifecycle {
     private ModClientLifecycle() {
     }
 
-    public static void install() {
+    /** 安装客户端能力，网络发送由当前 Loader 提供。 */
+    public static void install(Consumer<CustomPacketPayload> packetSender) {
+        ClientNetwork.install(packetSender);
+        if (Services.PLATFORM.isModLoaded("jade")) {
+            OptionalModIntegration.instantiate(
+                    "com.meteorite.unsuspiciousblock.client.plugin.jade.JadeClientIntegration",
+                    Runnable.class).run();
+        }
         ClientTooltipBridge.install(new ClientTooltipHooks());
         ClientLootTableLanguageStore.initialize();
         PanningVisuals.register();

@@ -1,12 +1,15 @@
 package com.meteorite.unsuspiciousblock.client.ui.widget;
 
+import java.util.List;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.style.UiControlSkin;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -26,7 +29,7 @@ public final class CopyCoordinateButton {
 
     public static void configure(UiControl control, ExcavationLogEntry entry) {
         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_tooltip");
-        JournalControls.configureHotspot(control, label, java.util.List.of(label), () -> copyCommand(entry));
+        JournalControls.configureHotspot(control, label, List.of(label), () -> copyCommand(entry));
         control.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) ->
                 render(graphics, frame.bounds().x(), frame.bounds().y(),
                         frame.focused() || frame.state() == UiControlStyle.State.HOVER),
@@ -71,8 +74,8 @@ public final class CopyCoordinateButton {
         minecraft.keyboardHandler.setClipboard(command);
         // 播放原版 UI 按钮点击音效
         minecraft.getSoundManager().play(
-                net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
-                        net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
+                SimpleSoundInstance.forUI(
+                        SoundEvents.UI_BUTTON_CLICK, 1.0F));
         if (minecraft.player != null) {
             minecraft.player.displayClientMessage(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_success", command), true);

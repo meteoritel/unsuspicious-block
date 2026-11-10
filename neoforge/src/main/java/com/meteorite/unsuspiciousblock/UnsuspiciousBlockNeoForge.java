@@ -1,35 +1,40 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.bootstrap.ModServerLifecycle;
-import com.meteorite.unsuspiciousblock.bootstrap.ModContent;
+import com.meteorite.unsuspiciousblock.platform.loot.LootInjectionDescriptions;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import com.meteorite.unsuspiciousblock.core.bootstrap.UnsuspiciousBlockCommon;
+
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModServerLifecycle;
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.flag.FeatureFlags;
 import java.util.function.BiFunction;
-import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
-import com.meteorite.unsuspiciousblock.blockentity.BlockEntityRegistrar;
-import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
+import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlockInteractions;
+import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntityRegistrar;
+import com.meteorite.unsuspiciousblock.core.command.UsbCommand;
+import com.meteorite.unsuspiciousblock.core.entity.EntityRegistrar;
 import net.minecraft.world.level.levelgen.feature.Feature;
-import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
-import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
-import com.meteorite.unsuspiciousblock.inventory.AncientCoinRepair;
-import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
-import com.meteorite.unsuspiciousblock.loot.FishingLootModifier;
-import com.meteorite.unsuspiciousblock.loot.InjectItemLootModifier;
-import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
+import com.meteorite.unsuspiciousblock.core.world.NaturalBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
+import com.meteorite.unsuspiciousblock.platform.world.NeoForgeBoneBlockTracker;
+import com.meteorite.unsuspiciousblock.platform.inventory.NeoForgeInventoryPresenceAdapter;
+import com.meteorite.unsuspiciousblock.core.inventory.AncientCoinRepair;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.platform.loot.AddItemLootModifier;
+import com.meteorite.unsuspiciousblock.platform.loot.FishingLootModifier;
+import com.meteorite.unsuspiciousblock.platform.loot.InjectItemLootModifier;
+import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
-import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.network.ModPayloads;
+import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
+import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
+import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.platform.DataPackReloadListener;
+import com.meteorite.unsuspiciousblock.core.bootstrap.DataPackReloadListener;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -265,7 +270,7 @@ public class UnsuspiciousBlockNeoForge {
             // 通过反射跨越可选依赖边界，避免主入口在 Curios 缺失时解析其 API。
             if (Services.PLATFORM.isModLoaded("curios")) {
                 OptionalModIntegration.instantiate(
-                        "com.meteorite.unsuspiciousblock.plugin.curio.NeoForgeCuriosIntegration",
+                        "com.meteorite.unsuspiciousblock.platform.plugin.curio.NeoForgeCuriosIntegration",
                         Runnable.class).run();
             }
         });
@@ -302,7 +307,7 @@ public class UnsuspiciousBlockNeoForge {
     // 独立服务端登记 clientbound payload：只登记类型与编解码；该方向的包不会发往服务端，handler 不会被调用
     @SuppressWarnings("unchecked")
     private static <T extends CustomPacketPayload> void registerS2CSpec(
-            net.neoforged.neoforge.network.registration.PayloadRegistrar registrar,
+            PayloadRegistrar registrar,
             ModPayloads.S2CSpec<?> specRaw) {
         ModPayloads.S2CSpec<T> spec = (ModPayloads.S2CSpec<T>) specRaw;
         registrar.playToClient(spec.type(), spec.streamCodec(), (payload, context) -> {
@@ -312,7 +317,7 @@ public class UnsuspiciousBlockNeoForge {
     // 注册单个 C2S payload 到 NeoForge 网络注册器
     @SuppressWarnings("unchecked")
     private static <T extends CustomPacketPayload> void registerC2S(
-            net.neoforged.neoforge.network.registration.PayloadRegistrar registrar,
+            PayloadRegistrar registrar,
             ModPayloads.C2S<?> c2sRaw) {
         ModPayloads.C2S<T> c2s = (ModPayloads.C2S<T>) c2sRaw;
         registrar.playToServer(c2s.type(), c2s.streamCodec(),
@@ -358,7 +363,7 @@ public class UnsuspiciousBlockNeoForge {
     // "重载真的发生了"的入口；在回调里同步跑全量构建会拖住重载本身。
     @SubscribeEvent
     public void onAddReloadListener(AddReloadListenerEvent event) {
-        com.meteorite.unsuspiciousblock.loot.LootInjectionDescriptions.beginReload();
+        LootInjectionDescriptions.beginReload();
         event.addListener(DataPackReloadListener.INSTANCE);
     }
 
@@ -391,7 +396,7 @@ public class UnsuspiciousBlockNeoForge {
 
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
     @SubscribeEvent
-    public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+    public void onServerTick(ServerTickEvent.Post event) {
         ModServerLifecycle.tick(event.getServer());
     }
 

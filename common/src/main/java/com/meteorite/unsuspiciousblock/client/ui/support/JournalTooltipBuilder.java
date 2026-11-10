@@ -1,18 +1,19 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionFidelity;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ScenarioProbability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
-import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
-import com.meteorite.unsuspiciousblock.loottable.simulation.ProbabilityFormat;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.PathHint;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -183,7 +184,7 @@ public final class JournalTooltipBuilder {
                     && ("sequence".equals(info.functionType().getPath())
                     || "reference".equals(info.functionType().getPath()))
                     && !info.hasConditions() && !info.children().isEmpty()
-                    && info.fidelity() == com.meteorite.unsuspiciousblock.loottable.analysis.FunctionFidelity.FULL
+                    && info.fidelity() == FunctionFidelity.FULL
                     && !info.metadata().containsKey(LootFunctionInfo.METADATA_TRUNCATED);
             if (transparent && depth < MAX_FUNCTION_RULE_DEPTH) {
                 result.addAll(displayFunctions(info.children(), depth + 1));

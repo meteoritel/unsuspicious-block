@@ -5,7 +5,7 @@
 
 ## 1. 生成
 
-[`ShimmerSpawnService`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/pan/ShimmerSpawnService.java) 是静态服务，由两端平台入口把服务器 tick 与服务器停止事件转交给它。
+[`ShimmerSpawnService`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/pan/ShimmerSpawnService.java) 是静态服务，由两端平台入口把服务器 tick 与服务器停止事件转交给它。
 
 ### 1.1 自然生成
 
@@ -39,7 +39,7 @@
 
 ## 2. 账本
 
-[`ShimmerLedger`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/pan/ShimmerLedger.java) 继承 `SavedData`，按维度存储（文件名 `unsuspiciousblock_shimmer`）。记录：
+[`ShimmerLedger`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/pan/ShimmerLedger.java) 继承 `SavedData`，按维度存储（文件名 `unsuspiciousblock_shimmer`）。记录：
 
 - `entries`：UUID → `Entry(pos, source, variant)`，附**区块空间索引** `entriesByChunk`（区块键 → UUID 集合）与按变体分开的自然生成计数 `naturalCounts`，两者均随 register/unregister 增量维护，`countNatural(variant)` 与 `isTooClose` 因此无需全量扫描（间距查询只访问范围覆盖的区块）。间距校验跨变体生效——不同介质的点本就不可能落在同一格。
 - `nextAttempt`：下一次自然生成尝试的游戏刻。
@@ -86,7 +86,7 @@
 
 ## 4. 生成调试指令
 
-`/usb shimmer`（OP 2，见 [`ShimmerDebugCommand`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/command/ShimmerDebugCommand.java)），使用命令源所在位置与维度，可配合 `/execute in ... positioned ... run`。
+`/usb shimmer`（OP 2，见 [`ShimmerDebugCommand`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/command/ShimmerDebugCommand.java)），使用命令源所在位置与维度，可配合 `/execute in ... positioned ... run`。
 
 | 子指令 | 用途 |
 |---|---|

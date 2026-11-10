@@ -1,22 +1,22 @@
 # 实体与 AI
 
-> `entity/` 与 `world/` 包中实体侧内容的架构：猫国灵体猫的通用基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪，以及猫之手结构的世界生成。
-> 本文件是这些内容的唯一权威。淘洗点实体 `ShimmerEntity` 属淘洗玩法（见 [淘洗系统](panning.md)）；`world/` 包中属考古笔记/战利品系统的持久化类在本文只作包位置索引。
+> `core/entity/` 与 `core/world/` 包中实体侧内容的架构：猫国灵体猫的通用基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪，以及猫之手结构的世界生成。
+> 本文件是这些内容的唯一权威。淘洗点实体 `ShimmerEntity` 属淘洗玩法（见 [淘洗系统](panning.md)）；`core/world/` 包中属考古笔记/战利品系统的持久化类在本文只作包位置索引。
 
 ## 1. 代码地图
 
 | 层 | 位置 |
 |---|---|
-| 灵体基类与职业 | `entity/SpiritCat.java`（继承原版 `Cat`）、`entity/MessengerCat.java`、`entity/SwordsmanCat.java`、`entity/MerchantCat.java` |
-| 其他实体 | `entity/LanternPet.java`（独立宠物）、`entity/WaterShimmerEntity.java` / `entity/GlimmerEntity.java` / `entity/ShimmerEntity.java`（淘洗点，见 [淘洗系统](panning.md)） |
-| 灵体 AI | `entity/ai/spiritcat/`：`SpiritRunMode`、`SpiritCatRole`、`SpiritMovementState`、`SpiritFlightController`、各职业 `*Phase`、`MessengerCatBehavior` / `MorningGiftBehavior` / `MessengerCatGiftGoal` / `MessengerCatPositioning` |
-| 宠物 AI | `entity/ai/lantern/`：`LanternPetFollowSoulCarrierGoal`、`LanternPetWanderGoal` |
-| 注册 | `entity/ModEntities.java`（`REGISTRY_MANIFEST` 是唯一清单，见 [注册架构](../foundation/registration.md)）、`entity/EntityRegistrar.java` |
-| 骨块追踪 | `world/NaturalBoneBlockTracker.java`（静态门面）、`world/IBoneBlockTracker.java`（SPI） |
+| 灵体基类与职业 | `core/entity/SpiritCat.java`（继承原版 `Cat`）、`core/entity/MessengerCat.java`、`core/entity/SwordsmanCat.java`、`core/entity/MerchantCat.java` |
+| 其他实体 | `core/entity/LanternPet.java`（独立宠物）、`core/entity/WaterShimmerEntity.java` / `core/entity/GlimmerEntity.java` / `core/entity/ShimmerEntity.java`（淘洗点，见 [淘洗系统](panning.md)） |
+| 灵体 AI | `core/entity/ai/spiritcat/`：`SpiritRunMode`、`SpiritCatRole`、`SpiritMovementState`、`SpiritFlightController`、各职业 `*Phase`、`MessengerCatBehavior` / `MorningGiftBehavior` / `MessengerCatGiftGoal` / `MessengerCatPositioning` |
+| 宠物 AI | `core/entity/ai/lantern/`：`LanternPetFollowSoulCarrierGoal`、`LanternPetWanderGoal` |
+| 注册 | `core/entity/ModEntities.java`（`REGISTRY_MANIFEST` 是唯一清单，见 [注册架构](../foundation/registration.md)）、`core/entity/EntityRegistrar.java` |
+| 骨块追踪 | `core/world/NaturalBoneBlockTracker.java`（静态门面）、`platform/services/IBoneBlockTracker.java`（SPI） |
 | 世界生成 | `data/unsuspiciousblock/structure/hand_of_cat_cache.nbt`、`data/unsuspiciousblock/worldgen/{structure,template_pool}/hand_of_cat_cache.json`、`data/unsuspiciousblock/tags/worldgen/biome/has_structure/` |
 | 客户端 | `client/renderer/`（`ModEntityRenderers` / `ModModelLayers` 清单、各职业渲染器、`ShimmerRenderer` / `ShimmerSurfaceRenderer`）、`client/model/MessengerCatClothesModel`、`client/renderer/layer/`（装饰层） |
 | 网络 | 无专属 payload（灵体不保存、不跨会话同步） |
-| Mixin | `StructureTemplateMixin`（结构生成时扫描骨块）；Fabric 骨块追踪用 `chunk/ChunkAccessMixin` / `chunk/ChunkSerializerMixin` / `chunk/LevelChunkMixin` |
+| Mixin | `StructureTemplateMixin`（结构生成时扫描骨块）；Fabric 骨块追踪用 `platform/mixin/chunk/ChunkAccessMixin` / `platform/mixin/chunk/ChunkSerializerMixin` / `platform/mixin/chunk/LevelChunkMixin` |
 | 平台差异 | 骨块追踪：Fabric 用 mixin + chunk 事件，NeoForge 用 `DataAttachment`（`NeoForgeBoneBlockTracker.ATTACHMENT_TYPES` 注册到 modEventBus） |
 
 ## 2. 数据流
@@ -46,19 +46,19 @@ FossilHunterEffect.apply ──► consumeNatural  仅自然骨块触发额外�
 
 | 类 | 职责 |
 |---|---|
-| `entity/SpiritCat` | 灵体猫抽象基类，统一运行模式、生命周期、飞行与无碰撞物理 |
-| `entity/MessengerCat` / `SwordsmanCat` / `MerchantCat` | 三种职业实体 |
-| `entity/LanternPet` | 灵魂提灯宠物（独立实体，非灵体体系） |
-| `entity/ai/spiritcat/SpiritRunMode` | 运行模式枚举（`PREVIEW` / `DUTY` / `DEBUG_DUTY`） |
-| `entity/ai/spiritcat/SpiritCatRole` | 职业标识枚举，供调试绑定、筛选、命令解析共用（`matches(SpiritCat)` 用 `instanceof` 判定） |
-| `entity/ai/spiritcat/SpiritFlightController` / `SpiritMovementState` | 飞行控制器 / 离散移动状态（仅状态变化时同步） |
-| `entity/ai/spiritcat/*Phase` | 各职业的行为阶段管理 |
-| `world/NaturalBoneBlockTracker` | 骨块追踪静态门面，抹平平台差异 |
-| `world/IBoneBlockTracker` | 骨块追踪 SPI（平台实现） |
+| `core/entity/SpiritCat` | 灵体猫抽象基类，统一运行模式、生命周期、飞行与无碰撞物理 |
+| `core/entity/MessengerCat` / `SwordsmanCat` / `MerchantCat` | 三种职业实体 |
+| `core/entity/LanternPet` | 灵魂提灯宠物（独立实体，非灵体体系） |
+| `core/entity/ai/spiritcat/SpiritRunMode` | 运行模式枚举（`PREVIEW` / `DUTY` / `DEBUG_DUTY`） |
+| `core/entity/ai/spiritcat/SpiritCatRole` | 职业标识枚举，供调试绑定、筛选、命令解析共用（`matches(SpiritCat)` 用 `instanceof` 判定） |
+| `core/entity/ai/spiritcat/SpiritFlightController` / `SpiritMovementState` | 飞行控制器 / 离散移动状态（仅状态变化时同步） |
+| `core/entity/ai/spiritcat/*Phase` | 各职业的行为阶段管理 |
+| `core/world/NaturalBoneBlockTracker` | 骨块追踪静态门面，抹平平台差异 |
+| `platform/services/IBoneBlockTracker` | 骨块追踪 SPI（平台实现） |
 
 ## 4. 灵体猫基类（SpiritCat）
 
-[`SpiritCat`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/entity/SpiritCat.java) 继承自原版 `Cat`，是三种职业灵体的公共基类。
+[`SpiritCat`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/SpiritCat.java) 继承自原版 `Cat`，是三种职业灵体的公共基类。
 
 ### 4.1 运行模式
 
@@ -114,11 +114,11 @@ FossilHunterEffect.apply ──► consumeNatural  仅自然骨块触发额外�
 - **阶段类**：`MessengerCatPhase` / `SwordsmanCatPhase` / `MerchantCatPhase` 分别管理各职业实体的行为阶段。
 - **行为类**：`MessengerCatBehavior`（信使行为抽象）、`MorningGiftBehavior`（晨礼行为实现）、`MessengerCatGiftGoal`（送礼 Goal）。
 
-预览灵体注册到 [`SpiritCatDebugRegistry`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/cat/SpiritCatDebugRegistry.java)，供调试命令查询与操作。
+预览灵体注册到 [`SpiritCatDebugRegistry`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/SpiritCatDebugRegistry.java)，供调试命令查询与操作。
 
 ## 7. 灵魂提灯宠物（LanternPet）
 
-[`LanternPet`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/entity/LanternPet.java) 是**独立实体**（继承 `PathfinderMob`，非 `SpiritCat`），以原版灵魂灯笼为外形的飞行宠物：
+[`LanternPet`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/LanternPet.java) 是**独立实体**（继承 `PathfinderMob`，非 `SpiritCat`），以原版灵魂灯笼为外形的飞行宠物：
 
 - **飞行**：`FlyingMoveControl` + `FlyingPathNavigation`，无重力，可在空中无障碍移动。
 - **AI**：`FloatGoal`（防溺水）→ `LanternPetFollowSoulCarrierGoal`（跟随手持灵魂沙/灵魂土/灵魂灯笼/灵魂火把的玩家，半径 16）→ `LanternPetWanderGoal`（空中游荡）→ `LookAtPlayerGoal`。
@@ -130,16 +130,16 @@ FossilHunterEffect.apply ──► consumeNatural  仅自然骨块触发额外�
 
 ## 8. 自然骨块追踪
 
-[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/world/NaturalBoneBlockTracker.java) 是静态门面，抹平平台差异，委托 [`IBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/world/IBoneBlockTracker.java) SPI 实现：chunk 首次生成时扫描骨块、结构生成时扫描 bounding box，标记"自然生成"；`FossilHunterEffect.apply` 调 `consumeNatural` 后仅自然生成的骨块才触发额外掉落（见 [附魔系统](enchantment.md) 的「化石猎手」），玩家或机器放置的骨块不触发奖励。方法清单、Fabric/NeoForge 平台实现差异与玩家破坏路径的延迟消费状态见 [实体与 AI 机制细节](../internals/entities-world-details.md) 的「自然骨块追踪」。
+[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/NaturalBoneBlockTracker.java) 是静态门面，抹平平台差异，委托 [`IBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IBoneBlockTracker.java) SPI 实现：chunk 首次生成时扫描骨块、结构生成时扫描 bounding box，标记"自然生成"；`FossilHunterEffect.apply` 调 `consumeNatural` 后仅自然生成的骨块才触发额外掉落（见 [附魔系统](enchantment.md) 的「化石猎手」），玩家或机器放置的骨块不触发奖励。方法清单、Fabric/NeoForge 平台实现差异与玩家破坏路径的延迟消费状态见 [实体与 AI 机制细节](../internals/entities-world-details.md) 的「自然骨块追踪」。
 
 ## 9. 世界持久化数据（包位置索引）
 
-以下 `world/` 包组件属考古笔记 / 战利品系统的存储，**机制权威在对应子系统文档**，此处仅作索引：
+以下 `core/world/` 包组件属考古笔记 / 战利品系统的存储，**机制权威在对应子系统文档**，此处仅作索引：
 
-- `world/LootProbabilityData.java`：附加在 overworld，缓存每张战利品表的概率模拟结果与 JSON 哈希（见 [战利品表系统](loottable.md)）。
-- `world/JournalLogStorage.java`：在 `<world>/data/unsuspiciousblock/journal_logs/` 下按玩家 UUID、战利品表保存日志分片；`world/JournalLogSavedData.java` 只保留为旧单文件迁移读取器（见 [考古笔记系统](journal.md)）。
-- `world/GameTimeFormatHelper.java`：游戏时间格式化，供日志显示。
-- `world/StructureRewindService.java` / `world/StructureRewindCooldownData.java`：结构回溯（见 [方块与物品](blocks-items.md) 的「结构回溯」）。
+- `core/world/LootProbabilityData.java`：附加在 overworld，缓存每张战利品表的概率模拟结果与 JSON 哈希（见 [战利品表系统](loottable.md)）。
+- `core/world/JournalLogStorage.java`：在 `<world>/data/unsuspiciousblock/journal_logs/` 下按玩家 UUID、战利品表保存日志分片；`core/world/JournalLogSavedData.java` 只保留为旧单文件迁移读取器（见 [考古笔记系统](journal.md)）。
+- `core/world/GameTimeFormatHelper.java`：游戏时间格式化，供日志显示。
+- `core/world/StructureRewindService.java` / `core/world/StructureRewindCooldownData.java`：结构回溯（见 [方块与物品](blocks-items.md) 的「结构回溯」）。
 
 ## 10. 世界生成：猫之手藏宝点
 

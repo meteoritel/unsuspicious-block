@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.pan;
 
-import com.meteorite.unsuspiciousblock.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
 import net.minecraft.sounds.SoundSource;

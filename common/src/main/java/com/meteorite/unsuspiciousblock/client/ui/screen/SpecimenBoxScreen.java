@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.meteosuikit.api.render.UiFlatText;
+import org.lwjgl.glfw.GLFW;
+import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -24,14 +26,14 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
     }
 
     @Override protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
-        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, title,
+        UiFlatText.drawWrapped(graphics, font, title,
                 titleLabelX, titleLabelY, imageWidth - titleLabelX - 6, 0x404040);
-        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
+        UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
                 inventoryLabelX, inventoryLabelY, imageWidth - inventoryLabelX - 6, 0x404040);
     }
 
     @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
+        if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
             onClose();
             return true;
         }

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.*;
@@ -8,8 +9,8 @@ import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
-import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget;
-import com.meteorite.unsuspiciousblock.network.payload.c2s.RequestScenarioSimulationPayload;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -164,10 +165,10 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
                 graphics.drawString(font, lines.get(index), 0, index * lineHeight, UiTextPalette.Parchment.BODY, false);
             }
         } finally { scroll.pop(graphics); }
-        scroll.renderScrollbar(graphics, com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme.PARCHMENT);
+        scroll.renderScrollbar(graphics, UnsuspiciousUiTheme.PARCHMENT);
         controls.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) pointer.hit().renderTooltip(graphics, font,
-                com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
+                UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
     }
 
     @Override public UiChildren<UiInputTarget> inputChildren() { return children; }

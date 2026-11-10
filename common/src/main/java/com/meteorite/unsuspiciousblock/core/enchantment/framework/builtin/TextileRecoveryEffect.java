@@ -1,0 +1,35 @@
+package com.meteorite.unsuspiciousblock.core.enchantment.framework.builtin;
+
+import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EffectContext;
+import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EnchantmentEffect;
+import com.meteorite.unsuspiciousblock.core.enchantment.framework.trigger.TriggerContext;
+import com.meteorite.unsuspiciousblock.core.enchantment.framework.trigger.TriggerType;
+import net.minecraft.world.entity.animal.Sheep;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+
+/**
+ * 织物采集附魔效果：剪羊毛时额外掉落1-3根线。
+ * <p>
+ * 注册到 {@link TriggerType#ENTITY_SHEAR}，由平台 Adapter / Fabric Mixin
+ * 在原版剪毛逻辑执行前触发。
+ */
+public final class TextileRecoveryEffect implements EnchantmentEffect {
+    private static final int EXTRA_STRING_MIN = 1;
+    private static final int EXTRA_STRING_MAX = 3;
+
+    @Override
+    public void apply(EffectContext<?> ctx) {
+        var triggerCtx = ctx.triggerContext();
+        if (triggerCtx.targetEntity instanceof Sheep sheep) {
+            handleSheepShear(triggerCtx, sheep);
+        }
+    }
+
+    // 剪羊毛额外掉线
+    private void handleSheepShear(TriggerContext triggerCtx, Sheep sheep) {
+        int count = EXTRA_STRING_MIN + triggerCtx.player.getRandom().nextInt(EXTRA_STRING_MAX - EXTRA_STRING_MIN + 1);
+        Block.popResource(triggerCtx.level, sheep.blockPosition(), new ItemStack(Items.STRING, count));
+    }
+}

@@ -26,24 +26,36 @@ unsuspiciousBlock-1.21.1-multi/
 └── neoforge/    NeoForge 接入：入口、注册实现、平台 SPI 实现、GLM/事件
 ```
 
+### Java 分包职责
+
+| 包 | 职责 | 依赖方向 |
+|---|---|---|
+| `core` | 玩法、共享模型、注册、网络协议、持久化和公共 Mixin | 使用 `platform.services` 的能力契约 |
+| `client` | 客户端状态、网络处理、UI、渲染、按键和客户端 Mixin/联动 | 消费 core 与公共平台契约 |
+| `platform` | SPI、服务装配和第三方接入桥；Loader 源集中的原生 Adapter | 将平台事件与能力接到公共逻辑 |
+
+`core` 同时承载服务端逻辑和客户端需要的共享类型。物品、实体、菜单和 payload 在两端加载；客户端专属实现由 client 持有。各源集沿用 `src/main/java`，端边界由初始化接线和源码门禁约束。
+
+根包保留 `Constants` 和 Loader 公共入口。common 的 `UnsuspiciousBlockCommon` 位于 `core.bootstrap`；两端客户端入口位于各自的 `client` 包。
+
 ### 2.1 common 模块
 
 - 承载跨平台玩法、注册声明、数据资源、Mixin 与客户端 UI。
 - **不 import 任何平台专属类**（`net.fabricmc.*`、`net.neoforged.*`）。这是项目的硬性约束，违反会在另一平台编译失败。
 - 通过 [`platform/services/`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services) 定义的 SPI 接口访问平台能力，由 `fabric` / `neoforge` 提供实现（见 [平台抽象](platform-spi.md)）。
 - 包含全部数据资源（`assets/`、`data/`）、Mixin 配置、客户端 GUI。
-- 既含服务端逻辑也含客户端类（`client/` 包）。客户端类型由客户端入口、客户端 Mixin 或明确的惰性绑定边界消费，公共执行面使用共享契约。
+- 包含 core、client 和 platform。公共执行面只使用共享契约，客户端 Implementation 由客户端入口安装。
 
 ### 2.2 fabric 模块
 
-- 入口：[`UnsuspiciousBlockFabric`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockFabric.java)（`ModInitializer`）与 [`UnsuspiciousBlockFabricClient`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockFabricClient.java)（`ClientModInitializer`）。
+- 入口：[`UnsuspiciousBlockFabric`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockFabric.java)（`ModInitializer`）与 [`client/UnsuspiciousBlockFabricClient`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/UnsuspiciousBlockFabricClient.java)（`ClientModInitializer`）。
 - 用 `Registry.register` + Fabric API 事件回调完成注册与事件接入；**即时回写**注册结果（见 [注册架构](registration.md)）。
 - 通过 Fabric 专用 Mixin 补齐原生事件缺失的能力（铁砧、刷拭、羊剪毛、区块扫描等），见 [Mixin](mixin.md)。
 - 通过 `META-INF/services/` 注册 SPI 实现。
 
 ### 2.3 neoforge 模块
 
-- 入口：[`UnsuspiciousBlockNeoForge`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockNeoForge.java)（`@Mod`）与 [`UnsuspiciousBlockNeoForgeClient`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockNeoForgeClient.java)（`@EventBusSubscriber(Dist.CLIENT)`）。
+- 入口：[`UnsuspiciousBlockNeoForge`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockNeoForge.java)（`@Mod`）与 [`client/UnsuspiciousBlockNeoForgeClient`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/client/UnsuspiciousBlockNeoForgeClient.java)（`@EventBusSubscriber(Dist.CLIENT)`）。
 - 用 `DeferredRegister` + `@SubscribeEvent` 完成注册与事件接入；**延迟回写**注册结果。
 - 战利品注入使用 NeoForge 的 `IGlobalLootModifier`（GLM），而非 Fabric 的注入器方案。
 - 铁砧修复使用 `AnvilUpdateEvent`，而非 Fabric 的 `AnvilMenuMixin`。
@@ -55,7 +67,7 @@ unsuspiciousBlock-1.21.1-multi/
 
 ### 3.1 服务端初始化
 
-两个平台的入口都调用 [`UnsuspiciousBlockCommon.init()`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockCommon.java)，该方法按固定顺序引导核心子系统：
+两个平台的入口都调用 [`UnsuspiciousBlockCommon.init()`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/bootstrap/UnsuspiciousBlockCommon.java)，该方法位于 core.bootstrap，按固定顺序引导核心子系统：
 
 ```
 平台入口构造/初始化
@@ -75,7 +87,7 @@ unsuspiciousBlock-1.21.1-multi/
 
 - **注册**：`ModContent.register(Registrars)` 按依赖顺序遍历各 `ModXxx.forEach(registrar)` 清单（见 [注册架构](registration.md)）。
 - **事件接入**：Fabric 用 `*Callback.EVENT.register`，NeoForge 用 `@SubscribeEvent`。
-- **生命周期钩子**：两端服务器 started/tick/stopped 事件统一转交 `bootstrap/ModServerLifecycle`。启动顺序为配置、玩家数据、worker、目录；停止先保存玩家数据，再停止 worker、失效目录、卸载配置及清理世界状态。chunk 与玩家事件仍由平台绑定。
+- **生命周期钩子**：两端服务器 started/tick/stopped 事件统一转交 `core/bootstrap/ModServerLifecycle`。启动顺序为配置、玩家数据、worker、目录；停止先保存玩家数据，再停止 worker、失效目录、卸载配置及清理世界状态。chunk 与玩家事件仍由平台绑定。
 - **淘洗生成服务**：服务器 tick 与停止事件转交 `ShimmerSpawnService`，驱动淘洗点的自然生成（只投放水域变体）；世界生成通过统一的 `ShimmerFeature` 与两端群系注入接入原版地物阶段，介质由数据包里的变体 id 指定（见 [淘洗系统](../subsystems/panning.md)）。
 - **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立（见 [考古笔记系统](../subsystems/journal.md)）。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册（见 [战利品表系统](../subsystems/loottable.md)）。
@@ -88,7 +100,7 @@ unsuspiciousBlock-1.21.1-multi/
 1. **按键绑定**注册（扫描模式切换、笔记、威慑切换、轻步切换）。
 2. **实体/方块实体渲染器**与**模型层**注册（遍历 `ModEntityRenderers` / `ModModelLayers` 清单）。
 3. **Screen**注册（考古笔记、标本箱、陶轮）。
-4. **S2C 接收器**注册（遍历 `ModPayloads.Client.S2C_PAYLOADS` 清单）。
+4. **S2C 接收器**注册（遍历 `ModPayloads.S2C_PAYLOADS` 清单）。
 5. **Tooltip 组件**注册（标本箱内容预览）。
 6. **HUD / 世界渲染**注册（猫之恩惠 HUD、范围扫描高亮、保护罩）。
 7. **客户端 tick** 驱动（笔记按键、客户端状态、扫描高亮等）。
@@ -136,7 +148,7 @@ lootr_compat_fabric=false
 lootr_compat_neoforge=true
 ```
 
-关闭时 `common/build.gradle` 会排除 `mixin/compat/lootr/`、`plugin/lootr/` 下的代码、`unsuspiciousblock.lootr.mixins.json` 与对应的 `META-INF/services` 文件；`multiloader-common.gradle` 还会从 `neoforge.mods.toml` 模板中剔除 Lootr 依赖与 `[[mixins]]` 块。判定与生效细节见 [Mixin](mixin.md) 与 [配置与第三方联动](config-and-integrations.md)。
+关闭时 `common/build.gradle` 会排除 `core/mixin/compat/lootr/`、`core/plugin/lootr/` 下的代码、`unsuspiciousblock.lootr.mixins.json` 与对应的 `META-INF/services` 文件；`multiloader-common.gradle` 还会从 `neoforge.mods.toml` 模板中剔除 Lootr 依赖与 `[[mixins]]` 块。判定与生效细节见 [Mixin](mixin.md) 与 [配置与第三方联动](config-and-integrations.md)。
 
 > 当前发布配置：Fabric 不带 Lootr 兼容，NeoForge 带。
 
@@ -161,11 +173,11 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 以下原则贯穿整个代码库，开发时务必遵守：
 
 1. **common 零平台依赖**：`common/` 不得 import 任何平台类。需要平台能力时定义 SPI 接口（见 [平台抽象](platform-spi.md)）。
-2. **客户端/服务端分离**：服务端执行面使用共享类型；客户端绑定和平台客户端入口持有客户端类型。
+2. **客户端/服务端分离**：服务端执行面使用共享类型；客户端绑定和平台客户端入口持有客户端类型；core 与公共 platform 保持静态引用隔离。
 3. **清单 + 回调注册**：新增可注册内容只在 common 的 `REGISTRY_MANIFEST` 加一行，平台代码无需改动（见 [注册架构](registration.md)）。
 4. **优先 Event API，少用 Mixin**：Fabric 端原生事件不足时才用 Mixin，且 Mixin 仅作入口，不写业务逻辑（见 [Mixin](mixin.md)）。
 5. **数据驱动优先**：可枚举内容（礼物、交易、结构、worldgen、附魔、配方）交数据包，可调强度交配置，身份/关系语义保持硬编码（见 [配置与第三方联动](config-and-integrations.md)）。
-6. **注释规范**：类注释用 `/***/`，方法注释用 `//`，注释用简体中文。
+6. **注释规范**：公开类型和方法的 JavaDoc 与中文注释遵循[代码风格规范](../../guides/style-code.md)。
 7. **i18n**：所有 HUD/GUI 文本用本地化 key，`en_us.json` 与 `zh_cn.json` 同步更新（见 [文本格式规范](text-format.md)）。
 
 ## 6. 数据资源结构
@@ -192,7 +204,7 @@ common/src/main/resources/
 - [开发者文档索引](../README.md) —— 任务导航与子系统地图
 - [平台抽象](platform-spi.md) —— Services SPI 机制与可选依赖反射加载
 - [注册架构](registration.md) —— 清单 + 回调模式与新增内容流程
-- [Mixin](mixin.md) —— 三套 mixin 配置与全部注入点
+- [Mixin](mixin.md) —— 公共、客户端与 Lootr Mixin 配置与全部注入点
 - [网络与同步](network.md) —— payload 清单
 - [配置与第三方联动](config-and-integrations.md) —— 配置项全表与联动清单
 - [文本格式规范](text-format.md) —— 游戏内文本结构与语义色表
