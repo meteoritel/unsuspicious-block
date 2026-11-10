@@ -236,11 +236,10 @@ public final class DetailOverlayPanel implements PagePanel {
         int labelWidth = labelText.width();
         int gap = this.metrics.measure(" ", font).width();
         int sourceWidth = this.metrics.measure(this.modSource, font).width();
+        guiGraphics.drawString(font, labelText.text(), leftX, y, LABEL_COLOR, false);
         if (labelWidth + gap + sourceWidth <= contentWidth) {
-            guiGraphics.drawString(font, labelText.text(), leftX, y, LABEL_COLOR, false);
             guiGraphics.drawString(font, this.modSource, leftX + labelWidth + gap, y, TEXT_COLOR, false);
         } else {
-            guiGraphics.drawString(font, labelText.text(), leftX, y, LABEL_COLOR, false);
             int sourceY = y + font.lineHeight + 2;
             List<FormattedCharSequence> sourceLines = font.split(
                     Component.literal(this.modSource), contentWidth);
@@ -286,6 +285,13 @@ public final class DetailOverlayPanel implements PagePanel {
             return Optional.empty();
         }
         return Optional.of(this.unlockedItems.get(itemIndex).item.stack());
+    }
+
+    @Override
+    public ItemGridPanel.TooltipData tooltip(com.meteorite.meteosuikit.api.input.UiPointerHit hit) {
+        if (hit == null || !hit.owns(this)) return null;
+        ItemStack stack = getHoveredItemStack(hit.x(), hit.y()).orElse(ItemStack.EMPTY);
+        return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
     }
 
     @Override public com.meteorite.meteosuikit.api.input.UiPointerHit hitTest(double x, double y) {

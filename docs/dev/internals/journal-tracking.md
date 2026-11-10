@@ -1,6 +1,6 @@
 # 战利品追踪核心数据流
 
-> 战利品发现如何被追踪、结算并解锁目录条目的完整链路：追踪上下文、三个追踪服务、事件总线、内建订阅者与结算策略。
+> 战利品发现如何被追踪、结算并解锁目录条目的完整链路：追踪上下文、三个追踪服务、命名结算链、兼容订阅与宿主 pending。
 > 本文件不参与任务导航，只被 [考古笔记系统](../subsystems/journal.md) 链接。**新增追踪来源或订阅者时先读那篇的扩展点**；只有在改动追踪上下文、结算时机或订阅者优先级时读本文件。
 
 ## 1. 追踪上下文
@@ -45,22 +45,24 @@ LootTrackingEvents.submit(session, itemCounts, settlementStrategy)
   │     Commit 含 rootContext + discoveredLoot + tableStack
   ├─ resolveTrackingState(player, rootTableId)
   │     仅当 rootTableId 被 catalog 收录时才继续（isTrackedTable）
-  └─ dispatch(LootDiscoveredEvent)  按 priority 顺序同步通知所有订阅者
+  └─ LootTrackingBootstrap.run(event, extensions)  命名步骤与兼容回调同步执行
 ```
 
-## 4. 内建订阅者
+## 4. 命名结算链与兼容订阅
 
-`LootTrackingBootstrap.registerListeners()` 注册 5 个订阅者，按优先级顺序执行：
+`LootTrackingBootstrap.run` 顺序调用解锁、首次元数据、策略结算、挑战和完成奖励。`registerListeners` 在 common 初始化时启用该链，记录兼容订阅的注册时序。
 
-| 优先级 | 订阅者 | 职责 |
+| 命名步骤 | 行为 | 兼容 priority 位置 |
 |---|---|---|
-| 100 | `onUnlock` | `ArchaeologyLootRuntimeTracker.unlockSession` 解锁表与物品 |
-| 200 | `onRecordFirstUnlock` | `JournalLogRecorder.recordFirstUnlock` 记录首次发现元数据 |
-| 250 | `onSettle` | `settlementStrategy.settle` 结算（立即写日志或创建待定日志） |
-| 300 | `onCheckChallenge` | `ArchaeologyChallengeChecker.checkAndGrant` 考古挑战成就 |
-| 350 | `onCheckCompletionReward` | `JournalCompletionRewardChecker.checkAndReward` 100% 完成奖励 |
+| UNLOCK | `ArchaeologyLootRuntimeTracker.unlockSession` 解锁表与物品 | 100 |
+| FIRST_UNLOCK | `JournalLogHandler.recordFirstUnlock` 记录根表首次发现 | 200 |
+| SETTLE | `settlementStrategy.settle` 立即写入或创建 pending | 250 |
+| CHALLENGE | `ArchaeologyChallengeChecker.checkAndGrant` | 300 |
+| COMPLETION_REWARD | `JournalCompletionRewardChecker.checkAndReward` | 350 |
 
-> **顺序约束**：解锁（100）必须先于成就与完成奖励检查（300/350），否则检查时进度未更新。优先级数字越小越先执行。
+`LootTrackingEvents.register(priority, listener)` 是公开兼容 Seam：低 priority 先执行，同值按注册顺序。与内建步骤同值的回调，根据是否早于 common 初始化注册，保留在对应步骤前或后。`CompatibilityDispatch` 只解释这些兼容位置，内建步骤由命名调用直接表达。
+
+任何内建步骤或兼容回调失败均立即向提交方传播原异常，日志及 suppressed context 包含步骤、根表和玩家；后续奖励停止，不自动重放。
 
 ## 5. 结算策略
 
@@ -72,3 +74,13 @@ LootTrackingEvents.submit(session, itemCounts, settlementStrategy)
 | `deferred(consumer)` | false | 生成时只创建待定日志，实际取出后再更新 | 容器/可疑方块暂存（物品可能被丢弃） |
 
 延迟结算解决的问题是：玩家打开容器后可能不取走物品，或可疑方块刷出的物品可能被丢弃。待定日志暂存在容器/方块实体上，物品实际进入玩家所有权后才转为正式日志。
+
+## 6. 宿主状态与终结
+
+`PendingJournalHost` 表示宿主支持待定日志；`PendingJournal.current()==null` 表示当前为空。封存方块只实现扫描/物品能力。`PendingJournal` 集中暂存、实际取得量合并、终结与清理，合并保持 entryId；提交成功后才更新内存或清除。
+
+`ContainerLootTracking` 同时拥有表、owner、只读余量视图与 pending，方块容器、矿车和 Lootr 每玩家库存共享原 NBT codec。菜单先计划双箱间的分配，成功提交实际取得量后消费余量。库存校正只缩减余量，不提前清 pending；覆盖、校正、超时和真正销毁经 `ContainerTrackingService.terminate` 终结。`finish` 仅写日志最终形态，取得计数只在增量阶段累计。真正销毁时所有者离线沿用放弃条目的规则；区块卸载继续保存宿主 NBT。
+
+`BrushableTracking` 共享普通与 Lootr 可疑方块的扫描、表解析及 pending；`ScanIdentity` 兼容普通标记+UUID 与封存方块 ScannerUuid。普通标记为 true 且缺 UUID 时仍呈现已扫描、无扫描者；不自动修复异常组合。Lootr 的每玩家库存、扫描后回退、原版物品访问、临时刷拭工具和时间留在宿主 Adapter。
+
+原 unsuspiciousblock_tracked_loot_*、unsuspiciousblock_pending_journal_entry 与扫描/表解析键直接读写。缺失或空余量使当前表为空，owner 与 pending 独立恢复；待定日志的原 tableStack 可提供已清余量的终结根表。

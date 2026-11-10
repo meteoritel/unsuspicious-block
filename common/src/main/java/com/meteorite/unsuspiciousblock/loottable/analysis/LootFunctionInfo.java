@@ -83,16 +83,19 @@ public record LootFunctionInfo(
                 this.effect, this.conditions, this.children, merged);
     }
 
-    // 覆盖描述文本（本地化拼装推迟到展示边界时使用）
-    public LootFunctionInfo withDescription(Component value) {
-        return new LootFunctionInfo(this.functionType, value, this.fidelity,
-                this.effect, this.conditions, this.children, this.metadata);
-    }
-
     // 原位补挂函数自身的条件——函数条件与物品条目条件必须分开保存（规划 F04）
     public LootFunctionInfo withConditions(List<LootConditionInfo> value) {
         return new LootFunctionInfo(this.functionType, this.description, this.fidelity,
                 this.effect, value, this.children, this.metadata);
+    }
+
+    public FunctionSemantics semantics() {
+        return FunctionSemantics.read(this);
+    }
+
+    public LootFunctionInfo withSemantics(FunctionSemantics value) {
+        return new LootFunctionInfo(functionType, description, value.fidelity(), value.effect(),
+                conditions, children, value.encode(metadata));
     }
 
     /** 是否解析成功（供 UI 决定是否显示"未解析"降级文案）。 */

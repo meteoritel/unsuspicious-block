@@ -6,9 +6,11 @@ import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.blockentity.BrushableTracking;
+import com.meteorite.unsuspiciousblock.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.journal.tracking.PendingJournal;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
@@ -22,7 +24,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -43,30 +44,13 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
  * 为可疑方块补充扫描状态、战利品表状态与考古笔记追踪。
  */
 @Mixin(BrushableBlockEntity.class)
-public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityScanState {
-    // ========== NBT 键 ========== //
-    @Unique
-    private static final String UNSUSPICIOUSBLOCK_SCANNED_TAG = "unsuspiciousblock_scanned";
-
-    @Unique
-    private static final String UNSUSPICIOUSBLOCK_SCANNER_UUID_TAG = "unsuspiciousblock_scanner_uuid";
-
-    @Unique
-    private static final String UNSUSPICIOUSBLOCK_LOOT_TABLE_NAME_TAG = "unsuspiciousblock_loot_table_name";
-
-    @Unique
-    private static final String UNSUSPICIOUSBLOCK_LOOT_TABLE_PARSED_TAG = "unsuspiciousblock_loot_table_parsed";
-
-    @Unique
-    private static final String UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG = "unsuspiciousblock_pending_journal_entry";
-
+public abstract class BrushableBlockEntityMixin implements PendingJournalHost, BrushableBlockEntityScanState {
     @Shadow
     @Nullable
     private ResourceKey<LootTable> lootTable;
@@ -79,26 +63,8 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Nullable
     private Direction hitDirection;
 
-    // ========== 扫描状态字段 ========== //
     @Unique
-    private boolean unsuspiciousblock$scanned;
-
-    @Unique
-    @Nullable
-    private UUID unsuspiciousblock$scannerUuid;
-
-    // ========== 战利品表状态字段 ========== //
-    @Unique
-    @Nullable
-    private ResourceLocation unsuspiciousblock$lootTableName;
-
-    @Unique
-    private boolean unsuspiciousblock$lootTableParsed;
-
-    // ========== 日志追踪字段 ========== //
-    @Unique
-    @Nullable
-    private ExcavationLogEntry unsuspiciousblock$pendingJournalEntry;
+    private final BrushableTracking unsuspiciousblock$tracking = new BrushableTracking(this::unsuspiciousblock$syncBlockEntity);
 
     @Unique
     private boolean unsuspiciousblock$lootTableParsedThisCall;
@@ -116,64 +82,6 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // HEAD 阶段扫描玩家双手缓存"正在使用的刷子"，供精掘翻倍查询附魔等级
     @Unique
     private ItemStack unsuspiciousblock$brushTool = ItemStack.EMPTY;
-
-    // ========== 扫描状态 NBT ========== //
-    // 将扫描状态写入方块实体 NBT
-    @Unique
-    private void unsuspiciousblock$writeScanData(CompoundTag tag) {
-        tag.putBoolean(UNSUSPICIOUSBLOCK_SCANNED_TAG, this.unsuspiciousblock$scanned);
-        if (this.unsuspiciousblock$scanned && this.unsuspiciousblock$scannerUuid != null) {
-            tag.putUUID(UNSUSPICIOUSBLOCK_SCANNER_UUID_TAG, this.unsuspiciousblock$scannerUuid);
-        } else {
-            tag.remove(UNSUSPICIOUSBLOCK_SCANNER_UUID_TAG);
-        }
-    }
-
-    // 从方块实体 NBT 中读取扫描状态
-    @Unique
-    private void unsuspiciousblock$readScanData(CompoundTag tag) {
-        this.unsuspiciousblock$scanned = tag.getBoolean(UNSUSPICIOUSBLOCK_SCANNED_TAG);
-        this.unsuspiciousblock$scannerUuid = this.unsuspiciousblock$scanned && tag.contains(UNSUSPICIOUSBLOCK_SCANNER_UUID_TAG)
-                ? tag.getUUID(UNSUSPICIOUSBLOCK_SCANNER_UUID_TAG)
-                : null;
-    }
-
-    // ========== 战利品表状态 NBT ========== //
-    // 将战利品表解析状态写入方块实体 NBT
-    @Unique
-    private void unsuspiciousblock$writeLootTableData(CompoundTag tag) {
-        tag.putBoolean(UNSUSPICIOUSBLOCK_LOOT_TABLE_PARSED_TAG, this.unsuspiciousblock$lootTableParsed);
-        if (this.unsuspiciousblock$lootTableParsed && this.unsuspiciousblock$lootTableName != null) {
-            tag.putString(UNSUSPICIOUSBLOCK_LOOT_TABLE_NAME_TAG, this.unsuspiciousblock$lootTableName.toString());
-        } else {
-            tag.remove(UNSUSPICIOUSBLOCK_LOOT_TABLE_NAME_TAG);
-        }
-        if (this.unsuspiciousblock$pendingJournalEntry != null) {
-            tag.put(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, this.unsuspiciousblock$pendingJournalEntry.toTag());
-        } else {
-            tag.remove(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG);
-        }
-    }
-
-    // 从方块实体 NBT 中读取战利品表解析状态
-    @Unique
-    private void unsuspiciousblock$readLootTableData(CompoundTag tag) {
-        if (!tag.getBoolean(UNSUSPICIOUSBLOCK_LOOT_TABLE_PARSED_TAG)) {
-            this.unsuspiciousblock$lootTableParsed = false;
-            this.unsuspiciousblock$lootTableName = null;
-            this.unsuspiciousblock$pendingJournalEntry = null;
-            return;
-        }
-
-        ResourceLocation lootTableName = tag.contains(UNSUSPICIOUSBLOCK_LOOT_TABLE_NAME_TAG)
-                ? ResourceLocation.tryParse(tag.getString(UNSUSPICIOUSBLOCK_LOOT_TABLE_NAME_TAG))
-                : null;
-        this.unsuspiciousblock$lootTableParsed = lootTableName != null;
-        this.unsuspiciousblock$lootTableName = lootTableName;
-        this.unsuspiciousblock$pendingJournalEntry = tag.contains(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG, Tag.TAG_COMPOUND)
-                ? ExcavationLogEntry.fromTag(tag.getCompound(UNSUSPICIOUSBLOCK_PENDING_JOURNAL_ENTRY_TAG))
-                : null;
-    }
 
     // Mixin 运行时实例实际就是 BrushableBlockEntity，这里集中封装为 BlockEntity 访问，避免散落重复强转。
     @Unique
@@ -200,39 +108,30 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // 标记当前可疑方块已被指定玩家扫描
     @Override
     public void unsuspiciousblock$markScanned(UUID scannerUuid) {
-        if (this.unsuspiciousblock$scanned && scannerUuid.equals(this.unsuspiciousblock$scannerUuid)) {
-            return;
+        if (this.unsuspiciousblock$tracking.scan().mark(scannerUuid)) {
+            this.unsuspiciousblock$syncBlockEntity();
         }
-
-        this.unsuspiciousblock$scanned = true;
-        this.unsuspiciousblock$scannerUuid = scannerUuid;
-        this.unsuspiciousblock$syncBlockEntity();
     }
 
     // 清除当前可疑方块的扫描标记
     @Override
     public void unsuspiciousblock$clearScanned() {
-        if (!this.unsuspiciousblock$scanned && this.unsuspiciousblock$scannerUuid == null) {
-            return;
+        if (this.unsuspiciousblock$tracking.clearScan()) {
+            this.unsuspiciousblock$syncBlockEntity();
         }
-
-        this.unsuspiciousblock$scanned = false;
-        this.unsuspiciousblock$scannerUuid = null;
-        this.unsuspiciousblock$pendingJournalEntry = null;
-        this.unsuspiciousblock$syncBlockEntity();
     }
 
     // 返回当前可疑方块是否已被扫描
     @Override
     public boolean unsuspiciousblock$isScanned() {
-        return this.unsuspiciousblock$scanned;
+        return this.unsuspiciousblock$tracking.scan().scanned();
     }
 
     // 返回记录的扫描者 UUID
     @Override
     @Nullable
     public UUID unsuspiciousblock$getScannerUuid() {
-        return this.unsuspiciousblock$scannerUuid;
+        return this.unsuspiciousblock$tracking.scan().scanner();
     }
 
     // ========== 战利品表状态接口实现 ========== //
@@ -240,14 +139,9 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Override
     @Nullable
     public ResourceLocation unsuspiciousblock$getLootTableName() {
-        return this.unsuspiciousblock$lootTableName;
+        return this.unsuspiciousblock$tracking.table();
     }
 
-    // 返回当前可疑方块是否已经解析过战利品表
-    @Override
-    public boolean unsuspiciousblock$isLootTableParsed() {
-        return this.unsuspiciousblock$lootTableParsed;
-    }
 
     // 返回当前缓存的战利品
     @Override
@@ -263,18 +157,8 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
     // ========== 日志追踪接口实现 ========== //
     @Override
-    @Nullable
-    public ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry() {
-        return this.unsuspiciousblock$pendingJournalEntry;
-    }
-
-    @Override
-    public void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry) {
-        if (Objects.equals(this.unsuspiciousblock$pendingJournalEntry, entry)) {
-            return;
-        }
-        this.unsuspiciousblock$pendingJournalEntry = entry;
-        this.unsuspiciousblock$syncBlockEntity();
+    public PendingJournal unsuspiciousblock$pendingJournal() {
+        return this.unsuspiciousblock$tracking.pending();
     }
 
     // 解析战利品表并返回生成的物品——委托给原版 unpackLootTable
@@ -323,19 +207,13 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     @Inject(method = "dropContent", at = @At("HEAD"))
     private void unsuspiciousblock$onBrushItemDrop(Player player, CallbackInfo ci) {
         // 仅在服务端、且有战利品表、且物品非空时走完整精掘+日志流程
-        if (this.unsuspiciousblock$lootTableName == null
+        if (this.unsuspiciousblock$tracking.table() == null
                 || !(player instanceof ServerPlayer sp)
                 || this.item.isEmpty()) {
             return;
         }
 
-        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-        Level level = blockEntity.getLevel();
-        BrushableLootDropHelper.DropContext ctx = new BrushableLootDropHelper.DropContext(
-                sp, blockEntity.getBlockPos(), level, this.hitDirection,
-                this.unsuspiciousblock$brushTool,
-                this.unsuspiciousblock$brushGameTime, this.unsuspiciousblock$brushDayTime,
-                this.unsuspiciousblock$lootTableName, this.unsuspiciousblock$pendingJournalEntry);
+        BrushableLootDropHelper.DropContext ctx = this.unsuspiciousblock$dropContext(sp);
 
         // 精掘翻倍：dispatch 后更新主物品，额外副本由 helper 弹出
         BrushableLootDropHelper.DropResult result =
@@ -345,28 +223,36 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
 
         // 使用翻倍后的总计数结算待定日志条目
         BrushableLootDropHelper.settleJournal(ctx, result.totalTrackedItem());
-        this.unsuspiciousblock$setPendingJournalEntry(null);
+        this.unsuspiciousblock$tracking.pending().discard();
+    }
+
+    @Unique
+    private BrushableLootDropHelper.DropContext unsuspiciousblock$dropContext(ServerPlayer player) {
+        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
+        Level level = blockEntity.getLevel();
+        return new BrushableLootDropHelper.DropContext(
+                player, blockEntity.getBlockPos(), level, this.hitDirection,
+                this.unsuspiciousblock$brushTool,
+                this.unsuspiciousblock$brushGameTime, this.unsuspiciousblock$brushDayTime,
+                this.unsuspiciousblock$tracking.table(), this.unsuspiciousblock$tracking.pending());
     }
 
     // 在方块实体保存附加数据时写入扫描与战利品表状态
     @Inject(method = "saveAdditional", at = @At("TAIL"))
     private void unsuspiciousblock$saveExtraData(CompoundTag tag, HolderLookup.Provider registries, CallbackInfo ci) {
-        this.unsuspiciousblock$writeScanData(tag);
-        this.unsuspiciousblock$writeLootTableData(tag);
+        this.unsuspiciousblock$tracking.write(tag);
     }
 
     // 在方块实体读取附加数据时恢复扫描与战利品表状态
     @Inject(method = "loadAdditional", at = @At("TAIL"))
     private void unsuspiciousblock$loadExtraData(CompoundTag tag, HolderLookup.Provider registries, CallbackInfo ci) {
-        this.unsuspiciousblock$readScanData(tag);
-        this.unsuspiciousblock$readLootTableData(tag);
+        this.unsuspiciousblock$tracking.read(tag);
     }
 
     // 在同步更新包时附带扫描与战利品表状态
     @Inject(method = "getUpdateTag", at = @At("RETURN"))
     private void unsuspiciousblock$appendExtraDataToUpdateTag(HolderLookup.Provider registries, CallbackInfoReturnable<CompoundTag> cir) {
-        this.unsuspiciousblock$writeScanData(cir.getReturnValue());
-        this.unsuspiciousblock$writeLootTableData(cir.getReturnValue());
+        this.unsuspiciousblock$tracking.write(cir.getReturnValue());
     }
 
     // 在战利品表解析前捕获本次可疑方块使用的表标识与追踪上下文
@@ -382,15 +268,14 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
             return;
         }
 
-        this.unsuspiciousblock$lootTableName = this.lootTable.location();
-        this.unsuspiciousblock$lootTableParsed = true;
+        this.unsuspiciousblock$tracking.recordResolved(this.lootTable.location());
         this.unsuspiciousblock$lootTableParsedThisCall = true;
         if (this.unsuspiciousblock$brushContext && player instanceof ServerPlayer sp) {
-            RecentLootTableService.record(sp, this.unsuspiciousblock$lootTableName);
+            RecentLootTableService.record(sp, this.unsuspiciousblock$tracking.table());
         }
 
         // 命中追踪规则时准备上下文，由 getRandomItems 调用点建立异常安全的作用域
-        if (ArchaeologyJournalServerCatalog.isTrackedTable(this.unsuspiciousblock$lootTableName)
+        if (ArchaeologyJournalServerCatalog.isTrackedTable(this.unsuspiciousblock$tracking.table())
                 && player instanceof ServerPlayer sp
                 && level instanceof ServerLevel serverLevel) {
             long gameTime = this.unsuspiciousblock$brushContext && this.unsuspiciousblock$brushGameTime >= 0L
@@ -403,7 +288,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
             BlockPos pos = blockEntity.getBlockPos();
             ResourceLocation sourceBlockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
             LootTrackingContext context = LootTrackingContext.root(
-                    sp, this.unsuspiciousblock$lootTableName, LootSourceType.ARCHAEOLOGY,
+                    sp, this.unsuspiciousblock$tracking.table(), LootSourceType.ARCHAEOLOGY,
                     gameTime, dayTime, pos, sourceBlockId);
             trackingContext.set(context);
             lootSession.set(new LootSession(context));
@@ -442,7 +327,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         }
 
         // 仅在刷拭上下文中处理精掘与日志——扫描仪路径由 SuspiciousReaderItem 自行处理追踪
-        if (!this.unsuspiciousblock$brushContext || this.unsuspiciousblock$lootTableName == null
+        if (!this.unsuspiciousblock$brushContext || this.unsuspiciousblock$tracking.table() == null
                 || !(player instanceof ServerPlayer) || this.item.isEmpty()) {
             this.unsuspiciousblock$syncBlockEntity();
             return;
@@ -453,7 +338,7 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
         LootSession session = lootSession.get();
         if (session != null) {
             LootTrackingEvents.submit(session, originalItem,
-                    LootSettlementStrategies.deferred(this::unsuspiciousblock$setPendingJournalEntry));
+                    LootSettlementStrategies.deferred(this.unsuspiciousblock$tracking.pending()::stage));
         }
 
         this.unsuspiciousblock$syncBlockEntity();
@@ -462,14 +347,8 @@ public abstract class BrushableBlockEntityMixin implements BrushableBlockEntityS
     // 重新设置战利品表时清空旧的解析状态
     @Inject(method = "setLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$clearLootTableState(ResourceKey<LootTable> lootTable, long seed, CallbackInfo ci) {
-        boolean hadLootTableState = this.unsuspiciousblock$lootTableParsed || this.unsuspiciousblock$lootTableName != null
-                || this.unsuspiciousblock$pendingJournalEntry != null;
-        this.unsuspiciousblock$lootTableName = null;
-        this.unsuspiciousblock$lootTableParsed = false;
-        this.unsuspiciousblock$pendingJournalEntry = null;
+        boolean changed = this.unsuspiciousblock$tracking.clearResolved();
         this.unsuspiciousblock$lootTableParsedThisCall = false;
-        if (hadLootTableState) {
-            this.unsuspiciousblock$syncBlockEntity();
-        }
+        if (changed) this.unsuspiciousblock$syncBlockEntity();
     }
 }

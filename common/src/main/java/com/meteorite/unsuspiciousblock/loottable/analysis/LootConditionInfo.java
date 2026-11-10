@@ -14,7 +14,7 @@ import java.util.Map;
  * conditionType 用于调用方通过 {@link LootConditionHandlers#get} 反查 handler，
  * 以判断该条件是否引入不确定性（{@link LootConditionHandler#addsUncertainty()}）。
  * <p>
- * children 支持树形结构，用于组合条件（all_of/any_of/inverted）的嵌套展示。
+ * children 保留完整展示树；组合形态与逻辑子节点由 ConditionTree 解释，叶子子行仅用于展示。
  */
 public record LootConditionInfo(
         ResourceLocation conditionType,

@@ -22,6 +22,10 @@
 
 `UiPointerHit` 是 tooltip 和 JEI 悬停查询的共同来源；查询前准备当前布局。模态、文本输入或持续捕获占用输入时，底层 JEI 物品查询返回空，提示也遵循当前作用域门禁。
 
+`RightPageContainer` 的局部 `PageDescriptor` 绑定稳定 Tab、活动内容、书签、指示器位置/可见性与进入/离开动作。Screen 遍历 `bookmarkControls()` 注册书签，通过 `setBookmarksAvailable` 同步可用性。新增右页时在同一描述列表接入内容与 chrome，领域导航仍由业务动作执行。
+
+ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命中，焦点按网格再场景栏收集；普通输入继续复用现有 kit。LOG 的内容 Supplier 按 list/detail 模式选择实际面板。准备、绘制、控件、tooltip 与输入均经实际 PagePanel，分页调用面板的 `setPage/changePage`，由面板维护 dirty、页码范围与刷新。
+
 ## 2. 目录与追踪管理
 
 目录分类使用 kit 网格几何，表目录使用行几何，连续滚动及滚动条由 `UiScrollView` 管理。绘制、点击和提示使用相同几何。分类按两列卡片组织，表目录保留节点独立展开；展开父表只展示直接子表。点击子表入口先展开当前父路径，再选其下的目标行；搜索结果选中后同步所属分类和父级展开。
@@ -74,11 +78,15 @@
 
 ## 6. 阅读状态与存储
 
-`UiStateSnapshot` 包含目录工具栏、当前 tag、日志详情与批选、各 tab 页号、目录偏移和面板状态。根在 resize 和子页返回时恢复快照；重新投影会丢弃已失效的业务选择。窗口调整关闭临时场景浮层，未确认浮层草稿随之结束；独立编辑页面的稳定草稿保留。
+`UiStateSnapshot` 组合右页 `ReadingState`、目录工具栏、目录偏移和面板状态。右页通过 `captureReadingState/restoreReadingState` 统一保存/恢复 Tab、当前 tag、日志 list/detail、entry ID、批选和页号。根在 resize 和子页返回时恢复快照；重新投影会丢弃已失效的业务选择。窗口调整关闭临时场景浮层，未确认浮层草稿随之结束；独立编辑页面的稳定草稿保留。
 
-新面板实现 `LayoutAware` / `UiStateful`，在 `UiPanelRegistry` 注册。`RightPageContainer.savePages/loadPages` 保存各 tab 页号。场景条件滚动按 `tableId#inputKey` 保存，并使用有界缓存；旧结果分区字段忽略。
+新面板实现 `LayoutAware` / `UiStateful`，在 `UiPanelRegistry` 注册。右页内部的页号绑定保留 `intro / grid / log / logDetail` NBT 键；场景面板继续由 UiPanelRegistry 序列化。场景条件滚动按 `tableId#inputKey` 保存，并使用有界缓存；旧结果分区字段忽略。
 
-UI 偏好和模拟选择存于按存档、玩家隔离的 `journal_ui_preferences.dat`，分别属于 `panels` 与 `simulationPreferences` 子树。断连前先刷盘再清当前连接缓存。旧全局 `config/unsuspiciousblock-simulation.properties` 不再读取或自动导入；其已无消费者的 SPI 链说明见 [平台抽象](../foundation/platform-spi.md)。
+UI 偏好和模拟选择存于按存档、玩家隔离的 `journal_ui_preferences.dat`，分别属于 `panels` 与 `simulationPreferences` 子树。`JournalClientConnection` 在 tick 建立连接 epoch、复位世界默认值并加载本地数据；尚未就绪的报文保留其原连接，ready 后按接收顺序应用，迟到的旧连接报文丢弃。Fabric 从 context.player().connection、NeoForge 从 context.listener() 取得接收者。
+
+`JournalMirror` 独占 session/snapshot/sequence、完整性与 2 秒重同步冷却，完整快照一次提交，快照后的增量按 sequence 排序应用。时间和重同步动作由连接宿主注入，current 返回保护性副本。查询与接包均不读写文件。
+
+日志 `journal_log_state.dat` 与偏好由 `JournalLocalPersistence` 共用原路径规则和原子替换：同目录 `.tmp` 写完后 ATOMIC_MOVE，不支持时 REPLACE_EXISTING。保存输入为冻结 NBT；失败以原路径保留待写，同路径更新为最新快照，后续 tick/显式退出重试，成功后才清对应 dirty。回到同一路径时优先加载未写快照。正常保存仍在客户端线程同步执行。断连先保存旧路径，再整体替换连接数据与世界偏好。旧全局 `config/unsuspiciousblock-simulation.properties` 不再读取或自动导入；其已无消费者的 SPI 链说明见 [平台抽象](../foundation/platform-spi.md)。
 
 ## 7. 文本、裁剪与生命周期
 

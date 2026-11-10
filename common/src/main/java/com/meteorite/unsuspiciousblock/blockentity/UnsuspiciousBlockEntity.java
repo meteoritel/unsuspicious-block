@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
 import com.meteorite.unsuspiciousblock.block.SealedContents;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
@@ -17,7 +16,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,13 +26,11 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
     private static final String TAG_CONTENTS = "SealedContents";
     private static final String TAG_CRAFTER_UUID = "CrafterUuid";
     private static final String TAG_CRAFTER_NAME = "CrafterName";
-    private static final String TAG_SCANNER_UUID = "ScannerUuid";
 
     private ItemStack sealedItem = ItemStack.EMPTY;
     @Nullable
     private SealedContents.CrafterIdentity crafter;
-    @Nullable
-    private UUID scannerUuid;
+    private final ScanIdentity scan = new ScanIdentity(ScanIdentity.Layout.SEALED);
 
     public UnsuspiciousBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.UNSUSPICIOUS_BLOCK.get(), pos, state);
@@ -44,7 +40,7 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
     public void loadFromItem(ItemStack carrier) {
         this.sealedItem = SealedContents.getSealedItem(carrier);
         this.crafter = SealedContents.getCrafter(carrier).orElse(null);
-        this.scannerUuid = null;
+        this.scan.clear();
         this.markChanged();
     }
 
@@ -75,9 +71,7 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
             tag.putUUID(TAG_CRAFTER_UUID, this.crafter.uuid());
             tag.putString(TAG_CRAFTER_NAME, this.crafter.name());
         }
-        if (this.scannerUuid != null) {
-            tag.putUUID(TAG_SCANNER_UUID, this.scannerUuid);
-        }
+        this.scan.write(tag);
     }
 
     @Override
@@ -94,33 +88,27 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
                 ? new SealedContents.CrafterIdentity(
                         tag.getUUID(TAG_CRAFTER_UUID), tag.getString(TAG_CRAFTER_NAME))
                 : null;
-        this.scannerUuid = tag.hasUUID(TAG_SCANNER_UUID) ? tag.getUUID(TAG_SCANNER_UUID) : null;
+        this.scan.read(tag);
     }
 
     @Override
     public void unsuspiciousblock$markScanned(UUID scannerUuid) {
-        if (!Objects.equals(this.scannerUuid, scannerUuid)) {
-            this.scannerUuid = scannerUuid;
-            this.markChanged();
-        }
+        if (this.scan.mark(scannerUuid)) this.markChanged();
     }
 
     @Override
     public void unsuspiciousblock$clearScanned() {
-        if (this.scannerUuid != null) {
-            this.scannerUuid = null;
-            this.markChanged();
-        }
+        if (this.scan.clear()) this.markChanged();
     }
 
     @Override
     public boolean unsuspiciousblock$isScanned() {
-        return this.scannerUuid != null;
+        return this.scan.scanned();
     }
 
     @Override
     public @Nullable UUID unsuspiciousblock$getScannerUuid() {
-        return this.scannerUuid;
+        return this.scan.scanner();
     }
 
     @Override
@@ -128,10 +116,6 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
         return null;
     }
 
-    @Override
-    public boolean unsuspiciousblock$isLootTableParsed() {
-        return true;
-    }
 
     @Override
     public ItemStack unsuspiciousblock$getItem() {
@@ -141,16 +125,6 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
     @Override
     public void unsuspiciousblock$setItem(ItemStack stack) {
         this.sealedItem = stack.copy();
-    }
-
-    @Override
-    public @Nullable ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry() {
-        return null;
-    }
-
-    @Override
-    public void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry) {
-        // 玩家封存物品不来自战利品表，无需写入考古日志待结算状态
     }
 
     @Override

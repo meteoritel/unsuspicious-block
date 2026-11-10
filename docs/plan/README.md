@@ -4,6 +4,10 @@
 
 计划文档**不构成机制权威**：它记录的是改造背景、核实依据与决策记录。任何机制的唯一权威描述永远是 [`docs/dev/`](../dev/README.md) 下对应的子系统文档。计划文档里的机制描述在实施完成后应同步到权威文档，本目录只保留背景与决策。
 
+## 当前执行计划
+
+- [架构改造执行计划](architecture-execution-plan.md)：S1—S7 自动实施完成，待用户实机验收；保留配套 spec、issue 与验收入口，用户验收通过后归档。
+
 ## 统一结构
 
 结构参考已归档的 `advancement-tree-plan.md`、`panning-variants.md`、`shimmer-worldgen-feature.md`，统一为九章：

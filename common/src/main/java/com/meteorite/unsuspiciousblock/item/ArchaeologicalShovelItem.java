@@ -3,9 +3,9 @@ package com.meteorite.unsuspiciousblock.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootTrackingContext;
 import com.meteorite.unsuspiciousblock.journal.tracking.RecentLootTableService;
@@ -267,16 +267,17 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         scanState.unsuspiciousblock$markBlockEntityChanged();
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ServerPlayer sp) {
+        if (lootTableName != null && player instanceof ServerPlayer sp
+                && scanState instanceof PendingJournalHost pendingHost) {
             RecentLootTableService.record(sp, lootTableName);
-            if (scanState.unsuspiciousblock$getPendingJournalEntry() == null) {
+            if (pendingHost.unsuspiciousblock$pendingJournal().current() == null) {
                 long gameTime = level.getGameTime();
                 long dayTime = level.getDayTime();
                 LootTrackingContext trackingContext = LootTrackingContext.root(
                         sp, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
                         BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()));
                 LootTrackingEvents.submit(new LootSession(trackingContext), extracted,
-                        LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
+                        LootSettlementStrategies.deferred(pendingHost.unsuspiciousblock$pendingJournal()::stage));
             }
         }
 
@@ -294,11 +295,12 @@ public class ArchaeologicalShovelItem extends ShovelItem {
         }
 
         // 无论物品是否装入背包（背包满时掉落地面），都应记录获取数据
-        if (lootTableName != null && player instanceof ServerPlayer sp) {
+        if (lootTableName != null && player instanceof ServerPlayer sp
+                && scanState instanceof PendingJournalHost pendingHost) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
-            ArchaeologyLootRuntimeTracker.applyPendingLoot(sp, lootTableName,
-                    scanState.unsuspiciousblock$getPendingJournalEntry(), extractedForLog, gameTime, dayTime);
+            pendingHost.unsuspiciousblock$pendingJournal().mergeActual(
+                    sp, lootTableName, extractedForLog, gameTime, dayTime);
         }
 
         scanState.unsuspiciousblock$clearScanned();

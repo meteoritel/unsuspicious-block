@@ -694,8 +694,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         };
     }
 
-    public TooltipData getTooltipData(double mouseX, double mouseY) { return tooltipData(cellAt(mouseX, mouseY)); }
-    public TooltipData getTooltipData(UiPointerHit hit) { return hit == null ? null : tooltipData(cell(hit.rowIndex(this))); }
+    @Override public TooltipData tooltip(UiPointerHit hit) { return hit == null || !hit.owns(this) ? null : tooltipData(cell(hit.rowIndex(this))); }
     private TooltipData tooltipData(@Nullable GridCell cell) {
         if (cell == null || cell.item() == null) return null;
         GridItem item = cell.item();

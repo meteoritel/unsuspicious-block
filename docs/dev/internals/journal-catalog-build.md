@@ -9,36 +9,28 @@
 
 ```
 ensureLoaded(server)
-  ├─ buildGeneration(server)                  在局部对象上构建整代状态，全部成功后才发布
-  │   ├─ 1. LootTableSourceSnapshot.capture()  一次列举拿到全表"有效原文 + 完整资源栈"
-  │   ├─ 2. ArchaeologyJournalCatalog.load()   建图 → 编译 → 投影 → 静态读模型（概率为 "?" 占位）
-  │   │                                        产出 LootTableAnalysisSession 与 CatalogStructure
-  │   ├─ 3. 不可用机制判定                      引用本模组无法模拟的机制的表标记为 Unknown(UNPARSED)，
-  │   │                                        不入队模拟但仍发布（否则整表在客户端消失）
-  │   ├─ 4. computeTableHashes()               每表子树内资源栈摘要 + 编译产物摘要 + 被引用附魔定义摘要
-  │   └─ 5. new CatalogGeneration(...)         整代静态部分成型
-  ├─ currentGeneration = ...                  单个 volatile 引用发布；构建抛异常则改为 empty()
-  ├─ 从 SavedData（LootProbabilityData）恢复命中缓存的表 -> 写入当代 overlay
-  │     needsResimulation(tableId, hash) 判断哈希是否变化
-  └─ 未缓存表入队 LootProbabilitySimulationWorker 分 tick 模拟
-        worker 主线程分片消费 -> commitSimulatedTable(generationId, ...) 校验代次后写 overlay + SavedData
-        整批结束 -> broadcastCatalogHash(generationId, ...) 广播目录哈希
+  ├─ buildGeneration(server) 在局部构建完整一代
+  │   ├─ 捕获资源、编译和静态投影
+  │   ├─ 捕获当代注入声明与来源名 → CatalogProjection.normalize
+  │   ├─ 机制诊断 → 可模拟表约束规划 → 汇总场景预算诊断
+  │   ├─ 一次标记最终不可用状态 → 计算每表 hash
+  │   ├─ 构造 CatalogGeneration → 恢复可用基准缓存和不可用展示 overlay
+  │   └─ 返回 BuildResult（整代、未缓存队列、不可用表）
+  ├─ 单个 volatile 引用发布完整 BuildResult.generation
+  └─ 未缓存基准输入入队；提交与排空广播均校验 generation
 ```
 
-**关键设计**
+`CatalogProjection` 的输入为表定义、当代静态表、每表 hash、约束、声明注入、来源名和 generation。它合并来源和路径，装配子表条件、branches 与 options；不读取平台服务、服务器或全局 current。声明按当代引用子树一次捕获，构建与下发共用归一规则。稳定条件使用确认稳定的指纹；未知声明按出现位置区分，路径值键排除活谓词对象身份。运行时合成子树只参与约束规划；动态条目由抽样发现。
 
-- **原子发布**：整代静态部分（快照 / 引用图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）在局部对象上构建完成后经单个 volatile 引用整体替换；构建抛异常时进入 `CatalogGeneration.empty()`，不留半成品。
-- **非阻塞渐进填充**：`ensureLoaded` 立即返回，模拟结果作为当代 overlay 渐进增长；不受模拟进度影响的**解析态视图**由 `getRawCatalog()` 提供，启动即完整。
-- **模拟结果持久化**：`LootProbabilityData`（SavedData，附加在 overworld）缓存每表概率，哈希变化时才重新模拟。
-- **哈希覆盖间接依赖**：表哈希的输入是子树内每表的资源栈摘要、编译产物摘要与被引用附魔定义摘要（附魔 id 与 `max_level`），覆盖 item tag 成员与附魔等级上限变化；已知残余见 [战利品表系统](../subsystems/loottable.md) 的「模拟结果缓存」。
-- **重载与重建**：数据包重载由 `DataPackReloadListener` 只置脏标记，真正的重建在服务端 tick 路径消费（`ServerLootTableConfigManager.tick`），见 [配置与第三方联动](../foundation/config-and-integrations.md)。
-- **代次校验**：模拟提交与队列排空广播都携带构建时的 `generation`，旧代结果被直接丢弃。
-- **线程安全**：静态部分不可变并整体发布；只有模拟 overlay 是 `ConcurrentHashMap`，读路径无锁，写路径仅在主线程。
-- **worker 回退**：模拟工作线程未启动时回退到主线程同步模拟，避免功能缺失。
+解析态视图由 `getRawCatalog()` 提供，启动即完整；共享模拟 overlay 渐进增长，不可用表保留可见。概率缓存仅在最终准入状态确认后恢复，未命中表排队。按需结果只回请求者。模拟未启动时沿原路径同步回退。数据包重载经暂停、清队列、失效、重建和恢复；构建失败发布明确空状态。每表 hash 覆盖子树资源、编译产物、声明注入和相关附魔定义，外部间接依赖按现行重载盐失效。
 
-## 2. 目录哈希与按需同步
+## 2. 冻结目录与按需同步
 
-服务端计算整个目录的 SHA-256 哈希（`computeCatalogHash()` → `CatalogGeneration.catalogHash()`），模拟完成后广播给所有在线玩家。哈希输入取自网络形态 `CatalogTableDto`——与实际上线的内容一一对应（场景假设条件树在表级只计一次，物品与子表侧只计 key 与概率），因此"要发的内容变了"必然改变哈希。结果在当代内缓存，任一表提交新模拟结果即失效。客户端比对本地哈希，不一致时主动请求全量目录，避免每次登录都全量下发。
+`CatalogGeneration.readSnapshot()` 是完整目录读视图的 Seam。快照包含 generation、overlay revision、冻结的目录 payload 和 SHA-256 摘要。overlay 提交与快照捕获使用同一锁；提交同时递增 revision 并失效投影/摘要缓存。`JournalCatalogHandler` 的 hash 与全量下发消费同一缓存快照，主线程外入口先调度到服务器线程。
+
+快照通过实际 `SyncArchaeologyCatalogPayload.STREAM_CODEC` 编码再解码，剥离活谓词与内部约束，冻结函数树及元数据的线路裁剪结果；摘要来自冻结 payload 的实际编码字节。该线路编码用枚举/状态字段和长度前缀区分类型与值，Map 按键稳定排序、来源集合用位图，Component JSON 的对象键排序，列表保留语义顺序。表、概率、路径、函数、条件、观测摘要、子表、branches、options（含真实 generation 凭据）及分类结构全部经同一 codec 进入摘要。
+
+每表概率缓存 hash 独立于完整目录摘要：前者决定测量缓存准入与按需表内容凭据，后者决定客户端是否刷新完整目录。代内内容改变后快照失效；新代 options 凭据进入摘要并触发同步。协议字段形状与顺序保持 `4.10`。
 
 ## 3. 调试命令与目录稳定性
 

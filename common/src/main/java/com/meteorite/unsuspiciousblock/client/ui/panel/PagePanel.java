@@ -6,6 +6,9 @@ import net.minecraft.client.gui.GuiGraphics;
 /** 可分页面板的通用契约——统一 render、containsMouse 与分页操作 */
 public interface PagePanel extends com.meteorite.meteosuikit.api.input.UiInputTarget {
     default void prepareUi() { }
+    default void renderControls(GuiGraphics graphics, Font font,
+                                com.meteorite.meteosuikit.api.input.UiPointer pointer) { }
+    default ItemGridPanel.TooltipData tooltip(com.meteorite.meteosuikit.api.input.UiPointerHit hit) { return null; }
     @Override default com.meteorite.meteosuikit.api.input.UiPointerHit hitTest(double x, double y) {
         return containsMouse(x, y) ? com.meteorite.meteosuikit.api.input.UiPointerHit.leaf(this, x, y) : null;
     }

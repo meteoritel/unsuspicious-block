@@ -3,29 +3,35 @@ package com.meteorite.unsuspiciousblock.journal.tracking.event;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyChallengeChecker;
 import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.journal.tracking.JournalCompletionRewardChecker;
-import com.meteorite.unsuspiciousblock.journal.tracking.JournalLogRecorder;
+import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.journal.tracking.LootSession;
 
 /**
- * 聚合战利品提交的内建订阅者注册入口。
+ * 聚合战利品提交的命名结算链。
  */
 public final class LootTrackingBootstrap {
-    private static boolean listenersRegistered;
+    enum Step { UNLOCK, FIRST_UNLOCK, SETTLE, CHALLENGE, COMPLETION_REWARD }
 
     private LootTrackingBootstrap() {
     }
 
-    // 注册全部内建订阅者；解锁必须先于成就与完成奖励检查
+    // 保留原初始化入口；注册时序用于兼容同优先级扩展。
     public static synchronized void registerListeners() {
-        if (listenersRegistered) {
-            return;
-        }
-        LootTrackingEvents.register(100, LootTrackingBootstrap::onUnlock);
-        LootTrackingEvents.register(200, LootTrackingBootstrap::onRecordFirstUnlock);
-        LootTrackingEvents.register(250, LootTrackingBootstrap::onSettle);
-        LootTrackingEvents.register(300, LootTrackingBootstrap::onCheckChallenge);
-        LootTrackingEvents.register(350, LootTrackingBootstrap::onCheckCompletionReward);
-        listenersRegistered = true;
+        LootTrackingEvents.initializeBuiltIns();
+    }
+
+    static void run(LootDiscoveredEvent event, LootTrackingEvents.CompatibilityDispatch extensions) {
+        extensions.before(Step.UNLOCK);
+        LootTrackingEvents.runStep(event, "unlock", () -> onUnlock(event));
+        extensions.before(Step.FIRST_UNLOCK);
+        LootTrackingEvents.runStep(event, "first-unlock", () -> onRecordFirstUnlock(event));
+        extensions.before(Step.SETTLE);
+        LootTrackingEvents.runStep(event, "settle", () -> onSettle(event));
+        extensions.before(Step.CHALLENGE);
+        LootTrackingEvents.runStep(event, "challenge", () -> onCheckChallenge(event));
+        extensions.before(Step.COMPLETION_REWARD);
+        LootTrackingEvents.runStep(event, "completion-reward", () -> onCheckCompletionReward(event));
+        extensions.finish();
     }
 
     // 一次性应用本会话中每个表对应的发现物品
@@ -38,7 +44,7 @@ public final class LootTrackingBootstrap {
     private static void onRecordFirstUnlock(LootDiscoveredEvent event) {
         LootSession.Commit commit = event.commit();
         var context = commit.rootContext();
-        JournalLogRecorder.recordFirstUnlock(
+        JournalLogHandler.recordFirstUnlock(
                 context.player(), context.rootTableId(), context.lootSource(),
                 context.gameTime(), context.dayTime());
     }

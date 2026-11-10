@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.block.SealedContents;
 import com.meteorite.unsuspiciousblock.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
@@ -471,14 +472,14 @@ public class SuspiciousReaderItem extends Item {
         scanState.unsuspiciousblock$markScanned(player.getUUID());
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null) {
+        if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             LootTrackingContext context = LootTrackingContext.root(
                     player, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
                     BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
             LootTrackingEvents.submit(new LootSession(context), lootItem,
-                    LootSettlementStrategies.deferred(scanState::unsuspiciousblock$setPendingJournalEntry));
+                    LootSettlementStrategies.deferred(pendingHost.unsuspiciousblock$pendingJournal()::stage));
         }
 
         SealedContents.CrafterIdentity crafter = blockEntity instanceof UnsuspiciousBlockEntity sealedBlock

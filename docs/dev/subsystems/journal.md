@@ -2,17 +2,17 @@
 
 > `journal/` 包的架构：服务端如何构建战利品表目录、玩家进度如何持久化、战利品发现如何被追踪并解锁目录条目、以及状态如何同步到客户端。
 > 本文件是考古笔记子系统的唯一权威。底层解析、签名与概率模拟见 [战利品表系统](loottable.md)，payload 清单见 [网络与同步](../foundation/network.md)，界面实现见 [客户端与 GUI](client-ui.md)。
-> 日志的分片存储、保留策略与版本迁移见 [考古日志存储与迁移](../internals/journal-log-storage.md)；追踪上下文、内建订阅者与结算策略见 [战利品追踪核心数据流](../internals/journal-tracking.md)。
+> 日志的分片存储、保留策略与版本迁移见 [考古日志存储与迁移](../internals/journal-log-storage.md)；追踪上下文、命名结算链与宿主状态见 [战利品追踪核心数据流](../internals/journal-tracking.md)。
 
 ## 1. 代码地图
 
 | 层 | 位置 |
 |---|---|
 | 生命周期入口 | `journal/JournalPlayerDataService.java`（玩家数据生命周期、恢复与迁移的统一入口） |
-| 目录构建 | `journal/catalog/`：`ArchaeologyJournalServerCatalog`（服务端入口：构建、模拟调度、缓存、查询索引）、`ArchaeologyJournalCatalog`（单轮分析）、`LootTableAnalysisSession`（一代的分析结果）、`CatalogGeneration`（一代目录状态，原子发布）、`JournalCategoryLoader`（分类规则） |
+| 目录构建 | `journal/catalog/`：`ArchaeologyJournalServerCatalog`（服务端入口：构建、模拟调度、缓存、查询索引）、`ArchaeologyJournalCatalog`（单轮分析）、`LootTableAnalysisSession`（一代的分析结果）、`CatalogGeneration` / `CatalogReadSnapshot`（一代目录状态，原子发布）、`JournalCategoryLoader`（分类规则） |
 | 玩家状态 | `journal/state/`：`ArchaeologyJournalState`、`ArchaeologyJournalStateHolder`（mixin 接口）、`ArchaeologyJournalLogState`、`ExcavationLogEntry`、`LootSourceType` |
 | 迁移 | `journal/migration/`：`JournalDataMigrationManager`、`JournalDataVersion`、`JournalNbtMigrator`、`LegacyJournalLogAccess` |
-| 追踪 | `journal/tracking/`：`LootTrackingContext`(+`Holder`)、`LootSession`、`ArchaeologyLootRuntimeTracker`、`RecentLootTableService`、三个 TrackingService、`MenuTrackingSnapshot(Service)`、`WorldContextResolver`、`JournalLogRecorder`、`ArchaeologyChallengeChecker`、`JournalCompletionRewardChecker`、`event/`（总线与内建订阅者）、`settlement/`（结算策略） |
+| 追踪 | `journal/tracking/`：`LootTrackingContext`(+`Holder`)、`LootSession`、`ArchaeologyLootRuntimeTracker`、`RecentLootTableService`、三个 TrackingService、`MenuTrackingSnapshot(Service)`、`WorldContextResolver`、`JournalLogRecorder`、`ArchaeologyChallengeChecker`、`JournalCompletionRewardChecker`、`event/`（命名结算链与兼容订阅）、`PendingJournal`、`ContainerLootTracking`（宿主状态）、`settlement/`（结算策略） |
 | 日志存储 | `world/JournalLogStorage.java`（分片权威存储）、`world/JournalLogSavedData.java`（旧单文件迁移读取器）、`journal/sync/ArchaeologyJournalLogSyncSession(Holder)` |
 | 网络 | `network/journal/`（各 Handler）；payload 见 [网络与同步](../foundation/network.md) |
 | 数据资源 | `data/<namespace>/journal_categories/`（分类规则，任意命名空间可加） |
@@ -43,6 +43,8 @@ loot roll 后 ──► LootTrackingEvents.submit(session, counts, 结算策略)
 玩家登录 ──► JournalPlayerDataService.onPlayerJoined（恢复分片 → 迁移 → 依序下发）
 运行时 ──► revision + 脏表增量同步 / 哈希按需同步 / 日志分片会话
 ```
+
+完整目录下发与 hash 读取共用 `CatalogGeneration.readSnapshot()`；快照绑定同代同 revision，线路裁剪和摘要复用真实 codec。投影与发布细节见 [目录构建](../internals/journal-catalog-build.md)。
 
 ## 3. 关键类
 
@@ -115,7 +117,7 @@ ArchaeologyJournalState
 
 ## 6. 日志与追踪
 
-日志采用**按玩家 UUID、战利品表分片压缩**的权威存储（`world/JournalLogStorage`），带延迟写盘与双版本轴迁移；战利品发现经 `LootTrackingContext` 上下文 + `LootTrackingEvents` 事件总线，由 5 个内建订阅者按优先级解锁、记录、结算与判定成就。两者的完整实现细则见 [考古日志存储与迁移](../internals/journal-log-storage.md) 与 [战利品追踪核心数据流](../internals/journal-tracking.md)。
+日志采用**按玩家 UUID、战利品表分片压缩**的权威存储（`world/JournalLogStorage`），带延迟写盘与双版本轴迁移；战利品发现经 `LootTrackingContext` 上下文 + `LootTrackingEvents` 事件总线，由命名步骤依序解锁、记录、结算与判定成就。两者的完整实现细则见 [考古日志存储与迁移](../internals/journal-log-storage.md) 与 [战利品追踪核心数据流](../internals/journal-tracking.md)。
 
 ## 7. 加入时同步序列
 
@@ -154,12 +156,12 @@ onPlayerJoined(player)
 
 ## 8. 客户端侧
 
-客户端由 `ArchaeologyJournalClientState` 持有目录快照与本地状态，接收 S2C payload 更新，并驱动 UI。客户端侧细节见 [客户端与 GUI](client-ui.md)。
+客户端由 `JournalClientConnection` 协调连接 epoch、实例化日志镜像与本地持久化，`ArchaeologyJournalClientState` 提供目录、进度与偏好的内存读模型。S2C 回调只保存原连接消息，tick 加载后提交。客户端侧细节见 [客户端与 GUI](client-ui.md)。
 
 ## 9. 扩展点：新增追踪来源 / 订阅者 / 结算策略
 
 - **新增追踪来源**：实现对应的 TrackingService，在 loot roll 前写 `LootTrackingContextHolder`，roll 结束后调 `LootTrackingEvents.submit`。
-- **订阅战利品发现事件**：`LootTrackingEvents.register(priority, listener)`。**优先级不要与内建订阅者冲突**（100/200/250/300/350）；若需在解锁前/后执行，选 100 之前或 350 之后。
+- **订阅战利品发现事件**：`LootTrackingEvents.register(priority, listener)`。兼容位置与同值注册时序见 [追踪链路](../internals/journal-tracking.md) 的「命名结算链与兼容订阅」。
 - **新增结算策略**：实现 `LootSettlementStrategy`，决定 `recordsItemsImmediately` 与 `settle` 行为。
 - **调整目录收录范围**：改 `ILootTableConfig.getArchaeologyPathPrefixes()` 的追踪前缀，或通过数据包新增战利品表（命中前缀即自动收录）。
 - **新增分类规则**：在任意命名空间的 `data/<namespace>/journal_categories/` 加 JSON，不需要改代码。
@@ -174,7 +176,7 @@ onPlayerJoined(player)
 - **日志写盘是延迟的**：崩溃可能丢失最近约 10 秒的日志变更，这是明确取舍，不要为"零丢失"改成每写必刷。
 - **`RecentLootTableService` 不创建会话**，`entities/` 与 `blocks/` 路径不记录最近表。
 - **显式删除不回退任何累计量与解锁状态**（只删条目）。
-- **订阅者优先级顺序有语义**，插入新订阅者前先确认与 100/200/250/300/350 的相对位置。
+- **兼容订阅位置有语义**，插入回调前确认与命名步骤及初始化注册时序的关系。
 - **实体容器的追踪状态存实体 NBT、销毁时结算**：不要在区块卸载时提前清理。
 
 ## 11. 相关文档

@@ -185,16 +185,16 @@ public abstract class AnvilMenuMixin {
     private void ancientCoinRepair(CallbackInfo ci) {
         // 仅当原版未产生结果、右侧为古代金币时介入
         if (!result.isEmpty()) return;  // 不覆盖其他 mod 输出
-        // ... 修复逻辑
+        // AncientCoinRepair.calculate 返回输出、经验与金币消耗，宿主负责写回
     }
 }
 ```
 
-特点：`@At("RETURN")` 覆盖全部 return 路径，仅在结果为空时介入，不修改原版分支与局部变量，对其他 mixin 完全透明。
+特点：`@At("RETURN")` 覆盖全部 return 路径，仅在结果为空时介入。计算归 common 的 `AncientCoinRepair`，Mixin 只写回结果槽、经验与 `repairItemCountCost`；NeoForge 事件消费同一结果。
 
 ### 6.3 接口注入型
 
-`BrushableBlockEntityScanState` 等接口通过 mixin 注入到原版类（如 `BrushableBlockEntity`），暴露模组需要的方法（`isScanner` / `markScanned` / `resolveAndGetLoot`），供 `SuspiciousReaderItem` 等调用。
+`BrushableBlockEntityScanState` 等接口通过 mixin 注入到原版类（如 `BrushableBlockEntity`），暴露模组需要的方法（`isScanner` / `markScanned` / `resolveAndGetLoot`），供 `SuspiciousReaderItem` 等调用。支持待定日志的宿主另实现 `PendingJournalHost`；持久状态与 codec 归 `BrushableTracking` / `ContainerLootTracking`，Mixin 保留原注入、物品访问和更新通知。
 
 ## 7. 扩展点：新增 Mixin
 

@@ -128,6 +128,8 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 
 ### 3.2 条件场景策略
 
+`ConditionTree` 集中解释原版 ALL/ANY/NOT 结构与 UNKNOWN 折叠，操作符按完整 ResourceLocation 匹配。`logicChildren` 只返回组合子条件，`displayChildren` 保留叶子的展示子行。Planner、推荐、玩家探测和路径提示使用逻辑口径，场景标签、页面与 tooltip 使用展示口径；叶子真假仍由各自的真实场景或运行时上下文解释。空 ALL 为真、空 ANY 为假，NOT 子节点数量异常保持 UNKNOWN，Planner 记录诊断并停用该表数值模拟。
+
 运行时表保留全部条件，**不能再通过读取原始 JSON、删除条件并重新解码来生成模拟副本**。那种做法会绕过 Fabric 加载期修改，也无法可靠表达 `all_of`、`any_of`、`inverted` 等组合条件的语义。
 
 `SimulationScenarioPlanner` 从每个 `LootAcquisitionPath` 提取**七类**资格条件（`SCENARIO_CONDITIONS`）为每条可达路径建立最小布尔赋值场景，并为每个场景算出静态可达的签名集合与直接子表集合。**其中一个场景被标记为基准场景**（条件全部不成立的那个），网格只读它——取跨场景最大值等于把"你站在沼泽里"那个数当成玩家的处境展示。解析阶段把 `simulation_fingerprint` 写入每个条件的 metadata；运行时 Mixin 用同一指纹查询 `SimulationProfile` 中的精确 true/false 结果，因此同类型的两个 `location_check` 不会混淆。
@@ -277,7 +279,9 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 - 第三方 GLM 自读的其它注册表、脚本状态及同一 generation 内直接修改的外部状态不在保证范围；含已识别 `reference` / `furnace_smelt` 的表在下一代重算；
 - **经核实不受影响、因此不列入残余**的两类：biome tag 成员（`location_check` 由条件指纹回答，不查真实区块与 tag）与 damage type 定义（`DAMAGE_SOURCE` 由 profile 填充，不读注册表）。
 
-统计口径或运行时表来源变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v23`（函数规则改为结构化描述后，静态规则参与目录摘要、函数条件归属与 tooltip 均变化，测量也新增了观测摘要；与 `format_version 4→5` 共同保证旧数据不被当作缓存命中）。函数分级及幸运影响标记加入目录哈希；声明触发率元数据随条件树同步并参与哈希。抽样次数**不再**是全局常量、也不再进表哈希——它现在是输入身份的一维。模拟异常或无法取得有效表时不写入缓存。
+目录 DTO 的注入归一和 child conditions/branches/options 由 `CatalogProjection` 计算，声明与来源名由宿主按代捕获。完整目录摘要使用同 revision 的冻结线路快照，覆盖字段与网络 codec 同源；详见 [目录构建](journal-catalog-build.md)。
+
+统计口径与语义变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v25`。函数分级、幸运影响标记和声明触发率元数据参与目录哈希；抽样次数属于输入身份。模拟异常或无法取得有效表时不写入缓存。
 
 **实例态组件排除改变了签名派生结果**，因此该组件 id 列表并入每表哈希的输入：前者覆盖"派生规则本身变了"（第三方 GLM 注入的饰品条目不在静态编译产物摘要里，只靠子树摘要无法失效），后者覆盖"改配置"。两者都只让相关表重算，不需要迁移玩家进度。验证时通过 `/usb journal reload` 强制重算。
 
@@ -419,6 +423,16 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 玩家 tooltip 不展示函数执行捕获及其完整性状态；静态获取条件与生成效果挂在获取路径下。捕获数据继续用于诊断，完整性状态不改变掉落数量或概率计数。没有函数的海洋之心也可能出现未关联状态，不能据此断定对象身份丢失。
 
 此外 `unavailable = true` 表示记录器自有异常，它同时置 `incomplete`。四者**不可互推**：不要用"有链"推断规则已完整解析，也不要用"未解析"推断没有执行。
+
+### 函数策略与兼容扩展
+
+`LootFunctionInfo.semantics()` 返回 `FunctionSemantics`，分别表达效果、描述保真度、随机性、预览不确定性与身份影响。内建 handler 的 `describe` 同时生成文本和策略；包装器聚合子策略，未知或未完整展开的包装保持保守。数量变化保留身份，容器内容只参与容器效果。随机附魔的书预览和签名派生仍由原 handler 提供。
+
+空附魔映射通过当前预览输入和前序身份影响证明空操作：普通书或此前可能变换基础物品时保留该节点，其余输入通过类型化 `displayNoOp` 控制 tooltip 省略。预览失败保留描述；函数自身条件留在函数节点。
+
+策略使用 `semantics_v1` 元数据编码。线路最多保留 32 项，优先策略、语义不完整、裁剪与空操作标记，再按键名稳定排列辅助信息；键和值沿用 64/512 字符上限。字段顺序保持，旧读取端按普通元数据保存未知键。
+
+旧扩展的 `addsRandomness`、`uncertaintyLevel` 与 `describeHint` 只由 `LootFunctionDescriptions` 的兼容 Adapter 读取。新 handler 用 `apply / describe / deriveSignature`，在描述中调用 `withSemantics` 提供策略事实；缺失或无效语义采用保守解释。运行时描述尝试从当前函数 Codec 取得 JSON，无法编码时使用兼容摘要或未解析产物。
 
 ### 9.5 场景规划与函数条件
 

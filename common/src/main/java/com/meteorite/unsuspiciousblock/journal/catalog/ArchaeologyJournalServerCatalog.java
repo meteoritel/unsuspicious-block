@@ -5,6 +5,8 @@ import com.meteorite.unsuspiciousblock.loottable.analysis.LootTableCompiler;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootMechanismSupport;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogProjection;
+import com.meteorite.unsuspiciousblock.loottable.injection.DeclaredLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootOriginKind;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog;
@@ -12,7 +14,6 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulatedValue;
 import com.meteorite.unsuspiciousblock.loottable.catalog.UnknownReason;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -115,7 +116,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 沿用会展示过期口径；{@code LootProbabilityData} 的 {@code format_version} 同时升到 5，
      * 两者共同保证旧数据不会被当成缓存命中。
      */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v24";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v25";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -155,7 +156,7 @@ public final class ArchaeologyJournalServerCatalog {
 
     /**
      * 在局部对象上构建整代目录状态；全部成功后才由调用方发布。
-     * 失败时抛出，由 {@link #ensureLoaded} 决定保留上一代还是进入空状态。
+     * 失败时抛出，由 {@link #ensureLoaded} 发布明确的空状态。
      */
     private static BuildResult buildGeneration(MinecraftServer server) {
         long generation = ++generationCounter;
@@ -167,28 +168,22 @@ public final class ArchaeologyJournalServerCatalog {
         ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
                 generation, sourceSnapshot, server.getResourceManager(), server.registryAccess(),
                 new com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionPreviewContext(server.overworld()));
+        Map<ResourceLocation, List<DeclaredLootInjection>> declarations = new LinkedHashMap<>();
+        Map<String, String> sourceNames = new LinkedHashMap<>();
+        sourceNames.put(com.meteorite.unsuspiciousblock.Constants.MOD_ID,
+                Services.PLATFORM.getModDisplayName(com.meteorite.unsuspiciousblock.Constants.MOD_ID));
+        Set<ResourceLocation> declarationTables = new LinkedHashSet<>();
+        loadResult.staticTables().keySet().forEach(id -> declarationTables.addAll(
+                loadResult.session().referenceGraph().descendantsInclusive(id)));
+        for (ResourceLocation id : declarationTables) {
+            List<DeclaredLootInjection> rules = List.copyOf(Services.PLATFORM.describeLootInjections(id));
+            declarations.put(id, rules);
+            for (DeclaredLootInjection rule : rules) sourceNames.computeIfAbsent(rule.source(),
+                    Services.PLATFORM::getModDisplayName);
+        }
         Map<ResourceLocation, TableDefinition> enrichedTables = new LinkedHashMap<>();
-        loadResult.staticTables().forEach((id, table) -> {
-            List<ItemDefinition> items = new ArrayList<>(table.items());
-            for (var rule : Services.PLATFORM.describeLootInjections(id)) {
-                LootResultSignature signature = LootResultSignature.plain(rule.item());
-                LootAcquisitionPath injectionPath = new LootAcquisitionPath(null,
-                        com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of());
-                int existing = indexOfSignature(items, signature);
-                if (existing >= 0) {
-                    // 同签名的普通来源与「模组联动」必须**并列**保留（规划 §4.6）：既有声明只说明该物可能被注入，
-                    // 不能因为静态路径已经产出同名物品就把注入来源整条丢掉——那会让"来源分型"永远只剩普通来源。
-                    items.set(existing, mergeInjectionPath(items.get(existing), injectionPath));
-                    continue;
-                }
-                ItemDefinition definition = LootTableCatalog.buildDiscoveredDefinition(signature,
-                        Probability.unknown(UnknownReason.NOT_SIMULATED),
-                        Set.of(LootOriginKind.MOD_INTEGRATION), List.of());
-                items.add(mergeInjectionPath(definition, injectionPath));
-            }
-            enrichedTables.put(id, new TableDefinition(table.id(), table.displayName(), table.type(), items,
-                    table.simulationCount(), table.childTables(), table.childTableProbabilities()));
-        });
+        loadResult.staticTables().forEach((id, table) -> enrichedTables.put(id,
+                CatalogProjection.normalize(table, declarations.getOrDefault(id, List.of()))));
         Map<ResourceLocation, TableDefinition> staticTables = enrichedTables;
         LOGGER.info("解析到 {} 个考古战利品表原始目录", staticTables.size());
 
@@ -203,20 +198,6 @@ public final class ArchaeologyJournalServerCatalog {
                 unavailableReasons.put(entry.getKey(), diagnosis);
             }
         }
-        if (!unavailableReasons.isEmpty()) {
-            Map<ResourceLocation, TableDefinition> marked = new LinkedHashMap<>(staticTables);
-            unavailableReasons.keySet().forEach(tableId ->
-                    marked.put(tableId, markUnparsed(marked.get(tableId))));
-            staticTables = Map.copyOf(marked);
-            LOGGER.warn("{} 张战利品表无法被本模组模拟，已按不可用上报：{}",
-                    unavailableReasons.size(), unavailableReasons);
-        }
-
-        // 4. 计算哈希（吃子树内每张表的资源栈摘要、编译产物摘要与被引用附魔定义摘要）
-        Map<ResourceLocation, String> tableHashes = computeTableHashes(
-                loadResult.session().referenceGraph(), staticTables,
-                loadResult.session().compiledTables(), server.registryAccess(), server.getResourceManager());
-
         // 5. 为全部可模拟表算好约束描述（含场景规划）——启动只跑基准输入，而"基准输入是哪一个"
         //    需要先知道基准场景的条件赋值，因此这一步是缓存查询的前置条件而不是可省的预计算。
         ServerLevel level = server.overworld();
@@ -250,8 +231,13 @@ public final class ArchaeologyJournalServerCatalog {
                     marked.put(tableId, markUnparsed(marked.get(tableId))));
             staticTables = Map.copyOf(marked);
         }
+        Map<ResourceLocation, String> tableHashes = computeTableHashes(
+                loadResult.session().referenceGraph(), staticTables,
+                loadResult.session().compiledTables(), server.registryAccess(), server.getResourceManager(), declarations);
+        if (!unavailableReasons.isEmpty()) LOGGER.warn("战利品表不可用原因：{}", unavailableReasons);
         CatalogGeneration catalogGeneration = new CatalogGeneration(
-                loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs);
+                loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs,
+                declarations, sourceNames, server.registryAccess());
 
         // 6. 从 SavedData 恢复已缓存的**基准输入**，写入当代 overlay；不可用的表既不入队也不读缓存
         LootProbabilityData probabilityData = LootProbabilityData.get(level);
@@ -388,98 +374,15 @@ public final class ArchaeologyJournalServerCatalog {
 
     public static CatalogTableDto clientTable(TableDefinition table) {
         CatalogGeneration generation = currentGeneration;
-        CatalogTableDto dto = CatalogTableDto.from(table, getTableHash(table.id()));
-        SimulationConstraintCatalog constraint = generation == null ? null : generation.constraintCatalog(table.id());
-        if (constraint == null) return dto;
-        List<CatalogTableDto.ItemEntry> displayItems = new ArrayList<>(dto.items());
-        for (var rule : Services.PLATFORM.describeLootInjections(table.id())) {
-            LootResultSignature signature = LootResultSignature.plain(rule.item());
-            LootAcquisitionPath injectionPath = new LootAcquisitionPath(null,
-                    com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.injectionConditions(rule), List.of());
-            int existing = indexOfEntry(displayItems, signature);
-            if (existing >= 0) {
-                // 与 buildGeneration 同一条口径：同签名时把注入路径与来源并入既有条目，而不是跳过
-                CatalogTableDto.ItemEntry entry = displayItems.get(existing);
-                List<LootAcquisitionPath> paths = new ArrayList<>(entry.acquisitionPaths());
-                if (!paths.contains(injectionPath)) {
-                    paths.add(injectionPath);
-                }
-                Set<LootOriginKind> origins = new LinkedHashSet<>(entry.origins());
-                origins.add(LootOriginKind.MOD_INTEGRATION);
-                displayItems.set(existing, new CatalogTableDto.ItemEntry(entry.id(), entry.displayName(),
-                        entry.tooltipHint(), entry.probability(), entry.signature(), List.copyOf(paths),
-                        entry.injected(), entry.scenarioProbabilities(), Set.copyOf(origins),
-                        entry.observedFunctions()));
-                continue;
-            }
-            var definition = LootTableCatalog.buildDiscoveredDefinition(signature,
-                    Probability.unknown(UnknownReason.NOT_SIMULATED),
-                    Set.of(LootOriginKind.MOD_INTEGRATION), List.of());
-            displayItems.add(new CatalogTableDto.ItemEntry(definition.id(), definition.displayName(),
-                    definition.tooltipHint(), definition.probability(), signature, List.of(injectionPath),
-                    true, List.of(), Set.of(LootOriginKind.MOD_INTEGRATION), null));
-        }
-        TableDefinition raw = generation.staticTable(table.id());
-        Map<ResourceLocation, CatalogTableDto.ChildTableEntry> existing = new LinkedHashMap<>();
-        dto.childProbabilities().forEach(child -> existing.put(child.tableId(), child));
-        List<CatalogTableDto.ChildTableEntry> children = new ArrayList<>();
-        for (ResourceLocation child : table.childTables()) {
-            CatalogTableDto.ChildTableEntry previous = existing.get(child);
-            List<LootConditionInfo> conditions = mergeConditions(
-                    commonChildConditions(raw == null ? table : raw, child),
-                    constraint.childEntryGates().getOrDefault(child, List.of()));
-            children.add(new CatalogTableDto.ChildTableEntry(child,
-                    previous == null ? Probability.unknown(UnknownReason.NOT_SIMULATED) : previous.probability(),
-                    previous == null ? List.of() : previous.scenarioProbabilities(),
-                    previous == null ? conditions : mergeConditions(previous.conditions(), conditions)));
-        }
-        dto = new CatalogTableDto(dto.id(), dto.hash(), dto.displayName(), dto.type(), dto.simulationCount(),
-                dto.childTables(), dto.scenarios(), displayItems, children, dto.options());
-        dto = dto.withBranches(com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranchCatalog.build(dto, constraint));
-        return dto.withOptions(com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions.from(
-                generation.generation(), constraint));
+        return generation == null ? CatalogTableDto.from(table, "") : generation.project(table);
+    }
+
+    public static CatalogReadSnapshot readSnapshot() {
+        CatalogGeneration generation = currentGeneration;
+        return (generation == null ? CatalogGeneration.empty(generationCounter) : generation).readSnapshot();
     }
 
     public static @Nullable CatalogGeneration current() { return currentGeneration; }
-
-    /** 该表当前的每表内容哈希（客户端按需请求与目录下发共用）；未收录时为空串。 */
-    public static String getTableHash(ResourceLocation tableId) {
-        CatalogGeneration generation = currentGeneration;
-        return generation == null ? "" : generation.tableHash(tableId);
-    }
-
-    // 在条目列表里按签名定位；找不到返回 -1
-    private static int indexOfSignature(List<ItemDefinition> items, LootResultSignature signature) {
-        for (int index = 0; index < items.size(); index++) {
-            if (items.get(index).signature().equals(signature)) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    // 在显示条目列表里按签名定位；找不到返回 -1
-    private static int indexOfEntry(List<CatalogTableDto.ItemEntry> items, LootResultSignature signature) {
-        for (int index = 0; index < items.size(); index++) {
-            if (items.get(index).signature().equals(signature)) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    // 把一条注入路径与 MOD_INTEGRATION 来源并入既有条目：路径并列保留，来源集合取并集，其余字段不变（规划 §4.2 / §4.6）
-    private static ItemDefinition mergeInjectionPath(ItemDefinition item, LootAcquisitionPath injectionPath) {
-        List<LootAcquisitionPath> paths = new ArrayList<>(item.acquisitionPaths());
-        if (!paths.contains(injectionPath)) {
-            paths.add(injectionPath);
-        }
-        Set<LootOriginKind> origins = new LinkedHashSet<>(item.origins());
-        origins.add(LootOriginKind.MOD_INTEGRATION);
-        return new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(), item.probability(),
-                item.signature(), List.copyOf(paths), Set.copyOf(origins),
-                item.scenarioProbabilities(), item.observedFunctions());
-    }
 
     // 不可用表的条目一律标记为「规则未解析」：这是与"未覆盖""尚未计算"都不同的失败原因，
     // 玩家据此知道该表的规则本模组读不了，而不是自己的处境问题
@@ -781,7 +684,7 @@ public final class ArchaeologyJournalServerCatalog {
         ServerPlayer player = server.getPlayerList().getPlayer(requester);
         if (player != null) {
             Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
-                    generationId, hash, inputKey, clientTable(derived)));
+                    generationId, hash, inputKey, generation.project(derived)));
         }
     }
 
@@ -819,7 +722,7 @@ public final class ArchaeologyJournalServerCatalog {
         TableDefinition derived = deriveTable(generation, tableId, constraint, input,
                 LootProbabilityData.get(player.server.overworld()));
         Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
-                generation.generation(), hash, input.key(), clientTable(derived)));
+                generation.generation(), hash, input.key(), generation.project(derived)));
     }
     // 带 generation 校验的广播入口：旧代排空事件不再触发同步
     private static void broadcastCatalogHash(long generationId, MinecraftServer server) {
@@ -859,11 +762,6 @@ public final class ArchaeologyJournalServerCatalog {
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? Map.of() : generation.simulatedTables();
-    }
-
-    public static CatalogStructure getCatalogStructure() {
-        CatalogGeneration generation = currentGeneration;
-        return generation == null ? CatalogStructure.empty() : generation.structure();
     }
 
     /** 获取原始目录的只读视图（概率为 "?" 占位符，但物品列表完整）。
@@ -980,11 +878,11 @@ public final class ArchaeologyJournalServerCatalog {
             // 只能显示一个没有原因的「未命中」。
             List<LootConditionInfo> entryGates = constraint.childEntryGates()
                     .getOrDefault(childTable, List.of());
-            List<LootConditionInfo> conditions = mergeConditions(
-                    commonChildConditions(raw, childTable), entryGates);
+            List<LootConditionInfo> conditions = CatalogProjection.mergeConditions(
+                    CatalogProjection.commonChildConditions(raw, childTable), entryGates);
             // 提示按并集派生：它要回答的是"这个入口引用了哪些可调的旋钮/条件"，比条件树宽松
             List<PathHint> hints = PathHintAnalyzer.hintsForConditions(
-                    mergeConditions(childTableConditions(raw, childTable), entryGates));
+                    CatalogProjection.mergeConditions(childTableConditions(raw, childTable), entryGates));
             List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
             boolean applicableSomewhere = false;
             for (SimulationScenario scenario : constraint.scenarios()) {
@@ -1148,53 +1046,6 @@ public final class ArchaeologyJournalServerCatalog {
         return List.copyOf(conditions.values());
     }
 
-    // 通往该子表的**全部**路径共同成立的条件（交集）：这是条件树要展示的口径——
-    // 用并集会把"只有部分路径需要"的条件说成"要拿到它必须满足"。语义与提示的并集刻意不同。
-    private static List<LootConditionInfo> commonChildConditions(
-            TableDefinition parent, ResourceLocation childTable) {
-        LinkedHashMap<String, LootConditionInfo> common = null;
-        for (ItemDefinition item : parent.items()) {
-            for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                if (!childTable.equals(path.sourceChildTable())) {
-                    continue;
-                }
-                LinkedHashMap<String, LootConditionInfo> indexed = indexConditions(path.allConditions());
-                if (common == null) {
-                    common = indexed;
-                } else {
-                    common.keySet().retainAll(indexed.keySet());
-                }
-            }
-        }
-        return common == null ? List.of() : List.copyOf(common.values());
-    }
-
-    // 与运行时的实例不同，同一条件在两条路径上是两个对象：用指纹做稳定去重键
-    private static LinkedHashMap<String, LootConditionInfo> indexConditions(
-            List<LootConditionInfo> conditions) {
-        LinkedHashMap<String, LootConditionInfo> result = new LinkedHashMap<>();
-        for (LootConditionInfo condition : conditions) {
-            result.putIfAbsent(LootConditionFingerprint.of(condition), condition);
-        }
-        return result;
-    }
-
-    // 合成入口条件树的两段来源；第二段（注入门槛）排在后面，让"父表自己的条件"先读
-    private static List<LootConditionInfo> mergeConditions(List<LootConditionInfo> first,
-                                                           List<LootConditionInfo> second) {
-        if (second.isEmpty()) {
-            return first;
-        }
-        if (first.isEmpty()) {
-            return second;
-        }
-        LinkedHashMap<String, LootConditionInfo> merged = indexConditions(first);
-        for (LootConditionInfo condition : second) {
-            merged.putIfAbsent(LootConditionFingerprint.of(condition), condition);
-        }
-        return List.copyOf(merged.values());
-    }
-
     // 外部依赖按代失效：reference 的间接引用与 furnace_smelt 的配方、标签、组件
     // 不做不完整的内容摘要。只给相关表及其父表加盐，同一代内仍复用输入缓存。
     // 遍历原始函数 JSON，避免展示树的裁剪、深度限制影响依赖识别。
@@ -1252,7 +1103,7 @@ public final class ArchaeologyJournalServerCatalog {
     private static Map<ResourceLocation, String> computeTableHashes(
             LootTableReferenceGraph graph, Map<ResourceLocation, TableDefinition> tables,
             Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries,
-            ResourceManager resources) {
+            ResourceManager resources, Map<ResourceLocation, List<DeclaredLootInjection>> declarations) {
         Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
         List<String> injectionInputs;
         try { injectionInputs = Services.PLATFORM.lootInjectionHashInputs(resources); }
@@ -1287,7 +1138,7 @@ public final class ArchaeologyJournalServerCatalog {
                 graph.updateSubtreeDigest(tableId, digest,
                         (node, nodeDigest) -> {
                             updateCompiledProductDigest(nodeDigest, tables.get(node));
-                            for (var rule : Services.PLATFORM.describeLootInjections(node)) {
+                            for (var rule : declarations.getOrDefault(node, List.of())) {
                                 LootTableSourceSnapshot.updateDigest(nodeDigest, rule.item() + "|" + rule.source()
                                         + "|" + rule.mode() + "|" + rule.chance());
                                 for (var condition : rule.conditions())

@@ -53,7 +53,13 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
+import net.minecraft.resources.ResourceLocation;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -63,10 +69,12 @@ import java.util.function.Consumer;
  * 平台层（NeoForge / Fabric）仅遍历 {@link #C2S_PAYLOADS}、{@link #S2C_SPECS} 与
  * {@link Client#S2C_PAYLOADS} 完成类型注册与接收器绑定，避免在每个平台入口手写重复的注册代码。
  * <p>
- * 客户端/服务端分离约束：S2C 的 handler 引用客户端状态类，因此放在 {@link Client} 嵌套类中。
- * 服务端不会加载该嵌套类（JVM 按需加载嵌套类），从而避免服务端 classpath 引入客户端类。
+ * 客户端/服务端分离约束：S2C 的 handler 引用客户端状态类，仅在客户端绑定时加载。
+ * 服务端只派生 codec 视图，不执行工厂；客户端状态引用集中在 ClientHandlers 嵌套类。
  */
 public final class ModPayloads {
+    public static final String PROTOCOL_VERSION = "4.10";
+
     private ModPayloads() {
     }
 
@@ -117,81 +125,145 @@ public final class ModPayloads {
                     ScenarioSimulationHandler::handleRequest)
     );
 
-    /** S2C payload 类型列表（仅 type + streamCodec，供服务端注册编解码器，Fabric 需要） */
-    public static final List<S2CSpec<?>> S2C_SPECS = List.of(
-            new S2CSpec<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC),
-            new S2CSpec<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC),
-            new S2CSpec<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC),
-            new S2CSpec<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC),
-            new S2CSpec<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC),
-            new S2CSpec<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC)
+    private record S2CDeclaration<T extends CustomPacketPayload>(
+            CustomPacketPayload.Type<T> type,
+            StreamCodec<RegistryFriendlyByteBuf, T> streamCodec,
+            Supplier<Consumer<T>> clientHandler) {
+        private S2CSpec<T> serverSpec() {
+            return new S2CSpec<>(type, streamCodec);
+        }
+    }
+
+    // 工厂在客户端绑定时才访问 ClientHandlers，专用端只派生编解码视图。
+    private static final List<S2CDeclaration<?>> S2C_DECLARATIONS = List.of(
+            new S2CDeclaration<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_ARCHAEOLOGY_CATALOG),
+            new S2CDeclaration<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_CATALOG_HASH),
+            new S2CDeclaration<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_LOOT_TABLE_MANAGEMENT),
+            new S2CDeclaration<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_JOURNAL_STATE),
+            new S2CDeclaration<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_JOURNAL_STATE_INCREMENTAL),
+            new S2CDeclaration<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_JOURNAL_LOG),
+            new S2CDeclaration<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_JOURNAL_LOG_SNAPSHOT_START),
+            new S2CDeclaration<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_JOURNAL_LOG_TABLE_CHUNK),
+            new S2CDeclaration<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_JOURNAL_LOG_SNAPSHOT_END),
+            new S2CDeclaration<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC,
+                    () -> ClientHandlers.JOURNAL_LOG_DELETE_RESULT),
+            new S2CDeclaration<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_CAT_FAVOR),
+            new S2CDeclaration<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_READER_SCAN_RESULT),
+            new S2CDeclaration<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_ENCHANTMENT_REVEAL_LIST),
+            new S2CDeclaration<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,
+                    () -> ClientHandlers.NOTIFY_TABLE_COMPLETION_REWARD),
+            new S2CDeclaration<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_SCENARIO_CACHE),
+            new S2CDeclaration<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_SCENARIO_RESULT),
+            new S2CDeclaration<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SCENARIO_REQUEST_REJECTED),
+            new S2CDeclaration<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC,
+                    () -> ClientHandlers.SYNC_SIMULATION_ASSIST)
     );
 
-    /**
-     * 客户端专属：S2C payload 完整列表（含 handler）。
-     * <p>
-     * 单独放在嵌套类中，服务端不会加载此类，从而避免服务端 classpath 引入客户端状态类。
-     * 平台客户端入口遍历此列表注册 S2C 接收器。
-     */
+    public static final List<S2CSpec<?>> S2C_SPECS = serverSpecs();
+
+    static {
+        checkUniqueChannels("C2S", C2S_PAYLOADS.stream().map(payload -> payload.type().id()).toList());
+        checkUniqueChannels("S2C", S2C_DECLARATIONS.stream().map(payload -> payload.type().id()).toList());
+    }
+
+    private static List<S2CSpec<?>> serverSpecs() {
+        List<S2CSpec<?>> specs = new ArrayList<>();
+        for (S2CDeclaration<?> declaration : S2C_DECLARATIONS) {
+            specs.add(declaration.serverSpec());
+        }
+        return List.copyOf(specs);
+    }
+
+    private static void checkUniqueChannels(String direction, List<ResourceLocation> channels) {
+        Set<ResourceLocation> seen = new HashSet<>();
+        for (ResourceLocation channel : channels) {
+            if (!seen.add(channel)) {
+                throw new IllegalStateException("Duplicate " + direction + " payload channel: " + channel);
+            }
+        }
+    }
+
     public static final class Client {
         private Client() {
         }
 
-        /** S2C payload 完整描述：类型 + 编解码 + 客户端处理函数 */
         public record S2C<T extends CustomPacketPayload>(
                 CustomPacketPayload.Type<T> type,
                 StreamCodec<RegistryFriendlyByteBuf, T> streamCodec,
                 Consumer<T> handler) {
         }
 
-        public static final List<S2C<?>> S2C_PAYLOADS = List.of(
-                new S2C<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveCatalog),
-                new S2C<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveCatalogHash),
-                new S2C<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC,
-                        LootTableManagementClientState::receive),
-                new S2C<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveState),
-                new S2C<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveStateIncremental),
-                new S2C<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveLogUpdate),
-                new S2C<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::beginLogSnapshot),
-                new S2C<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveLogSnapshotChunk),
-                new S2C<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::completeLogSnapshot),
-                new S2C<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveLogDeleteResult),
-                new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
-                        HandOfCatClientState::receive),
-                new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
-                        ReaderScanHudState::receive),
-                new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
-                        EnchantmentRevealClientState::receive),
-                new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,
-                        ArchaeologyJournalClientState::receiveTableCompletionReward),
-                new S2C<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC,
-                        ScenarioSimulationClientState::receiveCache),
-                new S2C<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC,
-                        ScenarioSimulationClientState::receive),
-                new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC,
-                        ScenarioSimulationClientState::receiveRejection),
-                new S2C<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC, ScenarioSimulationClientState::receiveAssist)
-        );
+        public static final List<S2C<?>> S2C_PAYLOADS = clientBindings();
+
+        private static List<S2C<?>> clientBindings() {
+            List<S2C<?>> bindings = new ArrayList<>();
+            for (S2CDeclaration<?> declaration : S2C_DECLARATIONS) {
+                bindings.add(bind(declaration));
+            }
+            return List.copyOf(bindings);
+        }
+
+        private static <T extends CustomPacketPayload> S2C<T> bind(S2CDeclaration<T> declaration) {
+            Consumer<T> handler = Objects.requireNonNull(declaration.clientHandler().get(),
+                    "Missing client handler for " + declaration.type().id());
+            return new S2C<>(declaration.type(), declaration.streamCodec(), handler);
+        }
+    }
+
+    private static final class ClientHandlers {
+        private static final Consumer<SyncArchaeologyCatalogPayload> SYNC_ARCHAEOLOGY_CATALOG =
+                ArchaeologyJournalClientState::receiveCatalog;
+        private static final Consumer<SyncCatalogHashPayload> SYNC_CATALOG_HASH =
+                ArchaeologyJournalClientState::receiveCatalogHash;
+        private static final Consumer<SyncLootTableManagementPayload> SYNC_LOOT_TABLE_MANAGEMENT =
+                LootTableManagementClientState::receive;
+        private static final Consumer<SyncJournalStatePayload> SYNC_JOURNAL_STATE =
+                ArchaeologyJournalClientState::receiveState;
+        private static final Consumer<SyncJournalStateIncrementalPayload> SYNC_JOURNAL_STATE_INCREMENTAL =
+                ArchaeologyJournalClientState::receiveStateIncremental;
+        private static final Consumer<SyncJournalLogPayload> SYNC_JOURNAL_LOG =
+                ArchaeologyJournalClientState::receiveLogUpdate;
+        private static final Consumer<SyncJournalLogSnapshotStartPayload> SYNC_JOURNAL_LOG_SNAPSHOT_START =
+                ArchaeologyJournalClientState::beginLogSnapshot;
+        private static final Consumer<SyncJournalLogTableChunkPayload> SYNC_JOURNAL_LOG_TABLE_CHUNK =
+                ArchaeologyJournalClientState::receiveLogSnapshotChunk;
+        private static final Consumer<SyncJournalLogSnapshotEndPayload> SYNC_JOURNAL_LOG_SNAPSHOT_END =
+                ArchaeologyJournalClientState::completeLogSnapshot;
+        private static final Consumer<JournalLogDeleteResultPayload> JOURNAL_LOG_DELETE_RESULT =
+                ArchaeologyJournalClientState::receiveLogDeleteResult;
+        private static final Consumer<SyncCatFavorPayload> SYNC_CAT_FAVOR =
+                HandOfCatClientState::receive;
+        private static final Consumer<SyncReaderScanResultPayload> SYNC_READER_SCAN_RESULT =
+                ReaderScanHudState::receive;
+        private static final Consumer<SyncEnchantmentRevealListPayload> SYNC_ENCHANTMENT_REVEAL_LIST =
+                EnchantmentRevealClientState::receive;
+        private static final Consumer<NotifyTableCompletionRewardPayload> NOTIFY_TABLE_COMPLETION_REWARD =
+                ArchaeologyJournalClientState::receiveTableCompletionReward;
+        private static final Consumer<SyncScenarioCachePayload> SYNC_SCENARIO_CACHE =
+                ScenarioSimulationClientState::receiveCache;
+        private static final Consumer<SyncScenarioResultPayload> SYNC_SCENARIO_RESULT =
+                ScenarioSimulationClientState::receive;
+        private static final Consumer<ScenarioRequestRejectedPayload> SCENARIO_REQUEST_REJECTED =
+                ScenarioSimulationClientState::receiveRejection;
+        private static final Consumer<SyncSimulationAssistPayload> SYNC_SIMULATION_ASSIST =
+                ScenarioSimulationClientState::receiveAssist;
+
+        private ClientHandlers() {
+        }
     }
 }

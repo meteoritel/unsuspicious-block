@@ -112,9 +112,9 @@ public final class LootConditionHandlers {
         register("damage_source_properties", new DamageSourcePropertiesHandler());
 
         // 类别 D：组合条件
-        register("inverted", new InvertedHandler());
-        register("any_of", new AnyOfHandler());
-        register("all_of", new AllOfHandler());
+        register(ConditionTree.NOT, new InvertedHandler());
+        register(ConditionTree.ANY, new AnyOfHandler());
+        register(ConditionTree.ALL, new AllOfHandler());
 
         // 类别 E：引用
         register("reference", new ReferenceHandler());

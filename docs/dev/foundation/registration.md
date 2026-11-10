@@ -5,148 +5,7 @@
 
 ## 1. 设计目标
 
-多平台 mod 的注册难点在于：Fabric 用 `Registry.register`，NeoForge 用 `DeferredRegister`，两者 API、时机、返回类型都不同。项目需要一个让 `common` 玩法代码能**统一引用注册结果**、且**新增内容只改一处**的方案。
-
-解决方案是**清单 + 回调**：
-
-- `common` 持有 `REGISTRY_MANIFEST`（注册清单，描述"注册什么"）和静态字段（持有引用）。
-- `common` 提供 `forEach(registrar)` 方法，遍历清单调用平台回调。
-- 平台提供 `XxxRegistrar` 回调实现，描述"怎么注册"，注册后回写 `common` 静态字段。
-
-这样 `common` 既不依赖平台注册 API，又能用 `ModItems.FOO`、`ModBlocks.BAR.get()` 直接引用注册结果。
-
-## 2. Registrar 接口家族
-
-每种可注册内容都有一个 `XxxRegistrar` 函数式接口（位于对应内容包）：
-
-| Registrar | 位置 | 签名特点 | 回写形式 |
-|---|---|---|---|
-| `ItemRegistrar` | `item/` | `void register(String, Supplier<Item>, Consumer<Item>)` | 直接回写 `Item` 实例 |
-| `BlockRegistrar` | `block/` | `void register(String, Supplier<Block>, Consumer<Supplier<Block>>)` | 回写 `Supplier<Block>` |
-| `BlockEntityRegistrar` | `blockentity/` | `<T> void register(String, Supplier<BlockEntityType<T>>, Consumer<Supplier<...>>)` | 回写 `Supplier`（泛型方法） |
-| `EntityRegistrar` | `entity/` | `<T> void register(String, Supplier<EntityType<T>>, Consumer<Supplier<...>>, Supplier<AttributeSupplier.Builder>)` | 回写 `Supplier` + 注册属性 |
-
-### 2.1 回写形式的差异
-
-- **Item** 直接回写 `Item` 实例（`Consumer<Item>`），因为 Fabric 注册时即可拿到实例。
-- **Block / BlockEntity / Entity** 回写 `Supplier<XxxType>`（`Consumer<Supplier<...>>`），以抹平平台时机差异：
-  - Fabric：包装为不可变 `Supplier` 立即回写。
-  - NeoForge：`DeferredHolder` 本身即 `Supplier`，可直接回写，但实际实例在 setup 阶段才创建。
-
-### 2.2 EntityRegistrar 的泛型设计
-
-`EntityRegistrar` 用**泛型方法**而非泛型接口，使类型参数 `T` 在接口内被捕获，平台侧实现无需 unchecked 强制转换：
-
-```java
-@FunctionalInterface
-public interface EntityRegistrar {
-    <T extends LivingEntity> void register(
-            String name,
-            Supplier<EntityType<T>> factory,
-            Consumer<Supplier<EntityType<T>>> setter,
-            Supplier<AttributeSupplier.Builder> attributes);
-}
-```
-
-代价是泛型方法**不能用 lambda 实现**，平台侧须用匿名内部类（见 `UnsuspiciousBlockFabric` 与 `UnsuspiciousBlockNeoForge` 中的 `new EntityRegistrar() {...}`）。
-
-`ModEntities.forEach` 内部还有一个 `register(entry, registrar)` 泛型辅助方法，用于捕获通配符条目 `EntityEntry<?>` 的类型参数，避免平台侧强转。
-
-## 3. 注册清单与持有类
-
-每类内容都有一个 `ModXxx` 类，包含三部分：静态持有字段、`REGISTRY_MANIFEST` 清单、`forEach` 遍历方法。以 [`ModItems`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/item/ModItems.java) 为例：
-
-```java
-public class ModItems {
-    // 1. 静态持有字段--由平台在注册阶段赋值
-    public static SuspiciousReaderItem SUSPICIOUS_READER;
-    public static Item ANCIENT_COIN;
-    // ...
-
-    // 2. 注册清单条目 record
-    public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
-
-    // 3. 注册清单--新增物品只需在此添加一行
-    public static final List<ItemEntry> REGISTRY_MANIFEST = List.of(
-            new ItemEntry("ancient_coin", ModItems::createAncientCoin, item -> ANCIENT_COIN = item),
-            // ...
-    );
-
-    // 4. 遍历清单调用平台回调
-    public static void forEach(ItemRegistrar registrar) {
-        for (ItemEntry entry : REGISTRY_MANIFEST) {
-            registrar.register(entry.name(), entry.factory(), entry.setter());
-        }
-    }
-
-    // 5. 工厂方法--供平台 Supplier 调用
-    public static Item createAncientCoin() { return new Item(new Item.Properties()); }
-}
-```
-
-### 3.1 各 ModXxx 清单
-
-| 持有类 | 注册内容 | 平台回写时机 |
-|---|---|---|
-| `ModBlocks` | 方块 | Fabric 即时 / NeoForge static 块 |
-| `ModItems` | 物品（含 BlockItem） | Fabric 即时 / NeoForge `FMLCommonSetupEvent.enqueueWork`；淘盘另有 `PAN_ITEMS` 子清单供客户端注册物品属性 |
-| `ModBlockEntities` | 方块实体类型 | Fabric 即时 / NeoForge static 块 |
-| `ModEntities` | 实体类型（灵体猫三职业 / 灯笼宠物 / 两个淘洗点变体） | Fabric 即时 / NeoForge static 块；属性在 `EntityAttributeCreationEvent`（两个淘洗点变体为无模型装饰实体，`attributes` 传 `null`，不注册属性） |
-| `ModEffects` | 药水效果 | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
-| `ModSounds` | 声音事件 | Fabric 即时 / NeoForge static 块（回写 `Holder`） |
-| `ModFeatures` | 世界生成地物类型（`unsuspiciousblock:shimmer`）+ placed key（河流 / 下界） | 无实例回写；Fabric 即时 / NeoForge DeferredRegister，具体变体由 configured_feature 的 config 指定 |
-| `ModRecipeSerializers` | 配方序列化器 | Fabric 即时 / NeoForge static 块 |
-
-**本表刻意不列条目数**：条目数随每次新增功能变化，写进文档必然过期。需要时直接数清单源码：
-
-```bash
-grep -c "new ItemEntry(" common/src/main/java/com/meteorite/unsuspiciousblock/item/ModItems.java
-```
-
-> `ModEffects` / `ModSounds` 回写的是 `Holder<MobEffect>` / `Holder<SoundEvent>`，因为 NeoForge 的 `DeferredHolder` 即 `Holder`，可直接回写；Fabric 端通过 `BuiltInRegistries.MOB_EFFECT.getHolder(...)` 取 `Holder` 回写，两端对 common 暴露统一类型。
-
-## 4. 平台实现与回写时机
-
-### 4.1 Fabric 端（即时回写）
-
-Fabric 在 `onInitialize` 中直接遍历清单并 `Registry.register`，注册后立即回写：
-
-```java
-ModItems.forEach((name, factory, setter) -> {
-    Item registered = Registry.register(
-            BuiltInRegistries.ITEM,
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-            factory.get());
-    setter.accept(registered);  // 立即回写 ModItems 静态字段
-});
-```
-
-实体因带属性，用匿名内部类：
-
-```java
-ModEntities.forEach(new EntityRegistrar() {
-    @Override
-    public <T extends LivingEntity> void register(String name, Supplier<EntityType<T>> factory,
-            Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
-        EntityType<T> type = Registry.register(BuiltInRegistries.ENTITY_TYPE, rl, factory.get());
-        setter.accept(() -> type);  // 包装为不可变 Supplier
-        FabricDefaultAttributeRegistry.register(type, attributes.get().build());
-    }
-});
-```
-
-### 4.2 NeoForge 端（延迟回写）
-
-NeoForge 用 `DeferredRegister`，在 **static 块**中遍历清单注册 `DeferredHolder`：
-
-```java
-static {
-    ModItems.forEach((name, factory, setter) -> {
-        DeferredItem<Item> deferred = ITEMS.register(name, factory);
-        ITEM_SYNC_LIST.add(new ItemSyncEntry(deferred, setter));  // 暂存，延后回写
-    });
-}
-```
+多平台 mod 的注册难点在于：Fabric 用 `Registry.register`，NeoForge 的 static 块在注册器与回写队列就绪后调用 `registerContent`。`ModContent` 按同一声明顺序调用 Adapter，所有工厂继续由 `DeferredRegister` 延迟执行。Item 回调保存 `DeferredItem` 与 setter 到 `ITEM_SYNC_LIST`；其他族回写 holder 或 supplier。
 
 关键差异：**Item 不能在 static 块立即回写**，因为 Item 工厂可能依赖 Block 实例（如 `BlockItem` 需要 `ModBlocks.XXX.get()`），而 Block 的 `DeferredHolder` 在 `FMLCommonSetupEvent` 阶段才实例化。因此 Item 回写延迟到：
 
@@ -168,7 +27,7 @@ NeoForge 客户端注册 Screen 时，`RegisterMenuScreensEvent` 可能在 `enqu
 
 ```java
 public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
-    return SPECIMEN_BOX_MENU.get();  // 直接从 DeferredHolder 取
+    return ModContent.specimenBoxMenu();  // 从声明阶段回写的 Supplier 取
 }
 ```
 
@@ -193,7 +52,9 @@ event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
 ## 6. 创造模式物品栏
 
-`ModItems` 还声明了创造模式物品栏的图标与内容：
+`ModContent` 声明菜单工厂和创造标签标题、图标及内容；平台仅提供菜单注册 Adapter 与各自的创造标签 builder。菜单 Supplier 保存在 common，Fabric 即时调用 `syncMenuTypes`，NeoForge 在 common setup 同步回写 TYPE，客户端 getter 在 Screen 事件兜底。
+
+`ModItems` 声明创造模式物品栏的图标与内容：
 
 ```java
 public static final Supplier<ItemStack> CREATIVE_TAB_ICON = () -> new ItemStack(ARCHAEOLOGY_JOURNAL);
@@ -225,7 +86,7 @@ public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
 ## 8. 约束与陷阱
 
 - **清单内不得引用尚未回写的静态字段**：需要延迟求值时用 `Supplier`（第 6 节）。
-- **条目数不要写进文档**：它会随每次新增功能变化（第 3.1 节给的是数条目的命令）。
+- **条目数不要写进文档**：它会随每次新增功能变化。
 - **`EntityRegistrar` 只能用匿名内部类**，不能用 lambda（泛型方法的限制）。
 - **新注册内容的资源缺失不会在注册期报错**：缺 `lang` 键或模型只会在游戏里显示为 `item.unsuspiciousblock.foo` 字面量或紫黑方块，排查时先看 `assets/`。
 

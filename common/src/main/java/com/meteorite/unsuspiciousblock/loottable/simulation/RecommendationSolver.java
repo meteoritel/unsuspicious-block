@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.*;
 import com.meteorite.unsuspiciousblock.loottable.catalog.Recommendation;
 import com.meteorite.unsuspiciousblock.loottable.condition.ToolEnchantmentCondition;
@@ -75,7 +76,7 @@ public final class RecommendationSolver {
     private static boolean numericPath(LootAcquisitionPath path, float luck) {
         for (var spec : path.luckRequirements()) {
             if (spec.rolls() == null || spec.bonusRolls() == null) return false;
-            if (Math.max((int) Math.floor(spec.weight() + spec.quality() * luck), 0) <= 0) return false;
+            if (Math.max((int) Math.floor(spec.weight() + spec.quality() * luck), 0) == 0) return false;
             if (Math.floor(spec.rolls()) + Math.floor(spec.bonusRolls().floatValue() * luck) <= 0) return false;
         }
         return true;
@@ -107,26 +108,20 @@ public final class RecommendationSolver {
                 .withParameter(LootContextParams.TOOL, stack).withLuck(luck)
                 .create(LootContextParamSets.ALL_PARAMS)).create(Optional.empty());
         for (LootConditionInfo condition : path.allConditions())
-            if (!Boolean.TRUE.equals(possible(condition, scene, context, false))) return null;
+            if (!Boolean.TRUE.equals(possible(condition, scene, context))) return null;
         return resolved.get();
     }
 
     // 三值逻辑：null 表示不能证明，反转未知仍是未知；随机条件用非零支持集，不掷骰猜结论。
     private static Boolean possible(LootConditionInfo info, SimulationScenario scene,
-                                     LootContext context, boolean inverted) {
-        String type = info.conditionType().getPath();
-        if (type.equals("inverted") && info.children().size() == 1)
-            return possible(info.children().getFirst(), scene, context, !inverted);
-        if (type.equals("all_of") || type.equals("any_of")) {
-            boolean and = type.equals("all_of") != inverted;
-            boolean unknown = false;
-            for (var child : info.children()) {
-                Boolean value = possible(child, scene, context, inverted);
-                if (value == null) unknown = true;
-                else if (value != and) return !and;
-            }
-            return unknown ? null : and;
-        }
+                                     LootContext context) {
+        return ConditionTree.fold(info, false, (leaf, negated) ->
+                ConditionTree.Truth.of(possibleLeaf(leaf, scene, context, negated))).value();
+    }
+
+    private static Boolean possibleLeaf(LootConditionInfo info, SimulationScenario scene,
+                                         LootContext context, boolean inverted) {
+        String type = info.conditionType().toString();
         if (SimulationScenarioPlanner.isScenarioControlled(info.conditionType())) {
             Boolean value = scene.profile().conditionOutcomes().get(LootConditionFingerprint.of(info));
             return value == null ? null : value != inverted;
@@ -137,11 +132,11 @@ public final class RecommendationSolver {
             float chance = level < minLevel ? 0 : curve.map(v -> v.calculate(level)).orElse(1F);
             return inverted ? chance < 1 : chance > 0;
         }
-        if (type.equals("match_tool") && info.source() != null) {
+        if (type.equals("minecraft:match_tool") && info.source() != null) {
             try { return info.source().test(context) != inverted; }
             catch (RuntimeException ignored) { return null; }
         }
-        if (type.equals("random_chance") && info.probability() != null)
+        if (type.equals("minecraft:random_chance") && info.probability() != null)
             return inverted ? info.probability() < 1 : info.probability() > 0;
         return null;
     }

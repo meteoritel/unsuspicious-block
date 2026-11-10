@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.catalog;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.simulation.LootConditionFingerprint;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
@@ -17,7 +18,9 @@ import java.util.Set;
 public final class ScenarioBranchCatalog {
     private ScenarioBranchCatalog() {}
 
-    public static List<ScenarioBranch> build(CatalogTableDto table, SimulationConstraintCatalog constraints) {
+    public static List<ScenarioBranch> build(CatalogTableDto table, SimulationConstraintCatalog constraints,
+            List<com.meteorite.unsuspiciousblock.loottable.injection.DeclaredLootInjection> declared,
+            Map<String, String> sourceNames) {
         Set<ScenarioBranch> branches = new LinkedHashSet<>();
         for (var item : table.items()) {
             if (item.injected()) continue;
@@ -51,7 +54,6 @@ public final class ScenarioBranchCatalog {
                             Boolean.FALSE.equals(evaluate(condition, scene.profile().conditionOutcomes()))))
                             .map(SimulationScenario::key).toList(), conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain)));
         }
-        var declared = com.meteorite.unsuspiciousblock.platform.Services.PLATFORM.describeLootInjections(table.id());
         for (var rule : declared) {
             var conditions = new ArrayList<LootConditionInfo>();
             var extras = new ArrayList<LootConditionInfo>();
@@ -61,7 +63,7 @@ public final class ScenarioBranchCatalog {
                     constraints.scenarios().stream().filter(scene -> conditions.stream().noneMatch(condition ->
                             Boolean.FALSE.equals(evaluate(condition, scene.profile().conditionOutcomes()))))
                             .map(SimulationScenario::key).toList(), conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain),
-                    com.meteorite.unsuspiciousblock.platform.Services.PLATFORM.getModDisplayName(rule.source()), rule.mode()));
+                    sourceNames.getOrDefault(rule.source(), rule.source()), rule.mode()));
         }
         for (var item : table.items()) {
             if (!item.injected() || declared.stream().anyMatch(rule -> rule.item().equals(item.id()))) continue;
@@ -74,7 +76,7 @@ public final class ScenarioBranchCatalog {
             branches.removeIf(branch -> branch.kind().equals("table") && branch.target().equals(mudTable));
             for (var branch : injected) branches.add(new ScenarioBranch(branch.kind(), branch.target(), branch.conditions(),
                     branch.requirements(), branch.luck(), branch.activeScenes(), branch.uncertain(),
-                    com.meteorite.unsuspiciousblock.platform.Services.PLATFORM.getModDisplayName(com.meteorite.unsuspiciousblock.Constants.MOD_ID), "append"));
+                    sourceNames.getOrDefault(com.meteorite.unsuspiciousblock.Constants.MOD_ID, com.meteorite.unsuspiciousblock.Constants.MOD_ID), "append"));
         }
         return List.copyOf(branches);
     }
@@ -89,7 +91,7 @@ public final class ScenarioBranchCatalog {
 
     private static void split(List<LootConditionInfo> source, List<LootConditionInfo> main, List<LootConditionInfo> extras) {
         for (var condition : source) {
-            if (condition.conditionType().toString().equals("minecraft:all_of")) split(condition.children(), main, extras);
+            if (ConditionTree.kind(condition) == ConditionTree.Kind.ALL) split(ConditionTree.logicChildren(condition), main, extras);
             else if (Set.of("minecraft:match_tool", "minecraft:table_bonus", "minecraft:random_chance",
                     "minecraft:random_chance_with_enchanted_bonus", "minecraft:enchantment_active").contains(condition.conditionType().toString())) {
                 if (!extras.contains(condition)) extras.add(condition);
@@ -100,27 +102,12 @@ public final class ScenarioBranchCatalog {
     private static boolean uncertain(LootConditionInfo condition) {
         return condition.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY)
                 || !condition.conditionType().getNamespace().equals("minecraft")
-                || condition.children().stream().anyMatch(ScenarioBranchCatalog::uncertain);
+                || ConditionTree.logicChildren(condition).stream().anyMatch(ScenarioBranchCatalog::uncertain);
     }
 
     private static Boolean evaluate(LootConditionInfo condition, Map<String, Boolean> outcomes) {
-        String type = condition.conditionType().toString();
-        if (type.equals("minecraft:inverted")) {
-            if (condition.children().size() != 1) return null;
-            Boolean child = evaluate(condition.children().getFirst(), outcomes);
-            return child == null ? null : !child;
-        }
-        if (type.equals("minecraft:all_of") || type.equals("minecraft:any_of")) {
-            boolean conjunction = type.equals("minecraft:all_of");
-            boolean unknown = false;
-            for (var child : condition.children()) {
-                Boolean value = evaluate(child, outcomes);
-                if (value == null) unknown = true;
-                else if (value != conjunction) return !conjunction;
-            }
-            return unknown ? null : conjunction;
-        }
-        return SimulationScenarioPlanner.isScenarioControlled(condition.conditionType())
-                ? outcomes.get(LootConditionFingerprint.of(condition)) : null;
+        return ConditionTree.evaluate(condition, leaf -> ConditionTree.Truth.of(
+                SimulationScenarioPlanner.isScenarioControlled(leaf.conditionType())
+                        ? outcomes.get(LootConditionFingerprint.of(leaf)) : null)).value();
     }
 }

@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
@@ -104,7 +103,8 @@ public final class MenuTrackingSnapshotService {
                     continue;
                 }
 
-                int consumed = trackedContainer.unsuspiciousblock$consumeTrackedLoot(signatureKey, remaining);
+                int consumed = Math.min(remaining, trackedContainer.unsuspiciousblock$getTrackedLootCounts()
+                        .getOrDefault(signatureKey, 0));
                 if (consumed <= 0) {
                     continue;
                 }
@@ -128,12 +128,9 @@ public final class MenuTrackingSnapshotService {
         for (Map.Entry<TrackedContainerLootState, ContainerLootUpdate> entry : updates.entrySet()) {
             TrackedContainerLootState trackedContainer = entry.getKey();
             ContainerLootUpdate update = entry.getValue();
-            ExcavationLogEntry updatedEntry = ArchaeologyLootRuntimeTracker.applyPendingLoot(player, update.tableId(),
-                    trackedContainer.unsuspiciousblock$getPendingJournalEntry(),
-                    update.actualLoot(), gameTime, dayTime);
-            if (trackedContainer.unsuspiciousblock$hasTrackedLoot()) {
-                trackedContainer.unsuspiciousblock$setPendingJournalEntry(updatedEntry);
-            } else {
+            trackedContainer.unsuspiciousblock$tracking().acquire(
+                    player, update.tableId(), update.actualLoot(), gameTime, dayTime);
+            if (!trackedContainer.unsuspiciousblock$hasTrackedLoot()) {
                 // 追踪已全部结算，清除容器的完整追踪状态
                 trackedContainer.unsuspiciousblock$clearAllTrackingState();
             }

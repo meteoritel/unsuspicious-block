@@ -26,6 +26,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.FunctionObservationS
 import com.meteorite.unsuspiciousblock.loottable.simulation.ObservedFunctionChain;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -59,13 +60,34 @@ final class CatalogStreamCodec {
     private CatalogStreamCodec() {
     }
 
+    // Component 的对象键排序，数组保留文本/样式的语义顺序。
+    private static String componentJson(Component component, RegistryFriendlyByteBuf buf) {
+        return stableJson(com.google.gson.JsonParser.parseString(
+                Component.Serializer.toJson(component, buf.registryAccess()))).toString();
+    }
+
+    private static com.google.gson.JsonElement stableJson(com.google.gson.JsonElement element) {
+        if (element.isJsonObject()) {
+            com.google.gson.JsonObject object = new com.google.gson.JsonObject();
+            element.getAsJsonObject().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> object.add(entry.getKey(), stableJson(entry.getValue())));
+            return object;
+        }
+        if (element.isJsonArray()) {
+            com.google.gson.JsonArray array = new com.google.gson.JsonArray();
+            element.getAsJsonArray().forEach(value -> array.add(stableJson(value)));
+            return array;
+        }
+        return element;
+    }
+
     // ==================== 单表 ====================
 
     static void writeTable(RegistryFriendlyByteBuf buf, CatalogTableDto table) {
         writeOptions(buf, table.options());
         buf.writeResourceLocation(table.id());
         buf.writeUtf(table.hash());
-        buf.writeUtf(Component.Serializer.toJson(table.displayName(), buf.registryAccess()));
+        buf.writeUtf(componentJson(table.displayName(), buf));
         buf.writeUtf(table.type());
         buf.writeVarInt(table.simulationCount());
 
@@ -82,10 +104,10 @@ final class CatalogStreamCodec {
         buf.writeVarInt(table.items().size());
         for (ItemEntry item : table.items()) {
             buf.writeResourceLocation(item.id());
-            buf.writeUtf(Component.Serializer.toJson(item.displayName(), buf.registryAccess()));
+            buf.writeUtf(componentJson(item.displayName(), buf));
             buf.writeBoolean(item.tooltipHint() != null);
             if (item.tooltipHint() != null) {
-                buf.writeUtf(Component.Serializer.toJson(item.tooltipHint(), buf.registryAccess()));
+                buf.writeUtf(componentJson(item.tooltipHint(), buf));
             }
             writeProbability(buf, item.probability());
             buf.writeUtf(item.signature().toStoredKey());
@@ -116,7 +138,7 @@ final class CatalogStreamCodec {
             writeConditionList(buf, branch.conditions());
             writeConditionList(buf, branch.requirements());
             writeLuckGate(buf, branch.luck());
-            buf.writeCollection(branch.activeScenes(), (output, scene) -> output.writeUtf(scene));
+            buf.writeCollection(branch.activeScenes(), FriendlyByteBuf::writeUtf);
             buf.writeBoolean(branch.uncertain());
             buf.writeUtf(branch.injectionSource());
             buf.writeUtf(branch.injectionMode());
@@ -180,7 +202,7 @@ final class CatalogStreamCodec {
         for (int index = 0; index < branchCount; index++) {
             branches.add(new com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranch(
                     buf.readUtf(), buf.readUtf(), readConditionList(buf), readConditionList(buf), readLuckGate(buf),
-                    buf.readList(input -> input.readUtf()), buf.readBoolean(), buf.readUtf(), buf.readUtf()));
+                    buf.readList(FriendlyByteBuf::readUtf), buf.readBoolean(), buf.readUtf(), buf.readUtf()));
         }
         return new CatalogTableDto(tableId, hash, displayName, type, simulationCount,
                 childTables, scenarios, items, childProbabilities, options, branches);
@@ -198,16 +220,18 @@ final class CatalogStreamCodec {
         buf.writeVarInt(options.tools().size());
         for (var tool : options.tools()) {
             buf.writeResourceLocation(tool.id());
-            buf.writeUtf(Component.Serializer.toJson(tool.displayName(), buf.registryAccess()));
+            buf.writeUtf(componentJson(tool.displayName(), buf));
             buf.writeBoolean(tool.predicateText() != null);
             if (tool.predicateText() != null)
-                buf.writeUtf(Component.Serializer.toJson(tool.predicateText(), buf.registryAccess()));
+                buf.writeUtf(componentJson(tool.predicateText(), buf));
         }
         buf.writeVarInt(options.enchantments().size());
-        options.enchantments().forEach((id, level) -> {
-            buf.writeResourceLocation(id);
-            buf.writeVarInt(level);
-        });
+        options.enchantments().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(java.util.Comparator.comparing(ResourceLocation::toString)))
+                .forEach(entry -> {
+                    buf.writeResourceLocation(entry.getKey());
+                    buf.writeVarInt(entry.getValue());
+                });
         buf.writeVarInt(options.samples().size());
         options.samples().forEach(buf::writeVarInt);
         buf.writeVarInt(options.truncated());
@@ -328,7 +352,7 @@ final class CatalogStreamCodec {
                     buf.writeEnum(parameter.kind());
                     buf.writeBoolean(parameter.detail() != null);
                     if (parameter.detail() != null) {
-                        buf.writeUtf(Component.Serializer.toJson(parameter.detail(), buf.registryAccess()));
+                        buf.writeUtf(componentJson(parameter.detail(), buf));
                     }
                 }
                 case PathHint.ReferencesScenario scenario -> {
@@ -475,7 +499,7 @@ final class CatalogStreamCodec {
     // 保证"有界结构化摘要"：编解码两侧都不接受无界输入
     private static final int MAX_FUNCTIONS_PER_PATH = 64;
     private static final int MAX_FUNCTION_DEPTH = 16;
-    private static final int MAX_FUNCTION_METADATA = 32;
+    private static final int MAX_FUNCTION_METADATA = com.meteorite.unsuspiciousblock.loottable.analysis.FunctionSemantics.MAX_METADATA;
 
     private static void writeFunctionList(RegistryFriendlyByteBuf buf, List<LootFunctionInfo> functions) {
         int size = Math.min(functions.size(), MAX_FUNCTIONS_PER_PATH);
@@ -501,7 +525,7 @@ final class CatalogStreamCodec {
     // 递归写函数节点；到达深度上限时不再写子节点（读端按同样的上限解释）
     private static void writeFunction(RegistryFriendlyByteBuf buf, LootFunctionInfo info, int depth) {
         buf.writeResourceLocation(info.functionType());
-        buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
+        buf.writeUtf(componentJson(info.description(), buf));
         buf.writeEnum(info.fidelity());
         buf.writeEnum(info.effect());
         writeConditionList(buf, info.conditions());
@@ -548,7 +572,8 @@ final class CatalogStreamCodec {
     }
 
     private static void writeFunctionMetadata(RegistryFriendlyByteBuf buf, Map<String, String> metadata) {
-        List<Map.Entry<String, String>> entries = new ArrayList<>(metadata.entrySet());
+        List<Map.Entry<String, String>> entries = new ArrayList<>(com.meteorite.unsuspiciousblock.loottable.analysis.FunctionSemantics
+                .wireMetadata(metadata).entrySet());
         int size = Math.min(entries.size(), MAX_FUNCTION_METADATA);
         buf.writeVarInt(size);
         for (int i = 0; i < size; i++) {
@@ -587,7 +612,7 @@ final class CatalogStreamCodec {
 
     private static void writeCondition(RegistryFriendlyByteBuf buf, LootConditionInfo info) {
         buf.writeResourceLocation(info.conditionType());
-        buf.writeUtf(Component.Serializer.toJson(info.description(), buf.registryAccess()));
+        buf.writeUtf(componentJson(info.description(), buf));
         buf.writeBoolean(info.probability() != null);
         if (info.probability() != null) {
             buf.writeFloat(info.probability());
@@ -597,9 +622,9 @@ final class CatalogStreamCodec {
             writeCondition(buf, child);
         }
         buf.writeVarInt(info.metadata().size());
-        info.metadata().forEach((key, value) -> {
-            buf.writeUtf(key);
-            buf.writeUtf(value);
+        info.metadata().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            buf.writeUtf(entry.getKey());
+            buf.writeUtf(entry.getValue());
         });
     }
 
@@ -634,10 +659,12 @@ final class CatalogStreamCodec {
             buf.writeVarInt(category.order());
         }
         buf.writeVarInt(structure.rootCategories().size());
-        structure.rootCategories().forEach((tableId, categoryId) -> {
-            buf.writeResourceLocation(tableId);
-            buf.writeResourceLocation(categoryId);
-        });
+        structure.rootCategories().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(java.util.Comparator.comparing(ResourceLocation::toString)))
+                .forEach(entry -> {
+                    buf.writeResourceLocation(entry.getKey());
+                    buf.writeResourceLocation(entry.getValue());
+                });
     }
 
     static CatalogStructure readStructure(RegistryFriendlyByteBuf buf) {

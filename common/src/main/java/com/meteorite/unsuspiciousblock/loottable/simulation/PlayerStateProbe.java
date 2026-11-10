@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -74,11 +75,12 @@ public final class PlayerStateProbe {
     }
 
     private static void collect(LootConditionInfo info, Map<String, LootConditionInfo> result) {
-        String type = info.conditionType().getPath();
-        if (Set.of("all_of", "any_of", "inverted").contains(type)) {
-            info.children().forEach(child -> collect(child, result));
-        } else if (SimulationScenarioPlanner.isScenarioControlled(info.conditionType()))
-            result.putIfAbsent(LootConditionFingerprint.of(info), info);
+        ConditionTree.walkLogic(info, node -> {
+            if (ConditionTree.kind(node) == ConditionTree.Kind.LEAF
+                    && SimulationScenarioPlanner.isScenarioControlled(node.conditionType())) {
+                result.putIfAbsent(LootConditionFingerprint.of(node), node);
+            }
+        });
     }
 
     private static Component note(String key, Object... args) {

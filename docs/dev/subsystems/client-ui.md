@@ -20,6 +20,8 @@
 | Mixin | `mixin/client/`：`AbstractContainerScreenAccessor`、`EnchantmentScreenMixin`、`ClientLanguageMixin`、`HumanoidPanningMixin`；Fabric 另有 `ItemInHandPanningMixin`。全清单见 [Mixin](../foundation/mixin.md) |
 | 平台差异 | 按键注册：`KeyBindingHelper` vs `RegisterKeyMappingsEvent`；GUI 内按键：`ScreenKeyboardEvents` vs `ScreenEvent.KeyPressed.Pre`；第一人称淘盘动画：事件 vs mixin；世界/HUD 渲染阶段事件名不同 |
 
+共享安装与连接生命周期由 `client/ModClientLifecycle` 负责：`install` 安装 tooltip 桥、语言存储、淘洗表现、笔记打开器和通知；`tick` 驱动客户端状态；`disconnect` 统一复位。Fabric 客户端初始化与 NeoForge client setup 各绑定一次；按键、渲染、菜单和 tooltip 工厂仍遵守平台事件相位。
+
 ## 2. 数据流
 
 **UI 打开**
@@ -81,10 +83,12 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 这是最复杂的客户端状态类，管理服务端推送的所有数据并驱动 UI：
 
-- **数据缓存**：`serverCatalog` / `catalogStructure`（服务端目录快照）、`journalState`（玩家进度）、`cachedCatalogHash`（按需同步比对）；目录/进度/日志投影按 `catalogRevision` 缓存，`getCatalog()` 返回只读。
+- **连接数据**：`ConnectionState` 持有目录、结构、进度、哈希与同步标记；连接切换整体替换。`JournalClientConnection` 持有原连接、epoch 和 JournalMirror，tick 加载偏好后应用同连接报文；平台回调只入队。
 - **同步处理**：`receiveCatalogHash` 与本地比对，不一致则请求全量目录；`receiveState`（全量）**首次同步不弹 Toast**（避免重进世界重复通知），后续检测新解锁；`receiveStateIncremental`（增量）做**间隙检测**——`incomingRevision > lastNotifiedRevision + 1` 说明中间丢包，请求全量重同步，仅对变更表做 Diff；`requestFullStateWithCooldown` 限流 2s 防请求风暴。
 - **解锁通知**：`tableUnlockNotifier` / `itemUnlockNotifier` / `tableCompletionNotifier` 是回调接口，由平台客户端注入（桥接到 `JournalUnlockToast`），解耦状态层与 UI 层；`detectAndNotifyUnlocks` 比较新旧状态，**仅对追踪目录中的表**触发。
-- **UI 偏好持久化**：跨打开/关闭保留排序方式、搜索文本、隐藏未解锁开关、收藏集合、日志分组模式、右侧标签页等，经 `JournalUiPreferencesStore` 落盘；`persistenceSuppress` 在加载持久化文件时抑制 `markDirty`；`resetOnDisconnect` 断线时先落盘 UI 偏好再重置同步状态，并推进缓存版本。
+- **右页组合**：`RightPageContainer` 的页描述统一内容、书签和 chrome；`ArchaeologyPage` 组合网格与场景栏，LOG 按业务模式解析内容。Screen 通过统一书签入口和 `ReadingState` 保存/恢复接线；分页失效仍由面板处理，扩展路线见 [笔记 GUI](../internals/journal-ui-internals.md)。
+- **世界偏好**：`WorldPreferences` 持有排序、搜索、收藏、分组、右页与运行期目录选择。切换先冻结旧路径待写，再替换默认值并加载新路径；无文件时保留默认值。应用级 notifier 与失效计数保留；`persistenceSuppress` 只用于加载。
+- **读取与保存**：getter 读取内存或保护性副本；正常加载、协议推进、超时与落盘仅在客户端 tick，退出/关闭时显式 flush。目录投影版本由目录与场景 revision 单向合成；ViewModel 和 WelcomeStatsPanel 同时识别连接 epoch，按版本复制日志。
 
 ## 6. 笔记 GUI
 

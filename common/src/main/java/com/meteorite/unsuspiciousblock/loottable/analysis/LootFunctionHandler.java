@@ -69,10 +69,12 @@ public interface LootFunctionHandler {
      *
      * @return true 表示结果不可静态确定
      */
-    boolean addsRandomness();
+    default boolean addsRandomness() {
+        return true;
+    }
 
     // 无法静态应用时的原因分级；默认保守处理，已知随机分布可由处理器细化。
-    default LootConditionHandler.UncertaintyLevel uncertaintyLevel(LootItemFunction function) {
+    default LootConditionHandler.UncertaintyLevel uncertaintyLevel(LootItemFunction ignoredFunction) {
         return LootConditionHandler.UncertaintyLevel.RUNTIME;
     }
 
@@ -84,13 +86,13 @@ public interface LootFunctionHandler {
      * 兼容用途：仅当 {@link #describe} 返回 null 时被调用。已迁移的 handler 不应再依赖它。
      */
     @Nullable
-    default Component describeHint(LootItemFunction function) {
+    default Component describeHint(LootItemFunction ignoredFunction) {
         return null;
     }
 
     // 需要读取 Codec 未公开字段时，优先从原始 JSON 提取稳定的结构化信息。
     @Nullable
-    default Component describeHint(LootItemFunction function, JsonObject source) {
+    default Component describeHint(LootItemFunction function, JsonObject ignoredSource) {
         return describeHint(function);
     }
 }

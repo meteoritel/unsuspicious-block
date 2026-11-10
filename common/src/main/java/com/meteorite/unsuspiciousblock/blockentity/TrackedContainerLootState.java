@@ -1,131 +1,50 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootCounts;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultMatcher;
-import com.meteorite.unsuspiciousblock.loottable.signature.LootResultPreviewCache;
+import com.meteorite.unsuspiciousblock.journal.tracking.ContainerLootTracking;
+import com.meteorite.unsuspiciousblock.journal.tracking.PendingJournal;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;
-import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public interface TrackedContainerLootState extends Container {
-    @Nullable
-    ResourceLocation unsuspiciousblock$getTrackedLootTableName();
+public interface TrackedContainerLootState extends Container, PendingJournalHost {
+    ContainerLootTracking unsuspiciousblock$tracking();
 
-    Map<String, Integer> unsuspiciousblock$getTrackedLootCounts();
-
-    void unsuspiciousblock$setTrackedLoot(ResourceLocation tableId, Map<String, Integer> itemCounts);
-
-    int unsuspiciousblock$consumeTrackedLoot(String signatureKey, int amount);
-
-    // 根据容器当前物品重新校正尚未结算的追踪数量
-    default void unsuspiciousblock$reconcileTrackedLoot() {
-        ResourceLocation tableName = this.unsuspiciousblock$getTrackedLootTableName();
-        Map<String, Integer> trackedCounts = this.unsuspiciousblock$getTrackedLootCounts();
-        if (tableName == null || trackedCounts.isEmpty()) {
-            return;
-        }
-
-        List<LootResultSignature> candidates = new ArrayList<>();
-        for (String signatureKey : trackedCounts.keySet()) {
-            LootResultSignature signature = LootResultSignature.fromStoredKey(signatureKey);
-            if (signature != null) {
-                candidates.add(signature);
-            }
-        }
-        if (candidates.isEmpty()) {
-            this.unsuspiciousblock$clearTrackedLoot();
-            return;
-        }
-
-        Map<String, Integer> currentCounts = this.unsuspiciousblock$collectContainerItemCounts(candidates);
-        LinkedHashMap<String, Integer> reconciled = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> entry : trackedCounts.entrySet()) {
-            int remaining = Math.min(entry.getValue(), currentCounts.getOrDefault(entry.getKey(), 0));
-            if (remaining > 0) {
-                reconciled.put(entry.getKey(), remaining);
-            }
-        }
-
-        if (reconciled.isEmpty()) {
-            this.unsuspiciousblock$clearTrackedLoot();
-        } else {
-            this.unsuspiciousblock$setTrackedLoot(tableName, reconciled);
-        }
+    default @Nullable ResourceLocation unsuspiciousblock$getTrackedLootTableName() {
+        return unsuspiciousblock$tracking().table();
     }
 
-    void unsuspiciousblock$clearTrackedLoot();
-
-    @Nullable
-    ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry();
-
-    void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry);
-
-    default void unsuspiciousblock$clearPendingJournalEntry() {
-        this.unsuspiciousblock$setPendingJournalEntry(null);
+    default Map<String, Integer> unsuspiciousblock$getTrackedLootCounts() {
+        return unsuspiciousblock$tracking().remaining();
     }
 
-    /** 返回触发战利品表解析的追踪玩家 UUID */
-    @Nullable
-    UUID unsuspiciousblock$getTrackedPlayerUuid();
-
-    /** 设置触发战利品表解析的追踪玩家 UUID */
-    void unsuspiciousblock$setTrackedPlayerUuid(@Nullable UUID uuid);
-
-    /** 判断当前追踪是否已超时 */
-    default boolean unsuspiciousblock$isTrackingExpired(long currentGameTime, long timeoutTicks) {
-        ExcavationLogEntry pendingEntry = this.unsuspiciousblock$getPendingJournalEntry();
-        if (pendingEntry == null) {
-            return false;
-        }
-        return currentGameTime - pendingEntry.createdGameTime() > timeoutTicks;
+    default void unsuspiciousblock$setTrackedLoot(ResourceLocation tableId, Map<String, Integer> counts) {
+        unsuspiciousblock$tracking().track(tableId, counts);
     }
 
-    /** 清空全部追踪状态（trackedLoot + pendingJournalEntry + trackedPlayerUuid） */
-    default void unsuspiciousblock$clearAllTrackingState() {
-        this.unsuspiciousblock$clearTrackedLoot();
-        this.unsuspiciousblock$clearPendingJournalEntry();
-        this.unsuspiciousblock$setTrackedPlayerUuid(null);
+    default void unsuspiciousblock$reconcileTrackedLoot() { unsuspiciousblock$tracking().reconcile(this); }
+    default PendingJournal unsuspiciousblock$pendingJournal() { return unsuspiciousblock$tracking().pending(); }
+    default @Nullable UUID unsuspiciousblock$getTrackedPlayerUuid() { return unsuspiciousblock$tracking().owner(); }
+    default void unsuspiciousblock$setTrackedPlayerUuid(@Nullable UUID uuid) { unsuspiciousblock$tracking().owner(uuid); }
+
+    default boolean unsuspiciousblock$isTrackingExpired(long now, long timeoutTicks) {
+        var entry = unsuspiciousblock$pendingJournal().current();
+        return entry != null && now - entry.createdGameTime() > timeoutTicks;
     }
 
-    void unsuspiciousblock$writeTrackedLootData(CompoundTag tag);
-
-    void unsuspiciousblock$readTrackedLootData(CompoundTag tag);
+    default void unsuspiciousblock$clearAllTrackingState() { unsuspiciousblock$tracking().clear(); }
+    default void unsuspiciousblock$writeTrackedLootData(CompoundTag tag) { unsuspiciousblock$tracking().write(tag); }
+    default void unsuspiciousblock$readTrackedLootData(CompoundTag tag) { unsuspiciousblock$tracking().read(tag); }
 
     default boolean unsuspiciousblock$hasTrackedLoot() {
-        return this.unsuspiciousblock$getTrackedLootTableName() != null
-                && !this.unsuspiciousblock$getTrackedLootCounts().isEmpty();
+        return unsuspiciousblock$getTrackedLootTableName() != null && !unsuspiciousblock$getTrackedLootCounts().isEmpty();
     }
 
     default Map<String, Integer> unsuspiciousblock$collectContainerItemCounts(Iterable<LootResultSignature> candidates) {
-        List<LootResultSignature> candidateList = new ArrayList<>();
-        for (LootResultSignature candidate : candidates) {
-            candidateList.add(candidate);
-        }
-
-        LinkedHashMap<String, Integer> itemCounts = new LinkedHashMap<>();
-        for (int slot = 0; slot < this.getContainerSize(); slot++) {
-            ItemStack stack = this.getItem(slot);
-            if (stack.isEmpty()) {
-                continue;
-            }
-
-            LootResultSignature signature = LootResultMatcher.resolve(
-                    stack, candidateList, LootResultPreviewCache.PROVIDER);
-            if (signature == null) {
-                continue;
-            }
-            itemCounts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
-        }
-        return LootCounts.normalize(itemCounts);
+        return ContainerLootTracking.collect(this, candidates);
     }
 }

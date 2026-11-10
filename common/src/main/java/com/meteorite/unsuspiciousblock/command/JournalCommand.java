@@ -8,7 +8,7 @@ import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimul
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.journal.state.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.journal.tracking.JournalLogRecorder;
+import com.meteorite.unsuspiciousblock.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.network.journal.JournalStateHandler;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -56,7 +56,7 @@ public final class JournalCommand {
         return Commands.literal("clear")
                 .executes(context -> mutateCurrentPlayer(context,
                         ArchaeologyJournalState::clear,
-                        JournalLogRecorder::clearLogs,
+                        JournalLogHandler::clearLogs,
                         Component.translatable("command.unsuspiciousblock.usb.journal.clear.success")))
                 .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                         .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
@@ -66,7 +66,7 @@ public final class JournalCommand {
                             requireTable(context.getSource(), tableId);
                             return mutateAndSyncFull(context.getSource(), player,
                                     state -> state.removeTable(tableId),
-                                    target -> JournalLogRecorder.clearLogsForTable(target, tableId),
+                                    target -> JournalLogHandler.clearLogsForTable(target, tableId),
                                     Component.translatable("command.unsuspiciousblock.usb.journal.clear_table.success", tableId.toString()));
                         }));
     }
@@ -97,7 +97,7 @@ public final class JournalCommand {
                 .then(Commands.literal("item")
                         .executes(context -> {
                             ServerPlayer player = requirePlayer(context);
-                            if (!requireCompletedSimulation(context.getSource())) {
+                            if (rejectIncompleteSimulation(context.getSource())) {
                                 return 0;
                             }
                             Map<ResourceLocation, TableDefinition> catalog = getSimulatedCatalog(context.getSource());
@@ -113,7 +113,7 @@ public final class JournalCommand {
                                 .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
                                 .executes(context -> {
                                     ServerPlayer player = requirePlayer(context);
-                                    if (!requireCompletedSimulation(context.getSource())) {
+                                    if (rejectIncompleteSimulation(context.getSource())) {
                                         return 0;
                                     }
                                     ResourceLocation tableId = ResourceLocationArgument.getId(context, TABLE_ID_ARG);
@@ -295,12 +295,11 @@ public final class JournalCommand {
         return ArchaeologyJournalServerCatalog.getCatalog();
     }
 
-    private static TableDefinition requireTable(CommandSourceStack source, ResourceLocation tableId) throws CommandSyntaxException {
+    private static void requireTable(CommandSourceStack source, ResourceLocation tableId) throws CommandSyntaxException {
         TableDefinition table = getRawCatalog(source).get(tableId);
         if (table == null) {
             throw UNKNOWN_TABLE.create(tableId.toString());
         }
-        return table;
     }
 
     // 复用原版 suggestResource 的过滤逻辑：基于 remaining 做前缀匹配，
@@ -318,7 +317,7 @@ public final class JournalCommand {
     }
 
     // 物品目录会在模拟期间渐进填充，拒绝基于半成品目录执行批量解锁。
-    private static boolean requireCompletedSimulation(CommandSourceStack source) {
+    private static boolean rejectIncompleteSimulation(CommandSourceStack source) {
         Map<ResourceLocation, TableDefinition> rawCatalog = getRawCatalog(source);
         Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
@@ -327,8 +326,8 @@ public final class JournalCommand {
                 || !catalog.keySet().containsAll(rawCatalog.keySet())) {
             source.sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.journal.error.simulation_in_progress"));
-            return false;
+            return true;
         }
-        return true;
+        return false;
     }
 }

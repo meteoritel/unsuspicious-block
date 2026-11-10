@@ -1,30 +1,19 @@
 package com.meteorite.unsuspiciousblock.journal.catalog;
 
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
-import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.CatalogStructure;
-import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogProjection;
+import com.meteorite.unsuspiciousblock.loottable.injection.DeclaredLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.loottable.catalog.PathHint;
-import com.meteorite.unsuspiciousblock.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationConstraintCatalog;
-import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -37,7 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 只失效本代的缓存。
  */
 public final class CatalogGeneration {
-    private static final Logger LOGGER = LogUtils.getLogger();
 
     private final LootTableAnalysisSession session;
     private final CatalogStructure structure;
@@ -57,14 +45,21 @@ public final class CatalogGeneration {
      * 不做它就无法判断某张表是否已缓存。
      */
     private final Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs;
-    /** 本代目录哈希缓存；任一表提交新结果即失效。 */
-    @SuppressWarnings("VolatileArrayField")
-    private volatile String catalogHash;
+    private final Map<ResourceLocation, List<DeclaredLootInjection>> declarations;
+    private final Map<String, String> sourceNames;
+    private final net.minecraft.core.RegistryAccess registries;
+    private long overlayRevision;
+    private CatalogReadSnapshot readSnapshot;
 
     public CatalogGeneration(LootTableAnalysisSession session, CatalogStructure structure,
                              Map<ResourceLocation, TableDefinition> staticTables,
                              Map<ResourceLocation, String> tableHashes,
-                             Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs) {
+                             Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs,
+                             Map<ResourceLocation, List<DeclaredLootInjection>> declarations,
+                             Map<String, String> sourceNames, net.minecraft.core.RegistryAccess registries) {
+        this.registries = registries;
+        this.declarations = Map.copyOf(declarations);
+        this.sourceNames = Map.copyOf(sourceNames);
         this.session = session;
         this.structure = structure;
         this.staticTables = Map.copyOf(staticTables);
@@ -77,7 +72,14 @@ public final class CatalogGeneration {
     /** 一个明确的空状态——构建失败时使用，避免发布半成品。 */
     public static CatalogGeneration empty(long generation) {
         return new CatalogGeneration(LootTableAnalysisSession.empty(generation),
-                CatalogStructure.empty(), Map.of(), Map.of(), Map.of());
+                CatalogStructure.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+                net.minecraft.core.RegistryAccess.EMPTY);
+    }
+
+    public CatalogTableDto project(TableDefinition table) {
+        return CatalogProjection.project(table, this.staticTables.getOrDefault(table.id(), table),
+                tableHash(table.id()), constraintCatalog(table.id()),
+                this.declarations.getOrDefault(table.id(), List.of()), this.sourceNames, generation());
     }
 
     /** 该表的约束描述；未收录或该表不可用时返回 {@code null}。 */
@@ -140,201 +142,26 @@ public final class CatalogGeneration {
     }
 
     /** 提交单表模拟结果，并失效本代目录哈希缓存。 */
-    public void publishSimulated(TableDefinition table) {
+    public synchronized void publishSimulated(TableDefinition table) {
         this.simulatedTables.put(table.id(), table);
-        this.catalogHash = null;
+        this.overlayRevision++;
+        this.readSnapshot = null;
     }
 
 
-    /**
-     * 计算整个目录内容的 SHA-256 哈希（用于客户端按需同步比对）。
-     * 输入取自网络形态 {@link CatalogTableDto}——与实际上线内容一一对应：场景假设条件树在表级
-     * 只计一次，物品与子表侧只计 key 与概率，因此"改了要发的东西"必然改变哈希，反之亦然。
-     * 结果在本代内缓存，任一表提交新结果即失效。
-     */
-    public String catalogHash() {
-        String cached = this.catalogHash;
-        if (cached != null) {
-            return cached;
-        }
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            List<TableDefinition> tables = this.simulatedTables.values().stream()
+    /** overlay 提交与快照捕获共用锁，投影与摘要一起按 revision 缓存。 */
+    public synchronized CatalogReadSnapshot readSnapshot() {
+        if (this.readSnapshot == null) {
+            List<CatalogTableDto> tables = this.simulatedTables.values().stream()
                     .sorted(Comparator.comparing(table -> table.id().toString()))
-                    .toList();
-            for (TableDefinition table : tables) {
-                updateTableDigest(digest, CatalogTableDto.from(table,
-                        this.tableHashes.getOrDefault(table.id(), "")));
-            }
-            this.structure.categories().forEach(category -> {
-                updateDigest(digest, category.id().toString());
-                updateDigest(digest, category.translationKey());
-                updateDigest(digest, category.fallbackName());
-                updateDigest(digest, category.descriptionKey());
-                updateDigest(digest, category.descriptionFallback());
-                updateDigest(digest, category.iconItem().toString());
-                updateDigest(digest, Integer.toString(category.order()));
-            });
-            this.structure.rootCategories().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey(Comparator.comparing(ResourceLocation::toString)))
-                    .forEach(entry -> {
-                        updateDigest(digest, entry.getKey().toString());
-                        updateDigest(digest, entry.getValue().toString());
-                    });
-            String computed = HexFormat.of().formatHex(digest.digest());
-            this.catalogHash = computed;
-            return computed;
-        } catch (NoSuchAlgorithmException e) {
-            LOGGER.warn("SHA-256 算法不可用，目录哈希将返回空字符串", e);
-            return "";
+                    .map(this::project).toList();
+            this.readSnapshot = CatalogReadSnapshot.freeze(generation(), this.overlayRevision,
+                    tables, this.structure, this.registries);
         }
+        return this.readSnapshot;
     }
 
-    // 函数树摘要：按出现顺序递归，元数据按键排序以保证同一份目录每次摘要稳定
-    private static void updateFunctionListDigest(MessageDigest digest, List<LootFunctionInfo> functions) {
-        updateDigest(digest, Integer.toString(functions.size()));
-        for (LootFunctionInfo info : functions) {
-            updateDigest(digest, info.functionType().toString());
-            updateDigest(digest, info.fidelity().name());
-            updateDigest(digest, info.effect().name());
-            updateDigest(digest, info.description().toString());
-            updateConditionListDigest(digest, info.conditions());
-            new TreeMap<>(info.metadata()).forEach((key, value) -> {
-                updateDigest(digest, key);
-                updateDigest(digest, value);
-            });
-            updateFunctionListDigest(digest, info.children());
-        }
-    }
-
-    private static void updateTableDigest(MessageDigest digest, CatalogTableDto table) {
-        updateDigest(digest, table.id().toString());
-        updateDigest(digest, table.hash());
-        updateDigest(digest, table.displayName().toString());
-        updateDigest(digest, table.type());
-        updateDigest(digest, Integer.toString(table.simulationCount()));
-        table.childTables().forEach(child -> updateDigest(digest, child.toString()));
-        for (CatalogTableDto.ScenarioAssumptions scenario : table.scenarios()) {
-            updateDigest(digest, scenario.scenarioKey());
-            updateConditionListDigest(digest, scenario.assumptions());
-        }
-        for (CatalogTableDto.ItemEntry item : table.items()) {
-            updateDigest(digest, item.id().toString());
-            updateDigest(digest, item.displayName().toString());
-            updateDigest(digest, item.tooltipHint() != null ? item.tooltipHint().toString() : "");
-            updateProbabilityDigest(digest, item.probability());
-            updateDigest(digest, item.signature().toStoredKey());
-            updateDigest(digest, Boolean.toString(item.injected()));
-            // 来源集合与注入布尔分开进食：一个结果可同时是普通来源与模组联动（规划 §4.2 / D09）
-            item.origins().stream().map(Enum::name).sorted().forEach(kind -> updateDigest(digest, kind));
-            for (CatalogTableDto.ScenarioRef ref : item.scenarioProbabilities()) {
-                updateDigest(digest, ref.scenarioKey());
-                updateProbabilityDigest(digest, ref.probability());
-            }
-            for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                updateDigest(digest, path.sourceChildTable() != null
-                        ? path.sourceChildTable().toString() : "");
-                updateDigest(digest, path.sourceItemTag() != null
-                        ? path.sourceItemTag().toString() : "");
-                updateConditionListDigest(digest, path.entryConditions());
-                updateConditionListDigest(digest, path.inheritedConditions());
-                updateDigest(digest, path.functionUncertainty().name());
-                updateDigest(digest, Boolean.toString(path.luckAffected()));
-                updateLuckGateDigest(digest, path.luckGate());
-                // 静态函数规则变化必须让目录 hash 与同步内容一起变化（规划 §4.8）
-                updateFunctionListDigest(digest, path.functions());
-            }
-        }
-        for (CatalogTableDto.ChildTableEntry child : table.childProbabilities()) {
-            updateDigest(digest, child.tableId().toString());
-            updateProbabilityDigest(digest, child.probability());
-            for (CatalogTableDto.ScenarioRef ref : child.scenarioProbabilities()) {
-                updateDigest(digest, ref.scenarioKey());
-                updateProbabilityDigest(digest, ref.probability());
-            }
-            // 入口条件树会直接改变 tooltip 内容（"进本表需要什么"），因此与物品的路径条件同口径进摘要
-            updateConditionListDigest(digest, child.conditions());
-        }
-    }
-
-    // 概率按状态与数值参与摘要，避免"改了数值但显示文本未变"这类漏检
-    private static void updateProbabilityDigest(MessageDigest digest, Probability probability) {
-        switch (probability) {
-            case Probability.Unknown unknown -> {
-                updateDigest(digest, "unknown");
-                // 原因也进摘要：把"尚未计算"换成"计算失败"是玩家可见的变化
-                updateDigest(digest, unknown.reason().name());
-            }
-            case Probability.Unreachable ignored -> updateDigest(digest, "unreachable");
-            case Probability.Measured measured -> {
-                updateDigest(digest, "measured");
-                updateDigest(digest, Double.toString(measured.lower()));
-                updateDigest(digest, measured.upper().isPresent()
-                        ? Double.toString(measured.upper().getAsDouble()) : "");
-            }
-            case Probability.NeedsCondition needsCondition -> {
-                updateDigest(digest, "needs_condition");
-                updateNeedsConditionDigest(digest, needsCondition.hints());
-            }
-        }
-    }
-
-    // 提示文本与引用目标都进摘要：它们会直接改变 tooltip 内容
-    private static void updateNeedsConditionDigest(MessageDigest digest, List<PathHint> hints) {
-        updateDigest(digest, Integer.toString(hints.size()));
-        for (PathHint hint : hints) {
-            switch (hint) {
-                case PathHint.ReferencesParameter parameter -> {
-                    updateDigest(digest, "parameter");
-                    updateDigest(digest, parameter.kind().name());
-                    updateDigest(digest, parameter.detail() != null ? parameter.detail().toString() : "");
-                }
-                case PathHint.ReferencesScenario scenario -> {
-                    updateDigest(digest, "scenario");
-                    updateConditionListDigest(digest, scenario.conditions());
-                }
-                case PathHint.UnresolvedConditions unresolved -> {
-                    updateDigest(digest, "unresolved");
-                    updateConditionListDigest(digest, unresolved.conditions());
-                }
-            }
-        }
-    }
-
-    // 幸运门槛会直接改变 tooltip 文案（"需要幸运 ≥ 0.34"），因此逐字段进摘要
-    private static void updateLuckGateDigest(MessageDigest digest, @Nullable LuckGate gate) {
-        if (gate == null) {
-            updateDigest(digest, "no_luck_gate");
-            return;
-        }
-        updateDigest(digest, "luck_gate");
-        updateDigest(digest, Boolean.toString(gate.impossible()));
-        updateDigest(digest, gate.minLuck().isPresent()
-                ? Double.toString(gate.minLuck().getAsDouble()) : "");
-        updateDigest(digest, Boolean.toString(gate.rangeLimited()));
-        updateDigest(digest, gate.bonusRollsGate().isPresent()
-                ? Double.toString(gate.bonusRollsGate().getAsDouble()) : "");
-    }
-
-    private static void updateConditionListDigest(MessageDigest digest, List<LootConditionInfo> conditions) {
-        updateDigest(digest, Integer.toString(conditions.size()));
-        for (LootConditionInfo condition : conditions) {
-            updateDigest(digest, condition.conditionType().toString());
-            updateDigest(digest, condition.description().toString());
-            updateDigest(digest, condition.probability() != null
-                    ? Float.toString(condition.probability()) : "");
-            condition.metadata().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> {
-                        updateDigest(digest, entry.getKey());
-                        updateDigest(digest, entry.getValue());
-                    });
-            updateConditionListDigest(digest, condition.children());
-        }
-    }
-
-    private static void updateDigest(MessageDigest digest, String value) {
-        digest.update(value.getBytes(StandardCharsets.UTF_8));
-        digest.update((byte) 0);
+    public String catalogHash() {
+        return readSnapshot().hash();
     }
 }

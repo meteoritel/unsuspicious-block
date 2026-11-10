@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -58,9 +59,6 @@ public final class SimulationScenarioPlanner {
     public static final String BASELINE_SCENARIO_KEY = "baseline";
     /** 其余场景的稳定键前缀，序号即发射顺序（1 起，基准不占序号）。 */
     private static final String SCENARIO_KEY_PREFIX = "scene-";
-    private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
-    private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
-    private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
     /** 单张表的条件树展开预算：访问的条件节点总数。 */
     private static final int EXPANSION_NODE_BUDGET = 4096;
     /** 单张表的条件树展开预算：中间组合集合的最大规模。 */
@@ -241,7 +239,7 @@ public final class SimulationScenarioPlanner {
                                                       List<LootConditionInfo> ancestors,
                                                       List<List<LootConditionInfo>> target,
                                                       ExpansionBudget budget) {
-        if (budget.exhausted || !budget.visitNode()) {
+        if (budget.exhausted || budget.exceedsNodeBudget()) {
             return;
         }
         if (function.metadata().containsKey(LootFunctionInfo.METADATA_ANALYSIS_INCOMPLETE)) {
@@ -384,17 +382,22 @@ public final class SimulationScenarioPlanner {
     private static List<Map<String, Boolean>> requirementsFor(
             LootConditionInfo condition, boolean negated,
             Map<String, LootConditionInfo> conditionByFingerprint, ExpansionBudget budget) {
-        if (budget.exhausted || !budget.visitNode()) {
+        if (budget.exhausted || budget.exceedsNodeBudget()) {
             return List.of(Map.of());
         }
         ResourceLocation type = condition.conditionType();
-        if (INVERTED.equals(type) && !condition.children().isEmpty()) {
-            return requirementsFor(condition.children().getFirst(), !negated, conditionByFingerprint, budget);
+        ConditionTree.Kind kind = ConditionTree.kind(condition);
+        if (kind == ConditionTree.Kind.NOT && ConditionTree.logicChildren(condition).size() != 1) {
+            LOGGER.warn("条件 {} 的 NOT 子节点数量无效，停止该表数值模拟", type);
+            return budget.markExhausted();
         }
-        if (ALL_OF.equals(type) || ANY_OF.equals(type)) {
-            boolean useAnd = ALL_OF.equals(type) != negated;
+        if (kind == ConditionTree.Kind.NOT) {
+            return requirementsFor(ConditionTree.logicChildren(condition).getFirst(), !negated, conditionByFingerprint, budget);
+        }
+        if (kind == ConditionTree.Kind.ALL || kind == ConditionTree.Kind.ANY) {
+            boolean useAnd = (kind == ConditionTree.Kind.ALL) != negated;
             List<Map<String, Boolean>> result = useAnd ? List.of(Map.of()) : new ArrayList<>();
-            for (LootConditionInfo child : condition.children()) {
+            for (LootConditionInfo child : ConditionTree.logicChildren(condition)) {
                 List<Map<String, Boolean>> childRequirements =
                         requirementsFor(child, negated, conditionByFingerprint, budget);
                 if (budget.exhausted) {
@@ -438,13 +441,13 @@ public final class SimulationScenarioPlanner {
         private int nodes;
         private boolean exhausted;
 
-        // 访问一个函数或条件节点；返回 false 表示已超节点预算
-        boolean visitNode() {
+        // 访问一个函数或条件节点；返回是否已超节点预算
+        boolean exceedsNodeBudget() {
             if (++this.nodes > EXPANSION_NODE_BUDGET) {
                 this.exhausted = true;
-                return false;
+                return true;
             }
-            return true;
+            return false;
         }
 
         List<Map<String, Boolean>> markExhausted() {
@@ -506,7 +509,7 @@ public final class SimulationScenarioPlanner {
             if (entry.getValue()) {
                 result.add(condition);
             } else {
-                result.add(new LootConditionInfo(INVERTED,
+                result.add(new LootConditionInfo(ConditionTree.NOT,
                         Component.translatable(
                                 "screen.unsuspiciousblock.archaeology_journal.condition.inverted",
                                 condition.description()), null, List.of(condition)));

@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.journal.tracking.settlement.LootSettlementStrategies;
@@ -31,6 +31,8 @@ import java.util.UUID;
  * 通过容器图遍历收集当前玩家拥有的未过期追踪容器，供运行时追踪器与菜单快照机制复用。
  */
 public final class ContainerTrackingService {
+    private enum EndReason { OVERWRITTEN, RECONCILED, EXPIRED, DESTROYED }
+
     private ContainerTrackingService() {
     }
 
@@ -82,25 +84,21 @@ public final class ContainerTrackingService {
         if (trackedPlayerUuid != null && !trackedPlayerUuid.equals(player.getUUID())) {
             // 超时检查：即使不是当前玩家，也要检查是否需要清理过期追踪
             if (container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
-                flushTrackingToJournal(player, container);
+                terminate(resolveTrackingPlayer(player, container), container, EndReason.EXPIRED, null);
             }
             return;
         }
 
         // 超时检查：若追踪已超时，先 flush 旧条目再创建新追踪
         if (trackedPlayerUuid == null && container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
-            flushTrackingToJournal(player, container);
-        } else if (container.unsuspiciousblock$getPendingJournalEntry() != null
-                && container.unsuspiciousblock$getTrackedLootTableName() != null) {
-            // 若容器有未结算的旧追踪条目（非超时），先将旧条目写入日志再覆盖追踪状态
-            ResourceLocation oldTableId = container.unsuspiciousblock$getTrackedLootTableName();
-            ExcavationLogEntry oldPendingEntry = container.unsuspiciousblock$getPendingJournalEntry();
-            ArchaeologyLootRuntimeTracker.finalizePendingEntry(player, oldTableId, oldPendingEntry);
+            terminate(resolveTrackingPlayer(player, container), container, EndReason.EXPIRED, null);
+        } else if (container.unsuspiciousblock$pendingJournal().current() != null) {
+            terminate(player, container, EndReason.OVERWRITTEN, null);
         }
 
         LootTrackingEvents.submit(lootSession, itemCounts,
                 LootSettlementStrategies.deferred(pendingEntry -> {
-                    container.unsuspiciousblock$setPendingJournalEntry(pendingEntry);
+                    container.unsuspiciousblock$pendingJournal().stage(pendingEntry);
                     container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
                     container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
                 }));
@@ -116,32 +114,33 @@ public final class ContainerTrackingService {
         long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
 
         for (TrackedContainerLootState trackedContainer : collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks)) {
-            // reconcile 前获取旧条目和 tableId
-            ExcavationLogEntry pendingEntry = trackedContainer.unsuspiciousblock$getPendingJournalEntry();
-            ResourceLocation tableId = trackedContainer.unsuspiciousblock$getTrackedLootTableName();
-
+            ResourceLocation tableId = trackedContainer.unsuspiciousblock$tracking().settlementTable();
             trackedContainer.unsuspiciousblock$reconcileTrackedLoot();
-
-            // reconcile 后若追踪状态已清空但有残留的 pendingJournalEntry，将旧条目写入日志并清除
-            if (!trackedContainer.unsuspiciousblock$hasTrackedLoot() && pendingEntry != null) {
-                if (tableId != null) {
-                    ServerPlayer recipient = resolveTrackingPlayer(player, trackedContainer);
-                    ArchaeologyLootRuntimeTracker.finalizePendingEntry(recipient, tableId, pendingEntry);
-                }
-                trackedContainer.unsuspiciousblock$clearAllTrackingState();
+            if (!trackedContainer.unsuspiciousblock$hasTrackedLoot()
+                    && trackedContainer.unsuspiciousblock$pendingJournal().current() != null) {
+                terminate(resolveTrackingPlayer(player, trackedContainer), trackedContainer,
+                        EndReason.RECONCILED, tableId);
             }
         }
     }
 
-    // flush 追踪容器的待定日志条目到日志系统，然后清除完整追踪状态
-    public static void flushTrackingToJournal(ServerPlayer fallbackPlayer, TrackedContainerLootState container) {
-        ExcavationLogEntry pendingEntry = container.unsuspiciousblock$getPendingJournalEntry();
-        ResourceLocation tableId = container.unsuspiciousblock$getTrackedLootTableName();
-        if (pendingEntry != null && tableId != null) {
-            ServerPlayer recipient = resolveTrackingPlayer(fallbackPlayer, container);
-            ArchaeologyLootRuntimeTracker.finalizePendingEntry(recipient, tableId, pendingEntry);
+    // 终结只提交日志最终形态；取得量已在菜单/掉落的增量阶段累计。
+    private static void terminate(@Nullable ServerPlayer recipient, TrackedContainerLootState container,
+                                  EndReason reason, @Nullable ResourceLocation previousTable) {
+        ResourceLocation table = previousTable != null ? previousTable
+                : container.unsuspiciousblock$tracking().settlementTable();
+        try {
+            if (recipient != null && table != null) {
+                container.unsuspiciousblock$pendingJournal().finish(recipient, table);
+            }
+            container.unsuspiciousblock$clearAllTrackingState();
+        } catch (RuntimeException | Error failure) {
+            String context = "容器追踪终结失败: reason=" + reason + ", table=" + table
+                    + ", owner=" + container.unsuspiciousblock$getTrackedPlayerUuid();
+            failure.addSuppressed(new IllegalStateException(context));
+            Constants.LOG.error(context, failure);
+            throw failure;
         }
-        container.unsuspiciousblock$clearAllTrackingState();
     }
 
     // 容器方块被破坏时 flush 其追踪状态
@@ -156,7 +155,7 @@ public final class ContainerTrackingService {
     // 方块或实体容器真正销毁时，按追踪玩家结算待定日志并清空状态
     public static void onTrackedContainerDestroyed(ServerLevel level, TrackedContainerLootState trackedContainer) {
         if (!trackedContainer.unsuspiciousblock$hasTrackedLoot()
-                && trackedContainer.unsuspiciousblock$getPendingJournalEntry() == null) {
+                && trackedContainer.unsuspiciousblock$pendingJournal().current() == null) {
             return;
         }
         // 尝试按追踪玩家 UUID 查找在线玩家，若离线则使用 null 作为回退（放弃该条目）
@@ -165,12 +164,7 @@ public final class ContainerTrackingService {
         if (trackedUuid != null) {
             recipient = level.getServer().getPlayerList().getPlayer(trackedUuid);
         }
-        if (recipient == null) {
-            // 追踪玩家不在线，无法写入日志，清除追踪状态
-            trackedContainer.unsuspiciousblock$clearAllTrackingState();
-            return;
-        }
-        flushTrackingToJournal(recipient, trackedContainer);
+        terminate(recipient, trackedContainer, EndReason.DESTROYED, null);
     }
 
     // 仅收集当前玩家拥有的追踪容器；超时的追踪先 flush 后移除
@@ -185,7 +179,7 @@ public final class ContainerTrackingService {
             UUID owner = tracked.unsuspiciousblock$getTrackedPlayerUuid();
             // 超时：先 flush 再移除，不参与本次快照
             if (tracked.unsuspiciousblock$isTrackingExpired(currentGameTime, timeoutTicks)) {
-                flushTrackingToJournal(player, tracked);
+                terminate(resolveTrackingPlayer(player, tracked), tracked, EndReason.EXPIRED, null);
                 continue;
             }
             // 仅当前玩家拥有的追踪容器参与
@@ -216,7 +210,8 @@ public final class ContainerTrackingService {
         }
 
         if (container instanceof TrackedContainerLootState trackedContainer
-                && trackedContainer.unsuspiciousblock$hasTrackedLoot()
+                && (trackedContainer.unsuspiciousblock$hasTrackedLoot()
+                    || trackedContainer.unsuspiciousblock$pendingJournal().current() != null)
                 && visitedTrackedContainers.add(trackedContainer)) {
             trackedContainers.add(trackedContainer);
         }

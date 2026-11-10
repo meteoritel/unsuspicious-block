@@ -53,49 +53,45 @@ public final class ArchaeologyJournalClientState {
     private static volatile Consumer<List<Component>> tableUnlockNotifier;
     private static volatile BiConsumer<List<Component>, List<ItemStack>> itemUnlockNotifier;
     private static volatile Consumer<Component> tableCompletionNotifier;
-    private static volatile Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
-    private static volatile CatalogStructure catalogStructure = CatalogStructure.empty();
-    private static volatile ArchaeologyJournalState journalState = new ArchaeologyJournalState();
-    @Nullable
-    private static volatile ResourceLocation lastSelectedTableId;
-    // 跨打开/关闭持久化的 UI 状态
-    @Nullable
-    private static volatile CatalogSorter.SortOrder lastCatalogSortOrder;
-    private static volatile boolean lastCatalogSortDescending;
-    private static volatile boolean lastCatalogHideLocked;
-    private static volatile String lastCatalogSearchText = "";
-    private static volatile boolean lastDirectoryHome = true;
-    @Nullable
-    private static volatile ResourceLocation lastDirectoryCategory;
-    private static volatile Set<ResourceLocation> expandedDirectoryTables = Collections.emptySet();
-    private static volatile int lastDirectoryPage;
-    private static volatile int lastCategoryFocus;
-    private static final Map<ResourceLocation, ResourceLocation> categorySelections = new LinkedHashMap<>();
-    private static volatile boolean lastLogSortDescending = true;
-    @Nullable
-    private static volatile LogGrouper.GroupMode lastLogGroupMode;
-    @Nullable
-    private static volatile RightPageContainer.Tab lastRightPageTab;
-    // 用户收藏的战利品表集合（客户端偏好，不随服务端状态重置）
-    private static volatile Set<ResourceLocation> favorites = Collections.emptySet();
     // 加载持久化文件时临时抑制 markDirty，避免加载即触发回写
     private static volatile boolean persistenceSuppress;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
-    // getCatalog() 的只读投影缓存：与 catalogRevision 一致时直接复用，避免渲染路径每帧重建整份 overlay
-    private static volatile Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
-    private static volatile long catalogProjectionRevision = -1L;
-    // 客户端缓存的目录哈希，用于按需同步比对
-    @Nullable
-    private static volatile String cachedCatalogHash;
-    // 标记服务端状态是否已完成首次同步；首次同步时不弹 Toast，避免重进世界时重复通知
-    private static volatile boolean stateInitialized = false;
-    // 上次触发 Toast 通知的服务端版本号；仅当 incomingRevision > lastNotifiedRevision 时才重新检测
-    private static volatile long lastNotifiedRevision = -1L;
-    // 全量重同步请求限流时间戳（ms），防止极端场景下请求风暴
-    private static volatile long lastFullStateRequestMs = 0L;
     // 重同步请求最小间隔
     private static final long RESYNC_COOLDOWN_MS = 2000L;
+
+    private static volatile ConnectionState connectionState = new ConnectionState();
+    private static volatile WorldPreferences preferences = new WorldPreferences();
+
+    private static final class ConnectionState {
+        private Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
+        private CatalogStructure catalogStructure = CatalogStructure.empty();
+        private ArchaeologyJournalState journalState = new ArchaeologyJournalState();
+        private Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
+        private long catalogProjectionRevision = -1L;
+        private @Nullable String cachedCatalogHash;
+        private boolean stateInitialized;
+        private long lastNotifiedRevision = -1L;
+        private long lastFullStateRequestMs;
+    }
+
+    private static final class WorldPreferences {
+        private @Nullable ResourceLocation lastSelectedTableId;
+        private @Nullable CatalogSorter.SortOrder lastCatalogSortOrder;
+        private boolean lastCatalogSortDescending;
+        private boolean lastCatalogHideLocked;
+        private String lastCatalogSearchText = "";
+        private boolean lastDirectoryHome = true;
+        private @Nullable ResourceLocation lastDirectoryCategory;
+        private Set<ResourceLocation> expandedDirectoryTables = Collections.emptySet();
+        private int lastDirectoryPage;
+        private int lastCategoryFocus;
+        private final Map<ResourceLocation, ResourceLocation> categorySelections = new LinkedHashMap<>();
+        private boolean lastLogSortDescending = true;
+        private @Nullable LogGrouper.GroupMode lastLogGroupMode;
+        private @Nullable RightPageContainer.Tab lastRightPageTab;
+        private Set<ResourceLocation> favorites = Collections.emptySet();
+    }
 
     private ArchaeologyJournalClientState() {
     }
@@ -116,15 +112,14 @@ public final class ArchaeologyJournalClientState {
     }
 
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
-        ArchaeologyJournalLogLocalStore.tick();
         // 网络形态还原为客户端内存读模型：表级场景假设按 key 回填到每个分场景概率
         Map<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (CatalogTableDto table : payload.catalog()) {
             tables.put(table.id(), table.toTableDefinition());
         }
         com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.catalog(payload.catalog());
-        serverCatalog = Collections.unmodifiableMap(tables);
-        catalogStructure = payload.structure();
+        connectionState.serverCatalog = Collections.unmodifiableMap(tables);
+        connectionState.catalogStructure = payload.structure();
         catalogRevision.incrementAndGet();
         // 收到完整目录后，哈希由服务端下次同步时更新
     }
@@ -132,77 +127,75 @@ public final class ArchaeologyJournalClientState {
     // 收到目录哈希后与本地缓存对比，不一致时请求完整目录
     public static void receiveCatalogHash(SyncCatalogHashPayload payload) {
         String newHash = payload.catalogHash();
-        String localHash = cachedCatalogHash;
+        String localHash = connectionState.cachedCatalogHash;
         if (localHash != null && localHash.equals(newHash)) {
             // 哈希一致，无需重新下载
             return;
         }
         // 哈希不一致或首次收到，请求完整目录
         Services.NETWORK.sendToServer(new RequestCatalogPayload());
-        cachedCatalogHash = newHash;
+        connectionState.cachedCatalogHash = newHash;
     }
 
     public static void receiveState(SyncJournalStatePayload payload) {
-        ArchaeologyJournalLogLocalStore.tick();
         if (payload.state() == null) return;
 
         long incomingRevision = payload.revision();
 
-        if (!stateInitialized) {
+        if (!connectionState.stateInitialized) {
             // 首次同步：仅保存状态，不与空状态比较以避免误触发 Toast
             ArchaeologyJournalState updated = new ArchaeologyJournalState();
             updated.readFrom(payload.state());
-            journalState = updated;
+            connectionState.journalState = updated;
             stateRevision.set(incomingRevision);
-            stateInitialized = true;
-            lastNotifiedRevision = incomingRevision;
+            connectionState.stateInitialized = true;
+            connectionState.lastNotifiedRevision = incomingRevision;
             return;
         }
 
         // 版本号相同或更旧，跳过 Toast 检测
-        if (incomingRevision <= lastNotifiedRevision) {
+        if (incomingRevision <= connectionState.lastNotifiedRevision) {
             ArchaeologyJournalState updated = new ArchaeologyJournalState();
             updated.readFrom(payload.state());
-            journalState = updated;
+            connectionState.journalState = updated;
             stateRevision.set(incomingRevision);
             return;
         }
 
         // 在更新前保存旧状态，用于检测新增解锁
-        ArchaeologyJournalState oldState = journalState.copy();
+        ArchaeologyJournalState oldState = connectionState.journalState.copy();
         ArchaeologyJournalState updated = new ArchaeologyJournalState();
         updated.readFrom(payload.state());
-        journalState = updated;
+        connectionState.journalState = updated;
         stateRevision.set(incomingRevision);
 
         // 检测新解锁的表和物品，触发 Toast 通知
         detectAndNotifyUnlocks(oldState, updated);
-        lastNotifiedRevision = incomingRevision;
+        connectionState.lastNotifiedRevision = incomingRevision;
     }
 
     // 接收增量状态同步包：仅合并变更的表
     public static void receiveStateIncremental(SyncJournalStateIncrementalPayload payload) {
-        ArchaeologyJournalLogLocalStore.tick();
         if (payload.changedTables() == null) return;
 
         long incomingRevision = payload.revision();
 
-        if (!stateInitialized) {
+        if (!connectionState.stateInitialized) {
             // 增量包到达但尚未完成首次全量同步，主动请求全量重同步
             requestFullStateWithCooldown();
             return;
         }
 
         // 版本号相同或更旧，跳过
-        if (incomingRevision <= lastNotifiedRevision) {
+        if (incomingRevision <= connectionState.lastNotifiedRevision) {
             return;
         }
 
-        // 间隙检测：incomingRevision 应严格等于 lastNotifiedRevision + 1
+        // 间隙检测：incomingRevision 应严格等于 connectionState.lastNotifiedRevision + 1
         // 若大于，说明中间有增量包丢失或被跳过，本地状态已不一致，需请求全量重同步
-        if (incomingRevision > lastNotifiedRevision + 1) {
+        if (incomingRevision > connectionState.lastNotifiedRevision + 1) {
             Constants.LOG.warn("检测到考古进度 revision 间隙: 期望 {}, 收到 {}, 请求全量重同步",
-                    lastNotifiedRevision + 1, incomingRevision);
+                    connectionState.lastNotifiedRevision + 1, incomingRevision);
             requestFullStateWithCooldown();
             return;
         }
@@ -215,22 +208,22 @@ public final class ArchaeologyJournalClientState {
                 changedIds.add(id);
             }
         }
-        ArchaeologyJournalState oldState = journalState.partialCopy(changedIds);
-        journalState.mergeFromIncremental(payload.changedTables(), incomingRevision);
+        ArchaeologyJournalState oldState = connectionState.journalState.partialCopy(changedIds);
+        connectionState.journalState.mergeFromIncremental(payload.changedTables(), incomingRevision);
         stateRevision.set(incomingRevision);
 
         // 仅对变更的表做 Diff 检测
-        detectAndNotifyUnlocksForTables(oldState, journalState, payload.changedTables());
-        lastNotifiedRevision = incomingRevision;
+        detectAndNotifyUnlocksForTables(oldState, connectionState.journalState, payload.changedTables());
+        connectionState.lastNotifiedRevision = incomingRevision;
     }
 
     // 请求全量重同步（带限流），用于 revision 间隙或增量先于全量到达的恢复路径
     private static void requestFullStateWithCooldown() {
         long now = System.currentTimeMillis();
-        if (now - lastFullStateRequestMs < RESYNC_COOLDOWN_MS) {
+        if (now - connectionState.lastFullStateRequestMs < RESYNC_COOLDOWN_MS) {
             return;
         }
-        lastFullStateRequestMs = now;
+        connectionState.lastFullStateRequestMs = now;
         Services.NETWORK.sendToServer(new RequestJournalStateFullPayload());
     }
 
@@ -269,7 +262,7 @@ public final class ArchaeologyJournalClientState {
     // 收到服务端的 100% 完成奖励通知：解析表名后走回调（与另两条解锁通知同一解耦方式）
     public static void receiveTableCompletionReward(NotifyTableCompletionRewardPayload payload) {
         ResourceLocation tableId = payload.tableId();
-        TableDefinition def = serverCatalog.get(tableId);
+        TableDefinition def = connectionState.serverCatalog.get(tableId);
         Component tableName = def != null ? def.displayName()
                 : Component.literal(tableId.getPath());
         Consumer<Component> notifier = tableCompletionNotifier;
@@ -279,39 +272,37 @@ public final class ArchaeologyJournalClientState {
     }
 
     public static void tick() {
-        ArchaeologyJournalLogLocalStore.tick();
-        JournalUiPreferencesStore.tick();
+        JournalClientConnection.tick();
     }
 
-    public static void simulationChanged() { catalogRevision.incrementAndGet(); }
 
     /**
      * 目录投影：在原始目录上叠加当前模拟选择与结果，供日志详情、tooltip 与网格共用。
      * <p>
-     * 缓存键就是 {@link #catalogRevision}，全部输入变化点都推进它：
-     * 收到完整目录（{@link #receiveCatalog}）、模拟选择/结果变化（{@link #simulationChanged}）、
+     * 缓存键由目录版本与场景 Module 的 revision 合成：
+     * 收到完整目录（{@link #receiveCatalog}）、模拟选择/结果变化（场景 revision）、
      * 断连重置（{@link #resetOnDisconnect}）。命中时返回同一份**不可修改**映射，
      * 调用方只能读取。语言切换无需失效：投影只持有 {@code Component} 与 record，翻译在渲染时解析。
      */
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
-        long revision = catalogRevision.get();
-        if (catalogProjectionRevision == revision) {
-            return catalogProjection;
+        long revision = getCatalogRevision();
+        if (connectionState.catalogProjectionRevision == revision) {
+            return connectionState.catalogProjection;
         }
         Map<ResourceLocation, TableDefinition> projection = Collections.unmodifiableMap(
-                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.overlay(serverCatalog));
+                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.overlay(connectionState.serverCatalog));
         // 先发布投影再发布版本号，读取方看到新版本号时必然能看到对应投影
-        catalogProjection = projection;
-        catalogProjectionRevision = revision;
+        connectionState.catalogProjection = projection;
+        connectionState.catalogProjectionRevision = revision;
         return projection;
     }
 
     // 按物品注册名预检当前可见目录是否存在搜索结果，避免打开空白手册。
     public static boolean hasItemSearchResult(ResourceLocation itemId) {
         JournalSearchQuery query = JournalSearchQuery.forItemId(itemId);
-        ArchaeologyJournalState state = journalState;
+        ArchaeologyJournalState state = connectionState.journalState;
         ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
-        for (Map.Entry<ResourceLocation, TableDefinition> entry : serverCatalog.entrySet()) {
+        for (Map.Entry<ResourceLocation, TableDefinition> entry : connectionState.serverCatalog.entrySet()) {
             ArchaeologyJournalState.TableProgress progress = state.getTable(entry.getKey());
             if (progress == null || !progress.isUnlocked()) {
                 continue;
@@ -326,11 +317,12 @@ public final class ArchaeologyJournalClientState {
     }
 
     public static CatalogStructure getCatalogStructure() {
-        return catalogStructure;
+        return connectionState.catalogStructure;
     }
 
     public static long getCatalogRevision() {
-        return catalogRevision.get();
+        return catalogRevision.get()
+                + com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.revision();
     }
 
     public static long getStateRevision() {
@@ -342,20 +334,20 @@ public final class ArchaeologyJournalClientState {
     }
 
     public static ArchaeologyJournalState getState() {
-        return journalState;
+        return connectionState.journalState;
     }
 
     public static ArchaeologyJournalLogState getLogState() {
-        return ArchaeologyJournalLogLocalStore.getState().copy();
+        return ArchaeologyJournalLogLocalStore.getState();
     }
 
     @Nullable
     public static ResourceLocation getLastSelectedTableId() {
-        return lastSelectedTableId;
+        return preferences.lastSelectedTableId;
     }
 
     public static void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
-        lastSelectedTableId = tableId;
+        preferences.lastSelectedTableId = tableId;
         markDirtyIfTracking();
     }
 
@@ -363,134 +355,134 @@ public final class ArchaeologyJournalClientState {
 
     @Nullable
     public static CatalogSorter.SortOrder getLastCatalogSortOrder() {
-        return lastCatalogSortOrder;
+        return preferences.lastCatalogSortOrder;
     }
 
     public static void setLastCatalogSortOrder(@Nullable CatalogSorter.SortOrder order) {
-        lastCatalogSortOrder = order;
+        preferences.lastCatalogSortOrder = order;
         markDirtyIfTracking();
     }
 
     public static boolean getLastCatalogSortDescending() {
-        return lastCatalogSortDescending;
+        return preferences.lastCatalogSortDescending;
     }
 
     public static void setLastCatalogSortDescending(boolean descending) {
-        lastCatalogSortDescending = descending;
+        preferences.lastCatalogSortDescending = descending;
         markDirtyIfTracking();
     }
 
     public static boolean getLastCatalogHideLocked() {
-        return lastCatalogHideLocked;
+        return preferences.lastCatalogHideLocked;
     }
 
     public static void setLastCatalogHideLocked(boolean hideLocked) {
-        lastCatalogHideLocked = hideLocked;
+        preferences.lastCatalogHideLocked = hideLocked;
         markDirtyIfTracking();
     }
 
     @Nullable
     public static String getLastCatalogSearchText() {
-        return lastCatalogSearchText;
+        return preferences.lastCatalogSearchText;
     }
 
     public static void setLastCatalogSearchText(@Nullable String text) {
-        lastCatalogSearchText = text != null ? text : "";
+        preferences.lastCatalogSearchText = text != null ? text : "";
         markDirtyIfTracking();
     }
 
     public static boolean isLastDirectoryHome() {
-        return lastDirectoryHome;
+        return preferences.lastDirectoryHome;
     }
 
     @Nullable
     public static ResourceLocation getLastDirectoryCategory() {
-        return lastDirectoryCategory;
+        return preferences.lastDirectoryCategory;
     }
 
     public static Set<ResourceLocation> getExpandedDirectoryTables() {
-        return expandedDirectoryTables;
+        return preferences.expandedDirectoryTables;
     }
 
     // 目录层级状态仅在当前客户端运行期间保存，不写入偏好文件。
     public static void rememberDirectoryState(boolean home, @Nullable ResourceLocation category,
                                               Set<ResourceLocation> expanded, int page, int categoryFocus) {
-        lastDirectoryHome = home;
-        lastDirectoryCategory = category;
-        expandedDirectoryTables = Set.copyOf(expanded);
-        lastDirectoryPage = Math.max(0, page);
-        lastCategoryFocus = Math.max(0, categoryFocus);
+        preferences.lastDirectoryHome = home;
+        preferences.lastDirectoryCategory = category;
+        preferences.expandedDirectoryTables = Set.copyOf(expanded);
+        preferences.lastDirectoryPage = Math.max(0, page);
+        preferences.lastCategoryFocus = Math.max(0, categoryFocus);
     }
 
     public static int getLastDirectoryPage() {
-        return lastDirectoryPage;
+        return preferences.lastDirectoryPage;
     }
 
     public static int getLastCategoryFocus() {
-        return lastCategoryFocus;
+        return preferences.lastCategoryFocus;
     }
 
     @Nullable
     public static ResourceLocation getCategorySelection(ResourceLocation categoryId) {
-        return categorySelections.get(categoryId);
+        return preferences.categorySelections.get(categoryId);
     }
 
     public static void rememberCategorySelection(ResourceLocation categoryId, ResourceLocation tableId) {
-        categorySelections.put(categoryId, tableId);
+        preferences.categorySelections.put(categoryId, tableId);
     }
 
     public static boolean getLastLogSortDescending() {
-        return lastLogSortDescending;
+        return preferences.lastLogSortDescending;
     }
 
     public static void setLastLogSortDescending(boolean descending) {
-        lastLogSortDescending = descending;
+        preferences.lastLogSortDescending = descending;
         markDirtyIfTracking();
     }
 
     @Nullable
     public static LogGrouper.GroupMode getLastLogGroupMode() {
-        return lastLogGroupMode;
+        return preferences.lastLogGroupMode;
     }
 
     public static void setLastLogGroupMode(@Nullable LogGrouper.GroupMode mode) {
-        lastLogGroupMode = mode;
+        preferences.lastLogGroupMode = mode;
         markDirtyIfTracking();
     }
 
     @Nullable
     public static RightPageContainer.Tab getLastRightPageTab() {
-        return lastRightPageTab;
+        return preferences.lastRightPageTab;
     }
 
     public static void setLastRightPageTab(@Nullable RightPageContainer.Tab tab) {
-        lastRightPageTab = tab;
+        preferences.lastRightPageTab = tab;
         markDirtyIfTracking();
     }
 
     // —— 收藏集合访问器 ——
     public static boolean isFavorite(ResourceLocation id) {
-        return favorites.contains(id);
+        return preferences.favorites.contains(id);
     }
 
     // 切换某个战利品表的收藏状态
     public static void toggleFavorite(ResourceLocation id) {
-        Set<ResourceLocation> copy = new HashSet<>(favorites);
+        Set<ResourceLocation> copy = new HashSet<>(preferences.favorites);
         if (!copy.add(id)) {
             copy.remove(id);
         }
-        favorites = Collections.unmodifiableSet(copy);
+        preferences.favorites = Collections.unmodifiableSet(copy);
         markDirtyIfTracking();
     }
 
     // 由 JournalUiPreferencesStore 加载后批量替换收藏集合（不触发二次回写）
     public static void replaceFavorites(Set<ResourceLocation> newFavorites) {
-        favorites = Collections.unmodifiableSet(new HashSet<>(newFavorites));
+        preferences.favorites = Set.copyOf(newFavorites);
     }
 
     // 供 JournalUiPreferencesStore 序列化快照使用
     static Set<ResourceLocation> snapshotFavorites() {
-        return favorites;
+        return preferences.favorites;
     }
 
     // 加载持久化文件时由 store 调用，抑制 markDirty 回写
@@ -505,24 +497,25 @@ public final class ArchaeologyJournalClientState {
         }
     }
 
-    // 断线时重置，使下次连入能正确处理首次同步
+    public static long getConnectionEpoch() {
+        return JournalClientConnection.epoch();
+    }
+
     public static void resetOnDisconnect() {
-        com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.clear();
-        serverCatalog = Collections.emptyMap();
-        // 目录本身被清空，但 catalogRevision 未必变化，必须显式推进，否则投影缓存会继续返回上一服务器内容
+        JournalClientConnection.disconnect();
+    }
+
+    static void resetConnectionMemory() {
+        connectionState = new ConnectionState();
+        preferences = new WorldPreferences();
+        persistenceSuppress = false;
         catalogRevision.incrementAndGet();
-        // 先把未刷盘的本地日志与 UI 偏好落盘，避免退出世界/关闭客户端时丢失最近记录
-        ArchaeologyJournalLogLocalStore.flush();
-        JournalUiPreferencesStore.flushIfDirty();
-        stateInitialized = false;
-        lastNotifiedRevision = -1L;
-        journalState = new ArchaeologyJournalState();
-        cachedCatalogHash = null;
+        stateRevision.incrementAndGet();
     }
 
     // 比较旧状态和新状态，检测新解锁的表和物品并通知
     private static void detectAndNotifyUnlocks(ArchaeologyJournalState oldState, ArchaeologyJournalState newState) {
-        Map<ResourceLocation, TableDefinition> catalog = serverCatalog;
+        Map<ResourceLocation, TableDefinition> catalog = connectionState.serverCatalog;
         List<Component> newTables = new ArrayList<>();
         List<Component> itemNames = new ArrayList<>();
         List<ItemStack> itemIcons = new ArrayList<>();
@@ -552,7 +545,7 @@ public final class ArchaeologyJournalClientState {
     private static void detectAndNotifyUnlocksForTables(ArchaeologyJournalState oldState,
                                                         ArchaeologyJournalState newState,
                                                         net.minecraft.nbt.CompoundTag changedTables) {
-        Map<ResourceLocation, TableDefinition> catalog = serverCatalog;
+        Map<ResourceLocation, TableDefinition> catalog = connectionState.serverCatalog;
         List<Component> newTables = new ArrayList<>();
         List<Component> itemNames = new ArrayList<>();
         List<ItemStack> itemIcons = new ArrayList<>();

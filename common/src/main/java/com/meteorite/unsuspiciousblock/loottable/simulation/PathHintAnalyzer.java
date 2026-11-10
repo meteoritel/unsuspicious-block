@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -44,9 +45,6 @@ public final class PathHintAnalyzer {
     private static final String KEY_LUCK_BONUS_ROLLS = KEY_PREFIX + "path_hint.luck_bonus_rolls";
     private static final ResourceLocation MATCH_TOOL =
             ResourceLocation.withDefaultNamespace("match_tool");
-    private static final ResourceLocation ALL_OF = ResourceLocation.withDefaultNamespace("all_of");
-    private static final ResourceLocation ANY_OF = ResourceLocation.withDefaultNamespace("any_of");
-    private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final ResourceLocation TABLE_BONUS =
             ResourceLocation.withDefaultNamespace("table_bonus");
     private static final ResourceLocation ENCHANTMENT_ACTIVE_CHECK =
@@ -242,10 +240,10 @@ public final class PathHintAnalyzer {
                                 LinkedHashMap<String, LootConditionInfo> scenarioConditions,
                                 LinkedHashMap<String, LootConditionInfo> unresolvedConditions) {
         ResourceLocation type = condition.conditionType();
-        boolean composite = isComposite(type);
+        boolean composite = ConditionTree.kind(condition) != ConditionTree.Kind.LEAF;
         if (LootConditionHandlers.FIDELITY_UNREADABLE.equals(
                 condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
-                && (!composite || condition.children().isEmpty())) {
+                && (!composite || ConditionTree.logicChildren(condition).isEmpty())) {
             unresolvedConditions.putIfAbsent(detailKey(condition), condition);
         }
         if (MATCH_TOOL.equals(type)) {
@@ -262,15 +260,10 @@ public final class PathHintAnalyzer {
         // （例：{@code tool_enchantment} 的"概率：基础 20%，每级变化 10%"子行）。递归进去会把同一条门槛
         // 重复列一遍，还会把概率子行写成"该路径需要工具带 概率：… 附魔"这种读不通的句子。
         if (composite) {
-            for (LootConditionInfo child : condition.children()) {
+            for (LootConditionInfo child : ConditionTree.logicChildren(condition)) {
                 collect(child, parameterDetails, scenarioConditions, unresolvedConditions);
             }
         }
-    }
-
-    // 组合条件的三种类型——只有它们的子节点是语义上独立的另一条条件
-    private static boolean isComposite(ResourceLocation type) {
-        return ALL_OF.equals(type) || ANY_OF.equals(type) || INVERTED.equals(type);
     }
 
     // 读工具附魔等级的机制：模组的 tool_enchantment 与三处原版机制。等级是资格也是概率来源

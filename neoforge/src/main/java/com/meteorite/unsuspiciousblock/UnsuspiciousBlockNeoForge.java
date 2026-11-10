@@ -1,21 +1,21 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.block.ModBlocks;
+import com.meteorite.unsuspiciousblock.bootstrap.ModServerLifecycle;
+import com.meteorite.unsuspiciousblock.bootstrap.ModContent;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.flag.FeatureFlags;
+import java.util.function.BiFunction;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BlockEntityRegistrar;
-import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
-import com.meteorite.unsuspiciousblock.entity.ModEntities;
-import com.meteorite.unsuspiciousblock.world.ModFeatures;
 import net.minecraft.world.level.levelgen.feature.Feature;
-import com.meteorite.unsuspiciousblock.effect.ModEffects;
-import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.world.NeoForgeBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.inventory.NeoForgeInventoryPresenceAdapter;
+import com.meteorite.unsuspiciousblock.inventory.AncientCoinRepair;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.loot.AddItemLootModifier;
 import com.meteorite.unsuspiciousblock.loot.FishingLootModifier;
@@ -23,29 +23,21 @@ import com.meteorite.unsuspiciousblock.loot.InjectItemLootModifier;
 import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
-import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
-import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.DataPackReloadListener;
-import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
-import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.Holder;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.StringUtil;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffect;
@@ -53,7 +45,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
-import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
@@ -119,9 +110,6 @@ public class UnsuspiciousBlockNeoForge {
     private static final DeferredRegister<Feature<?>> FEATURES =
             DeferredRegister.create(Registries.FEATURE, Constants.MOD_ID);
 
-    static {
-        ModFeatures.forEach(FEATURES::register);
-    }
     private static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS =
             DeferredRegister.create(Registries.RECIPE_SERIALIZER, Constants.MOD_ID);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
@@ -137,74 +125,24 @@ public class UnsuspiciousBlockNeoForge {
     // 全局战利品修改器序列化器注册——add_item 类型供 JSON 文件引用
     private static final DeferredRegister<MapCodec<? extends IGlobalLootModifier>> LOOT_MODIFIERS =
             DeferredRegister.create(NeoForgeRegistries.Keys.GLOBAL_LOOT_MODIFIER_SERIALIZERS, Constants.MOD_ID);
-    private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> ADD_ITEM =
-            LOOT_MODIFIERS.register("add_item", () -> AddItemLootModifier.CODEC);
-    // 埋藏宝藏注入猫之瞳（临时方案，未来会更改到自定义结构中）
-    private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> INJECT_ITEM =
-            LOOT_MODIFIERS.register("inject_item", () -> InjectItemLootModifier.CODEC);
-    // 泥地打捞钓鱼战利品注入——GLM 检查资格后执行数据驱动父表
-    private static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<? extends IGlobalLootModifier>> FISHING_LOOT =
-            LOOT_MODIFIERS.register("fishing_loot", () -> FishingLootModifier.CODEC);
-    private static final DeferredHolder<MenuType<?>, MenuType<SpecimenBoxMenu>> SPECIMEN_BOX_MENU =
-            MENUS.register("specimen_box", () ->
-                    new MenuType<>(SpecimenBoxMenu::new, FeatureFlags.DEFAULT_FLAGS));
-    private static final DeferredHolder<MenuType<?>, MenuType<PotteryWheelMenu>> POTTERY_WHEEL_MENU =
-            MENUS.register("pottery_wheel", () -> new MenuType<>(PotteryWheelMenu::new, FeatureFlags.DEFAULT_FLAGS));
 
-    /** 存储 (DeferredItem, Consumer<Item>) 对，供 FMLCommonSetupEvent 中回写 */
-    private record ItemSyncEntry(DeferredItem<Item> deferred, Consumer<Item> setter) {}
+    static {
+        LOOT_MODIFIERS.register("add_item", () -> AddItemLootModifier.CODEC);
+        LOOT_MODIFIERS.register("inject_item", () -> InjectItemLootModifier.CODEC);
+        LOOT_MODIFIERS.register("fishing_loot", () -> FishingLootModifier.CODEC);
+    }
+
+    /**
+     * 存储 (DeferredItem, Consumer<Item>) 对，供 FMLCommonSetupEvent 中回写
+     */
+    private record ItemSyncEntry(DeferredItem<Item> deferred, Consumer<Item> setter) {
+    }
 
     private static final List<ItemSyncEntry> ITEM_SYNC_LIST = new ArrayList<>();
 
-    static {
-        // DeferredHolder 可直接作为 Supplier<Block> 回写给 common
-        ModBlocks.forEach((name, factory, setter) ->
-                setter.accept(BLOCKS.register(name, factory)));
-    }
-
-    static {
-        ModBlockEntities.forEach(new BlockEntityRegistrar() {
-            @Override
-            public <T extends BlockEntity> void register(String name, Supplier<BlockEntityType<T>> factory,
-                                                         Consumer<Supplier<BlockEntityType<T>>> setter) {
-                DeferredHolder<BlockEntityType<?>, BlockEntityType<T>> deferred =
-                        BLOCK_ENTITY_TYPES.register(name, factory);
-                setter.accept(deferred);
-            }
-        });
-    }
-
-    static {
-        ModItems.forEach((name, factory, setter) -> {
-            DeferredItem<Item> deferred = ITEMS.register(name, factory);
-            ITEM_SYNC_LIST.add(new ItemSyncEntry(deferred, setter));
-        });
-    }
-
-    static {
-        ModRecipeSerializers.forEach((name, factory, setter) ->
-                setter.accept(RECIPE_SERIALIZERS.register(name, factory)));
-    }
-
-    static {
-        // 效果注册：DeferredHolder 即 Holder<MobEffect>，直接回写供 common 代码引用
-        ModEffects.forEach((name, factory, setter) -> {
-            Holder<MobEffect> holder = EFFECTS.register(name, factory);
-            setter.accept(holder);
-        });
-    }
-
-    static {
-        // 声音注册：DeferredHolder 即 Holder<SoundEvent>，直接回写供 common 代码引用
-        ModSounds.forEach((name, setter) -> {
-            Holder<SoundEvent> holder = SOUND_EVENTS.register(name,
-                    () -> SoundEvent.createVariableRangeEvent(
-                            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name)));
-            setter.accept(holder);
-        });
-    }
-
-    /** 存储 (DeferredHolder, 属性工厂) 对，泛型化以消除强制转换 */
+    /**
+     * 存储 (DeferredHolder, 属性工厂) 对，泛型化以消除强制转换
+     */
     private record EntitySyncEntry<T extends Entity>(
             DeferredHolder<EntityType<?>, EntityType<T>> deferred,
             @Nullable Supplier<AttributeSupplier.Builder> attributes) {
@@ -222,32 +160,62 @@ public class UnsuspiciousBlockNeoForge {
 
     private static final List<EntitySyncEntry<?>> ENTITY_SYNC_LIST = new ArrayList<>();
 
-    static {
-        ModEntities.forEach(new EntityRegistrar() {
-            @Override
-            public <T extends Entity> void register(String name, Supplier<EntityType<T>> factory,
-                    Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
-                DeferredHolder<EntityType<?>, EntityType<T>> deferred = ENTITY_TYPES.register(name, factory);
-                // DeferredHolder 本身即 Supplier，直接回写，无需等待 FMLCommonSetupEvent
-                setter.accept(deferred);
-                ENTITY_SYNC_LIST.add(new EntitySyncEntry<>(deferred, attributes));
-            }
-        });
-    }
-
     private static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Constants.MOD_ID);
 
-    private static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB =
-            CREATIVE_MODE_TABS.register("main", () -> CreativeModeTab.builder()
-                    .title(Component.translatable("itemGroup.unsuspiciousblock.main"))
-                    .icon(ModItems.CREATIVE_TAB_ICON)
-                    .displayItems((parameters, output) -> {
-                        for (Supplier<Item> sup : ModItems.CREATIVE_TAB_ITEMS) {
-                            output.accept(sup.get());
-                        }
-                    })
-                    .build());
+    static {
+        registerContent();
+    }
+
+    private static void registerContent() {
+        ModContent.register(new ModContent.Registrars(
+                (name, factory, setter) ->
+                        setter.accept(BLOCKS.register(name, factory)),
+                new BlockEntityRegistrar() {
+                    @Override
+                    public <T extends BlockEntity> void register(String name, Supplier<BlockEntityType<T>> factory,
+                                                                 Consumer<Supplier<BlockEntityType<T>>> setter) {
+                        DeferredHolder<BlockEntityType<?>, BlockEntityType<T>> deferred =
+                                BLOCK_ENTITY_TYPES.register(name, factory);
+                        setter.accept(deferred);
+                    }
+                },
+                (name, factory, setter) -> {
+                    DeferredItem<Item> deferred = ITEMS.register(name, factory);
+                    ITEM_SYNC_LIST.add(new ItemSyncEntry(deferred, setter));
+                },
+                (name, factory, setter) ->
+                        setter.accept(RECIPE_SERIALIZERS.register(name, factory)),
+                new EntityRegistrar() {
+                    @Override
+                    public <T extends Entity> void register(String name, Supplier<EntityType<T>> factory,
+                                                            Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
+                        DeferredHolder<EntityType<?>, EntityType<T>> deferred = ENTITY_TYPES.register(name, factory);
+                        // DeferredHolder 本身即 Supplier，直接回写，无需等待 FMLCommonSetupEvent
+                        setter.accept(deferred);
+                        ENTITY_SYNC_LIST.add(new EntitySyncEntry<>(deferred, attributes));
+                    }
+                },
+                (name, factory, setter) -> {
+                    Holder<MobEffect> holder = EFFECTS.register(name, factory);
+                    setter.accept(holder);
+                },
+                (name, setter) -> {
+                    Holder<SoundEvent> holder = SOUND_EVENTS.register(name,
+                            () -> SoundEvent.createVariableRangeEvent(
+                                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name)));
+                    setter.accept(holder);
+                },
+                FEATURES::register,
+                new ModContent.MenuRegistrar() {
+                    @Override
+                    public <T extends AbstractContainerMenu> Supplier<MenuType<T>> register(
+                            String name, BiFunction<Integer, Inventory, T> factory) {
+                        return MENUS.register(name, () -> new MenuType<>(factory::apply, FeatureFlags.DEFAULT_FLAGS));
+                    }
+                },
+                CREATIVE_MODE_TABS::register, CreativeModeTab::builder));
+    }
 
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
         // 在 common init 前设置平台注册的 LootItemConditionType，供 ToolEnchantmentCondition 运行时使用
@@ -289,8 +257,7 @@ public class UnsuspiciousBlockNeoForge {
     private void syncCommonItemRefs(FMLCommonSetupEvent event) {
         // MenuType 同步回写：RegisterMenuScreensEvent 可能在 enqueueWork 任务执行前触发，
         // 同步执行确保运行时 TYPE 就绪；客户端注册 Screen 时另有 getter 兜底
-        SpecimenBoxMenu.TYPE = SPECIMEN_BOX_MENU.get();
-        PotteryWheelMenu.TYPE = POTTERY_WHEEL_MENU.get();
+        ModContent.syncMenuTypes();
         event.enqueueWork(() -> {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
@@ -306,19 +273,17 @@ public class UnsuspiciousBlockNeoForge {
 
     // 供客户端在 RegisterMenuScreensEvent 时获取 MenuType，避免 enqueueWork 时序问题
     public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
-        return SPECIMEN_BOX_MENU.get();
+        return ModContent.specimenBoxMenu();
     }
 
     // 供客户端注册陶轮台 Screen 时获取 MenuType
     public static MenuType<PotteryWheelMenu> getPotteryWheelMenuType() {
-        return POTTERY_WHEEL_MENU.get();
+        return ModContent.potteryWheelMenu();
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        // 协议版本随目录包格式变化升级。4.10：CatalogTableDto 追加三个末尾字段
-        // （物品来源位图 origins、获取路径末尾的有界静态函数树、物品条目观测摘要 observedFunctions），
-        // 旧端读到会整体错位，因此客户端与服务端必须同版本发布
-        var registrar = event.registrar(Constants.MOD_ID).versioned("4.10");
+        // 两端使用同一线格式版本，字段变化时共同升级。
+        var registrar = event.registrar(Constants.MOD_ID).versioned(ModPayloads.PROTOCOL_VERSION);
         // 遍历 ModPayloads 统一清单注册 C2S，避免手写重复
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(registrar, c2s);
@@ -416,32 +381,18 @@ public class UnsuspiciousBlockNeoForge {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
-        ServerLootTableConfigManager.start(event.getServer());
-        JournalPlayerDataService.onServerStarted(event.getServer());
-        LootProbabilitySimulationWorker.start();
-        ArchaeologyJournalServerCatalog.ensureLoaded(event.getServer());
+        ModServerLifecycle.started(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
-        JournalPlayerDataService.onServerStopped(event.getServer());
-        LootProbabilitySimulationWorker.stop();
-        ArchaeologyJournalServerCatalog.invalidate();
-        ServerLootTableConfigManager.stop();
-        NaturalBoneBlockTracker.clearPendingPlayerBreaks();
-        ShimmerSpawnService.stop(event.getServer());
-        com.meteorite.unsuspiciousblock.world.StructureRewindService.stop(event.getServer());
+        ModServerLifecycle.stopped(event.getServer());
     }
 
     // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
     @SubscribeEvent
     public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
-        JournalPlayerDataService.onServerTick(event.getServer());
-        ServerLootTableConfigManager.tick(event.getServer());
-        LootProbabilitySimulationWorker.tickIfPresent(event.getServer());
-        MerchantCatSpawner.tick(event.getServer());
-        ShimmerSpawnService.tick(event.getServer());
-        com.meteorite.unsuspiciousblock.world.StructureRewindService.tick(event.getServer());
+        ModServerLifecycle.tick(event.getServer());
     }
 
     // chunk 首次生成时扫描骨块并标记为自然生成
@@ -475,48 +426,15 @@ public class UnsuspiciousBlockNeoForge {
         if (!event.getOutput().isEmpty()) {
             return;
         }
-        ItemStack left = event.getLeft();
-        ItemStack right = event.getRight();
-        if (!right.is(ModItems.ANCIENT_COIN)) {
+        AncientCoinRepair.Result repair = AncientCoinRepair.calculate(
+                event.getLeft(), event.getRight(), event.getName());
+        if (repair == null) {
             return;
         }
-        if (!left.isDamageableItem() || left.getDamageValue() <= 0) {
-            return;
-        }
-
-        ItemStack result = left.copy();
-        // 每枚金币修复 1/4 最大耐久；maxDamage 至少为 1 以免除零
-        int repairPerCoin = Math.max(1, result.getMaxDamage() / 4);
-        int remaining = result.getDamageValue();
-        int coinsUsed = 0;
-        while (remaining > 0 && coinsUsed < right.getCount()) {
-            remaining -= repairPerCoin;
-            coinsUsed++;
-        }
-        result.setDamageValue(Math.max(0, remaining));
-
-        // 同步重命名：原版 AnvilMenu#createResult 在 onAnvilChange 返回 false 后跳过命名处理，
-        // 故此处需自行复用原版命名规则——非空且不同的名称设为 CUSTOM_NAME，空名称清除现有 CUSTOM_NAME
-        int renameCost = 0;
-        String name = event.getName();
-        if (name != null && !StringUtil.isBlank(name)) {
-            if (!name.equals(left.getHoverName().getString())) {
-                result.set(DataComponents.CUSTOM_NAME, Component.literal(name));
-                renameCost = 1;
-            }
-        } else if (name != null && left.has(DataComponents.CUSTOM_NAME)) {
-            // 用户清空名称栏 → 移除自定义名
-            result.remove(DataComponents.CUSTOM_NAME);
-            renameCost = 1;
-        }
-
-        // 等价原版同类材料修复：base = 左右修复成本之和，每枚金币 +1，重命名 +1
-        int baseCost = left.getOrDefault(DataComponents.REPAIR_COST, 0)
-                + right.getOrDefault(DataComponents.REPAIR_COST, 0);
-        event.setOutput(result);
-        event.setCost(baseCost + coinsUsed + renameCost);
-        // materialCost 默认 0 会消耗整堆金币，必须显式设为实际消耗数
-        event.setMaterialCost(coinsUsed);
+        event.setOutput(repair.output());
+        event.setCost(repair.experienceCost());
+        // 默认值会消耗整堆，必须写入实际金币消耗。
+        event.setMaterialCost(repair.materialCost());
     }
 
 }

@@ -72,6 +72,7 @@ public class JournalViewModel {
     private boolean hideLocked;
     private boolean logSortDescending = true;
     private LogGrouper.GroupMode currentGroupMode = LogGrouper.GroupMode.TIME;
+    private long lastConnectionEpoch;
     private long lastCatalogRevision;
     private long lastStateRevision;
     private long lastLogRevision;
@@ -107,6 +108,7 @@ public class JournalViewModel {
     }
 
     public void initRevisions() {
+        this.lastConnectionEpoch = ArchaeologyJournalClientState.getConnectionEpoch();
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
         this.lastLogRevision = ArchaeologyJournalClientState.getLogRevision();
@@ -302,20 +304,23 @@ public class JournalViewModel {
     }
 
     public boolean refreshIfNeeded() {
+        long epoch = ArchaeologyJournalClientState.getConnectionEpoch();
+        boolean connectionChanged = epoch != this.lastConnectionEpoch;
+        this.lastConnectionEpoch = epoch;
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         long stateRevision = ArchaeologyJournalClientState.getStateRevision();
         long logRevision = ArchaeologyJournalClientState.getLogRevision();
-        if (catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
+        if (!connectionChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
                 && logRevision == this.lastLogRevision) return false;
-        if (stateRevision != this.lastStateRevision) {
+        if (connectionChanged || stateRevision != this.lastStateRevision) {
             this.lastStateRevision = stateRevision;
             this.state.copyFrom(ArchaeologyJournalClientState.getState());
         }
-        if (catalogRevision != this.lastCatalogRevision) {
+        if (connectionChanged || catalogRevision != this.lastCatalogRevision) {
             this.lastCatalogRevision = catalogRevision;
             reloadCatalog();
         }
-        if (logRevision != this.lastLogRevision) {
+        if (connectionChanged || logRevision != this.lastLogRevision) {
             this.lastLogRevision = logRevision;
             this.logState = ArchaeologyJournalClientState.getLogState();
         }

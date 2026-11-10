@@ -63,6 +63,13 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
             renderTooltipSlots.add(new IconSlot(layout.rightPageX() + 8 + pad + r.x(), gridTop + r.y(), cachedLoot.get(i)));
         }
     }
+    @Override
+    public ItemGridPanel.TooltipData tooltip(UiPointerHit hit) {
+        if (hit == null || !hit.owns(this)) return null;
+        ItemStack stack = getTooltipStack(hit.x(), hit.y());
+        return stack == null ? null : new ItemGridPanel.TooltipData(stack, null);
+    }
+
     @Override public UiPointerHit hitTest(double x, double y) {
         UiPointerHit hit = contentControls.hitTest(x, y);
         if (hit != null) return hit.within(this);

@@ -18,7 +18,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -27,30 +26,18 @@ import java.util.UUID;
 
 /** 右侧页面容器 —— 通过四枚书签 Tab 切换介绍信息/考古信息/日志/场景 */
 public final class RightPageContainer implements UiInputTarget {
-    public void prepareUi() { activePanel().prepareUi(); if (activeTab == Tab.ARCHAEOLOGY) scenarioPanel.prepareUi(); }
+    public void prepareUi() { activePanel().prepareUi(); }
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
-        if (activeTab == Tab.ARCHAEOLOGY) { gridPanel.renderControls(graphics, font, pointer); scenarioPanel.renderControls(graphics, font, pointer); }
-        else if (activeTab == Tab.SCENARIO) scenarioDetailPanel.renderControls(graphics, font, pointer);
-        else if (activeTab == Tab.LOG && logMode == LogMode.LIST) logPanel.renderControls(graphics, font, pointer);
-        else if (activeTab == Tab.LOG) logDetailPanel.renderControls(graphics, font, pointer);
+        activePanel().renderControls(graphics, font, pointer);
     }
-    @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) { activePanel().addFocusTargets(out); if (activeTab == Tab.ARCHAEOLOGY) scenarioPanel.addFocusTargets(out); }
-    @Override public long focusRevision() { return activePanel().focusRevision() * 31 + activeTab.ordinal() * 2L + logMode.ordinal() + (activeTab == Tab.ARCHAEOLOGY ? 17 * scenarioPanel.focusRevision() : 0); }
+    @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) { activePanel().addFocusTargets(out); }
+    @Override public long focusRevision() { return activePanel().focusRevision() * 31 + activeTab.ordinal() * 2L + logMode.ordinal(); }
     @Override public UiPointerHit hitTest(double x, double y) {
-        UiPointerHit hit = activeTab == Tab.ARCHAEOLOGY ? scenarioPanel.hitTest(x, y) : null;
-        if (hit == null) hit = activePanel().hitTest(x, y);
-        if (activeTab == Tab.ARCHAEOLOGY && hit == null && containsMouse(x, y))
-            return UiPointerHit.leaf(this, x, y);
+        UiPointerHit hit = activePanel().hitTest(x, y);
         return hit == null ? null : hit.within(this);
     }
-    @Override public boolean mousePressed(UiInputContext context) {
-        if (activeTab == Tab.ARCHAEOLOGY && context.hits(scenarioPanel)) return scenarioPanel.mousePressed(context);
-        return activePanel().mousePressed(context);
-    }
-    @Override public boolean keyPressed(int key, int scan, int modifiers) {
-        return activePanel().keyPressed(key, scan, modifiers)
-                || activeTab == Tab.ARCHAEOLOGY && scenarioPanel.keyPressed(key, scan, modifiers);
-    }
+    @Override public boolean mousePressed(UiInputContext context) { return activePanel().mousePressed(context); }
+    @Override public boolean keyPressed(int key, int scan, int modifiers) { return activePanel().keyPressed(key, scan, modifiers); }
     @Override public boolean keyReleased(int key, int scan, int modifiers) { return activePanel().keyReleased(key, scan, modifiers); }
     @Override public boolean charTyped(char value, int modifiers) { return activePanel().charTyped(value, modifiers); }
     @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return activePanel().mouseScrolled(context, x, y); }
@@ -67,15 +54,18 @@ public final class RightPageContainer implements UiInputTarget {
     private final ScenarioPanel scenarioPanel;
     private final JournalBookBackground.BookLayout layout;
     private final ScenarioDetailPanel scenarioDetailPanel;
-    private final UiControl scenarioTabBtn;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
     private final DetailOverlayPanel detailPanel;
     private final LogPanel logPanel;
     private final LogDetailPanel logDetailPanel;
-    private final UiControl introTabBtn;
-    private final UiControl archaeologyTabBtn;
-    private final UiControl logTabBtn;
+    private final List<PageDescriptor> pages;
+    private final List<UiControl> bookmarks;
+    private final List<SavedPage> savedPages;
+
+    private record PageDescriptor(Tab tab, java.util.function.Supplier<PagePanel> content,
+            int indicatorOffset, boolean alwaysIndicator, Runnable enter, Runnable leave, UiControl bookmark) {}
+    private record SavedPage(String key, PagePanel panel) {}
 
     @Nullable
     private ResourceLocation currentTableId;
@@ -102,32 +92,23 @@ public final class RightPageContainer implements UiInputTarget {
         this.logPanel = new LogPanel(layout);
         this.logDetailPanel = new LogDetailPanel(layout);
 
-        // 书签附着在书本右边缘，垂直排列
-        int bookRightEdge = layout.rightPageX() + layout.rightPageWidth();
-        int startY = layout.rightPageY() + BOOKMARK_TOP_OFFSET;
-
-        this.introTabBtn = JournalControls.bookmark(
-                bookRightEdge, startY,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_intro")
-                        .withStyle(ChatFormatting.YELLOW),
-                () -> switchTab(Tab.INTRO));
-        this.introTabBtn.setSelected(true);
-
-        this.archaeologyTabBtn = JournalControls.bookmark(
-                bookRightEdge, startY + BOOKMARK_HEIGHT + BOOKMARK_GAP,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_archaeology")
-                        .withStyle(ChatFormatting.YELLOW),
-                () -> switchTab(Tab.ARCHAEOLOGY));
-
-        this.scenarioTabBtn = JournalControls.bookmark(bookRightEdge,
-                startY + (BOOKMARK_HEIGHT + BOOKMARK_GAP) * 3,
-                com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("tab").copy()
-                        .withStyle(ChatFormatting.YELLOW), () -> switchTab(Tab.SCENARIO));
-        this.logTabBtn = JournalControls.bookmark(
-                bookRightEdge, startY + (BOOKMARK_HEIGHT + BOOKMARK_GAP) * 2,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_log")
-                        .withStyle(ChatFormatting.YELLOW),
-                () -> switchTab(Tab.LOG));
+        PagePanel archaeology = new ArchaeologyPage(gridPanel, scenarioPanel);
+        Runnable noAction = () -> {};
+        Runnable leaveLog = () -> logPanel.setBatchSelectionMode(false);
+        this.pages = List.of(
+                page(Tab.INTRO, () -> detailPanel, JournalLayout.INTRO_PAGE_INDICATOR_Y, false,
+                        tabLabel("intro"), leaveLog, noAction),
+                page(Tab.ARCHAEOLOGY, () -> archaeology, JournalLayout.GRID_PAGE_INDICATOR_Y, true,
+                        tabLabel("archaeology"), leaveLog, noAction),
+                page(Tab.LOG, () -> logMode == LogMode.DETAIL ? logDetailPanel : logPanel,
+                        JournalLayout.LOG_PAGE_INDICATOR_Y, false, tabLabel("log"),
+                        this::captureReferenceGameTime, leaveLog),
+                page(Tab.SCENARIO, () -> scenarioDetailPanel, JournalLayout.SCENARIO_PAGE_INDICATOR_Y, false,
+                        ScenarioSimulationClientState.text("tab"), leaveLog, noAction));
+        this.bookmarks = this.pages.stream().map(PageDescriptor::bookmark).toList();
+        this.savedPages = List.of(new SavedPage("intro", detailPanel), new SavedPage("grid", gridPanel),
+                new SavedPage("log", logPanel), new SavedPage("logDetail", logDetailPanel));
+        syncBookmarks();
         gridPanel.setActions(this::syncPageIndicator, target -> {
             if (currentTableId != null) com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(
                     overlays, currentTableId, com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.childTable(target));
@@ -135,8 +116,22 @@ public final class RightPageContainer implements UiInputTarget {
         logPanel.setOnOpenEntry(entry -> restoreLogSelection(entry.entryId(), true));
     }
 
-    private void switchTab(Tab tab) {
-        setActiveTab(tab);
+    private static Component tabLabel(String name) {
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_" + name);
+    }
+
+    private PageDescriptor page(Tab tab, java.util.function.Supplier<PagePanel> content, int indicatorOffset,
+            boolean alwaysIndicator, Component label, Runnable enter, Runnable leave) {
+        UiControl bookmark = JournalControls.bookmark(layout.rightPageX() + layout.rightPageWidth(),
+                layout.rightPageY() + BOOKMARK_TOP_OFFSET + tab.ordinal() * (BOOKMARK_HEIGHT + BOOKMARK_GAP),
+                label.copy().withStyle(ChatFormatting.YELLOW), () -> setActiveTab(tab));
+        return new PageDescriptor(tab, content, indicatorOffset, alwaysIndicator, enter, leave, bookmark);
+    }
+
+    private PageDescriptor activePage() { return pages.get(activeTab.ordinal()); }
+
+    private void syncBookmarks() {
+        pages.forEach(page -> page.bookmark().setSelected(page.tab() == activeTab));
     }
 
     public void setTable(@Nullable ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
@@ -189,51 +184,29 @@ public final class RightPageContainer implements UiInputTarget {
         syncPageIndicator();
     }
 
-    public UiControl getScenarioTabButton() { return scenarioTabBtn; }
+    public List<UiControl> bookmarkControls() { return bookmarks; }
 
-    public UiControl getIntroTabButton() {
-        return this.introTabBtn;
-    }
-
-    public UiControl getArchaeologyTabButton() {
-        return this.archaeologyTabBtn;
-    }
-
-    public UiControl getLogTabButton() {
-        return this.logTabBtn;
+    public void setBookmarksAvailable(boolean available) {
+        bookmarks.forEach(bookmark -> {
+            bookmark.setVisible(available);
+            bookmark.setEnabled(available);
+        });
+        syncBookmarks();
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         syncPageIndicator();
         PagePanel panel = activePanel();
         panel.render(guiGraphics, font, mouseX, mouseY);
-        // ARCHAEOLOGY tab always shows page indicator; others only when multi-page
-        if (this.activeTab == Tab.ARCHAEOLOGY || panel.pageCount() > 1) {
+        // 指示器的可见性与位置由当前页描述决定。
+        if (activePage().alwaysIndicator() || panel.pageCount() > 1) {
             this.pageIndicator.render(guiGraphics, font);
         }
     }
 
     /** 获取当前活跃的可分页面板 */
     private PagePanel activePanel() {
-        return switch (this.activeTab) {
-            case SCENARIO -> this.scenarioDetailPanel;
-            case INTRO -> this.detailPanel;
-            case ARCHAEOLOGY -> this.gridPanel;
-            case LOG -> this.logMode == LogMode.DETAIL ? this.logDetailPanel : this.logPanel;
-        };
-    }
-
-    public boolean containsMouse(double mouseX, double mouseY) {
-        if (this.introTabBtn.bounds().contains(mouseX, mouseY)) {
-            return true;
-        }
-        if (this.archaeologyTabBtn.bounds().contains(mouseX, mouseY)) {
-            return true;
-        }
-        if (this.logTabBtn.bounds().contains(mouseX, mouseY)) {
-            return true;
-        }
-        return activePanel().containsMouse(mouseX, mouseY);
+        return activePage().content().get();
     }
 
     @Nullable
@@ -247,31 +220,44 @@ public final class RightPageContainer implements UiInputTarget {
         }
     }
 
-    // 旧面板不迁移接口，仅由现有容器保存全部页号，避免只保存当前 tab。
-    public CompoundTag savePages() {
+    public record ReadingState(Tab tab, CompoundTag pages, @Nullable ResourceLocation activeItemTag,
+            boolean logDetail, @Nullable UUID logEntryId, boolean logBatchSelectionMode,
+            List<UUID> selectedLogEntryIds) {
+        public ReadingState {
+            pages = pages.copy();
+            selectedLogEntryIds = List.copyOf(selectedLogEntryIds);
+        }
+        public static ReadingState empty() {
+            return new ReadingState(Tab.INTRO, new CompoundTag(), null, false, null, false, List.of());
+        }
+    }
+
+    public ReadingState captureReadingState() {
+        return new ReadingState(activeTab, savePages(), gridPanel.getActiveTag(), isShowingLogDetail(),
+                selectedLogEntryId, logPanel.isBatchSelectionMode(), logPanel.getSelectedEntryIds());
+    }
+
+    public void restoreReadingState(ReadingState state) {
+        setActiveItemTag(state.activeItemTag());
+        restoreLogSelection(state.logEntryId(), state.logDetail());
+        setActiveTab(state.tab());
+        logPanel.restoreBatchSelection(state.logBatchSelectionMode(), state.selectedLogEntryIds());
+        loadPages(state.pages());
+    }
+
+    private CompoundTag savePages() {
         CompoundTag tag = new CompoundTag();
-        tag.putInt("intro", detailPanel.getPage());
-        tag.putInt("grid", gridPanel.getPage());
-        tag.putInt("log", logPanel.getPage());
-        tag.putInt("logDetail", logDetailPanel.getPage());
+        savedPages.forEach(saved -> tag.putInt(saved.key(), saved.panel().getPage()));
         return tag;
     }
 
-    public void loadPages(CompoundTag tag) {
-        detailPanel.setPage(tag.getInt("intro"));
-        gridPanel.setPage(tag.getInt("grid"));
-        logPanel.setPage(tag.getInt("log"));
-        logDetailPanel.setPage(tag.getInt("logDetail"));
+    private void loadPages(CompoundTag tag) {
+        savedPages.forEach(saved -> saved.panel().setPage(tag.getInt(saved.key())));
         syncPageIndicator();
     }
 
     public int pageIndicatorY() {
-        return layout.rightPageY() + switch (activeTab) {
-            case INTRO -> JournalLayout.INTRO_PAGE_INDICATOR_Y;
-            case ARCHAEOLOGY -> JournalLayout.GRID_PAGE_INDICATOR_Y;
-            case LOG -> JournalLayout.LOG_PAGE_INDICATOR_Y;
-            case SCENARIO -> JournalLayout.SCENARIO_PAGE_INDICATOR_Y;
-        };
+        return layout.rightPageY() + activePage().indicatorOffset();
     }
 
     public int pageCount() {
@@ -291,18 +277,10 @@ public final class RightPageContainer implements UiInputTarget {
         if (this.activeTab == tab) {
             return;
         }
+        activePage().leave().run();
         this.activeTab = tab;
-        if (tab != Tab.LOG) {
-            this.logPanel.setBatchSelectionMode(false);
-        }
-        // 切换到日志页时刷新时间分组参考刻，避免每帧重算
-        if (tab == Tab.LOG) {
-            captureReferenceGameTime();
-        }
-        this.introTabBtn.setSelected(tab == Tab.INTRO);
-        this.archaeologyTabBtn.setSelected(tab == Tab.ARCHAEOLOGY);
-        this.logTabBtn.setSelected(tab == Tab.LOG);
-        this.scenarioTabBtn.setSelected(tab == Tab.SCENARIO);
+        activePage().enter().run();
+        syncBookmarks();
         syncPageIndicator();
     }
 
@@ -322,10 +300,7 @@ public final class RightPageContainer implements UiInputTarget {
         syncPageIndicator();
     }
 
-    @Nullable
-    public ResourceLocation getActiveItemTag() {
-        return this.gridPanel.getActiveTag();
-    }
+
 
     public void setActiveItemTag(@Nullable ResourceLocation tagId) {
         this.gridPanel.setActiveTag(tagId);
@@ -344,10 +319,7 @@ public final class RightPageContainer implements UiInputTarget {
         return this.logDetailPanel;
     }
 
-    @Nullable
-    public UUID getSelectedLogEntryId() {
-        return this.selectedLogEntryId;
-    }
+
 
     // 网格页的「切换场景」与场景页的「场景」按钮打开同一套浮层；这里只切换选择（网格数字随之更新），
     // 不跳页也不改参数。缺数据时静默不开，避免空浮层。
@@ -375,29 +347,44 @@ public final class RightPageContainer implements UiInputTarget {
         this.pageIndicator.setPage(panel.getPage(), panel.pageCount());
     }
 
-    @Nullable
-    public ItemGridPanel.TooltipData getTooltipData(double mouseX, double mouseY) {
-        if (this.activeTab == Tab.INTRO) {
-            ItemStack stack = this.detailPanel.getHoveredItemStack(mouseX, mouseY).orElse(ItemStack.EMPTY);
-            return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
-        }
-        if (this.activeTab == Tab.ARCHAEOLOGY) {
-            return this.gridPanel.getTooltipData(mouseX, mouseY);
-        }
-        if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
-            ItemStack stack = this.logDetailPanel.getTooltipStack(mouseX, mouseY);
-            return stack != null ? new ItemGridPanel.TooltipData(stack, null) : null;
-        }
-        return null;
-    }
-
     public ItemGridPanel.TooltipData getTooltipData(UiPointerHit hit) {
-        if (hit == null) return null;
-        if (activeTab == Tab.ARCHAEOLOGY && hit.owns(gridPanel)) return gridPanel.getTooltipData(hit);
-        if (activeTab == Tab.INTRO && hit.owns(detailPanel) || activeTab == Tab.LOG && hit.owns(logDetailPanel))
-            return getTooltipData(hit.x(), hit.y());
-        return null;
+        return activePanel().tooltip(hit);
     }
 
-
+    /** 网格与场景栏共享一个 PagePanel；命中优先级与持续输入仍交现有 kit。 */
+    private record ArchaeologyPage(ItemGridPanel grid, ScenarioPanel scenario) implements PagePanel {
+        @Override public void prepareUi() { grid.prepareUi(); scenario.prepareUi(); }
+        @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
+            grid.render(graphics, font, mouseX, mouseY);
+        }
+        @Override public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+            grid.renderControls(graphics, font, pointer);
+            scenario.renderControls(graphics, font, pointer);
+        }
+        @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) {
+            grid.addFocusTargets(out); scenario.addFocusTargets(out);
+        }
+        @Override public long focusRevision() { return grid.focusRevision() * 31 + 17 * scenario.focusRevision(); }
+        @Override public UiPointerHit hitTest(double x, double y) {
+            UiPointerHit hit = scenario.hitTest(x, y);
+            if (hit == null) hit = grid.hitTest(x, y);
+            if (hit == null && grid.containsMouse(x, y)) return UiPointerHit.leaf(this, x, y);
+            return hit == null ? null : hit.within(this);
+        }
+        @Override public boolean containsMouse(double x, double y) { return grid.containsMouse(x, y); }
+        @Override public boolean mousePressed(UiInputContext context) {
+            return context.hits(scenario) ? scenario.mousePressed(context) : grid.mousePressed(context);
+        }
+        @Override public boolean keyPressed(int key, int scan, int modifiers) {
+            return grid.keyPressed(key, scan, modifiers) || scenario.keyPressed(key, scan, modifiers);
+        }
+        @Override public boolean keyReleased(int key, int scan, int modifiers) { return grid.keyReleased(key, scan, modifiers); }
+        @Override public boolean charTyped(char value, int modifiers) { return grid.charTyped(value, modifiers); }
+        @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return grid.mouseScrolled(context, x, y); }
+        @Override public ItemGridPanel.TooltipData tooltip(UiPointerHit hit) { return grid.tooltip(hit); }
+        @Override public int pageCount() { return grid.pageCount(); }
+        @Override public int getPage() { return grid.getPage(); }
+        @Override public void setPage(int page) { grid.setPage(page); }
+        @Override public void changePage(int delta) { grid.changePage(delta); }
+    }
 }

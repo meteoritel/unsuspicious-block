@@ -1,15 +1,15 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.block.ModBlocks;
+import com.meteorite.unsuspiciousblock.bootstrap.ModServerLifecycle;
+import com.meteorite.unsuspiciousblock.bootstrap.ModContent;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.flag.FeatureFlags;
+import java.util.function.BiFunction;
 import com.meteorite.unsuspiciousblock.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.blockentity.BlockEntityRegistrar;
-import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.command.UsbCommand;
-import com.meteorite.unsuspiciousblock.cat.merchant.MerchantCatSpawner;
 import com.meteorite.unsuspiciousblock.entity.EntityRegistrar;
-import com.meteorite.unsuspiciousblock.entity.ModEntities;
-import com.meteorite.unsuspiciousblock.effect.ModEffects;
-import com.meteorite.unsuspiciousblock.sound.ModSounds;
 import com.meteorite.unsuspiciousblock.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.world.ModFeatures;
 import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
@@ -19,24 +19,17 @@ import net.minecraft.world.level.levelgen.GenerationStep;
 import com.meteorite.unsuspiciousblock.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.item.ModItems;
-import com.meteorite.unsuspiciousblock.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.loot.BuriedTreasureLootInjection;
 import com.meteorite.unsuspiciousblock.loot.FabricArchaeologyLootInjector;
 import com.meteorite.unsuspiciousblock.loot.FishingLootInjection;
 import com.meteorite.unsuspiciousblock.loot.VillageWeaponsmithLootInjection;
 import com.meteorite.unsuspiciousblock.loottable.condition.ModLootConditions;
-import com.meteorite.unsuspiciousblock.loottable.simulation.LootProbabilitySimulationWorker;
-import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTotemProxy;
-import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
-import com.meteorite.unsuspiciousblock.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.DataPackReloadListener;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.platform.ServerLootTableConfigManager;
-import com.meteorite.unsuspiciousblock.recipe.ModRecipeSerializers;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
@@ -60,7 +53,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -71,7 +63,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
-import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -95,9 +86,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        // 地物类型走共用清单，群系注入由 Fabric API 接入。
-        ModFeatures.forEach((name, factory) -> Registry.register(BuiltInRegistries.FEATURE,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name), factory.get()));
+
         BiomeModifications.addFeature(BiomeSelectors.tag(BiomeTags.IS_RIVER),
                 GenerationStep.Decoration.VEGETAL_DECORATION, ModFeatures.RIVER_SHIMMER);
         BiomeModifications.addFeature(BiomeSelectors.tag(BiomeTags.IS_NETHER),
@@ -131,52 +120,11 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, damageAmount) ->
                 !SpecimenBoxTotemProxy.tryActivate(entity, source, LivingEntity::removeAllEffects));
 
-        // 先注册方块，确保后续 BlockItem 工厂可取得对应实例
-        ModBlocks.forEach((name, factory, setter) -> {
-            Block registered = Registry.register(
-                    BuiltInRegistries.BLOCK,
-                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-                    factory.get()
-            );
-            setter.accept(() -> registered);
-        });
-
-        // 方块注册完成后注册方块实体类型
-        ModBlockEntities.forEach(new BlockEntityRegistrar() {
-            @Override
-            public <T extends BlockEntity> void register(String name, Supplier<BlockEntityType<T>> factory,
-                                                         Consumer<Supplier<BlockEntityType<T>>> setter) {
-                BlockEntityType<T> registered = Registry.register(
-                        BuiltInRegistries.BLOCK_ENTITY_TYPE,
-                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-                        factory.get()
-                );
-                setter.accept(() -> registered);
-            }
-        });
-
-        // 遍历物品注册清单，统一注册并回写静态字段
-        ModItems.forEach((name, factory, setter) -> {
-            Item registered = Registry.register(
-                    BuiltInRegistries.ITEM,
-                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-                    factory.get()
-            );
-            setter.accept(registered);
-        });
+        registerContent();
+        ModContent.syncMenuTypes();
 
         // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）
         FuelRegistry.INSTANCE.add(ModItems.SPARK_DUST, 800);
-
-        // 注册特殊合成配方序列化器
-        ModRecipeSerializers.forEach((name, factory, setter) -> {
-            RecipeSerializer<?> registered = Registry.register(
-                    BuiltInRegistries.RECIPE_SERIALIZER,
-                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-                    factory.get()
-            );
-            setter.accept(() -> registered);
-        });
 
         // 刷子或考古铲右键不可疑方块时立即破坏，潜行交互同样生效
         UseBlockCallback.EVENT.register((player, level, hand, hitResult) ->
@@ -191,70 +139,6 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                     "com.meteorite.unsuspiciousblock.plugin.trinket.FabricTrinketsIntegration",
                     Runnable.class).run();
         }
-
-        // 遍历实体注册清单，统一注册类型、回写 Supplier 并注册默认属性
-        ModEntities.forEach(new EntityRegistrar() {
-            @Override
-            public <T extends Entity> void register(String name, Supplier<EntityType<T>> factory,
-                    Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
-                EntityType<T> type = Registry.register(
-                        BuiltInRegistries.ENTITY_TYPE,
-                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
-                        factory.get()
-                );
-                // 包装为不可变 Supplier，与 NeoForge 的 DeferredHolder 行为对齐
-                setter.accept(() -> type);
-                // 非生物实体（如闪烁的光）没有默认属性，跳过属性注册
-                if (attributes != null) {
-                    registerDefaultAttributes(type, attributes.get().build());
-                }
-            }
-        });
-
-        // 遍历效果注册清单，统一注册并回写 Holder 供 common 代码引用
-        ModEffects.forEach((name, factory, setter) -> {
-            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
-            Registry.register(BuiltInRegistries.MOB_EFFECT, rl, factory.get());
-            Holder<MobEffect> holder = BuiltInRegistries.MOB_EFFECT.getHolder(
-                    ResourceKey.create(Registries.MOB_EFFECT, rl)).orElseThrow();
-            setter.accept(holder);
-        });
-
-        // 遍历声音注册清单，统一注册并回写 Holder 供 common 代码引用
-        ModSounds.forEach((name, setter) -> {
-            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
-            Registry.register(BuiltInRegistries.SOUND_EVENT, rl, SoundEvent.createVariableRangeEvent(rl));
-            Holder<SoundEvent> holder = BuiltInRegistries.SOUND_EVENT.getHolder(
-                    ResourceKey.create(Registries.SOUND_EVENT, rl)).orElseThrow();
-            setter.accept(holder);
-        });
-
-        // 注册 menu
-        SpecimenBoxMenu.TYPE = Registry.register(
-                BuiltInRegistries.MENU,
-                SpecimenBoxMenu.ID,
-                new MenuType<>(SpecimenBoxMenu::new, FeatureFlags.DEFAULT_FLAGS)
-        );
-        PotteryWheelMenu.TYPE = Registry.register(
-                BuiltInRegistries.MENU,
-                PotteryWheelMenu.ID,
-                new MenuType<>(PotteryWheelMenu::new, FeatureFlags.DEFAULT_FLAGS)
-        );
-
-        // 注册创造模式物品栏
-        Registry.register(
-                BuiltInRegistries.CREATIVE_MODE_TAB,
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "main"),
-                FabricItemGroup.builder()
-                        .title(Component.translatable("itemGroup.unsuspiciousblock.main"))
-                        .icon(ModItems.CREATIVE_TAB_ICON)
-                        .displayItems((context, entries) -> {
-                            for (Supplier<Item> sup : ModItems.CREATIVE_TAB_ITEMS) {
-                                entries.accept(sup.get());
-                            }
-                        })
-                        .build()
-        );
 
         // 注册 payload：遍历 ModPayloads 统一清单，避免手写重复
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
@@ -283,36 +167,15 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                     }
                 });
 
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            ServerLootTableConfigManager.start(server);
-            JournalPlayerDataService.onServerStarted(server);
-            LootProbabilitySimulationWorker.start();
-            ArchaeologyJournalServerCatalog.ensureLoaded(server);
-        });
-        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-            JournalPlayerDataService.onServerStopped(server);
-            LootProbabilitySimulationWorker.stop();
-            ArchaeologyJournalServerCatalog.invalidate();
-            ServerLootTableConfigManager.stop();
-            NaturalBoneBlockTracker.clearPendingPlayerBreaks();
-            ShimmerSpawnService.stop(server);
-            com.meteorite.unsuspiciousblock.world.StructureRewindService.stop(server);
-        });
+        ServerLifecycleEvents.SERVER_STARTED.register(ModServerLifecycle::started);
+        ServerLifecycleEvents.SERVER_STOPPED.register(ModServerLifecycle::stopped);
 
         // 服务端每 tick 末尾：驱动概率模拟主线程分片消费
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            JournalPlayerDataService.onServerTick(server);
-            ServerLootTableConfigManager.tick(server);
-            LootProbabilitySimulationWorker.tickIfPresent(server);
-            MerchantCatSpawner.tick(server);
-            ShimmerSpawnService.tick(server);
-            com.meteorite.unsuspiciousblock.world.StructureRewindService.tick(server);
-        });
+        ServerTickEvents.END_SERVER_TICK.register(ModServerLifecycle::tick);
 
         // 直接扫描事件提供的 chunk，避免其进入 chunk map 前重新触发生成
         ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) ->
                 NaturalBoneBlockTracker.scanChunk(chunk));
-
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 JournalPlayerDataService.onPlayerJoined(handler.player));
@@ -332,6 +195,92 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         );
 
         Constants.LOG.info(Constants.LOG_TAG + "Fabric entrypoint initialized");
+    }
+
+    private static void registerContent() {
+        ModContent.register(new ModContent.Registrars(
+                (name, factory, setter) -> {
+                    Block registered = Registry.register(
+                            BuiltInRegistries.BLOCK,
+                            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                            factory.get()
+                    );
+                    setter.accept(() -> registered);
+                },
+                new BlockEntityRegistrar() {
+                    @Override
+                    public <T extends BlockEntity> void register(String name, Supplier<BlockEntityType<T>> factory,
+                                                                 Consumer<Supplier<BlockEntityType<T>>> setter) {
+                        BlockEntityType<T> registered = Registry.register(
+                                BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                                factory.get()
+                        );
+                        setter.accept(() -> registered);
+                    }
+                },
+                (name, factory, setter) -> {
+                    Item registered = Registry.register(
+                            BuiltInRegistries.ITEM,
+                            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                            factory.get()
+                    );
+                    setter.accept(registered);
+                },
+                (name, factory, setter) -> {
+                    RecipeSerializer<?> registered = Registry.register(
+                            BuiltInRegistries.RECIPE_SERIALIZER,
+                            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                            factory.get()
+                    );
+                    setter.accept(() -> registered);
+                },
+                new EntityRegistrar() {
+                    @Override
+                    public <T extends Entity> void register(String name, Supplier<EntityType<T>> factory,
+                                                            Consumer<Supplier<EntityType<T>>> setter, Supplier<AttributeSupplier.Builder> attributes) {
+                        EntityType<T> type = Registry.register(
+                                BuiltInRegistries.ENTITY_TYPE,
+                                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                                factory.get()
+                        );
+                        // 包装为不可变 Supplier，与 NeoForge 的 DeferredHolder 行为对齐
+                        setter.accept(() -> type);
+                        // 非生物实体（如闪烁的光）没有默认属性，跳过属性注册
+                        if (attributes != null) {
+                            registerDefaultAttributes(type, attributes.get().build());
+                        }
+                    }
+                },
+                (name, factory, setter) -> {
+                    ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
+                    Registry.register(BuiltInRegistries.MOB_EFFECT, rl, factory.get());
+                    Holder<MobEffect> holder = BuiltInRegistries.MOB_EFFECT.getHolder(
+                            ResourceKey.create(Registries.MOB_EFFECT, rl)).orElseThrow();
+                    setter.accept(holder);
+                },
+                (name, setter) -> {
+                    ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
+                    Registry.register(BuiltInRegistries.SOUND_EVENT, rl, SoundEvent.createVariableRangeEvent(rl));
+                    Holder<SoundEvent> holder = BuiltInRegistries.SOUND_EVENT.getHolder(
+                            ResourceKey.create(Registries.SOUND_EVENT, rl)).orElseThrow();
+                    setter.accept(holder);
+                },
+                (name, factory) -> Registry.register(BuiltInRegistries.FEATURE,
+                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name), factory.get()),
+                new ModContent.MenuRegistrar() {
+                    @Override
+                    public <T extends AbstractContainerMenu> Supplier<MenuType<T>> register(
+                            String name, BiFunction<Integer, Inventory, T> factory) {
+                        MenuType<T> type = Registry.register(BuiltInRegistries.MENU,
+                                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
+                                new MenuType<>(factory::apply, FeatureFlags.DEFAULT_FLAGS));
+                        return () -> type;
+                    }
+                },
+                (name, factory) -> Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,
+                        ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name), factory.get()),
+                FabricItemGroup::builder));
     }
 
     // 注册实体默认属性——非生物实体没有属性，因此仅在 attributes 非空时调用；

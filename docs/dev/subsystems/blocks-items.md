@@ -13,7 +13,7 @@
 | 陶轮台 | `block/PotteryWheelBlock` + `blockentity/PotteryWheelBlockEntity` + `pottery/PotteryWheelMenu` | 制陶工作站 |
 | 未烧制陶罐 | `block/UnfiredDecoratedPotBlock` + `blockentity/UnfiredDecoratedPotBlockEntity` | 带四面纹饰数据的陶罐半成品 |
 | 扫描状态注入 | `blockentity/BrushableBlockEntityScanState` | 经 mixin 注入原版可疑方块实体（见 [Mixin](../foundation/mixin.md)） |
-| 容器追踪状态 | `blockentity/TrackedContainerLootState`、`blockentity/DecoratedPotLootState` | 容器/陶罐的开箱追踪状态 |
+| 容器追踪状态 | `blockentity/TrackedContainerLootState`、`journal/tracking/ContainerLootTracking`、`blockentity/DecoratedPotLootState` | 宿主内容器状态与陶罐开箱追踪 |
 
 **物品**（均在 `item/`；`ModItems.REGISTRY_MANIFEST` 是唯一清单）
 
@@ -115,7 +115,7 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 - **扫描模式**（`V` 键切换）：0 级右键单方块免费查看内部战利品（不取出）；1-3 级以点击面反向偏移 `scanLevel` 格为中心扫描 `(2*level+1)^3` 立方体，消耗 = 等级数 + 新扫描的可疑方块数（已扫描的不额外消耗），同时高亮战利品容器。
 - **能量与充能**：耐久条显示能量（绿/黄/红三色）；能量不足时自动从背包消耗古代金币充能（`tryRecharge`）；shift+右键空气手动充能，带**浪费保护**——剩余空间不足一枚金币的充能值时先提示，20t 内双击强制充能。
 - **主副手协作**：主手解析仪 + 副手考古铲时，点击已扫描的可疑方块会**让位给副手考古铲**取物（`useOn` 开头判定，客户端须返回 PASS 触发原版副手流程）。
-- **追踪接入**：`scanBrushable` 用 `deferred` 结算策略接入考古笔记（见 [考古笔记系统](journal.md)）。
+- **追踪接入**：`scanBrushable` 只为 PendingJournalHost 用 `deferred` 结算策略接入考古笔记；封存物只扫描、不建立 pending（见 [考古笔记系统](journal.md)）。
 
 **考古铲**：右键已扫描的可疑方块直接取物，无需完整刷拭。直接挖掘可疑方块时，未潜行虽显示破坏裂纹但最终无法破坏、也不触发连挖，**必须按住 Shift**；挖掘普通铲类方块时向下连挖最多 3 格，避开可疑方块及其支撑方块；挖掘沙子/红沙/砂砾有 0.3% 概率找到古代金币。
 
@@ -152,6 +152,8 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 **这是重新执行结构放置，并非历史快照**：可能覆盖玩家改建、重新产生战利品及重复生成实体。合成配方、双层冷却、随机序列重放、原版一次性状态重置、调度表现与行为边界见 [方块与物品机制细节](../internals/blocks-items-details.md) 的「结构回溯」。
 
 ## 10. 其他材料物品
+
+金币铁砧修复由 `inventory/AncientCoinRepair.calculate` 统一计算输出副本、经验与材料消耗。Fabric `AnvilMenuMixin` 在 RETURN 后、NeoForge LOW 优先级事件在现有结果为空时写回；名称、清名与左右 `REPAIR_COST` 均纳入计算。
 
 | 物品 | 说明 |
 |---|---|

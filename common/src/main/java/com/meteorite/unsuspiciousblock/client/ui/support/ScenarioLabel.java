@@ -2,10 +2,10 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +23,6 @@ import java.util.StringJoiner;
  */
 public final class ScenarioLabel {
     private static final String CONDITION_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
-    private static final ResourceLocation INVERTED = ResourceLocation.withDefaultNamespace("inverted");
     private static final String BASELINE = "baseline";
 
     private ScenarioLabel() {
@@ -65,23 +64,23 @@ public final class ScenarioLabel {
     }
 
     public static Component expression(LootConditionInfo condition) {
-        String type = condition.conditionType().toString();
-        if (type.equals("minecraft:inverted") && condition.children().size() == 1)
-            return symbol("¬(").copy().append(expression(condition.children().getFirst())).append(symbol(")"));
-        if (type.equals("minecraft:any_of") || type.equals("minecraft:all_of")) {
+        ConditionTree.Kind kind = ConditionTree.kind(condition);
+        if (kind == ConditionTree.Kind.NOT && ConditionTree.displayChildren(condition).size() == 1)
+            return symbol("¬(").copy().append(expression(ConditionTree.displayChildren(condition).getFirst())).append(symbol(")"));
+        if (kind == ConditionTree.Kind.ANY || kind == ConditionTree.Kind.ALL) {
             var result = Component.empty().append(symbol("("));
-            for (int index = 0; index < condition.children().size(); index++) {
-                if (index > 0) result.append(symbol(type.equals("minecraft:any_of") ? " ∨ " : " ∧ "));
-                result.append(expression(condition.children().get(index)));
+            for (int index = 0; index < ConditionTree.displayChildren(condition).size(); index++) {
+                if (index > 0) result.append(symbol(kind == ConditionTree.Kind.ANY ? " ∨ " : " ∧ "));
+                result.append(expression(ConditionTree.displayChildren(condition).get(index)));
             }
             return result.append(symbol(")"));
         }
         var label = conditionText(condition).copy();
-        if (!condition.children().isEmpty()) {
+        if (!ConditionTree.displayChildren(condition).isEmpty()) {
             label.append(symbol("("));
-            for (int index = 0; index < condition.children().size(); index++) {
+            for (int index = 0; index < ConditionTree.displayChildren(condition).size(); index++) {
                 if (index > 0) label.append(symbol(" · "));
-                label.append(expression(condition.children().get(index)));
+                label.append(expression(ConditionTree.displayChildren(condition).get(index)));
             }
             label.append(symbol(")"));
         }
@@ -165,9 +164,9 @@ public final class ScenarioLabel {
 
     /** 逐条列出完整结构；取反和组合节点也保留子树。 */
     private static String describe(LootConditionInfo node) {
-        if (node.children().isEmpty()) return displayDescription(node).getString();
+        if (ConditionTree.displayChildren(node).isEmpty()) return displayDescription(node).getString();
         StringJoiner joiner = new StringJoiner("、");
-        for (LootConditionInfo child : node.children()) joiner.add(describe(child));
+        for (LootConditionInfo child : ConditionTree.displayChildren(node)) joiner.add(describe(child));
         return displayDescription(node).getString() + "(" + joiner + ")";
     }
 
@@ -190,7 +189,7 @@ public final class ScenarioLabel {
     }
 
     private static boolean isInverted(LootConditionInfo info) {
-        return info.conditionType().equals(INVERTED);
+        return ConditionTree.kind(info) == ConditionTree.Kind.NOT;
     }
 
     private static int ordinal(String sceneKey) {

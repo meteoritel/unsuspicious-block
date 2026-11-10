@@ -3,8 +3,7 @@ package com.meteorite.unsuspiciousblock.blockentity;
 import com.meteorite.unsuspiciousblock.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.enchantment.framework.trigger.TriggerType;
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.journal.tracking.ArchaeologyLootRuntimeTracker;
+import com.meteorite.unsuspiciousblock.journal.tracking.PendingJournal;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -43,7 +42,7 @@ public final class BrushableLootDropHelper {
             long brushGameTime,
             long brushDayTime,
             @Nullable ResourceLocation lootTableName,
-            @Nullable ExcavationLogEntry pendingEntry
+            @Nullable PendingJournal pendingEntry
     ) {
     }
 
@@ -126,7 +125,7 @@ public final class BrushableLootDropHelper {
      * 使用翻倍后的总计数结算待定日志条目，确保考古笔记日志的 actualLoot 反映翻倍后的实际获取量。
      */
     public static void settleJournal(DropContext ctx, ItemStack totalTrackedItem) {
-        if (ctx.lootTableName() == null || ctx.pendingEntry() == null) {
+        if (ctx.lootTableName() == null || ctx.pendingEntry() == null || ctx.pendingEntry().current() == null) {
             return;
         }
         long gameTime = ctx.brushGameTime() >= 0L
@@ -135,7 +134,7 @@ public final class BrushableLootDropHelper {
         long dayTime = ctx.brushDayTime() >= 0L
                 ? ctx.brushDayTime()
                 : ctx.player().serverLevel().getDayTime();
-        ArchaeologyLootRuntimeTracker.applyPendingLoot(ctx.player(), ctx.lootTableName(),
-                ctx.pendingEntry(), totalTrackedItem, gameTime, dayTime);
+        ctx.pendingEntry().mergeActual(ctx.player(), ctx.lootTableName(), totalTrackedItem, gameTime, dayTime);
+        ctx.pendingEntry().discard();
     }
 }

@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
-import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
-import com.meteorite.unsuspiciousblock.client.pan.PanningVisuals;
+import com.meteorite.unsuspiciousblock.client.ModClientLifecycle;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
@@ -13,23 +13,11 @@ import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
 import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
 import com.meteorite.unsuspiciousblock.client.renderer.ShimmerSurfaceRenderer;
-import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
-import com.meteorite.unsuspiciousblock.client.tooltip.ClientTooltipHooks;
-import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
-import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
-import com.meteorite.unsuspiciousblock.client.state.SuspiciousReaderClientState;
-import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
-import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
-import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
-import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
 import com.meteorite.unsuspiciousblock.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
-import com.meteorite.unsuspiciousblock.text.ClientTooltipBridge;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.blockentity.ModBlockEntities;
 import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
@@ -47,7 +35,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.TooltipComponentCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -55,11 +42,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
-        // 桥接客户端 tooltip/界面能力：服务端可达类不直接引用 client 包；
-        // 必须在任何物品 tooltip 渲染前安装，所以放在初始化入口而不是懒加载
-        ClientTooltipBridge.install(new ClientTooltipHooks());
-        ClientLootTableLanguageStore.initialize();
-        PanningVisuals.register();
+        ModClientLifecycle.install();
         // 注册按键绑定
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.SCAN_LEVEL_CYCLE);
         KeyBindingHelper.registerKeyBinding(ModKeyBindings.JOURNAL_OPEN);
@@ -75,23 +58,9 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         // fabric 用 TexturedModelDataProvider 函数式接口，通过 supplier::get 桥接
         ModModelLayers.forEach((location, supplier) ->
                 EntityModelLayerRegistry.registerModelLayer(location, supplier::get));
-
-        ArchaeologyJournalUi.registerOpener((state, itemId) ->
-                Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) ->
                 ScreenKeyboardEvents.allowKeyPress(screen).register((current, keyCode, scanCode, modifiers) ->
                         !ArchaeologyJournalKeyHandler.handleScreenKey(current, keyCode, scanCode)));
-        // 注册解锁通知回调：将 ClientState 的通知桥接到 Toast 弹窗
-        ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
-        // 注册 100% 完成奖励通知回调：与上一条同源，避免 ClientState 直接依赖 toast 包
-        ArchaeologyJournalClientState.registerTableCompletionNotifier(JournalUnlockToast::addTableCompletion);
-        ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {
-            java.util.List<JournalUnlockToast.Entry> entries = new java.util.ArrayList<>();
-            for (int i = 0; i < names.size(); i++) {
-                entries.add(new JournalUnlockToast.Entry(names.get(i), icons.get(i)));
-            }
-            JournalUnlockToast.addItemUnlocks(entries);
-        });
         // 注册标本箱界面（漏斗贴图）
         MenuScreens.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
         MenuScreens.register(PotteryWheelMenu.TYPE, PotteryWheelScreen::new);
@@ -104,24 +73,9 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
         for (ModPayloads.Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) {
             registerS2C(s2c);
         }
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            ArchaeologyJournalClientState.resetOnDisconnect();
-            ClientLootTableLanguageStore.resetOnDisconnect();
-            LootTableManagementClientState.reset();
-            HandOfCatClientState.reset();
-            ReaderScanHudState.reset();
-            PanningSoundController.reset();
-            com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState.reset();
-        });
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ModClientLifecycle.disconnect());
 
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            ArchaeologyJournalKeyHandler.tick();
-            ArchaeologyJournalClientState.tick();
-            SuspiciousReaderClientState.tick();
-            CatHandClientState.tick();
-            ReaderScanHudState.tick();
-            PanningSoundController.tick();
-        });
+        ClientTickEvents.END_CLIENT_TICK.register(client -> ModClientLifecycle.tick());
 
         // 半透明方块渲染之后绘制范围扫描高亮与猫之恩惠保护罩，实现透视效果
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
@@ -148,6 +102,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     private static <T extends CustomPacketPayload> void registerS2C(ModPayloads.Client.S2C<?> s2cRaw) {
         ModPayloads.Client.S2C<T> s2c = (ModPayloads.Client.S2C<T>) s2cRaw;
         ClientPlayNetworking.registerGlobalReceiver(s2c.type(),
-                (payload, context) -> s2c.handler().accept(payload));
+                (payload, context) -> JournalClientConnection.receive(context.player().connection,
+                        () -> s2c.handler().accept(payload)));
     }
 }

@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.blockentity;
 
-import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -21,22 +20,11 @@ public interface BrushableBlockEntityScanState {
     @Nullable
     ResourceLocation unsuspiciousblock$getLootTableName();
 
-    boolean unsuspiciousblock$isLootTableParsed();
-
     // 获取可疑方块内的物品
     ItemStack unsuspiciousblock$getItem();
 
     // 设置可疑方块内的物品
     void unsuspiciousblock$setItem(ItemStack stack);
-
-    @Nullable
-    ExcavationLogEntry unsuspiciousblock$getPendingJournalEntry();
-
-    void unsuspiciousblock$setPendingJournalEntry(@Nullable ExcavationLogEntry entry);
-
-    default void unsuspiciousblock$clearPendingJournalEntry() {
-        this.unsuspiciousblock$setPendingJournalEntry(null);
-    }
 
     // 解析战利品表并返回生成的物品副本，由各平台实现覆盖
     default ItemStack unsuspiciousblock$resolveAndGetLoot(Player player) {

@@ -20,17 +20,10 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.ItemLore;
-import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.level.storage.loot.IntRange;
-import net.minecraft.world.level.storage.loot.functions.ApplyBonusCount;
-import net.minecraft.world.level.storage.loot.functions.ExplorationMapFunction;
-import net.minecraft.world.level.storage.loot.functions.LimitCount;
 import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
-import net.minecraft.world.level.storage.loot.functions.SetBookCoverFunction;
 import net.minecraft.world.level.storage.loot.functions.SetComponentsFunction;
 import net.minecraft.world.level.storage.loot.functions.SetCustomDataFunction;
 import net.minecraft.world.level.storage.loot.functions.SetCustomModelDataFunction;
-import net.minecraft.world.level.storage.loot.functions.SetFireworksFunction;
 import net.minecraft.world.level.storage.loot.functions.SetItemCountFunction;
 import net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction;
 import net.minecraft.world.level.storage.loot.functions.SetItemFunction;
@@ -38,10 +31,8 @@ import net.minecraft.world.level.storage.loot.functions.SetLoreFunction;
 import net.minecraft.world.level.storage.loot.functions.SetNameFunction;
 import net.minecraft.world.level.storage.loot.functions.SetOminousBottleAmplifierFunction;
 import net.minecraft.world.level.storage.loot.functions.SetPotionFunction;
-import net.minecraft.world.level.storage.loot.functions.SetStewEffectFunction;
 import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
-import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import com.meteorite.unsuspiciousblock.loottable.signature.LootResultSignature;
 import org.jetbrains.annotations.Nullable;
 
@@ -325,11 +316,11 @@ public final class LootFunctionHandlers {
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             ResourceLocation itemId = idOf(field(source, "item"));
-            return info(typeId(function, "set_item"),
+            return FunctionSemantics.deterministic(info(typeId(function, "set_item"),
                     fn("set_item", itemId != null ? itemDisplay(itemId) : param("dynamic")),
                     itemId != null ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.ITEM_TRANSFORM,
-                    "item", itemId != null ? itemId.toString() : "dynamic");
+                    "item", itemId != null ? itemId.toString() : "dynamic"));
         }
 
         @Override
@@ -337,10 +328,6 @@ public final class LootFunctionHandlers {
             return LootResultSignature.plain(itemIdOf(previewStack));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_components：应用精确 DataComponentPatch */
@@ -368,16 +355,12 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             int count = listSize(source, "components");
             Component description = count >= 0 ? fn("set_components", count) : fnVariant("set_components", "dynamic");
-            return info(typeId(function, "set_components"), description,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_components"), description,
                     count >= 0 ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.COMPONENT,
-                    "component_count", count >= 0 ? Integer.toString(count) : "dynamic");
+                    "component_count", count >= 0 ? Integer.toString(count) : "dynamic"));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_custom_data：合并自定义 NBT 数据 */
@@ -401,19 +384,15 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             JsonObject tag = objectOf(field(source, "tag"));
             if (tag == null) {
-                return info(typeId(function, "set_custom_data"), fnVariant("set_custom_data", "empty"),
-                        FunctionFidelity.PARTIAL, FunctionEffectKind.COMPONENT, "tag_keys", "unknown");
+                return FunctionSemantics.deterministic(info(typeId(function, "set_custom_data"), fnVariant("set_custom_data", "empty"),
+                        FunctionFidelity.PARTIAL, FunctionEffectKind.COMPONENT, "tag_keys", "unknown"));
             }
             List<String> keys = new ArrayList<>(tag.keySet());
-            return info(typeId(function, "set_custom_data"),
+            return FunctionSemantics.deterministic(info(typeId(function, "set_custom_data"),
                     fn("set_custom_data", Component.literal(joinIds(keys))),
-                    FunctionEffectKind.COMPONENT, "tag_keys", joinIds(keys));
+                    FunctionEffectKind.COMPONENT, "tag_keys", joinIds(keys)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_name：设置自定义名称或物品名称 */
@@ -454,17 +433,13 @@ public final class LootFunctionHandlers {
             Component nameText = nameElement == null
                     ? param("absent")
                     : componentDisplay(nameElement);
-            return info(typeId(function, "set_name"), fn("set_name", nameText, targetParam(target)),
+            return FunctionSemantics.deterministic(info(typeId(function, "set_name"), fn("set_name", nameText, targetParam(target)),
                     FunctionEffectKind.COMPONENT,
                     "target", target,
                     "name", nameElement == null ? "absent" : plainText(nameElement),
-                    "entity", string(source, "entity", "absent"));
+                    "entity", string(source, "entity", "absent")));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_potion：写入药水内容组件 */
@@ -487,16 +462,12 @@ public final class LootFunctionHandlers {
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             ResourceLocation potionId = idOf(field(source, "id"));
-            return info(typeId(function, "set_potion"), fn("set_potion", literalOf(potionId)),
+            return FunctionSemantics.deterministic(info(typeId(function, "set_potion"), fn("set_potion", literalOf(potionId)),
                     potionId != null ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.COMPONENT,
-                    "potion", potionId != null ? potionId.toString() : "dynamic");
+                    "potion", potionId != null ? potionId.toString() : "dynamic"));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     // ==================== 类别 B：附魔类 ====================
@@ -516,9 +487,9 @@ public final class LootFunctionHandlers {
             Component description = onlyCompatible
                     ? fn("enchant_randomly", optionSummary.text())
                     : fnVariant("enchant_randomly", "incompatible", optionSummary.text());
-            return info(typeId(function, "enchant_randomly"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.enchanting(info(typeId(function, "enchant_randomly"), description, FunctionEffectKind.COMPONENT,
                     "options", optionSummary.metadata(),
-                    "only_compatible", Boolean.toString(onlyCompatible));
+                    "only_compatible", Boolean.toString(onlyCompatible)));
         }
 
         @Override
@@ -526,10 +497,6 @@ public final class LootFunctionHandlers {
             return LootResultSignature.enchantedApprox(itemIdOf(previewStack));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     private static final class EnchantWithLevelsHandler implements LootFunctionHandler {
@@ -544,11 +511,11 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             JsonElement levels = field(source, "levels");
             Options optionSummary = options(source, "options");
-            return info(typeId(function, "enchant_with_levels"),
+            return FunctionSemantics.enchanting(info(typeId(function, "enchant_with_levels"),
                     fn("enchant_with_levels", numberText(levels), optionSummary.text()),
                     FunctionEffectKind.COMPONENT,
                     "levels", numberMeta(levels),
-                    "options", optionSummary.metadata());
+                    "options", optionSummary.metadata()));
         }
 
         @Override
@@ -556,10 +523,6 @@ public final class LootFunctionHandlers {
             return LootResultSignature.enchantedApprox(itemIdOf(previewStack));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     private static final class SetEnchantmentsHandler implements LootFunctionHandler {
@@ -596,13 +559,13 @@ public final class LootFunctionHandlers {
                 Component description = add
                         ? fnVariant("set_enchantments", "add_empty")
                         : fnVariant("set_enchantments", "clear");
-                return info(typeId(function, "set_enchantments"), description, FunctionEffectKind.COMPONENT,
-                        "enchantments", "empty", "add", Boolean.toString(add));
+                return FunctionSemantics.enchantments(info(typeId(function, "set_enchantments"), description, FunctionEffectKind.COMPONENT,
+                        "enchantments", "empty", "add", Boolean.toString(add)), enchantments);
             }
             Component joined = join(Component.literal(", "), parts);
             Component description = add ? joined : fn("set_enchantments", joined);
-            return info(typeId(function, "set_enchantments"), description, FunctionEffectKind.COMPONENT,
-                    "enchantments", joinIds(metaParts), "add", Boolean.toString(add));
+            return FunctionSemantics.enchantments(info(typeId(function, "set_enchantments"), description, FunctionEffectKind.COMPONENT,
+                    "enchantments", joinIds(metaParts), "add", Boolean.toString(add)), enchantments);
         }
 
         @Override
@@ -610,10 +573,6 @@ public final class LootFunctionHandlers {
             return LootResultSignature.enchantedApprox(itemIdOf(previewStack));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     private static final class EnchantedCountIncreaseHandler implements LootFunctionHandler {
@@ -634,38 +593,19 @@ public final class LootFunctionHandlers {
                     ? fnVariant("enchanted_count_increase", "limit",
                     enchantName(enchantmentId), numberText(countElement), limit)
                     : fn("enchanted_count_increase", enchantName(enchantmentId), numberText(countElement));
-            return info(typeId(function, "enchanted_count_increase"), description, FunctionEffectKind.COUNT,
+            return FunctionSemantics.contextual(info(typeId(function, "enchanted_count_increase"), description, FunctionEffectKind.COUNT,
                     "enchantment", enchantmentId != null ? enchantmentId.toString() : "dynamic",
                     "count", numberMeta(countElement),
                     "limit", Integer.toString(limit),
-                    "context", "attacking_entity");
+                    "context", "attacking_entity"));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     // ==================== 类别 C：可部分静态处理 ====================
 
     /** 处理 set_count：若 count 为固定值则直接应用；若为范围则返回 null */
     private static final class SetCountHandler implements LootFunctionHandler {
-        @Override
-        public LootConditionHandler.UncertaintyLevel uncertaintyLevel(LootItemFunction function) {
-            NumberProvider value = reflectField(function, "value");
-            if (value instanceof ConstantValue) {
-                return LootConditionHandler.UncertaintyLevel.NONE;
-            }
-            if (value instanceof UniformGenerator(NumberProvider min, NumberProvider max)
-                    && min instanceof ConstantValue(float lower)
-                    && max instanceof ConstantValue(float upper)
-                    && Float.isFinite(lower) && Float.isFinite(upper) && lower <= upper) {
-                return lower == upper ? LootConditionHandler.UncertaintyLevel.NONE
-                        : LootConditionHandler.UncertaintyLevel.PROBABILISTIC;
-            }
-            return LootConditionHandler.UncertaintyLevel.RUNTIME;
-        }
 
         @Override
         @Nullable
@@ -702,38 +642,10 @@ public final class LootFunctionHandlers {
             } else {
                 description = fnVariant("set_count", "dynamic");
             }
-            return info(typeId(function, "set_count"), description, FunctionEffectKind.COUNT,
-                    "count", numberMeta(countElement), "add", Boolean.toString(add));
+            return FunctionSemantics.number(info(typeId(function, "set_count"), description, FunctionEffectKind.COUNT,
+                    "count", numberMeta(countElement), "add", Boolean.toString(add)), countElement);
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof SetItemCountFunction)) {
-                return null;
-            }
-            NumberProvider value = reflectField(function, "value");
-            if (value instanceof UniformGenerator uniform) {
-                NumberProvider min = reflectField(uniform, "min");
-                NumberProvider max = reflectField(uniform, "max");
-                if (min instanceof ConstantValue(float value1) && max instanceof ConstantValue(float value2)) {
-                    int minInt = Math.round(value1);
-                    int maxInt = Math.round(value2);
-                    if (minInt == maxInt) {
-                        return Component.translatable(
-                                "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count", minInt);
-                    }
-                    return Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.item_hint.set_count_range", minInt, maxInt);
-                }
-            }
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_damage：设置物品耐久损伤 */
@@ -786,36 +698,10 @@ public final class LootFunctionHandlers {
             } else {
                 description = fn("set_damage", valueText);
             }
-            return info(typeId(function, "set_damage"), description, FunctionEffectKind.COMPONENT,
-                    "damage", numberMeta(damageElement), "add", Boolean.toString(add));
+            return FunctionSemantics.number(info(typeId(function, "set_damage"), description, FunctionEffectKind.COMPONENT,
+                    "damage", numberMeta(damageElement), "add", Boolean.toString(add)), damageElement);
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof SetItemDamageFunction)) {
-                return null;
-            }
-            NumberProvider damage = reflectField(function, "damage");
-            if (damage instanceof UniformGenerator uniform) {
-                NumberProvider min = reflectField(uniform, "min");
-                NumberProvider max = reflectField(uniform, "max");
-                if (min instanceof ConstantValue(float minFloat) && max instanceof ConstantValue(float maxFloat)) {
-                    if (minFloat == maxFloat) {
-                        return null;
-                    }
-                    return Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.item_hint.set_damage_range",
-                            Math.round(minFloat * 100), Math.round(maxFloat * 100));
-                }
-            }
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_custom_model_data：设置自定义模型数据 */
@@ -839,15 +725,11 @@ public final class LootFunctionHandlers {
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             JsonElement value = field(source, "value");
-            return info(typeId(function, "set_custom_model_data"),
+            return FunctionSemantics.number(info(typeId(function, "set_custom_model_data"),
                     fn("set_custom_model_data", numberText(value)),
-                    FunctionEffectKind.COMPONENT, "value", numberMeta(value));
+                    FunctionEffectKind.COMPONENT, "value", numberMeta(value)), value);
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_lore：设置物品描述 */
@@ -879,15 +761,11 @@ public final class LootFunctionHandlers {
             } else {
                 description = fn("set_lore", lines);
             }
-            return info(typeId(function, "set_lore"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_lore"), description, FunctionEffectKind.COMPONENT,
                     "line_count", lines >= 0 ? Integer.toString(lines) : "dynamic",
-                    "mode", mode);
+                    "mode", mode));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_attributes：设置属性修饰符（含随机范围） */
@@ -907,8 +785,8 @@ public final class LootFunctionHandlers {
                 Component description = replace
                         ? fnVariant("set_attributes", "clear")
                         : fnVariant("set_attributes", "empty");
-                return info(typeId(function, "set_attributes"), description, FunctionEffectKind.COMPONENT,
-                        "modifier_count", "0", "replace", Boolean.toString(replace));
+                return FunctionSemantics.unknown(info(typeId(function, "set_attributes"), description, FunctionEffectKind.COMPONENT,
+                        "modifier_count", "0", "replace", Boolean.toString(replace)));
             }
             List<Component> parts = new ArrayList<>();
             List<String> metaParts = new ArrayList<>();
@@ -930,16 +808,12 @@ public final class LootFunctionHandlers {
             Component description = replace
                     ? fn("set_attributes", joined)
                     : fnVariant("set_attributes", "append", joined);
-            return info(typeId(function, "set_attributes"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.unknown(info(typeId(function, "set_attributes"), description, FunctionEffectKind.COMPONENT,
                     "modifier_count", Integer.toString(modifiers.size()),
                     "replace", Boolean.toString(replace),
-                    "modifiers", joinIds(metaParts));
+                    "modifiers", joinIds(metaParts)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 toggle_tooltips：切换工具提示可见性 */
@@ -964,15 +838,11 @@ public final class LootFunctionHandlers {
                     metaParts.add(entry.getKey() + "=" + plainText(entry.getValue()));
                 }
             }
-            return info(typeId(function, "toggle_tooltips"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "toggle_tooltips"), description, FunctionEffectKind.COMPONENT,
                     "toggle_count", count >= 0 ? Integer.toString(count) : "dynamic",
-                    "toggles", joinIds(metaParts));
+                    "toggles", joinIds(metaParts)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_ominous_bottle_amplifier：设置不祥之瓶增幅 */
@@ -995,15 +865,11 @@ public final class LootFunctionHandlers {
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             JsonElement amplifier = field(source, "amplifier");
-            return info(typeId(function, "set_ominous_bottle_amplifier"),
+            return FunctionSemantics.number(info(typeId(function, "set_ominous_bottle_amplifier"),
                     fn("set_ominous_bottle_amplifier", numberText(amplifier)),
-                    FunctionEffectKind.COMPONENT, "amplifier", numberMeta(amplifier));
+                    FunctionEffectKind.COMPONENT, "amplifier", numberMeta(amplifier)), amplifier);
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     // ==================== 类别 D：新增描述 handler ====================
@@ -1029,16 +895,12 @@ public final class LootFunctionHandlers {
             if (exclude >= 0) {
                 description = append(description, fnVariant("copy_components", "exclude", exclude));
             }
-            return info(typeId(function, "copy_components"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.contextual(info(typeId(function, "copy_components"), description, FunctionEffectKind.COMPONENT,
                     "source", sourceName,
                     "include", include >= 0 ? Integer.toString(include) : "absent",
-                    "exclude", exclude >= 0 ? Integer.toString(exclude) : "absent");
+                    "exclude", exclude >= 0 ? Integer.toString(exclude) : "absent"));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 copy_custom_data：从上下文来源复制自定义数据 */
@@ -1055,17 +917,13 @@ public final class LootFunctionHandlers {
             String sourceName = nbtSourceName(field(source, "source"));
             int operations = listSize(source, "ops");
             Component operationText = operations >= 0 ? Component.literal(Integer.toString(operations)) : param("dynamic");
-            return info(typeId(function, "copy_custom_data"),
+            return FunctionSemantics.contextual(info(typeId(function, "copy_custom_data"),
                     fn("copy_custom_data", sourceParam(sourceName), operationText),
                     FunctionEffectKind.COMPONENT,
                     "source", sourceName,
-                    "op_count", operations >= 0 ? Integer.toString(operations) : "dynamic");
+                    "op_count", operations >= 0 ? Integer.toString(operations) : "dynamic"));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 copy_name：从上下文来源复制名称 */
@@ -1080,14 +938,10 @@ public final class LootFunctionHandlers {
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             String sourceName = string(source, "source", "unknown");
-            return info(typeId(function, "copy_name"), fn("copy_name", sourceParam(sourceName)),
-                    FunctionEffectKind.COMPONENT, "source", sourceName);
+            return FunctionSemantics.contextual(info(typeId(function, "copy_name"), fn("copy_name", sourceParam(sourceName)),
+                    FunctionEffectKind.COMPONENT, "source", sourceName));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 copy_state：从方块实体复制方块状态属性 */
@@ -1103,18 +957,14 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             ResourceLocation blockId = idOf(field(source, "block"));
             List<String> properties = stringArray(source, "properties");
-            return info(typeId(function, "copy_state"),
+            return FunctionSemantics.contextual(info(typeId(function, "copy_state"),
                     fn("copy_state", literalOf(blockId), Component.literal(joinIds(properties))),
                     blockId != null ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.COMPONENT,
                     "block", blockId != null ? blockId.toString() : "dynamic",
-                    "properties", joinIds(properties));
+                    "properties", joinIds(properties)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_instrument：从标签池中设置山羊角乐器 */
@@ -1132,14 +982,10 @@ public final class LootFunctionHandlers {
             Component description = options.isEmpty()
                     ? fnVariant("set_instrument", "dynamic")
                     : fn("set_instrument", Component.literal(options));
-            return info(typeId(function, "set_instrument"), description, FunctionEffectKind.COMPONENT,
-                    "options", options.isEmpty() ? "dynamic" : options);
+            return FunctionSemantics.unknown(info(typeId(function, "set_instrument"), description, FunctionEffectKind.COMPONENT,
+                    "options", options.isEmpty() ? "dynamic" : options));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_firework_explosion：替换烟花爆炸效果 */
@@ -1160,7 +1006,7 @@ public final class LootFunctionHandlers {
             boolean twinkle = bool(source, "twinkle", false);
             Component colorText = colors >= 0 ? Component.literal(Integer.toString(colors)) : param("dynamic");
             Component fadeText = fadeColors >= 0 ? Component.literal(Integer.toString(fadeColors)) : param("dynamic");
-            return info(typeId(function, "set_firework_explosion"),
+            return FunctionSemantics.deterministic(info(typeId(function, "set_firework_explosion"),
                     fn("set_firework_explosion", Component.literal(shape), colorText, fadeText,
                             yesNo(trail), yesNo(twinkle)),
                     FunctionEffectKind.COMPONENT,
@@ -1168,13 +1014,9 @@ public final class LootFunctionHandlers {
                     "colors", colors >= 0 ? Integer.toString(colors) : "dynamic",
                     "fade_colors", fadeColors >= 0 ? Integer.toString(fadeColors) : "dynamic",
                     "trail", Boolean.toString(trail),
-                    "twinkle", Boolean.toString(twinkle));
+                    "twinkle", Boolean.toString(twinkle)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_banner_pattern：设置旗帜图案层 */
@@ -1194,15 +1036,11 @@ public final class LootFunctionHandlers {
                     ? fnVariant("set_banner_pattern", "dynamic")
                     : (appendFlag ? fnVariant("set_banner_pattern", "append", layers)
                     : fn("set_banner_pattern", layers));
-            return info(typeId(function, "set_banner_pattern"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_banner_pattern"), description, FunctionEffectKind.COMPONENT,
                     "pattern_count", layers >= 0 ? Integer.toString(layers) : "dynamic",
-                    "append", Boolean.toString(appendFlag));
+                    "append", Boolean.toString(appendFlag)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_written_book_pages：设置成书页面 */
@@ -1223,15 +1061,11 @@ public final class LootFunctionHandlers {
                     : ((mode.equals("append") || mode.equals("insert"))
                     ? fnVariant("set_written_book_pages", "append", pages)
                     : fn("set_written_book_pages", pages));
-            return info(typeId(function, "set_written_book_pages"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_written_book_pages"), description, FunctionEffectKind.COMPONENT,
                     "page_count", pages >= 0 ? Integer.toString(pages) : "dynamic",
-                    "mode", mode);
+                    "mode", mode));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_writable_book_pages：设置书与笔页面 */
@@ -1252,15 +1086,11 @@ public final class LootFunctionHandlers {
                     : ((mode.equals("append") || mode.equals("insert"))
                     ? fnVariant("set_writable_book_pages", "append", pages)
                     : fn("set_writable_book_pages", pages));
-            return info(typeId(function, "set_writable_book_pages"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_writable_book_pages"), description, FunctionEffectKind.COMPONENT,
                     "page_count", pages >= 0 ? Integer.toString(pages) : "dynamic",
-                    "mode", mode);
+                    "mode", mode));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 furnace_smelt：从当前服务器配方读取熔炼预览。 */
@@ -1275,14 +1105,10 @@ public final class LootFunctionHandlers {
         // 描述遵循熔炼语义；具体图标由同代服务器配方解析。
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
-            return info(typeId(function, "furnace_smelt"), fn("furnace_smelt"),
-                    FunctionEffectKind.ITEM_TRANSFORM);
+            return FunctionSemantics.deterministic(info(typeId(function, "furnace_smelt"), fn("furnace_smelt"),
+                    FunctionEffectKind.ITEM_TRANSFORM));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 set_contents：设置容器内容（内容待生成，不并入外层掉落） */
@@ -1298,16 +1124,12 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             String component = string(source, "component", "");
             int entries = listSize(source, "entries");
-            return info(typeId(function, "set_contents"), fn("set_contents", containerContents(field(source, "entries"))),
+            return FunctionSemantics.unknown(info(typeId(function, "set_contents"), fn("set_contents", containerContents(field(source, "entries"))),
                     FunctionEffectKind.CONTAINER,
                     "component", component.isEmpty() ? "dynamic" : component,
-                    "entry_count", entries >= 0 ? Integer.toString(entries) : "dynamic");
+                    "entry_count", entries >= 0 ? Integer.toString(entries) : "dynamic"));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 modify_contents：修改已有容器内容 */
@@ -1330,13 +1152,9 @@ public final class LootFunctionHandlers {
                     FunctionEffectKind.CONTAINER,
                     "component", component.isEmpty() ? "dynamic" : component,
                     "child_count", child != null ? "1" : "0");
-            return child != null ? withChildren(base, List.of(child)) : base;
+            return FunctionSemantics.unknown(child != null ? withChildren(base, List.of(child)) : base);
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_loot_table：给容器方块实体写入待生成的战利品表 */
@@ -1353,7 +1171,7 @@ public final class LootFunctionHandlers {
             ResourceLocation tableId = idOf(field(source, "name"));
             String type = string(source, "type", "");
             long seed = longValue(source, "seed", 0L);
-            return info(typeId(function, "set_loot_table"),
+            return FunctionSemantics.deterministic(info(typeId(function, "set_loot_table"),
                     fn("set_loot_table", tableId != null
                             ? com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames.resolveDisplayName(tableId)
                             : param("dynamic")),
@@ -1361,13 +1179,9 @@ public final class LootFunctionHandlers {
                     FunctionEffectKind.CONTAINER,
                     "name", tableId != null ? tableId.toString() : "dynamic",
                     "type", type.isEmpty() ? "absent" : type,
-                    "seed", Long.toString(seed));
+                    "seed", Long.toString(seed)));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     // ==================== 类别 E：数量/概率类 ====================
@@ -1421,35 +1235,12 @@ public final class LootFunctionHandlers {
                 }
             }
             Component description = known ? fnVariant("apply_bonus", "tool", enchantName(enchantmentId), params) : base;
-            return info(typeId(function, "apply_bonus"), description,
+            return FunctionSemantics.contextual(info(typeId(function, "apply_bonus"), description,
                     known ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.COUNT,
                     "enchantment", enchantmentId != null ? enchantmentId.toString() : "dynamic",
                     "formula", formulaType,
-                    "formula_params", paramsMeta);
-        }
-
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function, JsonObject source) {
-            if (!(function instanceof ApplyBonusCount)) {
-                return null;
-            }
-            Holder<Enchantment> enchantmentHolder = reflectField(function, "enchantment");
-            ResourceLocation enchantmentId = enchantmentHolder != null
-                    ? enchantmentHolder.unwrapKey().map(ResourceKey::location).orElse(null)
-                    : null;
-            Component enchantmentName = enchantmentName(enchantmentId);
-
-            // 公式名是字符串（"minecraft:xxx" 或裸名 "xxx"），必须先规范化命名空间再查文案；
-            // 旧实现误以为 formula 是内嵌 type 的对象，带命名空间的名字匹配不到本地化 key
-            String formulaType = formulaTypeOf(source);
-            Component formulaName = Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.formula." + formulaType);
-
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.item_hint.apply_bonus",
-                    enchantmentName, formulaName);
+                    "formula_params", paramsMeta));
         }
 
         // 公式名：按字符串读取并规范化命名空间（"minecraft:xxx" 与 "xxx" 等价）；
@@ -1469,17 +1260,6 @@ public final class LootFunctionHandlers {
             return parameters != null ? parameters : objectOf(field(source, "formula"));
         }
 
-        // 兼容摘要里的附魔名称：与描述通道保持同一口径
-        private static Component enchantmentName(@Nullable ResourceLocation id) {
-            return id == null
-                    ? Component.literal("?")
-                    : Component.translatable("enchantment." + id.getNamespace() + "." + id.getPath());
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 limit_count：展示数量限制范围 */
@@ -1509,50 +1289,13 @@ public final class LootFunctionHandlers {
                 description = fnVariant("limit_count", "dynamic");
             }
             boolean known = min != null || max != null;
-            return info(typeId(function, "limit_count"), description,
+            return FunctionSemantics.deterministic(info(typeId(function, "limit_count"), description,
                     known ? FunctionFidelity.FULL : FunctionFidelity.PARTIAL,
                     FunctionEffectKind.COUNT,
                     "min", min != null ? trimNumber(min) : "dynamic",
-                    "max", max != null ? trimNumber(max) : "dynamic");
+                    "max", max != null ? trimNumber(max) : "dynamic"));
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof LimitCount)) {
-                return null;
-            }
-            IntRange limiter = reflectField(function, "limiter");
-            if (limiter == null) {
-                return null;
-            }
-            NumberProvider min = reflectField(limiter, "min");
-            NumberProvider max = reflectField(limiter, "max");
-
-            Integer minVal = (min instanceof ConstantValue(float value)) ? Math.round(value) : null;
-            Integer maxVal = (max instanceof ConstantValue(float value)) ? Math.round(value) : null;
-
-            if (minVal != null && maxVal != null) {
-                if (minVal.equals(maxVal)) {
-                    return Component.translatable(
-                            "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_exact", minVal);
-                }
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count", minVal, maxVal);
-            } else if (maxVal != null) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_max", maxVal);
-            } else if (minVal != null) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.limit_count_min", minVal);
-            }
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 explosion_decay：按爆炸半径概率销毁物品 */
@@ -1566,14 +1309,10 @@ public final class LootFunctionHandlers {
         // 描述：原版爆炸衰减语义，无参数
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
-            return info(typeId(function, "explosion_decay"), fn("explosion_decay"),
-                    FunctionEffectKind.COUNT);
+            return FunctionSemantics.random(info(typeId(function, "explosion_decay"), fn("explosion_decay"),
+                    FunctionEffectKind.COUNT));
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 fill_player_head：用上下文玩家填充头颅 */
@@ -1587,21 +1326,11 @@ public final class LootFunctionHandlers {
         // 描述：复用既有玩家头颅文案，并记录来源实体类别
         @Override
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
-            return info(typeId(function, "fill_player_head"), hint("fill_player_head"),
+            return FunctionSemantics.contextual(info(typeId(function, "fill_player_head"), hint("fill_player_head"),
                     FunctionEffectKind.COMPONENT,
-                    "entity", string(source, "entity", "this"));
+                    "entity", string(source, "entity", "this")));
         }
 
-        @Override
-        public Component describeHint(LootItemFunction function) {
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.item_hint.fill_player_head");
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_stew_effect：设置炖菜效果与持续时间 */
@@ -1617,8 +1346,8 @@ public final class LootFunctionHandlers {
         public LootFunctionInfo describe(LootItemFunction function, JsonObject source) {
             JsonArray effects = arrayOf(field(source, "effects"));
             if (effects == null || effects.isEmpty()) {
-                return info(typeId(function, "set_stew_effect"), fnVariant("set_stew_effect", "none"),
-                        FunctionFidelity.PARTIAL, FunctionEffectKind.COMPONENT, "effects", "empty");
+                return FunctionSemantics.unknown(info(typeId(function, "set_stew_effect"), fnVariant("set_stew_effect", "none"),
+                        FunctionFidelity.PARTIAL, FunctionEffectKind.COMPONENT, "effects", "empty"));
             }
             List<Component> parts = new ArrayList<>();
             List<String> metaParts = new ArrayList<>();
@@ -1634,39 +1363,10 @@ public final class LootFunctionHandlers {
                 metaParts.add((effectId != null ? effectId.toString() : "dynamic") + "=" + numberMeta(duration));
             }
             Component joined = join(Component.literal(", "), parts);
-            return info(typeId(function, "set_stew_effect"), hint("set_stew_effect", joined),
-                    FunctionEffectKind.COMPONENT, "effects", joinIds(metaParts));
+            return FunctionSemantics.unknown(info(typeId(function, "set_stew_effect"), hint("set_stew_effect", joined),
+                    FunctionEffectKind.COMPONENT, "effects", joinIds(metaParts)));
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof SetStewEffectFunction)) {
-                return null;
-            }
-            List<?> effects = reflectField(function, "effects");
-            if (effects == null || effects.isEmpty()) {
-                return null;
-            }
-            List<Component> effectNames = new ArrayList<>();
-            for (Object entry : effects) {
-                Holder<MobEffect> effectHolder = reflectField(entry, "effect");
-                if (effectHolder != null) {
-                    effectNames.add(effectHolder.value().getDisplayName());
-                }
-            }
-            if (effectNames.isEmpty()) {
-                return null;
-            }
-            Component joined = join(Component.literal("，"), effectNames);
-            return Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.item_hint.set_stew_effect", joined);
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 exploration_map：展示探索地图目的地 */
@@ -1684,39 +1384,10 @@ public final class LootFunctionHandlers {
             Component description = destination != null
                     ? hint("exploration_map", Component.literal(destination.getPath()))
                     : hint("exploration_map_default");
-            return info(typeId(function, "exploration_map"), description, FunctionEffectKind.COMPONENT,
-                    "destination", destination != null ? destination.toString() : "default");
+            return FunctionSemantics.contextual(info(typeId(function, "exploration_map"), description, FunctionEffectKind.COMPONENT,
+                    "destination", destination != null ? destination.toString() : "default"));
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof ExplorationMapFunction)) {
-                return null;
-            }
-            // destination 是 ResourceKey<MapDecorationType>，通过反射获取
-            Object destination = reflectField(function, "destination");
-            if (destination == null) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map_default");
-            }
-            // ResourceKey 有 location() 方法
-            try {
-                java.lang.reflect.Method locationMethod = destination.getClass().getMethod("location");
-                ResourceLocation loc = (ResourceLocation) locationMethod.invoke(destination);
-                String tagPath = loc.getPath();
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map", tagPath);
-            } catch (Exception e) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.exploration_map_default");
-            }
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_fireworks：展示烟花飞行时间与爆炸数量 */
@@ -1741,30 +1412,11 @@ public final class LootFunctionHandlers {
             } else {
                 description = fnVariant("set_fireworks", "none");
             }
-            return info(typeId(function, "set_fireworks"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_fireworks"), description, FunctionEffectKind.COMPONENT,
                     "flight_duration", hasFlight ? plainText(flight) : "absent",
-                    "explosions", explosions >= 0 ? Integer.toString(explosions) : "absent");
+                    "explosions", explosions >= 0 ? Integer.toString(explosions) : "absent"));
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof SetFireworksFunction)) {
-                return null;
-            }
-            NumberProvider flightDuration = reflectField(function, "flightDuration");
-            if (flightDuration instanceof ConstantValue(float value)) {
-                int duration = Math.round(value);
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_fireworks_flight", duration);
-            }
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 set_book_cover：展示成书标题与作者 */
@@ -1790,58 +1442,12 @@ public final class LootFunctionHandlers {
             } else {
                 description = fnVariant("set_book_cover", "empty");
             }
-            return info(typeId(function, "set_book_cover"), description, FunctionEffectKind.COMPONENT,
+            return FunctionSemantics.deterministic(info(typeId(function, "set_book_cover"), description, FunctionEffectKind.COMPONENT,
                     "title", title.isEmpty() ? "absent" : title,
                     "author", author.isEmpty() ? "absent" : author,
-                    "generation", Integer.toString(intValue(source, "generation", -1)));
+                    "generation", Integer.toString(intValue(source, "generation", -1))));
         }
 
-        @Override
-        @Nullable
-        public Component describeHint(LootItemFunction function) {
-            if (!(function instanceof SetBookCoverFunction)) {
-                return null;
-            }
-            // title 是 Filterable<String>，author 是 Optional<String>
-            Object titleObj = reflectField(function, "title");
-            String title = null;
-            if (titleObj != null) {
-                // Filterable 有 raw() 方法
-                try {
-                    java.lang.reflect.Method rawMethod = titleObj.getClass().getMethod("raw");
-                    Object raw = rawMethod.invoke(titleObj);
-                    if (raw instanceof String s) {
-                        title = s;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            String author = null;
-            Object authorRaw = reflectField(function, "author");
-            if (authorRaw instanceof Optional<?> opt) {
-                author = (String) opt.orElse(null);
-            }
-
-            if (title != null && author != null) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover",
-                        title, author);
-            } else if (title != null) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_title_only",
-                        title);
-            } else if (author != null) {
-                return Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.item_hint.set_book_cover_author_only",
-                        author);
-            }
-            return null;
-        }
-
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     // ==================== 类别 F：包装函数 ====================
@@ -1867,18 +1473,14 @@ public final class LootFunctionHandlers {
                     "item_filter", filter,
                     "child_count", child != null ? "1" : "0");
             if (child == null) {
-                return withFidelity(base, FunctionFidelity.PARTIAL);
+                return FunctionSemantics.wrapper(withFidelity(base, FunctionFidelity.PARTIAL), true);
             }
             LootFunctionInfo withChild = withChildren(base, List.of(child));
-            return child.fidelity() == FunctionFidelity.FULL
+            return FunctionSemantics.wrapper(child.fidelity() == FunctionFidelity.FULL
                     ? withChild
-                    : withFidelity(withChild, FunctionFidelity.PARTIAL);
+                    : withFidelity(withChild, FunctionFidelity.PARTIAL), true);
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return true;
-        }
     }
 
     /** 处理 reference：引用数据包里的物品修饰器 */
@@ -1909,19 +1511,15 @@ public final class LootFunctionHandlers {
                     "modifier", modifierId != null ? modifierId.toString() : "unknown");
             LootFunctionPreviewContext context = LootFunctionDescriptions.previewContext();
             var ops = LootFunctionDescriptions.conditionOps();
-            if (context == null || ops == null || modifierId == null) return base;
+            if (context == null || ops == null || modifierId == null) return FunctionSemantics.wrapper(base, false);
             LootItemFunction target = context.modifier(modifierId);
-            if (target == null) return base;
+            if (target == null) return FunctionSemantics.wrapper(base, false);
             JsonElement targetSource = net.minecraft.world.level.storage.loot.functions.LootItemFunctions.ROOT_CODEC
                     .encodeStart(ops, target).result().orElse(null);
             LootFunctionInfo child = describeNested(target, targetSource);
-            return child != null ? withFidelity(withChildren(base, List.of(child)), child.fidelity()) : base;
+            return FunctionSemantics.wrapper(child != null ? withFidelity(withChildren(base, List.of(child)), child.fidelity()) : base, false);
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 
     /** 处理 sequence：按声明顺序依次执行内部函数 */
@@ -1968,12 +1566,8 @@ public final class LootFunctionHandlers {
                     FunctionEffectKind.WRAPPER,
                     "child_count", count >= 0 ? Integer.toString(count) : "dynamic");
             LootFunctionInfo withChild = children.isEmpty() ? base : withChildren(base, children);
-            return complete ? withChild : withFidelity(withChild, FunctionFidelity.PARTIAL);
+            return FunctionSemantics.wrapper(complete ? withChild : withFidelity(withChild, FunctionFidelity.PARTIAL), false);
         }
 
-        @Override
-        public boolean addsRandomness() {
-            return false;
-        }
     }
 }

@@ -77,7 +77,6 @@ public final class LootFunctionDescriptions {
             if (handler == null) return null;
             LootFunctionInfo info = describe(id, function, object);
             if (!info.isResolved()) return null;
-            if (handler.addsRandomness() && info.effect() != FunctionEffectKind.COUNT) return null;
             ItemStack result = handler.apply(stack.copy(), function);
             return result != null ? result : (info.effect() == FunctionEffectKind.COUNT ? stack.copy() : null);
         } finally {
@@ -144,17 +143,26 @@ public final class LootFunctionDescriptions {
         if (handler == null) {
             return unresolved(functionId, function);
         }
+        if (source == null) {
+            try {
+                DynamicOps<JsonElement> ops = conditionOps();
+                source = normalizeSource(net.minecraft.world.level.storage.loot.functions.LootItemFunctions.ROOT_CODEC
+                        .encodeStart(ops != null ? ops : com.mojang.serialization.JsonOps.INSTANCE, function)
+                        .result().orElse(null));
+            } catch (RuntimeException ignored) {
+                // 无注册表上下文时，继续使用旧扩展兼容摘要。
+            }
+        }
         LootFunctionInfo described = null;
         if (source != null) {
             try {
                 described = handler.describe(function, source);
             } catch (RuntimeException ignored) {
                 // 描述失败必须降级为"未解析"，不得影响掉落与统计
-                described = null;
             }
         }
         if (described != null) {
-            return described;
+            return legacySemantics(described, function, handler);
         }
         return partialFromHint(functionId, function, source, handler);
     }
@@ -162,7 +170,7 @@ public final class LootFunctionDescriptions {
     // 未迁移到描述通道的 handler：把兼容摘要包成部分解析，保证"只有一个描述来源"
     private static LootFunctionInfo partialFromHint(ResourceLocation functionId, LootItemFunction function,
                                                     @Nullable JsonObject source, LootFunctionHandler handler) {
-        Component hint = null;
+        Component hint;
         try {
             hint = source != null ? handler.describeHint(function, source) : handler.describeHint(function);
         } catch (RuntimeException ignored) {
@@ -171,13 +179,27 @@ public final class LootFunctionDescriptions {
         if (hint == null) {
             return unresolved(functionId, function);
         }
-        return new LootFunctionInfo(functionId, hint, FunctionFidelity.PARTIAL,
-                FunctionEffectKind.UNKNOWN);
+        return legacySemantics(new LootFunctionInfo(functionId, hint, FunctionFidelity.PARTIAL,
+                FunctionEffectKind.UNKNOWN), function, handler);
+    }
+
+    // 旧扩展缺少类型化事实时，只有这个 Adapter 读取兼容策略方法。
+    private static LootFunctionInfo legacySemantics(LootFunctionInfo info, LootItemFunction function,
+                                                    LootFunctionHandler handler) {
+        if (FunctionSemantics.isEncoded(info)) return info;
+        try {
+            return info.withSemantics(FunctionSemantics.facts(info,
+                    handler.addsRandomness() ? FunctionSemantics.Randomness.UNKNOWN : FunctionSemantics.Randomness.NONE,
+                    handler.uncertaintyLevel(function), FunctionSemantics.defaultIdentity(info.effect()), false));
+        } catch (RuntimeException ignored) {
+            return FunctionSemantics.unknown(info);
+        }
     }
 
     /** 未解析函数的统一描述：保留可取得的注册名，明确标记未解析。 */
     public static LootFunctionInfo unresolved(@Nullable ResourceLocation functionId,
                                               @Nullable LootItemFunction function) {
+        if (functionId == null && function != null) functionId = LootFunctionHandlers.keyOf(function);
         Component description = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.function.unresolved",
                 functionId != null ? functionId.toString() : "?");

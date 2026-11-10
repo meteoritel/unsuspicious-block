@@ -12,6 +12,7 @@ import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.ScenarioBranch;
@@ -179,10 +180,10 @@ final class ScenarioPageBuilder {
         boolean uncertain = condition.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY);
         Component styled = ScenarioLabel.conditionText(condition).copy();
         if (secondary) styled = styled.copy().withStyle(style -> style.withColor(UiTextPalette.Parchment.LABEL));
-        String type = condition.conditionType().toString();
-        if (type.equals("minecraft:all_of")) styled = ScenarioLabel.symbol("∧ ").copy().append(styled);
-        if (type.equals("minecraft:any_of")) styled = ScenarioLabel.symbol("∨ ").copy().append(styled);
-        if (type.equals("minecraft:inverted")) styled = ScenarioLabel.symbol("¬ ").copy().append(text("conditions.negation"));
+        ConditionTree.Kind kind = ConditionTree.kind(condition);
+        if (kind == ConditionTree.Kind.ALL) styled = ScenarioLabel.symbol("∧ ").copy().append(styled);
+        if (kind == ConditionTree.Kind.ANY) styled = ScenarioLabel.symbol("∨ ").copy().append(styled);
+        if (kind == ConditionTree.Kind.NOT) styled = ScenarioLabel.symbol("¬ ").copy().append(text("conditions.negation"));
         if (condition.conditionType().getPath().contains("random_chance") || condition.conditionType().getPath().equals("table_bonus"))
             styled = Component.empty().append(text("conditions.random_trigger").withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT)))
                     .append(" · ").append(styled);
@@ -190,7 +191,7 @@ final class ScenarioPageBuilder {
                 condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY)).withStyle(style -> style.withColor(UiTextPalette.Parchment.NEGATIVE)));
         nodes.add(new UiNode.Row(indent, parent, styled, UiTextPalette.Parchment.BODY, List.of(),
                 List.of(condition.description(), Component.literal(condition.conditionType().toString())), null, null));
-        for (var child : condition.children()) addCondition(nodes, child, indent + INDENT_STEP, self, secondary);
+        for (var child : ConditionTree.displayChildren(condition)) addCondition(nodes, child, indent + INDENT_STEP, self, secondary);
     }
     private static net.minecraft.network.chat.MutableComponent text(String key, Object... args) {
         return ScenarioSimulationClientState.text(key, args).copy();

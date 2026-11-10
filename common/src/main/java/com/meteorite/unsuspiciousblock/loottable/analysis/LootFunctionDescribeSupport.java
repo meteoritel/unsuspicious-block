@@ -725,31 +725,15 @@ final class LootFunctionDescribeSupport {
                     .withMetadata(LootFunctionInfo.METADATA_TRUNCATED, "budget");
         }
         NESTED_NODES.set(remaining - 1);
-        LootFunctionHandler handler = id != null ? LootFunctionHandlers.get(id) : null;
-        if (handler == null) {
-            return LootFunctionDescriptions.unresolved(id, function);
-        }
         JsonObject childJson = LootFunctionDescriptions.normalizeSource(element);
         NESTED_DEPTH.set(depth + 1);
         try {
-            if (childJson != null) {
-                LootFunctionInfo described = handler.describe(function, childJson);
-                if (described != null) {
-                    // 内层函数自己的条件原位挂到子节点上——它不是外层物品的掉落条件（F04）
-                    return withParsedConditions(described, childJson);
-                }
-            }
-            Component hint = handler.describeHint(function, childJson != null ? childJson : new JsonObject());
-            if (hint != null) {
-                return new LootFunctionInfo(id, hint, FunctionFidelity.PARTIAL, FunctionEffectKind.UNKNOWN);
-            }
-        } catch (RuntimeException ignored) {
-            // 内层描述失败不得影响外层描述，继续降级
+            LootFunctionInfo described = LootFunctionDescriptions.describe(id, function, childJson);
+            return childJson != null ? withParsedConditions(described, childJson) : described;
         } finally {
             NESTED_DEPTH.set(depth);
             if (depth == 0) NESTED_NODES.remove();
         }
-        return LootFunctionDescriptions.unresolved(id, function);
     }
 
     // 用投影层安装的 RegistryOps 解析该节点的自身条件并原位挂上；无上下文或无条件时原样返回。

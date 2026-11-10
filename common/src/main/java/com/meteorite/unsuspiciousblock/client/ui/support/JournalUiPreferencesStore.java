@@ -1,22 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtAccounter;
-import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.level.storage.LevelResource;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
@@ -30,28 +19,21 @@ import java.util.Set;
  */
 public final class JournalUiPreferencesStore {
 
-    private static final String STORAGE_DIR = "unsuspiciousblock_journal_logs";
-    private static final String STORAGE_FILE = "journal_ui_preferences.dat";
+    static final String STORAGE_FILE = "journal_ui_preferences.dat";
 
     @Nullable
     private static volatile Path loadedPath;
-    @Nullable
-    private static ClientPacketListener trackedConnection;
+    private static final JournalLocalPersistence.PendingWrites writes = new JournalLocalPersistence.PendingWrites();
     private static volatile boolean dirty;
-    private static volatile boolean loaded;
     private static CompoundTag panelStates = new CompoundTag();
     private static CompoundTag simulationPreferences = new CompoundTag();
 
     @Nullable
     public static synchronized String getSimulationPreference(String key) {
-        refreshConnection();
-        ensureLoaded();
         return simulationPreferences.contains(key, Tag.TAG_STRING) ? simulationPreferences.getString(key) : null;
     }
 
     public static synchronized void setSimulationPreference(String key, String value) {
-        refreshConnection();
-        ensureLoaded();
         simulationPreferences.putString(key, value);
         while (simulationPreferences.size() > 1024) {
             simulationPreferences.remove(simulationPreferences.getAllKeys().iterator().next());
@@ -61,14 +43,10 @@ public final class JournalUiPreferencesStore {
 
     // 面板状态使用现有按存档、按玩家隔离的偏好文件，无需每加一个面板就改序列化字段。
     public static synchronized CompoundTag getPanelStates() {
-        refreshConnection();
-        ensureLoaded();
         return panelStates.copy();
     }
 
     public static synchronized void setPanelStates(CompoundTag state) {
-        refreshConnection();
-        ensureLoaded();
         panelStates = state.copy();
         dirty = true;
     }
@@ -76,14 +54,9 @@ public final class JournalUiPreferencesStore {
     private JournalUiPreferencesStore() {
     }
 
-    // 每个客户端 tick 调用：刷新连接、确保加载、必要时刷盘
+    // 连接宿主完成加载后，每 tick 合并待写快照。
     public static synchronized void tick() {
-        refreshConnection();
-        ensureLoaded();
-        if (dirty && loadedPath != null) {
-            save();
-            dirty = false;
-        }
+        flushIfDirty();
     }
 
     // 标记偏好已修改，下次 tick 时刷盘
@@ -93,74 +66,49 @@ public final class JournalUiPreferencesStore {
 
     // 断线/退世界前主动刷盘，避免丢失最近一次修改
     public static synchronized void flushIfDirty() {
-        if (!dirty) {
-            return;
-        }
-        // 断线时玩家/连接可能已清空，必须仍向已加载的旧世界路径刷盘。
-        if (loadedPath != null) {
-            save();
-            dirty = false;
+        if (dirty && loadedPath != null) {
+            if (save()) {
+                dirty = false;
+            }
+        } else {
+            writes.flush();
         }
     }
 
-    private static void refreshConnection() {
-        Minecraft minecraft = Minecraft.getInstance();
-        ClientPacketListener connection = minecraft.getConnection();
-        if (connection == trackedConnection) {
-            return;
-        }
-        if (dirty && loadedPath != null) save();
-        trackedConnection = connection;
-        // 连接切换：清空已加载状态，下次 tick 重新从新世界的文件加载
+    static synchronized void beginConnection() {
+        flushIfDirty();
         loadedPath = null;
-        loaded = false;
         panelStates = new CompoundTag();
         simulationPreferences = new CompoundTag();
         dirty = false;
     }
 
-    private static void ensureLoaded() {
-        Path currentPath = resolveCurrentPath();
-        if (currentPath == null) {
-            return;
+    static synchronized void loadCurrentPath(Path path) {
+        if (!path.equals(loadedPath)) {
+            loadedPath = path;
+            load(path);
         }
-        if (currentPath.equals(loadedPath) && loaded) {
-            return;
-        }
-        loadedPath = currentPath;
-        load(currentPath);
-        loaded = true;
     }
 
     // 从 NBT 读取偏好并写回 ClientState 的 static 字段
     private static void load(Path path) {
-        if (!Files.exists(path)) {
-            return;
+        CompoundTag pending = writes.pending(path);
+        JournalLocalPersistence.Loaded result = pending == null
+                ? JournalLocalPersistence.load(path, Long.MAX_VALUE)
+                : new JournalLocalPersistence.Loaded(pending, true);
+        if (result.successful()) {
+            applyToClientState(result.tag());
         }
-        CompoundTag tag;
-        try (InputStream inputStream = Files.newInputStream(path)) {
-            tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());
-        } catch (IOException e) {
-            Constants.LOG.warn("读取考古笔记 UI 偏好失败: {}", path, e);
-            return;
-        }
-        applyToClientState(tag);
     }
 
-    // 将 ClientState 当前内存中的偏好序列化到文件
-    private static void save() {
+    private static boolean save() {
         Path path = loadedPath;
         if (path == null) {
-            return;
+            return false;
         }
-        try {
-            Files.createDirectories(path.getParent());
-            try (OutputStream outputStream = Files.newOutputStream(path)) {
-                NbtIo.writeCompressed(snapshotFromClientState(), outputStream);
-            }
-        } catch (IOException e) {
-            Constants.LOG.warn("保存考古笔记 UI 偏好失败: {}", path, e);
-        }
+        writes.stage(path, snapshotFromClientState());
+        writes.flush();
+        return writes.isIdle(path);
     }
 
     // 从 NBT 还原到 ClientState 内存字段
@@ -265,37 +213,4 @@ public final class JournalUiPreferencesStore {
         return tag;
     }
 
-    @Nullable
-    private static Path resolveCurrentPath() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null) {
-            return null;
-        }
-        if (minecraft.hasSingleplayerServer() && minecraft.getSingleplayerServer() != null) {
-            return minecraft.getSingleplayerServer()
-                    .getWorldPath(LevelResource.ROOT)
-                    .resolve(STORAGE_DIR)
-                    .resolve(minecraft.player.getUUID().toString())
-                    .resolve(STORAGE_FILE);
-        }
-
-        ServerData serverData = minecraft.getCurrentServer();
-        if (serverData == null) {
-            return null;
-        }
-
-        String serverKey = sanitize(serverData.ip);
-        return minecraft.gameDirectory.toPath()
-                .resolve(STORAGE_DIR)
-                .resolve(serverKey)
-                .resolve(minecraft.player.getUUID().toString())
-                .resolve(STORAGE_FILE);
-    }
-
-    private static String sanitize(String value) {
-        if (value == null || value.isBlank()) {
-            return "unknown_server";
-        }
-        return value.replaceAll("[^a-zA-Z0-9._-]", "_");
-    }
 }

@@ -41,37 +41,13 @@ network/
 
 [`ModPayloads`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/network/ModPayloads.java) 沿用项目的"清单 + 遍历"模式（见 [注册架构](registration.md)），统一管理所有 payload 的注册信息：
 
-```java
-// C2S：类型 + 编解码 + 服务端处理函数
-record C2S<T>(Type<T> type, StreamCodec codec, BiConsumer<ServerPlayer, T> handler)
-
-// S2C 类型描述：类型 + 编解码（供服务端注册编解码器，Fabric 需要）
-record S2CSpec<T>(Type<T> type, StreamCodec codec)
-
-// 客户端 S2C：类型 + 编解码 + 客户端处理函数（嵌套在 Client 类中）
-record S2C<T>(Type<T> type, StreamCodec codec, Consumer<T> handler)
-```
-
-三个清单：`C2S_PAYLOADS`、`S2C_SPECS`（服务端注册编解码）与 `Client.S2C_PAYLOADS`（客户端注册接收器）。平台层只需遍历清单注册，不手写重复代码；**具体数量以清单源码为准**，本文档的表只是索引。
+C2S 在 `C2S_PAYLOADS` 声明类型、codec 与服务端 handler。S2C 在私有 `S2C_DECLARATIONS` 中一次声明类型、codec 与惰性客户端 handler 工厂，派生 `S2C_SPECS` 和 `Client.S2C_PAYLOADS` 两个消费视图。初始化检查同方向通道唯一；客户端绑定缺失时报告通道。
 
 ## 4. 客户端/服务端分离
 
-**关键设计**：S2C 的 handler 引用客户端状态类（如 `ArchaeologyJournalClientState`），若直接放在 `ModPayloads` 顶层，服务端 classpath 会引入客户端类，违反"服务端严禁引用客户端类"准则。
+`S2C_SPECS` 只包含类型与 codec。声明清单的工厂通过 lambda 函数体访问 `ClientHandlers`，构造清单和服务端视图时不执行工厂。引用客户端状态的 method reference 只在 `ClientHandlers` 初始化时构造；`Client` 仅由平台客户端入口访问并派生接收器绑定。
 
-解决方案是**嵌套类延迟加载**：
-
-```java
-public final class ModPayloads {
-    public static final List<C2S<?>> C2S_PAYLOADS = ...;        // 服务端安全
-    public static final List<S2CSpec<?>> S2C_SPECS = ...;        // 服务端安全（无 handler）
-
-    public static final class Client {                           // 嵌套类
-        public static final List<S2C<?>> S2C_PAYLOADS = ...;     // 引用客户端类
-    }
-}
-```
-
-JVM 按需加载嵌套类，服务端不加载 `Client` 类，从而避免服务端 classpath 引入客户端状态类。平台客户端入口遍历 `Client.S2C_PAYLOADS` 注册 S2C 接收器。
+专用服务端的初始化链止于公共清单和 codec 视图。Fabric 公共入口登记双向 codec，客户端入口登记 S2C receiver；NeoForge 公共入口登记 C2S，并仅在专用端登记 S2C codec，客户端入口登记 S2C handler。两端 NeoForge registrar 共用 `ModPayloads.PROTOCOL_VERSION`。
 
 ## 5. C2S payload
 
@@ -149,6 +125,8 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 **C2S 主线程调度**：Fabric 端 C2S handler 通过 `context.server().execute(...)` 调度到主线程；NeoForge 端 payload handler 默认在主线程执行。这保证状态修改的线程安全。
 
+完整目录与目录 hash 使用同一 `CatalogReadSnapshot`，由当代投影一次装配 child conditions、branches 和 options。快照按 overlay revision 缓存，实际 codec 负责函数/元数据裁剪与稳定编码，SHA-256 覆盖冻结 payload 的全部线上字段（含 generation 与观测摘要）。同步入口在服务器线程捕获，详见 [目录构建](../internals/journal-catalog-build.md)。
+
 **版本化**：NeoForge 端用 `registrar.versioned(...)` 声明 payload 协议版本，客户端/服务端入口均为 `4.10`；Fabric 使用同一 common codec，两个平台的客户端与服务端必须配套更新。**任何追加/删除线字段都是协议版本变更**：本批在 `CatalogTableDto` 的结构末尾追加了三个线字段（见「线格式的两条硬约束」），协议版本已随之提升到 `4.10`（上一版 `4.9` 追加的是服务端只读缓存查询 payload），旧端读到的字节流会整体错位，因此**新旧读写不兼容，客户端与服务端必须同版本发布**。此后把函数树各节点的子函数上限收敛为写读共用的同一常量并补上写包时裁剪与显式省略标记（服务端语义树不裁剪），属**上限口径对齐**：字段形状与顺序未变，故协议版本保持 `4.10`。
 
 ### 7.1 线格式的两条硬约束
@@ -156,6 +134,7 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 1. **传输目录数据必须走 `CatalogStreamCodec`。** 全量目录与按需结果传的是同一个 `CatalogTableDto`：各写一份编解码，症状是"改了字段只更新了一处"，客户端读到错位字节流——这是最难从现象反推成因的一类错误。本批新增的三个字段一律**排在各自结构末尾**，读写必须成套发布：
    - 物品条目的 `origins` 来源位图，紧随兼容字段 `injected` 之后——承载来源**集合**语义（一个结果可同时有静态来源与确认的模组联动来源），取代原先的互斥布尔；`injected` 只是它的兼容投影。
    - 获取路径末尾的**有界静态函数树**：类型 + 本地化描述 + 保真度 + 效果类别 + 函数自身条件 + 子函数 + 有界元数据；嵌套 ≤ 16 层、元数据 ≤ 32 项、每条路径函数 ≤ 64 个、**每个节点的子函数同样 ≤ 64 个**（写端与读端共用 `LootFunctionInfo.MAX_CHILDREN_PER_NODE`）。只传结构化摘要，不传 `LootItemFunction` 对象、`LootContext`、`ItemStack` 或完整原始 JSON。超限时写端按同一常量裁剪，并在该节点 metadata 写 `truncated=children`；读端按同一常量校验长度，越界即拒绝整包——两端预算不一致会让一个合法的 65 个子函数节点在客户端整包解码失败。
+   - 函数策略通过既有 metadata 的 `semantics_v1` 键传输；必要策略与裁剪标记优先保留，辅助键按名称稳定排序。函数线字段形状与顺序保持，协议仍为 `4.10`。编码契约见 [战利品机制](../internals/loottable-mechanics.md) 的「函数策略与兼容扩展」。
    - 物品条目的**函数观测摘要**（`observedFunctions`，排在 `scenarioProbabilities` 之后）：观测链列表 + `truncated` / `incomplete` / `unavailable` 三个降级标志；最多 16 条链、每条链 ≤ 64 个节点。它是输入级观测事实，与静态规则树分开传输。
 2. **条件入口树由服务端派生下发，客户端不本地重推。** 子表入口的条件（路径共同条件 + 注入边门槛）中，注入边不写在任何 JSON 里，本地重推必然漏项。
 
@@ -191,10 +170,10 @@ for (Client.S2C<?> s2c : ModPayloads.Client.S2C_PAYLOADS) registerS2C(registrar,
 
 1. 在 `payload/c2s/` 或 `payload/s2c/` 创建 payload 类（含 `TYPE` 与 `STREAM_CODEC`）。
 2. C2S：在 `ModPayloads.C2S_PAYLOADS` 加条目（type + codec + handler）。
-3. S2C：在 `S2C_SPECS` 加类型描述（服务端注册编解码），在 `Client.S2C_PAYLOADS` 加完整描述（客户端注册接收器）。
+3. S2C：在 `S2C_DECLARATIONS` 加一条类型、codec 与惰性 handler 工厂，在 `ClientHandlers` 提供客户端绑定；两个消费视图自动派生。
 4. **无需修改平台代码**，两端自动遍历注册。
 5. 传输目录数据时**必须**走 `CatalogStreamCodec`，不要另写一份字段顺序。
-6. 追加线字段时同步提升 `registrar.versioned(...)` 的协议版本，并在「C2S payload」与「S2C payload」两张表里补一行。
+6. 追加线字段时同步提升 `ModPayloads.PROTOCOL_VERSION`，并在「C2S payload」与「S2C payload」两张表里补一行。
 
 > 新增同步策略时，参考「同步模式」的三种模式，不要把状态推拉逻辑写进 handler —— handler 只做校验与转交。
 

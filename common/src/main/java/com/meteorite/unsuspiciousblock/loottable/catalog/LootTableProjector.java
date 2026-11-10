@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.loottable.catalog;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.loottable.analysis.CompiledLootTable;
-import com.meteorite.unsuspiciousblock.loottable.analysis.FunctionEffectKind;
 import com.meteorite.unsuspiciousblock.loottable.analysis.FunctionFidelity;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandler.UncertaintyLevel;
@@ -267,12 +266,8 @@ public final class LootTableProjector {
             // 描述走统一入口，替代各 handler 直接给摘要；预览成功与否都保留描述
             LootFunctionInfo described = withFunctionConditions(
                     LootFunctionDescriptions.describe(functionId, function, functionObject), functionConditions);
-            // 空附魔映射对非书物品没有效果；书仍可能被原版转换成附魔书，不能一概隐藏。
-            if (ResourceLocation.withDefaultNamespace("set_enchantments").equals(functionId)
-                    && "empty".equals(described.metadata().get("enchantments"))
-                    && !previewStack.is(net.minecraft.world.item.Items.BOOK)
-                    && resolvedFunctions.stream().noneMatch(LootTableProjector::mayChangeBaseItem)) {
-                described = described.withMetadata(LootFunctionInfo.METADATA_DISPLAY_NO_OP, "true");
+            described = described.semantics().proveNoOp(described, previewStack, resolvedFunctions);
+            if (described.semantics().displayNoOp()) {
                 resolvedFunctions.add(described);
                 continue;
             }
@@ -299,8 +294,8 @@ public final class LootTableProjector {
                 if (!functionConditions.isEmpty()) {
                     // 函数条件无法在静态层证明：不预览，但描述与不确定性都要保留。
                     // 可选数量变化沿用结果身份；可选组件和变换则保守使用近似签名。
-                    functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
-                    if (uncertainSignature(described)) {
+                    functionUncertainty = stronger(functionUncertainty, described.semantics().failureUncertainty());
+                    if (described.semantics().affectsIdentity()) {
                         signatureUncertain = true;
                     }
                     continue;
@@ -310,17 +305,17 @@ public final class LootTableProjector {
                 if (result != null) {
                     previewStack = result;
                 } else {
-                    signatureUncertain |= uncertainSignature(described);
-                    functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
+                    signatureUncertain |= described.semantics().affectsIdentity();
+                    functionUncertainty = stronger(functionUncertainty, described.semantics().failureUncertainty());
                 }
                 LootResultSignature derived = handler.deriveSignature(
                         previewStack, currentItemId(previewStack));
                 if (derived != null) {
                     signature = derived;
                 }
-                if (handler.addsRandomness()) {
-                    signatureUncertain |= uncertainSignature(described);
-                    functionUncertainty = stronger(functionUncertainty, handler.uncertaintyLevel(function));
+                if (described.semantics().uncertainty() != UncertaintyLevel.NONE) {
+                    signatureUncertain |= described.semantics().affectsIdentity();
+                    functionUncertainty = stronger(functionUncertainty, described.semantics().failureUncertainty());
                 }
             } catch (RuntimeException exception) {
                 signatureUncertain = true;
@@ -381,24 +376,6 @@ public final class LootTableProjector {
         }
         return new LootFunctionInfo(info.functionType(), info.description(), info.fidelity(),
                 info.effect(), conditions, info.children(), info.metadata());
-    }
-
-    // 数量和已证明的空操作不改变身份；包装器递归检查子效果，未展开的节点保持保守。
-    private static boolean uncertainSignature(LootFunctionInfo info) {
-        if (info.effect() == FunctionEffectKind.COUNT
-                || "true".equals(info.metadata().get(LootFunctionInfo.METADATA_DISPLAY_NO_OP))) return false;
-        if (!info.effect().isWrapper() || info.children().isEmpty()
-                || info.fidelity() != FunctionFidelity.FULL) return true;
-        return info.children().stream().anyMatch(LootTableProjector::uncertainSignature);
-    }
-
-    // 前序变换存在时不能仅凭预览栈证明空附魔无效果：实际产物仍可能是普通书。
-    private static boolean mayChangeBaseItem(LootFunctionInfo info) {
-        if (info.effect() == FunctionEffectKind.ITEM_TRANSFORM || info.effect() == FunctionEffectKind.UNKNOWN) {
-            return true;
-        }
-        if (!info.effect().isWrapper()) return false;
-        return info.children().isEmpty() || info.children().stream().anyMatch(LootTableProjector::mayChangeBaseItem);
     }
 
     // 由结构化描述派生兼容提示；未解析说明连摘要都取不到，与旧 describeHint == null 的降级口径一致

@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -177,7 +178,7 @@ public final class JournalTooltipBuilder {
     private static List<LootFunctionInfo> displayFunctions(List<LootFunctionInfo> functions, int depth) {
         List<LootFunctionInfo> result = new ArrayList<>();
         for (LootFunctionInfo info : functions) {
-            if ("true".equals(info.metadata().get(LootFunctionInfo.METADATA_DISPLAY_NO_OP))) continue;
+            if (info.semantics().displayNoOp()) continue;
             boolean transparent = "minecraft".equals(info.functionType().getNamespace())
                     && ("sequence".equals(info.functionType().getPath())
                     || "reference".equals(info.functionType().getPath()))
@@ -452,8 +453,8 @@ public final class JournalTooltipBuilder {
             // 树枝前缀不再是 DARK_GRAY：它在深色 tooltip 背景上几乎不可见，而条件树正是"为什么没数字"的依据
             lines.add(Component.literal(prefix + branch).withStyle(TooltipBuilder.HINT).append(text));
 
-            if (!info.children().isEmpty()) {
-                appendConditionTree(lines, info.children(), prefix + childPrefix);
+            if (!ConditionTree.displayChildren(info).isEmpty()) {
+                appendConditionTree(lines, ConditionTree.displayChildren(info), prefix + childPrefix);
             }
         }
     }

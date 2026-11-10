@@ -73,9 +73,9 @@ unsuspiciousBlock-1.21.1-multi/
 
 平台入口在 `init()` 前后还要完成：
 
-- **注册**：遍历各 `ModXxx.forEach(registrar)` 清单（见 [注册架构](registration.md)）。
+- **注册**：`ModContent.register(Registrars)` 按依赖顺序遍历各 `ModXxx.forEach(registrar)` 清单（见 [注册架构](registration.md)）。
 - **事件接入**：Fabric 用 `*Callback.EVENT.register`，NeoForge 用 `@SubscribeEvent`。
-- **生命周期钩子**：服务器启动/停止、tick、chunk 生成、玩家登录等。
+- **生命周期钩子**：两端服务器 started/tick/stopped 事件统一转交 `bootstrap/ModServerLifecycle`。启动顺序为配置、玩家数据、worker、目录；停止先保存玩家数据，再停止 worker、失效目录、卸载配置及清理世界状态。chunk 与玩家事件仍由平台绑定。
 - **淘洗生成服务**：服务器 tick 与停止事件转交 `ShimmerSpawnService`，驱动淘洗点的自然生成（只投放水域变体）；世界生成通过统一的 `ShimmerFeature` 与两端群系注入接入原版地物阶段，介质由数据包里的变体 id 指定（见 [淘洗系统](../subsystems/panning.md)）。
 - **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立（见 [考古笔记系统](../subsystems/journal.md)）。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册（见 [战利品表系统](../subsystems/loottable.md)）。
@@ -83,7 +83,7 @@ unsuspiciousBlock-1.21.1-multi/
 
 ### 3.2 客户端初始化
 
-两个平台客户端入口职责高度对称，都完成：
+两个平台客户端入口通过 `client/ModClientLifecycle.install/tick/disconnect` 共用安装与连接状态序列。公共服务端入口不引用该客户端 Module。平台仍绑定以下原生相位：
 
 1. **按键绑定**注册（扫描模式切换、笔记、威慑切换、轻步切换）。
 2. **实体/方块实体渲染器**与**模型层**注册（遍历 `ModEntityRenderers` / `ModModelLayers` 清单）。

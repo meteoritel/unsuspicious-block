@@ -106,6 +106,8 @@ List<String> DEFAULT_ARCHAEOLOGY_PATH_PREFIXES = List.of(
 
 两端共享这些常量，确保校验与重置行为一致。这是 SPI 模式相对于 `@ExpectPlatform` 的一个实际收益：契约与约束可以集中表达。
 
+共享内容声明由 `bootstrap/ModContent` 显式接收两端 registrar Adapter，不进入 ServiceLoader。common 持有内容引用与菜单 Supplier，平台持有 DeferredRegister、Item 回写队列与实体属性事件；具体相位见 [注册架构](registration.md)。
+
 ## 4. 可选依赖的安全加载
 
 Trinkets、Curios、Artifacts 是**可选联动**：`common` 编译期引用其 API，但运行时可能不存在。直接 `import` 会导致主入口在依赖缺失时类加载失败。

@@ -42,6 +42,7 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     private static final int ITEM_GAP = 2;
 
     private final JournalBookBackground.BookLayout layout;
+    private long lastConnectionEpoch = Long.MIN_VALUE;
     private long lastLogRevision = Long.MIN_VALUE;
     private long lastCatalogRevision = Long.MIN_VALUE;
     private long lifetimeEntries;
@@ -146,9 +147,10 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     }
 
     private void refreshSnapshot() {
+        long epoch = ArchaeologyJournalClientState.getConnectionEpoch();
         long logRevision = ArchaeologyJournalClientState.getLogRevision();
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
-        if (logRevision == this.lastLogRevision && catalogRevision == this.lastCatalogRevision) {
+        if (epoch == this.lastConnectionEpoch && logRevision == this.lastLogRevision && catalogRevision == this.lastCatalogRevision) {
             return;
         }
 
@@ -185,18 +187,20 @@ public final class WelcomeStatsPanel implements UiInputTarget {
             this.latestItems = List.copyOf(itemStacks);
         }
 
+        this.lastConnectionEpoch = epoch;
         this.lastLogRevision = logRevision;
         this.lastCatalogRevision = catalogRevision;
     }
 
-    @Nullable
-    private static LatestEntry findLatestEntry(ArchaeologyJournalLogState logState) {
-        Comparator<ExcavationLogEntry> comparator = Comparator
+    private static final Comparator<ExcavationLogEntry> RECENCY = Comparator
                 .comparingLong(ExcavationLogEntry::lastUpdatedGameTime)
                 .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime)
                 .thenComparingLong(ExcavationLogEntry::createdGameTime)
                 .thenComparingLong(ExcavationLogEntry::createdDayTime)
                 .thenComparing(ExcavationLogEntry::entryId);
+
+    @Nullable
+    private static LatestEntry findLatestEntry(ArchaeologyJournalLogState logState) {
         LatestEntry latest = null;
         for (Map.Entry<ResourceLocation, ArchaeologyJournalLogState.TableLogHistory> table
             : logState.getTables().entrySet()) {
@@ -205,7 +209,7 @@ public final class WelcomeStatsPanel implements UiInputTarget {
                         && !table.getKey().equals(entry.tableStack().getFirst())) {
                     continue;
                 }
-                if (latest == null || comparator.compare(entry, latest.entry()) > 0) {
+                if (latest == null || RECENCY.compare(entry, latest.entry()) > 0) {
                     latest = new LatestEntry(table.getKey(), entry);
                 }
             }
