@@ -28,10 +28,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /** 右侧页面容器 —— 通过四枚书签 Tab 切换介绍信息/考古信息/日志/场景 */
 public final class RightPageContainer implements UiInputTarget {
-    public void prepareUi() { activePanel().prepareUi(); }
+    public void prepareUi() {
+        activePanel().prepareUi();
+        syncPageChrome();
+    }
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
         activePanel().renderControls(graphics, font, pointer);
     }
@@ -61,12 +65,14 @@ public final class RightPageContainer implements UiInputTarget {
     private final ScenarioDetailPanel scenarioDetailPanel;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
+    private final List<UiControl> pageControls;
     private final DetailOverlayPanel detailPanel;
     private final LogPanel logPanel;
     private final LogDetailPanel logDetailPanel;
     private final List<PageDescriptor> pages;
     private final List<UiControl> bookmarks;
     private final List<SavedPage> savedPages;
+    private boolean chromeAvailable;
 
     private record PageDescriptor(Tab tab, Supplier<PagePanel> content,
             int indicatorOffset, boolean alwaysIndicator, Runnable enter, Runnable leave, UiControl bookmark) {}
@@ -93,6 +99,13 @@ public final class RightPageContainer implements UiInputTarget {
             if (gridPanel.locateTarget(kind, target)) setActiveTab(Tab.ARCHAEOLOGY);
         }, () -> setActiveTab(Tab.ARCHAEOLOGY));
         this.pageIndicator = new PageIndicator(layout);
+        int pageCenterX = layout.rightPageX() + layout.rightPageWidth() / 2;
+        int pageButtonY = layout.rightPageY() + JournalLayout.GRID_PAGE_INDICATOR_Y;
+        this.pageControls = List.of(
+                JournalControls.page(pageCenterX - JournalLayout.PAGE_BUTTON_CENTER_GAP
+                        - JournalLayout.PAGE_BUTTON_WIDTH, pageButtonY, false, () -> changePage(-1)),
+                JournalControls.page(pageCenterX + JournalLayout.PAGE_BUTTON_CENTER_GAP,
+                        pageButtonY, true, () -> changePage(1)));
         this.detailPanel = new DetailOverlayPanel(layout);
         this.logPanel = new LogPanel(layout);
         this.logDetailPanel = new LogDetailPanel(layout);
@@ -114,7 +127,7 @@ public final class RightPageContainer implements UiInputTarget {
         this.savedPages = List.of(new SavedPage("intro", detailPanel), new SavedPage("grid", gridPanel),
                 new SavedPage("log", logPanel), new SavedPage("logDetail", logDetailPanel));
         syncBookmarks();
-        gridPanel.setActions(this::syncPageIndicator, target -> {
+        gridPanel.setActions(this::syncPageChrome, target -> {
             if (currentTableId != null) ScenarioRecommendationOverlay.open(
                     overlays, currentTableId, SimulationAssistTarget.childTable(target));
         });
@@ -171,7 +184,7 @@ public final class RightPageContainer implements UiInputTarget {
         this.currentTableId = tableId;
         this.scenarioPanel.setTable(tableId);
         this.scenarioDetailPanel.setTable(tableId);
-        syncPageIndicator();
+        syncPageChrome();
     }
 
     public void restoreLogSelection(@Nullable UUID entryId, boolean detailMode) {
@@ -186,21 +199,26 @@ public final class RightPageContainer implements UiInputTarget {
             this.selectedLogEntryId = null;
             this.logDetailPanel.setEntry(null, null);
         }
-        syncPageIndicator();
+        syncPageChrome();
     }
 
-    public List<UiControl> bookmarkControls() { return bookmarks; }
+    public List<UiControl> chromeControls() {
+        return Stream.concat(bookmarks.stream(), pageControls.stream()).toList();
+    }
 
-    public void setBookmarksAvailable(boolean available) {
+    public void setChromeAvailable(boolean available) {
+        this.chromeAvailable = available;
         bookmarks.forEach(bookmark -> {
             bookmark.setVisible(available);
             bookmark.setEnabled(available);
         });
+        pageControls.forEach(control -> control.setVisible(available));
         syncBookmarks();
+        syncPageChrome();
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        syncPageIndicator();
+        syncPageChrome();
         PagePanel panel = activePanel();
         panel.render(guiGraphics, font, mouseX, mouseY);
         // 指示器的可见性与位置由当前页描述决定。
@@ -258,11 +276,7 @@ public final class RightPageContainer implements UiInputTarget {
 
     private void loadPages(CompoundTag tag) {
         savedPages.forEach(saved -> saved.panel().setPage(tag.getInt(saved.key())));
-        syncPageIndicator();
-    }
-
-    public int pageIndicatorY() {
-        return layout.rightPageY() + activePage().indicatorOffset();
+        syncPageChrome();
     }
 
     public int pageCount() {
@@ -275,7 +289,7 @@ public final class RightPageContainer implements UiInputTarget {
 
     public void changePage(int delta) {
         activePanel().changePage(delta);
-        syncPageIndicator();
+        syncPageChrome();
     }
 
     public void setActiveTab(Tab tab) {
@@ -286,7 +300,7 @@ public final class RightPageContainer implements UiInputTarget {
         this.activeTab = tab;
         activePage().enter().run();
         syncBookmarks();
-        syncPageIndicator();
+        syncPageChrome();
     }
 
     // 捕获当前游戏刻作为时间分组参考，仅在切换到日志页或屏幕初始化时调用
@@ -302,14 +316,14 @@ public final class RightPageContainer implements UiInputTarget {
 
     public void setPage(int page) {
         activePanel().setPage(page);
-        syncPageIndicator();
+        syncPageChrome();
     }
 
 
 
     public void setActiveItemTag(@Nullable ResourceLocation tagId) {
         this.gridPanel.setActiveTag(tagId);
-        syncPageIndicator();
+        syncPageChrome();
     }
 
     public boolean isShowingLogDetail() {
@@ -346,14 +360,23 @@ public final class RightPageContainer implements UiInputTarget {
                 index -> ScenarioSimulationClientState.select(table, scenes.get(index).scenarioKey(), selection.params())));
     }
 
-    private void syncPageIndicator() {
-        this.pageIndicator.setTextY(pageIndicatorY());
+    private void syncPageChrome() {
+        int indicatorY = layout.rightPageY() + activePage().indicatorOffset();
+        this.pageIndicator.setTextY(indicatorY);
         PagePanel panel = activePanel();
         this.pageIndicator.setPage(panel.getPage(), panel.pageCount());
-    }
-
-    public ItemGridPanel.TooltipData getTooltipData(UiPointerHit hit) {
-        return activePanel().tooltip(hit);
+        int buttonY = indicatorY + (Minecraft.getInstance().font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
+        int centerX = layout.rightPageX() + layout.rightPageWidth() / 2;
+        pageControls.get(0).setBounds(centerX - JournalLayout.PAGE_BUTTON_CENTER_GAP
+                        - JournalLayout.PAGE_BUTTON_WIDTH, buttonY,
+                JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT);
+        pageControls.get(1).setBounds(centerX + JournalLayout.PAGE_BUTTON_CENTER_GAP, buttonY,
+                JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT);
+        boolean hasPages = chromeAvailable && panel.pageCount() > 1;
+        pageControls.get(0).setVisible(hasPages);
+        pageControls.get(1).setVisible(hasPages);
+        pageControls.get(0).setEnabled(hasPages && panel.getPage() > 0);
+        pageControls.get(1).setEnabled(hasPages && panel.getPage() < panel.pageCount() - 1);
     }
 
     /** 网格与场景栏共享一个 PagePanel；命中优先级与持续输入仍交现有 kit。 */
@@ -386,7 +409,6 @@ public final class RightPageContainer implements UiInputTarget {
         @Override public boolean keyReleased(int key, int scan, int modifiers) { return grid.keyReleased(key, scan, modifiers); }
         @Override public boolean charTyped(char value, int modifiers) { return grid.charTyped(value, modifiers); }
         @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return grid.mouseScrolled(context, x, y); }
-        @Override public ItemGridPanel.TooltipData tooltip(UiPointerHit hit) { return grid.tooltip(hit); }
         @Override public int pageCount() { return grid.pageCount(); }
         @Override public int getPage() { return grid.getPage(); }
         @Override public void setPage(int page) { grid.setPage(page); }

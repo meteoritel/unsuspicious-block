@@ -22,9 +22,9 @@
 
 `UiPointerHit` 是 tooltip 和 JEI 悬停查询的共同来源；查询前准备当前布局。模态、文本输入或持续捕获占用输入时，底层 JEI 物品查询返回空，提示也遵循当前作用域门禁。
 
-`RightPageContainer` 的局部 `PageDescriptor` 绑定稳定 Tab、活动内容、书签、指示器位置/可见性与进入/离开动作。Screen 遍历 `bookmarkControls()` 注册书签，通过 `setBookmarksAvailable` 同步可用性。新增右页时在同一描述列表接入内容与 chrome，领域导航仍由业务动作执行。
+`RightPageContainer` 的局部 `PageDescriptor` 绑定稳定 Tab、活动内容、书签、指示器位置/可见性与进入/离开动作。容器同时持有书签和翻页控件，通过 `chromeControls()` 交给 Screen 注册；Screen 只用 `setChromeAvailable` 控制分类首页等整体可见性。新增右页时在同一描述列表接入内容与 chrome，领域导航仍由业务动作执行。
 
-ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命中，焦点按网格再场景栏收集；普通输入继续复用现有 kit。LOG 的内容 Supplier 按 list/detail 模式选择实际面板。准备、绘制、控件、tooltip 与输入均经实际 PagePanel，分页调用面板的 `setPage/changePage`，由面板维护 dirty、页码范围与刷新。
+ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命中，焦点按网格再场景栏收集；普通输入继续复用现有 kit。LOG 的内容 Supplier 按 list/detail 模式选择实际面板。准备、绘制、控件、tooltip 与输入均经实际 PagePanel，分页调用面板的 `setPage/changePage`，由面板维护 dirty、页码范围与刷新；容器在同一准备阶段同步页码、指示器和翻页按钮。
 
 ## 2. 目录与追踪管理
 
@@ -43,13 +43,13 @@ ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命�
 
 ## 3. 网格、详情与日志
 
-`ItemGridPanel` 的绘制、提示和操作共用 `UiGridMetrics`。单元保留物品、tag、子表和返回入口的业务区分；留白、间隙和不满末行没有目标。物品、来源与预览使用 kit 局部物品层，装饰留在同一层，数量角标用前景层。卡片的颜色、纹理、概率解释和业务分页由宿主提供。
+`ItemGridPanel` 先按 tag、子表、直属物品形成逻辑序列，再切出当前页的 `visibleCells` 投影。绘制、提示、控件装配和命中都读取同一投影；单元保留物品、tag、子表和返回入口的业务区分，留白、间隙和不满末行没有目标。物品、来源与预览使用 kit 局部物品层，装饰留在同一层，数量角标用前景层。卡片的颜色、纹理、概率解释和业务分页由宿主提供。
 
 网格只展示当前表自身路径。普通物品卡片只读，不跳转场景或请求推荐。未发现物品只展示未知图标与“待解析”，tooltip 不透露物品、概率、声明触发率、区间或路径。已发现条目按“可适用状态 → 可展示的声明触发率 → 模拟值”显示：需要条件与未知只显示状态，零命中显示未命中，静态不可达才显示 `0%`。
 
 子表入口使用同一优先级链，条件来自服务端下发的 `ChildTableProbability.conditions`，客户端不重新推导注入边。tag 取本组成员、子表取其后代物品闭包；有成员已发现后才解锁名称、预览和概率。未解锁入口不泄露 ID、成员数和概率。子表预览只取已发现成员。子表物品不进入父表网格或父表物品搜索；Intro 递归映射后代，按物品签名去重，并读取父表自身发现记录。
 
-日志分页、分组、批选和选中 entry ID 由业务模型持有。`UiControlGroup` 复用日志行、复制和备注操作；富提示从行命中生成。详情物品区域在输入准备时生成几何，不依赖上一渲染帧。删除单条、本表及全部日志均通过 kit 确认，确认前无请求。
+日志分页、分组、批选和选中 entry ID 由业务模型持有。`UiControlGroup` 复用日志行、复制和备注操作；富提示从行命中生成。网格、介绍页和日志详情在物品命中时把已解析的 `ItemStack` 放入 `UiPointerHit.Row.key`，Screen 的 JEI 查询直接消费该行，不再通过坐标二次反查。详情物品区域在输入准备时生成几何，不依赖上一渲染帧。删除单条、本表及全部日志均通过 kit 确认，确认前无请求。
 
 `JournalLogNoteEditScreen` 和 `JournalLogRetentionScreen` 稳定持有编辑器与 scope，resize 只更新布局。备注保存按服务端的 500 UTF-16 单元上限校验，超限保留草稿并提示。自动保留值至少为 1，一次清理允许保留 0 条；数字解析和范围校验通过后才发送原 payload。保留设置正文滚动，完成按钮固定。返回笔记恢复子页打开前的阅读快照。
 
@@ -57,7 +57,7 @@ ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命�
 
 ## 4. 场景条件与文档动作
 
-`ScenarioPanel` 提供网格页头部的场景选择与显式计算；`ScenarioDetailPanel` 提供短场景名、状态、工具与参数读数、配置、计算、条件标题和放大入口。工具图标只读，不进入 Tab 序列。物品与概率统一留在网格。
+`ScenarioPanel` 提供网格页头部的场景选择与显式计算；`ScenarioDetailPanel` 提供短场景名、状态、工具与参数读数、配置、计算、条件标题和放大入口。场景详情页是单页连续阅读面，标题打开 `ScenarioSelectionOverlay`，方向键只浏览，点击或 Enter 激活后才调用选择入口；通用分页和条件区未消费的滚轮不提交场景。工具图标只读，不进入 Tab 序列。物品与概率统一留在网格。
 
 `ScenarioPageBuilder` 只从服务端场景及条件 DTO 构造条件树；假设与子表入口分组，保留逻辑、取反、目标、partial/unreadable 与不成立项展开。`ScenarioConditionLayout` 按字体和宽度产生视觉行，续行保留样式但不重复连线、图标与动作。
 
@@ -78,7 +78,7 @@ ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命�
 
 ## 6. 阅读状态与存储
 
-`UiStateSnapshot` 组合右页 `ReadingState`、目录工具栏、目录偏移和面板状态。右页通过 `captureReadingState/restoreReadingState` 统一保存/恢复 Tab、当前 tag、日志 list/detail、entry ID、批选和页号。根在 resize 和子页返回时恢复快照；重新投影会丢弃已失效的业务选择。窗口调整关闭临时场景浮层，未确认浮层草稿随之结束；独立编辑页面的稳定草稿保留。
+`UiStateSnapshot` 组合右页 `ReadingState`、目录工具栏、目录上下文、目录偏移和面板状态。目录工具栏以 `CatalogQueryState` 整组应用；捕获使用含防抖草稿的 `effectiveSearch()`，恢复时重新设置查询并清理旧草稿。右页通过 `captureReadingState/restoreReadingState` 统一保存/恢复 Tab、当前 tag、日志 list/detail、entry ID、批选和页号。根在 resize、子页返回和历史回退时使用同一恢复入口；重新投影会丢弃已失效的业务选择。窗口调整关闭临时场景浮层，未确认浮层草稿随之结束；独立编辑页面的稳定草稿保留。
 
 新面板实现 `LayoutAware` / `UiStateful`，在 `UiPanelRegistry` 注册。右页内部的页号绑定保留 `intro / grid / log / logDetail` NBT 键；场景面板继续由 UiPanelRegistry 序列化。场景条件滚动按 `tableId#inputKey` 保存，并使用有界缓存；旧结果分区字段忽略。
 

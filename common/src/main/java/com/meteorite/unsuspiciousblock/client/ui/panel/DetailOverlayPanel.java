@@ -269,7 +269,7 @@ public final class DetailOverlayPanel implements PagePanel {
     }
 
     // 返回介绍页当前悬停的已发现物品，供 JEI 配方/用法查询。
-    public Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
+    private Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
         int listY = listStartY(this.layout.rightPageY() + JournalLayout.INTRO_TOP
@@ -289,16 +289,18 @@ public final class DetailOverlayPanel implements PagePanel {
         return Optional.of(this.unlockedItems.get(itemIndex).item.stack());
     }
 
-    @Override
-    public ItemGridPanel.TooltipData tooltip(UiPointerHit hit) {
-        if (hit == null || !hit.owns(this)) return null;
-        ItemStack stack = getHoveredItemStack(hit.x(), hit.y()).orElse(ItemStack.EMPTY);
-        return stack.isEmpty() ? null : new ItemGridPanel.TooltipData(stack, null);
-    }
-
     @Override public UiPointerHit hitTest(double x, double y) {
         ItemStack stack = getHoveredItemStack(x, y).orElse(ItemStack.EMPTY);
-        return stack.isEmpty() ? null : UiPointerHit.leaf(this, x, y)
+        if (stack.isEmpty()) return null;
+        int leftX = this.layout.rightPageX() + 8;
+        int contentWidth = this.layout.rightPageWidth() - 20;
+        int listY = listStartY(this.layout.rightPageY() + JournalLayout.INTRO_TOP
+                + 14 + BAR_HEIGHT + 10);
+        int visibleIndex = UiRowMetrics.fixedRowIndex(y - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT,
+                maxVisibleItems(listY));
+        UiRect bounds = new UiRect(leftX, listY + visibleIndex * ITEM_ROW_HEIGHT,
+                contentWidth, ITEM_ROW_HEIGHT);
+        return UiPointerHit.leaf(this, x, y).withRow(this, visibleIndex, stack, bounds)
                 .withPresentation((g, font, px, py) -> g.renderTooltip(font, stack, px, py));
     }
 

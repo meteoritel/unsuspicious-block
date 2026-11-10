@@ -90,8 +90,11 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (cell == null) return null;
         UiPointerHit hit = controls.hitTest(x, y);
         if (hit == null) hit = UiPointerHit.leaf(this, x, y);
-        hit = hit.within(this).withRow(this, cell.index(), cell.key(), cell.bounds());
-        TooltipData data = tooltipData(cell);
+        ItemStack stack = cell.item() != null && cell.item().unlocked()
+                ? cell.item().stack() : ItemStack.EMPTY;
+        Object identity = stack.isEmpty() ? cell.key() : stack;
+        hit = hit.within(this).withRow(this, cell.index(), identity, cell.bounds());
+        TooltipData data = tooltipData(cell, stack);
         if (data != null) return hit.withPresentation((g, font, px, py) -> g.renderTooltip(font,
                 JournalTooltipBuilder.build(data), data.stack().getTooltipImage(), px, py));
         List<Component> lines = navigationTooltip(x, y);
@@ -122,19 +125,36 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         boolean back() { return content instanceof TagBack; }
     }
     private int visibleCellCount() {
-        if (activeTag != null) return 1 + Math.clamp(tagGroups.get(activeTag).members().size() - (long) page * TAG_GROUP_MEMBERS_PER_PAGE, 0, TAG_GROUP_MEMBERS_PER_PAGE);
-        return Math.clamp(tagGroups.size() + childTables.size() + directItems.size() - (long) page * JournalLayout.GRID_ITEMS_PER_PAGE, 0, JournalLayout.GRID_ITEMS_PER_PAGE);
+        return visibleCells.size();
     }
+
     private @Nullable GridCell cell(int index) {
-        if (index < 0 || index >= visibleCellCount()) return null;
-        UiRect r = cellBounds(index);
-        if (activeTag != null) return index == 0 ? new GridCell(index, r, new TagBack(activeTag))
-                : new GridCell(index, r, tagGroups.get(activeTag).members().get(page * TAG_GROUP_MEMBERS_PER_PAGE + index - 1));
-        int absolute = page * JournalLayout.GRID_ITEMS_PER_PAGE + index;
-        if (absolute < tagGroupView.size()) return new GridCell(index, r, tagGroupView.get(absolute));
-        absolute -= tagGroupView.size();
-        if (absolute < childTables.size()) return new GridCell(index, r, childTables.get(absolute));
-        return new GridCell(index, r, directItems.get(absolute - childTables.size()));
+        return index < 0 || index >= visibleCells.size() ? null : visibleCells.get(index);
+    }
+
+    private void rebuildVisibleCells() {
+        List<GridContent> pageContents = new ArrayList<>();
+        if (activeTag != null) {
+            TagGroup group = tagGroups.get(activeTag);
+            pageContents.add(new TagBack(activeTag));
+            if (group != null) {
+                int from = page * TAG_GROUP_MEMBERS_PER_PAGE;
+                int to = Math.min(group.members().size(), from + TAG_GROUP_MEMBERS_PER_PAGE);
+                pageContents.addAll(group.members().subList(from, to));
+            }
+        } else {
+            List<GridContent> allContents = new ArrayList<>(tagGroupView);
+            allContents.addAll(childTables);
+            allContents.addAll(directItems);
+            int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
+            int to = Math.min(allContents.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
+            pageContents.addAll(allContents.subList(from, to));
+        }
+        List<GridCell> cells = new ArrayList<>(pageContents.size());
+        for (int index = 0; index < pageContents.size(); index++) {
+            cells.add(new GridCell(index, cellBounds(index), pageContents.get(index)));
+        }
+        visibleCells = List.copyOf(cells);
     }
     private UiRect cellBounds(int index) {
         UiRect r = GRID.cellBounds(index);
@@ -153,6 +173,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (cell.back()) { activeTag = null; page = 0; }
         else if (cell.tag() != null) { activeTag = cell.tag().id(); page = 0; }
         else if (cell.child() != null) { navigationTarget = cell.child().tableId(); }
+        rebuildVisibleCells();
         resetHoverState();
         onNavigate.run();
     }
@@ -204,6 +225,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     // 绘制用的不可变条目视图：在 rebuildTagGroups 中随数据重建，逐帧只读，不再每帧 List.copyOf。
     private List<TagGroup> tagGroupView = List.of();
     private List<ResourceLocation> tagIdView = List.of();
+    private List<GridCell> visibleCells = List.of();
     private String locatedKind = "", locatedTarget = "";
     // 逐帧格子文案缓存：GridItem / ChildTableEntry 都是不可变数据，同一实例的文案只取决于语言资源实例。
     // 失效点：setTable（换表数据）或语言资源实例变化（整表重算）。
@@ -234,6 +256,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             this.activeTag = null;
         }
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        rebuildVisibleCells();
         resetHoverState();
     }
 
@@ -273,7 +296,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                         if (!entry.getValue().unlocked()) return false;
                         activeTag = entry.getKey();
                         setPage(position / TAG_GROUP_MEMBERS_PER_PAGE);
-                        resetHoverState();
                         return true;
                     }
                 }
@@ -282,7 +304,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (index < 0) return false;
         activeTag = null;
         setPage(index / JournalLayout.GRID_ITEMS_PER_PAGE);
-        resetHoverState();
         return true;
     }
 
@@ -300,6 +321,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int nextPage = Mth.clamp(page + delta, 0, Math.max(0, pageCount() - 1));
         if (nextPage != this.page) {
             this.page = nextPage;
+            rebuildVisibleCells();
             resetHoverState();
         }
     }
@@ -307,14 +329,17 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     public void resetPage() {
         this.page = 0;
         this.activeTag = null;
+        rebuildVisibleCells();
         resetHoverState();
     }
 
     // 直接设置页码（resize 后恢复用）
     public void setPage(int page) {
         int nextPage = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
-        if (nextPage != this.page) {
-            this.page = nextPage;
+        boolean changed = nextPage != this.page;
+        this.page = nextPage;
+        rebuildVisibleCells();
+        if (changed) {
             resetHoverState();
         }
     }
@@ -328,6 +353,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         this.activeTag = tagId != null && this.tagGroups.containsKey(tagId)
                 && this.tagGroups.get(tagId).unlocked() ? tagId : null;
         this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        rebuildVisibleCells();
         resetHoverState();
     }
 
@@ -355,53 +381,33 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int gridX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
         int gridY = layout.rightPageY() + JournalLayout.GRID_TOP;
 
-        int visibleEntryCount;
-        if (this.activeTag != null) {
-            TagGroup group = this.tagGroups.get(this.activeTag);
-            List<GridItem> members = group != null ? group.members() : List.of();
-            int from = page * TAG_GROUP_MEMBERS_PER_PAGE;
-            int to = Math.min(members.size(), from + TAG_GROUP_MEMBERS_PER_PAGE);
-            boolean backHovered = isMouseOverCell(gridX, gridY, mouseX, mouseY);
-            updateHoverState(0, backHovered);
-            renderTagBackCell(guiGraphics, font, gridX, gridY,
-                    backHovered, this.activeTag, slotScrollTicks[0]);
-            for (int i = from; i < to; i++) {
-                int visualIndex = i - from + 1;
-                renderVisibleItem(guiGraphics, font, gridX, gridY, visualIndex,
-                        members.get(i), mouseX, mouseY);
-            }
-            visibleEntryCount = to - from + 1;
-        } else {
-            int groupCount = this.tagGroups.size();
-            int childCount = this.childTables.size();
-            int entryCount = groupCount + childCount + this.directItems.size();
-            int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
-            int to = Math.min(entryCount, from + JournalLayout.GRID_ITEMS_PER_PAGE);
-            List<TagGroup> groups = this.tagGroupView;
-            for (int i = from; i < to; i++) {
-                int visualIndex = i - from;
-                int cellX = cellX(gridX, visualIndex);
-                int cellY = cellY(gridY, visualIndex);
-                boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
-                updateHoverState(visualIndex, hovered);
-                if (i < groupCount) {
-                    renderTagGroupCell(guiGraphics, font, cellX, cellY,
-                            groups.get(i), hovered, slotScrollTicks[visualIndex]);
-                    renderLocation(guiGraphics, cellX, cellY, "tag", groups.get(i).id().toString());
-                } else if (i < groupCount + childCount) {
-                    renderChildTableCell(guiGraphics, font, cellX, cellY,
-                            this.childTables.get(i - groupCount), hovered,
-                            slotScrollTicks[visualIndex]);
-                    renderLocation(guiGraphics, cellX, cellY, "table", this.childTables.get(i - groupCount).tableId().toString());
-                } else {
-                    renderItemCell(guiGraphics, font, cellX, cellY,
-                            this.directItems.get(i - groupCount - childCount), hovered,
-                            slotScrollTicks[visualIndex]);
-                    renderLocation(guiGraphics, cellX, cellY, "item", this.directItems.get(i - groupCount - childCount).signature().toStoredKey());
+        for (GridCell cell : visibleCells) {
+            int visualIndex = cell.index();
+            int cellX = cell.bounds().x();
+            int cellY = cell.bounds().y();
+            boolean hovered = cell.bounds().contains(mouseX, mouseY);
+            updateHoverState(visualIndex, hovered);
+            switch (cell.content()) {
+                case TagBack back -> renderTagBackCell(guiGraphics, font, cellX, cellY,
+                        hovered, back.tagId(), slotScrollTicks[visualIndex]);
+                case TagGroup tag -> {
+                    renderTagGroupCell(guiGraphics, font, cellX, cellY, tag,
+                            hovered, slotScrollTicks[visualIndex]);
+                    renderLocation(guiGraphics, cellX, cellY, "tag", tag.id().toString());
+                }
+                case ChildTableEntry child -> {
+                    renderChildTableCell(guiGraphics, font, cellX, cellY, child,
+                            hovered, slotScrollTicks[visualIndex]);
+                    renderLocation(guiGraphics, cellX, cellY, "table", child.tableId().toString());
+                }
+                case GridItem item -> {
+                    renderItemCell(guiGraphics, font, cellX, cellY, item,
+                            hovered, slotScrollTicks[visualIndex]);
+                    renderLocation(guiGraphics, cellX, cellY, "item", item.signature().toStoredKey());
                 }
             }
-            visibleEntryCount = to - from;
         }
+        int visibleEntryCount = visibleCells.size();
 
         // 行间分隔线
         int visibleRows = (visibleEntryCount + JournalLayout.GRID_CELLS_PER_ROW - 1)
@@ -410,16 +416,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             int sepY = gridY + r * JournalLayout.GRID_CELL_HEIGHT;
             guiGraphics.fill(gridX, sepY, gridX + gridWidth, sepY + 1, JournalLayout.GRID_SEPARATOR_COLOR);
         }
-    }
-
-    private void renderVisibleItem(GuiGraphics guiGraphics, Font font, int gridX, int gridY,
-                                   int visualIndex, GridItem item, int mouseX, int mouseY) {
-        int cellX = cellX(gridX, visualIndex);
-        int cellY = cellY(gridY, visualIndex);
-        boolean hovered = isMouseOverCell(cellX, cellY, mouseX, mouseY);
-        updateHoverState(visualIndex, hovered);
-        renderItemCell(guiGraphics, font, cellX, cellY, item, hovered, slotScrollTicks[visualIndex]);
-        renderLocation(guiGraphics, cellX, cellY, "item", item.signature().toStoredKey());
     }
 
     private void renderLocation(GuiGraphics graphics, int cellX, int cellY, String kind, String target) {
@@ -698,13 +694,12 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         };
     }
 
-    @Override public TooltipData tooltip(UiPointerHit hit) { return hit == null || !hit.owns(this) ? null : tooltipData(cell(hit.rowIndex(this))); }
-    private TooltipData tooltipData(@Nullable GridCell cell) {
+    private TooltipData tooltipData(@Nullable GridCell cell, ItemStack stack) {
         if (cell == null || cell.item() == null) return null;
         GridItem item = cell.item();
         if (!item.unlocked()) return new TooltipData(ItemStack.EMPTY, null, -1, null, List.of(), false,
                 LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0, null, null, null);
-        return new TooltipData(item.stack(), item.tooltipHint(), item.count(), item.probability(), item.acquisitionPaths(),
+        return new TooltipData(stack, item.tooltipHint(), item.count(), item.probability(), item.acquisitionPaths(),
                 item.injected(), item.uncertaintyLevel(), true, item.scenarioProbabilities(), item.declaredChances(),
                 item.simulationCount(), item.observedFunctions(), item.displayName(), item.signature());
     }
@@ -799,19 +794,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         controlsDirty = true;
         Arrays.fill(this.slotScrollTicks, 0);
         Arrays.fill(this.slotWasHovered, false);
-    }
-
-    private static int cellX(int gridX, int visualIndex) {
-        return gridX + GRID.cellBounds(visualIndex).x();
-    }
-
-    private static int cellY(int gridY, int visualIndex) {
-        return gridY + GRID.cellBounds(visualIndex).y();
-    }
-
-    private static boolean isMouseOverCell(int cellX, int cellY, double mouseX, double mouseY) {
-        return mouseX >= cellX && mouseX < cellX + JournalLayout.GRID_CELL_WIDTH
-                && mouseY >= cellY && mouseY < cellY + JournalLayout.GRID_CELL_HEIGHT;
     }
 
     /**

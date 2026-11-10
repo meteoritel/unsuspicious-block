@@ -86,7 +86,7 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 - **连接数据**：`ConnectionState` 持有目录、结构、进度、哈希与同步标记；连接切换整体替换。`JournalClientConnection` 持有原连接、epoch 和 JournalMirror，tick 加载偏好后应用同连接报文；平台回调只入队。
 - **同步处理**：`receiveCatalogHash` 与本地比对，不一致则请求全量目录；`receiveState`（全量）**首次同步不弹 Toast**（避免重进世界重复通知），后续检测新解锁；`receiveStateIncremental`（增量）做**间隙检测**——`incomingRevision > lastNotifiedRevision + 1` 说明中间丢包，请求全量重同步，仅对变更表做 Diff；`requestFullStateWithCooldown` 限流 2s 防请求风暴。
 - **解锁通知**：`tableUnlockNotifier` / `itemUnlockNotifier` / `tableCompletionNotifier` 是回调接口，由平台客户端注入（桥接到 `JournalUnlockToast`），解耦状态层与 UI 层；`detectAndNotifyUnlocks` 比较新旧状态，**仅对追踪目录中的表**触发。
-- **右页组合**：`RightPageContainer` 的页描述统一内容、书签和 chrome；`ArchaeologyPage` 组合网格与场景栏，LOG 按业务模式解析内容。Screen 通过统一书签入口和 `ReadingState` 保存/恢复接线；分页失效仍由面板处理，扩展路线见 [笔记 GUI](../internals/journal-ui-internals.md)。
+- **右页组合**：`RightPageContainer` 的页描述统一内容、书签和 chrome，并持有 `chromeControls()` 返回的实际控件；`ArchaeologyPage` 组合网格与场景栏，LOG 按业务模式解析内容。Screen 通过统一 chrome 注册和 `ReadingState` 保存/恢复接线；分页状态仍由活动面板维护，扩展路线见 [笔记 GUI](../internals/journal-ui-internals.md)。
 - **世界偏好**：`WorldPreferences` 持有排序、搜索、收藏、分组、右页与运行期目录选择。切换先冻结旧路径待写，再替换默认值并加载新路径；无文件时保留默认值。应用级 notifier 与失效计数保留；`persistenceSuppress` 只用于加载。
 - **读取与保存**：getter 读取内存或保护性副本；正常加载、协议推进、超时与落盘仅在客户端 tick，退出/关闭时显式 flush。目录投影版本由目录与场景 revision 单向合成；ViewModel 和 WelcomeStatsPanel 同时识别连接 epoch，按版本复制日志。
 
@@ -94,9 +94,9 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 `client/ui/` 按职责分层（`entry/` `layout/` `panel/` `screen/` `support/` `toast/` `widget/` `tooltip/` `overlay/` `theme/`）。**分层职责、追踪管理页、网格页展示优先级链、文本配色约束、声明式 UI kit 契约、场景详情页与模态交互、面板状态与偏好持久化见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。**
 
-场景详情页只展示条件树，按场景假设与子表入口分组，在独立滚动视图中阅读，复杂内容可进入灯箱；物品和概率统一由网格页展示。未发现物品只显示占位状态，tooltip 不泄露概率或路径，普通物品卡片不提供点击跳转。场景列表显示短名、状态与摘要，浏览后显式激活选择；参数提供“仅应用”和“应用并计算”。机制细节以内部文档为准。
+场景详情页只展示条件树，按场景假设与子表入口分组，在独立滚动视图中阅读，复杂内容可进入灯箱；物品和概率统一由网格页展示。未发现物品只显示占位状态，tooltip 不泄露概率或路径，普通物品卡片不提供点击跳转。场景详情标题打开场景选择列表，浏览后显式激活选择；详情页通用分页不提交场景，条件区滚轮只阅读；参数提供“仅应用”和“应用并计算”。机制细节以内部文档为准。
 
-新增面板在 `panel/` 实现，由 `screen/` 的实际 `UiChildren` 装配；布局与持久化按需接 `LayoutAware` / `UiStateful`。控件、滚动、焦点、模态与灯箱直接消费独立 kit API，`JournalControls` 只提供宿主资源和皮肤。`ArchaeologyJournalScreen` 的唯一 router 选择当前顶层 scope，tooltip 与 JEI 共用命中结果。管理页动作与文件校验仍在 `LootTableManagementActions` / `LootTableImportValidator`。接入契约见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)，业务与状态口径见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。
+新增面板在 `panel/` 实现，由 `screen/` 的实际 `UiChildren` 装配；布局与持久化按需接 `LayoutAware` / `UiStateful`。控件、滚动、焦点、模态与灯箱直接消费独立 kit API，`JournalControls` 只提供宿主资源和皮肤。`ArchaeologyJournalScreen` 的唯一 router 选择当前顶层 scope，tooltip 与 JEI 共用命中结果，命中的物品身份通过 `UiPointerHit.Row` 传递。管理页动作与文件校验仍在 `LootTableManagementActions` / `LootTableImportValidator`。接入契约见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)，业务与状态口径见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)。
 
 ## 7. HUD
 

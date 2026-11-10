@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.panel.LogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
@@ -56,22 +56,22 @@ public class LogToolbar {
     // —— 事件处理 ——
 
     /** 切换日志排序方向 */
-    public void toggleSortDirection(RightPageContainer rightPage) {
+    public void toggleSortDirection(LogPanel logPanel) {
         this.sortDescending = !this.sortDescending;
-        rightPage.getLogPanel().setSortDescending(this.sortDescending);
+        logPanel.setSortDescending(this.sortDescending);
         if (this.sortDirBtn != null) {
             JournalControls.configureIcon(sortDirBtn, sortDirectionIcon(sortDescending),
-                    sortDirectionTooltip(sortDescending), () -> toggleSortDirection(rightPage));
+                    sortDirectionTooltip(sortDescending), () -> toggleSortDirection(logPanel));
         }
     }
 
     /** 循环切换分组方式 */
-    public void cycleGroupMode(RightPageContainer rightPage) {
+    public void cycleGroupMode(LogPanel logPanel) {
         this.groupMode = this.groupMode.next();
-        rightPage.getLogPanel().setGroupMode(this.groupMode);
+        logPanel.setGroupMode(this.groupMode);
         if (this.groupBtn != null) {
             JournalControls.configureIcon(groupBtn, groupModeIcon(groupMode),
-                    LogGrouper.groupModeTooltip(groupMode), () -> cycleGroupMode(rightPage));
+                    LogGrouper.groupModeTooltip(groupMode), () -> cycleGroupMode(logPanel));
         }
     }
 
@@ -105,9 +105,11 @@ public class LogToolbar {
      * visible 由 {@link #syncVisibility} 控制。
      */
     public void createWidgets(ArchaeologyJournalScreen screen, JournalBookBackground.BookLayout bookLayout,
-                              RightPageContainer rightPage,
+                              LogPanel logPanel,
                               Runnable onOpenRetention, Runnable onToggleBatch, Runnable onExecuteBatch,
                               Runnable onClearTable, Runnable onClearAll) {
+        logPanel.setSortDescending(this.sortDescending);
+        logPanel.setGroupMode(this.groupMode);
         this.onToggleBatch = onToggleBatch;
         this.toolbarButtons.clear();
         int logToolbarY = bookLayout.rightPageY() + JournalLayout.LOG_LIST_LABEL_Y
@@ -122,7 +124,7 @@ public class LogToolbar {
                 JournalLayout.LOG_SORT_ICON_SIZE,
                 sortDirectionIcon(this.sortDescending),
                 sortDirectionTooltip(this.sortDescending),
-                () -> toggleSortDirection(rightPage));
+                () -> toggleSortDirection(logPanel));
         registerToolbarButton(screen, this.sortDirBtn);
 
         // 分组按钮
@@ -133,7 +135,7 @@ public class LogToolbar {
                 JournalLayout.LOG_GROUP_ICON_SIZE,
                 groupModeIcon(this.groupMode),
                 LogGrouper.groupModeTooltip(this.groupMode),
-                () -> cycleGroupMode(rightPage));
+                () -> cycleGroupMode(logPanel));
         registerToolbarButton(screen, this.groupBtn);
 
         // 清空操作与右侧视图设置排成一行。

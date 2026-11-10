@@ -63,19 +63,13 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
             renderTooltipSlots.add(new IconSlot(layout.rightPageX() + 8 + pad + r.x(), gridTop + r.y(), cachedLoot.get(i)));
         }
     }
-    @Override
-    public ItemGridPanel.TooltipData tooltip(UiPointerHit hit) {
-        if (hit == null || !hit.owns(this)) return null;
-        ItemStack stack = getTooltipStack(hit.x(), hit.y());
-        return stack == null ? null : new ItemGridPanel.TooltipData(stack, null);
-    }
-
     @Override public UiPointerHit hitTest(double x, double y) {
         UiPointerHit hit = contentControls.hitTest(x, y);
         if (hit != null) return hit.within(this);
-        ItemStack stack = getTooltipStack(x, y);
-        if (stack != null) return UiPointerHit.leaf(this, x, y).withPresentation((g, font, px, py) ->
-                g.renderTooltip(font, stack, px, py));
+        IconSlot slot = findTooltipSlot(x, y);
+        if (slot != null) return UiPointerHit.leaf(this, x, y)
+                .withRow(this, 0, slot.entry().stack(), new UiRect(slot.x(), slot.y(), ICON_SIZE, ICON_SIZE))
+                .withPresentation((g, font, px, py) -> g.renderTooltip(font, slot.entry().stack(), px, py));
         return null;
     }
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) { copyButton.render(graphics, font, pointer); }
@@ -235,12 +229,11 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                 this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
-    // 悬停时才从展示条目取栈：渲染路径不再为每个图标复制 ItemStack（P-11）
     @Nullable
-    public ItemStack getTooltipStack(double mouseX, double mouseY) {
+    private IconSlot findTooltipSlot(double mouseX, double mouseY) {
         for (IconSlot slot : this.renderTooltipSlots) {
             if (slot.contains(mouseX, mouseY)) {
-                return slot.entry().stack();
+                return slot;
             }
         }
         return null;

@@ -123,8 +123,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         return table == null ? null : ScenarioSimulationClientState.selection(table);
     }
 
-    @Override public int pageCount() { return Math.max(1, scenes().size()); }
-    @Override public int getPage() {
+    private int selectedSceneIndex() {
         var selected = selection();
         List<CatalogTableDto.ScenarioAssumptions> scenes = scenes();
         if (selected != null) for (int i = 0; i < scenes.size(); i++) {
@@ -133,15 +132,18 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         return 0;
     }
 
-    @Override public void setPage(int page) {
+    private void selectSceneAt(int index) {
         var selected = selection();
         var scenes = scenes();
         if (table == null || selected == null || scenes.isEmpty()) return;
-        saveCurrentPosition();
-        ScenarioSimulationClientState.select(table, scenes.get(Math.clamp(page, 0, scenes.size() - 1)).scenarioKey(),
+        ScenarioSimulationClientState.select(table, scenes.get(Math.clamp(index, 0, scenes.size() - 1)).scenarioKey(),
                 selected.params());
     }
-    @Override public void changePage(int delta) { setPage(getPage() + delta); }
+
+    @Override public int pageCount() { return 1; }
+    @Override public int getPage() { return 0; }
+    @Override public void setPage(int page) { }
+    @Override public void changePage(int delta) { }
 
     private void sync(Font font) {
         if (table != null) ScenarioSimulationClientState.ensureCacheQuery(table);
@@ -236,7 +238,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         title.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextPalette.Parchment.TITLE,
                 ScenarioUi.icon(ScenarioUi.Icon.DOWN), titleTooltip, () ->
                         overlays.open(new ScenarioSelectionOverlay(overlays, currentTable,
-                                options, choice.params(), getPage(), this::setPage)));
+                                options, choice.params(), selectedSceneIndex(), this::selectSceneAt)));
 
         Component toolName = Component.literal(choice.params().toolId().toString());
         for (var tool : options.tools()) {

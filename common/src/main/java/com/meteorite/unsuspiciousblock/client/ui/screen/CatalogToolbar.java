@@ -54,10 +54,6 @@ public class CatalogToolbar {
 
     // —— 状态访问器 ——
 
-    public JournalSearchQuery currentSearch() {
-        return currentSearch;
-    }
-
     public CatalogSorter.SortOrder currentSortOrder() {
         return currentSortOrder;
     }
@@ -119,6 +115,11 @@ public class CatalogToolbar {
     public JournalSearchQuery effectiveSearch() {
         return this.pendingSearchText == null
                 ? this.currentSearch : JournalSearchQuery.parse(this.pendingSearchText);
+    }
+
+    CatalogQueryState queryState() {
+        return new CatalogQueryState(this.effectiveSearch().rawQuery(), this.currentSortOrder,
+                this.sortDescending, this.hideLocked);
     }
 
     /** 防抖到点才提交搜索输入；由宿主逐帧调用 */

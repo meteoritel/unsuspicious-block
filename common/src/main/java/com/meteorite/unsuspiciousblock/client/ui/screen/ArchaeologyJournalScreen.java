@@ -21,7 +21,6 @@ import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
-import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
@@ -86,8 +85,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     /** 模态浮层：打开期间接管全部输入，是本页面唯一的浮层来源。 */
     private final JournalOverlays overlays = new JournalOverlays();
     private WelcomeStatsPanel welcomeStatsPanel;
-    private UiControl itemPrevButton;
-    private UiControl itemNextButton;
     private List<UiControl> externalLinkButtons = List.of();
     private int categoryFocusIndex;
     private int restoredCatalogScrollOffset;
@@ -106,6 +103,11 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private record NavigationState(@Nullable ResourceLocation table, String scene, UiStateSnapshot view,
                                    boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {}
 
+    private record NavigationKey(@Nullable ResourceLocation table, String scene, boolean home,
+                                 @Nullable ResourceLocation category, RightPageContainer.Tab tab,
+                                 boolean logDetail, @Nullable UUID logEntryId,
+                                 @Nullable ResourceLocation activeItemTag) {}
+
     private NavigationState navigationState() {
         ResourceLocation table = viewModel.selectedTableId();
         var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
@@ -116,12 +118,14 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void rememberNavigation(NavigationState before) {
         NavigationState after = navigationState();
         if (before == null || after == null) return;
-        if (!Objects.equals(before.table(), after.table()) || before.home() != after.home()
-                || !Objects.equals(before.category(), after.category()) || !before.scene().equals(after.scene())
-                || before.view().rightPage().tab() != after.view().rightPage().tab() || before.view().rightPage().logDetail() != after.view().rightPage().logDetail()
-                || !Objects.equals(before.view().rightPage().logEntryId(), after.view().rightPage().logEntryId())
-                || !Objects.equals(before.view().rightPage().activeItemTag(), after.view().rightPage().activeItemTag())) history.push(before);
+        if (!navigationKey(before).equals(navigationKey(after))) history.push(before);
         if (backButton != null) backButton.setEnabled(history.canGoBack(this::validNavigation));
+    }
+
+    private static NavigationKey navigationKey(NavigationState state) {
+        RightPageContainer.ReadingState reading = state.view().rightPage();
+        return new NavigationKey(state.table(), state.scene(), state.home(), state.category(), reading.tab(),
+                reading.logDetail(), reading.logEntryId(), reading.activeItemTag());
     }
 
     private boolean validNavigation(NavigationState state) {
@@ -131,28 +135,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private void goBack() {
-        history.back(this::validNavigation, state -> {
-            var snapshot = state.view();
-            catalogToolbar.setCurrentSearch(snapshot.catalogSearch());
-            catalogToolbar.setSearchExpanded(snapshot.catalogSearchExpanded());
-            catalogToolbar.setHideLocked(snapshot.catalogHideLocked());
-            catalogToolbar.setCurrentSortOrder(snapshot.catalogSortOrder());
-            catalogToolbar.setSortDescending(snapshot.catalogSortDescending());
-            viewModel.restoreDirectoryState(state.home(), state.category(), state.expanded());
-            rebuildViewModels();
-            if (state.table() != null) setSelectedTable(state.table());
-            var choice = ScenarioSimulationClientState.selection(state.table());
-            if (choice != null && !state.scene().isEmpty())
-                ScenarioSimulationClientState.select(state.table(), state.scene(), choice.params());
-            logToolbar.setSortDescending(snapshot.logSortDescending());
-            logToolbar.setGroupMode(snapshot.groupMode());
-            rightPage.getLogPanel().setSortDescending(snapshot.logSortDescending());
-            rightPage.getLogPanel().setGroupMode(snapshot.groupMode());
-            rightPage.restoreReadingState(snapshot.rightPage());
-            panels.loadUiState(snapshot.panelStates());
-            catalogPanel.setScrollOffset(snapshot.catalogScrollOffset());
-            syncButtonState();
-        });
+        history.back(this::validNavigation, state -> restoreUiState(state.view()));
     }
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
@@ -183,7 +166,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             JournalSearchQuery search = JournalSearchQuery.forItemId(this.initialItemSearch);
             this.catalogToolbar.setCurrentSearch(search);
             this.catalogToolbar.setSearchExpanded(true);
-            this.viewModel.setCurrentSearch(search);
+            this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
         }
 
         this.viewModel.reloadCatalog();
@@ -193,7 +176,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 ArchaeologyJournalClientState.getExpandedDirectoryTables());
         this.categoryFocusIndex = ArchaeologyJournalClientState.getLastCategoryFocus();
         this.restoredCatalogScrollOffset = ArchaeologyJournalClientState.getLastDirectoryPage();
-        this.viewModel.rebuildViewModels(this.rightPage, null);
+        this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
+        this.viewModel.rebuildViewModels(null);
         this.viewModel.initRevisions();
         this.rebuildWidgets();
         this.panels.loadUiState(JournalUiPreferencesStore.getPanelStates());
@@ -402,26 +386,32 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private void restoreUiState(UiStateSnapshot snapshot) {
-        this.updateItemGridPanel();
-
-        // 恢复日志排序状态
         this.logToolbar.setSortDescending(snapshot.logSortDescending());
         this.logToolbar.setGroupMode(snapshot.groupMode());
         this.rightPage.getLogPanel().setSortDescending(this.logToolbar.sortDescending());
-        this.rightPage.getLogPanel().setGroupMode(snapshot.groupMode());
+        this.rightPage.getLogPanel().setGroupMode(this.logToolbar.groupMode());
 
-        // 恢复目录搜索/排序状态
         this.catalogToolbar.setCurrentSortOrder(snapshot.catalogSortOrder());
         this.catalogToolbar.setSortDescending(snapshot.catalogSortDescending());
         this.catalogToolbar.setCurrentSearch(snapshot.catalogSearch());
         this.catalogToolbar.setSearchExpanded(snapshot.catalogSearchExpanded());
         this.catalogToolbar.setHideLocked(snapshot.catalogHideLocked());
+        this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
+        this.viewModel.restoreDirectoryState(snapshot.home(), snapshot.category(), snapshot.expanded());
+        this.rebuildViewModels();
+        if (snapshot.table() != null) {
+            setSelectedTable(snapshot.table());
+            var choice = ScenarioSimulationClientState.selection(snapshot.table());
+            if (choice != null && !snapshot.scene().isEmpty()) {
+                ScenarioSimulationClientState.select(snapshot.table(), snapshot.scene(), choice.params());
+            }
+        }
 
         this.rebuildWidgets();
         this.rightPage.restoreReadingState(snapshot.rightPage());
         this.panels.loadUiState(snapshot.panelStates());
-        // 仅在第一次 init 之后的 reposition 中恢复目录滚动位置。
-        if (this.catalogPanel != null && snapshot.catalogScrollOffset() > 0) {
+        this.categoryFocusIndex = snapshot.categoryFocusIndex();
+        if (this.catalogPanel != null) {
             this.catalogPanel.setScrollOffset(snapshot.catalogScrollOffset());
         }
         this.syncButtonState();
@@ -464,13 +454,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         // 搜索输入防抖：到点才提交一次，避免逐字符重建整份目录投影
         this.catalogToolbar.flushPendingSearchIfDue();
         if (this.viewModel.refreshIfNeeded()) {
-            this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
-            this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
-            this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
-            this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
-            this.viewModel.setHideLocked(this.catalogToolbar.hideLocked());
-            this.viewModel.setCurrentSearch(this.catalogToolbar.effectiveSearch());
-            this.viewModel.rebuildViewModels(this.rightPage, this.catalogPanel);
+            this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
+            this.viewModel.rebuildViewModels(this.catalogPanel);
             this.updateItemGridPanel();
             this.syncButtonState();
         }
@@ -662,8 +647,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.rebuildViewModels(false);
         this.widgets.clear();
 
-        // 分组首页发起搜索时只刷新 ViewModel，因此书签必须预先注册，再通过可见性同步状态。
-        this.rightPage.bookmarkControls().forEach(this::registerWidget);
+        // 右页 chrome 由容器统一持有，根只注册实际控件。
+        this.rightPage.chromeControls().forEach(this::registerWidget);
 
         // 目录工具栏
         boolean categoryHomeMode = this.viewModel.isCategoryHomeMode();
@@ -701,25 +686,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
                     }));
         }
 
-        int buttonWidth = JournalLayout.PAGE_BUTTON_WIDTH;
-        int buttonGap = JournalLayout.PAGE_BUTTON_CENTER_GAP;
-
-        int itemIndicatorCenterX = this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() / 2;
-        int itemBottomY = this.rightPage.pageIndicatorY()
-                + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
-        this.itemPrevButton = this.registerWidget(
-                createPageButton(itemIndicatorCenterX - buttonGap - buttonWidth, itemBottomY, false,
-                        () -> {
-                            this.rightPage.changePage(-1);
-                            this.syncButtonState();
-                        }));
-        this.itemNextButton = this.registerWidget(
-                createPageButton(itemIndicatorCenterX + buttonGap, itemBottomY, true,
-                        () -> {
-                            this.rightPage.changePage(1);
-                            this.syncButtonState();
-                        }));
-
         if (this.catalogPanel == null) this.catalogPanel = new CatalogPanel(this.bookLayout);
         else this.catalogPanel.applyLayout(this.bookLayout);
         this.catalogPanel.setNavigation(this::handleCatalogNavigation);
@@ -736,7 +702,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.restoredCatalogScrollOffset = 0;
 
         // 日志工具栏
-        this.logToolbar.createWidgets(this, this.bookLayout, this.rightPage,
+        this.logToolbar.createWidgets(this, this.bookLayout, this.rightPage.getLogPanel(),
                 this::openLogRetentionConfig, this::toggleBatchSelection, this::confirmDeleteSelectedEntries,
                 this::confirmClearCurrentTableLogs, this::confirmClearAllLogs);
 
@@ -839,15 +805,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     // syncCatalogPanel=false 供 rebuildWidgets 使用：目录面板紧接着会被新实例替换，无需先装配旧实例
     private void rebuildViewModels(boolean syncCatalogPanel) {
-        // 同步日志工具栏状态到 ViewModel，避免 rebuildViewModels 覆盖
-        this.viewModel.setLogSortDescending(this.logToolbar.sortDescending());
-        this.viewModel.setCurrentGroupMode(this.logToolbar.groupMode());
         // 同步目录工具栏状态到 ViewModel（含防抖窗口内尚未提交的搜索草稿）
-        this.viewModel.setCurrentSortOrder(this.catalogToolbar.currentSortOrder());
-        this.viewModel.setSortDescending(this.catalogToolbar.sortDescending());
-        this.viewModel.setHideLocked(this.catalogToolbar.hideLocked());
-        this.viewModel.setCurrentSearch(this.catalogToolbar.effectiveSearch());
-        this.viewModel.rebuildViewModels(this.rightPage, syncCatalogPanel ? this.catalogPanel : null);
+        this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
+        this.viewModel.rebuildViewModels(syncCatalogPanel ? this.catalogPanel : null);
         updateItemGridPanel();
         syncButtonState();
     }
@@ -907,10 +867,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         syncButtonState();
     }
 
-    private UiControl createPageButton(int x, int y, boolean forward, Runnable action) {
-        return JournalControls.page(x, y, forward, action);
-    }
-
     public <T extends UiWidget> T registerWidget(T widget) {
         widgets.add(widget);
         return widget;
@@ -918,17 +874,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private void syncButtonState() {
         if (backButton != null) backButton.setEnabled(history.canGoBack(this::validNavigation));
-        int pageButtonY = this.rightPage.pageIndicatorY() + (this.font.lineHeight - JournalLayout.PAGE_BUTTON_HEIGHT) / 2;
-        if (this.itemPrevButton != null) this.itemPrevButton.setBounds(itemPrevButton.bounds().x(), pageButtonY, itemPrevButton.bounds().width(), itemPrevButton.bounds().height());
-        if (this.itemNextButton != null) this.itemNextButton.setBounds(itemNextButton.bounds().x(), pageButtonY, itemNextButton.bounds().width(), itemNextButton.bounds().height());
         boolean showRightPageTabs = !this.viewModel.isCategoryHome();
-        this.rightPage.setBookmarksAvailable(showRightPageTabs);
-
-        boolean hasMultipleItemPages = !this.viewModel.isCategoryHome() && this.rightPage.pageCount() > 1;
-        applyButtonState(this.itemPrevButton, hasMultipleItemPages,
-                hasMultipleItemPages && this.rightPage.getPage() > 0);
-        applyButtonState(this.itemNextButton, hasMultipleItemPages,
-                hasMultipleItemPages && this.rightPage.getPage() < this.rightPage.pageCount() - 1);
+        this.rightPage.setChromeAvailable(showRightPageTabs);
 
         boolean showExternalLinks = this.viewModel.isCategoryHome();
         for (UiControl button : this.externalLinkButtons) {
@@ -1100,8 +1047,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     // 捕获当前 UI 状态快照，用于窗口 resize 后恢复
     private UiStateSnapshot captureUiState() {
-        // 未提交的搜索草稿先落定，resize 才能把最后几个字符一起带走
-        this.catalogToolbar.flushPendingSearch();
+        ResourceLocation table = this.viewModel.selectedTableId();
+        var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
         return new UiStateSnapshot(
                 this.rightPage != null ? this.rightPage.captureReadingState() : RightPageContainer.ReadingState.empty(),
                 this.panels.snapshot(),
@@ -1110,9 +1057,15 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 this.logToolbar.groupMode(),
                 this.catalogToolbar.currentSortOrder(),
                 this.catalogToolbar.sortDescending(),
-                this.catalogToolbar.currentSearch(),
+                this.catalogToolbar.effectiveSearch(),
                 this.catalogToolbar.searchExpanded(),
-                this.catalogToolbar.hideLocked()
+                this.catalogToolbar.hideLocked(),
+                table,
+                selection == null ? "" : selection.scene(),
+                this.viewModel.isCategoryHomeMode(),
+                this.viewModel.selectedCategory(),
+                this.viewModel.expandedRoots(),
+                this.categoryFocusIndex
         );
     }
 
@@ -1126,11 +1079,14 @@ public class ArchaeologyJournalScreen extends UiScreen {
         prepareUi();
         UiPointer pointer = scope.pointer(logicalMouseX, logicalMouseY).resolve(content);
         if (!pointer.allowsTooltip()) return Optional.empty();
-        ItemGridPanel.TooltipData tooltip = this.rightPage.getTooltipData(pointer.hit());
-        if (tooltip == null || tooltip.stack().isEmpty()) {
-            return Optional.empty();
+        UiPointerHit hit = pointer.hit();
+        if (hit == null) return Optional.empty();
+        for (UiPointerHit.Row row : hit.rows()) {
+            if (row.key() instanceof ItemStack stack && !stack.isEmpty()) {
+                return Optional.of(stack);
+            }
         }
-        return Optional.of(tooltip.stack());
+        return Optional.empty();
     }
 
     // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态
@@ -1144,7 +1100,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
             boolean catalogSortDescending,
             JournalSearchQuery catalogSearch,
             boolean catalogSearchExpanded,
-            boolean catalogHideLocked
+            boolean catalogHideLocked,
+            @Nullable ResourceLocation table,
+            String scene,
+            boolean home,
+            @Nullable ResourceLocation category,
+            Set<ResourceLocation> expanded,
+            int categoryFocusIndex
     ) {}
 
     }

@@ -12,11 +12,9 @@ import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
-import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
-import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
@@ -72,8 +70,6 @@ public class JournalViewModel {
     private CatalogSorter.SortOrder currentSortOrder = CatalogSorter.SortOrder.DEFAULT;
     private boolean sortDescending;
     private boolean hideLocked;
-    private boolean logSortDescending = true;
-    private LogGrouper.GroupMode currentGroupMode = LogGrouper.GroupMode.TIME;
     private long lastConnectionEpoch;
     private long lastCatalogRevision;
     private long lastStateRevision;
@@ -116,18 +112,16 @@ public class JournalViewModel {
         this.lastLogRevision = ArchaeologyJournalClientState.getLogRevision();
     }
 
-    public void setCurrentSearch(JournalSearchQuery search) {
-        this.currentSearch = search;
+    void applyCatalogState(CatalogQueryState queryState) {
+        this.currentSearch = queryState.search();
         // 物品文本缓存只服务搜索匹配：离开搜索态即释放，避免大目录长期驻留整份物品小写名
-        if (search.isEmpty()) {
+        if (this.currentSearch.isEmpty()) {
             this.lowercaseTableItems.clear();
         }
+        this.currentSortOrder = queryState.sortOrder();
+        this.sortDescending = queryState.sortDescending();
+        this.hideLocked = queryState.hideLocked();
     }
-    public void setCurrentSortOrder(CatalogSorter.SortOrder order) { this.currentSortOrder = order; }
-    public void setSortDescending(boolean descending) { this.sortDescending = descending; }
-    public void setHideLocked(boolean hideLocked) { this.hideLocked = hideLocked; }
-    public void setLogSortDescending(boolean descending) { this.logSortDescending = descending; }
-    public void setCurrentGroupMode(LogGrouper.GroupMode mode) { this.currentGroupMode = mode; }
     public List<ArchaeologyJournalEntry> tableViews() { return this.tableViews; }
     public boolean isNavigationTargetValid(ResourceLocation table) {
         var entry = allViews.get(table);
@@ -329,7 +323,7 @@ public class JournalViewModel {
         return true;
     }
 
-    public void rebuildViewModels(@Nullable RightPageContainer rightPage, @Nullable CatalogPanel catalogPanel) {
+    public void rebuildViewModels(@Nullable CatalogPanel catalogPanel) {
         ResourceLocation selectedId = selectedTableId();
         this.allViews.clear();
         int unlocked = 0;
@@ -362,10 +356,6 @@ public class JournalViewModel {
             if (isCategoryHome()) catalogPanel.setCategories(this.categoryViews);
             else catalogPanel.setEntries(buildCatalogEntries());
             catalogPanel.ensureIndexVisible(this.selectedIndex);
-        }
-        if (rightPage != null) {
-            rightPage.getLogPanel().setSortDescending(this.logSortDescending);
-            rightPage.getLogPanel().setGroupMode(this.currentGroupMode);
         }
     }
 
