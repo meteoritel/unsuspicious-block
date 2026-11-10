@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiNode;
+import com.meteorite.meteosuikit.api.layout.UiNode;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;

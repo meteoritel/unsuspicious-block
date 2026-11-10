@@ -1,174 +1,103 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputScope;
+import com.meteorite.meteosuikit.api.style.UiControlRole;
+import com.meteorite.meteosuikit.api.style.UiThemeContext;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
+import java.util.List;
 import java.util.UUID;
 
-/**
- * 日志备注编辑界面——多行文本输入，保存时发送 C2S 包更新对应日志条目的备注内容。
- * 取消或保存后返回父 Screen。
- */
-public class JournalLogNoteEditScreen extends Screen {
-
+/** 日志备注草稿由稳定的 kit 编辑器持有，明确保存后才发送更新请求。 */
+public final class JournalLogNoteEditScreen extends UiThemedScreen {
     private static final int NOTE_MAX_LENGTH = 500;
-    private static final int EDIT_BOX_WIDTH = 240;
-    private static final int EDIT_BOX_HEIGHT = 120;
-    private static final int BUTTON_WIDTH = 80;
-    private static final int BUTTON_HEIGHT = 20;
-    private static final int VERTICAL_GAP = 8;
-
     private final Screen parent;
     private final ResourceLocation tableId;
     private final UUID entryId;
-    private final String initialNote;
-
-    private MultiLineEditBox editBox;
+    private final UiChildren<UiWidget> content = new UiChildren<>();
+    private final UiInputScope scope = new UiInputScope(content);
+    private final UiTextArea editor;
+    private final UiControl save = new UiControl();
+    private final UiControl cancel = new UiControl();
+    private boolean initialized;
+    private @Nullable Component validationMessage;
 
     public JournalLogNoteEditScreen(@Nullable Screen parent, ResourceLocation tableId, UUID entryId, String initialNote) {
-        super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_editor_title"));
+        super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_editor_title"),
+                new UiThemeContext<>(UnsuspiciousUiTheme.DARK));
         this.parent = parent;
         this.tableId = tableId;
         this.entryId = entryId;
-        this.initialNote = initialNote != null ? initialNote : "";
+        editor = new UiTextArea(theme(), Minecraft.getInstance().font,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_placeholder"));
+        editor.setMaxLength(NOTE_MAX_LENGTH).setValue(initialNote == null ? "" : initialNote)
+                .setOnOverflow(this::showLengthError);
+        editor.setOnCancel(this::onClose);
+        content.addAll(List.of(editor, save, cancel));
+        scope.setEscape(this::onClose);
     }
 
-    @Override
-    protected void init() {
-        int centerX = this.width / 2;
-        int titleY = 24;
-        int editY = titleY + VERTICAL_GAP + 12;
-        int editX = centerX - EDIT_BOX_WIDTH / 2;
-
-        // 多行输入框
-        this.editBox = new MultiLineEditBox(
-                this.font,
-                editX, editY,
-                EDIT_BOX_WIDTH, EDIT_BOX_HEIGHT,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_placeholder"),
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_editor_title"));
-        this.editBox.setCharacterLimit(NOTE_MAX_LENGTH);
-        this.editBox.setValue(this.initialNote);
-        this.editBox.setFocused(true);
-        addWidget(this.editBox);
-
-        // 按钮 Y 位置
-        int btnY = editY + EDIT_BOX_HEIGHT + VERTICAL_GAP;
-        int saveX = centerX - BUTTON_WIDTH - 4;
-        int cancelX = centerX + 4;
-
-        // 保存按钮
-        addRenderableWidget(Button.builder(
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_save"),
-                b -> onSave())
-                .bounds(saveX, btnY, BUTTON_WIDTH, BUTTON_HEIGHT)
-                .build());
-        // 取消按钮
-        addRenderableWidget(Button.builder(
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_cancel"),
-                b -> onCancel())
-                .bounds(cancelX, btnY, BUTTON_WIDTH, BUTTON_HEIGHT)
-                .build());
-    }
-
-    // 窗口 resize 会经 rebuildWidgets -> init() 把输入框重置成初始备注；这里把草稿与焦点归属一起恢复
-    @Override
-    protected void repositionElements() {
-        String draft = this.editBox != null ? this.editBox.getValue() : this.initialNote;
-        boolean hadFocus = this.editBox != null && this.editBox.isFocused();
-        super.repositionElements();
-        if (this.editBox != null) {
-            this.editBox.setValue(draft);
-            if (hadFocus) {
-                this.editBox.setFocused(true);
-            }
+    @Override protected void init() {
+        save.setTheme(theme(), UiControlRole.PRIMARY);
+        save.setFocusable(true);
+        save.configure(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_save"),
+                null, List.of(), this::saveNote);
+        cancel.setTheme(theme(), UiControlRole.SECONDARY);
+        cancel.setFocusable(true);
+        cancel.configure(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_cancel"),
+                null, List.of(), this::onClose);
+        if (!initialized) {
+            initialized = true;
+            scope.refreshFocus();
+            scope.focus().focusOn(editor);
         }
     }
 
-    // 保存：发送 C2S 更新包并返回父界面
-    private void onSave() {
-        String value = this.editBox.getValue();
-        Services.NETWORK.sendToServer(new UpdateJournalLogNotePayload(this.tableId, this.entryId, value));
-        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
-                .setScreen(this.parent);
+    @Override protected UiInputScope inputScope() { return scope; }
+
+    @Override protected void layoutUi() {
+        int editorWidth = Math.clamp(width - 24, 0, 300);
+        int buttonsY = Math.max(48, height - 36);
+        editor.setBounds((width - editorWidth) / 2, 44, editorWidth, Math.max(0, buttonsY - 52));
+        int buttonWidth = Math.clamp((editorWidth - 8) / 2, 0, 100);
+        save.setBounds(width / 2 - buttonWidth - 4, buttonsY, buttonWidth, 20);
+        cancel.setBounds(width / 2 + 4, buttonsY, buttonWidth, 20);
     }
 
-    // 取消：直接返回父界面
-    private void onCancel() {
-        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
-                .setScreen(this.parent);
+    private void showLengthError() {
+        validationMessage = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_too_long", NOTE_MAX_LENGTH);
     }
 
-    @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-        // 标题
-        guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 24, 0xFFFFFF);
-        // 编辑框
-        this.editBox.render(guiGraphics, mouseX, mouseY, partialTick);
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE && !this.editBox.isFocused() && parent != null) {
-            Objects.requireNonNull(this.minecraft).setScreen(parent);
-            return true;
+    private void saveNote() {
+        // 协议与服务端按 UTF-16 单元限长，kit 编辑器按 Unicode 码点限长。
+        if (editor.value().length() > NOTE_MAX_LENGTH) {
+            showLengthError();
+            return;
         }
-        // ESC 返回父界面（与原版 Screen 行为一致）
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-            Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
-                .setScreen(this.parent);
-            return true;
-        }
-        if (this.editBox.keyPressed(keyCode, scanCode, modifiers)) {
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        Services.NETWORK.sendToServer(new UpdateJournalLogNotePayload(tableId, entryId, editor.value()));
+        onClose();
     }
 
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        if (this.editBox.charTyped(codePoint, modifiers)) {
-            return true;
-        }
-        return super.charTyped(codePoint, modifiers);
+    @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
+
+    @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
+        graphics.drawCenteredString(font, title, width / 2, 20, UiTextPalette.Dark.TITLE);
+        var pointer = scope.pointer(x, y).resolve(content);
+        for (UiWidget widget : content) widget.render(graphics, font, pointer);
+        if (validationMessage != null) graphics.drawCenteredString(font, validationMessage,
+                width / 2, height - 13, UiTextPalette.Dark.NEGATIVE);
     }
 
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (this.editBox.mouseClicked(mouseX, mouseY, button)) {
-            return true;
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (this.editBox.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
-            return true;
-        }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (this.editBox.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
-            return true;
-        }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
-    }
+    @Override public boolean isPauseScreen() { return false; }
 }

@@ -1,13 +1,18 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
 import com.meteorite.unsuspiciousblock.item.ModItems;
+import com.meteorite.meteosuikit.api.text.TextScroll;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.toasts.Toast;
 import net.minecraft.client.gui.components.toasts.ToastComponent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.style.UiSurfaceSkin;
+import com.meteorite.meteosuikit.api.style.UiControlStyle;
+import net.minecraft.locale.Language;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
@@ -23,8 +28,7 @@ import java.util.Queue;
  */
 public class JournalUnlockToast implements Toast {
 
-    private static final ResourceLocation BACKGROUND_SPRITE =
-            ResourceLocation.withDefaultNamespace("toast/advancement");
+    private static final UiSurfaceSkin BACKGROUND = UiSurfaceSkin.panel(0xFF24232A, 0xFF796342, 0xFF494551);
     // 单条内容轮换间隔（毫秒）
     private static final long ROTATION_INTERVAL = 500L;
     // Toast 总展示时间（毫秒），到期后即使还有条目也会消失
@@ -40,6 +44,10 @@ public class JournalUnlockToast implements Toast {
     private final Queue<Entry> entries = new ArrayDeque<>();
     private final Object token;
     private final Component title;
+    private Entry displayedEntry;
+    private UiIcon displayedIcon;
+    private String displayedDescription = "";
+    private Language language;
     private long startTime = -1L;
     private long lastRotationTime = -1L;
 
@@ -80,21 +88,20 @@ public class JournalUnlockToast implements Toast {
             return Visibility.HIDE;
         }
 
-        guiGraphics.blitSprite(BACKGROUND_SPRITE, 0, 0, this.width(), this.height());
+        BACKGROUND.paint(guiGraphics, new UiRect(0, 0, width(), height()), UiControlStyle.State.NORMAL);
 
         Font font = toastComponent.getMinecraft().font;
 
         // 标题
-        guiGraphics.drawString(font, this.title, 30, 7, 0xFFFFFF, true);
-        // 描述
-        guiGraphics.drawString(font, current.description(), 30, 18, 0xFFFFD0, true);
-
-        // 图标
-        if (!current.icon().isEmpty()) {
-            guiGraphics.renderItem(current.icon(), 8, 8);
-        } else {
-            guiGraphics.renderItem(new ItemStack(Items.BOOK), 8, 8);
+        TextScroll.draw(guiGraphics, font, title.getString(), 30, 7, width() - 36, 0xFFFFFF, false, 0, false);
+        if (displayedEntry != current || language != Language.getInstance()) {
+            displayedEntry = current;
+            language = Language.getInstance();
+            displayedIcon = new UiIcon.Item(current.icon().isEmpty() ? new ItemStack(Items.BOOK) : current.icon());
+            displayedDescription = current.description().getString();
         }
+        TextScroll.draw(guiGraphics, font, displayedDescription, 30, 18, width() - 36, 0xFFFFD0, false, 0, false);
+        displayedIcon.render(guiGraphics, 8, 8);
 
         // 轮换指示器：多条待显示时在右下角提示**剩余条数**（当前这条已在展示，故减一）。
         // 不走 "x/n"：队列会随新解锁增长，没有稳定的总数；文案改由 i18n 提供（I-13）。

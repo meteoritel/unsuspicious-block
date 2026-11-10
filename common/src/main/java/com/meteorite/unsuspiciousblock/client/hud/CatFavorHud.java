@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.hud;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.unsuspiciousblock.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
@@ -29,6 +30,7 @@ public final class CatFavorHud {
 
     // 图标尺寸（16×16 原图）
     private static final int ICON_SIZE = 16;
+    private static final UiIcon ICON = new UiIcon.Sprite(CAT_FAVOR_TEXTURE, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
     // HUD 相对快捷栏左边缘的偏移
     private static final int OFFSET_FROM_HOTBAR = 26;
     // 恩惠值文字相对图标的水平间距（文字在图标左侧）
@@ -76,7 +78,7 @@ public final class CatFavorHud {
         boolean capped = favor >= CatFavorState.MAX_FAVOR;
         try {
             RenderSystem.setShaderColor(red, green, blue, 1.0F);
-            gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
+            ICON.render(gui, iconX, iconY);
 
             // 封顶时叠加紫色呼吸 tint——纹理自身 alpha 作蒙版，无需操作 framebuffer
             if (capped) {
@@ -86,7 +88,7 @@ public final class CatFavorHud {
                 RenderSystem.enableBlend();
                 RenderSystem.defaultBlendFunc();
                 RenderSystem.setShaderColor(red, green, blue, breath);
-                gui.blit(CAT_FAVOR_TEXTURE, iconX, iconY, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
+                ICON.render(gui, iconX, iconY);
             }
         } finally {
             // 复位颜色与混合状态，避免污染后续渲染

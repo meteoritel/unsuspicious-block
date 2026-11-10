@@ -2,7 +2,13 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.client.ui.kit.*;
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.geometry.*;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.*;
+import com.meteorite.meteosuikit.api.render.*;
+import com.meteorite.meteosuikit.api.style.*;
+import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.loottable.analysis.LootConditionInfo;

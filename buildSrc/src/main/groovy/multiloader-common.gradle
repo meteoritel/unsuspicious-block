@@ -119,6 +119,7 @@ processResources {
             'neoforge_loader_version_range': neoforge_loader_version_range,
             'credits'                      : credits,
             'java_version'                 : java_version,
+            'meteos_ui_kit_version'         : meteos_ui_kit_version,
             'lootr_neoforge_dependency'    : lootrNeoForgeDependency,
             'lootr_neoforge_mixin'         : lootrNeoForgeMixin
     ]

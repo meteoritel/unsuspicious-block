@@ -54,8 +54,6 @@ public final class JournalLayout {
     public static final int INTRO_PAGE_INDICATOR_Y = 208;
     public static final int LOG_PAGE_INDICATOR_Y = 208;
     public static final int SCENARIO_PAGE_INDICATOR_Y = 208;
-    public static final int SCENARIO_FRAME_TOP = 34;
-    public static final int SCENARIO_FRAME_HEIGHT = 166;
     public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
 
     // —— 右侧日志页 ——
@@ -116,7 +114,7 @@ public final class JournalLayout {
     // —— 日志详情页 ——
     public static final int LOG_DETAIL_CARD_BG = 0x28A08060;      // 卡片暖色半透明背景
     public static final int LOG_DETAIL_CARD_BORDER = 0x50C8B090;  // 卡片顶部边框色
-    public static final int LOG_DETAIL_BACK_BTN_SIZE = 14;        // 返回按钮（IconButton）尺寸
+    public static final int LOG_DETAIL_BACK_BTN_SIZE = 14;        // 返回按钮（kit 控件）尺寸
     public static final int LOG_DETAIL_CARD_PAD = 4;              // 卡片内边距
     public static final int LOG_DETAIL_CARD_GAP = 4;              // 卡片之间间距
     public static final int LOG_DETAIL_COMPLETION_COLOR = 0x3A8C3A; // 完成标志绿色

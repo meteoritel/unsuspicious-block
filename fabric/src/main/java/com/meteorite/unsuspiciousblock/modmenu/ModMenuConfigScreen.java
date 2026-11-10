@@ -1,68 +1,57 @@
 package com.meteorite.unsuspiciousblock.modmenu;
 
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiControlGroup;
+import com.meteorite.meteosuikit.api.control.UiThemedScreen;
+import com.meteorite.meteosuikit.api.input.UiInputScope;
+import com.meteorite.meteosuikit.api.style.UiThemeContext;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import java.util.List;
 
-import java.util.Objects;
-
-/**
- * Mod Menu 配置首页，明确区分全局通用配置与当前世界的服务端配置。
- */
-public class ModMenuConfigScreen extends Screen {
-
-    private static final int CONTENT_WIDTH = 280;
-    private static final int BUTTON_HEIGHT = 20;
-    private static final int BUTTON_GAP = 34;
-
+/** ModMenu 配置首页，按全局与当前世界配置归属提供入口。 */
+public final class ModMenuConfigScreen extends UiThemedScreen {
     private final Screen parent;
+    private final UiControlGroup controls = new UiControlGroup();
+    private final UiInputScope scope = new UiInputScope(controls);
 
     public ModMenuConfigScreen(Screen parent) {
-        super(Component.translatable("unsuspiciousblock.config.title"));
+        super(Component.translatable("unsuspiciousblock.config.title"), new UiThemeContext<>(UnsuspiciousUiTheme.DARK));
         this.parent = parent;
+        scope.setEscape(this::onClose);
     }
 
-    @Override
-    protected void init() {
-        int buttonWidth = Math.min(CONTENT_WIDTH, this.width - 40);
-        int leftX = (this.width - buttonWidth) / 2;
-        int firstButtonY = Math.max(54, this.height / 2 - 38);
-
-        this.addRenderableWidget(Button.builder(
-                Component.translatable("unsuspiciousblock.config.common.open"),
-                button -> Objects.requireNonNull(this.minecraft).setScreen(new SpiritCatConfigScreen(this)))
-                .bounds(leftX, firstButtonY, buttonWidth, BUTTON_HEIGHT)
-                .build());
-        this.addRenderableWidget(Button.builder(
-                Component.translatable("unsuspiciousblock.config.server.open"),
-                button -> Objects.requireNonNull(this.minecraft).setScreen(new ServerLootConfigScreen(this)))
-                .bounds(leftX, firstButtonY + BUTTON_GAP, buttonWidth, BUTTON_HEIGHT)
-                .build());
-        this.addRenderableWidget(Button.builder(
-                Component.translatable("gui.done"),
-                button -> this.onClose())
-                .bounds((this.width - 100) / 2, this.height - 28, 100, BUTTON_HEIGHT)
-                .build());
+    @Override protected void init() {
+        controls.setTheme(theme());
+        controls.beginUpdate();
+        controls.obtain("common").configure(font, Component.translatable("unsuspiciousblock.config.common.open"),
+                null, List.of(), () -> Minecraft.getInstance().setScreen(new SpiritCatConfigScreen(this)));
+        controls.obtain("server").configure(font, Component.translatable("unsuspiciousblock.config.server.open"),
+                null, List.of(), () -> Minecraft.getInstance().setScreen(new ServerLootConfigScreen(this)));
+        controls.obtain("done").configure(font, Component.translatable("gui.done"), null, List.of(), this::onClose);
+        controls.endUpdate();
     }
-
-    @Override
-    public void onClose() {
-        Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active").setScreen(parent);
+    @Override protected UiInputScope inputScope() { return scope; }
+    @Override protected void layoutUi() {
+        int buttonWidth = Math.clamp(width - 40, 0, 280);
+        int y = Math.max(42, height / 2 - 38);
+        for (UiControl control : controls.controls()) {
+            control.setBounds((width - buttonWidth) / 2, y, buttonWidth, 20);
+            y += 40;
+        }
     }
-
-    @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-
-        int firstButtonY = Math.max(54, this.height / 2 - 38);
-        guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 18, 0xFFFFFF);
-        guiGraphics.drawCenteredString(this.font,
-                Component.translatable("unsuspiciousblock.config.common.scope"),
-                this.width / 2, firstButtonY + BUTTON_HEIGHT + 4, 0xA0A0A0);
-        guiGraphics.drawCenteredString(this.font,
-                Component.translatable("unsuspiciousblock.config.server.scope"),
-                this.width / 2, firstButtonY + BUTTON_GAP + BUTTON_HEIGHT + 4, 0xA0A0A0);
+    @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
+    @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
+        graphics.drawCenteredString(font, title, width / 2, 18, UiTextPalette.Dark.TITLE);
+        var buttons = controls.controls();
+        graphics.drawCenteredString(font, Component.translatable("unsuspiciousblock.config.common.scope"),
+                width / 2, buttons.get(0).bounds().bottom() + 4, UiTextPalette.Dark.LABEL);
+        graphics.drawCenteredString(font, Component.translatable("unsuspiciousblock.config.server.scope"),
+                width / 2, buttons.get(1).bounds().bottom() + 4, UiTextPalette.Dark.LABEL);
+        controls.render(graphics, font, scope.pointer(x, y).resolve(controls));
     }
 }

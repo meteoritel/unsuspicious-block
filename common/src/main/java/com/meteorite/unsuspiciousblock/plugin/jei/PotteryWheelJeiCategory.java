@@ -1,13 +1,15 @@
 package com.meteorite.unsuspiciousblock.plugin.jei;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import net.minecraft.Util;
 import com.meteorite.unsuspiciousblock.blockentity.PotteryWheelBlockEntity;
 import com.meteorite.unsuspiciousblock.client.ui.PotteryPreviewRenderer;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.builder.IRecipeSlotBuilder;
-import mezz.jei.api.gui.drawable.IDrawableAnimated;
-import mezz.jei.api.gui.drawable.IDrawableStatic;
 import mezz.jei.api.gui.ingredient.IRecipeSlotDrawable;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
@@ -55,8 +57,7 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
     private static final int PREVIEW_ITEM_X = 119;
     private static final int PREVIEW_ITEM_Y = 4;
 
-    private final IDrawableStatic background;
-    private final IDrawableAnimated progress;
+    private static final UiIcon BACKGROUND = new UiIcon.Sprite(GUI_TEXTURE, CROP_X, CROP_Y, WIDTH, HEIGHT, 256, 256);
     private final PotteryPreviewRenderer previewRenderer = new PotteryPreviewRenderer();
 
     public PotteryWheelJeiCategory(IGuiHelper guiHelper) {
@@ -64,13 +65,7 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
                 Component.translatable("jei.unsuspiciousblock.category.pottery_wheel"),
                 guiHelper.createDrawableItemStack(ModItems.POTTERY_WHEEL.getDefaultInstance()),
                 WIDTH, HEIGHT);
-        this.background = guiHelper.createDrawable(GUI_TEXTURE, CROP_X, CROP_Y, WIDTH, HEIGHT);
-        IDrawableStatic progressTexture = guiHelper.createDrawable(GUI_TEXTURE, 176, 16, 20, 16);
-        this.progress = guiHelper.createAnimatedDrawable(
-                progressTexture,
-                PotteryWheelBlockEntity.PROCESS_TIME,
-                IDrawableAnimated.StartDirection.LEFT,
-                false);
+
     }
 
     @Override
@@ -115,10 +110,12 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
     }
 
     @Override
-    public void draw(@NotNull PotteryWheelJeiRecipe recipe, IRecipeSlotsView recipeSlotsView,
+    public void draw(@NotNull PotteryWheelJeiRecipe recipe, @NotNull IRecipeSlotsView recipeSlotsView,
                      @NotNull GuiGraphics guiGraphics, double mouseX, double mouseY) {
-        background.draw(guiGraphics, 0, 0);
-        progress.draw(guiGraphics, 92, 20);
+        BACKGROUND.render(guiGraphics, 0, 0);
+        long cycle = PotteryWheelBlockEntity.PROCESS_TIME * 50L;
+        int progress = (int) (Util.getMillis() % cycle * 20 / cycle);
+        if (progress > 0) new UiIcon.Sprite(GUI_TEXTURE, 176, 16, progress, 16, 256, 256).render(guiGraphics, 92, 20);
         recipeSlotsView.findSlotByName(OUTPUT_SLOT)
                 .flatMap(IRecipeSlotView::getDisplayedItemStack)
                 .ifPresent(output -> renderPreview(guiGraphics, output));
@@ -184,7 +181,7 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
             ItemStack decoratedPot = Items.DECORATED_POT.getDefaultInstance();
             decoratedPot.set(DataComponents.POT_DECORATIONS,
                     output.getOrDefault(DataComponents.POT_DECORATIONS, PotDecorations.EMPTY));
-            previewRenderer.render(graphics, decoratedPot, 135.0F, 34.0F, 24.0F, 0.0F);
+            previewRenderer.render(graphics, decoratedPot, new UiRect(116, 1, 38, 38), 0.0F);
             return;
         }
 
@@ -195,12 +192,7 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
                 preview = new ItemStack(decorations.ordered().getFirst());
             }
         }
-        graphics.pose().pushPose();
-        graphics.pose().translate(PREVIEW_ITEM_X, PREVIEW_ITEM_Y, 0.0F);
-        graphics.pose().scale(2.0F, 2.0F, 1.0F);
-        graphics.renderItem(preview, 0, 0);
-        graphics.pose().popPose();
-        graphics.flush();
+        new UiIcon.Item(preview).renderScaled(graphics, new UiRect(PREVIEW_ITEM_X, PREVIEW_ITEM_Y, 32, 32), UnsuspiciousUiTheme.DARK);
     }
 
     // 按槽位名称查找 JEI 的可绘制槽位

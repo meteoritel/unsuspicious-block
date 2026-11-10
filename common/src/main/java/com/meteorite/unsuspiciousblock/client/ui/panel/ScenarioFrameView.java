@@ -1,136 +1,45 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.client.ui.kit.*;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.meteosuikit.api.geometry.*;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.*;
+import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 
-/** 页内框与放大窗口共用的呈现和交互；每个实例拥有独立视图，关闭放大窗口不改变页内视图。 */
+/** 灯箱条件文档的独立排版与变换，页内阅读位置不受影响。 */
 final class ScenarioFrameView {
-    private List<UiNode> content = List.of();
     private final UiTransform transform = new UiTransform();
-    private final UiControl zoom = new UiControl();
-    private final UiControl reset = new UiControl();
-    private UiRect bounds = new UiRect(0, 0, 32, 32);
     private final UiDocument document;
     private final Font font;
-    private int displayedZoom = -1;
-    private boolean dragging;
-    /** 是否绘制并命中自带的档位/复位角控件：灯箱自己提供缩放与适应窗口，用它关掉这两颗。 */
-    private boolean controlsVisible = true;
-    private double lastX, lastY;
+    private List<UiNode> content = List.of();
+    private UiRect bounds = new UiRect(0, 0, 1, 1);
 
     ScenarioFrameView(Font font) {
         this.font = font;
-        this.document = new UiDocument(TextMeasurer.of(font), transform, ScenarioUi.BRANCH,
-                Services.PLATFORM.isDevelopmentEnvironment() && Boolean.getBoolean("unsuspiciousblock.uiKitDebug"));
-        reset.configure(font, Component.literal("↺"), UiTextPalette.Parchment.TITLE, null,
-                List.of(ScenarioSimulationClientState.text("frame.reset")), transform::reset);
+        document = new UiDocument(TextMeasurer.of(font), transform, ScenarioUi.BRANCH, false);
     }
-
     void setBounds(int x, int y, int width, int height) {
-        if (bounds.x() != x || bounds.y() != y || bounds.width() != width || bounds.height() != height) {
-            bounds = new UiRect(x, y, width, height);
-            document.setViewport(x + 4, y + 4, Math.max(1, width - 8), Math.max(1, height - 8));
-            document.setContent(ScenarioConditionLayout.wrap(content, font, Math.max(1, width - 8)));
-            zoom.setBounds(bounds.right() - 70, bounds.bottom() - 21, 44, 13);
-            reset.setBounds(bounds.right() - 25, bounds.bottom() - 21, 17, 13);
-        }
+        UiRect next = new UiRect(x, y, width, height);
+        if (bounds.equals(next)) return;
+        bounds = next;
+        document.setViewport(x + 4, y + 4, Math.max(0, width - 8), Math.max(0, height - 8));
+        document.setContent(ScenarioConditionLayout.wrap(content, font, Math.max(1, width - 8)));
     }
-
-    void setContent(List<UiNode> content) {
-        this.content = List.copyOf(content);
+    void setContent(List<UiNode> value) {
+        content = List.copyOf(value);
         document.setContent(ScenarioConditionLayout.wrap(content, font, Math.max(1, bounds.width() - 8)));
     }
-    FrameState state() { return FrameState.capture(transform); }
-    void restore(FrameState state) { state.apply(transform); dragging = false; }
-
-    // 灯箱适配器的只读入口：变换、真实内容视口与内容尺寸。
     UiTransform transform() { return transform; }
     UiRect contentViewport() { return document.viewport(); }
     int contentWidth() { return document.contentWidth(); }
     int contentHeight() { return document.contentHeight(); }
-
-    // 关掉自带的档位/复位角控件后，render 与 hit 都跳过它们（灯箱自己提供缩放与适应窗口）。
-    // 页内路径保持字段默认值（显示），不需要重新打开。
-    void hideCornerControls() { this.controlsVisible = false; }
-
-    void render(GuiGraphics graphics, int mouseX, int mouseY) {
+    List<UiDocumentTarget> actions() { return document.targets().stream().filter(target -> target.hit().action() != null).toList(); }
+    void render(GuiGraphics graphics, UiPointer pointer) {
         ScenarioUi.PANEL.render(graphics, bounds);
-        document.render(graphics, font, mouseX, mouseY);
-        if (!controlsVisible) return;
-        if (displayedZoom != transform.zoomIndex()) {
-            displayedZoom = transform.zoomIndex();
-            Component label = ScenarioSimulationClientState.text("frame.zoom", (int) (transform.scale() * 100));
-            zoom.configure(font, label, UiTextPalette.Parchment.TITLE, null,
-                    transform.zoomIndex() == 0
-                            ? List.of(label, ScenarioSimulationClientState.text("frame.overview_hint"), ScenarioSimulationClientState.text("frame.zoom_hint"))
-                            : List.of(label, ScenarioSimulationClientState.text("frame.zoom_hint")), () -> {
-                        if (transform.zoomIndex() == 3) {
-                            for (int i = 0; i < 3; i++) transform.zoomBy(-1, bounds.x() + 8, bounds.y() + 8);
-                        } else transform.zoomBy(1, bounds.x() + 8, bounds.y() + 8);
-                    });
-        }
-        graphics.flush();
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 200);
-        try {
-            zoom.render(graphics, font, mouseX, mouseY);
-            reset.render(graphics, font, mouseX, mouseY);
-        } finally {
-            graphics.flush();
-            graphics.pose().popPose();
-        }
+        document.render(graphics, font, pointer);
     }
-
-    @Nullable UiTarget hit(double x, double y) {
-        if (!bounds.contains(x, y)) return null;
-        if (controlsVisible) {
-            UiTarget target = zoom.hit(x, y);
-            if (target == null) target = reset.hit(x, y);
-            if (target != null) return target;
-        }
-        return document.hit(x, y);
-    }
-
-    void renderTooltip(GuiGraphics graphics, int x, int y) {
-        UiTarget target = hit(x, y);
-        if (target != null && !target.tooltip().isEmpty()) graphics.renderComponentTooltip(font, target.tooltip(), x, y);
-    }
-
-    boolean contains(double x, double y) { return bounds.contains(x, y); }
-
-    boolean click(double x, double y, int button) {
-        if (button != 0 || !contains(x, y)) return false;
-        UiTarget target = hit(x, y);
-        if (target != null && target.action() != null) target.action().run();
-        else { dragging = true; lastX = x; lastY = y; }
-        return true;
-    }
-
-    boolean drag(double x, double y, int button) {
-        if (!dragging || button != 0) return false;
-        transform.panBy(x - lastX, y - lastY);
-        lastX = x; lastY = y;
-        return true;
-    }
-
-    boolean release(int button) {
-        if (button != 0 || !dragging) return false;
-        dragging = false;
-        return true;
-    }
-
-    boolean scroll(double x, double y, double amount) {
-        if (!contains(x, y)) return false;
-        transform.zoomBy((int) Math.signum(amount), x, y);
-        return true;
-    }
+    UiDocumentHit hit(double x, double y) { return document.hit(x, y); }
 }

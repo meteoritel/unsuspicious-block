@@ -5,7 +5,12 @@ import com.meteorite.unsuspiciousblock.client.ui.PotteryPreviewRenderer;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import com.meteorite.unsuspiciousblock.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.blockentity.PotteryWheelBlockEntity;
-import com.meteorite.unsuspiciousblock.client.ui.widget.PotteryWheelModeButton;
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.render.*;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -39,9 +44,14 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
 
     private final PotteryPreviewRenderer previewRenderer = new PotteryPreviewRenderer();
     private float manualRotation;
-    private boolean draggingPreview;
-    private double previousMouseX;
-    private PotteryWheelModeButton modeButton;
+    private PotteryWheelBlockEntity.ControlMode displayedMode;
+    private final UiControl modeButton = new UiControl();
+    private final PreviewRotation previewRotation = new PreviewRotation();
+    private final UiChildren<UiInputTarget> content = new UiChildren<>();
+    private final UiInputScope scope = new UiInputScope(content);
+    private final UiInputRouter input = new UiInputRouter();
+    private final UiInputBridge bridge = new UiInputBridge(input);
+    private static final UiIcon BACKGROUND = new UiIcon.Sprite(TEXTURE, 0, 0, 176, 166, 256, 256);
 
     public PotteryWheelScreen(PotteryWheelMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -49,42 +59,55 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         this.imageHeight = 166;
         this.titleLabelX = 19;
         this.inventoryLabelY = 72;
+        content.add(modeButton); content.add(previewRotation);
+        modeButton.setFocusable(true);
+        modeButton.setTheme(UnsuspiciousUiTheme.DARK, com.meteorite.meteosuikit.api.style.UiControlRole.SECONDARY);
+        scope.setEscape(this::onClose);
     }
 
-    @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
-            onClose();
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    @Override
-    protected void init() {
-        super.init();
-        modeButton = addRenderableWidget(new PotteryWheelModeButton(leftPos + 8, topPos + 17, nextMode -> {
-            menu.setClientControlMode(nextMode);
-            if (Minecraft.getInstance().gameMode != null) {
-                Minecraft.getInstance().gameMode.handleInventoryButtonClick(menu.containerId, 0);
-            }
-        }));
+    private void prepareUi() {
+        modeButton.setBounds(leftPos + 8, topPos + 17, 14, 14);
         updateModeButton();
+        if (menu.getPreviewResult().isEmpty()) scope.interaction().end(previewRotation, UiInteractionSession.EndReason.HIDDEN);
+        scope.refreshFocus(); input.select(scope);
+    }
+    private UiInputContext pointer(double x, double y, int button) {
+        prepareUi();
+        return UiInputContext.of(scope, x, y, button, hasShiftDown(), hasControlDown(), hasAltDown());
     }
 
     private void updateModeButton() {
-        if (modeButton == null) return;
         PotteryWheelBlockEntity.ControlMode mode = menu.getControlMode();
+        if (mode == displayedMode) return;
+        displayedMode = mode;
         String key = switch (mode) {
             case ENABLED -> "screen.unsuspiciousblock.pottery_wheel.control.enabled";
             case DISABLED -> "screen.unsuspiciousblock.pottery_wheel.control.disabled";
             case REDSTONE_ENABLED -> "screen.unsuspiciousblock.pottery_wheel.control.redstone_enabled";
         };
-        modeButton.setMode(mode, Component.translatable(key));
+        Component label = Component.translatable(key);
+        UiIcon icon = mode == PotteryWheelBlockEntity.ControlMode.REDSTONE_ENABLED
+                ? new UiIcon.Item(new ItemStack(Items.REDSTONE))
+                : new UiIcon.Sprite(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/toolbar_icons.png"),
+                        (mode == PotteryWheelBlockEntity.ControlMode.DISABLED ? 6 : 7) * 9, 9, 9, 9, 81, 27);
+        modeButton.configure(font, Component.empty(), icon, List.of(label), () -> {
+            menu.setClientControlMode(PotteryWheelBlockEntity.ControlMode.byId(mode.ordinal() + 1));
+            if (Minecraft.getInstance().gameMode != null)
+                Minecraft.getInstance().gameMode.handleInventoryButtonClick(menu.containerId, 0);
+        });
+        modeButton.setAccessibleName(label);
+    }
+
+    @Override protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
+        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, title,
+                titleLabelX, titleLabelY, imageWidth - titleLabelX - 6, 0x404040);
+        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
+                inventoryLabelX, inventoryLabelY, imageWidth - inventoryLabelX - 6, 0x404040);
     }
 
     @Override
     protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        graphics.blit(TEXTURE, leftPos, topPos, 0, 0, imageWidth, imageHeight, 256, 256);
+        BACKGROUND.render(graphics, leftPos, topPos);
         if (!menu.getSlot(4).hasItem()) {
             renderGhostSlot(graphics, CLAY_SLOT, leftPos + 44, topPos + 36);
         }
@@ -93,9 +116,8 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         }
         int progressWidth = menu.getScaledProgress(PROGRESS_WIDTH);
         if (progressWidth > 0) {
-            graphics.blit(TEXTURE, leftPos + PROGRESS_X, topPos + PROGRESS_Y,
-                    PROGRESS_TEXTURE_X, PROGRESS_TEXTURE_Y,
-                    progressWidth, PROGRESS_HEIGHT, 256, 256);
+            new UiIcon.Sprite(TEXTURE, PROGRESS_TEXTURE_X, PROGRESS_TEXTURE_Y, progressWidth, PROGRESS_HEIGHT, 256, 256)
+                    .render(graphics, leftPos + PROGRESS_X, topPos + PROGRESS_Y);
         }
         // 预览必须在槽位和 tooltip 之前绘制，避免物品图标覆盖 tooltip。
         renderPreview(graphics);
@@ -104,7 +126,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     // 使用统一的半透明纹理流程绘制输入槽位提示
     private void renderGhostSlot(GuiGraphics graphics, ResourceLocation texture, int x, int y) {
         graphics.setColor(1.0F, 1.0F, 1.0F, SLOT_GHOST_ALPHA);
-        graphics.blit(texture, x, y, 0, 0, 16, 16, 16, 16);
+        new UiIcon.Sprite(texture, 0, 0, 16, 16, 16, 16).render(graphics, x, y);
         graphics.flush();
         graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
@@ -131,65 +153,64 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
                 preview = new ItemStack(decorations.ordered().getFirst());
             }
         }
-        graphics.pose().pushPose();
-        graphics.pose().translate(leftPos + 137, topPos + 20, 0.0F);
-        graphics.pose().scale(2.0F, 2.0F, 1.0F);
-        graphics.renderItem(preview, 0, 0);
-        graphics.pose().popPose();
-        // 立即提交预览，防止延迟批次在 tooltip 之后才绘制。
-        graphics.flush();
+        new UiIcon.Item(preview).renderScaled(graphics,
+                new UiRect(leftPos + 137, topPos + 20, 32, 32), UnsuspiciousUiTheme.DARK);
     }
 
-    // 调用原版 DecoratedPotRenderer，保证四面纹饰与实际输出一致
+    private UiRect previewBounds() { return new UiRect(leftPos + PREVIEW_X, topPos + PREVIEW_Y, PREVIEW_SIZE, PREVIEW_SIZE); }
     private void renderDecoratedPot(GuiGraphics graphics, ItemStack output) {
-        graphics.enableScissor(leftPos + PREVIEW_X, topPos + PREVIEW_Y,
-                leftPos + PREVIEW_X + PREVIEW_SIZE, topPos + PREVIEW_Y + PREVIEW_SIZE);
-        previewRenderer.render(graphics, output,
-                leftPos + 153, topPos + 50, 24.0F, manualRotation);
-        graphics.disableScissor();
+        previewRenderer.render(graphics, output, previewBounds(), manualRotation);
     }
 
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0 && isInsidePreview(mouseX, mouseY)) {
-            draggingPreview = true;
-            previousMouseX = mouseX;
-            return true;
+    /** 预览旋转只登记 kit 会话；槽位仍由原版父类处理。 */
+    private final class PreviewRotation implements UiInteractionSession.Target {
+        @Override public UiPointerHit hitTest(double x, double y) {
+            return !menu.getPreviewResult().isEmpty() && previewBounds().contains(x, y) ? UiPointerHit.leaf(this, x, y).preservingFocus() : null;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (draggingPreview && button == 0) {
-            manualRotation += (float) ((mouseX - previousMouseX) * 4.0D);
-            previousMouseX = mouseX;
-            return true;
+        @Override public boolean mousePressed(UiInputContext context) {
+            if (context.button() != 0) return false;
+            scope.interaction().begin(this, UiInteractionSession.Source.POINTER, 0); return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
-    }
-
-    @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && draggingPreview) {
-            draggingPreview = false;
-            return true;
+        @Override public boolean mouseDragged(UiInputContext context, double dx, double dy) {
+            manualRotation += (float) dx * 4; return true;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        @Override public boolean mouseReleased(UiInputContext context) { return true; }
+        @Override public void interactionEnded(UiInteractionSession.EndReason reason) { }
     }
 
-    // 预览框仅负责观察，不承担结果取出交互
-    private boolean isInsidePreview(double mouseX, double mouseY) {
-        return mouseX >= leftPos + PREVIEW_X && mouseX < leftPos + PREVIEW_X + PREVIEW_SIZE
-                && mouseY >= topPos + PREVIEW_Y && mouseY < topPos + PREVIEW_Y + PREVIEW_SIZE;
+    @Override public boolean mouseClicked(double x, double y, int button) {
+        return bridge.mousePressed(pointer(x, y, button)) || super.mouseClicked(x, y, button);
     }
-
-    @Override
-    public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        updateModeButton();
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderTooltip(graphics, mouseX, mouseY);
-        if (modeButton != null) modeButton.renderTooltip(graphics, mouseX, mouseY);
+    @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        return bridge.mouseDragged(pointer(x, y, button), dx, dy) || super.mouseDragged(x, y, button, dx, dy);
     }
-
+    @Override public boolean mouseReleased(double x, double y, int button) {
+        return bridge.mouseReleased(pointer(x, y, button)) || super.mouseReleased(x, y, button);
+    }
+    @Override public boolean mouseScrolled(double x, double y, double sx, double sy) {
+        return bridge.mouseScrolled(pointer(x, y, -1), sx, sy) || super.mouseScrolled(x, y, sx, sy);
+    }
+    @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        prepareUi();
+        if (bridge.keyPressed(key, scan, modifiers)) return true;
+        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
+        return super.keyPressed(key, scan, modifiers);
+    }
+    @Override public boolean keyReleased(int key, int scan, int modifiers) {
+        prepareUi(); return bridge.keyReleased(key, scan, modifiers) || super.keyReleased(key, scan, modifiers);
+    }
+    @Override public boolean charTyped(char value, int modifiers) {
+        prepareUi(); return bridge.charTyped(value, modifiers) || super.charTyped(value, modifiers);
+    }
+    @Override public void removed() {
+        bridge.close(); UiRenderLayers.releaseModels(); super.removed();
+    }
+    @Override public void render(@NotNull GuiGraphics graphics, int x, int y, float partialTick) {
+        prepareUi();
+        super.render(graphics, x, y, partialTick);
+        UiPointer pointer = scope.pointer(x, y).resolve(content);
+        modeButton.render(graphics, font, pointer);
+        if (pointer.hit() == null) renderTooltip(graphics, x, y);
+        else if (pointer.allowsTooltip()) pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.DARK.surfaces(), x, y);
+    }
 }

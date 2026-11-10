@@ -1,34 +1,31 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.ui.kit.TextMeasurer;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiDocument;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiNode;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiTarget;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiTransform;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiFocusTarget;
+import com.meteorite.meteosuikit.api.control.UiScrollView;
+import com.meteorite.meteosuikit.api.geometry.*;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.*;
+import com.meteorite.meteosuikit.api.text.TextMeasurer;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.ArrayList;
 import java.util.List;
 
-/** 页内条件树使用自然字号纵向阅读；复杂条件仍可从页面入口打开灯箱。 */
-final class ScenarioConditionView implements UiFocusTarget {
-    private static final int SECTION_BACKGROUND = 0x40B99A60;
-    private static final int ENTRY_BACKGROUND = 0x18B99A60;
-    private List<UiNode> content = List.of();
+/** 条件文档的单个键盘停靠点；动作与标题几何直接取自 kit 的排版结果。 */
+final class ScenarioConditionView implements UiFocusTarget, UiInteractionSession.Target {
+    private final UiFocusState focus = new UiFocusState();
     private final UiScrollView scroll = new UiScrollView();
     private final UiDocument document;
     private final Font font;
+    private List<UiNode> content = List.of();
+    private List<UiDocumentTarget> targets = List.of();
+    private List<UiDocumentTarget> actions = List.of();
     private UiRect bounds = new UiRect(0, 0, 1, 1);
-    private final List<ActionRow> actions = new ArrayList<>();
-    private final List<HeadingRow> headings = new ArrayList<>();
-    private boolean focused;
+    private @Nullable UiDocumentHit pressed;
     private int actionIndex;
 
     ScenarioConditionView(Font font) {
@@ -36,137 +33,86 @@ final class ScenarioConditionView implements UiFocusTarget {
         document = new UiDocument(TextMeasurer.of(font), new UiTransform(), ScenarioUi.BRANCH, false);
         scroll.setStep(18);
     }
-
     void setBounds(int x, int y, int width, int height) {
         UiRect next = new UiRect(x, y, width, height);
         if (bounds.equals(next)) return;
         bounds = next;
-        scroll.setViewport(x + 6, y + 6, Math.max(1, width - 12), Math.max(1, height - 12));
+        scroll.setViewport(x + 6, y + 6, Math.max(0, width - 12), Math.max(0, height - 12));
         layoutDocument();
     }
-
-    void setContent(List<UiNode> content) {
-        this.content = List.copyOf(content);
-        scroll.setOffset(0);
-        layoutDocument();
-    }
-
+    void setContent(List<UiNode> value) { content = List.copyOf(value); scroll.setOffset(0); layoutDocument(); }
     int offset() { return scroll.offset(); }
-    void setOffset(int offset) { scroll.setOffset(offset); }
-
+    void setOffset(int value) { scroll.setOffset(value); }
     private void layoutDocument() {
         int width = Math.max(1, scroll.viewport().width() - UiScrollView.SCROLLBAR_WIDTH);
-        List<UiNode> wrapped = ScenarioConditionLayout.wrap(content, font, width);
-        document.setContent(wrapped);
-        actions.clear();
-        headings.clear();
-        int top = 0;
-        for (UiNode node : wrapped) {
-            if (node instanceof UiNode.Row row) {
-                int rowHeight = font.lineHeight;
-                if (row.leading() != null) rowHeight = Math.max(rowHeight, row.leading().icon().height());
-                for (var icon : row.icons()) rowHeight = Math.max(rowHeight, icon.icon().height());
-                rowHeight += 4;
-                if (row.action() != null) actions.add(new ActionRow(row.action(), row.text(), new UiRect(0, top, width, rowHeight)));
-                int iconX = row.indent() + 2 + (row.leading() == null ? 0 : row.leading().icon().width() + 3) + font.width(row.text());
-                for (var icon : row.icons()) {
-                    iconX += 3;
-                    if (icon.action() != null) actions.add(new ActionRow(icon.action(),
-                            icon.tooltip().isEmpty() ? row.text() : icon.tooltip().getFirst(),
-                            new UiRect(iconX, top + (rowHeight - icon.icon().height()) / 2, icon.icon().width(), icon.icon().height())));
-                    iconX += icon.icon().width();
-                }
-                if (row.payload() instanceof ScenarioPageBuilder.Heading kind) {
-                    headings.add(new HeadingRow(new UiRect(0, top, width, rowHeight), kind));
-                }
-                top += rowHeight;
-            } else if (node instanceof UiNode.Gap(var height)) top += height;
-            else if (node instanceof UiNode.Divider) top++;
-        }
-        actionIndex = Math.clamp(actionIndex, 0, Math.max(0, actions.size() - 1));
         document.setViewport(0, 0, width, Math.max(1, scroll.viewport().height()));
-        int height = document.contentHeight();
-        scroll.setContentHeight(height);
+        document.setContent(ScenarioConditionLayout.wrap(content, font, width));
+        scroll.setContentHeight(document.contentHeight());
         scroll.setScrollbarVisible(scroll.maxOffset() > 0);
-        document.setViewport(0, 0, width, Math.max(scroll.viewport().height(), height));
+        document.setViewport(0, 0, width, Math.max(1, document.contentHeight()));
+        targets = document.targets();
+        actions = targets.stream().filter(target -> target.hit().action() != null).toList();
+        actionIndex = Math.clamp(actionIndex, 0, Math.max(0, actions.size() - 1));
     }
-
-    void render(GuiGraphics graphics, int mouseX, int mouseY) {
+    void render(GuiGraphics graphics, UiPointer incoming) {
         ScenarioUi.PANEL.render(graphics, bounds);
-        boolean hovered = scroll.contains(mouseX, mouseY) && !scroll.hitScrollbar(mouseX, mouseY);
-        int contentX = hovered ? (int) scroll.toContentX(mouseX) : -1000;
-        int contentY = hovered ? (int) scroll.toContentY(mouseY) : -1000;
+        UiPointer pointer = incoming.forTarget(this).restrict(scroll.contains(incoming.x(), incoming.y())
+                && !scroll.hitScrollbar(incoming.x(), incoming.y()));
+        UiPointer local = pointer.withPosition(scroll.toContentX(pointer.x()), scroll.toContentY(pointer.y()));
         scroll.push(graphics);
         try {
-            for (HeadingRow heading : headings) {
-                UiRect rect = heading.rect();
-                if (rect.bottom() <= scroll.offset() || rect.y() >= scroll.offset() + scroll.viewport().height()) continue;
-                boolean section = heading.kind() == ScenarioPageBuilder.Heading.SECTION;
-                graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(),
-                        section ? SECTION_BACKGROUND : ENTRY_BACKGROUND);
-                if (section) graphics.fill(rect.x(), rect.y(), rect.x() + 2, rect.bottom(), ScenarioUi.BRANCH);
-            }
-            if (hovered) {
-                for (ActionRow action : actions) {
-                    UiRect rect = action.rect();
-                    if (rect.contains(contentX, contentY)) {
-                        graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), ScenarioUi.QUIET.hoverBackground());
-                        break;
-                    }
+            for (UiDocumentTarget target : targets) {
+                if (target.hit().payload() instanceof ScenarioPageBuilder.Heading heading) {
+                    UiRect rect = target.contentBounds();
+                    graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(),
+                            heading == ScenarioPageBuilder.Heading.SECTION ? 0x40B99A60 : 0x18B99A60);
                 }
             }
-            if (focused && !actions.isEmpty()) {
-                UiRect selected = actions.get(actionIndex).rect();
+            if (isFocusVisible() && !actions.isEmpty()) {
+                UiRect selected = actions.get(actionIndex).contentBounds();
                 graphics.fill(selected.x(), selected.y(), selected.right(), selected.bottom(), ScenarioUi.QUIET.selectedBackground());
             }
-            document.render(graphics, font, contentX, contentY);
-        } finally {
-            scroll.pop(graphics);
-        }
-        scroll.renderScrollbar(graphics, com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle.PARCHMENT);
+            document.render(graphics, font, local);
+        } finally { scroll.pop(graphics); }
+        scroll.renderScrollbar(graphics, UnsuspiciousUiTheme.PARCHMENT);
     }
-
-    void renderTooltip(GuiGraphics graphics, int x, int y) {
-        if (!scroll.contains(x, y) || scroll.hitScrollbar(x, y)) return;
-        UiTarget target = document.hit(scroll.toContentX(x), scroll.toContentY(y));
-        if (target != null && !target.tooltip().isEmpty()) {
-            graphics.renderComponentTooltip(font, target.tooltip(), x, y);
-        }
+    private @Nullable UiDocumentHit documentHit(double x, double y) {
+        return scroll.contains(x, y) && !scroll.hitScrollbar(x, y)
+                ? document.hit(scroll.toContentX(x), scroll.toContentY(y)) : null;
     }
-
-    boolean mouseClicked(double x, double y, int button) {
-        if (!scroll.contains(x, y)) return false;
-        focused = false;
-        if (scroll.mousePressed(x, y, button)) return true;
-        UiTarget target = document.hit(scroll.toContentX(x), scroll.toContentY(y));
-        if (target != null && target.action() != null) target.action().run();
+    @Override public @Nullable UiPointerHit hitTest(double x, double y) {
+        if (!bounds.contains(x, y)) return null;
+        UiPointerHit bar = scroll.hitTest(x, y);
+        if (bar != null) return bar.within(this);
+        UiDocumentHit hit = documentHit(x, y);
+        UiPointerHit result = UiPointerHit.leaf(this, x, y);
+        return hit == null ? result : result.withTextTooltip(hit.tooltip(), bounds);
+    }
+    @Override public boolean mousePressed(UiInputContext context) {
+        if (scroll.mousePressed(context)) return true;
+        if (context.button() != 0) return false;
+        pressed = documentHit(context.pointerX(), context.pointerY());
+        if (pressed != null && pressed.action() != null)
+            context.scope().interaction().begin(this, UiInteractionSession.Source.POINTER, GLFW.GLFW_MOUSE_BUTTON_LEFT);
         return true;
     }
-
-    boolean mouseDragged(double y) {
-        if (!scroll.isDragging()) return false;
-        scroll.mouseDragged(y);
+    @Override public boolean mouseReleased(UiInputContext context) {
+        UiDocumentHit hit = documentHit(context.pointerX(), context.pointerY());
+        UiDocumentHit activated = pressed;
+        pressed = null;
+        if (activated != null && hit == activated && activated.action() != null) activated.action().run();
         return true;
     }
-
-    boolean mouseReleased() {
-        boolean handled = scroll.isDragging();
-        scroll.mouseReleased();
-        return handled;
+    @Override public void interactionEnded(UiInteractionSession.EndReason reason) { pressed = null; }
+    @Override public boolean mouseScrolled(UiInputContext context, double x, double y) {
+        if (!bounds.contains(context.pointerX(), context.pointerY())) return false;
+        scroll.scrollBy(y); return true;
     }
-
-    boolean mouseScrolled(double x, double y, double amount) {
-        if (!scroll.contains(x, y)) return false;
-        scroll.scrollBy(amount);
-        return true;
-    }
-
-    boolean keyPressed(int key) {
-        if (!focused) return false;
+    @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        if (!isFocused()) return false;
         if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {
             actionIndex = Math.clamp(actionIndex + (key == GLFW.GLFW_KEY_DOWN ? 1 : -1), 0, Math.max(0, actions.size() - 1));
-            revealAction();
-            return true;
+            revealAction(); return true;
         }
         if (key == GLFW.GLFW_KEY_PAGE_UP || key == GLFW.GLFW_KEY_PAGE_DOWN) {
             scroll.setOffset(scroll.offset() + (key == GLFW.GLFW_KEY_PAGE_DOWN ? 1 : -1) * scroll.viewport().height());
@@ -174,31 +120,16 @@ final class ScenarioConditionView implements UiFocusTarget {
         }
         return false;
     }
-
-    private void revealAction() {
-        if (!actions.isEmpty()) scroll.ensureVisible(actions.get(actionIndex).rect());
-    }
-
+    private void revealAction() { if (!actions.isEmpty()) scroll.ensureVisible(actions.get(actionIndex).contentBounds()); }
+    @Override public UiFocusState focusState() { return focus; }
+    @Override public void focusChanged(boolean value) { if (value) revealAction(); }
     @Override public boolean canFocus() { return !content.isEmpty(); }
-    @Override public void setFocused(boolean value) { focused = value; if (value) revealAction(); }
-    @Override public boolean isFocused() { return focused; }
     @Override public boolean activate() {
         if (actions.isEmpty()) return false;
-        var action = actions.get(actionIndex).action();
-        if (action == null) return false;
-        action.run();
-        return true;
+        java.util.Objects.requireNonNull(actions.get(actionIndex).hit().action()).run(); return true;
     }
     @Override public UiRect bounds() { return bounds; }
     @Override public Component accessibleName() {
-        return actions.isEmpty()
-                ? com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("conditions.heading")
-                : actions.get(actionIndex).name();
+        return actions.isEmpty() ? ScenarioSimulationClientState.text("conditions.heading") : actions.get(actionIndex).label();
     }
-
-    /** 可执行节点在折行后内容坐标内的位置。 */
-    private record ActionRow(com.meteorite.unsuspiciousblock.client.ui.kit.UiAction action, Component name, UiRect rect) {}
-
-    /** 分组标题的底纹边界，在内容变化或宽度变化时统一重建。 */
-    private record HeadingRow(UiRect rect, ScenarioPageBuilder.Heading kind) {}
 }

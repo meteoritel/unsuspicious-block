@@ -4,7 +4,12 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
 /** 可分页面板的通用契约——统一 render、containsMouse 与分页操作 */
-public interface PagePanel {
+public interface PagePanel extends com.meteorite.meteosuikit.api.input.UiInputTarget {
+    default void prepareUi() { }
+    @Override default com.meteorite.meteosuikit.api.input.UiPointerHit hitTest(double x, double y) {
+        return containsMouse(x, y) ? com.meteorite.meteosuikit.api.input.UiPointerHit.leaf(this, x, y) : null;
+    }
+
 
     void render(GuiGraphics graphics, Font font, int mouseX, int mouseY);
 

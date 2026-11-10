@@ -1,12 +1,17 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
-import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
@@ -24,7 +29,50 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /** 日志详情面板——标签值元信息卡片、增强型战利品收集清单（角标+总进度条） */
-public final class LogDetailPanel implements PagePanel {
+public final class LogDetailPanel implements PagePanel, UiInputContainer {
+    private final UiControl copyButton = new UiControl();
+    private final UiChildren<UiControl> contentControls = new UiChildren<>();
+    private boolean contentDirty = true;
+    private int contentLineHeight;
+    @Override public UiChildren<UiControl> inputChildren() { return contentControls; }
+    @Override public void prepareUi() {
+        Font font = Minecraft.getInstance().font;
+        if (!contentDirty && contentLineHeight == font.lineHeight) return;
+        contentDirty = false;
+        contentLineHeight = font.lineHeight;
+        renderTooltipSlots.clear();
+        copyButton.setVisible(entry != null);
+        if (entry == null) return;
+        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        int cardY = layout.rightPageY() + JournalLayout.LOG_TOP + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
+        int width = layout.rightPageWidth() - 20;
+        copyButton.setBounds(layout.rightPageX() + 8 + width - pad - CopyCoordinateButton.WIDTH,
+                cardY + pad + (JournalLayout.LOG_DETAIL_META_ROWS - 1)
+                        * (font.lineHeight + JournalLayout.LOG_DETAIL_META_LINE_GAP),
+                CopyCoordinateButton.WIDTH, CopyCoordinateButton.HEIGHT);
+        CopyCoordinateButton.configure(copyButton, entry);
+        int gridTop = layout.rightPageY() + JournalLayout.LOG_TOP + getFixedHeight(font.lineHeight);
+        int bottom = layout.rightPageBottom() - 4;
+        int reserve = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP + JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT + pad;
+        GridGeometry grid = lootGrid(gridTop, width, bottom, reserve);
+        UiGridMetrics metrics = new UiGridMetrics(grid.iconsPerRow(), ICON_SIZE, ICON_SIZE, ICON_GAP, ICON_GAP);
+        int from = Math.min(cachedLoot.size(), pagination.getPage() * grid.iconsPerPage());
+        int to = Math.min(cachedLoot.size(), from + grid.iconsPerPage());
+        for (int i = from; i < to; i++) {
+            UiRect r = metrics.cellBounds(i - from);
+            renderTooltipSlots.add(new IconSlot(layout.rightPageX() + 8 + pad + r.x(), gridTop + r.y(), cachedLoot.get(i)));
+        }
+    }
+    @Override public UiPointerHit hitTest(double x, double y) {
+        UiPointerHit hit = contentControls.hitTest(x, y);
+        if (hit != null) return hit.within(this);
+        ItemStack stack = getTooltipStack(x, y);
+        if (stack != null) return UiPointerHit.leaf(this, x, y).withPresentation((g, font, px, py) ->
+                g.renderTooltip(font, stack, px, py));
+        return null;
+    }
+    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) { copyButton.render(graphics, font, pointer); }
+
     private static final int ICON_SIZE = 20;
     private static final int ICON_GAP = 2;
     private static final int LABEL_GAP = JournalLayout.LOG_DETAIL_META_LABEL_GAP;
@@ -41,25 +89,23 @@ public final class LogDetailPanel implements PagePanel {
     private int totalLootCount;
     private int obtainedLootCount;
     private final List<IconSlot> renderTooltipSlots = new ArrayList<>();
-    // 复制坐标按钮命中盒与悬停状态（缓存最近一帧，用于点击判定与 tooltip）
+    // 返回列表按钮（UiControl widget，由外部 screen 注册）
     @Nullable
-    private Bounds copyBtnBounds = Bounds.EMPTY;
-    private boolean copyBtnHovered;
-    // 返回列表按钮（IconButton widget，由外部 screen 注册）
+    private UiControl backButton;
+    // 备注编辑按钮（UiControl widget，由外部 screen 注册）
     @Nullable
-    private IconButton backButton;
-    // 备注编辑按钮（IconButton widget，由外部 screen 注册）
+    private UiControl noteButton;
+    // 删除当前条目按钮（UiControl widget，由外部 screen 注册）
     @Nullable
-    private IconButton noteButton;
-    // 删除当前条目按钮（IconButton widget，由外部 screen 注册）
-    @Nullable
-    private IconButton deleteButton;
+    private UiControl deleteButton;
     // 元信息行悬停追踪：用于文字超宽滚动
     private int hoveredMetaRow = -1;
     private final int[] metaRowScrollTicks = new int[JournalLayout.LOG_DETAIL_META_ROWS];
 
     public LogDetailPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
+        copyButton.setFocusable(true);
+        contentControls.add(copyButton);
     }
 
     public void setEntry(@Nullable ExcavationLogEntry entry, @Nullable ResourceLocation tableId) {
@@ -73,22 +119,20 @@ public final class LogDetailPanel implements PagePanel {
                 this.obtainedLootCount++;
             }
         }
-        this.renderTooltipSlots.clear();
-        this.copyBtnBounds = Bounds.EMPTY;
-        this.copyBtnHovered = false;
+        contentDirty = true;
         this.hoveredMetaRow = -1;
         Arrays.fill(this.metaRowScrollTicks, 0);
         this.pagination.reset();
     }
 
-    // 创建并注册返回列表按钮（IconButton），由外部 screen.rebuildWidgets 调用
+    // 创建并注册返回列表按钮（kit 控件），由外部 screen.rebuildWidgets 调用
     // registrar：将 widget 注册到 screen 的回调，避免 panel 包直接依赖 screen 包
-    public void createBackButton(Consumer<IconButton> registrar, Runnable onBack) {
+    public void createBackButton(Consumer<UiControl> registrar, Runnable onBack) {
         int leftX = this.layout.rightPageX() + 8;
         int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
         Component tooltip = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_back_to_list");
-        this.backButton = new IconButton(
+        this.backButton = JournalControls.iconButton(
                 leftX, y,
                 JournalLayout.LOG_DETAIL_BACK_BTN_SIZE,
                 '←',
@@ -97,8 +141,8 @@ public final class LogDetailPanel implements PagePanel {
         registrar.accept(this.backButton);
     }
 
-    // 创建并注册备注编辑按钮（IconButton），紧邻返回按钮右侧
-    public void createNoteButton(Consumer<IconButton> registrar, Runnable onNoteClick) {
+    // 创建并注册备注编辑按钮（kit 控件），紧邻返回按钮右侧
+    public void createNoteButton(Consumer<UiControl> registrar, Runnable onNoteClick) {
         int leftX = this.layout.rightPageX() + 8;
         int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
         int btnSize = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE;
@@ -106,23 +150,23 @@ public final class LogDetailPanel implements PagePanel {
         int btnX = leftX + btnSize + 2;
         Component tooltip = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_note_button_tooltip");
-        this.noteButton = new IconButton(
+        this.noteButton = JournalControls.iconButton(
                 btnX, y,
                 btnSize,
-                IconButton.Icon.PENCIL,
+                JournalControls.Icon.PENCIL,
                 tooltip,
                 onNoteClick);
         registrar.accept(this.noteButton);
     }
 
     // 创建并注册删除当前条目按钮，紧邻备注按钮右侧
-    public void createDeleteButton(Consumer<IconButton> registrar, Runnable onDeleteClick) {
+    public void createDeleteButton(Consumer<UiControl> registrar, Runnable onDeleteClick) {
         int leftX = this.layout.rightPageX() + 8;
         int y = this.layout.rightPageY() + JournalLayout.LOG_TOP;
         int btnSize = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE;
         int btnX = leftX + (btnSize + 2) * 2;
-        this.deleteButton = new IconButton(
-                btnX, y, btnSize, IconButton.Icon.CLOSE,
+        this.deleteButton = JournalControls.iconButton(
+                btnX, y, btnSize, JournalControls.Icon.CLOSE,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.entry_tooltip"),
                 onDeleteClick);
@@ -130,17 +174,17 @@ public final class LogDetailPanel implements PagePanel {
     }
 
     @Nullable
-    public IconButton getBackButton() {
+    public UiControl getBackButton() {
         return this.backButton;
     }
 
     @Nullable
-    public IconButton getNoteButton() {
+    public UiControl getNoteButton() {
         return this.noteButton;
     }
 
     @Nullable
-    public IconButton getDeleteButton() {
+    public UiControl getDeleteButton() {
         return this.deleteButton;
     }
 
@@ -155,12 +199,10 @@ public final class LogDetailPanel implements PagePanel {
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        this.renderTooltipSlots.clear();
-        this.copyBtnHovered = false;
 
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
-        // 返回按钮由 IconButton widget 渲染，这里仅占位
+        // 返回按钮由 UiControl widget 渲染，这里仅占位
         int y = this.layout.rightPageY() + JournalLayout.LOG_TOP
                 + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
 
@@ -186,15 +228,6 @@ public final class LogDetailPanel implements PagePanel {
                 this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
-    // 仅处理复制坐标按钮点击；返回按钮由 IconButton widget 自行处理
-    public boolean handleClick(double mouseX, double mouseY) {
-        if (this.copyBtnBounds != null && this.copyBtnBounds.contains(mouseX, mouseY) && this.entry != null) {
-            CopyCoordinateButton.copyCommand(this.entry);
-            return true;
-        }
-        return false;
-    }
-
     // 悬停时才从展示条目取栈：渲染路径不再为每个图标复制 ItemStack（P-11）
     @Nullable
     public ItemStack getTooltipStack(double mouseX, double mouseY) {
@@ -216,26 +249,12 @@ public final class LogDetailPanel implements PagePanel {
 
     public void changePage(int delta) {
         this.pagination.changePage(delta);
+        contentDirty = true;
     }
 
     public void setPage(int page) {
         this.pagination.setPage(page);
-    }
-
-    // 渲染返回按钮 tooltip + 备注按钮 tooltip + 复制坐标按钮 tooltip（由外部在 super.render 之后调用）
-    public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (this.backButton != null && this.backButton.visible) {
-            this.backButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.noteButton != null && this.noteButton.visible) {
-            this.noteButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.deleteButton != null && this.deleteButton.visible) {
-            this.deleteButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.copyBtnHovered) {
-            CopyCoordinateButton.renderTooltip(guiGraphics, font, mouseX, mouseY);
-        }
+        contentDirty = true;
     }
 
     // —— Spacetime 卡片：标签+值文字布局，6 行 ——
@@ -279,7 +298,6 @@ public final class LogDetailPanel implements PagePanel {
         int labelWidth = maxWidth(font, createdLabel, updatedLabel, structLabel, biomeLabel, dimensionLabel, coordsLabel);
         int valueX = x + pad + labelWidth + LABEL_GAP;
         int copyBtnW = CopyCoordinateButton.WIDTH;
-        int copyBtnH = CopyCoordinateButton.HEIGHT;
         // 最后一行需为复制按钮预留空间
         int valueW = w - pad * 2 - labelWidth - LABEL_GAP;
         int lastRowValueW = valueW - copyBtnW - LABEL_GAP;
@@ -323,14 +341,6 @@ public final class LogDetailPanel implements PagePanel {
         drawMetaRow(g, font, 5, coordsLabel.getString(), coordsValue,
                 x + pad, ty, valueX, lastRowValueW, rowFullWidth,
                 JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered);
-        // 渲染复制按钮（竖直居中于行内）
-        int btnX = valueX + lastRowValueW + LABEL_GAP;
-        int btnY = ty;
-        boolean btnHovered = CopyCoordinateButton.isHit(btnX, btnY, mouseX, mouseY);
-        CopyCoordinateButton.render(g, btnX, btnY, btnHovered);
-        this.copyBtnBounds = new Bounds(btnX, btnY, copyBtnW, copyBtnH);
-        this.copyBtnHovered = btnHovered;
-
         return cardH;
     }
 
@@ -354,7 +364,7 @@ public final class LogDetailPanel implements PagePanel {
         // 标签：次要色，左对齐于标签列
         g.drawString(font, label, rowX, rowY, JournalLayout.LOG_DETAIL_LABEL_COLOR, false);
         // 值：主要色，超宽时悬停滚动
-        ScrollTextHelper.draw(g, font, value, valueX, rowY, valueW, valueColor,
+        TextScroll.draw(g, font, value, valueX, rowY, valueW, valueColor,
                 hovered, this.metaRowScrollTicks[rowIndex], false);
         return rowH;
     }
@@ -442,12 +452,14 @@ public final class LogDetailPanel implements PagePanel {
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.35F);
             }
 
-            float scale = (float) ICON_SIZE / 16;
-            g.pose().pushPose();
-            g.pose().translate(iconX, iconY, 0);
-            g.pose().scale(scale, scale, 1.0f);
-            g.renderItem(stack, 0, 0);
-            g.pose().popPose();
+            UiRenderLayers.item(g, new UiRect(iconX, iconY, ICON_SIZE, ICON_SIZE), local -> {
+                local.pose().pushPose();
+                try {
+                    local.pose().translate(iconX, iconY, 0);
+                    local.pose().scale(ICON_SIZE / 16f, ICON_SIZE / 16f, 1);
+                    local.renderItem(stack, 0, 0);
+                } finally { local.pose().popPose(); }
+            });
 
             // 幽灵虚影的 alpha 由着色器颜色在**提交时**生效，所以只有这一支需要立刻 flush 再复位；
             // 其余图标不再逐图标 flush（原实现在循环内无条件 flush，会打断批次；提交顺序不变）。
@@ -464,7 +476,6 @@ public final class LogDetailPanel implements PagePanel {
                 drawBadge(g, font, iconX, iconY, actual + "/" + expected,
                         JournalLayout.LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR);
             }
-            this.renderTooltipSlots.add(new IconSlot(iconX, iconY, loot));
         }
 
         // 底部进度条 + 文字（文字直接渲染在进度条本体上）
@@ -474,16 +485,12 @@ public final class LogDetailPanel implements PagePanel {
         drawProgressBar(g, font, barX, barY, barWidth, this.obtainedLootCount, this.totalLootCount);
     }
 
-    // 绘制物品角标（右下角，z=200 确保位于物品图标图层之上）。
-    // 可读性改用原版文字阴影（1 次 drawString），替代原 8 向黑色描边（9 次 drawString）：
-    // 阴影本身就是暗色 1px 偏移副本，与原版数量角标同口径，任何图标底色都能读清。
+    // 角标使用独立前景层和原版文字阴影。
     private static void drawBadge(GuiGraphics g, Font font, int iconX, int iconY, String text, int color) {
         int badgeX = iconX + ICON_SIZE - font.width(text);
         int badgeY = iconY + ICON_SIZE - font.lineHeight;
-        g.pose().pushPose();
-        g.pose().translate(0, 0, 200);
-        g.drawString(font, text, badgeX, badgeY, color, true);
-        g.pose().popPose();
+        UiRenderLayers.draw(g, UiRenderLayers.FOREGROUND,
+                () -> g.drawString(font, text, badgeX, badgeY, color, true));
     }
 
     // 绘制底部总进度条，"Collected X/Y" 文字直接渲染在进度条本体上（居中，白色带阴影）
@@ -613,12 +620,4 @@ public final class LogDetailPanel implements PagePanel {
         }
     }
 
-    private record Bounds(int x, int y, int width, int height) {
-        private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
-
-        private boolean contains(double mouseX, double mouseY) {
-            return mouseX >= this.x && mouseX <= this.x + this.width
-                    && mouseY >= this.y && mouseY <= this.y + this.height;
-        }
-    }
 }

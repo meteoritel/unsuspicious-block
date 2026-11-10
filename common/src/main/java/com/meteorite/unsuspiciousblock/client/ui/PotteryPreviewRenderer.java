@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui;
 
 import com.mojang.blaze3d.platform.Lighting;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import net.minecraft.Util;
@@ -23,14 +25,21 @@ public final class PotteryPreviewRenderer {
     private ItemStack previewSource = ItemStack.EMPTY;
 
     // 在指定位置绘制持续自转并保留四面纹饰的原版陶罐
-    public void render(GuiGraphics graphics, ItemStack output,
-                       float x, float y, float scale, float manualRotation) {
+    public void render(GuiGraphics graphics, ItemStack output, UiRect bounds, float manualRotation) {
+        UiRenderLayers.model(graphics, bounds, local -> renderModel(local, output, bounds, manualRotation));
+    }
+
+    private void renderModel(GuiGraphics graphics, ItemStack output, UiRect bounds, float manualRotation) {
+        float x = bounds.x() + bounds.width() / 2.0F;
+        float y = bounds.bottom() - bounds.height() * 5.0F / 38.0F;
+        float scale = bounds.width() * 24.0F / 38.0F;
         if (!ItemStack.isSameItemSameComponents(output, previewSource)) {
             previewPot.setFromItem(output);
             previewSource = output.copy();
         }
 
         graphics.pose().pushPose();
+        try {
         graphics.pose().translate(x, y, 120.0F);
         graphics.pose().scale(scale, -scale, scale);
         graphics.pose().mulPose(Axis.XP.rotationDegrees(18.0F));
@@ -41,8 +50,11 @@ public final class PotteryPreviewRenderer {
         Lighting.setupFor3DItems();
         dispatcher.renderItem(previewPot, graphics.pose(), new EvenlyLitBufferSource(graphics.bufferSource()),
                 15728880, OverlayTexture.NO_OVERLAY);
-        graphics.flush();
-        graphics.pose().popPose();
+        } finally {
+            graphics.flush();
+            graphics.pose().popPose();
+            Lighting.setupForFlatItems();
+        }
     }
 
     /** 为预览模型的所有 RenderType 提供统一亮度的顶点输出。 */

@@ -1,6 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.hud;
 
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
+import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
+import com.meteorite.meteosuikit.api.style.UiSurfaceSkin;
+import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState.DetailLayout;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState.GroupRow;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState.HudLayout;
@@ -211,7 +216,7 @@ public final class SuspiciousReaderHud {
     }
 
     private static void panel(GuiGraphics graphics, int x, int y, int width, int height, int alpha) {
-        graphics.fill(x, y, x + width, y + height, withAlpha(BACKGROUND, alpha));
+        UiSurfaceSkin.fill(withAlpha(BACKGROUND, alpha)).paint(graphics, new UiRect(x, y, width, height), UiControlStyle.State.NORMAL);
         graphics.fill(x, y, x + 1, y + height, withAlpha(ACCENT, alpha));
     }
 
@@ -227,20 +232,14 @@ public final class SuspiciousReaderHud {
         if (width > 0) cachedText(graphics, font, trim(font, value, width), x, y, META, alpha);
     }
 
-    private static String trim(Font font, String value, int width) {
-        if (width <= 0) return "";
-        if (font.width(value) <= width) return value;
-        String dots = "...";
-        if (font.width(dots) > width) return font.plainSubstrByWidth(dots, width);
-        return font.plainSubstrByWidth(value, width - font.width(dots)) + dots;
-    }
+    private static String trim(Font font, String value, int width) { return TextScroll.trimToWidth(font, value, width); }
 
     private static void icon(GuiGraphics graphics, ItemStack icon, int x, int y, int alpha) {
         graphics.flush();
         RenderSystem.enableBlend();
         RenderSystem.setShaderColor(1, 1, 1, alpha / 255.0F);
         try {
-            graphics.renderItem(icon, x, y);
+            UiRenderLayers.item(graphics, new UiRect(x, y, 16, 16), local -> local.renderItem(icon, x, y));
             graphics.flush();
         } finally {
             RenderSystem.setShaderColor(1, 1, 1, 1);

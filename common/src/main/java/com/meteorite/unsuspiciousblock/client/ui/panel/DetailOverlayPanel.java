@@ -1,8 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
-import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
+import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
@@ -104,7 +105,7 @@ public final class DetailOverlayPanel implements PagePanel {
         int progressLabelWidth = progressLabelText.width();
         boolean progressLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
         this.progressLabelScrollTicks = progressLabelHovered ? this.progressLabelScrollTicks + 1 : 0;
-        ScrollTextHelper.draw(guiGraphics, font, progressLabelText.text(), progressLabelWidth,
+        TextScroll.draw(guiGraphics, font, progressLabelText.text(), progressLabelWidth,
                 leftX, y, contentWidth,
                 LABEL_COLOR, progressLabelHovered, this.progressLabelScrollTicks, false);
 
@@ -162,7 +163,7 @@ public final class DetailOverlayPanel implements PagePanel {
         boolean discoveredLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
         this.discoveredLabelScrollTicks = discoveredLabelHovered ? this.discoveredLabelScrollTicks + 1 : 0;
         PanelTextMetrics.Measured discoveredText = this.metrics.measure(discoveredLabel.getString(), font);
-        ScrollTextHelper.draw(guiGraphics, font, discoveredText.text(), discoveredText.width(),
+        TextScroll.draw(guiGraphics, font, discoveredText.text(), discoveredText.width(),
                 leftX, y, contentWidth,
                 LABEL_COLOR, discoveredLabelHovered, this.discoveredLabelScrollTicks, false);
         y = listStartY(y);
@@ -173,7 +174,7 @@ public final class DetailOverlayPanel implements PagePanel {
             this.emptyStateScrollTicks = emptyHovered ? this.emptyStateScrollTicks + 1 : 0;
             PanelTextMetrics.Measured emptyText = this.metrics.measure(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.no_discoveries").getString(), font);
-            ScrollTextHelper.draw(guiGraphics, font, emptyText.text(), emptyText.width(),
+            TextScroll.draw(guiGraphics, font, emptyText.text(), emptyText.width(),
                     leftX + 2, y, emptyWidth, MUTED_COLOR, emptyHovered, this.emptyStateScrollTicks, false);
             y += 12;
         } else {
@@ -196,8 +197,10 @@ public final class DetailOverlayPanel implements PagePanel {
 
                 // 图标
                 ItemStack stack = item.stack();
-                guiGraphics.renderItem(stack, leftX + 2, rowY - 1);
-                guiGraphics.renderItemDecorations(font, stack, leftX + 2, rowY - 1);
+                UiRenderLayers.item(guiGraphics, new UiRect(leftX + 2, rowY - 1, 16, 16), local -> {
+                    local.renderItem(stack, leftX + 2, rowY - 1);
+                    local.renderItemDecorations(font, stack, leftX + 2, rowY - 1);
+                });
 
                 // 获得次数
                 PanelTextMetrics.Measured count = this.metrics.measure(formatCount(item.count()), font);
@@ -220,7 +223,7 @@ public final class DetailOverlayPanel implements PagePanel {
                 // 名称（搜索不匹配时变暗）
                 int nameColor = entry.highlighted ? TEXT_COLOR : MUTED_COLOR;
                 PanelTextMetrics.Measured name = this.metrics.measure(item.displayName().getString(), font);
-                ScrollTextHelper.draw(guiGraphics, font, name.text(), name.width(),
+                TextScroll.draw(guiGraphics, font, name.text(), name.width(),
                         nameX, rowY + 2, nameMaxWidth, nameColor, hovered, entry.scrollTicks, false);
             }
             y += showCount * ITEM_ROW_HEIGHT + 6;
@@ -274,7 +277,7 @@ public final class DetailOverlayPanel implements PagePanel {
             return Optional.empty();
         }
         int maxVisibleItems = maxVisibleItems(listY);
-        int visibleIndex = (int) ((mouseY - listY) / ITEM_ROW_HEIGHT);
+        int visibleIndex = com.meteorite.meteosuikit.api.layout.UiRowMetrics.fixedRowIndex(mouseY - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT, maxVisibleItems);
         if (visibleIndex < 0 || visibleIndex >= maxVisibleItems) {
             return Optional.empty();
         }
@@ -283,6 +286,12 @@ public final class DetailOverlayPanel implements PagePanel {
             return Optional.empty();
         }
         return Optional.of(this.unlockedItems.get(itemIndex).item.stack());
+    }
+
+    @Override public com.meteorite.meteosuikit.api.input.UiPointerHit hitTest(double x, double y) {
+        ItemStack stack = getHoveredItemStack(x, y).orElse(ItemStack.EMPTY);
+        return stack.isEmpty() ? null : com.meteorite.meteosuikit.api.input.UiPointerHit.leaf(this, x, y)
+                .withPresentation((g, font, px, py) -> g.renderTooltip(font, stack, px, py));
     }
 
     private int maxVisibleItems(int listStartY) {

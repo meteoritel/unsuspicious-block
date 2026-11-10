@@ -177,7 +177,7 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 - 注册 `JournalJeiGuiHandler`，将考古笔记中的已解锁物品条目暴露为 JEI clickable ingredient，支持 U/R 查看配方与用法；JEI 关闭后按其原生 Screen 返回链回到考古笔记。
 - JEI runtime 向 `ArchaeologyJournalKeyHandler` 提供当前悬停原料，使玩家可在 JEI 物品上按手册快捷键按注册名搜索考古笔记。
 - Fabric 端通过 `fabric.mod.json` 的 `jei_mod_plugin` entrypoint 注册；NeoForge 端无注册代码，由 JEI 自行扫描 `@JeiPlugin` 注解发现。
-- JEI API 跨平台一致，故放在 common。
+- JEI API 跨平台一致，故放在 common。陶轮自有背景、进度和物品/模型预览使用 kit，ingredient slot 和 focus link 继续由 JEI 持有。笔记联动直接读取根的唯一命中结果，覆盖面和捕获期间不暴露底层物品。
 
 ### 4.3 Lootr（每人独立战利品）
 
@@ -219,6 +219,13 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 - `ModMenuConfigScreen`：区分通用配置与当前世界服务端配置的入口页面。
 - `SpiritCatConfigScreen`：编辑灵体猫全局配置，通过 `FabricLootTableConfig.saveSpiritCatConfig` 落盘。
 - `ServerLootConfigScreen`：编辑当前世界的战利品服务端配置，通过 `FabricLootTableConfig.save` 落盘。
+
+### 4.7 配置页面
+
+Fabric ModMenu 首页及配置页、NeoForge Mods 配置工厂均使用独立 Meteo’s UI Kit。`ConfigFormScreen` 只负责配置页的滚动排版、稳定控件与固定操作区；平台页面保留字段、校验和保存所有权。重置只改草稿，取消不保存。
+
+NeoForge 页面从本模组已注册的 `ModConfigSpec` 派生配置文件入口与字段，包含独立淘洗 SERVER 配置。字段采用同一 spec 的类型、默认值和校验器，全部验证后写入并调用 `save()`。未加载的 spec、远程服务器 SERVER 配置与已开放到 LAN 的集成服务器 SERVER 配置不可编辑。当前注册字段均无重启标记。
+
 
 ## 5. 扩展点：新增配置项 / 数据驱动内容 / 联动
 

@@ -1,7 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.client.ui.kit.*;
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.geometry.*;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
@@ -26,14 +29,16 @@ import java.util.TreeSet;
 import static com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text;
 
 /** 推荐输入的模态预览：请求和应用分离，关闭、过期及切表后不接收旧答复。 */
-public final class ScenarioRecommendationOverlay implements OverlayLayer.Overlay {
-    private final OverlayLayer layer;
+public final class ScenarioRecommendationOverlay implements JournalOverlays.Surface, UiInputContainer {
+    private final JournalOverlays layer;
     private final ResourceLocation table;
     private final SimulationAssistTarget target;
     private final RequestScenarioSimulationPayload original;
     private final UiScrollView scroll = new UiScrollView();
     private final UiControlGroup controls = new UiControlGroup();
-    private final UiFocusManager focus = new UiFocusManager();
+    private final UiChildren<UiInputTarget> children = new UiChildren<>();
+    private final UiOverlay overlay = new UiOverlay(this);
+    private final UiLayer presentation;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
     private List<FormattedCharSequence> lines = List.of();
     @Nullable private RequestScenarioSimulationPayload displayed;
@@ -44,17 +49,21 @@ public final class ScenarioRecommendationOverlay implements OverlayLayer.Overlay
     private boolean wasStale;
     private boolean dirty = true;
 
-    private ScenarioRecommendationOverlay(OverlayLayer layer, ResourceLocation table,
+    private ScenarioRecommendationOverlay(JournalOverlays layer, ResourceLocation table,
             SimulationAssistTarget target, RequestScenarioSimulationPayload original) {
         this.layer = layer;
         this.table = table;
         this.target = target;
         this.original = original;
+        children.add(scroll); children.add(controls);
+        presentation = new UiLayer(overlay.inputScope(), (graphics, font, pointer, depth) -> overlay.render(graphics,
+                new UiRect(0, 0, layer.width(), layer.height()), depth, 0x88000000,
+                () -> render(graphics, font, pointer)), null);
         controls.setStyle(ScenarioUi.QUIET);
         scroll.setStep(24);
     }
 
-    public static void open(OverlayLayer layer, ResourceLocation table, SimulationAssistTarget target) {
+    public static void open(JournalOverlays layer, ResourceLocation table, SimulationAssistTarget target) {
         var original = ScenarioSimulationClientState.requestOf(table);
         if (original == null) return;
         layer.open(new ScenarioRecommendationOverlay(layer, table, target, original));
@@ -116,7 +125,6 @@ public final class ScenarioRecommendationOverlay implements OverlayLayer.Overlay
         scroll.setContentHeight(lines.size() * (font.lineHeight + 4));
         scroll.setScrollbarVisible(scroll.maxOffset() > 0);
         controls.beginUpdate();
-        focus.beginUpdate();
         UiControl close = button(font, "close", text("params.cancel"), bounds.right() - 22, bounds.y() + 4, 18, layer::close);
         close.configure(font, Component.empty(), UiTextPalette.Parchment.BODY, ScenarioUi.icon(ScenarioUi.Icon.CLOSE),
                 List.of(text("params.cancel")), layer::close);
@@ -131,14 +139,12 @@ public final class ScenarioRecommendationOverlay implements OverlayLayer.Overlay
         apply.setStyle(ScenarioUi.ACTION);
         apply.setEnabled(recommendation != null && !pending && !stale);
         controls.endUpdate();
-        focus.endUpdate();
     }
 
     private UiControl button(Font font, String key, Component label, int x, int y, int width, UiAction action) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, 16);
         control.configure(font, label, UiTextPalette.Parchment.BODY, null, List.of(label), action);
-        focus.add(control);
         return control;
     }
 
@@ -146,9 +152,7 @@ public final class ScenarioRecommendationOverlay implements OverlayLayer.Overlay
         return new ItemStack(BuiltInRegistries.ITEM.get(id)).getHoverName();
     }
 
-    @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY, float partialTick) {
-        sync(font);
-        graphics.fill(0, 0, layer.width(), layer.height(), 0x88000000);
+    private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.PANEL.render(graphics, bounds);
         graphics.drawString(font, text("recommend.title"), bounds.x() + 8, bounds.y() + 8, UiTextPalette.Parchment.TITLE, false);
         scroll.push(graphics);
@@ -160,35 +164,29 @@ public final class ScenarioRecommendationOverlay implements OverlayLayer.Overlay
                 graphics.drawString(font, lines.get(index), 0, index * lineHeight, UiTextPalette.Parchment.BODY, false);
             }
         } finally { scroll.pop(graphics); }
-        scroll.renderScrollbar(graphics, ScenarioUi.QUIET);
-        controls.render(graphics, font, mouseX, mouseY);
-        controls.renderTooltip(graphics, font, mouseX, mouseY);
+        scroll.renderScrollbar(graphics, com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme.PARCHMENT);
+        controls.render(graphics, font, pointer);
+        if (pointer.allowsTooltip() && pointer.hit() != null) pointer.hit().renderTooltip(graphics, font,
+                com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
     }
 
-    @Override public boolean mouseClicked(double x, double y, int button) {
-        sync(Minecraft.getInstance().font);
-        focus.clearFocus();
-        if (button == 0 && !scroll.mousePressed(x, y, button)) controls.mousePressed(x, y, button);
-        return true;
+    @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
+    @Override public UiLayer layer() { return presentation; }
+    @Override public void prepare(Font font) { sync(font); }
+    @Override public UiPointerHit hitTest(double x, double y) {
+        UiPointerHit hit = children.hitTest(x, y);
+        return hit != null ? hit.within(this) : scroll.contains(x, y) ? UiPointerHit.leaf(this, x, y) : null;
     }
-    @Override public boolean mouseDragged(double x, double y, int button, double dragX, double dragY) { return scroll.mouseDragged(y); }
-    @Override public boolean mouseReleased(double x, double y, int button) {
-        scroll.mouseReleased(); controls.mouseReleased(button); return true;
-    }
-    @Override public boolean mouseScrolled(double x, double y, double amount) {
-        if (scroll.contains(x, y)) scroll.scrollBy(amount);
-        return true;
+    @Override public boolean mouseScrolled(UiInputContext context, double x, double y) {
+        if (!scroll.contains(context.pointerX(), context.pointerY())) return false;
+        scroll.scrollBy(y); return true;
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
-        sync(Minecraft.getInstance().font);
-        if (key == GLFW.GLFW_KEY_ESCAPE) { layer.close(); return true; }
-        if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {
-            scroll.scrollBy(key == GLFW.GLFW_KEY_UP ? 1 : -1); return true;
+        if (key == GLFW.GLFW_KEY_PAGE_UP || key == GLFW.GLFW_KEY_PAGE_DOWN) {
+            scroll.setOffset(scroll.offset() + (key == GLFW.GLFW_KEY_PAGE_DOWN ? 1 : -1) * scroll.viewport().height());
+            return true;
         }
-        return focus.keyPressed(key, scan, modifiers);
+        return UiInputContainer.super.keyPressed(key, scan, modifiers);
     }
-    @Override public void closed() {
-        ScenarioSimulationClientState.cancelAssist();
-        controls.mouseReleased(0); scroll.mouseReleased(); focus.clearFocus();
-    }
+    @Override public void closed() { ScenarioSimulationClientState.cancelAssist(); }
 }

@@ -1,22 +1,22 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.ui.kit.*;
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.geometry.*;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.*;
+import com.meteorite.meteosuikit.api.render.*;
+import com.meteorite.meteosuikit.api.style.*;
+import com.meteorite.meteosuikit.api.text.*;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import org.lwjgl.glfw.GLFW;
 
-/**
- * 放大页的灯箱内容适配器：把条件树的独立视图（{@link ScenarioFrameView}）按 {@link UiLightbox.Content}
- * 契约暴露给灯箱外壳，从而复用遮罩、控制栏、适应窗口、焦点与关闭语义。
- *
- * <p>本类不再是浮层：模态接管、ESC/× 与键盘焦点由 {@code UiLightbox} + {@code LightboxOverlay} 负责，
- * 这里只做「视口 → 尺寸 / 绘制 / 缩放 / 平移 / 命中」的映射。视图是独立实例，页内框的平移与缩放不受影响；
- * 工具提示也不再由内容自己绘制——外壳按「控件优先，其次内容命中」统一出唯一 tooltip。</p>
- */
-final class ScenarioExpandedOverlay implements UiLightbox.Content {
+/** 条件文档灯箱内容：独立缩放、平移和动作导航，外壳直接使用 kit 层。 */
+final class ScenarioExpandedOverlay implements UiLightbox.Content, UiFocusTarget {
     /** 灯箱通用文案：外壳的按钮与 tooltip 全部经由它取本地化文本；实例无状态，可复用。 */
     static final UiLightbox.Labels LABELS = new UiLightbox.Labels() {
         @Override public Component close() { return text("close"); }
@@ -34,14 +34,15 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
     private UiRect viewport = new UiRect(0, 0, 1, 1);
     /** 内容区拖动状态：只有按下后拖动中才让 panBy 生效，避免点击与拖动互相误触。 */
     private boolean dragging;
+    private final UiFocusState focus = new UiFocusState();
+    private UiDocumentHit pressed;
+    private int actionIndex;
 
     ScenarioExpandedOverlay(ScenarioDetailPanel owner, Font font) {
         this.owner = owner;
         this.frame = new ScenarioFrameView(font);
         this.tree = owner.tree();
         this.frame.setContent(tree);
-        // 灯箱自己提供缩放与适应窗口：关掉框内自带的档位/复位角控件，避免两套控件与两处命中。
-        this.frame.hideCornerControls();
     }
 
     // 文案 key 前缀由灯箱外壳约定，kit 自身不持有任何文案。
@@ -62,7 +63,7 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
         clampPan();
     }
 
-    @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
+    @Override public void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         List<UiNode> next = owner.tree();
         if (next != tree) {
             tree = next;
@@ -71,7 +72,7 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
             clampPan();
         }
         // 不画 tooltip：唯一 tooltip 的来源是灯箱外壳（控件优先，其次这里的 hit）。
-        frame.render(graphics, mouseX, mouseY);
+        frame.render(graphics, pointer);
     }
 
     @Override public boolean zoom(double amount, double anchorX, double anchorY) {
@@ -93,27 +94,10 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
         return previous != frame.transform().zoomIndex();
     }
 
-    // 自动适应不超过自然字号；所有树从左上角阅读，手动缩放仍允许更大档位。
-    // 档位总数由 restore 的钳制行为反推（kit 未暴露档位表），这样不复制内部常量。
     @Override public void fit() {
-        UiTransform transform = frame.transform();
-        UiRect visible = visibleViewport();
-        int maxIndex = 0;
-        while (true) {
-            transform.restore(maxIndex + 1, 0, 0);
-            if (transform.zoomIndex() != maxIndex + 1) break;
-            maxIndex++;
-        }
-        int chosen = 0;
-        for (int index = maxIndex; index >= 0; index--) {
-            transform.restore(index, 0, 0);
-            if (transform.scale() <= 1.0 && frame.contentWidth() * transform.scale() <= visible.width()
-                    && frame.contentHeight() * transform.scale() <= visible.height()) {
-                chosen = index;
-                break;
-            }
-        }
-        transform.restore(chosen, 0, 0);
+        frame.transform().fit(0, 0, contentWidth(), contentHeight(), 0);
+        if (frame.transform().scale() > 1) frame.transform().reset();
+        frame.transform().restore(frame.transform().zoomIndex(), 0, 0);
         clampPan();
     }
 
@@ -124,27 +108,53 @@ final class ScenarioExpandedOverlay implements UiLightbox.Content {
         return true;
     }
 
-    @Override public boolean mousePressed(double x, double y, int button) {
-        if (button != 0 || !visibleViewport().contains(x, y)) return false;
-        UiTarget target = frame.hit(x, y);
-        // 命中带动作的树节点时照常执行它（与页内一致）；空白处按下则开始拖动平移。
-        if (target != null && target.action() != null) {
-            target.action().run();
-            return true;
-        }
-        dragging = true;
+    @Override public boolean mousePressed(UiInputContext context) {
+        if (context.button() != 0 || !visibleViewport().contains(context.pointerX(), context.pointerY())) return false;
+        pressed = frame.hit(context.pointerX(), context.pointerY());
+        dragging = pressed == null || pressed.action() == null;
+        context.scope().interaction().begin(this, UiInteractionSession.Source.POINTER, GLFW.GLFW_MOUSE_BUTTON_LEFT);
         return true;
     }
-
-    @Override public boolean mouseReleased(double x, double y, int button) {
-        if (button != 0 || !dragging) return false;
-        dragging = false;
+    @Override public boolean mouseDragged(UiInputContext context, double dx, double dy) { return panBy(dx, dy); }
+    @Override public boolean mouseReleased(UiInputContext context) {
+        UiDocumentHit hit = frame.hit(context.pointerX(), context.pointerY());
+        UiDocumentHit action = pressed;
+        pressed = null; dragging = false;
+        if (action != null && action == hit && action.action() != null) action.action().run();
         return true;
     }
-
-    @Override public int zoomPercent() { return (int) Math.round(frame.transform().scale() * 100); }
-
-    @Override public @Nullable UiTarget hit(double x, double y) { return frame.hit(x, y); }
+    @Override public void interactionEnded(UiInteractionSession.EndReason reason) { dragging = false; pressed = null; }
+    @Override public int zoomPercent() { return frame.transform().scalePercent(); }
+    @Override public @Nullable UiPointerHit hitTest(double x, double y) {
+        if (!visibleViewport().contains(x, y)) return null;
+        UiDocumentHit hit = frame.hit(x, y);
+        UiPointerHit result = UiPointerHit.leaf(this, x, y);
+        return hit == null ? result : result.withTextTooltip(hit.tooltip(), viewport);
+    }
+    @Override public UiFocusState focusState() { return focus; }
+    @Override public UiRect bounds() { return viewport; }
+    @Override public Component accessibleName() {
+        var actions = frame.actions();
+        return actions.isEmpty() ? com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("conditions.heading")
+                : actions.get(Math.min(actionIndex, actions.size() - 1)).label();
+    }
+    @Override public boolean activate() {
+        var actions = frame.actions();
+        if (actions.isEmpty()) return false;
+        java.util.Objects.requireNonNull(actions.get(Math.min(actionIndex, actions.size() - 1)).hit().action()).run();
+        return true;
+    }
+    @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        if (!isFocused()) return false;
+        var actions = frame.actions();
+        if (key != org.lwjgl.glfw.GLFW.GLFW_KEY_UP && key != org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN) return false;
+        if (actions.isEmpty()) return true;
+        actionIndex = Math.clamp(actionIndex + (key == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN ? 1 : -1), 0, actions.size() - 1);
+        UiRect selected = actions.get(actionIndex).contentBounds();
+        frame.transform().restore(frame.transform().zoomIndex(), frame.transform().panX(), -selected.y());
+        clampPan();
+        return true;
+    }
 
     // 条件树不依赖任何纹理资源：不存在「缺图」占位。
     @Override public @Nullable Component placeholder() { return null; }

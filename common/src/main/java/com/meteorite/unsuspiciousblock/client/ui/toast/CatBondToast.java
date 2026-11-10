@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
 import com.meteorite.unsuspiciousblock.cat.CatBondStage;
-import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
+import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.item.ModItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -10,7 +10,11 @@ import net.minecraft.client.gui.components.toasts.Toast;
 import net.minecraft.client.gui.components.toasts.ToastComponent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.style.UiSurfaceSkin;
+import com.meteorite.meteosuikit.api.style.UiControlStyle;
+import net.minecraft.locale.Language;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -23,8 +27,7 @@ import java.util.List;
  * 猫族关系 Toast——提示首次建立关系以及阶段升降时获得或失去的恩惠。
  */
 public class CatBondToast implements Toast {
-    private static final ResourceLocation BACKGROUND_SPRITE =
-            ResourceLocation.withDefaultNamespace("toast/advancement");
+    private static final UiSurfaceSkin BACKGROUND = UiSurfaceSkin.panel(0xFF24232A, 0xFF796342, 0xFF494551);
     private static final long DISPLAY_TIME = 6000L;
     private static final Object TOKEN = new Object();
     // 详情最多三行；超出时末行加省略号，不做静默截断（I-4）
@@ -32,34 +35,39 @@ public class CatBondToast implements Toast {
 
     private final Component title;
     private final Component detail;
+    private final UiIcon icon;
+    private Font measuredFont;
+    private Language language;
+    private List<FormattedCharSequence> lines = List.of();
 
     private CatBondToast(Component title, Component detail) {
         this.title = title;
         this.detail = detail;
+        icon = new UiIcon.Item(new ItemStack(ModItems.HAND_OF_CAT == null ? Items.CAT_SPAWN_EGG : ModItems.HAND_OF_CAT));
     }
 
     @Override
     public @NotNull Visibility render(@NotNull GuiGraphics graphics,
                                       @NotNull ToastComponent toastComponent,
                                       long timeSinceLastVisible) {
-        graphics.blitSprite(BACKGROUND_SPRITE, 0, 0, this.width(), this.height());
+        BACKGROUND.paint(graphics, new UiRect(0, 0, width(), height()), UiControlStyle.State.NORMAL);
         Font font = toastComponent.getMinecraft().font;
-        graphics.drawString(font, this.title, 30, 7, 0xFFFFFF, true);
-        List<FormattedCharSequence> lines = font.split(this.detail, this.width() - 36);
+        TextScroll.draw(graphics, font, title.getString(), 30, 7, width() - 36, 0xFFFFFF, false, 0, false);
+        if (measuredFont != font || language != Language.getInstance()) {
+            measuredFont = font; language = Language.getInstance();
+            lines = font.split(detail, width() - 36);
+        }
         boolean truncated = lines.size() > MAX_DETAIL_LINES;
         for (int i = 0; i < Math.min(MAX_DETAIL_LINES, lines.size()); i++) {
             if (truncated && i == MAX_DETAIL_LINES - 1) {
                 // 末行显式加省略号，避免玩家完全看不到"还有内容"；截断口径只留 kit 一份
-                String last = TextScroll.trimToWidth(font, plainText(lines.get(i)), this.width() - 36);
+                String last = TextScroll.trimToWidth(font, plainText(lines.get(i)) + "...", this.width() - 36);
                 graphics.drawString(font, last, 30, 19 + i * 10, 0xFFFFD0, false);
             } else {
                 graphics.drawString(font, lines.get(i), 30, 19 + i * 10, 0xFFFFD0, false);
             }
         }
-        ItemStack icon = ModItems.HAND_OF_CAT == null
-                ? new ItemStack(Items.CAT_SPAWN_EGG)
-                : new ItemStack(ModItems.HAND_OF_CAT);
-        graphics.renderItem(icon, 8, 8);
+        icon.render(graphics, 8, 8);
         double multiplier = toastComponent.getNotificationDisplayTimeMultiplier();
         return timeSinceLastVisible < DISPLAY_TIME * multiplier ? Visibility.SHOW : Visibility.HIDE;
     }

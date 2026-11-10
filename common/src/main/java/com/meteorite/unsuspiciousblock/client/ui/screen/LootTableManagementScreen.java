@@ -1,383 +1,308 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
-import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.style.UiThemeContext;
+import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.network.payload.s2c.SyncLootTableManagementPayload;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Tooltip;
-import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
-/**
- * 战利品表追踪管理页面——以可展开路径树浏览服务端权威索引并提交管理员操作。
- */
-public final class LootTableManagementScreen extends Screen {
+/** 战利品追踪管理；业务树和草稿归宿主，列表、输入与确认统一使用 kit。 */
+public final class LootTableManagementScreen extends UiThemedScreen {
     private static final int SCREEN_MARGIN = 6;
     private static final int MAX_PANEL_WIDTH = 520;
-    private static final int MAX_PANEL_HEIGHT = 290;
+    private static final int MAX_PANEL_HEIGHT = 310;
     private static final int INNER_MARGIN = 10;
     private static final int COLUMN_GAP = 10;
-    private static final int MIN_DETAILS_WIDTH = 120;
-    private static final int MAX_DETAILS_WIDTH = 180;
     private static final int ROW_HEIGHT = 20;
     private static final int INDENT_WIDTH = 10;
-    private static final int SCROLLBAR_WIDTH = 5;
-    private static final int LANGUAGE_BUTTON_WIDTH = 20;
-    private static final int LANGUAGE_CONTROL_GAP = 3;
-    private static final ResourceLocation LANGUAGE_ICON = ResourceLocation.withDefaultNamespace("icon/language");
-    private static final long TEXT_SCROLL_PAUSE_MILLIS = 1_200L;
-    private static final long TEXT_SCROLL_PIXEL_MILLIS = 35L;
-    private static final int IMPORT_STATUS_OK_COLOR = 0x78D66A;
-    private static final int IMPORT_STATUS_ERROR_COLOR = 0xFF5555;
-
+    private static final int IMPORT_STATUS_OK_COLOR = UiTextPalette.Dark.POSITIVE;
+    private static final int IMPORT_STATUS_ERROR_COLOR = UiTextPalette.Dark.NEGATIVE;
+    private static final String PREFIX = "screen.unsuspiciousblock.loot_table_management.";
     private final Screen parent;
-    /** 客户端动作层：协议组包、原生文件对话框与导入流程都在这里，Screen 只转调。 */
     private final LootTableManagementActions actions = new LootTableManagementActions();
-    /** 列表视口与滚动几何；与内部语言选择窗口共用同一份实现。 */
-    private final ListScrollState list = new ListScrollState(ROW_HEIGHT, 0xFF202020, 0xFF909090, 0xFFE0E0E0);
+    private final UiChildren<UiInputTarget> content = new UiChildren<>();
+    private final UiInputScope scope = new UiInputScope(content);
+    private final UiControlGroup controls = new UiControlGroup();
+    private final UiControlGroup detailControls = new UiControlGroup();
+    private final UiScrollView detailScroll = new UiScrollView();
+    private final UiModalStack modals = new UiModalStack(theme());
+    private final UiListView<TreeRow> list;
+    private final UiTextInput searchBox;
+    private final UiTextInput languageBox;
+    private final UiTextInput nameBox;
+    private UiControl filterButton;
+    private UiControl backButton;
+    private UiControl applyButton;
+    private UiControl saveNameButton;
+    private UiControl languageButton;
+    private UiControl importButton;
     private final List<SyncLootTableManagementPayload.Entry> filteredEntries = new ArrayList<>();
     private final List<TreeRow> visibleRows = new ArrayList<>();
     private final Set<String> expandedPaths = new HashSet<>();
     private final List<String> languageCodes = new ArrayList<>();
     private final Map<DraftKey, String> nameDrafts = new LinkedHashMap<>();
-    private EditBox searchBox;
-    private EditBox languageBox;
-    private EditBox nameBox;
-    private Button filterButton;
-    private Button languageButton;
-    private Button applyButton;
-    private Button saveNameButton;
-    private Button importButton;
     private Filter filter = Filter.ALL;
     private boolean populatingName;
+    private boolean initialized;
     private long observedRevision = -1L;
-    private long textScrollStartedAt;
     private String selectedLanguageCode = "";
-    @Nullable
-    private ResourceLocation selectedTableId;
-    @Nullable
-    private ResourceLocation hoveredTableId;
-    @Nullable
-    private Component importStatus;
+    private @Nullable ResourceLocation selectedTableId;
+    private @Nullable Component importStatus;
     private int importStatusColor = IMPORT_STATUS_OK_COLOR;
 
     public LootTableManagementScreen(Screen parent) {
-        super(Component.translatable("screen.unsuspiciousblock.loot_table_management.title"));
+        super(Component.translatable(PREFIX + "title"), new UiThemeContext<>(UnsuspiciousUiTheme.DARK));
         this.parent = parent;
+        var font = Minecraft.getInstance().font;
+        initializeLanguageCodes();
+        searchBox = new UiTextInput(theme(), font, Component.translatable(PREFIX + "search"));
+        languageBox = new UiTextInput(theme(), font, Component.translatable(PREFIX + "language"))
+                .setMaxLength(16).setValue(selectedLanguageCode);
+        nameBox = new UiTextInput(theme(), font, Component.translatable(PREFIX + "localized_name")).setMaxLength(128);
+        searchBox.setOnValueChanged(this::rebuildTree);
+        languageBox.setOnValueChanged(() -> onLanguageInputChanged(languageBox.value()));
+        nameBox.setOnValueChanged(() -> onNameInputChanged(nameBox.value()));
+        list = new UiListView<>(theme(), (graphics, rowFont, row, index, rect, selected, hovered, focused) -> {
+            String marker = row.expandable() ? row.expanded() ? "v " : "> " : "";
+            String tracking = row.entry() == null ? "" : row.entry().tracked() ? "+ " : "- ";
+            int x = rect.x() + row.depth() * INDENT_WIDTH;
+            graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, marker + tracking + row.label(),
+                    Math.max(0, rect.right() - x)), x, rect.y() + 5, UiTextPalette.Dark.BODY, false);
+        });
+        list.setRowHeight(ROW_HEIGHT);
+        list.setActivateOnSingleClick(true);
+        list.setOnActivate(row -> {
+            if (row.entry() != null) {
+                selectedTableId = row.entry().tableId();
+                populateName();
+            }
+            if (row.expandable()) toggleExpanded(row);
+            syncControls();
+        });
+        DetailsBody details = new DetailsBody();
+        details.children.addAll(List.of(detailScroll, languageBox, nameBox, detailControls));
+        content.addAll(List.of(searchBox, list, details, controls));
+        scope.setEscape(this::onClose);
+        scope.focus().setListener(new UiFocusFollow(detailScroll,
+                target -> target == languageBox || target == nameBox || (target instanceof UiControl control && detailControls.controls().contains(control)),
+                target -> new UiRect(0, target.bounds().y() - detailScroll.viewport().y() + detailScroll.offset() - 13,
+                        target.bounds().width(), target.bounds().height() + 13), this::layoutUi));
+        modals.setOnScopeChanged(this::refreshUiState);
     }
 
-    @Override
-    protected void init() {
-        int left = panelLeft();
-        int top = panelTop();
-        int listWidth = listWidth();
-        int detailsWidth = detailsWidth();
-        int detailsX = left + INNER_MARGIN + listWidth + COLUMN_GAP;
-        int filterWidth = Math.min(76, Math.max(58, listWidth / 3));
-        int searchWidth = listWidth - filterWidth - 5;
-        int backY = top + panelHeight() - 30;
-        int actionY = backY - 30;
-        int actionWidth = (detailsWidth - 5) / 2;
-        int nameY = actionY - 28;
-        int languageY = nameY - 36;
-        this.textScrollStartedAt = System.currentTimeMillis();
-
-        this.searchBox = new EditBox(this.font, left + INNER_MARGIN, top + 28, searchWidth, 20,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.search"));
-        this.searchBox.setHint(Component.translatable(
-                "screen.unsuspiciousblock.loot_table_management.search").withStyle(ChatFormatting.DARK_GRAY));
-        this.searchBox.setResponder(ignored -> rebuildTree());
-        this.addRenderableWidget(this.searchBox);
-
-        this.filterButton = this.addRenderableWidget(Button.builder(this.filter.label(), button -> {
-            this.filter = this.filter.next();
-            button.setMessage(this.filter.label());
-            rebuildTree();
-        }).bounds(left + INNER_MARGIN + searchWidth + 5, top + 28, filterWidth, 20).build());
-
-        initializeLanguageCodes();
-        this.languageBox = new EditBox(this.font, detailsX, languageY,
-                detailsWidth - LANGUAGE_BUTTON_WIDTH - LANGUAGE_CONTROL_GAP, 20,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.language"));
-        this.languageBox.setMaxLength(16);
-        this.languageBox.setValue(this.selectedLanguageCode);
-        this.languageBox.setResponder(this::onLanguageInputChanged);
-        this.addRenderableWidget(this.languageBox);
-
-        this.languageButton = this.addRenderableWidget(Button.builder(Component.empty(), button ->
-                        Minecraft.getInstance().setScreen(new LanguageSelectionScreen(
-                                this, this.languageCodes, validLanguageCodeOrFallback())))
-                .bounds(detailsX + detailsWidth - LANGUAGE_BUTTON_WIDTH, languageY,
-                        LANGUAGE_BUTTON_WIDTH, 20)
-                .tooltip(Tooltip.create(Component.translatable(
-                        "screen.unsuspiciousblock.loot_table_management.choose_language")))
-                .build());
-
-        this.nameBox = new EditBox(this.font, detailsX, nameY, detailsWidth, 20,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"));
-        this.nameBox.setMaxLength(128);
-        this.nameBox.setResponder(this::onNameInputChanged);
-        this.addRenderableWidget(this.nameBox);
-
-        this.applyButton = this.addRenderableWidget(Button.builder(Component.empty(), button -> applySelection())
-                .bounds(detailsX, actionY, actionWidth, 20).build());
-        this.saveNameButton = this.addRenderableWidget(Button.builder(
-                        Component.translatable("screen.unsuspiciousblock.loot_table_management.save_name"),
-                        button -> saveName())
-                .bounds(detailsX + actionWidth + 5, actionY, detailsWidth - actionWidth - 5, 20).build());
-        this.importButton = this.addRenderableWidget(Button.builder(
-                        Component.translatable("screen.unsuspiciousblock.loot_table_management.import_json"),
-                        button -> importJson())
-                .bounds(detailsX, backY, actionWidth, 20).build());
-        this.addRenderableWidget(Button.builder(Component.translatable("gui.back"), button -> onClose())
-                .bounds(detailsX + actionWidth + 5, backY, detailsWidth - actionWidth - 5, 20).build());
-
-        this.actions.requestSnapshot();
+    @Override protected void init() {
+        controls.setTheme(theme());
+        detailControls.setTheme(theme());
+        controls.beginUpdate();
+        detailControls.beginUpdate();
+        configureControls();
+        controls.endUpdate();
+        detailControls.endUpdate();
+        if (!initialized) { initialized = true; actions.requestSnapshot(); }
         refreshSnapshot();
         syncControls();
     }
 
-    // 窗口 resize 会经 rebuildWidgets -> init() 重建三个输入框；先取出未提交草稿再放回，避免静默丢输入
-    @Override
-    protected void repositionElements() {
-        String searchDraft = this.searchBox != null ? this.searchBox.getValue() : "";
-        String languageDraft = this.languageBox != null ? this.languageBox.getValue() : "";
-        String nameDraft = this.nameBox != null ? this.nameBox.getValue() : "";
-        super.repositionElements();
-        if (this.searchBox != null) {
-            this.searchBox.setValue(searchDraft);
-        }
-        if (this.languageBox != null) {
-            this.languageBox.setValue(languageDraft);
-        }
-        if (this.nameBox != null) {
-            this.populatingName = true;
-            this.nameBox.setValue(nameDraft);
-            this.populatingName = false;
-        }
+    private void configureControls() {
+        filterButton = controls.obtain("filter");
+        filterButton.configure(font, filter.label(), null, List.of(), this::cycleFilter);
+        languageButton = detailControls.obtain("language");
+        languageButton.configure(font, Component.translatable(PREFIX + "choose_language"), null, List.of(), this::chooseLanguage);
+        applyButton = detailControls.obtain("tracking");
+        saveNameButton = detailControls.obtain("name");
+        saveNameButton.configure(font, Component.translatable(PREFIX + "save_name"), null, List.of(), this::saveName);
+        importButton = controls.obtain("import");
+        importButton.configure(font, Component.translatable(PREFIX + "import_json"), null, List.of(), this::importJson);
+        backButton = controls.obtain("back");
+        backButton.configure(font, Component.translatable("gui.back"), null, List.of(), this::onClose);
     }
 
-    @Override
-    public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        refreshSnapshot();
+    private void cycleFilter() {
+        filter = filter.next();
+        filterButton.configure(font, filter.label(), null, List.of(), this::cycleFilter);
+        rebuildTree();
+    }
+
+    @Override protected UiInputScope inputScope() { return modals.isEmpty() ? scope : modals.top().inputScope(); }
+    @Override protected void prepareUi() { refreshSnapshot(); syncControls(); modals.prepareUi(); }
+    @Override protected void advanceUiFrame() { modals.tick(); }
+    @Override protected void invalidateUiResources() {
+        initializeLanguageCodes();
+        reconcileDrafts();
+        rebuildTree();
+    }
+    @Override protected void layoutUi() {
         int left = panelLeft();
         int top = panelTop();
-        int listWidth = listWidth();
-        this.hoveredTableId = null;
-
-        // Screen.render 会调用一次 renderBackground 并绘制全部 Widget；其余文字随后绘制以保持清晰
-        super.render(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, top + 9, 0xFFFFFF);
-
+        int detailsX = left + INNER_MARGIN + listWidth() + COLUMN_GAP;
+        detailScroll.setViewport(detailsX, top + 28, detailsWidth(), Math.max(0, panelHeight() - 64));
+        detailScroll.setContentHeight(224);
+        detailScroll.setScrollbarVisible(detailScroll.maxOffset() > 0);
+        int detailsWidth = detailScroll.contentWidth();
+        int backY = top + panelHeight() - 30;
+        int actionY = detailScroll.toScreenY(194);
+        int nameY = detailScroll.toScreenY(164);
+        int languageY = detailScroll.toScreenY(100);
+        searchBox.setBounds(left + INNER_MARGIN, top + 28, Math.max(0, listWidth() - 76), 20);
+        filterButton.setBounds(left + INNER_MARGIN + Math.max(0, listWidth() - 72), top + 28, 72, 20);
+        languageBox.setBounds(detailsX, languageY, detailsWidth, 20);
+        languageButton.setBounds(detailsX, languageY + 23, detailsWidth, 20);
+        nameBox.setBounds(detailsX, nameY, detailsWidth, 20);
+        int actionWidth = Math.max(0, (detailsWidth - 5) / 2);
+        applyButton.setBounds(detailsX, actionY, actionWidth, 20);
+        saveNameButton.setBounds(detailsX + actionWidth + 5, actionY, actionWidth, 20);
+        actionWidth = Math.max(0, (detailsWidth() - 5) / 2);
+        importButton.setBounds(detailsX, backY, actionWidth, 20);
+        backButton.setBounds(detailsX + actionWidth + 5, backY, actionWidth, 20);
         syncListGeometry();
-        for (int index = this.list.scrollRow(); index < this.list.visibleEndIndex(); index++) {
-            renderTreeRow(graphics, this.visibleRows.get(index),
-                    left + INNER_MARGIN, this.list.rowY(index), listWidth, mouseX, mouseY);
-        }
-        this.list.renderScrollbar(graphics);
-        renderEmptyState(graphics, left, listWidth);
-        renderDetails(graphics, left + INNER_MARGIN + listWidth + COLUMN_GAP, top, detailsWidth());
-        graphics.blitSprite(LANGUAGE_ICON, this.languageButton.getX() + 2,
-                this.languageButton.getY() + 2, 16, 16);
-        if (this.hoveredTableId != null) {
-            graphics.renderTooltip(this.font, Component.literal(this.hoveredTableId.toString()), mouseX, mouseY);
-        }
+        modals.setBounds(0, 0, width, height);
     }
 
-    @Override
-    public void renderBackground(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        super.renderBackground(graphics, mouseX, mouseY, partialTick);
-        int left = panelLeft();
-        int top = panelTop();
-        graphics.fill(left, top, left + panelWidth(), top + panelHeight(), 0xE8181818);
-        graphics.fill(left, top, left + panelWidth(), top + 1, 0xFF909090);
+    private void syncControls() {
+        if (applyButton == null) return;
+        var entry = selectedEntry();
+        boolean selected = entry != null && LootTableManagementClientState.canEdit();
+        applyButton.setEnabled(selected);
+        applyButton.configure(Minecraft.getInstance().font, Component.translatable(PREFIX
+                + (entry != null && entry.tracked() ? "remove" : "add")), null, List.of(), this::applySelection);
+        saveNameButton.setEnabled(LootTableManagementClientState.canEdit() && !nameDrafts.isEmpty() && !hasInvalidEnglishDraft());
+        languageButton.setEnabled(selected);
+        languageBox.shell().setEnabled(selected);
+        nameBox.shell().setEnabled(selected && hasValidLanguageCode()
+                && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null);
+        importButton.setEnabled(LootTableManagementClientState.canEdit());
     }
 
-    private void renderTreeRow(GuiGraphics graphics, TreeRow row, int x, int y, int width,
-                               int mouseX, int mouseY) {
-        boolean selected = row.entry() != null && row.entry().tableId().equals(this.selectedTableId);
-        boolean hovered = mouseX >= x && mouseX < x + width
-                && mouseY >= y && mouseY < y + ROW_HEIGHT - 1;
-        graphics.fill(x, y, x + width - SCROLLBAR_WIDTH - 2, y + ROW_HEIGHT - 1,
-                selected ? 0xFF4C6278 : hovered ? 0xFF353535 : 0xFF272727);
-
-        int contentX = x + 5 + row.depth() * INDENT_WIDTH;
-        if (row.expandable()) {
-            graphics.drawString(this.font, row.expanded() ? "v" : ">",
-                    contentX, y + 6, 0xC8C8C8, false);
-            contentX += 10;
-        } else {
-            contentX += 4;
+    @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
+    @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
+        graphics.drawCenteredString(font, title, width / 2, panelTop() + 9, UiTextPalette.Dark.TITLE);
+        UiPointer pointer = scope.pointer(x, y).resolve(content);
+        list.render(graphics, font, pointer);
+        searchBox.render(graphics, font, pointer);
+        UiRect viewport = detailScroll.viewport();
+        graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
+        var detailPointer = pointer.restrict(viewport.contains(x, y));
+        renderDetails(graphics, viewport.x(), detailScroll.toScreenY(0), detailScroll.contentWidth());
+        languageBox.render(graphics, font, detailPointer);
+        nameBox.render(graphics, font, detailPointer);
+        detailControls.render(graphics, font, detailPointer);
+        graphics.disableScissor();
+        detailScroll.renderScrollbar(graphics, theme());
+        controls.render(graphics, font, pointer);
+        if (pointer.allowsTooltip() && pointer.hit() != null) {
+            int index = pointer.hit().rowIndex(list);
+            var entry = index < 0 ? null : visibleRows.get(index).entry();
+            if (entry != null) graphics.renderTooltip(font, Component.literal(entry.tableId().toString()), x, y);
         }
-        if (row.entry() != null) {
-            graphics.fill(contentX, y + 5, contentX + 3, y + ROW_HEIGHT - 5,
-                    row.entry().tracked() ? 0xFF78B66A : 0xFF777777);
-            contentX += 7;
-        }
-        int textColor = row.depth() == 0 ? 0xFFE3B96B : row.entry() != null ? 0xFFFFFF : 0xD0D0D0;
-        int availableWidth = Math.max(8, x + width - SCROLLBAR_WIDTH - 7 - contentX);
-        renderOverflowText(graphics, row.label(), contentX, y + 6, availableWidth,
-                textColor, hovered || selected);
-        if (hovered && row.entry() != null) this.hoveredTableId = row.entry().tableId();
+        modals.render(graphics, font, UiPointer.at(x, y));
     }
 
-    // 筛选/搜索无匹配或服务端尚未下发条目时，在列表区居中给出本地化空态，避免看起来像界面损坏
-    private void renderEmptyState(GuiGraphics graphics, int left, int listWidth) {
-        if (!this.visibleRows.isEmpty()) return;
-        boolean filtered = this.filter != Filter.ALL
-                || (this.searchBox != null && !this.searchBox.getValue().isBlank());
-        Component message = Component.translatable(filtered
-                ? "screen.unsuspiciousblock.loot_table_management.empty_search"
-                : "screen.unsuspiciousblock.loot_table_management.empty");
-        graphics.drawCenteredString(this.font, message, left + INNER_MARGIN + listWidth / 2,
-                listTop() + Math.max(0, listHeight() - this.font.lineHeight) / 2, 0xAAAAAA);
+    private void chooseLanguage() {
+        UiListView<String> languages = new UiListView<>(theme(), (graphics, font, code, index, row, selected, hovered, focused) ->
+                graphics.drawString(font, TextScroll.trimToWidth(font, languageOptionLabel(code).getString(), row.width()),
+                        row.x(), row.y() + 5, UiTextPalette.Dark.BODY, false));
+        languages.setItems(languageCodes).setSelectedIndex(languageCodes.indexOf(validLanguageCodeOrFallback()));
+        modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "language_select"))
+                .preferredWidth(340).contentWidget(languages, Math.clamp(height - 110, 20, 180))
+                .confirm(Component.translatable("gui.done"), () -> {
+                    String selected = languages.selectedItem();
+                    if (selected != null) selectLanguage(selected);
+                }).cancel(Component.translatable("gui.cancel")));
+    }
+
+    private void openImportPreview(LootTableManagementActions.ImportPreview preview) {
+        modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "import_preview.title"))
+                .message(Component.translatable(PREFIX + "import_preview.message", preview.languageCode(), preview.added(),
+                        preview.updated(), preview.resourceSkipped(), preview.unmatched(), preview.invalid()))
+                .confirm(Component.translatable("gui.yes"), () -> {
+                    if (!preview.entries().isEmpty() && LootTableManagementClientState.canEdit()) {
+                        actions.submitImport(preview);
+                        importStatus = Component.translatable(PREFIX + "import_submitted", preview.entries().size());
+                        importStatusColor = IMPORT_STATUS_OK_COLOR;
+                    }
+                }).cancel(Component.translatable("gui.cancel")));
+    }
+
+    private void syncListGeometry() { list.setBounds(panelLeft() + INNER_MARGIN, panelTop() + 55,
+            listWidth(), Math.max(0, panelHeight() - 65)); }
+    private int panelWidth() { return Math.clamp(width - SCREEN_MARGIN * 2, 0, MAX_PANEL_WIDTH); }
+    private int panelHeight() { return Math.clamp(height - SCREEN_MARGIN * 2, 0, MAX_PANEL_HEIGHT); }
+    private int panelLeft() { return (width - panelWidth()) / 2; }
+    private int panelTop() { return (height - panelHeight()) / 2; }
+    private int detailsWidth() { return Math.max(0, (panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP) * 42 / 100); }
+    private int listWidth() { return Math.max(0, panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP - detailsWidth()); }
+    private static String readableName(ResourceLocation id) {
+        String path = id.getPath();
+        int slash = path.lastIndexOf('/');
+        return path.substring(slash + 1).replace('_', ' ').replace('-', ' ');
+    }
+
+    private void renderOverflowText(GuiGraphics graphics, String text, int x, int y, int width, int color) {
+        TextScroll.draw(graphics, font, text, x, y, width, color, true,
+                (int) (net.minecraft.Util.getMillis() / 50), false);
     }
 
     private void renderDetails(GuiGraphics graphics, int x, int top, int width) {
         SyncLootTableManagementPayload.Entry selected = selectedEntry();
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.details"),
-                x, top + 32, 0xFFFFFF, false);
+                x, top + 4, 0xFFFFFF, false);
         if (!this.nameDrafts.isEmpty()) {
             Component draftStatus = Component.translatable(
                     "screen.unsuspiciousblock.loot_table_management.source.draft", this.nameDrafts.size());
-            graphics.drawString(this.font, draftStatus,
-                    x + width - this.font.width(draftStatus), top + 9, 0xFFAA00, false);
+            renderOverflowText(graphics, draftStatus.getString(), x, top + 78, width, 0xFFAA00);
         }
         if (selected != null) {
-            renderOverflowText(graphics, selected.tableId().toString(), x, top + 51,
-                    width, 0xB8B8B8, true);
+            renderOverflowText(graphics, selected.tableId().toString(), x, top + 23,
+                    width, UiTextPalette.Dark.LABEL);
             Component status = Component.translatable(selected.tracked()
                     ? "screen.unsuspiciousblock.loot_table_management.tracked"
                     : "screen.unsuspiciousblock.loot_table_management.not_tracked");
-            graphics.drawString(this.font, status, x, top + 67,
+            graphics.drawString(this.font, status, x, top + 39,
                     selected.tracked() ? 0x78D66A : 0x999999, false);
         }
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.language"),
-                x, this.languageBox.getY() - 11, 0xB8B8B8, false);
+                x, this.languageBox.bounds().y() - 11, 0xB8B8B8, false);
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"),
-                x, this.nameBox.getY() - 11, 0xB8B8B8, false);
-        int warningY = top + 80;
+                x, this.nameBox.bounds().y() - 11, 0xB8B8B8, false);
+        int warningY = top + 52;
         if (!LootTableManagementClientState.canEdit()) {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.read_only").getString(),
-                    x, warningY, width, 0xFFAA00, true);
+                    x, warningY, width, UiTextPalette.Dark.ACCENT);
         } else if (!hasValidLanguageCode()) {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.invalid_language_code").getString(),
-                    x, warningY, width, 0xFF5555, true);
+                    x, warningY, width, UiTextPalette.Dark.NEGATIVE);
         } else if (requiresEnglishName()) {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.english_name_required").getString(),
-                    x, warningY, width, 0xFFAA00, true);
+                    x, warningY, width, UiTextPalette.Dark.ACCENT);
         } else if (selected != null) {
             renderOverflowText(graphics, nameSourceLabel(selected.tableId()).getString(),
-                    x, warningY, width, 0xAAAAAA, true);
+                    x, warningY, width, UiTextPalette.Dark.LABEL);
         }
         if (this.importStatus != null) {
             renderOverflowText(graphics, this.importStatus.getString(),
-                    x, warningY + 12, width, this.importStatusColor, true);
+                    x, warningY + 12, width, this.importStatusColor);
         }
-    }
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        syncListGeometry();
-        if (button == 0 && !isOverTextBox(mouseX, mouseY)) this.setFocused(null);
-        if (button == 0 && this.list.hitScrollbar(mouseX, mouseY) && this.list.maxScrollRow() > 0) {
-            this.list.beginDrag(mouseY);
-            return true;
-        }
-        if (button == 0 && this.list.contains(mouseX, mouseY)) {
-            int index = this.list.rowIndexAt(mouseY);
-            if (index >= 0 && index < this.visibleRows.size()) {
-                TreeRow row = this.visibleRows.get(index);
-                int toggleRight = panelLeft() + INNER_MARGIN + 5 + row.depth() * INDENT_WIDTH + 14;
-                if (row.expandable() && (row.entry() == null || mouseX < toggleRight)) {
-                    toggleExpanded(row);
-                } else if (row.entry() != null) {
-                    this.selectedTableId = row.entry().tableId();
-                    this.textScrollStartedAt = System.currentTimeMillis();
-                    populateName();
-                    syncControls();
-                }
-                return true;
-            }
-        }
-
-        boolean handled = super.mouseClicked(mouseX, mouseY, button);
-        // 原版在按钮回调结束后设置焦点；筛选和追踪切换是即时动作，不保留键盘焦点
-        if (this.getFocused() == this.filterButton || this.getFocused() == this.languageButton
-                || this.getFocused() == this.applyButton) {
-            this.setFocused(null);
-        }
-        return handled;
-    }
-
-    @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (this.list.isDragging() && button == 0) {
-            syncListGeometry();
-            this.list.dragTo(mouseY);
-            return true;
-        }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
-    }
-
-    @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && this.list.isDragging()) {
-            this.list.endDrag();
-            return true;
-        }
-        return super.mouseReleased(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta, double verticalDelta) {
-        syncListGeometry();
-        if (this.list.contains(mouseX, mouseY) && verticalDelta != 0.0) {
-            int direction = verticalDelta > 0.0 ? -1 : 1;
-            this.list.scrollByRows(direction * 3);
-            return true;
-        }
-        return super.mouseScrolled(mouseX, mouseY, horizontalDelta, verticalDelta);
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE
-                && !(getFocused() instanceof EditBox) && !(getFocused() instanceof net.minecraft.client.gui.components.MultiLineEditBox)) {
-            onClose(); return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    @Override
-    public void onClose() {
-        Minecraft.getInstance().setScreen(this.parent);
     }
 
     private void refreshSnapshot() {
@@ -390,8 +315,9 @@ public final class LootTableManagementScreen extends Screen {
     }
 
     private void rebuildTree() {
-        if (this.searchBox == null) return;
-        String query = this.searchBox.getValue().trim().toLowerCase(Locale.ROOT);
+        TreeRow selectedRow = list.selectedItem();
+        String selectedKey = selectedRow == null ? null : selectedRow.key();
+        String query = this.searchBox.value().trim().toLowerCase(Locale.ROOT);
         boolean expandSearchResults = !query.isEmpty();
         this.filteredEntries.clear();
         LinkedHashMap<String, TreeNode> namespaces = new LinkedHashMap<>();
@@ -414,7 +340,13 @@ public final class LootTableManagementScreen extends Screen {
         for (TreeNode namespace : namespaces.values()) flattenNode(namespace, 0, expandSearchResults);
         // 行数变化后重新钳制偏移：同时按当前面板尺寸刷新视口，resize 后的首次重建也拿到正确容量
         syncListGeometry();
+        list.setItems(visibleRows);
         if (selectedEntry() == null) this.selectedTableId = null;
+        int selectedIndex = -1;
+        for (int i = 0; i < visibleRows.size(); i++) {
+            if (Objects.equals(visibleRows.get(i).key(), selectedKey)) { selectedIndex = i; break; }
+        }
+        list.setSelectedIndex(selectedIndex);
         populateName();
         syncControls();
     }
@@ -462,7 +394,6 @@ public final class LootTableManagementScreen extends Screen {
     }
 
     private void populateName() {
-        if (this.nameBox == null) return;
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         String value = "";
         Component hint = Component.empty();
@@ -475,7 +406,7 @@ public final class LootTableManagementScreen extends Screen {
                 value = this.nameDrafts.getOrDefault(draftKey, storedName(draftKey));
                 String fallback = englishFallback(entry.tableId());
                 if (value.isEmpty() && !fallback.isEmpty()) {
-                    hint = Component.literal(fallback).withStyle(ChatFormatting.DARK_GRAY);
+                    hint = Component.literal(fallback);
                 }
             }
         }
@@ -510,25 +441,6 @@ public final class LootTableManagementScreen extends Screen {
                 || entry.getValue().equals(storedName(entry.getKey())));
     }
 
-    private void syncControls() {
-        if (this.applyButton == null || this.saveNameButton == null || this.importButton == null
-                || this.languageButton == null || this.languageBox == null || this.nameBox == null) return;
-        SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        boolean hasSelectionPermission = entry != null && LootTableManagementClientState.canEdit();
-        boolean validLanguage = hasValidLanguageCode();
-        this.applyButton.active = hasSelectionPermission;
-        this.saveNameButton.active = LootTableManagementClientState.canEdit()
-                && !this.nameDrafts.isEmpty() && !hasInvalidEnglishDraft();
-        this.languageButton.active = hasSelectionPermission;
-        this.languageBox.active = hasSelectionPermission;
-        this.nameBox.active = hasSelectionPermission && validLanguage
-                && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null;
-        this.importButton.active = LootTableManagementClientState.canEdit();
-        this.applyButton.setMessage(Component.translatable(entry != null && entry.tracked()
-                ? "screen.unsuspiciousblock.loot_table_management.remove"
-                : "screen.unsuspiciousblock.loot_table_management.add"));
-    }
-
     @Nullable
     private SyncLootTableManagementPayload.Entry selectedEntry() {
         if (this.selectedTableId == null) return null;
@@ -536,12 +448,6 @@ public final class LootTableManagementScreen extends Screen {
             if (entry.tableId().equals(this.selectedTableId)) return entry;
         }
         return null;
-    }
-
-    private boolean isOverTextBox(double mouseX, double mouseY) {
-        return this.searchBox != null && this.searchBox.isMouseOver(mouseX, mouseY)
-                || this.languageBox != null && this.languageBox.isMouseOver(mouseX, mouseY)
-                || this.nameBox != null && this.nameBox.isMouseOver(mouseX, mouseY);
     }
 
     private List<SyncLootTableManagementPayload.Entry> entriesForCurrentFilter() {
@@ -579,12 +485,11 @@ public final class LootTableManagementScreen extends Screen {
     }
 
     private String currentLanguageCode() {
-        return this.languageBox == null ? this.selectedLanguageCode : this.languageBox.getValue().trim();
+        return this.languageBox.value().trim();
     }
 
     private void onLanguageInputChanged(String value) {
         boolean valid = isValidLanguageCode(value.trim());
-        this.languageBox.setTextColor(valid ? 0xE0E0E0 : 0xFF5555);
         if (valid) {
             this.selectedLanguageCode = value.trim();
             populateName();
@@ -617,7 +522,7 @@ public final class LootTableManagementScreen extends Screen {
     private boolean requiresEnglishName() {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         if (entry == null || !hasValidLanguageCode() || "en_us".equals(currentLanguageCode())
-                || this.nameBox.getValue().trim().isEmpty()) {
+                || this.nameBox.value().trim().isEmpty()) {
             return false;
         }
         return effectiveEnglishName(entry.tableId()).isBlank();
@@ -707,352 +612,23 @@ public final class LootTableManagementScreen extends Screen {
         };
     }
 
-    private void openImportPreview(LootTableManagementActions.ImportPreview preview) {
-        Component message = Component.translatable(
-                "screen.unsuspiciousblock.loot_table_management.import_preview.message",
-                preview.languageCode(), preview.added(), preview.updated(), preview.resourceSkipped(),
-                preview.unmatched(), preview.invalid());
-        Minecraft.getInstance().setScreen(new ConfirmScreen(confirmed -> {
-            Minecraft.getInstance().setScreen(this);
-            if (confirmed && !preview.entries().isEmpty()) {
-                this.actions.submitImport(preview);
-                this.importStatus = Component.translatable(
-                        "screen.unsuspiciousblock.loot_table_management.import_submitted",
-                        preview.entries().size());
-                this.importStatusColor = IMPORT_STATUS_OK_COLOR;
-            }
-        }, Component.translatable("screen.unsuspiciousblock.loot_table_management.import_preview.title"), message));
-    }
-
-    // 列表视口随面板尺寸变化：把矩形与当前行数交给共用几何组件，它会重新钳制偏移
-    private void syncListGeometry() {
-        this.list.setViewport(panelLeft() + INNER_MARGIN, listTop(), listWidth(), listHeight());
-        this.list.setRowCount(this.visibleRows.size());
-    }
-
-    private int panelLeft() {
-        return (this.width - panelWidth()) / 2;
-    }
-
-    private int panelTop() {
-        return (this.height - panelHeight()) / 2;
-    }
-
-    private int panelWidth() {
-        return Math.max(1, Math.min(MAX_PANEL_WIDTH, this.width - SCREEN_MARGIN * 2));
-    }
-
-    private int panelHeight() {
-        return Math.max(1, Math.min(MAX_PANEL_HEIGHT, this.height - SCREEN_MARGIN * 2));
-    }
-
-    private int detailsWidth() {
-        int availableWidth = panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP;
-        return Math.min(MAX_DETAILS_WIDTH, Math.max(MIN_DETAILS_WIDTH, availableWidth * 38 / 100));
-    }
-
-    private int listWidth() {
-        return panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP - detailsWidth();
-    }
-
-    private int listTop() {
-        return panelTop() + 55;
-    }
-
-    private int listHeight() {
-        return Math.max(ROW_HEIGHT, panelTop() + panelHeight() - INNER_MARGIN - listTop());
-    }
-
-    private static String readableName(ResourceLocation id) {
-        String path = id.getPath();
-        int slash = path.lastIndexOf('/');
-        if (slash >= 0) path = path.substring(slash + 1);
-        return path.replace('_', ' ').replace('-', ' ');
-    }
-
-    private void renderOverflowText(GuiGraphics graphics, String value, int x, int y,
-                                    int maxWidth, int color, boolean scrolling) {
-        int textWidth = this.font.width(value);
-        if (textWidth <= maxWidth) {
-            graphics.drawString(this.font, value, x, y, color, false);
-            return;
+    /** 详情表单限制命中与绘制视口，固定底栏独立于滚动内容。 */
+    private final class DetailsBody implements UiInputContainer {
+        private final UiChildren<UiInputTarget> children = new UiChildren<>();
+        @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
+        @Override public @Nullable UiPointerHit hitTest(double x, double y) {
+            if (!detailScroll.contains(x, y)) return null;
+            UiPointerHit bar = detailScroll.hitTest(x, y);
+            if (bar != null) return bar.within(this);
+            UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
+            return hit == null ? UiPointerHit.leaf(this, x, y) : hit;
         }
-        if (!scrolling) {
-            graphics.drawString(this.font, TextScroll.trimToWidth(this.font, value, maxWidth), x, y, color, false);
-            return;
-        }
-
-        graphics.enableScissor(x, y, x + maxWidth, y + this.font.lineHeight);
-        graphics.drawString(this.font, value,
-                x - scrollingTextOffset(textWidth - maxWidth), y, color, false);
-        graphics.disableScissor();
-    }
-
-    private int scrollingTextOffset(int overflow) {
-        long travelMillis = Math.max(1L, overflow * TEXT_SCROLL_PIXEL_MILLIS);
-        long cycleMillis = TEXT_SCROLL_PAUSE_MILLIS * 2L + travelMillis * 2L;
-        long elapsed = Math.max(0L, System.currentTimeMillis() - this.textScrollStartedAt) % cycleMillis;
-        if (elapsed < TEXT_SCROLL_PAUSE_MILLIS) return 0;
-        elapsed -= TEXT_SCROLL_PAUSE_MILLIS;
-        if (elapsed < travelMillis) {
-            return (int) Math.min(overflow, elapsed / TEXT_SCROLL_PIXEL_MILLIS);
-        }
-        elapsed -= travelMillis;
-        if (elapsed < TEXT_SCROLL_PAUSE_MILLIS) return overflow;
-        elapsed -= TEXT_SCROLL_PAUSE_MILLIS;
-        return overflow - (int) Math.min(overflow, elapsed / TEXT_SCROLL_PIXEL_MILLIS);
-    }
-
-    /**
-     * 独立的翻译语言选择窗口，不改变客户端当前显示语言。
-     */
-    private static final class LanguageSelectionScreen extends Screen {
-        private static final int PANEL_MAX_WIDTH = 320;
-        private static final int PANEL_MARGIN = 20;
-        private static final int LIST_TOP = 36;
-        private static final int LIST_BOTTOM_MARGIN = 38;
-        private static final int ROW_HEIGHT = 20;
-
-        private final LootTableManagementScreen parent;
-        private final List<String> languageCodes;
-        /** 与外层管理页共用同一份列表滚动几何。 */
-        private final ListScrollState list = new ListScrollState(ROW_HEIGHT, 0xFF202020, 0xFF909090, 0xFF909090);
-        private String selectedLanguageCode;
-
-        private LanguageSelectionScreen(LootTableManagementScreen parent, List<String> languageCodes,
-                                        String selectedLanguageCode) {
-            super(Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.language_select"));
-            this.parent = parent;
-            this.languageCodes = List.copyOf(languageCodes);
-            this.selectedLanguageCode = selectedLanguageCode;
-        }
-
-        @Override
-        protected void init() {
-            syncListGeometry();
-            int selectedIndex = this.languageCodes.indexOf(this.selectedLanguageCode);
-            if (selectedIndex >= 0) {
-                this.list.setScrollRow(selectedIndex - this.list.visibleRowCapacity() / 2);
-            }
-            this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> confirm())
-                    .bounds((this.width - 150) / 2, this.height - 28, 150, 20)
-                    .build());
-        }
-
-        @Override
-        public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            super.render(graphics, mouseX, mouseY, partialTick);
-            graphics.drawCenteredString(this.font, this.title, this.width / 2, 14, 0xFFFFFF);
-
-            int left = listLeft();
-            int width = listWidth();
-            int bottom = listBottom();
-            graphics.fill(left - 1, LIST_TOP - 1, left + width + 1, bottom + 1, 0xFF909090);
-            graphics.fill(left, LIST_TOP, left + width, bottom, 0xFF181818);
-
-            syncListGeometry();
-            int end = this.list.visibleEndIndex();
-            for (int index = this.list.scrollRow(); index < end; index++) {
-                int y = this.list.rowY(index);
-                String code = this.languageCodes.get(index);
-                boolean selected = code.equals(this.selectedLanguageCode);
-                boolean hovered = mouseX >= left && mouseX < left + width - SCROLLBAR_WIDTH
-                        && mouseY >= y && mouseY < y + ROW_HEIGHT;
-                if (selected || hovered) {
-                    graphics.fill(left, y, left + width - SCROLLBAR_WIDTH, y + ROW_HEIGHT,
-                            selected ? 0xFF4C6278 : 0xFF353535);
-                }
-                graphics.drawString(this.font,
-                        TextScroll.trimToWidth(this.font, languageOptionLabel(code).getString(),
-                                width - SCROLLBAR_WIDTH - 8),
-                        left + 4, y + 6, selected ? 0xFFFFFF : 0xD0D0D0, false);
-            }
-            this.list.renderScrollbar(graphics);
-        }
-
-        @Override
-        public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            syncListGeometry();
-            if (button == 0 && this.list.containsRowArea(mouseX, mouseY)) {
-                int index = this.list.rowIndexAt(mouseY);
-                if (index >= 0 && index < this.languageCodes.size()) {
-                    this.selectedLanguageCode = this.languageCodes.get(index);
-                    return true;
-                }
-            }
-            return super.mouseClicked(mouseX, mouseY, button);
-        }
-
-        @Override
-        public boolean mouseScrolled(double mouseX, double mouseY, double horizontalDelta,
-                                     double verticalDelta) {
-            syncListGeometry();
-            if (this.list.containsRowArea(mouseX, mouseY) && verticalDelta != 0.0) {
-                this.list.scrollByRows(verticalDelta > 0.0 ? -3 : 3);
-                return true;
-            }
-            return super.mouseScrolled(mouseX, mouseY, horizontalDelta, verticalDelta);
-        }
-
-        @Override
-        public void onClose() {
-            Minecraft.getInstance().setScreen(this.parent);
-        }
-
-        private void confirm() {
-            this.parent.selectLanguage(this.selectedLanguageCode);
-            Minecraft.getInstance().setScreen(this.parent);
-        }
-
-        @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
-            return super.keyPressed(keyCode, scanCode, modifiers);
-        }
-
-        // 语言列表的视口随窗口尺寸变化：几何统一交给共用几何组件
-        private void syncListGeometry() {
-            this.list.setViewport(listLeft(), LIST_TOP, listWidth(), listHeight());
-            this.list.setRowCount(this.languageCodes.size());
-        }
-
-        private int listLeft() {
-            return (this.width - listWidth()) / 2;
-        }
-
-        private int listWidth() {
-            return Math.min(PANEL_MAX_WIDTH, this.width - PANEL_MARGIN * 2);
-        }
-
-        private int listBottom() {
-            return Math.max(LIST_TOP + ROW_HEIGHT, this.height - LIST_BOTTOM_MARGIN);
-        }
-
-        private int listHeight() {
-            return listBottom() - LIST_TOP;
-        }
-
-    }
-
-    /**
-     * 列表滚动几何——管理页与内部语言选择窗口共用同一份"视口 + 行高 + 偏移"计算与滚动条绘制。
-     * <p>
-     * 两处原先各写一套 isOverList/maxScrollRow/clampScroll/renderScrollbar，任何一处改口径都会失配。
-     * kit 的 {@code UiScrollView} 面向 UiControl 控件树并自带 UiControlStyle，而本页直接按行绘制文本，
-     * 因此抽这个私有组件而不是套 kit；颜色与行高由调用方给出，以保留各自的视觉。
-     */
-    private static final class ListScrollState {
-        private static final int MIN_THUMB_HEIGHT = 12;
-
-        private final int rowHeight;
-        private final int trackColor;
-        private final int thumbColor;
-        private final int draggingThumbColor;
-
-        private int x;
-        private int y;
-        private int width;
-        private int height;
-        private int rowCount;
-        private int scrollRow;
-        private boolean dragging;
-
-        ListScrollState(int rowHeight, int trackColor, int thumbColor, int draggingThumbColor) {
-            this.rowHeight = Math.max(1, rowHeight);
-            this.trackColor = trackColor;
-            this.thumbColor = thumbColor;
-            this.draggingThumbColor = draggingThumbColor;
-        }
-
-        // 视口矩形与行数都会重新钳制偏移：内容变短后偏移不会停在越界位置
-        void setViewport(int x, int y, int width, int height) {
-            this.x = x;
-            this.y = y;
-            this.width = Math.max(0, width);
-            this.height = Math.max(0, height);
-            this.scrollRow = clamp(this.scrollRow);
-        }
-
-        void setRowCount(int rowCount) {
-            this.rowCount = Math.max(0, rowCount);
-            this.scrollRow = clamp(this.scrollRow);
-        }
-
-        int scrollRow() { return this.scrollRow; }
-
-        void setScrollRow(int value) { this.scrollRow = clamp(value); }
-
-        void scrollByRows(int delta) { setScrollRow(this.scrollRow + delta); }
-
-        int visibleRowCapacity() { return Math.max(1, this.height / this.rowHeight); }
-
-        int maxScrollRow() { return Math.max(0, this.rowCount - visibleRowCapacity()); }
-
-        int clamp(int value) { return Math.clamp(value, 0, maxScrollRow()); }
-
-        int visibleEndIndex() { return Math.min(this.rowCount, this.scrollRow + visibleRowCapacity()); }
-
-        int rowIndexAt(double mouseY) { return this.scrollRow + (int) ((mouseY - this.y) / this.rowHeight); }
-
-        int rowY(int index) { return this.y + (index - this.scrollRow) * this.rowHeight; }
-
-        // 整块列表区域（含滚动条列）：管理页的滚轮与列表判定沿用它
-        boolean contains(double mouseX, double mouseY) {
-            return mouseX >= this.x && mouseX < this.x + this.width
-                    && mouseY >= this.y && mouseY < this.y + this.height;
-        }
-
-        // 只算行区域（排除滚动条列）：语言选择窗口的点击口径
-        boolean containsRowArea(double mouseX, double mouseY) {
-            return mouseX >= this.x && mouseX < this.x + this.width - SCROLLBAR_WIDTH
-                    && mouseY >= this.y && mouseY < this.y + this.height;
-        }
-
-        int scrollbarX() { return this.x + this.width - SCROLLBAR_WIDTH; }
-
-        boolean hitScrollbar(double mouseX, double mouseY) {
-            return mouseX >= scrollbarX() && mouseX < scrollbarX() + SCROLLBAR_WIDTH
-                    && mouseY >= this.y && mouseY < this.y + this.height;
-        }
-
-        boolean isDragging() { return this.dragging; }
-
-        // 按下滚动条进入拖动：滑块中心先对齐指针，之后按位移映射偏移
-        void beginDrag(double mouseY) {
-            this.dragging = true;
-            dragTo(mouseY);
-        }
-
-        void dragTo(double mouseY) {
-            int maxScroll = maxScrollRow();
-            if (maxScroll <= 0) {
-                this.scrollRow = 0;
-                return;
-            }
-            int travel = this.height - thumbHeight();
-            double relative = mouseY - this.y - thumbHeight() / 2.0;
-            this.scrollRow = clamp((int) Math.round(relative * maxScroll / Math.max(1, travel)));
-        }
-
-        void endDrag() { this.dragging = false; }
-
-        int thumbHeight() {
-            if (this.rowCount == 0) return this.height;
-            return Math.max(MIN_THUMB_HEIGHT, this.height * visibleRowCapacity() / this.rowCount);
-        }
-
-        void renderScrollbar(GuiGraphics graphics) {
-            int trackX = scrollbarX();
-            graphics.fill(trackX, this.y, trackX + SCROLLBAR_WIDTH, this.y + this.height, this.trackColor);
-            int maxScroll = maxScrollRow();
-            if (maxScroll <= 0) return;
-            int thumbHeight = thumbHeight();
-            int thumbY = this.y + (this.height - thumbHeight) * this.scrollRow / maxScroll;
-            graphics.fill(trackX, thumbY, trackX + SCROLLBAR_WIDTH, thumbY + thumbHeight,
-                    this.dragging ? this.draggingThumbColor : this.thumbColor);
+        @Override public boolean mouseScrolled(UiInputContext context, double x, double y) {
+            return UiInputContainer.super.mouseScrolled(context, x, y) || detailScroll.scrollBy(y);
         }
     }
 
+    /** 按命名空间与路径构建的业务目录节点。 */
     private static final class TreeNode {
         private final String label;
         private final String key;
@@ -1070,10 +646,12 @@ public final class LootTableManagementScreen extends Screen {
     private record DraftKey(String languageCode, ResourceLocation tableId) {
     }
 
+    /** 管理目录的可见行投影。 */
     private record TreeRow(String label, String key, int depth, boolean expandable,
                            boolean expanded, @Nullable SyncLootTableManagementPayload.Entry entry) {
     }
 
+    /** 管理页筛选语义。 */
     private enum Filter {
         ALL("screen.unsuspiciousblock.loot_table_management.filter.all"),
         TRACKED("screen.unsuspiciousblock.loot_table_management.filter.tracked"),

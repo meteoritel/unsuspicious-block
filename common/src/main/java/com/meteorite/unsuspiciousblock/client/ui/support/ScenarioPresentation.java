@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.simulation.ScenarioParams;
 import net.minecraft.resources.ResourceLocation;

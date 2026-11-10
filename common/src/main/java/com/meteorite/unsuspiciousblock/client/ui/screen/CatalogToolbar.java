@@ -4,32 +4,19 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
-import com.meteorite.unsuspiciousblock.client.ui.widget.IconButton;
-import com.meteorite.unsuspiciousblock.client.ui.widget.ShadowlessEditBox;
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiTextInput;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * 目录工具栏管理器。
- * <p>
- * 管理目录页面的搜索/排序 widget 组（搜索切换按钮、搜索框、排序按钮、排序方向按钮）
- * 及其状态（搜索查询、排序方式、排序方向、搜索展开状态）。
- * <p>
- * 搜索框的宿主焦点不在展开回调里当场设置：原版 {@code ContainerEventHandler.mouseClicked}
- * 会在按钮回调返回后才把焦点设回被点击的旧按钮。工具栏只登记"本次展开要聚焦的输入框"，
- * 由宿主在鼠标事件尾部或控件重建后兑现。
- */
+/** 目录查询、排序与 kit 控件装配；搜索草稿按防抖窗口提交。 */
 public class CatalogToolbar {
-    private static final int SEARCH_TEXT_HORIZONTAL_PADDING = 3;
-    private static final int SEARCH_BORDER_COLOR = 0xFF8B6914;
-    private static final int SEARCH_BG_COLOR = 0xFFD8C0A0;
-    private static final int SEARCH_TEXT_COLOR = 0xFF5A3D23;
     // 搜索输入防抖窗口：逐字符提交会重建整份目录投影，200ms 内连打只提交一次
     private static final long SEARCH_DEBOUNCE_MILLIS = 200L;
 
@@ -51,13 +38,10 @@ public class CatalogToolbar {
     private int expandedSearchFieldWidth = JournalLayout.SEARCH_FIELD_WIDTH;
 
     // widget 引用
-    private IconButton searchToggleButton;
-    private IconButton sortButton;
-    private IconButton sortOrderButton;
-    private IconButton hideLockedButton;
-    private EditBox searchField;
-    private int searchBackgroundX;
-    private int searchBackgroundY;
+    private UiControl sortButton;
+    private UiControl sortOrderButton;
+    private UiControl hideLockedButton;
+    private UiTextInput searchField;
 
     // 回调
     private final Runnable onContentChanged;
@@ -98,6 +82,11 @@ public class CatalogToolbar {
         this.currentSearch = search;
         // 从快照/外部恢复状态时丢弃尚未提交的草稿，避免旧输入在新状态下迟到生效
         this.pendingSearchText = null;
+        if (searchField != null) {
+            searchField.setOnValueChanged(null);
+            searchField.setValue(search.rawQuery());
+            searchField.setOnValueChanged(() -> onSearchChanged(searchField.value()));
+        }
     }
 
     public void setSearchExpanded(boolean expanded) {
@@ -116,7 +105,7 @@ public class CatalogToolbar {
         this.hideLocked = hideLocked;
     }
 
-    public EditBox searchField() {
+    public UiTextInput searchField() {
         return searchField;
     }
 
@@ -180,7 +169,7 @@ public class CatalogToolbar {
         if (this.searchExpanded) {
             this.focusSearchOnCreate = true;
         } else {
-            this.currentSearch = JournalSearchQuery.EMPTY;
+            this.setCurrentSearch(JournalSearchQuery.EMPTY);
             this.pendingSearchText = null;
             this.searchFocusRequested = false;
         }
@@ -191,8 +180,8 @@ public class CatalogToolbar {
     public void cycleSortOrder() {
         this.currentSortOrder = this.currentSortOrder.next();
         if (this.sortButton != null) {
-            this.sortButton.setIcon(sortOrderIcon(this.currentSortOrder));
-            this.sortButton.setTooltip(CatalogSorter.sortOrderTooltip(this.currentSortOrder));
+            JournalControls.configureIcon(sortButton, sortOrderIcon(currentSortOrder),
+                    CatalogSorter.sortOrderTooltip(currentSortOrder), this::cycleSortOrder);
         }
         this.onContentChanged.run();
     }
@@ -201,8 +190,8 @@ public class CatalogToolbar {
     public void toggleSortDirection() {
         this.sortDescending = !this.sortDescending;
         if (this.sortOrderButton != null) {
-            this.sortOrderButton.setIcon(sortDirectionIcon(this.sortDescending));
-            this.sortOrderButton.setTooltip(CatalogSorter.sortDirectionTooltip(this.sortDescending));
+            JournalControls.configureIcon(sortOrderButton, sortDirectionIcon(sortDescending),
+                    CatalogSorter.sortDirectionTooltip(sortDescending), this::toggleSortDirection);
         }
         this.onContentChanged.run();
     }
@@ -211,30 +200,30 @@ public class CatalogToolbar {
     public void toggleHideLocked() {
         this.hideLocked = !this.hideLocked;
         if (this.hideLockedButton != null) {
-            this.hideLockedButton.setIcon(hideLockedIcon(this.hideLocked));
-            this.hideLockedButton.setTooltip(hideLockedTooltip(this.hideLocked));
+            JournalControls.configureIcon(hideLockedButton, hideLockedIcon(hideLocked),
+                    hideLockedTooltip(hideLocked), this::toggleHideLocked);
         }
         this.onContentChanged.run();
     }
 
-    private static IconButton.Icon sortOrderIcon(CatalogSorter.SortOrder order) {
+    private static JournalControls.Icon sortOrderIcon(CatalogSorter.SortOrder order) {
         return switch (order) {
-            case DEFAULT -> IconButton.Icon.SORT_DEFAULT;
-            case NAME -> IconButton.Icon.SORT_NAME;
-            case UNLOCK -> IconButton.Icon.SORT_UNLOCK;
-            case ITEM_COUNT -> IconButton.Icon.SORT_ITEM_COUNT;
-            case FAVORITE -> IconButton.Icon.SORT_FAVORITE;
-            case UPDATE_TIME -> IconButton.Icon.SORT_UPDATE_TIME;
+            case DEFAULT -> JournalControls.Icon.SORT_DEFAULT;
+            case NAME -> JournalControls.Icon.SORT_NAME;
+            case UNLOCK -> JournalControls.Icon.SORT_UNLOCK;
+            case ITEM_COUNT -> JournalControls.Icon.SORT_ITEM_COUNT;
+            case FAVORITE -> JournalControls.Icon.SORT_FAVORITE;
+            case UPDATE_TIME -> JournalControls.Icon.SORT_UPDATE_TIME;
         };
     }
 
-    private static IconButton.Icon sortDirectionIcon(boolean descending) {
-        return descending ? IconButton.Icon.ARROW_DOWN : IconButton.Icon.ARROW_UP;
+    private static JournalControls.Icon sortDirectionIcon(boolean descending) {
+        return descending ? JournalControls.Icon.ARROW_DOWN : JournalControls.Icon.ARROW_UP;
     }
 
     // 眼睛表示正在显示未解锁条目，划线眼睛表示正在隐藏
-    private static IconButton.Icon hideLockedIcon(boolean hideLocked) {
-        return hideLocked ? IconButton.Icon.HIDE_LOCKED : IconButton.Icon.SHOW_LOCKED;
+    private static JournalControls.Icon hideLockedIcon(boolean hideLocked) {
+        return hideLocked ? JournalControls.Icon.HIDE_LOCKED : JournalControls.Icon.SHOW_LOCKED;
     }
 
     // 隐藏未解锁按钮的 tooltip
@@ -245,20 +234,15 @@ public class CatalogToolbar {
         return Component.translatable(key);
     }
 
-    /** 处理 ESC 键，返回 true 表示已消费事件 */
-    public boolean handleEsc() {
-        return false;
-    }
-
     public void setSortingEnabled(boolean enabled) {
         boolean visible = enabled && !this.searchExpanded;
         if (this.sortButton != null) {
-            this.sortButton.active = visible;
-            this.sortButton.visible = visible;
+            this.sortButton.setEnabled(visible);
+            this.sortButton.setVisible(visible);
         }
         if (this.sortOrderButton != null) {
-            this.sortOrderButton.active = visible;
-            this.sortOrderButton.visible = visible;
+            this.sortOrderButton.setEnabled(visible);
+            this.sortOrderButton.setVisible(visible);
         }
     }
 
@@ -274,8 +258,8 @@ public class CatalogToolbar {
         setSortingEnabled(!categoryHome);
         if (this.hideLockedButton != null) {
             boolean visible = !categoryHome && !this.searchExpanded;
-            this.hideLockedButton.active = visible;
-            this.hideLockedButton.visible = visible;
+            this.hideLockedButton.setEnabled(visible);
+            this.hideLockedButton.setVisible(visible);
         }
     }
 
@@ -289,7 +273,6 @@ public class CatalogToolbar {
      * @param font       字体
      */
     public void createWidgets(ArchaeologyJournalScreen screen, JournalBookBackground.BookLayout bookLayout, Font font) {
-        EditBox previousField = this.searchField;
         int toolbarY = bookLayout.leftPageY() + JournalLayout.TOOLBAR_Y;
         int toolbarX = bookLayout.leftPageX()
                 + (bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
@@ -297,10 +280,10 @@ public class CatalogToolbar {
 
         // 搜索规则分成语法与用途两行，缩短 tooltip 宽度并区分信息层级。
         String tooltipBase = "screen.unsuspiciousblock.archaeology_journal.search_tooltip";
-        this.searchToggleButton = new IconButton(
+        UiControl searchToggleButton = JournalControls.iconButton(
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
-                this.searchExpanded ? IconButton.Icon.CLOSE : IconButton.Icon.SEARCH,
+                this.searchExpanded ? JournalControls.Icon.CLOSE : JournalControls.Icon.SEARCH,
                 List.of(
                         Component.translatable(tooltipBase).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
                         Component.translatable(tooltipBase + ".rule_table.syntax").withStyle(ChatFormatting.AQUA),
@@ -315,13 +298,13 @@ public class CatalogToolbar {
                         tooltipDescription(tooltipBase + ".rule_tag.description")),
                 this::toggleSearch
         );
-        screen.registerWidget(this.searchToggleButton);
+        screen.registerWidget(searchToggleButton);
 
         // 排序图标按钮
         int sortOrderX = this.searchExpanded
                 ? toolbarX + JournalLayout.SEARCH_ICON_SIZE + this.expandedSearchFieldWidth + JournalLayout.TOOLBAR_GAP
                 : toolbarX + JournalLayout.SEARCH_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
-        this.sortButton = new IconButton(
+        this.sortButton = JournalControls.iconButton(
                 sortOrderX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
                 sortOrderIcon(this.currentSortOrder),
@@ -332,7 +315,7 @@ public class CatalogToolbar {
 
         // 排序方向按钮
         int sortDirectionX = sortOrderX + JournalLayout.SORT_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
-        this.sortOrderButton = new IconButton(
+        this.sortOrderButton = JournalControls.iconButton(
                 sortDirectionX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
                 sortDirectionIcon(this.sortDescending),
@@ -343,7 +326,7 @@ public class CatalogToolbar {
 
         // 隐藏未解锁条目按钮
         int hideLockedX = sortDirectionX + JournalLayout.SORT_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
-        this.hideLockedButton = new IconButton(
+        this.hideLockedButton = JournalControls.iconButton(
                 hideLockedX, toolbarY,
                 JournalLayout.SORT_ICON_SIZE,
                 hideLockedIcon(this.hideLocked),
@@ -352,43 +335,18 @@ public class CatalogToolbar {
         );
         screen.registerWidget(this.hideLockedButton);
 
-        // 搜索框
-        if (this.searchExpanded) {
-            // 重建前保留输入文本与焦点归属：只有原本就属于搜索框的焦点才自动恢复
-            String savedText = this.pendingSearchText != null ? this.pendingSearchText : this.currentSearch.rawQuery();
-            boolean hadFocus = previousField != null && previousField.isFocused();
-            this.searchBackgroundX = toolbarX + JournalLayout.SEARCH_ICON_SIZE;
-            this.searchBackgroundY = toolbarY;
-            int searchFieldX = this.searchBackgroundX + SEARCH_TEXT_HORIZONTAL_PADDING;
-            int searchFieldY = toolbarY + (JournalLayout.SEARCH_BAR_HEIGHT - font.lineHeight) / 2;
-            int searchFieldWidth = Math.max(1,
-                    this.expandedSearchFieldWidth - SEARCH_TEXT_HORIZONTAL_PADDING * 2);
-            this.searchField = new ShadowlessEditBox(font,
-                    searchFieldX, searchFieldY, searchFieldWidth, font.lineHeight,
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
-            this.searchField.setBordered(false);
-            this.searchField.setTextColor(SEARCH_TEXT_COLOR);
-            this.searchField.setHint(Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"));
-            this.searchField.setMaxLength(256);
-            // 初始化值会同步触发 responder，必须在绑定回调前恢复文本，避免重建递归
-            this.searchField.setValue(savedText);
-            this.searchField.setResponder(this::onSearchChanged);
-            // 只登记焦点请求：原版点击分发会在按钮回调返回后把焦点设回被点击的旧按钮，
-            // 因此真正的 setFocused 交给宿主在鼠标事件尾部（或非鼠标重建处）完成
-            this.searchFocusRequested = this.focusSearchOnCreate || hadFocus;
-            this.focusSearchOnCreate = false;
-            screen.registerWidget(this.searchField);
-        } else {
-            this.searchFocusRequested = false;
-            this.focusSearchOnCreate = false;
-            // 宿主焦点若仍指向被移除的输入框，交由宿主清空，避免键盘事件继续发给已移除控件
-            if (previousField != null) {
-                screen.clearSearchFocus(previousField);
-            }
-            this.searchField = new EditBox(font, 0, 0, 0, 0, Component.empty());
-            this.searchField.setVisible(false);
-            this.searchField.setResponder(this::onSearchChanged);
+        if (searchField == null) {
+            searchField = new UiTextInput(UnsuspiciousUiTheme.PARCHMENT, font,
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"))
+                    .setMaxLength(256).setValue(currentSearch.rawQuery());
+            searchField.setOnValueChanged(() -> onSearchChanged(searchField.value()));
         }
+        searchField.setVisible(searchExpanded);
+        searchField.setBounds(toolbarX + JournalLayout.SEARCH_ICON_SIZE, toolbarY,
+                Math.max(0, expandedSearchFieldWidth), JournalLayout.SEARCH_BAR_HEIGHT);
+        screen.registerWidget(searchField);
+        searchFocusRequested = focusSearchOnCreate;
+        focusSearchOnCreate = false;
     }
 
     private static Component tooltipDescription(String translationKey) {
@@ -396,31 +354,4 @@ public class CatalogToolbar {
                 .append(Component.translatable(translationKey).withStyle(ChatFormatting.GRAY));
     }
 
-    /** 渲染与搜索按钮等高、同色的搜索框背景。 */
-    public void renderSearchBackground(GuiGraphics guiGraphics) {
-        if (this.searchExpanded && this.searchField != null) {
-            int right = this.searchBackgroundX + this.expandedSearchFieldWidth;
-            int bottom = this.searchBackgroundY + JournalLayout.SEARCH_BAR_HEIGHT;
-            guiGraphics.fill(this.searchBackgroundX, this.searchBackgroundY,
-                    right, bottom, SEARCH_BORDER_COLOR);
-            guiGraphics.fill(this.searchBackgroundX + 1, this.searchBackgroundY + 1,
-                    right - 1, bottom - 1, SEARCH_BG_COLOR);
-        }
-    }
-
-    /** 渲染工具栏 tooltip */
-    public void renderTooltips(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.sortButton != null && this.sortButton.visible) {
-            this.sortButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.sortOrderButton != null && this.sortOrderButton.visible) {
-            this.sortOrderButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.searchToggleButton != null && this.searchToggleButton.visible) {
-            this.searchToggleButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-        if (this.hideLockedButton != null && this.hideLockedButton.visible) {
-            this.hideLockedButton.renderTooltip(guiGraphics, mouseX, mouseY);
-        }
-    }
 }

@@ -8,7 +8,9 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.loottable.catalog.SimulationOptions;
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
-import com.meteorite.unsuspiciousblock.client.ui.widget.BookmarkToggleButton;
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -24,7 +26,34 @@ import java.util.Objects;
 import java.util.UUID;
 
 /** 右侧页面容器 —— 通过四枚书签 Tab 切换介绍信息/考古信息/日志/场景 */
-public final class RightPageContainer {
+public final class RightPageContainer implements UiInputTarget {
+    public void prepareUi() { activePanel().prepareUi(); if (activeTab == Tab.ARCHAEOLOGY) scenarioPanel.prepareUi(); }
+    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+        if (activeTab == Tab.ARCHAEOLOGY) { gridPanel.renderControls(graphics, font, pointer); scenarioPanel.renderControls(graphics, font, pointer); }
+        else if (activeTab == Tab.SCENARIO) scenarioDetailPanel.renderControls(graphics, font, pointer);
+        else if (activeTab == Tab.LOG && logMode == LogMode.LIST) logPanel.renderControls(graphics, font, pointer);
+        else if (activeTab == Tab.LOG) logDetailPanel.renderControls(graphics, font, pointer);
+    }
+    @Override public void addFocusTargets(java.util.function.Consumer<UiFocusTarget> out) { activePanel().addFocusTargets(out); if (activeTab == Tab.ARCHAEOLOGY) scenarioPanel.addFocusTargets(out); }
+    @Override public long focusRevision() { return activePanel().focusRevision() * 31 + activeTab.ordinal() * 2L + logMode.ordinal() + (activeTab == Tab.ARCHAEOLOGY ? 17 * scenarioPanel.focusRevision() : 0); }
+    @Override public UiPointerHit hitTest(double x, double y) {
+        UiPointerHit hit = activeTab == Tab.ARCHAEOLOGY ? scenarioPanel.hitTest(x, y) : null;
+        if (hit == null) hit = activePanel().hitTest(x, y);
+        if (activeTab == Tab.ARCHAEOLOGY && hit == null && containsMouse(x, y))
+            return UiPointerHit.leaf(this, x, y);
+        return hit == null ? null : hit.within(this);
+    }
+    @Override public boolean mousePressed(UiInputContext context) {
+        if (activeTab == Tab.ARCHAEOLOGY && context.hits(scenarioPanel)) return scenarioPanel.mousePressed(context);
+        return activePanel().mousePressed(context);
+    }
+    @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        return activePanel().keyPressed(key, scan, modifiers)
+                || activeTab == Tab.ARCHAEOLOGY && scenarioPanel.keyPressed(key, scan, modifiers);
+    }
+    @Override public boolean keyReleased(int key, int scan, int modifiers) { return activePanel().keyReleased(key, scan, modifiers); }
+    @Override public boolean charTyped(char value, int modifiers) { return activePanel().charTyped(value, modifiers); }
+    @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return activePanel().mouseScrolled(context, x, y); }
 
     // 书签尺寸与间距
     private static final int BOOKMARK_HEIGHT = 22;
@@ -38,15 +67,15 @@ public final class RightPageContainer {
     private final ScenarioPanel scenarioPanel;
     private final JournalBookBackground.BookLayout layout;
     private final ScenarioDetailPanel scenarioDetailPanel;
-    private final BookmarkToggleButton scenarioTabBtn;
+    private final UiControl scenarioTabBtn;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
     private final DetailOverlayPanel detailPanel;
     private final LogPanel logPanel;
     private final LogDetailPanel logDetailPanel;
-    private final BookmarkToggleButton introTabBtn;
-    private final BookmarkToggleButton archaeologyTabBtn;
-    private final BookmarkToggleButton logTabBtn;
+    private final UiControl introTabBtn;
+    private final UiControl archaeologyTabBtn;
+    private final UiControl logTabBtn;
 
     @Nullable
     private ResourceLocation currentTableId;
@@ -54,10 +83,10 @@ public final class RightPageContainer {
     private LogMode logMode = LogMode.LIST;
     @Nullable
     private UUID selectedLogEntryId;
-    private final com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer overlays;
+    private final com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays overlays;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout,
-                              com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer overlays,
+                              com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays overlays,
                               UiPanelRegistry panels) {
         this.layout = layout;
         this.overlays = overlays;
@@ -77,28 +106,33 @@ public final class RightPageContainer {
         int bookRightEdge = layout.rightPageX() + layout.rightPageWidth();
         int startY = layout.rightPageY() + BOOKMARK_TOP_OFFSET;
 
-        this.introTabBtn = new BookmarkToggleButton(
+        this.introTabBtn = JournalControls.bookmark(
                 bookRightEdge, startY,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_intro")
                         .withStyle(ChatFormatting.YELLOW),
                 () -> switchTab(Tab.INTRO));
-        this.introTabBtn.setToggled(true);
+        this.introTabBtn.setSelected(true);
 
-        this.archaeologyTabBtn = new BookmarkToggleButton(
+        this.archaeologyTabBtn = JournalControls.bookmark(
                 bookRightEdge, startY + BOOKMARK_HEIGHT + BOOKMARK_GAP,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_archaeology")
                         .withStyle(ChatFormatting.YELLOW),
                 () -> switchTab(Tab.ARCHAEOLOGY));
 
-        this.scenarioTabBtn = new BookmarkToggleButton(bookRightEdge,
+        this.scenarioTabBtn = JournalControls.bookmark(bookRightEdge,
                 startY + (BOOKMARK_HEIGHT + BOOKMARK_GAP) * 3,
                 com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text("tab").copy()
                         .withStyle(ChatFormatting.YELLOW), () -> switchTab(Tab.SCENARIO));
-        this.logTabBtn = new BookmarkToggleButton(
+        this.logTabBtn = JournalControls.bookmark(
                 bookRightEdge, startY + (BOOKMARK_HEIGHT + BOOKMARK_GAP) * 2,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_log")
                         .withStyle(ChatFormatting.YELLOW),
                 () -> switchTab(Tab.LOG));
+        gridPanel.setActions(this::syncPageIndicator, target -> {
+            if (currentTableId != null) com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(
+                    overlays, currentTableId, com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.childTable(target));
+        });
+        logPanel.setOnOpenEntry(entry -> restoreLogSelection(entry.entryId(), true));
     }
 
     private void switchTab(Tab tab) {
@@ -155,39 +189,22 @@ public final class RightPageContainer {
         syncPageIndicator();
     }
 
-    public BookmarkToggleButton getScenarioTabButton() { return scenarioTabBtn; }
+    public UiControl getScenarioTabButton() { return scenarioTabBtn; }
 
-    // 场景页内容视口的滚动条独占拖动与释放；网格页头部没有原生输入框。
-    public boolean handleDrag(double mouseY, int button) {
-        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseDragged(mouseY, button);
-    }
-
-    public boolean handleRelease(int button) {
-        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseReleased(button);
-    }
-
-    public boolean handleKey(int key, int scan, int modifiers) {
-        return activeTab == Tab.SCENARIO ? scenarioDetailPanel.keyPressed(key, scan, modifiers)
-                : activeTab == Tab.ARCHAEOLOGY && scenarioPanel.keyPressed(key, scan, modifiers);
-    }
-
-    public BookmarkToggleButton getIntroTabButton() {
+    public UiControl getIntroTabButton() {
         return this.introTabBtn;
     }
 
-    public BookmarkToggleButton getArchaeologyTabButton() {
+    public UiControl getArchaeologyTabButton() {
         return this.archaeologyTabBtn;
     }
 
-    public BookmarkToggleButton getLogTabButton() {
+    public UiControl getLogTabButton() {
         return this.logTabBtn;
     }
 
     public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
         syncPageIndicator();
-        // 场景页自绘读数行；旧面板的头部只服务网格页（那里的下拉与计算按钮仍在用）
-        if (activeTab == Tab.ARCHAEOLOGY)
-            scenarioPanel.renderHeader(guiGraphics, font, mouseX, mouseY);
         PagePanel panel = activePanel();
         panel.render(guiGraphics, font, mouseX, mouseY);
         // ARCHAEOLOGY tab always shows page indicator; others only when multi-page
@@ -207,70 +224,16 @@ public final class RightPageContainer {
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        if (this.introTabBtn.isMouseOver(mouseX, mouseY)) {
+        if (this.introTabBtn.bounds().contains(mouseX, mouseY)) {
             return true;
         }
-        if (this.archaeologyTabBtn.isMouseOver(mouseX, mouseY)) {
+        if (this.archaeologyTabBtn.bounds().contains(mouseX, mouseY)) {
             return true;
         }
-        if (this.logTabBtn.isMouseOver(mouseX, mouseY)) {
+        if (this.logTabBtn.bounds().contains(mouseX, mouseY)) {
             return true;
         }
         return activePanel().containsMouse(mouseX, mouseY);
-    }
-
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseClicked(mouseX, mouseY, button)) return true;
-        // 网格页头部：切换场景与计算按钮（头部没有原生输入框，参数在场景页的参数浮层里调整）
-        if (activeTab == Tab.ARCHAEOLOGY && scenarioPanel.click(mouseX, mouseY, button)) return true;
-        if (this.scenarioTabBtn.isMouseOver(mouseX, mouseY)) {
-            this.scenarioTabBtn.mouseClicked(mouseX, mouseY, button);
-            return true;
-        }
-        if (this.introTabBtn.isMouseOver(mouseX, mouseY)) {
-            this.introTabBtn.mouseClicked(mouseX, mouseY, button);
-            return true;
-        }
-        if (this.archaeologyTabBtn.isMouseOver(mouseX, mouseY)) {
-            this.archaeologyTabBtn.mouseClicked(mouseX, mouseY, button);
-            return true;
-        }
-        if (this.logTabBtn.isMouseOver(mouseX, mouseY)) {
-            this.logTabBtn.mouseClicked(mouseX, mouseY, button);
-            return true;
-        }
-        if (this.activeTab == Tab.ARCHAEOLOGY) {
-            ResourceLocation childTarget = button == 0 ? gridPanel.childRecommendationTarget(mouseX, mouseY) : null;
-            if (childTarget != null && currentTableId != null) {
-                com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay.open(overlays,
-                        currentTableId, com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget.childTable(childTarget));
-                return true;
-            }
-            boolean changed = this.gridPanel.handleClick(mouseX, mouseY, button);
-            if (changed) {
-                syncPageIndicator();
-            }
-            return changed;
-        }
-        if (this.activeTab != Tab.LOG) {
-            return false;
-        }
-        if (this.logMode == LogMode.DETAIL) {
-            // 返回按钮由 IconButton widget 处理；这里仅处理复制坐标按钮点击
-            return this.logDetailPanel.handleClick(mouseX, mouseY);
-        }
-        if (this.logPanel.isBatchSelectionMode()) {
-            return this.logPanel.handleBatchSelectionClick(mouseX, mouseY);
-        }
-        ExcavationLogEntry clickedEntry = this.logPanel.handleClick(mouseX, mouseY);
-        if (clickedEntry == null) {
-            return false;
-        }
-        this.selectedLogEntryId = clickedEntry.entryId();
-        this.logMode = LogMode.DETAIL;
-        this.logDetailPanel.setEntry(clickedEntry, this.currentTableId);
-        syncPageIndicator();
-        return true;
     }
 
     @Nullable
@@ -282,10 +245,6 @@ public final class RightPageContainer {
         if (pageCount() > 1) {
             changePage(scrollY < 0.0 ? 1 : -1);
         }
-    }
-
-    public boolean handleFrameScroll(double mouseX, double mouseY, double scrollY) {
-        return activeTab == Tab.SCENARIO && scenarioDetailPanel.mouseScrolled(mouseX, mouseY, scrollY);
     }
 
     // 旧面板不迁移接口，仅由现有容器保存全部页号，避免只保存当前 tab。
@@ -340,10 +299,10 @@ public final class RightPageContainer {
         if (tab == Tab.LOG) {
             captureReferenceGameTime();
         }
-        this.introTabBtn.setToggled(tab == Tab.INTRO);
-        this.archaeologyTabBtn.setToggled(tab == Tab.ARCHAEOLOGY);
-        this.logTabBtn.setToggled(tab == Tab.LOG);
-        this.scenarioTabBtn.setToggled(tab == Tab.SCENARIO);
+        this.introTabBtn.setSelected(tab == Tab.INTRO);
+        this.archaeologyTabBtn.setSelected(tab == Tab.ARCHAEOLOGY);
+        this.logTabBtn.setSelected(tab == Tab.LOG);
+        this.scenarioTabBtn.setSelected(tab == Tab.SCENARIO);
         syncPageIndicator();
     }
 
@@ -432,20 +391,13 @@ public final class RightPageContainer {
         return null;
     }
 
-    // 渲染自定义按钮 tooltip（如日志条目的复制坐标按钮、返回按钮、详情页复制按钮），需在 super.render 之后调用
-    public void renderTooltips(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
-        if (this.activeTab == Tab.ARCHAEOLOGY && !scenarioPanel.tooltip().isEmpty()) {
-            guiGraphics.renderComponentTooltip(font, scenarioPanel.tooltip(), mouseX, mouseY);
-        }
-        if (activeTab == Tab.ARCHAEOLOGY) {
-            this.gridPanel.renderNavigationTooltip(guiGraphics, font, mouseX, mouseY);
-        } else if (activeTab == Tab.SCENARIO) {
-            // 场景页的悬停提示与命中共用同一次命中结果，不存在第二条 tooltip 路径
-            this.scenarioDetailPanel.renderTooltip(guiGraphics, font, mouseX, mouseY);
-        } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.LIST) {
-            this.logPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
-        } else if (this.activeTab == Tab.LOG && this.logMode == LogMode.DETAIL) {
-            this.logDetailPanel.renderTooltips(guiGraphics, font, mouseX, mouseY);
-        }
+    public ItemGridPanel.TooltipData getTooltipData(UiPointerHit hit) {
+        if (hit == null) return null;
+        if (activeTab == Tab.ARCHAEOLOGY && hit.owns(gridPanel)) return gridPanel.getTooltipData(hit);
+        if (activeTab == Tab.INTRO && hit.owns(detailPanel) || activeTab == Tab.LOG && hit.owns(logDetailPanel))
+            return getTooltipData(hit.x(), hit.y());
+        return null;
     }
+
+
 }

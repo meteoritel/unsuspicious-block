@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxMenu;
+import com.meteorite.meteosuikit.api.render.UiIcon;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
@@ -22,6 +23,13 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
         this.inventoryLabelY = this.imageHeight - 94;
     }
 
+    @Override protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
+        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, title,
+                titleLabelX, titleLabelY, imageWidth - titleLabelX - 6, 0x404040);
+        com.meteorite.meteosuikit.api.render.UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
+                inventoryLabelX, inventoryLabelY, imageWidth - inventoryLabelX - 6, 0x404040);
+    }
+
     @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
             onClose();
@@ -32,7 +40,7 @@ public class SpecimenBoxScreen extends AbstractContainerScreen<SpecimenBoxMenu> 
 
     @Override
     protected void renderBg(@NotNull GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
-        guiGraphics.blit(TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
+        new UiIcon.Sprite(TEXTURE, 0, 0, imageWidth, imageHeight, 256, 256).render(guiGraphics, leftPos, topPos);
     }
 
     @Override

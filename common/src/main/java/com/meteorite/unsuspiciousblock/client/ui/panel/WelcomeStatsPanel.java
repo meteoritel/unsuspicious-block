@@ -1,7 +1,12 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.kit.TextScroll;
+import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import net.minecraft.client.Minecraft;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
@@ -25,7 +30,7 @@ import java.util.Map;
 /**
  * 考古笔记分类首页的信息面板，负责汇总并渲染玩家统计与最近发现。
  */
-public final class WelcomeStatsPanel {
+public final class WelcomeStatsPanel implements UiInputTarget {
     // 与语义色表同值，直接引用以消除重复字面量（值未变）
     private static final int TITLE_COLOR = UiTextPalette.Parchment.TITLE;
     // 次要标签：原字面量 0x8A7358 在书页底色 #E8DCBC 上只有 3.29:1，改引语义色表的 LABEL（5.03:1）。
@@ -45,15 +50,12 @@ public final class WelcomeStatsPanel {
     private Component latestRecord = Component.translatable(
             "screen.unsuspiciousblock.archaeology_journal.welcome.none");
     private List<ItemStack> latestItems = List.of();
-    private boolean latestRecordHovered;
-    private boolean latestRecordTrimmed;
-    private int hoveredItemIndex = -1;
 
     public WelcomeStatsPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
     }
 
-    public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics graphics, Font font) {
         refreshSnapshot();
 
         int pageX = this.layout.rightPageX();
@@ -95,34 +97,26 @@ public final class WelcomeStatsPanel {
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.noted_entries",
                 Integer.toString(this.notedEntries));
 
-        int recentY = firstRowY + 43;
-        this.latestRecordTrimmed = drawLabelAndValue(graphics, font, contentX, recentY, contentWidth,
+        int recentY = recentY(font);
+        drawLabelAndValue(graphics, font, contentX, recentY, contentWidth,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.latest_record"),
                 this.latestRecord);
-        this.latestRecordHovered = mouseX >= contentX && mouseX < contentX + contentWidth
-                && mouseY >= recentY && mouseY < recentY + font.lineHeight;
+
 
         int discoveryY = recentY + 22;
         Component discoveryLabel = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.welcome.latest_discovery");
         graphics.drawString(font, discoveryLabel.getString(), contentX, discoveryY, LABEL_COLOR, false);
-        int itemsX = contentX;
         int itemsY = discoveryY + 14;
-        this.hoveredItemIndex = -1;
         if (this.latestItems.isEmpty()) {
             graphics.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.none"),
-                    itemsX, itemsY + 4, VALUE_COLOR, false);
+                    contentX, itemsY + 4, VALUE_COLOR, false);
         } else {
-            int itemsPerRow = Math.max(1, (pageRight - 12 - contentX) / (ITEM_SIZE + ITEM_GAP));
-            for (int index = 0; index < this.latestItems.size(); index++) {
-                int itemX = itemsX + (index % itemsPerRow) * (ITEM_SIZE + ITEM_GAP);
-                int itemY = itemsY + (index / itemsPerRow) * (ITEM_SIZE + 2);
-                graphics.renderItem(this.latestItems.get(index), itemX, itemY);
-                if (mouseX >= itemX && mouseX < itemX + ITEM_SIZE
-                        && mouseY >= itemY && mouseY < itemY + ITEM_SIZE) {
-                    this.hoveredItemIndex = index;
-                }
+            UiGridMetrics grid = itemGrid();
+            for (int index = 0; index < latestItems.size(); index++) {
+                UiRect cell = grid.cellBounds(index);
+                new UiIcon.Item(latestItems.get(index)).render(graphics, contentX + cell.x(), itemsY + cell.y());
             }
         }
 
@@ -130,12 +124,25 @@ public final class WelcomeStatsPanel {
         graphics.fill(separatorLeft, secondSeparatorY, separatorRight, secondSeparatorY + 1, SEPARATOR_COLOR);
     }
 
-    public void renderTooltip(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
-        if (this.hoveredItemIndex >= 0 && this.hoveredItemIndex < this.latestItems.size()) {
-            graphics.renderTooltip(font, this.latestItems.get(this.hoveredItemIndex), mouseX, mouseY);
-        } else if (this.latestRecordHovered && this.latestRecordTrimmed) {
-            graphics.renderTooltip(font, this.latestRecord, mouseX, mouseY);
+    private int recentY(Font font) { return layout.rightPageY() + 102 + font.lineHeight; }
+    private UiGridMetrics itemGrid() { return new UiGridMetrics(Math.max(1, (layout.rightPageWidth() - 24) / (ITEM_SIZE + ITEM_GAP)), ITEM_SIZE, ITEM_SIZE, ITEM_GAP, 2); }
+    @Override public UiPointerHit hitTest(double x, double y) {
+        refreshSnapshot();
+        Font font = Minecraft.getInstance().font;
+        int left = layout.rightPageX() + 12;
+        int recentY = recentY(font);
+        UiGridMetrics grid = itemGrid();
+        for (int index = 0; index < latestItems.size(); index++) {
+            UiRect cell = grid.cellBounds(index);
+            UiRect bounds = new UiRect(left + cell.x(), recentY + 36 + cell.y(), ITEM_SIZE, ITEM_SIZE);
+            if (bounds.contains(x, y)) {
+                ItemStack stack = latestItems.get(index);
+                return UiPointerHit.leaf(this, x, y).withRow(this, index, stack, bounds)
+                        .withPresentation((graphics, textFont, px, py) -> graphics.renderTooltip(textFont, stack, px, py));
+            }
         }
+        UiRect recent = new UiRect(left, recentY, layout.rightPageWidth() - 24, font.lineHeight);
+        return recent.contains(x, y) ? UiPointerHit.leaf(this, x, y).withTextTooltip(List.of(latestRecord), recent) : null;
     }
 
     private void refreshSnapshot() {
@@ -216,7 +223,7 @@ public final class WelcomeStatsPanel {
         graphics.drawString(font, value, x + width - valueWidth, y, VALUE_COLOR, false);
     }
 
-    private static boolean drawLabelAndValue(GuiGraphics graphics, Font font, int x, int y, int width,
+    private static void drawLabelAndValue(GuiGraphics graphics, Font font, int x, int y, int width,
                                              Component label, Component value) {
         String labelText = label.getString();
         graphics.drawString(font, labelText, x, y, LABEL_COLOR, false);
@@ -224,7 +231,6 @@ public final class WelcomeStatsPanel {
         int valueWidth = Math.max(0, x + width - valueX);
         String valueText = TextScroll.trimToWidth(font, value.getString(), valueWidth);
         graphics.drawString(font, valueText, valueX, y, VALUE_COLOR, false);
-        return font.width(value) > valueWidth;
     }
 
     private static void drawCenteredTrimmed(GuiGraphics graphics, Font font, Component text,

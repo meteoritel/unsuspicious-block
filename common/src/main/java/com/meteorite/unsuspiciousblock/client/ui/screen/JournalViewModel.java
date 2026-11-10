@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.loottable.catalog.DeclaredChance;
 
 import com.meteorite.unsuspiciousblock.Constants;
@@ -25,7 +26,6 @@ import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ChildT
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.loottable.catalog.LootTableCatalog.TableDefinition;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -99,7 +99,7 @@ public class JournalViewModel {
     private final Map<ResourceLocation, List<JournalSearchQuery.LowercaseItem>> lowercaseTableItems =
             new LinkedHashMap<>();
     private long nameCacheRevision = Long.MIN_VALUE;
-    private String nameCacheLanguage = "";
+    private Language nameCacheLanguage;
 
     public JournalViewModel(ArchaeologyJournalState state) {
         this.state = state;
@@ -466,8 +466,8 @@ public class JournalViewModel {
     // 让名称缓存与当前"目录定义版本 + 客户端语言"对齐；不一致就整体失效重建。
     // 服务端补充译名不推进 catalogRevision，因此匹配文本最多滞后到下一次目录或语言变化（显示本身仍走实时 Component）。
     private void syncNameCaches() {
-        String language = Minecraft.getInstance().getLanguageManager().getSelected();
-        if (this.nameCacheRevision == this.loadedCatalogRevision && this.nameCacheLanguage.equals(language)) {
+        Language language = Language.getInstance();
+        if (this.nameCacheRevision == this.loadedCatalogRevision && this.nameCacheLanguage == language) {
             return;
         }
         this.nameCacheRevision = this.loadedCatalogRevision;

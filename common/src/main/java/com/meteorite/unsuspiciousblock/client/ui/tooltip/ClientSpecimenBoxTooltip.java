@@ -1,6 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.tooltip;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.unsuspiciousblock.specimen.SpecimenBoxTooltip;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -38,9 +41,8 @@ public final class ClientSpecimenBoxTooltip implements ClientTooltipComponent {
     }
 
     @Override
-    public void renderImage(@NotNull Font font, int x, int y, GuiGraphics guiGraphics) {
-        guiGraphics.blit(TEXTURE, x, y, 0.0F, 0.0F,
-                WIDTH, HEIGHT, WIDTH, HEIGHT);
+    public void renderImage(@NotNull Font font, int x, int y, @NotNull GuiGraphics guiGraphics) {
+        new UiIcon.Sprite(TEXTURE, 0, 0, WIDTH, HEIGHT, WIDTH, HEIGHT).render(guiGraphics, x, y);
         for (int slot = 0; slot < this.tooltip.items().size(); slot++) {
             ItemStack stack = this.tooltip.items().get(slot);
             if (stack.isEmpty()) {
@@ -48,8 +50,10 @@ public final class ClientSpecimenBoxTooltip implements ClientTooltipComponent {
             }
             int itemX = x + SLOT_X + slot * SLOT_STEP;
             int itemY = y + SLOT_Y;
-            guiGraphics.renderItem(stack, itemX, itemY);
-            guiGraphics.renderItemDecorations(font, stack, itemX, itemY);
+            UiRenderLayers.item(guiGraphics, new UiRect(itemX, itemY, 16, 16), local -> {
+                local.renderItem(stack, itemX, itemY);
+                local.renderItemDecorations(font, stack, itemX, itemY);
+            });
         }
     }
 }

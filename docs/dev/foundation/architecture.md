@@ -150,11 +150,11 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 
 | 构建单元 | 当前声明 | 用途 |
 |---|---|---|
-| `common` | `compileOnly` `meteos-ui-kit-common-1.21.1:0.1.0-dev.2` | 编译宿主客户端源码，不把 common 库作为运行时独立依赖 |
-| `fabric` | `modImplementation` + `include` `meteos-ui-kit-fabric-1.21.1:0.1.0-dev.2` | 开发运行与最终 Fabric JAR 内嵌 |
-| `neoforge` | `implementation` + `jarJar` `meteos-ui-kit-neoforge-1.21.1:0.1.0-dev.2` | 开发运行与最终 NeoForge Jar-in-Jar 内嵌 |
+| `common` | `compileOnly` `meteos-ui-kit-common-1.21.1:${meteos_ui_kit_version}` | 编译宿主客户端源码，不把 common 库作为运行时独立依赖 |
+| `fabric` | `modImplementation` + `include` `meteos-ui-kit-fabric-1.21.1:${meteos_ui_kit_version}` | 开发运行与最终 Fabric JAR 内嵌 |
+| `neoforge` | `implementation` + `jarJar` `meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}` | 开发运行与最终 NeoForge Jar-in-Jar 内嵌 |
 
-当前 GUI 仍使用宿主旧 `client/ui/kit` 实现；本依赖环境为后续逐页迁移准备，业务页面、主题、数据投影与资源继续由本项目持有。迁移完成前不得删除旧 kit 或将现役页面改成未验证的库入口。
+本模组自有 GUI 统一消费独立库公开 API，版本以 `gradle.properties` 为准。普通页面与笔记使用 kit 根和作用域；容器保留原版 Menu/Slot，自己的交互通过 kit bridge；HUD、Toast、富 tooltip 与 JEI 自有内容组合 kit 绘制能力。宿主持有业务、主题、数据投影和资源。接入与边界检查见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)。
 
 ## 5. 横切设计原则
 

@@ -12,6 +12,13 @@ displayURL = "https://www.curseforge.com/minecraft/mc-mods/unsuspicious-block"
 description = '''${description}'''
 
 [[dependencies.${mod_id}]]
+    modId = "meteos_ui_kit"
+    type = "required"
+    versionRange = "[${meteos_ui_kit_version},0.2.0)"
+    ordering = "NONE"
+    side = "CLIENT"
+
+[[dependencies.${mod_id}]]
     modId = "neoforge"
     type = "required"
     versionRange = "[${neoforge_version},)"

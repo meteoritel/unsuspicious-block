@@ -1,13 +1,18 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import net.minecraft.locale.Language;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiScrollView;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
+import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.meteosuikit.api.control.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScrollTextHelper;
+import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -25,9 +30,46 @@ import java.util.Map;
  *
  * <p>滚动偏移与滚动条由 {@link UiScrollView} 统一持有（像素口径），本类只负责把「条目数」口径的公开 API
  * 换算成像素：分类模式每行 2 项、步长 = 卡片高度 + 纵向间距；表格模式每行 1 项、步长 = 行高 + 行间距。
- * 公开 API 与迁移前的像素表现保持一致。</p>
+ * 对外偏移仍使用条目单位。</p>
  */
-public final class CatalogPanel {
+public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.Target {
+    private java.util.function.BiConsumer<ClickResult, Boolean> onActivate = (click, shift) -> { };
+    private final UiFocusState focus = new UiFocusState();
+    private java.util.function.IntPredicate navigate = key -> false;
+    public void setNavigation(java.util.function.IntPredicate navigate) { this.navigate = navigate; }
+    @Override public UiFocusState focusState() { return focus; }
+    @Override public UiRect bounds() { return view.viewport(); }
+    @Override public Component accessibleName() { return Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"); }
+    @Override public boolean activate() { return navigate.test(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER); }
+    @Override public boolean keyPressed(int key, int scan, int modifiers) { return isFocused() && navigate.test(key); }
+    private ClickResult pressed = ClickResult.NONE;
+    public void setOnActivate(java.util.function.BiConsumer<ClickResult, Boolean> action) { onActivate = action; }
+    @Override public UiPointerHit hitTest(double x, double y) {
+        if (!containsMouse(x, y)) return null;
+        UiPointerHit thumb = view.hitTest(x, y);
+        if (thumb != null) return thumb.within(this);
+        int index = hoveredIndex(x, y);
+        UiPointerHit hit = UiPointerHit.leaf(this, x, y);
+        return index < 0 ? hit : hit.withRow(this, index, index, view.viewport());
+    }
+    @Override public boolean mousePressed(UiInputContext context) {
+        if (view.mousePressed(context)) return true;
+        if (context.button() != 0) return false;
+        pressed = handleClick(context.pointerX(), context.pointerY());
+        if (pressed.index() < 0) return false;
+        context.scope().interaction().begin(this, UiInteractionSession.Source.POINTER, 0);
+        return true;
+    }
+    @Override public boolean mouseReleased(UiInputContext context) {
+        ClickResult clicked = handleClick(context.pointerX(), context.pointerY());
+        ClickResult original = pressed;
+        pressed = ClickResult.NONE;
+        if (original.index() >= 0 && original.equals(clicked)) onActivate.accept(clicked, context.shift());
+        return true;
+    }
+    @Override public void interactionEnded(UiInteractionSession.EndReason reason) { pressed = ClickResult.NONE; }
+    @Override public boolean mouseScrolled(UiInputContext context, double sx, double sy) { view.scrollBy(sy); return true; }
+
     private static final ResourceLocation ENTRY_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/catalog_entry.png");
     private static final int[] UNLOCKED_STATE_V = {0, 19, 38};
@@ -49,26 +91,22 @@ public final class CatalogPanel {
     private static final int CARD_GAP_Y = 5;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_GAP = 2;
-    private static final int SCROLLBAR_TRACK_COLOR = 0x406B4C2A;
-    private static final int SCROLLBAR_THUMB_COLOR = 0xB08B6914;
-    private static final int SCROLLBAR_THUMB_HOVER_COLOR = 0xD07B3E18;
-    private static final UiControlStyle SCROLLBAR_STYLE = scrollbarStyle(SCROLLBAR_THUMB_COLOR);
-    private static final UiControlStyle SCROLLBAR_HOVER_STYLE = scrollbarStyle(SCROLLBAR_THUMB_HOVER_COLOR);
+    private static final UiGridMetrics CATEGORY_METRICS = new UiGridMetrics(2, CARD_WIDTH, CARD_HEIGHT, CARD_GAP_X, CARD_GAP_Y);
     public static final int CATEGORY_GRID_WIDTH = CARD_WIDTH * 2 + CARD_GAP_X;
 
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private final UiScrollView view = new UiScrollView();
     private final List<CategoryEntryData> categories = new ArrayList<>();
     private final List<CatalogEntryData> entries = new ArrayList<>();
     private final Map<ResourceLocation, Integer> categoryScrollTicks = new HashMap<>();
     private final Map<ResourceLocation, Integer> entryScrollTicks = new HashMap<>();
-    // 逐帧文案缓存：CategoryEntryData / CatalogEntryData 都是不可变 record，同一实例的文案只取决于语言代码。
-    // 失效点：setCategories / setEntries（换数据）或语言代码变化（整表重算）。
+    // 逐帧文案缓存：CategoryEntryData / CatalogEntryData 都是不可变 record，同一实例的文案只取决于语言资源实例。
+    // 失效点：setCategories / setEntries（换数据）或语言资源实例变化（整表重算）。
     private final Map<Object, String> nameTextCache = new IdentityHashMap<>();
     private final Map<Object, String> progressTextCache = new IdentityHashMap<>();
-    // 已测宽度缓存（P-10）：与文案缓存同一失效事件（语言/字体实例、setCategories/setEntries）
+    // 已测宽度缓存：与文案缓存同一失效事件（语言/字体实例、setCategories/setEntries）
     private final PanelTextMetrics metrics = new PanelTextMetrics();
-    private String cachedLanguage = "";
+    private Language cachedLanguage;
     private Mode mode = Mode.CATEGORIES;
 
     // 视口恒定贴着列表右边界，滚动条常开（UiScrollView 内部自带 maxOffset > 0 才显示）。
@@ -79,8 +117,9 @@ public final class CatalogPanel {
         syncContentHeight();
     }
 
-    // 迁移前 setCategories / setEntries 只换列表、不重置偏移：条目数偏移会跨模式直接带到新模式，
-    // 故先按旧模式取出条目偏移，换完模式再按新模式步长换算，避免像素口径直接沿用而落到不同行。
+    public void applyLayout(JournalBookBackground.BookLayout layout) { this.layout = layout; syncViewport(); }
+
+    // 跨分类和列表形态携带条目偏移，再按目标形态步长换算像素。
     public void setCategories(List<CategoryEntryData> values) {
         int carriedOffset = firstVisibleIndex();
         this.mode = Mode.CATEGORIES;
@@ -112,20 +151,13 @@ public final class CatalogPanel {
     // 保留旧算法与两个 lookahead 常量，钳制交给 UiScrollView。
     public void ensureIndexVisible(int index) {
         if (index < 0) return;
-        int first = firstVisibleIndex();
-        int visible = visibleItemCount();
-        if (index < first) {
-            this.view.setOffset(itemsToPixels(index));
-        } else if (index >= first + visible) {
-            int trailingOffset = index - visible + (this.mode == Mode.CATEGORIES ? 2 : 1);
-            this.view.setOffset(itemsToPixels(trailingOffset));
-        }
+        UiRect rect = this.mode == Mode.CATEGORIES ? CATEGORY_METRICS.cellBounds(index)
+                : new UiRect(0, index * rowStride(), buttonWidth(), JournalLayout.CATALOG_ROW_HEIGHT);
+        this.view.ensureVisible(rect);
     }
 
     // 行滚动换算成像素位移：分类模式一行 = 2 项。
-    public void scrollByRows(int rowDelta) {
-        this.view.setOffset(this.view.offset() + rowDelta * stride());
-    }
+
 
     public int visibleItemCount() {
         return this.mode == Mode.CATEGORIES ? visibleCategoryRows() * 2 : visibleTableRows();
@@ -140,27 +172,17 @@ public final class CatalogPanel {
     }
 
     public ClickResult handleClick(double mouseX, double mouseY) {
+        if (!view.containsContent(mouseX, mouseY)) return ClickResult.NONE;
+        double y = view.toContentY(mouseY);
         if (this.mode == Mode.CATEGORIES) {
-            int from = firstVisibleIndex();
-            int to = Math.min(this.categories.size(), from + visibleItemCount());
-            for (int index = from; index < to; index++) {
-                Rect rect = categoryRect(index - from);
-                if (rect.contains(mouseX, mouseY)) return new ClickResult(index, false);
-            }
-            return ClickResult.NONE;
+            int index = CATEGORY_METRICS.indexAt(mouseX - categoryLeft(), y, categories.size());
+            return index < 0 ? ClickResult.NONE : new ClickResult(index, false);
         }
-        int from = firstVisibleIndex();
-        int to = Math.min(this.entries.size(), from + visibleItemCount());
-        for (int index = from; index < to; index++) {
-            int y = listTop() + (index - from) * rowStride();
-            if (mouseX >= buttonX() && mouseX <= buttonX() + buttonWidth()
-                    && mouseY >= y && mouseY < y + JournalLayout.CATALOG_ROW_HEIGHT) {
-                CatalogEntryData entry = this.entries.get(index);
-                boolean toggle = entry.hasChildren() && mouseX < buttonX() + 13 + entry.depth() * 8;
-                return new ClickResult(index, toggle);
-            }
-        }
-        return ClickResult.NONE;
+        if (mouseX < buttonX() || mouseX >= buttonX() + buttonWidth()) return ClickResult.NONE;
+        int index = UiRowMetrics.fixedRowIndex(y, rowStride(), JournalLayout.CATALOG_ROW_HEIGHT, entries.size());
+        if (index < 0) return ClickResult.NONE;
+        CatalogEntryData entry = entries.get(index);
+        return new ClickResult(index, entry.hasChildren() && mouseX < buttonX() + 13 + entry.depth() * 8);
     }
 
     public int hoveredIndex(double mouseX, double mouseY) {
@@ -175,32 +197,35 @@ public final class CatalogPanel {
     public void render(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
         refreshTextCacheLanguage();
         this.metrics.beginFrame(font);
+        graphics.enableScissor(view.viewport().x(), listTop(), view.viewport().right(), listBottom());
         if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
         else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
-        // 高亮条件与迁移前一致：拖拽中或指针落在滑块上。滑块几何由 UiScrollView 提供，不再复算。
-        this.view.renderScrollbar(graphics, this.view.isDragging() || this.view.hitThumb(mouseX, mouseY)
-                ? SCROLLBAR_HOVER_STYLE : SCROLLBAR_STYLE);
+        graphics.disableScissor();
+        this.view.renderScrollbar(graphics, UnsuspiciousUiTheme.PARCHMENT);
     }
 
     private void renderCategories(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
         int from = firstVisibleIndex();
-        int to = Math.min(this.categories.size(), from + visibleItemCount());
+        int to = Math.min(this.categories.size(), from + visibleItemCount() + 2);
         for (int index = from; index < to; index++) {
             CategoryEntryData category = this.categories.get(index);
-            Rect rect = categoryRect(index - from);
+            UiRect rect = categoryRect(index);
             boolean hovered = rect.contains(mouseX, mouseY);
             boolean selected = index == selectedIndex;
             int bg = hovered || selected ? CARD_HOVER : CARD_BG;
             graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), bg);
             drawBorder(graphics, rect, selected ? SELECTED_COLOR : CARD_BORDER);
-            graphics.renderItem(category.icon(), rect.x() + (rect.width() - 16) / 2, rect.y() + 3);
+            int iconX = rect.x() + (rect.width() - 16) / 2;
+            int iconY = rect.y() + 3;
+            UiRenderLayers.item(graphics, new UiRect(iconX, iconY, 16, 16),
+                    local -> local.renderItem(category.icon(), iconX, iconY));
             int ticks = hovered ? this.categoryScrollTicks.merge(category.id(), 1, Integer::sum) : 0;
             if (!hovered) this.categoryScrollTicks.put(category.id(), 0);
             PanelTextMetrics.Measured name = this.metrics.measure(categoryNameText(category), font);
-            ScrollTextHelper.draw(graphics, font, name.text(), name.width(), rect.x() + 4, rect.y() + 22,
+            TextScroll.draw(graphics, font, name.text(), name.width(), rect.x() + 4, rect.y() + 22,
                     rect.width() - 8, NORMAL_COLOR, hovered, ticks, true);
             PanelTextMetrics.Measured progress = this.metrics.measure(categoryProgressText(category), font);
-            ScrollTextHelper.draw(graphics, font, progress.text(), progress.width(),
+            TextScroll.draw(graphics, font, progress.text(), progress.width(),
                     rect.x() + 4, rect.bottom() - 13,
                     rect.width() - 8, UiTextPalette.Parchment.LABEL, hovered, ticks, true);
         }
@@ -208,10 +233,10 @@ public final class CatalogPanel {
 
     private void renderEntries(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
         int from = firstVisibleIndex();
-        int to = Math.min(this.entries.size(), from + visibleItemCount());
+        int to = Math.min(this.entries.size(), from + visibleItemCount() + 1);
         for (int index = from; index < to; index++) {
             CatalogEntryData entry = this.entries.get(index);
-            int y = listTop() + (index - from) * rowStride();
+            int y = view.toScreenY(index * rowStride());
             boolean hovered = mouseX >= buttonX() && mouseX <= buttonX() + buttonWidth()
                     && mouseY >= y && mouseY < y + JournalLayout.CATALOG_ROW_HEIGHT;
             renderEntry(graphics, font, entry, buttonX(), y, hovered, index == selectedIndex);
@@ -236,7 +261,7 @@ public final class CatalogPanel {
         int ticks = hovered ? this.entryScrollTicks.merge(entry.id(), 1, Integer::sum) : 0;
         if (!hovered) this.entryScrollTicks.put(entry.id(), 0);
         PanelTextMetrics.Measured measured = this.metrics.measure(text, font);
-        ScrollTextHelper.draw(graphics, font, measured.text(), measured.width(), textX, y + 7,
+        TextScroll.draw(graphics, font, measured.text(), measured.width(), textX, y + 7,
                 Math.max(8, x + buttonWidth() - rightReserve - textX),
                 entry.child() ? CHILD_COLOR : selected ? SELECTED_COLOR : NORMAL_COLOR,
                 hovered, ticks, false);
@@ -248,11 +273,10 @@ public final class CatalogPanel {
         if (entry.child()) graphics.drawString(font, "∈", right - 6, y + 6, CHILD_COLOR, false);
     }
 
-    // 语言代码变化时丢弃逐帧文案缓存：文字随语言变，滚动与悬停状态不随。
-    // 资源重载而语言代码不变的情况仍由 setCategories / setEntries 兜底（与 ScenarioPanel.sceneLabel 同口径）。
+    // 语言资源实例变化时丢弃逐帧文案缓存：文字随语言变，滚动与悬停状态不随。
     private void refreshTextCacheLanguage() {
-        String language = Minecraft.getInstance().getLanguageManager().getSelected();
-        if (!language.equals(this.cachedLanguage)) {
+        Language language = Language.getInstance();
+        if (language != this.cachedLanguage) {
             this.cachedLanguage = language;
             this.nameTextCache.clear();
             this.progressTextCache.clear();
@@ -276,58 +300,33 @@ public final class CatalogPanel {
         return this.nameTextCache.computeIfAbsent(entry, ignored -> entry.displayName().getString());
     }
 
-    private static void drawBorder(GuiGraphics graphics, Rect rect, int color) {
+    private static void drawBorder(GuiGraphics graphics, UiRect rect, int color) {
         graphics.fill(rect.x(), rect.y(), rect.right(), rect.y() + 1, color);
         graphics.fill(rect.x(), rect.bottom() - 1, rect.right(), rect.bottom(), color);
         graphics.fill(rect.x(), rect.y(), rect.x() + 1, rect.bottom(), color);
         graphics.fill(rect.right() - 1, rect.y(), rect.right(), rect.bottom(), color);
     }
 
-    private Rect categoryRect(int visualIndex) {
-        int col = visualIndex % 2;
-        int row = visualIndex / 2;
-        int x = this.layout.leftPageX() + (this.layout.leftPageWidth() - CATEGORY_GRID_WIDTH) / 2;
-        return new Rect(x + col * (CARD_WIDTH + CARD_GAP_X),
-                listTop() + row * (CARD_HEIGHT + CARD_GAP_Y), CARD_WIDTH, CARD_HEIGHT);
+    private int categoryLeft() { return layout.leftPageX() + (layout.leftPageWidth() - CATEGORY_GRID_WIDTH) / 2; }
+
+    private UiRect categoryRect(int index) {
+        UiRect cell = CATEGORY_METRICS.cellBounds(index);
+        return new UiRect(categoryLeft() + cell.x(), view.toScreenY(cell.y()), cell.width(), cell.height());
     }
 
-    // 点击滚动条轨道会跳转，点击滑块后可持续拖拽；命中、跳转与拖拽位移全部由 UiScrollView 负责。
-    public boolean beginScrollbarDrag(double mouseX, double mouseY) {
-        return this.view.mousePressed(mouseX, mouseY, 0);
-    }
-
-    public boolean dragScrollbar(double mouseY) {
-        this.view.mouseDragged(mouseY);
-        // 整个拖动期间都算消费（与迁移前一致）：即使这一帧已到顶/到底、偏移没有变化。
-        return this.view.isDragging();
-    }
-
-    public void endScrollbarDrag() {
-        this.view.mouseReleased();
-    }
-
-    // 只覆写滚动条结构色，其余 token 沿用羊皮纸主题；两份样式仅滑块色不同，轨道色一致。
-    private static UiControlStyle scrollbarStyle(int thumbColor) {
-        UiControlStyle base = UiControlStyle.PARCHMENT;
-        return new UiControlStyle(base.background(), base.hoverBackground(), base.pressedBackground(),
-                base.selectedBackground(), base.disabledBackground(), base.focusOutline(),
-                SCROLLBAR_TRACK_COLOR, thumbColor);
-    }
-
-    // 视口 = 列表右边界右侧的滚动条列，与旧的手算轨道矩形逐像素重合。
+    // 视口包含列表和右侧滚动条。
     private void syncViewport() {
-        this.view.setViewport(buttonX() + buttonWidth() + SCROLLBAR_GAP, listTop(),
-                SCROLLBAR_WIDTH, listBottom() - listTop());
+        int left = Math.min(buttonX(), categoryLeft());
+        this.view.setViewport(left, listTop(), buttonX() + buttonWidth() + SCROLLBAR_GAP + SCROLLBAR_WIDTH - left, listBottom() - listTop());
+        this.view.setScrollbarWidth(SCROLLBAR_WIDTH);
+        this.view.setStep(stride() * 2);
     }
 
-    // 内容高度 = 视口高度 + 旧「按条目数钳制」换算出的像素可滚距离，底部不留空白的行为与迁移前一致。
+    // 分类与列表分别使用实际行几何计算内容高度。
     private void syncContentHeight() {
-        this.view.setContentHeight(this.view.viewport().height() + maxScrollOffsetPx());
-    }
-
-    // 旧 maxScrollOffset（条目数）换算成像素：分类模式行 = maxScrollOffset / 2，表格模式行 = maxScrollOffset。
-    private int maxScrollOffsetPx() {
-        return (maxScrollOffset() / itemsPerRow()) * stride();
+        this.view.setContentHeight(mode == Mode.CATEGORIES ? CATEGORY_METRICS.contentHeight(categories.size())
+                : entries.isEmpty() ? 0 : entries.size() * rowStride() - JournalLayout.CATALOG_ROW_GAP);
+        this.view.setStep(stride() * 2);
     }
 
     private int itemsToPixels(int items) {
@@ -346,21 +345,12 @@ public final class CatalogPanel {
         return this.mode == Mode.CATEGORIES ? CARD_HEIGHT + CARD_GAP_Y : rowStride();
     }
 
-    private int itemCount() {
-        return this.mode == Mode.CATEGORIES ? this.categories.size() : this.entries.size();
-    }
-
     private int visibleCategoryRows() {
         return Math.max(1, (listBottom() - listTop() + CARD_GAP_Y) / (CARD_HEIGHT + CARD_GAP_Y));
     }
 
     private int visibleTableRows() {
         return Math.max(1, (listBottom() - listTop() + JournalLayout.CATALOG_ROW_GAP) / rowStride());
-    }
-
-    private int maxScrollOffset() {
-        int overflow = Math.max(0, itemCount() - visibleItemCount());
-        return this.mode == Mode.CATEGORIES ? ((overflow + 1) / 2) * 2 : overflow;
     }
 
     private int rowStride() {
@@ -403,11 +393,4 @@ public final class CatalogPanel {
         public static final ClickResult NONE = new ClickResult(-1, false);
     }
 
-    private record Rect(int x, int y, int width, int height) {
-        int right() { return this.x + this.width; }
-        int bottom() { return this.y + this.height; }
-        boolean contains(double px, double py) {
-            return px >= this.x && px < right() && py >= this.y && py < bottom();
-        }
-    }
 }

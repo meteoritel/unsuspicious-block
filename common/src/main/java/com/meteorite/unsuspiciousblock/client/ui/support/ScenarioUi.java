@@ -1,11 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiRect;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiControlStyle;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiIcon;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiLightbox;
-import com.meteorite.unsuspiciousblock.client.ui.kit.UiNineSlice;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.style.UiControlStyle;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.control.UiLightbox;
+import com.meteorite.meteosuikit.api.render.UiNineSlice;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 

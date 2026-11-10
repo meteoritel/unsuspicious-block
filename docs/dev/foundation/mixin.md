@@ -111,7 +111,6 @@ requiredMods = ["lootr"]
 | `inventory/PlayerPresenceStateMixin` | 玩家 | 背包存在检测的 diff 状态 |
 | `StructureTemplateMixin` | 结构模板 | 结构生成时扫描骨块（`scanBoundingBox`） |
 | `client/AbstractContainerScreenAccessor` | 容器屏幕 | 访问内部字段（tooltip 渲染） |
-| `client/EditBoxMixin` | 输入框 | 搜索框行为调整 |
 | `client/EnchantmentScreenMixin` | 附魔台屏幕 | 渲染完整候选列表 |
 | `client/ClientLanguageMixin` | `ClientLanguage` | 动态查询当前服务端补充名称，并在真实资源重载时失效资源来源索引（见 [战利品表系统](../subsystems/loottable.md)） |
 | `client/HumanoidPanningMixin` | `HumanoidModel` | 淘盘第三人称动画入口（`setupAnim` 尾部转交 `PanningAnimation`，见 [淘洗系统](../subsystems/panning.md)） |

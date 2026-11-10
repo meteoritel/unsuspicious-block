@@ -1,9 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.ui.widget;
 
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.style.UiControlSkin;
+import com.meteorite.meteosuikit.api.style.UiControlStyle;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -18,6 +22,15 @@ public final class CopyCoordinateButton {
     public static final int HEIGHT = JournalLayout.LOG_ENTRY_COPY_BTN_HEIGHT;
 
     private CopyCoordinateButton() {
+    }
+
+    public static void configure(UiControl control, ExcavationLogEntry entry) {
+        Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_tooltip");
+        JournalControls.configureHotspot(control, label, java.util.List.of(label), () -> copyCommand(entry));
+        control.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) ->
+                render(graphics, frame.bounds().x(), frame.bounds().y(),
+                        frame.focused() || frame.state() == UiControlStyle.State.HOVER),
+                UiTextPalette.Parchment.BODY, UiTextPalette.Parchment.HINT));
     }
 
     // 渲染按钮：暖色半透明背景 + 1px 边框 + 两重叠方块图标
@@ -35,8 +48,8 @@ public final class CopyCoordinateButton {
         // 图标：两个重叠的方块轮廓（复制符号）
         int iconColor = hovered ? JournalLayout.LOG_ENTRY_COPY_BTN_ICON_HOVER_COLOR
                 : JournalLayout.LOG_ENTRY_COPY_BTN_ICON_COLOR;
-        drawSquareOutline(g, btnX + 3, btnY + 2, 5, iconColor);
-        drawSquareOutline(g, btnX + 6, btnY + 3, 5, iconColor);
+        drawSquareOutline(g, btnX + 3, btnY + 2, iconColor);
+        drawSquareOutline(g, btnX + 6, btnY + 3, iconColor);
     }
 
     // 坐标显示文本的唯一格式化入口：日志列表页与详情页共用，避免同一坐标出现 "(x,y,z)" 与 "x y z" 两种写法。
@@ -44,12 +57,6 @@ public final class CopyCoordinateButton {
     public static String formatCoordinates(int x, int y, int z) {
         return Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.coords_format", x, y, z).getString();
-    }
-
-    // 命中检测
-    public static boolean isHit(int btnX, int btnY, double mouseX, double mouseY) {
-        return mouseX >= btnX && mouseX <= btnX + WIDTH
-                && mouseY >= btnY && mouseY <= btnY + HEIGHT;
     }
 
     // 复制 /execute as @s in <dim> run tp @s x (y+1) z 到剪贴板，播放音效并通过 actionbar 反馈
@@ -72,18 +79,12 @@ public final class CopyCoordinateButton {
         }
     }
 
-    // 渲染按钮 tooltip（由外部在 super.render 之后调用）
-    public static void renderTooltip(GuiGraphics g, Font font, int mouseX, int mouseY) {
-        Component tooltip = Component.translatable(
-                "screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_tooltip");
-        g.renderTooltip(font, tooltip, mouseX, mouseY);
-    }
-
-    // 绘制 1px 描边的正方形：size 为边长（含描边）
-    private static void drawSquareOutline(GuiGraphics g, int x, int y, int size, int color) {
-        g.fill(x, y, x + size, y + 1, color);            // top
-        g.fill(x, y + size - 1, x + size, y + size, color); // bottom
-        g.fill(x, y, x + 1, y + size, color);            // left
-        g.fill(x + size - 1, y, x + size, y + size, color); // right
+    // 复制图标的固定方框。
+    private static void drawSquareOutline(GuiGraphics g, int x, int y, int color) {
+        int size = 5;
+        g.fill(x, y, x + size, y + 1, color);
+        g.fill(x, y + size - 1, x + size, y + size, color);
+        g.fill(x, y, x + 1, y + size, color);
+        g.fill(x + size - 1, y, x + size, y + size, color);
     }
 }

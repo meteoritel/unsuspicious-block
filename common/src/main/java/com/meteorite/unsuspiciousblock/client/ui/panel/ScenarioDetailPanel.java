@@ -1,12 +1,18 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground.BookLayout;
-import com.meteorite.unsuspiciousblock.client.ui.kit.*;
+import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.geometry.*;
+import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.*;
+import com.meteorite.meteosuikit.api.render.*;
+import com.meteorite.meteosuikit.api.style.*;
+import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.LightboxOverlay;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.OverlayLayer;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
 import com.meteorite.unsuspiciousblock.loottable.simulation.SimulationAssistTarget;
@@ -29,10 +35,10 @@ import java.util.Map;
 import java.util.Objects;
 
 /** 场景详情页：紧凑参数栏与条件树；物品及其概率统一在物品网格阅读。 */
-public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStateful {
+public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStateful, UiInputContainer {
     private static final int MAX_SAVED_POSITIONS = 512;
-    private final OverlayLayer overlays;
-    private final UiFocusManager focus = new UiFocusManager();
+    private final JournalOverlays overlays;
+    private final UiChildren<UiInputTarget> children = new UiChildren<>();
     private final UiControl title = new UiControl();
     private final UiControl summary = new UiControl();
     private final UiControl luck = new UiControl();
@@ -52,7 +58,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private long revision = Long.MIN_VALUE;
     private String input = "";
     private String requestStatus = "";
-    private String language = "";
+    private Language language;
     private boolean showOther;
     private List<UiNode> conditionTree = List.of();
     @Nullable private Component fullSceneLabel;
@@ -67,9 +73,11 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         this.viewDrops = viewDrops;
     }
 
-    public ScenarioDetailPanel(BookLayout layout, OverlayLayer overlays) {
+    public ScenarioDetailPanel(BookLayout layout, JournalOverlays overlays) {
         this.layout = layout;
         this.overlays = overlays;
+        children.addAll(controls);
+        for (UiControl control : List.of(title, paramsButton, calculateButton, expandButton)) control.setFocusable(true);
     }
 
     @Override public void applyLayout(BookLayout layout) {
@@ -84,63 +92,16 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         table = value;
         viewKey = null;
         revision = Long.MIN_VALUE;
-        focus.clearFocus();
         showOther = false;
     }
 
-    @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
-        sync(font);
-        for (UiControl control : controls) control.render(graphics, font, mouseX, mouseY);
-        if (conditions != null) conditions.render(graphics, mouseX, mouseY);
-    }
-
-    @Nullable private UiTarget hit(double x, double y) {
-        for (UiControl control : controls) {
-            UiTarget target = control.hit(x, y);
-            if (target != null) return target;
-        }
-        return null;
-    }
-
-    public void renderTooltip(GuiGraphics graphics, Font font, int x, int y) {
-        UiTarget target = hit(x, y);
-        if (target != null) {
-            if (!target.tooltip().isEmpty()) graphics.renderComponentTooltip(font, target.tooltip(), x, y);
-            return;
-        }
-        if (conditions != null) conditions.renderTooltip(graphics, x, y);
-    }
-
-    public boolean mouseClicked(double x, double y, int button) {
-        if (button != 0) return false;
-        sync(Minecraft.getInstance().font);
-        UiTarget target = hit(x, y);
-        if (target != null) {
-            focus.clearFocus();
-            if (target.action() != null) target.action().run();
-            return true;
-        }
-        focus.clearFocus();
-        return conditions != null && conditions.mouseClicked(x, y, button);
-    }
-
-    public boolean mouseDragged(double y, int button) {
-        if (button != 0) return false;
-        return conditions != null && conditions.mouseDragged(y);
-    }
-
-    public boolean mouseReleased(int button) {
-        return button == 0 && conditions != null && conditions.mouseReleased();
-    }
-
-    public boolean mouseScrolled(double x, double y, double amount) {
-        return conditions != null && conditions.mouseScrolled(x, y, amount);
-    }
-
-    public boolean keyPressed(int key, int scan, int modifiers) {
-        sync(Minecraft.getInstance().font);
-        if (conditions != null && conditions.keyPressed(key)) return true;
-        return focus.keyPressed(key, scan, modifiers);
+    @Override public UiPointerHit hitTest(double x, double y) { return UiInputContainer.super.hitTest(x, y); }
+    @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
+    @Override public void prepareUi() { sync(Minecraft.getInstance().font); }
+    @Override public void render(GuiGraphics graphics, Font font, int x, int y) { }
+    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+        for (UiControl control : controls) control.render(graphics, font, pointer);
+        if (conditions != null) conditions.render(graphics, pointer);
     }
 
     @Override public boolean containsMouse(double x, double y) {
@@ -184,7 +145,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         if (conditions == null || measuredFont != font) {
             saveCurrentPosition();
             measuredFont = font;
+            if (conditions != null) children.remove(conditions);
             conditions = new ScenarioConditionView(font);
+            children.add(conditions);
             viewKey = null;
             revision = Long.MIN_VALUE;
         }
@@ -210,9 +173,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         String nextStatus = table == null || nextInput.isEmpty()
                 ? "uncomputed" : ScenarioSimulationClientState.status(table, nextInput);
         long nextRevision = ArchaeologyJournalClientState.getCatalogRevision();
-        String nextLanguage = Minecraft.getInstance().getLanguageManager().getSelected();
+        Language nextLanguage = Language.getInstance();
         if (revision == nextRevision && input.equals(nextInput) && requestStatus.equals(nextStatus)
-                && language.equals(nextLanguage)) return;
+                && language == nextLanguage) return;
 
         saveCurrentPosition();
         revision = nextRevision;
@@ -228,7 +191,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         if (viewKey != null) {
             conditions.setOffset(conditionPositions.getOrDefault(viewKey, 0));
         }
-        rebuildFocus();
     }
 
     private void configureUnavailable(Font font) {
@@ -256,7 +218,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         }
         ResourceLocation currentTable = Objects.requireNonNull(table);
         UiAction openParams = () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.scene(),
-                options, choice.params()), paramsButton);
+                options, choice.params()));
         conditionTree = ScenarioPageBuilder.buildConditions(structure, choice.scene(), showOther,
                 () -> { showOther = !showOther; revision = Long.MIN_VALUE; },
                 child -> ScenarioRecommendationOverlay.open(overlays, currentTable,
@@ -266,14 +228,12 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                 ? ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(currentTable, input))
                 : null;
 
-        Component sceneLabel = ScenarioLabel.shortLabel(choice.scene());
-        fullSceneLabel = sceneLabel;
-        List<Component> titleTooltip = new ArrayList<>();
-        titleTooltip.addAll(ScenarioLabel.tooltip(options, choice.scene()));
+        fullSceneLabel = ScenarioLabel.shortLabel(choice.scene());
+        List<Component> titleTooltip = new ArrayList<>(ScenarioLabel.tooltip(options, choice.scene()));
         title.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextPalette.Parchment.TITLE,
                 ScenarioUi.icon(ScenarioUi.Icon.DOWN), titleTooltip, () ->
                         overlays.open(new ScenarioSelectionOverlay(overlays, currentTable,
-                                options, choice.params(), getPage(), this::setPage), title));
+                                options, choice.params(), getPage(), this::setPage)));
 
         Component toolName = Component.literal(choice.params().toolId().toString());
         for (var tool : options.tools()) {
@@ -316,7 +276,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
                     ScenarioUi.styleLightbox(lightbox);
                     lightbox.setText(ScenarioSimulationClientState.text("conditions.title", fullSceneLabel), null);
                     lightbox.setMaskClickCloses(false);
-                    overlays.open(new LightboxOverlay(overlays, lightbox), expandButton);
+                    overlays.open(lightbox);
                 });
         expandButton.setAccessibleName(ScenarioSimulationClientState.text("frame.expand"));
     }
@@ -326,16 +286,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         Component label = font.width(full) <= control.bounds().width() - 6 ? full : Component.literal(value);
         control.setStyle(ScenarioUi.READOUT);
         control.configure(font, label, UiTextPalette.Parchment.BODY, null, List.of(full), null);
-    }
-
-    private void rebuildFocus() {
-        focus.beginUpdate();
-        focus.add(title);
-        focus.add(paramsButton);
-        focus.add(calculateButton);
-        if (expandButton.isVisible()) focus.add(expandButton);
-        if (conditions != null) focus.add(conditions);
-        focus.endUpdate();
     }
 
     List<UiNode> tree() { return conditionTree; }
