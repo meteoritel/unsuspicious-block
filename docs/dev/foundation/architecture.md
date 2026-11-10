@@ -144,6 +144,18 @@ lootr_compat_neoforge=true
 
 Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，统一采用 `compileOnly`（编译期引用 API）+ `runtimeOnly`（仅开发运行环境加载）模式，发布时不强制玩家安装。依赖缺失时的反射加载机制以 [平台抽象](platform-spi.md) 为权威；各联动的集成类清单见 [配置与第三方联动](config-and-integrations.md)。
 
+### 4.5 Meteo's UI Kit 依赖环境
+
+独立 UI 库的坐标、版本与平台产物由库工程维护。本项目只在 Gradle 中声明消费方式，仓库地址通过用户级 property `meteos_ui_kit_maven_dir` 提供，且只对 `com.meteorite.meteosuikit` group 开启本地仓库过滤。
+
+| 构建单元 | 当前声明 | 用途 |
+|---|---|---|
+| `common` | `compileOnly` `meteos-ui-kit-common-1.21.1:0.1.0-dev.2` | 编译宿主客户端源码，不把 common 库作为运行时独立依赖 |
+| `fabric` | `modImplementation` + `include` `meteos-ui-kit-fabric-1.21.1:0.1.0-dev.2` | 开发运行与最终 Fabric JAR 内嵌 |
+| `neoforge` | `implementation` + `jarJar` `meteos-ui-kit-neoforge-1.21.1:0.1.0-dev.2` | 开发运行与最终 NeoForge Jar-in-Jar 内嵌 |
+
+当前 GUI 仍使用宿主旧 `client/ui/kit` 实现；本依赖环境为后续逐页迁移准备，业务页面、主题、数据投影与资源继续由本项目持有。迁移完成前不得删除旧 kit 或将现役页面改成未验证的库入口。
+
 ## 5. 横切设计原则
 
 以下原则贯穿整个代码库，开发时务必遵守：

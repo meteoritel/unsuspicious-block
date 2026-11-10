@@ -17,6 +17,13 @@ neoForge {
 }
 
 repositories {
+    exclusiveContent {
+        forRepository { maven {
+            name = 'MeteosUiKitLocal'
+            url = uri(providers.gradleProperty('meteos_ui_kit_maven_dir').get())
+        } }
+        filter { includeGroup('com.meteorite.meteosuikit') }
+    }
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
@@ -28,6 +35,7 @@ def lootrCompatNeoForge = project.hasProperty('lootr_compat_neoforge') ? project
 def lootrCompat = lootrCompatFabric || lootrCompatNeoForge
 
 dependencies {
+    compileOnly "com.meteorite.meteosuikit:meteos-ui-kit-common-1.21.1:${meteos_ui_kit_version}"
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
     // IMixinConfigPlugin 依赖 ASM ClassNode，mixin 0.8.5 未传递暴露，需显式声明
     compileOnly "org.ow2.asm:asm-tree:9.7.1"

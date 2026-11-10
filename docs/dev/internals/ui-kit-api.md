@@ -97,7 +97,7 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 - **稳定入口与实验性入口**：本页「公开入口清单」是稳定入口（0.x 内尽量只增不改）；「内部实现」即使 `public` 也不承诺兼容；`client/ui/sample/` 与 `client/ui/overlay/` 属宿主/示例层，接口随宿主需要变化；标注为开发用/调试用的屏（`Ctrl+F8` 与最小示例页）随时可能移除。
 - **支持范围**：这是 **Minecraft 1.21.1 客户端库**，不是脱离游戏的纯 Java UI 库——它使用 `Component`、`ResourceLocation`、`GuiGraphics`、`Font` 等客户端类型。当前构建目标是 NeoForge 21.1.195 与 Fabric 0.116.0+1.21.1（见 `gradle.properties`）；换 Minecraft 版本需要重新验证，不在 0.x 的兼容承诺内。
 - **升级规则**：新增 API 属向后兼容；删除、改签名、改语义（包括默认行为）属破坏性变更。破坏性变更必须同时记入 `CHANGELOG.md` 与本页的一节，说明「改了什么 / 怎么迁移」；只有内部实现变动不进变更记录。
-- **版本号与变更记录草案**：kit 目前没有独立版本号，随模组版本（`gradle.properties` 的 `version`，当前 `1.5.2`）走；未来独立发布时再引入自己的 0.x 语义化版本。变更记录草案如下表，本页新增行时按时间倒序追加：
+- **版本号与变更记录**：独立库使用自己的 0.x 版本号；本项目当前依赖环境固定为 `0.1.0-dev.2`。下表保留公开入口的行为变更记录，本页新增行时按时间倒序追加：
 
 | 日期 | 类型 | 变更 | 迁移 |
 |---|---|---|---|
@@ -120,18 +120,23 @@ pwsh -File scripts/check-ui-kit-boundaries.ps1
 | ② 开发调试示例移到示例/宿主适配层，资源由调用方提供 | **已满足** | `client/ui/sample/UiKitDebugScreen.java`（包名 `client.ui.sample`，自带贴图路径）；kit 内不再有开发用资源常量 |
 | ③ 最小第三方 Screen 示例只依赖公开包完成按钮、滚动与灯箱 | **已满足** | `client/ui/sample/UiKitSampleScreen.java`（13 个 kit 导入 + `OverlayLayer` / `LightboxOverlay`） |
 | ④ 明确版本号、变更记录和兼容策略，区分实验性与稳定入口 | **已满足** | 本页「兼容策略草案」与「公开入口清单」；模组版本见 `gradle.properties` |
-| ⑤ 分离构建验证两端消费同一库产物，且专用服务端不加载客户端类 | **未满足** | 见下方「剩余阻碍」，两部分都还没有验证手段 |
+| ⑤ 分离构建验证两端消费同一库产物，且专用服务端不加载客户端类 | **部分满足** | 独立库已发布 `0.1.0-dev.2`；本项目已用本地坐标完成 common/Fabric/NeoForge 构建并核对平台内嵌条目。专用服务端运行路径仍待实机验收 |
 
 **剩余阻碍**（本轮明确留下、不属于本计划交付）：
 
-- kit **不拆分 `api/` 与 `internal/` 子包**（已评估，2026-09-27 决定不采纳）：kit 内部实测只有 2 组单向代码依赖（`UiDocument` → `TextScroll`、`UiControl` → `TextScroll`）与 1 组实现关系（`UiImageView implements UiLightbox.Content`）；`UiControlGroup` ↔ `UiScrollView`、`UiLightbox` ↔ `UiImageView` 仅有 javadoc 提及、没有代码引用（2026-09-28 复核），任何按功能域的分包都会把它们从「包内耦合」升级成「跨包循环」；且 `UiTransform` 的 3 个裁剪工具与 `UiMetrics` 的 5 个计时钩子是 package-private，拆包须提权为 `public`，等于用扩大公开面换目录美观；22 个类型约 2.6k 行也未到需要分包的规模。因此「公开 / 内部」继续由本页清单与 `package-info.java` 约定，子包拆分留到独立 Gradle 模块时一次到位。
-- 没有**独立 Gradle 模块与发布脚本**：kit 不是独立产物，无法被外部工程以依赖坐标消费。
-- 没有**「两端消费同一库产物」的构建验证**：NeoForge 与 Fabric 目前各自编译同一份源码，尚未验证同一份发布产物被两端同时消费。
-- 没有**「专用服务端不加载客户端类」的运行时验证**：规则 4 只做了源码层的 `import` 检查，缺少专用服务端启动加载路径的实测证据。
+独立库已完成 Gradle 模块、发布脚本与两个平台消费者的构建验证；`unsuspiciousBlock` 当前只完成依赖环境接入，旧 kit 仍是现役 UI 实现。剩余阻碍是专用服务端启动路径的实机验证，源码边界检查不替代该验证。
 
-## 8. 本轮范围声明
+## 8. 独立库接入环境
 
-本轮**只冻结边界与检查方式**：写下公开入口清单、加入可执行的多条依赖边界检查、把开发/最小示例迁到 `client/ui/sample/`、记录兼容策略与门槛结论。**不拆包、不发布**——不新建 Gradle 模块、不写发布脚本、不改包结构、不声明对外版本号。以上「剩余阻碍」全部完成并有实测证据后，才进入独立的拆包立项。
+- 独立库名称为 `Meteo's UI Kit`，坐标为 `com.meteorite.meteosuikit`，Minecraft 目标为 `1.21.1`；本项目当前接入版本为 `0.1.0-dev.2`。
+- `common` 以 `compileOnly` 消费 `meteos-ui-kit-common-1.21.1`；Fabric 以 `modImplementation` 消费 `meteos-ui-kit-fabric-1.21.1` 并通过 `include` 内嵌；NeoForge 以 `implementation` 消费 `meteos-ui-kit-neoforge-1.21.1` 并通过 `jarJar` 内嵌。仓库地址来自用户级 Gradle property `meteos_ui_kit_maven_dir`，仓库过滤只允许该 group。
+- 当前页面仍使用 `com.meteorite.unsuspiciousblock.client.ui.kit` 的旧实现；本阶段没有替换 import、主题、页面或业务适配器。后续 UI 重写在本项目工作区逐页迁移到 `com.meteorite.meteosuikit.api`，业务布局、数据投影、本地化和模组资源继续由宿主持有。
+- 迁移页面时先按公开入口清单确认 Interface，再在宿主侧保留页面状态与资源所有权；旧 kit 只有在全仓引用退出并通过双端构建后才删除。
+
+## 9. 当前迁移边界
+
+本项目当前交付的是可解析、可编译、可内嵌的独立库依赖环境。笔记、管理页、文档、场景、模态、灯箱和容器的 UI 重写属于后续工作区；本页在这些页面迁移完成前继续描述现役旧 kit 的实际机制。
+
 ### 导航历史
 
 `UiNavigationHistory<S>` 是 UI kit 提供的有界泛型导航历史。它只保存宿主定义的查看状态快照，不保存服务端操作或未提交参数；宿主在文本输入和浮层处理之后调用回退，并负责丢弃已失效的快照。Backspace 入口仅接入本模组 GUI，不改变原版或第三方界面行为。

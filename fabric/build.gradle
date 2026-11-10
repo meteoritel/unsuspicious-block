@@ -15,6 +15,13 @@ configurations {
 }
 
 repositories {
+    exclusiveContent {
+        forRepository { maven {
+            name = 'MeteosUiKitLocal'
+            url = uri(providers.gradleProperty('meteos_ui_kit_maven_dir').get())
+        } }
+        filter { includeGroup('com.meteorite.meteosuikit') }
+    }
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
@@ -31,6 +38,8 @@ repositories {
 }
 
 dependencies {
+    def uiKit = modImplementation("com.meteorite.meteosuikit:meteos-ui-kit-fabric-1.21.1:${meteos_ui_kit_version}")
+    include uiKit
     minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings loom.layered {
         officialMojangMappings()

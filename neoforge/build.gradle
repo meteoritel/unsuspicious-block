@@ -6,6 +6,13 @@ plugins {
 def lootrCompat = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
 
 repositories {
+    exclusiveContent {
+        forRepository { maven {
+            name = 'MeteosUiKitLocal'
+            url = uri(providers.gradleProperty('meteos_ui_kit_maven_dir').get())
+        } }
+        filter { includeGroup('com.meteorite.meteosuikit') }
+    }
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
@@ -18,6 +25,10 @@ repositories {
 }
 
 dependencies {
+    implementation "com.meteorite.meteosuikit:meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}"
+    jarJar("com.meteorite.meteosuikit:meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}") {
+        version { strictly("[${meteos_ui_kit_version},0.2.0)"); prefer(meteos_ui_kit_version) }
+    }
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     runtimeOnly "maven.modrinth:jade:15.10.5+neoforge"
 
