@@ -120,7 +120,7 @@ public class UnsuspiciousBlockNeoForge {
             DeferredRegister.create(Registries.FEATURE, Constants.MOD_ID);
 
     static {
-        ModFeatures.forEach((name, factory) -> FEATURES.register(name, factory));
+        ModFeatures.forEach(FEATURES::register);
     }
     private static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS =
             DeferredRegister.create(Registries.RECIPE_SERIALIZER, Constants.MOD_ID);
