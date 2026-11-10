@@ -99,10 +99,10 @@ FossilHunterEffect.apply ──► consumeNatural  仅自然骨块触发额外�
 细节：
 
 - **信使**：AI 由 `MessengerCatGiftGoal` 驱动，经历若干 `MessengerCatPhase`；`MessengerCatPositioning.placeNearTarget` 在玩家附近放置；送礼成功时通过 `CatFavorManager.onMessengerGiftDelivered` 补充九命。外观复用原版 `CatModel` 与随机抽取的原版猫皮肤，另叠加职业装饰层「邮差帽 + 邮包」，装饰通过骨骼同步跟随原版猫动画（见 [客户端与 GUI](client-ui.md) 的实体渲染一节）。
-- **剑士**：`configureProtection(owner, target, lifetime)` 配置保护目标与优先攻击目标；`notifyOwnerHurt(attacker)` 在主人受伤时把攻击者交给剑士。规划中以嘴叼钻石剑为职业标志，**模型装饰尚未实现**，当前仅原版猫模型 + 灵体半透明渲染。
+- **剑士**：`configureProtection(owner, target, lifetime)` 配置保护目标与优先攻击目标；`notifyOwnerHurt(attacker)` 在主人受伤时把攻击者交给剑士。当前使用原版猫模型和灵体半透明渲染；资产目标由[产品规划](../../roadmap.md)维护。
 - **商人**：交易由 `MerchantCatTradeManager` 从 `data/unsuspiciousblock/merchant_cat_trades/` 加载，支持标签输入（`TaggedMerchantOffer`）。
 
-> **猫国灵体**指猫国成员在现世活动时采用的统一形态：不同职责的灵体共享原版猫的基础体型，靠职业装饰、行为与出现条件相互区分。玩法设计见 `docs/spirit-cat-npc-design.md`（`docs/` 下同级文件）。
+> **猫国灵体**指猫国成员在现世活动时采用的统一形态：不同职责的灵体共享原版猫的基础体型，靠职业装饰、行为与出现条件相互区分。玩法设计见 [猫国灵体规格](../../design/spirit-cat-npc.md)。
 
 ## 6. 灵体 AI 框架
 
@@ -193,4 +193,4 @@ data/unsuspiciousblock/
 - [Mixin](../foundation/mixin.md) —— Fabric 端骨块追踪 mixin
 - [淘洗系统](panning.md) —— 淘洗点实体（同样注册于 `ModEntities` 清单，无模型装饰、不注册属性）
 - [方块与物品](blocks-items.md) —— 结构回溯服务
-- `docs/spirit-cat-npc-design.md` —— 灵体猫 NPC 设计（`docs/` 下同级文件）
+- [猫国灵体规格](../../design/spirit-cat-npc.md)

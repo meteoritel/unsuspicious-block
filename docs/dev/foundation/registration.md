@@ -21,7 +21,7 @@ private void syncCommonItemRefs(FMLCommonSetupEvent event) {
 
 而 Block / BlockEntity / Effect / Sound / Entity 的 `DeferredHolder` 本身即 `Supplier`，可在 static 块立即回写（`setter.accept(deferred)`），运行时 `.get()` 取值。
 
-### 4.3 时序陷阱与兜底
+## 时序陷阱与兜底
 
 NeoForge 客户端注册 Screen 时，`RegisterMenuScreensEvent` 可能在 `enqueueWork` 之前触发，此时 `SpecimenBoxMenu.TYPE` 静态字段可能为 null。因此 `UnsuspiciousBlockNeoForge` 提供静态 getter 兜底：
 
@@ -81,7 +81,7 @@ public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
 
 **无需修改任何平台代码** —— `forEach` 会自动遍历新条目，Fabric / NeoForge 的注册逻辑都是通用的。方块、实体、效果等同理，只是条目 record 字段略有不同。
 
-> 新增内容若带玩法逻辑，记得同步该子系统的「代码地图」与「扩展点」两节（见 [开发者文档索引](../README.md) 的写作约定）。
+> 新增内容若带玩法逻辑，记得同步该子系统的「代码地图」与「扩展点」两节（见[文档维护](../../README.md)）。
 
 ## 8. 约束与陷阱
 

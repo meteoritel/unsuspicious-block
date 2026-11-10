@@ -159,7 +159,7 @@ screen.unsuspiciousblock.archaeology_journal.function.param.<name>
 2. 执行一次 `./gradlew build` 并等待到结束；总等待预算 ≥120 秒，分段等待同一任务，不并发启动第二次构建。
 3. 核对 Fabric remap、NeoForge/common 编译与打包、Mixin 配置、端隔离、DTO 构造与双语 key 同步。
 4. 同步 `docs/dev/subsystems/loottable.md`、`docs/dev/internals/loottable-mechanics.md`、
-   `docs/dev/foundation/mixin.md`、`docs/dev/foundation/network.md`、`docs/todo/loottable-function-capture.md`。
+   `docs/dev/foundation/mixin.md`、`docs/dev/foundation/network.md`。
 5. 在规划文档"实施结果"登记验证与偏离，附实机验证矩阵。
 
 **明确不做**（规划 §2.3 全量保留）：不保证精确定位运行时 table/pool/entry 索引；不逐函数算概率；

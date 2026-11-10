@@ -4,7 +4,7 @@
 > 本文件是猫族关系子系统的唯一权威。灵体实体与 AI 见 [实体与 AI](entities-world.md)，Mixin 注入点清单见 [Mixin](../foundation/mixin.md)，网络 payload 清单见 [网络与同步](../foundation/network.md)。
 > 羁绊行为的数值与冷却、被动能力的每 tick 评估与位掩码、玩家状态的持久化字段见 [猫族关系机制细节](../internals/cat-favor-mechanics.md)。
 >
-> 玩法设计见 `docs/cat-bond-design.md` 与 `docs/spirit-cat-npc-design.md`。本文聚焦代码实现，涉及的领域术语在正文中就地定义。
+> 玩法设计见 [猫族关系规格](../../design/cat-bond.md)与[猫国灵体规格](../../design/spirit-cat-npc.md)。本文聚焦代码实现，涉及的领域术语在正文中就地定义。
 
 ## 1. 代码地图
 
@@ -191,4 +191,4 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 - [Mixin](../foundation/mixin.md) —— `catfavor/` 包的注入点
 - [配置与第三方联动](../foundation/config-and-integrations.md) —— `ISpiritCatConfig`
 - [客户端与 GUI](client-ui.md) —— `CatFavorHud` 与羁绊 toast
-- `docs/cat-bond-design.md`、`docs/spirit-cat-npc-design.md` —— 玩法设计（`docs/` 下同级文件）
+- [猫族关系规格](../../design/cat-bond.md)、[猫国灵体规格](../../design/spirit-cat-npc.md)

@@ -1,0 +1,55 @@
+# 仓库工具
+
+校验使用 Python 3.12+ 标准库与 Git，默认从工具位置定位项目，中文诊断使用 UTF-8。公共输入取 Git 受控文件与未忽略新文件，生成目录和本地任务材料保持在源码检查范围之外。
+
+## 校验入口
+
+| 用途 | 命令 |
+|---|---|
+| 固定顺序执行源码检查 | `python tools/check-all.py` |
+| 局部执行，仍保持固定顺序 | `python tools/check-all.py --only docs --only i18n` |
+| 平台与端隔离 | `python tools/check-isolation.py` |
+| UI Kit 消费边界 | `python tools/check-ui-kit-boundaries.py` |
+| 文档链接、图片和导航 | `python tools/check-docs.py` |
+| 同时核对本地根规则的出站链接 | `python tools/check-docs.py --include-local-rules` |
+| 中英语言文件配对、JSON、值与 key | `python tools/check-i18n.py` |
+| JSON 与 Mixin/SPI/平台资源接线 | `python tools/check-wiring.py` |
+
+每个入口支持 `--root <项目目录>`；具体参数查 `--help`。通过返回 `0`，发现违规返回 `1`，缺少必需输入或工具环境错误返回 `2`。诊断包含文件、可确定的行号、规则 ID 和问题。
+
+文档检查解析文件目标和 Wiki 无扩展名页名，隔离代码围栏与行内代码，核对文档入口可达性。标题锚点由编辑核对，新增交叉引用使用文件链接与小节名称。写作语义按[文档维护](../docs/README.md)审校。
+
+语言检查覆盖源码资源中的 `en_us.json` 与 `zh_cn.json`；格式合法、顶层对象、翻译字符串和 key 集合分别核对。接线检查读取源码配置，生成的 refmap 和元数据展开结果由构建处理；外部类型由编译依赖解析。
+
+## 依赖检查
+
+Java 引用读取屏蔽注释、字符串、字符与 text block，解析 import/static import、全限定引用及源码可确定的同包、通配导入类型。Loader API 和平台实现类型留在可见源集，客户端类型由客户端所有者消费。
+
+客户端路径包括 `client/`、实际平台客户端入口、ModMenu 和已确认的 JEI 类；精确表在 [boundaries.py](toolslib/boundaries.py)。`ModPayloads` 的客户端状态引用归 `ClientHandlers`，绑定视图归嵌套 `Client`，共享 codec 与惰性工厂的运行时加载顺序按平台入口审查。
+
+UI Kit 检查覆盖公开包消费、客户端归属、旧 kit 目录/包和自有原生控件。静态引用与可定位结构由脚本判定；环境守卫、反射、回调和游戏效果按源码及实机验收核对。
+
+## 构建与产物
+
+`./gradlew.bat build` 执行同一源码门禁，并由 `checkUiKitPackaging` 核对本次双端发布物。源码门禁在构建图中去重；产物路径直接取 Fabric `remapJar` 与 NeoForge `jar` 的输出，后者包含 `jarJar` 任务生成的内嵌内容。
+
+`check-ui-kit-packaging.py` 也可接收 `--fabric-jar` 和 `--neoforge-jar` 显式路径。它核对内嵌平台库、版本和能力区间、宿主误展开的库类与旧 kit。必需输入缺失返回 `2`，归档或元数据违规返回 `1`。
+
+Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>` 指定。独立 UI 库由用户级 `meteos_ui_kit_maven_dir` 提供；PR / 分支 CI 直接运行源码检查。现有 release 构建仍需要可访问的 UI 库 Maven 来源。
+
+## 生成与诊断
+
+| 入口 | 用途 |
+|---|---|
+| `scripts/generate_journal_icon_atlas.py` | 生成笔记图标图集 |
+| `scripts/drawer/`、`tools/draw_book_side_tabs.py` | 生成界面纹理和图标，按各脚本参数选择输出 |
+| `scripts/nbt_tools/nbt_converter.py` | NBT 数据转换 |
+| `scripts/loot_simulation_profile.py`、`scripts/read_loot_probability_save.py` | 读取模拟与概率保存数据 |
+| `scripts/check-ui-kit-boundaries.ps1` | 兼容入口，转交平台/端隔离与 UI Kit Python 检查 |
+
+生成和诊断工具的参数、依赖与写入位置查脚本说明。运行校验只读取输入，生成操作按明确的输出路径执行。
+
+## 相关文档
+
+- [开发流程](../docs/guides/development.md)
+- [UI Kit 宿主接入](../docs/dev/internals/ui-kit-api.md)

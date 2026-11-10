@@ -4,7 +4,6 @@
 >
 > 当前机制的唯一权威描述是 [战利品表系统](../dev/subsystems/loottable.md) 与 [战利品表机制细节](../dev/internals/loottable-mechanics.md)。本文记录实施前事实、目标、设计草案与决策，**不构成已实现机制的权威**。
 >
-> 修订记录：2026-10-01，依据 [函数审查快照](../todo/loottable-function-capture.md)、两轮技术讨论及当前工作区源码建立。按用户取舍，不要求运行时函数对象精确映射到原始 JSON 位置；平台注入战利品统一展示“模组联动”，不追查第三方修改器内部函数链。
 >
 > 行号是本轮核对时的位置，实施前应重新定位。下文项目 Java 路径未写模块前缀时，以 `common/src/main/java/com/meteorite/unsuspiciousblock/` 为根。原版 `V:` 引用以本地 `common/build/moddev/artifacts/vanilla-1.21.1-20240808.144430-minecraft-sources.jar` 中 `net/minecraft/world/level/storage/loot/` 为根；NeoForge `N:` 引用以 IDEA 对当前 `neoforge-21.1.195-minecraft-merged.jar` 的反编译行为准。构建缓存仅作为本次证据，不作为入库文档链接。
 
@@ -341,7 +340,7 @@ P0 若发现窄入口不能稳定实现，先说明原因并停在已完成的�
 
 实施时更新 [战利品表系统](../dev/subsystems/loottable.md) 的数据流与扩展点，将捕获、签名不变性、缓存与降级细节写入 [战利品表机制细节](../dev/internals/loottable-mechanics.md)。新增 Mixin 清单只维护在 [Mixin 总览](../dev/foundation/mixin.md)，网络形态更新同步 [网络与同步](../dev/foundation/network.md)。
 
-同步 [函数审查快照](../todo/loottable-function-capture.md) 的已完成项与本文修正；不要将未实施方案提前写成开发文档中的既成事实。全部实施结束后在本文“实施结果”登记验证和偏离，再按目录规范归档。
+同步 [函数验收任务](loottable-function-capture-tasks.md) 的已完成项与本文修正；不要将未实施方案提前写成开发文档中的既成事实。全部实施结束后在本文“实施结果”登记验证和偏离，再按目录规范归档。
 
 ## 五、决策记录
 

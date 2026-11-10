@@ -165,7 +165,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需在 `JournalNbtMigrator` 补充连续迁移步骤。
 - **新增函数描述**：在 `LootFunctionHandlers` 为该函数补 `describe`（文本/参数/元数据助手在 `LootFunctionDescribeSupport`），按 `FunctionEffectKind` 选效果类别并用 `withSemantics` 提供类型化策略，动态数值照实表达、内层函数挂 `children`；旧扩展由统一兼容 Adapter 补策略。策略契约见 [机制细节](../internals/loottable-mechanics.md) 的「函数策略与兼容扩展」。描述文本走 `function.*` 本地化 key，`en_us.json` / `zh_cn.json` 必须同步。
 - **开发模式调试表**：把核对用表放进 `data/unsuspiciousblock/loot_table/archaeology/debug/`，并配 `journal_categories/dev_debug.json`；收录由 `LootDebugMode` 门禁（系统属性 `usb.loot.debug` / 环境变量 `USB_LOOT_DEBUG`），默认关闭时普通玩家看不到。覆盖范围与开启方式见 [机制细节](../internals/loottable-mechanics.md) 的「开发模式调试表」。
-- **新增战利品条件**：参考 `ToolEnchantmentCondition`，在 `ModLootConditions` 注册类型与展示描述，两端各自注册到注册表；资源与本批必须同批落地。展示描述只能做到"成立但有未展示约束"时，调 `LootConditionHandlers.partial(info)` 告诉客户端改用斜体。
+- **新增战利品条件**：参考 `ToolEnchantmentCondition`，在 `ModLootConditions` 注册类型与展示描述，两端各自注册到注册表；资源与实现同步落地。展示描述只能做到"成立但有未展示约束"时，调 `LootConditionHandlers.partial(info)` 告诉客户端改用斜体。
 - **新增场景控制类型**：把类型加入 `SimulationScenarioPlanner` 的 `SCENARIO_CONDITIONS`，并为其补一个 `test` 转交作用域的窄 Mixin；类型须实现为 record 或覆写 `toString()`。**加之前先问"它该不该由玩家调参代替"**——`match_tool` 的教训是：把它做成场景布尔会让它与读同一个上下文的函数互不相干。
 - **新增参数旋钮（四处缺一不可）**：`ScenarioParams` 加字段（构造点给不变量）→ `SimulationInputKey.of` 加一段规范编码（**顺序固定**，缓存键与网络标识共用）→ `SimulationConstraintCatalog.resolve` 加签发校验 → `SimulationProfile` 加 `withXxx` 并由 `ScenarioParams.applyTo` 套用。少了校验就是越权入口，少了 key 段就会与别的参数共用缓存。
 - **新增运行时联动边**：在 `RuntimeLootLinks` 声明标识符与边，并在 `LootTableEdge.Kind` 中显式选型——`RUNTIME_INJECTION` 只参与收录闭包、目录层级与哈希，**不参与静态语义链接**，条目仍由模拟期动态发现并保持 `injected=true`。合成边只在两端资源都存在时才会注入。
@@ -200,4 +200,4 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 - [网络与同步](../foundation/network.md) —— `CatalogStreamCodec` 与按需模拟链路
 - [Mixin](../foundation/mixin.md) —— `NestedLootTableMixin` 与模拟条件作用域
 - [客户端与 GUI](client-ui.md) —— 目录网格页、场景页与追踪管理页
-- `docs/journal-categories.md` —— 目录分类规则（`docs/` 下同级文件）
+- [笔记分类格式](../../api/journal-categories.md)

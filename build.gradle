@@ -4,3 +4,40 @@ plugins {
     // see https://projects.neoforged.net/neoforged/moddevgradle for new versions
     id 'net.neoforged.moddev' version '2.0.49-beta' apply false
 }
+
+def repositoryPython = providers.gradleProperty('repository_python').orElse('python')
+
+def sourceCheck = tasks.register('checkSourceRepository', Exec) {
+    group = 'verification'
+    description = '校验文档、语言、源码边界和资源接线'
+    workingDir rootProject.projectDir
+    commandLine repositoryPython.get(), rootProject.file('tools/check-all.py'), '--root', rootProject.projectDir
+}
+
+def packagingCheck = tasks.register('checkUiKitPackaging', Exec) {
+    group = 'verification'
+    description = '校验本次双端发布物的 UI Kit 内嵌与元数据'
+    dependsOn ':fabric:remapJar', ':neoforge:jar'
+    mustRunAfter sourceCheck
+    workingDir rootProject.projectDir
+    doFirst {
+        commandLine repositoryPython.get(), rootProject.file('tools/check-ui-kit-packaging.py'),
+                '--root', rootProject.projectDir,
+                '--fabric-jar', project(':fabric').tasks.named('remapJar').get().archiveFile.get().asFile,
+                '--neoforge-jar', project(':neoforge').tasks.named('jar').get().archiveFile.get().asFile
+    }
+}
+
+subprojects {
+    plugins.withId('java') {
+        tasks.named('check') {
+            dependsOn sourceCheck
+            if (project.name != 'common') {
+                dependsOn packagingCheck
+            }
+        }
+        tasks.withType(JavaCompile).configureEach {
+            mustRunAfter sourceCheck
+        }
+    }
+}

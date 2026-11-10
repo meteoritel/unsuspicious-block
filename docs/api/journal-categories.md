@@ -11,6 +11,7 @@
   "description_key": "example.category.description",
   "description_fallback": "Example loot tables.",
   "icon": "minecraft:book",
+  "default_tool": "minecraft:air",
   "order": 60,
   "priority": 0,
   "types": ["example:context"],
@@ -37,3 +38,12 @@
 - 收录范围仍由战利品表追踪配置决定。直接命中配置规则的表属于显式追踪表，即使被其他表引用，也会作为根表显示并使用自身 JSON `type` 分类。
 - 未直接命中配置、仅被父表引用的具名表属于隐式追踪表，不显示为根表，只能作为子表查看。
 - 子表沿引用路径继承父表分类，不使用自身 JSON `type` 重新分类；同一张显式追踪表作为根表显示时仍使用自身分类。
+
+- `default_tool` 是分类的默认模拟工具物品 ID，缺省为空手；物品不存在时回退到空手。工具选择复用目录分类结果。
+- 相同优先级的分类按分类资源 ID 字典序选择；分类卡片按 `order`、资源 ID 排序。
+
+## 实现与相关文档
+
+- [分类加载器](../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java)
+- [考古笔记系统](../dev/subsystems/journal.md)
+- [战利品表系统](../dev/subsystems/loottable.md)

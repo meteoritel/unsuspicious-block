@@ -13,7 +13,7 @@
 | Java | 21 |
 | 反混淆映射 | Mojang 官方映射 + Parchment（版本见 `gradle.properties`） |
 | 构建系统 | Gradle（multiloader 自定义插件）+ Gradle Wrapper 版本见 `gradle/wrapper` |
-| 当前版本 | 见 `gradle.properties` 的 `mod_version` |
+| 当前版本 | 见 `gradle.properties` 的 `version` |
 
 模组核心围绕**考古探索 / 战利品发现记录 / 猫族关系**三条玩法主线展开，技术上是一个典型的 Architectury 风格多平台项目：绝大部分逻辑写在 `common`，Fabric 与 NeoForge 各自只提供平台接入。
 
@@ -28,17 +28,17 @@ unsuspiciousBlock-1.21.1-multi/
 
 ### 2.1 common 模块
 
-- 承载 **95% 以上的玩法代码**（实测约 490 个 Java 文件；重新核对用 `find common/src/main/java -name "*.java" | wc -l`）。
+- 承载跨平台玩法、注册声明、数据资源、Mixin 与客户端 UI。
 - **不 import 任何平台专属类**（`net.fabricmc.*`、`net.neoforged.*`）。这是项目的硬性约束，违反会在另一平台编译失败。
 - 通过 [`platform/services/`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services) 定义的 SPI 接口访问平台能力，由 `fabric` / `neoforge` 提供实现（见 [平台抽象](platform-spi.md)）。
 - 包含全部数据资源（`assets/`、`data/`）、Mixin 配置、客户端 GUI。
-- 既含服务端逻辑也含客户端类（`client/` 包）。客户端类只允许在客户端入口或被环境守卫（`@Environment` / `Dist.CLIENT`）的代码路径引用。
+- 既含服务端逻辑也含客户端类（`client/` 包）。客户端类型由客户端入口、客户端 Mixin 或明确的惰性绑定边界消费，公共执行面使用共享契约。
 
 ### 2.2 fabric 模块
 
 - 入口：[`UnsuspiciousBlockFabric`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockFabric.java)（`ModInitializer`）与 [`UnsuspiciousBlockFabricClient`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/UnsuspiciousBlockFabricClient.java)（`ClientModInitializer`）。
 - 用 `Registry.register` + Fabric API 事件回调完成注册与事件接入；**即时回写**注册结果（见 [注册架构](registration.md)）。
-- 包含 Fabric 独有的 7 个 Mixin（6 个通用 + 1 个客户端）补齐原生事件缺失的能力（铁砧、刷拭、羊剪毛、区块扫描等），见 [Mixin](mixin.md)。
+- 通过 Fabric 专用 Mixin 补齐原生事件缺失的能力（铁砧、刷拭、羊剪毛、区块扫描等），见 [Mixin](mixin.md)。
 - 通过 `META-INF/services/` 注册 SPI 实现。
 
 ### 2.3 neoforge 模块
@@ -161,7 +161,7 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 以下原则贯穿整个代码库，开发时务必遵守：
 
 1. **common 零平台依赖**：`common/` 不得 import 任何平台类。需要平台能力时定义 SPI 接口（见 [平台抽象](platform-spi.md)）。
-2. **客户端/服务端分离**：服务端代码严禁引用 `client/` 下的类。客户端类只在客户端入口或被环境守卫的路径引用。
+2. **客户端/服务端分离**：服务端执行面使用共享类型；客户端绑定和平台客户端入口持有客户端类型。
 3. **清单 + 回调注册**：新增可注册内容只在 common 的 `REGISTRY_MANIFEST` 加一行，平台代码无需改动（见 [注册架构](registration.md)）。
 4. **优先 Event API，少用 Mixin**：Fabric 端原生事件不足时才用 Mixin，且 Mixin 仅作入口，不写业务逻辑（见 [Mixin](mixin.md)）。
 5. **数据驱动优先**：可枚举内容（礼物、交易、结构、worldgen、附魔、配方）交数据包，可调强度交配置，身份/关系语义保持硬编码（见 [配置与第三方联动](config-and-integrations.md)）。

@@ -70,7 +70,7 @@ loot roll 后 ──► LootTrackingEvents.submit(session, counts, 结算策略)
 
 ### 4.1 分类结构
 
-分类结构（`CatalogGeneration.structure()`）由 [`JournalCategoryLoader`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描**所有命名空间**的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则见 `docs/journal-categories.md`（`docs/` 下同级文件）。
+分类结构（`CatalogGeneration.structure()`）由 [`JournalCategoryLoader`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/journal/catalog/JournalCategoryLoader.java) 扫描**所有命名空间**的 `data/<namespace>/journal_categories/` 加载，定义目录的分类、图标、排序与翻译键。分类规则见 [笔记分类格式](../../api/journal-categories.md)。
 
 ## 5. 玩家进度状态
 
@@ -190,4 +190,4 @@ onPlayerJoined(player)
 - [配置与第三方联动](../foundation/config-and-integrations.md) —— 追踪前缀、日志上限等配置项
 - [实体与 AI](entities-world.md) —— `JournalLogStorage` 等 `world/` 持久化类的位置索引
 - [进度（成就）系统](advancement.md) —— 收集类进度的判定依赖本篇状态
-- `docs/journal-categories.md` —— 目录分类规则（`docs/` 下同级文件）
+- [笔记分类格式](../../api/journal-categories.md)

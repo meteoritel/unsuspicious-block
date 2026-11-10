@@ -2,77 +2,24 @@
 
 本文档描述模组的配置系统、数据驱动与硬编码的边界，以及与第三方模组（Jade / JEI / Lootr / Trinkets / Curios / Artifacts / ModMenu）的联动实现。
 
-> 本文件是**配置项全表**与**第三方联动清单**的唯一权威：子系统文档提到可调参数时只写参数名与链接，不复制取值范围与默认值。
+> 本文件描述配置作用域、生命周期与联动入口；键名、范围和默认值以实际接口和平台声明为准。
 > 可选依赖的反射加载机制以 [平台抽象](platform-spi.md) 为权威，本篇只列联动清单。
 
 ## 1. 职责概述
 
-- **配置系统**：通过 `ILootTableConfig`、`ISpiritCatConfig` 与 `IPanningConfig` 三个 SPI 接口暴露可调参数。战利品追踪配置由服务端按世界持有；Fabric 使用世界目录 JSON，NeoForge 使用 SERVER ModConfigSpec。灵体猫参数与淘洗参数仍为全局配置。
-- **数据驱动边界**：可枚举内容交数据包，可调强度交配置，身份/关系语义保持硬编码。
-- **第三方联动**：六类可选联动，统一用 `compileOnly` + `OptionalModIntegration` 反射加载，发布时不强制依赖。加载机制的权威描述见 [平台抽象](platform-spi.md) 的「可选依赖的安全加载」一节，本篇只列联动清单。
+- **配置系统**：通过 `ILootTableConfig`、`ISpiritCatConfig` 与 `IPanningConfig` 配置能力通过 [平台 SPI](platform-spi.md) 注入，完整参数与约束直接查声明：
 
-## 2. 配置系统
+| 接口 | 职责 |
+|---|---|
+| [`ILootTableConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ILootTableConfig.java) | 世界追踪范围、排除规则、签名排除组件、日志与追踪期限 |
+| [`ISpiritCatConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ISpiritCatConfig.java) | 灵体现世时长与九命效果持续时间 |
+| [`IPanningConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IPanningConfig.java) | 淘洗生成、寿命、间距、结算和工具强度 |
 
-### 2.1 配置接口
-
-三个 SPI 接口（见 [平台抽象](platform-spi.md)）定义可调参数与领域约束常量：
-
-[`ILootTableConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ILootTableConfig.java)（战利品表与日志）：
-
-| 参数 | 范围 | 默认 | 说明 |
-|---|---|---|---|
-| `archaeology_path_prefixes` | - | 见下 | 战利品表追踪前缀列表 |
-| `excluded_loot_tables` | - | 空 | 从宽泛规则中精确排除的战利品表 ID |
-| `signature_excluded_components` | - | `relics:data` | 不参与战利品签名的物品组件 id；含这些组件的物品按物品级收录（见 [战利品表机制细节](../internals/loottable-mechanics.md) 的「签名机制」一节） |
-| `max_log_entries_per_table` | 64-4096 | 512 | 服务器全局单表日志兜底上限；玩家当前表自动保留上限不能超过此值 |
-| `tracking_timeout_ticks` | 600-60000 | 6000（5 分钟） | 战利品箱追踪超时 |
-
-默认追踪前缀：
-
-```
-archaeology/, archeology/, pots/,
-minecraft:gameplay/fishing,
-minecraft:chests/buried_treasure,
-minecraft:chests/ancient_city, minecraft:chests/ancient_city_ice_box,
-unsuspiciousblock:gameplay/fishing/,
-unsuspiciousblock:gameplay/fossil_hunter/,
-unsuspiciousblock:gameplay/panning/
-```
-
-[`ISpiritCatConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ISpiritCatConfig.java)（猫国灵体）：
-
-| 参数 | 范围 | 默认 | 说明 |
-|---|---|---|---|
-| `messenger_lifetime_ticks` | 20-1728000 | 600 | 信使最长现世时间 |
-| `swordsman_lifetime_ticks` | 20-1728000 | 600 | 剑士最长现世时间 |
-| `merchant_lifetime_ticks` | 20-1728000 | 48000 | 商人最长现世时间 |
-| `invulnerability_duration_ticks` | 1-72000 | 40 | 九命纯无敌时间 |
-| `resistance_duration_ticks` | 1-72000 | 600 | 九命抗性提升 II 时间 |
-| `fire_resistance_duration_ticks` | 1-72000 | 600 | 九命防火 I 时间 |
-
-[`IPanningConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IPanningConfig.java)（淘洗系统，机制详见 [淘洗系统](../subsystems/panning.md)）：
-
-| 参数 | 范围 | 默认 | 说明 |
-|---|---|---|---|
-| `spawn_interval_ticks` | 100-72000 | 600（30 秒） | 自然生成尝试的间隔节拍 |
-| `max_natural_per_dimension` | 0-64 | 5 | 每维度、**每个变体**自然生成的淘洗点数量上限 |
-| `min_lifetime_ticks` | 200-1728000 | 24000（20 分钟） | 自然生成实体最短寿命 |
-| `max_lifetime_ticks` | 200-1728000 | 48000（40 分钟） | 自然生成实体最长寿命 |
-| `pan_duration_ticks` | 10-400 | 100（5 秒） | 单次淘洗需要长按的刻数 |
-| `spacing_blocks` | 0-512 | 32 | 新自然点与现存淘洗点之间的最小水平间距；世界生成不检查 |
-| `harvest_cooldown_ticks` | 0-1728000 | 36000 | 采空后周围 3×3 区块自然生成冷却，绝对游戏时间 |
-| `pan_uses` | 1-16 | 3 | 单个淘洗点可淘洗次数 |
-| `gold_pan_luck_bonus` | 0-5 | 1.0 | 金淘盘在水域变体上的幸运加成（原版幸运值，非百分比） |
-| `obsidian_pan_luck_penalty` | 0-5 | 0.5 | 黑曜石淘盘在水域变体上的幸运减损；它在幽微的光上无加成 |
-| `gold_pan_regeneration_chance` | 0-1 | 0.10 | 金淘盘单次淘洗后再生一个新的自然淘洗点的概率；铜盘与黑曜石盘恒为 0 |
-
-这三个工具标量**必须延迟读取**：NeoForge 的 SERVER spec 在注册表填充期尚未加载，若在物品构造时立即求值会抛「配置未加载」异常，因此 `PanProfile` 用 `DoubleSupplier` 持有它们。详见 [淘洗系统](../subsystems/panning.md) 的「配置与调试」一节。
-
-世界生成稀有度由两端共用的 `data/unsuspiciousblock/worldgen/placed_feature/` 下的投放文件控制（河流 `river_shimmer` 的 `rarity_filter.chance=50`、下界 `nether_shimmer` 的 `chance=100`），不再提供 `worldgen_chance` 配置。只影响新区块，详见 [淘洗系统](../subsystems/panning.md) 的「生成」一节。
+淘洗工具标量由 `PanProfile` 通过 `DoubleSupplier` 延迟读取，避免在 NeoForge SERVER spec 尚未加载的物品构造期求值。世界生成稀有度由 placed feature 资源控制，详见[淘洗系统](../subsystems/panning.md)。
 
 ### 2.2 Fabric 实现
 
-[`FabricLootTableConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) **同时实现两个接口**（`ILootTableConfig` + `ISpiritCatConfig`），用 GSON 读写 JSON：
+[`FabricLootTableConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) **同时实现战利品与灵体配置接口**（`ILootTableConfig` + `ISpiritCatConfig`），用 GSON 读写 JSON：
 
 - 战利品追踪配置：`<世界目录>/serverconfig/unsuspiciousblock.json`，服务端启动时加载，停止时解除世界绑定。
 - 淘洗配置：[`FabricPanningConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricPanningConfig.java) 实现第三接口，全局 JSON `config/unsuspiciousblock/panning.json`，字段缺失时自动补写默认值。
@@ -92,7 +39,7 @@ unsuspiciousblock:gameplay/panning/
 - `COMMON_CONFIG_SPEC` 保留灵体猫参数和旧版三项追踪值；旧值只作为新世界首次迁移初值，不再作为运行时权威配置。
 - SERVER spec 使用一次性迁移标记，首次加载世界时复制旧 COMMON 值，之后不会覆盖该世界自己的设置。
 - 用 `defineInRange` 声明范围约束，与 Fabric 端钳制行为对齐。
-- 同样**同时实现两个接口**。
+- 同样**同时实现战利品与灵体配置接口**。
 - 玩家通过 NeoForge 的模组配置界面或服务端配置文件调整；多人游戏以服务器文件为权威。
 
 ### 2.4 ModMenu 配置界面
