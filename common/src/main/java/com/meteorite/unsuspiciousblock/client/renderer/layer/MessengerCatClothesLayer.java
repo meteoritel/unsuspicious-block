@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.renderer.layer;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.model.MessengerCatClothesModel;
 import com.meteorite.unsuspiciousblock.core.entity.MessengerCat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -25,7 +26,7 @@ import org.jetbrains.annotations.NotNull;
 public class MessengerCatClothesLayer extends RenderLayer<MessengerCat, CatModel<MessengerCat>> {
 
     private static final ResourceLocation CLOTHES_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "textures/entity/cat/messenger_cat_clothes.png");
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/entity/cat/messenger_cat_clothes.png");
 
     private final MessengerCatClothesModel clothesModel;
     private final ModelPart catHead;
@@ -48,7 +49,7 @@ public class MessengerCatClothesLayer extends RenderLayer<MessengerCat, CatModel
             return;
         }
         // 与原版猫渲染器同用自发光半透明类型，装饰与灵体本体观感一致；
-        // 顶点色与 alpha 由渲染器的 GhostlyBufferSource 统一施加
+        // 顶点色与 alpha 由灵体渲染基类统一施加
         this.clothesModel.syncPose(this.catHead, this.catBody);
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.entityTranslucentEmissive(CLOTHES_TEXTURE));
         this.clothesModel.renderToBuffer(poseStack, consumer, packedLight,

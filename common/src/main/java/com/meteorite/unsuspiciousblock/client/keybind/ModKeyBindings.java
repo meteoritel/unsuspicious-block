@@ -1,16 +1,17 @@
 package com.meteorite.unsuspiciousblock.client.keybind;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.List;
+
 /**
  * 模组按键绑定注册表。
- * 在 Fabric/NeoForge 客户端初始化时调用 {@link #register()} 将绑定注册到 Minecraft 的按键设置中，
- * 使得玩家可以在游戏内「控制设置 → 按键绑定」中自由修改。
+ * 清单由 Fabric/NeoForge 客户端入口分别交给各自 Loader API 注册，
+ * 玩家可以在游戏内「控制设置 → 按键绑定」中自由修改。
  */
-public class ModKeyBindings {
+public final class ModKeyBindings {
 
     /** 扫描等级切换键，默认 V 键 */
     public static final KeyMapping SCAN_LEVEL_CYCLE = new KeyMapping(
@@ -52,19 +53,16 @@ public class ModKeyBindings {
             "key.categories.unsuspiciousblock"
     );
 
+    /** 客户端平台按键注册清单。 */
+    public static final List<KeyMapping> MANIFEST = List.of(
+            SCAN_LEVEL_CYCLE,
+            JOURNAL_OPEN,
+            CAT_DETERRENCE_TOGGLE,
+            CAT_LIGHT_STEP_TOGGLE,
+            READER_HUD_TOGGLE
+    );
+
     private ModKeyBindings() {
     }
 
-    /**
-     * 将所有按键绑定注册到 Minecraft 的按键映射。
-     * Fabric 版通过 {@code KeyBindingHelper.registerKeyBinding()} 调用；
-     * NeoForge 版通过 {@code RegisterKeyMappingsEvent} 调用。
-     * 两种方式最终都调用此方法。
-     */
-    public static void register() {
-        // Fabric 和 NeoForge 各自使用平台 API 来注册，
-        // 因此此方法仅用于 NeoForge 的 RegisterKeyMappingsEvent，
-        // Fabric 侧直接在 UnsuspiciousBlockFabricClient 中使用 KeyBindingHelper。
-        Constants.LOG.debug(Constants.LOG_TAG + "Key bindings registered");
-    }
 }

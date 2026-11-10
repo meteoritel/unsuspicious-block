@@ -30,11 +30,12 @@ import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SEAL
 import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_CRAFTER_NAME;
 
 /** Jade 客户端展示，消费服务端数据并保持现有 tooltip 语义。 */
-final class JadeClientProviders {
+public final class JadeClientProviders {
     private JadeClientProviders() {
     }
 
-    static void register(IWailaClientRegistration registration) {
+    /** 仅由 Jade 的客户端注册回调装配展示组件。 */
+    public static void register(IWailaClientRegistration registration) {
         registration.registerBlockComponent(ScannedLootProvider.INSTANCE, BrushableBlock.class);
         registration.registerBlockComponent(SealedContentsProvider.INSTANCE, UnsuspiciousBlock.class);
         registration.registerEntityComponent(ShimmerLifetimeProvider.INSTANCE, ShimmerEntity.class);

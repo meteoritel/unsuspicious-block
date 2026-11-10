@@ -91,16 +91,16 @@ unsuspiciousBlock-1.21.1-multi/
 - **淘洗生成服务**：服务器 tick 与停止事件转交 `ShimmerSpawnService`，驱动淘洗点的自然生成（只投放水域变体）；世界生成通过统一的 `ShimmerFeature` 与两端群系注入接入原版地物阶段，介质由数据包里的变体 id 指定（见 [淘洗系统](../subsystems/panning.md)）。
 - **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立（见 [考古笔记系统](../subsystems/journal.md)）。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册（见 [战利品表系统](../subsystems/loottable.md)）。
-- **可选依赖**：通过 `OptionalModIntegration.instantiate()` 反射加载 Trinkets/Curios 集成（见 [平台抽象](platform-spi.md)）。
+- **可选依赖**：通过 `OptionalModIntegration.instantiate()` 反射加载 Trinkets/Curios 集成；Jade 发现 common 的 `JadePlugin` 与 `JadeClientPlugin`，在对应注册回调中装配 provider。
 
 ### 3.2 客户端初始化
 
 两个平台客户端入口通过 `client/ModClientLifecycle.install/tick/disconnect` 共用安装与连接状态序列。公共服务端入口不引用该客户端 Module。平台仍绑定以下原生相位：
 
 1. **按键绑定**注册（扫描模式切换、笔记、威慑切换、轻步切换）。
-2. **实体/方块实体渲染器**与**模型层**注册（遍历 `ModEntityRenderers` / `ModModelLayers` 清单）。
+2. **实体/方块实体渲染器**与**模型层**注册（遍历 `ModEntityRenderers` / `ModBlockEntityRenderers` / `ModModelLayers` 清单）。
 3. **Screen**注册（考古笔记、标本箱、陶轮）。
-4. **S2C 接收器**注册（遍历 `ModPayloads.S2C_PAYLOADS` 清单）。
+4. **S2C 接收器**注册（遍历 `ClientPayloadBindings` 清单）。
 5. **Tooltip 组件**注册（标本箱内容预览）。
 6. **HUD / 世界渲染**注册（猫之恩惠 HUD、范围扫描高亮、保护罩）。
 7. **客户端 tick** 驱动（笔记按键、客户端状态、扫描高亮等）。

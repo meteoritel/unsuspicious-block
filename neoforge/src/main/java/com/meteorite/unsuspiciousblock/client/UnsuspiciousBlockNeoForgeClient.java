@@ -4,36 +4,32 @@ import com.meteorite.unsuspiciousblock.UnsuspiciousBlockNeoForge;
 
 import com.meteorite.unsuspiciousblock.Constants;
 
-import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipAppender;
+import com.meteorite.unsuspiciousblock.client.tooltip.BreakdownPreview;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.ModTooltipComponents;
 import com.meteorite.unsuspiciousblock.client.pan.PanningAnimation;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
-import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipAppender;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
-import com.meteorite.unsuspiciousblock.client.hud.CatFavorHud;
-import com.meteorite.unsuspiciousblock.client.hud.SuspiciousReaderHud;
+import com.meteorite.unsuspiciousblock.client.hud.ModHudRenderers;
+import com.meteorite.unsuspiciousblock.client.renderer.ModBlockEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModEntityRenderers;
 import com.meteorite.unsuspiciousblock.client.renderer.ModModelLayers;
-import com.meteorite.unsuspiciousblock.client.renderer.PotteryWheelRenderer;
-import com.meteorite.unsuspiciousblock.client.renderer.SuspiciousReaderRangeHighlight;
-import com.meteorite.unsuspiciousblock.client.renderer.CatFavorShieldRenderer;
-import com.meteorite.unsuspiciousblock.client.renderer.ShimmerSurfaceRenderer;
+import com.meteorite.unsuspiciousblock.client.renderer.ModWorldRenderers;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
-import com.meteorite.unsuspiciousblock.client.ui.screen.SpecimenBoxScreen;
-import com.meteorite.unsuspiciousblock.client.ui.tooltip.ClientSpecimenBoxTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.screen.ModMenuScreens;
+import com.meteorite.unsuspiciousblock.client.network.ClientPayloadBindings;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
-import com.meteorite.unsuspiciousblock.client.network.ClientPayloadHandlers;
-import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.core.blockentity.ModBlockEntities;
-import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
-import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTooltip;
+import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.gui.GuiGraphics;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.event.RegisterClientTooltipComponentFactoriesEvent;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.MenuType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -66,12 +62,9 @@ public final class UnsuspiciousBlockNeoForgeClient {
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderLevelStage);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderGui);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onScreenKeyPressed);
-            // 铁砧结果槽 tooltip 成本分解：持有猫之瞳时追加分解行
             // 注意 ItemTooltipEvent 用 getToolTip()（历史拼写），返回可变列表可直接追加
-            NeoForge.EVENT_BUS.addListener((ItemTooltipEvent tooltipEvent) -> {
-                AnvilBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip());
-                GrindstoneBreakdownTooltipAppender.appendIfApplicable(tooltipEvent.getItemStack(), tooltipEvent.getToolTip());
-            });
+            NeoForge.EVENT_BUS.addListener((ItemTooltipEvent tooltipEvent) ->
+                    BreakdownPreview.appendRegistered(tooltipEvent.getItemStack(), tooltipEvent.getToolTip()));
         });
     }
 
@@ -97,44 +90,55 @@ public final class UnsuspiciousBlockNeoForgeClient {
         // 直接从 DeferredHolder 获取 MenuType：FMLCommonSetupEvent 的 enqueueWork 可能尚未执行，
         // 此时 SpecimenBoxMenu.TYPE 静态字段可能为 null，直接用会导致注册失败
         SpecimenBoxMenu.TYPE = UnsuspiciousBlockNeoForge.getSpecimenBoxMenuType();
-        event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
-        PotteryWheelMenu.TYPE = UnsuspiciousBlockNeoForge.getPotteryWheelMenuType();
-        event.register(PotteryWheelMenu.TYPE, PotteryWheelScreen::new);
+        PotteryWheelMenu.TYPE =
+                UnsuspiciousBlockNeoForge.getPotteryWheelMenuType();
+        ModMenuScreens.forEach(new ModMenuScreens.ScreenRegistrar() {
+            @Override
+            public <T extends AbstractContainerMenu> void register(
+                    MenuType<T> type,
+                    ModMenuScreens.ScreenFactory<T> factory) {
+                event.register(type, factory::create);
+            }
+        });
     }
 
     @SubscribeEvent
     public static void registerTooltipComponents(RegisterClientTooltipComponentFactoriesEvent event) {
-        event.register(SpecimenBoxTooltip.class, ClientSpecimenBoxTooltip::new);
+        for (var entry : ModTooltipComponents.MANIFEST) {
+            registerTooltipComponent(event, entry);
+        }
+    }
+
+    private static <T extends TooltipComponent> void registerTooltipComponent(
+            RegisterClientTooltipComponentFactoriesEvent event,
+            ModTooltipComponents.ComponentEntry<T> entry) {
+        event.register(entry.type(), entry.factory());
     }
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
-        event.register(ModKeyBindings.SCAN_LEVEL_CYCLE);
-        event.register(ModKeyBindings.JOURNAL_OPEN);
-        event.register(ModKeyBindings.CAT_DETERRENCE_TOGGLE);
-        event.register(ModKeyBindings.CAT_LIGHT_STEP_TOGGLE);
-        event.register(ModKeyBindings.READER_HUD_TOGGLE);
+        for (var keyMapping : ModKeyBindings.MANIFEST) {
+            event.register(keyMapping);
+        }
     }
 
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(Constants.MOD_ID).versioned(ModPayloads.PROTOCOL_VERSION);
-        // 遍历 ModPayloads 客户端清单注册 S2C，避免手写重复
-        for (ModPayloads.S2C<?> s2c : ModPayloads.S2C_PAYLOADS) {
-            registerS2C(registrar, s2c);
+        // 接收绑定统一经过连接宿主，保留入队与 epoch 门禁。
+        for (ClientPayloadBindings.Binding<?> binding : ClientPayloadBindings.all()) {
+            registerS2C(registrar, binding);
         }
     }
 
     // 注册单个 S2C payload 到 NeoForge 网络注册器
-    @SuppressWarnings("unchecked")
     private static <T extends CustomPacketPayload> void registerS2C(
             PayloadRegistrar registrar,
-            ModPayloads.S2C<?> s2cRaw) {
-        ModPayloads.S2C<T> s2c = (ModPayloads.S2C<T>) s2cRaw;
-        registrar.playToClient(s2c.type(), s2c.streamCodec(),
+            ClientPayloadBindings.Binding<T> binding) {
+        registrar.playToClient(binding.type(), binding.streamCodec(),
                 (payload, context) -> {
                     if (context.listener() instanceof ClientPacketListener source) {
-                        JournalClientConnection.receive(source, () -> s2c.handler().accept(ClientPayloadHandlers.INSTANCE, payload));
+                        JournalClientConnection.receive(source, () -> binding.receiver().accept(payload));
                     }
                 });
     }
@@ -143,7 +147,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         // 实体类型 Supplier 已在 mod 构造器静态块中回写，此处直接遍历渲染器清单注册
         ModEntityRenderers.forEach(event::registerEntityRenderer);
-        event.registerBlockEntityRenderer(ModBlockEntities.POTTERY_WHEEL.get(), PotteryWheelRenderer::new);
+        ModBlockEntityRenderers.forEach(event::registerBlockEntityRenderer);
     }
 
     @SubscribeEvent
@@ -163,15 +167,12 @@ public final class UnsuspiciousBlockNeoForgeClient {
     // 在半透明方块渲染之后绘制范围扫描高亮与猫之恩惠保护罩，实现透视效果
     private static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-        SuspiciousReaderRangeHighlight.render(event.getPoseStack(), event.getCamera());
-        CatFavorShieldRenderer.render(event.getPoseStack(), event.getCamera());
-        ShimmerSurfaceRenderer.render(event.getPoseStack(), event.getCamera());
+        ModWorldRenderers.renderAll(event.getPoseStack(), event.getCamera());
     }
 
     // 渲染猫之恩惠快捷栏与解析仪扫描结果 HUD
     private static void onRenderGui(RenderGuiEvent.Post event) {
         GuiGraphics gui = event.getGuiGraphics();
-        CatFavorHud.render(gui);
-        SuspiciousReaderHud.render(gui);
+        ModHudRenderers.renderAll(gui);
     }
 }

@@ -1,31 +1,66 @@
 package com.meteorite.unsuspiciousblock.client.tooltip;
 
+import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownCalculator;
+import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipBuilder;
+import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdown;
+import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownCalculator;
+import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.AnvilScreen;
+import net.minecraft.client.gui.screens.inventory.GrindstoneScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AnvilMenu;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.GrindstoneMenu;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
  * 铁砧 / 砂轮「猫之瞳」成本分解预览的公共编排层。
  *
- * <p>两处槽位 tooltip 追加器（{@code AnvilBreakdownTooltipAppender} / {@code GrindstoneBreakdownTooltipAppender}）
- * 的介入条件、槽位分流与惩罚值追加逐字同构，本类只收敛这部分编排：
- * 屏幕类型判断与各自的分解算法仍留在两个 Calculator 与两个 Breakdown record 里
- * ——两套算法本质不同，合并会造出错误抽象。</p>
+ * <p>容器登记项只保存屏幕、菜单、槽位和结果行生成器；两套分解算法仍保持独立。</p>
  *
- * <p>调用方负责屏幕判定与算法调用，本类负责：结果槽 → 完整分解；输入/附加槽 → 附魔惩罚值（仅 &gt; 0 时）。</p>
+ * <p>本类负责介入条件、登记遍历和槽位分流：结果槽 → 完整分解；输入/附加槽 → 附魔惩罚值（仅 &gt; 0 时）。</p>
  */
 public final class BreakdownPreview {
 
+    private static final List<Registration> REGISTRATIONS = List.of(
+            registration(AnvilScreen.class, AnvilScreen::getMenu,
+                    AnvilMenu.RESULT_SLOT, AnvilMenu.INPUT_SLOT, AnvilMenu.ADDITIONAL_SLOT,
+                    (menu, player) -> AnvilBreakdownTooltipBuilder.build(
+                            AnvilBreakdownCalculator.calculate(menu, player))),
+            registration(GrindstoneScreen.class, GrindstoneScreen::getMenu,
+                    GrindstoneMenu.RESULT_SLOT, GrindstoneMenu.INPUT_SLOT, GrindstoneMenu.ADDITIONAL_SLOT,
+                    (menu, player) -> {
+                        GrindstoneBreakdown breakdown = GrindstoneBreakdownCalculator.calculate(menu);
+                        return breakdown == null ? List.of() : GrindstoneBreakdownTooltipBuilder.build(breakdown);
+                    })
+    );
+
     private BreakdownPreview() {}
+
+    /** 为当前屏幕追加所有已登记容器的分解信息。 */
+    public static void appendRegistered(ItemStack stack, List<Component> tooltip) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen == null || minecraft.player == null
+                || !hasRevealItem(minecraft.player)) {
+            return;
+        }
+        for (Registration registration : REGISTRATIONS) {
+            registration.append(stack, tooltip, minecraft, minecraft.player);
+        }
+    }
 
     /**
      * 按槽位分流把分解行追加到 tooltip。
@@ -53,6 +88,26 @@ public final class BreakdownPreview {
         if (repairCost > 0) {
             tooltip.addAll(buildInputPenalty(repairCost));
         }
+    }
+
+    private static <S extends AbstractContainerScreen<M>, M extends AbstractContainerMenu> Registration registration(
+            Class<S> screenType, Function<S, M> menuExtractor,
+            int resultSlot, int inputSlot, int additionalSlot,
+            BiFunction<M, Player, List<Component>> resultLines) {
+        return (stack, tooltip, minecraft, player) -> {
+            if (!screenType.isInstance(minecraft.screen)) {
+                return;
+            }
+            S screen = screenType.cast(minecraft.screen);
+            M menu = menuExtractor.apply(screen);
+            appendIfApplicable(stack, tooltip, menu, resultSlot, inputSlot, additionalSlot,
+                    () -> resultLines.apply(menu, player));
+        };
+    }
+
+    @FunctionalInterface
+    private interface Registration {
+        void append(ItemStack stack, List<Component> tooltip, Minecraft minecraft, Player player);
     }
 
     // 客户端背包检查：持有猫之瞳才显示分解

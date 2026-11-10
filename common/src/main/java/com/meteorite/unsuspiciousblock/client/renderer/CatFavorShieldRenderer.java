@@ -1,16 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
 import com.meteorite.unsuspiciousblock.core.effect.ModEffects;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
@@ -18,7 +13,7 @@ import net.minecraft.world.phys.Vec3;
  * 猫之恩惠保护罩渲染--当本地玩家拥有「猫之恩惠」buff 时，在玩家周围
  * 绘制半透明金色 UV 球体，带轻微呼吸闪烁。仅客户端渲染入口调用。
  *
- * <p>RenderType 采用匿名子类范式（与 {@link SuspiciousReaderRangeHighlight} 一致）：
+ * <p>使用 {@link ModRenderTypes} 的保护罩类型：
  * 半透明混合 + 双面渲染 + 深度写入禁用（球体不遮挡其后物体），深度测试保持启用
  * （方块仍可遮挡球体）。
  */
@@ -41,32 +36,6 @@ public final class CatFavorShieldRenderer {
     // 球面顶点（坐标已乘半径，每面两个三角形，共 LON×LAT×6 个顶点 × 3 分量）。
     // 几何完全静态：静态初始化一次，每帧只写顶点与 alpha，不再做每周期的 sin/cos 与坐标计算。
     private static final float[] SPHERE_VERTICES = buildSphereVertices();
-
-    // 自定义半透明 RenderType：POSITION_COLOR + TRIANGLES，无背面剔除，深度写入禁用。
-    // 通过匿名子类访问 protected 构造器（与 SuspiciousReaderRangeHighlight.NO_DEPTH_LINES 同范式）。
-    // sortOnUpload 保留 true：球体禁用背面剔除后自身三角形互相重叠，上传时排序决定混合顺序；
-    // 关掉排序会让混色顺序退化为提交顺序，随视角出现块状混色差异（收益是多边形排序时间，风险是可见回归）。
-    private static final RenderType SHIELD_TYPE = new RenderType(
-            "unsuspicious_cat_favor_shield",
-            DefaultVertexFormat.POSITION_COLOR,
-            VertexFormat.Mode.TRIANGLES,
-            256,
-            false,
-            true,
-            () -> {
-                RenderSystem.setShader(GameRenderer::getPositionColorShader);
-                RenderSystem.enableBlend();
-                RenderSystem.defaultBlendFunc();
-                RenderSystem.disableCull();
-                RenderSystem.depthMask(false);
-            },
-            () -> {
-                RenderSystem.depthMask(true);
-                RenderSystem.enableCull();
-                RenderSystem.disableBlend();
-            }
-    ) {
-    };
 
     private CatFavorShieldRenderer() {
     }
@@ -97,10 +66,10 @@ public final class CatFavorShieldRenderer {
         float breath = BREATH_AMPLITUDE * Mth.sin(player.tickCount * 0.1F);
         int alpha = Mth.clamp((int) ((BASE_ALPHA + breath) * 255), 0, 255);
 
-        VertexConsumer consumer = mc.renderBuffers().bufferSource().getBuffer(SHIELD_TYPE);
+        VertexConsumer consumer = mc.renderBuffers().bufferSource().getBuffer(ModRenderTypes.catFavorShield());
         renderSphere(consumer, poseStack.last(), alpha);
         // 立即刷出，避免被后续批次的深度状态干扰
-        mc.renderBuffers().bufferSource().endBatch(SHIELD_TYPE);
+        mc.renderBuffers().bufferSource().endBatch(ModRenderTypes.catFavorShield());
 
         poseStack.popPose();
     }

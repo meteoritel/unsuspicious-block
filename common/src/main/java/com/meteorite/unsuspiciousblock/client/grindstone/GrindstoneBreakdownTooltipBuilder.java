@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.grindstone;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.BreakdownPreview;
+
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 
 import net.minecraft.ChatFormatting;
@@ -13,7 +15,7 @@ import java.util.List;
 /**
  * 砂轮操作分解 tooltip 行构建器。
  * 将 {@link GrindstoneBreakdown} 转换为可渲染的 {@link Component} 列表，
- * 供 {@link GrindstoneBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
+ * 供 {@link BreakdownPreview} 追加到原版物品 tooltip 之后。
  *
  * <p>样式约定遵循 docs/dev/foundation/text-format.md 的语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
  * 常量）：标题 TITLE，操作类型/分区 LABEL，移除项 NEGATIVE，保留诅咒 SEVERE，

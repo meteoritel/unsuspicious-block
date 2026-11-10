@@ -3,11 +3,8 @@ package com.meteorite.unsuspiciousblock.client.renderer;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.unsuspiciousblock.core.item.SuspiciousReaderItem;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -41,35 +38,6 @@ public final class SuspiciousReaderRangeHighlight {
     private static final float LOOT_B = 1.0F;
     private static final float LOOT_A = 0.7F;
 
-    // 自定义无深度测试的线条 RenderType：用于扫描结果描边透视（穿透墙壁可见）。
-    // 直接调用 RenderSystem.disableDepthTest() 无效——RenderType.lines() 在 endBatch
-    // 时会通过 setupRenderState() 重新启用深度测试覆盖手动禁用，故必须用自定义 RenderType。
-    // 由于 RenderType.create(...) 为包级私有，这里通过 public 构造器创建匿名子类：
-    // setup 阶段复用 lines() 的全部状态（着色器、线宽、混合等），再禁用深度测试与深度写入。
-    // lines() 带 COLOR_DEPTH_WRITE，其 write-mask shard 在"写深度"时不会调用 depthMask，
-    // 因此必须在自定义 setup 里显式 depthMask(false)，否则穿透描边仍会写入深度缓冲、
-    // 遮挡其后绘制的世界几何（原版同类穿透渲染 TEXT_SEE_THROUGH 用的是 COLOR_WRITE）。
-    private static final RenderType NO_DEPTH_LINES = new RenderType(
-            "unsuspicious_no_depth_lines",
-            DefaultVertexFormat.POSITION_COLOR_NORMAL,
-            VertexFormat.Mode.LINES,
-            256,
-            false,
-            false,
-            () -> {
-                RenderType.lines().setupRenderState();
-                RenderSystem.disableDepthTest();
-                RenderSystem.depthMask(false);
-                RenderSystem.lineWidth(3.0F);
-            },
-            () -> {
-                RenderType.lines().clearRenderState();
-                // 还原全局深度写入，避免泄漏到后续批次
-                RenderSystem.depthMask(true);
-            }
-    ) {
-    };
-
     private SuspiciousReaderRangeHighlight() {
     }
 
@@ -91,9 +59,9 @@ public final class SuspiciousReaderRangeHighlight {
         }
 
         // 2. 扫描结果青色描边：加粗并透视，整批结果共用淡出。
-        VertexConsumer noDepthConsumer = bufferSource.getBuffer(NO_DEPTH_LINES);
+        VertexConsumer noDepthConsumer = bufferSource.getBuffer(ModRenderTypes.noDepthLines());
         if (renderScanResults(poseStack, noDepthConsumer, camPos)) {
-            bufferSource.endBatch(NO_DEPTH_LINES);
+            bufferSource.endBatch(ModRenderTypes.noDepthLines());
         }
     }
 

@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.client.ui.support;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
@@ -15,17 +14,12 @@ import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestCatalogPa
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalStateFullPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncArchaeologyCatalogPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogTableChunkPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStateIncrementalPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogDeleteResultPayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -55,15 +49,10 @@ public final class ArchaeologyJournalClientState {
     private static volatile Consumer<List<Component>> tableUnlockNotifier;
     private static volatile BiConsumer<List<Component>, List<ItemStack>> itemUnlockNotifier;
     private static volatile Consumer<Component> tableCompletionNotifier;
-    // 加载持久化文件时临时抑制 markDirty，避免加载即触发回写
-    private static volatile boolean persistenceSuppress;
+    private static volatile Consumer<Component> logDeleteNotifier;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
-    // 重同步请求最小间隔
-    private static final long RESYNC_COOLDOWN_MS = 2000L;
-
     private static volatile ConnectionState connectionState = new ConnectionState();
-    private static volatile WorldPreferences preferences = new WorldPreferences();
 
     private static final class ConnectionState {
         private Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
@@ -74,25 +63,7 @@ public final class ArchaeologyJournalClientState {
         private @Nullable String cachedCatalogHash;
         private boolean stateInitialized;
         private long lastNotifiedRevision = -1L;
-        private long lastFullStateRequestMs;
-    }
-
-    private static final class WorldPreferences {
-        private @Nullable ResourceLocation lastSelectedTableId;
-        private @Nullable CatalogSorter.SortOrder lastCatalogSortOrder;
-        private boolean lastCatalogSortDescending;
-        private boolean lastCatalogHideLocked;
-        private String lastCatalogSearchText = "";
-        private boolean lastDirectoryHome = true;
-        private @Nullable ResourceLocation lastDirectoryCategory;
-        private Set<ResourceLocation> expandedDirectoryTables = Collections.emptySet();
-        private int lastDirectoryPage;
-        private int lastCategoryFocus;
-        private final Map<ResourceLocation, ResourceLocation> categorySelections = new LinkedHashMap<>();
-        private boolean lastLogSortDescending = true;
-        private @Nullable LogGrouper.GroupMode lastLogGroupMode;
-        private @Nullable RightPageContainer.Tab lastRightPageTab;
-        private Set<ResourceLocation> favorites = Collections.emptySet();
+        private final ResyncPolicy resyncPolicy = new ResyncPolicy(System::currentTimeMillis);
     }
 
     private ArchaeologyJournalClientState() {
@@ -111,6 +82,10 @@ public final class ArchaeologyJournalClientState {
     // 注册表 100% 完成奖励的通知回调
     public static void registerTableCompletionNotifier(Consumer<Component> notifier) {
         tableCompletionNotifier = notifier;
+    }
+
+    public static void registerLogDeleteNotifier(Consumer<Component> notifier) {
+        logDeleteNotifier = notifier;
     }
 
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
@@ -221,35 +196,12 @@ public final class ArchaeologyJournalClientState {
 
     // 请求全量重同步（带限流），用于 revision 间隙或增量先于全量到达的恢复路径
     private static void requestFullStateWithCooldown() {
-        long now = System.currentTimeMillis();
-        if (now - connectionState.lastFullStateRequestMs < RESYNC_COOLDOWN_MS) {
-            return;
+        if (connectionState.resyncPolicy.tryRequest()) {
+            ClientNetwork.sendToServer(new RequestJournalStateFullPayload());
         }
-        connectionState.lastFullStateRequestMs = now;
-        ClientNetwork.sendToServer(new RequestJournalStateFullPayload());
-    }
-
-    public static void receiveLogUpdate(SyncJournalLogPayload payload) {
-        ArchaeologyJournalLogLocalStore.applyUpdate(payload);
-    }
-
-    public static void beginLogSnapshot(SyncJournalLogSnapshotStartPayload payload) {
-        ArchaeologyJournalLogLocalStore.beginSnapshot(payload);
-    }
-
-    public static void receiveLogSnapshotChunk(SyncJournalLogTableChunkPayload payload) {
-        ArchaeologyJournalLogLocalStore.applySnapshotChunk(payload);
-    }
-
-    public static void completeLogSnapshot(SyncJournalLogSnapshotEndPayload payload) {
-        ArchaeologyJournalLogLocalStore.completeSnapshot(payload);
     }
 
     public static void receiveLogDeleteResult(JournalLogDeleteResultPayload payload) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null) {
-            return;
-        }
         Component message = switch (payload.result()) {
             case SUCCESS -> Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.log_delete.success", payload.removedCount());
@@ -258,7 +210,10 @@ public final class ArchaeologyJournalClientState {
             case INVALID -> Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.log_delete.invalid");
         };
-        minecraft.player.displayClientMessage(message, true);
+        Consumer<Component> notifier = logDeleteNotifier;
+        if (notifier != null) {
+            notifier.accept(message);
+        }
     }
 
     // 收到服务端的 100% 完成奖励通知：解析表名后走回调（与另两条解锁通知同一解耦方式）
@@ -273,17 +228,12 @@ public final class ArchaeologyJournalClientState {
         }
     }
 
-    public static void tick() {
-        JournalClientConnection.tick();
-    }
-
-
     /**
      * 目录投影：在原始目录上叠加当前模拟选择与结果，供日志详情、tooltip 与网格共用。
      * <p>
      * 缓存键由目录版本与场景 Module 的 revision 合成：
      * 收到完整目录（{@link #receiveCatalog}）、模拟选择/结果变化（场景 revision）、
-     * 断连重置（{@link #resetOnDisconnect}）。命中时返回同一份**不可修改**映射，
+     * 断连重置（由 {@link JournalClientConnection} 负责）。命中时返回同一份**不可修改**映射，
      * 调用方只能读取。语言切换无需失效：投影只持有 {@code Component} 与 record，翻译在渲染时解析。
      */
     public static Map<ResourceLocation, TableDefinition> getCatalog() {
@@ -331,186 +281,12 @@ public final class ArchaeologyJournalClientState {
         return stateRevision.get();
     }
 
-    public static long getLogRevision() {
-        return ArchaeologyJournalLogLocalStore.getRevision();
-    }
-
     public static ArchaeologyJournalState getState() {
         return connectionState.journalState;
     }
 
-    public static ArchaeologyJournalLogState getLogState() {
-        return ArchaeologyJournalLogLocalStore.getState();
-    }
-
-    @Nullable
-    public static ResourceLocation getLastSelectedTableId() {
-        return preferences.lastSelectedTableId;
-    }
-
-    public static void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
-        preferences.lastSelectedTableId = tableId;
-        markDirtyIfTracking();
-    }
-
-    // 跨打开/关闭持久化的 UI 状态存取器
-
-    @Nullable
-    public static CatalogSorter.SortOrder getLastCatalogSortOrder() {
-        return preferences.lastCatalogSortOrder;
-    }
-
-    public static void setLastCatalogSortOrder(@Nullable CatalogSorter.SortOrder order) {
-        preferences.lastCatalogSortOrder = order;
-        markDirtyIfTracking();
-    }
-
-    public static boolean getLastCatalogSortDescending() {
-        return preferences.lastCatalogSortDescending;
-    }
-
-    public static void setLastCatalogSortDescending(boolean descending) {
-        preferences.lastCatalogSortDescending = descending;
-        markDirtyIfTracking();
-    }
-
-    public static boolean getLastCatalogHideLocked() {
-        return preferences.lastCatalogHideLocked;
-    }
-
-    public static void setLastCatalogHideLocked(boolean hideLocked) {
-        preferences.lastCatalogHideLocked = hideLocked;
-        markDirtyIfTracking();
-    }
-
-    @Nullable
-    public static String getLastCatalogSearchText() {
-        return preferences.lastCatalogSearchText;
-    }
-
-    public static void setLastCatalogSearchText(@Nullable String text) {
-        preferences.lastCatalogSearchText = text != null ? text : "";
-        markDirtyIfTracking();
-    }
-
-    public static boolean isLastDirectoryHome() {
-        return preferences.lastDirectoryHome;
-    }
-
-    @Nullable
-    public static ResourceLocation getLastDirectoryCategory() {
-        return preferences.lastDirectoryCategory;
-    }
-
-    public static Set<ResourceLocation> getExpandedDirectoryTables() {
-        return preferences.expandedDirectoryTables;
-    }
-
-    // 目录层级状态仅在当前客户端运行期间保存，不写入偏好文件。
-    public static void rememberDirectoryState(boolean home, @Nullable ResourceLocation category,
-                                              Set<ResourceLocation> expanded, int page, int categoryFocus) {
-        preferences.lastDirectoryHome = home;
-        preferences.lastDirectoryCategory = category;
-        preferences.expandedDirectoryTables = Set.copyOf(expanded);
-        preferences.lastDirectoryPage = Math.max(0, page);
-        preferences.lastCategoryFocus = Math.max(0, categoryFocus);
-    }
-
-    public static int getLastDirectoryPage() {
-        return preferences.lastDirectoryPage;
-    }
-
-    public static int getLastCategoryFocus() {
-        return preferences.lastCategoryFocus;
-    }
-
-    @Nullable
-    public static ResourceLocation getCategorySelection(ResourceLocation categoryId) {
-        return preferences.categorySelections.get(categoryId);
-    }
-
-    public static void rememberCategorySelection(ResourceLocation categoryId, ResourceLocation tableId) {
-        preferences.categorySelections.put(categoryId, tableId);
-    }
-
-    public static boolean getLastLogSortDescending() {
-        return preferences.lastLogSortDescending;
-    }
-
-    public static void setLastLogSortDescending(boolean descending) {
-        preferences.lastLogSortDescending = descending;
-        markDirtyIfTracking();
-    }
-
-    @Nullable
-    public static LogGrouper.GroupMode getLastLogGroupMode() {
-        return preferences.lastLogGroupMode;
-    }
-
-    public static void setLastLogGroupMode(@Nullable LogGrouper.GroupMode mode) {
-        preferences.lastLogGroupMode = mode;
-        markDirtyIfTracking();
-    }
-
-    @Nullable
-    public static RightPageContainer.Tab getLastRightPageTab() {
-        return preferences.lastRightPageTab;
-    }
-
-    public static void setLastRightPageTab(@Nullable RightPageContainer.Tab tab) {
-        preferences.lastRightPageTab = tab;
-        markDirtyIfTracking();
-    }
-
-    // —— 收藏集合访问器 ——
-    public static boolean isFavorite(ResourceLocation id) {
-        return preferences.favorites.contains(id);
-    }
-
-    // 切换某个战利品表的收藏状态
-    public static void toggleFavorite(ResourceLocation id) {
-        Set<ResourceLocation> copy = new HashSet<>(preferences.favorites);
-        if (!copy.add(id)) {
-            copy.remove(id);
-        }
-        preferences.favorites = Collections.unmodifiableSet(copy);
-        markDirtyIfTracking();
-    }
-
-    // 由 JournalUiPreferencesStore 加载后批量替换收藏集合（不触发二次回写）
-    public static void replaceFavorites(Set<ResourceLocation> newFavorites) {
-        preferences.favorites = Set.copyOf(newFavorites);
-    }
-
-    // 供 JournalUiPreferencesStore 序列化快照使用
-    static Set<ResourceLocation> snapshotFavorites() {
-        return preferences.favorites;
-    }
-
-    // 加载持久化文件时由 store 调用，抑制 markDirty 回写
-    static void setPersistenceSuppress(boolean suppress) {
-        persistenceSuppress = suppress;
-    }
-
-    // 修改 UI 偏好后标记 store 待刷盘
-    private static void markDirtyIfTracking() {
-        if (!persistenceSuppress) {
-            JournalUiPreferencesStore.markDirty();
-        }
-    }
-
-    public static long getConnectionEpoch() {
-        return JournalClientConnection.epoch();
-    }
-
-    public static void resetOnDisconnect() {
-        JournalClientConnection.disconnect();
-    }
-
     static void resetConnectionMemory() {
         connectionState = new ConnectionState();
-        preferences = new WorldPreferences();
-        persistenceSuppress = false;
         catalogRevision.incrementAndGet();
         stateRevision.incrementAndGet();
     }

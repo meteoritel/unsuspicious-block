@@ -74,7 +74,7 @@ unsuspiciousBlock-1.21.1-multi/
    - 服务端逻辑与公用数据类型严禁直接静态引用客户端类，防止在专用服务端（Dedicated Server）启动时触发 `NoClassDefFoundError`。
 3. **网络包跨端解耦**：
    - 网络 Payload（`CustomPacketPayload`）仅承载序列化数据，其实例属于跨端共用。
-   - `core.network.ModPayloads` 通过公共 `ClientPayloadReceiver` 契约声明 S2C 分发；`client.network.ClientPayloadHandlers` 实现状态处理，客户端入口显式绑定。C2S 发送由客户端入口安装到 `ClientNetwork`。
+   - `core.network.ModPayloads` 只声明 S2C 类型与 codec；`client.network.ClientPayloadBindings` 绑定状态处理，客户端入口显式遍历。C2S 发送由客户端入口安装到 `ClientNetwork`。
 
 ---
 

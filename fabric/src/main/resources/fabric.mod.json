@@ -26,7 +26,8 @@
       "com.meteorite.unsuspiciousblock.UnsuspiciousBlockFabricPreLaunch"
     ],
     "jade": [
-      "com.meteorite.unsuspiciousblock.platform.plugin.jade.JadePlugin"
+      "com.meteorite.unsuspiciousblock.platform.plugin.jade.JadePlugin",
+      "com.meteorite.unsuspiciousblock.client.plugin.jade.JadeClientPlugin"
     ],
     "jei_mod_plugin": [
       "com.meteorite.unsuspiciousblock.client.plugin.jei.JeiPlugin"

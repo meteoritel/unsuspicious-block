@@ -59,10 +59,10 @@
 
 ### 3.1 贴水波光（ShimmerSurfaceRenderer）
 
-[`ShimmerSurfaceRenderer`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/renderer/ShimmerSurfaceRenderer.java) 在两端半透明方块渲染之后（Fabric `RenderLevelStageEvent` / NeoForge 对应事件）由世界渲染阶段绘制，实体本体无模型（`ShimmerRenderer` 为空实现占位）：
+[`ShimmerSurfaceRenderer`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/renderer/ShimmerSurfaceRenderer.java) 由 `ModWorldRenderers` 在两端半透明方块渲染之后绘制（Fabric `WorldRenderEvents.AFTER_TRANSLUCENT` / NeoForge `RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS`），实体本体无模型（`ShimmerRenderer` 为空实现占位）：
 
 - 仅查询相机周围 32 格，依据实际流体表面高度绘制细线反光，**配色取自变体的 `GlowStyle`**（水域金白、幽微的光紫）；远端 8 格内线性淡出。
-- 同一趟收集顺带按帧重建**介质索引** `PanningMediumIndex`（玩家 UUID → 介质），供物品属性为任意玩家选出摇洗帧组；索引不做增量维护与淘汰，因此只在空集合提前返回之前重建一次即可保证停手后清空。远处超出 32 格的淘洗点不参与，其帧组会回落到水域。
+- 客户端 tick 按当前相机视野重建**介质索引** `PanningMediumIndex`（玩家 UUID → 介质），供物品属性为任意玩家选出摇洗帧组；索引不做增量维护与淘汰，世界为空时清空旧值。世界渲染器独立收集波光并绘制，不更新索引。远处超出 32 格的淘洗点不参与，其帧组会回落到水域；视角变化后的索引最多延迟一个 tick。
 - 自定义 `RenderType`：写颜色、保留深度测试、关闭深度写入与面剔除——波光不穿墙，也不覆盖后续粒子的深度。
 - 反光数量按剩余次数分档：3/2/1 次分别 48/28/12 道，错峰明灭（确定性分布，逐帧渲染不建随机对象）；淘洗时叠加水平扰动。
 
@@ -82,7 +82,7 @@
 
 ### 3.4 Jade 信息行
 
-`JadePlugin` 注入闪烁的光的 HUD 时附带剩余淘洗次数（键 `jade.unsuspiciousblock.shimmer.pan_remaining`，值为数字，`BODY` 白色）。键命名与样式规范见 [文本格式规范](../foundation/text-format.md) 的「Jade HUD 规则」一节。
+`JadeClientProviders` 展示闪烁的光的信息时附带剩余淘洗次数（键 `jade.unsuspiciousblock.shimmer.pan_remaining`，值为数字，`BODY` 白色）。键命名与样式规范见 [文本格式规范](../foundation/text-format.md) 的「Jade HUD 规则」一节。
 
 ## 4. 生成调试指令
 

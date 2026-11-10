@@ -8,6 +8,8 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -16,6 +18,7 @@ public final class JournalClientConnection {
     private static final Queue<Inbound> incoming = new ConcurrentLinkedQueue<>();
     private static volatile @Nullable Session current;
     private static long epoch;
+    private static final List<Runnable> connectionResets = new ArrayList<>();
 
     private record Inbound(ClientPacketListener source, long epoch, Runnable apply) {
     }
@@ -38,6 +41,11 @@ public final class JournalClientConnection {
     }
 
     private JournalClientConnection() {
+    }
+
+    /** 安装连接作用域复位动作，连接切换与断连共用同一序列。 */
+    public static void registerConnectionReset(Runnable reset) {
+        connectionResets.add(reset);
     }
 
     // 接包只保存原连接与 epoch，应用和本地 I/O 统一在客户端 tick 执行。
@@ -66,8 +74,7 @@ public final class JournalClientConnection {
             session = new Session(source, ++epoch);
             ArchaeologyJournalLogLocalStore.beginConnection(session.mirror);
             JournalUiPreferencesStore.beginConnection();
-            ArchaeologyJournalClientState.resetConnectionMemory();
-            ScenarioSimulationClientState.clear();
+            resetConnectionStates();
             current = session;
         }
         if (!session.loaded) {
@@ -100,7 +107,14 @@ public final class JournalClientConnection {
         incoming.clear();
         ArchaeologyJournalLogLocalStore.beginConnection(
                 new JournalMirror(System::currentTimeMillis, () -> {}));
+        resetConnectionStates();
+    }
+
+    private static void resetConnectionStates() {
         ArchaeologyJournalClientState.resetConnectionMemory();
         ScenarioSimulationClientState.clear();
+        for (Runnable reset : connectionResets) {
+            reset.run();
+        }
     }
 }

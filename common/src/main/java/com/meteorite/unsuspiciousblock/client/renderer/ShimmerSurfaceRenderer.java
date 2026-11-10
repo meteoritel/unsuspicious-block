@@ -1,18 +1,12 @@
 package com.meteorite.unsuspiciousblock.client.renderer;
 
-import com.meteorite.unsuspiciousblock.client.pan.PanningMediumIndex;
 import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.core.pan.variant.GlowStyle;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.material.FluidState;
@@ -22,24 +16,6 @@ import net.minecraft.world.phys.Vec3;
 /*** 贴液面波光：以错峰明灭的细线表现液面反光，在半透明流体之后绘制；配色由变体提供。 */
 public final class ShimmerSurfaceRenderer {
     private static final double VIEW_DISTANCE = 32.0D;
-    // 仅写颜色、保留深度测试；波光不能穿墙，也不覆盖后续粒子的深度。
-    private static final RenderType SURFACE_TYPE = new RenderType(
-            "unsuspicious_shimmer_surface", DefaultVertexFormat.POSITION_COLOR,
-            VertexFormat.Mode.QUADS, 4096, false, true,
-            () -> {
-                RenderSystem.setShader(GameRenderer::getPositionColorShader);
-                RenderSystem.enableDepthTest();
-                RenderSystem.enableBlend();
-                RenderSystem.defaultBlendFunc();
-                RenderSystem.disableCull();
-                RenderSystem.depthMask(false);
-            },
-            () -> {
-                RenderSystem.depthMask(true);
-                RenderSystem.enableCull();
-                RenderSystem.disableBlend();
-            }) {};
-
     private ShimmerSurfaceRenderer() {
     }
 
@@ -53,13 +29,11 @@ public final class ShimmerSurfaceRenderer {
         AABB area = new AABB(eye, eye).inflate(VIEW_DISTANCE);
         var shimmers = client.level.getEntitiesOfClass(ShimmerEntity.class, area,
                 shimmer -> !shimmer.isRemoved() && shimmer.getPanRemaining() > 0);
-        // 顺势按本帧收集到的淘洗点重建介质索引；必须在空集合提前返回之前调用，否则停手后不会清空
-        PanningMediumIndex.refresh(shimmers);
         if (shimmers.isEmpty()) {
             return;
         }
         float partialTick = client.getTimer().getGameTimeDeltaPartialTick(false);
-        VertexConsumer vertices = client.renderBuffers().bufferSource().getBuffer(SURFACE_TYPE);
+        VertexConsumer vertices = client.renderBuffers().bufferSource().getBuffer(ModRenderTypes.shimmerSurface());
         for (ShimmerEntity shimmer : shimmers) {
             double distance = shimmer.position().distanceTo(eye);
             if (distance >= VIEW_DISTANCE) {
@@ -85,7 +59,7 @@ public final class ShimmerSurfaceRenderer {
                 poseStack.popPose();
             }
         }
-        client.renderBuffers().bufferSource().endBatch(SURFACE_TYPE);
+        client.renderBuffers().bufferSource().endBatch(ModRenderTypes.shimmerSurface());
     }
 
     // 固定数量与确定性分布，不在逐帧渲染中建立随机数或粒子对象。

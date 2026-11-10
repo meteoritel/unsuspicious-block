@@ -13,6 +13,9 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
@@ -102,14 +105,14 @@ public class JournalViewModel {
 
     public JournalViewModel(ArchaeologyJournalState state) {
         this.state = state;
-        this.logState = ArchaeologyJournalClientState.getLogState();
+        this.logState = ArchaeologyJournalLogLocalStore.getState();
     }
 
     public void initRevisions() {
-        this.lastConnectionEpoch = ArchaeologyJournalClientState.getConnectionEpoch();
+        this.lastConnectionEpoch = JournalClientConnection.epoch();
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
-        this.lastLogRevision = ArchaeologyJournalClientState.getLogRevision();
+        this.lastLogRevision = ArchaeologyJournalLogLocalStore.getRevision();
     }
 
     void applyCatalogState(CatalogQueryState queryState) {
@@ -142,7 +145,7 @@ public class JournalViewModel {
         }
         if (this.selectedCategory != null
                 && this.categoryIdsByTable.getOrDefault(selectedId, Set.of()).contains(this.selectedCategory)) {
-            ArchaeologyJournalClientState.rememberCategorySelection(
+            JournalUiPreferencesStore.rememberCategorySelection(
                     this.selectedCategory, selectedId);
         }
     }
@@ -300,12 +303,12 @@ public class JournalViewModel {
     }
 
     public boolean refreshIfNeeded() {
-        long epoch = ArchaeologyJournalClientState.getConnectionEpoch();
+        long epoch = JournalClientConnection.epoch();
         boolean connectionChanged = epoch != this.lastConnectionEpoch;
         this.lastConnectionEpoch = epoch;
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         long stateRevision = ArchaeologyJournalClientState.getStateRevision();
-        long logRevision = ArchaeologyJournalClientState.getLogRevision();
+        long logRevision = ArchaeologyJournalLogLocalStore.getRevision();
         if (!connectionChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
                 && logRevision == this.lastLogRevision) return false;
         if (connectionChanged || stateRevision != this.lastStateRevision) {
@@ -318,7 +321,7 @@ public class JournalViewModel {
         }
         if (connectionChanged || logRevision != this.lastLogRevision) {
             this.lastLogRevision = logRevision;
-            this.logState = ArchaeologyJournalClientState.getLogState();
+            this.logState = ArchaeologyJournalLogLocalStore.getState();
         }
         return true;
     }
@@ -348,7 +351,7 @@ public class JournalViewModel {
         rebuildTableRows();
 
         ResourceLocation remembered = this.selectionInitialized ? null
-                : ArchaeologyJournalClientState.getLastSelectedTableId();
+                : JournalUiPreferencesStore.getLastSelectedTableId();
         this.selectedIndex = resolveSelectedIndex(selectedId, remembered);
         if (!this.selectionInitialized && !this.tableViews.isEmpty()) this.selectionInitialized = true;
 
@@ -751,7 +754,7 @@ public class JournalViewModel {
         if (current >= 0) return current;
         if (this.selectedCategory != null && this.currentSearch.isEmpty()) {
             int categoryRemembered = findTableIndex(
-                    ArchaeologyJournalClientState.getCategorySelection(this.selectedCategory));
+                    JournalUiPreferencesStore.getCategorySelection(this.selectedCategory));
             if (categoryRemembered >= 0) return categoryRemembered;
         }
         int remembered = findTableIndex(rememberedId);

@@ -23,7 +23,7 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
@@ -171,11 +171,11 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
         this.viewModel.reloadCatalog();
         this.viewModel.restoreDirectoryState(
-                ArchaeologyJournalClientState.isLastDirectoryHome(),
-                ArchaeologyJournalClientState.getLastDirectoryCategory(),
-                ArchaeologyJournalClientState.getExpandedDirectoryTables());
-        this.categoryFocusIndex = ArchaeologyJournalClientState.getLastCategoryFocus();
-        this.restoredCatalogScrollOffset = ArchaeologyJournalClientState.getLastDirectoryPage();
+                JournalUiPreferencesStore.isLastDirectoryHome(),
+                JournalUiPreferencesStore.getLastDirectoryCategory(),
+                JournalUiPreferencesStore.getExpandedDirectoryTables());
+        this.categoryFocusIndex = JournalUiPreferencesStore.getLastCategoryFocus();
+        this.restoredCatalogScrollOffset = JournalUiPreferencesStore.getLastDirectoryPage();
         this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
         this.viewModel.rebuildViewModels(null);
         this.viewModel.initRevisions();
@@ -187,22 +187,22 @@ public class ArchaeologyJournalScreen extends UiScreen {
     // 从 ClientState 恢复跨打开/关闭的 UI 状态
     private void restorePersistedUiState() {
         // 恢复目录工具栏状态
-        CatalogSorter.SortOrder savedCatalogSortOrder = ArchaeologyJournalClientState.getLastCatalogSortOrder();
+        CatalogSorter.SortOrder savedCatalogSortOrder = JournalUiPreferencesStore.getLastCatalogSortOrder();
         if (savedCatalogSortOrder != null) {
             this.catalogToolbar.setCurrentSortOrder(savedCatalogSortOrder);
         }
-        this.catalogToolbar.setSortDescending(ArchaeologyJournalClientState.getLastCatalogSortDescending());
-        this.catalogToolbar.setHideLocked(ArchaeologyJournalClientState.getLastCatalogHideLocked());
+        this.catalogToolbar.setSortDescending(JournalUiPreferencesStore.getLastCatalogSortDescending());
+        this.catalogToolbar.setHideLocked(JournalUiPreferencesStore.getLastCatalogHideLocked());
 
         // 恢复日志工具栏状态
-        this.logToolbar.setSortDescending(ArchaeologyJournalClientState.getLastLogSortDescending());
-        LogGrouper.GroupMode savedLogGroupMode = ArchaeologyJournalClientState.getLastLogGroupMode();
+        this.logToolbar.setSortDescending(JournalUiPreferencesStore.getLastLogSortDescending());
+        LogGrouper.GroupMode savedLogGroupMode = JournalUiPreferencesStore.getLastLogGroupMode();
         if (savedLogGroupMode != null) {
             this.logToolbar.setGroupMode(savedLogGroupMode);
         }
 
         // 恢复右侧 tab 选择
-        RightPageContainer.Tab savedTab = ArchaeologyJournalClientState.getLastRightPageTab();
+        RightPageContainer.Tab savedTab = JournalUiPreferencesStore.getLastRightPageTab();
         if (savedTab != null) {
             this.rightPage.setActiveTab(savedTab);
         }
@@ -215,23 +215,23 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.overlays.close();
         this.confirmations.clear();
         SimulationPreferenceStore.flush();
-        ArchaeologyJournalClientState.rememberLastSelectedTable(this.viewModel.selectedTableId());
-        ArchaeologyJournalClientState.rememberDirectoryState(this.viewModel.isCategoryHomeMode(),
+        JournalUiPreferencesStore.rememberLastSelectedTable(this.viewModel.selectedTableId());
+        JournalUiPreferencesStore.rememberDirectoryState(this.viewModel.isCategoryHomeMode(),
                 this.viewModel.selectedCategory(), this.viewModel.expandedRoots(),
                 this.catalogPanel != null ? this.catalogPanel.getScrollOffset() : 0, this.categoryFocusIndex);
         // 持久化目录工具栏状态
-        ArchaeologyJournalClientState.setLastCatalogSortOrder(this.catalogToolbar.currentSortOrder());
-        ArchaeologyJournalClientState.setLastCatalogSortDescending(this.catalogToolbar.sortDescending());
-        ArchaeologyJournalClientState.setLastCatalogHideLocked(this.catalogToolbar.hideLocked());
-        ArchaeologyJournalClientState.setLastCatalogSearchText("");
+        JournalUiPreferencesStore.setLastCatalogSortOrder(this.catalogToolbar.currentSortOrder());
+        JournalUiPreferencesStore.setLastCatalogSortDescending(this.catalogToolbar.sortDescending());
+        JournalUiPreferencesStore.setLastCatalogHideLocked(this.catalogToolbar.hideLocked());
+        JournalUiPreferencesStore.setLastCatalogSearchText("");
         this.catalogToolbar.setCurrentSearch(JournalSearchQuery.EMPTY);
         this.catalogToolbar.setSearchExpanded(false);
         // 持久化日志工具栏状态
-        ArchaeologyJournalClientState.setLastLogSortDescending(this.logToolbar.sortDescending());
-        ArchaeologyJournalClientState.setLastLogGroupMode(this.logToolbar.groupMode());
+        JournalUiPreferencesStore.setLastLogSortDescending(this.logToolbar.sortDescending());
+        JournalUiPreferencesStore.setLastLogGroupMode(this.logToolbar.groupMode());
         // 持久化右侧 tab 选择
         if (this.rightPage != null) {
-            ArchaeologyJournalClientState.setLastRightPageTab(this.rightPage.getActiveTab());
+            JournalUiPreferencesStore.setLastRightPageTab(this.rightPage.getActiveTab());
         }
         JournalUiPreferencesStore.flushIfDirty();
         super.removed();
@@ -635,7 +635,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             ResourceLocation selected = viewModel.tableViews().get(index).id();
             viewModel.toggleExpanded(index); rebuildViewModels(); setSelectedTable(selected);
         } else if (shift) {
-            ArchaeologyJournalClientState.toggleFavorite(viewModel.tableViews().get(index).id()); rebuildViewModels();
+            JournalUiPreferencesStore.toggleFavorite(viewModel.tableViews().get(index).id()); rebuildViewModels();
         } else setSelectedIndex(index);
     }
 
@@ -948,7 +948,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (tableId == null) {
             return;
         }
-        var history = ArchaeologyJournalClientState.getLogState().getTable(tableId);
+        var history = ArchaeologyJournalLogLocalStore.getState().getTable(tableId);
         int retentionLimit = history != null
                 ? history.getRetentionLimit()
                 : ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
@@ -1012,7 +1012,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (tableId == null) {
             return;
         }
-        var history = ArchaeologyJournalClientState.getLogState().getTable(tableId);
+        var history = ArchaeologyJournalLogLocalStore.getState().getTable(tableId);
         int count = history != null ? history.getTotalEntryCount() : 0;
         openDeleteConfirmation(
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_title"),
@@ -1023,7 +1023,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     // 二次确认后清空当前玩家的全部日志历史
     private void confirmClearAllLogs() {
-        int count = ArchaeologyJournalClientState.getLogState().getTotalEntryCount();
+        int count = ArchaeologyJournalLogLocalStore.getState().getTotalEntryCount();
         openDeleteConfirmation(
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_message", count),

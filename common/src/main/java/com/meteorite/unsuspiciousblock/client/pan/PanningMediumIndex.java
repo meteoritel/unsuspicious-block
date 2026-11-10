@@ -2,6 +2,9 @@ package com.meteorite.unsuspiciousblock.client.pan;
 
 import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.core.pan.variant.PanningMedium;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
@@ -15,20 +18,32 @@ import java.util.UUID;
  * 变体本身不需要同步，但「谁在淘洗哪个介质」只有服务端知道：服务端把淘洗者集合同步到淘洗点实体上，
  * 客户端据此就可以为任意玩家（含远端第三人称视角）选出正确的帧组。
  * <p>
- * 索引按帧重建而不是增量维护：世界渲染本来就要收集附近的淘洗点，重建的成本只是清空一个哈希表
+ * 索引按客户端 tick 重建而不是增量维护，重建的成本只是清空一个哈希表
  * 加几次写入，也就不需要任何淘汰与失效逻辑。UUID 解析由 {@link ShimmerEntity#getPanners()}
- * 按快照字符串缓存，这里每帧只做写入。代价是只有进入收集范围的淘洗点参与，
+ * 按快照字符串缓存，这里每 tick 只做写入。代价是只有进入收集范围的淘洗点参与，
  * 视野外过远的玩家会回落到水域帧组。
  */
 public final class PanningMediumIndex {
+    private static final double VIEW_DISTANCE = 32.0D;
     private static final Map<UUID, PanningMedium> MEDIUM_BY_PLAYER = new HashMap<>();
 
     private PanningMediumIndex() {
     }
 
-    // 按本帧收集到的淘洗点重建索引；集合为空时索引也随之清空。
+    /** 按当前相机视野重建索引；世界为空时同步清空旧值。 */
+    public static void refresh(Minecraft client) {
+        if (client.level == null) {
+            MEDIUM_BY_PLAYER.clear();
+            return;
+        }
+        Vec3 eye = client.gameRenderer.getMainCamera().getPosition();
+        AABB area = new AABB(eye, eye).inflate(VIEW_DISTANCE);
+        refresh(client.level.getEntitiesOfClass(ShimmerEntity.class, area,
+                shimmer -> !shimmer.isRemoved() && shimmer.getPanRemaining() > 0));
+    }
+
     // 玩家 UUID 的解析已由实体按快照字符串缓存，本方法只做清空 + 写入。
-    public static void refresh(Collection<ShimmerEntity> shimmers) {
+    private static void refresh(Collection<ShimmerEntity> shimmers) {
         MEDIUM_BY_PLAYER.clear();
         for (ShimmerEntity shimmer : shimmers) {
             PanningMedium medium = shimmer.getVariant().glow().medium();

@@ -1,6 +1,6 @@
 # 网络与同步
 
-公共声明管理 payload 类型、codec 与处理绑定；平台入口消费对应视图。本文说明端边界与线路约束，子系统文档维护状态归属和同步时机。
+公共声明管理 payload 类型、codec 与 C2S 服务端处理；S2C 的客户端接收绑定由 client 持有。本文说明端边界与线路约束，子系统文档维护状态归属和同步时机。
 
 ## 声明与数据流
 
@@ -9,21 +9,21 @@
 | 声明 | 消费方式 |
 |---|---|
 | `C2S_PAYLOADS` | 类型、codec 与服务端 handler，校验请求后转交业务服务 |
-| `S2C_PAYLOADS` | 类型、codec 与基于 `ClientPayloadReceiver` 的中立分发函数 |
+| `S2C_PAYLOADS` | 类型与 codec；客户端绑定由 `ClientPayloadBindings` 提供 |
 | `S2C_SPECS` | 从同一 S2C 声明派生的服务端类型与 codec 视图 |
 
-公共 [`ClientPayloadReceiver`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/network/ClientPayloadReceiver.java) 只使用共享 payload。客户端 [`ClientPayloadHandlers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/network/ClientPayloadHandlers.java) 实现接收契约，将消息交给既有状态所有者。平台客户端入口在接收回调中提供该实现；公共声明初始化保持独立于客户端 Implementation。
+公共 `ModPayloads.S2C` 只声明 payload 类型与 codec。客户端 [`ClientPayloadBindings`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/network/ClientPayloadBindings.java) 维护类型到状态所有者的唯一绑定；平台入口遍历绑定并把接收动作交给 `JournalClientConnection`。公共声明初始化保持独立于客户端实现。
 
-初始化检查同方向通道唯一。具体 payload 查声明；笔记、模拟、猫族与附魔的状态归属和同步时机见对应子系统。
+初始化检查同方向通道唯一，客户端绑定同时检查重复项与声明覆盖；绑定工厂以 payload 类型约束接收函数，共用公共声明的 codec。具体 payload 查声明；笔记、模拟、猫族与附魔的状态归属和同步时机见对应子系统。
 
 ## 端隔离与平台注册
 
 | 平台入口 | 注册职责 |
 |---|---|
 | Fabric 公共入口 | 登记 C2S/S2C 类型与 codec，安装 C2S receiver |
-| Fabric 客户端入口 | 遍历 `S2C_PAYLOADS`，绑定客户端 receiver |
+| Fabric 客户端入口 | 遍历 `ClientPayloadBindings`，绑定客户端 receiver |
 | NeoForge 公共入口 | 登记 C2S；专用服务端登记 S2C 类型与 codec |
-| NeoForge 客户端入口 | 登记 S2C 类型、codec 与客户端 receiver |
+| NeoForge 客户端入口 | 遍历 `ClientPayloadBindings`，登记 S2C 类型、codec 与客户端 receiver |
 
 NeoForge 握手要求服务端具备客户端声明的必需通道。同一通道在一个物理端登记一次，两端 registrar 使用 `ModPayloads.PROTOCOL_VERSION`。
 
@@ -78,7 +78,7 @@ Fabric C2S 调度到服务器线程，NeoForge handler 使用主线程执行。S
 
 1. 在 `payload/c2s/` 或 `payload/s2c/` 创建 payload 类（含 `TYPE` 与 `STREAM_CODEC`）。
 2. C2S：在 `ModPayloads.C2S_PAYLOADS` 加条目（type + codec + handler）。
-3. S2C：在 `S2C_PAYLOADS` 加一条类型、codec 与接收契约分发函数；在 `ClientPayloadReceiver` 声明对应接收方法，由 `ClientPayloadHandlers` 实现。服务端 codec 视图从同一声明派生。
+3. S2C：在 `S2C_PAYLOADS` 加一条类型与 codec，再在 `ClientPayloadBindings` 加一条类型化状态绑定。服务端 codec 视图从同一声明派生。
 4. **无需修改平台代码**，两端自动遍历注册。
 5. 传输目录数据时**必须**走 `CatalogStreamCodec`，不要另写一份字段顺序。
 6. 线字段变更时同步更新 `ModPayloads.PROTOCOL_VERSION`，核对共用 codec 和两端接收绑定。
@@ -88,7 +88,7 @@ Fabric C2S 调度到服务器线程，NeoForge handler 使用主线程执行。S
 ## 约束与陷阱
 
 - payload 完整声明以 `ModPayloads` 为准，扩展后核对类型、codec 和绑定视图。
-- 公共声明和服务端入口只使用共享接收契约，客户端 Implementation 由客户端入口显式提供。
+- 公共 S2C 声明和服务端入口只使用 type/codec；状态接收函数由客户端绑定清单持有。
 - 需要"每玩家独立"的数据不要写进共享缓存或共享目录（见「按需模拟的网络约定」）。
 
 ## 相关文档

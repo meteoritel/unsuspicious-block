@@ -54,7 +54,7 @@ import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import java.util.function.BiConsumer;
 
-/** 公共网络声明：统一维护类型、codec 与基于接收契约的分发函数。 */
+/** 公共网络声明：维护通道类型、codec 与 C2S 服务端处理函数。 */
 public final class ModPayloads {
     public static final String PROTOCOL_VERSION = "4.10";
 
@@ -108,11 +108,10 @@ public final class ModPayloads {
                     ScenarioSimulationHandler::handleRequest)
     );
 
-    /** 下行通道声明，分发函数只引用中立接收契约。 */
+    /** 下行通道声明：类型与编解码由公共网络层持有，客户端接收绑定留在 client。 */
     public record S2C<T extends CustomPacketPayload>(
             CustomPacketPayload.Type<T> type,
-            StreamCodec<RegistryFriendlyByteBuf, T> streamCodec,
-            BiConsumer<ClientPayloadReceiver, T> handler) {
+            StreamCodec<RegistryFriendlyByteBuf, T> streamCodec) {
         private S2CSpec<T> serverSpec() {
             return new S2CSpec<>(type, streamCodec);
         }
@@ -120,42 +119,24 @@ public final class ModPayloads {
 
     /** 同一声明供公共 codec 注册和客户端处理绑定使用。 */
     public static final List<S2C<?>> S2C_PAYLOADS = List.of(
-            new S2C<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive),
-            new S2C<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC,
-                    ClientPayloadReceiver::receive)
+            new S2C<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC),
+            new S2C<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC),
+            new S2C<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC),
+            new S2C<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC),
+            new S2C<>(SyncJournalStateIncrementalPayload.TYPE, SyncJournalStateIncrementalPayload.STREAM_CODEC),
+            new S2C<>(SyncJournalLogPayload.TYPE, SyncJournalLogPayload.STREAM_CODEC),
+            new S2C<>(SyncJournalLogSnapshotStartPayload.TYPE, SyncJournalLogSnapshotStartPayload.STREAM_CODEC),
+            new S2C<>(SyncJournalLogTableChunkPayload.TYPE, SyncJournalLogTableChunkPayload.STREAM_CODEC),
+            new S2C<>(SyncJournalLogSnapshotEndPayload.TYPE, SyncJournalLogSnapshotEndPayload.STREAM_CODEC),
+            new S2C<>(JournalLogDeleteResultPayload.TYPE, JournalLogDeleteResultPayload.STREAM_CODEC),
+            new S2C<>(SyncCatFavorPayload.TYPE, SyncCatFavorPayload.STREAM_CODEC),
+            new S2C<>(SyncReaderScanResultPayload.TYPE, SyncReaderScanResultPayload.STREAM_CODEC),
+            new S2C<>(SyncEnchantmentRevealListPayload.TYPE, SyncEnchantmentRevealListPayload.STREAM_CODEC),
+            new S2C<>(NotifyTableCompletionRewardPayload.TYPE, NotifyTableCompletionRewardPayload.STREAM_CODEC),
+            new S2C<>(SyncScenarioCachePayload.TYPE, SyncScenarioCachePayload.STREAM_CODEC),
+            new S2C<>(SyncScenarioResultPayload.TYPE, SyncScenarioResultPayload.STREAM_CODEC),
+            new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC),
+            new S2C<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC)
     );
 
     public static final List<S2CSpec<?>> S2C_SPECS = serverSpecs();

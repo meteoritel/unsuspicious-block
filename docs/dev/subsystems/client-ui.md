@@ -14,9 +14,9 @@
 | UI 侧状态 | `client/ui/support/`：`ArchaeologyJournalClientState`、`LootTableManagementClientState`、`ClientLootTableLanguageStore`、`JournalUiPreferencesStore`、`UiPanelRegistry`、`UiTextPalette`… |
 | HUD 与模型 | `client/hud/`：`CatFavorHud`、`SuspiciousReaderHud`；`client/model/MessengerCatClothesModel`、`client/renderer/layer/`（项圈与职业装饰层） |
 | 渲染 | `client/renderer/`：`ModEntityRenderers`、`ModModelLayers`、各实体渲染器、`SuspiciousReaderRangeHighlight`、`CatFavorShieldRenderer`、`ShimmerSurfaceRenderer`（淘洗，见 [淘洗系统](panning.md)） |
-| 分解预览 | `client/anvil/`、`client/grindstone/`（各含 `Breakdown` / `Calculator` / 行构建器 / `TooltipAppender`）；两者共用的编排层为 `client/tooltip/BreakdownPreview` |
+| 分解预览 | `client/anvil/`、`client/grindstone/`（各含 `Breakdown` / `Calculator` / 行构建器）；`client/tooltip/BreakdownPreview` 持有容器登记清单与统一编排 |
 | tooltip 基础 | `core/text/TooltipBuilder`（语义色表唯一出口，规范见 [文本格式规范](../foundation/text-format.md)）；`client/tooltip/` 另有 `BreakdownPreview` 与客户端桥实现 `ClientTooltipHooks` |
-| 按键与网络 | `client/keybind/ModKeyBindings`；S2C 接收器遍历 `ModPayloads.S2C_PAYLOADS`（清单见 [网络与同步](../foundation/network.md)） |
+| 按键与网络 | `client/keybind/ModKeyBindings` 与客户端能力清单；S2C 接收器遍历 `ClientPayloadBindings`（清单见 [网络与同步](../foundation/network.md)） |
 | Mixin | `client/mixin/`：`AbstractContainerScreenAccessor`、`EnchantmentScreenMixin`、`ClientLanguageMixin`、`HumanoidPanningMixin`；Fabric 另有 `ItemInHandPanningMixin`。全清单见 [Mixin](../foundation/mixin.md) |
 | 平台差异 | 按键注册：`KeyBindingHelper` vs `RegisterKeyMappingsEvent`；GUI 内按键：`ScreenKeyboardEvents` vs `ScreenEvent.KeyPressed.Pre`；第一人称淘盘动画：事件 vs mixin；世界/HUD 渲染阶段事件名不同 |
 
@@ -32,24 +32,24 @@ ArchaeologyJournalUi.registerOpener(state -> Minecraft.setScreen(new Archaeology
   └─ 打开 ArchaeologyJournalScreen，传入 ClientState
 ```
 
-`ArchaeologyJournalScreen` 从 `ArchaeologyJournalClientState` 读目录/进度/日志数据，通过 `JournalViewModel` 组织视图，渲染 `JournalBookBackground` + 各 panel。管理与帮助入口由 kit `UiControl` 配合 `JournalControls` 的侧签皮肤提供；外链通过 kit 模态展示完整地址、复制和确认打开。
+`ArchaeologyJournalScreen` 从 `ArchaeologyJournalClientState` 读目录与进度，从 `ArchaeologyJournalLogLocalStore` 读日志，从 `JournalUiPreferencesStore` 读写偏好，通过 `JournalViewModel` 组织视图，渲染 `JournalBookBackground` + 各 panel。管理与帮助入口由 kit `UiControl` 配合 `JournalControls` 的侧签皮肤提供；外链通过 kit 模态展示完整地址、复制和确认打开。
 
 **状态同步**
 
 ```text
-S2C payload ──► ArchaeologyJournalClientState / *ClientState
-                  ├─ 目录：哈希不一致 → 请求全量；进度：增量包 + 间隙检测（丢包 → 全量重同步）
-                  ├─ 日志：分片快照会话
-                  └─ 表解锁 / 物品解锁 / 100% 完成 → 回调桥接 → JournalUnlockToast
+S2C payload ──► ClientPayloadBindings ──► JournalClientConnection 入队与 tick 应用
+                  ├─ ArchaeologyJournalClientState：目录哈希、进度与间隙恢复、解锁通知
+                  ├─ ArchaeologyJournalLogLocalStore / JournalMirror：日志分片快照与增量
+                  └─ 各专属 ClientState：猫族、扫描、附魔与模拟状态
 客户端 tick ──► 按键处理、扫描高亮、客户端状态清理
-断连 ──► 落盘 UI 偏好 → resetOnDisconnect（含各客户端状态 reset）
+连接切换 / 断连 ──► JournalClientConnection 保存旧路径 → 复位连接状态与已登记回调
 ```
 
 ## 3. 关键类
 
 | 类 | 职责 |
 |---|---|
-| `client/ui/support/ArchaeologyJournalClientState` | 考古笔记核心状态（目录/进度/日志缓存 + 解锁通知 + UI 偏好） |
+| `client/ui/support/ArchaeologyJournalClientState` | 考古笔记目录/进度状态与解锁通知；日志由本地 store 持有，偏好由 `JournalUiPreferencesStore` 持有 |
 | `client/ui/screen/ArchaeologyJournalScreen` / `JournalViewModel` | 主屏幕：组合书本背景与各面板；视图状态：分类切换、展开路径、右页标签页 |
 | 独立库 `UiScreen` / `UiDocument` | 根输入生命周期与声明式文档排版、裁剪和命中 |
 | `client/ui/overlay/JournalOverlays` | 当前场景 kit 层的所有权及准备/关闭业务 |
@@ -65,13 +65,15 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 ## 4. 客户端初始化
 
-两个平台客户端入口职责高度对称（见 [架构总览](../foundation/architecture.md) 的客户端初始化），都完成：按键注册、渲染器/模型层注册、Screen 注册、S2C 接收器注册、Tooltip 组件注册、HUD/世界渲染注册、客户端 tick 驱动、断连重置，以及 `ClientTooltipBridge.install(...)` 与三条解锁/完成通知回调的注册。关键清单模式（与 [注册架构](../foundation/registration.md) 一致，平台客户端自动遍历）：`ModEntityRenderers.REGISTRY_MANIFEST`（实体渲染器）、`ModModelLayers`（模型层 `LayerDefinition`）、`ModPayloads.S2C_PAYLOADS`（S2C 接收器）。
+两个平台客户端入口职责高度对称（见 [架构总览](../foundation/architecture.md) 的客户端初始化），都完成：按键注册、渲染器/模型层注册、Screen 注册、S2C 接收器注册、Tooltip 组件注册、HUD/世界渲染注册、客户端 tick 驱动、断连重置，以及 `ClientTooltipBridge.install(...)` 与三条解锁/完成通知回调的注册。客户端能力按职责维护窄清单：`ModKeyBindings.MANIFEST`、`ModEntityRenderers`、`ModBlockEntityRenderers`、`ModModelLayers`、`ModMenuScreens`、`ModTooltipComponents`、`ModHudRenderers`、`ModWorldRenderers` 和 `ClientPayloadBindings`；平台入口只负责 Loader 事件适配。
 
 ## 5. 客户端状态管理
 
 | 状态类 | 职责 |
 |---|---|
-| `ArchaeologyJournalClientState` | 考古笔记核心状态（目录/进度/日志缓存 + 解锁通知 + UI 偏好） |
+| `ArchaeologyJournalClientState` | 目录、结构、进度读模型与解锁、完成、日志删除结果通知 |
+| `JournalUiPreferencesStore` | UI 偏好、运行期目录选择与按世界隔离的 NBT 读写 |
+| `ArchaeologyJournalLogLocalStore` / `JournalMirror` | 本地日志镜像、快照会话与持久化 |
 | `LootTableManagementClientState` | 服务端权威战利品表索引、权限和多语言名称快照；断连时 `reset()` 清条目/翻译与编辑权限 |
 | `ClientLootTableLanguageStore` | 游戏资源来源索引、服务端名称内存快照和动态语言补充 |
 | `SuspiciousReaderClientState` / `ReaderScanHudState` | 解析仪按键与扫描等级切换；整批扫描汇总、目标聚焦与世界描边生命周期 |
@@ -81,13 +83,13 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 ### 5.1 ArchaeologyJournalClientState 核心
 
-这是最复杂的客户端状态类，管理服务端推送的所有数据并驱动 UI：
+该状态类持有服务端目录与进度读模型，并提供通知回调：
 
 - **连接数据**：`ConnectionState` 持有目录、结构、进度、哈希与同步标记；连接切换整体替换。`JournalClientConnection` 持有原连接、epoch 和 JournalMirror，tick 加载偏好后应用同连接报文；平台回调只入队。
 - **同步处理**：`receiveCatalogHash` 与本地比对，不一致则请求全量目录；`receiveState`（全量）**首次同步不弹 Toast**（避免重进世界重复通知），后续检测新解锁；`receiveStateIncremental`（增量）做**间隙检测**——`incomingRevision > lastNotifiedRevision + 1` 说明中间丢包，请求全量重同步，仅对变更表做 Diff；`requestFullStateWithCooldown` 限流 2s 防请求风暴。
-- **解锁通知**：`tableUnlockNotifier` / `itemUnlockNotifier` / `tableCompletionNotifier` 是回调接口，由平台客户端注入（桥接到 `JournalUnlockToast`），解耦状态层与 UI 层；`detectAndNotifyUnlocks` 比较新旧状态，**仅对追踪目录中的表**触发。
+- **通知**：`ModClientLifecycle.install` 将 `tableUnlockNotifier` / `itemUnlockNotifier` / `tableCompletionNotifier` 接到 `JournalUnlockToast`，将日志删除结果接到玩家提示；状态类通过回调发布通知。`detectAndNotifyUnlocks` 比较新旧状态，**仅对追踪目录中的表**触发。
 - **右页组合**：`RightPageContainer` 的页描述统一内容、书签和 chrome，并持有 `chromeControls()` 返回的实际控件；`ArchaeologyPage` 组合网格与场景栏，LOG 按业务模式解析内容。Screen 通过统一 chrome 注册和 `ReadingState` 保存/恢复接线；分页状态仍由活动面板维护，扩展路线见 [笔记 GUI](../internals/journal-ui-internals.md)。
-- **世界偏好**：`WorldPreferences` 持有排序、搜索、收藏、分组、右页与运行期目录选择。切换先冻结旧路径待写，再替换默认值并加载新路径；无文件时保留默认值。应用级 notifier 与失效计数保留；`persistenceSuppress` 只用于加载。
+- **世界偏好**：`JournalUiPreferencesStore` 持有排序、搜索、收藏、分组和右页的持久化字段，以及仅限本次连接的目录选择、展开与位置。切换先冻结旧路径待写，再恢复默认值并加载新路径；无文件时保留默认值。应用级 notifier 与失效计数保留。
 - **读取与保存**：getter 读取内存或保护性副本；正常加载、协议推进、超时与落盘仅在客户端 tick，退出/关闭时显式 flush。目录投影版本由目录与场景 revision 单向合成；ViewModel 和 WelcomeStatsPanel 同时识别连接 epoch，按版本复制日志。
 
 ## 6. 笔记 GUI
@@ -109,10 +111,10 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 - **汇总**：新扫描整批替换旧结果，显示仍有效的可疑方块/容器总数，按物品 ID、展示名及封存来源分组，最多展示三组物品；其余组数和空方块数显示在底部。所有目标保留用于定位，不受展示行数限制。空范围扫描同样发送 `SyncReaderScanResultPayload`，清除旧标记并显示"未发现目标"，不再写聊天栏。
 - **目标详情**：仅主手或副手持扫描仪时显示，换下立即隐藏；沿相机视线在 32 格内与已扫描方块包围盒相交，忽略表层沙子的遮挡，优先最近目标，切换确认延迟 100ms。详情仅显示物品/数量、距离、相对玩家脚部的上下格数，封存者按需追加；容器仅显示内容未知，不解析容器战利品。长物品名最多两行，数量保留在首行；其余长文本按像素宽度省略。
-- **布局与生命周期**：两个面板按文本、图标、数量与内边距自适应宽度（最大 180 GUI 像素，受窗口可用宽度限制）；详情在准星右下方，靠边时向内收，小窗口两面板相交时优先显示详情。打开其他 GUI、F1 时不绘制；`H` 仅控制扫描仪两个面板及聚焦强调，不影响 Jade 或基础世界标记。`ReaderScanHudState` 统一持有结果、图标、分组与聚焦目标，结果和世界描边共用单调时钟的 10 秒寿命（淡入 150ms、淡出 500ms），持续聚焦可延长阅读，整批最多保留 30 秒；新扫描重新计时，跨维度、断线、到期清理。每客户端 tick 仅检查已加载区块的缓存目标，移除方块实体消失或区块卸载的目标并更新汇总，**不加载新区块**。
-- **渲染预算与原版字体边界**：图标和分组在接收/结果变化时缓存，目标选择每 tick 执行，渲染只读取快照；派生文本、测量宽度与面板几何随快照缓存，键为语言实例与窗口尺寸。基础可疑方块描边为高不透明度青色、空方块弱灰色、容器紫色，取消连续闪烁，聚焦目标增加浅色外框；透视绘制使用已有无深度测试 `RenderType`（不写深度），线宽增至 3 像素。alpha 字节低于 4 时跳过 HUD 绘制，避免原版字体强制恢复不透明。
+- **布局与生命周期**：两个面板按文本、图标、数量与内边距自适应宽度（最大 180 GUI 像素，受窗口可用宽度限制）；详情在准星右下方，靠边时向内收，小窗口两面板相交时优先显示详情。打开其他 GUI、F1 时不绘制；`H` 仅控制扫描仪两个面板及聚焦强调，不影响 Jade 或基础世界标记。`ReaderScanHudState` 持有结果、图标、分组与聚焦目标，结果和世界描边共用单调时钟的 10 秒寿命（淡入 150ms、淡出 500ms），持续聚焦可延长阅读，整批最多保留 30 秒；新扫描重新计时，跨维度、断线、到期清理。每客户端 tick 仅检查已加载区块的缓存目标，移除方块实体消失或区块卸载的目标并更新汇总，**不加载新区块**。
+- **渲染预算与原版字体边界**：图标和分组在接收/结果变化时缓存，目标选择每 tick 执行，HUD 读取扫描快照。派生文本、测量宽度与面板几何保存在 `Snapshot.hud` 的 `HudLayout`，仅由 HUD 渲染访问；扫描数据变化时换新，tick 仅延时则复用，语言实例或窗口尺寸变化时失效。基础可疑方块描边为高不透明度青色、空方块弱灰色、容器紫色，聚焦目标增加浅色外框；透视绘制使用集中管理的无深度测试 `ModRenderTypes`（不写深度），线宽为 3 像素。alpha 字节低于 4 时跳过 HUD 绘制，避免原版字体强制恢复不透明。
 
-平台客户端在 HUD 渲染事件中调用这两个 HUD 的 `render(guiGraphics)`。图标、扫描面板表面与文字裁剪使用 kit；显示门禁、快照、锚点和淡出仍由 HUD 业务持有。
+平台客户端在 HUD 渲染事件中调用 `ModHudRenderers.renderAll`，按清单顺序绘制。图标、扫描面板表面与文字裁剪使用 kit；显示门禁、快照、锚点和淡出仍由 HUD 业务持有。
 
 ## 8. 渲染
 
@@ -127,13 +129,13 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 | `MerchantCatRenderer` | 猫猫商人 | 职业装饰 |
 | `LanternPetRenderer` | 灵魂提灯宠物 | 灵魂灯笼外形 |
 
-**灵体半透明与职业装饰**：`MessengerCatRenderer` 用自定义 `MultiBufferSource` 包装原版猫皮肤，统一染成淡蓝青色半透明（alpha 由 `SpiritCat.getRenderAlphaProgress` 驱动，实现显现/消散渐变），并在其上叠加 `MessengerCatCollarLayer`（复刻原版项圈层）与 `MessengerCatClothesLayer`（职业装饰）。`MessengerCatClothesModel` 不自行播放动画——它的 `head` / `body` 枢轴与原版 `CatModel` 完全对齐，渲染器把**同一份烘焙根部件**交给两者共享，装饰层每帧用 `ModelPart.copyFrom` 把原版骨骼姿态拷到装饰骨骼上，因此行走、坐下、躺卧等全部原版猫动画自动生效；装饰贴图为独立的 `textures/entity/cat/messenger_cat_clothes.png`（64x64），与随机抽取的原版猫皮肤分两次绘制。
+**灵体半透明与职业装饰**：`SpiritCatRenderer` 统一信使、商人和剑士的 `MultiBufferSource` 色罩、悬浮、满光与无阴影配方，子类提供 tint、缩放与 RenderType；alpha 由 `SpiritCat.getRenderAlphaProgress` 驱动。`MessengerCatRenderer` 保留躺卧/睡眠玩家偏移，并叠加 `MessengerCatCollarLayer` 与 `MessengerCatClothesLayer`。`MessengerCatClothesModel` 的 `head` / `body` 枢轴与原版 `CatModel` 对齐，渲染器将同一份烘焙根部件交给两者共享，装饰层每帧用 `ModelPart.copyFrom` 拷贝原版骨骼姿态；装饰贴图为独立的 `textures/entity/cat/messenger_cat_clothes.png`（64x64），与原版猫皮肤分别绘制。
 
 ### 8.2 方块实体与世界渲染
 
 `PotteryWheelRenderer` 渲染陶轮方块实体的内容。
 
-`SuspiciousReaderRangeHighlight` 在半透明方块渲染之后绘制扫描结果透视描边与聚焦强调（数据来自 `SyncReaderScanResultPayload` 同步的 `ReaderScanHudState`）；`CatFavorShieldRenderer` 在九命触发时绘制保护罩（球面顶点静态初始化，仅逐帧写 alpha）。平台客户端在 `AFTER_TRANSLUCENT` / `AFTER_TRANSLUCENT_BLOCKS` 阶段调用这两个渲染器。
+`ModWorldRenderers` 按顺序绘制扫描结果透视描边与聚焦强调（`SuspiciousReaderRangeHighlight`）、猫之恩惠保护罩（`CatFavorShieldRenderer`）和淘洗波光（`ShimmerSurfaceRenderer`）。平台分别在 Fabric `AFTER_TRANSLUCENT` 与 NeoForge `AFTER_TRANSLUCENT_BLOCKS` 阶段调用清单；`ModRenderTypes` 集中持有各自 GL setup/clear，保留不同的深度测试、深度写入与剔除语义。
 
 ## 9. 铁砧 / 砂轮成本分解
 
@@ -141,10 +143,10 @@ S2C payload ──► ArchaeologyJournalClientState / *ClientState
 
 | 包 | 类 | 职责 |
 |---|---|---|
-| `anvil/` | `AnvilBreakdown` / `AnvilBreakdownCalculator` / `AnvilBreakdownTooltipBuilder` / `AnvilBreakdownTooltipAppender` | 计算等级成本、附魔、修复、重命名、不兼容惩罚、累积惩罚，并构建分解 tooltip 行 |
-| `grindstone/` | `GrindstoneBreakdown` / `Calculator` / `Builder` / `Appender` | 预览将被移除的附魔、保留的诅咒、返还经验范围 |
+| `anvil/` | `AnvilBreakdown` / `AnvilBreakdownCalculator` / `AnvilBreakdownTooltipBuilder` | 计算等级成本、附魔、修复、重命名、不兼容惩罚、累积惩罚，并构建分解 tooltip 行 |
+| `grindstone/` | `GrindstoneBreakdown` / `Calculator` / `Builder` | 预览将被移除的附魔、保留的诅咒、返还经验范围 |
 
-两套 Calculator 与 Breakdown record 保持独立（算法不同），共用的编排（`appendIfApplicable` 通用形态、`hasRevealItem`、`buildInputPenalty`）在 `client/tooltip/BreakdownPreview`。平台客户端在 tooltip 事件中调用 `appendIfApplicable`，**仅当玩家持有猫之瞳时**追加分解行。
+两套 Calculator 与 Breakdown record 保持独立（算法不同），共用的编排（`appendIfApplicable` 通用形态、`hasRevealItem`、`buildInputPenalty`）在 `client/tooltip/BreakdownPreview`。平台客户端在 tooltip 事件中调用 `BreakdownPreview.appendRegistered` 一次；登记清单负责 Screen/menu/槽位差异，**仅当玩家持有猫之瞳时**追加分解行。
 
 ## 10. 附魔揭示客户端
 
@@ -174,10 +176,10 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 
 ## 14. 扩展点：新增渲染器 / 面板 / HUD / 分解 / Toast / 按键
 
-- **新增实体渲染器**：在 `ModEntityRenderers.REGISTRY_MANIFEST` 加条目，在 `ModModelLayers` 加模型层。
+- **新增实体渲染器**：在 `ModEntityRenderers` 加条目，在 `ModModelLayers` 加模型层；方块实体渲染器、Menu Screen、tooltip component、HUD 与世界渲染分别加到对应窄清单。
 - **新增 GUI 面板**：在 `panel/` 实现，由对应 `screen/` 组合；实现 `LayoutAware` / `UiStateful` 并在创建处向 `UiPanelRegistry` 注册一次。
-- **新增 HUD 元素 / 按键**：参考 `CatFavorHud`，在平台客户端 HUD 事件中调用；按键在 `ModKeyBindings` 注册并在客户端 tick 处理，**默认键不要写进文档当断言**。
-- **新增 tooltip 分解**：参考 `AnvilBreakdownTooltipAppender`，在 tooltip 事件中按条件追加；取色只从 `TooltipBuilder` 取（见 [文本格式规范](../foundation/text-format.md)）。
+- **新增 HUD 元素 / 按键**：HUD 加入 `ModHudRenderers` 并在自身实现显示门禁；按键加入 `ModKeyBindings.MANIFEST`，由相应客户端 tick 处理输入。**默认键以代码定义为准**。
+- **新增 tooltip 分解**：在 `BreakdownPreview` 增加登记项；取色只从 `TooltipBuilder` 取（见 [文本格式规范](../foundation/text-format.md)）。
 - **新增 Toast**：参考 `JournalUnlockToast`，在 `ArchaeologyJournalClientState` 注册回调。
 - **新增模态**：使用 `UiModalStack`、`UiOverlay` 或 `UiLightbox`；将实际作用域交给根 router，业务清理放在层关闭回调。
 - **新增可滚动列表 / 控件组**：使用 `UiListView` 或 `UiScrollView` + `UiControlGroup`，按业务 key 复用；焦点由实际成员树贡献。

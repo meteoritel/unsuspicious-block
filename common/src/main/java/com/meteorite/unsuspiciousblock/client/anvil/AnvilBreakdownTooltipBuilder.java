@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.BreakdownPreview;
+
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 
 import net.minecraft.network.chat.Component;
@@ -12,7 +14,7 @@ import java.util.List;
 /**
  * 铁砧成本分解 tooltip 行构建器。
  * 将 {@link AnvilBreakdown} 转换为可渲染的 {@link Component} 列表，
- * 供 {@link AnvilBreakdownTooltipAppender} 追加到原版物品 tooltip 之后。
+ * 供 {@link BreakdownPreview} 追加到原版物品 tooltip 之后。
  *
  * <p>样式约定遵循 docs/dev/foundation/text-format.md 的语义色表（2026-09-15 起统一走 {@code TooltipBuilder}
  * 常量）：标签行 LABEL，标题/总计 TITLE，不兼容/过于昂贵/惩罚增加 NEGATIVE，

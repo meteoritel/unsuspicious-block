@@ -115,7 +115,7 @@ Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteor
 - 在 Jade 的方块信息中显示已扫描出的可疑方块战利品。
 - 闪烁的光：通过实体服务端数据提供器按需同步剩余游戏刻，客户端显示距离自然消失的分钟与秒数（秒向上取整），世界生成点显示“不会自然消失”。未收到服务端数据时不显示寿命；显示随 Jade 数据刷新更新。
 - `core.plugin.jade.JadeServerProviders` 注册服务端数据提供者，`client.plugin.jade.JadeClientProviders` 注册显示组件，共享字段由 `JadeData` 声明。
-- `ModClientLifecycle.install` 确认 Jade 存在后惰性安装展示回调。Fabric 的插件发现在 `CLIENT_STARTED`，NeoForge 在 `FMLLoadCompleteEvent`；安装分别位于客户端初始化和 client setup。中立发现桥只引用公共契约。
+- `JadePlugin.register` 装配服务端 provider；[`JadeClientPlugin.registerClient`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jade/JadeClientPlugin.java) 直接装配客户端 provider。Fabric 的 `jade` entrypoint 和 NeoForge 的 `@WailaPlugin` 扫描发现这两个 common 入口；插件构造不访问客户端实现，Jade 仅在物理客户端调用 `registerClient`。
 
 ### 4.2 JEI（配方查看）
 

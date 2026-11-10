@@ -44,9 +44,15 @@ event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
 | 清单类 | 用途 | 遍历方法 |
 |---|---|---|
-| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `S2C_PAYLOADS` |
-| `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(BiConsumer)` |
-| `ModModelLayers` | 模型层注册清单 | `forEach(BiConsumer)` |
+| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `S2C_SPECS`；客户端遍历 `ClientPayloadBindings` |
+| `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(EntityRendererRegistrar)` |
+| `ModModelLayers` | 模型层注册清单 | `forEach(LayerRegistrar)` |
+| `ModBlockEntityRenderers` | 方块实体渲染器注册清单 | `forEach(RendererRegistrar)` |
+| `ModMenuScreens` | Menu 与 Screen 注册清单 | `forEach(ScreenRegistrar)` |
+| `ModTooltipComponents` | 客户端 tooltip component 工厂清单 | 平台事件遍历 |
+| `ModKeyBindings` | 按键注册清单 | 平台遍历 `MANIFEST` |
+| `ModHudRenderers` | HUD 绘制清单 | `renderAll`，各 HUD 保留显示门禁 |
+| `ModWorldRenderers` | 世界叠加绘制清单 | `renderAll`，平台保留世界阶段适配 |
 
 详见 [网络与同步](network.md) 与 [客户端与 GUI](../subsystems/client-ui.md)。
 

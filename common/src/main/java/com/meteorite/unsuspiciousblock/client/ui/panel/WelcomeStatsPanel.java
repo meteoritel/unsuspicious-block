@@ -8,6 +8,8 @@ import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import net.minecraft.client.Minecraft;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
@@ -84,7 +86,7 @@ public final class WelcomeStatsPanel implements UiInputTarget {
         int rightColumnX = contentX + columnWidth + COLUMN_GAP;
         int firstRowY = firstSeparatorY + 14;
 
-        ArchaeologyJournalLogState logState = ArchaeologyJournalClientState.getLogState();
+        ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
         drawMetric(graphics, font, contentX, firstRowY, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.lifetime_entries",
                 Long.toString(this.lifetimeEntries));
@@ -147,14 +149,14 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     }
 
     private void refreshSnapshot() {
-        long epoch = ArchaeologyJournalClientState.getConnectionEpoch();
-        long logRevision = ArchaeologyJournalClientState.getLogRevision();
+        long epoch = JournalClientConnection.epoch();
+        long logRevision = ArchaeologyJournalLogLocalStore.getRevision();
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         if (epoch == this.lastConnectionEpoch && logRevision == this.lastLogRevision && catalogRevision == this.lastCatalogRevision) {
             return;
         }
 
-        ArchaeologyJournalLogState logState = ArchaeologyJournalClientState.getLogState();
+        ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
         this.lifetimeEntries = logState.getLifetimeEntryCount(LootSourceType.ARCHAEOLOGY);
         this.currentEntries = logState.getTotalEntryCount();
         this.notedEntries = logState.getTables().values().stream()

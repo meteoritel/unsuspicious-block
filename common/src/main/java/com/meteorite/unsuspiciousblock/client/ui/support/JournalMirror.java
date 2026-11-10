@@ -24,8 +24,7 @@ import java.util.function.LongSupplier;
 
 /** 单个连接的日志会话迁移；时间与重同步动作由宿主注入。 */
 public final class JournalMirror {
-    private static final long RESYNC_COOLDOWN_MS = 2000L;
-    private final LongSupplier clock;
+    private final ResyncPolicy resyncPolicy;
     private final Runnable requestSnapshot;
     private ArchaeologyJournalLogState logState = new ArchaeologyJournalLogState();
     private @Nullable UUID currentSessionId;
@@ -33,12 +32,11 @@ public final class JournalMirror {
     private final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
     private long lastAppliedSequence;
     private long revision;
-    private long lastSnapshotRequestMs;
     private boolean dirty;
     private boolean initialized;
 
     public JournalMirror(LongSupplier clock, Runnable requestSnapshot) {
-        this.clock = clock;
+        this.resyncPolicy = new ResyncPolicy(clock);
         this.requestSnapshot = requestSnapshot;
     }
 
@@ -150,11 +148,9 @@ public final class JournalMirror {
     // 请求日志快照重同步（带限流），用于 sessionId 不匹配时的恢复路径
     // 清除本地 sessionId 后向服务端请求全新快照，使客户端重新对齐服务端权威状态
     private void requestLogSnapshotWithCooldown() {
-        long now = clock.getAsLong();
-        if (now - lastSnapshotRequestMs < RESYNC_COOLDOWN_MS) {
+        if (!resyncPolicy.tryRequest()) {
             return;
         }
-        lastSnapshotRequestMs = now;
         // 清除旧会话状态，允许后续快照重建基线
         currentSessionId = null;
         lastAppliedSequence = 0L;

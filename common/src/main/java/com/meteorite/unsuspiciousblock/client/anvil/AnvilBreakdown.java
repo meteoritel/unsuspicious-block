@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.anvil;
 
+import com.meteorite.unsuspiciousblock.client.tooltip.BreakdownPreview;
+
 import net.minecraft.core.Holder;
 import net.minecraft.world.item.enchantment.Enchantment;
 import org.jetbrains.annotations.Nullable;
@@ -9,7 +11,7 @@ import java.util.List;
 /**
  * 铁砧成本分解数据。
  * 由 {@link AnvilBreakdownCalculator} 在客户端从 {@link net.minecraft.world.inventory.AnvilMenu}
- * 当前槽位状态镜像原版 {@code createResult} 逻辑计算得出，供 {@link AnvilBreakdownTooltipAppender} 追加到 tooltip。
+ * 当前槽位状态镜像原版 {@code createResult} 逻辑计算得出，供 {@link BreakdownPreview} 追加到 tooltip。
  *
  * <p>所有 cost 字段单位均为「经验等级」，与 {@link net.minecraft.world.inventory.AnvilMenu#getCost()} 一致。
  * 各分量之和未必严格等于 {@link #total}：当其他 mod 改写铁砧算法时以 {@link #total} 为权威，

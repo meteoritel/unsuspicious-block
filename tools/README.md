@@ -25,7 +25,7 @@
 
 Java 引用读取屏蔽注释、字符串、字符与 text block，解析 import/static import、全限定引用及源码可确定的同包、通配导入类型。Loader API 和平台实现类型留在可见源集，客户端类型由客户端所有者消费。
 
-客户端所有者统一按模组根包下的 `client` 包及其子包识别，规则见 [boundaries.py](toolslib/boundaries.py)。core、公共 platform 和公共 Loader 入口只使用共享契约；Minecraft、Loader 客户端 API、渲染类型和 UI Kit 由客户端所有者消费。`ModPayloads` 使用中立接收契约，客户端入口提供处理实现。
+客户端所有者统一按模组根包下的 `client` 包及其子包识别，规则见 [boundaries.py](toolslib/boundaries.py)。core、公共 platform 和公共 Loader 入口只使用共享契约；Minecraft、Loader 客户端 API、渲染类型和 UI Kit 由客户端所有者消费。`ModPayloads` 的 S2C 只声明 type/codec，客户端接收函数由 `ClientPayloadBindings` 持有。
 
 隔离检查同时核对 common 的 core/client/platform 归属、Loader 的 client/platform 归属、保留的根入口以及 package 与源码路径的一致性。接线检查要求 Mixin package 限于专属注入包，客户端 Mixin 登记在 client 数组；SPI、元数据与反射加载的运行时语义按对应入口及实机验收核对。
 
