@@ -15,8 +15,8 @@ Unsuspicious Block 的文档按读者和职责组织。修改机制时，从开�
 | 开发、查询 API 或选择验证 | [开发流程](guides/development.md)、[API 查询](agents/api-lookup.md) |
 | 运行或修改校验、生成、诊断工具 | [仓库工具](../tools/README.md) |
 | 读写任务或讨论领域概念 | [issue 约定](agents/issue-tracker.md)、[triage 标签](agents/triage-labels.md)、[领域资料](agents/domain.md) |
-| 查实施目标与验收条件 | [实施计划](plan/README.md)、[产品规划](roadmap.md) |
-| 准备发布说明 | [下次发布草稿](todo/next-version-change.md) |
+| 查实施目标与验收条件 | [Issue 追踪器](agents/issue-tracker.md)|
+| 查发布记录 | [变更记录](../CHANGELOG.md) |
 
 ## 文档职责
 
@@ -29,9 +29,9 @@ Unsuspicious Block 的文档按读者和职责组织。修改机制时，从开�
 | `design/` | 已实现玩法的可观察规则；实现结构由开发文档描述 |
 | `guides/`、`agents/` | 开发操作与 Agent 按任务读取的工作约定 |
 | `wiki/`、`readme/` | 玩家使用说明；Wiki 页面按语言前缀平铺发布 |
-| `plan/`、`roadmap.md` | 目标、候选方案、未确认事项和验收条件 |
+| `roadmap.md` | 产品方向与候选能力；具体执行和验收由本地 Issue 追踪器管理 |
 
-本地任务放在 `.scratch/`，完成材料放在 `docs/archive/`；二者沿用 Git 忽略策略。公开资料的链接指向入库文档，生命周期说明使用行内代码记录本地去向。
+临时计划、spec 与 Issue 放在 `.scratch/`，完成材料归档到 `.local/archive/`；两者均不纳入 Git。公开资料的链接指向入库文档，生命周期说明使用行内代码记录本地去向。
 
 ## 事实归属
 
@@ -62,7 +62,7 @@ Unsuspicious Block 的文档按读者和职责组织。修改机制时，从开�
 
 ## 计划生命周期
 
-计划按[计划规范](plan/README.md)登记、实施和验收。实施完成后，将当前机制同步到权威文档，再归档计划并从活动索引移除。用户实机验收属于完成条件时，计划保留到该验收完成。
+计划统一按[Issue 追踪器](agents/issue-tracker.md)管理，实施与验收结果以对应 Issue 为准；归档条件、命名和索引更新遵循该约定。
 
 ## 相关文档
 

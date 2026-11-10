@@ -9,7 +9,7 @@ from toolslib.checks import Finding, execute
 from toolslib.markdown_links import links
 from toolslib.repo import repo_root, repository_files
 
-ENTRYPOINTS = ('docs/README.md', 'docs/dev/README.md', 'docs/plan/README.md', 'tools/README.md')
+ENTRYPOINTS = ('docs/README.md', 'docs/dev/README.md', 'tools/README.md')
 WIKI_ROOTS = ('docs/wiki/Home.md', 'docs/wiki/_Sidebar.md', 'docs/wiki/_Footer.md')
 
 

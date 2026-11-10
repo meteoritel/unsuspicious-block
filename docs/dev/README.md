@@ -34,7 +34,7 @@
 | 改淘洗生成 / 结算 / 客户端表现 | [淘洗系统](subsystems/panning.md) |
 | 改可疑方块 / 陶轮 / 标本箱 / 回溯粉 / 花火粉 / 便携容器 / 自定义配方 | [方块与物品](subsystems/blocks-items.md) |
 | 查图标图集槽位与 UV | [工具栏图标图集](internals/toolbar-icon-atlas.md) |
-| 新增可入库文档 / 写实施计划 | [文档维护](../README.md)与[计划规范](../plan/README.md) |
+| 新增可入库文档 / 写临时计划 | [文档维护](../README.md)与[Issue 追踪器](../agents/issue-tracker.md) |
 
 ## 子系统地图
 
@@ -60,4 +60,4 @@
 
 ## 维护入口
 
-文档职责、事实归属和写作规则见[文档维护](../README.md)。实施计划按[计划规范](../plan/README.md)登记和归档；工具选择见[仓库工具](../../tools/README.md)。
+文档职责、事实归属和写作规则见[文档维护](../README.md)。临时计划按[Issue 追踪器](../agents/issue-tracker.md)登记和归档；工具选择见[仓库工具](../../tools/README.md)。

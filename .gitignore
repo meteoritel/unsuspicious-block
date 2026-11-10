@@ -34,7 +34,6 @@ INSPIRATION.md
 .vscode
 
 docs/aegis
-docs/archive
 
 common/src/test
 common/logs
@@ -42,7 +41,7 @@ report
 /CONTEXT.md
 /docs/adr/
 /.zcodeignore
-/docs/plan/loot-performance/
+/docs/plan/
 
 # 诊断脚本（scripts/）的 Python 缓存残渣
 __pycache__/

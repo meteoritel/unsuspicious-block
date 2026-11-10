@@ -1,6 +1,6 @@
 # Triage 标签
 
-技能中的 canonical role 按下表映射为本地 issue 的 `Status:` 值。
+技能中的规范角色按下表映射为本地 Issue 的 `Status:` 值。状态名保留英文，Agent 说明默认使用简体中文。
 
 | 技能角色 | 本仓库状态值 | 含义 |
 |---|---|---|

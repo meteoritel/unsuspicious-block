@@ -248,7 +248,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 - `DERIVE` / `KEY_LOOKUP` / `RECORD` / `CHILD_RECORD`：派生签名 / 查询存储键缓存 / 更新计数、发现来源和增量候选索引 / 子表计数。精确候选首次加入索引时构造缓存预览，所以其 `PREVIEW_DETAIL` 会落在候选准备或 `RECORD` 内；原始索引构建计入任务创建。
 - `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 是**嵌套明细，已包含在父段中，不得再次相加**。未分配时间还包括任务创建/场景规划、循环、观测本身及时间片作用域维护。
 
-使用 [`scripts/loot_simulation_profile.py`](../../../scripts/loot_simulation_profile.py) 解析明确的 `/usb journal reload` 标记后的完整轮次，拒绝启动轮、未结束轮及重复表；用同一脚本导出基线和后续数据。原始热运行证据与操作说明保存在本地目录 `docs/archive/loot-performance/`——该目录含本机路径、存档摘要与原始日志，**不入库**（见 `.gitignore`），因此这里只写路径、不做链接。小任务的线程 CPU 可能因平台计时分辨率显示 0ms，不能据此断言零成本。最终性能收益需在相同观测模式、相同抽样次数和表集合、完成预热的条件下复测。
+使用 [`scripts/loot_simulation_profile.py`](../../../scripts/loot_simulation_profile.py) 解析明确的 `/usb journal reload` 标记后的完整轮次，拒绝启动轮、未结束轮及重复表；用同一脚本导出基线和后续数据。原始热运行证据、存档摘要与操作说明随对应本地 Issue 保存，完成后按 [Issue 追踪器](../../agents/issue-tracker.md)约定归档到 `.local/archive/`。小任务的线程 CPU 可能因平台计时分辨率显示 0ms，不能据此断言零成本。最终性能收益需在相同观测模式、相同抽样次数和表集合、完成预热的条件下复测。
 
 ## 5. 概率模拟：结果缓存与失效
 
@@ -448,4 +448,4 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 - **关闭**（默认）：`ArchaeologyJournalCatalog` 的收录门禁把调试表挡在收录闭包之外，`JournalCategoryLoader` 跳过调试分类资源，普通玩家的目录里不会出现任何调试条目。表本身仍是正常注册的战利品表（数据包资源无法按运行时开关条件化），只是没有游戏内路径会抽取它。
 - 开关口径与 `LootSimulationMetrics` 一致（系统属性优先、其次环境变量），common 层直接可读，两端行为一致。
 
-相关资源位于 `data/unsuspiciousblock/journal_categories/dev_debug.json`、`loot_table/archaeology/debug/` 和 `item_modifier/debug_*.json`。现已覆盖数组包装、天气/时间、超过 64 个函数、分析深度超限、A→B 引用和父表失效。具体步骤见 [函数捕获分点任务书](../../plan/loottable-function-capture-tasks.md) 的「第三轮修复与实机验收」。
+相关资源位于 `data/unsuspiciousblock/journal_categories/dev_debug.json`、`loot_table/archaeology/debug/` 和 `item_modifier/debug_*.json`。现已覆盖数组包装、天气/时间、超过 64 个函数、分析深度超限、A→B 引用和父表失效。执行材料按本地 Issue 约定保存在 `.scratch/`，当前机制以本篇和源码为准。
