@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.core.achievement.AchievementManager;
 import com.meteorite.unsuspiciousblock.core.achievement.ModAchievements;
 import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.core.journal.state.JournalLogMutation;
+import com.meteorite.unsuspiciousblock.core.journal.state.JournalLogMutation.Status;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
@@ -31,8 +33,9 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Objects;
 
-/** 日志同步处理器——管理日志条目的服务端持久化、增量同步、分片快照与删除。 */
+/** 日志网络校验、变更回执与快照分片；领域变更由 JournalLogMutation 实施。 */
 public final class JournalLogHandler {
 
     private JournalLogHandler() {}
@@ -44,23 +47,20 @@ public final class JournalLogHandler {
         if (session == null) {
             return;
         }
-        long normalizedGameTime = Math.max(0L, gameTime);
-        long normalizedDayTime = Math.max(0L, dayTime);
+        JournalLogMutation.FirstUnlock intent = new JournalLogMutation.FirstUnlock(tableId, lootSource, gameTime, dayTime);
         if (!session.isSeeded()) {
-            session.queueFirstUnlockMeta(tableId, lootSource, normalizedGameTime, normalizedDayTime);
+            session.queueFirstUnlockMeta(tableId, lootSource, intent.gameTime(), intent.dayTime());
             return;
         }
-        if (!session.mirroredState().setFirstUnlockMetaMin(tableId, lootSource, normalizedGameTime, normalizedDayTime)) {
-            return;
-        }
-        markTableDirty(player, tableId);
+        JournalLogMutation.Result result = mutations(player, session).apply(intent);
+        if (result.status() != Status.CHANGED) return;
         UUID sessionId = session.getSessionId();
         if (sessionId == null) {
             return;
         }
         Services.NETWORK.sendToPlayer(player,
                 SyncJournalLogPayload.setFirstUnlockMeta(sessionId, session.nextSequence(), tableId,
-                        lootSource, normalizedGameTime, normalizedDayTime));
+                        lootSource, intent.gameTime(), intent.dayTime()));
     }
 
     // 插入或更新挖掘日志条目，未 seed 时排队，已 seed 时增量同步并检测成就
@@ -73,8 +73,8 @@ public final class JournalLogHandler {
             session.queueUpsertEntry(tableId, entry);
             return;
         }
-        ArchaeologyJournalLogState.EntryUpsertResult result =
-                session.mirroredState().upsertEntryWithResult(tableId, entry);
+        JournalLogMutation.Result mutation = mutations(player, session).apply(new JournalLogMutation.Upsert(tableId, entry));
+        ArchaeologyJournalLogState.EntryUpsertResult result = Objects.requireNonNull(mutation.upsert());
         if (result.blocked()) {
             ArchaeologyJournalLogState.TableLogHistory table = session.mirroredState().getTable(tableId);
             int limit = table != null ? table.getEffectiveRetentionLimit() : 0;
@@ -87,8 +87,7 @@ public final class JournalLogHandler {
         if (!result.changed()) {
             return;
         }
-        markTableDirty(player, tableId);
-        if (crossesCacheMeIfYouCanThreshold(
+        if (JournalLogMutation.crossesAchievementThreshold(
                 result.previousLifetimeCount(), result.currentLifetimeCount())) {
             AchievementManager.grantIfNotAlready(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
         }
@@ -120,18 +119,7 @@ public final class JournalLogHandler {
         if (session.mirroredState().isEmpty()) {
             return;
         }
-        ArchaeologyJournalLogState state = session.mirroredState();
-        ArchaeologyJournalLogState backup = state.copy();
-        List<ResourceLocation> removedTables = List.copyOf(state.getTables().keySet());
-        state.clear();
-        if (!persistClearAll(player, removedTables)) {
-            state.copyFrom(backup);
-            MinecraftServer server = player.getServer();
-            if (server != null) {
-                JournalLogStorage.markAllDirty(server, player.getUUID());
-            }
-            return;
-        }
+        if (mutations(player, session).apply(new JournalLogMutation.ClearAll()).status() != Status.CHANGED) return;
         UUID sessionId = session.getSessionId();
         if (sessionId == null) {
             return;
@@ -150,16 +138,7 @@ public final class JournalLogHandler {
             session.queueClearTable(tableId);
             return;
         }
-        ArchaeologyJournalLogState state = session.mirroredState();
-        ArchaeologyJournalLogState.TableLogHistory history = state.getTable(tableId);
-        if (history == null || !state.removeTable(tableId)) {
-            return;
-        }
-        if (!persistTableNow(player, tableId)) {
-            state.putTable(tableId, history);
-            markTableDirty(player, tableId);
-            return;
-        }
+        if (mutations(player, session).apply(new JournalLogMutation.RemoveTable(tableId)).status() != Status.CHANGED) return;
         UUID sessionId = session.getSessionId();
         if (sessionId == null) {
             return;
@@ -176,112 +155,48 @@ public final class JournalLogHandler {
             return;
         }
 
-        ArchaeologyJournalLogState state = session.mirroredState();
+        ResourceLocation tableId = payload.tableId();
+        JournalLogMutation.Intent intent;
         switch (payload.scope()) {
-            case ENTRY -> deleteEntry(player, session, state, payload);
-            case BATCH -> deleteBatch(player, session, state, payload);
-            case TABLE -> deleteTable(player, session, state, payload);
-            case ALL -> deleteAll(player, session, state, payload);
-        }
-    }
-
-    private static void deleteEntry(ServerPlayer player, ArchaeologyJournalLogSyncSession session,
-                                    ArchaeologyJournalLogState state, DeleteJournalLogPayload payload) {
-        ResourceLocation tableId = payload.tableId();
-        UUID entryId = payload.entryId();
-        ArchaeologyJournalLogState.TableLogHistory history = tableId != null ? state.getTable(tableId) : null;
-        ExcavationLogEntry existing = history != null && entryId != null
-                ? history.getEntries().stream().filter(entry -> entry.entryId().equals(entryId)).findFirst().orElse(null)
-                : null;
-        ArchaeologyJournalLogState.TableLogHistory backup = history != null ? history.copy() : null;
-        if (tableId == null || entryId == null || existing == null || !state.removeEntry(tableId, entryId)) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-            return;
-        }
-        if (!persistTableNow(player, tableId)) {
-            state.putTable(tableId, backup);
-            markTableDirty(player, tableId);
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
-            return;
-        }
-        Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.deleteEntry(
-                session.getSessionId(), session.nextSequence(), tableId, entryId));
-        sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.SUCCESS, 1);
-    }
-
-    private static void deleteBatch(ServerPlayer player, ArchaeologyJournalLogSyncSession session,
-                                    ArchaeologyJournalLogState state, DeleteJournalLogPayload payload) {
-        ResourceLocation tableId = payload.tableId();
-        Set<UUID> entryIds = new LinkedHashSet<>(payload.entryIds());
-        ArchaeologyJournalLogState.TableLogHistory history = tableId != null ? state.getTable(tableId) : null;
-        if (tableId == null || history == null || entryIds.isEmpty()
-                || entryIds.size() > DeleteJournalLogPayload.MAX_BATCH_ENTRIES) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
-            return;
-        }
-        ArchaeologyJournalLogState.TableLogHistory backup = history.copy();
-        int removed = state.removeEntries(tableId, entryIds);
-        if (removed == 0) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-            return;
-        }
-        if (!persistTableNow(player, tableId)) {
-            state.putTable(tableId, backup);
-            markTableDirty(player, tableId);
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
-            return;
-        }
-        syncTable(player, session, tableId, state.getTable(tableId));
-        sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.SUCCESS, removed);
-    }
-
-    private static void deleteTable(ServerPlayer player, ArchaeologyJournalLogSyncSession session,
-                                    ArchaeologyJournalLogState state, DeleteJournalLogPayload payload) {
-        ResourceLocation tableId = payload.tableId();
-        ArchaeologyJournalLogState.TableLogHistory history = tableId != null ? state.getTable(tableId) : null;
-        if (tableId == null || history == null) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-            return;
-        }
-        ArchaeologyJournalLogState.TableLogHistory backup = history.copy();
-        int removed = state.clearEntries(tableId);
-        if (removed == 0) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-            return;
-        }
-        if (!persistTableNow(player, tableId)) {
-            state.putTable(tableId, backup);
-            markTableDirty(player, tableId);
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
-            return;
-        }
-        syncTable(player, session, tableId, state.getTable(tableId));
-        sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.SUCCESS, removed);
-    }
-
-    private static void deleteAll(ServerPlayer player, ArchaeologyJournalLogSyncSession session,
-                                  ArchaeologyJournalLogState state, DeleteJournalLogPayload payload) {
-        if (state.getTotalEntryCount() == 0) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-            return;
-        }
-        ArchaeologyJournalLogState backup = state.copy();
-        List<ResourceLocation> affectedTables = state.getTables().entrySet().stream()
-                .filter(entry -> entry.getValue().getTotalEntryCount() > 0)
-                .map(Map.Entry::getKey)
-                .toList();
-        int removed = state.clearAllEntries();
-        if (!persistTablesNow(player, affectedTables)) {
-            state.copyFrom(backup);
-            MinecraftServer server = player.getServer();
-            if (server != null) {
-                JournalLogStorage.markAllDirty(server, player.getUUID());
+            case ENTRY -> {
+                if (tableId == null || payload.entryId() == null) {
+                    sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
+                    return;
+                }
+                intent = new JournalLogMutation.RemoveEntries(tableId, Set.of(payload.entryId()));
             }
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
+            case BATCH -> {
+                Set<UUID> entryIds = new LinkedHashSet<>(payload.entryIds());
+                if (tableId == null || session.mirroredState().getTable(tableId) == null || entryIds.isEmpty()
+                        || entryIds.size() > DeleteJournalLogPayload.MAX_BATCH_ENTRIES) {
+                    sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
+                    return;
+                }
+                intent = new JournalLogMutation.RemoveEntries(tableId, entryIds);
+            }
+            case TABLE -> {
+                if (tableId == null) {
+                    sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
+                    return;
+                }
+                intent = new JournalLogMutation.ClearEntries(tableId);
+            }
+            case ALL -> intent = new JournalLogMutation.ClearAllEntries();
+            default -> throw new IllegalStateException("Unknown deletion scope: " + payload.scope());
+        }
+        JournalLogMutation.Result result = mutations(player, session).apply(intent);
+        if (result.status() != Status.CHANGED) {
+            sendDeleteResult(player, payload, result.status() == Status.FAILED
+                    ? JournalLogDeleteResultPayload.Result.INVALID : JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
             return;
         }
-        syncLogSnapshot(player);
-        sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.SUCCESS, removed);
+        switch (payload.scope()) {
+            case ENTRY -> Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.deleteEntry(
+                    session.getSessionId(), session.nextSequence(), tableId, payload.entryId()));
+            case BATCH, TABLE -> syncTable(player, session, tableId, session.mirroredState().getTable(tableId));
+            case ALL -> syncLogSnapshot(player);
+        }
+        sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.SUCCESS, result.removedCount());
     }
 
     // 更新当前表的自动保留上限，或按时间批量清理较旧的无备注日志
@@ -300,33 +215,18 @@ public final class JournalLogHandler {
             return;
         }
 
-        ArchaeologyJournalLogState state = session.mirroredState();
-        ArchaeologyJournalLogState.TableLogHistory existing = state.getTable(payload.tableId());
-        ArchaeologyJournalLogState.TableLogHistory backup = existing != null ? existing.copy() : null;
-        int removed;
-        int retentionLimit;
-        if (payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT) {
-            ArchaeologyJournalLogState.RetentionUpdateResult result =
-                    state.setRetentionLimit(payload.tableId(), payload.value());
-            removed = result.removedEntryIds().size();
-            retentionLimit = result.retentionLimit();
-        } else {
-            removed = state.pruneToMostRecent(payload.tableId(), payload.value()).size();
-            ArchaeologyJournalLogState.TableLogHistory history = state.getTable(payload.tableId());
-            retentionLimit = history != null ? history.getRetentionLimit() : globalLimit;
-        }
-
-        if (!persistTableNow(player, payload.tableId())) {
-            if (backup != null) {
-                state.putTable(payload.tableId(), backup);
-            } else {
-                state.removeTable(payload.tableId());
-            }
-            markTableDirty(player, payload.tableId());
+        JournalLogMutation.Intent intent = payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT
+                ? new JournalLogMutation.SetRetention(payload.tableId(), payload.value())
+                : new JournalLogMutation.Prune(payload.tableId(), payload.value());
+        JournalLogMutation.Result result = mutations(player, session).apply(intent);
+        if (result.status() == Status.FAILED) {
             player.sendSystemMessage(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.log_retention.invalid"));
             return;
         }
+        int removed = result.removedCount();
+        int retentionLimit = result.retentionLimit();
+        ArchaeologyJournalLogState state = session.mirroredState();
         syncTable(player, session, payload.tableId(), state.getTable(payload.tableId()));
         String key = payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT
                 ? "screen.unsuspiciousblock.archaeology_journal.log_retention.limit_saved"
@@ -348,51 +248,12 @@ public final class JournalLogHandler {
         if (session == null || !session.isSeeded()) {
             return;
         }
-        ArchaeologyJournalLogState.TableLogHistory table = session.mirroredState().getTable(payload.tableId());
-        if (table == null) {
-            return;
-        }
-        UUID entryId = payload.entryId();
-        ExcavationLogEntry existing = null;
-        for (ExcavationLogEntry entry : table.getEntries()) {
-            if (entry.entryId().equals(entryId)) {
-                existing = entry;
-                break;
-            }
-        }
-        if (existing == null) {
-            return;
-        }
-        // 服务端二次校验：截断过长内容，移除控制字符
-        String sanitized = sanitizeNote(payload.note());
-        if (sanitized.equals(existing.note())) {
-            return;
-        }
-        ExcavationLogEntry updated = existing.withNote(sanitized);
-        // LinkedHashMap.put 已有 key 保留原插入位置，不会触发重排
-        session.mirroredState().upsertEntry(payload.tableId(), updated);
-        markTableDirty(player, payload.tableId());
+        JournalLogMutation.Result result = mutations(player, session).apply(
+                new JournalLogMutation.UpdateNote(payload.tableId(), payload.entryId(), payload.note()));
         UUID sessionId = session.getSessionId();
-        if (sessionId == null) {
-            return;
-        }
+        if (result.status() != Status.CHANGED || sessionId == null) return;
         Services.NETWORK.sendToPlayer(player,
-                SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), payload.tableId(), updated.toTag()));
-    }
-
-    // 备注文本清洗：去控制字符、限长 500
-    private static String sanitizeNote(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(raw.length());
-        for (int i = 0; i < raw.length() && sb.length() < 500; i++) {
-            char c = raw.charAt(i);
-            if (c == '\n' || c == '\r' || c == '\t' || c >= ' ') {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
+                SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), payload.tableId(), Objects.requireNonNull(result.entry()).toTag()));
     }
 
     // 向玩家下发按战利品表压缩并切片的日志全量快照
@@ -440,13 +301,6 @@ public final class JournalLogHandler {
         syncLogSnapshot(player);
     }
 
-    // 使用持久化累计数判断是否首次跨越“缓存大师”成就门槛
-    public static boolean crossesCacheMeIfYouCanThreshold(long previousEntryCount, long currentEntryCount) {
-        long threshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
-        return previousEntryCount < threshold
-                && currentEntryCount >= threshold;
-    }
-
     // 获取玩家的日志同步会话（通过 mixin 接口）
     private static ArchaeologyJournalLogSyncSession getLogSession(ServerPlayer player) {
         if (player instanceof ArchaeologyJournalLogSyncSessionHolder holder) {
@@ -455,35 +309,11 @@ public final class JournalLogHandler {
         return null;
     }
 
-    // 标记单表分片为 dirty；session 与存储缓存共享状态引用，无需深拷贝
-    private static void markTableDirty(ServerPlayer player, ResourceLocation tableId) {
+    private static JournalLogMutation mutations(ServerPlayer player, ArchaeologyJournalLogSyncSession session) {
         MinecraftServer server = player.getServer();
-        if (server == null) {
-            return;
-        }
-        JournalLogStorage.markTableDirty(server, player.getUUID(), tableId);
-    }
-
-    private static boolean persistTableNow(ServerPlayer player, ResourceLocation tableId) {
-        MinecraftServer server = player.getServer();
-        if (server != null) {
-            return JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
-        }
-        return false;
-    }
-
-    private static boolean persistClearAll(ServerPlayer player, Iterable<ResourceLocation> removedTables) {
-        MinecraftServer server = player.getServer();
-        if (server != null) {
-            return JournalLogStorage.persistClearAllNow(server, player.getUUID(), removedTables);
-        }
-        return false;
-    }
-
-    private static boolean persistTablesNow(ServerPlayer player, Iterable<ResourceLocation> tableIds) {
-        MinecraftServer server = player.getServer();
-        return server != null
-                && JournalLogStorage.persistTablesNow(server, player.getUUID(), tableIds);
+        return new JournalLogMutation(session.mirroredState(), tables -> {
+            if (server != null) tables.forEach(tableId -> JournalLogStorage.markTableDirty(server, player.getUUID(), tableId));
+        }, tables -> server != null && JournalLogStorage.persistTablesNow(server, player.getUUID(), tables));
     }
 
     private static void syncTable(ServerPlayer player, ArchaeologyJournalLogSyncSession session,

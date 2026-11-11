@@ -57,8 +57,7 @@ public final class JournalDataMigrationManager {
             migrated.readFrom(legacyTag);
             session.mergeFromClient(migrated);
             Set<ResourceLocation> migratedTables = Set.copyOf(migrated.getTables().keySet());
-            if (!migratedTables.isEmpty()
-                    && !JournalLogStorage.persistTablesNow(server, player.getUUID(), migratedTables)) {
+            if (!JournalLogStorage.persistTablesNow(server, player.getUUID(), migratedTables)) {
                 Constants.LOG.warn("玩家 {} 的旧考古日志尚未完整落盘，将保留源 NBT 等待重试",
                         player.getGameProfile().getName());
                 return;
@@ -80,7 +79,7 @@ public final class JournalDataMigrationManager {
         }
 
         int migrated = 0;
-        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getRawCatalog();
+        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.staticTables();
         for (Map.Entry<ResourceLocation, ArchaeologyJournalState.TableProgress> progressEntry
                 : state.getTables().entrySet()) {
             ResourceLocation tableId = progressEntry.getKey();

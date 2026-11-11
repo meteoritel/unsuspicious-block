@@ -2,6 +2,9 @@ package com.meteorite.unsuspiciousblock.core.journal;
 
 import com.meteorite.unsuspiciousblock.core.journal.migration.JournalDataMigrationManager;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
@@ -12,6 +15,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 /**
  * 玩家考古手册数据的统一管理入口。
  * <p>
@@ -19,6 +25,17 @@ import org.jetbrains.annotations.Nullable;
  * 服务端生命周期、登录恢复和迁移顺序，不改变任何现有数据格式。
  */
 public final class JournalPlayerDataService {
+    private static final String PLAYER_TAG = "unsuspiciousblock_archaeology_journal";
+
+    public static void writePlayerTag(ArchaeologyJournalState state, CompoundTag tag) {
+        tag.put(PLAYER_TAG, state.toTag());
+    }
+
+    public static void readPlayerTag(ArchaeologyJournalState state, CompoundTag tag) {
+        if (tag.contains(PLAYER_TAG, Tag.TAG_COMPOUND)) state.readFrom(tag.getCompound(PLAYER_TAG));
+        else state.clear();
+    }
+
     private JournalPlayerDataService() {
     }
 
@@ -88,21 +105,9 @@ public final class JournalPlayerDataService {
             return;
         }
 
-        if (replay.clearAll()) {
-            if (!JournalLogStorage.persistClearAllNow(server, player.getUUID(), replay.affectedTables())) {
-                for (ResourceLocation tableId : replay.affectedTables()) {
-                    JournalLogStorage.markTableDirty(server, player.getUUID(), tableId);
-                }
-            }
-            for (ResourceLocation tableId : session.mirroredState().getTables().keySet()) {
-                JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
-            }
-            return;
-        }
-
-        for (ResourceLocation tableId : replay.affectedTables()) {
-            JournalLogStorage.persistTableNow(server, player.getUUID(), tableId);
-        }
+        Set<ResourceLocation> tables = new LinkedHashSet<>(replay.affectedTables());
+        if (replay.clearAll()) tables.addAll(session.mirroredState().getTables().keySet());
+        JournalLogStorage.persistTablesNow(server, player.getUUID(), tables);
     }
 
     @Nullable

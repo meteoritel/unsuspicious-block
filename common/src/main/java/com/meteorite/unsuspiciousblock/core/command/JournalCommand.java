@@ -148,7 +148,7 @@ public final class JournalCommand {
         if (worker == null) {
             // 工作线程未启动（异常情况）：回退到无反馈的同步 flush
             JournalCatalogHandler.forceFlushCatalog(server);
-            int tableCount = ArchaeologyJournalServerCatalog.getCatalog().size();
+            int tableCount = ArchaeologyJournalServerCatalog.simulatedTables().size();
             source.sendSuccess(() -> Component.translatable(
                     "command.unsuspiciousblock.usb.journal.reload.success", tableCount), false);
             return tableCount;
@@ -183,7 +183,7 @@ public final class JournalCommand {
 
         // 执行 flush：清空缓存 + 重新解析 + 入队（worker 已暂停，不会消费）
         JournalCatalogHandler.forceFlushCatalog(server);
-        total.set(ArchaeologyJournalServerCatalog.getRawCatalogCount());
+        total.set(ArchaeologyJournalServerCatalog.staticTables().size());
         if (total.get() == 0) {
             worker.setProgressListener(null);
         }
@@ -283,22 +283,23 @@ public final class JournalCommand {
 
     private static Map<ResourceLocation, TableDefinition> getRawCatalog(CommandSourceStack source) {
         ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
-        return ArchaeologyJournalServerCatalog.getRawCatalog();
+        return ArchaeologyJournalServerCatalog.staticTables();
     }
 
     // 当代查询索引：子树物品聚合的唯一入口（模拟态优先、缺失处回退静态投影）
     private static CatalogQueryIndex getQueryIndex(CommandSourceStack source) {
         ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
-        return ArchaeologyJournalServerCatalog.getQueryIndex();
+        return ArchaeologyJournalServerCatalog.queryIndex();
     }
 
     private static Map<ResourceLocation, TableDefinition> getSimulatedCatalog(CommandSourceStack source) {
         ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
-        return ArchaeologyJournalServerCatalog.getCatalog();
+        return ArchaeologyJournalServerCatalog.simulatedTables();
     }
 
     private static void requireTable(CommandSourceStack source, ResourceLocation tableId) throws CommandSyntaxException {
-        TableDefinition table = getRawCatalog(source).get(tableId);
+        ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
+        TableDefinition table = ArchaeologyJournalServerCatalog.staticTable(tableId);
         if (table == null) {
             throw UNKNOWN_TABLE.create(tableId.toString());
         }
@@ -321,7 +322,7 @@ public final class JournalCommand {
     // 物品目录会在模拟期间渐进填充，拒绝基于半成品目录执行批量解锁。
     private static boolean rejectIncompleteSimulation(CommandSourceStack source) {
         Map<ResourceLocation, TableDefinition> rawCatalog = getRawCatalog(source);
-        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.getCatalog();
+        Map<ResourceLocation, TableDefinition> catalog = ArchaeologyJournalServerCatalog.simulatedTables();
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if ((worker != null && worker.isBusy())
                 || catalog.size() != rawCatalog.size()

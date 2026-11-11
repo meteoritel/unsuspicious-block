@@ -26,7 +26,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -43,6 +42,7 @@ import java.util.UUID;
  */
 public final class JournalLogStorage {
     private static final int FLUSH_INTERVAL_TICKS = 200;
+    private static final int STOP_FLUSH_ATTEMPTS = 2;
     private static final int MAX_SHARDS_PER_FLUSH = 4;
     private static final long MAX_MANIFEST_NBT_BYTES = (long) 1024 * 1024;
     private static final long MAX_INDEX_NBT_BYTES = 8L * 1024 * 1024;
@@ -74,6 +74,7 @@ public final class JournalLogStorage {
     private final Path root;
     private final Map<UUID, ArchaeologyJournalLogState> loadedStates = new HashMap<>();
     private final Map<UUID, Set<ResourceLocation>> dirtyTables = new LinkedHashMap<>();
+    private final Set<UUID> dirtyIndexes = new LinkedHashSet<>();
     private final Set<UUID> pendingUnloads = new HashSet<>();
     private int tickCounter;
 
@@ -108,6 +109,7 @@ public final class JournalLogStorage {
         active.flushAll();
         active.loadedStates.clear();
         active.dirtyTables.clear();
+        active.dirtyIndexes.clear();
         active.pendingUnloads.clear();
         active = null;
     }
@@ -143,94 +145,29 @@ public final class JournalLogStorage {
         storage.requeueDirty(playerId, tableId);
     }
 
-    // 标记玩家当前所有表为 dirty，供旧玩家 NBT 合并迁移使用
-    public static void markAllDirty(MinecraftServer server, UUID playerId) {
-        JournalLogStorage storage = require(server);
-        ArchaeologyJournalLogState state = storage.loadedStates.get(playerId);
-        if (state == null || state.getTables().isEmpty()) {
-            return;
-        }
-        storage.dirtyTables.computeIfAbsent(playerId, ignored -> new LinkedHashSet<>())
-                .addAll(state.getTables().keySet());
-    }
-
-    // 删除后立即重写单表，避免旧 dirty 写入在重启后恢复已删除条目
-    public static boolean persistTableNow(MinecraftServer server, UUID playerId, ResourceLocation tableId) {
-        JournalLogStorage storage = require(server);
-        storage.removeDirty(playerId, tableId);
-        ArchaeologyJournalLogState state = storage.loadedStates.get(playerId);
-        ArchaeologyJournalLogState.TableLogHistory history = state != null ? state.getTable(tableId) : null;
-        try {
-            if (history == null) {
-                Files.deleteIfExists(storage.tableFile(playerId, tableId));
-            } else {
-                storage.writeTable(playerId, tableId, history);
-            }
-            storage.writeIndex(playerId, state != null ? state : new ArchaeologyJournalLogState());
-            storage.completePendingUnloadIfClean(playerId);
-            return true;
-        } catch (IOException exception) {
-            Constants.LOG.error("立即保存玩家 {} 的考古日志表 {} 失败", playerId, tableId, exception);
-            markTableDirty(server, playerId, tableId);
-            return false;
-        }
-    }
-
-    // 一次性保存多张表并在最后只提交一次 index；用于源数据确认清理前的迁移提交
+    // 立即入口与 tick 共用同一提交过程，失败修复完全归存储调度。
     public static boolean persistTablesNow(MinecraftServer server, UUID playerId,
                                            Iterable<ResourceLocation> tableIds) {
-        JournalLogStorage storage = require(server);
-        LinkedHashSet<ResourceLocation> pendingTables = new LinkedHashSet<>();
-        tableIds.forEach(pendingTables::add);
-        ArchaeologyJournalLogState state = storage.loadedStates.get(playerId);
-        if (state == null) {
-            Constants.LOG.error("立即保存玩家 {} 的迁移日志失败：玩家缓存不存在", playerId);
-            return false;
-        }
-
-        pendingTables.forEach(tableId -> storage.removeDirty(playerId, tableId));
-        try {
-            for (ResourceLocation tableId : pendingTables) {
-                ArchaeologyJournalLogState.TableLogHistory history = state.getTable(tableId);
-                if (history != null) {
-                    storage.writeTable(playerId, tableId, history);
-                }
-            }
-            storage.writeIndex(playerId, state);
-            storage.completePendingUnloadIfClean(playerId);
-            return true;
-        } catch (IOException exception) {
-            Constants.LOG.error("立即保存玩家 {} 的迁移日志失败", playerId, exception);
-            pendingTables.forEach(tableId -> storage.requeueDirty(playerId, tableId));
-            return false;
-        }
+        return commitTablesNow(server, playerId, tableIds).successful();
     }
 
-    // 清空全部日志后立即删除已知分片并写入空索引
-    public static boolean persistClearAllNow(MinecraftServer server, UUID playerId,
-                                             Iterable<ResourceLocation> removedTables) {
-        JournalLogStorage storage = require(server);
-        storage.dirtyTables.remove(playerId);
-        boolean success = true;
-        for (ResourceLocation tableId : removedTables) {
-            try {
-                Files.deleteIfExists(storage.tableFile(playerId, tableId));
-            } catch (IOException exception) {
-                success = false;
-                Constants.LOG.error("删除玩家 {} 的考古日志表 {} 失败", playerId, tableId, exception);
-            }
+    /** 同步提交指定表及玩家索引；失败分片和索引状态分别返回，整个范围排队修复。 */
+    public static CommitResult commitTablesNow(MinecraftServer server, UUID playerId,
+                                               Iterable<ResourceLocation> tableIds) {
+        Set<ResourceLocation> tables = new LinkedHashSet<>();
+        tableIds.forEach(tables::add);
+        return require(server).commitBatch(Map.of(playerId, tables)).get(playerId);
+    }
+
+    /** 单玩家批次结果；indexCommitted 为 false 时整个批次仍留在修复队列。 */
+    public record CommitResult(Set<ResourceLocation> failedTables, boolean indexCommitted) {
+        public CommitResult {
+            failedTables = Set.copyOf(failedTables);
         }
-        try {
-            ArchaeologyJournalLogState state = storage.loadedStates.get(playerId);
-            storage.writeIndex(playerId, state != null ? state : new ArchaeologyJournalLogState());
-        } catch (IOException exception) {
-            success = false;
-            Constants.LOG.error("立即清空玩家 {} 的考古日志分片失败", playerId, exception);
+
+        public boolean successful() {
+            return failedTables.isEmpty() && indexCommitted;
         }
-        if (success) {
-            storage.completePendingUnloadIfClean(playerId);
-        }
-        return success;
     }
 
     private static synchronized JournalLogStorage require(MinecraftServer server) {
@@ -462,95 +399,106 @@ public final class JournalLogStorage {
     }
 
     private void flushSome(int limit) {
-        if (limit <= 0 || this.dirtyTables.isEmpty()) {
+        if (limit <= 0 || this.dirtyTables.isEmpty() && this.dirtyIndexes.isEmpty()) {
             return;
         }
-        flushBatch(drainDirtyBatch(limit));
+        commitBatch(drainDirtyBatch(limit));
     }
 
     private void flushAll() {
-        // 失败分片保留 dirty 并记录日志，但停服时不无限重试阻塞关服
-        flushSome(Integer.MAX_VALUE);
+        for (int attempt = 0; attempt < STOP_FLUSH_ATTEMPTS
+                && (!this.dirtyTables.isEmpty() || !this.dirtyIndexes.isEmpty()); attempt++) {
+            flushSome(Integer.MAX_VALUE);
+        }
+        if (!this.dirtyTables.isEmpty() || !this.dirtyIndexes.isEmpty()) {
+            Constants.LOG.error(Constants.LOG_TAG + "日志刷新失败，停止重试；分片: {}，索引: {}",
+                    this.dirtyTables, this.dirtyIndexes);
+        }
     }
 
-    private List<ShardKey> drainDirtyBatch(int limit) {
-        List<ShardKey> batch = new ArrayList<>(Math.min(limit, 64));
-        while (batch.size() < limit && !this.dirtyTables.isEmpty()) {
+    private Map<UUID, Set<ResourceLocation>> drainDirtyBatch(int limit) {
+        Map<UUID, Set<ResourceLocation>> batch = new LinkedHashMap<>();
+        int selected = 0;
+        while (selected < limit && !this.dirtyTables.isEmpty()) {
             Iterator<Map.Entry<UUID, Set<ResourceLocation>>> players = this.dirtyTables.entrySet().iterator();
             Map.Entry<UUID, Set<ResourceLocation>> player = players.next();
             players.remove();
-
             Iterator<ResourceLocation> tables = player.getValue().iterator();
-            if (!tables.hasNext()) {
-                continue;
-            }
+            if (!tables.hasNext()) continue;
             ResourceLocation tableId = tables.next();
             tables.remove();
-            batch.add(new ShardKey(player.getKey(), tableId));
-            if (!player.getValue().isEmpty()) {
-                this.dirtyTables.put(player.getKey(), player.getValue());
-            }
+            batch.computeIfAbsent(player.getKey(), ignored -> new LinkedHashSet<>()).add(tableId);
+            selected++;
+            if (!player.getValue().isEmpty()) this.dirtyTables.put(player.getKey(), player.getValue());
+        }
+        Iterator<UUID> indexes = this.dirtyIndexes.iterator();
+        while (selected < limit && indexes.hasNext()) {
+            UUID playerId = indexes.next();
+            indexes.remove();
+            batch.computeIfAbsent(playerId, ignored -> new LinkedHashSet<>());
+            selected++;
         }
         return batch;
     }
 
-    private void flushBatch(List<ShardKey> batch) {
-        Map<UUID, List<ShardKey>> writtenByPlayer = new LinkedHashMap<>();
-        for (ShardKey key : batch) {
-            ArchaeologyJournalLogState state = this.loadedStates.get(key.playerId());
+    private Map<UUID, CommitResult> commitBatch(Map<UUID, Set<ResourceLocation>> batch) {
+        Map<UUID, CommitResult> results = new LinkedHashMap<>();
+        for (Map.Entry<UUID, Set<ResourceLocation>> player : batch.entrySet()) {
+            UUID playerId = player.getKey();
+            Set<ResourceLocation> tables = player.getValue();
+            this.dirtyIndexes.remove(playerId);
+            tables.forEach(tableId -> removeDirty(playerId, tableId));
+            ArchaeologyJournalLogState state = this.loadedStates.get(playerId);
+            Set<ResourceLocation> failedTables = new LinkedHashSet<>();
+            boolean indexCommitted = false;
             if (state == null) {
-                Constants.LOG.error("保存玩家 {} 的考古日志表 {} 失败：玩家缓存不存在",
-                        key.playerId(), key.tableId());
-                requeueDirty(key.playerId(), key.tableId());
-                continue;
-            }
-            ArchaeologyJournalLogState.TableLogHistory history = state.getTable(key.tableId());
-            try {
-                if (history == null) {
-                    Files.deleteIfExists(tableFile(key.playerId(), key.tableId()));
-                } else {
-                    writeTable(key.playerId(), key.tableId(), history);
+                Constants.LOG.error(Constants.LOG_TAG + "保存玩家 {} 的日志失败：玩家缓存不存在", playerId);
+                failedTables.addAll(tables);
+            } else {
+                for (ResourceLocation tableId : tables) {
+                    try {
+                        ArchaeologyJournalLogState.TableLogHistory history = state.getTable(tableId);
+                        if (history == null) Files.deleteIfExists(tableFile(playerId, tableId));
+                        else writeTable(playerId, tableId, history);
+                    } catch (IOException exception) {
+                        failedTables.add(tableId);
+                        Constants.LOG.error(Constants.LOG_TAG + "保存玩家 {} 的日志表 {} 失败", playerId, tableId, exception);
+                    }
                 }
-                writtenByPlayer.computeIfAbsent(key.playerId(), ignored -> new ArrayList<>()).add(key);
-            } catch (IOException exception) {
-                Constants.LOG.error("保存玩家 {} 的考古日志表 {} 失败",
-                        key.playerId(), key.tableId(), exception);
-                requeueDirty(key.playerId(), key.tableId());
+                // 分片失败时保留旧索引，整个批次以同一内存状态重试。
+                if (failedTables.isEmpty()) {
+                    try {
+                        writeIndex(playerId, state);
+                        indexCommitted = true;
+                    } catch (IOException exception) {
+                        Constants.LOG.error(Constants.LOG_TAG + "保存玩家 {} 的日志索引失败", playerId, exception);
+                    }
+                }
+            }
+            CommitResult result = new CommitResult(failedTables, indexCommitted);
+            results.put(playerId, result);
+            if (result.successful()) completePendingUnloadIfClean(playerId);
+            else {
+                tables.forEach(tableId -> requeueDirty(playerId, tableId));
+                if (tables.isEmpty()) this.dirtyIndexes.add(playerId);
             }
         }
-
-        for (Map.Entry<UUID, List<ShardKey>> player : writtenByPlayer.entrySet()) {
-            ArchaeologyJournalLogState state = this.loadedStates.get(player.getKey());
-            if (state == null) {
-                player.getValue().forEach(key -> requeueDirty(key.playerId(), key.tableId()));
-                continue;
-            }
-            try {
-                writeIndex(player.getKey(), state);
-                completePendingUnloadIfClean(player.getKey());
-            } catch (IOException exception) {
-                Constants.LOG.error("保存玩家 {} 的考古日志索引失败", player.getKey(), exception);
-                player.getValue().forEach(key -> requeueDirty(key.playerId(), key.tableId()));
-            }
-        }
+        return results;
     }
 
     private void flushAndUnloadPlayer(UUID playerId) {
         this.pendingUnloads.add(playerId);
         Set<ResourceLocation> tables = this.dirtyTables.remove(playerId);
-        if (tables == null || tables.isEmpty()) {
+        if ((tables == null || tables.isEmpty()) && !this.dirtyIndexes.contains(playerId)) {
             completePendingUnloadIfClean(playerId);
             return;
         }
-        List<ShardKey> batch = new ArrayList<>(tables.size());
-        for (ResourceLocation tableId : tables) {
-            batch.add(new ShardKey(playerId, tableId));
-        }
-        flushBatch(batch);
+        commitBatch(Map.of(playerId, tables == null ? Set.of() : tables));
     }
 
     private void completePendingUnloadIfClean(UUID playerId) {
-        if (this.pendingUnloads.contains(playerId) && !this.dirtyTables.containsKey(playerId)) {
+        if (this.pendingUnloads.contains(playerId) && !this.dirtyTables.containsKey(playerId)
+                && !this.dirtyIndexes.contains(playerId)) {
             this.pendingUnloads.remove(playerId);
             this.loadedStates.remove(playerId);
         }
@@ -680,9 +628,4 @@ public final class JournalLogStorage {
         }
     }
 
-    /**
-     * 待刷新的玩家日志分片标识。
-     */
-    private record ShardKey(UUID playerId, ResourceLocation tableId) {
-    }
 }
