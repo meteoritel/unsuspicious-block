@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.platform.loot.LootInjectionDescriptions;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -10,9 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import net.neoforged.fml.ModList;
-import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.FMLPaths;
-import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
@@ -39,7 +38,7 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             for (var resource : resources.getResourceStack(location)) {
                 try (var reader = resource.openAsReader()) {
                     input.add(location + "|" + resource.sourcePackId() + "|"
-                            + com.google.gson.JsonParser.parseReader(reader).toString());
+                            + JsonParser.parseReader(reader).toString());
                 }
             }
         }
@@ -60,20 +59,8 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public boolean isDevelopmentEnvironment() {
-        return !FMLLoader.isProduction();
-    }
-
-    @Override
     public Path getGameDir() {
         return FMLPaths.GAMEDIR.get();
     }
 
-    @Override
-    @Nullable
-    public String getModVersion(String modId) {
-        return ModList.get().getModContainerById(modId)
-                .map(c -> c.getModInfo().getVersion().toString())
-                .orElse(null);
-    }
 }

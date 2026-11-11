@@ -19,6 +19,6 @@ public interface IAccessoryHelper {
     // 判断玩家饰品栏是否装备了指定物品；未安装饰品模组时返回 false
     boolean isPresent(Player player, Item item);
 
-    // 返回饰品栏所有已装备物品栈流，供 InventoryPresenceRegistry 统一递归扫描（含便携容器）
+    // 返回饰品栏所有已装备物品栈流，供 CarriedItems 统一扫描便携容器第一层
     Stream<ItemStack> streamEquippedStacks(Player player);
 }

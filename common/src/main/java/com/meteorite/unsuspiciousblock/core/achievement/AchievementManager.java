@@ -1,42 +1,39 @@
 package com.meteorite.unsuspiciousblock.core.achievement;
 
-import com.meteorite.unsuspiciousblock.platform.services.IAchievementHelper;
+import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.AdvancementProgress;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
-/**
- * 成就管理器——游戏逻辑与平台成就系统的桥梁。
- * <p>
- * 调用链：游戏逻辑 → AchievementManager → IAchievementHelper → Vanilla Advancement
- * <p>
- * 所有成就触发均应从游戏逻辑调用本类的静态方法，
- * 由本类委托平台层最终操作原版 Advancement API。
- */
+/** 游戏成就授予与查询的统一入口，双平台直接使用原版 Advancement。 */
 public final class AchievementManager {
+    private AchievementManager() {}
 
-    private static IAchievementHelper helper;
-
-    private AchievementManager() {
-    }
-
-    // 由 Common init 调用注入平台实现
-    public static void init(IAchievementHelper helper) {
-        AchievementManager.helper = helper;
-    }
-
-    // 直接授予成就
+    // 授予成就：从服务器获取 AdvancementHolder 后调用 award
     public static void grant(ServerPlayer player, ModAchievement achievement) {
-        if (helper == null) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
             return;
         }
-        helper.grant(player, achievement);
+        AdvancementHolder advancement = server.getAdvancements().get(achievement.id());
+        if (advancement == null) {
+            return;
+        }
+        player.getAdvancements().award(advancement, achievement.criterion());
     }
 
-    // 检查是否已获得成就
+    // 检查成就是否已完成
     public static boolean has(ServerPlayer player, ModAchievement achievement) {
-        if (helper == null) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
             return false;
         }
-        return helper.has(player, achievement);
+        AdvancementHolder advancement = server.getAdvancements().get(achievement.id());
+        if (advancement == null) {
+            return false;
+        }
+        AdvancementProgress progress = player.getAdvancements().getOrStartProgress(advancement);
+        return progress.isDone();
     }
 
     // 若未获得则授予，返回是否实际授予

@@ -19,7 +19,6 @@ import net.minecraft.world.level.levelgen.feature.Feature;
 import com.meteorite.unsuspiciousblock.core.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.platform.world.NeoForgeBoneBlockTracker;
-import com.meteorite.unsuspiciousblock.platform.inventory.NeoForgeInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.core.inventory.AncientCoinRepair;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.unsuspiciousblock.platform.loot.AddItemLootModifier;
@@ -28,9 +27,7 @@ import com.meteorite.unsuspiciousblock.platform.loot.InjectItemLootModifier;
 import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
 import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
-import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
-import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -40,7 +37,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
@@ -205,18 +201,17 @@ public class UnsuspiciousBlockNeoForge {
                     Holder<MobEffect> holder = EFFECTS.register(name, factory);
                     setter.accept(holder);
                 },
-                (name, setter) -> {
-                    Holder<SoundEvent> holder = SOUND_EVENTS.register(name,
-                            () -> SoundEvent.createVariableRangeEvent(
-                                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name)));
+                (name, factory, setter) -> {
+                    Holder<SoundEvent> holder = SOUND_EVENTS.register(name, factory);
                     setter.accept(holder);
                 },
                 FEATURES::register,
                 new ModContent.MenuRegistrar() {
                     @Override
-                    public <T extends AbstractContainerMenu> Supplier<MenuType<T>> register(
-                            String name, BiFunction<Integer, Inventory, T> factory) {
-                        return MENUS.register(name, () -> new MenuType<>(factory::apply, FeatureFlags.DEFAULT_FLAGS));
+                    public <T extends AbstractContainerMenu> void register(
+                            String name, BiFunction<Integer, Inventory, T> factory,
+                            Consumer<Supplier<MenuType<T>>> setter) {
+                        setter.accept(MENUS.register(name, () -> new MenuType<>(factory::apply, FeatureFlags.DEFAULT_FLAGS)));
                     }
                 },
                 CREATIVE_MODE_TABS::register, CreativeModeTab::builder));
@@ -224,9 +219,7 @@ public class UnsuspiciousBlockNeoForge {
 
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
         // 在 common init 前设置平台注册的 LootItemConditionType，供 ToolEnchantmentCondition 运行时使用
-        ModLootConditions.setToolEnchantmentType(TOOL_ENCHANTMENT_TYPE);
-
-        UnsuspiciousBlockCommon.init();
+        UnsuspiciousBlockCommon.init(TOOL_ENCHANTMENT_TYPE);
 
         container.registerConfig(ModConfig.Type.SERVER, NeoForgeLootTableConfig.SERVER_CONFIG_SPEC);
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.COMMON_CONFIG_SPEC);
@@ -254,15 +247,11 @@ public class UnsuspiciousBlockNeoForge {
         NeoForge.EVENT_BUS.register(this);
 
         // 注册 NeoForge 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
-        NeoForgeInventoryPresenceAdapter.register();
 
         Constants.LOG.info(Constants.LOG_TAG + "NeoForge entrypoint initialized");
     }
 
     private void syncCommonItemRefs(FMLCommonSetupEvent event) {
-        // MenuType 同步回写：RegisterMenuScreensEvent 可能在 enqueueWork 任务执行前触发，
-        // 同步执行确保运行时 TYPE 就绪；客户端注册 Screen 时另有 getter 兜底
-        ModContent.syncMenuTypes();
         event.enqueueWork(() -> {
             for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
                 entry.setter().accept(entry.deferred().get());
@@ -274,16 +263,6 @@ public class UnsuspiciousBlockNeoForge {
                         Runnable.class).run();
             }
         });
-    }
-
-    // 供客户端在 RegisterMenuScreensEvent 时获取 MenuType，避免 enqueueWork 时序问题
-    public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
-        return ModContent.specimenBoxMenu();
-    }
-
-    // 供客户端注册陶轮台 Screen 时获取 MenuType
-    public static MenuType<PotteryWheelMenu> getPotteryWheelMenuType() {
-        return ModContent.potteryWheelMenu();
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -298,28 +277,24 @@ public class UnsuspiciousBlockNeoForge {
         // UnsuspiciousBlockNeoForgeClient 注册，此处只补类型与编解码，并限制在独立服务端，
         // 避免同一通道在客户端被重复注册（重复注册会直接抛异常）
         if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
-            for (ModPayloads.S2CSpec<?> spec : ModPayloads.S2C_SPECS) {
-                registerS2CSpec(registrar, spec);
+            for (ModPayloads.S2C<?> spec : ModPayloads.S2C_PAYLOADS) {
+                registerS2C(registrar, spec);
             }
         }
     }
 
     // 独立服务端登记 clientbound payload：只登记类型与编解码；该方向的包不会发往服务端，handler 不会被调用
-    @SuppressWarnings("unchecked")
-    private static <T extends CustomPacketPayload> void registerS2CSpec(
+    private static <T extends CustomPacketPayload> void registerS2C(
             PayloadRegistrar registrar,
-            ModPayloads.S2CSpec<?> specRaw) {
-        ModPayloads.S2CSpec<T> spec = (ModPayloads.S2CSpec<T>) specRaw;
+            ModPayloads.S2C<T> spec) {
         registrar.playToClient(spec.type(), spec.streamCodec(), (payload, context) -> {
         });
     }
 
     // 注册单个 C2S payload 到 NeoForge 网络注册器
-    @SuppressWarnings("unchecked")
     private static <T extends CustomPacketPayload> void registerC2S(
             PayloadRegistrar registrar,
-            ModPayloads.C2S<?> c2sRaw) {
-        ModPayloads.C2S<T> c2s = (ModPayloads.C2S<T>) c2sRaw;
+            ModPayloads.C2S<T> c2s) {
         registrar.playToServer(c2s.type(), c2s.streamCodec(),
                 (payload, context) -> c2s.handler().accept((ServerPlayer) context.player(), payload));
     }

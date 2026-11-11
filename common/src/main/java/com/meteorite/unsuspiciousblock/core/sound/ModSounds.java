@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.sound;
 
+import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.core.bootstrap.Registrar;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.Holder;
 import net.minecraft.sounds.SoundEvent;
 
@@ -24,9 +27,10 @@ public final class ModSounds {
     }
 
     // 遍历清单，调用平台回调完成注册
-    public static void forEach(SoundRegistrar registrar) {
+    public static void forEach(Registrar<SoundEvent, Holder<SoundEvent>> registrar) {
         for (SoundEntry entry : REGISTRY_MANIFEST) {
-            registrar.register(entry.name(), entry.setter());
+            registrar.register(entry.name(), () -> SoundEvent.createVariableRangeEvent(
+                    ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, entry.name())), entry.setter());
         }
     }
 }

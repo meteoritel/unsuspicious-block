@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.block;
 
+import com.meteorite.unsuspiciousblock.core.bootstrap.Registrar;
+
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -64,7 +66,7 @@ public final class ModBlocks {
     }
 
     // 遍历清单并交由平台完成注册
-    public static void forEach(BlockRegistrar registrar) {
+    public static void forEach(Registrar<Block, Supplier<Block>> registrar) {
         for (BlockEntry entry : REGISTRY_MANIFEST) {
             registrar.register(entry.name(), entry.factory(), entry.setter());
         }

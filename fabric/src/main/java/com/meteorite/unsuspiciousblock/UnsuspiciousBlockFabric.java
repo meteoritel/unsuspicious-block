@@ -19,7 +19,6 @@ import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
-import com.meteorite.unsuspiciousblock.platform.inventory.FabricInventoryPresenceAdapter;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.ArchaeologyLootInjectors;
 import com.meteorite.unsuspiciousblock.platform.loot.BuriedTreasureLootInjection;
@@ -99,9 +98,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 BuiltInRegistries.LOOT_CONDITION_TYPE,
                 ModLootConditions.TOOL_ENCHANTMENT,
                 new LootItemConditionType(ModLootConditions.TOOL_ENCHANTMENT_CODEC));
-        ModLootConditions.setToolEnchantmentType(() -> toolEnchantmentType);
-
-        UnsuspiciousBlockCommon.init();
+        UnsuspiciousBlockCommon.init(() -> toolEnchantmentType);
 
         // 注册 Fabric 端考古战利品注入器（mixin 与概率模拟器共用，NeoForge 端通过 GLM 实现等价语义）
         ArchaeologyLootInjectors.register(FabricArchaeologyLootInjector.INSTANCE);
@@ -116,14 +113,12 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         VillageWeaponsmithLootInjection.register();
 
         // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
-        FabricInventoryPresenceAdapter.register();
 
         // 原版手持图腾未能阻止死亡时，尝试使用随身标本箱内的图腾。
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, damageAmount) ->
                 !SpecimenBoxTotemProxy.tryActivate(entity, source, LivingEntity::removeAllEffects));
 
         registerContent();
-        ModContent.syncMenuTypes();
 
         // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）
         FuelRegistry.INSTANCE.add(ModItems.SPARK_DUST, 800);
@@ -146,8 +141,8 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
         for (ModPayloads.C2S<?> c2s : ModPayloads.C2S_PAYLOADS) {
             registerC2S(c2s);
         }
-        for (ModPayloads.S2CSpec<?> spec : ModPayloads.S2C_SPECS) {
-            registerS2CSpec(spec);
+        for (ModPayloads.S2C<?> spec : ModPayloads.S2C_PAYLOADS) {
+            registerS2C(spec);
         }
 
         // 数据包重载：只置脏标记，重建交给 tick 路径（D9）。Fabric 用服务器数据包重载监听器；
@@ -261,9 +256,9 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                             ResourceKey.create(Registries.MOB_EFFECT, rl)).orElseThrow();
                     setter.accept(holder);
                 },
-                (name, setter) -> {
+                (name, factory, setter) -> {
                     ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
-                    Registry.register(BuiltInRegistries.SOUND_EVENT, rl, SoundEvent.createVariableRangeEvent(rl));
+                    Registry.register(BuiltInRegistries.SOUND_EVENT, rl, factory.get());
                     Holder<SoundEvent> holder = BuiltInRegistries.SOUND_EVENT.getHolder(
                             ResourceKey.create(Registries.SOUND_EVENT, rl)).orElseThrow();
                     setter.accept(holder);
@@ -272,12 +267,13 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                         ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name), factory.get()),
                 new ModContent.MenuRegistrar() {
                     @Override
-                    public <T extends AbstractContainerMenu> Supplier<MenuType<T>> register(
-                            String name, BiFunction<Integer, Inventory, T> factory) {
+                    public <T extends AbstractContainerMenu> void register(
+                            String name, BiFunction<Integer, Inventory, T> factory,
+                            Consumer<Supplier<MenuType<T>>> setter) {
                         MenuType<T> type = Registry.register(BuiltInRegistries.MENU,
                                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name),
                                 new MenuType<>(factory::apply, FeatureFlags.DEFAULT_FLAGS));
-                        return () -> type;
+                        setter.accept(() -> type);
                     }
                 },
                 (name, factory) -> Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,
@@ -294,9 +290,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
     }
 
     // 注册 C2S payload 类型与服务端接收器，调度到主线程执行 handler
-    @SuppressWarnings("unchecked")
-    private static <T extends CustomPacketPayload> void registerC2S(ModPayloads.C2S<?> c2sRaw) {
-        ModPayloads.C2S<T> c2s = (ModPayloads.C2S<T>) c2sRaw;
+    private static <T extends CustomPacketPayload> void registerC2S(ModPayloads.C2S<T> c2s) {
         PayloadTypeRegistry.playC2S().register(c2s.type(), c2s.streamCodec());
         ServerPlayNetworking.registerGlobalReceiver(c2s.type(),
                 (payload, context) -> context.server().execute(
@@ -304,9 +298,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
     }
 
     // 注册 S2C payload 类型编解码器（服务端发送需要）
-    @SuppressWarnings("unchecked")
-    private static <T extends CustomPacketPayload> void registerS2CSpec(ModPayloads.S2CSpec<?> specRaw) {
-        ModPayloads.S2CSpec<T> spec = (ModPayloads.S2CSpec<T>) specRaw;
+    private static <T extends CustomPacketPayload> void registerS2C(ModPayloads.S2C<T> spec) {
         PayloadTypeRegistry.playS2C().register(spec.type(), spec.streamCodec());
     }
 }

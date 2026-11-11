@@ -16,10 +16,10 @@ import org.jetbrains.annotations.NotNull;
  * 使用考古铲和沙子或沙砾制作空不可疑方块，并让考古铲损失一点耐久。
  */
 public class UnsuspiciousCreationRecipe extends CustomRecipe {
-    private final UnsuspiciousSealingRecipe.Variant variant;
+    private final UnsuspiciousCarrier variant;
 
     public UnsuspiciousCreationRecipe(CraftingBookCategory category,
-                                      UnsuspiciousSealingRecipe.Variant variant) {
+                                      UnsuspiciousCarrier variant) {
         super(category);
         this.variant = variant;
     }

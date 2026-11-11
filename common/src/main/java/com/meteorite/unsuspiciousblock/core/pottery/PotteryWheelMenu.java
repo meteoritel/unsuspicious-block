@@ -9,7 +9,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
-import net.minecraft.world.inventory.MenuType;
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -18,7 +18,6 @@ import org.jetbrains.annotations.NotNull;
 /** 纹饰陶轮台菜单，复用一组十字输入槽支持陶罐与陶片压印。 */
 public class PotteryWheelMenu extends AbstractContainerMenu {
     public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "pottery_wheel");
-    public static MenuType<PotteryWheelMenu> TYPE;
 
     private final Container container;
     private final PotteryWheelBlockEntity wheel;
@@ -38,7 +37,7 @@ public class PotteryWheelMenu extends AbstractContainerMenu {
 
     private PotteryWheelMenu(int id, Inventory inventory, Container container,
                              PotteryWheelBlockEntity wheel, ContainerData data) {
-        super(TYPE, id);
+        super(ModContent.potteryWheelMenu(), id);
         this.container = container;
         this.wheel = wheel;
         this.data = data;

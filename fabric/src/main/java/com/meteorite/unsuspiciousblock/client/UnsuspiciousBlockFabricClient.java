@@ -83,7 +83,7 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
 
     // 注册 S2C 客户端接收器
     private static <T extends CustomPacketPayload> void registerS2C(ClientPayloadBindings.Binding<T> binding) {
-        ClientPlayNetworking.registerGlobalReceiver(binding.type(),
+        ClientPlayNetworking.registerGlobalReceiver(binding.declaration().type(),
                 (payload, context) -> JournalClientConnection.receive(context.player().connection,
                         () -> binding.receiver().accept(payload)));
     }

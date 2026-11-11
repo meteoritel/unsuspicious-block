@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.client;
 
-import com.meteorite.unsuspiciousblock.UnsuspiciousBlockNeoForge;
 
 import com.meteorite.unsuspiciousblock.Constants;
 
@@ -19,8 +18,6 @@ import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler
 import com.meteorite.unsuspiciousblock.client.ui.screen.ModMenuScreens;
 import com.meteorite.unsuspiciousblock.client.network.ClientPayloadBindings;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
-import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.gui.GuiGraphics;
@@ -87,11 +84,6 @@ public final class UnsuspiciousBlockNeoForgeClient {
 
     @SubscribeEvent
     public static void registerScreens(RegisterMenuScreensEvent event) {
-        // 直接从 DeferredHolder 获取 MenuType：FMLCommonSetupEvent 的 enqueueWork 可能尚未执行，
-        // 此时 SpecimenBoxMenu.TYPE 静态字段可能为 null，直接用会导致注册失败
-        SpecimenBoxMenu.TYPE = UnsuspiciousBlockNeoForge.getSpecimenBoxMenuType();
-        PotteryWheelMenu.TYPE =
-                UnsuspiciousBlockNeoForge.getPotteryWheelMenuType();
         ModMenuScreens.forEach(new ModMenuScreens.ScreenRegistrar() {
             @Override
             public <T extends AbstractContainerMenu> void register(
@@ -135,7 +127,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     private static <T extends CustomPacketPayload> void registerS2C(
             PayloadRegistrar registrar,
             ClientPayloadBindings.Binding<T> binding) {
-        registrar.playToClient(binding.type(), binding.streamCodec(),
+        registrar.playToClient(binding.declaration().type(), binding.declaration().streamCodec(),
                 (payload, context) -> {
                     if (context.listener() instanceof ClientPacketListener source) {
                         JournalClientConnection.receive(source, () -> binding.receiver().accept(payload));

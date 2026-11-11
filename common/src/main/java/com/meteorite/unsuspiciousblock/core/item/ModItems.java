@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.item;
 
+import com.meteorite.unsuspiciousblock.core.bootstrap.Registrar;
+
 import com.meteorite.unsuspiciousblock.core.block.ModBlocks;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -14,6 +16,9 @@ import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.component.ItemContainerContents;
 
 import java.util.List;
+import java.util.Comparator;
+import java.util.HashSet;
+import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -45,103 +50,115 @@ public class ModItems {
     // 通用标签的命名空间——由 Fabric API 与 NeoForge 各自的数据包提供并填充原版物品
     private static final String COMMON_TAG_NAMESPACE = "c";
 
-    // 物品注册清单条目，供各平台遍历注册
-    public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter) {}
+    /** 物品分类用于派生客户端模型属性注册视图。 */
+    public enum Category { STANDARD, PAN }
+
+    /** getter 只在平台注册完成后求值；创造栏顺序为空的条目不加入创造栏。 */
+    public record ItemEntry(String name, Supplier<Item> factory, Consumer<Item> setter,
+                            Supplier<Item> item, @Nullable Integer creativeOrder, Category category) {}
+
 
     // 物品注册清单——新增物品只需在此添加一行
     public static final List<ItemEntry> REGISTRY_MANIFEST = List.of(
             new ItemEntry("unsuspicious_sand",
                     ModItems::createUnsuspiciousSand,
-                    item -> UNSUSPICIOUS_SAND = (BlockItem) item),
+                    item -> UNSUSPICIOUS_SAND = (BlockItem) item,
+                    () -> UNSUSPICIOUS_SAND, 1, Category.STANDARD),
             new ItemEntry("unsuspicious_gravel",
                     ModItems::createUnsuspiciousGravel,
-                    item -> UNSUSPICIOUS_GRAVEL = (BlockItem) item),
+                    item -> UNSUSPICIOUS_GRAVEL = (BlockItem) item,
+                    () -> UNSUSPICIOUS_GRAVEL, 2, Category.STANDARD),
             new ItemEntry("pottery_wheel",
                     ModItems::createPotteryWheel,
-                    item -> POTTERY_WHEEL = (BlockItem) item),
+                    item -> POTTERY_WHEEL = (BlockItem) item,
+                    () -> POTTERY_WHEEL, 3, Category.STANDARD),
             new ItemEntry("unfired_decorated_pot",
                     ModItems::createUnfiredDecoratedPot,
-                    item -> UNFIRED_DECORATED_POT = (UnfiredDecoratedPotItem) item),
+                    item -> UNFIRED_DECORATED_POT = (UnfiredDecoratedPotItem) item,
+                    () -> UNFIRED_DECORATED_POT, 4, Category.STANDARD),
             new ItemEntry("unfired_decorated_sherd",
                     ModItems::createUnfiredDecoratedSherd,
-                    item -> UNFIRED_DECORATED_SHERD = (UnfiredDecoratedSherdItem) item),
+                    item -> UNFIRED_DECORATED_SHERD = (UnfiredDecoratedSherdItem) item,
+                    () -> UNFIRED_DECORATED_SHERD, 5, Category.STANDARD),
             new ItemEntry("suspicious_reader",
                     ModItems::createSuspiciousReader,
-                    item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item),
+                    item -> SUSPICIOUS_READER = (SuspiciousReaderItem) item,
+                    () -> SUSPICIOUS_READER, 6, Category.STANDARD),
             new ItemEntry("archaeological_shovel",
                     ModItems::createArchaeologicalShovel,
-                    item -> ARCHAEOLOGICAL_SHOVEL = (ArchaeologicalShovelItem) item),
+                    item -> ARCHAEOLOGICAL_SHOVEL = (ArchaeologicalShovelItem) item,
+                    () -> ARCHAEOLOGICAL_SHOVEL, 7, Category.STANDARD),
             new ItemEntry("archaeology_journal",
                     ModItems::createArchaeologyJournal,
-                    item -> ARCHAEOLOGY_JOURNAL = (ArchaeologyJournalItem) item),
+                    item -> ARCHAEOLOGY_JOURNAL = (ArchaeologyJournalItem) item,
+                    () -> ARCHAEOLOGY_JOURNAL, 0, Category.STANDARD),
             new ItemEntry("specimen_box",
                     ModItems::createSpecimenBox,
-                    item -> SPECIMEN_BOX = (SpecimenBoxItem) item),
+                    item -> SPECIMEN_BOX = (SpecimenBoxItem) item,
+                    () -> SPECIMEN_BOX, 17, Category.STANDARD),
             new ItemEntry("ancient_coin",
                     ModItems::createAncientCoin,
-                    item -> ANCIENT_COIN = item),
+                    item -> ANCIENT_COIN = item,
+                    () -> ANCIENT_COIN, 11, Category.STANDARD),
             new ItemEntry("lost_page",
                     ModItems::createLostPage,
-                    item -> LOST_PAGE = item),
+                    item -> LOST_PAGE = item,
+                    () -> LOST_PAGE, 12, Category.STANDARD),
             new ItemEntry("base_page",
                     ModItems::createBasePage,
-                    item -> BASE_PAGE = item),
+                    item -> BASE_PAGE = item,
+                    () -> BASE_PAGE, 13, Category.STANDARD),
             new ItemEntry("spark_dust",
                     ModItems::createSparkDust,
-                    item -> SPARK_DUST = item),
+                    item -> SPARK_DUST = item,
+                    () -> SPARK_DUST, 14, Category.STANDARD),
             new ItemEntry("rewind_dust",
                     ModItems::createRewindDust,
-                    item -> REWIND_DUST = (RewindDustItem) item),
+                    item -> REWIND_DUST = (RewindDustItem) item,
+                    () -> REWIND_DUST, 15, Category.STANDARD),
             new ItemEntry("eye_of_cat",
                     ModItems::createEyeOfCat,
-                    item -> EYE_OF_CAT = (EyeOfCatItem) item),
+                    item -> EYE_OF_CAT = (EyeOfCatItem) item,
+                    () -> EYE_OF_CAT, 16, Category.STANDARD),
             new ItemEntry("hand_of_cat",
                     ModItems::createHandOfCat,
-                    item -> HAND_OF_CAT = (HandOfCatItem) item),
+                    item -> HAND_OF_CAT = (HandOfCatItem) item,
+                    () -> HAND_OF_CAT, 18, Category.STANDARD),
             new ItemEntry("copper_pan",
                     ModItems::createCopperPan,
-                    item -> COPPER_PAN = (PanItem) item),
+                    item -> COPPER_PAN = (PanItem) item,
+                    () -> COPPER_PAN, 8, Category.PAN),
             new ItemEntry("gold_pan",
                     ModItems::createGoldPan,
-                    item -> GOLD_PAN = (PanItem) item),
+                    item -> GOLD_PAN = (PanItem) item,
+                    () -> GOLD_PAN, 9, Category.PAN),
             new ItemEntry("obsidian_pan",
                     ModItems::createObsidianPan,
-                    item -> OBSIDIAN_PAN = (PanItem) item)
+                    item -> OBSIDIAN_PAN = (PanItem) item,
+                    () -> OBSIDIAN_PAN, 10, Category.PAN)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
     public static final Supplier<ItemStack> CREATIVE_TAB_ICON =
             () -> new ItemStack(ARCHAEOLOGY_JOURNAL);
 
-    // 创造模式物品栏中展示的物品（使用 Supplier 延迟求值，因为静态字段在注册后才被赋值）
-    public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
-            () -> ARCHAEOLOGY_JOURNAL,
-            () -> UNSUSPICIOUS_SAND,
-            () -> UNSUSPICIOUS_GRAVEL,
-            () -> POTTERY_WHEEL,
-            () -> UNFIRED_DECORATED_POT,
-            () -> UNFIRED_DECORATED_SHERD,
-            () -> SUSPICIOUS_READER,
-            () -> ARCHAEOLOGICAL_SHOVEL,
-            () -> COPPER_PAN,
-            () -> GOLD_PAN,
-            () -> OBSIDIAN_PAN,
-            () -> ANCIENT_COIN,
-            () -> LOST_PAGE,
-            () -> BASE_PAGE,
-            () -> SPARK_DUST,
-            () -> REWIND_DUST,
-            () -> EYE_OF_CAT,
-            () -> SPECIMEN_BOX,
-            () -> HAND_OF_CAT
-    );
+    /** 创造栏视图按声明排序，延迟读取已注册物品。 */
+    public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = creativeTabItems();
 
-    // 全部淘盘——客户端据此为每把盘注册摇洗帧等物品属性，新增淘盘只需在此追加
-    public static final List<Supplier<Item>> PAN_ITEMS = List.of(
-            () -> COPPER_PAN,
-            () -> GOLD_PAN,
-            () -> OBSIDIAN_PAN
-    );
+    /** 全部淘盘的模型属性注册视图。 */
+    public static final List<Supplier<Item>> PAN_ITEMS = REGISTRY_MANIFEST.stream()
+            .filter(entry -> entry.category() == Category.PAN).map(ItemEntry::item).toList();
+
+    private static List<Supplier<Item>> creativeTabItems() {
+        Set<Integer> orders = new HashSet<>();
+        for (ItemEntry entry : REGISTRY_MANIFEST) {
+            if (entry.creativeOrder() != null && !orders.add(entry.creativeOrder())) {
+                throw new IllegalStateException("重复的创造栏顺序: " + entry.creativeOrder());
+            }
+        }
+        return REGISTRY_MANIFEST.stream().filter(entry -> entry.creativeOrder() != null)
+                .sorted(Comparator.comparing(ItemEntry::creativeOrder)).map(ItemEntry::item).toList();
+    }
 
     // ========== 供平台模块通过 Supplier/Registry.register 调用 ============ //
     // 创建不可疑的沙子方块物品
@@ -272,7 +289,7 @@ public class ModItems {
     }
 
     // 遍历清单，调用平台回调完成注册
-    public static void forEach(ItemRegistrar registrar) {
+    public static void forEach(Registrar<Item, Item> registrar) {
         for (ItemEntry entry : REGISTRY_MANIFEST) {
             registrar.register(entry.name(), entry.factory(), entry.setter());
         }

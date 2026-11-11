@@ -3,9 +3,7 @@ package com.meteorite.unsuspiciousblock.core.recipe;
 import com.meteorite.unsuspiciousblock.core.block.SealedContents;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CustomRecipe;
@@ -17,9 +15,9 @@ import org.jetbrains.annotations.NotNull;
  * 使用空不可疑方块封存任意单个非不可疑方块物品的无序特殊配方。
  */
 public class UnsuspiciousSealingRecipe extends CustomRecipe {
-    private final Variant variant;
+    private final UnsuspiciousCarrier variant;
 
-    public UnsuspiciousSealingRecipe(CraftingBookCategory category, Variant variant) {
+    public UnsuspiciousSealingRecipe(CraftingBookCategory category, UnsuspiciousCarrier variant) {
         super(category);
         this.variant = variant;
     }
@@ -81,19 +79,4 @@ public class UnsuspiciousSealingRecipe extends CustomRecipe {
                 && !stack.is(ModItems.UNSUSPICIOUS_GRAVEL);
     }
 
-    /** 配方使用的基底与输出类型。 */
-    public enum Variant {
-        SAND,
-        GRAVEL;
-
-        // 获取制作空方块时使用的原版基底
-        public Item baseItem() {
-            return this == SAND ? Items.SAND : Items.GRAVEL;
-        }
-
-        // 获取当前类型生成的不可疑方块物品
-        public Item outputItem() {
-            return this == SAND ? ModItems.UNSUSPICIOUS_SAND : ModItems.UNSUSPICIOUS_GRAVEL;
-        }
-    }
 }

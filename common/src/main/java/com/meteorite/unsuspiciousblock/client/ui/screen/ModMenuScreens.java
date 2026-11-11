@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
-import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -20,8 +19,8 @@ public final class ModMenuScreens {
     }
 
     public static final List<ScreenEntry<?>> MANIFEST = List.of(
-            new ScreenEntry<>(() -> SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new),
-            new ScreenEntry<>(() -> PotteryWheelMenu.TYPE, PotteryWheelScreen::new)
+            new ScreenEntry<>(ModContent::specimenBoxMenu, SpecimenBoxScreen::new),
+            new ScreenEntry<>(ModContent::potteryWheelMenu, PotteryWheelScreen::new)
     );
 
     private ModMenuScreens() {

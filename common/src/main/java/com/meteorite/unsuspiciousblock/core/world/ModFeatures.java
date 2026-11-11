@@ -9,7 +9,6 @@ import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 
 import java.util.List;
-import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 /*** 跨平台地物注册清单；动态配置与放置规则由数据包提供。 */
@@ -28,10 +27,16 @@ public final class ModFeatures {
 
     private ModFeatures() {}
 
+    /** 地物没有 common 静态引用，由平台注册表持有注册结果。 */
+    @FunctionalInterface
+    public interface FeatureRegistrar {
+        void register(String name, Supplier<Feature<?>> factory);
+    }
+
     // 平台分别提供即时注册或延迟注册回调。
-    public static void forEach(BiConsumer<String, Supplier<Feature<?>>> registrar) {
+    public static void forEach(FeatureRegistrar registrar) {
         for (FeatureEntry entry : REGISTRY_MANIFEST) {
-            registrar.accept(entry.name(), entry.factory());
+            registrar.register(entry.name(), entry.factory());
         }
     }
 }

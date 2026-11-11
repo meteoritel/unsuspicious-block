@@ -10,7 +10,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.MenuType;
+import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
@@ -28,7 +28,6 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
     public static final ResourceLocation ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "specimen_box");
     /** 菜单类型，由平台模块注册后回写 */
-    public static MenuType<SpecimenBoxMenu> TYPE;
 
     // 漏斗布局常量
     private static final int CONTAINER_X = 44;
@@ -49,7 +48,7 @@ public class SpecimenBoxMenu extends AbstractContainerMenu {
 
     // 带手参数构造：SimpleMenuProvider 服务端侧使用
     public SpecimenBoxMenu(int containerId, Inventory playerInventory, InteractionHand hand) {
-        super(TYPE, containerId);
+        super(ModContent.specimenBoxMenu(), containerId);
         this.owner = playerInventory.player;
         this.carrierHand = hand;
         this.carrierSlotIndex = hand == InteractionHand.OFF_HAND

@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.effect;
 
+import com.meteorite.unsuspiciousblock.core.bootstrap.Registrar;
+
 import net.minecraft.core.Holder;
 import net.minecraft.world.effect.MobEffect;
 
@@ -27,7 +29,7 @@ public class ModEffects {
     }
 
     // 遍历清单，调用平台回调完成注册
-    public static void forEach(MobEffectRegistrar registrar) {
+    public static void forEach(Registrar<MobEffect, Holder<MobEffect>> registrar) {
         for (EffectEntry entry : REGISTRY_MANIFEST) {
             registrar.register(entry.name(), entry.factory(), entry.setter());
         }
