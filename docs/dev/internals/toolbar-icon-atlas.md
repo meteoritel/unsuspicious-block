@@ -8,7 +8,7 @@
 |---|---|
 | 图集路径 | `common/src/main/resources/assets/unsuspiciousblock/textures/gui/ui_atlas.png` |
 | 图集尺寸 | `256 x 128 px`（RGBA 像素风，最近邻采样） |
-| 生成脚本 | [`generate_ui_atlas.py`](../../../tools/drawer/generate_ui_atlas.py) |
+| 生成入口 | [`generate_ui_atlas.py`](../../../tools/drawer/generate_ui_atlas.py)（源码按界面来源拆分为 [`tools/drawer/atlas/`](../../../tools/drawer/atlas/) 各子模块） |
 | 取样契约 | `UiAtlas` 显式传入 `textureWidth = 256`、`textureHeight = 128` 构造 `UiIcon.Sprite` 与 `UiNineSlice` |
 
 > `UiIconSheet` 按规则网格宽高乘积推导贴图尺寸；由于 `ui_atlas.png` 混排多种尺寸精灵与九宫格，[`UiAtlas`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/UiAtlas.java) 使用带总尺寸参数的 `UiIcon.Sprite` 与 `UiNineSlice` 取样，禁止手算或硬编码散落 UV。
@@ -101,7 +101,7 @@
 
 - **禁止修改已有槽位坐标**：新增图标仅追加至 `Row 4 (col 5..11)` 或图集空白区，并同步更新 `generate_ui_atlas.py` 与 `UiAtlas.java`。
 - **保持独立的大尺寸背景纹理**：书本背景（`archaeology_journal_book.png` `384x256`）、陶轮容器底图（`pottery_wheel_gui.png` `256x256`）、定宽条目条带（`catalog_entry.png`、`log_entry.png`、`bookmark_tab.png`）与标本箱预览（`specimen_box_preview.png`）保持各自独立 PNG。
-- **修改纹理必须经过生成器**：修改图标或皮肤像素时更新 `tools/drawer/generate_ui_atlas.py` 并重新运行生成，保证代码与 PNG 同源。
+- **修改纹理必须经过生成器**：修改图标或皮肤像素时更新 [`tools/drawer/atlas/`](../../../tools/drawer/atlas/) 中对应来源模块并运行 `python tools/drawer/generate_ui_atlas.py`，保证代码与 PNG 同源。
 
 ## 6. 相关文档
 

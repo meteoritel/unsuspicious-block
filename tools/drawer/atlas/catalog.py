@@ -1,0 +1,218 @@
+"""来源：考古笔记目录工具栏与目录列表 (CatalogToolbar / CatalogPanel)。"""
+from __future__ import annotations
+
+if __package__ in (None, ''):
+    from pathlib import Path
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from atlas.palette import UI_PALETTE, run_source_preview
+from drawlib import AtlasBuilder
+
+ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
+    # —— 目录工具栏 (Row 0, cols 0..11) ——
+    (0, 0, 'SEARCH'): (
+        '..........',
+        '..IIII....',
+        '.IKAAAI...',
+        '.IAaaaI...',
+        '.IAaaaI...',
+        '..IIII....',
+        '......II..',
+        '.......II.',
+        '........I.',
+        '..........',
+    ),
+    (1, 0, 'CLOSE'): (
+        '..........',
+        '.II....II.',
+        '..II..II..',
+        '...IIII...',
+        '....II....',
+        '....II....',
+        '...IIII...',
+        '..II..II..',
+        '.II....II.',
+        '..........',
+    ),
+    (2, 0, 'ARROW_UP'): (
+        '..........',
+        '....II....',
+        '...IIII...',
+        '..IIIIII..',
+        '.IIIIIIII.',
+        '....II....',
+        '....II....',
+        '....II....',
+        '....II....',
+        '..........',
+    ),
+    (3, 0, 'ARROW_DOWN'): (
+        '..........',
+        '....II....',
+        '....II....',
+        '....II....',
+        '....II....',
+        '.IIIIIIII.',
+        '..IIIIII..',
+        '...IIII...',
+        '....II....',
+        '..........',
+    ),
+    (4, 0, 'SHOW_LOCKED'): (
+        '..........',
+        '..........',
+        '...IIII...',
+        '..ITTTTI..',
+        '.ITTIITTI.',
+        '.ITTIKTTI.',
+        '..ITTTTI..',
+        '...IIII...',
+        '..........',
+        '..........',
+    ),
+    (5, 0, 'HIDE_LOCKED'): (
+        '..........',
+        '.......II.',
+        '...II..II.',
+        '..ILL.II..',
+        '.IL..IILI.',
+        '.IL.II.LI.',
+        '..III.LLI.',
+        '..II..II..',
+        '.II.......',
+        '..........',
+    ),
+    (6, 0, 'SORT_DEFAULT'): (
+        '..........',
+        '.II.IIIII.',
+        '..........',
+        '..........',
+        '.II.IIIII.',
+        '..........',
+        '..........',
+        '.II.IIIII.',
+        '..........',
+        '..........',
+    ),
+    (7, 0, 'SORT_NAME'): (
+        '..........',
+        '...IIII...',
+        '..II..II..',
+        '..II..II..',
+        '..IIIIII..',
+        '..II..II..',
+        '..II..II..',
+        '..II..II..',
+        '..II..II..',
+        '..........',
+    ),
+    (8, 0, 'SORT_ITEM_COUNT'): (
+        '..........',
+        '...I..I...',
+        '...I..I...',
+        '.IIIIIIII.',
+        '...I..I...',
+        '...I..I...',
+        '.IIIIIIII.',
+        '...I..I...',
+        '...I..I...',
+        '..........',
+    ),
+    (9, 0, 'SORT_FAVORITE'): (
+        '....g.....',
+        '...gGg....',
+        '...gGg....',
+        'gggGGGggg.',
+        '.gGGGGGGg.',
+        '..gGGGGg..',
+        '..gGggGg..',
+        '.gGg..gGg.',
+        '.gg....gg.',
+        '..........',
+    ),
+    (10, 0, 'SORT_UNLOCK'): (
+        '..........',
+        '...IIII...',
+        '..II..II..',
+        '..II......',
+        '..IIIIII..',
+        '.IIIIIIII.',
+        '.IIggggII.',
+        '.IIggggII.',
+        '..IIIIII..',
+        '..........',
+    ),
+    (11, 0, 'SORT_UPDATE_TIME'): (
+        '..........',
+        '.IIIIIIII.',
+        '..I....I..',
+        '...ISSII..',
+        '....II....',
+        '...ISSI...',
+        '..ISSSSI..',
+        '.IIIIIIII.',
+        '..........',
+        '..........',
+    ),
+    # —— 目录列表树节点与徽章 (Row 3, cols 0..3) ——
+    (0, 3, 'TREE_COLLAPSED'): (
+        '..........',
+        '..I.......',
+        '..II......',
+        '..III.....',
+        '..IIII....',
+        '..IIII....',
+        '..III.....',
+        '..II......',
+        '..I.......',
+        '..........',
+    ),
+    (1, 3, 'TREE_EXPANDED'): (
+        '..........',
+        '..........',
+        '..........',
+        '.IIIIIIII.',
+        '..IIIIII..',
+        '...IIII...',
+        '....II....',
+        '..........',
+        '..........',
+        '..........',
+    ),
+    (2, 3, 'FAVORITE_BADGE'): (
+        '..........',
+        '....g.....',
+        '...gGg....',
+        '.ggGGGgg..',
+        '..gGGGg...',
+        '..gGgGg...',
+        '.gG...Gg..',
+        '.g.....g..',
+        '..........',
+        '..........',
+    ),
+    (3, 3, 'CHILD_BADGE'): (
+        '..........',
+        '..O.......',
+        '..O.......',
+        '..O..oo...',
+        '..O.oOOo..',
+        '..OOoOOo..',
+        '.....oo...',
+        '..........',
+        '..........',
+        '..........',
+    ),
+}
+
+
+def apply(atlas: AtlasBuilder) -> None:
+    """将目录来源图标写入图集 Zone 1。"""
+    for (col, row, name), rows in ICONS.items():
+        atlas.place_grid_ascii(col, row, 10, 10, name, rows, UI_PALETTE)
+
+
+if __name__ == '__main__':
+    raise SystemExit(run_source_preview('catalog', apply, bg='#F3E7C8'))

@@ -56,6 +56,6 @@ def render_preview(
             preview.paste(zoomed, (dx, dark_strip_y + 18), zoomed)
             label = region.name.replace('DARK_', '').replace('POTTERY_', 'PW_')
             draw.text((dx, dark_strip_y + 92), label, fill=(230, 230, 230, 255))
-            dx += region.width * scale + 34
+            dx += max(region.width * scale + 28, len(label) * 7 + 14)
 
     return preview

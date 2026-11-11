@@ -66,7 +66,8 @@ Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>`
 | 入口 | 用途 | 产物目标 |
 |---|---|---|
 | [`generate_all.py`](drawer/generate_all.py) | 统一批量生成、输出预览图或 `--check` 校验全部贴图 | 全部已注册贴图 |
-| [`generate_ui_atlas.py`](drawer/generate_ui_atlas.py) | 生成全模组统一 UI 图标与控件皮肤图集 | `textures/gui/ui_atlas.png` (`256x128`) |
+| [`generate_ui_atlas.py`](drawer/generate_ui_atlas.py) | 汇总 [`atlas/`](drawer/atlas/) 各 UI 来源子模块生成统一图集 | `textures/gui/ui_atlas.png` (`256x128`) |
+| [`atlas/`](drawer/atlas/) | 按界面来源拆分的图集子模块（`catalog` / `log` / `scenario` / `book_chrome` / `screens_hud`），支持单模块 `--preview` 调试 | 经由 `generate_ui_atlas.py` 合成 |
 | [`generate_book_texture.py`](drawer/generate_book_texture.py) | 生成考古笔记双页书本背景 | `textures/gui/archaeology_journal_book.png` (`384x256`) |
 | [`generate_bookmark_texture.py`](drawer/generate_bookmark_texture.py) | 生成笔记右侧书签三态条带 | `textures/gui/bookmark_tab.png` (`40x66`) |
 | [`generate_log_entry_texture.py`](drawer/generate_log_entry_texture.py) | 生成考古日志条目三态圆角底纹 | `textures/gui/log_entry.png` (`148x78`) |
