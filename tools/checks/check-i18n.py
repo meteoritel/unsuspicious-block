@@ -2,8 +2,8 @@
 from pathlib import Path
 import sys
 
-from toolslib.checks import Finding, run
-from toolslib.json_input import read_json
+from checkslib.checks import Finding, run
+from checkslib.json_input import read_json
 from toolslib.repo import repository_files
 
 LOCALES = ('en_us', 'zh_cn')

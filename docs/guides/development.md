@@ -15,9 +15,9 @@
 
 | 变更类型 | 验证方式 |
 |---|---|
-| Markdown 文档 | 核对当前事实、归属与相对链接；运行 `python tools/check-docs.py --include-local-rules` |
+| Markdown 文档 | 核对当前事实、归属与相对链接；运行 `python tools/checks/check-docs.py --include-local-rules` |
 | 仅 JSON 资源 | 校验 JSON 合法性；语言配对与资源接线门禁由对应工具或构建入口执行 |
-| Python / PowerShell 工具 | 使用临时成功与失败输入运行受影响 CLI，核对退出码和诊断输出 |
+| 仓库工具 (`tools/`) | 使用临时输入或 `--check` 运行受影响 CLI，核对退出码与诊断输出 |
 | Java 代码或构建接线 | 先通过 IDEA MCP 检查 Git 工作区报错与警告，再串行执行 `./gradlew.bat build` |
 
 工具命令与检查规则见[仓库工具](../../tools/README.md)。检查 IDEA 工作区问题时忽略纯 Markdown 格式提示，集中处理本次变更引入的代码错误与警告。

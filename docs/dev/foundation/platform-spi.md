@@ -42,7 +42,7 @@ Trinkets、Curios 与 Artifacts 的原生 API 调用隔离在各自平台的 `pl
 1. 在 `common` 的 `platform.services` 定义最小必要的平台能力接口，参数与返回值全部使用原版或 `common` 公共类型。
 2. 在 `fabric` 与 `neoforge` 的 `platform` 包下分别编写实现，并在各自 `META-INF/services/` 注册提供者。
 3. 在合适的装配入口加载服务（全局共享能力通过 `Services` 暴露；客户端专属能力置于 `client` 并由客户端入口装配）。
-4. 运行 `python tools/check-isolation.py` 与 `python tools/check-wiring.py`，分别在可选模组存在与缺失的环境下核对双端行为。
+4. 运行 `python tools/checks/check-isolation.py` 与 `python tools/checks/check-wiring.py`，分别在可选模组存在与缺失的环境下核对双端行为。
 
 ## 5. 相关文档
 

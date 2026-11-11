@@ -5,8 +5,8 @@ import re
 import sys
 from urllib.parse import unquote, urlsplit
 
-from toolslib.checks import Finding, execute
-from toolslib.markdown_links import links
+from checkslib.checks import Finding, execute
+from checkslib.markdown_links import links
 from toolslib.repo import repo_root, repository_files
 
 ENTRYPOINTS = ('docs/README.md', 'docs/dev/README.md', 'tools/README.md')

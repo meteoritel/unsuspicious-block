@@ -77,7 +77,7 @@
 
 | 模糊表述（禁止） | 可检验表述（推荐） |
 |---|---|
-| “确保文档编写规范且没有错误” | “运行 `python tools/check-docs.py` 退出码为 0，无未达链接” |
+| “确保文档编写规范且没有错误” | “运行 `python tools/checks/check-docs.py` 退出码为 0，无未达链接” |
 | “更新各处相关引用” | “全仓库检索目标关键词，确认匹配结果为 0 处孤立旧路径” |
 | “完成代码重组” | “执行 `./gradlew.bat build`，构建通过且各模块产物生成成功” |
 
@@ -99,7 +99,7 @@
 5. **自动化门禁**：
    - 提交任何文档修改前，必须运行：
      ```powershell
-     python tools/check-docs.py --include-local-rules
+     python tools/checks/check-docs.py --include-local-rules
      ```
    - 工具将自动核验入口可达性、相对链接有效性与导航登记，必须返回退出码 0。
 

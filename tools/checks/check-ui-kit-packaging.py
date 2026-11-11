@@ -6,8 +6,8 @@ import sys
 import tomllib
 from zipfile import BadZipFile, ZipFile
 
-from toolslib.checks import Finding, execute
-from toolslib.json_input import loads
+from checkslib.checks import Finding, execute
+from checkslib.json_input import loads
 from toolslib.repo import properties, repo_root
 
 GROUP = 'com.meteorite.meteosuikit'

@@ -2,10 +2,17 @@
 
 import argparse
 import csv
+from pathlib import Path
 import re
 import statistics
-from pathlib import Path
+import sys
 
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(_TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_ROOT))
+
+from toolslib.cli import configure_console
+from toolslib.repo import repo_root
 
 START = re.compile(r"已开始在后台重新模拟 (\d+) 个考古战利品表")
 DONE = re.compile(
@@ -35,7 +42,7 @@ def read_round(log_path, round_number):
             continue
         table, active, cpu, elapsed, remaining, suffix = match.groups()
         row = dict(zip(BASE_FIELDS, [table, int(active), int(cpu), int(elapsed),
-                                    int(remaining), "v1" if "profile=v1" in suffix else "off", number]))
+                                     int(remaining), "v1" if "profile=v1" in suffix else "off", number]))
         row.update({key: int(value) for key, value in DETAIL.findall(suffix)})
         if row["profile"] == "v1":
             if row.get("DROPS") != sum(row.get(key, 0) for key in ("MATCHED", "RAW_SKIPPED", "DERIVED")):
@@ -109,15 +116,18 @@ def render(rows, baseline, round_number):
 
 # 输出路径均由调用者指定，不覆盖游戏日志。
 def main():
+    configure_console()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--log", type=Path, default=Path("neoforge/run/logs/latest.log"))
+    parser.add_argument("--root", help="项目根目录，默认由工具位置定位")
+    parser.add_argument("--log", type=Path, default=None, help="日志路径，默认读取 neoforge/run/logs/latest.log")
     parser.add_argument("--round", default="last", help="命令触发的热运行轮次，从 1 开始，默认 last")
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--csv", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, help="可选：保存该轮原始日志行")
     args = parser.parse_args()
-    rows, evidence, round_number = read_round(args.log, args.round)
+    log_path = args.log if args.log is not None else repo_root(args.root) / "neoforge/run/logs/latest.log"
+    rows, evidence, round_number = read_round(log_path, args.round)
     baseline = None
     if args.baseline:
         with args.baseline.open(encoding="utf-8-sig", newline="") as source:

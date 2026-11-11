@@ -155,7 +155,7 @@ flowchart TD
 | `MATCHED` / `RAW_SKIPPED` / `DERIVED` | 三个掉落处理分支计数，正常任务三者之和等于 `DROPS` |
 | `CANDIDATES_ADDED` | 各场景动态新增的候选签名总数 |
 
-各阶段 `*_ns` 字段记录 `System.nanoTime` 累计墙钟纳秒；其中 `GENERATE` 包含原版、Mixin 与 NeoForge GLM，而 `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 为嵌套子明细（已包含在父段内，不可重复叠加）。使用 [`scripts/loot_simulation_profile.py`](../../../scripts/loot_simulation_profile.py) 解析 `/usb journal reload` 标记后的完整测试轮次。
+各阶段 `*_ns` 字段记录 `System.nanoTime` 累计墙钟纳秒；其中 `GENERATE` 包含原版、Mixin 与 NeoForge GLM，而 `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 为嵌套子明细（已包含在父段内，不可重复叠加）。使用 [`tools/diagnostics/loot_simulation_profile.py`](../../../tools/diagnostics/loot_simulation_profile.py) 解析 `/usb journal reload` 标记后的完整测试轮次。
 
 ## 5. 结果缓存与失效机制
 

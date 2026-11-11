@@ -37,7 +37,7 @@ Unsuspicious Block 采用五层文档架构，严格区分面向读者、单一�
 | 编写与审校文档风格 | [文档撰写风格指南](guides/style-documentation.md) | 信息阶梯、上下文指针与单一事实源 |
 | 编写与修改 Java 源码风格 | [代码风格规范](guides/style-code.md) | Java 21、多平台隔离、禁止全限定名与契约 |
 | 开发流程与构建验证 | [开发流程](guides/development.md) | 工作流、IDEA 检查与构建验证 |
-| 运行或修改校验与构建工具 | [仓库工具](../tools/README.md) | Python/PowerShell 检查与生成入口 |
+| 运行或修改校验、绘制与诊断工具 | [仓库工具](../tools/README.md) | 源码校验、程序化绘图架构与存档诊断入口 |
 | 规划、任务与 Issue 流转 | [Issue 追踪器](agents/issue-tracker.md) · [Triage 标签](agents/triage-labels.md) | 本地 Markdown 任务规范 |
 | 查询原版/Loader API 或领域建模 | [API 查询依据](agents/api-lookup.md) · [领域文档布局](agents/domain.md) | 外部查询分级与 ADR 决策 |
 | 查阅版本历史 | [变更记录](../CHANGELOG.md) | 各版本特性与修复清单 |

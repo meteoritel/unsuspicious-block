@@ -2,9 +2,9 @@
 from pathlib import Path
 import sys
 
-from toolslib.boundaries import PROJECT, is_client_owner, is_client_target
-from toolslib.checks import Finding, run
-from toolslib.java_references import Source, TypeIndex
+from checkslib.boundaries import PROJECT, is_client_owner, is_client_target
+from checkslib.checks import Finding, run
+from checkslib.java_references import Source, TypeIndex
 from toolslib.repo import java_files
 
 LOADERS = {'fabric': ('net.fabricmc.',), 'neoforge': ('net.neoforged.', 'net.minecraftforge.', 'cpw.mods.')}

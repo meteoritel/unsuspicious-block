@@ -11,7 +11,7 @@ def sourceCheck = tasks.register('checkSourceRepository', Exec) {
     group = 'verification'
     description = '校验文档、语言、源码边界和资源接线'
     workingDir rootProject.projectDir
-    commandLine repositoryPython.get(), rootProject.file('tools/check-all.py'), '--root', rootProject.projectDir
+    commandLine repositoryPython.get(), rootProject.file('tools/checks/check-all.py'), '--root', rootProject.projectDir
 }
 
 def packagingCheck = tasks.register('checkUiKitPackaging', Exec) {
@@ -21,7 +21,7 @@ def packagingCheck = tasks.register('checkUiKitPackaging', Exec) {
     mustRunAfter sourceCheck
     workingDir rootProject.projectDir
     doFirst {
-        commandLine repositoryPython.get(), rootProject.file('tools/check-ui-kit-packaging.py'),
+        commandLine repositoryPython.get(), rootProject.file('tools/checks/check-ui-kit-packaging.py'),
                 '--root', rootProject.projectDir,
                 '--fabric-jar', project(':fabric').tasks.named('remapJar').get().archiveFile.get().asFile,
                 '--neoforge-jar', project(':neoforge').tasks.named('jar').get().archiveFile.get().asFile

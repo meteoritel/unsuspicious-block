@@ -2,9 +2,9 @@
 from pathlib import Path
 import sys
 
-from toolslib.boundaries import KIT, NATIVE_WIDGETS, PROJECT, is_client_owner
-from toolslib.checks import Finding, run
-from toolslib.java_references import NAME, Reference, Source, TypeIndex
+from checkslib.boundaries import KIT, NATIVE_WIDGETS, PROJECT, is_client_owner
+from checkslib.checks import Finding, run
+from checkslib.java_references import NAME, Reference, Source, TypeIndex
 from toolslib.repo import java_files
 
 LEGACY = PROJECT + 'client.ui.kit'

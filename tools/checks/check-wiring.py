@@ -3,10 +3,10 @@ from pathlib import Path
 import re
 import sys
 
-from toolslib.checks import Finding, run
-from toolslib.boundaries import is_client_source
-from toolslib.java_references import Source, TypeIndex
-from toolslib.json_input import read_json
+from checkslib.checks import Finding, run
+from checkslib.boundaries import is_client_source
+from checkslib.java_references import Source, TypeIndex
+from checkslib.json_input import read_json
 from toolslib.repo import java_files, properties, repository_files
 
 PROJECT = 'com.meteorite.unsuspiciousblock.'

@@ -17,4 +17,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Check repository sources
-        run: python tools/check-all.py
+        run: python tools/checks/check-all.py

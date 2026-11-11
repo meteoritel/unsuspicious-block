@@ -38,7 +38,7 @@ jobs:
           python-version: '3.12'
 
       - name: 校验文档链接与导航
-        run: python tools/check-docs.py
+        run: python tools/checks/check-docs.py
 
       - name: 校验 Wiki 内容源
         shell: bash

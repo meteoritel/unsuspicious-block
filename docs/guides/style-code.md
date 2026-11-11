@@ -48,7 +48,7 @@
 
 项目三模块（`common` / `fabric` / `neoforge`）的职责与初始化架构见[架构总览](../dev/foundation/architecture.md)与[平台抽象](../dev/foundation/platform-spi.md)，编码时遵守以下三条代码级红线：
 
-1. **`common` 零 Loader 依赖**：`common/` 源码**绝对禁止** import 任何 `net.fabricmc.*` 或 `net.neoforged.*` 包，平台能力一律经 `platform/services/` SPI 接口调用。该规则由 `python tools/check-isolation.py` 强制检验。
+1. **`common` 零 Loader 依赖**：`common/` 源码**绝对禁止** import 任何 `net.fabricmc.*` 或 `net.neoforged.*` 包，平台能力一律经 `platform/services/` SPI 接口调用。该规则由 `python tools/checks/check-isolation.py` 强制检验。
 2. **服务端执行面与客户端物理隔离**：
    - `core` 与公共 `platform` 严禁静态引用渲染（`GuiGraphics`、`RenderSystem`）、界面（`Screen`）、模型或 `Minecraft.getInstance()` 等客户端类，避免专用服务端出现 `NoClassDefFoundError`。
    - 需要客户端能力的公共交互通过桥接接口（如 `ClientTooltipBridge`）在客户端初始化时安装。

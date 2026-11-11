@@ -52,7 +52,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 ## 4. 边界检查与构建校验
 
-1. **静态边界检查**：运行 `python tools/check-ui-kit-boundaries.py`（或兼容脚本 `pwsh -NoProfile -File scripts/check-ui-kit-boundaries.ps1`），核验：① 无仓内旧 kit 目录或残留包引用；② 仅消费 UI Kit `api` 包（禁止引用 `internal`）；③ UI Kit 仅由 `client` 所有者引用；④ `common` 无 Loader 导入。
+1. **静态边界检查**：运行 `python tools/checks/check-ui-kit-boundaries.py`，核验：① 无仓内旧 kit 目录或残留包引用；② 仅消费 UI Kit `api` 包（禁止引用 `internal`）；③ UI Kit 仅由 `client` 所有者引用；④ `common` 无 Loader 导入。
 2. **构建与打包检查**：按[开发流程](../../guides/development.md)检查工作区报错后串行执行 `./gradlew.bat build --no-daemon`，并通过 `checkUiKitPackaging` 核对双端产出 JAR 中内嵌库与元数据的精确一致性（确认未误展开库 class 或混入开发样例）。
 
 ## 5. 相关文档

@@ -82,7 +82,7 @@
 | `ScenarioRecommendationOverlay` | 展示物品/子表入口推荐求解的等待、失败重试与参数变更预览；应用推荐只填回参数草稿，仍需显式计算。关闭、切表、切输入或目录失效时取消旧请求 |
 | `ScenarioExpandedOverlay` | 在 `UiLightbox` 中使用 `ScenarioFrameView` 全屏放大条件树：初始按窗口尺寸适配档位（不超过自然字号），支持滚轮缩放与拖动平移，窗口 resize 保持手动缩放比并钳制；`Esc` 关闭（点击遮罩不关闭），关闭不破坏页内原滚动位置 |
 
-所有功能图标、状态徽章、按钮九宫格与场景底纹均统一取自 `ui_atlas.png`（由 `scripts/drawer/generate_ui_atlas.py` 生成），分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
+所有功能图标、状态徽章、按钮九宫格与场景底纹均统一取自 `ui_atlas.png`（由 `tools/drawer/generate_ui_atlas.py` 生成），分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
 
 ## 6. 阅读状态与本地持久化
 

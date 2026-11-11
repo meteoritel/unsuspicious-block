@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from toolslib.checks import configure_console
+from checkslib.checks import configure_console
 from toolslib.repo import repo_root
 
 CHECKS = (

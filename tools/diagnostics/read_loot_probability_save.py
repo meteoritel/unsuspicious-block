@@ -7,10 +7,10 @@
 
 用法（在仓库根目录，或任意位置传路径）：
 
-    python scripts/read_loot_probability_save.py
+    python tools/diagnostics/read_loot_probability_save.py
         # 自动取 neoforge/run/saves/*/data/ 下最新的那份
-    python scripts/read_loot_probability_save.py <路径.dat>
-    python scripts/read_loot_probability_save.py --table minecraft:gameplay/fishing
+    python tools/diagnostics/read_loot_probability_save.py <路径.dat>
+    python tools/diagnostics/read_loot_probability_save.py --table minecraft:gameplay/fishing
         # 额外 dump 指定表的输入键与逐签名测量值
 
 看点：
@@ -23,11 +23,17 @@
 
 import argparse
 import gzip
-import glob
-import os
+from pathlib import Path
 import struct
 import sys
 import zlib
+
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(_TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_ROOT))
+
+from toolslib.cli import configure_console
+from toolslib.repo import repo_root
 
 
 class NbtReader:
@@ -140,9 +146,9 @@ def decompress(raw: bytes) -> bytes:
         "稍后重试；若持续如此则文件已损坏。" % len(raw))
 
 
-def load(path: str):
+def load(path: Path):
     """返回 (format_version, {tableId: entry})；解析失败时抛出。"""
-    reader = NbtReader(decompress(open(path, "rb").read()))
+    reader = NbtReader(decompress(path.read_bytes()))
     root_tag = reader.u1()
     reader.s()
     root = reader.payload(root_tag)
@@ -168,28 +174,30 @@ def load(path: str):
     return inner.get("format_version"), entries
 
 
-def newest_save() -> str | None:
-    candidates = glob.glob("neoforge/run/saves/*/data/unsuspiciousblock_loot_probability.dat")
+def newest_save(root: Path) -> Path | None:
+    candidates = list(root.glob("neoforge/run/saves/*/data/unsuspiciousblock_loot_probability.dat"))
     if not candidates:
-        candidates = glob.glob("**/unsuspiciousblock_loot_probability.dat", recursive=True)
-    return max(candidates, key=os.path.getmtime) if candidates else None
+        candidates = list(root.glob("**/unsuspiciousblock_loot_probability.dat"))
+    return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
 
 
 def main() -> int:
+    configure_console()
     parser = argparse.ArgumentParser(description="诊断战利品概率缓存存档")
-    parser.add_argument("path", nargs="?", help="存档路径；省略则自动找最新的一份")
+    parser.add_argument("--root", help="项目根目录，默认由工具位置定位")
+    parser.add_argument("path", nargs="?", type=Path, help="存档路径；省略则自动找最新的一份")
     parser.add_argument("--table", help="额外 dump 这张表的输入与测量值")
     parser.add_argument("--show-items", action="store_true", help="配合 --table：列出逐签名测量值")
     args = parser.parse_args()
 
-    path = args.path or newest_save()
-    if not path or not os.path.exists(path):
+    path = args.path if args.path is not None else newest_save(repo_root(args.root))
+    if not path or not path.is_file():
         print("找不到概率缓存存档；请显式传入路径", file=sys.stderr)
         return 1
 
     version, entries = load(path)
     print("存档: %s" % path)
-    print("format_version = %s（当前代码为 4；不一致时整份按缓存未命中处理）" % version)
+    print("format_version = %s（须与 LootProbabilityData.FORMAT_VERSION 一致；不一致时整份按缓存未命中处理）" % version)
     print("表数 = %d" % len(entries))
 
     multi = {t: d for t, d in entries.items() if len(d["inputs"]) > 1}

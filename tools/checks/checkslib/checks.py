@@ -5,7 +5,8 @@ from pathlib import Path
 import sys
 from typing import Callable
 
-from .repo import repo_root
+from toolslib.cli import configure_console
+from toolslib.repo import repo_root
 
 
 @dataclass(frozen=True)
@@ -18,12 +19,6 @@ class Finding:
     def render(self) -> str:
         location = self.path + (f':{self.line}' if self.line is not None else '')
         return f'{location} [{self.rule}] {self.detail}'
-
-
-def configure_console() -> None:
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, 'reconfigure'):
-            stream.reconfigure(encoding='utf-8', errors='replace')
 
 
 def execute(operation: Callable[[], list[Finding]]) -> int:
