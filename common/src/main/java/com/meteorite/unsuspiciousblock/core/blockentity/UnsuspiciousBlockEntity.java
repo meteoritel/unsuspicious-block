@@ -10,14 +10,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * 保存不可疑方块的封存物品、封存者身份与扫描状态。
@@ -92,23 +90,8 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
     }
 
     @Override
-    public void unsuspiciousblock$markScanned(UUID scannerUuid) {
-        if (this.scan.mark(scannerUuid)) this.markChanged();
-    }
-
-    @Override
-    public void unsuspiciousblock$clearScanned() {
-        if (this.scan.clear()) this.markChanged();
-    }
-
-    @Override
-    public boolean unsuspiciousblock$isScanned() {
-        return this.scan.scanned();
-    }
-
-    @Override
-    public @Nullable UUID unsuspiciousblock$getScannerUuid() {
-        return this.scan.scanner();
+    public ScanIdentity unsuspiciousblock$scanIdentity() {
+        return this.scan;
     }
 
     @Override
@@ -137,13 +120,7 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
         this.markChanged();
     }
 
-    // 标记区块数据脏状态；无需向客户端广播内部封存物品
     private void markChanged() {
-        this.setChanged();
-        Level level = this.getLevel();
-        if (level != null && !level.isClientSide()) {
-            BlockState state = this.getBlockState();
-            level.sendBlockUpdated(this.getBlockPos(), state, state, 3);
-        }
+        BlockEntitySync.markChanged(this, level -> this.getBlockState());
     }
 }

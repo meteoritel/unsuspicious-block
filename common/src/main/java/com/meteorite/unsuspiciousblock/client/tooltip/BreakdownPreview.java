@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.client.anvil.AnvilBreakdownTooltipBuilder
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdown;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownCalculator;
 import com.meteorite.unsuspiciousblock.client.grindstone.GrindstoneBreakdownTooltipBuilder;
-import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
+import com.meteorite.unsuspiciousblock.core.inventory.CarriedItems;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.Minecraft;
@@ -115,7 +115,7 @@ public final class BreakdownPreview {
         if (ModItems.EYE_OF_CAT == null) {
             return false;
         }
-        return InventoryPresenceRegistry.isPresent(player, ModItems.EYE_OF_CAT);
+        return CarriedItems.isPresent(player, ModItems.EYE_OF_CAT);
     }
 
     // 输入槽物品的附魔惩罚值 tooltip 行；铁砧与砂轮语义一致，共用同一文案与语义色

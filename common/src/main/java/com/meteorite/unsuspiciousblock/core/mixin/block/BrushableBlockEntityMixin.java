@@ -7,17 +7,17 @@ import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableTracking;
+import com.meteorite.unsuspiciousblock.core.blockentity.ScanIdentity;
+import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntitySync;
 import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.PendingJournal;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -44,7 +44,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.UUID;
 
 /**
  * 为可疑方块补充扫描状态、战利品表状态与考古笔记追踪。
@@ -94,44 +93,18 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
     @Unique
     private void unsuspiciousblock$syncBlockEntity() {
         BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-        blockEntity.setChanged();
-
-        Level level = blockEntity.getLevel();
-        if (level != null && !level.isClientSide()) {
-            BlockPos pos = blockEntity.getBlockPos();
-            var state = level.getBlockState(pos);
-            level.sendBlockUpdated(pos, state, state, 3);
-        }
+        BlockEntitySync.markChanged(blockEntity,
+                level -> level.getBlockState(blockEntity.getBlockPos()));
     }
 
-    // ========== 扫描状态接口实现 ========== //
-    // 标记当前可疑方块已被指定玩家扫描
     @Override
-    public void unsuspiciousblock$markScanned(UUID scannerUuid) {
-        if (this.unsuspiciousblock$tracking.scan().mark(scannerUuid)) {
-            this.unsuspiciousblock$syncBlockEntity();
-        }
+    public ScanIdentity unsuspiciousblock$scanIdentity() {
+        return this.unsuspiciousblock$tracking.scan();
     }
 
-    // 清除当前可疑方块的扫描标记
     @Override
-    public void unsuspiciousblock$clearScanned() {
-        if (this.unsuspiciousblock$tracking.clearScan()) {
-            this.unsuspiciousblock$syncBlockEntity();
-        }
-    }
-
-    // 返回当前可疑方块是否已被扫描
-    @Override
-    public boolean unsuspiciousblock$isScanned() {
-        return this.unsuspiciousblock$tracking.scan().scanned();
-    }
-
-    // 返回记录的扫描者 UUID
-    @Override
-    @Nullable
-    public UUID unsuspiciousblock$getScannerUuid() {
-        return this.unsuspiciousblock$tracking.scan().scanner();
+    public void unsuspiciousblock$onScanCleared() {
+        this.unsuspiciousblock$tracking.pending().discard();
     }
 
     // ========== 战利品表状态接口实现 ========== //
@@ -258,9 +231,7 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
     // 在战利品表解析前捕获本次可疑方块使用的表标识与追踪上下文
     @Inject(method = "unpackLootTable", at = @At("HEAD"))
     private void unsuspiciousblock$captureLootTableName(Player player, CallbackInfo ci,
-                                                        @Share("trackingContext") LocalRef<LootTrackingContext> trackingContext,
-                                                        @Share("lootSession") LocalRef<LootSession> lootSession) {
-        trackingContext.set(null);
+                                                        @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         lootSession.set(null);
         this.unsuspiciousblock$lootTableParsedThisCall = false;
         Level level = this.unsuspiciousblock$asBlockEntity().getLevel();
@@ -275,7 +246,7 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
         }
 
         // 命中追踪规则时准备上下文，由 getRandomItems 调用点建立异常安全的作用域
-        if (ArchaeologyJournalServerCatalog.isTrackedTable(this.unsuspiciousblock$tracking.table())
+        if (ArchaeologyJournalServerCatalog.tracked(this.unsuspiciousblock$tracking.table())
                 && player instanceof ServerPlayer sp
                 && level instanceof ServerLevel serverLevel) {
             long gameTime = this.unsuspiciousblock$brushContext && this.unsuspiciousblock$brushGameTime >= 0L
@@ -287,11 +258,9 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
             BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
             BlockPos pos = blockEntity.getBlockPos();
             ResourceLocation sourceBlockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
-            LootTrackingContext context = LootTrackingContext.root(
+            lootSession.set(LootCapture.begin(new LootCapture.Source(
                     sp, this.unsuspiciousblock$tracking.table(), LootSourceType.ARCHAEOLOGY,
-                    gameTime, dayTime, pos, sourceBlockId);
-            trackingContext.set(context);
-            lootSession.set(new LootSession(context));
+                    pos, sourceBlockId, gameTime, dayTime)));
         }
     }
 
@@ -304,44 +273,27 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
     private ObjectArrayList<ItemStack> unsuspiciousblock$scopeLootRoll(
             LootTable lootTable, LootParams lootParams, long seed,
             Operation<ObjectArrayList<ItemStack>> original,
-            @Share("trackingContext") LocalRef<LootTrackingContext> trackingContext,
-            @Share("lootSession") LocalRef<LootSession> lootSession) {
-        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(
-                lootSession.get(), trackingContext.get())) {
-            return original.call(lootTable, lootParams, seed);
-        }
+            @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
+        CaptureHandle capture = lootSession.get();
+        return capture == null ? original.call(lootTable, lootParams, seed)
+                : capture.roll(() -> original.call(lootTable, lootParams, seed));
     }
 
     // 在战利品表解析后同步考古笔记状态并刷新方块实体
     @Inject(method = "unpackLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$syncLootTableState(Player player, CallbackInfo ci,
-                                                      @Share("lootSession") LocalRef<LootSession> lootSession) {
-        // parsedThisCall=true 表示本次实际解析了战利品表（this.lootTable 原先非 null，原版 roll 后置 null）
-        // 原版 brush() 每个 tick 都调用 unpackLootTable，但只有首次调用实际 roll 战利品，后续都是空操作
-        boolean parsedThisCall = this.unsuspiciousblock$lootTableParsedThisCall;
-        this.unsuspiciousblock$lootTableParsedThisCall = false;
-
-        // 仅在实际生成战利品时处理——避免刷拭过程中每次空调用都重复 dispatch 精掘
-        if (!parsedThisCall) {
-            return;
-        }
-
-        // 仅在刷拭上下文中处理精掘与日志——扫描仪路径由 SuspiciousReaderItem 自行处理追踪
-        if (!this.unsuspiciousblock$brushContext || this.unsuspiciousblock$tracking.table() == null
-                || !(player instanceof ServerPlayer) || this.item.isEmpty()) {
+                                                      @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
+        try (CaptureHandle capture = lootSession.get()) {
+            boolean parsedThisCall = this.unsuspiciousblock$lootTableParsedThisCall;
+            this.unsuspiciousblock$lootTableParsedThisCall = false;
+            if (!parsedThisCall) return;
+            // 扫描仪路径自行提交；刷拭记录翻倍前的期望值。
+            if (this.unsuspiciousblock$brushContext && this.unsuspiciousblock$tracking.table() != null
+                    && player instanceof ServerPlayer && !this.item.isEmpty() && capture != null) {
+                capture.complete(this.item.copy(), LootSettlementTarget.brush(this.unsuspiciousblock$tracking.pending()));
+            }
             this.unsuspiciousblock$syncBlockEntity();
-            return;
         }
-
-        // 记录战利品表原始解析结果（翻倍前），作为考古日志的期望值
-        ItemStack originalItem = this.item.copy();
-        LootSession session = lootSession.get();
-        if (session != null) {
-            LootTrackingEvents.submit(session, originalItem,
-                    LootSettlementStrategies.deferred(this.unsuspiciousblock$tracking.pending()::stage));
-        }
-
-        this.unsuspiciousblock$syncBlockEntity();
     }
 
     // 重新设置战利品表时清空旧的解析状态

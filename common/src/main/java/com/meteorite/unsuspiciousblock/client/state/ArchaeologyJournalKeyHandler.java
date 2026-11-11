@@ -4,7 +4,7 @@ import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
 import com.meteorite.unsuspiciousblock.client.ui.ArchaeologyJournalUi;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
+import com.meteorite.unsuspiciousblock.core.inventory.CarriedItems;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.meteorite.unsuspiciousblock.client.mixin.AbstractContainerScreenAccessor;
 import net.minecraft.client.Minecraft;
@@ -35,7 +35,7 @@ public final class ArchaeologyJournalKeyHandler {
 
         // 快捷键打开考古笔记：物品栏或饰品栏任一含手册均可触发
         if (ModKeyBindings.JOURNAL_OPEN.consumeClick()) {
-            boolean hasJournal = InventoryPresenceRegistry.isPresent(player, ModItems.ARCHAEOLOGY_JOURNAL);
+            boolean hasJournal = CarriedItems.isPresent(player, ModItems.ARCHAEOLOGY_JOURNAL);
             if (hasJournal) {
                 ArchaeologyJournalUi.openFromKeybind();
             }
@@ -58,7 +58,7 @@ public final class ArchaeologyJournalKeyHandler {
         LocalPlayer player = minecraft.player;
         if (player == null || screen instanceof ArchaeologyJournalScreen
                 || !ModKeyBindings.JOURNAL_OPEN.matches(keyCode, scanCode)
-                || !InventoryPresenceRegistry.isPresent(player, ModItems.ARCHAEOLOGY_JOURNAL)) {
+                || !CarriedItems.isPresent(player, ModItems.ARCHAEOLOGY_JOURNAL)) {
             return false;
         }
 

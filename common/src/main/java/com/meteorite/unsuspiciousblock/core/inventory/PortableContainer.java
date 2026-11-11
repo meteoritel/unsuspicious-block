@@ -7,8 +7,8 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
- * 便携容器扩展点——物品实现此接口后，{@link InventoryPresenceRegistry#isPresent}
- * 会递归扫描容器内物品，使"容器在背包 → 容器内物品效果触发"成立。
+ * 便携容器扩展点——物品实现此接口后，{@link CarriedItems#isPresent}
+ * 扫描便携容器第一层物品，使"容器在背包 → 容器内物品效果触发"成立。
  * <p>
  * 短路匹配（找到即停止），且无实现时无需分配空集合。
  */

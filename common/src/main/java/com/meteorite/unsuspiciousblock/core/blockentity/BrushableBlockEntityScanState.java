@@ -5,18 +5,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.UUID;
 
-public interface BrushableBlockEntityScanState {
-    void unsuspiciousblock$markScanned(UUID scannerUuid);
-
-    void unsuspiciousblock$clearScanned();
-
-    boolean unsuspiciousblock$isScanned();
-
-    @Nullable
-    UUID unsuspiciousblock$getScannerUuid();
-
+/** 刷拭与封存物的物品访问能力，扫描流程由宿主契约提供。 */
+public interface BrushableBlockEntityScanState extends ScanStateHost {
     @Nullable
     ResourceLocation unsuspiciousblock$getLootTableName();
 
@@ -31,14 +22,4 @@ public interface BrushableBlockEntityScanState {
         return ItemStack.EMPTY;
     }
 
-    // 标记底层方块实体已变更并同步到客户端，由各平台实现覆盖
-    default void unsuspiciousblock$markBlockEntityChanged() {
-        // no-op
-    }
-
-    default boolean unsuspiciousblock$isScanner(UUID uuid) {
-        return this.unsuspiciousblock$isScanned()
-                && uuid != null
-                && uuid.equals(this.unsuspiciousblock$getScannerUuid());
-    }
 }

@@ -28,12 +28,6 @@ public final class BrushableTracking {
         return changed;
     }
 
-    public boolean clearScan() {
-        if (!scan.clear()) return false;
-        pending.discard();
-        return true;
-    }
-
     public boolean clearResolved() {
         boolean changed = parsed || table != null || pending.current() != null;
         parsed = false;

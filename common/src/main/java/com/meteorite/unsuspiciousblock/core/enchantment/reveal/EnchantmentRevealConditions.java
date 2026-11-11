@@ -1,8 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.enchantment.reveal;
 
-import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
+import com.meteorite.unsuspiciousblock.core.inventory.CarriedItems;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
-import net.minecraft.world.item.ItemStack;
 
 /**
  * 附魔揭示内建触发条件注册。
@@ -26,7 +25,7 @@ public final class EnchantmentRevealConditions {
             if (ModItems.EYE_OF_CAT == null) {
                 return false;
             }
-            return InventoryPresenceRegistry.isPresent(player, ModItems.EYE_OF_CAT);
+            return CarriedItems.isPresent(player, ModItems.EYE_OF_CAT);
         });
     }
 }

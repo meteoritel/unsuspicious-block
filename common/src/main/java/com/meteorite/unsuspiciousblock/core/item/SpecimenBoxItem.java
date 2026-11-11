@@ -29,7 +29,7 @@ import java.util.stream.Stream;
 
 /**
  * 标本箱物品--便携容器，放在背包或饰品栏中时内部物品的"背包生效"功能正常触发。
- * 右键打开 5 格容器 GUI。实现 PortableContainer 供 InventoryPresenceRegistry 递归扫描。
+ * 右键打开 5 格容器 GUI。实现 PortableContainer 供 CarriedItems 扫描便携容器第一层。
  */
 public class SpecimenBoxItem extends Item implements PortableContainer {
     public SpecimenBoxItem(Properties properties) {
@@ -45,7 +45,7 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
 
     @Override
     public Stream<ItemStack> getContents(ItemStack container) {
-        // 返回盒内非空物品流，供 InventoryPresenceRegistry 递归扫描
+        // 返回盒内非空物品流，供 CarriedItems 扫描便携容器第一层
         return container.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY)
                 .nonEmptyStream();
     }

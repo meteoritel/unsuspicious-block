@@ -1,6 +1,6 @@
-package com.meteorite.unsuspiciousblock.core.mixin.journal;
+package com.meteorite.unsuspiciousblock.core.mixin.player;
 
-import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
+import com.meteorite.unsuspiciousblock.core.player.PlayerDataLifecycle;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 为服务端玩家补充日志同步会话，并将重生生命周期转交给统一玩家手册数据服务。
  */
 @Mixin(ServerPlayer.class)
-public abstract class ServerPlayerJournalStateMixin implements ArchaeologyJournalLogSyncSessionHolder {
+public abstract class ServerPlayerDataMixin implements ArchaeologyJournalLogSyncSessionHolder {
     @Unique
     private final ArchaeologyJournalLogSyncSession unsuspiciousblock$journalLogSyncSession = new ArchaeologyJournalLogSyncSession();
 
@@ -27,6 +27,6 @@ public abstract class ServerPlayerJournalStateMixin implements ArchaeologyJourna
     // 玩家实体恢复时由统一数据服务移交解锁进度和日志同步会话
     @Inject(method = "restoreFrom", at = @At("TAIL"))
     private void unsuspiciousblock$copyJournalState(ServerPlayer oldPlayer, boolean alive, CallbackInfo ci) {
-        JournalPlayerDataService.copyForRespawn(oldPlayer, (ServerPlayer) (Object) this);
+        PlayerDataLifecycle.copyForRespawn(oldPlayer, (ServerPlayer) (Object) this);
     }
 }
