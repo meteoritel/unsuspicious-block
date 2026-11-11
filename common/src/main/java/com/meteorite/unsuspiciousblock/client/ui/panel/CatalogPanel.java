@@ -10,6 +10,7 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.meteosuikit.api.control.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
@@ -81,8 +82,6 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
     private static final int NORMAL_COLOR = UiTextScheme.PARCHMENT.body();
     private static final int SELECTED_COLOR = 0x7B3E18;
-    // 收藏星标：原字面量 #C8A014 在纸面 #E8DCBC 上仅 1.81:1，改引语义色表的 ACCENT（压暗后 4.82:1）
-    private static final int FAVORITE_COLOR = UiTextScheme.PARCHMENT.accent();
     private static final int CARD_BORDER = 0x8B6914;
     private static final int CARD_BG = 0x18A67C42;
     private static final int CARD_HOVER = 0x30C8A050;
@@ -182,7 +181,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         int index = UiRowMetrics.fixedRowIndex(y, rowStride(), JournalLayout.CATALOG_ROW_HEIGHT, entries.size());
         if (index < 0) return ClickResult.NONE;
         CatalogEntryData entry = entries.get(index);
-        return new ClickResult(index, entry.hasChildren() && mouseX < buttonX() + 13 + entry.depth() * 8);
+        return new ClickResult(index, entry.hasChildren() && mouseX < buttonX() + 15 + entry.depth() * 8);
     }
 
     public int hoveredIndex(double mouseX, double mouseY) {
@@ -253,10 +252,11 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         int indent = entry.depth() * 8;
         int markerX = x + 5 + indent;
         if (entry.hasChildren()) {
-            graphics.drawString(font, entry.expanded() ? "▼" : "▶", markerX, y + 6, NORMAL_COLOR, false);
+            UiAtlas.icon(entry.expanded() ? UiAtlas.Icon.TREE_EXPANDED : UiAtlas.Icon.TREE_COLLAPSED)
+                    .render(graphics, markerX, y + 5);
         }
         int textX = markerX + (entry.hasChildren() ? 10 : 3);
-        int rightReserve = (entry.child() ? 12 : 0) + (entry.favorite() ? 9 : 0) + 5;
+        int rightReserve = (entry.child() ? 11 : 0) + (entry.favorite() ? 11 : 0) + 5;
         String text = entry.unlocked() ? entryNameText(entry) : "";
         int ticks = hovered ? this.entryScrollTicks.merge(entry.id(), 1, Integer::sum) : 0;
         if (!hovered) this.entryScrollTicks.put(entry.id(), 0);
@@ -267,10 +267,12 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
                 hovered, ticks, false);
         int right = x + buttonWidth() - 5;
         if (entry.favorite()) {
-            graphics.drawString(font, "★", right - 6, y + 6, FAVORITE_COLOR, false);
-            right -= 9;
+            UiAtlas.icon(UiAtlas.Icon.FAVORITE_BADGE).render(graphics, right - 10, y + 5);
+            right -= 11;
         }
-        if (entry.child()) graphics.drawString(font, "∈", right - 6, y + 6, CHILD_COLOR, false);
+        if (entry.child()) {
+            UiAtlas.icon(UiAtlas.Icon.CHILD_BADGE).render(graphics, right - 10, y + 5);
+        }
     }
 
     // 语言资源实例变化时丢弃逐帧文案缓存：文字随语言变，滚动与悬停状态不随。

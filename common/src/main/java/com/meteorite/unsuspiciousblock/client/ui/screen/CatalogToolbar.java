@@ -7,6 +7,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
@@ -207,24 +208,24 @@ public class CatalogToolbar {
         this.onContentChanged.run();
     }
 
-    private static JournalControls.Icon sortOrderIcon(CatalogSorter.SortOrder order) {
+    private static UiAtlas.Icon sortOrderIcon(CatalogSorter.SortOrder order) {
         return switch (order) {
-            case DEFAULT -> JournalControls.Icon.SORT_DEFAULT;
-            case NAME -> JournalControls.Icon.SORT_NAME;
-            case UNLOCK -> JournalControls.Icon.SORT_UNLOCK;
-            case ITEM_COUNT -> JournalControls.Icon.SORT_ITEM_COUNT;
-            case FAVORITE -> JournalControls.Icon.SORT_FAVORITE;
-            case UPDATE_TIME -> JournalControls.Icon.SORT_UPDATE_TIME;
+            case DEFAULT -> UiAtlas.Icon.SORT_DEFAULT;
+            case NAME -> UiAtlas.Icon.SORT_NAME;
+            case UNLOCK -> UiAtlas.Icon.SORT_UNLOCK;
+            case ITEM_COUNT -> UiAtlas.Icon.SORT_ITEM_COUNT;
+            case FAVORITE -> UiAtlas.Icon.SORT_FAVORITE;
+            case UPDATE_TIME -> UiAtlas.Icon.SORT_UPDATE_TIME;
         };
     }
 
-    private static JournalControls.Icon sortDirectionIcon(boolean descending) {
-        return descending ? JournalControls.Icon.ARROW_DOWN : JournalControls.Icon.ARROW_UP;
+    private static UiAtlas.Icon sortDirectionIcon(boolean descending) {
+        return descending ? UiAtlas.Icon.ARROW_DOWN : UiAtlas.Icon.ARROW_UP;
     }
 
     // 眼睛表示正在显示未解锁条目，划线眼睛表示正在隐藏
-    private static JournalControls.Icon hideLockedIcon(boolean hideLocked) {
-        return hideLocked ? JournalControls.Icon.HIDE_LOCKED : JournalControls.Icon.SHOW_LOCKED;
+    private static UiAtlas.Icon hideLockedIcon(boolean hideLocked) {
+        return hideLocked ? UiAtlas.Icon.HIDE_LOCKED : UiAtlas.Icon.SHOW_LOCKED;
     }
 
     // 隐藏未解锁按钮的 tooltip
@@ -284,7 +285,7 @@ public class CatalogToolbar {
         UiControl searchToggleButton = JournalControls.iconButton(
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
-                this.searchExpanded ? JournalControls.Icon.CLOSE : JournalControls.Icon.SEARCH,
+                this.searchExpanded ? UiAtlas.Icon.CLOSE : UiAtlas.Icon.SEARCH,
                 List.of(
                         Component.translatable(tooltipBase).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
                         Component.translatable(tooltipBase + ".rule_table.syntax").withStyle(ChatFormatting.AQUA),

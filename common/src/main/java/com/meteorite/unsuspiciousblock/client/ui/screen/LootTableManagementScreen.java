@@ -10,6 +10,7 @@ import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
@@ -82,11 +83,19 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         languageBox.setOnValueChanged(() -> onLanguageInputChanged(languageBox.value()));
         nameBox.setOnValueChanged(() -> onNameInputChanged(nameBox.value()));
         list = new UiListView<>(theme(), (graphics, rowFont, row, index, rect, selected, hovered, focused) -> {
-            String marker = row.expandable() ? row.expanded() ? "v " : "> " : "";
-            String tracking = row.entry() == null ? "" : row.entry().tracked() ? "+ " : "- ";
             int x = rect.x() + row.depth() * INDENT_WIDTH;
-            graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, marker + tracking + row.label(),
-                    Math.max(0, rect.right() - x)), x, rect.y() + 5, UiTextScheme.DARK.body(), false);
+            if (row.expandable()) {
+                UiAtlas.icon(row.expanded() ? UiAtlas.Icon.DARK_TREE_EXPANDED : UiAtlas.Icon.DARK_TREE_COLLAPSED)
+                        .render(graphics, x, rect.y() + 5);
+                x += 11;
+            }
+            if (row.entry() != null) {
+                UiAtlas.icon(row.entry().tracked() ? UiAtlas.Icon.DARK_TRACKED : UiAtlas.Icon.DARK_UNTRACKED)
+                        .render(graphics, x, rect.y() + 5);
+                x += 11;
+            }
+            graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, row.label(),
+                    Math.max(0, rect.right() - x)), x, rect.y() + 6, UiTextScheme.DARK.body(), false);
         });
         list.setRowHeight(ROW_HEIGHT);
         list.setActivateOnSingleClick(true);

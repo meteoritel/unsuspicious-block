@@ -12,6 +12,7 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
@@ -136,7 +137,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         this.backButton = JournalControls.iconButton(
                 leftX, y,
                 JournalLayout.LOG_DETAIL_BACK_BTN_SIZE,
-                '←',
+                UiAtlas.Icon.BACK,
                 tooltip,
                 onBack);
         registrar.accept(this.backButton);
@@ -154,7 +155,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         this.noteButton = JournalControls.iconButton(
                 btnX, y,
                 btnSize,
-                JournalControls.Icon.PENCIL,
+                UiAtlas.Icon.PENCIL,
                 tooltip,
                 onNoteClick);
         registrar.accept(this.noteButton);
@@ -167,7 +168,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         int btnSize = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE;
         int btnX = leftX + (btnSize + 2) * 2;
         this.deleteButton = JournalControls.iconButton(
-                btnX, y, btnSize, JournalControls.Icon.CLOSE,
+                btnX, y, btnSize, UiAtlas.Icon.CLOSE,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.entry_tooltip"),
                 onDeleteClick);

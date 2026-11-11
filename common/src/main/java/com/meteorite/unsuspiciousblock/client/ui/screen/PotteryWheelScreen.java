@@ -12,6 +12,7 @@ import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.*;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -89,10 +90,11 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
             case REDSTONE_ENABLED -> "screen.unsuspiciousblock.pottery_wheel.control.redstone_enabled";
         };
         Component label = Component.translatable(key);
-        UiIcon icon = mode == PotteryWheelBlockEntity.ControlMode.REDSTONE_ENABLED
-                ? new UiIcon.Item(new ItemStack(Items.REDSTONE))
-                : new UiIcon.Sprite(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/toolbar_icons.png"),
-                        (mode == PotteryWheelBlockEntity.ControlMode.DISABLED ? 6 : 7) * 9, 9, 9, 9, 81, 27);
+        UiIcon icon = switch (mode) {
+            case ENABLED -> UiAtlas.icon(UiAtlas.Icon.POTTERY_ENABLED);
+            case DISABLED -> UiAtlas.icon(UiAtlas.Icon.POTTERY_DISABLED);
+            case REDSTONE_ENABLED -> UiAtlas.icon(UiAtlas.Icon.POTTERY_REDSTONE);
+        };
         modeButton.configure(font, Component.empty(), icon, List.of(label), () -> {
             menu.setClientControlMode(PotteryWheelBlockEntity.ControlMode.byId(mode.ordinal() + 1));
             if (Minecraft.getInstance().gameMode != null)

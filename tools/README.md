@@ -43,8 +43,8 @@ Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>`
 
 | 入口 | 用途 |
 |---|---|
-| `scripts/generate_journal_icon_atlas.py` | 生成笔记图标图集 |
-| `scripts/drawer/`、`tools/draw_book_side_tabs.py` | 生成界面纹理和图标，按各脚本参数选择输出 |
+| `scripts/drawer/generate_ui_atlas.py` | 生成全模组统一 UI 图标与皮肤图集 `ui_atlas.png` |
+| `scripts/drawer/` | 生成独立书本、书签、条目条带等结构纹理 |
 | `scripts/nbt_tools/nbt_converter.py` | NBT 数据转换 |
 | `scripts/loot_simulation_profile.py`、`scripts/read_loot_probability_save.py` | 读取模拟与概率保存数据 |
 | `scripts/check-ui-kit-boundaries.ps1` | 兼容入口，转交平台/端隔离与 UI Kit Python 检查 |

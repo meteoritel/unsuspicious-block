@@ -31,7 +31,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **继承与生命周期**：独立界面继承 `UiThemedScreen`，考古笔记继承 `UiScreen`。控件实例与 `UiInputScope` 由页面稳定持有；准备阶段同步业务投影，布局阶段刷新几何，绘制阶段读取同一命中快照。
 - **主题注入**：主题化根页面传入 `Supplier<? extends UiStyleSource>`（动态上下文使用 `context::current`，固定主题传入固定供应商），主题发布版本号变化时自动刷新控件排版与缓存，并保持现有焦点和编辑草稿。
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
-- **笔记视口与工具**：`JournalViewport` 负责将物理窗口坐标统一换算到书页逻辑坐标；`JournalControls` 通过 `UiIconSheet` 切片图集并提供侧签/书签皮肤，点击与持续交互由 UI Kit 接管。
+- **笔记视口与工具**：`JournalViewport` 负责将物理窗口坐标统一换算到书页逻辑坐标；`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置表单由 `UiFormLayout` 驱动排版与焦点自动滚动（底部固定操作栏留在滚动视口之外）。
 
 ### 3.2 模态框与持续交互

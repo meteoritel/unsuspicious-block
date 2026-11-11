@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.client.ui.panel.LogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -77,8 +78,8 @@ public class LogToolbar {
 
     // —— 图标 / tooltip —— 排序方向专用，从原 LogSorter 内联
 
-    public static JournalControls.Icon sortDirectionIcon(boolean descending) {
-        return descending ? JournalControls.Icon.ARROW_DOWN : JournalControls.Icon.ARROW_UP;
+    public static UiAtlas.Icon sortDirectionIcon(boolean descending) {
+        return descending ? UiAtlas.Icon.ARROW_DOWN : UiAtlas.Icon.ARROW_UP;
     }
 
     public static Component sortDirectionTooltip(boolean descending) {
@@ -89,12 +90,12 @@ public class LogToolbar {
     }
 
     // 将日志分组方式映射到对应的图集图标
-    public static JournalControls.Icon groupModeIcon(LogGrouper.GroupMode mode) {
+    public static UiAtlas.Icon groupModeIcon(LogGrouper.GroupMode mode) {
         return switch (mode) {
-            case TIME -> JournalControls.Icon.CLOCK;
-            case DIMENSION -> JournalControls.Icon.DIMENSION;
-            case BIOME -> JournalControls.Icon.BIOME;
-            case NOTED -> JournalControls.Icon.PENCIL;
+            case TIME -> UiAtlas.Icon.CLOCK;
+            case DIMENSION -> UiAtlas.Icon.DIMENSION;
+            case BIOME -> UiAtlas.Icon.BIOME;
+            case NOTED -> UiAtlas.Icon.PENCIL;
         };
     }
 
@@ -143,7 +144,7 @@ public class LogToolbar {
         UiControl clearAllBtn = JournalControls.iconButton(
                 clearAllX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                JournalControls.Icon.TRASH_FULL,
+                UiAtlas.Icon.TRASH_FULL,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.all_tooltip"),
                 onClearAll);
@@ -153,7 +154,7 @@ public class LogToolbar {
         UiControl clearTableBtn = JournalControls.iconButton(
                 clearTableX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                JournalControls.Icon.TRASH_EMPTY,
+                UiAtlas.Icon.TRASH_EMPTY,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
                 onClearTable);
@@ -165,7 +166,7 @@ public class LogToolbar {
         this.executeBatchBtn = JournalControls.iconButton(
                 executeBatchX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                JournalControls.Icon.CHECK,
+                UiAtlas.Icon.CHECK,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.execute_batch_tooltip"),
                 onExecuteBatch);
@@ -176,7 +177,7 @@ public class LogToolbar {
         this.batchSelectBtn = JournalControls.iconButton(
                 batchSelectX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                JournalControls.Icon.SQUARE,
+                UiAtlas.Icon.SQUARE,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"),
                 onToggleBatch);
@@ -185,7 +186,7 @@ public class LogToolbar {
         UiControl retentionBtn = JournalControls.iconButton(
                 logToolbarLeftX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
-                JournalControls.Icon.GEAR,
+                UiAtlas.Icon.GEAR,
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_retention.open_tooltip"),
                 onOpenRetention);
@@ -203,7 +204,7 @@ public class LogToolbar {
     public void syncVisibility(boolean toolbarVisible, boolean batchSelectionMode, int selectedEntryCount) {
         this.toolbarButtons.forEach(button -> button.setVisible(toolbarVisible));
         if (batchSelectBtn != null) {
-            JournalControls.configureIcon(batchSelectBtn, batchSelectionMode ? JournalControls.Icon.GROUP : JournalControls.Icon.SQUARE,
+            JournalControls.configureIcon(batchSelectBtn, batchSelectionMode ? UiAtlas.Icon.GROUP : UiAtlas.Icon.SQUARE,
                     Component.translatable(batchSelectionMode
                             ? "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_exit_tooltip"
                             : "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"), onToggleBatch::run);

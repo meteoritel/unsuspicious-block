@@ -7,6 +7,7 @@ import com.meteorite.meteosuikit.api.layout.*;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -55,7 +56,7 @@ final class ScenarioConditionView implements UiFocusTarget, UiInteractionSession
         actionIndex = Math.clamp(actionIndex, 0, Math.max(0, actions.size() - 1));
     }
     void render(GuiGraphics graphics, UiPointer incoming) {
-        ScenarioUi.PANEL.render(graphics, bounds);
+        UiAtlas.SCENARIO_PANEL.render(graphics, bounds);
         UiPointer pointer = incoming.forTarget(this).restrict(scroll.contains(incoming.x(), incoming.y())
                 && !scroll.hitScrollbar(incoming.x(), incoming.y()));
         UiPointer local = pointer.withPosition(scroll.toContentX(pointer.x()), scroll.toContentY(pointer.y()));
@@ -70,7 +71,7 @@ final class ScenarioConditionView implements UiFocusTarget, UiInteractionSession
             }
             if (isFocusVisible() && !actions.isEmpty()) {
                 UiRect selected = actions.get(actionIndex).contentBounds();
-                graphics.fill(selected.x(), selected.y(), selected.right(), selected.bottom(), ScenarioUi.QUIET.selectedBackground());
+                graphics.fill(selected.x(), selected.y(), selected.right(), selected.bottom(), ScenarioUi.selectionHighlight());
             }
             document.render(graphics, font, local);
         } finally { scroll.pop(graphics); }

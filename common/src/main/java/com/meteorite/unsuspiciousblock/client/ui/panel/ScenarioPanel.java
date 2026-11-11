@@ -14,7 +14,8 @@ import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -41,7 +42,7 @@ public final class ScenarioPanel implements UiInputContainer {
         x = layout.rightPageX() + 4;
         y = layout.rightPageY() + 6;
         width = layout.rightPageWidth() - 8;
-        controls.setStyle(ScenarioUi.QUIET);
+        controls.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
         children.add(controls);
     }
 
@@ -72,19 +73,20 @@ public final class ScenarioPanel implements UiInputContainer {
         headerKey = key; measuredFont = font;
         controls.beginUpdate();
         UiControl scene = place("scene", x, y + 6, width - 60);
+        scene.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
         scene.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextScheme.PARCHMENT.title(),
-                ScenarioUi.icon(ScenarioUi.Icon.DOWN), ScenarioLabel.tooltip(structure.options(), choice.scene()),
+                UiAtlas.icon(UiAtlas.Icon.CHEVRON_DOWN), ScenarioLabel.tooltip(structure.options(), choice.scene()),
                 () -> { if (openScenes != null) openScenes.run(); });
         List<Component> calculationNotes = new ArrayList<>();
         calculationNotes.add(text("calculate"));
         calculationNotes.add(text(presentation.status()));
         if ("failed".equals(presentation.status())) calculationNotes.add(text("failure." + ScenarioSimulationClientState.failure(table, input)));
         UiControl calculate = place("calculate", x + width - 58, y + 6, 58);
-        calculate.setStyle(ScenarioUi.ACTION);
+        calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         String status = presentation.status();
         calculate.configure(font, text(List.of("uncomputed", "failed", "query_failed").contains(status)
                         ? "calculate" : "results.status." + status),
-                UiTextScheme.PARCHMENT.title(), null, calculationNotes,
+                null, calculationNotes,
                 () -> ScenarioSimulationClientState.request(table, true));
         calculate.setEnabled(List.of("uncomputed", "failed", "query_failed", "available").contains(status));
 

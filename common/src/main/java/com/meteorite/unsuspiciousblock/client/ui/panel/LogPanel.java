@@ -11,6 +11,7 @@ import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
 import com.meteorite.meteosuikit.api.text.TextScroll;
@@ -75,7 +76,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                             CopyCoordinateButton.WIDTH, CopyCoordinateButton.HEIGHT);
                     CopyCoordinateButton.configure(copy, state.entry);
                     if (state.entry.hasNote()) {
-                        NoteBadge badge = noteBadge(font, bgX, y);
+                        NoteBadge badge = noteBadge(bgX, y);
                         UiControl note = controls.obtain("note:" + state.entry.entryId());
                         note.setBounds(badge.hitX(), badge.hitY(), badge.hitW(), badge.hitH());
                         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip");
@@ -402,7 +403,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         if (this.batchSelectionMode) {
             boolean allSelected = header.entries.stream()
                     .allMatch(state -> this.selectedEntryIds.contains(state.entry.entryId()));
-            renderCheckbox(guiGraphics, leftX, rowY + 3, allSelected);
+            renderCheckbox(guiGraphics, leftX, rowY + 2, allSelected);
             textX += 11;
         }
         Component groupLabel = LogGrouper.groupHeader(
@@ -506,7 +507,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         int textX = leftX;
         int textWidth = JournalLayout.LOG_ENTRY_TEXT_WIDTH;
         if (this.batchSelectionMode) {
-            renderCheckbox(guiGraphics, textX, rowY + (JournalLayout.LOG_ROW_HEIGHT - 8) / 2, selected);
+            renderCheckbox(guiGraphics, textX, rowY + (JournalLayout.LOG_ENTRY_STATE_HEIGHT - UiAtlas.ICON_SIZE) / 2, selected);
             textX += 12;
             textWidth -= 12;
         }
@@ -538,29 +539,22 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         TextScroll.draw(guiGraphics, font, dimensionPos.text(), dimensionPos.width(),
                 textX, rowY + 14, textWidth, JournalLayout.LOG_ENTRY_DIM_POS_COLOR, hovered, state.scrollTicks, false);
 
-        // 已备注标记：右下角绘制小铅笔字符，悬停时高亮提示可点击编辑（几何与命中盒同一来源）
+        // 已备注标记：右下角绘制备注铅笔图集图标，悬停时高亮提示可点击编辑（几何与命中盒同一来源）
         if (state.entry.hasNote() && !this.batchSelectionMode) {
-            NoteBadge badge = noteBadge(font, bgX, rowY);
+            NoteBadge badge = noteBadge(bgX, rowY);
             boolean badgeHovered = badge.hit(mouseX, mouseY);
             if (badgeHovered) {
-                // 半透明背景 + 暖橙字符，提示可点击
                 guiGraphics.fill(badge.hitX(), badge.hitY(), badge.hitX() + badge.hitW(),
                         badge.hitY() + badge.hitH(), JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);
-                guiGraphics.drawString(font, badge.text(), badge.x(), badge.y(),
-                        JournalLayout.LOG_ENTRY_NOTE_BADGE_HOVER_COLOR, false);
-            } else {
-                guiGraphics.drawString(font, badge.text(), badge.x(), badge.y(),
-                        JournalLayout.LOG_ENTRY_NOTE_BADGE_COLOR, false);
             }
+            UiAtlas.icon(badgeHovered ? UiAtlas.Icon.NOTE_BADGE_HOVER : UiAtlas.Icon.NOTE_BADGE)
+                    .render(guiGraphics, badge.x(), badge.y());
         }
     }
 
     private static void renderCheckbox(GuiGraphics guiGraphics, int x, int y, boolean checked) {
-        guiGraphics.fill(x, y, x + 8, y + 8, 0xFF6E5538);
-        guiGraphics.fill(x + 1, y + 1, x + 7, y + 7, 0xFFE7D4AA);
-        if (checked) {
-            guiGraphics.fill(x + 2, y + 2, x + 6, y + 6, 0xFF7B3E18);
-        }
+        UiAtlas.icon(checked ? UiAtlas.Icon.CHECKBOX_CHECKED : UiAtlas.Icon.CHECKBOX_UNCHECKED)
+                .render(guiGraphics, x, y);
     }
 
     public boolean hasVisibleEntries() {
@@ -572,23 +566,19 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     }
 
     /** 备注铅笔图标的绘制位置与命中盒——绘制、悬停底色与点击命中共用同一几何来源（R-5）。 */
-    private record NoteBadge(String text, int x, int y, int hitX, int hitY, int hitW, int hitH) {
+    private record NoteBadge(int x, int y, int hitX, int hitY, int hitW, int hitH) {
         private boolean hit(double mouseX, double mouseY) {
             return mouseX >= this.hitX && mouseX <= this.hitX + this.hitW
                     && mouseY >= this.hitY && mouseY <= this.hitY + this.hitH;
         }
     }
 
-    // 语言中立图形符号，不属漏本地化（O-17）
-    private static final String NOTE_BADGE_TEXT = "✎";
-
-    // 行内备注图标的唯一几何来源：绘制、悬停底色与命中盒都从这里取；宽度按文本测量缓存
-    private NoteBadge noteBadge(Font font, int bgX, int rowY) {
-        int badgeWidth = this.metrics.measure(NOTE_BADGE_TEXT, font).width();
-        int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - badgeWidth - 3;
-        int badgeY = rowY + JournalLayout.LOG_ROW_HEIGHT - font.lineHeight - 1;
-        return new NoteBadge(NOTE_BADGE_TEXT, badgeX, badgeY, badgeX - 3, badgeY - 2,
-                badgeWidth + 6, font.lineHeight + 3);
+    // 行内备注图标的唯一几何来源：绘制、悬停底色与命中盒都从这里取
+    private static NoteBadge noteBadge(int bgX, int rowY) {
+        int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - UiAtlas.ICON_SIZE - 3;
+        int badgeY = rowY + JournalLayout.LOG_ENTRY_STATE_HEIGHT - UiAtlas.ICON_SIZE - 2;
+        return new NoteBadge(badgeX, badgeY, badgeX - 1, badgeY - 1,
+                UiAtlas.ICON_SIZE + 2, UiAtlas.ICON_SIZE + 2);
     }
 
     // 行文案按语言缓存：entry 数据不可变（位置/时间/维度都是值），同一实例只有语言会变。

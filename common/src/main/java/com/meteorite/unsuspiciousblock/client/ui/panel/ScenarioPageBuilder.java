@@ -5,16 +5,12 @@ import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.input.UiAction;
 
 import net.minecraft.network.chat.MutableComponent;
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.geometry.*;
-import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.layout.*;
 import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.meteosuikit.api.style.*;
-import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
@@ -37,8 +33,6 @@ import java.util.function.Consumer;
 final class ScenarioPageBuilder {
     private static final int INDENT_STEP = 10;
     private static final int ITEM_INDENT = 14;
-    private static final UiIcon UNKNOWN = new UiIcon.Sprite(ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/unknown_item.png"), 0, 0, 16, 16, 16, 16);
     enum Heading { SECTION, ENTRY }
     /** 相同完整路径语义共享一组候选，替代获取路径保持独立。 */
     private record Group(List<LootConditionInfo> conditions, List<LootConditionInfo> extras, LuckGate luck,
@@ -58,7 +52,8 @@ final class ScenarioPageBuilder {
         List<LootConditionInfo> negatives = ScenarioLabel.negativeConditions(options, sceneKey);
         if (!negatives.isEmpty()) {
             int parent = content.size();
-            content.add(action(showOther ? "conditions.hide_other" : "conditions.show_other", ScenarioUi.Icon.DOWN, toggleOther));
+            content.add(action(showOther ? "conditions.hide_other" : "conditions.show_other",
+                    showOther ? UiAtlas.Icon.CHEVRON_UP : UiAtlas.Icon.CHEVRON_DOWN, toggleOther));
             if (showOther || ScenarioLabel.isBaseline(sceneKey))
                 for (var condition : negatives) addCondition(content, condition, ITEM_INDENT, parent, false);
         }
@@ -138,7 +133,7 @@ final class ScenarioPageBuilder {
         for (var branch : branches) {
             if (!seen.add(branch.kind() + "#" + branch.target())) continue;
             boolean revealed = visible.test(branch.kind(), branch.target());
-            UiIcon icon = UNKNOWN;
+            UiIcon icon = UiAtlas.UNKNOWN_ITEM;
             List<Component> tooltip = List.of(text("conditions.undiscovered"));
             UiAction action = null;
             if (revealed) {
@@ -159,26 +154,30 @@ final class ScenarioPageBuilder {
             }
             icons.add(new UiNode.InlineIcon(icon, tooltip, branch, action));
             if (icons.size() == 4) {
-                nodes.add(new UiNode.Row(ITEM_INDENT, parent, ScenarioLabel.symbol("→"), UiTextScheme.PARCHMENT.accent(),
-                        List.copyOf(icons), List.of(text("conditions.candidates_hint")), null, null));
+                nodes.add(candidateRow(parent, List.copyOf(icons)));
                 icons.clear();
             }
         }
-        if (!icons.isEmpty()) nodes.add(new UiNode.Row(ITEM_INDENT, parent, ScenarioLabel.symbol("→"), UiTextScheme.PARCHMENT.accent(),
-                List.copyOf(icons), List.of(text("conditions.candidates_hint")), null, null));
+        if (!icons.isEmpty()) nodes.add(candidateRow(parent, List.copyOf(icons)));
         for (var branch : branches) if (branch.kind().equals("table") && visible.test(branch.kind(), branch.target())) {
-            nodes.add(action("recommend.title", ScenarioUi.Icon.RECOMMEND, () -> recommend.accept(ResourceLocation.parse(branch.target()))));
+            nodes.add(action("recommend.title", UiAtlas.Icon.RECOMMEND, () -> recommend.accept(ResourceLocation.parse(branch.target()))));
             break;
         }
+    }
+
+    private static UiNode.Row candidateRow(int parent, List<UiNode.InlineIcon> icons) {
+        return new UiNode.Row(ITEM_INDENT, parent,
+                new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.BRANCH_ARROW), List.of(), null, null),
+                Component.empty(), UiTextScheme.PARCHMENT.accent(), icons, List.of(text("conditions.candidates_hint")), null, null);
     }
 
     private static UiNode.Row heading(Component value, Heading kind, List<Component> tooltip) {
         return new UiNode.Row(4, UiNode.NO_PARENT, value.copy().withStyle(ChatFormatting.BOLD),
                 UiTextScheme.PARCHMENT.title(), List.of(), tooltip, kind, null);
     }
-    private static UiNode.Row action(String key, ScenarioUi.Icon icon, UiAction action) {
+    private static UiNode.Row action(String key, UiAtlas.Icon icon, UiAction action) {
         Component label = text(key);
-        return new UiNode.Row(4, UiNode.NO_PARENT, new UiNode.InlineIcon(ScenarioUi.icon(icon), List.of(label), null, action),
+        return new UiNode.Row(4, UiNode.NO_PARENT, new UiNode.InlineIcon(UiAtlas.icon(icon), List.of(label), null, action),
                 label.copy().withStyle(ChatFormatting.UNDERLINE), UiTextScheme.PARCHMENT.body(), List.of(), List.of(label), null, action);
     }
     private static void addCondition(List<UiNode> nodes, ConditionPresentation condition, int indent, int parent, boolean secondary) {

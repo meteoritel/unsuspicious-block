@@ -1,8 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
-import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
+import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiSliderRole;
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.meteosuikit.api.input.UiAction;
 
@@ -88,11 +88,12 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         search = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font, text("params.search"));
         search.setOnValueChanged(() -> { query = search.value(); filterEnchantments(); });
         filterEnchantments();
-        actions.setStyle(ScenarioUi.QUIET);
+        actions.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
         actions.beginUpdate();
         button(font, "minus", text("params.decrease"), () -> changeLevel(-1));
         button(font, "plus", text("params.increase"), () -> changeLevel(1));
-        button(font, "calculate", text("params.apply_calculate"), () -> confirm(true)).setStyle(ScenarioUi.ACTION);
+        button(font, "calculate", text("params.apply_calculate"), () -> confirm(true))
+                .setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         button(font, "apply", text("params.apply_only"), () -> confirm(false));
         button(font, "cancel", Component.translatable("gui.cancel"), owner::close);
         actions.endUpdate();
@@ -103,7 +104,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     }
     private UiControl button(Font font, String key, Component label, UiAction action) {
         UiControl button = actions.obtain(key);
-        button.configure(font, label, UiTextScheme.PARCHMENT.body(), null, List.of(label), action);
+        button.configure(font, label, null, List.of(label), action);
         return button;
     }
     private void filterEnchantments() {

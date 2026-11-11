@@ -26,6 +26,8 @@ import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -225,7 +227,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         var options = Objects.requireNonNull(structure.options());
         for (UiControl control : controls) {
             control.setVisible(true);
-            control.setStyle(ScenarioUi.QUIET);
+            control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         }
         ResourceLocation currentTable = Objects.requireNonNull(table);
         UiAction openParams = () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.scene(),
@@ -241,8 +243,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
 
         fullSceneLabel = ScenarioLabel.shortLabel(choice.scene());
         List<Component> titleTooltip = new ArrayList<>(ScenarioLabel.tooltip(options, choice.scene()));
+        title.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
         title.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextScheme.PARCHMENT.title(),
-                ScenarioUi.icon(ScenarioUi.Icon.DOWN), titleTooltip, () ->
+                UiAtlas.icon(UiAtlas.Icon.CHEVRON_DOWN), titleTooltip, () ->
                         overlays.open(new ScenarioSelectionOverlay(overlays, currentTable,
                                 options, choice.params(), selectedSceneIndex(), this::selectSceneAt)));
 
@@ -259,28 +262,28 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         choice.params().toolEnchantments().forEach((id, level) -> paramsTooltip.add(
                 ScenarioSimulationClientState.text("params.enchant_level",
                         ScenarioParamsOverlay.enchantmentName(id), level)));
-        summary.setStyle(ScenarioUi.READOUT);
+        summary.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
         summary.configure(font, Component.empty(), JournalTextColors.NAME,
                 new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(choice.params().toolId()))),
                 List.of(toolName), null);
         configureValue(font, luck, "params.luck_short", String.format(Locale.ROOT, "%s", choice.params().luck()));
         configureValue(font, samples, "params.enchantments_short", String.valueOf(choice.params().toolEnchantments().size()));
         paramsButton.configure(font, Component.empty(),
-                UiTextScheme.PARCHMENT.title(), ScenarioUi.icon(ScenarioUi.Icon.PARAMS), paramsTooltip, openParams);
+                UiAtlas.icon(UiAtlas.Icon.PARAMS), paramsTooltip, openParams);
         paramsButton.setAccessibleName(ScenarioSimulationClientState.text("params.title"));
-        calculateButton.setStyle(ScenarioUi.ACTION);
+        calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         calculateButton.configure(font, ScenarioSimulationClientState.text("cached".equals(rawStatus)
                         ? "view_drops" : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
                         || "query_failed".equals(rawStatus) ? "calculate" : "results.status." + rawStatus),
-                UiTextScheme.PARCHMENT.title(), ScenarioUi.icon(ScenarioUi.Icon.CALCULATE),
+                UiAtlas.icon(UiAtlas.Icon.CALCULATE),
                 failure == null ? List.of(ScenarioSimulationClientState.text("calculate"), ScenarioSimulationClientState.text(rawStatus)) : List.of(failure),
                 () -> { if ("cached".equals(rawStatus)) viewDrops.run(); else ScenarioSimulationClientState.request(currentTable, true); });
         calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(rawStatus));
 
-        conditionsHeading.setStyle(ScenarioUi.READOUT);
+        conditionsHeading.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
         conditionsHeading.configure(font, ScenarioSimulationClientState.text("conditions.heading"),
                 UiTextScheme.PARCHMENT.title(), null, List.of(), null);
-        expandButton.configure(font, Component.empty(), UiTextScheme.PARCHMENT.title(), ScenarioUi.icon(ScenarioUi.Icon.EXPAND),
+        expandButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.EXPAND),
                 List.of(ScenarioSimulationClientState.text("frame.expand")), () -> {
                     ScenarioExpandedOverlay content = new ScenarioExpandedOverlay(this, font);
                     UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
@@ -295,8 +298,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private static void configureValue(Font font, UiControl control, String key, String value) {
         Component full = ScenarioSimulationClientState.text(key, value);
         Component label = font.width(full) <= control.bounds().width() - 6 ? full : Component.literal(value);
-        control.setStyle(ScenarioUi.READOUT);
-        control.configure(font, label, UiTextScheme.PARCHMENT.body(), null, List.of(full), null);
+        control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
+        control.configure(font, label, null, List.of(full), null);
     }
 
     List<UiNode> tree() { return conditionTree; }

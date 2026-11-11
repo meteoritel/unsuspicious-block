@@ -5,11 +5,11 @@ import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
 import java.util.Set;
 import java.util.function.Consumer;
 import net.minecraft.world.item.ItemStack;
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.Util;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
@@ -52,16 +52,6 @@ import java.util.UUID;
  */
 public class ArchaeologyJournalScreen extends UiScreen {
 
-    private static final ResourceLocation MANAGEMENT_TAB_TEXTURE = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/book_side_tabs/management_tab.png");
-    private static final ResourceLocation HELP_TAB_TEXTURE = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/book_side_tabs/help_tab.png");
-    private static final ResourceLocation GITHUB_ICON = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/external/github.png");
-    private static final ResourceLocation CURSEFORGE_ICON = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/external/curseforge.png");
-    private static final ResourceLocation MODRINTH_ICON = ResourceLocation.fromNamespaceAndPath(
-            Constants.MOD_ID, "textures/gui/external/modrinth.png");
     private static final String GITHUB_ISSUES_URL =
             "https://github.com/meteoritel/unsuspicious-block/issues";
     private static final String CURSEFORGE_URL =
@@ -70,8 +60,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
             "https://modrinth.com/mod/unsuspicious-block";
     private static final String HELP_WIKI_URL =
             "https://github.com/meteoritel/unsuspicious-block/wiki";
-    private static final int WELCOME_LINK_BUTTON_SIZE = 16;
-    private static final int WELCOME_LINK_BUTTON_GAP = 3;
+    private static final int WELCOME_LINK_BUTTON_SIZE = 20;
+    private static final int WELCOME_LINK_BUTTON_GAP = 4;
 
     private final JournalViewModel viewModel;
     private final CatalogToolbar catalogToolbar;
@@ -669,7 +659,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                     + JournalLayout.CATALOG_X_OFFSET;
             int backY = this.bookLayout.leftPageY() + JournalLayout.TOOLBAR_Y;
             this.registerWidget(JournalControls.iconButton(
-                    backX, backY, JournalLayout.SEARCH_ICON_SIZE, '<',
+                    backX, backY, JournalLayout.SEARCH_ICON_SIZE, UiAtlas.Icon.BACK,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.category.back"),
                     () -> {
                         ResourceLocation current = this.viewModel.selectedCategory();
@@ -722,13 +712,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.registerWidget(JournalControls.sideTab(
                 sideTabX, managementY,
                 JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
-                MANAGEMENT_TAB_TEXTURE,
+                UiAtlas.SideTabKind.MANAGEMENT, UiAtlas.Icon.GEAR,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.open"),
                 () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
         ));
         int helpY = managementY + JournalLayout.SIDE_TAB_HEIGHT + JournalLayout.SIDE_TAB_GAP;
         this.backButton = this.registerWidget(JournalControls.iconButton(
-                this.bookLayout.rightPageX() + 2, this.bookLayout.rightPageBottom() - 14, 14, '←',
+                this.bookLayout.rightPageX() + 2, this.bookLayout.rightPageBottom() - 14, 14, UiAtlas.Icon.BACK,
                 List.of(Component.translatable("screen.unsuspiciousblock.navigation.back")), () -> {
                     backWasClicked = true;
                     goBack();
@@ -736,7 +726,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.registerWidget(JournalControls.sideTab(
                 sideTabX, helpY,
                 JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
-                HELP_TAB_TEXTURE,
+                UiAtlas.SideTabKind.HELP, UiAtlas.Icon.HELP_CREAM,
                 buildHelpTooltip(),
                 () -> confirmExternalLink(HELP_WIKI_URL)
         ));
@@ -754,26 +744,23 @@ public class ArchaeologyJournalScreen extends UiScreen {
         int right = this.bookLayout.rightPageRight() - 10;
         List<UiControl> buttons = new ArrayList<>(3);
         buttons.add(createExternalLinkButton(right - WELCOME_LINK_BUTTON_SIZE, buttonY,
-                MODRINTH_ICON, MODRINTH_URL,
+                UiAtlas.EXTERNAL_MODRINTH, MODRINTH_URL,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.link.modrinth"));
         right -= WELCOME_LINK_BUTTON_SIZE + WELCOME_LINK_BUTTON_GAP;
         buttons.add(createExternalLinkButton(right - WELCOME_LINK_BUTTON_SIZE, buttonY,
-                CURSEFORGE_ICON, CURSEFORGE_URL,
+                UiAtlas.EXTERNAL_CURSEFORGE, CURSEFORGE_URL,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.link.curseforge"));
         right -= WELCOME_LINK_BUTTON_SIZE + WELCOME_LINK_BUTTON_GAP;
         buttons.add(createExternalLinkButton(right - WELCOME_LINK_BUTTON_SIZE, buttonY,
-                GITHUB_ICON, GITHUB_ISSUES_URL,
+                UiAtlas.EXTERNAL_GITHUB, GITHUB_ISSUES_URL,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.link.github_issues"));
         this.externalLinkButtons = List.copyOf(buttons);
     }
 
-    private UiControl createExternalLinkButton(int x, int y, ResourceLocation icon,
-                                                        String url, String tooltipKey) {
-        UiControl button = JournalControls.iconButton(x, y, WELCOME_LINK_BUTTON_SIZE, ' ',
+    private UiControl createExternalLinkButton(int x, int y, UiIcon icon,
+                                             String url, String tooltipKey) {
+        UiControl button = JournalControls.iconButton(x, y, WELCOME_LINK_BUTTON_SIZE, icon,
                 Component.translatable(tooltipKey), () -> confirmExternalLink(url));
-        button.configure(font, Component.empty(), 0xFF3D2810,
-                new UiIcon.Sprite(icon, 0, 0, 16, 16, 16, 16),
-                List.of(Component.translatable(tooltipKey)), () -> confirmExternalLink(url));
         return registerWidget(button);
     }
 

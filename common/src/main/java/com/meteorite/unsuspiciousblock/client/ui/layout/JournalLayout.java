@@ -1,9 +1,13 @@
 package com.meteorite.unsuspiciousblock.client.ui.layout;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
+import com.meteorite.unsuspiciousblock.Constants;
+import net.minecraft.resources.ResourceLocation;
 
 /** 考古笔记 GUI 所有布局参数集中定义，便于手动调整测试 */
 public final class JournalLayout {
+    public static final ResourceLocation BOOKMARK_TEXTURE = ResourceLocation.fromNamespaceAndPath(
+            Constants.MOD_ID, "textures/gui/bookmark_tab.png");
 
     // —— 书页纹理 ——
     public static final int BOOK_X_SHIFT = -8; // 整体左移像素（给右侧书签留空间）
@@ -77,23 +81,16 @@ public final class JournalLayout {
     public static final int LOG_ENTRY_ICON_GAP = 4;
     public static final int LOG_ENTRY_TEXT_WIDTH = 124;
 
-    // 日志条目复制坐标按钮（简洁自定义按钮，置于第一行右侧）
+    // 日志条目复制坐标按钮（使用统一轻量 9-slice 皮肤，置于第一行右侧）
     public static final int LOG_ENTRY_COPY_BTN_WIDTH = 14;
     public static final int LOG_ENTRY_COPY_BTN_HEIGHT = 10;
     public static final int LOG_ENTRY_COPY_BTN_RIGHT_PAD = 4;   // 按钮与条目背景右边缘的距离
     public static final int LOG_ENTRY_COPY_BTN_TOP_OFFSET = 2;  // 按钮距条目顶部偏移
-    public static final int LOG_ENTRY_COPY_BTN_BG_NORMAL = 0x30A08060;
-    public static final int LOG_ENTRY_COPY_BTN_BG_HOVER = 0x60A08060;
-    public static final int LOG_ENTRY_COPY_BTN_BORDER = 0x80C8B090;
-    public static final int LOG_ENTRY_COPY_BTN_ICON_COLOR = 0xFF5A422C;
-    public static final int LOG_ENTRY_COPY_BTN_ICON_HOVER_COLOR = 0xFF7B3E18;
 
     // 日志条目文字配色（区分优先级）
     public static final int LOG_ENTRY_TIME_COLOR = 0x3A2A1A;       // 时间：最高优先级（深棕）
     // 维度+坐标：次要信息，取语义色表 LABEL（书页底色 #E8DCBC 上 5.03:1；原 #7A6247 只有 4.20:1）
     public static final int LOG_ENTRY_DIM_POS_COLOR = UiTextScheme.PARCHMENT.label();
-    public static final int LOG_ENTRY_NOTE_BADGE_COLOR = 0xFF7B3E18; // 已备注标记颜色（红棕，醒目）
-    public static final int LOG_ENTRY_NOTE_BADGE_HOVER_COLOR = 0xFFE09040; // 已备注标记悬停色（暖橙，提示可点击）
     public static final int LOG_ENTRY_NOTE_BADGE_BG_HOVER = 0x60A08060;    // 已备注标记悬停背景（半透明暖色）
 
     // 日志分组头

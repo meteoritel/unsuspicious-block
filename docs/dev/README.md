@@ -34,7 +34,7 @@
 | 改灵体猫 AI / 灯笼宠物 / 骨块追踪 | [实体与 AI](subsystems/entities-world.md) |
 | 改淘洗生成 / 结算 / 客户端表现 | [淘洗系统](subsystems/panning.md) |
 | 改可疑方块 / 陶轮 / 标本箱 / 回溯粉 / 花火粉 / 便携容器 / 自定义配方 | [方块与物品](subsystems/blocks-items.md) |
-| 查图标图集槽位与 UV | [工具栏图标图集](internals/toolbar-icon-atlas.md) |
+| 查图标图集槽位与 UV | [UI 图标与控件皮肤图集](internals/toolbar-icon-atlas.md) |
 | 新增可入库文档 / 写临时计划 | [文档维护](../README.md)与[Issue 追踪器](../agents/issue-tracker.md) |
 
 ## 子系统地图

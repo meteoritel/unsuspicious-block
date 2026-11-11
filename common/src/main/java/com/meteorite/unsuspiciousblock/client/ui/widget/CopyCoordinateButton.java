@@ -1,23 +1,19 @@
 package com.meteorite.unsuspiciousblock.client.ui.widget;
 
-import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
-import java.util.List;
-import net.minecraft.client.resources.sounds.SimpleSoundInstance;
-import net.minecraft.sounds.SoundEvents;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.meteosuikit.api.control.UiControl;
-import com.meteorite.meteosuikit.api.style.UiControlSkin;
-import com.meteorite.meteosuikit.api.style.UiControlStyle;
-import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvents;
+
+import java.util.List;
 
 /**
- * 复制坐标按钮——统一的渲染 + 命中检测 + 指令复制逻辑，同时是坐标**显示文本**的唯一格式化入口。
+ * 复制坐标按钮——统一的图集皮肤与指令复制逻辑，同时是坐标**显示文本**的唯一格式化入口。
  * 用于日志列表页条目行与日志详情页坐标信息行。
  * 复制指令格式：/execute as @s in <维度注册名> run tp @s x (y+1) z
  */
@@ -28,42 +24,22 @@ public final class CopyCoordinateButton {
     private CopyCoordinateButton() {
     }
 
+    /** 配置复制坐标控件的统一轻量 9-slice 皮肤、COPY 图集图标与点击动作。 */
     public static void configure(UiControl control, ExcavationLogEntry entry) {
         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_tooltip");
-        JournalControls.configureHotspot(control, label, List.of(label), () -> copyCommand(entry));
-        control.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) ->
-                render(graphics, frame.bounds().x(), frame.bounds().y(),
-                        frame.focused() || frame.state() == UiControlStyle.State.HOVER),
-                UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
+        control.configure(Minecraft.getInstance().font, Component.empty(),
+                UiAtlas.icon(UiAtlas.Icon.COPY), List.of(label), () -> copyCommand(entry));
+        control.setAccessibleName(label);
+        control.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
     }
 
-    // 渲染按钮：暖色半透明背景 + 1px 边框 + 两重叠方块图标
-    public static void render(GuiGraphics g, int btnX, int btnY, boolean hovered) {
-        int w = WIDTH;
-        int h = HEIGHT;
-        int bg = hovered ? JournalLayout.LOG_ENTRY_COPY_BTN_BG_HOVER
-                : JournalLayout.LOG_ENTRY_COPY_BTN_BG_NORMAL;
-        g.fill(btnX, btnY, btnX + w, btnY + h, bg);
-        // 边框（4 条 1px 线）
-        g.fill(btnX, btnY, btnX + w, btnY + 1, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        g.fill(btnX, btnY + h - 1, btnX + w, btnY + h, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        g.fill(btnX, btnY, btnX + 1, btnY + h, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        g.fill(btnX + w - 1, btnY, btnX + w, btnY + h, JournalLayout.LOG_ENTRY_COPY_BTN_BORDER);
-        // 图标：两个重叠的方块轮廓（复制符号）
-        int iconColor = hovered ? JournalLayout.LOG_ENTRY_COPY_BTN_ICON_HOVER_COLOR
-                : JournalLayout.LOG_ENTRY_COPY_BTN_ICON_COLOR;
-        drawSquareOutline(g, btnX + 3, btnY + 2, iconColor);
-        drawSquareOutline(g, btnX + 6, btnY + 3, iconColor);
-    }
-
-    // 坐标显示文本的唯一格式化入口：日志列表页与详情页共用，避免同一坐标出现 "(x,y,z)" 与 "x y z" 两种写法。
-    // 走 i18n 格式串；复制指令仍按命令语法用空格分隔，不经过这里。
+    /** 坐标显示文本的唯一格式化入口：日志列表页与详情页共用，避免出现多种括号格式。 */
     public static String formatCoordinates(int x, int y, int z) {
         return Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.coords_format", x, y, z).getString();
     }
 
-    // 复制 /execute as @s in <dim> run tp @s x (y+1) z 到剪贴板，播放音效并通过 actionbar 反馈
+    /** 复制 {@code /execute as @s in <dim> run tp @s x (y+1) z} 到剪贴板并反馈提示。 */
     public static void copyCommand(ExcavationLogEntry entry) {
         var pos = entry.pos();
         ResourceLocation dimId = entry.dimensionId();
@@ -73,22 +49,10 @@ public final class CopyCoordinateButton {
                 dimStr, pos.getX(), pos.getY() + 1, pos.getZ());
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.keyboardHandler.setClipboard(command);
-        // 播放原版 UI 按钮点击音效
-        minecraft.getSoundManager().play(
-                SimpleSoundInstance.forUI(
-                        SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
         if (minecraft.player != null) {
             minecraft.player.displayClientMessage(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_success", command), true);
         }
-    }
-
-    // 复制图标的固定方框。
-    private static void drawSquareOutline(GuiGraphics g, int x, int y, int color) {
-        int size = 5;
-        g.fill(x, y, x + size, y + 1, color);
-        g.fill(x, y + size - 1, x + size, y + size, color);
-        g.fill(x, y, x + 1, y + size, color);
-        g.fill(x + size - 1, y, x + size, y + size, color);
     }
 }

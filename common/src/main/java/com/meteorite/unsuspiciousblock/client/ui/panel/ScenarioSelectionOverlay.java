@@ -9,6 +9,7 @@ import com.meteorite.meteosuikit.api.render.UiLayer;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.*;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
@@ -47,7 +48,7 @@ final class ScenarioSelectionOverlay implements JournalOverlays.Surface, UiInput
         layer = new UiLayer(overlay.inputScope(), (graphics, font, pointer, depth) ->
             overlay.render(graphics, new UiRect(0, 0, owner.width(), owner.height()), depth, 0x88000000,
                     () -> {
-                        ScenarioUi.PANEL.render(graphics, bounds);
+                        UiAtlas.SCENARIO_PANEL.render(graphics, bounds);
                         graphics.drawString(font, ScenarioSimulationClientState.text("scene.toggle"), bounds.x() + 8,
                                 bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
                         scenes.render(graphics, font, pointer);

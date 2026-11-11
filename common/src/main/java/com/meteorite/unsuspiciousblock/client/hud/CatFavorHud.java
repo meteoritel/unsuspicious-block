@@ -1,18 +1,16 @@
 package com.meteorite.unsuspiciousblock.client.hud;
 
-import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.core.cat.HandOfCatBinding;
 import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorState;
-import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.resources.ResourceLocation;
 
 /**
  * 猫之恩惠快捷栏 HUD——在快捷栏左侧渲染猫爪图标与恩惠值/九命命数，
@@ -22,13 +20,8 @@ import net.minecraft.resources.ResourceLocation;
  * 九命命数以数字角标显示在图标右下角（尺寸与原版物品堆叠数量角标一致，不做缩放）。
  */
 public final class CatFavorHud {
-
-    private static final ResourceLocation CAT_FAVOR_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/cat_favor.png");
-
-    // 图标尺寸（16×16 原图）
+    // 图标尺寸（16×16 图集精灵）
     private static final int ICON_SIZE = 16;
-    private static final UiIcon ICON = new UiIcon.Sprite(CAT_FAVOR_TEXTURE, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
     // HUD 相对快捷栏左边缘的偏移
     private static final int OFFSET_FROM_HOTBAR = 26;
     // 恩惠值文字相对图标的水平间距（文字在图标左侧）
@@ -76,7 +69,7 @@ public final class CatFavorHud {
         boolean capped = favor >= CatFavorState.MAX_FAVOR;
         try {
             RenderSystem.setShaderColor(red, green, blue, 1.0F);
-            ICON.render(gui, iconX, iconY);
+            UiAtlas.CAT_FAVOR_HUD.render(gui, iconX, iconY);
 
             // 封顶时叠加紫色呼吸 tint——纹理自身 alpha 作蒙版，无需操作 framebuffer
             if (capped) {
@@ -86,7 +79,7 @@ public final class CatFavorHud {
                 RenderSystem.enableBlend();
                 RenderSystem.defaultBlendFunc();
                 RenderSystem.setShaderColor(red, green, blue, breath);
-                ICON.render(gui, iconX, iconY);
+                UiAtlas.CAT_FAVOR_HUD.render(gui, iconX, iconY);
             }
         } finally {
             // 复位颜色与混合状态，避免污染后续渲染

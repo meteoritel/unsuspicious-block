@@ -12,7 +12,7 @@
 | `JournalViewModel` | 维护当前选中分类、目录投影、父子表展开路径与选中表 |
 | `CatalogToolbar` / `LogToolbar` | 维护搜索草稿、防抖输入、排序、过滤与日志批量操作入口 |
 | `CatalogPanel` / `RightPageContainer` | 组装左页目录面板与右页（`INTRO` / `ARCHAEOLOGY` / `LOG` / `SCENARIO`）内容树与侧边书签/翻页控件 |
-| `JournalControls` / `UnsuspiciousUiTheme` | 切片宿主图集、构造侧签/书签/行热点皮肤，维护羊皮纸与深色两套主题 |
+| `JournalControls` / `UiAtlas` / `UnsuspiciousUiTheme` | 切分 `ui_atlas.png` 图标与九宫格皮肤、构造侧签/书签/翻页/行热点皮肤，维护羊皮纸与深色两套主题 |
 | `JournalOverlays` | 持有当前打开的场景浮层/灯箱的准备与退出清理回调 |
 | `UiPanelRegistry` / `LayoutAware` / `UiStateful` | 登记可持久化阅读状态的面板，协调布局刷新与 NBT 状态读写 |
 | `support/` | 提供搜索、排序、格式转换、概率显示、本地持久化与网络请求适配 |
@@ -82,7 +82,7 @@
 | `ScenarioRecommendationOverlay` | 展示物品/子表入口推荐求解的等待、失败重试与参数变更预览；应用推荐只填回参数草稿，仍需显式计算。关闭、切表、切输入或目录失效时取消旧请求 |
 | `ScenarioExpandedOverlay` | 在 `UiLightbox` 中使用 `ScenarioFrameView` 全屏放大条件树：初始按窗口尺寸适配档位（不超过自然字号），支持滚轮缩放与拖动平移，窗口 resize 保持手动缩放比并钳制；`Esc` 关闭（点击遮罩不关闭），关闭不破坏页内原滚动位置 |
 
-场景底纹与控件贴图（`scenario_controls.png`、`scenario_panel.png`）由 `scripts/drawer/generate_scenario_ui.py` 生成；共享工具栏图标 UV 见[工具栏图标图集](toolbar-icon-atlas.md)。
+所有功能图标、状态徽章、按钮九宫格与场景底纹均统一取自 `ui_atlas.png`（由 `scripts/drawer/generate_ui_atlas.py` 生成），分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
 
 ## 6. 阅读状态与本地持久化
 
@@ -101,6 +101,6 @@
 
 - [客户端与 GUI](../subsystems/client-ui.md)
 - [UI kit 公开 API 与兼容策略](ui-kit-api.md)
-- [工具栏图标图集](toolbar-icon-atlas.md)
+- [UI 图标与控件皮肤图集](toolbar-icon-atlas.md)
 - [文本格式规范](../foundation/text-format.md)
 - [战利品表系统](../subsystems/loottable.md)

@@ -5,17 +5,15 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import java.util.Objects;
 import java.util.function.Consumer;
 import net.minecraft.locale.Language;
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
@@ -181,12 +179,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         onNavigate.run();
     }
 
-    private static final ResourceLocation UNKNOWN_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
     private static final int ICON_SIZE = 18;            // 略放大的物品图标尺寸
-    private static final int UNKNOWN_TEXTURE_SIZE = 16; // 未知图标纹理原始尺寸
-    private static final UiIcon UNKNOWN_ICON = new UiIcon.Sprite(UNKNOWN_TEXTURE, 0, 0,
-            UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE, UNKNOWN_TEXTURE_SIZE);
     private static final int ICON_TOP = 3;              // 图标距格子顶部偏移
     private static final int NAME_Y_OFFSET = 25;        // 物品名文字 y 偏移
     private static final int PROB_Y_OFFSET = 37;        // 概率文字 y 偏移
@@ -483,9 +476,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             return;
         }
         renderPreviewStacks(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
-        ScenarioUi.icon(
-                ScenarioUi.Icon.RECOMMEND)
-                .render(guiGraphics, cellX + cellW - 11, cellY + 3);
+        UiAtlas.icon(UiAtlas.Icon.RECOMMEND)
+                .render(guiGraphics, cellX + cellW - 12, cellY + 2);
         PanelTextMetrics.Measured childName = this.metrics.measure(
                 displayNameText(child, child.displayName()), font);
         TextScroll.draw(guiGraphics, font, childName.text(), childName.width(),
@@ -500,7 +492,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
     private void renderPreviewStacks(GuiGraphics guiGraphics, List<ItemStack> stacks, int centerX, int iconY) {
         if (stacks.isEmpty()) {
-            UNKNOWN_ICON.renderScaled(guiGraphics, new UiRect(centerX - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE),
+            UiAtlas.UNKNOWN_ITEM.renderScaled(guiGraphics,
+                    new UiRect(centerX - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE),
                     () -> UnsuspiciousUiTheme.PARCHMENT);
             return;
         }
@@ -523,7 +516,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     // 未解锁合集与普通未发现物品共用未知图标；在首个成员被发现前不透露名称与概率。
     private void renderLockedCollectionCell(GuiGraphics graphics, Font font, int cellX, int cellY) {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
-        UNKNOWN_ICON.renderScaled(graphics, new UiRect(cellX + (cellW - ICON_SIZE) / 2,
+        UiAtlas.UNKNOWN_ITEM.renderScaled(graphics, new UiRect(cellX + (cellW - ICON_SIZE) / 2,
                 cellY + ICON_TOP, ICON_SIZE, ICON_SIZE), () -> UnsuspiciousUiTheme.PARCHMENT);
         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked");
         int labelWidth = this.metrics.measure(label.getString(), font).width();
@@ -537,11 +530,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
                 hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
-        Component backIcon = Component.literal("<");
-        int backIconWidth = this.metrics.measure(backIcon.getString(), font).width();
-        guiGraphics.drawString(font, backIcon,
-                cellX + (cellW - backIconWidth) / 2, cellY + ICON_TOP + 5,
-                TAG_GROUP_TEXT_COLOR, false);
+        UiAtlas.icon(UiAtlas.Icon.BACK).render(guiGraphics,
+                cellX + (cellW - UiAtlas.ICON_SIZE) / 2, cellY + ICON_TOP + 4);
         PanelTextMetrics.Measured tagText = this.metrics.measure(tagId.toString(), font);
         TextScroll.draw(guiGraphics, font, tagText.text(), tagText.width(),
                 cellX + 3, cellY + NAME_Y_OFFSET, cellW - 6,
@@ -570,7 +560,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
         if (!unlocked) {
             // 未解锁：渲染未知物品图标（放大到 ICON_SIZE），下方显示"未解析"
-            UNKNOWN_ICON.renderScaled(guiGraphics, new UiRect(iconX, iconY, ICON_SIZE, ICON_SIZE),
+            UiAtlas.UNKNOWN_ITEM.renderScaled(guiGraphics, new UiRect(iconX, iconY, ICON_SIZE, ICON_SIZE),
                     () -> UnsuspiciousUiTheme.PARCHMENT);
             Component pendingText = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.pending_analysis");

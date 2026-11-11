@@ -1,17 +1,16 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
+import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
-import com.meteorite.meteosuikit.api.input.UiAction;
-
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.*;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
 import net.minecraft.client.Minecraft;
@@ -63,7 +62,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         presentation = new UiLayer(overlay.inputScope(), (graphics, font, pointer, depth) -> overlay.render(graphics,
                 new UiRect(0, 0, layer.width(), layer.height()), depth, 0x88000000,
                 () -> render(graphics, font, pointer)), null);
-        controls.setStyle(ScenarioUi.QUIET);
+        controls.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
         scroll.setStep(24);
     }
 
@@ -130,7 +129,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         scroll.setScrollbarVisible(scroll.maxOffset() > 0);
         controls.beginUpdate();
         UiControl close = button(font, "close", text("params.cancel"), bounds.right() - 22, bounds.y() + 4, 18, layer::close);
-        close.configure(font, Component.empty(), UiTextScheme.PARCHMENT.body(), ScenarioUi.icon(ScenarioUi.Icon.CLOSE),
+        close.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.CLOSE),
                 List.of(text("params.cancel")), layer::close);
         close.setAccessibleName(text("params.cancel"));
         UiControl retry = button(font, "retry", text("recommend.retry"), bounds.x() + 8, bounds.bottom() - 22, 78,
@@ -140,7 +139,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
             if (original.equals(ScenarioSimulationClientState.requestOf(table))) ScenarioSimulationClientState.applyRecommendation(table);
             layer.close();
         });
-        apply.setStyle(ScenarioUi.ACTION);
+        apply.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         apply.setEnabled(recommendation != null && !pending && !stale);
         controls.endUpdate();
     }
@@ -148,7 +147,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     private UiControl button(Font font, String key, Component label, int x, int y, int width, UiAction action) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, 16);
-        control.configure(font, label, UiTextScheme.PARCHMENT.body(), null, List.of(label), action);
+        control.configure(font, label, null, List.of(label), action);
         return control;
     }
 
@@ -157,7 +156,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     }
 
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
-        ScenarioUi.PANEL.render(graphics, bounds);
+        UiAtlas.SCENARIO_PANEL.render(graphics, bounds);
         graphics.drawString(font, text("recommend.title"), bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
         scroll.push(graphics);
         try {

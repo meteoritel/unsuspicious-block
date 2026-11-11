@@ -5,6 +5,7 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.layout.*;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import java.util.List;
@@ -38,7 +39,7 @@ final class ScenarioFrameView {
     int contentHeight() { return document.contentHeight(); }
     List<UiDocumentTarget> actions() { return document.targets().stream().filter(target -> target.hit().action() != null).toList(); }
     void render(GuiGraphics graphics, UiPointer pointer) {
-        ScenarioUi.PANEL.render(graphics, bounds);
+        UiAtlas.SCENARIO_PANEL.render(graphics, bounds);
         document.render(graphics, font, pointer);
     }
     UiDocumentHit hit(double x, double y) { return document.hit(x, y); }

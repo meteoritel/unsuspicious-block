@@ -91,7 +91,7 @@ flowchart TD
 
 在快捷栏**左侧**渲染，数据来自 `SyncCatFavorPayload` 更新的 `HandOfCatClientState`：
 
-- 展示猫爪图标、羁绊数值（带 `CatBondStage` 阶段语义色）与残存九命角标（`> 0` 时显示）。
+- 展示取自 `UiAtlas.CAT_FAVOR_HUD` 的可染色猫爪图标、羁绊数值（带 `CatBondStage` 阶段语义色）与残存九命角标（`> 0` 时显示）。
 - 羁绊未达封顶前图标按呼吸节拍调制透明度，并在单次绘制内部成对恢复渲染状态，不污染后续原版 HUD。
 
 ### 6.2 可疑解析仪 HUD (`SuspiciousReaderHud`)
@@ -152,7 +152,7 @@ flowchart TD
 
 - [笔记 GUI 内部机制](../internals/journal-ui-internals.md)
 - [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)
-- [工具栏图标图集](../internals/toolbar-icon-atlas.md)
+- [UI 图标与控件皮肤图集](../internals/toolbar-icon-atlas.md)
 - [文本格式规范](../foundation/text-format.md)
 - [架构总览](../foundation/architecture.md)
 - [网络与同步](../foundation/network.md)
