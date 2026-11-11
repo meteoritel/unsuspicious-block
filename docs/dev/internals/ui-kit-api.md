@@ -8,10 +8,10 @@
 
 | API 包 | 宿主用途 |
 |---|---|
-| `control` | `UiScreen` / `UiThemedScreen`、文本编辑器、列表、滚动视图、控件组、模态和灯箱 |
+| `control` | `UiScreen` / `UiThemedScreen`、文本编辑器、列表、滚动视图与容器、分页状态、控件组、模态和灯箱 |
 | `input` | 实际成员树 `UiChildren`、`UiInputScope`、唯一 `UiInputRouter`、容器桥 `UiInputBridge`、焦点与持续交互 |
 | `layout` / `geometry` | 文档及其目标快照、行和网格几何、变换及矩形 |
-| `style` | 主题上下文、控件角色、宿主皮肤和表面 |
+| `style` | 主题上下文、文字语义色、控件与滑块外观、宿主皮肤和表面 |
 | `number` | 幸运值草稿的精确输入、合法数值域和滑条 |
 | `render` / `text` | 贴图与物品图标、局部模型深度层、文本测量、裁剪与提示 |
 
@@ -25,7 +25,7 @@
 - Fabric 使用并内嵌 `meteos-ui-kit-fabric-1.21.1`。
 - NeoForge 使用并通过 Jar-in-Jar 内嵌 `meteos-ui-kit-neoforge-1.21.1`。
 
-宿主加载器元数据声明 `meteos_ui_kit` 的最低能力版本和下一 minor 上限，NeoForge 的 Jar-in-Jar 区间与之保持一致。
+当前消费 dev 坐标。Fabric 元数据对 `meteos_ui_kit` 使用精确版本字符串；NeoForge 元数据与 Jar-in-Jar 使用 `[版本]`，jarJar 同时 prefer 该版本。编译、内嵌和运行依赖锁定同一坐标。dev 允许破坏性变更，升级时成套替换宿主与库；库自身的正式版兼容承诺见其接入说明。
 
 升级库时先完成库自身检查、接口基线和发布内容验证，发布新的不可覆盖版本，再升级宿主并核对最终嵌套 JAR 与加载器元数据。平台库中的开发样例不进入发布物。
 
@@ -35,9 +35,13 @@
 
 普通页继承 `UiThemedScreen`，笔记继承 `UiScreen`。控件和作用域由页面稳定持有；准备阶段同步业务状态，布局阶段更新几何，绘制阶段读取同一命中结果。输入树采用实际绘制成员，避免额外维护平行焦点列表。
 
+主题化入口接收 `Supplier<? extends UiStyleSource>`，根稳定提供 `context::current`，固定主题使用固定 Supplier。Context 的发布版本用于布局刷新，控件按实际样式身份及其 revision 刷新缓存。主题替换保持编辑和焦点状态。
+
 `UiControl` 显式启用焦点，动作在配对释放且仍命中时执行。`UiControlGroup` 按业务 key 复用控件；`UiTextInput`、`UiTextArea` 的实例承载草稿、选择区和局部撤销。保存前的业务校验由宿主执行。
 
-笔记通过 `JournalViewport` 统一绘制、指针和拖动增量的逻辑坐标；`JournalControls` 只提供图集、书签和热点皮肤，输入与捕获由 kit 承担。
+笔记通过连续适配的 `JournalViewport` 统一绘制、指针和拖动增量的逻辑坐标；`JournalControls` 用 `UiIconSheet` 切片宿主图集，并提供书签和热点皮肤，输入与捕获由 kit 承担。
+
+分页使用 `UiPaginationState` 归一化动态页数与当前页；业务投影、悬停清理与显式场景激活留在页面。普通滚动内容通过 `UiScrollContainer` 组合视口输入，控件按屏幕坐标布局。配置表单用同一 `UiFormLayout` 结果驱动标签、控件、内容高度与焦点滚动，固定操作栏留在视口外。
 
 ### 模态与持续交互
 

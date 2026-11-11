@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
@@ -61,7 +63,7 @@ public final class ScenarioLabel {
     }
 
     public static Component symbol(String value) {
-        return Component.literal(value).withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT));
+        return Component.literal(value).withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent()));
     }
 
     public static Component expression(LootConditionInfo condition) {
@@ -89,13 +91,13 @@ public final class ScenarioLabel {
     }
 
     public static Component conditionText(LootConditionInfo condition) {
-        var label = displayDescription(condition).copy().withStyle(style -> style.withColor(UiTextPalette.Parchment.BODY));
+        var label = displayDescription(condition).copy().withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.body()));
         if (label.getContents() instanceof TranslatableContents contents) {
             Object[] values = contents.getArgs().clone();
             for (int index = 0; index < values.length; index++) {
                 Component value = values[index] instanceof Component component ? component.copy()
                         : Component.literal(String.valueOf(values[index]));
-                values[index] = value.copy().withStyle(style -> style.withColor(UiTextPalette.Parchment.POSITIVE));
+                values[index] = value.copy().withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.positive()));
             }
             String shortKey = contents.getKey().startsWith(CONDITION_PREFIX)
                     ? "screen.unsuspiciousblock.archaeology_journal.simulation.short." + contents.getKey().substring(CONDITION_PREFIX.length()) : "";
@@ -130,7 +132,7 @@ public final class ScenarioLabel {
         lines.add(shortLabel(sceneKey));
         lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions"));
         for (Component definition : definition(options, sceneKey)) {
-            lines.add(Component.literal("• ").withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT))
+            lines.add(Component.literal("• ").withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent()))
                     .append(definition.copy()));
         }
         return List.copyOf(lines);

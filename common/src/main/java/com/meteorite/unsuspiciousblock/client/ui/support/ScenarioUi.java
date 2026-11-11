@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
@@ -55,7 +57,7 @@ public final class ScenarioUi {
 
     public static void styleLightbox(UiLightbox lightbox) {
         lightbox.setStyle(QUIET);
-        lightbox.setTextColor(UiTextPalette.Parchment.BODY);
+        lightbox.setTextColor(UiTextScheme.PARCHMENT.body());
         lightbox.setSurface(PANEL);
         lightbox.setIcons(Map.of("close", icon(Icon.CLOSE), "fit", icon(Icon.FIT),
                 "zoom_in", icon(Icon.PLUS), "zoom_out", icon(Icon.MINUS)));

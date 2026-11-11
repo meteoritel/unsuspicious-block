@@ -35,7 +35,7 @@ UI Kit 检查覆盖公开包消费、客户端归属、旧 kit 目录/包和自�
 
 `./gradlew.bat build` 执行同一源码门禁，并由 `checkUiKitPackaging` 核对本次双端发布物。源码门禁在构建图中去重；产物路径直接取 Fabric `remapJar` 与 NeoForge `jar` 的输出，后者包含 `jarJar` 任务生成的内嵌内容。
 
-`check-ui-kit-packaging.py` 也可接收 `--fabric-jar` 和 `--neoforge-jar` 显式路径。它核对内嵌平台库、版本和能力区间、宿主误展开的库类与旧 kit。必需输入缺失返回 `2`，归档或元数据违规返回 `1`。
+`check-ui-kit-packaging.py` 也可接收 `--fabric-jar` 和 `--neoforge-jar` 显式路径。它核对内嵌平台库、精确 dev 版本约束、宿主误展开的库类与旧 kit。必需输入缺失返回 `2`，归档或元数据违规返回 `1`。
 
 Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>` 指定。独立 UI 库由用户级 `meteos_ui_kit_maven_dir` 提供；PR / 分支 CI 直接运行源码检查。现有 release 构建仍需要可访问的 UI 库 Maven 来源。
 

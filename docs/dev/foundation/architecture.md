@@ -166,7 +166,7 @@ Trinkets / Curios / Artifacts / ModMenu / Jade / JEI 均为**可选联动**，�
 | `fabric` | `modImplementation` + `include` `meteos-ui-kit-fabric-1.21.1:${meteos_ui_kit_version}` | 开发运行与最终 Fabric JAR 内嵌 |
 | `neoforge` | `implementation` + `jarJar` `meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}` | 开发运行与最终 NeoForge Jar-in-Jar 内嵌 |
 
-本模组自有 GUI 统一消费独立库公开 API，版本以 `gradle.properties` 为准。普通页面与笔记使用 kit 根和作用域；容器保留原版 Menu/Slot，自己的交互通过 kit bridge；HUD、Toast、富 tooltip 与 JEI 自有内容组合 kit 绘制能力。宿主持有业务、主题、数据投影和资源。接入与边界检查见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)。
+本模组自有 GUI 统一消费独立库公开 API，版本以 `gradle.properties` 为准。当前 dev 的编译、内嵌和运行依赖精确匹配同一版本。普通页面与笔记使用 kit 根和作用域；容器保留原版 Menu/Slot，自己的交互通过 kit bridge；HUD、Toast、富 tooltip 与 JEI 自有内容组合 kit 绘制能力。宿主持有业务、主题、数据投影和资源。接入与边界检查见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)。
 
 ## 5. 横切设计原则
 

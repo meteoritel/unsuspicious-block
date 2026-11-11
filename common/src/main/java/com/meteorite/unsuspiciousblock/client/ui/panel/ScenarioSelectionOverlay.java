@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -29,14 +31,14 @@ final class ScenarioSelectionOverlay implements JournalOverlays.Surface, UiInput
                              ScenarioParams params, int current, IntConsumer select) {
         this.owner = owner;
         this.options = options;
-        scenes = new UiListView<>(UnsuspiciousUiTheme.PARCHMENT, (graphics, font, scene, index, row, selected, hovered, focused) -> {
+        scenes = new UiListView<>(() -> UnsuspiciousUiTheme.PARCHMENT, (graphics, font, scene, index, row, selected, hovered, focused) -> {
             Component name = ScenarioLabel.shortLabel(scene.scenarioKey());
             ScenarioPresentation.resolve(table, scene.scenarioKey(), params).badge().render(graphics, row.right() - 12, row.y() + 3);
-            graphics.drawString(font, name, row.x() + 3, row.y() + 3, UiTextPalette.Parchment.TITLE, false);
+            graphics.drawString(font, name, row.x() + 3, row.y() + 3, UiTextScheme.PARCHMENT.title(), false);
             var detail = font.split(ScenarioLabel.detailLabel(options, scene.scenarioKey()), Math.max(1, row.width() - 6));
-            if (!detail.isEmpty()) graphics.drawString(font, detail.getFirst(), row.x() + 3, row.y() + 17, UiTextPalette.Parchment.BODY, false);
+            if (!detail.isEmpty()) graphics.drawString(font, detail.getFirst(), row.x() + 3, row.y() + 17, UiTextScheme.PARCHMENT.body(), false);
             Component status = ScenarioSimulationClientState.text(ScenarioPresentation.resolve(table, scene.scenarioKey(), params).status());
-            graphics.drawString(font, status, row.x() + 3, row.y() + 29, UiTextPalette.Parchment.LABEL, false);
+            graphics.drawString(font, status, row.x() + 3, row.y() + 29, UiTextScheme.PARCHMENT.label(), false);
         });
         scenes.setItems(options.scenes()).setRowHeight(44).setSelectedIndex(current);
         scenes.setActivateOnSingleClick(true);
@@ -47,7 +49,7 @@ final class ScenarioSelectionOverlay implements JournalOverlays.Surface, UiInput
                     () -> {
                         ScenarioUi.PANEL.render(graphics, bounds);
                         graphics.drawString(font, ScenarioSimulationClientState.text("scene.toggle"), bounds.x() + 8,
-                                bounds.y() + 8, UiTextPalette.Parchment.TITLE, false);
+                                bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
                         scenes.render(graphics, font, pointer);
                         if (pointer.allowsTooltip() && pointer.hit() != null)
                             pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());

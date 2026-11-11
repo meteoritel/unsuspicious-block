@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.locale.Language;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -15,8 +17,7 @@ import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
-import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
@@ -101,7 +102,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     private static final int[] STATE_V = {0, JournalLayout.LOG_ENTRY_STATE_HEIGHT, JournalLayout.LOG_ENTRY_STATE_HEIGHT * 2};
 
     // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）
-    private static final int MUTED_COLOR = UiTextPalette.Parchment.LABEL;
+    private static final int MUTED_COLOR = UiTextScheme.PARCHMENT.label();
     private static final int SELECTED_TEXT_COLOR = 0x7B3E18;
 
     // 备注图标点击回调（由外部 screen 设置，打开备注编辑界面）
@@ -178,7 +179,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     private List<IntRange> pageRanges = List.of();
     // 已测宽度缓存：与行文案缓存同一失效事件（语言/字体实例、setData）
     private final PanelTextMetrics metrics = new PanelTextMetrics();
-    private final PaginationState pagination = new PaginationState(this::computePageCount);
+    private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     // 排序方向：true=降序（最新在前），false=升序（最旧在前）
     private boolean sortDescending = true;
     // 分组状态——默认按时间区间分组

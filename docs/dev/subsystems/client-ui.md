@@ -11,7 +11,7 @@
 | UI 根与分层 | `client/ui/ArchaeologyJournalUi`（注册 opener）、`JournalBookBackground`、`PotteryPreviewRenderer`；分层目录 `client/ui/{entry,layout,panel,screen,support,toast,widget,tooltip,overlay,theme}/`（清单见 [笔记 GUI 内部机制](../internals/journal-ui-internals.md)） |
 | 独立 UI kit | Maven 消费 `com.meteorite.meteosuikit.api`；`client/ui/theme/` 提供宿主主题与控件皮肤 |
 | 客户端状态 | `client/state/`：`ArchaeologyJournalKeyHandler`、`HandOfCatClientState`、`CatHandClientState`、`ReaderScanHudState`、`SuspiciousReaderClientState`、`ScenarioSimulationClientState`、`SimulationPreferenceStore`、`JournalHoveredItemProvider` |
-| UI 侧状态 | `client/ui/support/`：`ArchaeologyJournalClientState`、`LootTableManagementClientState`、`ClientLootTableLanguageStore`、`JournalUiPreferencesStore`、`UiPanelRegistry`、`UiTextPalette`… |
+| UI 侧状态 | `client/ui/support/`：`ArchaeologyJournalClientState`、`LootTableManagementClientState`、`ClientLootTableLanguageStore`、`JournalUiPreferencesStore`、`UiPanelRegistry`… |
 | HUD 与模型 | `client/hud/`：`CatFavorHud`、`SuspiciousReaderHud`；`client/model/MessengerCatClothesModel`、`client/renderer/layer/`（项圈与职业装饰层） |
 | 渲染 | `client/renderer/`：`ModEntityRenderers`、`ModModelLayers`、各实体渲染器、`SuspiciousReaderRangeHighlight`、`CatFavorShieldRenderer`、`ShimmerSurfaceRenderer`（淘洗，见 [淘洗系统](panning.md)） |
 | 分解预览 | `client/anvil/`、`client/grindstone/`（各含 `Breakdown` / `Calculator` / 行构建器）；`client/tooltip/BreakdownPreview` 持有容器登记清单与统一编排 |
@@ -193,7 +193,7 @@ Fabric 用 `KeyBindingHelper.registerKeyBinding`，NeoForge 用 `RegisterKeyMapp
 - **唯一输入所有权**：当前 scope 持有焦点和持续交互；隐藏、禁用、切域和关屏结束会话。按钮在配对释放时激活。
 - **坐标与裁剪**：书本绘制和命中共用逻辑坐标；带 pose 的裁剪使用 kit 层，模型回调只使用传入的局部 `GuiGraphics`。
 - **端与平台隔离**：kit 仅客户端消费，common 不导入 loader，宿主仅导入库 `api`。边界脚本见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)。
-- **取色**：tooltip/Jade 取 `TooltipBuilder`，GUI 取主题和 `UiTextPalette`。
+- **取色**：tooltip/Jade 取 `TooltipBuilder`，GUI 取主题、kit 的 `UiTextScheme` 与书页专属 `JournalTextColors`；规则见[文本格式](../foundation/text-format.md#8-gui-内文本规范)。
 - **业务权威**：条件语义由服务端 DTO 提供；目录、概率、网络和持久化规则留在各自业务所有者。
 - **可选联动**：`C` 优先读查看器物品，外部槽位与普通 tooltip 文本保留原协议；服务端名称只驻留当前连接。
 

@@ -49,7 +49,7 @@
     }
   ],
   "depends": {
-    "meteos_ui_kit": ">=${meteos_ui_kit_version} <0.2.0",
+    "meteos_ui_kit": "${meteos_ui_kit_version}",
     "fabricloader": ">=${fabric_loader_version}",
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",

@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
+import com.meteorite.meteosuikit.api.input.UiAction;
+
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.meteosuikit.api.control.*;
@@ -8,7 +12,6 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
 import net.minecraft.client.Minecraft;
@@ -127,7 +130,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         scroll.setScrollbarVisible(scroll.maxOffset() > 0);
         controls.beginUpdate();
         UiControl close = button(font, "close", text("params.cancel"), bounds.right() - 22, bounds.y() + 4, 18, layer::close);
-        close.configure(font, Component.empty(), UiTextPalette.Parchment.BODY, ScenarioUi.icon(ScenarioUi.Icon.CLOSE),
+        close.configure(font, Component.empty(), UiTextScheme.PARCHMENT.body(), ScenarioUi.icon(ScenarioUi.Icon.CLOSE),
                 List.of(text("params.cancel")), layer::close);
         close.setAccessibleName(text("params.cancel"));
         UiControl retry = button(font, "retry", text("recommend.retry"), bounds.x() + 8, bounds.bottom() - 22, 78,
@@ -145,7 +148,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     private UiControl button(Font font, String key, Component label, int x, int y, int width, UiAction action) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, 16);
-        control.configure(font, label, UiTextPalette.Parchment.BODY, null, List.of(label), action);
+        control.configure(font, label, UiTextScheme.PARCHMENT.body(), null, List.of(label), action);
         return control;
     }
 
@@ -155,17 +158,17 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
 
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.PANEL.render(graphics, bounds);
-        graphics.drawString(font, text("recommend.title"), bounds.x() + 8, bounds.y() + 8, UiTextPalette.Parchment.TITLE, false);
+        graphics.drawString(font, text("recommend.title"), bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
         scroll.push(graphics);
         try {
             int lineHeight = font.lineHeight + 4;
             int first = scroll.offset() / lineHeight;
             int end = Math.min(lines.size(), (scroll.offset() + scroll.viewport().height() + lineHeight - 1) / lineHeight);
             for (int index = first; index < end; index++) {
-                graphics.drawString(font, lines.get(index), 0, index * lineHeight, UiTextPalette.Parchment.BODY, false);
+                graphics.drawString(font, lines.get(index), 0, index * lineHeight, UiTextScheme.PARCHMENT.body(), false);
             }
         } finally { scroll.pop(graphics); }
-        scroll.renderScrollbar(graphics, UnsuspiciousUiTheme.PARCHMENT);
+        scroll.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
         controls.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) pointer.hit().renderTooltip(graphics, font,
                 UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());

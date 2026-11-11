@@ -64,7 +64,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         this.inventoryLabelY = 72;
         content.add(modeButton); content.add(previewRotation);
         modeButton.setFocusable(true);
-        modeButton.setTheme(UnsuspiciousUiTheme.DARK, UiControlRole.SECONDARY);
+        modeButton.setTheme(() -> UnsuspiciousUiTheme.DARK, UiControlRole.SECONDARY);
         scope.setEscape(this::onClose);
     }
 
@@ -157,7 +157,7 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
             }
         }
         new UiIcon.Item(preview).renderScaled(graphics,
-                new UiRect(leftPos + 137, topPos + 20, 32, 32), UnsuspiciousUiTheme.DARK);
+                new UiRect(leftPos + 137, topPos + 20, 32, 32), () -> UnsuspiciousUiTheme.DARK);
     }
 
     private UiRect previewBounds() { return new UiRect(leftPos + PREVIEW_X, topPos + PREVIEW_Y, PREVIEW_SIZE, PREVIEW_SIZE); }

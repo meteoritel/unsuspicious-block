@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import net.minecraft.locale.Language;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.Constants;
@@ -12,7 +14,6 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.meteosuikit.api.control.UiScrollView;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.meteosuikit.api.text.TextScroll;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -78,10 +79,10 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     // 保留"子表 = 绿"的色相语义，不与父行的暖棕混淆。
     private static final int CHILD_COLOR = 0xFF4F6033;
     // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
-    private static final int NORMAL_COLOR = UiTextPalette.Parchment.BODY;
+    private static final int NORMAL_COLOR = UiTextScheme.PARCHMENT.body();
     private static final int SELECTED_COLOR = 0x7B3E18;
     // 收藏星标：原字面量 #C8A014 在纸面 #E8DCBC 上仅 1.81:1，改引语义色表的 ACCENT（压暗后 4.82:1）
-    private static final int FAVORITE_COLOR = UiTextPalette.Parchment.ACCENT;
+    private static final int FAVORITE_COLOR = UiTextScheme.PARCHMENT.accent();
     private static final int CARD_BORDER = 0x8B6914;
     private static final int CARD_BG = 0x18A67C42;
     private static final int CARD_HOVER = 0x30C8A050;
@@ -158,7 +159,6 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
 
     // 行滚动换算成像素位移：分类模式一行 = 2 项。
 
-
     public int visibleItemCount() {
         return this.mode == Mode.CATEGORIES ? visibleCategoryRows() * 2 : visibleTableRows();
     }
@@ -201,7 +201,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
         else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
         graphics.disableScissor();
-        this.view.renderScrollbar(graphics, UnsuspiciousUiTheme.PARCHMENT);
+        this.view.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
     }
 
     private void renderCategories(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
@@ -227,7 +227,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
             PanelTextMetrics.Measured progress = this.metrics.measure(categoryProgressText(category), font);
             TextScroll.draw(graphics, font, progress.text(), progress.width(),
                     rect.x() + 4, rect.bottom() - 13,
-                    rect.width() - 8, UiTextPalette.Parchment.LABEL, hovered, ticks, true);
+                    rect.width() - 8, UiTextScheme.PARCHMENT.label(), hovered, ticks, true);
         }
     }
 

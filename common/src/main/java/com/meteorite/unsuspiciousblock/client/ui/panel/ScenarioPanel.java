@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.meteosuikit.api.control.*;
@@ -13,7 +15,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -71,7 +72,7 @@ public final class ScenarioPanel implements UiInputContainer {
         headerKey = key; measuredFont = font;
         controls.beginUpdate();
         UiControl scene = place("scene", x, y + 6, width - 60);
-        scene.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextPalette.Parchment.TITLE,
+        scene.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextScheme.PARCHMENT.title(),
                 ScenarioUi.icon(ScenarioUi.Icon.DOWN), ScenarioLabel.tooltip(structure.options(), choice.scene()),
                 () -> { if (openScenes != null) openScenes.run(); });
         List<Component> calculationNotes = new ArrayList<>();
@@ -83,7 +84,7 @@ public final class ScenarioPanel implements UiInputContainer {
         String status = presentation.status();
         calculate.configure(font, text(List.of("uncomputed", "failed", "query_failed").contains(status)
                         ? "calculate" : "results.status." + status),
-                UiTextPalette.Parchment.TITLE, null, calculationNotes,
+                UiTextScheme.PARCHMENT.title(), null, calculationNotes,
                 () -> ScenarioSimulationClientState.request(table, true));
         calculate.setEnabled(List.of("uncomputed", "failed", "query_failed", "available").contains(status));
 

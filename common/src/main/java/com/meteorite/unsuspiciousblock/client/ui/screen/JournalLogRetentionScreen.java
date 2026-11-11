@@ -1,11 +1,16 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
+import com.meteorite.meteosuikit.api.control.UiFocusFollow;
+
+import com.meteorite.meteosuikit.api.input.UiAction;
+
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogRetentionPayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
@@ -40,8 +45,9 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
         int limit = Math.max(1, initialRetentionLimit);
         retention = numericField(limit);
         recent = numericField(Math.clamp(currentEntryCount, 0, limit));
-        RetentionBody body = new RetentionBody();
-        body.children.addAll(List.of(scroll, retention, apply, recent, prune));
+        UiChildren<UiInputTarget> fields = new UiChildren<>();
+        fields.addAll(List.of(retention, apply, recent, prune));
+        UiScrollContainer body = new UiScrollContainer(scroll, fields);
         content.addAll(List.of(body, done));
         scope.setEscape(this::onClose);
         scope.focus().setListener(new UiFocusFollow(scroll,
@@ -106,42 +112,27 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
 
     @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
-        graphics.drawCenteredString(font, title, width / 2, 18, UiTextPalette.Dark.TITLE);
+        graphics.drawCenteredString(font, title, width / 2, 18, UiTextScheme.DARK.title());
         graphics.drawCenteredString(font, Component.translatable(PREFIX + "table", tableId.toString()),
-                width / 2, 33, UiTextPalette.Dark.LABEL);
+                width / 2, 33, UiTextScheme.DARK.label());
         var pointer = scope.pointer(x, y).resolve(content);
         UiRect viewport = scroll.viewport();
         graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
         graphics.drawCenteredString(font, Component.translatable(PREFIX + "limit_label"),
-                width / 2, retention.bounds().y() - 13, UiTextPalette.Dark.BODY);
+                width / 2, retention.bounds().y() - 13, UiTextScheme.DARK.body());
         graphics.drawCenteredString(font, Component.translatable(PREFIX + "keep_recent_label"),
-                width / 2, recent.bounds().y() - 13, UiTextPalette.Dark.BODY);
+                width / 2, recent.bounds().y() - 13, UiTextScheme.DARK.body());
         graphics.drawCenteredString(font, Component.translatable(PREFIX + "note_protection"),
-                width / 2, prune.bounds().bottom() + 6, UiTextPalette.Dark.ACCENT);
+                width / 2, prune.bounds().bottom() + 6, UiTextScheme.DARK.accent());
         var bodyPointer = pointer.restrict(viewport.contains(x, y));
         for (UiWidget widget : List.of(retention, apply, recent, prune)) widget.render(graphics, font, bodyPointer);
         graphics.disableScissor();
         scroll.renderScrollbar(graphics, theme());
         done.render(graphics, font, pointer);
         if (validationMessage != null) graphics.drawCenteredString(font, validationMessage,
-                width / 2, height - 13, UiTextPalette.Dark.NEGATIVE);
+                width / 2, height - 13, UiTextScheme.DARK.negative());
     }
 
     @Override public boolean isPauseScreen() { return false; }
 
-    /** 视口裁剪普通命中，持续交互由作用域送达实际控件。 */
-    private final class RetentionBody implements UiInputContainer {
-        private final UiChildren<UiInputTarget> children = new UiChildren<>();
-        @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
-        @Override public @Nullable UiPointerHit hitTest(double x, double y) {
-            if (!scroll.contains(x, y)) return null;
-            UiPointerHit bar = scroll.hitTest(x, y);
-            if (bar != null) return bar.within(this);
-            UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
-            return hit == null ? UiPointerHit.leaf(this, x, y) : hit;
-        }
-        @Override public boolean mouseScrolled(UiInputContext context, double x, double y) {
-            return UiInputContainer.super.mouseScrolled(context, x, y) || scroll.scrollBy(y);
-        }
-    }
 }

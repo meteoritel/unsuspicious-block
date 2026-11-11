@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.widget;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import java.util.List;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
@@ -8,7 +10,6 @@ import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.style.UiControlSkin;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -33,7 +34,7 @@ public final class CopyCoordinateButton {
         control.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) ->
                 render(graphics, frame.bounds().x(), frame.bounds().y(),
                         frame.focused() || frame.state() == UiControlStyle.State.HOVER),
-                UiTextPalette.Parchment.BODY, UiTextPalette.Parchment.HINT));
+                UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
     }
 
     // 渲染按钮：暖色半透明背景 + 1px 边框 + 两重叠方块图标

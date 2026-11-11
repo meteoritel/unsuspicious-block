@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
+
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import java.util.Objects;
@@ -17,7 +21,6 @@ import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.meteosuikit.api.text.TextScroll;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
@@ -35,7 +38,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
+import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -138,7 +141,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             TagGroup group = tagGroups.get(activeTag);
             pageContents.add(new TagBack(activeTag));
             if (group != null) {
-                int from = page * TAG_GROUP_MEMBERS_PER_PAGE;
+                int from = getPage() * TAG_GROUP_MEMBERS_PER_PAGE;
                 int to = Math.min(group.members().size(), from + TAG_GROUP_MEMBERS_PER_PAGE);
                 pageContents.addAll(group.members().subList(from, to));
             }
@@ -146,7 +149,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             List<GridContent> allContents = new ArrayList<>(tagGroupView);
             allContents.addAll(childTables);
             allContents.addAll(directItems);
-            int from = page * JournalLayout.GRID_ITEMS_PER_PAGE;
+            int from = getPage() * JournalLayout.GRID_ITEMS_PER_PAGE;
             int to = Math.min(allContents.size(), from + JournalLayout.GRID_ITEMS_PER_PAGE);
             pageContents.addAll(allContents.subList(from, to));
         }
@@ -170,14 +173,13 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         return new UiRect(r.right() - 13, r.y() + 1, 12, 13);
     }
     private void activateCell(GridCell cell) {
-        if (cell.back()) { activeTag = null; page = 0; }
-        else if (cell.tag() != null) { activeTag = cell.tag().id(); page = 0; }
+        if (cell.back()) { activeTag = null; pagination.reset(); }
+        else if (cell.tag() != null) { activeTag = cell.tag().id(); pagination.reset(); }
         else if (cell.child() != null) { navigationTarget = cell.child().tableId(); }
         rebuildVisibleCells();
         resetHoverState();
         onNavigate.run();
     }
-
 
     private static final ResourceLocation UNKNOWN_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/unknown_item.png");
@@ -189,8 +191,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static final int NAME_Y_OFFSET = 25;        // 物品名文字 y 偏移
     private static final int PROB_Y_OFFSET = 37;        // 概率文字 y 偏移
     // 物品名/数量角标颜色
-    // 与语义色表 NAME 同值，直接引用以消除重复字面量（值未变）
-    private static final int NAME_COLOR = UiTextPalette.Parchment.NAME;
+    private static final int NAME_COLOR = JournalTextColors.NAME;
     // 模拟值：原 #8B5A2B 在纸面底色 #E8DCBC 上仅 4.28:1，压暗到 #7F4E1F 后为 5.11:1。
     private static final int PROB_COLOR = 0xFF7F4E1F;
     // 概率文字画在羊皮纸底色（含格子半透明填充，实测约 #E8DCBC）上，且不带文字阴影，
@@ -214,7 +215,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private final List<ChildTableEntry> childTables = new ArrayList<>();
     private final LinkedHashMap<ResourceLocation, TagGroup> tagGroups = new LinkedHashMap<>();
     private final JournalBookBackground.BookLayout layout;
-    private int page;
+    private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     @Nullable
     private ResourceLocation activeTag;
     @Nullable
@@ -237,7 +238,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
     public ItemGridPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
-        this.page = 0;
+        pagination.reset();
     }
 
     // 设置当前展示的战利品表数据
@@ -255,12 +256,11 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 || !this.tagGroups.get(this.activeTag).unlocked())) {
             this.activeTag = null;
         }
-        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
         rebuildVisibleCells();
         resetHoverState();
     }
 
-    public int pageCount() {
+    private int computePageCount() {
         if (this.activeTag != null) {
             TagGroup group = this.tagGroups.get(this.activeTag);
             int memberCount = group != null ? group.members().size() : 0;
@@ -272,9 +272,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 / JournalLayout.GRID_ITEMS_PER_PAGE);
     }
 
-    public int getPage() {
-        return page;
-    }
+    public int pageCount() { return pagination.pageCount(); }
+
+    public int getPage() { return pagination.getPage(); }
 
     public boolean locateTarget(String kind, String target) {
         locatedKind = kind; locatedTarget = target;
@@ -318,16 +318,14 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     }
 
     public void changePage(int delta) {
-        int nextPage = Mth.clamp(page + delta, 0, Math.max(0, pageCount() - 1));
-        if (nextPage != this.page) {
-            this.page = nextPage;
+        if (pagination.changePage(delta)) {
             rebuildVisibleCells();
             resetHoverState();
         }
     }
 
     public void resetPage() {
-        this.page = 0;
+        pagination.reset();
         this.activeTag = null;
         rebuildVisibleCells();
         resetHoverState();
@@ -335,13 +333,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
     // 直接设置页码（resize 后恢复用）
     public void setPage(int page) {
-        int nextPage = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
-        boolean changed = nextPage != this.page;
-        this.page = nextPage;
+        boolean changed = pagination.setPage(page);
         rebuildVisibleCells();
-        if (changed) {
-            resetHoverState();
-        }
+        if (changed) resetHoverState();
     }
 
     @Nullable
@@ -352,7 +346,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     public void setActiveTag(@Nullable ResourceLocation tagId) {
         this.activeTag = tagId != null && this.tagGroups.containsKey(tagId)
                 && this.tagGroups.get(tagId).unlocked() ? tagId : null;
-        this.page = Mth.clamp(this.page, 0, Math.max(0, pageCount() - 1));
+        pagination.getPage();
         rebuildVisibleCells();
         resetHoverState();
     }
@@ -371,7 +365,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (this.items.isEmpty() && this.childTables.isEmpty()) {
             int leftX = layout.rightPageX() + JournalLayout.GRID_LEFT_PAD;
             guiGraphics.drawString(font, Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_entries"),
-                    leftX, layout.rightPageY() + JournalLayout.GRID_TOP, UiTextPalette.Parchment.LABEL, false);
+                    leftX, layout.rightPageY() + JournalLayout.GRID_TOP, UiTextScheme.PARCHMENT.label(), false);
             return;
         }
 
@@ -422,7 +416,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (!locatedKind.equals(kind) || !locatedTarget.equals(target)) return;
         int right = cellX + JournalLayout.GRID_CELL_WIDTH;
         int bottom = cellY + JournalLayout.GRID_CELL_HEIGHT;
-        int color = UiTextPalette.Parchment.ACCENT;
+        int color = UiTextScheme.PARCHMENT.accent();
         graphics.fill(cellX, cellY, right, cellY + 1, color);
         graphics.fill(cellX, bottom - 1, right, bottom, color);
         graphics.fill(cellX, cellY, cellX + 1, bottom, color);
@@ -507,7 +501,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private void renderPreviewStacks(GuiGraphics guiGraphics, List<ItemStack> stacks, int centerX, int iconY) {
         if (stacks.isEmpty()) {
             UNKNOWN_ICON.renderScaled(guiGraphics, new UiRect(centerX - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE),
-                    UnsuspiciousUiTheme.PARCHMENT);
+                    () -> UnsuspiciousUiTheme.PARCHMENT);
             return;
         }
         int totalWidth = ICON_SIZE + (stacks.size() - 1) * 8;
@@ -530,7 +524,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private void renderLockedCollectionCell(GuiGraphics graphics, Font font, int cellX, int cellY) {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         UNKNOWN_ICON.renderScaled(graphics, new UiRect(cellX + (cellW - ICON_SIZE) / 2,
-                cellY + ICON_TOP, ICON_SIZE, ICON_SIZE), UnsuspiciousUiTheme.PARCHMENT);
+                cellY + ICON_TOP, ICON_SIZE, ICON_SIZE), () -> UnsuspiciousUiTheme.PARCHMENT);
         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked");
         int labelWidth = this.metrics.measure(label.getString(), font).width();
         graphics.drawString(font, label, cellX + (cellW - labelWidth) / 2,
@@ -577,7 +571,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (!unlocked) {
             // 未解锁：渲染未知物品图标（放大到 ICON_SIZE），下方显示"未解析"
             UNKNOWN_ICON.renderScaled(guiGraphics, new UiRect(iconX, iconY, ICON_SIZE, ICON_SIZE),
-                    UnsuspiciousUiTheme.PARCHMENT);
+                    () -> UnsuspiciousUiTheme.PARCHMENT);
             Component pendingText = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.pending_analysis");
             int textW = this.metrics.measure(pendingText.getString(), font).width();

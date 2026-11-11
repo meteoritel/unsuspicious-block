@@ -5,7 +5,7 @@ import com.meteorite.meteosuikit.api.input.UiChildren;
 import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -30,8 +30,8 @@ public final class NeoForgeConfigScreen extends UiThemedScreen {
         super(Component.translatable("unsuspiciousblock.config.title"), new UiThemeContext<>(UnsuspiciousUiTheme.DARK));
         this.parent = parent;
         configs = new UiListView<>(theme(), (graphics, font, config, index, row, selected, hovered, focused) -> {
-            graphics.drawString(font, config.getFileName(), row.x(), row.y() + 4, UiTextPalette.Dark.BODY, false);
-            graphics.drawString(font, status(config), row.x(), row.y() + 17, UiTextPalette.Dark.LABEL, false);
+            graphics.drawString(font, config.getFileName(), row.x(), row.y() + 4, UiTextScheme.DARK.body(), false);
+            graphics.drawString(font, status(config), row.x(), row.y() + 17, UiTextScheme.DARK.label(), false);
         });
         List<ModConfig> registered = new ArrayList<>();
         for (ModConfig.Type type : ModConfig.Type.values()) {
@@ -79,7 +79,7 @@ public final class NeoForgeConfigScreen extends UiThemedScreen {
     }
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
     @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
-        graphics.drawCenteredString(font, title, width / 2, 18, UiTextPalette.Dark.TITLE);
+        graphics.drawCenteredString(font, title, width / 2, 18, UiTextScheme.DARK.title());
         var pointer = scope.pointer(x, y).resolve(content);
         for (UiWidget widget : content) widget.render(graphics, font, pointer);
     }

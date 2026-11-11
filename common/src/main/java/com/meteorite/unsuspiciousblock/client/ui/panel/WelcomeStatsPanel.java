@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.meteosuikit.api.input.*;
@@ -11,7 +13,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClien
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
@@ -34,9 +35,9 @@ import java.util.Map;
  */
 public final class WelcomeStatsPanel implements UiInputTarget {
     // 与语义色表同值，直接引用以消除重复字面量（值未变）
-    private static final int TITLE_COLOR = UiTextPalette.Parchment.TITLE;
+    private static final int TITLE_COLOR = UiTextScheme.PARCHMENT.title();
     // 次要标签：原字面量 0x8A7358 在书页底色 #E8DCBC 上只有 3.29:1，改引语义色表的 LABEL（5.03:1）。
-    private static final int LABEL_COLOR = UiTextPalette.Parchment.LABEL;
+    private static final int LABEL_COLOR = UiTextScheme.PARCHMENT.label();
     private static final int VALUE_COLOR = 0x5A3D23;
     private static final int SEPARATOR_COLOR = 0x608B6914;
     private static final int COLUMN_GAP = 8;
@@ -104,7 +105,6 @@ public final class WelcomeStatsPanel implements UiInputTarget {
         drawLabelAndValue(graphics, font, contentX, recentY, contentWidth,
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.latest_record"),
                 this.latestRecord);
-
 
         int discoveryY = recentY + 22;
         Component discoveryLabel = Component.translatable(

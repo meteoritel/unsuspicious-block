@@ -90,6 +90,6 @@ UI 偏好和模拟选择存于按存档、玩家隔离的 `journal_ui_preference
 
 ## 7. 文本、裁剪与生命周期
 
-GUI 使用 `UiTextPalette` 和主题，tooltip 使用 `TooltipBuilder` 的语义色；羊皮纸正文和深色提示分别选择可读颜色。超宽标题与说明走 kit 滚动或 tooltip；非交互行使用带省略号裁剪。进度读数按填充边界分色。
+GUI 使用 kit 的 `UiTextScheme` 和主题，书页专属名称与严重状态色由 `JournalTextColors` 提供；tooltip 使用 `TooltipBuilder` 的语义色。文字规则见[文本格式](../foundation/text-format.md#8-gui-内文本规范)。超宽标题与说明走 kit 滚动或 tooltip；非交互行使用带省略号裁剪。进度读数按填充边界分色。
 
 文档缓存随内容版本、字体、资源和尺寸失效；变换变化只更新几何，不逐帧重建业务树。`UiRenderLayers` 处理 pose 下的裁剪和局部模型层，模型回调只使用传入的局部绘制上下文。关屏按 scope 结束捕获，由 kit 释放模型工作区。

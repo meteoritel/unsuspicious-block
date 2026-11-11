@@ -95,7 +95,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final UiChildren<UiWidget> widgets = new UiChildren<>();
     private final JournalContent content = new JournalContent();
     private final UiInputScope scope = new UiInputScope(content);
-    private final UiModalStack confirmations = new UiModalStack(UnsuspiciousUiTheme.PARCHMENT);
+    private final UiModalStack confirmations = new UiModalStack(() -> UnsuspiciousUiTheme.PARCHMENT);
     private final UiNavigationHistory<NavigationState> history =
             new UiNavigationHistory<>(64);
     private UiControl backButton;
@@ -1031,13 +1031,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private void openDeleteConfirmation(Component title, Component message, Runnable confirmedAction) {
-        confirmations.push(UiModal.create(UnsuspiciousUiTheme.PARCHMENT, font).title(title).message(message)
+        confirmations.push(UiModal.create(() -> UnsuspiciousUiTheme.PARCHMENT, font).title(title).message(message)
                 .confirm(Component.translatable("gui.yes"), confirmedAction::run)
                 .cancel(Component.translatable("gui.cancel")));
     }
 
     private void confirmExternalLink(String url) {
-        confirmations.push(UiModal.create(UnsuspiciousUiTheme.PARCHMENT, font)
+        confirmations.push(UiModal.create(() -> UnsuspiciousUiTheme.PARCHMENT, font)
                 .title(Component.translatable("chat.link.confirm"))
                 .message(Component.literal(url))
                 .confirm(Component.translatable("chat.link.open"), () -> Util.getPlatform().openUri(url))

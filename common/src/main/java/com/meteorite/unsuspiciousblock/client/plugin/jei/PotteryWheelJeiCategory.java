@@ -192,7 +192,7 @@ public final class PotteryWheelJeiCategory extends AbstractRecipeCategory<Potter
                 preview = new ItemStack(decorations.ordered().getFirst());
             }
         }
-        new UiIcon.Item(preview).renderScaled(graphics, new UiRect(PREVIEW_ITEM_X, PREVIEW_ITEM_Y, 32, 32), UnsuspiciousUiTheme.DARK);
+        new UiIcon.Item(preview).renderScaled(graphics, new UiRect(PREVIEW_ITEM_X, PREVIEW_ITEM_Y, 32, 32), () -> UnsuspiciousUiTheme.DARK);
     }
 
     // 按槽位名称查找 JEI 的可绘制槽位

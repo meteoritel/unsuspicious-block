@@ -1,8 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -28,7 +29,7 @@ public final class PageIndicator {
 
     public void setPage(int page, int pageCount) {
         this.page = page;
-        this.pageCount = Math.max(1, pageCount);
+        this.pageCount = pageCount;
     }
 
     public void render(GuiGraphics guiGraphics, Font font) {
@@ -37,7 +38,7 @@ public final class PageIndicator {
         int textWidth = font.width(pageText);
         guiGraphics.drawString(font, pageText,
                 centerX() - textWidth / 2,
-                textY(), UiTextPalette.Parchment.LABEL, false);
+                textY(), UiTextScheme.PARCHMENT.label(), false);
     }
 
     public int centerX() {

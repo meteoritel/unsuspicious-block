@@ -1,14 +1,16 @@
 package com.meteorite.unsuspiciousblock.client.ui.theme;
 
-import com.meteorite.meteosuikit.api.control.UiAction;
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
+import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiIconSheet;
 import com.meteorite.meteosuikit.api.style.UiControlSkin;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -50,26 +52,28 @@ public final class JournalControls {
             this.atlasRow = atlasRow;
         }
 
-        public int atlasX() {
-            return this.atlasColumn * ICON_ATLAS_CELL_SIZE;
+        public int column() {
+            return this.atlasColumn;
         }
 
-        public int atlasY() {
-            return this.atlasRow * ICON_ATLAS_CELL_SIZE;
+        public int row() {
+            return this.atlasRow;
         }
     }
 
     private static final int ICON_ATLAS_CELL_SIZE = 9;
     private static final ResourceLocation ICON_ATLAS = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/gui/toolbar_icons.png");
+    private static final UiIconSheet ICONS = new UiIconSheet(ICON_ATLAS,
+            ICON_ATLAS_CELL_SIZE, ICON_ATLAS_CELL_SIZE, 9, 3);
     private JournalControls() { }
 
     public static UiIcon icon(Icon icon) {
-        return new UiIcon.Sprite(ICON_ATLAS, icon.atlasX(), icon.atlasY(), 9, 9, 81, 27);
+        return ICONS.cell(icon.row(), icon.column());
     }
 
     public static void configureIcon(UiControl button, Icon icon, List<Component> tooltip, UiAction action) {
-        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextPalette.Parchment.BODY,
+        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextScheme.PARCHMENT.body(),
                 icon(icon), tooltip, action);
         button.setAccessibleName(tooltip.isEmpty() ? Component.empty() : tooltip.getFirst());
     }
@@ -95,7 +99,7 @@ public final class JournalControls {
     public static UiControl iconButton(int x, int y, int size, char symbol, List<Component> tooltip, Runnable action) {
         UiControl button = paperButton(new UiRect(x, y, size, size));
         button.configure(Minecraft.getInstance().font, Component.literal(Character.toString(symbol)),
-                UiTextPalette.Parchment.BODY, null, tooltip, action::run);
+                UiTextScheme.PARCHMENT.body(), null, tooltip, action::run);
         button.setAccessibleName(tooltip.isEmpty() ? Component.empty() : tooltip.getFirst());
         return button;
     }
@@ -116,7 +120,7 @@ public final class JournalControls {
     public static UiControl sideTab(int x, int y, int width, int height, ResourceLocation texture,
                                     List<Component> tooltip, Runnable action) {
         UiControl button = paperButton(new UiRect(x, y, width, height));
-        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextPalette.Parchment.BODY,
+        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextScheme.PARCHMENT.body(),
                 null, tooltip, action::run);
         button.setAccessibleName(tooltip.isEmpty() ? Component.empty() : tooltip.getFirst());
         button.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) -> {
@@ -124,13 +128,13 @@ public final class JournalControls {
             graphics.blit(texture, r.x(), r.y(), 0, 0, r.width(), r.height(), r.width(), r.height());
             if (frame.focused() || frame.state() == UiControlStyle.State.HOVER)
                 graphics.fill(r.x() + 2, r.y() + 2, r.right() - 1, r.bottom() - 2, 0x20FFFFFF);
-        }, UiTextPalette.Parchment.BODY, UiTextPalette.Parchment.HINT));
+        }, UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
         return button;
     }
 
     public static UiControl bookmark(int x, int y, Component label, Runnable action) {
         UiControl button = paperButton(new UiRect(x, y, 38, 22));
-        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextPalette.Parchment.BODY,
+        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextScheme.PARCHMENT.body(),
                 null, List.of(label), action::run);
         button.setAccessibleName(label);
         ResourceLocation texture = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/bookmark_tab.png");
@@ -142,8 +146,8 @@ public final class JournalControls {
             graphics.blit(texture, r.x(), r.y(), 40 - width, v, width, 22, 40, 66);
             if (expanded) graphics.drawString(Minecraft.getInstance().font, label,
                     r.x() + Math.max(3, (width - Minecraft.getInstance().font.width(label)) / 2), r.y() + 7,
-                    UiTextPalette.Parchment.BODY, false);
-        }, UiTextPalette.Parchment.BODY, UiTextPalette.Parchment.HINT));
+                    UiTextScheme.PARCHMENT.body(), false);
+        }, UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
         return button;
     }
 
@@ -153,24 +157,24 @@ public final class JournalControls {
     }
 
     public static void configureHotspot(UiControl control, Component label, List<Component> tooltip, Runnable action) {
-        control.configure(Minecraft.getInstance().font, Component.empty(), UiTextPalette.Parchment.BODY,
+        control.configure(Minecraft.getInstance().font, Component.empty(), UiTextScheme.PARCHMENT.body(),
                 null, tooltip, action::run);
         control.setAccessibleName(label);
         control.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) -> {
             if (frame.focused()) {
                 UiRect r = frame.bounds();
-                int color = UiTextPalette.Parchment.ACCENT;
+                int color = UiTextScheme.PARCHMENT.accent();
                 graphics.fill(r.x(), r.y(), r.right(), r.y() + 1, color);
                 graphics.fill(r.x(), r.bottom() - 1, r.right(), r.bottom(), color);
                 graphics.fill(r.x(), r.y(), r.x() + 1, r.bottom(), color);
                 graphics.fill(r.right() - 1, r.y(), r.right(), r.bottom(), color);
             }
-        }, UiTextPalette.Parchment.BODY, UiTextPalette.Parchment.HINT));
+        }, UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
     }
 
     public static UiControl page(int x, int y, boolean forward, Runnable action) {
         UiControl button = paperButton(new UiRect(x, y, JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT));
-        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextPalette.Parchment.BODY,
+        button.configure(Minecraft.getInstance().font, Component.empty(), UiTextScheme.PARCHMENT.body(),
                 null, List.of(), action::run);
         button.setAccessibleName(Component.translatable(forward ? "screen.unsuspiciousblock.navigation.next_page" : "screen.unsuspiciousblock.navigation.previous_page"));
         button.setSkin(new UiControlSkin(UiControlStyle.PARCHMENT, (graphics, frame) -> {
@@ -178,7 +182,7 @@ public final class JournalControls {
             boolean highlighted = frame.focused() || frame.state() == UiControlStyle.State.HOVER;
             String name = "widget/page_" + (forward ? "forward" : "backward") + (highlighted ? "_highlighted" : "");
             graphics.blitSprite(ResourceLocation.withDefaultNamespace(name), r.x(), r.y(), r.width(), r.height());
-        }, UiTextPalette.Parchment.BODY, UiTextPalette.Parchment.HINT));
+        }, UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
         return button;
     }
 }

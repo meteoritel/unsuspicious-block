@@ -74,7 +74,7 @@ final class ScenarioConditionView implements UiFocusTarget, UiInteractionSession
             }
             document.render(graphics, font, local);
         } finally { scroll.pop(graphics); }
-        scroll.renderScrollbar(graphics, UnsuspiciousUiTheme.PARCHMENT);
+        scroll.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
     }
     private @Nullable UiDocumentHit documentHit(double x, double y) {
         return scroll.contains(x, y) && !scroll.hitScrollbar(x, y)

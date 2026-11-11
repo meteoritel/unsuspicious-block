@@ -2,7 +2,6 @@
 import argparse
 from io import BytesIO
 from pathlib import Path
-import re
 import sys
 import tomllib
 from zipfile import BadZipFile, ZipFile
@@ -35,7 +34,6 @@ def check(root: Path, archives: dict[str, Path]) -> list[Finding]:
             raise ValueError(f'gradle.properties 缺少必需属性：{key}')
     version = props['meteos_ui_kit_version']
     findings = []
-    upper_bounds = {}
     for module, path in archives.items():
         if not path.is_file():
             raise ValueError(f'发布 JAR 不存在：{path}')
@@ -59,7 +57,7 @@ def check(root: Path, archives: dict[str, Path]) -> list[Finding]:
                     report('packaging.host-version', '发布物版本与 gradle.properties 不一致')
                 if module == 'fabric':
                     required = host.get('depends', {}).get(LIBRARY_ID, '')
-                    match = re.fullmatch(r'>=' + re.escape(version) + r'\s+<([^\s]+)', required)
+                    expected_constraint = version
                     entries = [entry['file'] for entry in host.get('jars', [])]
                     nested = [name for name in names if name.endswith('.jar') and 'meteos-ui-kit-' in name]
                 else:
@@ -69,7 +67,7 @@ def check(root: Path, archives: dict[str, Path]) -> list[Finding]:
                     if len(declared) != 1:
                         raise ValueError('NeoForge 须声明唯一 UI 库依赖')
                     required = declared[0]['versionRange']
-                    match = re.fullmatch(r'\[' + re.escape(version) + r',([^\s]+)\)', required)
+                    expected_constraint = f'[{version}]'
                     entries = loads(jar.read('META-INF/jarjar/metadata.json').decode('utf-8'))['jars']
                     library_entries = [entry for entry in entries if entry['identifier']['group'] == GROUP]
                     expected_artifact = f'meteos-ui-kit-neoforge-{props["minecraft_version"]}'
@@ -82,10 +80,8 @@ def check(root: Path, archives: dict[str, Path]) -> list[Finding]:
                         report('packaging.range', 'Jar-in-Jar 版本或范围与宿主依赖不一致')
                     entries = [entry['path'] for entry in entries]
                     nested = [name for name in names if name.endswith('.jar') and 'meteos-ui-kit-' in name]
-                if match:
-                    upper_bounds[module] = match[1]
-                else:
-                    report('packaging.range', f'宿主能力下限须为当前库版本，范围声明无效：{required}')
+                if required != expected_constraint:
+                    report('packaging.range', f'宿主须精确匹配已验证库版本：期望 {expected_constraint}；实际 {required}')
                 expected_name = f'meteos-ui-kit-{module}-{props["minecraft_version"]}-{version}.jar'
                 if len(nested) != 1 or Path(nested[0]).name != expected_name:
                     report('packaging.nested', f'应仅内嵌当前平台库：{expected_name}；实际：{nested}')
@@ -103,8 +99,6 @@ def check(root: Path, archives: dict[str, Path]) -> list[Finding]:
                             report('packaging.legacy', f'{nested_name}!/{name}')
         except (BadZipFile, KeyError, ValueError, TypeError, AttributeError, IndexError) as error:
             report('packaging.metadata', f'归档或元数据无效：{error}')
-    if len(upper_bounds) == 2 and upper_bounds['fabric'] != upper_bounds['neoforge']:
-        findings.append(Finding('gradle.properties', 'packaging.platform-range', '两端 UI 库能力上限不一致'))
     return findings
 
 

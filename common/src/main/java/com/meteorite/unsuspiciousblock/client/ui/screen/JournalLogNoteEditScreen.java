@@ -1,11 +1,12 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.UiChildren;
 import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
@@ -92,11 +93,11 @@ public final class JournalLogNoteEditScreen extends UiThemedScreen {
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
 
     @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
-        graphics.drawCenteredString(font, title, width / 2, 20, UiTextPalette.Dark.TITLE);
+        graphics.drawCenteredString(font, title, width / 2, 20, UiTextScheme.DARK.title());
         var pointer = scope.pointer(x, y).resolve(content);
         for (UiWidget widget : content) widget.render(graphics, font, pointer);
         if (validationMessage != null) graphics.drawCenteredString(font, validationMessage,
-                width / 2, height - 13, UiTextPalette.Dark.NEGATIVE);
+                width / 2, height - 13, UiTextScheme.DARK.negative());
     }
 
     @Override public boolean isPauseScreen() { return false; }

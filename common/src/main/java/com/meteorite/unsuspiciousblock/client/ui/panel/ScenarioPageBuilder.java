@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
+import com.meteorite.meteosuikit.api.input.UiAction;
+
 import net.minecraft.network.chat.MutableComponent;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
@@ -58,10 +62,10 @@ final class ScenarioPageBuilder {
                 for (var condition : negatives) addCondition(content, condition, ITEM_INDENT, parent, false);
         }
         if (ScenarioLabel.positiveAssumptions(options, sceneKey).isEmpty() && negatives.isEmpty())
-            content.add(new UiNode.Row(text("no_assumptions"), UiTextPalette.Parchment.LABEL));
+            content.add(new UiNode.Row(text("no_assumptions"), UiTextScheme.PARCHMENT.label()));
         content.add(new UiNode.Gap(9));
         content.add(heading(text("conditions.branches"), Heading.SECTION, List.of(text("conditions.candidates_hint"))));
-        content.add(new UiNode.Row(4, UiNode.NO_PARENT, text("conditions.candidates_hint"), UiTextPalette.Parchment.HINT,
+        content.add(new UiNode.Row(4, UiNode.NO_PARENT, text("conditions.candidates_hint"), UiTextScheme.PARCHMENT.hint(),
                 List.of(), List.of(), null, null));
         Map<Group, List<ScenarioBranch>> groups = new LinkedHashMap<>();
         for (var branch : structure.branches()) {
@@ -76,12 +80,12 @@ final class ScenarioPageBuilder {
             if (!entry.getKey().source().isEmpty()) continue;
             addBranch(content, structure, sceneKey, ++ordinal, entry.getKey(), entry.getValue(), visible, locate, recommend);
         }
-        if (ordinal == 0) content.add(new UiNode.Row(text("conditions.no_branches"), UiTextPalette.Parchment.LABEL));
+        if (ordinal == 0) content.add(new UiNode.Row(text("conditions.no_branches"), UiTextScheme.PARCHMENT.label()));
         boolean hasInjection = groups.keySet().stream().anyMatch(group -> !group.source().isEmpty());
         if (hasInjection) {
             content.add(new UiNode.Gap(12));
             content.add(heading(text("injection.title"), Heading.SECTION, List.of(text("injection.limit"))));
-            content.add(new UiNode.Row(text("injection.limit"), UiTextPalette.Parchment.HINT));
+            content.add(new UiNode.Row(text("injection.limit"), UiTextScheme.PARCHMENT.hint()));
             for (var entry : groups.entrySet()) {
                 if (entry.getKey().source().isEmpty()) continue;
                 addBranch(content, structure, sceneKey, ++ordinal, entry.getKey(), entry.getValue(), visible, locate, recommend);
@@ -101,30 +105,30 @@ final class ScenarioPageBuilder {
         nodes.add(heading(title, Heading.ENTRY, List.of(title)));
         for (var condition : group.conditions()) addCondition(nodes, condition, ITEM_INDENT, parent, false);
         if (group.conditions().isEmpty()) nodes.add(new UiNode.Row(ITEM_INDENT, parent,
-                text("conditions.unconditional"), UiTextPalette.Parchment.LABEL, List.of(), List.of(), null, null));
+                text("conditions.unconditional"), UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
         if (group.uncertain()) nodes.add(new UiNode.Row(ITEM_INDENT, parent,
                 text(group.source().equals("observed") ? "injection.observed_hint" : "conditions.hypothetical"),
-                UiTextPalette.Parchment.NEGATIVE, List.of(), List.of(), null, null));
+                UiTextScheme.PARCHMENT.negative(), List.of(), List.of(), null, null));
         if (!group.extras().isEmpty() || !group.luck().isTrivial()) {
             int extraParent = nodes.size();
-            nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.additional"), UiTextPalette.Parchment.LABEL,
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.additional"), UiTextScheme.PARCHMENT.label(),
                     List.of(), List.of(), null, null));
             for (var condition : group.extras()) addCondition(nodes, condition, ITEM_INDENT + INDENT_STEP, extraParent, true);
             LuckGate luck = group.luck();
             if (luck.minLuck().isPresent()) nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
                     text("conditions.luck_gate", String.format(Locale.ROOT, "%.2f", luck.minLuck().getAsDouble()))
-                            .withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT)),
-                    UiTextPalette.Parchment.LABEL, List.of(), List.of(), null, null));
+                            .withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent())),
+                    UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
             if (luck.rangeLimited()) nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
-                    text("conditions.luck_range"), UiTextPalette.Parchment.LABEL, List.of(), List.of(), null, null));
+                    text("conditions.luck_range"), UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
             if (luck.bonusRollsGate().isPresent()) nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
                     text("conditions.bonus_luck", String.format(Locale.ROOT, "%.2f", luck.bonusRollsGate().getAsDouble())),
-                    UiTextPalette.Parchment.LABEL, List.of(), List.of(), null, null));
+                    UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
         }
         if (!group.mode().isEmpty()) nodes.add(new UiNode.Row(ITEM_INDENT, parent,
-                text("injection." + group.mode()), UiTextPalette.Parchment.LABEL, List.of(), List.of(), null, null));
+                text("injection." + group.mode()), UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
         if (!active) {
-            nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.inactive"), UiTextPalette.Parchment.NEGATIVE,
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.inactive"), UiTextScheme.PARCHMENT.negative(),
                     List.of(), List.of(), null, null));
             return;
         }
@@ -154,12 +158,12 @@ final class ScenarioPageBuilder {
             }
             icons.add(new UiNode.InlineIcon(icon, tooltip, branch, action));
             if (icons.size() == 4) {
-                nodes.add(new UiNode.Row(ITEM_INDENT, parent, ScenarioLabel.symbol("→"), UiTextPalette.Parchment.ACCENT,
+                nodes.add(new UiNode.Row(ITEM_INDENT, parent, ScenarioLabel.symbol("→"), UiTextScheme.PARCHMENT.accent(),
                         List.copyOf(icons), List.of(text("conditions.candidates_hint")), null, null));
                 icons.clear();
             }
         }
-        if (!icons.isEmpty()) nodes.add(new UiNode.Row(ITEM_INDENT, parent, ScenarioLabel.symbol("→"), UiTextPalette.Parchment.ACCENT,
+        if (!icons.isEmpty()) nodes.add(new UiNode.Row(ITEM_INDENT, parent, ScenarioLabel.symbol("→"), UiTextScheme.PARCHMENT.accent(),
                 List.copyOf(icons), List.of(text("conditions.candidates_hint")), null, null));
         for (var branch : branches) if (branch.kind().equals("table") && visible.test(branch.kind(), branch.target())) {
             nodes.add(action("recommend.title", ScenarioUi.Icon.RECOMMEND, () -> recommend.accept(ResourceLocation.parse(branch.target()))));
@@ -169,28 +173,28 @@ final class ScenarioPageBuilder {
 
     private static UiNode.Row heading(Component value, Heading kind, List<Component> tooltip) {
         return new UiNode.Row(4, UiNode.NO_PARENT, value.copy().withStyle(ChatFormatting.BOLD),
-                UiTextPalette.Parchment.TITLE, List.of(), tooltip, kind, null);
+                UiTextScheme.PARCHMENT.title(), List.of(), tooltip, kind, null);
     }
     private static UiNode.Row action(String key, ScenarioUi.Icon icon, UiAction action) {
         Component label = text(key);
         return new UiNode.Row(4, UiNode.NO_PARENT, new UiNode.InlineIcon(ScenarioUi.icon(icon), List.of(label), null, action),
-                label.copy().withStyle(ChatFormatting.UNDERLINE), UiTextPalette.Parchment.BODY, List.of(), List.of(label), null, action);
+                label.copy().withStyle(ChatFormatting.UNDERLINE), UiTextScheme.PARCHMENT.body(), List.of(), List.of(label), null, action);
     }
     private static void addCondition(List<UiNode> nodes, LootConditionInfo condition, int indent, int parent, boolean secondary) {
         int self = nodes.size();
         boolean uncertain = condition.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY);
         Component styled = ScenarioLabel.conditionText(condition).copy();
-        if (secondary) styled = styled.copy().withStyle(style -> style.withColor(UiTextPalette.Parchment.LABEL));
+        if (secondary) styled = styled.copy().withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.label()));
         ConditionTree.Kind kind = ConditionTree.kind(condition);
         if (kind == ConditionTree.Kind.ALL) styled = ScenarioLabel.symbol("∧ ").copy().append(styled);
         if (kind == ConditionTree.Kind.ANY) styled = ScenarioLabel.symbol("∨ ").copy().append(styled);
         if (kind == ConditionTree.Kind.NOT) styled = ScenarioLabel.symbol("¬ ").copy().append(text("conditions.negation"));
         if (condition.conditionType().getPath().contains("random_chance") || condition.conditionType().getPath().equals("table_bonus"))
-            styled = Component.empty().append(text("conditions.random_trigger").withStyle(style -> style.withColor(UiTextPalette.Parchment.ACCENT)))
+            styled = Component.empty().append(text("conditions.random_trigger").withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent())))
                     .append(" · ").append(styled);
         if (uncertain) styled = styled.copy().append(" · ").append(text("conditions." +
-                condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY)).withStyle(style -> style.withColor(UiTextPalette.Parchment.NEGATIVE)));
-        nodes.add(new UiNode.Row(indent, parent, styled, UiTextPalette.Parchment.BODY, List.of(),
+                condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY)).withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.negative())));
+        nodes.add(new UiNode.Row(indent, parent, styled, UiTextScheme.PARCHMENT.body(), List.of(),
                 List.of(condition.description(), Component.literal(condition.conditionType().toString())), null, null));
         for (var child : ConditionTree.displayChildren(condition)) addCondition(nodes, child, indent + INDENT_STEP, self, secondary);
     }

@@ -27,7 +27,7 @@ repositories {
 dependencies {
     implementation "com.meteorite.meteosuikit:meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}"
     jarJar("com.meteorite.meteosuikit:meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}") {
-        version { strictly("[${meteos_ui_kit_version},0.2.0)"); prefer(meteos_ui_kit_version) }
+        version { strictly("[${meteos_ui_kit_version}]"); prefer(meteos_ui_kit_version) }
     }
     compileOnly "maven.modrinth:jade:15.10.5+neoforge"
     runtimeOnly "maven.modrinth:jade:15.10.5+neoforge"

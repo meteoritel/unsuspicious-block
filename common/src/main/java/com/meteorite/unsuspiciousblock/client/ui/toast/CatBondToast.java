@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.client.ui.toast;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.meteosuikit.api.text.TextWrap;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -30,7 +31,7 @@ public class CatBondToast implements Toast {
     private static final UiSurfaceSkin BACKGROUND = UiSurfaceSkin.panel(0xFF24232A, 0xFF796342, 0xFF494551);
     private static final long DISPLAY_TIME = 6000L;
     private static final Object TOKEN = new Object();
-    // 详情最多三行；超出时末行加省略号，不做静默截断（I-4）
+    // 固定 Toast 高度对应的详情行数上限。
     private static final int MAX_DETAIL_LINES = 3;
 
     private final Component title;
@@ -55,17 +56,10 @@ public class CatBondToast implements Toast {
         TextScroll.draw(graphics, font, title.getString(), 30, 7, width() - 36, 0xFFFFFF, false, 0, false);
         if (measuredFont != font || language != Language.getInstance()) {
             measuredFont = font; language = Language.getInstance();
-            lines = font.split(detail, width() - 36);
+            lines = TextWrap.fit(font, detail, width() - 36, MAX_DETAIL_LINES);
         }
-        boolean truncated = lines.size() > MAX_DETAIL_LINES;
-        for (int i = 0; i < Math.min(MAX_DETAIL_LINES, lines.size()); i++) {
-            if (truncated && i == MAX_DETAIL_LINES - 1) {
-                // 末行显式加省略号，避免玩家完全看不到"还有内容"；截断口径只留 kit 一份
-                String last = TextScroll.trimToWidth(font, plainText(lines.get(i)) + "...", this.width() - 36);
-                graphics.drawString(font, last, 30, 19 + i * 10, 0xFFFFD0, false);
-            } else {
-                graphics.drawString(font, lines.get(i), 30, 19 + i * 10, 0xFFFFD0, false);
-            }
+        for (int index = 0; index < lines.size(); index++) {
+            graphics.drawString(font, lines.get(index), 30, 19 + index * 10, 0xFFFFD0, false);
         }
         icon.render(graphics, 8, 8);
         double multiplier = toastComponent.getNotificationDisplayTimeMultiplier();
@@ -144,16 +138,6 @@ public class CatBondToast implements Toast {
             case HONORED_GUEST -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.ancient_gift");
             case BEST_FRIEND -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.best_friend_access");
         };
-    }
-
-    // 把已换行的格式化序列还原成纯文本，仅用于末行加省略号（详情正文无样式，还原不丢格式）
-    private static String plainText(FormattedCharSequence line) {
-        StringBuilder builder = new StringBuilder();
-        line.accept((index, style, codePoint) -> {
-            builder.appendCodePoint(codePoint);
-            return true;
-        });
-        return builder.toString();
     }
 
     private static void show(Component title, Component detail) {

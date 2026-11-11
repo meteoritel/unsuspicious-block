@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
+import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
@@ -79,7 +79,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     private static final int LABEL_GAP = JournalLayout.LOG_DETAIL_META_LABEL_GAP;
 
     private final JournalBookBackground.BookLayout layout;
-    private final PaginationState pagination = new PaginationState(this::computePageCount);
+    private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     @Nullable
     private ExcavationLogEntry entry;
     @Nullable

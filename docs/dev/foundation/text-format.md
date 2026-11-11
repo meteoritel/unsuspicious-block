@@ -96,7 +96,7 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | [`core/text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/text/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 与专用服务端都可安全引用；客户端能力（Shift 检测）经 `core/text/ClientTooltipBridge` 桥接 |
 | [`core/item/DescribedItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
 | [`core/block/SealedContentsDisplay`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
-| [`client/ui/support/UiTextPalette`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) | GUI 自绘文本语义色表（羊皮纸 / 暗色两套 int 主题实现，见「GUI 内文本规范」） |
+| kit `style.UiTextScheme`、[`client/ui/theme/JournalTextColors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalTextColors.java) | GUI 共同文字语义色与书页专属色，见「GUI 内文本规范」 |
 | [`client/ui/support/JournalTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记 tooltip 行构建；条件树按「条件树映射」的颜色 + 字重双维度渲染 |
 | [`client/anvil/AnvilBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java) | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
 
@@ -118,44 +118,32 @@ GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等�
 
 物品侧五段式不强制搬进 GUI：**短提示只要求"语义对色"**（见 8.2），**长内容才要求分段**——详情 ≥ 4 行或需分区呈现时，按"标题（TITLE）→ 正文（BODY/LABEL）→ 状态 → 提示（HINT）"组织行序。GUI 内长 tooltip 允许复用物品侧展开机制：`Screen.hasShiftDown()` + `TooltipBuilder#expandable`，通用提示键共用 `tooltip.unsuspiciousblock.expand_hint`，不要在 GUI 代码里各自判断 Shift 状态。
 
-### 8.2 一语义三实现
+### 8.2 按介质选择语义色
 
-语义层只有一份（「语义色表」的 9 个语义槽），不同渲染介质各提供一套实现：
+共同文字语义由各渲染介质选择可读配色，书页专属名称与严重状态色留在宿主配方：
 
 | 实现层 | 介质 | 颜色出口 |
 |---|---|---|
 | 1 | 原版暗底 tooltip（物品 tooltip / GUI 内 hover tooltip / Jade） | [`core/text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/text/TooltipBuilder.java) 的 ChatFormatting 常量 |
-| 2 | 羊皮纸 GUI（考古笔记书页类界面） | [`UiTextPalette.Parchment`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
-| 3 | 暗色 GUI（战利品表管理等） | [`UiTextPalette.Dark`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/UiTextPalette.java) |
+| 2 | 羊皮纸 GUI（考古笔记书页类界面） | kit `UiTextScheme.PARCHMENT`；专属语义取 [`JournalTextColors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalTextColors.java) |
+| 3 | 暗色 GUI（战利品表管理等） | kit `UiTextScheme.DARK` |
 
-GUI 侧 int 语义槽目标值（2026-09-15 定案；存量面板按此表逐步迁移，迁移前各组件旧常量继续可用）：
+`UiTextScheme` 提供 title、body、label、hint、positive、negative、accent，具体值以所依赖库源码为准。`JournalTextColors` 提供 NAME 与 SEVERE，Dark 按共同语义取色。`UiSurfaceStyle.withText(scheme)` 只把 body、label、hint 映射到表面的常态、次要和禁用文字，其他表面槽位由主题维护。
 
-| 语义槽 | Parchment | Dark |
-|---|---|---|
-| `TITLE` | `0xFF3A2818` | `0xFFFFFFFF` |
-| `BODY` | `0xFF5A422C` | `0xFFE0E0E0` |
-| `LABEL` | `0xFF7A6247` | `0xFFB8B8B8` |
-| `HINT` | `0xFF9A8A70` | `0xFF999999` |
-| `POSITIVE` | `0xFF3A8C3A` | `0xFF78D66A` |
-| `NEGATIVE` | `0xFFC06040` | `0xFFFF5555` |
-| `ACCENT` | `0xFFC8A014` | `0xFFFFAA00` |
-| `NAME` | `0xFF3A2A1A` | 预留 |
-| `SEVERE` | 预留 | 预留 |
-
-> **羊皮纸自绘文字的对比度**：上表取值下，`ACCENT`（`0xFFC8A014`）与 `NEGATIVE`（`0xFFC06040`）作为标记类用色（如 `CatalogPanel` 的收藏标识）没有问题；但作为**不带文字阴影**的自绘文字画在羊皮纸底色（含格子半透明填充，实测约 `#E8DCBC`）上时对比度不足，实测仅约 2.1:1 / 3.4:1。概率文字因此使用同色相压暗版本——`0xFF7A5700`（概率型条件）与 `0xFF9E4326`（运行时条件），均 ≥ 4.5:1，见 `ItemGridPanel` 的 `PROB_COLOR_PROBABILISTIC` / `PROB_COLOR_RUNTIME`。在本底色上新增文字前先确认对比度，不要直接照搬这两个槽位值。
+羊皮纸无阴影文字使用适合浅底的预设。概率条件、运行时条件和未知状态的业务色由 `ItemGridPanel` 配方维护；新增自绘文本时按实际底色与阴影核对可读性。
 
 > **概率文字的分工**：数值沿用不确定度等级的色相（上表两色）；**状态词**——`?`、「需要条件」、「未命中」——走灰色槽位（网格 `PROB_COLOR_UNKNOWN`，tooltip 里的 `LABEL` 语义），因为此时没有数值得着色相可表达。状态由服务端派生的 `Probability` 决定，客户端只做这一层映射：不要因为等级为 `NONE` 就把状态词按数值色画，也不要为「需要条件」补一个数字。
 
 ### 8.3 归并与边界规则
 
-- **违规色归并**（历史遗留色向 9 槽归并的既定结论）：`DARK_GREEN` 中"无损失标注"→ `POSITIVE`、"提示文本"→ `HINT`；`LIGHT_PURPLE` 转换标注 → `ACCENT`；概率值 YELLOW（运行时条件）→ `ACCENT`；
+- **按语义取色**：无损失标注使用 positive，提示使用 hint，转换标注使用 accent；概率数值的业务配色遵循上节规则；
 - **控件结构色不属文本语义**：边框、背景、进度条、选中态色条、滚动条、子表分类标识等保留为组件本地常量，不强行塞进语义槽；
 - hover tooltip 一律走原版 `renderTooltip`，禁止自绘悬浮层；
 - lang 值一律纯文本、样式由代码控制（同「本地化键命名规则」的约束）。
 
 ### 8.4 新增 GUI 文本的标准流程
 
-1. 自绘文本上色 → 只从 `UiTextPalette.Parchment` / `UiTextPalette.Dark` 取语义槽常量，控件结构色除外；
+1. 自绘文本上色 → 从 `UiTextScheme.PARCHMENT` / `UiTextScheme.DARK` 取共同语义，书页名称与严重状态取 `JournalTextColors`；控件结构色由各自皮肤维护；
 2. GUI 内 hover tooltip → 用 `TooltipBuilder` 语义常量构建 `List<Component>`，交原版 `renderTooltip` 渲染；
 3. 长内容按 8.1 分段；需要展开详情 → 复用 `TooltipBuilder#expandable`；
 4. 键命名用 `screen.unsuspiciousblock.<screen>.<seg>`，同步添加 en_us / zh_cn 两个键，并校验 JSON。

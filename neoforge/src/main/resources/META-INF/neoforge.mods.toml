@@ -14,7 +14,7 @@ description = '''${description}'''
 [[dependencies.${mod_id}]]
     modId = "meteos_ui_kit"
     type = "required"
-    versionRange = "[${meteos_ui_kit_version},0.2.0)"
+    versionRange = "[${meteos_ui_kit_version}]"
     ordering = "NONE"
     side = "CLIENT"
 

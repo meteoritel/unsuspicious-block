@@ -1,7 +1,7 @@
 # 工具栏图标图集
 
 本文档记录 `assets/unsuspiciousblock/textures/gui/toolbar_icons.png` 的固定槽位映射，供
-`IconButton.Icon`、工具栏及其他 GUI 组件统一取样。
+`JournalControls.Icon`、工具栏及其他 GUI 组件统一取样。`JournalControls` 使用 kit 的 `UiIconSheet` 按行列切片。
 
 ## 1. 图集规格
 

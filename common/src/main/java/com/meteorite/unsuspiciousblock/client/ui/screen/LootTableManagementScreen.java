@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
+import com.meteorite.meteosuikit.api.control.UiFocusFollow;
+
 import net.minecraft.Util;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -9,7 +13,6 @@ import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import net.minecraft.client.Minecraft;
@@ -31,8 +34,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private static final int COLUMN_GAP = 10;
     private static final int ROW_HEIGHT = 20;
     private static final int INDENT_WIDTH = 10;
-    private static final int IMPORT_STATUS_OK_COLOR = UiTextPalette.Dark.POSITIVE;
-    private static final int IMPORT_STATUS_ERROR_COLOR = UiTextPalette.Dark.NEGATIVE;
+    private static final int IMPORT_STATUS_OK_COLOR = UiTextScheme.DARK.positive();
+    private static final int IMPORT_STATUS_ERROR_COLOR = UiTextScheme.DARK.negative();
     private static final String PREFIX = "screen.unsuspiciousblock.loot_table_management.";
     private final Screen parent;
     private final LootTableManagementActions actions = new LootTableManagementActions();
@@ -83,7 +86,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             String tracking = row.entry() == null ? "" : row.entry().tracked() ? "+ " : "- ";
             int x = rect.x() + row.depth() * INDENT_WIDTH;
             graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, marker + tracking + row.label(),
-                    Math.max(0, rect.right() - x)), x, rect.y() + 5, UiTextPalette.Dark.BODY, false);
+                    Math.max(0, rect.right() - x)), x, rect.y() + 5, UiTextScheme.DARK.body(), false);
         });
         list.setRowHeight(ROW_HEIGHT);
         list.setActivateOnSingleClick(true);
@@ -95,8 +98,9 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             if (row.expandable()) toggleExpanded(row);
             syncControls();
         });
-        DetailsBody details = new DetailsBody();
-        details.children.addAll(List.of(detailScroll, languageBox, nameBox, detailControls));
+        UiChildren<UiInputTarget> fields = new UiChildren<>();
+        fields.addAll(List.of(languageBox, nameBox, detailControls));
+        UiScrollContainer details = new UiScrollContainer(detailScroll, fields);
         content.addAll(List.of(searchBox, list, details, controls));
         scope.setEscape(this::onClose);
         scope.focus().setListener(new UiFocusFollow(detailScroll,
@@ -191,7 +195,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
 
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
     @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
-        graphics.drawCenteredString(font, title, width / 2, panelTop() + 9, UiTextPalette.Dark.TITLE);
+        graphics.drawCenteredString(font, title, width / 2, panelTop() + 9, UiTextScheme.DARK.title());
         UiPointer pointer = scope.pointer(x, y).resolve(content);
         list.render(graphics, font, pointer);
         searchBox.render(graphics, font, pointer);
@@ -216,7 +220,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private void chooseLanguage() {
         UiListView<String> languages = new UiListView<>(theme(), (graphics, font, code, index, row, selected, hovered, focused) ->
                 graphics.drawString(font, TextScroll.trimToWidth(font, languageOptionLabel(code).getString(), row.width()),
-                        row.x(), row.y() + 5, UiTextPalette.Dark.BODY, false));
+                        row.x(), row.y() + 5, UiTextScheme.DARK.body(), false));
         languages.setItems(languageCodes).setSelectedIndex(languageCodes.indexOf(validLanguageCodeOrFallback()));
         modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "language_select"))
                 .preferredWidth(340).contentWidget(languages, Math.clamp(height - 110, 20, 180))
@@ -270,7 +274,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         }
         if (selected != null) {
             renderOverflowText(graphics, selected.tableId().toString(), x, top + 23,
-                    width, UiTextPalette.Dark.LABEL);
+                    width, UiTextScheme.DARK.label());
             Component status = Component.translatable(selected.tracked()
                     ? "screen.unsuspiciousblock.loot_table_management.tracked"
                     : "screen.unsuspiciousblock.loot_table_management.not_tracked");
@@ -287,18 +291,18 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         if (!LootTableManagementClientState.canEdit()) {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.read_only").getString(),
-                    x, warningY, width, UiTextPalette.Dark.ACCENT);
+                    x, warningY, width, UiTextScheme.DARK.accent());
         } else if (!hasValidLanguageCode()) {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.invalid_language_code").getString(),
-                    x, warningY, width, UiTextPalette.Dark.NEGATIVE);
+                    x, warningY, width, UiTextScheme.DARK.negative());
         } else if (requiresEnglishName()) {
             renderOverflowText(graphics, Component.translatable(
                             "screen.unsuspiciousblock.loot_table_management.english_name_required").getString(),
-                    x, warningY, width, UiTextPalette.Dark.ACCENT);
+                    x, warningY, width, UiTextScheme.DARK.accent());
         } else if (selected != null) {
             renderOverflowText(graphics, nameSourceLabel(selected.tableId()).getString(),
-                    x, warningY, width, UiTextPalette.Dark.LABEL);
+                    x, warningY, width, UiTextScheme.DARK.label());
         }
         if (this.importStatus != null) {
             renderOverflowText(graphics, this.importStatus.getString(),
@@ -611,22 +615,6 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             case INVALID_JSON, ROOT_NOT_OBJECT -> Component.translatable(
                     "screen.unsuspiciousblock.loot_table_management.import_failed");
         };
-    }
-
-    /** 详情表单限制命中与绘制视口，固定底栏独立于滚动内容。 */
-    private final class DetailsBody implements UiInputContainer {
-        private final UiChildren<UiInputTarget> children = new UiChildren<>();
-        @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
-        @Override public @Nullable UiPointerHit hitTest(double x, double y) {
-            if (!detailScroll.contains(x, y)) return null;
-            UiPointerHit bar = detailScroll.hitTest(x, y);
-            if (bar != null) return bar.within(this);
-            UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
-            return hit == null ? UiPointerHit.leaf(this, x, y) : hit;
-        }
-        @Override public boolean mouseScrolled(UiInputContext context, double x, double y) {
-            return UiInputContainer.super.mouseScrolled(context, x, y) || detailScroll.scrollBy(y);
-        }
     }
 
     /** 按命名空间与路径构建的业务目录节点。 */

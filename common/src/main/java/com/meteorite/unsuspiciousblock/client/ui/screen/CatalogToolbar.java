@@ -337,7 +337,7 @@ public class CatalogToolbar {
         screen.registerWidget(this.hideLockedButton);
 
         if (searchField == null) {
-            searchField = new UiTextInput(UnsuspiciousUiTheme.PARCHMENT, font,
+            searchField = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.search_placeholder"))
                     .setMaxLength(256).setValue(currentSearch.rawQuery());
             searchField.setOnValueChanged(() -> onSearchChanged(searchField.value()));

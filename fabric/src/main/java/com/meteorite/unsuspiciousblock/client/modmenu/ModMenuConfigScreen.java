@@ -5,7 +5,7 @@ import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.control.UiThemedScreen;
 import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -46,12 +46,12 @@ public final class ModMenuConfigScreen extends UiThemedScreen {
     }
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
     @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
-        graphics.drawCenteredString(font, title, width / 2, 18, UiTextPalette.Dark.TITLE);
+        graphics.drawCenteredString(font, title, width / 2, 18, UiTextScheme.DARK.title());
         var buttons = controls.controls();
         graphics.drawCenteredString(font, Component.translatable("unsuspiciousblock.config.common.scope"),
-                width / 2, buttons.get(0).bounds().bottom() + 4, UiTextPalette.Dark.LABEL);
+                width / 2, buttons.get(0).bounds().bottom() + 4, UiTextScheme.DARK.label());
         graphics.drawCenteredString(font, Component.translatable("unsuspiciousblock.config.server.scope"),
-                width / 2, buttons.get(1).bounds().bottom() + 4, UiTextPalette.Dark.LABEL);
+                width / 2, buttons.get(1).bounds().bottom() + 4, UiTextScheme.DARK.label());
         controls.render(graphics, font, scope.pointer(x, y).resolve(controls));
     }
 }

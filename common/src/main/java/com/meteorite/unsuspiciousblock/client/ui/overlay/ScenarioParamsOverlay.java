@@ -1,5 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
+import com.meteorite.meteosuikit.api.style.UiSliderRole;
+
+import com.meteorite.meteosuikit.api.input.UiAction;
+
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
@@ -7,7 +13,6 @@ import com.meteorite.meteosuikit.api.number.*;
 import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
@@ -54,9 +59,9 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         tableHash = structure == null ? "" : structure.hash();
         levels.putAll(current.toolEnchantments());
         Font font = Minecraft.getInstance().font;
-        luckText = new UiTextInput(UnsuspiciousUiTheme.PARCHMENT, font, text("params.luck"));
+        luckText = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font, text("params.luck"));
         UiScalarSlider slider = new UiScalarSlider(UiNumberPolicy.of(LuckGateAnalysis.MIN_LUCK, LuckGateAnalysis.MAX_LUCK, 1, 0.01));
-        slider.setTheme(UnsuspiciousUiTheme.PARCHMENT, UiSliderRole.COMPACT);
+        slider.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiSliderRole.COMPACT);
         slider.setLabel(text("params.luck"));
         slider.setValue(current.luck());
         luck = new UiNumberField(slider, luckText, ScenarioParamsOverlay::parseLuck,
@@ -65,22 +70,22 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         luck.setInputWidth(66);
         luck.setText(Float.toString(current.luck()));
         luck.acceptText();
-        tools = new UiListView<>(UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, tool, index, row, selected, hovered, focused) -> {
+        tools = new UiListView<>(() -> UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, tool, index, row, selected, hovered, focused) -> {
             new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(tool.id()))).render(graphics, row.x() + 2, row.y() + 2);
             graphics.drawString(rowFont, rowFont.plainSubstrByWidth(tool.displayName().getString(), Math.max(0, row.width() - 24)),
-                    row.x() + 22, row.y() + 6, UiTextPalette.Parchment.BODY, false);
+                    row.x() + 22, row.y() + 6, UiTextScheme.PARCHMENT.body(), false);
         });
         tools.setItems(options.tools()).setRowHeight(22);
         for (int i = 0; i < options.tools().size(); i++) if (options.tools().get(i).id().equals(current.toolId())) tools.setSelectedIndex(i);
         tools.shell().setEnabled(options.toolSelectionAllowed());
-        enchantments = new UiListView<>(UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, id, index, row, selected, hovered, focused) -> {
+        enchantments = new UiListView<>(() -> UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, id, index, row, selected, hovered, focused) -> {
             Component name = text("params.enchant_level", enchantmentName(id), levels.getOrDefault(id, 0));
             graphics.drawString(rowFont, rowFont.plainSubstrByWidth(name.getString(), Math.max(0, row.width() - 6)),
-                    row.x() + 3, row.y() + 6, UiTextPalette.Parchment.BODY, false);
+                    row.x() + 3, row.y() + 6, UiTextScheme.PARCHMENT.body(), false);
         });
         enchantments.setRowHeight(22);
         enchantments.setEmptyMessage(text("params.no_enchantments"));
-        search = new UiTextInput(UnsuspiciousUiTheme.PARCHMENT, font, text("params.search"));
+        search = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font, text("params.search"));
         search.setOnValueChanged(() -> { query = search.value(); filterEnchantments(); });
         filterEnchantments();
         actions.setStyle(ScenarioUi.QUIET);
@@ -98,7 +103,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     }
     private UiControl button(Font font, String key, Component label, UiAction action) {
         UiControl button = actions.obtain(key);
-        button.configure(font, label, UiTextPalette.Parchment.BODY, null, List.of(label), action);
+        button.configure(font, label, UiTextScheme.PARCHMENT.body(), null, List.of(label), action);
         return button;
     }
     private void filterEnchantments() {
@@ -163,14 +168,14 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     }
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.renderPage(graphics, bounds);
-        graphics.drawString(font, text("params.title"), bounds.x() + 8, bounds.y() + 8, UiTextPalette.Parchment.TITLE, false);
+        graphics.drawString(font, text("params.title"), bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
         Component samples = text("params.fixed_samples");
         graphics.drawString(font, samples, bounds.right() - 8 - font.width(samples), bounds.y() + 8,
-                UiTextPalette.Parchment.LABEL, false);
-        graphics.drawString(font, text("params.tool"), bounds.x() + 8, bounds.y() + 70, UiTextPalette.Parchment.LABEL, false);
+                UiTextScheme.PARCHMENT.label(), false);
+        graphics.drawString(font, text("params.tool"), bounds.x() + 8, bounds.y() + 70, UiTextScheme.PARCHMENT.label(), false);
         luck.render(graphics, font, pointer); tools.render(graphics, font, pointer);
         search.render(graphics, font, pointer); enchantments.render(graphics, font, pointer); actions.render(graphics, font, pointer);
-        if (error != null) graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 43, UiTextPalette.Parchment.NEGATIVE, false);
+        if (error != null) graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 43, UiTextScheme.PARCHMENT.negative(), false);
         if (pointer.allowsTooltip() && pointer.hit() != null)
             pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
     }

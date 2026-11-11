@@ -50,3 +50,6 @@ __pycache__/
 .local
 /.scratch/
 /.gradle-home/
+log/
+logs/
+*.log

@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
+
 import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -7,8 +9,7 @@ import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.PaginationState;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiTextPalette;
+import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.client.gui.Font;
@@ -34,15 +35,15 @@ public final class DetailOverlayPanel implements PagePanel {
     private static final int READOUT_ON_BAR_COLOR = 0xFFFFFFFF;
     private static final int TEXT_COLOR = 0x4A3320;
     // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
-    private static final int LABEL_COLOR = UiTextPalette.Parchment.BODY;
+    private static final int LABEL_COLOR = UiTextScheme.PARCHMENT.body();
     // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）。
-    private static final int MUTED_COLOR = UiTextPalette.Parchment.LABEL;
+    private static final int MUTED_COLOR = UiTextScheme.PARCHMENT.label();
     private static final int ITEM_ROW_HEIGHT = 16;
     private static final int FOOTER_HEIGHT = 32;
     private static final int MOD_SOURCE_TOP_OFFSET = 42;
 
     private final JournalBookBackground.BookLayout layout;
-    private final PaginationState pagination = new PaginationState(this::computePageCount);
+    private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     private int parsedCount;
     private int totalCount;
     private String modSource;
