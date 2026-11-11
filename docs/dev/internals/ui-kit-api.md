@@ -31,7 +31,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **继承与生命周期**：独立界面继承 `UiThemedScreen`，考古笔记继承 `UiScreen`。控件实例与 `UiInputScope` 由页面稳定持有；准备阶段同步业务投影，布局阶段刷新几何，绘制阶段读取同一命中快照。
 - **主题注入**：主题化根页面传入 `Supplier<? extends UiStyleSource>`（动态上下文使用 `context::current`，固定主题传入固定供应商），主题发布版本号变化时自动刷新控件排版与缓存，并保持现有焦点和编辑草稿。
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
-- **笔记视口与工具**：`JournalViewport` 负责将物理窗口坐标统一换算到书页逻辑坐标；`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
+- **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 统一原版 GUI 与书页逻辑坐标的正逆换算，绘制、鼠标位置和拖动增量共用同一比例；framebuffer 像素属于截图与窗口层。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置表单由 `UiFormLayout` 驱动排版与焦点自动滚动（底部固定操作栏留在滚动视口之外）。
 
 ### 3.2 模态框与持续交互
@@ -51,6 +51,14 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **HUD、Toast 与局部模型层**：HUD、Toast、富 Tooltip 与 JEI 自有界面保持各自原有生命周期，按需调用 UI Kit 绘制表面、文本或图标；3D 物品与模型在 `UiRenderLayers.item` / `model` 局部深度上下文内渲染，装饰层与主图标处于同一局部层，数量角标绘制在前景层，模型工作区由 UI Kit 管理释放。
 
 ## 4. 边界检查与构建校验
+
+### 4.1 布局与帧采集
+
+`UiScreen.layoutNodes()` 从当前活动输入树提供原版 GUI 坐标的只读快照，包含稳定 key、原始矩形和有效裁剪。宿主为表、日志及固定控件提供业务身份；未解锁条目遵守原有隐藏规则。点击前使用 `isLayoutTarget` 校验实际 hitTest，快照查询本身不准备布局或执行业务动作。
+
+`UiFrameCapture.capture(Path)` 接收客户端主线程请求，在后续完成帧采集并异步写入原尺寸 PNG。请求绑定当前世界、Screen 与窗口尺寸；采样前上下文变化、重复请求、目标已存在或停止会明确结清。库拥有帧生命周期与图像资源，AutoJS 调度、业务 readiness、断言和报告归[核心探针](../../../tools/probes/README.md)。
+
+### 4.2 门禁
 
 1. **静态边界检查**：运行 `python tools/checks/check-ui-kit-boundaries.py`，核验：① 无仓内旧 kit 目录或残留包引用；② 仅消费 UI Kit `api` 包（禁止引用 `internal`）；③ UI Kit 仅由 `client` 所有者引用；④ `common` 无 Loader 导入。
 2. **构建与打包检查**：按[开发流程](../../guides/development.md)检查工作区报错后串行执行 `./gradlew.bat build --no-daemon`，并通过 `checkUiKitPackaging` 核对双端产出 JAR 中内嵌库与元数据的精确一致性（确认未误展开库 class 或混入开发样例）。

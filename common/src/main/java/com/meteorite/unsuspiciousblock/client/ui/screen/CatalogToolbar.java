@@ -300,6 +300,7 @@ public class CatalogToolbar {
                         tooltipDescription(tooltipBase + ".rule_tag.description")),
                 this::toggleSearch
         );
+        searchToggleButton.setLayoutKey("journal/search-toggle");
         screen.registerWidget(searchToggleButton);
 
         // 排序图标按钮
@@ -346,6 +347,7 @@ public class CatalogToolbar {
         searchField.setVisible(searchExpanded);
         searchField.setBounds(toolbarX + JournalLayout.SEARCH_ICON_SIZE, toolbarY,
                 Math.max(0, expandedSearchFieldWidth), JournalLayout.SEARCH_BAR_HEIGHT);
+        searchField.setLayoutKey("journal/search");
         screen.registerWidget(searchField);
         searchFocusRequested = focusSearchOnCreate;
         focusSearchOnCreate = false;

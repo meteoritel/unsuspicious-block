@@ -8,7 +8,7 @@
 | 组件 / 目录 | 职责 |
 |---|---|
 | `ArchaeologyJournalScreen` | 消费 UI Kit `UiScreen` 的根界面：持有唯一 `UiInputRouter`、选择当前顶层作用域、管理页面返回历史栈与返回快照 |
-| `JournalViewport` / `JournalBookBackground` | 换算逻辑书页坐标与缩放比例，使用 UI Kit 精灵图层绘制宿主书本贴图 |
+| `UiScreen.viewport()` / `JournalBookBackground` | 换算逻辑书页坐标与缩放比例，使用 UI Kit 精灵图层绘制宿主书本贴图 |
 | `JournalViewModel` | 维护当前选中分类、目录投影、父子表展开路径与选中表 |
 | `CatalogToolbar` / `LogToolbar` | 维护搜索草稿、防抖输入、排序、过滤与日志批量操作入口 |
 | `CatalogPanel` / `RightPageContainer` | 组装左页目录面板与右页（`INTRO` / `ARCHAEOLOGY` / `LOG` / `SCENARIO`）内容树与侧边书签/翻页控件 |
@@ -19,9 +19,10 @@
 
 ### 1.1 输入路由与焦点规则
 
-- **单一根路由与逻辑坐标**：`ArchaeologyJournalScreen` 只持有一个 UI Kit 路由器，所有渲染、指针坐标与拖动增量均经 `JournalViewport` 换算；`UiChildren` 按真实绘制顺序维护成员树，控件与行热点按稳定业务键复用。
+- **单一根路由与逻辑坐标**：`ArchaeologyJournalScreen` 只持有一个 UI Kit 路由器，所有渲染、指针坐标与拖动增量均经 `UiScreen.viewport()` 换算；`UiChildren` 按真实绘制顺序维护成员树，控件与行热点按稳定业务键复用。
 - **焦点与键盘导航**：当前顶层 `UiInputScope` 拥有唯一输入与焦点权。目录列表与条件文档区各贡献自身的键盘停靠点；鼠标点击可切换逻辑焦点，轮廓随键盘模式显隐。输入框编辑与顶层浮层优先截获按键，`Backspace` 未被文本编辑或浮层消费时才回退导航历史（无历史则关闭笔记；历史回退只恢复阅读状态，不撤回已提交的网络请求）。
 - **按钮激活与悬停命中**：按钮遵循“按下并同目标释放”才执行动作，拖出范围释放取消。`UiPointerHit` 是 Tooltip 与 JEI 物品查询的统一来源（网格、介绍页与日志详情在准备阶段将已解析的 `ItemStack` 写入 `UiPointerHit.Row.key`，不再二次反查坐标）；当模态框、文本框或持续拖动占用输入时，底层 JEI 悬停查询返回空栈。
+- **只读布局**：根 `layoutNodes()` 沿当前输入树聚合控件与自绘目录行，提供 `table/<id>`、`log/<entryId>`、日志坐标动作及工具栏的稳定 key。目录行复用实际滚动几何并裁剪到视口，锁定条目保留隐藏语义；根统一投影到原版 GUI 坐标。运行探针与截图见[核心探针](../../../tools/probes/README.md)。
 
 ### 1.2 右页装配 (`RightPageContainer`)
 

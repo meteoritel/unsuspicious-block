@@ -1,0 +1,8 @@
+{
+  "autojsJar": "D:/probe-dependencies/AutoJS-neoforge-1.21.1-1.0.0.jar",
+  "rhinoJar": "D:/probe-dependencies/rhino-2101.2.7-build.81.jar",
+  "acceptEula": false,
+  "serverMcpPort": 25585,
+  "clientMcpPort": 25586,
+  "gamePort": 25575
+}

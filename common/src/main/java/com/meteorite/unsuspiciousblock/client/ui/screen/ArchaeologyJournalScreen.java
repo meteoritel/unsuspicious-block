@@ -19,7 +19,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesSto
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalViewport;
+import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
@@ -60,6 +60,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
             "https://modrinth.com/mod/unsuspicious-block";
     private static final String HELP_WIKI_URL =
             "https://github.com/meteoritel/unsuspicious-block/wiki";
+    private static final int MINIMUM_CANVAS_WIDTH = 412;
+    private static final int MINIMUM_CANVAS_HEIGHT = 256;
+
+    @Override protected int minimumUiWidth() { return MINIMUM_CANVAS_WIDTH; }
+    @Override protected int minimumUiHeight() { return MINIMUM_CANVAS_HEIGHT; }
+
     private static final int WELCOME_LINK_BUTTON_SIZE = 20;
     private static final int WELCOME_LINK_BUTTON_GAP = 4;
 
@@ -68,7 +74,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final LogToolbar logToolbar;
 
     private final UiPanelRegistry panels = new UiPanelRegistry();
-    private JournalViewport viewport;
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
@@ -141,9 +146,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void init() {
         super.init();
-        this.viewport = JournalViewport.compute(this.width, this.height);
-        this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
-        this.overlays.setBounds(this.viewport.logicalWidth(), this.viewport.logicalHeight());
+        this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
+        this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
         this.panels.clear();
         this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, this.panels);
         this.panels.applyLayout(this.bookLayout);
@@ -261,7 +265,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     @Override
     protected void layoutUi() {
-        if (viewport != null) confirmations.setBounds(0, 0, viewport.logicalWidth(), viewport.logicalHeight());
+        confirmations.setBounds(0, 0, viewport().logicalWidth(), viewport().logicalHeight());
     }
 
     @Override
@@ -364,9 +368,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.overlays.close();
         this.confirmations.clear();
 
-        this.viewport = JournalViewport.compute(this.width, this.height);
-        this.bookLayout = JournalBookBackground.compute(this.viewport.logicalWidth(), this.viewport.logicalHeight());
-        this.overlays.setBounds(this.viewport.logicalWidth(), this.viewport.logicalHeight());
+        this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
+        this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
         this.panels.clear();
         this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, this.panels);
         this.panels.applyLayout(this.bookLayout);
@@ -414,29 +417,22 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void renderUi(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
 
-        int logicalMouseX = (int) this.viewport.toLogicalX(mouseX);
-        int logicalMouseY = (int) this.viewport.toLogicalY(mouseY);
-        int underlayMouseX = (this.overlays.isOpen() || !confirmations.isEmpty()) ? -10000 : logicalMouseX;
-        int underlayMouseY = (this.overlays.isOpen() || !confirmations.isEmpty()) ? -10000 : logicalMouseY;
-        this.viewport.push(guiGraphics);
-        try {
-            JournalBookBackground.render(guiGraphics, this.bookLayout);
-            renderCatalogArea(guiGraphics, underlayMouseX, underlayMouseY);
-            if (this.viewModel.isCategoryHome()) this.welcomeStatsPanel.render(
-                    guiGraphics, this.font);
-            else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
-            else this.rightPage.render(guiGraphics, this.font, underlayMouseX, underlayMouseY);
-            UiPointer pointer = scope.pointer(logicalMouseX, logicalMouseY).resolve(content);
-            if (hasSelectedTable()) rightPage.renderControls(guiGraphics, font, pointer);
-            for (UiWidget widget : widgets) if (widget.isVisible()) widget.render(guiGraphics, font, pointer);
-            // 覆盖面使用各自的 kit 层，普通控件提示来自根的同一次命中。
-            this.overlays.render(guiGraphics, this.font, logicalMouseX, logicalMouseY);
-            confirmations.render(guiGraphics, font, inputScope().pointer(logicalMouseX, logicalMouseY));
-            if (pointer.allowsTooltip() && pointer.hit() != null)
-                pointer.hit().renderTooltip(guiGraphics, font, UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), logicalMouseX, logicalMouseY);
-        } finally {
-            this.viewport.pop(guiGraphics);
-        }
+        int underlayMouseX = (this.overlays.isOpen() || !confirmations.isEmpty()) ? -10000 : mouseX;
+        int underlayMouseY = (this.overlays.isOpen() || !confirmations.isEmpty()) ? -10000 : mouseY;
+        JournalBookBackground.render(guiGraphics, this.bookLayout);
+        renderCatalogArea(guiGraphics, underlayMouseX, underlayMouseY);
+        if (this.viewModel.isCategoryHome()) this.welcomeStatsPanel.render(
+                guiGraphics, this.font);
+        else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
+        else this.rightPage.render(guiGraphics, this.font, underlayMouseX, underlayMouseY);
+        UiPointer pointer = scope.pointer(mouseX, mouseY).resolve(content);
+        if (hasSelectedTable()) rightPage.renderControls(guiGraphics, font, pointer);
+        for (UiWidget widget : widgets) if (widget.isVisible()) widget.render(guiGraphics, font, pointer);
+        // 覆盖面使用各自的 kit 层，普通控件提示来自根的同一次命中。
+        this.overlays.render(guiGraphics, this.font, mouseX, mouseY);
+        confirmations.render(guiGraphics, font, inputScope().pointer(mouseX, mouseY));
+        if (pointer.allowsTooltip() && pointer.hit() != null)
+            pointer.hit().renderTooltip(guiGraphics, font, UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), mouseX, mouseY);
     }
 
     // 检测服务端数据变更并按需刷新
@@ -539,31 +535,26 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         NavigationState before = navigationState();
-        try { return super.mouseClicked(viewport.toLogicalX(x), viewport.toLogicalY(y), button); }
+        try { return super.mouseClicked(x, y, button); }
         finally { if (!backWasClicked) rememberNavigation(before); backWasClicked = false; }
     }
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
         NavigationState before = navigationState();
-        try { return super.mouseReleased(viewport.toLogicalX(x), viewport.toLogicalY(y), button); }
+        try { return super.mouseReleased(x, y, button); }
         finally { if (!backWasClicked) rememberNavigation(before); backWasClicked = false; }
-    }
-
-    @Override
-    public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
-        return super.mouseDragged(viewport.toLogicalX(x), viewport.toLogicalY(y), button,
-                viewport.toLogicalDistance(dx), viewport.toLogicalDistance(dy));
-    }
-
-    @Override
-    public boolean mouseScrolled(double x, double y, double sx, double sy) {
-        return super.mouseScrolled(viewport.toLogicalX(x), viewport.toLogicalY(y), sx, sy);
     }
 
     // 书页内容与控件共用根命中；页内业务由当前页容器处理。
     private final class JournalContent implements UiInputContainer {
         @Override public UiChildren<UiWidget> inputChildren() { return widgets; }
+        @Override public List<UiLayoutNode> layoutNodes() {
+            List<UiLayoutNode> nodes = new ArrayList<>(widgets.layoutNodes());
+            if (catalogPanel != null) nodes.addAll(catalogPanel.layoutNodes());
+            if (hasSelectedTable()) nodes.addAll(rightPage.layoutNodes());
+            return List.copyOf(nodes);
+        }
         @Override public void addFocusTargets(Consumer<UiFocusTarget> out) {
             widgets.addFocusTargets(out);
             if (catalogPanel != null) catalogPanel.addFocusTargets(out);
@@ -1056,13 +1047,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
         );
     }
 
-    // 将物理屏幕坐标转换为手册逻辑坐标，并返回当前悬停的已解锁物品。
+    // 将原版 GUI 坐标转换为手册逻辑坐标，并返回当前悬停的已解锁物品。
     public Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
-        if (this.viewport == null || this.rightPage == null || (this.overlays.isOpen() || !confirmations.isEmpty())) {
+        if (this.rightPage == null || (this.overlays.isOpen() || !confirmations.isEmpty())) {
             return Optional.empty();
         }
-        double logicalMouseX = this.viewport.toLogicalX(mouseX);
-        double logicalMouseY = this.viewport.toLogicalY(mouseY);
+        double logicalMouseX = viewport().toLogical(mouseX);
+        double logicalMouseY = viewport().toLogical(mouseY);
         prepareUi();
         UiPointer pointer = scope.pointer(logicalMouseX, logicalMouseY).resolve(content);
         if (!pointer.allowsTooltip()) return Optional.empty();

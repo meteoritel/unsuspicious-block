@@ -8,6 +8,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
+import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
@@ -34,7 +36,7 @@ import java.util.Map;
  * 换算成像素：分类模式每行 2 项、步长 = 卡片高度 + 纵向间距；表格模式每行 1 项、步长 = 行高 + 行间距。
  * 对外偏移仍使用条目单位。</p>
  */
-public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.Target {
+public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.Target, UiLayoutSource {
     private java.util.function.BiConsumer<ClickResult, Boolean> onActivate = (click, shift) -> { };
     private final UiFocusState focus = new UiFocusState();
     private java.util.function.IntPredicate navigate = key -> false;
@@ -146,6 +148,26 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
 
     public Mode mode() {
         return this.mode;
+    }
+
+    /** 使用绘制时同一行几何与展示语义，未解锁表不导出真实身份。 */
+    @Override public List<UiLayoutNode> layoutNodes() {
+        List<UiLayoutNode> nodes = new ArrayList<>();
+        int from = firstVisibleIndex();
+        int count = mode == Mode.CATEGORIES ? categories.size() : entries.size();
+        int to = Math.min(count, from + visibleItemCount() + 2);
+        for (int index = from; index < to; index++) {
+            boolean category = mode == Mode.CATEGORIES;
+            UiRect rect = category ? categoryRect(index) : new UiRect(buttonX(), view.toScreenY(index * rowStride()),
+                    buttonWidth(), JournalLayout.CATALOG_ROW_HEIGHT);
+            boolean unlocked = category || entries.get(index).unlocked();
+            Component text = category ? categories.get(index).name() : unlocked ? entries.get(index).displayName() : Component.empty();
+            String key = category ? "category/" + categories.get(index).id()
+                    : unlocked ? "table/" + entries.get(index).id() : "";
+            nodes.add(new UiLayoutNode(UiLayoutNode.Kind.CONTROL, rect, text, 0, 0, unlocked, true, List.of())
+                    .identified(key, this).clippedTo(view.viewport()));
+        }
+        return List.copyOf(nodes);
     }
 
     // 保留旧算法与两个 lookahead 常量，钳制交给 UiScrollView。

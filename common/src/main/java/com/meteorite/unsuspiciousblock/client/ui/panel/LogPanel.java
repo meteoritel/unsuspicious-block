@@ -66,6 +66,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                 }
             } else if (row instanceof EntryRow(LogEntryState state)) {
                 UiControl entry = controls.obtain(state.entry.entryId());
+                entry.setLayoutKey("log/" + state.entry.entryId());
                 entry.setBounds(bgX, y, JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, row.height());
                 JournalControls.configureHotspot(entry, Component.literal(entryTimeText(state)), noteTooltip(state.entry),
                         () -> { if (batchSelectionMode) toggleEntrySelection(state.entry.entryId()); else onOpenEntry.accept(state.entry); });

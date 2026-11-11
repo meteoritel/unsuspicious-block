@@ -26,6 +26,9 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
+import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
+import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -143,6 +146,7 @@ public final class RightPageContainer implements UiInputTarget {
         UiControl bookmark = JournalControls.bookmark(layout.rightPageX() + layout.rightPageWidth(),
                 layout.rightPageY() + BOOKMARK_TOP_OFFSET + tab.ordinal() * (BOOKMARK_HEIGHT + BOOKMARK_GAP),
                 label.copy().withStyle(ChatFormatting.YELLOW), () -> setActiveTab(tab));
+        bookmark.setLayoutKey("journal/tab/" + tab.name().toLowerCase(Locale.ROOT));
         return new PageDescriptor(tab, content, indicatorOffset, alwaysIndicator, enter, leave, bookmark);
     }
 
@@ -200,6 +204,11 @@ public final class RightPageContainer implements UiInputTarget {
             this.logDetailPanel.setEntry(null, null);
         }
         syncPageChrome();
+    }
+
+    /** 当前右页贡献实际输入内容；chrome 由根已有成员树导出。 */
+    public List<UiLayoutNode> layoutNodes() {
+        return activePage().content().get() instanceof UiLayoutSource source ? source.layoutNodes() : List.of();
     }
 
     public List<UiControl> chromeControls() {

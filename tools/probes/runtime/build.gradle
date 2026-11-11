@@ -1,0 +1,29 @@
+import groovy.json.JsonOutput
+
+plugins { id 'net.neoforged.moddev' version '2.0.49-beta' }
+
+def host = new Properties()
+file('../../../gradle.properties').withInputStream { host.load(it) }
+java.toolchain.languageVersion = JavaLanguageVersion.of(host.java_version as int)
+neoForge {
+    version = host.neoforge_version
+    runs {
+        client { client() }
+        server { server(); programArgument 'nogui' }
+    }
+}
+
+// 独立工程不声明宿主 mod/sourceSet；游戏只扫描运行目录的发布 JAR。
+tasks.register('prepareProbeRuntime') {
+    dependsOn 'createMinecraftArtifacts', 'createClientLaunchScript', 'createServerLaunchScript'
+    doLast {
+        def launcher = javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile
+        def directory = layout.buildDirectory.dir('moddev').get().asFile
+        def result = [java: launcher.absolutePath, minecraft: host.minecraft_version, neoforge: host.neoforge_version]
+        ['client', 'server'].each { side ->
+            result[side] = ["@${directory}/${side}RunClasspath.txt", "@${directory}/${side}RunVmArgs.txt",
+                            '-Dfml.modFolders=', 'net.neoforged.devlaunch.Main', "@${directory}/${side}RunProgramArgs.txt"]
+        }
+        layout.buildDirectory.file('launch.json').get().asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(result)) + '\n'
+    }
+}

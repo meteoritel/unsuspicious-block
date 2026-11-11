@@ -44,6 +44,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         renderTooltipSlots.clear();
         copyButton.setVisible(entry != null);
         if (entry == null) return;
+        copyButton.setLayoutKey("log/coordinates/" + entry.entryId());
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int cardY = layout.rightPageY() + JournalLayout.LOG_TOP + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
         int width = layout.rightPageWidth() - 20;
@@ -140,6 +141,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                 UiAtlas.Icon.BACK,
                 tooltip,
                 onBack);
+        this.backButton.setLayoutKey("journal/log-back");
         registrar.accept(this.backButton);
     }
 

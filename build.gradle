@@ -1,8 +1,22 @@
+import groovy.json.JsonOutput
+
 plugins {
     // see https://fabricmc.net/develop/ for new versions
     id 'fabric-loom' version '1.8-SNAPSHOT' apply false
     // see https://projects.neoforged.net/neoforged/moddevgradle for new versions
     id 'net.neoforged.moddev' version '2.0.49-beta' apply false
+}
+
+tasks.register('writeProbeArtifact') {
+    dependsOn ':neoforge:jar'
+    doLast {
+        def artifact = project(':neoforge').tasks.named('jar').get().archiveFile.get().asFile
+        def target = layout.buildDirectory.file('probes/artifact.json').get().asFile
+        target.parentFile.mkdirs()
+        target.text = JsonOutput.prettyPrint(JsonOutput.toJson([
+                jar: artifact.absolutePath, kit: meteos_ui_kit_version,
+                minecraft: minecraft_version, neoforge: neoforge_version])) + '\n'
+    }
 }
 
 def repositoryPython = providers.gradleProperty('repository_python').orElse('python')

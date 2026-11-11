@@ -158,6 +158,7 @@ public class LogToolbar {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
                 onClearTable);
+        clearTableBtn.setLayoutKey("journal/log-clear-table");
         registerToolbarButton(screen, clearTableBtn);
 
         // 保留配置、批量选择、执行三个固定槽位，批量模式切换时布局不会跳动。
