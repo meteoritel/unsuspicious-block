@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler.UncertaintyLevel;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionDescriptions;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionHandler;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionPreviewResult;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionPreviewContext;
@@ -300,18 +301,23 @@ public final class LootTableProjector {
                     }
                     continue;
                 }
-                ItemStack candidateStack = previewStack.copy();
-                ItemStack result = handler.apply(candidateStack, function);
-                if (result != null) {
-                    previewStack = result;
-                } else {
-                    signatureUncertain |= described.semantics().affectsIdentity();
-                    functionUncertainty = stronger(functionUncertainty, described.semantics().failureUncertainty());
+                var preview = handler.preview();
+                FunctionPreviewResult result = preview == null ? FunctionPreviewResult.Unsupported.INSTANCE
+                        : preview.apply(previewStack.copy(), function, described);
+                switch (result) {
+                    case FunctionPreviewResult.Applied(var stack) -> previewStack = stack;
+                    case FunctionPreviewResult.NeedsContext(var uncertainty) -> {
+                        signatureUncertain |= described.semantics().affectsIdentity();
+                        functionUncertainty = stronger(functionUncertainty, uncertainty);
+                    }
+                    case FunctionPreviewResult.Unsupported ignored -> {
+                        signatureUncertain |= described.semantics().affectsIdentity();
+                        functionUncertainty = stronger(functionUncertainty, described.semantics().failureUncertainty());
+                    }
                 }
-                LootResultSignature derived = handler.deriveSignature(
-                        previewStack, currentItemId(previewStack));
-                if (derived != null) {
-                    signature = derived;
+                if (preview != null) {
+                    LootResultSignature derived = preview.deriveSignature(previewStack, currentItemId(previewStack));
+                    if (derived != null) signature = derived;
                 }
                 if (described.semantics().uncertainty() != UncertaintyLevel.NONE) {
                     signatureUncertain |= described.semantics().affectsIdentity();
@@ -378,7 +384,7 @@ public final class LootTableProjector {
                 info.effect(), conditions, info.children(), info.metadata());
     }
 
-    // 由结构化描述派生兼容提示；未解析说明连摘要都取不到，与旧 describeHint == null 的降级口径一致
+    // 展示提示只由结构化描述派生，未解析规则使用统一提示。
     private static void addDescriptionHint(List<Component> hints, LootFunctionInfo info) {
         if (info.fidelity() != FunctionFidelity.UNRESOLVED) {
             hints.add(info.description());

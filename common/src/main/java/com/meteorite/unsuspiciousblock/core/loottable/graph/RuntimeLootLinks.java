@@ -67,7 +67,7 @@ public final class RuntimeLootLinks {
      * 或 tooltip 说的和玩法不同）都很难从现象反推成因。
      */
     private static final List<InjectionEdge> INJECTION_EDGES = List.of(
-            new InjectionEdge(FISHING_TABLE, MUD_DREDGING_TABLE, MUD_DREDGING_GATE));
+            new InjectionEdge(FISHING_TABLE, MUD_DREDGING_TABLE, MUD_DREDGING_GATE, Constants.MOD_ID, "append"));
 
     private RuntimeLootLinks() {
     }
@@ -76,7 +76,7 @@ public final class RuntimeLootLinks {
      * 一条平台注入边：{@code source} 在运行时把 {@code target} 注入自己的产出，
      * 并由 {@code gate} 决定"进不进得去"。
      */
-    public record InjectionEdge(ResourceLocation source, ResourceLocation target, InjectionGate gate) {
+    public record InjectionEdge(ResourceLocation source, ResourceLocation target, InjectionGate gate, String owner, String mode) {
         public InjectionEdge {
             Objects.requireNonNull(source, "source");
             Objects.requireNonNull(target, "target");
@@ -114,6 +114,11 @@ public final class RuntimeLootLinks {
         }
     }
 
+    /** 原始注入边及其来源，由目录构建统一展开。 */
+    public static List<InjectionEdge> injectionEdges() {
+        return INJECTION_EDGES;
+    }
+
     /**
      * 平台注入关系：来源表 -&gt; 合成边。
      * 返回的是未套用存在性守卫的原始声明，建图时按快照过滤。
@@ -125,21 +130,6 @@ public final class RuntimeLootLinks {
                     .add(LootTableEdge.runtimeInjection(edge.target()));
         }
         return Map.copyOf(edges);
-    }
-
-    /**
-     * 该表作为**被注入子表**时的入口门槛；没有注入边时为空。
-     * <p>
-     * 父表页的子表入口据此说明"需要什么条件"——这条边不在任何 JSON 里，静态投影看不到它，
-     * 不从这里取就只能显示一个没有原因的「未命中」。
-     */
-    public static Optional<InjectionGate> injectionGate(ResourceLocation targetTableId) {
-        for (InjectionEdge edge : INJECTION_EDGES) {
-            if (edge.target().equals(targetTableId)) {
-                return Optional.of(edge.gate());
-            }
-        }
-        return Optional.empty();
     }
 
     /**

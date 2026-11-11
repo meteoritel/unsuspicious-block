@@ -43,17 +43,6 @@ public sealed interface SimulatedValue {
         }
     }
 
-    /** 把展示层的概率值收窄为可持久化的测量事实；一切派生状态都退化为"没有测量值"。 */
-    static SimulatedValue from(Probability probability) {
-        return switch (probability) {
-            case Probability.Measured measured ->
-                    new Measured(measured.lower(), measured.upper());
-            case Probability.Unknown ignored -> Unknown.INSTANCE;
-            case Probability.Unreachable ignored -> Unknown.INSTANCE;
-            case Probability.NeedsCondition ignored -> Unknown.INSTANCE;
-        };
-    }
-
     /** 展开为展示层概率值；原因由调用方按上下文给出（存档里不保存原因）。 */
     default Probability toProbability(UnknownReason reasonWhenUnknown) {
         return switch (this) {

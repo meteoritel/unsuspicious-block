@@ -2,6 +2,9 @@ package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.resources.RegistryOps;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import net.minecraft.core.HolderLookup;
@@ -49,10 +52,12 @@ public record SimulationConstraintCatalog(
         boolean toolSelectionAllowed,
         Map<ResourceLocation, Integer> enchantmentMaxLevels,
         List<Integer> sampleCounts,
-        Map<ResourceLocation, List<LootConditionInfo>> childEntryGates) {
+        Map<ResourceLocation, List<LootConditionInfo>> childEntryGates,
+        Map<List<ConditionIdentity>, List<String>> pathScenes) {
 
     public SimulationConstraintCatalog {
         scenarios = List.copyOf(scenarios);
+        pathScenes = Map.copyOf(pathScenes);
         tools = List.copyOf(tools);
         enchantmentMaxLevels = Map.copyOf(enchantmentMaxLevels);
         sampleCounts = List.copyOf(sampleCounts);
@@ -63,6 +68,13 @@ public record SimulationConstraintCatalog(
         if (tools.isEmpty()) {
             throw new IllegalArgumentException("工具基座清单至少要含默认工具");
         }
+    }
+
+    /** 优先读取已规划路径；补充入口使用同一个规划代数。 */
+    public List<String> activeScenes(List<LootConditionInfo> conditions) {
+        List<ConditionIdentity> identity = conditions.stream().map(LootConditionInfo::identity).toList();
+        List<String> planned = pathScenes.get(identity);
+        return planned != null ? planned : SimulationScenarioPlanner.applicableScenes(conditions, scenarios);
     }
 
     /**
@@ -94,7 +106,7 @@ public record SimulationConstraintCatalog(
         }
         return new SimulationConstraintCatalog(plan.scenarios(), plan.truncatedCount(),
                 plan.budgetExhausted(), tools, toolSelectionAllowed, enchantmentMaxLevels,
-                ScenarioParams.SAMPLE_COUNT_TIERS, childEntryGates);
+                ScenarioParams.SAMPLE_COUNT_TIERS, childEntryGates, plan.pathScenes());
     }
 
     /**
@@ -103,7 +115,7 @@ public record SimulationConstraintCatalog(
      */
     public static List<LootConditionInfo> describeGate(RuntimeLootLinks.InjectionGate gate,
                                                        HolderLookup.Provider registries) {
-        return List.copyOf(LootConditionHandlers.analyzeAll(List.of(gate.condition(registries))));
+        return List.copyOf(LootConditionHandlers.analyzeAll(List.of(gate.condition(registries)), RegistryOps.create(JsonOps.INSTANCE, registries)));
     }
 
     /** 默认工具基座——与基准输入用的是同一份 profile，两者不会漂移。 */
@@ -142,11 +154,9 @@ public record SimulationConstraintCatalog(
     public SimulationInput baselineInput() {
         SimulationScenario scenario = baselineScenario();
         if (scenario == null) {
-            return new SimulationInput(SimulationScenarioPlanner.BASELINE_SCENARIO_KEY,
-                    Map.of(), baselineParams());
+            return new SimulationInput(SimulationScenarioPlanner.BASELINE_SCENARIO_KEY, baselineParams());
         }
-        return new SimulationInput(scenario.key(), scenario.profile().conditionOutcomes(),
-                baselineParams());
+        return new SimulationInput(scenario.key(), baselineParams());
     }
 
     /** 按 key 取已签发的场景；未签发时返回 {@code null}。 */
@@ -216,8 +226,7 @@ public record SimulationConstraintCatalog(
         // 条件赋值由服务端按已签发场景还原，客户端不传指纹——它只挑场景，不构造赋值。
         // 场景键取自场景自身的稳定身份，绝不从条件指纹反算：指纹跨运行不稳定，用它做键会让
         // 同一个场景每次启动换一个键，缓存永不命中。
-        return Optional.of(new SimulationInput(scenario.key(),
-                scenario.profile().conditionOutcomes(), params));
+        return Optional.of(new SimulationInput(scenario.key(), params));
     }
 
     /** 状态标记用的紧凑描述。 */

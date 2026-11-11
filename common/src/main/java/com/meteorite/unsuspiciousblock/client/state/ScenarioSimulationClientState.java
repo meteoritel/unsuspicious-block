@@ -40,7 +40,7 @@ public final class ScenarioSimulationClientState {
     public static CatalogTableDto table(ResourceLocation id) { return state.TABLES.get(id); }
     public static SimulationPreferenceStore.Selection selection(ResourceLocation id) { return state.SELECTIONS.get(id); }
     public static String inputKey(SimulationPreferenceStore.Selection selection) {
-        return new SimulationInput(selection.scene(), Map.of(), selection.params()).key();
+        return SimulationInputKey.of(selection.scene(), selection.params());
     }
     public static void catalog(List<CatalogTableDto> tables) {
         boolean changedGeneration = tables.stream().anyMatch(t -> {
@@ -145,7 +145,7 @@ public final class ScenarioSimulationClientState {
         var structure = state.TABLES.get(table);
         if (query != null && structure != null && structure.options() != null) {
             for (var scene : structure.options().scenes()) {
-                if (!new SimulationInput(scene.scenarioKey(), Map.of(), query.params()).key().equals(input)) continue;
+                if (!SimulationInputKey.of(scene.scenarioKey(), query.params()).equals(input)) continue;
                 if (!query.complete()) return System.currentTimeMillis() - query.started() < 15_000 ? "querying" : "query_failed";
                 if (!query.error().isEmpty()) return "query_failed";
                 if (query.available().contains(scene.scenarioKey()))
@@ -215,8 +215,7 @@ public final class ScenarioSimulationClientState {
         if (found != null) return found;
         var base = state.TABLES.get(id);
         if (base != null && base.options() != null && base.simulationCount() > 0) {
-            String baseline = new SimulationInput("baseline", Map.of(),
-                    ScenarioParams.baseline(base.options().tools().getFirst().id())).key();
+            String baseline = SimulationInputKey.of("baseline", ScenarioParams.baseline(base.options().tools().getFirst().id()));
             if (baseline.equals(input)) return base;
         }
         return null;
@@ -226,13 +225,13 @@ public final class ScenarioSimulationClientState {
     public record SceneSource(@Nullable CatalogTableDto source, boolean exactInput, String status) {}
 
     public static SceneSource sceneSource(ResourceLocation id, String scene, ScenarioParams params) {
-        String input = new SimulationInput(scene, Map.of(), params).key();
+        String input = SimulationInputKey.of(scene, params);
         CatalogTableDto direct = result(id, input);
         if (direct != null) return new SceneSource(direct, true, "cached");
         CatalogTableDto structure = table(id);
         if (structure != null && structure.options() != null) {
             for (var candidate : structure.options().scenes()) {
-                String key = new SimulationInput(candidate.scenarioKey(), Map.of(), params).key();
+                String key = SimulationInputKey.of(candidate.scenarioKey(), params);
                 CatalogTableDto other = result(id, key);
                 if (other != null && hasSceneReference(other, scene)) {
                     return new SceneSource(other, false, "cached");

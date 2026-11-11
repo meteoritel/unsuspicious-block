@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
+
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -13,6 +15,10 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Map;
+import com.google.gson.JsonElement;
+import com.mojang.serialization.DynamicOps;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.resources.RegistryOps;
 
 /**
  * 单次战利品模拟使用的不可变场景配置。
@@ -29,8 +35,9 @@ public record SimulationProfile(
         float explosionRadius,
         float luck,
         boolean fishingContext,
-        Map<String, Boolean> conditionOutcomes,
-        Map<ResourceLocation, Boolean> conditionTypeDefaults
+        Map<ConditionIdentity, Boolean> conditionOutcomes,
+        Map<ResourceLocation, Boolean> conditionTypeDefaults,
+        DynamicOps<JsonElement> identityOps
 ) {
     public static final float CATALOG_LUCK = 1.0F;
 
@@ -55,12 +62,12 @@ public record SimulationProfile(
                 level.damageSources().generic(),
                 0.0F,
                 CATALOG_LUCK,
-                fishing, Map.of(), Map.of());
+                fishing, Map.of(), Map.of(), RegistryOps.create(JsonOps.INSTANCE, level.registryAccess()));
     }
 
     // 精确条件结果优先；类型默认值只用于解析期看不到的运行时注入条件
     public Boolean conditionOutcome(LootItemCondition condition) {
-        Boolean exact = this.conditionOutcomes.get(LootConditionFingerprint.ofRaw(condition));
+        Boolean exact = this.conditionOutcomes.get(ConditionIdentity.ofRaw(condition, identityOps));
         if (exact != null) {
             return exact;
         }
@@ -69,24 +76,24 @@ public record SimulationProfile(
     }
 
     // 创建仅替换条件结果的新 profile
-    public SimulationProfile withConditionOutcomes(Map<String, Boolean> outcomes,
+    public SimulationProfile withConditionOutcomes(Map<ConditionIdentity, Boolean> outcomes,
                                                    Map<ResourceLocation, Boolean> typeDefaults) {
         return new SimulationProfile(this.origin, this.tool, this.blockState, this.damageSource,
-                this.explosionRadius, this.luck, this.fishingContext, outcomes, typeDefaults);
+                this.explosionRadius, this.luck, this.fishingContext, outcomes, typeDefaults, identityOps);
     }
 
     // 创建使用指定工具的新 profile
     public SimulationProfile withTool(ItemStack newTool) {
         return new SimulationProfile(this.origin, newTool, this.blockState, this.damageSource,
                 this.explosionRadius, this.luck, this.fishingContext,
-                this.conditionOutcomes, this.conditionTypeDefaults);
+                this.conditionOutcomes, this.conditionTypeDefaults, identityOps);
     }
 
     // 创建使用指定幸运的新 profile；值经 LootParams.withLuck 传入，只影响权重与抽取次数
     public SimulationProfile withLuck(float newLuck) {
         return new SimulationProfile(this.origin, this.tool, this.blockState, this.damageSource,
                 this.explosionRadius, newLuck, this.fishingContext,
-                this.conditionOutcomes, this.conditionTypeDefaults);
+                this.conditionOutcomes, this.conditionTypeDefaults, identityOps);
     }
 
     // 该表的默认工具基座物品 id——种子参数与目录的"默认工具"选项共用同一来源

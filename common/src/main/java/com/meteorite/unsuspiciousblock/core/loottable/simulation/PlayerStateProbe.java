@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
+
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
@@ -22,6 +24,8 @@ public final class PlayerStateProbe {
 
     public static Result probe(ServerPlayer player, TableDefinition table, SimulationConstraintCatalog catalog,
                                 SimulationInput previous) {
+        SimulationScenario previousScene = catalog.scenario(previous.scenarioKey());
+        if (previousScene == null) return new Result(previous, List.of(note("probe_scene")));
         List<Component> notes = new ArrayList<>();
         var held = player.getMainHandItem();
         ResourceLocation tool = BuiltInRegistries.ITEM.getKey(held.getItem());
@@ -52,10 +56,10 @@ public final class PlayerStateProbe {
         if (!fishing) builder.withParameter(LootContextParams.THIS_ENTITY, player);
         else if (player.fishing != null) builder.withParameter(LootContextParams.THIS_ENTITY, player.fishing);
         LootContext context = new LootContext.Builder(builder.create(LootContextParamSets.ALL_PARAMS)).create(Optional.empty());
-        Map<String, LootConditionInfo> conditions = new LinkedHashMap<>();
+        Map<ConditionIdentity, LootConditionInfo> conditions = new LinkedHashMap<>();
         for (var item : table.items()) for (var path : item.acquisitionPaths())
             for (var condition : path.allConditions()) collect(condition, conditions);
-        Map<String, Boolean> desired = new LinkedHashMap<>(previous.conditionOutcomes());
+        Map<ConditionIdentity, Boolean> desired = new LinkedHashMap<>(previousScene.profile().conditionOutcomes());
         for (var entry : conditions.entrySet()) {
             var info = entry.getValue();
             var source = info.source();
@@ -76,11 +80,11 @@ public final class PlayerStateProbe {
         return new Result(catalog.resolve(scene, params).orElse(previous), List.copyOf(notes));
     }
 
-    private static void collect(LootConditionInfo info, Map<String, LootConditionInfo> result) {
+    private static void collect(LootConditionInfo info, Map<ConditionIdentity, LootConditionInfo> result) {
         ConditionTree.walkLogic(info, node -> {
             if (ConditionTree.kind(node) == ConditionTree.Kind.LEAF
                     && SimulationScenarioPlanner.isScenarioControlled(node.conditionType())) {
-                result.putIfAbsent(LootConditionFingerprint.of(node), node);
+                result.putIfAbsent(ConditionIdentity.of(node), node);
             }
         });
     }

@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
-import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
@@ -44,15 +44,6 @@ public final class PathHintAnalyzer {
     private static final String KEY_LUCK_AT_LEAST = KEY_PREFIX + "path_hint.luck_at_least";
     private static final String KEY_LUCK_RANGE_LIMITED = KEY_PREFIX + "path_hint.luck_range_limited";
     private static final String KEY_LUCK_BONUS_ROLLS = KEY_PREFIX + "path_hint.luck_bonus_rolls";
-    private static final ResourceLocation MATCH_TOOL =
-            ResourceLocation.withDefaultNamespace("match_tool");
-    private static final ResourceLocation TABLE_BONUS =
-            ResourceLocation.withDefaultNamespace("table_bonus");
-    private static final ResourceLocation ENCHANTMENT_ACTIVE_CHECK =
-            ResourceLocation.withDefaultNamespace("enchantment_active_check");
-    private static final ResourceLocation RANDOM_CHANCE_WITH_ENCHANTED_BONUS =
-            ResourceLocation.withDefaultNamespace("random_chance_with_enchanted_bonus");
-
     private PathHintAnalyzer() {
     }
 
@@ -247,10 +238,11 @@ public final class PathHintAnalyzer {
                 && (!composite || ConditionTree.logicChildren(condition).isEmpty())) {
             unresolvedConditions.putIfAbsent(detailKey(condition), condition);
         }
-        if (MATCH_TOOL.equals(type)) {
+        if (LootConditionHandlers.supports(type, ConditionTypeDescriptor.Capability.TOOL)) {
             // 决策 8：match_tool 不再由场景伪造布尔，工具真实求值，因此它是"工具"旋钮的引用
             addParameter(parameterDetails, ParameterKind.TOOL, detailKey(condition), condition.description());
-        } else if (isEnchantmentLevelMechanism(type)) {
+        }
+        if (LootConditionHandlers.supports(type, ConditionTypeDescriptor.Capability.ENCHANTMENT_LEVEL)) {
             // 附魔等级是函数/条件在运行时读取的输入（决策 26），不是条件谓词
             addParameter(parameterDetails, ParameterKind.ENCHANT_LEVEL, detailKey(condition),
                     condition.description());
@@ -267,14 +259,6 @@ public final class PathHintAnalyzer {
         }
     }
 
-    // 读工具附魔等级的机制：模组的 tool_enchantment 与三处原版机制。等级是资格也是概率来源
-    private static boolean isEnchantmentLevelMechanism(ResourceLocation type) {
-        return type.equals(ModLootConditions.TOOL_ENCHANTMENT)
-                || TABLE_BONUS.equals(type)
-                || ENCHANTMENT_ACTIVE_CHECK.equals(type)
-                || RANDOM_CHANCE_WITH_ENCHANTED_BONUS.equals(type);
-    }
-
     private static void addParameter(Map<ParameterKind, Map<String, Component>> target,
                                      ParameterKind kind, String detailKey, @Nullable Component detail) {
         Map<String, Component> details = target.computeIfAbsent(kind, ignored -> new LinkedHashMap<>());
@@ -282,9 +266,8 @@ public final class PathHintAnalyzer {
         details.putIfAbsent(detailKey, detail == null ? Component.empty() : detail);
     }
 
-    // 同一条件在解析期与运行时的实例不同，用类型 + 展示文本做稳定去重键（与指纹同型）
+    // 同一语义条件复用身份，opaque 按出处分别保留。
     private static String detailKey(LootConditionInfo condition) {
-        String detail = condition.description().getString();
-        return condition.conditionType() + "|" + detail;
+        return condition.identity().key();
     }
 }

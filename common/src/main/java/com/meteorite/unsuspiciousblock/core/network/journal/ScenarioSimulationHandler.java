@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.network.journal;
 
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInput;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInputKey;
+
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioCachePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioCachePayload;
 import java.util.List;
@@ -10,6 +11,7 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.ScenarioRequestRejectedPayload;
+import java.util.Objects;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.level.ServerPlayer;
@@ -45,15 +47,16 @@ public final class ScenarioSimulationHandler {
         try {
             ScenarioParams params = new ScenarioParams(request.luck(), request.toolId(),
                     request.toolEnchantments(), request.sampleCount());
-            inputKey = new SimulationInput(
-                    request.scenarioKey(), Map.of(), params).key();
+            inputKey = SimulationInputKey.of(request.scenarioKey(), params);
             long now = System.currentTimeMillis();
             Long last = CACHE_REQUESTS.put(player, now);
             if (last != null && now - last < 100) throw new IllegalArgumentException("busy");
             if (request.generation() != ArchaeologyJournalServerCatalog.currentGenerationId())
                 throw new IllegalArgumentException("stale_hash");
-            scenes = ArchaeologyJournalServerCatalog.cachedScenes(player, request.tableId(),
+            var cached = ArchaeologyJournalServerCatalog.cachedScenes(player, request.tableId(),
                     request.tableHash(), request.scenarioKey(), params, payload.fetchSelected());
+            scenes = cached.scenes();
+            if (cached.selected() != null) CatalogSimulationDelivery.deliver(player, cached.selected());
         } catch (IllegalArgumentException exception) {
             error = "stale_hash".equals(exception.getMessage()) ? "stale_hash"
                     : "busy".equals(exception.getMessage()) ? "busy" : "rejected_input";
@@ -88,9 +91,8 @@ public final class ScenarioSimulationHandler {
                         payload.tableHash(), payload.scenarioKey(), params);
         String inputKey = result.input() == null ? "" : result.input().key();
         switch (result.outcome()) {
-            case QUEUED, SIMULATED_INLINE, CACHE_HIT -> {
-                // 结果由 SyncScenarioResultPayload 下发，这里不回声
-            }
+            case QUEUED -> { }
+            case SIMULATED_INLINE, CACHE_HIT -> CatalogSimulationDelivery.deliver(player, Objects.requireNonNull(result.scenario()));
             case UNKNOWN_TABLE -> reject(player, payload, inputKey,
                     ScenarioRequestRejectedPayload.Reason.UNKNOWN_TABLE);
             case STALE_HASH -> reject(player, payload, inputKey,
@@ -110,9 +112,8 @@ public final class ScenarioSimulationHandler {
                                String inputKey, ScenarioRequestRejectedPayload.Reason reason) {
         if (inputKey.isEmpty()) {
             try {
-                inputKey = new SimulationInput(
-                        payload.scenarioKey(), Map.of(), new ScenarioParams(payload.luck(),
-                        payload.toolId(), payload.toolEnchantments(), payload.sampleCount())).key();
+                inputKey = SimulationInputKey.of(payload.scenarioKey(), new ScenarioParams(payload.luck(),
+                        payload.toolId(), payload.toolEnchantments(), payload.sampleCount()));
             } catch (IllegalArgumentException ignored) {
                 // 非法参数不能生成规范键；客户端以请求超时兜底。
             }

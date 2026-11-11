@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
+
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.*;
@@ -123,7 +125,7 @@ public final class RecommendationSolver {
                                          LootContext context, boolean inverted) {
         String type = info.conditionType().toString();
         if (SimulationScenarioPlanner.isScenarioControlled(info.conditionType())) {
-            Boolean value = scene.profile().conditionOutcomes().get(LootConditionFingerprint.of(info));
+            Boolean value = scene.profile().conditionOutcomes().get(ConditionIdentity.of(info));
             return value == null ? null : value != inverted;
         }
         if (info.source() instanceof ToolEnchantmentCondition(var enchantment, var minLevel, var curve)) {

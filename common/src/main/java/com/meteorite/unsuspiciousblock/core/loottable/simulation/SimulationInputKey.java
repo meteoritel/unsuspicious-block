@@ -4,6 +4,7 @@ import java.util.Locale;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Map;
+import java.util.Comparator;
 
 /**
  * {@link SimulationInput} ↔ 稳定字符串（决策 37）。
@@ -38,10 +39,9 @@ public final class SimulationInputKey {
     }
 
     /** 生成规范键。 */
-    public static String of(SimulationInput input) {
-        ScenarioParams params = input.params();
+    public static String of(String scenarioKey, ScenarioParams params) {
         StringBuilder builder = new StringBuilder(96);
-        builder.append("scenario=").append(input.scenarioKey());
+        builder.append("scenario=").append(scenarioKey);
         builder.append(FIELD_SEPARATOR).append("luck=")
                 .append(String.format(Locale.ROOT, "%.2f", params.luck()));
         builder.append(FIELD_SEPARATOR).append("tool=").append(params.toolId());
@@ -72,7 +72,8 @@ public final class SimulationInputKey {
 
     private static void appendEnchantments(StringBuilder builder, Map<ResourceLocation, Integer> levels) {
         boolean first = true;
-        for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet()) {
+        for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(ResourceLocation::toString))).toList()) {
             if (!first) {
                 builder.append(',');
             }

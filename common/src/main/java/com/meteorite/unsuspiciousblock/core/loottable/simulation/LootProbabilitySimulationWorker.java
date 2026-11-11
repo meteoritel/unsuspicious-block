@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission.Publication;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.LinkedHashSet;
@@ -151,6 +153,7 @@ public final class LootProbabilitySimulationWorker {
         for (SimulationRequest request : requests) {
             WorkItem existing = this.enqueued.get(request.dedupKey());
             if (existing != null) {
+                existing.publication = Publication.BASELINE;
                 continue;
             }
             WorkItem item = new WorkItem(request, Priority.LOW);
@@ -200,6 +203,7 @@ public final class LootProbabilitySimulationWorker {
     public void enqueuePriority(SimulationRequest request) {
         WorkItem existing = this.enqueued.get(request.dedupKey());
         if (existing != null) {
+            existing.publication = Publication.BASELINE;
             promote(existing);
             return;
         }
@@ -347,19 +351,13 @@ public final class LootProbabilitySimulationWorker {
         LootProbabilitySimulator.SimResult completedResult;
         try {
             if (item.job == null) {
-                item.job = LootProbabilitySimulator.createJob(item.request.tableId(),
-                        item.request.rawTable(), level, item.request.input(), item.request.scenario());
+                item.job = new LootProbabilitySimulationJob(item.request.tableId(),
+                        item.request.rawTable(), level, item.request.scenario(), item.request.input());
             }
             if (!item.job.advance(deadlineNanos)) {
                 return false;
             }
-            completedResult = new LootProbabilitySimulator.SimResult(item.request.tableId(),
-                    item.request.input(), item.job.result(), true);
-        } catch (Throwable t) {
-            LOGGER.error("模拟战利品表 {} 的输入 {} 时异常",
-                    item.request.tableId(), item.request.input().key(), t);
-            completedResult = LootProbabilitySimulator.SimResult
-                    .failure(item.request.tableId(), item.request.input());
+            completedResult = item.job.result();
         } finally {
             item.activeNanos += System.nanoTime() - sliceStartNanos;
             item.activeCpuNanos += currentThreadCpuTime() - sliceStartCpuNanos;
@@ -377,21 +375,13 @@ public final class LootProbabilitySimulationWorker {
         // 成功与失败都要回调：结果本身带着 successful 标志，调用方据此决定是写缓存+下发，
         // 还是只回一份"这一次没算出来"。失败不回调用时，等待中的玩家收不到任何东西，
         // 只能等到请求超时——那句提示会把"能确定的失败"说成"可能是慢"。
+        if (!this.enqueued.remove(item.request.dedupKey(), item)) return;
         ResultHandler handler = this.resultHandler;
-        if (handler != null) {
-            // 原始触发者先收（requester 为 null 即启动批量填充，调用方据此发布到共享目录），
-            // 其余等待者各自收一份——按内容去重的缓存是全服共享的，但"当前展示哪个输入"
-            // 是每个玩家自己的选择，所以结果要回到每个提出请求的人手里。
-            handler.handle(result, item.request.generation(), item.request.requester(), server);
-            for (UUID waiter : item.extraRequesters) {
-                if (!waiter.equals(item.request.requester())) {
-                    handler.handle(result, item.request.generation(), waiter, server);
-                }
-            }
-        }
-        // 无论成功与否都要释放每玩家在途额度，否则一次失败会让这位玩家永久被限流
-        for (UUID waiter : item.extraRequesters) {
-            addInFlight(waiter, -1);
+        try {
+            if (handler != null) handler.handle(result,
+                    new CatalogSimulationSubmission(item.request, item.publication, item.extraRequesters), server);
+        } finally {
+            for (UUID waiter : item.extraRequesters) addInFlight(waiter, -1);
         }
         if (result.successful()) {
             // 三个时间各有用处：线程 CPU 回答"这张表本身有多贵"；"有效计算"是墙钟，在服务端启动阶段
@@ -401,7 +391,7 @@ public final class LootProbabilitySimulationWorker {
                     item.request.tableId(), item.request.scenario().key(),
                     item.request.input().params().describe(),
                     activeElapsedMs, cpuElapsedMs, wallElapsedMs,
-                    Math.max(0, enqueued.size() - 1), item.job != null ? item.job.metricsSummary() : "");
+                    enqueued.size(), item.job != null ? item.job.metricsSummary() : "");
         } else {
             // 失败输入不会在本轮重试：能确定性失败的情形（注册表中没有该表、条件求值抛异常）
             // 用同一份输入重跑只会再失败一次并持续占用 tick 预算。这里只如实记录，
@@ -416,7 +406,6 @@ public final class LootProbabilitySimulationWorker {
         if (listener != null) {
             listener.onTableSimulated(result.tableId(), result.measurement());
         }
-        this.enqueued.remove(item.request.dedupKey());
     }
 
     // 当前线程已消耗的 CPU 时间；平台不支持时返回 0，日志退化为只报墙钟时间
@@ -440,6 +429,7 @@ public final class LootProbabilitySimulationWorker {
         /** 与原始触发者之外、还等着这一份结果的其他玩家（按内容去重后的复用者）。 */
         private final Set<UUID> extraRequesters = new LinkedHashSet<>();
         private Priority priority;
+        private Publication publication;
         private LootProbabilitySimulationJob job;
         private long startedNanos;
         private long activeNanos;
@@ -449,6 +439,7 @@ public final class LootProbabilitySimulationWorker {
         private WorkItem(SimulationRequest request, Priority priority) {
             this.request = request;
             this.priority = priority;
+            this.publication = request.requester() == null ? Publication.BASELINE : Publication.REQUEST_ONLY;
         }
     }
 
@@ -465,8 +456,8 @@ public final class LootProbabilitySimulationWorker {
      */
     @FunctionalInterface
     public interface ResultHandler {
-        void handle(LootProbabilitySimulator.SimResult result, long generation,
-                    @Nullable UUID requester, MinecraftServer server);
+        void handle(LootProbabilitySimulator.SimResult result, CatalogSimulationSubmission submission,
+                    MinecraftServer server);
     }
 
     /** 调试用进度回调（在主线程调用） */

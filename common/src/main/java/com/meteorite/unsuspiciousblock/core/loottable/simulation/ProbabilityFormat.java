@@ -98,7 +98,6 @@ public final class ProbabilityFormat {
             case UNPARSED -> KEY_PREFIX + "unknown_reason.unparsed";
             case NOT_SIMULATED -> KEY_PREFIX + "unknown_reason.not_simulated";
             case SIMULATION_FAILED -> KEY_PREFIX + "unknown_reason.simulation_failed";
-            case EVICTED -> KEY_PREFIX + "unknown_reason.evicted";
         });
     }
 

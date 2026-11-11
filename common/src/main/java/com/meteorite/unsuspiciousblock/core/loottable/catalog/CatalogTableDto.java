@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.loottable.catalog;
 
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationConstraintCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -59,11 +61,6 @@ public record CatalogTableDto(
                            int simulationCount, List<ResourceLocation> childTables, List<ScenarioAssumptions> scenarios,
                            List<ItemEntry> items, List<ChildTableEntry> children, @Nullable SimulationOptions options) {
         this(id, hash, displayName, type, simulationCount, childTables, scenarios, items, children, options, List.of());
-    }
-
-    public CatalogTableDto withBranches(List<ScenarioBranch> value) {
-        return new CatalogTableDto(id, hash, displayName, type, simulationCount, childTables, scenarios,
-                items, childProbabilities, options, value);
     }
 
     /** 表级场景假设：{@code scenarioKey} → 该场景的假设条件树（每表一次）。 */
@@ -134,7 +131,9 @@ public record CatalogTableDto(
     }
 
     /** 把内部记录映射为网络形态，并按 {@code scenarioKey} 抽取表级假设。 */
-    public static CatalogTableDto from(TableDefinition table, String hash) {
+    public static CatalogTableDto assemble(TableDefinition table, String hash,
+            @Nullable SimulationConstraintCatalog constraints, @Nullable ExpandedTable expansion,
+            Map<String, String> sourceNames, long generation) {
         Map<String, List<LootConditionInfo>> assumptionsByScenario = new LinkedHashMap<>();
         List<ItemEntry> items = new ArrayList<>(table.items().size());
         for (ItemDefinition item : table.items()) {
@@ -157,12 +156,10 @@ public record CatalogTableDto(
                 .forEach((key, assumptions) -> scenarios.add(new ScenarioAssumptions(key, assumptions)));
 
         return new CatalogTableDto(table.id(), hash, table.displayName(), table.type(),
-                table.simulationCount(), table.childTables(), scenarios, items, children, null);
-    }
-
-    public CatalogTableDto withOptions(SimulationOptions value) {
-        return new CatalogTableDto(id, hash, displayName, type, simulationCount, childTables,
-                scenarios, items, childProbabilities, value, branches);
+                table.simulationCount(), table.childTables(), scenarios, items, children,
+                constraints == null ? null : SimulationOptions.from(generation, constraints),
+                constraints == null ? List.of() : ScenarioBranchCatalog.build(table, constraints,
+                        expansion, sourceNames));
     }
 
     /** 还原为内部记录；表级假设按 key 回填到每个分场景概率上。 */

@@ -1,7 +1,11 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
+
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -63,18 +67,6 @@ public final class SimulationScenarioPlanner {
     private static final int EXPANSION_NODE_BUDGET = 4096;
     /** 单张表的条件树展开预算：中间组合集合的最大规模。 */
     private static final int EXPANSION_COMBINATION_BUDGET = 512;
-    // 工具附魔条件不参与场景覆盖：概率的等级曲线无法在布尔场景假设里表达，表中的它按真实 test() 求值。
-    // 等级是运行时输入而非条件谓词（决策 26），基准场景用无附魔工具，因此受它约束的条目在基准下
-    // 自然落到"需要条件"，而不是被伪造成某个具体等级下的数字。
-    private static final Set<ResourceLocation> SCENARIO_CONDITIONS = Set.of(
-            ResourceLocation.withDefaultNamespace("block_state_property"),
-            ResourceLocation.withDefaultNamespace("damage_source_properties"),
-            ResourceLocation.withDefaultNamespace("entity_properties"),
-            ResourceLocation.withDefaultNamespace("location_check"),
-            ResourceLocation.withDefaultNamespace("weather_check"),
-            ResourceLocation.withDefaultNamespace("time_check"),
-            ResourceLocation.withDefaultNamespace("entity_scores"));
-
     private static final Logger LOGGER = LogUtils.getLogger();
     /** 已告警过的指纹不稳定类型，避免按条目刷屏；仅在主线程的场景规划中访问。 */
     private static final Set<ResourceLocation> WARNED_UNSTABLE_TYPES = new LinkedHashSet<>();
@@ -86,7 +78,7 @@ public final class SimulationScenarioPlanner {
 
     // 判断条件类型是否属于需要由代表场景控制的类型；其余类型在模拟中按真实逻辑求值
     public static boolean isScenarioControlled(ResourceLocation conditionType) {
-        return SCENARIO_CONDITIONS.contains(conditionType);
+        return LootConditionHandlers.supports(conditionType, ConditionTypeDescriptor.Capability.SCENARIO);
     }
 
     /**
@@ -97,9 +89,14 @@ public final class SimulationScenarioPlanner {
      * @param budgetExhausted 语义分析不完整或展开预算耗尽；服务端应停用该表数值模拟
      */
     public record ScenarioPlan(List<SimulationScenario> scenarios, int truncatedCount,
-                               boolean budgetExhausted) {
+                               boolean budgetExhausted, Map<List<ConditionIdentity>, List<String>> pathScenes) {
         public ScenarioPlan {
             scenarios = List.copyOf(scenarios);
+            pathScenes = Map.copyOf(pathScenes);
+        }
+
+        public ScenarioPlan(List<SimulationScenario> scenarios, int truncatedCount, boolean budgetExhausted) {
+            this(scenarios, truncatedCount, budgetExhausted, Map.of());
         }
 
         /** 不做截断、不超预算的规划结果。 */
@@ -111,18 +108,18 @@ public final class SimulationScenarioPlanner {
     // 每条获取路径形成一个最小场景，避免对所有条件做无界笛卡尔积
     public static ScenarioPlan plan(ResourceLocation tableId, TableDefinition table, ServerLevel level) {
         SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type());
-        Map<String, LootConditionInfo> conditionByFingerprint = new LinkedHashMap<>();
+        Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint = new LinkedHashMap<>();
         ExpansionBudget budget = new ExpansionBudget();
 
         // 每条路径的需求集合只算一次，供"候选收集""覆盖度排序""适用性判定"三处共用——
         // 旧实现在每个场景上为每个条目重算一遍，是同一份工作的 O(场景数 × 路径数) 次重复。
         List<PathRequirements> pathRequirements = collectPathRequirements(table, conditionByFingerprint, budget);
 
-        Map<String, Map<String, Boolean>> candidates = new LinkedHashMap<>();
+        Map<String, Map<ConditionIdentity, Boolean>> candidates = new LinkedHashMap<>();
         candidates.put("default", Map.of());
-        Set<String> allFingerprints = new LinkedHashSet<>();
+        Set<ConditionIdentity> allFingerprints = new LinkedHashSet<>();
         for (PathRequirements path : pathRequirements) {
-            for (Map<String, Boolean> requirement : path.scenarioRequirements()) {
+            for (Map<ConditionIdentity, Boolean> requirement : path.scenarioRequirements()) {
                 if (!requirement.isEmpty()) {
                     allFingerprints.addAll(requirement.keySet());
                     candidates.putIfAbsent(canonical(requirement), requirement);
@@ -130,10 +127,10 @@ public final class SimulationScenarioPlanner {
             }
         }
 
-        Map<String, Map<String, Boolean>> normalizedByKey = new LinkedHashMap<>();
-        for (Map<String, Boolean> candidate : candidates.values()) {
-            Map<String, Boolean> normalized = new LinkedHashMap<>();
-            for (String fingerprint : allFingerprints) {
+        Map<String, Map<ConditionIdentity, Boolean>> normalizedByKey = new LinkedHashMap<>();
+        for (Map<ConditionIdentity, Boolean> candidate : candidates.values()) {
+            Map<ConditionIdentity, Boolean> normalized = new LinkedHashMap<>();
+            for (ConditionIdentity fingerprint : allFingerprints) {
                 normalized.put(fingerprint, candidate.getOrDefault(fingerprint, false));
             }
             normalizedByKey.putIfAbsent(canonical(normalized), normalized);
@@ -142,7 +139,7 @@ public final class SimulationScenarioPlanner {
 
         List<SimulationScenario> result = new ArrayList<>();
         // 基准先占名额：它由全假赋值产生，覆盖度天然最低，排序后会第一个被丢掉
-        Map<String, Boolean> baselineOutcomes = normalizedByKey.remove(canonical(allFalse(allFingerprints)));
+        Map<ConditionIdentity, Boolean> baselineOutcomes = normalizedByKey.remove(canonical(allFalse(allFingerprints)));
         if (baselineOutcomes == null) {
             baselineOutcomes = allFalse(allFingerprints);
         }
@@ -153,15 +150,15 @@ public final class SimulationScenarioPlanner {
         // 决定，而插入顺序来自"路径枚举顺序"，与表内容一一对应且可复现（Java 的排序是稳定的，相等元素
         // 保持原有次序）。曾经这里按指纹字符串破并列，而指纹跨运行不稳定，于是并列候选每次启动互换
         // 序号——序号即缓存键，带并列场景的表因此每次启动都全量重算。
-        List<Map<String, Boolean>> others = new ArrayList<>(normalizedByKey.values());
+        List<Map<ConditionIdentity, Boolean>> others = new ArrayList<>(normalizedByKey.values());
         others.sort(Comparator
-                .comparingInt((Map<String, Boolean> normalized) ->
+                .comparingInt((Map<ConditionIdentity, Boolean> normalized) ->
                         coverage(normalized, pathRequirements))
                 .reversed());
 
         int ordinal = 1;
         int truncated = 0;
-        for (Map<String, Boolean> normalized : others) {
+        for (Map<ConditionIdentity, Boolean> normalized : others) {
             if (result.size() >= MAX_SCENARIOS) {
                 truncated++;
                 continue;
@@ -175,7 +172,20 @@ public final class SimulationScenarioPlanner {
                             + "或函数语义分析不完整；该表将停止数值模拟",
                     tableId, EXPANSION_NODE_BUDGET, EXPANSION_COMBINATION_BUDGET);
         }
-        return new ScenarioPlan(result, truncated, budget.exhausted);
+        Map<List<ConditionIdentity>, List<String>> pathScenes = new LinkedHashMap<>();
+        for (PathRequirements path : pathRequirements) {
+            pathScenes.put(path.identity(), result.stream().filter(scene -> path.satisfiedBy(scene.profile().conditionOutcomes()))
+                    .map(SimulationScenario::key).toList());
+        }
+        return new ScenarioPlan(result, truncated, budget.exhausted, pathScenes);
+    }
+
+    /** 补充入口和声明路径复用规划代数，函数条件不进入生成门槛。 */
+    public static List<String> applicableScenes(List<LootConditionInfo> conditions, List<SimulationScenario> scenes) {
+        List<Map<ConditionIdentity, Boolean>> requirements = requirementsFor(conditions, new LinkedHashMap<>(), new ExpansionBudget());
+        return scenes.stream().filter(scene -> requirements.stream().anyMatch(requirement ->
+                scene.profile().conditionOutcomes().entrySet().containsAll(requirement.entrySet())))
+                .map(SimulationScenario::key).toList();
     }
 
     /**
@@ -189,11 +199,12 @@ public final class SimulationScenarioPlanner {
      *                             **不参与**物品可达性判定——函数条件不成立时物品照常掉落，只是函数不生效
      */
     private record PathRequirements(String storedKey, @Nullable ResourceLocation sourceChildTable,
-                                    List<Map<String, Boolean>> requirements,
-                                    List<Map<String, Boolean>> scenarioRequirements) {
+                                    List<ConditionIdentity> identity,
+                                    List<Map<ConditionIdentity, Boolean>> requirements,
+                                    List<Map<ConditionIdentity, Boolean>> scenarioRequirements) {
         // 该路径的需求是否被当前布尔赋值满足；需求集合为空即"条件自相矛盾"，任何场景都不满足
-        boolean satisfiedBy(Map<String, Boolean> scenario) {
-            for (Map<String, Boolean> requirement : this.requirements) {
+        boolean satisfiedBy(Map<ConditionIdentity, Boolean> scenario) {
+            for (Map<ConditionIdentity, Boolean> requirement : this.requirements) {
                 if (scenario.entrySet().containsAll(requirement.entrySet())) {
                     return true;
                 }
@@ -203,17 +214,17 @@ public final class SimulationScenarioPlanner {
     }
 
     private static List<PathRequirements> collectPathRequirements(
-            TableDefinition table, Map<String, LootConditionInfo> conditionByFingerprint,
+            TableDefinition table, Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint,
             ExpansionBudget budget) {
         List<PathRequirements> result = new ArrayList<>();
         for (ItemDefinition item : table.items()) {
             for (LootAcquisitionPath path : item.acquisitionPaths()) {
                 // 生成条件：决定物品在哪些场景里可拿
-                List<Map<String, Boolean>> requirements =
+                List<Map<ConditionIdentity, Boolean>> requirements =
                         requirementsFor(path.allConditions(), conditionByFingerprint, budget);
                 // 函数条件：只补进候选枚举，函数条件不成立时物品仍可掉落
                 result.add(new PathRequirements(item.signature().toStoredKey(), path.sourceChildTable(),
-                        requirements, mergeScenarioRequirements(requirements,
+                        path.allConditions().stream().map(LootConditionInfo::identity).toList(), requirements, mergeScenarioRequirements(requirements,
                                 collectFunctionConditionGroups(path.functions(), budget),
                                 conditionByFingerprint, budget)));
             }
@@ -271,12 +282,12 @@ public final class SimulationScenarioPlanner {
      * 无场景控制类型的函数条件时每个分组的需求都是"无约束"，本方法退化为原样返回生成条件；
      * 没有函数条件的表连分组都为空，候选集合与发射顺序与改造前完全一致。
      */
-    private static List<Map<String, Boolean>> mergeScenarioRequirements(
-            List<Map<String, Boolean>> requirements,
+    private static List<Map<ConditionIdentity, Boolean>> mergeScenarioRequirements(
+            List<Map<ConditionIdentity, Boolean>> requirements,
             List<List<LootConditionInfo>> functionConditionGroups,
-            Map<String, LootConditionInfo> conditionByFingerprint, ExpansionBudget budget) {
-        Map<String, Map<String, Boolean>> unique = new LinkedHashMap<>();
-        for (Map<String, Boolean> requirement : requirements) {
+            Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint, ExpansionBudget budget) {
+        Map<String, Map<ConditionIdentity, Boolean>> unique = new LinkedHashMap<>();
+        for (Map<ConditionIdentity, Boolean> requirement : requirements) {
             unique.putIfAbsent(canonical(requirement), requirement);
         }
         // 生成条件自相矛盾（需求集合为空）时任何场景都拿不到物品，函数条件也就不必再规划
@@ -285,13 +296,13 @@ public final class SimulationScenarioPlanner {
         }
         // 逐节点展开：任一函数条件成立时都对应至少一个候选场景，不会因彼此矛盾整组丢失
         for (List<LootConditionInfo> group : functionConditionGroups) {
-            List<Map<String, Boolean>> groupRequirements =
+            List<Map<ConditionIdentity, Boolean>> groupRequirements =
                     requirementsFor(group, conditionByFingerprint, budget);
-            List<Map<String, Boolean>> combined = combineAnd(requirements, groupRequirements);
+            List<Map<ConditionIdentity, Boolean>> combined = combineAnd(requirements, groupRequirements);
             if (budget.exhausted || combined.size() > EXPANSION_COMBINATION_BUDGET) {
                 return budget.markExhausted();
             }
-            for (Map<String, Boolean> requirement : combined) {
+            for (Map<ConditionIdentity, Boolean> requirement : combined) {
                 unique.putIfAbsent(canonical(requirement), requirement);
             }
             if (unique.size() > EXPANSION_COMBINATION_BUDGET) {
@@ -301,10 +312,10 @@ public final class SimulationScenarioPlanner {
         return List.copyOf(unique.values());
     }
 
-    private static SimulationScenario buildScenario(String key, Map<String, Boolean> normalized,
+    private static SimulationScenario buildScenario(String key, Map<ConditionIdentity, Boolean> normalized,
                                                     TableDefinition table,
                                                     List<PathRequirements> pathRequirements,
-                                                    Map<String, LootConditionInfo> conditionByFingerprint,
+                                                    Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint,
                                                     SimulationProfile baseProfile, boolean baseline) {
         Set<String> applicable = new LinkedHashSet<>();
         Set<ResourceLocation> applicableChildren = new LinkedHashSet<>();
@@ -342,7 +353,7 @@ public final class SimulationScenarioPlanner {
     }
 
     // 该布尔赋值覆盖的获取路径数——截断按它降序，让"能解释更多条目"的场景优先留下
-    private static int coverage(Map<String, Boolean> scenario, List<PathRequirements> pathRequirements) {
+    private static int coverage(Map<ConditionIdentity, Boolean> scenario, List<PathRequirements> pathRequirements) {
         int count = 0;
         for (PathRequirements path : pathRequirements) {
             if (path.satisfiedBy(scenario)) {
@@ -352,20 +363,20 @@ public final class SimulationScenarioPlanner {
         return count;
     }
 
-    private static Map<String, Boolean> allFalse(Set<String> fingerprints) {
-        Map<String, Boolean> result = new LinkedHashMap<>();
-        for (String fingerprint : fingerprints) {
+    private static Map<ConditionIdentity, Boolean> allFalse(Set<ConditionIdentity> fingerprints) {
+        Map<ConditionIdentity, Boolean> result = new LinkedHashMap<>();
+        for (ConditionIdentity fingerprint : fingerprints) {
             result.put(fingerprint, false);
         }
         return result;
     }
 
-    private static List<Map<String, Boolean>> requirementsFor(
-            List<LootConditionInfo> conditions, Map<String, LootConditionInfo> conditionByFingerprint,
+    private static List<Map<ConditionIdentity, Boolean>> requirementsFor(
+            List<LootConditionInfo> conditions, Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint,
             ExpansionBudget budget) {
-        List<Map<String, Boolean>> result = List.of(Map.of());
+        List<Map<ConditionIdentity, Boolean>> result = List.of(Map.of());
         for (LootConditionInfo condition : conditions) {
-            result = combineAnd(result, requirementsFor(condition, false, conditionByFingerprint, budget));
+            result = combineAnd(result, requirementsFor(condition, conditionByFingerprint, budget));
             if (result.size() > EXPANSION_COMBINATION_BUDGET) {
                 return budget.markExhausted();
             }
@@ -379,53 +390,50 @@ public final class SimulationScenarioPlanner {
         return result;
     }
 
-    private static List<Map<String, Boolean>> requirementsFor(
-            LootConditionInfo condition, boolean negated,
-            Map<String, LootConditionInfo> conditionByFingerprint, ExpansionBudget budget) {
-        if (budget.exhausted || budget.exceedsNodeBudget()) {
-            return List.of(Map.of());
-        }
-        ResourceLocation type = condition.conditionType();
-        ConditionTree.Kind kind = ConditionTree.kind(condition);
-        if (kind == ConditionTree.Kind.NOT && ConditionTree.logicChildren(condition).size() != 1) {
-            LOGGER.warn("条件 {} 的 NOT 子节点数量无效，停止该表数值模拟", type);
-            return budget.markExhausted();
-        }
-        if (kind == ConditionTree.Kind.NOT) {
-            return requirementsFor(ConditionTree.logicChildren(condition).getFirst(), !negated, conditionByFingerprint, budget);
-        }
-        if (kind == ConditionTree.Kind.ALL || kind == ConditionTree.Kind.ANY) {
-            boolean useAnd = (kind == ConditionTree.Kind.ALL) != negated;
-            List<Map<String, Boolean>> result = useAnd ? List.of(Map.of()) : new ArrayList<>();
-            for (LootConditionInfo child : ConditionTree.logicChildren(condition)) {
-                List<Map<String, Boolean>> childRequirements =
-                        requirementsFor(child, negated, conditionByFingerprint, budget);
-                if (budget.exhausted) {
-                    return List.of(Map.of());
-                }
-                if (useAnd) {
-                    result = combineAnd(result, childRequirements);
-                } else {
-                    result.addAll(childRequirements);
-                }
-                // 叉乘在这里指数膨胀，超限即整体降级为"无约束"（决策 33）
-                if (result.size() > EXPANSION_COMBINATION_BUDGET) {
-                    return budget.markExhausted();
-                }
+    private static List<Map<ConditionIdentity, Boolean>> requirementsFor(
+            LootConditionInfo condition,
+            Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint, ExpansionBudget budget) {
+        return ConditionTree.fold(condition, false, new ConditionTree.Algebra<>() {
+            public boolean canVisit(LootConditionInfo node) {
+                return !budget.exhausted && !budget.exceedsNodeBudget();
             }
-            return deduplicate(result);
-        }
-        if (!SCENARIO_CONDITIONS.contains(type)) {
+            public List<Map<ConditionIdentity, Boolean>> unknown(LootConditionInfo node) { return budget.markExhausted(); }
+            public List<Map<ConditionIdentity, Boolean>> identity(boolean conjunction) {
+                return conjunction ? List.of(Map.of()) : List.of();
+            }
+            public boolean isTerminal(boolean conjunction, List<Map<ConditionIdentity, Boolean>> value) {
+                return budget.exhausted || conjunction && value.isEmpty();
+            }
+            public List<Map<ConditionIdentity, Boolean>> combine(boolean conjunction,
+                    List<Map<ConditionIdentity, Boolean>> left, List<Map<ConditionIdentity, Boolean>> right) {
+                List<Map<ConditionIdentity, Boolean>> joined;
+                if (conjunction) joined = combineAnd(left, right);
+                else {
+                    joined = new ArrayList<>(left);
+                    joined.addAll(right);
+                }
+                return joined.size() > EXPANSION_COMBINATION_BUDGET ? budget.markExhausted() : deduplicate(joined);
+            }
+            public List<Map<ConditionIdentity, Boolean>> leaf(LootConditionInfo node, boolean polarity) {
+                return leafRequirements(node, polarity, conditionByFingerprint);
+            }
+        });
+    }
+
+    private static List<Map<ConditionIdentity, Boolean>> leafRequirements(LootConditionInfo condition,
+            boolean negated, Map<ConditionIdentity, LootConditionInfo> conditionByFingerprint) {
+        ResourceLocation type = condition.conditionType();
+        if (!isScenarioControlled(type)) {
             return List.of(Map.of());
         }
         // 指纹无法跨解析期/运行时复现时，建立场景只会产出运行时永远匹配不上的死键，
         // 反而把条目在其"自家场景"里也判成不适达。此处按无约束处理，让条目保留在
         // 所有代表场景中（数值偏保守，但不会伪装成确定值）。
-        if (!LootConditionFingerprint.isStable(condition)) {
+        if (!ConditionIdentity.isStable(condition)) {
             warnUnstableFingerprint(condition.conditionType());
             return List.of(Map.of());
         }
-        String fingerprint = LootConditionFingerprint.of(condition);
+        ConditionIdentity fingerprint = ConditionIdentity.of(condition);
         conditionByFingerprint.putIfAbsent(fingerprint, condition);
         return List.of(Map.of(fingerprint, !negated));
     }
@@ -450,7 +458,7 @@ public final class SimulationScenarioPlanner {
             return false;
         }
 
-        List<Map<String, Boolean>> markExhausted() {
+        List<Map<ConditionIdentity, Boolean>> markExhausted() {
             this.exhausted = true;
             return List.of(Map.of());
         }
@@ -465,14 +473,14 @@ public final class SimulationScenarioPlanner {
         }
     }
 
-    private static List<Map<String, Boolean>> combineAnd(List<Map<String, Boolean>> left,
-                                                         List<Map<String, Boolean>> right) {
-        List<Map<String, Boolean>> result = new ArrayList<>();
-        for (Map<String, Boolean> first : left) {
-            for (Map<String, Boolean> second : right) {
-                Map<String, Boolean> merged = new LinkedHashMap<>(first);
+    private static List<Map<ConditionIdentity, Boolean>> combineAnd(List<Map<ConditionIdentity, Boolean>> left,
+                                                         List<Map<ConditionIdentity, Boolean>> right) {
+        List<Map<ConditionIdentity, Boolean>> result = new ArrayList<>();
+        for (Map<ConditionIdentity, Boolean> first : left) {
+            for (Map<ConditionIdentity, Boolean> second : right) {
+                Map<ConditionIdentity, Boolean> merged = new LinkedHashMap<>(first);
                 boolean compatible = true;
-                for (Map.Entry<String, Boolean> entry : second.entrySet()) {
+                for (Map.Entry<ConditionIdentity, Boolean> entry : second.entrySet()) {
                     Boolean existing = merged.putIfAbsent(entry.getKey(), entry.getValue());
                     if (existing != null && !existing.equals(entry.getValue())) {
                         compatible = false;
@@ -490,18 +498,18 @@ public final class SimulationScenarioPlanner {
         return deduplicate(result);
     }
 
-    private static List<Map<String, Boolean>> deduplicate(List<Map<String, Boolean>> values) {
-        Map<String, Map<String, Boolean>> unique = new LinkedHashMap<>();
-        for (Map<String, Boolean> value : values) {
+    private static List<Map<ConditionIdentity, Boolean>> deduplicate(List<Map<ConditionIdentity, Boolean>> values) {
+        Map<String, Map<ConditionIdentity, Boolean>> unique = new LinkedHashMap<>();
+        for (Map<ConditionIdentity, Boolean> value : values) {
             unique.putIfAbsent(canonical(value), value);
         }
         return new ArrayList<>(unique.values());
     }
 
-    private static List<LootConditionInfo> describe(Map<String, Boolean> outcomes,
-                                                    Map<String, LootConditionInfo> conditions) {
+    private static List<LootConditionInfo> describe(Map<ConditionIdentity, Boolean> outcomes,
+                                                    Map<ConditionIdentity, LootConditionInfo> conditions) {
         List<LootConditionInfo> result = new ArrayList<>();
-        for (Map.Entry<String, Boolean> entry : outcomes.entrySet()) {
+        for (Map.Entry<ConditionIdentity, Boolean> entry : outcomes.entrySet()) {
             LootConditionInfo condition = conditions.get(entry.getKey());
             if (condition == null) {
                 continue;
@@ -509,10 +517,10 @@ public final class SimulationScenarioPlanner {
             if (entry.getValue()) {
                 result.add(condition);
             } else {
-                result.add(new LootConditionInfo(ConditionTree.NOT,
+                result.add(LootConditionInfo.branch(ConditionTree.Kind.NOT, ConditionTree.NOT,
                         Component.translatable(
                                 "screen.unsuspiciousblock.archaeology_journal.condition.inverted",
-                                condition.description()), null, List.of(condition)));
+                                condition.description()), List.of(condition)));
             }
         }
         return List.copyOf(result);
@@ -526,14 +534,14 @@ public final class SimulationScenarioPlanner {
      * 空赋值编码为 {@code "default"}（"条件全部不成立"的那个赋值），仅用于让基准候选与
      * {@code candidates} 里的初始空候选去重到同一项。
      */
-    private static String canonical(Map<String, Boolean> requirements) {
+    private static String canonical(Map<ConditionIdentity, Boolean> requirements) {
         if (requirements.isEmpty()) {
             return "default";
         }
-        Map<String, Boolean> sorted = new TreeMap<>(requirements);
+        Map<ConditionIdentity, Boolean> sorted = new TreeMap<>(requirements);
         StringBuilder builder = new StringBuilder(sorted.size() * 24);
         boolean first = true;
-        for (Map.Entry<String, Boolean> entry : sorted.entrySet()) {
+        for (Map.Entry<ConditionIdentity, Boolean> entry : sorted.entrySet()) {
             if (!first) {
                 builder.append(';');
             }

@@ -578,7 +578,6 @@
   "screen.unsuspiciousblock.archaeology_journal.unknown_reason.unparsed": "规则未解析：该表引用了本模组无法模拟的机制",
   "screen.unsuspiciousblock.archaeology_journal.unknown_reason.not_simulated": "尚未计算",
   "screen.unsuspiciousblock.archaeology_journal.unknown_reason.simulation_failed": "计算失败，将在下次数据包重载后重试",
-  "screen.unsuspiciousblock.archaeology_journal.unknown_reason.evicted": "结果已淘汰，点击重新计算",
   "screen.unsuspiciousblock.archaeology_journal.path_hint.luck": "该路径需要幸运加成",
   "screen.unsuspiciousblock.archaeology_journal.path_hint.luck_detail": "该路径需要：%s",
   "screen.unsuspiciousblock.archaeology_journal.path_hint.luck_at_least": "幸运 ≥ %s",

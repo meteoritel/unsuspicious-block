@@ -44,7 +44,7 @@ public record DeclaredChance(double lower, double upper) {
                     }
                 }
             }
-            collect(condition.children(), values);
+            collect(condition.logicChildren(), values);
         }
     }
 }

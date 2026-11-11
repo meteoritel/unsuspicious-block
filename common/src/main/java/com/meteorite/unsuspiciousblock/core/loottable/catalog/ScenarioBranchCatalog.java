@@ -1,19 +1,16 @@
 package com.meteorite.unsuspiciousblock.core.loottable.catalog;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
-import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
-import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
-import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceCondition;
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedContribution;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootConditionFingerprint;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationConstraintCatalog;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationScenarioPlanner;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationScenario;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -25,82 +22,65 @@ import java.util.Set;
 public final class ScenarioBranchCatalog {
     private ScenarioBranchCatalog() {}
 
-    public static List<ScenarioBranch> build(CatalogTableDto table, SimulationConstraintCatalog constraints,
-            List<DeclaredLootInjection> declared,
-            Map<String, String> sourceNames) {
+    public static List<ScenarioBranch> build(TableDefinition table, SimulationConstraintCatalog constraints,
+            ExpandedTable expansion, Map<String, String> sourceNames) {
         Set<ScenarioBranch> branches = new LinkedHashSet<>();
-        for (var item : table.items()) {
-            if (item.injected()) continue;
+        List<ExpandedContribution> contributions = expansion == null ? List.of() : expansion.contributions();
+        TableDefinition nativeTable = expansion == null ? table : expansion.nativeTable();
+        for (var item : nativeTable.items()) {
             for (var path : item.acquisitionPaths()) {
                 if (path.luckImpossible()) continue;
-                String kind = path.sourceChildTable() != null ? "table" : path.sourceItemTag() != null ? "tag" : "item";
-                String target = path.sourceChildTable() != null ? path.sourceChildTable().toString()
-                        : path.sourceItemTag() != null ? path.sourceItemTag().toString() : item.signature().toStoredKey();
-                List<LootConditionInfo> conditions = new ArrayList<>();
-                List<LootConditionInfo> extras = new ArrayList<>();
-                split(path.allConditions(), conditions, extras);
-                if (path.sourceChildTable() != null)
-                    split(constraints.childEntryGates().getOrDefault(path.sourceChildTable(), List.of()), conditions, extras);
-                List<String> active = constraints.scenarios().stream().filter(scene -> conditions.stream()
-                                .noneMatch(condition -> Boolean.FALSE.equals(evaluate(condition, scene.profile().conditionOutcomes()))))
-                        .map(SimulationScenario::key).toList();
-                branches.add(new ScenarioBranch(kind, target, conditions, extras,
-                        path.luckGate() == null ? LuckGate.NONE : path.luckGate(), active,
-                        conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain)
-                                || path.functionUncertainty() == LootConditionHandler.UncertaintyLevel.RUNTIME));
+                addPath(branches, item.signature().toStoredKey(), path, constraints, "", "");
             }
         }
-        for (var child : table.childProbabilities()) {
+        for (var contribution : contributions) {
+            String source = sourceNames.getOrDefault(contribution.source(), contribution.source());
+            for (var item : contribution.items()) for (var path : item.acquisitionPaths()) {
+                if (!path.luckImpossible())
+                    addPath(branches, item.signature().toStoredKey(), path, constraints, source, contribution.mode());
+            }
+            // 空子表仍然有入口门槛和来源。
+            if (contribution.childTable() != null && contribution.items().isEmpty())
+                addPath(branches, "", new LootAcquisitionPath(contribution.childTable(), List.of(),
+                        contribution.entryConditions()), constraints, source, contribution.mode());
+        }
+        for (var child : table.childTableProbabilities()) {
             if (branches.stream().anyMatch(branch -> branch.kind().equals("table")
                     && branch.target().equals(child.tableId().toString()))) continue;
             List<LootConditionInfo> conditions = new ArrayList<>();
             List<LootConditionInfo> extras = new ArrayList<>();
             split(child.conditions(), conditions, extras);
             branches.add(new ScenarioBranch("table", child.tableId().toString(), conditions, extras, LuckGate.NONE,
-                    constraints.scenarios().stream().filter(scene -> conditions.stream().noneMatch(condition ->
-                            Boolean.FALSE.equals(evaluate(condition, scene.profile().conditionOutcomes()))))
-                            .map(SimulationScenario::key).toList(), conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain)));
-        }
-        for (var rule : declared) {
-            var conditions = new ArrayList<LootConditionInfo>();
-            var extras = new ArrayList<LootConditionInfo>();
-            split(injectionConditions(rule), conditions, extras);
-            var signature = LootResultSignature.plain(rule.item());
-            branches.add(new ScenarioBranch("item", signature.toStoredKey(), conditions, extras, LuckGate.NONE,
-                    constraints.scenarios().stream().filter(scene -> conditions.stream().noneMatch(condition ->
-                            Boolean.FALSE.equals(evaluate(condition, scene.profile().conditionOutcomes()))))
-                            .map(SimulationScenario::key).toList(), conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain),
-                    sourceNames.getOrDefault(rule.source(), rule.source()), rule.mode()));
+                    constraints.activeScenes(child.conditions()), conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain)));
         }
         for (var item : table.items()) {
-            if (!item.injected() || declared.stream().anyMatch(rule -> rule.item().equals(item.id()))) continue;
+            if (!item.origins().contains(LootOriginKind.UNKNOWN_RUNTIME)) continue;
             branches.add(new ScenarioBranch("item", item.signature().toStoredKey(), List.of(), List.of(), LuckGate.NONE,
                     constraints.scenarios().stream().map(SimulationScenario::key).toList(), true, "observed", ""));
-        }
-        String mudTable = RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location().toString();
-        if (table.id().equals(ResourceLocation.withDefaultNamespace("gameplay/fishing"))) {
-            var injected = branches.stream().filter(branch -> branch.kind().equals("table") && branch.target().equals(mudTable)).toList();
-            branches.removeIf(branch -> branch.kind().equals("table") && branch.target().equals(mudTable));
-            for (var branch : injected) branches.add(new ScenarioBranch(branch.kind(), branch.target(), branch.conditions(),
-                    branch.requirements(), branch.luck(), branch.activeScenes(), branch.uncertain(),
-                    sourceNames.getOrDefault(Constants.MOD_ID, Constants.MOD_ID), "append"));
         }
         return List.copyOf(branches);
     }
 
-    public static List<LootConditionInfo> injectionConditions(
-            DeclaredLootInjection rule) {
-        var result = new ArrayList<>(rule.conditions());
-        if (rule.chance() < 1.0F) result.addAll(LootConditionHandlers.analyzeAll(List.of(
-                LootItemRandomChanceCondition.randomChance(rule.chance()).build())));
-        return List.copyOf(result);
+    private static void addPath(Set<ScenarioBranch> branches, String signature, LootAcquisitionPath path,
+            SimulationConstraintCatalog constraints, String source, String mode) {
+        String kind = path.sourceChildTable() != null ? "table" : path.sourceItemTag() != null ? "tag" : "item";
+        String target = path.sourceChildTable() != null ? path.sourceChildTable().toString()
+                : path.sourceItemTag() != null ? path.sourceItemTag().toString() : signature;
+        List<LootConditionInfo> conditions = new ArrayList<>();
+        List<LootConditionInfo> extras = new ArrayList<>();
+        split(path.allConditions(), conditions, extras);
+        branches.add(new ScenarioBranch(kind, target, conditions, extras,
+                path.luckGate() == null ? LuckGate.NONE : path.luckGate(),
+                constraints.activeScenes(path.allConditions()),
+                conditions.stream().anyMatch(ScenarioBranchCatalog::uncertain)
+                        || path.functionUncertainty() == LootConditionHandler.UncertaintyLevel.RUNTIME,
+                source, mode));
     }
 
     private static void split(List<LootConditionInfo> source, List<LootConditionInfo> main, List<LootConditionInfo> extras) {
         for (var condition : source) {
             if (ConditionTree.kind(condition) == ConditionTree.Kind.ALL) split(ConditionTree.logicChildren(condition), main, extras);
-            else if (Set.of("minecraft:match_tool", "minecraft:table_bonus", "minecraft:random_chance",
-                    "minecraft:random_chance_with_enchanted_bonus", "minecraft:enchantment_active").contains(condition.conditionType().toString())) {
+            else if (LootConditionHandlers.supports(condition.conditionType(), ConditionTypeDescriptor.Capability.SECONDARY)) {
                 if (!extras.contains(condition)) extras.add(condition);
             } else if (!main.contains(condition)) main.add(condition);
         }
@@ -108,13 +88,8 @@ public final class ScenarioBranchCatalog {
 
     private static boolean uncertain(LootConditionInfo condition) {
         return condition.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY)
-                || !condition.conditionType().getNamespace().equals("minecraft")
+                || LootConditionHandlers.descriptor(condition.conditionType()) == null
                 || ConditionTree.logicChildren(condition).stream().anyMatch(ScenarioBranchCatalog::uncertain);
     }
 
-    private static Boolean evaluate(LootConditionInfo condition, Map<String, Boolean> outcomes) {
-        return ConditionTree.evaluate(condition, leaf -> ConditionTree.Truth.of(
-                SimulationScenarioPlanner.isScenarioControlled(leaf.conditionType())
-                        ? outcomes.get(LootConditionFingerprint.of(leaf)) : null)).value();
-    }
 }

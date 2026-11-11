@@ -17,7 +17,7 @@ public final class SimulationAssistHandler {
     public static void handle(ServerPlayer player, RequestSimulationAssistPayload request) {
         var selected = request.selection();
         boolean recommendation = request.target().recommendation();
-        var generation = ArchaeologyJournalServerCatalog.current();
+        var generation = ArchaeologyJournalServerCatalog.simulationContext(selected.tableId());
         var notes = new ArrayList<Component>();
         boolean found = false;
         RequestScenarioSimulationPayload response = selected;
@@ -25,11 +25,11 @@ public final class SimulationAssistHandler {
         Long last = LAST_REQUEST.put(player, now);
         if (last != null && now - last < 500_000_000L) notes.add(note("assist_busy"));
         else if (generation == null || selected.generation() != generation.generation()
-                || !selected.tableHash().equals(generation.tableHash(selected.tableId())))
+                || !selected.tableHash().equals(generation.tableHash()))
             notes.add(note("assist_stale"));
         else {
-            var catalog = generation.constraintCatalog(selected.tableId());
-            var raw = generation.staticTable(selected.tableId());
+            var catalog = generation.constraints();
+            var raw = generation.planningTable();
             if (catalog != null && raw != null) {
                 try {
                     var params = new ScenarioParams(selected.luck(), selected.toolId(),
@@ -42,8 +42,7 @@ public final class SimulationAssistHandler {
                                 .anyMatch(child -> child.toString().equals(request.target().value()));
                     };
                     if (previous.isPresent() && validTarget) {
-                        var table = ArchaeologyJournalServerCatalog.constraintTable(
-                                generation.session(), raw, player.serverLevel());
+                        var table = generation.planningTable();
                         SimulationInput result = null;
                         if (recommendation) {
                             var witness = RecommendationSolver.solve(table, request.target(),

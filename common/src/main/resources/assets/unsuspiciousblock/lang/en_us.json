@@ -578,7 +578,6 @@
   "screen.unsuspiciousblock.archaeology_journal.unknown_reason.unparsed": "Rule not parsed: this table uses a mechanism this mod cannot simulate",
   "screen.unsuspiciousblock.archaeology_journal.unknown_reason.not_simulated": "Not computed yet",
   "screen.unsuspiciousblock.archaeology_journal.unknown_reason.simulation_failed": "Computation failed; will retry after the next data pack reload",
-  "screen.unsuspiciousblock.archaeology_journal.unknown_reason.evicted": "Result evicted; click to recompute",
   "screen.unsuspiciousblock.archaeology_journal.path_hint.luck": "This path needs a luck bonus",
   "screen.unsuspiciousblock.archaeology_journal.path_hint.luck_detail": "This path needs: %s",
   "screen.unsuspiciousblock.archaeology_journal.path_hint.luck_at_least": "luck ≥ %s",

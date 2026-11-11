@@ -4,8 +4,7 @@ import net.minecraft.core.RegistryAccess;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogProjection;
-import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationConstraintCatalog;
 import net.minecraft.resources.ResourceLocation;
@@ -46,7 +45,7 @@ public final class CatalogGeneration {
      * 不做它就无法判断某张表是否已缓存。
      */
     private final Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs;
-    private final Map<ResourceLocation, List<DeclaredLootInjection>> declarations;
+    private final Map<ResourceLocation, ExpandedTable> expansions;
     private final Map<String, String> sourceNames;
     private final RegistryAccess registries;
     private long overlayRevision;
@@ -56,10 +55,10 @@ public final class CatalogGeneration {
                              Map<ResourceLocation, TableDefinition> staticTables,
                              Map<ResourceLocation, String> tableHashes,
                              Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs,
-                             Map<ResourceLocation, List<DeclaredLootInjection>> declarations,
+                             Map<ResourceLocation, ExpandedTable> expansions,
                              Map<String, String> sourceNames, RegistryAccess registries) {
         this.registries = registries;
-        this.declarations = Map.copyOf(declarations);
+        this.expansions = Map.copyOf(expansions);
         this.sourceNames = Map.copyOf(sourceNames);
         this.session = session;
         this.structure = structure;
@@ -78,9 +77,14 @@ public final class CatalogGeneration {
     }
 
     public CatalogTableDto project(TableDefinition table) {
-        return CatalogProjection.project(table, this.staticTables.getOrDefault(table.id(), table),
-                tableHash(table.id()), constraintCatalog(table.id()),
-                this.declarations.getOrDefault(table.id(), List.of()), this.sourceNames, generation());
+        return CatalogTableDto.assemble(table, tableHash(table.id()), constraintCatalog(table.id()),
+                this.expansions.get(table.id()), this.sourceNames, generation());
+    }
+
+    /** 展开后的规划视图，复用构建时条件身份。 */
+    public @Nullable TableDefinition planningTable(ResourceLocation id) {
+        ExpandedTable expansion = this.expansions.get(id);
+        return expansion == null ? null : expansion.planning();
     }
 
     /** 该表的约束描述；未收录或该表不可用时返回 {@code null}。 */
@@ -111,11 +115,6 @@ public final class CatalogGeneration {
         return this.staticTables;
     }
 
-    /** 本代原始追踪表的数量（不含模拟期发现的动态条目所属表之外的内容）。 */
-    public int trackedTableCount() {
-        return this.staticTables.size();
-    }
-
     /** 取解析态表定义；本代未收录时返回 {@code null}。 */
     @Nullable
     public TableDefinition staticTable(ResourceLocation tableId) {
@@ -135,6 +134,12 @@ public final class CatalogGeneration {
     /** 模拟结果视图（随模拟完成渐进增长）。 */
     public Map<ResourceLocation, TableDefinition> simulatedTables() {
         return Collections.unmodifiableMap(this.simulatedTables);
+    }
+
+    /** 同代内的展示读取，集中 overlay 优先和静态回退。 */
+    public @Nullable TableDefinition displayTable(ResourceLocation id) {
+        TableDefinition simulated = this.simulatedTables.get(id);
+        return simulated == null ? this.staticTables.get(id) : simulated;
     }
 
     /** 该表是否已有模拟结果。 */

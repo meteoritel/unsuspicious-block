@@ -69,10 +69,7 @@ public sealed interface Probability {
             hints = List.copyOf(hints);
         }
 
-        /** 该值是否由服务端找到了联合见证（P2 起才有非空推荐）。 */
-        public boolean hasRecommendation() {
-            return false;
-        }
+
     }
 
     /** 单值测量结果。 */
@@ -149,8 +146,4 @@ public sealed interface Probability {
         return this instanceof Measured || this instanceof Unreachable;
     }
 
-    /** 是否携带可展示的测量值（供显示优先级链判断）。 */
-    default boolean isMeasured() {
-        return this instanceof Measured;
-    }
 }

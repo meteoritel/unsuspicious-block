@@ -14,6 +14,10 @@ import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultMatche
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulator.SimResult;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
@@ -47,13 +51,13 @@ final class LootProbabilitySimulationJob {
 
     private final ResourceLocation tableId;
     private final TableDefinition rawTable;
-    private final LootTable lootTable;
+    private LootTable lootTable;
     private final ServerLevel level;
     private final SimulationScenario scenario;
     private final SimulationInput input;
     /** 场景条件 + 输入参数的合成 profile——模拟真正使用的那一份。 */
-    private final SimulationProfile effectiveProfile;
-    private final Map<Item, CandidateIndex> allRawCandidatesByItem;
+    private SimulationProfile effectiveProfile;
+    private Map<Item, CandidateIndex> allRawCandidatesByItem;
     private final Map<String, LootResultSignature> discovered = new LinkedHashMap<>();
     private final Map<String, ResourceLocation> discoveredChildSources = new LinkedHashMap<>();
     private final Set<String> discoveredDirectly = new HashSet<>();
@@ -68,7 +72,7 @@ final class LootProbabilitySimulationJob {
     private final Function<LootResultSignature, ItemStack> previewProvider =
             signature -> this.previewCache.computeIfAbsent(signature, this.previewFactory);
     private final RandomSource injectionRandom = RandomSource.create();
-    private final Set<ResourceLocation> directChildTables;
+    private Set<ResourceLocation> directChildTables;
     private final Consumer<ResourceLocation> childDropRecorder = this::recordChildTableAppearance;
     /** 本任务的函数执行捕获会话：任务级持有，跨时间片复用，每轮由 beginRoll 清空栈关联。 */
     private final FunctionTraceSession captureSession = new FunctionTraceSession();
@@ -84,24 +88,26 @@ final class LootProbabilitySimulationJob {
     private Map<Item, CandidateIndex> candidatesByItem = Map.of();
     private Map<ResourceLocation, RollCounter> childCounters = Map.of();
     private LootParams lootParams;
-    private SimulationMeasurement result;
+    private SimResult result;
 
     LootProbabilitySimulationJob(ResourceLocation tableId, TableDefinition rawTable,
-                                 LootTable lootTable, ServerLevel level,
-                                 SimulationScenario scenario, SimulationInput input) {
+            ServerLevel level, SimulationScenario scenario, SimulationInput input) {
         this.tableId = tableId;
         this.rawTable = rawTable;
-        this.lootTable = lootTable;
         this.level = level;
         this.scenario = scenario;
         this.input = input;
-        // 条件赋值来自场景、参数旋钮来自输入：两者合成的 profile 才是这一份模拟的输入身份。
-        // 注入场景与普通场景使用同一套输入参数。
-        this.effectiveProfile = input.params().applyTo(
-                scenario.profile(), level.registryAccess());
+    }
+
+    private void initialize() {
+        // 最终运行时表保留 Fabric 加载期修改，普通 getRandomItems 保留 NeoForge GLM。
+        this.lootTable = this.level.getServer().reloadableRegistries()
+                .getLootTable(ResourceKey.create(Registries.LOOT_TABLE, this.tableId));
+        if (this.lootTable == LootTable.EMPTY) throw new IllegalStateException("战利品表为空: " + this.tableId);
+        this.effectiveProfile = this.input.params().applyTo(this.scenario.profile(), this.level.registryAccess());
         this.allRawCandidatesByItem = indexCandidatesByItem(
-                rawTable.items().stream().map(ItemDefinition::signature).toList());
-        this.directChildTables = Set.copyOf(rawTable.childTables());
+                this.rawTable.items().stream().map(ItemDefinition::signature).toList());
+        this.directChildTables = Set.copyOf(this.rawTable.childTables());
     }
 
     // 抽样次数取自输入身份（决策 38/39），不再是全局常量
@@ -111,9 +117,16 @@ final class LootProbabilitySimulationJob {
 
     // 推进到时间预算耗尽或任务完成；至少执行一个固定批次，避免极短预算导致无进展。
     boolean advance(long deadlineNanos) {
+        if (isComplete()) return true;
         LootSimulationMetrics previous = this.metrics.attach();
         try {
+            if (this.lootTable == null) initialize();
             return advanceWithinSlice(deadlineNanos);
+        } catch (Exception failure) {
+            LOGGER.warn(Constants.LOG_TAG + "模拟战利品表 {} 的输入 {} 失败，不写入缓存",
+                    this.tableId, this.input.key(), failure);
+            this.result = SimResult.failure(this.tableId, this.input);
+            return true;
         } finally {
             LootSimulationMetrics.restore(previous);
         }
@@ -155,7 +168,7 @@ final class LootProbabilitySimulationJob {
         finishScenario();
         this.metrics.end(Stage.FINISH, start);
         start = LootSimulationMetrics.now();
-        this.result = buildMeasurement();
+        this.result = new SimResult(this.tableId, this.input, buildMeasurement(), true);
         this.metrics.end(Stage.RESULT, start);
         return true;
     }
@@ -180,7 +193,7 @@ final class LootProbabilitySimulationJob {
         return this.result != null;
     }
 
-    SimulationMeasurement result() {
+    SimResult result() {
         if (this.result == null) {
             throw new IllegalStateException("模拟任务尚未完成: " + this.tableId);
         }
