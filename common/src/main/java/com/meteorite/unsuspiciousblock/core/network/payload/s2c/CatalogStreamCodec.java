@@ -7,6 +7,9 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionEffectKin
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionFidelity;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler.UncertaintyLevel;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionDisplayRow;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootOriginKind;
@@ -616,35 +619,65 @@ final class CatalogStreamCodec {
         buf.writeResourceLocation(info.conditionType());
         buf.writeUtf(componentJson(info.description(), buf));
         buf.writeBoolean(info.probability() != null);
-        if (info.probability() != null) {
-            buf.writeFloat(info.probability());
+        if (info.probability() != null) buf.writeFloat(info.probability());
+        buf.writeUtf(info.identity().key());
+        buf.writeBoolean(info.identity().semantic());
+        buf.writeEnum(info.kind());
+        writeConditionList(buf, info.logicChildren());
+        writeDisplayRows(buf, info.displayRows());
+        writeConditionMetadata(buf, info.metadata());
+    }
+
+    private static LootConditionInfo readCondition(RegistryFriendlyByteBuf buf) {
+        ResourceLocation type = buf.readResourceLocation();
+        Component description = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+        Float probability = buf.readBoolean() ? buf.readFloat() : null;
+        ConditionIdentity identity = new ConditionIdentity(buf.readUtf(), buf.readBoolean());
+        ConditionTree.Kind kind = buf.readEnum(ConditionTree.Kind.class);
+        List<LootConditionInfo> children = readConditionList(buf);
+        List<ConditionDisplayRow> rows = readDisplayRows(buf);
+        return new LootConditionInfo(type, description, probability, kind, children, rows,
+                readConditionMetadata(buf), null, identity);
+    }
+
+    private static void writeDisplayRows(RegistryFriendlyByteBuf buf, List<ConditionDisplayRow> rows) {
+        buf.writeVarInt(rows.size());
+        for (ConditionDisplayRow row : rows) {
+            buf.writeResourceLocation(row.conditionType());
+            buf.writeUtf(componentJson(row.description(), buf));
+            buf.writeBoolean(row.probability() != null);
+            if (row.probability() != null) buf.writeFloat(row.probability());
+            writeDisplayRows(buf, row.displayChildren());
+            writeConditionMetadata(buf, row.metadata());
         }
-        buf.writeVarInt(info.children().size());
-        for (LootConditionInfo child : info.children()) {
-            writeCondition(buf, child);
+    }
+
+    private static List<ConditionDisplayRow> readDisplayRows(RegistryFriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        List<ConditionDisplayRow> rows = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            ResourceLocation type = buf.readResourceLocation();
+            Component description = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
+            Float probability = buf.readBoolean() ? buf.readFloat() : null;
+            rows.add(new ConditionDisplayRow(type, description, probability, readDisplayRows(buf),
+                    readConditionMetadata(buf)));
         }
-        buf.writeVarInt(info.metadata().size());
-        info.metadata().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+        return List.copyOf(rows);
+    }
+
+    private static void writeConditionMetadata(RegistryFriendlyByteBuf buf, Map<String, String> metadata) {
+        buf.writeVarInt(metadata.size());
+        metadata.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             buf.writeUtf(entry.getKey());
             buf.writeUtf(entry.getValue());
         });
     }
 
-    private static LootConditionInfo readCondition(RegistryFriendlyByteBuf buf) {
-        ResourceLocation conditionType = buf.readResourceLocation();
-        Component description = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
-        Float probability = buf.readBoolean() ? buf.readFloat() : null;
-        int childCount = buf.readVarInt();
-        List<LootConditionInfo> children = new ArrayList<>(childCount);
-        for (int i = 0; i < childCount; i++) {
-            children.add(readCondition(buf));
-        }
-        int metadataCount = buf.readVarInt();
+    private static Map<String, String> readConditionMetadata(RegistryFriendlyByteBuf buf) {
+        int count = buf.readVarInt();
         Map<String, String> metadata = new LinkedHashMap<>();
-        for (int i = 0; i < metadataCount; i++) {
-            metadata.put(buf.readUtf(), buf.readUtf());
-        }
-        return new LootConditionInfo(conditionType, description, probability, children, metadata);
+        for (int index = 0; index < count; index++) metadata.put(buf.readUtf(), buf.readUtf());
+        return metadata;
     }
 
     // ==================== 分类结构 ====================

@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParam;
 
 /**
  * 战利品表**不可用机制**的静态识别（决策 31）。
@@ -34,10 +36,8 @@ import java.util.Set;
  * {@code Unknown(UNPARSED)} 并输出一次可行动的诊断。
  */
 public final class LootMechanismSupport {
-    /** 读 {@code ENCHANTMENT_LEVEL} 的数字提供器。 */
-    private static final String ENCHANTMENT_LEVEL_PROVIDER = "minecraft:enchantment_level";
-    /** 读 {@code ENCHANTMENT_ACTIVE} 的条件。 */
-    private static final String ENCHANTMENT_ACTIVE_CHECK = "minecraft:enchantment_active_check";
+    private static final Map<String, LootContextParam<?>> NUMBER_PROVIDER_PARAMETERS = Map.of(
+            "minecraft:enchantment_level", LootContextParams.ENCHANTMENT_LEVEL);
     /** JSON 中用来指名机制类型的字段名（条件用 condition，函数用 function，其它用 type）。 */
     private static final List<String> TYPE_FIELDS = List.of("condition", "function", "type");
 
@@ -82,13 +82,14 @@ public final class LootMechanismSupport {
         Set<String> typeNames = new LinkedHashSet<>();
         collectTypeNames(tableJson, typeNames);
         List<String> unsupported = new ArrayList<>();
-        if (typeNames.contains(ENCHANTMENT_LEVEL_PROVIDER)
-                && !paramSet.isAllowed(LootContextParams.ENCHANTMENT_LEVEL)) {
-            unsupported.add(ENCHANTMENT_LEVEL_PROVIDER);
-        }
-        if (typeNames.contains(ENCHANTMENT_ACTIVE_CHECK)
-                && !paramSet.isAllowed(LootContextParams.ENCHANTMENT_ACTIVE)) {
-            unsupported.add(ENCHANTMENT_ACTIVE_CHECK);
+        for (String typeName : typeNames) {
+            ResourceLocation type = ResourceLocation.tryParse(typeName);
+            ConditionTypeDescriptor descriptor = type != null ? LootConditionHandlers.descriptor(type) : null;
+            if (descriptor != null && descriptor.requiredParameters().stream().anyMatch(param -> !paramSet.isAllowed(param))) {
+                unsupported.add(typeName);
+            }
+            LootContextParam<?> providerParameter = NUMBER_PROVIDER_PARAMETERS.get(type != null ? type.toString() : typeName);
+            if (providerParameter != null && !paramSet.isAllowed(providerParameter)) unsupported.add(typeName);
         }
         return List.copyOf(unsupported);
     }

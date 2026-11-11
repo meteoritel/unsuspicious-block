@@ -17,6 +17,7 @@ import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.*;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
@@ -180,12 +181,12 @@ final class ScenarioPageBuilder {
         return new UiNode.Row(4, UiNode.NO_PARENT, new UiNode.InlineIcon(ScenarioUi.icon(icon), List.of(label), null, action),
                 label.copy().withStyle(ChatFormatting.UNDERLINE), UiTextScheme.PARCHMENT.body(), List.of(), List.of(label), null, action);
     }
-    private static void addCondition(List<UiNode> nodes, LootConditionInfo condition, int indent, int parent, boolean secondary) {
+    private static void addCondition(List<UiNode> nodes, ConditionPresentation condition, int indent, int parent, boolean secondary) {
         int self = nodes.size();
         boolean uncertain = condition.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY);
         Component styled = ScenarioLabel.conditionText(condition).copy();
         if (secondary) styled = styled.copy().withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.label()));
-        ConditionTree.Kind kind = ConditionTree.kind(condition);
+        ConditionTree.Kind kind = condition instanceof LootConditionInfo node ? node.kind() : ConditionTree.Kind.LEAF;
         if (kind == ConditionTree.Kind.ALL) styled = ScenarioLabel.symbol("∧ ").copy().append(styled);
         if (kind == ConditionTree.Kind.ANY) styled = ScenarioLabel.symbol("∨ ").copy().append(styled);
         if (kind == ConditionTree.Kind.NOT) styled = ScenarioLabel.symbol("¬ ").copy().append(text("conditions.negation"));
@@ -196,7 +197,7 @@ final class ScenarioPageBuilder {
                 condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY)).withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.negative())));
         nodes.add(new UiNode.Row(indent, parent, styled, UiTextScheme.PARCHMENT.body(), List.of(),
                 List.of(condition.description(), Component.literal(condition.conditionType().toString())), null, null));
-        for (var child : ConditionTree.displayChildren(condition)) addCondition(nodes, child, indent + INDENT_STEP, self, secondary);
+        for (var child : condition.displayChildren()) addCondition(nodes, child, indent + INDENT_STEP, self, secondary);
     }
     private static MutableComponent text(String key, Object... args) {
         return ScenarioSimulationClientState.text(key, args).copy();

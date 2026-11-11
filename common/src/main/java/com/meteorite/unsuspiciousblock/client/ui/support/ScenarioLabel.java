@@ -5,6 +5,7 @@ import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import net.minecraft.network.chat.Component;
@@ -66,31 +67,31 @@ public final class ScenarioLabel {
         return Component.literal(value).withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent()));
     }
 
-    public static Component expression(LootConditionInfo condition) {
-        ConditionTree.Kind kind = ConditionTree.kind(condition);
-        if (kind == ConditionTree.Kind.NOT && ConditionTree.displayChildren(condition).size() == 1)
-            return symbol("¬(").copy().append(expression(ConditionTree.displayChildren(condition).getFirst())).append(symbol(")"));
+    public static Component expression(ConditionPresentation condition) {
+        ConditionTree.Kind kind = condition instanceof LootConditionInfo node ? node.kind() : ConditionTree.Kind.LEAF;
+        if (kind == ConditionTree.Kind.NOT && condition.displayChildren().size() == 1)
+            return symbol("¬(").copy().append(expression(condition.displayChildren().getFirst())).append(symbol(")"));
         if (kind == ConditionTree.Kind.ANY || kind == ConditionTree.Kind.ALL) {
             var result = Component.empty().append(symbol("("));
-            for (int index = 0; index < ConditionTree.displayChildren(condition).size(); index++) {
+            for (int index = 0; index < condition.displayChildren().size(); index++) {
                 if (index > 0) result.append(symbol(kind == ConditionTree.Kind.ANY ? " ∨ " : " ∧ "));
-                result.append(expression(ConditionTree.displayChildren(condition).get(index)));
+                result.append(expression(condition.displayChildren().get(index)));
             }
             return result.append(symbol(")"));
         }
         var label = conditionText(condition).copy();
-        if (!ConditionTree.displayChildren(condition).isEmpty()) {
+        if (!condition.displayChildren().isEmpty()) {
             label.append(symbol("("));
-            for (int index = 0; index < ConditionTree.displayChildren(condition).size(); index++) {
+            for (int index = 0; index < condition.displayChildren().size(); index++) {
                 if (index > 0) label.append(symbol(" · "));
-                label.append(expression(ConditionTree.displayChildren(condition).get(index)));
+                label.append(expression(condition.displayChildren().get(index)));
             }
             label.append(symbol(")"));
         }
         return label;
     }
 
-    public static Component conditionText(LootConditionInfo condition) {
+    public static Component conditionText(ConditionPresentation condition) {
         var label = displayDescription(condition).copy().withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.body()));
         if (label.getContents() instanceof TranslatableContents contents) {
             Object[] values = contents.getArgs().clone();
@@ -166,14 +167,14 @@ public final class ScenarioLabel {
     }
 
     /** 逐条列出完整结构；取反和组合节点也保留子树。 */
-    private static String describe(LootConditionInfo node) {
-        if (ConditionTree.displayChildren(node).isEmpty()) return displayDescription(node).getString();
+    private static String describe(ConditionPresentation node) {
+        if (node.displayChildren().isEmpty()) return displayDescription(node).getString();
         StringJoiner joiner = new StringJoiner("、");
-        for (LootConditionInfo child : ConditionTree.displayChildren(node)) joiner.add(describe(child));
+        for (ConditionPresentation child : node.displayChildren()) joiner.add(describe(child));
         return displayDescription(node).getString() + "(" + joiner + ")";
     }
 
-    public static Component displayDescription(LootConditionInfo node) {
+    public static Component displayDescription(ConditionPresentation node) {
         Component description = node.description();
         if (description.getContents() instanceof TranslatableContents contents
                 && contents.getKey().equals(CONDITION_PREFIX + "location_check_biomes")

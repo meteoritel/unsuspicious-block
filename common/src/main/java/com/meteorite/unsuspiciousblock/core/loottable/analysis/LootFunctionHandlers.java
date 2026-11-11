@@ -98,8 +98,8 @@ import static com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFuncti
  * 战利品函数处理器注册表——管理所有已知 loot function 的静态解析逻辑。
  * <p>
  * 内建全部原版 1.21.1 的 40 个 loot function 处理器。自描述通道引入后，每个处理器给出三件
- * 互相独立的东西：<b>结构化静态描述</b>（{@link LootFunctionHandler#describe}，回答"规则声明了什么"）、
- * <b>静态预览</b>（{@link LootFunctionHandler#apply}）与<b>签名派生</b>。
+ * 互相独立的东西：<b>结构化静态描述</b>（{@link LootFunctionDescription#describe}，回答"规则声明了什么"）、
+ * <b>静态预览</b>（{@link LootFunctionPreview#apply}）与<b>签名派生</b>。
  * 描述始终尝试生成，预览失败不影响描述的存在（规划 F02 / D15）。
  * <p>
  * 外部模组可通过 {@link #register} 注册自定义 function 的处理器。未知 function 在查询时返回 null，
@@ -178,8 +178,9 @@ public final class LootFunctionHandlers {
      *
      * @param functionPath function 注册名（如 "set_count"，不含 "minecraft:" 前缀）
      */
-    public static void register(String functionPath, LootFunctionHandler handler) {
-        REGISTRY.put(ResourceLocation.fromNamespaceAndPath("minecraft", functionPath), handler);
+    private static void register(String functionPath, LootFunctionDescription description) {
+        REGISTRY.put(ResourceLocation.fromNamespaceAndPath("minecraft", functionPath),
+                new LootFunctionHandler(description, description instanceof LootFunctionPreview preview ? preview : null));
     }
 
     /**
@@ -296,22 +297,21 @@ public final class LootFunctionHandlers {
     // ==================== 类别 A：完整静态处理 ====================
 
     /** 处理 set_item：将物品替换为指定物品 */
-    private static final class SetItemHandler implements LootFunctionHandler {
+    private static final class SetItemHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetItemFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             Object itemHolderRaw = reflectField(function, "item");
             if (!(itemHolderRaw instanceof Holder<?> itemHolder)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             ResourceLocation itemId = itemHolder.unwrapKey().map(ResourceKey::location).orElse(null);
             if (itemId != null && BuiltInRegistries.ITEM.get(itemId) != Items.AIR) {
-                return previewStack.transmuteCopy(BuiltInRegistries.ITEM.get(itemId));
+                return new FunctionPreviewResult.Applied(previewStack.transmuteCopy(BuiltInRegistries.ITEM.get(itemId)));
             }
-            return null;
+            return FunctionPreviewResult.Unsupported.INSTANCE;
         }
 
         // 描述：写出被替换成的目标物品；取不到目标物品时降级为部分解析
@@ -333,22 +333,21 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_components：应用精确 DataComponentPatch */
-    private static final class SetComponentsHandler implements LootFunctionHandler {
+    private static final class SetComponentsHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetComponentsFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             DataComponentPatch patch = reflectField(function, "components");
             if (patch == null) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             try {
                 previewStack.applyComponentsAndValidate(patch);
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             } catch (RuntimeException exception) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
         }
 
@@ -366,19 +365,18 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_custom_data：合并自定义 NBT 数据 */
-    private static final class SetCustomDataHandler implements LootFunctionHandler {
+    private static final class SetCustomDataHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetCustomDataFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             CompoundTag tag = reflectField(function, "tag");
             if (tag == null) {
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
             CustomData.update(DataComponents.CUSTOM_DATA, previewStack, data -> data.merge(tag));
-            return previewStack;
+            return new FunctionPreviewResult.Applied(previewStack);
         }
 
         // 描述：写出声明的键集合；这是"声明的自定义数据"，不从运行时实体复制
@@ -398,30 +396,29 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_name：设置自定义名称或物品名称 */
-    private static final class SetNameHandler implements LootFunctionHandler {
+    private static final class SetNameHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetNameFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             Component component = unwrapFieldValue(reflectField(function, "name"), Component.class);
             if (component == null) {
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
             SetNameFunction.Target target = unwrapFieldValue(
                     reflectField(function, "target"), SetNameFunction.Target.class);
             if (target == null) {
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
             return switch (target) {
                 case CUSTOM_NAME -> {
                     previewStack.set(DataComponents.CUSTOM_NAME, component);
-                    yield previewStack;
+                    yield new FunctionPreviewResult.Applied(previewStack);
                 }
                 case ITEM_NAME -> {
                     previewStack.set(DataComponents.ITEM_NAME, component);
-                    yield previewStack;
+                    yield new FunctionPreviewResult.Applied(previewStack);
                 }
             };
         }
@@ -445,19 +442,18 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_potion：写入药水内容组件 */
-    private static final class SetPotionHandler implements LootFunctionHandler {
+    private static final class SetPotionHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetPotionFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             Holder<Potion> potionHolder = reflectField(function, "potion");
             if (potionHolder == null) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             previewStack.set(DataComponents.POTION_CONTENTS, new PotionContents(potionHolder));
-            return previewStack;
+            return new FunctionPreviewResult.Applied(previewStack);
         }
 
         // 描述：写出药水 id
@@ -474,11 +470,10 @@ public final class LootFunctionHandlers {
 
     // ==================== 类别 B：附魔类 ====================
 
-    private static final class EnchantRandomlyHandler implements LootFunctionHandler {
+    private static final class EnchantRandomlyHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return promoteBookPreviewIfNeeded(previewStack);
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
+            return new FunctionPreviewResult.Applied(promoteBookPreviewIfNeeded(previewStack));
         }
 
         // 描述：可选附魔集合必须区分"缺省"与"显式空"，并写出 only_compatible
@@ -501,11 +496,10 @@ public final class LootFunctionHandlers {
 
     }
 
-    private static final class EnchantWithLevelsHandler implements LootFunctionHandler {
+    private static final class EnchantWithLevelsHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return promoteBookPreviewIfNeeded(previewStack);
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
+            return new FunctionPreviewResult.Applied(promoteBookPreviewIfNeeded(previewStack));
         }
 
         // 描述：levels 是附魔过程的等级输入，不是最终附魔等级的承诺；动态等级仍算完整描述
@@ -527,11 +521,10 @@ public final class LootFunctionHandlers {
 
     }
 
-    private static final class SetEnchantmentsHandler implements LootFunctionHandler {
+    private static final class SetEnchantmentsHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return promoteBookPreviewIfNeeded(previewStack);
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
+            return new FunctionPreviewResult.Applied(promoteBookPreviewIfNeeded(previewStack));
         }
 
         // 描述：等级是 NumberProvider，常量与动态分开表达；add=true 依赖输入已有等级（F08）
@@ -577,13 +570,9 @@ public final class LootFunctionHandlers {
 
     }
 
-    private static final class EnchantedCountIncreaseHandler implements LootFunctionHandler {
+    private static final class EnchantedCountIncreaseHandler implements LootFunctionDescription {
         // 该函数读取攻击实体身上的附魔等级来增加数量：不改变物品身份，也不提升书预览（F03）
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+
 
         // 描述：附魔、每次增量的提供器、上限与"攻击实体"上下文
         @Override
@@ -607,13 +596,12 @@ public final class LootFunctionHandlers {
     // ==================== 类别 C：可部分静态处理 ====================
 
     /** 处理 set_count：若 count 为固定值则直接应用；若为范围则返回 null */
-    private static final class SetCountHandler implements LootFunctionHandler {
+    private static final class SetCountHandler implements LootFunctionDescription, LootFunctionPreview {
 
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetItemCountFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             NumberProvider value = reflectField(function, "value");
             if (value instanceof ConstantValue(float value1)) {
@@ -623,9 +611,9 @@ public final class LootFunctionHandlers {
                 } else {
                     previewStack.setCount(Math.round(value1));
                 }
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
-            return null;
+            return new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
         }
 
         // 描述：常量与范围复用既有提示文案，动态提供器按"动态"表达，不猜成固定值
@@ -651,12 +639,11 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_damage：设置物品耐久损伤 */
-    private static final class SetDamageHandler implements LootFunctionHandler {
+    private static final class SetDamageHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetItemDamageFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             NumberProvider damage = reflectField(function, "damage");
             if (damage instanceof ConstantValue(float value)) {
@@ -670,9 +657,9 @@ public final class LootFunctionHandlers {
                     previewStack.setDamageValue(Mth.floor(
                             (1.0F - Mth.clamp(resultDurability, 0.0F, 1.0F)) * maxDamage));
                 }
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
-            return null;
+            return new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
         }
 
         // 描述：耐久比例按声明表达，区间复用既有文案；动态提供器不猜成固定值
@@ -707,20 +694,19 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_custom_model_data：设置自定义模型数据 */
-    private static final class SetCustomModelDataHandler implements LootFunctionHandler {
+    private static final class SetCustomModelDataHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetCustomModelDataFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             NumberProvider value = reflectField(function, "value");
             if (value instanceof ConstantValue(float value1)) {
                 previewStack.set(DataComponents.CUSTOM_MODEL_DATA,
                         new CustomModelData(Math.round(value1)));
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
-            return null;
+            return new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
         }
 
         // 描述：写出模型数据提供器；其他可选字段不影响本函数的类型与效果
@@ -735,19 +721,18 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_lore：设置物品描述 */
-    private static final class SetLoreHandler implements LootFunctionHandler {
+    private static final class SetLoreHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetLoreFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             List<Component> loreList = reflectField(function, "lore");
             if (loreList != null && !loreList.isEmpty()) {
                 previewStack.set(DataComponents.LORE, new ItemLore(loreList));
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
-            return null;
+            return FunctionPreviewResult.Unsupported.INSTANCE;
         }
 
         // 描述：只写行数与列表操作模式，不把长文本全量塞进描述
@@ -771,12 +756,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_attributes：设置属性修饰符（含随机范围） */
-    private static final class SetAttributesHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetAttributesHandler implements LootFunctionDescription {
+
 
         // 描述：属性、数值提供器、槽位与替换/追加方式逐条写出（§4.4 高价值字段）
         @Override
@@ -819,11 +800,10 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 toggle_tooltips：切换工具提示可见性 */
-    private static final class ToggleTooltipsHandler implements LootFunctionHandler {
+    private static final class ToggleTooltipsHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return previewStack;
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
+            return new FunctionPreviewResult.Applied(previewStack);
         }
 
         // 描述：写出被切换的组件条目数量与显示状态，不展开每个组件的内部值
@@ -848,19 +828,18 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_ominous_bottle_amplifier：设置不祥之瓶增幅 */
-    private static final class SetOminousBottleAmplifierHandler implements LootFunctionHandler {
+    private static final class SetOminousBottleAmplifierHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             if (!(function instanceof SetOminousBottleAmplifierFunction)) {
-                return null;
+                return FunctionPreviewResult.Unsupported.INSTANCE;
             }
             NumberProvider amplifier = reflectField(function, "amplifierGenerator");
             if (amplifier instanceof ConstantValue(float value)) {
                 previewStack.set(DataComponents.OMINOUS_BOTTLE_AMPLIFIER, Math.round(value));
-                return previewStack;
+                return new FunctionPreviewResult.Applied(previewStack);
             }
-            return null;
+            return new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
         }
 
         // 描述：增幅同样是 NumberProvider，常量与动态分开表达
@@ -877,12 +856,8 @@ public final class LootFunctionHandlers {
     // ==================== 类别 D：新增描述 handler ====================
 
     /** 处理 copy_components：从上下文来源复制组件到物品 */
-    private static final class CopyComponentsHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class CopyComponentsHandler implements LootFunctionDescription {
+
 
         // 描述：来源类别 + 包含/排除过滤，不展开实例实体的完整内容
         @Override
@@ -906,12 +881,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 copy_custom_data：从上下文来源复制自定义数据 */
-    private static final class CopyCustomDataHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class CopyCustomDataHandler implements LootFunctionDescription {
+
 
         // 描述：来源提供器与复制路径数量
         @Override
@@ -929,12 +900,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 copy_name：从上下文来源复制名称 */
-    private static final class CopyNameHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class CopyNameHandler implements LootFunctionDescription {
+
 
         // 描述：复制来源类别，不展开实例实体 NBT 或玩家名称
         @Override
@@ -947,12 +914,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 copy_state：从方块实体复制方块状态属性 */
-    private static final class CopyStateHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class CopyStateHandler implements LootFunctionDescription {
+
 
         // 描述：方块与声明的属性名集合
         @Override
@@ -970,12 +933,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_instrument：从标签池中设置山羊角乐器 */
-    private static final class SetInstrumentHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetInstrumentHandler implements LootFunctionDescription {
+
 
         // 描述：乐器标签池
         @Override
@@ -991,12 +950,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_firework_explosion：替换烟花爆炸效果 */
-    private static final class SetFireworkExplosionHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetFireworkExplosionHandler implements LootFunctionDescription {
+
 
         // 描述：形状、颜色/褪色数量与拖尾、闪烁开关
         @Override
@@ -1022,12 +977,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_banner_pattern：设置旗帜图案层 */
-    private static final class SetBannerPatternHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetBannerPatternHandler implements LootFunctionDescription {
+
 
         // 描述：图案层数与覆盖/追加方式
         @Override
@@ -1046,12 +997,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_written_book_pages：设置成书页面 */
-    private static final class SetWrittenBookPagesHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetWrittenBookPagesHandler implements LootFunctionDescription {
+
 
         // 描述：页数与列表操作模式，不把页文本全量塞进描述
         @Override
@@ -1071,12 +1018,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_writable_book_pages：设置书与笔页面 */
-    private static final class SetWritableBookPagesHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetWritableBookPagesHandler implements LootFunctionDescription {
+
 
         // 描述：页数与列表操作模式，不把页文本全量塞进描述
         @Override
@@ -1096,12 +1039,12 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 furnace_smelt：从当前服务器配方读取熔炼预览。 */
-    private static final class FurnaceSmeltHandler implements LootFunctionHandler {
+    private static final class FurnaceSmeltHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             LootFunctionPreviewContext context = LootFunctionDescriptions.previewContext();
-            return context != null ? context.smelt(previewStack) : null;
+            return context != null ? new FunctionPreviewResult.Applied(context.smelt(previewStack))
+                    : new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
         }
 
         // 描述遵循熔炼语义；具体图标由同代服务器配方解析。
@@ -1114,12 +1057,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_contents：设置容器内容（内容待生成，不并入外层掉落） */
-    private static final class SetContentsHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetContentsHandler implements LootFunctionDescription {
+
 
         // 描述：容器组件与条目规则数量；不展开内层逐物品规则（F09）
         @Override
@@ -1135,12 +1074,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 modify_contents：修改已有容器内容 */
-    private static final class ModifyContentsHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class ModifyContentsHandler implements LootFunctionDescription {
+
 
         // 描述：容器组件 + 可读的内层规则；仍按容器效果处理，不并入外层掉落（F09）
         @Override
@@ -1160,12 +1095,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_loot_table：给容器方块实体写入待生成的战利品表 */
-    private static final class SetLootTableHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetLootTableHandler implements LootFunctionDescription {
+
 
         // 描述：被引用的表、方块实体类型与种子；不执行被引用表（F09）
         @Override
@@ -1189,12 +1120,8 @@ public final class LootFunctionHandlers {
     // ==================== 类别 E：数量/概率类 ====================
 
     /** 处理 apply_bonus：展示附魔加成公式与适用于该公式的参数 */
-    private static final class ApplyBonusHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class ApplyBonusHandler implements LootFunctionDescription {
+
 
         // 描述：附魔 + 公式 + 该公式自己的参数；未知公式标部分解析（§4.4）
         @Override
@@ -1265,12 +1192,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 limit_count：展示数量限制范围 */
-    private static final class LimitCountHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class LimitCountHandler implements LootFunctionDescription {
+
 
         // 描述：上限/下限/固定值复用既有文案；动态限制不猜成固定值
         @Override
@@ -1301,12 +1224,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 explosion_decay：按爆炸半径概率销毁物品 */
-    private static final class ExplosionDecayHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class ExplosionDecayHandler implements LootFunctionDescription {
+
 
         // 描述：原版爆炸衰减语义，无参数
         @Override
@@ -1318,12 +1237,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 fill_player_head：用上下文玩家填充头颅 */
-    private static final class FillPlayerHeadHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class FillPlayerHeadHandler implements LootFunctionDescription {
+
 
         // 描述：复用既有玩家头颅文案，并记录来源实体类别
         @Override
@@ -1336,12 +1251,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_stew_effect：设置炖菜效果与持续时间 */
-    private static final class SetStewEffectHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetStewEffectHandler implements LootFunctionDescription {
+
 
         // 描述：效果名 + 持续时间提供器；动态持续时间按动态表达（§4.4）
         @Override
@@ -1372,12 +1283,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 exploration_map：展示探索地图目的地 */
-    private static final class ExplorationMapHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class ExplorationMapHandler implements LootFunctionDescription {
+
 
         // 描述：目的地 id；缺省时复用"默认目的地"文案
         @Override
@@ -1393,12 +1300,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_fireworks：展示烟花飞行时间与爆炸数量 */
-    private static final class SetFireworksHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetFireworksHandler implements LootFunctionDescription {
+
 
         // 描述：飞行时间复用既有文案；缺省时只说明爆炸效果数量，不猜飞行时间
         @Override
@@ -1422,12 +1325,8 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 set_book_cover：展示成书标题与作者 */
-    private static final class SetBookCoverHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class SetBookCoverHandler implements LootFunctionDescription {
+
 
         // 描述：标题/作者复用既有文案；都缺省时如实写"无标题与作者"
         @Override
@@ -1455,12 +1354,8 @@ public final class LootFunctionHandlers {
     // ==================== 类别 F：包装函数 ====================
 
     /** 处理 filtered：仅当物品匹配过滤器时才应用内层 modifier */
-    private static final class FilteredHandler implements LootFunctionHandler {
-        @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
-            return null;
-        }
+    private static final class FilteredHandler implements LootFunctionDescription {
+
 
         // 描述：包装效果 + item_filter 元数据（键名固定）+ 内层 modifier 子节点；
         // 静态展开不代表无条件应用，运行时只报告实际进入的节点（§4.4）
@@ -1486,18 +1381,18 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 reference：引用数据包里的物品修饰器 */
-    private static final class ReferenceHandler implements LootFunctionHandler {
+    private static final class ReferenceHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             var context = LootFunctionDescriptions.previewContext();
             var ops = LootFunctionDescriptions.conditionOps();
-            if (context == null || ops == null) return null;
+            if (context == null || ops == null) return new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
             JsonObject source = LootFunctionDescriptions.normalizeSource(
                     LootItemFunctions.ROOT_CODEC.encodeStart(ops, function).result().orElse(null));
             ResourceLocation id = idOf(field(source, "name"));
             LootItemFunction target = id != null ? context.modifier(id) : null;
-            return target != null ? LootFunctionDescriptions.preview(previewStack, target) : null;
+            return target != null ? LootFunctionDescriptions.preview(previewStack, target)
+                    : new FunctionPreviewResult.NeedsContext(description.semantics().failureUncertainty());
         }
 
         // 从投影器提供的服务器视图展开引用，递归深度由 describeNested 统一限制。
@@ -1523,18 +1418,18 @@ public final class LootFunctionHandlers {
     }
 
     /** 处理 sequence：按声明顺序依次执行内部函数 */
-    private static final class SequenceHandler implements LootFunctionHandler {
+    private static final class SequenceHandler implements LootFunctionDescription, LootFunctionPreview {
         @Override
-        @Nullable
-        public ItemStack apply(ItemStack previewStack, LootItemFunction function) {
+        public FunctionPreviewResult apply(ItemStack previewStack, LootItemFunction function, LootFunctionInfo description) {
             List<LootItemFunction> inner = reflectField(function, "functions");
-            if (inner == null || inner.size() > LootFunctionInfo.MAX_CHILDREN_PER_NODE) return null;
+            if (inner == null || inner.size() > LootFunctionInfo.MAX_CHILDREN_PER_NODE) return FunctionPreviewResult.Unsupported.INSTANCE;
             ItemStack result = previewStack.copy();
             for (LootItemFunction child : inner) {
-                result = LootFunctionDescriptions.preview(result, child);
-                if (result == null) return null;
+                FunctionPreviewResult next = LootFunctionDescriptions.preview(result, child);
+                if (next instanceof FunctionPreviewResult.Applied(var stack)) result = stack;
+                else return next;
             }
-            return result;
+            return new FunctionPreviewResult.Applied(result);
         }
 
         // 描述：按原顺序递归描述内部函数，顺序与重复次数保留在 children 中；

@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * 单个战利品函数的**结构化静态描述**——静态规则侧的唯一权威描述来源。
  * <p>
- * 它刻意与"预览求值"（{@link LootFunctionHandler#apply}）解耦：描述始终生成，
+ * 它刻意与"预览求值"（{@link LootFunctionPreview#apply}）解耦：描述始终生成，
  * 预览成功与否都不影响描述的存在（规划 F02 / D15）。旧 {@code tooltipHint} 不再由
  * 各 handler 各拼一套，而是由本记录的 {@link #description()} 派生，避免第二套参数拼接逻辑。
  * <p>

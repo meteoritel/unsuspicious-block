@@ -69,86 +69,51 @@ public final class LootTableCompiler {
 
     /** 编译单张表；表声明的 {@code type} 一并记入产物，供模拟上下文判定使用。 */
     public CompiledLootTable compileTable(ResourceLocation tableId, JsonElement element) {
-        warnUnhandledConditions(tableId, element, new LinkedHashSet<>());
+        MetadataScan metadata = new MetadataScan();
+        collectMetadata(element, metadata);
+        for (ResourceLocation type : metadata.unknownConditions) {
+            LOGGER.warn("战利品表 {} 含未识别条件类型 {}；条件说明将降级，检查对应模组或数据包", tableId, type);
+        }
         CompileState state = new CompileState();
-        state.referencedEnchantments.addAll(collectEnchantments(element));
+        state.referencedEnchantments.addAll(metadata.enchantments);
         walkNode(element, state);
         return new CompiledLootTable(tableId, declaredType(element), state.events,
-                state.referencedEnchantments, collectToolReferences(element));
+                state.referencedEnchantments, metadata.tools);
     }
 
-    // 每次编译只按“表 + 类型”告警一次；重载重新编译时可以再次发现问题。
-    private static void warnUnhandledConditions(ResourceLocation tableId, JsonElement element,
-                                                Set<ResourceLocation> warnedTypes) {
-        if (element == null || element.isJsonNull()) {
-            return;
-        }
+    /** 旁路扫描覆盖全部 JSON 子树，与持有继承条件/函数链的语义 walkNode 分开。 */
+    private static final class MetadataScan {
+        private final Set<ResourceLocation> enchantments = new LinkedHashSet<>();
+        private final Map<ResourceLocation, String> tools = new LinkedHashMap<>();
+        private final Set<ResourceLocation> unknownConditions = new LinkedHashSet<>();
+    }
+
+    private static void collectMetadata(JsonElement element, MetadataScan metadata) {
+        if (element == null || element.isJsonNull()) return;
         if (element.isJsonArray()) {
-            for (JsonElement child : element.getAsJsonArray()) {
-                warnUnhandledConditions(tableId, child, warnedTypes);
-            }
+            element.getAsJsonArray().forEach(child -> collectMetadata(child, metadata));
             return;
         }
-        if (!element.isJsonObject()) {
-            return;
-        }
+        if (!element.isJsonObject()) return;
         JsonObject object = element.getAsJsonObject();
-        JsonElement condition = object.get("condition");
-        if (condition != null && condition.isJsonPrimitive() && condition.getAsJsonPrimitive().isString()) {
-            ResourceLocation id = ResourceLocation.tryParse(condition.getAsString());
-            if (id != null && LootConditionHandlers.get(id) == null && warnedTypes.add(id)) {
-                LOGGER.warn("战利品表 {} 含未识别条件类型 {}；条件说明将降级，检查对应模组或数据包", tableId, id);
-            }
+        ResourceLocation condition = typeId(object.get("condition"));
+        if (condition != null && LootConditionHandlers.descriptor(condition) == null) {
+            metadata.unknownConditions.add(condition);
         }
-        for (var member : object.entrySet()) {
-            warnUnhandledConditions(tableId, member.getValue(), warnedTypes);
-        }
-    }
-
-    /**
-     * 收集本表 {@code match_tool} 谓词允许的基座物品（物品 id → 谓词原文）。
-     * <p>
-     * 为什么不从解析出的 {@code ItemPredicate} 里取：{@code LootConditionInfo} 只携带人类可读描述，
-     * 不含结构化的物品集合；而编译期已经拿着整份 JSON，扫一遍字段就是最直接的来源，也与
-     * {@link #collectEnchantments} 同型。
-     * <p>
-     * 三条限制（都在提示里如实呈现，不做猜测）：
-     * <ul>
-     *   <li>标签谓词只取**首个成员**（决策 45）——这是数据包成员顺序决定的实现偶然，
-     *       因此下拉必然不是谓词允许的全集；</li>
-     *   <li>谓词里的组件、数量、子谓词约束不参与筛选，只影响"下拉里选它是否真的匹配"；</li>
-     *   <li>平台运行时注入的条件不在 JSON 里，因此扫不到。</li>
-     * </ul>
-     */
-    private static Map<ResourceLocation, String> collectToolReferences(JsonElement element) {
-        LinkedHashMap<ResourceLocation, String> tools = new LinkedHashMap<>();
-        collectToolReferences(element, tools);
-        return tools;
-    }
-
-    private static void collectToolReferences(JsonElement element, Map<ResourceLocation, String> output) {
-        if (element == null || element.isJsonNull()) {
-            return;
-        }
-        if (element.isJsonArray()) {
-            for (JsonElement child : element.getAsJsonArray()) {
-                collectToolReferences(child, output);
-            }
-            return;
-        }
-        if (!element.isJsonObject()) {
-            return;
-        }
-        JsonObject object = element.getAsJsonObject();
+        ResourceLocation enchantment = typeId(object.get("enchantment"));
+        if (enchantment != null) metadata.enchantments.add(enchantment);
         if (isMatchTool(object)) {
             JsonElement predicate = object.get("predicate");
             if (predicate != null && !predicate.isJsonNull()) {
-                collectPredicateItems(predicate, predicate.toString(), output);
+                collectPredicateItems(predicate, predicate.toString(), metadata.tools);
             }
         }
-        for (Map.Entry<String, JsonElement> child : object.entrySet()) {
-            collectToolReferences(child.getValue(), output);
-        }
+        object.entrySet().forEach(entry -> collectMetadata(entry.getValue(), metadata));
+    }
+
+    private static ResourceLocation typeId(JsonElement value) {
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
+                ? ResourceLocation.tryParse(value.getAsString()) : null;
     }
 
     // 检查是否引用 match_tool，包括没有可枚举物品的附魔或组件谓词。
@@ -227,49 +192,6 @@ public final class LootTableCompiler {
             return;
         }
         output.putIfAbsent(itemId, rawText);
-    }
-
-    /**
-     * 收集本表 JSON 里被引用到的附魔。
-     * <p>
-     * 判定键就是 JSON 字段名 {@code enchantment}：读附魔的五个机制
-     * （{@code apply_bonus} / {@code table_bonus} / {@code tool_enchantment} /
-     * {@code enchanted_count_increase} / {@code random_chance_with_enchanted_bonus}）
-     * 都用这个字段指名附魔，而 {@code set_enchantments} / {@code enchant_randomly} 用的是复数
-     * {@code enchantments} 映射，不会被误收。等级数值在 1.21.1 的 JSON 里根本不存在
-     * （等级是函数/条件运行时从 TOOL 读的输入，见决策 26），因此这里只收 id。
-     */
-    private static Set<ResourceLocation> collectEnchantments(JsonElement element) {
-        LinkedHashSet<ResourceLocation> enchantments = new LinkedHashSet<>();
-        collectEnchantments(element, enchantments);
-        return enchantments;
-    }
-
-    private static void collectEnchantments(JsonElement element, Set<ResourceLocation> output) {
-        if (element == null || element.isJsonNull()) {
-            return;
-        }
-        if (element.isJsonArray()) {
-            for (JsonElement child : element.getAsJsonArray()) {
-                collectEnchantments(child, output);
-            }
-            return;
-        }
-        if (!element.isJsonObject()) {
-            return;
-        }
-        JsonObject object = element.getAsJsonObject();
-        JsonElement enchantment = object.get("enchantment");
-        if (enchantment != null && enchantment.isJsonPrimitive()
-                && enchantment.getAsJsonPrimitive().isString()) {
-            ResourceLocation id = ResourceLocation.tryParse(enchantment.getAsString());
-            if (id != null) {
-                output.add(id);
-            }
-        }
-        for (Map.Entry<String, JsonElement> child : object.entrySet()) {
-            collectEnchantments(child.getValue(), output);
-        }
     }
 
     // 读取表顶层声明的 type；缺失或非法时为空串

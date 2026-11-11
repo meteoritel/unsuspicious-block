@@ -5,7 +5,7 @@ import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
@@ -440,9 +440,9 @@ public final class JournalTooltipBuilder {
     }
 
     // 递归渲染条件树到 tooltip 行列表；颜色表示不确定性等级，斜体表示描述保真度
-    private static void appendConditionTree(List<Component> lines, List<LootConditionInfo> conditions, String prefix) {
+    private static void appendConditionTree(List<Component> lines, List<? extends ConditionPresentation> conditions, String prefix) {
         for (int i = 0; i < conditions.size(); i++) {
-            LootConditionInfo info = conditions.get(i);
+            ConditionPresentation info = conditions.get(i);
             boolean isLast = i == conditions.size() - 1;
             String branch = isLast ? "└─ " : "├─ ";
             String childPrefix = isLast ? "   " : "│  ";
@@ -454,19 +454,19 @@ public final class JournalTooltipBuilder {
             // 树枝前缀不再是 DARK_GRAY：它在深色 tooltip 背景上几乎不可见，而条件树正是"为什么没数字"的依据
             lines.add(Component.literal(prefix + branch).withStyle(TooltipBuilder.HINT).append(text));
 
-            if (!ConditionTree.displayChildren(info).isEmpty()) {
-                appendConditionTree(lines, ConditionTree.displayChildren(info), prefix + childPrefix);
+            if (!info.displayChildren().isEmpty()) {
+                appendConditionTree(lines, info.displayChildren(), prefix + childPrefix);
             }
         }
     }
 
     // 保真度未知（"有保留"/"未读到"）时用斜体；缺失该标记即代表描述完整
-    private static boolean isFidelityIncomplete(LootConditionInfo info) {
+    private static boolean isFidelityIncomplete(ConditionPresentation info) {
         return info.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY);
     }
 
     // 根据条件是否被识别、以及其不确定性等级返回对应颜色
-    private static ChatFormatting getConditionColor(LootConditionInfo info) {
+    private static ChatFormatting getConditionColor(ConditionPresentation info) {
         if (isFidelityUnreadable(info)) {
             return TooltipBuilder.CONDITION_UNREADABLE;
         }
@@ -479,7 +479,7 @@ public final class JournalTooltipBuilder {
         };
     }
 
-    private static boolean isFidelityUnreadable(LootConditionInfo info) {
+    private static boolean isFidelityUnreadable(ConditionPresentation info) {
         return LootConditionHandlers.FIDELITY_UNREADABLE.equals(
                 info.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY));
     }

@@ -14,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.Supplier;
 
 /**
- * 函数结构化描述的**统一入口**——把"取 handler → 走描述通道 → 兼容回退"这三步收敛到一处。
+ * 函数结构化描述的**统一入口**——把"取登记项 → 走描述通道 → 未解析降级"这三步收敛到一处。
  * <p>
  * 之所以单独成类：投影器（静态规则）与运行时捕获记录器（执行事实）都需要给同一个
  * {@link LootItemFunction} 生成描述，两处各写一份必然在"未知函数怎么降级"上分叉。
@@ -27,7 +27,7 @@ public final class LootFunctionDescriptions {
      * 描述期的**条件解析上下文**。
      * <p>
      * 函数自身的条件要用 {@code LootParseUtil.parseConditions} 解析，而它需要 {@code RegistryOps}；
-     * 但 {@link LootFunctionHandler#describe} 的签名里没有 ops，包装函数的内层条件因此拿不到注册表视图。
+     * 但 {@link LootFunctionDescription#describe} 的签名里没有 ops，包装函数的内层条件因此拿不到注册表视图。
      * 投影层在遍历函数链前用 {@link #withConditionOps} 安装它，analysis 层在解析内层条件时取用。
      * 运行时捕获路径**不**安装，内层条件保持为空——运行时对象本来就没有对应的静态 JSON。
      */
@@ -56,33 +56,37 @@ public final class LootFunctionDescriptions {
         return PREVIEW_CONTEXT.get();
     }
 
-    // 包装函数的预览有界递归；数量不确定不会改变组件身份，其他失败则保守返回空。
-    @Nullable
-    static ItemStack preview(ItemStack stack, LootItemFunction function) {
+    // 包装预览有界递归；数量不确定保留原组件身份。
+    static FunctionPreviewResult preview(ItemStack stack, LootItemFunction function) {
         DynamicOps<JsonElement> ops = conditionOps();
         int depth = PREVIEW_DEPTH.get();
-        if (ops == null || depth >= 8) return null;
+        if (ops == null) return new FunctionPreviewResult.NeedsContext(LootConditionHandler.UncertaintyLevel.RUNTIME);
+        if (depth >= 8) return FunctionPreviewResult.Unsupported.INSTANCE;
         if (depth == 0) PREVIEW_NODES.set(128);
         int remaining = PREVIEW_NODES.get();
-        if (remaining <= 0) return null;
+        if (remaining <= 0) return FunctionPreviewResult.Unsupported.INSTANCE;
         PREVIEW_NODES.set(remaining - 1);
         PREVIEW_DEPTH.set(depth + 1);
         try {
             JsonElement source = LootItemFunctions.ROOT_CODEC.encodeStart(ops, function).result().orElse(null);
             JsonObject object = normalizeSource(source);
-            if (object == null || object.has("conditions") && !object.getAsJsonArray("conditions").isEmpty()) {
-                return null;
+            if (object == null) return FunctionPreviewResult.Unsupported.INSTANCE;
+            if (object.has("conditions") && !object.getAsJsonArray("conditions").isEmpty()) {
+                return new FunctionPreviewResult.NeedsContext(LootConditionHandler.UncertaintyLevel.RUNTIME);
             }
             ResourceLocation id = LootFunctionHandlers.keyOf(function);
             LootFunctionHandler handler = id != null ? LootFunctionHandlers.get(id) : null;
-            if (handler == null) return null;
+            if (handler == null || handler.preview() == null) return FunctionPreviewResult.Unsupported.INSTANCE;
             LootFunctionInfo info = describe(id, function, object);
-            if (!info.isResolved()) return null;
-            ItemStack result = handler.apply(stack.copy(), function);
-            return result != null ? result : (info.effect() == FunctionEffectKind.COUNT ? stack.copy() : null);
+            if (!info.isResolved()) return FunctionPreviewResult.Unsupported.INSTANCE;
+            FunctionPreviewResult result = handler.preview().apply(stack.copy(), function, info);
+            return result instanceof FunctionPreviewResult.Applied || info.effect() != FunctionEffectKind.COUNT
+                    ? result : new FunctionPreviewResult.Applied(stack.copy());
         } finally {
-            PREVIEW_DEPTH.set(depth);
-            if (depth == 0) PREVIEW_NODES.remove();
+            if (depth == 0) {
+                PREVIEW_DEPTH.remove();
+                PREVIEW_NODES.remove();
+            } else PREVIEW_DEPTH.set(depth);
         }
     }
 
@@ -131,8 +135,7 @@ public final class LootFunctionDescriptions {
      * @param functionId 注册表 key；为 null 表示连类型都取不到
      * @param function   类型化 function 对象
      * @param source     原始 JSON；可能为 null（运行时对象没有对应 JSON）
-     * @return 永远非 null 的描述。未知 handler 或未迁移 handler 会降级为
-     *         {@link FunctionFidelity#UNRESOLVED} / {@link FunctionFidelity#PARTIAL}
+     * @return 永远非 null 的描述。未知或无法描述的规则降级为 {@link FunctionFidelity#UNRESOLVED}
      */
     public static LootFunctionInfo describe(@Nullable ResourceLocation functionId,
                                             LootItemFunction function,
@@ -150,50 +153,19 @@ public final class LootFunctionDescriptions {
                 source = normalizeSource(LootItemFunctions.ROOT_CODEC.encodeStart(ops != null ? ops : JsonOps.INSTANCE, function)
                         .result().orElse(null));
             } catch (RuntimeException ignored) {
-                // 无注册表上下文时，继续使用旧扩展兼容摘要。
+                // 无注册表上下文且无法编码时，保留未解析描述。
             }
         }
         LootFunctionInfo described = null;
         if (source != null) {
             try {
-                described = handler.describe(function, source);
+                described = handler.description().describe(function, source);
             } catch (RuntimeException ignored) {
                 // 描述失败必须降级为"未解析"，不得影响掉落与统计
             }
         }
-        if (described != null) {
-            return legacySemantics(described, function, handler);
-        }
-        return partialFromHint(functionId, function, source, handler);
-    }
-
-    // 未迁移到描述通道的 handler：把兼容摘要包成部分解析，保证"只有一个描述来源"
-    private static LootFunctionInfo partialFromHint(ResourceLocation functionId, LootItemFunction function,
-                                                    @Nullable JsonObject source, LootFunctionHandler handler) {
-        Component hint;
-        try {
-            hint = source != null ? handler.describeHint(function, source) : handler.describeHint(function);
-        } catch (RuntimeException ignored) {
-            hint = null;
-        }
-        if (hint == null) {
-            return unresolved(functionId, function);
-        }
-        return legacySemantics(new LootFunctionInfo(functionId, hint, FunctionFidelity.PARTIAL,
-                FunctionEffectKind.UNKNOWN), function, handler);
-    }
-
-    // 旧扩展缺少类型化事实时，只有这个 Adapter 读取兼容策略方法。
-    private static LootFunctionInfo legacySemantics(LootFunctionInfo info, LootItemFunction function,
-                                                    LootFunctionHandler handler) {
-        if (FunctionSemantics.isEncoded(info)) return info;
-        try {
-            return info.withSemantics(FunctionSemantics.facts(info,
-                    handler.addsRandomness() ? FunctionSemantics.Randomness.UNKNOWN : FunctionSemantics.Randomness.NONE,
-                    handler.uncertaintyLevel(function), FunctionSemantics.defaultIdentity(info.effect()), false));
-        } catch (RuntimeException ignored) {
-            return FunctionSemantics.unknown(info);
-        }
+        if (described == null) return unresolved(functionId, function);
+        return FunctionSemantics.isEncoded(described) ? described : FunctionSemantics.unknown(described);
     }
 
     /** 未解析函数的统一描述：保留可取得的注册名，明确标记未解析。 */

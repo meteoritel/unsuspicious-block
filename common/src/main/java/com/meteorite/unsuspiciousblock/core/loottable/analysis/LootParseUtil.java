@@ -71,7 +71,7 @@ public final class LootParseUtil {
         for (JsonElement element : object.getAsJsonArray("conditions")) {
             LootItemCondition condition = parsedConditions.get(parsedIndex++);
             if (condition != null) {
-                conditions.addAll(LootConditionHandlers.analyzeAll(List.of(condition)));
+                conditions.addAll(LootConditionHandlers.analyzeAll(List.of(condition), lootOps));
             } else {
                 conditions.add(LootConditionHandlers.unreadable(
                         LootConditionHandlers.fallbackInfo(extractTypeId(element, "condition"))));

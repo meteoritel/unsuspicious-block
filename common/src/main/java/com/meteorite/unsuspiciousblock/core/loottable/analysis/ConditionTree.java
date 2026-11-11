@@ -6,7 +6,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 /** 条件形态与三值结构折叠；叶子含义由实际消费者解释。 */
 public final class ConditionTree {
@@ -20,52 +19,62 @@ public final class ConditionTree {
             return value == null ? UNKNOWN : value ? TRUE : FALSE;
         }
         public @Nullable Boolean value() { return this == UNKNOWN ? null : this == TRUE; }
-        public Truth negate(boolean negated) {
-            return !negated || this == UNKNOWN ? this : this == TRUE ? FALSE : TRUE;
-        }
     }
 
     private ConditionTree() {}
 
     public static Kind kind(LootConditionInfo node) {
-        ResourceLocation id = node.conditionType();
-        if (ALL.equals(id)) return Kind.ALL;
-        if (ANY.equals(id)) return Kind.ANY;
-        if (NOT.equals(id)) return Kind.NOT;
-        return Kind.LEAF;
+        return node.kind();
     }
 
     public static List<LootConditionInfo> logicChildren(LootConditionInfo node) {
-        return kind(node) == Kind.LEAF ? List.of() : node.children();
+        return node.logicChildren();
     }
-
-    public static List<LootConditionInfo> displayChildren(LootConditionInfo node) { return node.children(); }
 
     public static void walkLogic(LootConditionInfo node, Consumer<LootConditionInfo> visit) {
         visit.accept(node);
         logicChildren(node).forEach(child -> walkLogic(child, visit));
     }
 
-    public static Truth evaluate(LootConditionInfo node, Function<LootConditionInfo, Truth> leaf) {
-        return fold(node, false, (value, negated) -> leaf.apply(value).negate(negated));
+    /** 结构遍历共用的代数；需求展开与三值求值分别拥有组合和预算语义。 */
+    public interface Algebra<T> {
+        T leaf(LootConditionInfo node, boolean negated);
+        T identity(boolean conjunction);
+        T combine(boolean conjunction, T left, T right);
+        boolean isTerminal(boolean conjunction, T value);
+        default boolean canVisit(LootConditionInfo node) { return true; }
+        T unknown(LootConditionInfo node);
     }
 
-    // polarity 传给叶子，允许推荐器使用随机条件的正/反支持集而非简单反转概率。
+    /** 极性由结构层传播，叶子解释保留随机支持集等领域语义。 */
     public static Truth fold(LootConditionInfo node, boolean negated,
                              BiFunction<LootConditionInfo, Boolean, Truth> leaf) {
-        Kind kind = kind(node);
-        List<LootConditionInfo> children = logicChildren(node);
-        if (kind == Kind.LEAF) return leaf.apply(node, negated);
-        if (kind == Kind.NOT) {
-            return children.size() == 1 ? fold(children.getFirst(), !negated, leaf) : Truth.UNKNOWN;
+        return fold(node, negated, new Algebra<>() {
+            public Truth leaf(LootConditionInfo value, boolean polarity) { return leaf.apply(value, polarity); }
+            public Truth identity(boolean conjunction) { return conjunction ? Truth.TRUE : Truth.FALSE; }
+            public Truth combine(boolean conjunction, Truth left, Truth right) {
+                if (isTerminal(conjunction, left)) return left;
+                if (isTerminal(conjunction, right)) return right;
+                return left == Truth.UNKNOWN || right == Truth.UNKNOWN ? Truth.UNKNOWN : identity(conjunction);
+            }
+            public boolean isTerminal(boolean conjunction, Truth value) {
+                return value == (conjunction ? Truth.FALSE : Truth.TRUE);
+            }
+            public Truth unknown(LootConditionInfo value) { return Truth.UNKNOWN; }
+        });
+    }
+
+    /** 空 ALL/ANY、NOT 极性、短路与访问预算共用同一结构遍历。 */
+    public static <T> T fold(LootConditionInfo node, boolean negated, Algebra<T> algebra) {
+        if (!algebra.canVisit(node)) return algebra.unknown(node);
+        if (node.kind() == Kind.LEAF) return algebra.leaf(node, negated);
+        if (node.kind() == Kind.NOT) return fold(node.logicChildren().getFirst(), !negated, algebra);
+        boolean conjunction = (node.kind() == Kind.ALL) != negated;
+        T result = algebra.identity(conjunction);
+        for (LootConditionInfo child : node.logicChildren()) {
+            if (algebra.isTerminal(conjunction, result)) break;
+            result = algebra.combine(conjunction, result, fold(child, negated, algebra));
         }
-        boolean conjunction = (kind == Kind.ALL) != negated;
-        boolean unknown = false;
-        for (LootConditionInfo child : children) {
-            Truth value = fold(child, negated, leaf);
-            if (value == Truth.UNKNOWN) unknown = true;
-            else if ((value == Truth.TRUE) != conjunction) return conjunction ? Truth.FALSE : Truth.TRUE;
-        }
-        return unknown ? Truth.UNKNOWN : conjunction ? Truth.TRUE : Truth.FALSE;
+        return result;
     }
 }

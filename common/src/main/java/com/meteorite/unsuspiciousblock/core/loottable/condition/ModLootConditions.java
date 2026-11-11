@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
+import java.util.Set;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -14,6 +16,7 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -39,13 +42,11 @@ public final class ModLootConditions {
     private ModLootConditions() {
     }
 
-    // 由平台代码在注册完成后调用，设置已注册的类型持有者
-    public static void setToolEnchantmentType(Supplier<LootItemConditionType> type) {
-        toolEnchantmentType = type;
-    }
-
-    // 获取已注册的工具附魔条件类型
+    /** 使用时读取平台注册类型，绑定本身不求值 DeferredHolder。 */
     public static LootItemConditionType toolEnchantment() {
+        if (toolEnchantmentType == null) {
+            throw new IllegalStateException("tool_enchantment 条件类型尚未绑定到 common init");
+        }
         return toolEnchantmentType.get();
     }
 
@@ -56,8 +57,15 @@ public final class ModLootConditions {
      * 等级门槛仅在 {@code min_level > 1} 时出子行，概率子行仅在给出 {@code chance} 时出现，
      * 避免"需要等级 ≥ 1"与"无额外概率"这类噪音行。
      */
-    public static void registerAnalysisHandlers() {
-        LootConditionHandlers.register(TOOL_ENCHANTMENT, new ToolEnchantmentDescriptionHandler());
+    public static void registerAnalysisHandlers(Supplier<LootItemConditionType> type) {
+        if (toolEnchantmentType != null) {
+            throw new IllegalStateException("tool_enchantment 条件类型重复绑定");
+        }
+        toolEnchantmentType = Objects.requireNonNull(type, "tool_enchantment 类型 Supplier");
+        LootConditionHandlers.register(TOOL_ENCHANTMENT, new ConditionTypeDescriptor(
+                new ToolEnchantmentDescriptionHandler(), Set.of(ConditionTypeDescriptor.Capability.TOOL,
+                ConditionTypeDescriptor.Capability.ENCHANTMENT_LEVEL, ConditionTypeDescriptor.Capability.RANDOM,
+                ConditionTypeDescriptor.Capability.SECONDARY), Set.of()));
     }
 
     /**

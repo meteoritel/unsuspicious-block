@@ -7,7 +7,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationCompositeConditionAccess;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootConditionFingerprint;
+import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.advancements.critereon.DamageSourcePredicate;
 import net.minecraft.advancements.critereon.EntityPredicate;
@@ -65,6 +65,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+
+import static com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor.Capability.*;
 
 /**
  * 战利品条件处理器注册表——管理所有已知 loot condition 的静态分析逻辑。
@@ -89,29 +93,30 @@ public final class LootConditionHandlers {
     /** 条件展示文案键前缀——自定义条件处理器拼接自己的文案键时复用同一来源，避免字面量重复。 */
     public static final String I18N_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
 
-    private static final Map<ResourceLocation, LootConditionHandler> REGISTRY = new LinkedHashMap<>();
+    private static final Map<ResourceLocation, ConditionTypeDescriptor> REGISTRY = new LinkedHashMap<>();
 
     static {
         // 类别 A：概率型条件
-        register("random_chance", new RandomChanceHandler());
-        register("random_chance_with_enchanted_bonus", new RandomChanceWithEnchantedBonusHandler());
+        register("random_chance", descriptor(new RandomChanceHandler(), RANDOM, SECONDARY));
+        register("random_chance_with_enchanted_bonus", descriptor(new RandomChanceWithEnchantedBonusHandler(), RANDOM, ENCHANTMENT_LEVEL, SECONDARY));
 
         // 类别 B：可静态描述，无概率值
         register("survives_explosion", new SurvivesExplosionHandler());
-        register("match_tool", new MatchToolHandler());
-        register("block_state_property", new BlockStatePropertyHandler());
-        register("location_check", new LocationCheckHandler());
-        register("time_check", new TimeCheckHandler());
+        register("match_tool", descriptor(new MatchToolHandler(), TOOL, SECONDARY));
+        register("block_state_property", descriptor(new BlockStatePropertyHandler(), SCENARIO));
+        register("location_check", descriptor(new LocationCheckHandler(), SCENARIO));
+        register("time_check", descriptor(new TimeCheckHandler(), SCENARIO));
         register("value_check", new ValueCheckHandler());
-        register("weather_check", new WeatherCheckHandler());
-        register("table_bonus", new TableBonusHandler());
-        register("enchantment_active_check", new EnchantmentActiveHandler());
+        register("weather_check", descriptor(new WeatherCheckHandler(), SCENARIO));
+        register("table_bonus", descriptor(new TableBonusHandler(), RANDOM, ENCHANTMENT_LEVEL, SECONDARY));
+        register("enchantment_active_check", new ConditionTypeDescriptor(new EnchantmentActiveHandler(),
+                Set.of(ENCHANTMENT_LEVEL, SECONDARY), Set.of(LootContextParams.ENCHANTMENT_ACTIVE)));
 
         // 类别 C：纯运行时
-        register("entity_properties", new EntityPropertiesHandler());
+        register("entity_properties", descriptor(new EntityPropertiesHandler(), SCENARIO));
         register("killed_by_player", runtimeDesc());
-        register("entity_scores", new EntityScoresHandler());
-        register("damage_source_properties", new DamageSourcePropertiesHandler());
+        register("entity_scores", descriptor(new EntityScoresHandler(), SCENARIO));
+        register("damage_source_properties", descriptor(new DamageSourcePropertiesHandler(), SCENARIO));
 
         // 类别 D：组合条件
         register(ConditionTree.NOT, new InvertedHandler());
@@ -131,14 +136,39 @@ public final class LootConditionHandlers {
      * @param conditionPath 条件注册名（如 "random_chance"，不含 "minecraft:" 前缀）
      */
     public static void register(String conditionPath, LootConditionHandler handler) {
-        REGISTRY.put(ResourceLocation.fromNamespaceAndPath("minecraft", conditionPath), handler);
+        register(ResourceLocation.withDefaultNamespace(conditionPath), handler);
     }
 
     /**
      * 以完整 ResourceLocation 注册自定义条件处理器。
      */
     public static void register(ResourceLocation conditionId, LootConditionHandler handler) {
-        REGISTRY.put(conditionId, handler);
+        register(conditionId, descriptor(handler));
+    }
+
+    /** 用同一份登记提供分析、角色和上下文参数事实。 */
+    public static void register(ResourceLocation type, ConditionTypeDescriptor descriptor) {
+        REGISTRY.put(type, descriptor);
+    }
+
+    private static void register(String path, ConditionTypeDescriptor descriptor) {
+        register(ResourceLocation.withDefaultNamespace(path), descriptor);
+    }
+
+    private static ConditionTypeDescriptor descriptor(LootConditionHandler handler,
+                                                       ConditionTypeDescriptor.Capability... capabilities) {
+        return new ConditionTypeDescriptor(handler, Set.of(capabilities), Set.of());
+    }
+
+    /** 查询已登记类型；未知扩展返回 null。 */
+    public static @Nullable ConditionTypeDescriptor descriptor(ResourceLocation type) {
+        return REGISTRY.get(type);
+    }
+
+    /** 类型能力查询；未知类型没有已确认能力。 */
+    public static boolean supports(ResourceLocation type, ConditionTypeDescriptor.Capability capability) {
+        ConditionTypeDescriptor descriptor = REGISTRY.get(type);
+        return descriptor != null && descriptor.supports(capability);
     }
 
     /**
@@ -149,13 +179,14 @@ public final class LootConditionHandlers {
      */
     @Nullable
     public static LootConditionHandler get(ResourceLocation conditionId) {
-        return REGISTRY.get(conditionId);
+        ConditionTypeDescriptor descriptor = REGISTRY.get(conditionId);
+        return descriptor != null ? descriptor.handler() : null;
     }
 
     /**
      * 获取注册表只读视图。
      */
-    public static Map<ResourceLocation, LootConditionHandler> registry() {
+    public static Map<ResourceLocation, ConditionTypeDescriptor> registry() {
         return Collections.unmodifiableMap(REGISTRY);
     }
 
@@ -187,13 +218,27 @@ public final class LootConditionHandlers {
         LootConditionHandler.UncertaintyLevel level = handler != null
                 ? handler.uncertaintyLevel()
                 : LootConditionHandler.UncertaintyLevel.RUNTIME;
-        for (LootConditionInfo child : info.children()) {
+        for (LootConditionInfo child : info.logicChildren()) {
             LootConditionHandler.UncertaintyLevel childLevel = uncertaintyLevelOf(child);
             if (childLevel.ordinal() > level.ordinal()) {
                 level = childLevel;
             }
         }
         return level;
+    }
+
+    private static final ThreadLocal<DynamicOps<JsonElement>> ANALYSIS_OPS = new ThreadLocal<>();
+
+    /** 同一次递归分析共用解析时的注册表上下文，离开后恢复外层上下文。 */
+    public static List<LootConditionInfo> analyzeAll(List<LootItemCondition> conditions, DynamicOps<JsonElement> ops) {
+        DynamicOps<JsonElement> previous = ANALYSIS_OPS.get();
+        ANALYSIS_OPS.set(ops);
+        try {
+            return analyzeAll(conditions);
+        } finally {
+            if (previous == null) ANALYSIS_OPS.remove();
+            else ANALYSIS_OPS.set(previous);
+        }
     }
 
     /**
@@ -231,10 +276,9 @@ public final class LootConditionHandlers {
     // 写入场景规划所需的机器可读元数据：条件指纹，以及该指纹是否可跨解析期/运行时稳定复现
     private static LootConditionInfo withSimulationMetadata(LootConditionInfo info,
                                                            LootItemCondition condition) {
-        return info.withSource(condition).withMetadata(LootConditionFingerprint.METADATA_KEY,
-                        LootConditionFingerprint.ofRaw(condition))
-                .withMetadata(LootConditionFingerprint.STABLE_METADATA_KEY,
-                        Boolean.toString(LootConditionFingerprint.isStableSource(condition)));
+        DynamicOps<JsonElement> ops = ANALYSIS_OPS.get();
+        return info.withSource(condition).withIdentity(ConditionIdentity.ofRaw(condition,
+                ops != null ? ops : JsonOps.INSTANCE));
     }
 
     // ==================== 共享工具方法 ====================
@@ -258,11 +302,11 @@ public final class LootConditionHandlers {
      * 与 {@link #uncertaintyLevelOf} 的递归口径一致；子项自身的标记在此前已递归算好。
      */
     static LootConditionInfo inheritChildFidelity(LootConditionInfo info) {
-        if (info.children().isEmpty()) {
+        if (info.displayChildren().isEmpty()) {
             return info;
         }
         int worst = fidelityRank(info.metadata().get(FIDELITY_METADATA_KEY));
-        for (LootConditionInfo child : info.children()) {
+        for (ConditionPresentation child : info.displayChildren()) {
             worst = Math.max(worst, fidelityRank(child.metadata().get(FIDELITY_METADATA_KEY)));
         }
         return switch (worst) {
@@ -996,10 +1040,8 @@ public final class LootConditionHandlers {
             LootConditionInfo childInfo = analyzed.isEmpty()
                     ? fallbackInfo(BuiltInRegistries.LOOT_CONDITION_TYPE.getKey(term.getType()))
                     : analyzed.getFirst();
-            return inheritChildFidelity(new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "inverted", childInfo.description()),
-                    null,
-                    List.of(childInfo)));
+            return inheritChildFidelity(LootConditionInfo.branch(ConditionTree.Kind.NOT, keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "inverted", childInfo.description()), List.of(childInfo)));
         }
 
         @Override
@@ -1024,11 +1066,8 @@ public final class LootConditionHandlers {
             List<LootItemCondition> terms = compositeTerms(anyOf);
             if (terms == null) return null;
             List<LootConditionInfo> children = analyzeAll(terms);
-            if (children.isEmpty()) {
-                return null;
-            }
-            return inheritChildFidelity(new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "any_of"), null, children));
+            return inheritChildFidelity(LootConditionInfo.branch(ConditionTree.Kind.ANY, keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "any_of"), children));
         }
 
         @Override
@@ -1053,11 +1092,8 @@ public final class LootConditionHandlers {
             List<LootItemCondition> terms = compositeTerms(allOf);
             if (terms == null) return null;
             List<LootConditionInfo> children = analyzeAll(terms);
-            if (children.isEmpty()) {
-                return null;
-            }
-            return inheritChildFidelity(new LootConditionInfo(keyOf(condition),
-                    Component.translatable(I18N_PREFIX + "all_of"), null, children));
+            return inheritChildFidelity(LootConditionInfo.branch(ConditionTree.Kind.ALL, keyOf(condition),
+                    Component.translatable(I18N_PREFIX + "all_of"), children));
         }
 
         @Override
