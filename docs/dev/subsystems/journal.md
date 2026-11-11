@@ -12,12 +12,12 @@
 | 目录构建 | `core/journal/catalog/`：`ArchaeologyJournalServerCatalog`（服务端入口：构建、模拟调度、缓存、查询索引）、`ArchaeologyJournalCatalog`（单轮分析）、`LootTableAnalysisSession`（一代的分析结果）、`CatalogGeneration` / `CatalogReadSnapshot`（一代目录状态，原子发布）、`JournalCategoryLoader`（分类规则） |
 | 玩家状态 | `core/journal/state/`：`ArchaeologyJournalState`、`ArchaeologyJournalStateHolder`（mixin 接口）、`ArchaeologyJournalLogState`、`ExcavationLogEntry`、`LootSourceType` |
 | 迁移 | `core/journal/migration/`：`JournalDataMigrationManager`、`JournalDataVersion`、`JournalNbtMigrator`、`LegacyJournalLogAccess` |
-| 追踪 | `core/journal/tracking/`：`LootTrackingContext`(+`Holder`)、`LootSession`、`ArchaeologyLootRuntimeTracker`、`RecentLootTableService`、三个 TrackingService、`MenuTrackingSnapshot(Service)`、`WorldContextResolver`、`JournalLogRecorder`、`ArchaeologyChallengeChecker`、`JournalCompletionRewardChecker`、`event/`（命名结算链与兼容订阅）、`PendingJournal`、`ContainerLootTracking`（宿主状态）、`settlement/`（结算策略） |
+| 追踪 | `core/journal/tracking/`：`LootCapture`、`LootTrackingContext`(+`Holder`)、`LootSession`、`ArchaeologyLootRuntimeTracker`、`RecentLootTableService`、宿主 TrackingService、`MenuTrackingSnapshot(Service)`、`WorldContextResolver`、`JournalLogRecorder`、`ArchaeologyChallengeChecker`、`JournalCompletionRewardChecker`、`event/`（命名结算链与兼容订阅）、`PendingJournal`、`ContainerLootTracking`（宿主状态）、`settlement/`（结算目标） |
 | 日志存储 | `core/world/JournalLogStorage.java`（分片权威存储）、`core/world/JournalLogSavedData.java`（旧单文件迁移读取器）、`core/journal/sync/ArchaeologyJournalLogSyncSession(Holder)` |
 | 网络 | `core/network/journal/`（各 Handler）；payload 见 [网络与同步](../foundation/network.md) |
 | 数据资源 | `data/<namespace>/journal_categories/`（分类规则，任意命名空间可加） |
 | 调试命令 | `core/command/JournalCommand.java`（`/usb journal ...`） |
-| Mixin | `core/mixin/journal/PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin` / `PlayerJournalLogStateMixin`、`core/mixin/interaction/NestedLootTableMixin`、`container/*`（容器追踪）、`core/mixin/interaction/FishingHookMixin`（钓鱼追踪）；全清单见 [Mixin](../foundation/mixin.md) |
+| Mixin | `core/mixin/player/PlayerDataMixin` / `ServerPlayerDataMixin`、`core/mixin/interaction/NestedLootTableMixin`、`container/*`（容器追踪）、`core/mixin/interaction/FishingHookMixin`（钓鱼追踪）；全清单见 [Mixin](../foundation/mixin.md) |
 | 平台差异 | 无核心分叉（追踪入口由各平台事件转交同一个 common 实现） |
 
 ## 2. 数据流
@@ -31,8 +31,9 @@ SERVER_STARTED ──► ArchaeologyJournalServerCatalog.ensureLoaded(server)
           worker 主线程分片提交 ──► 当代 overlay 增长 ──► 广播目录哈希
 
 ② 战利品发现（核心）
-loot roll 前 ──► LootTrackingContextHolder 写入上下文（根表 + 链路）
-loot roll 后 ──► LootTrackingEvents.submit(session, counts, 结算策略)
+LootCapture.capture / submitFinal ──► 资格、签名与会话
+生成期间 ──► LootTrackingContextHolder（根表 + 链路）
+完成根捕获 ──► LootTrackingEvents.submit(session, counts, 结算目标)
      ├─ unlockSession        解锁表与物品
      ├─ recordFirstUnlock    记录首次发现元数据
      ├─ settlementStrategy   立即写日志 / 创建待定日志
@@ -53,11 +54,12 @@ loot roll 后 ──► LootTrackingEvents.submit(session, counts, 结算策略)
 | `core/journal/JournalPlayerDataService` | 玩家数据生命周期统一入口：服务端启停与 tick、玩家登录/退出/重生 |
 | `core/journal/catalog/ArchaeologyJournalServerCatalog` | 服务端目录入口：构建、模拟调度、SavedData 缓存、查询索引 |
 | `core/journal/catalog/CatalogGeneration` | 一代目录状态：静态部分 + 模拟 overlay，由服务端**原子发布** |
+| `core/journal/state/JournalLogMutation` | 日志领域意图、延迟/立即时效及失败同对象恢复 |
 | `core/journal/state/ArchaeologyJournalState` | 玩家进度核心（表/物品解锁、最近表、revision、脏表） |
 | `core/journal/tracking/LootTrackingContext` | 不可变 record，描述当前追踪的根表与子表链路 |
 | `core/journal/tracking/LootSession` | 一次 loot roll 的会话，`complete(...)` 产出 `Commit` |
 | `core/journal/tracking/event/LootTrackingEvents` | 战利品发现事件总线（`submit` / `register`） |
-| `core/journal/tracking/settlement/LootSettlementStrategy` | 结算策略接口（立即 / 延迟） |
+| `core/journal/tracking/settlement/LootSettlementTarget` | sealed 结算目标（立即 / 延迟） |
 | `core/world/JournalLogStorage` | 日志的服务端权威分片存储 |
 | `core/journal/migration/JournalDataVersion` / `JournalNbtMigrator` | 两个版本轴的定义与逐版本迁移链 |
 | `client/ui/support/ArchaeologyJournalClientState` | 客户端目录快照与本地状态 |
@@ -99,9 +101,9 @@ ArchaeologyJournalState
 状态通过 mixin 附加到 `ServerPlayer`：
 
 - `ArchaeologyJournalStateHolder` 是 mixin 接口，`ServerPlayer` 实例通过 `unsuspiciousblock$getArchaeologyJournalState()` 暴露状态。
-- `PlayerJournalStateMixin` / `ServerPlayerJournalStateMixin` 实现状态读写，序列化到玩家 NBT。
+- `PlayerDataMixin` 将玩家存取交给 `PlayerDataLifecycle`，领域保有各自状态和 NBT key；`ServerPlayerDataMixin` 统一重生复制并保留日志共享状态引用。
 - `JournalDataVersion` / `JournalNbtMigrator` 统一处理旧存档格式迁移，**状态类只解析当前字段**。
-- `JournalPlayerDataService` 统一接收玩家登录、退出与重生事件。解锁进度仍由原版玩家 NBT 保存流程负责，不迁移其物理位置。
+- `JournalPlayerDataService` 负责笔记的登录、退出、恢复与复制；`PlayerDataLifecycle` 协调玩家 NBT 与 journal/cat 重生交接。解锁进度仍由原版玩家 NBT 保存流程负责，不迁移其物理位置。
 
 最近列表由 `RecentLootTableService` 写入：同一表再次遇到时刷新为最新记录，超过 128 个唯一表时移除最旧项。该路径**不创建 `LootSession`**，只在玩家打开随机容器、实际刷拭或用考古铲取出可疑方块内容、钓鱼收杆、打破战利品陶罐时更新有限 Map；`entities/` 与 `blocks/` 路径不会记录。
 
@@ -158,19 +160,16 @@ onPlayerJoined(player)
 
 客户端由 `JournalClientConnection` 协调连接 epoch、实例化日志镜像与本地持久化，`ArchaeologyJournalClientState` 提供目录、进度与偏好的内存读模型。S2C 回调只保存原连接消息，tick 加载后提交。客户端侧细节见 [客户端与 GUI](client-ui.md)。
 
-## 9. 扩展点：新增追踪来源 / 订阅者 / 结算策略
+## 9. 扩展点：新增追踪来源
 
-- **新增追踪来源**：实现对应的 TrackingService，在 loot roll 前写 `LootTrackingContextHolder`，roll 结束后调 `LootTrackingEvents.submit`。
-- **订阅战利品发现事件**：`LootTrackingEvents.register(priority, listener)`。兼容位置与同值注册时序见 [追踪链路](../internals/journal-tracking.md) 的「命名结算链与兼容订阅」。
-- **新增结算策略**：实现 `LootSettlementStrategy`，决定 `recordsItemsImmediately` 与 `settle` 行为。
-- **调整目录收录范围**：改 `ILootTableConfig.getArchaeologyPathPrefixes()` 的追踪前缀，或通过数据包新增战利品表（命中前缀即自动收录）。
-- **新增分类规则**：在任意命名空间的 `data/<namespace>/journal_categories/` 加 JSON，不需要改代码。
-- **新增日志字段/版本**：迁移步骤只加在 `JournalNbtMigrator`（双版本轴与迁移约定见 [考古日志存储与迁移](../internals/journal-log-storage.md) 的「版本迁移约定」）。
+- **新增生成来源**：提供 `LootCapture.Source`，调用 `LootCapture.capture` 并选择结算目标；已生成结果用 `submitFinal`。跨既有 Mixin 相位持有 `CaptureHandle`，由结束相位完成并关闭。
+- **结算目的地**：当前形态为 `IMMEDIATE` 与 `Deferred(PendingTarget)`；刷拭和容器分别使用具名目标，宿主余量与 owner 更新集中在目标内部。
+- **旧扩展兼容**：已弃用的 `LootTrackingEvents.register(priority, listener)` 保留旧位置语义，见 [追踪链路](../internals/journal-tracking.md) 的「命名结算链与兼容订阅」。内建结算由固定命名顺序直接执行。
 
 ## 10. 约束与陷阱
 
 - **目录必须原子发布**：任何新加的"整代"数据都要进 `CatalogGeneration` 的静态部分，不要在多个字段上分步赋值。
-- **解析态视图与模拟视图是两个口径**：`getRawCatalog()`（启动即完整）用于解锁判定，`getCatalog()`（含 overlay）用于展示。不要混用——`unlock item` 因此会在 overlay 未覆盖时拒绝执行。
+- **解析态视图与模拟视图是两个口径**：`staticTables()`（启动即完整）用于解锁判定，`simulatedTables()`（含 overlay）用于展示。不要混用——`unlock item` 因此会在 overlay 未覆盖时拒绝执行。
 - **状态类只解析当前字段**：旧字段回退分支一律不写进 `readFrom` / `fromTag`，迁移只加在 `JournalNbtMigrator`。
 - **迁移必须连续且拒绝降级**：`vN -> vN+1` 逐级执行，遇到更高版本拒绝读取；非幂等迁移步骤必须用 `ABORT_IF_INTERRUPTED`。
 - **日志写盘是延迟的**：崩溃可能丢失最近约 10 秒的日志变更，这是明确取舍，不要为"零丢失"改成每写必刷。
@@ -182,10 +181,10 @@ onPlayerJoined(player)
 ## 11. 相关文档
 
 - [考古日志存储与迁移](../internals/journal-log-storage.md) —— 日志分片布局、保留策略、版本迁移约定
-- [战利品追踪核心数据流](../internals/journal-tracking.md) —— 追踪上下文、三个追踪服务、事件总线、结算策略
+- [战利品追踪核心数据流](../internals/journal-tracking.md) —— 追踪上下文、捕获与宿主服务、事件总线、结算目标
 - [战利品表系统](loottable.md) —— 目录解析、概率模拟、签名机制的底层
 - [网络与同步](../foundation/network.md) —— payload 清单与同步会话
-- [Mixin](../foundation/mixin.md) —— `PlayerJournalStateMixin` / `NestedLootTableMixin` 等
+- [Mixin](../foundation/mixin.md) —— `PlayerDataMixin` / `NestedLootTableMixin` 等
 - [客户端与 GUI](client-ui.md) —— 考古笔记界面实现
 - [配置与第三方联动](../foundation/config-and-integrations.md) —— 追踪前缀、日志上限等配置项
 - [实体与 AI](entities-world.md) —— `JournalLogStorage` 等 `core/world/` 持久化类的位置索引

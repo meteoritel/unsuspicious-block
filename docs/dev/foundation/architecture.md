@@ -67,29 +67,28 @@ unsuspiciousBlock-1.21.1-multi/
 
 ### 3.1 服务端初始化
 
-两个平台的入口都调用 [`UnsuspiciousBlockCommon.init()`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/bootstrap/UnsuspiciousBlockCommon.java)，该方法位于 core.bootstrap，按固定顺序引导核心子系统：
+两个平台的入口都调用 [`UnsuspiciousBlockCommon.init(toolEnchantmentType)`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/bootstrap/UnsuspiciousBlockCommon.java)，该方法位于 core.bootstrap，按固定顺序引导核心子系统：
 
 ```
 平台入口构造/初始化
-  └─ UnsuspiciousBlockCommon.init()
-       ├─ AchievementManager.init(new VanillaAchievementHelper())  成就系统
+  └─ UnsuspiciousBlockCommon.init(toolEnchantmentType)
+       ├─ ModLootConditions.registerAnalysisHandlers(toolEnchantmentType)  绑定条件类型与描述符
        ├─ EnchantmentManager.init(...)        附魔框架
        ├─ EnchantmentEffects.registerAll()    注册附魔效果
-       ├─ ModLootConditions.registerAnalysisHandlers()  战利品条件分析处理器
        ├─ EnchantmentRevealConditions.register()  附魔揭示条件
        ├─ LootTrackingBootstrap.registerListeners()  战利品追踪事件订阅
-       └─ CatFavorManager.init(...)           猫族关系系统
+       └─ Services.CAT.registerListeners()      猫族平台事件装配
 ```
 
-**重要时序**：`UnsuspiciousBlockCommon.init()` 必须在平台完成战利品条件类型注册之后调用。Fabric 在 `onInitialize` 开头先注册工具附魔条件再调 init；NeoForge 也先通过 `ModLootConditions` 回写它的 `DeferredHolder`，再进入 common 初始化。
+平台向 common init 交付条件类型 Supplier：Fabric 先即时注册类型，NeoForge 交付已声明的 DeferredHolder。初始化只绑定引用；条件实际使用时读取注册值。绑定与获取契约见[注册架构](registration.md)。
 
 平台入口在 `init()` 前后还要完成：
 
 - **注册**：`ModContent.register(Registrars)` 按依赖顺序遍历各 `ModXxx.forEach(registrar)` 清单（见 [注册架构](registration.md)）。
 - **事件接入**：Fabric 用 `*Callback.EVENT.register`，NeoForge 用 `@SubscribeEvent`。
-- **生命周期钩子**：两端服务器 started/tick/stopped 事件统一转交 `core/bootstrap/ModServerLifecycle`。启动顺序为配置、玩家数据、worker、目录；停止先保存玩家数据，再停止 worker、失效目录、卸载配置及清理世界状态。chunk 与玩家事件仍由平台绑定。
+- **生命周期钩子**：两端服务器 started/tick/stopped 事件统一转交 `core/bootstrap/ModServerLifecycle`。具名条目分别登记 start/tick/stop，显式序列保持配置、玩家数据、worker、目录的启动依赖；停止先保存玩家数据，再停止 worker、失效目录、卸载配置及清理世界状态。停止普通异常会记录条目并继续释放其余引用，最后报告原始失败。chunk 与玩家事件仍由平台绑定。
 - **淘洗生成服务**：服务器 tick 与停止事件转交 `ShimmerSpawnService`，驱动淘洗点的自然生成（只投放水域变体）；世界生成通过统一的 `ShimmerFeature` 与两端群系注入接入原版地物阶段，介质由数据包里的变体 id 指定（见 [淘洗系统](../subsystems/panning.md)）。
-- **玩家手册数据生命周期**：两端只把服务器启停/tick 和玩家登录/退出事件转交给 `JournalPlayerDataService`；玩家 NBT 进度与日志分片的物理存储保持独立（见 [考古笔记系统](../subsystems/journal.md)）。
+- **玩家手册数据生命周期**：`ModServerLifecycle` 调度 `JournalPlayerDataService` 的服务器相位，两端把玩家登录/退出转交给它；`PlayerDataLifecycle` 在统一 Mixin 入口协调 journal/cat 存取与重生复制；玩家 NBT 进度与日志分片的物理存储保持独立（见 [考古笔记系统](../subsystems/journal.md)）。
 - **战利品注入**：Fabric 注册各 `LootInjection`，NeoForge 通过 GLM JSON + 序列化器注册（见 [战利品表系统](../subsystems/loottable.md)）。
 - **可选依赖**：通过 `OptionalModIntegration.instantiate()` 反射加载 Trinkets/Curios 集成；Jade 发现 common 的 `JadePlugin` 与 `JadeClientPlugin`，在对应注册回调中装配 provider。
 

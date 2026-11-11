@@ -18,9 +18,4 @@
 
 ## 2. 便携容器存在检测
 
-`core/inventory/` 包实现"容器在背包 → 容器内物品效果触发"的递归扫描：
-
-- `PortableContainer`：物品实现此接口后，`InventoryPresenceRegistry` 会递归扫描容器内物品；短路匹配（找到即停止），无实现时无需分配空集合。
-- `InventoryPresenceRegistry`：统一查询入口，`isPresent(player, item)` / `containsMatching` / `mutateFirst` 递归扫描主背包 + 饰品栏 + 便携容器内容。
-- `InventoryPresenceTrigger` + `PlayerPresenceStateHolder`：定义哪些物品需要被检测，以及附加到玩家的 tick 驱动 diff 状态。
-- 平台适配：两端的 `*InventoryPresenceAdapter` 做 tick 驱动 diff 检测，下线时清理状态。
+`CarriedItems` 按调用方需要查询原版背包与饰品栏，并扫描 `PortableContainer` 第一层内容。`isPresent` 按物品查询，`containsMatching` 接收栈判据，`mutateFirst` 只修改首个匹配项。便携容器负责把修改写回父物品；嵌套容器的更深层内容不进入该携带范围。

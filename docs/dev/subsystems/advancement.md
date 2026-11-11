@@ -1,6 +1,6 @@
 # 进度（成就）系统
 
-> 手写进度 JSON + 代码授予桥，覆盖 `core/achievement/` 包、`IAchievementHelper` 平台抽象与收集类判定。
+> 手写进度 JSON + 代码授予桥，覆盖 `core/achievement/` 包、原版 Advancement 操作与收集类判定。
 > 玩家可见入口：原版进度树（`Esc` → 进度），以及配方解锁提示。
 > 本文件是进度子系统的唯一权威；收集类进度依赖的玩家状态与目录见 [考古笔记系统](journal.md)，文本与本地化键规范见 [文本格式规范](../foundation/text-format.md)。
 
@@ -10,7 +10,6 @@
 |---|---|
 | 进度数据 | `common/src/main/resources/data/unsuspiciousblock/advancement/`（`adventure/` 10 条、`challenges/` 3 条、`recipes/unsuspiciousblock/` 7 条配方解锁） |
 | 授予桥 | `core/achievement/AchievementManager.java`（静态桥）、`core/achievement/ModAchievements.java`（枚举清单）、`core/achievement/ModAchievement.java`（元数据接口） |
-| 平台 SPI | `platform/services/IAchievementHelper.java`；实现 `core/achievement/VanillaAchievementHelper.java`（common 自实现，**双平台共用**） |
 | 收集类判定 | `core/journal/tracking/ArchaeologyChallengeChecker.java` |
 | 授予调用点 | `core/blockentity/PotteryWheelBlockEntity.java:262`、`core/item/SuspiciousReaderItem.java:327`、`core/mixin/container/SmithingMenuMixin.java:48`、`core/network/journal/JournalLogHandler.java:93`、`ArchaeologyChallengeChecker.java` |
 | 网络 | 无（走原版进度同步） |
@@ -24,9 +23,8 @@
         │
         ▼
 AchievementManager.grantIfNotAlready(player, ModAchievements.XXX)
-        │  静态桥；未注入平台实现时静默返回
+        │  直接查询并操作原版 Advancement
         ▼
-IAchievementHelper ──► VanillaAchievementHelper（core/achievement，无平台差异）
         │                  server.getAdvancements().get(id)
         ▼                  player.getAdvancements().award(holder, criterion)
 原版 Advancement 系统
@@ -37,7 +35,8 @@ IAchievementHelper ──► VanillaAchievementHelper（core/achievement，无�
               └─► AchievementManager.grantIfNotAlready(...)
 ```
 
-`AchievementManager.init(new VanillaAchievementHelper())` 由 `core/bootstrap/UnsuspiciousBlockCommon.init()` 调用（见 [架构总览](../foundation/architecture.md)）。
+
+缺少服务器或 advancement 时，`grant` 返回、`has` 为 false。`grantIfNotAlready` 沿用查询未完成后尝试授予即返回 true 的契约。
 
 ## 3. 关键类
 
@@ -45,9 +44,7 @@ IAchievementHelper ──► VanillaAchievementHelper（core/achievement，无�
 |---|---|
 | `core/achievement/ModAchievement` | 进度元数据接口：`path()` / `criterion()` / `id()` |
 | `core/achievement/ModAchievements` | 全部需要**代码授予**的进度枚举，共 10 项，给出 advancement 路径与 criterion 键 |
-| `core/achievement/AchievementManager` | 静态桥：`init` / `grant` / `has` / `grantIfNotAlready` |
-| `platform/services/IAchievementHelper` | 平台抽象 SPI：`grant` / `has` / `revoke` |
-| `core/achievement/VanillaAchievementHelper` | 唯一实现，直接用原版 API |
+| `core/achievement/AchievementManager` | 成就授予与查询入口 |
 | `core/journal/tracking/ArchaeologyChallengeChecker` | 三项考古收集类进度的判定器，含实时检测与登录补发两个入口 |
 
 `ModAchievements` 枚举**只收录需要代码授予的进度**（10 项）。纯触发器驱动的进度（`eye_of_cat`、`it_belongs_in_a_museum`、`see_through_the_sand`）不在此枚举内，由数据包条件自行完成。
@@ -88,7 +85,7 @@ take_note_take_note（根：合成考古笔记）
 
 - **陶片 / 样板**：范围取自原版物品标签 `#minecraft:decorated_pot_sherds` 与 `#minecraft:trim_templates`，**仅保留 `minecraft` 命名空间条目**，其他模组向标签追加的内容一律忽略。标签在每次检测时通过 `BuiltInRegistries.ITEM.getOrCreateTag(...)` 读取，天然兼容数据包重载；**标签为空（尚未绑定）时跳过授予**，避免空集合被误判为「已集齐」。
 - **集齐基准**是考古日记（`ArchaeologyJournalState`）中的物品解锁记录，标签只决定「需要集齐哪些物品」。陶片与样板均为普通物品，用 `LootResultSignature.plain(itemId)` 匹配。
-- **全图鉴**：范围为 `minecraft:archaeology/` 前缀的原版考古表，取 `ArchaeologyJournalServerCatalog.getRawCatalog()` 而不是渐进模拟后的目录，避免目录加载进度影响判定范围；要求每张表都已解锁且表中每件物品都至少获得过一次。至少存在一张原版考古表才可能达标。
+- **全图鉴**：范围为 `minecraft:archaeology/` 前缀的原版考古表，取 `ArchaeologyJournalServerCatalog.staticTables()` 而不是渐进模拟后的目录，避免目录加载进度影响判定范围；要求每张表都已解锁且表中每件物品都至少获得过一次。至少存在一张原版考古表才可能达标。
 - **性能**：三项都已获得时直接返回，不做任何集合计算。
 
 ## 5. 扩展点：新增进度
@@ -114,5 +111,4 @@ take_note_take_note（根：合成考古笔记）
 
 - [考古笔记系统](journal.md) —— 收集类进度的判定依赖其玩家状态与目录
 - [战利品表系统](loottable.md) —— 目录范围、签名与全图鉴判定范围
-- [平台抽象](../foundation/platform-spi.md) —— `IAchievementHelper` 所在的 SPI 机制
 - [文本格式规范](../foundation/text-format.md) —— 本地化键命名与文本结构

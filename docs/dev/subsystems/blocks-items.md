@@ -12,7 +12,7 @@
 | 不可疑的沙子 / 沙砾 | `core/block/UnsuspiciousBlock` + `core/blockentity/UnsuspiciousBlockEntity` | 可放置的"已刷完"可疑方块，封存战利品，有重力与碎裂掉落 |
 | 陶轮台 | `core/block/PotteryWheelBlock` + `core/blockentity/PotteryWheelBlockEntity` + `core/pottery/PotteryWheelMenu` | 制陶工作站 |
 | 未烧制陶罐 | `core/block/UnfiredDecoratedPotBlock` + `core/blockentity/UnfiredDecoratedPotBlockEntity` | 带四面纹饰数据的陶罐半成品 |
-| 扫描状态注入 | `core/blockentity/BrushableBlockEntityScanState` | 经 mixin 注入原版可疑方块实体（见 [Mixin](../foundation/mixin.md)） |
+| 扫描状态注入 | `core/blockentity/ScanStateHost` / `BrushableBlockEntityScanState` | 经 mixin 注入原版可疑方块实体（见 [Mixin](../foundation/mixin.md)） |
 | 容器追踪状态 | `core/blockentity/TrackedContainerLootState`、`core/journal/tracking/ContainerLootTracking`、`core/blockentity/DecoratedPotLootState` | 宿主内容器状态与陶罐开箱追踪 |
 
 **物品**（均在 `core/item/`；`ModItems.REGISTRY_MANIFEST` 是唯一清单）
@@ -37,8 +37,8 @@
 | 数据资源 | `data/unsuspiciousblock/recipe/*.json`；`assets/.../models/{block,item}/`、`blockstates/`、`lang/` |
 | 网络 | 无专属 payload（解析仪扫描结果走 `SyncReaderScanResultPayload`，见 [网络与同步](../foundation/network.md)） |
 | 客户端 | `client/ui/screen/{SpecimenBoxScreen,PotteryWheelScreen}`、`client/ui/tooltip/ClientSpecimenBoxTooltip`、`client/renderer/{PotteryWheelRenderer,PotteryWheelModel}`、`client/hud/SuspiciousReaderHud`、`client/state/SuspiciousReaderClientState`、`client/ui/PotteryPreviewRenderer`（见 [客户端与 GUI](client-ui.md)） |
-| Mixin | `core/block/*`（扫描状态、陶罐行为）、`container/*`（容器追踪）、`core/mixin/inventory/PlayerPresenceStateMixin`（背包存在检测） |
-| 平台差异 | 花火粉燃料：Fabric 用 `FuelRegistry`，NeoForge 用 `FurnaceFuelBurnTimeEvent`；标本箱图腾代理：Fabric 用 `ServerLivingEntityEvents.ALLOW_DEATH`，NeoForge 用 `LivingDeathEvent`；背包存在检测：两端的 `*InventoryPresenceAdapter` |
+| Mixin | `core/mixin/block/*`（扫描状态、陶罐行为）、`core/mixin/container/*`（容器追踪） |
+| 平台差异 | 花火粉燃料：Fabric 用 `FuelRegistry`，NeoForge 用 `FurnaceFuelBurnTimeEvent`；标本箱图腾代理：Fabric 用 `ServerLivingEntityEvents.ALLOW_DEATH`，NeoForge 用 `LivingDeathEvent` |
 
 ## 2. 数据流
 
@@ -65,11 +65,10 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 **便携容器存在检测**
 
 ```
-玩家 tick（两端 *InventoryPresenceAdapter）
-  └─ InventoryPresenceRegistry.isPresent(player, item)
-       └─ 递归扫描 主背包 + 饰品栏 + PortableContainer 内容
-            （标本箱实现 PortableContainer → 箱内物品纳入检测）
-       └─ PlayerPresenceStateHolder 上的 diff 状态驱动"进出"事件
+玩法、按键或 tooltip 查询
+  └─ CarriedItems.isPresent / containsMatching / mutateFirst
+       └─ 原版背包 + 饰品栏 + PortableContainer 第一层
+            （修改容器内容时由容器实现写回父物品）
 ```
 
 ## 3. 关键类
@@ -86,10 +85,8 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 | `core/item/SpecimenBoxItem` + `core/specimen/SpecimenBoxContents` | 标本箱物品与盒内物品读写 |
 | `core/specimen/SpecimenBoxMenu` / `SpecimenBoxTooltip` / `SpecimenBoxTotemProxy` | 5 格菜单 / 悬停预览 / 图腾代理 |
 | `core/item/RewindDustItem` + `core/world/StructureRewindService` + `core/world/StructureRewindCooldownData` | 结构回溯的入口、执行服务与冷却账本 |
-| `core/inventory/PortableContainer` | 物品实现此接口即被递归扫描 |
-| `core/inventory/InventoryPresenceRegistry` | 统一查询入口：`isPresent` / `containsMatching` / `mutateFirst` |
-| `core/inventory/InventoryPresenceTrigger` | 定义哪些物品需要被检测 |
-| `core/inventory/PlayerPresenceStateHolder` | mixin 接口，附加到玩家的 tick 驱动 diff 状态 |
+| `core/inventory/PortableContainer` | 物品实现此接口后，其第一层内容纳入携带范围 |
+| `core/inventory/CarriedItems` | 统一查询入口：`isPresent` / `containsMatching` / `mutateFirst` |
 | `core/recipe/ModRecipeSerializers` | 四个自定义配方序列化器的注册清单 |
 
 ## 4. 不可疑方块与封存
@@ -115,6 +112,7 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 - **扫描模式**（`V` 键切换）：0 级右键单方块免费查看内部战利品（不取出）；1-3 级以点击面反向偏移 `scanLevel` 格为中心扫描 `(2*level+1)^3` 立方体，消耗 = 等级数 + 新扫描的可疑方块数（已扫描的不额外消耗），同时高亮战利品容器。
 - **能量与充能**：耐久条显示能量（绿/黄/红三色）；能量不足时自动从背包消耗古代金币充能（`tryRecharge`）；shift+右键空气手动充能，带**浪费保护**——剩余空间不足一枚金币的充能值时先提示，20t 内双击强制充能。
 - **主副手协作**：主手解析仪 + 副手考古铲时，点击已扫描的可疑方块会**让位给副手考古铲**取物（`useOn` 开头判定，客户端须返回 PASS 触发原版副手流程）。
+- **扫描宿主**：`ScanStateHost` 统一身份查询、标记和清除；身份实际清除后普通/Lootr 宿主丢弃 pending，Lootr 另清临时库存；封存宿主只清身份。`BlockEntitySync` 统一脏标记与广播，状态来源由宿主决定。
 - **追踪接入**：`scanBrushable` 只为 PendingJournalHost 用 `deferred` 结算策略接入考古笔记；封存物只扫描、不建立 pending（见 [考古笔记系统](journal.md)）。
 
 **考古铲**：右键已扫描的可疑方块直接取物，无需完整刷拭。直接挖掘可疑方块时，未潜行虽显示破坏裂纹但最终无法破坏、也不触发连挖，**必须按住 Shift**；挖掘普通铲类方块时向下连挖最多 3 格，避开可疑方块及其支撑方块；挖掘沙子/红沙/砂砾有 0.3% 概率找到古代金币。
@@ -133,7 +131,7 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 
 ## 8. 标本箱与便携容器
 
-`core/inventory/` 包实现"容器在背包 → 容器内物品效果触发"的递归扫描（`PortableContainer` 接口 + `InventoryPresenceRegistry` 统一查询入口 + tick 驱动 diff），细节见 [方块与物品机制细节](../internals/blocks-items-details.md) 的「便携容器存在检测」。
+`core/inventory/` 包由 `CarriedItems` 按需查询个人携带范围，`PortableContainer` 提供第一层内容与修改写回，细节见 [方块与物品机制细节](../internals/blocks-items-details.md) 的「便携容器存在检测」。
 
 [`SpecimenBoxItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/SpecimenBoxItem.java) 是 5 格便携容器：
 
@@ -174,10 +172,11 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 ## 12. 扩展点：新增物品 / 方块 / 容器 / 配方
 
 - **新增物品 / 方块**：按 [注册架构](../foundation/registration.md) 的「扩展点：新增注册内容」步骤，在 `ModItems` / `ModBlocks` 清单加一行。
-- **新增便携容器**：物品实现 `PortableContainer` 接口，`InventoryPresenceRegistry` 自动递归扫描，无需改扫描逻辑。
+- **新增便携容器**：物品实现 `PortableContainer` 接口，`CarriedItems` 自动查询第一层内容；支持修改时实现 `mutateFirst` 并写回父物品。
+- **箱内生效**：玩法使用 `CarriedItems.isPresent` 或 `containsMatching` 读取携带范围；修改使用 `mutateFirst`。
 - **新增封存方块**：参考 `UnsuspiciousBlock` + `SealedContents`，用 `CONTAINER` 组件存储封存物品。
 - **新增配方**：实现 `RecipeSerializer`，在 `ModRecipeSerializers` 清单注册，并添加 `data/unsuspiciousblock/recipe/` JSON。
-- **新增淘盘**：加一个 `PanProfile` + 在 `ModItems.PAN_ITEMS` 登记（见 [淘洗系统](panning.md) 的「新增淘盘」）。
+- **新增淘盘**：加一个 `PanProfile` + 在 `ModItems` 条目选择 `Category.PAN`（见 [淘洗系统](panning.md) 的「新增淘盘」）。
 - **解析仪能量调优**：修改 `MAX_ENERGY` / `ENERGY_PER_COIN` / `MAX_SCAN_LEVEL` 常量。
 
 ## 13. 约束与陷阱
@@ -185,7 +184,6 @@ SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
 - **花火粉不能进 `minecraft:coals` 标签**（见「其他材料物品」表）。
 - **考古铲必须潜行才能挖掘可疑方块**；未潜行只显示裂纹，不破坏、不连挖，这是刻意行为。
 - **淘盘能力交集必须三处共用**（起手 / 持续 / 结算），改 `canHarvest` 时不要只改一处。
-- **标本箱的"箱内生效"依赖 `InventoryPresenceRegistry` 递归扫描**，新物品若要支持放进容器后生效，须加入 `InventoryPresenceTrigger` 的检测集合，且其判定要走 `isPresent` 而非直接查背包。
 - **结构回溯是重新执行放置，不是历史快照**：会覆盖玩家改建、重复生成实体与战利品，任何"精确还原"的预期都不成立（见「结构回溯」的「行为边界」）。
 - 结构回溯最多一个任务、每 tick 一个区块，且**仅驻留内存、停服取消**，已完成的写入不回滚。
 

@@ -34,27 +34,9 @@ Lootr 的 `requiredMods` 与 NeoForge 元数据接线由 `multiloader-common.gra
 
 ### 状态附加型
 
-以 [`PlayerJournalStateMixin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/mixin/journal/PlayerJournalStateMixin.java) 为例：
+[`PlayerDataMixin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/mixin/player/PlayerDataMixin.java) 持有 `PlayerDataLifecycle` 并实现 journal、catfavor 与旧日志迁移访问契约。`addAdditionalSaveData` 和 `readAdditionalSaveData` 的 TAIL 各调用一次协调器，各领域继续拥有状态、NBT key 与迁移规则。
 
-```java
-@Mixin(Player.class)
-public abstract class PlayerJournalStateMixin implements ArchaeologyJournalStateHolder {
-    @Unique private final ArchaeologyJournalState state = new ArchaeologyJournalState();
-
-    @Override
-    public ArchaeologyJournalState unsuspiciousblock$getArchaeologyJournalState() {
-        return this.state;  // 业务逻辑在 ArchaeologyJournalState 内
-    }
-
-    @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
-    private void save(CompoundTag tag, CallbackInfo ci) { tag.put(KEY, this.state.toTag()); }
-
-    @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
-    private void load(CompoundTag tag, CallbackInfo ci) { this.state.readFrom(tag.getCompound(KEY)); }
-}
-```
-
-特点：mixin 只负责"附加字段 + 持久化读写"，业务逻辑全部在 `ArchaeologyJournalState` 内。`PlayerCatFavorStateMixin` 同此模式。
+[`ServerPlayerDataMixin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/mixin/player/ServerPlayerDataMixin.java) 持有日志同步会话，`restoreFrom` 的 TAIL 统一触发 journal/cat 复制。持久偏好随重生保留，喂食队列、命中记录与玩家灵体槽位重置；日志镜像继续与存储共享同一状态对象。
 
 ### 行为修改型
 
@@ -79,7 +61,7 @@ public abstract class AnvilMenuMixin {
 
 ### 接口注入型
 
-`BrushableBlockEntityScanState` 等接口通过 mixin 注入到原版类（如 `BrushableBlockEntity`），暴露模组需要的方法（`isScanner` / `markScanned` / `resolveAndGetLoot`），供 `SuspiciousReaderItem` 等调用。支持待定日志的宿主另实现 `PendingJournalHost`；持久状态与 codec 归 `BrushableTracking` / `ContainerLootTracking`，Mixin 保留原注入、物品访问和更新通知。
+`BrushableBlockEntityScanState` 继承 `ScanStateHost`，这些接口通过 mixin 注入到原版类（如 `BrushableBlockEntity`），暴露模组需要的方法（`isScanner` / `markScanned` / `resolveAndGetLoot`），供 `SuspiciousReaderItem` 等调用。支持待定日志的宿主另实现 `PendingJournalHost`；持久状态与 codec 归 `BrushableTracking` / `ContainerLootTracking`；共享扫描流程保留宿主清除钩子，`BlockEntitySync` 接收宿主选定的状态来源。Mixin 保留注入和物品访问。
 
 ## 扩展点：新增 Mixin
 
@@ -113,8 +95,8 @@ public abstract class AnvilMenuMixin {
 ## 相关文档
 
 - [架构总览](architecture.md) —— 公共、客户端与 Lootr Mixin 配置与构建占位符
-- [考古笔记系统](../subsystems/journal.md) —— journal/ 包 mixin
-- [猫族关系系统](../subsystems/cat-favor.md) —— catfavor/ 包 mixin
+- [考古笔记系统](../subsystems/journal.md) —— player/ 与追踪 Mixin
+- [猫族关系系统](../subsystems/cat-favor.md) —— player/ 协调与 catfavor/ 行为注入
 - [战利品表系统](../subsystems/loottable.md) —— `NestedLootTableMixin` 与模拟条件作用域
 - [实体与 AI](../subsystems/entities-world.md) —— Fabric 骨块追踪 mixin
 - [配置与第三方联动](config-and-integrations.md) —— Lootr 兼容

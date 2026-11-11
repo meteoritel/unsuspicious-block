@@ -10,11 +10,13 @@
 
 | 层 | 位置 |
 |---|---|
-| 核心管理器 | `core/cat/CatFavorManager.java`（累积/惩罚/同步/信物绑定） |
-| 数据枚举 | `core/cat/CatFavorAction.java`（行为：增量 + 冷却 + 是否惩罚）、`core/cat/CatFavorAbility.java`（恩惠能力 + 阈值）、`core/cat/CatBondStage.java`（6 阶段 + HUD 颜色） |
+| 核心管理器 | `core/cat/CatFavorManager.java`（玩家入口/消息/同步） |
+| 数据枚举 | `core/cat/CatFavorAction.java`（行为：增量 + 冷却 + 是否惩罚）、`core/cat/CatFavorAbility.java`（恩惠能力 + 解锁阶段）、`core/cat/CatBondStage.java`（羁绊刻度 + HUD 颜色） |
 | 被动能力 | `core/cat/CatPassiveAbilities.java`（每 tick 评估 + 供 mixin 查询的静态方法） |
 | 灵体服务 | `core/cat/CatGiftService.java`（古国往礼）、`core/cat/SwordsmanCatService.java`（九命触发时召唤剑士）、`core/cat/SpiritCatDebugRegistry.java`（调试预览灵体） |
 | 商人 | `core/cat/merchant/`：`MerchantCatSpawner`、`MerchantCatTradeManager`、`MerchantCatTradeDefinition`、`MerchantCatTradePool`、`TaggedMerchantOffer`、`MerchantCatSpawnData` |
+| 纯记账 | `core/cat/state/CatBondLedger.java`（带目标行为、冷却、羁绊、命数与变更结果）、`CatFavorView`（只读玩法视图） |
+| 信物 | `core/cat/HandOfCatBinding.java`（本人携带查询与服务端首次绑定） |
 | 状态 | `core/cat/state/CatFavorState.java`（持久化状态）、`core/cat/state/CatFavorStateHolder.java`（mixin 接口） |
 | 网络 | `core/cat/CatNetworkHandler.java`；payload：`SyncCatFavorPayload`（S2C）、`CatDeterrenceTogglePayload` / `CatLightStepTogglePayload`（C2S） |
 | 数据资源 | `data/unsuspiciousblock/merchant_cat_trades/*.json`（交易定义）、`gameplay/cat/ghost_gift`（信使礼物战利品表） |
@@ -30,8 +32,8 @@ mixin 捕获（喂食/驯服/共眠/坐方块/击打）────────�
                                                         ▼
                                           CatFavorManager.tryAccumulate / onKillCat …
 玩家 tick ──► CatFavorManager.serverTick
-                ├─ 关系建立（发现绑定的猫之手 → establishRelationship）
-                └─ 待结算喂食奖励（consumePendingFeedReward）
+                ├─ 关系建立（发现绑定的猫之手 → ESTABLISH_RELATIONSHIP）
+                └─ 待结算喂食奖励（SETTLE_FEED）
 玩家 tick ──► CatPassiveAbilities.serverTick（服务端权威）
                 ├─ 能力位掩码 → CatFavorState.abilityMask
                 ├─ 柔软肉垫步高修饰符 / 猫的眼分级夜视
@@ -47,10 +49,11 @@ mixin 捕获（喂食/驯服/共眠/坐方块/击打）────────�
 
 | 类 | 职责 |
 |---|---|
-| `core/cat/CatFavorManager` | 核心管理器：`tryAccumulate` / `onKillCat` / `serverTick` / `sync` / 信物绑定 |
+| `core/cat/CatFavorManager` | 玩家侧记账入口：收集动作与 gameTime，消费 Change 发送消息和必要同步 |
+| `core/cat/state/CatBondLedger` | 纯规则：行为、目标去重、冷却、喂食队列、命数、偏好和调试变更 |
 | `core/cat/CatFavorAction` | 行为枚举：`favorDelta` + `cooldownTicks` + 是否惩罚 |
-| `core/cat/CatFavorAbility` | 恩惠能力枚举：阈值 + 本地化键；**声明顺序即 tooltip 展示顺序**（由低阈值到高阈值） |
-| `core/cat/CatBondStage` | 6 阶段枚举 + HUD 颜色；实时按当前羁绊计算，不保留历史最高 |
+| `core/cat/CatFavorAbility` | 恩惠能力枚举：解锁阶段 + 本地化键；**声明顺序即 tooltip 展示顺序**（由低阈值到高阈值） |
+| `core/cat/CatBondStage` | 羁绊刻度 + HUD 颜色；实时按当前羁绊计算，不保留历史最高 |
 | `core/cat/CatPassiveAbilities` | 被动能力评估中枢：每 tick 计算位掩码，并提供供 mixin 廉价查询的静态方法 |
 | `core/cat/CatGiftService` | 古国往礼：召唤信使猫送礼 |
 | `core/cat/SwordsmanCatService` | 九命触发时召唤/刷新剑士猫 |
@@ -66,13 +69,11 @@ mixin 捕获（喂食/驯服/共眠/坐方块/击打）────────�
 
 ```
 serverTick(player)
-  ├─ 若玩家已拥有绑定的猫之手（hasOwnedHandOfCat）
-  │     -> state.establishRelationship()
-  └─ 否则在背包中查找未绑定的猫之手
-        -> HandOfCatItem.bindTo(stack, player)
-        -> establishRelationship()
-  └─ 若有待结算的喂食奖励（consumePendingFeedReward）-> tryAccumulate(FEED_CAT)
+  ├─ HandOfCatBinding：查本人信物，或绑定首个未绑定信物
+  ├─ CatBondLedger.ESTABLISH_RELATIONSHIP
+  └─ CatBondLedger.SETTLE_FEED
 ```
+
 
 **信物绑定规则**（实现见 [`HandOfCatItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/HandOfCatItem.java)，物品条目见 [方块与物品](blocks-items.md)）：
 
@@ -80,7 +81,7 @@ serverTick(player)
 - 已随身携带本人信物的玩家再次取得空白猫之手时，信物保持未绑定，供转赠。
 - 关系建立后**不依赖信物是否随身携带**，但猫之恩惠的被动能力需要"本人猫之手"在场才生效。
 
-`hasOwnedHandOfCat` 通过 `InventoryPresenceRegistry.containsMatching` 检查玩家个人携带范围（含标本箱等便携容器），而非仅主背包。
+`HandOfCatBinding.hasOwned` 由 HUD 与服务端共用，通过 `CarriedItems.containsMatching` 检查玩家个人携带范围（含标本箱等便携容器），而非仅主背包。
 
 ## 5. 恩惠能力与阶段
 
@@ -99,7 +100,7 @@ serverTick(player)
 
 ### 5.2 恩惠能力
 
-[`CatFavorAbility`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/CatFavorAbility.java) 定义 6 项能力及其解锁阈值：
+[`CatFavorAbility`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/CatFavorAbility.java) 引用解锁阶段，`threshold()` 由阶段下界派生，toast 按阶段筛选全部能力：
 
 | 能力 | 阈值 | 效果 |
 |---|---|---|
@@ -118,7 +119,7 @@ serverTick(player)
 
 ```
 triggerNineLives(player, source)   // 由 LivingEntityNineLivesMixin 在致命伤害时触发
-  ├─ state.consumeOneLife()        消耗一条命（0 命时不触发）
+  ├─ CatBondLedger.CONSUME_LIFE        消耗一条命（0 命时不触发）
   ├─ player.setHealth(maxHealth)   恢复满血
   ├─ 清除所有负面效果
   ├─ grantNineLivesProtection      授予保护效果（CAT_FAVOR 无敌 + 抗性 + 可选火抗）
@@ -127,7 +128,7 @@ triggerNineLives(player, source)   // 由 LivingEntityNineLivesMixin 在致命�
 
 **命数规则**：
 
-- 首次成为挚友时授予 1 命（`grantNineLivesOnCap`，`initialBestFriendLifeGranted` 标记防重复）。
+- 首次成为挚友时授予 1 命（账本 `GRANT_INITIAL_LIFE`，`initialBestFriendLifeGranted` 标记防重复）。
 - 猫猫信使每次成功送礼补充 1 命（`onMessengerGiftDelivered`，上限 9）。
 - 羁绊跌破 100 时**全部命数清空**（`setCatBond` 中 `catBond < MAX_FAVOR -> nineLivesCount = 0`）。
 - 每名玩家同时最多一只剑士猫（`activeSwordsmanUuid` 去重）。
@@ -167,10 +168,12 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 ## 9. 扩展点：新增行为 / 恩惠能力 / 灵体职责 / 交易
 
 - **新增正向行为**：在 `CatFavorAction` 加枚举值（增量、冷却、是否惩罚），在对应事件/mixin 中调 `CatFavorManager.tryAccumulate`。
-- **新增恩惠能力**：在 `CatFavorAbility` 加枚举值（阈值），在 `CatPassiveAbilities.serverTick` 实现能力逻辑；如需 mixin 高频查询则加位掩码 flag 并补一个静态查询方法（见 [猫族关系机制细节](../internals/cat-favor-mechanics.md)）。
+- **新增恩惠能力**：在 `CatFavorAbility` 加枚举值（解锁阶段），在 `CatPassiveAbilities.serverTick` 实现能力逻辑；如需 mixin 高频查询则加位掩码 flag 并补一个静态查询方法（见 [猫族关系机制细节](../internals/cat-favor-mechanics.md)）。
 - **新增灵体职责**：参考 `MessengerCat` / `SwordsmanCat`，继承 `SpiritCat`，实现 AI Goal/Behavior，在 `ModEntities` 注册；预览灵体需注册到 `SpiritCatDebugRegistry`（见 [实体与 AI](entities-world.md)）。
 - **新增商人交易**：在 `data/unsuspiciousblock/merchant_cat_trades/` 添加 JSON，不需要改代码。
 - **调整灵体生命周期与效果时长**：通过 `ISpiritCatConfig`（见 [配置与第三方联动](../foundation/config-and-integrations.md)）。
+
+玩法写入由 `CatFavorManager.apply` 调用账本，账本不引用 Player、世界、网络或物品扫描。读方使用 `CatFavorView`；NBT 缺失恢复、反序列化与重生复制使用具名恢复入口。原 NBT 字段与版本保留。
 
 ## 10. 约束与陷阱
 

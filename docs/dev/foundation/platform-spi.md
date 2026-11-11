@@ -12,7 +12,7 @@ common 的 core 通过 `platform.services` 定义的平台能力访问 Loader �
 
 | 能力 | 职责与装配 |
 |---|---|
-| `IPlatformHelper` | 平台身份、可选模组检测、游戏目录和版本查询 |
+| `IPlatformHelper` | 平台身份、可选模组检测、游戏目录与战利品注入描述 |
 | `INetworkHelper` | 服务端向指定玩家发送 S2C payload；C2S 发送见[网络与同步](network.md) |
 | `IAccessoryHelper` | 访问饰品栏；第三方模组缺失时返回未装备或空结果 |
 | `ILootTableConfig`、`ISpiritCatConfig` | 读取战利品与灵体配置；两端同一配置类分别实现对应契约 |
@@ -22,7 +22,6 @@ common 的 core 通过 `platform.services` 定义的平台能力访问 Loader �
 
 配置 Interface 承载共享默认值与合法范围；两端读取和校验复用这些约束。文件位置与生命周期见[配置与联动](config-and-integrations.md)。
 
-`IAchievementHelper` 由 core 的 [`VanillaAchievementHelper`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/achievement/VanillaAchievementHelper.java) 实现，公共初始化直接注入进度业务，双平台共用原版实现。
 
 `IClientSimulationPreference` 与文件实现位于 `client.platform`，两端实现及服务声明按客户端职责归属。公共 `Services` 不加载它们；当前运行中的模拟偏好由 `JournalUiPreferencesStore` 保存。
 

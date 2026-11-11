@@ -153,7 +153,7 @@
 
 **新增淘盘**
 
-在 `core/item/ModItems` 加一条 + 一个 `PanProfile`（可采变体、幸运加成、再生概率），并在 `PAN_ITEMS` 里登记（客户端属性注册遍历它）。`PanningVisuals` 与 `PanningLootService` 不需要改动。
+在 `core/item/ModItems` 加一条 + 一个 `PanProfile`（可采变体、幸运加成、再生概率），并在该条目选择 `Category.PAN`（客户端属性注册遍历它）。`PanningVisuals` 与 `PanningLootService` 不需要改动。
 
 **新增淘洗产出**：改对应变体的产出表；产出分化用原版幸运机制（`weight` / `quality` / `bonus_rolls`），不要往代码里加分支。
 

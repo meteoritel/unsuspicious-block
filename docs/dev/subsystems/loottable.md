@@ -12,7 +12,8 @@
 | 编译 | `core/loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`+`LootConditionInfo`、`LootFunctionHandler(s)`+`describe` 通道、`LootFunctionInfo`（`FunctionSemantics` / `FunctionFidelity` / `FunctionEffectKind`）、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil`（条件分析/函数链/类型规范化的唯一实现） |
 | 读模型与查询 | `core/loottable/catalog/`：`LootTableCatalog`（跨模块共享记录类型）、`LootOriginKind`（来源集合语义）、`Probability`、`DeclaredChance`、`LootTableProjector`、`StaticTableProjection`、`ItemDefinitionAccumulator`、`CatalogQueryIndex`、`CatalogTableDto`、`LootTablePattern`、`LootTableNames`、`LootTableTranslationStore`、`MissingTranslationKeyExporter` |
 | 签名 | `core/loottable/signature/`：`LootResultSignature`（核心）、`LootResultMatcher`、`LootResultPreviewCache`、`LootCounts`、`SignatureExcludedComponents` |
-| 模拟 | `core/loottable/simulation/`：输入与参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、场景规划（`SimulationScenarioPlanner` / `SimulationScenario` / `LootConditionFingerprint`）、引擎（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement`）、调度（`LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与协助（`SimulationAssistTarget` / `RecommendationSolver`）、函数捕获（`FunctionTraceSession` / `TraceNode` / `TraceHandle` / `ObservedFunctionChain` / `FunctionObservationSummary`）、展示（`PathHintAnalyzer` / `ProbabilityFormat`） |
+| 条件契约 | `core/loottable/analysis/`：`LootConditionInfo` / `ConditionDisplayRow` / `ConditionTree` / `ConditionIdentity` / `ConditionTypeDescriptor` |
+| 模拟 | `core/loottable/simulation/`：输入与参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、场景规划（`SimulationScenarioPlanner` / `SimulationScenario`）、引擎（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement`）、调度（`LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与协助（`SimulationAssistTarget` / `RecommendationSolver`）、函数捕获（`FunctionTraceSession` / `TraceNode` / `TraceHandle` / `ObservedFunctionChain` / `FunctionObservationSummary`）、展示（`PathHintAnalyzer` / `ProbabilityFormat`） |
 | 注入 | `core/loottable/injection/`：`ArchaeologyLootInjector`（接口）、`ArchaeologyLootInjectors`（全局单例） |
 | 自定义条件 | `core/loottable/condition/`：`ModLootConditions`、`ToolEnchantmentCondition`（唯一自定义条件） |
 | 诊断 | `core/loottable/diagnostics/LootSimulationMetrics.java`（可选性能观测，默认关闭） |
@@ -101,9 +102,9 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 | `Measured(lower, upper?)` | 实际抽样比例；`upper` 非空表示跨场景区间 | `12%` / `3%-7%` |
 | `NeedsCondition(hints)` | 当前输入下没有可用路径，但路径引用了可调整的旋钮或条件 | 「需要条件」 |
 
-- `UnknownReason ∈ { UNCOVERED, UNPARSED, NOT_SIMULATED, SIMULATION_FAILED, EVICTED }`；网格一律 `?`，由 tooltip 逐条分述。构造即校验有限数值与 `0 ≤ lower ≤ upper ≤ 1`，非法值在构造点抛出。
+- `UnknownReason ∈ { UNCOVERED, UNPARSED, NOT_SIMULATED, SIMULATION_FAILED }`；网格一律 `?`，由 tooltip 逐条分述。构造即校验有限数值与 `0 ≤ lower ≤ upper ≤ 1`，非法值在构造点抛出。
 - **抽样零命中是 `Measured(0.0)`，展示为「未命中」**；`0%` 只留给静态可证明的不可达。旧写法 `<0.01%` 已作废——它等于声称 p 小于抽样分辨率，而 n=10000 时真实概率 0.01% 仍有约 36.8% 的概率零命中。
-- 可适用性（`NeedsCondition` / `Unreachable` / `Unknown(UNCOVERED)`）与计算状态（`Measured` / `Unknown(NOT_SIMULATED / SIMULATION_FAILED / EVICTED)`）是**两个轴**，由服务端派生；客户端只按显示优先级链渲染（可适用性状态 → 可展示时的声明触发率 → 模拟值）。
+- 可适用性（`NeedsCondition` / `Unreachable` / `Unknown(UNCOVERED)`）与计算状态（`Measured` / `Unknown(NOT_SIMULATED / SIMULATION_FAILED)`）是**两个轴**，由服务端派生；客户端只按显示优先级链渲染（可适用性状态 → 可展示时的声明触发率 → 模拟值）。
 - **落盘用窄类型 `SimulatedValue`**（只有 `Unknown` / `Measured`），**格式化只发生在 UI 边界**（`ProbabilityFormat`）。数据层、存档缓存、网络与排序一律用数值，**不存在"把界面文本反解回数值来排序"的做法**。
 
 ## 5. 收录范围匹配
@@ -163,10 +164,10 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 - **新增收录范围**：改配置的追踪前缀列表（`ILootTableConfig.getArchaeologyPathPrefixes()`），或通过数据包新增命中前缀的战利品表。
 - **新增实例态组件排除**：在 `ILootTableConfig.getSignatureExcludedComponents()` 加组件 id（默认 `relics:data`），含这些组件的物品即按物品级（`PLAIN`）收录。该列表已并入每表哈希，改配置会让相关表重算；但旧存档里按组件变体存下的进度键会成为孤儿——不渲染、不参与完成度闭包，需按需清理（**本项改动未提供存档迁移**）。
 - **自定义签名类型**：在 `LootResultSignature.SignatureType` 添加枚举，注意 `fromStoredKey` 的兼容性。签名类型变更会影响玩家存档，需在 `JournalNbtMigrator` 补充连续迁移步骤。
-- **新增函数描述**：在 `LootFunctionHandlers` 为该函数补 `describe`（文本/参数/元数据助手在 `LootFunctionDescribeSupport`），按 `FunctionEffectKind` 选效果类别并用 `withSemantics` 提供类型化策略，动态数值照实表达、内层函数挂 `children`；旧扩展由统一兼容 Adapter 补策略。策略契约见 [机制细节](../internals/loottable-mechanics.md) 的「函数策略与兼容扩展」。描述文本走 `function.*` 本地化 key，`en_us.json` / `zh_cn.json` 必须同步。
+- **新增函数描述**：在 `LootFunctionHandlers` 为该函数补 `describe`（文本/参数/元数据助手在 `LootFunctionDescribeSupport`），按 `FunctionEffectKind` 选效果类别并用 `withSemantics` 提供类型化策略，动态数值照实表达、内层函数挂 `children`。登记项组合必需的 `LootFunctionDescription` 和可选的 `LootFunctionPreview`。策略契约见 [机制细节](../internals/loottable-mechanics.md) 的「函数策略与能力登记」。描述文本走 `function.*` 本地化 key，`en_us.json` / `zh_cn.json` 必须同步。
 - **开发模式调试表**：把核对用表放进 `data/unsuspiciousblock/loot_table/archaeology/debug/`，并配 `journal_categories/dev_debug.json`；收录由 `LootDebugMode` 门禁（系统属性 `usb.loot.debug` / 环境变量 `USB_LOOT_DEBUG`），默认关闭时普通玩家看不到。覆盖范围与开启方式见 [机制细节](../internals/loottable-mechanics.md) 的「开发模式调试表」。
-- **新增战利品条件**：参考 `ToolEnchantmentCondition`，在 `ModLootConditions` 注册类型与展示描述，两端各自注册到注册表；资源与实现同步落地。展示描述只能做到"成立但有未展示约束"时，调 `LootConditionHandlers.partial(info)` 告诉客户端改用斜体。
-- **新增场景控制类型**：把类型加入 `SimulationScenarioPlanner` 的 `SCENARIO_CONDITIONS`，并为其补一个 `test` 转交作用域的窄 Mixin；类型须实现为 record 或覆写 `toString()`。**加之前先问"它该不该由玩家调参代替"**——`match_tool` 的教训是：把它做成场景布尔会让它与读同一个上下文的函数互不相干。
+- **新增战利品条件**：参考 `ToolEnchantmentCondition`，在 `ModLootConditions` 注册类型，并在 `LootConditionHandlers` 一次登记 handler、能力与必需参数的描述符；说明子行使用 `ConditionDisplayRow`，原始谓词与身份由分析入口绑定。两端各自注册到注册表；资源与实现同步落地。展示描述只能做到"成立但有未展示约束"时，调 `LootConditionHandlers.partial(info)` 告诉客户端改用斜体。
+- **新增场景控制类型**：在条件类型描述符登记 `SCENARIO` 能力，为其补一个 `test` 转交作用域的窄 Mixin。条件须能通过实际注册表上下文的 Codec 生成语义身份；工具、附魔等玩家参数继续由真实上下文驱动。
 - **新增参数旋钮（四处缺一不可）**：`ScenarioParams` 加字段（构造点给不变量）→ `SimulationInputKey.of` 加一段规范编码（**顺序固定**，缓存键与网络标识共用）→ `SimulationConstraintCatalog.resolve` 加签发校验 → `SimulationProfile` 加 `withXxx` 并由 `ScenarioParams.applyTo` 套用。少了校验就是越权入口，少了 key 段就会与别的参数共用缓存。
 - **新增运行时联动边**：在 `RuntimeLootLinks` 声明标识符与边，并在 `LootTableEdge.Kind` 中显式选型——`RUNTIME_INJECTION` 只参与收录闭包、目录层级与哈希，**不参与静态语义链接**，条目仍由模拟期动态发现并保持 `injected=true`。合成边只在两端资源都存在时才会注入。
 - **修改概率口径**：`Probability` 是不变式载体，新增状态需同时更新存档与网络的穷尽 codec 与 `ProbabilityFormat`；任何情况下都不要把展示文本写回数据层。
@@ -181,7 +182,7 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 - **参数填充只能填 paramSet `allowed` 内的参数，且 required 与 optional 都要填**：只填 required 会把"没填"伪装成"条件不成立"。
 - **判 paramSet 时空 `type` 等价于 `generic`**（vanilla 语义），不要当成"未知 paramSet"。
 - **`isActuallyEnchanted` 不能用 `stack.has(ENCHANTMENTS)`**（工具默认带空组件会误判）。
-- **`simulation_fingerprint` 只对按字段值生成 `toString()` 的类型稳定**；不稳定的条件会按真实逻辑求值并计入"未覆盖"告警，数值口径与场景估算不同（详见 [机制细节](../internals/loottable-mechanics.md) 的「条件场景策略」）。
+- **条件覆盖使用 Codec 语义身份**：分析期与运行期使用相同注册表上下文编码；opaque 条件按真实逻辑求值并计入未覆盖告警，出处身份仅用于本代去重。详见 [机制细节](../internals/loottable-mechanics.md) 的「条件场景策略」。
 - **展示值只能由服务端派生**（`deriveTable` / `deriveDisplay`），客户端不得本地重推——注入边不写在任何 JSON 里，本地重推必然漏项。
 - **概率的落盘只用 `SimulatedValue` 窄类型**，派生结论不进存档（否则改静态规则就要迁移存档）。
 - **按需结果不写共享目录**：写进去会让两个玩家互相覆盖对方的界面。
@@ -201,3 +202,5 @@ LootAcquisitionPath{ sourceChildTable, sourceItemTag, entryConditions, inherited
 - [Mixin](../foundation/mixin.md) —— `NestedLootTableMixin` 与模拟条件作用域
 - [客户端与 GUI](client-ui.md) —— 目录网格页、场景页与追踪管理页
 - [笔记分类格式](../../api/journal-categories.md)
+
+声明注入在目录构建时由 `DeclaredInjectionExpansion` 统一展开，投影只装配完整读模型；展示派生、读取入口与回执归属见[目录构建细节](../internals/journal-catalog-build.md)。

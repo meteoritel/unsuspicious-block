@@ -19,24 +19,13 @@ private void syncCommonItemRefs(FMLCommonSetupEvent event) {
 }
 ```
 
-而 Block / BlockEntity / Effect / Sound / Entity 的 `DeferredHolder` 本身即 `Supplier`，可在 static 块立即回写（`setter.accept(deferred)`），运行时 `.get()` 取值。
+Block / BlockEntity / Entity / Recipe 的回交引用为 Supplier，Effect / Sound 为 Holder，可在声明阶段保存，注册完成后求值。`Registrar<T,H>` 明确注册值与回交值的类型；Entity 属性、BlockEntity 及 Menu 的泛型关联保留具名注册接口，Feature 与创造标签用具名入口表达无回写注册。
 
-## 时序陷阱与兜底
+## 菜单与条件类型的获取相位
 
-NeoForge 客户端注册 Screen 时，`RegisterMenuScreensEvent` 可能在 `enqueueWork` 之前触发，此时 `SpecimenBoxMenu.TYPE` 静态字段可能为 null。因此 `UnsuspiciousBlockNeoForge` 提供静态 getter 兜底：
+Menu 注册通过 setter 将 `Supplier<MenuType<T>>` 保存到 `ModContent`；菜单构造与客户端 Screen 清单都调用同一 getter。Fabric 注册后可求值，NeoForge 在注册事件完成后的 Screen 注册相位求值。Menu 不维护公共可写 TYPE，也不依赖 Item 的 enqueueWork 回写。
 
-```java
-public static MenuType<SpecimenBoxMenu> getSpecimenBoxMenuType() {
-    return ModContent.specimenBoxMenu();  // 从声明阶段回写的 Supplier 取
-}
-```
-
-客户端 `registerScreens` 中优先用 getter，并顺带回写静态字段：
-
-```java
-SpecimenBoxMenu.TYPE = UnsuspiciousBlockNeoForge.getSpecimenBoxMenuType();
-event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
-```
+平台将工具附魔条件类型 Supplier 作为 `UnsuspiciousBlockCommon.init` 的输入。`ModLootConditions.registerAnalysisHandlers` 一次绑定引用并登记描述符，绑定时不求值。未绑定或重复绑定提供具名异常；实际条件调用在注册表可用时求值。
 
 ## 5. 其他清单模式
 
@@ -44,7 +33,7 @@ event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
 | 清单类 | 用途 | 遍历方法 |
 |---|---|---|
-| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `S2C_SPECS`；客户端遍历 `ClientPayloadBindings` |
+| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `S2C_PAYLOADS`；客户端遍历 `ClientPayloadBindings` |
 | `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(EntityRendererRegistrar)` |
 | `ModModelLayers` | 模型层注册清单 | `forEach(LayerRegistrar)` |
 | `ModBlockEntityRenderers` | 方块实体渲染器注册清单 | `forEach(RendererRegistrar)` |
@@ -58,22 +47,11 @@ event.register(SpecimenBoxMenu.TYPE, SpecimenBoxScreen::new);
 
 ## 6. 创造模式物品栏
 
-`ModContent` 声明菜单工厂和创造标签标题、图标及内容；平台仅提供菜单注册 Adapter 与各自的创造标签 builder。菜单 Supplier 保存在 common，Fabric 即时调用 `syncMenuTypes`，NeoForge 在 common setup 同步回写 TYPE，客户端 getter 在 Screen 事件兜底。
+`ModContent` 声明菜单工厂和创造标签标题、图标及内容；平台提供类型化注册 Adapter 与创造标签 builder。
 
-`ModItems` 声明创造模式物品栏的图标与内容：
+`ModItems.ItemEntry` 同时声明注册工厂、回写、延迟 getter、可选创造栏顺序和类别。`CREATIVE_TAB_ITEMS` 按顺序投影，重复排序值在初始化时拒绝；`PAN_ITEMS` 按 PAN 类别投影。投影只保存 Supplier，使用时才读取已回写物品，保持 NeoForge 的延迟相位。
 
-```java
-public static final Supplier<ItemStack> CREATIVE_TAB_ICON = () -> new ItemStack(ARCHAEOLOGY_JOURNAL);
-
-// 用 Supplier 延迟求值，因为静态字段在注册后才被赋值
-public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
-        () -> ARCHAEOLOGY_JOURNAL,
-        () -> UNSUSPICIOUS_SAND,
-        // ...
-);
-```
-
-注意 `CREATIVE_TAB_ITEMS` 用 `Supplier<Item>` 而非直接 `Item`，因为静态字段在清单声明时还是 null，必须延迟到注册完成后求值。这是清单模式的一个固有约束：**清单内不得直接引用尚未回写的静态字段值**。
+`UnsuspiciousCarrier` 是封存与空方块制作共用的载体。序列化器清单用载体和合成种类组成键，初始化检查重复与缺失组合；烧制项保留独立注册。配方从同一映射获取已注册 serializer。
 
 ## 7. 扩展点：新增注册内容
 
@@ -81,8 +59,8 @@ public static final List<Supplier<Item>> CREATIVE_TAB_ITEMS = List.of(
 
 1. 在 `ModItems` 加静态字段：`public static XxxItem FOO;`
 2. 加工厂方法：`public static XxxItem createFoo() { return new XxxItem(new Item.Properties()...); }`
-3. 在 `REGISTRY_MANIFEST` 加一行：`new ItemEntry("foo", ModItems::createFoo, item -> FOO = item)`
-4. 如需出现在创造模式物品栏，在 `CREATIVE_TAB_ITEMS` 加 `() -> FOO`
+3. 在 `REGISTRY_MANIFEST` 加一行：`new ItemEntry("foo", ModItems::createFoo, item -> FOO = item, () -> FOO, order, Category.STANDARD)`
+4. 创造栏顺序填唯一排序值，隐藏项填 null；淘盘选择 `Category.PAN`，客户端模型属性视图随清单派生
 5. 添加数据资源（`assets/.../models/item/foo.json`、`lang` 键、可能的 `recipe` 等）
 
 **无需修改任何平台代码** —— `forEach` 会自动遍历新条目，Fabric / NeoForge 的注册逻辑都是通用的。方块、实体、效果等同理，只是条目 record 字段略有不同。

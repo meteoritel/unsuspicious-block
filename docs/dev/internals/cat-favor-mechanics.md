@@ -17,7 +17,7 @@
 | `SIT_ON_BLOCK` | +10 | 24000t | 驯服的猫坐在床/箱子/熔炉上持续 30s |
 | `REPEL_RAID` | +20 | 12000t | 获得村庄英雄效果（击退袭击上升沿） |
 
-正向行为经 `tryAccumulate` 处理：校验关系已建立 → 校验冷却 → `addCatBond` → `markTriggered` → 显示变化 + 同步。
+正向行为由 `tryAccumulate` 交给纯账本：校验关系 → 校验冷却 → 增加羁绊 → 记录冷却。满值动作仍记录冷却。`CatFavorManager.apply` 消费 `Change`，显示实际增减，并在羁绊、命数或关系字段变化时同步。
 
 ### 1.2 惩罚行为（不要求持有猫之手，无冷却）
 
@@ -27,7 +27,7 @@
 | `OWN_CAT_DEATH` | -10 | 玩家所属驯服猫死亡 |
 | `KILL_CAT` | -50 | 玩家杀死猫 |
 
-**击杀去重**：`onKillCat` 时检查是否同 tick 已扣过 `HIT_CAT` 的 5 分（`consumeMatchingCatHit`），若已扣则只补扣 45 分，避免一次击杀双重惩罚。
+**击杀去重**：账本按猫 UUID 与 gameTime 检查是否同猫同 tick 已扣过 `HIT_CAT` 的 5 分（`consumeMatchingCatHit`），若已扣则只补扣 45 分，避免一次击杀双重惩罚。
 
 ### 1.3 喂食奖励的延迟结算
 
@@ -35,7 +35,7 @@
 
 - 喂食时 `queueFeedReward` 标记待结算，延迟到 tick 末。
 - 成功驯服时 `cancelPendingFeedReward` 取消待结算的喂食奖励。
-- `serverTick` 末尾 `consumePendingFeedReward` 取出并结算。
+- `serverTick` 通过账本 `SETTLE_FEED` 取出并结算。
 
 ## 2. 被动能力评估
 
@@ -43,11 +43,12 @@
 
 ```
 serverTick(player)
-  ├─ updateAbilityMask     计算能力位掩码，缓存到 state
+  ├─ abilityMask           计算能力位掩码
   ├─ updateStepHeight      柔软肉垫：步高修饰符 +0.65（潜行时不应用）
   ├─ updateNightVision     猫的眼：分级检测夜视
-  ├─ detectRaidVictory     击退袭击：村庄英雄上升沿检测
-  └─ grantNineLivesOnCap   首次成为挚友时授予 1 命
+  ├─ 村庄英雄上升沿触发 REPEL_RAID
+  ├─ PassiveSnapshot       统一写入本 tick 运行状态
+  └─ GRANT_INITIAL_LIFE    首次成为挚友时授予 1 命
 ```
 
 ### 2.1 能力位掩码
@@ -92,3 +93,7 @@ mixin 通过 `hasActiveDeterrence(player)` / `hasLightStep(player)` 等静态方
 **数据迁移**：`CatFavorState` 向通用 `NbtMigration` 登记字段转换，旧 `favor` 格式清空冷却，并把旧压力板偏好映射为轻步总开关。现有整数版本保留当前字段的解析方式，未来版本在清空状态前拒绝；转换失败保留输入 NBT。版本原点与新增迁移步骤见[本地持久化与数据迁移](../foundation/persistence.md)。
 
 **重生保留**：`copyFrom` 复制持久化字段，不复制瞬态字段。关系与偏好跨重生保留。
+
+## 4. 写入契约
+
+`CatBondLedger.apply(state, mutation, gameTime)` 返回羁绊/命数/关系的前后值、阶段与 applied 标志。`Behavior` 为击打和击杀携带猫 UUID；同猫同 tick 的击打 -5 与击杀补扣 -45 合计 -50，不同猫或 tick 分别记账，所属猫死亡另扣 -10。命数授予、消耗、偏好、调试和喂食队列通过明确变更表达；能力缓存用不落盘的 `PassiveSnapshot` 写入。玩法 mutator 限制在状态包，玩家入口依据 `requiresSync` 同步，加载恢复与复制独立于行为结算。

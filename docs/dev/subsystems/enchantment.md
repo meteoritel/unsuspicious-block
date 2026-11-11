@@ -151,7 +151,7 @@ roll(book, random, registries)
 ## 8. 附魔揭示（猫之瞳）
 
 - **服务端权威**：完整候选列表由服务端计算，客户端仅展示，不复刻算法。这避免客户端 `registryAccess` 与服务端不一致导致的列表差异。
-- **内建条件**：[`EnchantmentRevealConditions.register`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/enchantment/reveal/EnchantmentRevealConditions.java) 注册"持有猫之瞳即揭示"条件，通过 `InventoryPresenceRegistry.isPresent` 检查（含便携容器）。由 `core/bootstrap/UnsuspiciousBlockCommon.init()` 调用注册。
+- **内建条件**：[`EnchantmentRevealConditions.register`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/enchantment/reveal/EnchantmentRevealConditions.java) 注册"持有猫之瞳即揭示"条件，通过 `CarriedItems.isPresent` 检查（含便携容器）。由 `core/bootstrap/UnsuspiciousBlockCommon.init()` 调用注册。
 - **条件可扩展**：`EnchantmentRevealManager.registerCondition` 允许注册更多揭示条件。
 
 > 同样的"猫之瞳"还驱动铁砧成本分解与砂轮预览，见 [客户端与 GUI](client-ui.md) 的「铁砧 / 砂轮成本分解」一节。

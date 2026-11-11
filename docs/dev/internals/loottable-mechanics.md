@@ -21,7 +21,7 @@ capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排
 
 **编译与投影的区别是刻意的**：同一个子表在不同引用位置产出的物品路径不同（条件与函数被引用位置改写），因此编译产物只记"本表直接物品路径 + 引用位置"，**绝不缓存展开后的子表结果**。
 
-`LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`；条件分析、函数链拼接与多路径合并各只有一份实现（`LootParseUtil`、`ItemDefinitionAccumulator`），保证编译路径与投影路径产出逐位一致的条件指纹与签名。
+`LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`；条件分析、函数链拼接与多路径合并各只有一份实现（`LootParseUtil`、`ItemDefinitionAccumulator`），保证编译路径与投影路径产出同源的条件身份与签名。
 
 ### 1.1 多路径物品提示的合并
 
@@ -77,9 +77,9 @@ usb_sig|TYPE|itemId|base64(data)
 
 ## 3. 概率模拟：引擎与场景策略
 
-模拟的输入身份是 `SimulationInput` = **场景身份** + 条件布尔赋值 + `ScenarioParams`（幸运 / 工具基座 / 工具附魔等级 / 抽样次数）。缓存键是 `(表哈希, SimulationInputKey)`，因此"同一张表换个幸运值"是新增一条缓存，而不是覆盖旧的一条。
+模拟的输入身份是 `SimulationInput` = **场景身份** + `ScenarioParams`（幸运 / 工具基座 / 工具附魔等级 / 抽样次数）。服务端从当前场景 profile 恢复条件赋值，客户端仅选择场景和参数。缓存键是 `(表哈希, SimulationInputKey)`，因此"同一张表换个幸运值"是新增一条缓存，而不是覆盖旧的一条。
 
-**场景身份是稳定字面量，不编码条件指纹**（这是缓存能否命中的关键）。基准场景恒为 `baseline`，其余为 `scene-1`、`scene-2`…（序号＝规划器的发射顺序）。条件指纹**仍然是场景的运行时语义**（`SimulationProfile.conditionOutcomes`，模拟时按运行时指纹查表回答条件成立与否），但它**不再进键**：指纹由条件对象的 `toString()` 派生，`entity_properties` / `location_check` 这类未按字段值生成文本的类型会退化成 `类名@identityHash`，跨 JVM 运行不重复，于是同一个场景每次启动都会换一个新键——读路径永远找不到旧的，写路径又不断新增，而 LRU 按参数组合计数，这些孤儿键既不会被淘汰也不会被覆盖，在存档里无限累积。缓存键的形态因此是：
+**场景身份使用稳定字面量**：基准场景恒为 `baseline`，其余为 `scene-1`、`scene-2`…，序号由规划器的发射顺序决定。`ConditionIdentity` 用于 `SimulationProfile.conditionOutcomes` 的运行时条件赋值，独立于持久化输入键。条件通过实际注册表上下文的 Codec 编码，规范化 JSON 对象键后生成语义身份；不可编码条件保留 opaque 出处身份，并按真实逻辑求值。缓存键的形态为：
 
 ```text
 scenario=baseline|luck=0.00|tool=minecraft:diamond_pickaxe|ench=|n=10000
@@ -90,7 +90,8 @@ scenario=baseline|luck=0.00|tool=minecraft:diamond_pickaxe|ench=|n=10000
 [`LootProbabilitySimulator`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulator.java) 对**单个输入**执行模拟抽取：
 
 ```
-simulateOne/createJob(tableId, rawTable, level, input, scenario)
+LootProbabilitySimulationJob(tableId, rawTable, level, scenario, input)
+  ├─ 同步一次完整 advance；Worker 按 tick 截止时间推进同一状态机
   ├─ 从 ReloadableServerRegistries 取得数据包重载后的运行时 LootTable
   │    保留 Fabric LootTableEvents.MODIFY 等加载期注入；不从原始 JSON 重建表
   ├─ 合成 profile = 场景条件赋值 + 输入参数（ScenarioParams.applyTo）
@@ -128,11 +129,11 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 
 ### 3.2 条件场景策略
 
-`ConditionTree` 集中解释原版 ALL/ANY/NOT 结构与 UNKNOWN 折叠，操作符按完整 ResourceLocation 匹配。`logicChildren` 只返回组合子条件，`displayChildren` 保留叶子的展示子行。Planner、推荐、玩家探测和路径提示使用逻辑口径，场景标签、页面与 tooltip 使用展示口径；叶子真假仍由各自的真实场景或运行时上下文解释。空 ALL 为真、空 ANY 为假，NOT 子节点数量异常保持 UNKNOWN，Planner 记录诊断并停用该表数值模拟。
+`LootConditionInfo` 显式保存 ALL/ANY/NOT/LEAF 与 `logicChildren`；说明行使用独立的 `ConditionDisplayRow`。`ConditionPresentation.displayChildren` 只用于展示。`ConditionTree.Algebra` 共用结构遍历、NOT 极性与短路，三值求值和需求析取分别提供代数。Planner、推荐、玩家探测和路径提示使用逻辑节点，场景标签、页面与 tooltip 使用展示树。空 ALL 为真、空 ANY 为假；构造器拒绝非法形态，分析入口将解析失败转成未解析诊断。
 
 运行时表保留全部条件，**不能再通过读取原始 JSON、删除条件并重新解码来生成模拟副本**。那种做法会绕过 Fabric 加载期修改，也无法可靠表达 `all_of`、`any_of`、`inverted` 等组合条件的语义。
 
-`SimulationScenarioPlanner` 从每个 `LootAcquisitionPath` 提取**七类**资格条件（`SCENARIO_CONDITIONS`）为每条可达路径建立最小布尔赋值场景，并为每个场景算出静态可达的签名集合与直接子表集合。**其中一个场景被标记为基准场景**（条件全部不成立的那个），网格只读它——取跨场景最大值等于把"你站在沼泽里"那个数当成玩家的处境展示。解析阶段把 `simulation_fingerprint` 写入每个条件的 metadata；运行时 Mixin 用同一指纹查询 `SimulationProfile` 中的精确 true/false 结果，因此同类型的两个 `location_check` 不会混淆。
+`SimulationScenarioPlanner` 按类型描述符的 `SCENARIO` 能力，从每个 `LootAcquisitionPath` 提取资格条件，为路径建立最小布尔赋值场景，并汇总各场景可达的签名与直接子表。条件分析节点携带 `ConditionIdentity`，运行时 Mixin 用同一 Codec 身份查询精确 true/false。基准场景使用全部受控条件不成立的赋值，网格展示该场景的测量。规划产物保留路径条件身份到适用场景的映射，分支目录直接消费它；补充入口也使用同一需求代数。
 
 | 条件 | 当前处理方式 |
 |---|---|
@@ -140,7 +141,7 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 | `block_state_property` | profile 填充 `BLOCK_STATE`；条件门槛按匹配场景处理 |
 | `damage_source_properties` | profile 填充 `DamageSource`；复杂伤害谓词按匹配场景处理 |
 | `entity_properties` | 填充假玩家；钓鱼表的 THIS_ENTITY 使用 `SimulationFishingHook` |
-| `location_check` | 场景按具体条件指纹分别取 true/false，不查找或生成真实区块 |
+| `location_check` | 场景按具体条件身份分别取 true/false，不查找或生成真实区块 |
 | `weather_check`、`time_check` | 场景按具体条件取值，不修改服务器天气或时间 |
 | `entity_scores` | 场景按具体条件取值，不创建 objective、不写真实 scoreboard |
 
@@ -151,17 +152,9 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 
 每条路径的需求集合只计算一次，供"候选收集 / 覆盖度排序 / 适用性判定"三处共用。
 
-**发射顺序必须可复现，因为它同时决定场景键**。场景键是缓存键的一段，顺序一变键就变。两条约束：候选集合按**路径枚举顺序**插入（来自解析后的 JSON，与运行无关）；覆盖度排序**只按覆盖路径数降序**，并列时保持插入顺序（Java 排序是稳定的），**不按指纹字符串破并列**——指纹跨运行不稳定，拿它当二级键会让并列候选每次启动互换序号，带并列场景的表（例如原版 `minecraft:gameplay/fishing` 的群系条目，每条恰好覆盖一条路径）因此每次启动都全量重算。
+**发射顺序必须可复现，因为它决定场景键**。候选集合按解析路径枚举顺序插入，覆盖度排序只按覆盖路径数降序，并列时保持插入顺序。条件和场景语义变化通过表 hash 的版本化语义因子触发重算，表级发现记录继续保留。
 
-**指纹稳定性判定**：指纹取自条件对象的 `toString()`，因此**只对按字段值生成文本的类型成立**（record 即是）。解析阶段同时写入 `simulation_fingerprint_stable`：识别出 `类名@identityHash` 这类默认实现时，该条件不参与场景规划（按无约束处理，条目因此保留在各场景中而非被判成不可达）并告警一次——否则解析期与运行时的两个实例必然算出不同指纹，场景覆盖会静默失效。运行时另有兜底：属于场景控制类型、却没有被任何代表场景覆盖的条件，会在该表模拟完成时汇总告警，提示这部分数值是按真实逻辑求值得到的。
-
-这个稳定性判定**只检查条件对象自身，看不进嵌套字段**（已知缺口）。三条已核实的事实：
-
-1. 解析期分析的是 `LootTableCompiler` 从 JSON 解出的**另一份实例**，与运行时 `ReloadableServerRegistries` 里的对象不同，因此只有**整条** `toString` 链都是按值生成的类型才能复现指纹；
-2. `isStableSource` 只问"最外层是不是 record / 是不是 `类名@identityHash`"，`LootItemEntityPropertyCondition`、`EntityPredicate`、`FishingHookPredicate`、`LocationPredicate` 都是 record，一律被判定为稳定，嵌套的非 record 对象不参与判定；
-3. `location_check` 带标签时必然不稳定：`LocationPredicate.biomes` 是 `Optional<HolderSet<Biome>>`，标签集 `HolderSet.Named` 的 `toString` 会逐个打印 `Holder.Reference`，而后者打印的是**它持有的值对象**（`"Reference{" + key + "=" + value + "}"`）——`Biome` 没有按值生成 `toString`，于是整条链落到 `类名@identityHash`。存档里这些表的键每次启动都不同，正与此一致。
-
-后果是：这类条件在运行时查不到对应指纹，按**真实逻辑**求值并计入"未覆盖"汇总告警，数值口径因此与场景估算不同。告警本身按 `条件 id + (简单类名)` 去重，所以"有 N 个"报的是**类型数**而不是条件条数，不能读成"只有 N 条条件未覆盖"。
+**条件身份与类型能力**：`ConditionIdentity` 使用 `LootItemCondition.DIRECT_CODEC` 和实际 `RegistryOps` 编码；对象键排序、数组保序后生成摘要。等价实例共享语义身份，opaque 出处身份随节点复制和投影保留，只用于本代去重。无法编码的条件不参与场景覆盖，运行时按真实逻辑求值并汇总未覆盖告警。`ConditionTypeDescriptor` 一次登记 handler、可组合能力及必需上下文参数，默认不确定性读取 handler，节点的 partial/unreadable 标记单独保留；数字提供器有独立参数登记。
 
 **注入入口参与约束规划，不另造满级工具场景**：`ArchaeologyJournalServerCatalog.constraintTable` 将注入子树的路径和继承门槛补入规划/求解输入。场景只描述受控环境假设；工具与附魔来自 `ScenarioParams`，`tool_enchantment` 不被强制置真，最低等级与随机曲线保持真实判定。旧文档里的 `keepBaseTool` 满级钓竿描述已不适用，不能据此忽略玩家参数。
 
@@ -188,7 +181,7 @@ simulateOne/createJob(tableId, rawTable, level, input, scenario)
 
 `PathHintAnalyzer.hintsFor` 把一个条目的获取路径翻译成"需要条件"的逐行陈述。两条易错的组成规则：
 
-- **只有组合条件（`all_of` / `any_of` / `inverted`）的子节点是"另一条条件"**。其它类型的 `LootConditionInfo.children()` 是**同一条条件的展示子行**（例：`tool_enchantment` 的"概率：基础 20%，每级变化 10%"子行）。早期实现无条件递归，于是同一条门槛被列两遍，第二遍还把概率子行写成"该路径需要工具带 概率：… 附魔"这种读不通的句子。子行里的数值（等级门槛、按等级概率）仍由条件树原样展示，信息不丢。
+- **逻辑节点与说明行分别保存**。`logicChildren` 只承载真正的子条件；`ConditionDisplayRow` 保留等级门槛与按等级概率等展示信息，逻辑遍历、条件身份和声明触发率均不读取这些行。
 - **附魔提示不写死等级门槛**。原文案硬编码"（等级 ≥ 1）"，但 `min_level` 由数据包给出，写死就会在 `min_level > 1` 的表上说谎。提示只陈述"需要工具带 X 附魔"（"带有该附魔"本身就是该条件类型的固有语义），具体等级以条件树的子行为准。
 
 未解析条件另用 `PathHint.UnresolvedConditions` 表达，与可调旋钮和场景条件分开；组合条件递归收集其未解析叶子，避免把组合父行和叶子重复列出。该提示由 `CatalogStreamCodec` 下发，并参与目录摘要。
@@ -277,7 +270,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 - 附魔定义的 `max_level` 之外的字段（anvil 花费、权重等）——它们不影响任何概率；
 - 第三方 GLM 自读的其它注册表、脚本状态及同一 generation 内直接修改的外部状态不在保证范围；含已识别 `reference` / `furnace_smelt` 的表在下一代重算；
-- **经核实不受影响、因此不列入残余**的两类：biome tag 成员（`location_check` 由条件指纹回答，不查真实区块与 tag）与 damage type 定义（`DAMAGE_SOURCE` 由 profile 填充，不读注册表）。
+- **经核实不受影响、因此不列入残余**的两类：biome tag 成员（`location_check` 由条件身份回答，不查真实区块与 tag）与 damage type 定义（`DAMAGE_SOURCE` 由 profile 填充，不读注册表）。
 
 目录 DTO 的注入归一和 child conditions/branches/options 由 `CatalogProjection` 计算，声明与来源名由宿主按代捕获。完整目录摘要使用同 revision 的冻结线路快照，覆盖字段与网络 codec 同源；详见 [目录构建](journal-catalog-build.md)。
 
@@ -292,6 +285,8 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 **数据包重载会真正触发重算**：Fabric 用 `ResourceManagerHelper.get(PackType.SERVER_DATA)`、NeoForge 用 `AddReloadListenerEvent` 注册 [`DataPackReloadListener`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/bootstrap/DataPackReloadListener.java)，它**只置脏标记**，重建由 `ServerLootTableConfigManager.tick` 在服务端 tick 路径上消费（在重载回调里同步跑全量构建会拖住重载，且两个平台的重载事件时序不同）。服务端启动时的首次资源加载也会触发监听器，但那时目录尚未加载，标记被忽略。
 
 **不可用机制的表在构建期被拦下**：`LootMechanismSupport` 识别"paramSet 不允许的参数引用"（如 `enchantment_level` 提供器、`enchantment_active_check`）与和填充模型根本不相容的 paramSet（如 `barter`，其 allowed 集合不含 `ORIGIN`）。判定时**空 `type` 按 vanilla 语义等价于 `generic`**（`LootTable.DIRECT_CODEC` 里 `type` 缺省为 `ALL_PARAMS`）——实测有整套模组（BetterArcheology 的 7 张宝箱表）不写 `type`，把空串当成"未知 paramSet"会把它们误判为不可用。这类表不入队模拟（否则会在 `getRandomItems` 里抛异常后静默失败），而是标记为 `Unknown(UNPARSED)` 并输出一次可行动的诊断。
+
+Job 独占未完成、成功和失败终态；未完成时读取结果会报错。普通 Exception 转成保留表与输入的失败，Error 沿同步与 Worker 路径传播；作用域和指标在 finally 清理。
 
 **失败输入不会自动重试**：能确定性失败的情形（注册表里没有该表、条件求值抛异常）用同一份输入重跑只会再失败一次并持续占用 tick 预算，因此失败输入只记录不重排。它的概率保持「未知」（不会显示成 0%），本轮队列排空时汇总列出一次 `N 个模拟输入失败…将在下次数据包重载或 /usb journal reload 时重新尝试`。
 
@@ -424,7 +419,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 此外 `unavailable = true` 表示记录器自有异常，它同时置 `incomplete`。四者**不可互推**：不要用"有链"推断规则已完整解析，也不要用"未解析"推断没有执行。
 
-### 函数策略与兼容扩展
+### 函数策略与能力登记
 
 `LootFunctionInfo.semantics()` 返回 `FunctionSemantics`，分别表达效果、描述保真度、随机性、预览不确定性与身份影响。内建 handler 的 `describe` 同时生成文本和策略；包装器聚合子策略，未知或未完整展开的包装保持保守。数量变化保留身份，容器内容只参与容器效果。随机附魔的书预览和签名派生仍由原 handler 提供。
 
@@ -432,7 +427,7 @@ tooltip 里同时给出其它代表场景的最小/最大值供对照（网格�
 
 策略使用 `semantics_v1` 元数据编码。线路最多保留 32 项，优先策略、语义不完整、裁剪与空操作标记，再按键名稳定排列辅助信息；键和值沿用 64/512 字符上限。字段顺序保持，旧读取端按普通元数据保存未知键。
 
-旧扩展的 `addsRandomness`、`uncertaintyLevel` 与 `describeHint` 只由 `LootFunctionDescriptions` 的兼容 Adapter 读取。新 handler 用 `apply / describe / deriveSignature`，在描述中调用 `withSemantics` 提供策略事实；缺失或无效语义采用保守解释。运行时描述尝试从当前函数 Codec 取得 JSON，无法编码时使用兼容摘要或未解析产物。
+`LootFunctionHandler` 登记必需的 `LootFunctionDescription` 与可选的 `LootFunctionPreview`。描述始终尝试生成规则树；预览返回 `Applied`、`NeedsContext` 或 `Unsupported`，只发布已应用的隔离副本。动态值与函数条件沿描述语义保留不确定性；签名覆盖只由预览能力提供。描述用 `withSemantics` 给出策略事实，缺失或无效语义按未知解释。运行时从 Codec 取得 JSON，无法编码或描述时生成未解析产物。
 
 ### 9.5 场景规划与函数条件
 

@@ -92,7 +92,7 @@ FossilHunterEffect.apply ──► consumeNatural  仅自然骨块触发额外�
 
 | 职业 | 职责 | 召唤者 | 去重 |
 |---|---|---|---|
-| 猫猫信使 `MessengerCat` | 向符合条件的玩家送达猫国礼物（古国往礼，羁绊 ≥ 80） | `CatGiftService.tryGhostGift` | 每玩家最多一只（`CatFavorState.activeMessengerUuid`） |
+| 猫猫信使 `MessengerCat` | 向符合条件的玩家送达猫国礼物（古国往礼，羁绊 ≥ 80） | `CatGiftService.tryGhostGift` | 每玩家最多一只（`CatFavorState.activeSpirit(MESSENGER)`） |
 | 剑士猫猫 `SwordsmanCat` | 九命触发时现身保护玩家，主动迎战敌对生物 | `SwordsmanCatService.summonOrRefresh` | 每玩家最多一只，再次触发刷新寿命而非新建 |
 | 猫猫商人 `MerchantCat` | 玩家成为猫国挚友后在周围村庄临时现身，提供共享库存交易 | `MerchantCatSpawner.tick(server)`（服务端 tick 末尾） | 在生成村庄内活动，不跟随玩家 |
 
@@ -178,7 +178,7 @@ data/unsuspiciousblock/
 - **灵体不随存档保存**（`shouldBeSaved` 返回 false），重启后不会残留；但 `addAdditionalSaveData` 仍保留以兼容旧数据迁移。
 - **预览灵体（`PREVIEW`）不运行 AI、不消散**，调试时不要把它当作职责模式的行为证据。
 - **`clampToSpawnHeight` 默认阻止低于召唤高度**：需要追击低处目标的新职业必须显式关闭它，否则会表现为"追不上"。
-- 同一玩家同时最多一只信使、一只剑士，靠 state 上的 UUID 去重；新增"每玩家唯一"的灵体时照此实现。
+- `ActiveSpiritSlot` 只保存 UUID，调用方查询当前世界中的实际实体并决定存活性。玩家按 role 保存信使/剑士槽，重生和加载重置；商人槽属于当前 `ServerLevel` 的 `MerchantCatSpawnData`，继续使用原 tag 持久化。生成成功后才占槽，旧 UUID 的 release 保留新占用；已有信使跳过，已有剑士刷新保护。
 - **骨块追踪的标记必须消费**（`consumeNatural`）：无论是否发奖励都要清掉，否则遗留标记会让后续放置的骨块被误判。
 - **玩家/机器放置的骨块不触发化石猎手奖励**，这是刻意的，不要为"手滑放置"补奖励。
 - 猫之手结构自然生成已停用，`/place structure` 是当前唯一获取路径。
