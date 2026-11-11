@@ -7,11 +7,8 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EnchantmentEffect;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.world.NaturalBoneBlockTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -92,18 +89,11 @@ public final class FossilHunterEffect implements EnchantmentEffect {
                 .withOptionalParameter(LootContextParams.THIS_ENTITY, triggerCtx.player)
                 .withLuck(triggerCtx.player.getLuck())
                 .create(LootContextParamSets.BLOCK);
-        LootTrackingContext trackingContext = LootTrackingContext.root(
-                triggerCtx.player, lootTableKey.location(), LootSourceType.FOSSIL_HUNTER,
-                level.getGameTime(), level.getDayTime(), pos,
-                BuiltInRegistries.BLOCK.getKey(state.getBlock()));
-        LootSession session = new LootSession(trackingContext);
-        List<ItemStack> generated;
-        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(session, trackingContext)) {
-            generated = level.getServer().reloadableRegistries().getLootTable(lootTableKey)
-                    .getRandomItems(lootParams, triggerCtx.player.getRandom());
-        }
-        LootTrackingEvents.submit(session, generated, LootSettlementStrategies.immediate());
-        return generated;
+        return LootCapture.capture(new LootCapture.Source(
+                triggerCtx.player, lootTableKey.location(), LootSourceType.FOSSIL_HUNTER, level, pos,
+                BuiltInRegistries.BLOCK.getKey(state.getBlock())), LootSettlementTarget.IMMEDIATE,
+                () -> level.getServer().reloadableRegistries().getLootTable(lootTableKey)
+                        .getRandomItems(lootParams, triggerCtx.player.getRandom()));
     }
 
     // 主世界用主世界表，其它维度用下界表

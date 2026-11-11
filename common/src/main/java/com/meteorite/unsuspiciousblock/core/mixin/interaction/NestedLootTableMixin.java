@@ -91,7 +91,7 @@ public abstract class NestedLootTableMixin {
         }
 
         // 子表必须命中追踪规则，避免误捕无关嵌套表（如非考古路径的 loot_table 引用）
-        if (!ArchaeologyJournalServerCatalog.isTrackedTable(childTableId)
+        if (!ArchaeologyJournalServerCatalog.tracked(childTableId)
                 && !childTableId.equals(ctx.rootTableId())) {
             original.call(lootTable, lootContext, consumer);
             return;

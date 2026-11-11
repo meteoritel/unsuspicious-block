@@ -8,8 +8,7 @@ import com.meteorite.unsuspiciousblock.core.blockentity.DecoratedPotLootState;
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ContainerTrackingService;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.DecoratedPotTrackingService;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -42,7 +41,7 @@ public interface RandomizableContainerMixin {
     @Inject(method = "unpackLootTable", at = @At("HEAD"))
     private void unsuspiciousblock$captureLootTable(Player player,
                                                     CallbackInfo ci,
-                                                    @Share("lootSession") LocalRef<LootSession> lootSession) {
+                                                    @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         ResourceLocation tableId = null;
         lootSession.set(null);
         RandomizableContainer container = (RandomizableContainer) this;
@@ -76,7 +75,7 @@ public interface RandomizableContainerMixin {
             } else if (container instanceof Entity entity) {
                 pos = entity.blockPosition();
             }
-            lootSession.set(ContainerTrackingService.prepareContainerLootSession(
+            lootSession.set(ContainerTrackingService.prepareContainerCapture(
                     trackingPlayer, tableId, serverLevel, pos, sourceBlockId));
         }
     }
@@ -90,20 +89,17 @@ public interface RandomizableContainerMixin {
     private void unsuspiciousblock$scopeLootRoll(
             LootTable lootTable, Container container, LootParams lootParams, long seed,
             Operation<Void> original,
-            @Share("lootSession") LocalRef<LootSession> lootSession) {
-        LootSession session = lootSession.get();
-        try (LootTrackingContextHolder.Scope ignored = session == null
-                ? LootTrackingContextHolder.open(null)
-                : LootTrackingContextHolder.open(session, session.rootContext())) {
-            original.call(lootTable, container, lootParams, seed);
-        }
+            @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
+        CaptureHandle capture = lootSession.get();
+        if (capture == null) original.call(lootTable, container, lootParams, seed);
+        else capture.roll(() -> original.call(lootTable, container, lootParams, seed));
     }
 
     // 在解析后根据容器实际生成的物品更新运行时追踪状态
     @Inject(method = "unpackLootTable", at = @At("TAIL"))
     private void unsuspiciousblock$trackResolvedLoot(Player player,
                                                      CallbackInfo ci,
-                                                     @Share("lootSession") LocalRef<LootSession> lootSession) {
+                                                     @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         if (this instanceof DecoratedPotBlockEntity) {
             return;
         }
@@ -111,7 +107,7 @@ public interface RandomizableContainerMixin {
             return;
         }
 
-        ContainerTrackingService.completeContainerLootSession(trackedContainer, lootSession.get());
+        ContainerTrackingService.completeContainerCapture(trackedContainer, lootSession.get());
     }
 
     // 陶罐的原版解析调用不传玩家；仅在 32 格内选择最近玩家，普通无玩家容器不参与追踪

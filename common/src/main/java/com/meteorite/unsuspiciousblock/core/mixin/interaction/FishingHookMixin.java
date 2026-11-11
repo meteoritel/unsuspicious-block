@@ -3,12 +3,9 @@ package com.meteorite.unsuspiciousblock.core.mixin.interaction;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
@@ -24,7 +21,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
- * 在钓鱼收杆流程的 loot roll 期间建立 {@link LootTrackingContextHolder} 作用域，
+ * 在钓鱼收杆流程的 loot roll 期间建立 {@code LootCapture} 作用域，
  * 使 {@link NestedLootTableMixin} 自动捕获钓鱼嵌套子表物品并汇入同一会话。
  * <p>
  * 本 Mixin 仅负责上下文生命周期管理，
@@ -53,16 +50,8 @@ public abstract class FishingHookMixin {
 
         RecentLootTableService.record(sp, FISHING_ROOT_TABLE);
         BlockPos pos = hook.blockPosition();
-        LootTrackingContext ctx = LootTrackingContext.root(
-                sp, FISHING_ROOT_TABLE, LootSourceType.FISHING,
-                serverLevel.getGameTime(), serverLevel.getDayTime(),
-                pos, null);
-        LootSession session = new LootSession(ctx);
-        ObjectArrayList<ItemStack> generatedItems;
-        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(session, ctx)) {
-            generatedItems = original.call(lootTable, lootParams);
-        }
-        LootTrackingEvents.submit(session, generatedItems, LootSettlementStrategies.immediate());
-        return generatedItems;
+        return LootCapture.capture(new LootCapture.Source(sp, FISHING_ROOT_TABLE, LootSourceType.FISHING,
+                serverLevel, pos, null), LootSettlementTarget.IMMEDIATE,
+                () -> original.call(lootTable, lootParams));
     }
 }

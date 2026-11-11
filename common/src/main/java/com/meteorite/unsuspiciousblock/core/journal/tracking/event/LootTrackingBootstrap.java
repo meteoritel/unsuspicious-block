@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.core.journal.tracking.ArchaeologyLootRunt
 import com.meteorite.unsuspiciousblock.core.journal.tracking.JournalCompletionRewardChecker;
 import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 
 /**
  * 聚合战利品提交的命名结算链。
@@ -15,12 +16,13 @@ public final class LootTrackingBootstrap {
     private LootTrackingBootstrap() {
     }
 
-    // 保留原初始化入口；注册时序用于兼容同优先级扩展。
+    /** 标记已公开扩展的 common 初始化位置；内建流程无需初始化。 */
     public static synchronized void registerListeners() {
-        LootTrackingEvents.initializeBuiltIns();
+        LegacyLootSubscriptions.markCommonInitialization();
     }
 
-    static void run(LootDiscoveredEvent event, LootTrackingEvents.CompatibilityDispatch extensions) {
+    static void run(LootDiscoveredEvent event) {
+        var extensions = LegacyLootSubscriptions.dispatch(event);
         extensions.before(Step.UNLOCK);
         LootTrackingEvents.runStep(event, "unlock", () -> onUnlock(event));
         extensions.before(Step.FIRST_UNLOCK);
@@ -37,7 +39,7 @@ public final class LootTrackingBootstrap {
     // 一次性应用本会话中每个表对应的发现物品
     private static void onUnlock(LootDiscoveredEvent event) {
         ArchaeologyLootRuntimeTracker.unlockSession(
-                event.commit(), event.settlementStrategy().recordsItemsImmediately());
+                event.commit(), event.settlementTarget() instanceof LootSettlementTarget.Immediate);
     }
 
     // 首次发现元数据只记录一次并锚定根表
@@ -51,7 +53,11 @@ public final class LootTrackingBootstrap {
 
     // 由策略决定立即写入最终日志或回传待定日志
     private static void onSettle(LootDiscoveredEvent event) {
-        event.settlementStrategy().settle(event.commit());
+        switch (event.settlementTarget()) {
+            case LootSettlementTarget.Immediate ignored -> ArchaeologyLootRuntimeTracker.recordCompletedSession(event.commit());
+            case LootSettlementTarget.Deferred deferred -> deferred.pending().stage(event.commit(),
+                    ArchaeologyLootRuntimeTracker.createPendingEntry(event.commit()));
+        }
     }
 
     private static void onCheckChallenge(LootDiscoveredEvent event) {

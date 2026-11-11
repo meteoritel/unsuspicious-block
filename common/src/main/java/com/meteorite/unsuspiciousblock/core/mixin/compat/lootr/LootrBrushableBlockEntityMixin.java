@@ -3,12 +3,13 @@ package com.meteorite.unsuspiciousblock.core.mixin.compat.lootr;
 import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScanState;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableTracking;
+import com.meteorite.unsuspiciousblock.core.blockentity.ScanIdentity;
+import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntitySync;
 import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.PendingJournal;
 import com.meteorite.unsuspiciousblock.core.plugin.lootr.LootrBrushableTrackingAccess;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -33,7 +34,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.UUID;
 
 /**
  * 为 Lootr 的 {@link LootrBrushableBlockEntity} 实现 {@link BrushableBlockEntityScanState}，
@@ -88,14 +88,8 @@ public abstract class LootrBrushableBlockEntityMixin
     @Unique
     private void unsuspiciousblock$syncBlockEntity() {
         BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-        blockEntity.setChanged();
-
-        Level level = blockEntity.getLevel();
-        if (level != null && !level.isClientSide()) {
-            BlockPos pos = blockEntity.getBlockPos();
-            var state = level.getBlockState(pos);
-            level.sendBlockUpdated(pos, state, state, 3);
-        }
+        BlockEntitySync.markChanged(blockEntity,
+                level -> level.getBlockState(blockEntity.getBlockPos()));
     }
 
     // 按扫描玩家 UUID 找回 Lootr 的持久化每玩家库存，支持服务端重启后继续用考古铲提取
@@ -123,33 +117,16 @@ public abstract class LootrBrushableBlockEntityMixin
         return this.unsuspiciousblock$scanInventory;
     }
 
-    // ========== 扫描状态接口实现 ========== //
-
     @Override
-    public void unsuspiciousblock$markScanned(UUID scannerUuid) {
-        if (this.unsuspiciousblock$tracking.scan().mark(scannerUuid)) {
-            this.unsuspiciousblock$syncBlockEntity();
-        }
+    public ScanIdentity unsuspiciousblock$scanIdentity() {
+        return this.unsuspiciousblock$tracking.scan();
     }
 
     @Override
-    public void unsuspiciousblock$clearScanned() {
-        if (this.unsuspiciousblock$tracking.clearScan()) {
-            this.unsuspiciousblock$scanInventory = null;
-            this.unsuspiciousblock$storedItem = ItemStack.EMPTY;
-            this.unsuspiciousblock$syncBlockEntity();
-        }
-    }
-
-    @Override
-    public boolean unsuspiciousblock$isScanned() {
-        return this.unsuspiciousblock$tracking.scan().scanned();
-    }
-
-    @Override
-    @Nullable
-    public UUID unsuspiciousblock$getScannerUuid() {
-        return this.unsuspiciousblock$tracking.scan().scanner();
+    public void unsuspiciousblock$onScanCleared() {
+        this.unsuspiciousblock$tracking.pending().discard();
+        this.unsuspiciousblock$scanInventory = null;
+        this.unsuspiciousblock$storedItem = ItemStack.EMPTY;
     }
 
     // ========== 战利品表状态接口实现 ========== //

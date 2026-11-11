@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.core.journal.tracking.event;
 
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategy;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 
 /**
  * 一次聚合战利品会话的提交事件。
@@ -11,5 +11,5 @@ import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSett
  */
 public record LootDiscoveredEvent(LootSession.Commit commit,
                                   ArchaeologyJournalState state,
-                                  LootSettlementStrategy settlementStrategy) {
+                                  LootSettlementTarget settlementTarget) {
 }

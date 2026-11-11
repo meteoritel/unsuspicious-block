@@ -47,9 +47,7 @@ public abstract class DefaultBrushableLootFillerMixin {
             LootTable lootTable, LootContext lootContext, Consumer<ItemStack> consumer,
             Operation<Void> original,
             @Share("lootrTrackingSession") LocalRef<LootrTrackingBridge.Session> sessionRef) {
-        try (var ignored = LootrTrackingBridge.openScope(sessionRef.get())) {
-            original.call(lootTable, lootContext, consumer);
-        }
+        LootrTrackingBridge.roll(sessionRef.get(), () -> original.call(lootTable, lootContext, consumer));
     }
 
     // Lootr Filter 与单物品筛选均完成后，同步表标识并提交最终库存结果

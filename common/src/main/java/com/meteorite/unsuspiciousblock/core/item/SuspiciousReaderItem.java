@@ -9,10 +9,8 @@ import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.core.sound.ModSounds;
@@ -473,13 +471,10 @@ public class SuspiciousReaderItem extends Item {
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {
-            long gameTime = level.getGameTime();
-            long dayTime = level.getDayTime();
-            LootTrackingContext context = LootTrackingContext.root(
-                    player, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
-                    BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
-            LootTrackingEvents.submit(new LootSession(context), lootItem,
-                    LootSettlementStrategies.deferred(pendingHost.unsuspiciousblock$pendingJournal()::stage));
+            LootCapture.submitFinal(new LootCapture.Source(
+                    player, lootTableName, LootSourceType.ARCHAEOLOGY, pos,
+                    BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()), level.getGameTime(), level.getDayTime()), lootItem,
+                    LootSettlementTarget.brush(pendingHost.unsuspiciousblock$pendingJournal()));
         }
 
         SealedContents.CrafterIdentity crafter = blockEntity instanceof UnsuspiciousBlockEntity sealedBlock

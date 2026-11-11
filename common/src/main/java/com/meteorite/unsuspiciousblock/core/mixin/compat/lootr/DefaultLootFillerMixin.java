@@ -45,9 +45,7 @@ public abstract class DefaultLootFillerMixin {
             ResourceKey<LootTable> tableKey, LootTable lootTable, Container inventory,
             LootParams lootParams, long seed, Operation<Void> original,
             @Share("lootrTrackingSession") LocalRef<LootrTrackingBridge.Session> sessionRef) {
-        try (var ignored = LootrTrackingBridge.openScope(sessionRef.get())) {
-            original.call(filler, provider, player, tableKey, lootTable, inventory, lootParams, seed);
-        }
+        LootrTrackingBridge.roll(sessionRef.get(), () -> original.call(filler, provider, player, tableKey, lootTable, inventory, lootParams, seed));
     }
 
     // Lootr 已填充库存后提交最终物品结果

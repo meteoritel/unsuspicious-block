@@ -110,7 +110,7 @@ public final class ArchaeologyChallengeChecker {
     // 判断原版考古战利品表（minecraft:archaeology/ 前缀）及其全部物品是否都已解锁。
     // 使用 rawCatalog（启动即完整）确定判定范围，避免渐进加载的 catalog 导致范围不稳定。
     private static boolean isFullCatalogUnlocked(ArchaeologyJournalState state) {
-        Map<ResourceLocation, TableDefinition> rawCatalog = ArchaeologyJournalServerCatalog.getRawCatalog();
+        Map<ResourceLocation, TableDefinition> rawCatalog = ArchaeologyJournalServerCatalog.staticTables();
         boolean anyVanillaTable = false;
         for (TableDefinition table : rawCatalog.values()) {
             if (!isVanillaArchaeologyTable(table.id())) {

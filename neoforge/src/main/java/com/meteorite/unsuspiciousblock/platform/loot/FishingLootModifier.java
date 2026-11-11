@@ -1,12 +1,9 @@
 package com.meteorite.unsuspiciousblock.platform.loot;
 
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ArchaeologyLootRuntimeTracker;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootSimulationScope;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
@@ -53,6 +50,7 @@ public class FishingLootModifier extends LootModifier {
     }
 
     @Override
+    @SuppressWarnings("deprecation") // GLM 子表使用 raw 入口，避免再次应用全局修改器。
     protected @NotNull ObjectArrayList<ItemStack> doApply(@NotNull ObjectArrayList<ItemStack> generatedLoot,
                                                           LootContext context) {
         ItemStack tool = context.getParamOrNull(LootContextParams.TOOL);
@@ -96,31 +94,22 @@ public class FishingLootModifier extends LootModifier {
         }
 
         BlockPos pos = BlockPos.containing(origin);
-        LootTrackingContext trackingContext = LootTrackingContext.root(
-                player, RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), LootSourceType.FISHING,
-                context.getLevel().getGameTime(), context.getLevel().getDayTime(), pos, null);
-        LootSession session = new LootSession(trackingContext);
-        List<ItemStack> captured = new ArrayList<>();
-        Consumer<ItemStack> consumer = stack -> {
-            if (!stack.isEmpty()) {
-                captured.add(stack.copy());
+        try (var capture = LootCapture.begin(new LootCapture.Source(player,
+                RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), LootSourceType.FISHING,
+                context.getLevel(), pos, null))) {
+            List<ItemStack> captured = new ArrayList<>();
+            Consumer<ItemStack> consumer = stack -> {
+                if (!stack.isEmpty()) captured.add(stack.copy());
+                generatedLoot.add(stack);
+            };
+            capture.roll(() -> { lootTable.getRandomItemsRaw(mudParams, consumer); return null; });
+            Map<String, Integer> counts = new HashMap<>();
+            for (ItemStack stack : captured) {
+                LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(
+                        RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), stack);
+                if (signature != null) counts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
             }
-            generatedLoot.add(stack);
-        };
-        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(session, trackingContext)) {
-            lootTable.getRandomItemsRaw(mudParams, consumer);
-        }
-
-        Map<String, Integer> counts = new HashMap<>();
-        for (ItemStack stack : captured) {
-            LootResultSignature signature = ArchaeologyLootRuntimeTracker.resolveSignature(
-                    trackingContext.rootTableId(), stack);
-            if (signature != null) {
-                counts.merge(signature.toStoredKey(), stack.getCount(), Integer::sum);
-            }
-        }
-        if (!counts.isEmpty()) {
-            LootTrackingEvents.submit(session, counts, LootSettlementStrategies.immediate());
+            capture.complete(counts, LootSettlementTarget.IMMEDIATE);
         }
         return generatedLoot;
     }

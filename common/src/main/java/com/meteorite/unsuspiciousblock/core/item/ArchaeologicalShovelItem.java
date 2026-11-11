@@ -6,11 +6,9 @@ import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScan
 import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -271,13 +269,10 @@ public class ArchaeologicalShovelItem extends ShovelItem {
                 && scanState instanceof PendingJournalHost pendingHost) {
             RecentLootTableService.record(sp, lootTableName);
             if (pendingHost.unsuspiciousblock$pendingJournal().current() == null) {
-                long gameTime = level.getGameTime();
-                long dayTime = level.getDayTime();
-                LootTrackingContext trackingContext = LootTrackingContext.root(
-                        sp, lootTableName, LootSourceType.ARCHAEOLOGY, gameTime, dayTime, pos,
-                        BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()));
-                LootTrackingEvents.submit(new LootSession(trackingContext), extracted,
-                        LootSettlementStrategies.deferred(pendingHost.unsuspiciousblock$pendingJournal()::stage));
+                LootCapture.submitFinal(new LootCapture.Source(
+                        sp, lootTableName, LootSourceType.ARCHAEOLOGY, pos,
+                        BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()), level.getGameTime(), level.getDayTime()), extracted,
+                        LootSettlementTarget.brush(pendingHost.unsuspiciousblock$pendingJournal()));
             }
         }
 

@@ -2,10 +2,9 @@ package com.meteorite.unsuspiciousblock.core.journal.tracking;
 
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
@@ -36,75 +35,46 @@ public final class ContainerTrackingService {
     private ContainerTrackingService() {
     }
 
-    // 为方块容器和实体容器准备统一的开箱追踪会话；未命中追踪表时返回 null
-    @Nullable
-    public static LootSession prepareContainerLootSession(ServerPlayer player,
-                                                          ResourceLocation tableId,
-                                                          ServerLevel level,
-                                                          BlockPos pos,
-                                                          @Nullable ResourceLocation sourceBlockId) {
+    // 在既有容器填充相位创建捕获句柄；不满足资格时句柄只执行生成。
+    public static CaptureHandle prepareContainerCapture(ServerPlayer player, ResourceLocation tableId,
+            ServerLevel level, BlockPos pos, @Nullable ResourceLocation sourceBlockId) {
         RecentLootTableService.record(player, tableId);
-        if (!ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
-            return null;
-        }
-
-        LootTrackingContext context = LootTrackingContext.root(
-                player, tableId, LootSourceType.LOOT_CONTAINER,
-                level.getGameTime(), level.getDayTime(), pos, sourceBlockId);
-        return new LootSession(context);
+        return LootCapture.begin(new LootCapture.Source(player, tableId, LootSourceType.LOOT_CONTAINER,
+                level, pos, sourceBlockId));
     }
 
-    // 按容器最终库存提交开箱追踪会话
-    public static void completeContainerLootSession(TrackedContainerLootState container,
-                                                    @Nullable LootSession lootSession) {
-        if (lootSession == null) {
-            return;
+    // 最终库存是权威结果，余量后续由领取路径增量结算。
+    public static void completeContainerCapture(TrackedContainerLootState container,
+            @Nullable CaptureHandle capture) {
+        if (capture == null) return;
+        try (capture) {
+            var context = capture.context();
+            if (context == null) return;
+            List<LootResultSignature> candidates = ArchaeologyLootRuntimeTracker.resolveCandidateSignatures(
+                    context.rootTableId(), container);
+            onContainerLootResolved(context.player(), container, capture,
+                    container.unsuspiciousblock$collectContainerItemCounts(candidates));
         }
-
-        ResourceLocation tableId = lootSession.rootContext().rootTableId();
-        List<LootResultSignature> candidates = ArchaeologyLootRuntimeTracker.resolveCandidateSignatures(
-                tableId, container);
-        onContainerLootResolved(lootSession.rootContext().player(), container, lootSession,
-                container.unsuspiciousblock$collectContainerItemCounts(candidates));
     }
 
-    // 容器战利品确认处理：结算旧条目（如有）→ 解锁物品 + 创建待定日志条目 + 记录追踪状态
-    // 仅第一个触发解析的玩家会创建追踪，后续玩家跳过
-    // 容器生成完成后提交聚合会话，并把待定结算状态绑定到容器
-    public static void onContainerLootResolved(ServerPlayer player,
-                                               TrackedContainerLootState container,
-                                               LootSession lootSession,
-                                               Map<String, Integer> itemCounts) {
-        ResourceLocation tableId = lootSession.rootContext().rootTableId();
+    // 首位解析玩家绑定追踪；覆盖和过期先结算原待定条目。
+    public static void onContainerLootResolved(ServerPlayer player, TrackedContainerLootState container,
+            CaptureHandle capture, Map<String, Integer> itemCounts) {
         long gameTime = player.serverLevel().getGameTime();
         long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
-
-        // 多玩家并发安全：若追踪玩家 UUID 已存在且不是当前玩家，跳过
         UUID trackedPlayerUuid = container.unsuspiciousblock$getTrackedPlayerUuid();
         if (trackedPlayerUuid != null && !trackedPlayerUuid.equals(player.getUUID())) {
-            // 超时检查：即使不是当前玩家，也要检查是否需要清理过期追踪
             if (container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
                 terminate(resolveTrackingPlayer(player, container), container, EndReason.EXPIRED, null);
             }
             return;
         }
-
-        // 超时检查：若追踪已超时，先 flush 旧条目再创建新追踪
         if (trackedPlayerUuid == null && container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
             terminate(resolveTrackingPlayer(player, container), container, EndReason.EXPIRED, null);
         } else if (container.unsuspiciousblock$pendingJournal().current() != null) {
             terminate(player, container, EndReason.OVERWRITTEN, null);
         }
-
-        LootTrackingEvents.submit(lootSession, itemCounts,
-                LootSettlementStrategies.deferred(pendingEntry -> {
-                    container.unsuspiciousblock$pendingJournal().stage(pendingEntry);
-                    container.unsuspiciousblock$setTrackedLoot(tableId, itemCounts);
-                    container.unsuspiciousblock$setTrackedPlayerUuid(player.getUUID());
-                }));
-        if (itemCounts.isEmpty()) {
-            container.unsuspiciousblock$clearAllTrackingState();
-        }
+        capture.complete(itemCounts, LootSettlementTarget.container(container));
     }
 
     // 核对容器追踪状态：清理已过期或已标记移除的追踪，并结算残留的待定日志条目

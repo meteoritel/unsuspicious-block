@@ -2,11 +2,8 @@ package com.meteorite.unsuspiciousblock.core.pan;
 
 import com.meteorite.unsuspiciousblock.core.item.PanItem;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContext;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementStrategies;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -43,18 +40,12 @@ public final class PanningLootService {
                 .withLuck(player.getLuck() + (float) toolLuck(panStack, variant))
                 .create(LootContextParamSets.BLOCK);
 
-        LootTrackingContext trackingContext = LootTrackingContext.root(
-                player, variant.lootTable().location(), LootSourceType.PANNING,
-                level.getGameTime(), level.getDayTime(), surfacePos,
-                BuiltInRegistries.BLOCK.getKey(level.getBlockState(surfacePos).getBlock()));
-        LootSession session = new LootSession(trackingContext);
-
-        List<ItemStack> generated;
-        try (LootTrackingContextHolder.Scope ignored = LootTrackingContextHolder.open(session, trackingContext)) {
-            generated = level.getServer().reloadableRegistries().getLootTable(variant.lootTable())
-                    .getRandomItems(lootParams, player.getRandom());
-        }
-        LootTrackingEvents.submit(session, generated, LootSettlementStrategies.immediate());
+        List<ItemStack> generated = LootCapture.capture(new LootCapture.Source(
+                player, variant.lootTable().location(), LootSourceType.PANNING, level, surfacePos,
+                BuiltInRegistries.BLOCK.getKey(level.getBlockState(surfacePos).getBlock())),
+                LootSettlementTarget.IMMEDIATE,
+                () -> level.getServer().reloadableRegistries().getLootTable(variant.lootTable())
+                        .getRandomItems(lootParams, player.getRandom()));
 
         for (ItemStack drop : generated) {
             if (drop.isEmpty()) {

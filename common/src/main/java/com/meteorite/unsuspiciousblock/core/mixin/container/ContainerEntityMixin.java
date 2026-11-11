@@ -6,8 +6,7 @@ import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ContainerTrackingService;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.LootTrackingContextHolder;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,7 +31,7 @@ public interface ContainerEntityMixin {
     @Inject(method = "unpackChestVehicleLootTable", at = @At("HEAD"))
     private void unsuspiciousblock$prepareLootTracking(
             Player player, CallbackInfo ci,
-            @Share("lootSession") LocalRef<LootSession> lootSession) {
+            @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         lootSession.set(null);
         ContainerEntity container = (ContainerEntity) this;
         ResourceKey<LootTable> lootTable = container.getLootTable();
@@ -43,7 +42,7 @@ public interface ContainerEntityMixin {
             return;
         }
 
-        lootSession.set(ContainerTrackingService.prepareContainerLootSession(
+        lootSession.set(ContainerTrackingService.prepareContainerCapture(
                 serverPlayer, lootTable.location(), serverLevel, entity.blockPosition(), null));
     }
 
@@ -56,22 +55,19 @@ public interface ContainerEntityMixin {
     private void unsuspiciousblock$scopeLootRoll(
             LootTable lootTable, Container container, LootParams lootParams, long seed,
             Operation<Void> original,
-            @Share("lootSession") LocalRef<LootSession> lootSession) {
-        LootSession session = lootSession.get();
-        try (LootTrackingContextHolder.Scope ignored = session == null
-                ? LootTrackingContextHolder.open(null)
-                : LootTrackingContextHolder.open(session, session.rootContext())) {
-            original.call(lootTable, container, lootParams, seed);
-        }
+            @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
+        CaptureHandle capture = lootSession.get();
+        if (capture == null) original.call(lootTable, container, lootParams, seed);
+        else capture.roll(() -> original.call(lootTable, container, lootParams, seed));
     }
 
     // 实体容器填充完成后，按最终库存创建普通容器待定追踪
     @Inject(method = "unpackChestVehicleLootTable", at = @At("RETURN"))
     private void unsuspiciousblock$completeLootTracking(
             Player player, CallbackInfo ci,
-            @Share("lootSession") LocalRef<LootSession> lootSession) {
+            @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         if ((Object) this instanceof TrackedContainerLootState trackedContainer) {
-            ContainerTrackingService.completeContainerLootSession(trackedContainer, lootSession.get());
+            ContainerTrackingService.completeContainerCapture(trackedContainer, lootSession.get());
         }
     }
 }

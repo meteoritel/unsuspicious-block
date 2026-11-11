@@ -19,7 +19,7 @@ import java.util.Deque;
  */
 public final class LootTrackingContextHolder {
     private static final ThreadLocal<Deque<Frame>> STACK =
-            ThreadLocal.withInitial(ArrayDeque::new);
+            new ThreadLocal<>();
 
     private LootTrackingContextHolder() {
     }
@@ -30,14 +30,14 @@ public final class LootTrackingContextHolder {
             return Scope.INACTIVE;
         }
         Deque<Frame> stack = STACK.get();
-        LootSession session = stack.isEmpty()
+        LootSession session = stack == null || stack.isEmpty()
                 ? new LootSession(ctx)
                 : stack.peek().session();
         return open(session, ctx);
     }
 
     // 使用指定聚合会话建立上下文作用域，供根入口在生成结束后提交同一会话
-    public static Scope open(LootSession session, LootTrackingContext ctx) {
+    public static Scope open(@Nullable LootSession session, @Nullable LootTrackingContext ctx) {
         if (session == null || ctx == null) {
             return Scope.INACTIVE;
         }
@@ -45,6 +45,10 @@ public final class LootTrackingContextHolder {
             throw new IllegalArgumentException("LootSession 与 LootTrackingContext 的根表必须一致");
         }
         Deque<Frame> stack = STACK.get();
+        if (stack == null) {
+            stack = new ArrayDeque<>();
+            STACK.set(stack);
+        }
         int previousDepth = stack.size();
         stack.push(new Frame(session, ctx));
         return new Scope(Thread.currentThread(), previousDepth);
@@ -53,13 +57,13 @@ public final class LootTrackingContextHolder {
     // 返回栈顶上下文；栈空时返回 null
     public static @Nullable LootTrackingContext current() {
         Deque<Frame> stack = STACK.get();
-        return stack.isEmpty() ? null : stack.peek().context();
+        return stack == null || stack.isEmpty() ? null : stack.peek().context();
     }
 
     // 返回当前聚合会话；栈空时返回 null
     public static @Nullable LootSession currentSession() {
         Deque<Frame> stack = STACK.get();
-        return stack.isEmpty() ? null : stack.peek().session();
+        return stack == null || stack.isEmpty() ? null : stack.peek().session();
     }
 
     /**
@@ -88,10 +92,10 @@ public final class LootTrackingContextHolder {
             }
 
             Deque<Frame> stack = STACK.get();
-            while (stack.size() > this.previousDepth) {
+            while (stack != null && stack.size() > this.previousDepth) {
                 stack.pop();
             }
-            if (stack.isEmpty()) {
+            if (stack == null || stack.isEmpty()) {
                 STACK.remove();
             }
             this.closed = true;

@@ -50,7 +50,7 @@ public final class JournalCompletionRewardChecker {
         }
         // 快照目录 keySet，避免扫描期间目录变更引发并发问题；表集合以解析态为准，
         // 不受概率模拟进度影响，否则未模拟完的表会被整张跳过而漏发奖励
-        for (ResourceLocation tableId : List.copyOf(ArchaeologyJournalServerCatalog.getRawCatalog().keySet())) {
+        for (ResourceLocation tableId : List.copyOf(ArchaeologyJournalServerCatalog.staticTables().keySet())) {
             tryReward(player, state, tableId);
         }
     }
@@ -64,7 +64,7 @@ public final class JournalCompletionRewardChecker {
 
         // 查询索引在未模拟时回退静态投影，因此判定不会因为"还没轮到这张表"而漏掉物品
         List<ItemDefinition> requiredItems =
-                ArchaeologyJournalServerCatalog.getQueryIndex().subtreeItems(tableId);
+                ArchaeologyJournalServerCatalog.queryIndex().subtreeItems(tableId);
         if (requiredItems.isEmpty()) {
             return;
         }

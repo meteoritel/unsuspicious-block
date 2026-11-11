@@ -49,7 +49,7 @@ public final class ArchaeologyLootRuntimeTracker {
         boolean changed = false;
         for (Map.Entry<ResourceLocation, Map<String, Integer>> discovery : commit.discoveredLoot().entrySet()) {
             ResourceLocation tableId = discovery.getKey();
-            if (!ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
+            if (!ArchaeologyJournalServerCatalog.tracked(tableId)) {
                 continue;
             }
             List<LootResultSignature> signatures = toSignatures(discovery.getValue());
@@ -181,7 +181,7 @@ public final class ArchaeologyLootRuntimeTracker {
                 new LinkedHashMap<>();
         LinkedHashSet<ResourceLocation> trackedTableIds = new LinkedHashSet<>();
         for (ResourceLocation tableId : tableIds) {
-            if (ArchaeologyJournalServerCatalog.isTrackedTable(tableId)) {
+            if (ArchaeologyJournalServerCatalog.tracked(tableId)) {
                 trackedTableIds.add(tableId);
                 if (acquiredSignatures != null && !acquiredSignatures.isEmpty()) {
                     acquiredByTable.put(tableId,
@@ -275,8 +275,7 @@ public final class ArchaeologyLootRuntimeTracker {
 
     @Nullable
     private static TableDefinition resolveTableDefinition(ResourceLocation tableId) {
-        TableDefinition table = ArchaeologyJournalServerCatalog.getCatalog().get(tableId);
-        return table != null ? table : ArchaeologyJournalServerCatalog.getRawTable(tableId);
+        return ArchaeologyJournalServerCatalog.displayTable(tableId);
     }
 
     static List<LootResultSignature> toSignatures(Map<String, Integer> itemCounts) {
