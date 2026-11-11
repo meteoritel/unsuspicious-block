@@ -3,6 +3,10 @@ package com.meteorite.unsuspiciousblock.core.world;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.migration.JournalDataVersion;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.MigrationVersions;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.StorageMigration;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.StorageMigration.Pending;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.StorageMigration.RecoveryPolicy;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -268,8 +272,8 @@ public final class JournalLogStorage {
             if (hasPendingFrom != hasPendingTo) {
                 throw new IllegalStateException("考古日志存储 manifest 的 pending 迁移字段不完整");
             }
-            PendingMigration pending = hasPendingFrom
-                    ? new PendingMigration(tag.getInt(TAG_PENDING_FROM_VERSION), tag.getInt(TAG_PENDING_TO_VERSION))
+            Pending pending = hasPendingFrom
+                    ? new Pending(tag.getInt(TAG_PENDING_FROM_VERSION), tag.getInt(TAG_PENDING_TO_VERSION))
                     : null;
             return new StorageManifest(committedVersion, pending, readMigrationResult(tag), false);
         }
@@ -282,7 +286,7 @@ public final class JournalLogStorage {
             Constants.LOG.warn("检测到旧格式未完成的 v1 -> v2 迁移标记，将按显式步骤从源数据重跑");
             return new StorageManifest(
                     JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
-                    new PendingMigration(
+                    new Pending(
                             JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
                             JournalDataVersion.STORAGE_VERSION_SHARDED),
                     MigrationResult.EMPTY,
@@ -291,91 +295,32 @@ public final class JournalLogStorage {
         throw new IllegalStateException("无法确定旧格式 manifest 的已提交存储版本: " + legacyVersion);
     }
 
-    // committedVersion 始终表示最后完整提交版本；pending 只标识确切的待恢复步骤
     private void migrateStorage(StorageManifest manifest) throws IOException {
-        validateStorageManifest(manifest);
-        int committedVersion = manifest.committedVersion();
-        PendingMigration pending = manifest.pending();
-        MigrationResult lastResult = manifest.lastResult();
-        boolean manifestNeedsRewrite = manifest.legacyFormat();
+        StorageMigration<MigrationResult> migration = new StorageMigration<>(
+                new MigrationVersions("考古日志存储", JournalDataVersion.LEGACY_STORAGE_VERSION,
+                        JournalDataVersion.CURRENT_STORAGE_VERSION),
+                List.of(new StorageMigration.Step<>(
+                        JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
+                        JournalDataVersion.STORAGE_VERSION_SHARDED,
+                        RecoveryPolicy.RESTART_FROM_SOURCE,
+                        this::copyStorageV1ToV2,
+                        this::archiveStorageV1AfterV2Commit)));
+        StorageMigration.State<MigrationResult> migrated = migration.migrate(
+                new StorageMigration.State<>(manifest.committedVersion(), manifest.pending(), manifest.lastResult()),
+                new StorageMigration.Checkpoint<>() {
+                    @Override
+                    public void writePending(Pending pending) throws IOException {
+                        writePendingManifest(pending.fromVersion(), pending);
+                    }
 
-        // 恢复“已提交但清理未完成”的迁移；清理动作必须可重复执行
-        cleanupCommittedMigrations(committedVersion);
-        while (committedVersion < JournalDataVersion.CURRENT_STORAGE_VERSION) {
-            StorageMigrationStep step = storageMigrationStepFrom(committedVersion);
-            boolean recovering = pending != null;
-            if (recovering) {
-                validatePendingStep(pending, step);
-                if (step.recoveryPolicy() == RecoveryPolicy.ABORT_IF_INTERRUPTED) {
-                    throw new IllegalStateException("考古日志存储迁移 v" + step.fromVersion()
-                            + " -> v" + step.toVersion() + " 不支持自动重放，需要人工恢复");
-                }
-                Constants.LOG.warn("恢复中断的考古日志存储迁移: v{} -> v{}，策略={}",
-                        step.fromVersion(), step.toVersion(), step.recoveryPolicy());
-            } else {
-                pending = new PendingMigration(step.fromVersion(), step.toVersion());
-                writePendingManifest(committedVersion, pending);
-            }
-
-            lastResult = step.action().run();
-            committedVersion = step.toVersion();
-            pending = null;
-            writeCommittedManifest(committedVersion, lastResult);
-            step.cleanup().run();
-            manifestNeedsRewrite = false;
-            Constants.LOG.info("考古日志存储迁移完成: v{} -> v{}, {} 名玩家, {} 张表, {} 条记录",
-                    step.fromVersion(), step.toVersion(), lastResult.players(),
-                    lastResult.tables(), lastResult.entries());
+                    @Override
+                    public void writeCommitted(int version, MigrationResult result) throws IOException {
+                        writeCommittedManifest(version, result);
+                    }
+                });
+        if (manifest.legacyFormat() && manifest.committedVersion() == migrated.committedVersion()) {
+            writeCommittedManifest(migrated.committedVersion(), migrated.result());
         }
-
-        if (manifestNeedsRewrite) {
-            writeCommittedManifest(committedVersion, lastResult);
-        }
-    }
-
-    private void validateStorageManifest(StorageManifest manifest) {
-        int committedVersion = manifest.committedVersion();
-        if (committedVersion < JournalDataVersion.LEGACY_STORAGE_VERSION) {
-            throw new IllegalStateException("考古日志存储已提交版本无效: " + committedVersion);
-        }
-        if (committedVersion > JournalDataVersion.CURRENT_STORAGE_VERSION) {
-            throw new IllegalStateException("考古日志存储版本过新: " + committedVersion);
-        }
-        PendingMigration pending = manifest.pending();
-        if (pending == null) {
-            return;
-        }
-        if (pending.fromVersion() != committedVersion) {
-            throw new IllegalStateException("考古日志 pending 迁移起点与已提交版本不一致");
-        }
-        if (pending.toVersion() != pending.fromVersion() + 1) {
-            throw new IllegalStateException("考古日志 pending 迁移必须是连续版本: v"
-                    + pending.fromVersion() + " -> v" + pending.toVersion());
-        }
-        if (pending.toVersion() > JournalDataVersion.CURRENT_STORAGE_VERSION) {
-            throw new IllegalStateException("考古日志 pending 迁移目标版本过新: " + pending.toVersion());
-        }
-    }
-
-    private static void validatePendingStep(PendingMigration pending, StorageMigrationStep step) {
-        if (pending.fromVersion() != step.fromVersion() || pending.toVersion() != step.toVersion()) {
-            throw new IllegalStateException("考古日志 pending 迁移与已注册步骤不匹配: v"
-                    + pending.fromVersion() + " -> v" + pending.toVersion());
-        }
-    }
-
-    // 新增版本时必须显式登记来源、目标、恢复策略、迁移动作和提交后清理动作
-    private StorageMigrationStep storageMigrationStepFrom(int version) {
-        return switch (version) {
-            case JournalDataVersion.STORAGE_VERSION_SINGLE_FILE -> new StorageMigrationStep(
-                    JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
-                    JournalDataVersion.STORAGE_VERSION_SHARDED,
-                    RecoveryPolicy.RESTART_FROM_SOURCE,
-                    this::copyStorageV1ToV2,
-                    this::archiveStorageV1AfterV2Commit);
-            default -> throw new IllegalStateException(
-                    "考古日志存储缺少 v" + version + " -> v" + (version + 1) + " 迁移步骤");
-        };
     }
 
     // v1 源文件在提交前保持不变，目标文件名确定，因此中断后可以从源数据重新生成
@@ -412,21 +357,7 @@ public final class JournalLogStorage {
         Files.move(legacyFile, backup, StandardCopyOption.REPLACE_EXISTING);
     }
 
-    // 提交成功但归档中断时，下次启动继续执行幂等清理
-    private void cleanupCommittedMigrations(int committedVersion) throws IOException {
-        int fromVersion = JournalDataVersion.LEGACY_STORAGE_VERSION;
-        while (fromVersion < committedVersion) {
-            StorageMigrationStep step = storageMigrationStepFrom(fromVersion);
-            if (step.toVersion() > committedVersion) {
-                throw new IllegalStateException("考古日志存储清理步骤超过已提交版本: v"
-                        + step.fromVersion() + " -> v" + step.toVersion());
-            }
-            step.cleanup().run();
-            fromVersion = step.toVersion();
-        }
-    }
-
-    private void writePendingManifest(int committedVersion, PendingMigration pending) throws IOException {
+    private void writePendingManifest(int committedVersion, Pending pending) throws IOException {
         CompoundTag manifest = new CompoundTag();
         putCommittedVersion(manifest, committedVersion);
         manifest.putInt(TAG_PENDING_FROM_VERSION, pending.fromVersion());
@@ -726,47 +657,6 @@ public final class JournalLogStorage {
     }
 
     /**
-     * 存储迁移中断后的恢复策略。
-     */
-    private enum RecoveryPolicy {
-        RESTART_FROM_SOURCE,
-        ABORT_IF_INTERRUPTED
-    }
-
-    /**
-     * 执行一个存储布局迁移步骤。
-     */
-    @FunctionalInterface
-    private interface MigrationAction {
-        MigrationResult run() throws IOException;
-    }
-
-    /**
-     * 清理已经提交的迁移源数据；实现必须可重复执行。
-     */
-    @FunctionalInterface
-    private interface MigrationCleanup {
-        void run() throws IOException;
-    }
-
-    /**
-     * 一个显式登记的连续存储迁移步骤。
-     */
-    private record StorageMigrationStep(
-            int fromVersion,
-            int toVersion,
-            RecoveryPolicy recoveryPolicy,
-            MigrationAction action,
-            MigrationCleanup cleanup) {
-    }
-
-    /**
-     * manifest 中尚未提交的确切迁移步骤。
-     */
-    private record PendingMigration(int fromVersion, int toVersion) {
-    }
-
-    /**
      * 最近一次迁移写入的数据统计。
      */
     private record MigrationResult(int players, int tables, int entries) {
@@ -778,7 +668,7 @@ public final class JournalLogStorage {
      */
     private record StorageManifest(
             int committedVersion,
-            @Nullable PendingMigration pending,
+            @Nullable Pending pending,
             MigrationResult lastResult,
             boolean legacyFormat) {
         private static StorageManifest initial() {

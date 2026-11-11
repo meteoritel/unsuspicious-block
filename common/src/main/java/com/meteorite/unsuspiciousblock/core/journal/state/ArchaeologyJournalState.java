@@ -307,8 +307,8 @@ public final class ArchaeologyJournalState {
 
     // 从 CompoundTag 反序列化恢复状态
     public void readFrom(CompoundTag tag) {
-        this.clear();
         JournalNbtMigrator.migrateJournalState(tag);
+        this.clear();
         this.revision = tag.contains(REVISION_TAG, Tag.TAG_LONG)
                 ? Math.max(0L, tag.getLong(REVISION_TAG)) : 0L;
         this.recentSequence = tag.contains(RECENT_SEQUENCE_TAG, Tag.TAG_LONG)

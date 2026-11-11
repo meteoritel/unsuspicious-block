@@ -20,6 +20,7 @@
 | 新增物品 / 方块 / 方块实体 / 实体 / 配方 / 效果 / 声音 | [注册架构](foundation/registration.md) 的「扩展点：新增注册内容」一节；子系统细节见下方地图 |
 | 新增网络包 | [网络与同步](foundation/network.md) 的「扩展点：新增 payload」一节 |
 | 新增平台能力（SPI 接口） | [平台抽象](foundation/platform-spi.md) 的「扩展点：新增 SPI 接口」一节 |
+| 修改本地存档格式 / 添加数据迁移 | [本地持久化与数据迁移](foundation/persistence.md) |
 | 新增 / 修改 Mixin | [Mixin 总览](foundation/mixin.md) |
 | 调整可调参数 / 接入第三方 mod | [配置与第三方联动](foundation/config-and-integrations.md) |
 | 新增 / 修改物品 tooltip、Jade 文本、GUI 内文本 | [文本格式规范](foundation/text-format.md) |

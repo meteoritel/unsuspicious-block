@@ -196,8 +196,8 @@ public final class ArchaeologyJournalLogState {
 
     // 从 CompoundTag 反序列化恢复日志状态
     public void readFrom(CompoundTag tag) {
-        this.clear();
         JournalNbtMigrator.migrateJournalLogState(tag);
+        this.clear();
         if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
             return;
         }

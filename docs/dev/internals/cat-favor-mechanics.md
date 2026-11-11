@@ -89,6 +89,6 @@ mixin 通过 `hasActiveDeterrence(player)` / `hasLightStep(player)` 等静态方
 
 **瞬态字段**（不序列化，重生后重置）：`abilityMask`、`hadHeroEffect`、`nightVisionCheckCooldown`、`pendingFeedReward`、`recentlyHitCatUuid` / `GameTime`、`activeMessengerUuid` / `activeSwordsmanUuid`。
 
-**数据迁移**：`CURRENT_DATA_VERSION = 2`，`readLegacy` 处理旧 `favor` 格式（冷却清空，旧压力板偏好映射为轻步总开关）。
+**数据迁移**：`CatFavorState` 向通用 `NbtMigration` 登记字段转换，旧 `favor` 格式清空冷却，并把旧压力板偏好映射为轻步总开关。现有整数版本保留当前字段的解析方式，未来版本在清空状态前拒绝；转换失败保留输入 NBT。版本原点与新增迁移步骤见[本地持久化与数据迁移](../foundation/persistence.md)。
 
 **重生保留**：`copyFrom` 复制持久化字段，不复制瞬态字段。关系与偏好跨重生保留。

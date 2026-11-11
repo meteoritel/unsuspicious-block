@@ -184,6 +184,7 @@ tryGhostGift(owner, cat)   // 引礼者 cat 触发晨礼
 
 ## 11. 相关文档
 
+- [本地持久化与数据迁移](../foundation/persistence.md) —— 版本原点、通用迁移执行器与格式保持约束
 - [猫族关系机制细节](../internals/cat-favor-mechanics.md) —— 羁绊行为数值、被动能力评估、状态持久化字段
 - [实体与 AI](entities-world.md) —— 灵体猫实体、AI 与猫之手结构
 - [方块与物品](blocks-items.md) —— 猫之手物品与便携容器检测

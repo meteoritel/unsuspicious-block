@@ -3,15 +3,15 @@ package com.meteorite.unsuspiciousblock.core.journal.migration;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootCounts;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.MigrationVersions;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.NbtMigration;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Map;
-import java.util.function.IntUnaryOperator;
+import java.util.function.Consumer;
 
 /**
  * 考古日志 NBT schema 迁移器。
@@ -20,8 +20,6 @@ import java.util.function.IntUnaryOperator;
  * 当前格式，避免未来升级时在多个 {@code fromTag()} 中重复维护兼容分支。
  */
 public final class JournalNbtMigrator {
-    private static final Logger LOGGER = LoggerFactory.getLogger(JournalNbtMigrator.class);
-
     private static final String TABLES_TAG = "tables";
     private static final String ENTRIES_TAG = "entries";
     private static final String FIRST_UNLOCK_LOOT_SOURCE_TAG = "first_unlock_loot_source";
@@ -41,101 +39,59 @@ public final class JournalNbtMigrator {
     private static final String LIFETIME_ENTRY_COUNT_TAG = "lifetime_entry_count";
     private static final String RETENTION_LIMIT_TAG = "retention_limit";
 
+    private static final NbtMigration JOURNAL_STATE = migration("ArchaeologyJournalState",
+            Map.of(0, tag -> {}, 1, tag -> {}));
+    private static final NbtMigration JOURNAL_LOG_STATE = migration("ArchaeologyJournalLogState", Map.of(
+            0, tag -> migrateTables(tag, JournalNbtMigrator::migrateTableLogHistoryV0ToV1,
+                    JournalDataVersion.NBT_VERSION_LOOT_SOURCE),
+            1, tag -> migrateTables(tag, JournalNbtMigrator::migrateTableLogHistoryV1ToV2,
+                    JournalDataVersion.NBT_VERSION_LOG_RETENTION)));
+    private static final NbtMigration TABLE_LOG_HISTORY = migration("TableLogHistory", Map.of(
+            0, JournalNbtMigrator::migrateTableLogHistoryV0ToV1,
+            1, JournalNbtMigrator::migrateTableLogHistoryV1ToV2));
+    private static final NbtMigration EXCAVATION_LOG_ENTRY = migration("ExcavationLogEntry", Map.of(
+            0, JournalNbtMigrator::migrateExcavationLogEntryV0ToV1,
+            1, tag -> {}));
+
     private JournalNbtMigrator() {
     }
 
-    // 迁移玩家考古目录进度；v0→v1 没有字段变化，只补齐版本标记
+    /** 迁移玩家目录进度，旧版本没有字段变化，沿共享 NBT 版本轴补齐标记。 */
     public static void migrateJournalState(CompoundTag tag) {
-        migrateToCurrent(tag, "ArchaeologyJournalState", version -> switch (version) {
-            case 0 -> JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
-            case 1 -> JournalDataVersion.NBT_VERSION_LOG_RETENTION;
-            default -> missingMigration("ArchaeologyJournalState", version);
-        });
+        JOURNAL_STATE.migrate(tag);
     }
 
-    // 迁移完整日志状态及其所有表、条目
+    /** 迁移完整日志状态；失败时保留输入 NBT。 */
     public static void migrateJournalLogState(CompoundTag tag) {
-        migrateToCurrent(tag, "ArchaeologyJournalLogState", version -> switch (version) {
-            case 0 -> {
-                if (tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
-                    CompoundTag tables = tag.getCompound(TABLES_TAG);
-                    for (String tableId : tables.getAllKeys()) {
-                        CompoundTag table = tables.getCompound(tableId);
-                        migrateTableLogHistoryV0ToV1(table);
-                        table.putInt(JournalDataVersion.NBT_VERSION_TAG,
-                                JournalDataVersion.NBT_VERSION_LOOT_SOURCE);
-                    }
-                }
-                yield JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
-            }
-            case 1 -> {
-                if (tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
-                    CompoundTag tables = tag.getCompound(TABLES_TAG);
-                    for (String tableId : tables.getAllKeys()) {
-                        CompoundTag table = tables.getCompound(tableId);
-                        migrateTableLogHistoryV1ToV2(table);
-                        table.putInt(JournalDataVersion.NBT_VERSION_TAG,
-                                JournalDataVersion.NBT_VERSION_LOG_RETENTION);
-                    }
-                }
-                yield JournalDataVersion.NBT_VERSION_LOG_RETENTION;
-            }
-            default -> missingMigration("ArchaeologyJournalLogState", version);
-        });
+        JOURNAL_LOG_STATE.migrate(tag);
     }
 
-    // 迁移单张战利品表日志及其所有条目
+    /** 迁移单表日志；旧字段规则与完整日志使用同一实现。 */
     public static void migrateTableLogHistory(CompoundTag tag) {
-        migrateToCurrent(tag, "TableLogHistory", version -> switch (version) {
-            case 0 -> {
-                migrateTableLogHistoryV0ToV1(tag);
-                yield JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
-            }
-            case 1 -> {
-                migrateTableLogHistoryV1ToV2(tag);
-                yield JournalDataVersion.NBT_VERSION_LOG_RETENTION;
-            }
-            default -> missingMigration("TableLogHistory", version);
-        });
+        TABLE_LOG_HISTORY.migrate(tag);
     }
 
-    // 迁移单条日志；条目从 v1 起也独立携带版本，便于未来单独演进
+    /** 迁移独立日志条目，沿用条目的现有版本标记。 */
     public static void migrateExcavationLogEntry(CompoundTag tag) {
-        migrateToCurrent(tag, "ExcavationLogEntry", version -> switch (version) {
-            case 0 -> {
-                migrateExcavationLogEntryV0ToV1(tag);
-                yield JournalDataVersion.NBT_VERSION_LOOT_SOURCE;
-            }
-            case 1 -> JournalDataVersion.NBT_VERSION_LOG_RETENTION;
-            default -> missingMigration("ExcavationLogEntry", version);
-        });
+        EXCAVATION_LOG_ENTRY.migrate(tag);
     }
 
-    private static void migrateToCurrent(CompoundTag tag, String dataClass, IntUnaryOperator migrationStep) {
-        int version = JournalDataVersion.readNbtVersion(tag);
-        if (version < JournalDataVersion.LEGACY_NBT_VERSION) {
-            throw new IllegalArgumentException(dataClass + " 数据版本无效: " + version);
-        }
-        if (version > JournalDataVersion.CURRENT_NBT_VERSION) {
-            throw new IllegalArgumentException(dataClass + " 数据版本过新: " + version);
-        }
-
-        int originalVersion = version;
-        while (version < JournalDataVersion.CURRENT_NBT_VERSION) {
-            int nextVersion = migrationStep.applyAsInt(version);
-            if (nextVersion != version + 1) {
-                throw new IllegalStateException(dataClass + " 迁移链不连续: " + version + " -> " + nextVersion);
-            }
-            version = nextVersion;
-            tag.putInt(JournalDataVersion.NBT_VERSION_TAG, version);
-        }
-        if (originalVersion != version) {
-            LOGGER.debug("迁移 {} 数据: {} -> {}", dataClass, originalVersion, version);
-        }
+    private static NbtMigration migration(String name, Map<Integer, Consumer<CompoundTag>> steps) {
+        return new NbtMigration(new MigrationVersions(name,
+                JournalDataVersion.LEGACY_NBT_VERSION, JournalDataVersion.CURRENT_NBT_VERSION),
+                JournalDataVersion.NBT_VERSION_TAG, steps);
     }
 
-    private static int missingMigration(String dataClass, int version) {
-        throw new IllegalStateException(dataClass + " 缺少 v" + version + " -> v" + (version + 1) + " 迁移步骤");
+    private static void migrateTables(CompoundTag tag, Consumer<CompoundTag> migration, int version) {
+        if (!tag.contains(TABLES_TAG, Tag.TAG_COMPOUND)) {
+            return;
+        }
+        CompoundTag tables = tag.getCompound(TABLES_TAG);
+        for (String tableId : tables.getAllKeys()) {
+            CompoundTag table = tables.getCompound(tableId);
+            migration.accept(table);
+            table.putInt(JournalDataVersion.NBT_VERSION_TAG, version);
+        }
     }
 
     private static void migrateTableLogHistoryV0ToV1(CompoundTag tag) {

@@ -39,10 +39,12 @@
 - **NBT schema 版本**：描述字段与嵌套结构，当前为 v2；缺少 `data_version` 视为 v0。
 - **存储布局版本**：描述单文件或分片目录结构，当前为 v2。
 
-所有旧 NBT 字段名、默认值和逐级迁移步骤**只能添加到 `JournalNbtMigrator`**。迁移必须严格按 `vN -> vN+1` 连续执行；遇到高于当前版本的数据时**拒绝降级读取**。新增版本时先提高 `JournalDataVersion.CURRENT_NBT_VERSION`，再补齐每种数据类型对应的迁移步骤。状态类的 `readFrom` / `fromTag` 不得重新加入旧字段回退分支。
+所有旧 NBT 字段名、默认值和逐级迁移步骤统一登记在 `JournalNbtMigrator`，使用底层 `NbtMigration` 执行。迁移严格按 `vN -> vN+1` 连续执行；高于当前版本的数据在转换前拒绝。旧 NBT 在副本上转换，整条链成功后才替换输入。状态类的 `readFrom` / `fromTag` 只消费当前字段。
+
+字段或编码实际变化时，推进对应的 `JournalDataVersion` 并补齐迁移链；类移动、提交逻辑收敛和生命周期重排保持版本与磁盘格式，包括 index 的 `file` 字段。跨领域版本原点与接入步骤见[本地持久化与数据迁移](../foundation/persistence.md)。
 
 存储布局 manifest 使用显式事务语义：`committed_storage_version` 始终是最后完整提交的版本，`pending_from_version` / `pending_to_version` 仅表示已开始但尚未提交的确切一步。启动时必须验证 pending 起点等于 committed、目标是下一连续版本且不高于当前版本；语义冲突会**阻止启动**，不得再通过版本号减一猜测迁移阶段。物理损坏、无法解压的 manifest 才允许按已知源数据重建。
 
-每个存储布局迁移步骤都必须登记来源版本、目标版本、恢复策略、迁移动作和提交后清理动作。只有源数据在提交前保持不变、目标写入可重复覆盖的步骤才能用 `RESTART_FROM_SOURCE`；非幂等步骤必须用 `ABORT_IF_INTERRUPTED`，中断后停止自动迁移并要求人工恢复。提交后的源数据清理必须幂等，以便服务器在"版本已提交但清理未完成"时安全续做。兼容字段 `storage_version` / `migration_complete` 仍会写入，但只向旧版表示最后已提交版本，不参与新版恢复决策。
+`JournalLogStorage` 向底层 `StorageMigration` 登记来源版本、目标版本、恢复策略、迁移动作和提交后清理动作，并提供保持原编码的 checkpoint 写入。只有源数据在提交前保持不变、目标写入可重复覆盖的步骤才能用 `RESTART_FROM_SOURCE`；非幂等步骤使用 `ABORT_IF_INTERRUPTED`，中断后停止自动迁移并要求人工恢复。提交后的源数据清理必须幂等，以便服务器在"版本已提交但清理未完成"时安全续做。兼容字段 `storage_version` / `migration_complete` 仍会写入，但只向旧版表示最后已提交版本，不参与新版恢复决策。
 
 `JournalPlayerDataService` 是生命周期统一入口：服务端启停和 tick、玩家登录/退出/重生都由它协调。登录时先恢复日志分片，再由 `JournalDataMigrationManager` 依次提交旧玩家日志并迁移目录签名，最后统一下发两类玩家数据。**源数据只有在目标数据完整持久化后才允许清理**，世界级旧单文件则保留 `.bak` 备份。

@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.cat.state;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatFavorAction;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.MigrationVersions;
+import com.meteorite.unsuspiciousblock.core.persistence.migration.NbtMigration;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
@@ -28,6 +30,10 @@ public final class CatFavorState {
 
     private static final String LEGACY_FAVOR_TAG = "favor";
     private static final String LEGACY_LIGHT_STEP_PRESSURE_PREVENTED_TAG = "light_step_pressure_prevented";
+
+    private static final NbtMigration MIGRATION = new NbtMigration(
+            new MigrationVersions("CatFavorState", 0, CURRENT_DATA_VERSION), DATA_VERSION_TAG,
+            Map.of(0, CatFavorState::migrateLegacy, 1, tag -> {}));
 
     private boolean relationshipEstablished;
     private int catBond;
@@ -316,13 +322,10 @@ public final class CatFavorState {
         return tag;
     }
 
-    // 从 NBT 反序列化，并在缺少数据版本时执行旧格式迁移。
+    /** 从当前或受支持的旧 NBT 恢复状态；版本校验失败时保留原状态。 */
     public void readFrom(CompoundTag tag) {
+        MIGRATION.migrate(tag);
         this.clear();
-        if (!tag.contains(DATA_VERSION_TAG, Tag.TAG_INT)) {
-            this.readLegacy(tag);
-            return;
-        }
         this.relationshipEstablished = tag.getBoolean(RELATIONSHIP_ESTABLISHED_TAG);
         this.catBond = Math.max(MIN_FAVOR, Math.min(MAX_FAVOR, tag.getInt(CAT_BOND_TAG)));
         if (this.catBond > MIN_FAVOR) {
@@ -348,18 +351,23 @@ public final class CatFavorState {
         }
     }
 
-    // 迁移旧 favor 格式：冷却清空，旧压力板偏好映射为整个轻步开关。
-    private void readLegacy(CompoundTag tag) {
-        this.catBond = Math.max(MIN_FAVOR, Math.min(MAX_FAVOR, tag.getInt(LEGACY_FAVOR_TAG)));
-        this.relationshipEstablished = this.catBond > MIN_FAVOR;
-        this.deterrenceDisabled = tag.getBoolean(DETERRENCE_DISABLED_TAG);
-        if (this.catBond == MAX_FAVOR && tag.contains(NINE_LIVES_COUNT_TAG, Tag.TAG_INT)) {
-            this.nineLivesCount = Math.max(0, Math.min(9, tag.getInt(NINE_LIVES_COUNT_TAG)));
+    // 旧读取规则以版本标记是否存在区分 favor 格式；已有整数标记的数据沿用当前字段。
+    private static void migrateLegacy(CompoundTag tag) {
+        if (tag.contains(DATA_VERSION_TAG, Tag.TAG_INT)) {
+            return;
         }
-        this.initialBestFriendLifeGranted = this.catBond == MAX_FAVOR;
-        if (tag.contains(LEGACY_LIGHT_STEP_PRESSURE_PREVENTED_TAG, Tag.TAG_BYTE)) {
-            this.lightStepDisabled = !tag.getBoolean(LEGACY_LIGHT_STEP_PRESSURE_PREVENTED_TAG);
-        }
+        int bond = Math.clamp(tag.getInt(LEGACY_FAVOR_TAG), MIN_FAVOR, MAX_FAVOR);
+        tag.putInt(CAT_BOND_TAG, bond);
+        tag.putBoolean(RELATIONSHIP_ESTABLISHED_TAG, bond > MIN_FAVOR);
+        tag.putInt(NINE_LIVES_COUNT_TAG, bond == MAX_FAVOR && tag.contains(NINE_LIVES_COUNT_TAG, Tag.TAG_INT)
+                ? Math.clamp(tag.getInt(NINE_LIVES_COUNT_TAG), 0, 9) : 0);
+        tag.putBoolean(INITIAL_BEST_FRIEND_LIFE_GRANTED_TAG, bond == MAX_FAVOR);
+        tag.putBoolean(LIGHT_STEP_DISABLED_TAG,
+                tag.contains(LEGACY_LIGHT_STEP_PRESSURE_PREVENTED_TAG, Tag.TAG_BYTE)
+                        && !tag.getBoolean(LEGACY_LIGHT_STEP_PRESSURE_PREVENTED_TAG));
+        tag.remove(COOLDOWNS_TAG);
+        tag.remove(LEGACY_FAVOR_TAG);
+        tag.remove(LEGACY_LIGHT_STEP_PRESSURE_PREVENTED_TAG);
     }
 
     // 安全解析行为枚举（忽略未知/已废弃的键）
