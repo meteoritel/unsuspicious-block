@@ -82,7 +82,7 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | 容器分解（铁砧/砂轮/附魔台） | `unsuspiciousblock.container.*`（保持既有前缀不变） |
 | Jade 专属 | `jade.unsuspiciousblock.<subject>.<seg>` |
 | 封存信息（物品 + Jade 共用） | `unsuspiciousblock.sealed.<seg>` |
-| GUI 内文本（自绘文本 + hover tooltip） | `screen.unsuspiciousblock.<screen>.<seg>`（追认现状；GUI 内 hover tooltip 同属所在屏幕，不另设前缀） |
+| GUI 内文本（自绘文本 + hover tooltip） | `screen.unsuspiciousblock.<screen>.<seg>`（GUI 内 hover tooltip 同属所在屏幕，不另设前缀） |
 
 约束：
 
@@ -128,7 +128,7 @@ GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等�
 | 2 | 羊皮纸 GUI（考古笔记书页类界面） | kit `UiTextScheme.PARCHMENT`；专属语义取 [`JournalTextColors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalTextColors.java) |
 | 3 | 暗色 GUI（战利品表管理等） | kit `UiTextScheme.DARK` |
 
-`UiTextScheme` 提供 title、body、label、hint、positive、negative、accent，具体值以所依赖库源码为准。`JournalTextColors` 提供 NAME 与 SEVERE，Dark 按共同语义取色。`UiSurfaceStyle.withText(scheme)` 只把 body、label、hint 映射到表面的常态、次要和禁用文字，其他表面槽位由主题维护。
+`UiTextScheme` 提供 `title`、`body`、`label`、`hint`、`positive`、`negative` 与 `accent` 槽位（具体色值以 UI Kit 源码为准）；`JournalTextColors` 补充书页专属的 `NAME` 与 `SEVERE`；`UiSurfaceStyle.withText(scheme)` 将 `body`、`label`、`hint` 映射为表面常态、次要与禁用文字色，其余表面槽位由主题维护。
 
 羊皮纸无阴影文字使用适合浅底的预设。概率条件、运行时条件和未知状态的业务色由 `ItemGridPanel` 配方维护；新增自绘文本时按实际底色与阴影核对可读性。
 

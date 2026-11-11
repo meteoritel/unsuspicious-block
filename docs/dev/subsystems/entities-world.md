@@ -1,196 +1,135 @@
 # 实体与 AI
 
-> `core/entity/` 与 `core/world/` 包中实体侧内容的架构：猫国灵体猫的通用基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪，以及猫之手结构的世界生成。
-> 本文件是这些内容的唯一权威。淘洗点实体 `ShimmerEntity` 属淘洗玩法（见 [淘洗系统](panning.md)）；`core/world/` 包中属考古笔记/战利品系统的持久化类在本文只作包位置索引。
+> `core/entity/` 与 `core/world/` 包的实体架构：猫国灵体基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪及猫之手结构。
+> 本文件是上述实体的权威入口。淘洗点实体 `ShimmerEntity` 归属[淘洗系统](panning.md)；`core/world/` 下属笔记与战利品的持久化类仅在此作包索引，机制权威见对应子系统文档。
 
 ## 1. 代码地图
 
 | 层 | 位置 |
 |---|---|
-| 灵体基类与职业 | `core/entity/SpiritCat.java`（继承原版 `Cat`）、`core/entity/MessengerCat.java`、`core/entity/SwordsmanCat.java`、`core/entity/MerchantCat.java` |
-| 其他实体 | `core/entity/LanternPet.java`（独立宠物）、`core/entity/WaterShimmerEntity.java` / `core/entity/GlimmerEntity.java` / `core/entity/ShimmerEntity.java`（淘洗点，见 [淘洗系统](panning.md)） |
-| 灵体 AI | `core/entity/ai/spiritcat/`：`SpiritRunMode`、`SpiritCatRole`、`SpiritMovementState`、`SpiritFlightController`、各职业 `*Phase`、`MessengerCatBehavior` / `MorningGiftBehavior` / `MessengerCatGiftGoal` / `MessengerCatPositioning` |
+| 灵体基类与职业 | `core/entity/SpiritCat.java`（继承原版 `Cat`）、`MessengerCat.java`、`SwordsmanCat.java`、`MerchantCat.java` |
+| 其他实体 | `core/entity/LanternPet.java`（独立宠物）；`WaterShimmerEntity` / `GlimmerEntity` / `ShimmerEntity`（见[淘洗系统](panning.md)） |
+| 灵体 AI | `core/entity/ai/spiritcat/`：`SpiritRunMode`、`SpiritCatRole`、`SpiritMovementState`、`SpiritFlightController`、各职业 `*Phase`、`MessengerCatBehavior`、`MorningGiftBehavior`、`MessengerCatGiftGoal`、`MessengerCatPositioning` |
 | 宠物 AI | `core/entity/ai/lantern/`：`LanternPetFollowSoulCarrierGoal`、`LanternPetWanderGoal` |
-| 注册 | `core/entity/ModEntities.java`（`REGISTRY_MANIFEST` 是唯一清单，见 [注册架构](../foundation/registration.md)）、`core/entity/EntityRegistrar.java` |
-| 骨块追踪 | `core/world/NaturalBoneBlockTracker.java`（静态门面）、`platform/services/IBoneBlockTracker.java`（SPI） |
-| 世界生成 | `data/unsuspiciousblock/structure/hand_of_cat_cache.nbt`、`data/unsuspiciousblock/worldgen/{structure,template_pool}/hand_of_cat_cache.json`、`data/unsuspiciousblock/tags/worldgen/biome/has_structure/` |
-| 客户端 | `client/renderer/`（`ModEntityRenderers` / `ModModelLayers` 清单、各职业渲染器、`ShimmerRenderer` / `ShimmerSurfaceRenderer`）、`client/model/MessengerCatClothesModel`、`client/renderer/layer/`（装饰层） |
-| 网络 | 无专属 payload（灵体不保存、不跨会话同步） |
-| Mixin | `StructureTemplateMixin`（结构生成时扫描骨块）；Fabric 骨块追踪用 `platform/mixin/chunk/ChunkAccessMixin` / `platform/mixin/chunk/ChunkSerializerMixin` / `platform/mixin/chunk/LevelChunkMixin` |
-| 平台差异 | 骨块追踪：Fabric 用 mixin + chunk 事件，NeoForge 用 `DataAttachment`（`NeoForgeBoneBlockTracker.ATTACHMENT_TYPES` 注册到 modEventBus） |
+| 注册 | `core/entity/ModEntities.java`（`REGISTRY_MANIFEST` 清单见[注册架构](../foundation/registration.md)）、`core/entity/EntityRegistrar.java` |
+| 自然骨块追踪 | `core/world/NaturalBoneBlockTracker.java`（静态门面）、`platform/services/IBoneBlockTracker.java`（SPI） |
+| 世界结构与生成 | `data/unsuspiciousblock/structure/hand_of_cat_cache.nbt`、`worldgen/{structure,template_pool}/hand_of_cat_cache.json`、`tags/worldgen/biome/has_structure/` |
+| 客户端渲染 | `client/renderer/`（`ModEntityRenderers` / `ModModelLayers`、各职业渲染器、`ShimmerSurfaceRenderer`）、`client/model/MessengerCatClothesModel`、`client/renderer/layer/` |
+| 网络 | 无专属 Payload（灵体不保存、不跨会话同步，运行态走 `SynchedEntityData`） |
+| Mixin | `StructureTemplateMixin`（结构生成骨块扫描）；Fabric 骨块追踪使用 `platform/mixin/chunk/{ChunkAccess,ChunkSerializer,LevelChunk}Mixin` |
+| 平台差异 | 骨块追踪：Fabric 使用 Mixin + 区块事件；NeoForge 使用 `DataAttachment`（`NeoForgeBoneBlockTracker`） |
 
-## 2. 数据流
+## 2. 核心数据流
 
-**灵体猫（召唤 → 职责 → 消散）**
+### 2.1 猫国灵体生命周期（召唤 → 职责 → 消散）
 
+```mermaid
+flowchart TD
+    Call["CatGiftService.tryGhostGift / SwordsmanCatService.summonOrRefresh / MerchantCatSpawner.tick"] --> Create["创建对应职业实体 (MessengerCat / SwordsmanCat / MerchantCat)"]
+    Create --> Mode{"激活运行模式"}
+    Mode -->|"activateDuty(lifetime)"| Duty["DUTY：运行职业 AI (Goal / Behavior / Phase) — 到期自动 discard"]
+    Mode -->|"activatePreview()"| Preview["PREVIEW：不运行 AI、不消散 (仅用于 /summon 模型与渲染检查)"]
+    Duty --> Sync["每 tick 通过 SynchedEntityData 同步运行模式、移动状态与生命周期 → 客户端渐入渐出渲染"]
+    Preview --> Sync
 ```
-CatGiftService.tryGhostGift / SwordsmanCatService.summonOrRefresh / MerchantCatSpawner.tick
-  └─ 创建对应职业实体（MessengerCat / SwordsmanCat / MerchantCat）
-       └─ activateDuty(lifetime) 或 activatePreview()
-            ├─ DUTY：运行职业 AI（Goal/Behavior/Phase），到期 discard
-            └─ PREVIEW：不运行 AI、不消散（仅检查模型与渲染）
-       └─ 逐 tick：SynchedEntityData 同步运行模式/移动状态/生命周期 → 客户端渲染（渐入渐出）
-```
 
-**自然骨块追踪**
+### 2.2 自然骨块追踪
 
-```
-chunk 首次生成（Fabric CHUNK_GENERATE / NeoForge ChunkEvent.Load）
-  └─ NaturalBoneBlockTracker.scanChunk  标记自然骨块
-结构生成 ──► scanBoundingBox  标记结构内骨块
-FossilHunterEffect.apply ──► consumeNatural  仅自然骨块触发额外掉落
-玩家破坏路径 ──► markPlayerBreaking（内存延迟消费，防止标记被过早清除）
+```mermaid
+flowchart TD
+    Chunk["区块首次生成 (Fabric CHUNK_GENERATE / NeoForge ChunkEvent.Load)"] --> ScanC["NaturalBoneBlockTracker.scanChunk — 标记自然骨块"]
+    Struct["结构生成"] --> ScanB["scanBoundingBox — 标记结构内骨块"]
+    Break["玩家破坏骨块"] --> Pending["markPlayerBreaking (内存延迟消费，防止移除事件过早清标记)"]
+    Pending --> Fossil["FossilHunterEffect.apply 调用 consumeNatural — 仅自然骨块触发额外化石掉落"]
 ```
 
 ## 3. 关键类
 
 | 类 | 职责 |
 |---|---|
-| `core/entity/SpiritCat` | 灵体猫抽象基类，统一运行模式、生命周期、飞行与无碰撞物理 |
-| `core/entity/MessengerCat` / `SwordsmanCat` / `MerchantCat` | 三种职业实体 |
-| `core/entity/LanternPet` | 灵魂提灯宠物（独立实体，非灵体体系） |
-| `core/entity/ai/spiritcat/SpiritRunMode` | 运行模式枚举（`PREVIEW` / `DUTY` / `DEBUG_DUTY`） |
-| `core/entity/ai/spiritcat/SpiritCatRole` | 职业标识枚举，供调试绑定、筛选、命令解析共用（`matches(SpiritCat)` 用 `instanceof` 判定） |
-| `core/entity/ai/spiritcat/SpiritFlightController` / `SpiritMovementState` | 飞行控制器 / 离散移动状态（仅状态变化时同步） |
-| `core/entity/ai/spiritcat/*Phase` | 各职业的行为阶段管理 |
-| `core/world/NaturalBoneBlockTracker` | 骨块追踪静态门面，抹平平台差异 |
-| `platform/services/IBoneBlockTracker` | 骨块追踪 SPI（平台实现） |
+| `SpiritCat` | 猫国灵体抽象基类，统一运行模式、生命周期、无重力飞行与无碰撞物理边界 |
+| `MessengerCat` / `SwordsmanCat` / `MerchantCat` | 信使、剑士与商人三种职责实体 |
+| `LanternPet` | 独立灵魂提灯飞行宠物（继承 `PathfinderMob`，非灵体体系） |
+| `SpiritRunMode` | 运行模式枚举（`PREVIEW` / `DUTY` / `DEBUG_DUTY`） |
+| `SpiritCatRole` | 职业标识枚举，供调试指令、槽位绑定与筛选共用（`matches(SpiritCat)` 基于 `instanceof`） |
+| `SpiritFlightController` / `SpiritMovementState` | 灵体飞行控制器与离散移动状态（仅状态改变时触发同步） |
+| `*Phase` | `MessengerCatPhase` / `SwordsmanCatPhase` / `MerchantCatPhase` 职业行为阶段枚举 |
+| `NaturalBoneBlockTracker` / `IBoneBlockTracker` | 屏蔽平台存储差异的自然骨块追踪门面与 SPI |
 
-## 4. 灵体猫基类（SpiritCat）
+## 4. 猫国灵体基类 (`SpiritCat`)
 
-[`SpiritCat`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/SpiritCat.java) 继承自原版 `Cat`，是三种职业灵体的公共基类。
+[`SpiritCat`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/SpiritCat.java) 继承原版 `Cat`，定义三种职业实体的共性能力：
 
-### 4.1 运行模式
+- **三种运行模式**：
+  - `PREVIEW`（`activatePreview()`）：原版 `/summon` 默认模式，不运行 AI 且永不自动消散；
+  - `DUTY`（`activateDuty(lifetime)`）：正常运行职责 AI，达到 `expiresAtGameTime` 后 `discard()`；
+  - `DEBUG_DUTY`（`activateDebugDuty(lifetime)`）：运行调试职责 AI，不受正式最长现世时间语义限制。
+- **生命周期与渐隐**：`getRenderAlphaProgress(partialTick)` 实现显现 `10 tick` 渐入与消散前 `15 tick` 渐出；`shouldBeSaved()` 返回 `false`（不随正常区块存档保存，但保留 `addAdditionalSaveData` / `readAdditionalSaveData` 以兼容旧数据迁移）。
+- **飞行与交互免疫**：`isNoGravity()` 恒为 `true`，`travel()` / `move()` 仅在职责模式生效；信使默认启用 `clampToSpawnHeight()` 防止穿墙沉底（需追击低处目标的子类可显式关闭）。禁用推挤、流体/活塞推动、普通伤害（`hurt` 返回 `false`）、命名、拴绳、骑乘与维度传送。
+- **同步优化**：`setSpiritMovementState` 仅在离散状态变更时更新 `SynchedEntityData`。
 
-| 模式 | 说明 | AI | 生命周期 |
+## 5. 三种灵体职业与 AI 框架
+
+| 职业 | 核心职责 | 召唤者 | 数量上限与槽位规则 |
 |---|---|---|---|
-| `PREVIEW` | 预览模式（原版 `/summon` 创建） | 无 | 无（不消散） |
-| `DUTY` | 正常职责模式 | 运行职责 AI | 有（到期消散） |
-| `DEBUG_DUTY` | 调试职责模式 | 运行职责 AI | 有（不受正常职责的最长现世时间语义约束） |
+| 猫猫信使 (`MessengerCat`) | 向羁绊 `>= 80` 玩家配送古国往礼 | `CatGiftService.tryGhostGift` | 每玩家至多一只 |
+| 剑士猫猫 (`SwordsmanCat`) | 九命触发时护卫主人并主动迎战敌对生物 | `SwordsmanCatService.summonOrRefresh` | 每玩家至多一只（再次触发刷新寿命而不重叠） |
+| 猫猫商人 (`MerchantCat`) | 挚友阶段在附近村庄提供全服共享库存交易 | `MerchantCatSpawner.tick(server)` | 每维度 `ServerLevel` 至多一只（在村庄中心活动，不跟随玩家） |
 
-切换通过 `activateDuty(lifetime)` / `activateDebugDuty(lifetime)` / `activatePreview()`。
+- **职业特征与渲染**：`MessengerCat` 由 `MessengerCatGiftGoal` 与 `MessengerCatPositioning` 驱动，送礼成功调用 `CatFavorManager.onMessengerGiftDelivered` 补命；渲染叠加「邮差帽 + 邮包」装饰层。`SwordsmanCat` 通过 `configureProtection` 与 `notifyOwnerHurt` 绑定保护目标与优先仇恨来源，使用灵体半透明渲染。`MerchantCat` 交易池由 `MerchantCatTradeManager` 加载。
+- **AI 与调试基础设施**：`ai/spiritcat/` 提供通用的 `SpiritFlightController`、状态机阶段与行为基类；调试指令对应的实体注册由 [`SpiritCatDebugRegistry`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/SpiritCatDebugRegistry.java) 统一管理。详细玩家可见规则见[猫国灵体规格](../../design/spirit-cat-npc.md)。
 
-### 4.2 生命周期
+## 6. 灵魂提灯宠物 (`LanternPet`)
 
-- `activateDuty(lifetimeTicks)` 设置现世最长时间，记录 `expiresAtGameTime`；`tick()` 中检测到期并 `discard()`。
-- `getRenderAlphaProgress(partialTick)`：显现 10 tick 渐入，消散前 15 tick 渐出，供渲染器计算透明度。
-- `shouldBeSaved()` 返回 false（灵体不随存档保存），但有 `addAdditionalSaveData` / `readAdditionalSaveData` 兼容存档恢复（含旧版已流逝 tick 格式迁移）。
+[`LanternPet`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/LanternPet.java) 为继承 `PathfinderMob` 的独立飞行宠物（非 `SpiritCat`）：
 
-### 4.3 飞行与无碰撞物理
+- 使用 `FlyingMoveControl` 与 `FlyingPathNavigation`（无重力，施加轻微正弦垂直浮动）。
+- AI 优先级：`FloatGoal` → `LanternPetFollowSoulCarrierGoal`（跟随半径 16 格内手持灵魂沙/灵魂土/灵魂灯笼/灵魂火把的玩家）→ `LanternPetWanderGoal` → `LookAtPlayerGoal`。
+- 客户端与服务端配合生成灵魂火苗/灵魂粒子及环境音，具全无碰撞边界且设置 `setPersistenceRequired()` 避免自然刷掉。
 
-- `setNoGravity(true)`，`isNoGravity()` 恒为 true。
-- `travel()` / `move()` 重写：仅在职责模式生效时移动，否则静止。
-- `clampToSpawnHeight()`：信使默认不低于召唤高度（`spawnY`），防止穿墙移动沉入世界底部。需要追击低处目标的子类可关闭。
-- 无碰撞边界：`isPushable` / `isPickable` / `canCollideWith` / `push` / `pushEntities` 全部禁用。
-- 不可伤害（`hurt` 返回 false）、不可交互（`mobInteract` PASS）、不可命名（`setCustomName` 空实现）、不可拴绳、不可骑乘、不可传送。
+## 7. 自然骨块追踪与 `core/world/` 索引
 
-### 4.4 同步数据
+- **自然骨块追踪**：[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/NaturalBoneBlockTracker.java) 经 `IBoneBlockTracker` 标记新生成区块与结构中的骨块，供 `FossilHunterEffect` 消费判定。方法清单、双端实现与内存延迟消费 `PENDING_PLAYER_BREAKS` 见[实体与 AI 机制细节](../internals/entities-world-details.md)。
+- **`core/world/` 包内其他持久化类的权威文档**：
+  - `LootProbabilityData` → [战利品表系统](loottable.md)
+  - `JournalLogStorage` / `JournalLogSavedData` / `GameTimeFormatHelper` → [考古笔记系统](journal.md)
+  - `StructureRewindService` / `StructureRewindCooldownData` → [方块与物品](blocks-items.md)
 
-通过 `SynchedEntityData` 同步运行模式、移动状态、生命周期与起始 tick，供客户端渲染。`setSpiritMovementState` **仅在状态变化时同步**，避免脏数据。
+## 8. 世界生成：猫之手藏宝点
 
-## 5. 三种灵体职业
+猫之手藏宝点（`hand_of_cat_cache`）为数据驱动结构。**自 1.4.1 起已移除 `structure_set` 暂行停用自然生成**（待正式结构资产就绪后恢复），现有定义与模板保留在：
 
-| 职业 | 职责 | 召唤者 | 去重 |
-|---|---|---|---|
-| 猫猫信使 `MessengerCat` | 向符合条件的玩家送达猫国礼物（古国往礼，羁绊 ≥ 80） | `CatGiftService.tryGhostGift` | 每玩家最多一只（`CatFavorState.activeSpirit(MESSENGER)`） |
-| 剑士猫猫 `SwordsmanCat` | 九命触发时现身保护玩家，主动迎战敌对生物 | `SwordsmanCatService.summonOrRefresh` | 每玩家最多一只，再次触发刷新寿命而非新建 |
-| 猫猫商人 `MerchantCat` | 玩家成为猫国挚友后在周围村庄临时现身，提供共享库存交易 | `MerchantCatSpawner.tick(server)`（服务端 tick 末尾） | 在生成村庄内活动，不跟随玩家 |
-
-细节：
-
-- **信使**：AI 由 `MessengerCatGiftGoal` 驱动，经历若干 `MessengerCatPhase`；`MessengerCatPositioning.placeNearTarget` 在玩家附近放置；送礼成功时通过 `CatFavorManager.onMessengerGiftDelivered` 补充九命。外观复用原版 `CatModel` 与随机抽取的原版猫皮肤，另叠加职业装饰层「邮差帽 + 邮包」，装饰通过骨骼同步跟随原版猫动画（见 [客户端与 GUI](client-ui.md) 的实体渲染一节）。
-- **剑士**：`configureProtection(owner, target, lifetime)` 配置保护目标与优先攻击目标；`notifyOwnerHurt(attacker)` 在主人受伤时把攻击者交给剑士。当前使用原版猫模型和灵体半透明渲染；资产规划与候选能力由本地任务追踪器维护。
-- **商人**：交易由 `MerchantCatTradeManager` 从 `data/unsuspiciousblock/merchant_cat_trades/` 加载，支持标签输入（`TaggedMerchantOffer`）。
-
-> **猫国灵体**指猫国成员在现世活动时采用的统一形态：不同职责的灵体共享原版猫的基础体型，靠职业装饰、行为与出现条件相互区分。玩法设计见 [猫国灵体规格](../../design/spirit-cat-npc.md)。
-
-## 6. 灵体 AI 框架
-
-`ai/spiritcat/` 包提供灵体猫的通用 AI 基础设施：
-
-- `SpiritFlightController`：飞行控制器，管理灵体的飞行移动。
-- `SpiritMovementState`：离散移动状态（如 HOVER 悬停），仅状态变化时同步。
-- `SpiritRunMode` / `SpiritCatRole`：运行模式与职业标识（见「关键类」）。
-- **阶段类**：`MessengerCatPhase` / `SwordsmanCatPhase` / `MerchantCatPhase` 分别管理各职业实体的行为阶段。
-- **行为类**：`MessengerCatBehavior`（信使行为抽象）、`MorningGiftBehavior`（晨礼行为实现）、`MessengerCatGiftGoal`（送礼 Goal）。
-
-预览灵体注册到 [`SpiritCatDebugRegistry`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/cat/SpiritCatDebugRegistry.java)，供调试命令查询与操作。
-
-## 7. 灵魂提灯宠物（LanternPet）
-
-[`LanternPet`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/LanternPet.java) 是**独立实体**（继承 `PathfinderMob`，非 `SpiritCat`），以原版灵魂灯笼为外形的飞行宠物：
-
-- **飞行**：`FlyingMoveControl` + `FlyingPathNavigation`，无重力，可在空中无障碍移动。
-- **AI**：`FloatGoal`（防溺水）→ `LanternPetFollowSoulCarrierGoal`（跟随手持灵魂沙/灵魂土/灵魂灯笼/灵魂火把的玩家，半径 16）→ `LanternPetWanderGoal`（空中游荡）→ `LookAtPlayerGoal`。
-- **浮动效果**：`aiStep` 中施加正弦轻微 y 速度，让悬停不死板。
-- **粒子**：持续散发灵魂火苗（每 3t）与灵魂粒子（每 20t），移动时拖尾烟雾。客户端也参与绘制，避免完全依赖服务端广播。
-- **环境音**：服务端偶发播放灵魂灯笼环境音。
-- **不可交互**：与灵体猫相同的无碰撞边界。
-- `setPersistenceRequired()`：不参与自然刷新清理。
-
-## 8. 自然骨块追踪
-
-[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/NaturalBoneBlockTracker.java) 是静态门面，抹平平台差异，委托 [`IBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IBoneBlockTracker.java) SPI 实现：chunk 首次生成时扫描骨块、结构生成时扫描 bounding box，标记"自然生成"；`FossilHunterEffect.apply` 调 `consumeNatural` 后仅自然生成的骨块才触发额外掉落（见 [附魔系统](enchantment.md) 的「化石猎手」），玩家或机器放置的骨块不触发奖励。方法清单、Fabric/NeoForge 平台实现差异与玩家破坏路径的延迟消费状态见 [实体与 AI 机制细节](../internals/entities-world-details.md) 的「自然骨块追踪」。
-
-## 9. 世界持久化数据（包位置索引）
-
-以下 `core/world/` 包组件属考古笔记 / 战利品系统的存储，**机制权威在对应子系统文档**，此处仅作索引：
-
-- `core/world/LootProbabilityData.java`：附加在 overworld，缓存每张战利品表的概率模拟结果与 JSON 哈希（见 [战利品表系统](loottable.md)）。
-- `core/world/JournalLogStorage.java`：在 `<world>/data/unsuspiciousblock/journal_logs/` 下按玩家 UUID、战利品表保存日志分片；`core/world/JournalLogSavedData.java` 只保留为旧单文件迁移读取器（见 [考古笔记系统](journal.md)）。
-- `core/world/GameTimeFormatHelper.java`：游戏时间格式化，供日志显示。
-- `core/world/StructureRewindService.java` / `core/world/StructureRewindCooldownData.java`：结构回溯（见 [方块与物品](blocks-items.md) 的「结构回溯」）。
-
-## 10. 世界生成：猫之手藏宝点
-
-模组包含一个数据驱动的结构——猫之手藏宝点（`hand_of_cat_cache`）。**该结构的自然生成当前有意停用**（1.4.1 起删除了 structure_set，等待正式结构资产完成后再启用），结构定义与模板保留：
-
-```
+```text
 data/unsuspiciousblock/
-├── structure/hand_of_cat_cache.nbt              结构 NBT
+├── structure/hand_of_cat_cache.nbt              结构 NBT 模板
 └── worldgen/
     ├── structure/hand_of_cat_cache.json         结构定义
     └── template_pool/hand_of_cat_cache.json     模板池
 ```
 
-- 玩家从此结构中发现猫之手信物，绑定后建立猫族关系（见 [猫族关系系统](cat-favor.md) 的「关系建立与信物绑定」）；**当前需通过 `/place structure` 等方式手动放置**。
-- 结构战利品是有限的。
-- 结构生成时会触发 `NaturalBoneBlockTracker.scanBoundingBox` 标记结构内骨块。
-- biome 通过 `tags/worldgen/biome/has_structure/` 控制生成范围。
+当前测试与获取需使用 `/place structure` 手动放置；结构生成时同样触发 `NaturalBoneBlockTracker.scanBoundingBox` 标记内部骨块，生物群系范围受 `tags/worldgen/biome/has_structure/` 控制。
 
-## 11. 扩展点：新增灵体职业 / 行为 / 结构
+## 9. 扩展点
 
-**新增灵体职业**
+- **新增灵体职业**：继承 `SpiritCat` 并编写职责 AI → 在 `ModEntities.REGISTRY_MANIFEST` 注册（见[注册架构](../foundation/registration.md)）→ 按需在 `SpiritCatRole` 与 `SpiritCatDebugRegistry` 登记 → 在 `ModEntityRenderers` 与 `ModModelLayers` 注册渲染器。
+- **新增世界结构**：在 `data/unsuspiciousblock/worldgen/` 与 `structure/` 添加 JSON/NBT 并配置生物群系标签；若需开启自然生成则补充 `structure_set`。
+- **调整灵体时长**：修改服务端配置 `ISpiritCatConfig`（见[配置与第三方联动](../foundation/config-and-integrations.md)）。
 
-1. 继承 `SpiritCat`，实现职责 AI（Goal/Behavior/Phase）。
-2. 在 `ModEntities.REGISTRY_MANIFEST` 加注册条目（见 [注册架构](../foundation/registration.md)）。
-3. 在 `SpiritCatRole` 加职业枚举（如需调试/命令支持），预览灵体注册到 `SpiritCatDebugRegistry`。
-4. 添加渲染器（`ModEntityRenderers` 清单）与模型层（`ModModelLayers` 清单）。
+## 10. 约束与陷阱
 
-**新增灵体行为**：参考 `MorningGiftBehavior`，实现 `MessengerCatBehavior` 或直接编写 Goal。
+- **灵体不随世界存档保存**：`shouldBeSaved` 返回 `false`，调试时请区分实体的持久性；`PREVIEW` 灵体不会运行 AI 或自然消失。
+- **追击低处目标的职业需关闭 `clampToSpawnHeight`**：否则灵体会卡在初始召唤高度无法下潜追敌。
+- **活跃灵体槽位 (`ActiveSpiritSlot`) 的所有权语义**：玩家分别按 `SpiritCatRole` 持有信使与剑士槽位（仅保存 UUID，重生与重新加载时重置），商人槽位保存在当前 `ServerLevel` 的 `MerchantCatSpawnData` 中；仅当实体成功加入世界后才占槽，释放旧 UUID 时不误删新占用者。
+- **骨块自然标记必须用完即删 (`consumeNatural`)**：无论随机掉落是否命中均须消耗标记，且玩家或机器后放的骨块绝不触发化石猎手。
 
-**新增结构**：在 `data/unsuspiciousblock/worldgen/` 与 `structure/` 添加 JSON + NBT，并在 biome tag 中注册生成范围；若要自然生成，还需 `structure_set`。
+## 11. 相关文档
 
-**调整灵体生命周期与效果时长**：通过 `ISpiritCatConfig`（见 [配置与第三方联动](../foundation/config-and-integrations.md)）。
-
-## 12. 约束与陷阱
-
-- **灵体不随存档保存**（`shouldBeSaved` 返回 false），重启后不会残留；但 `addAdditionalSaveData` 仍保留以兼容旧数据迁移。
-- **预览灵体（`PREVIEW`）不运行 AI、不消散**，调试时不要把它当作职责模式的行为证据。
-- **`clampToSpawnHeight` 默认阻止低于召唤高度**：需要追击低处目标的新职业必须显式关闭它，否则会表现为"追不上"。
-- `ActiveSpiritSlot` 只保存 UUID，调用方查询当前世界中的实际实体并决定存活性。玩家按 role 保存信使/剑士槽，重生和加载重置；商人槽属于当前 `ServerLevel` 的 `MerchantCatSpawnData`，继续使用原 tag 持久化。生成成功后才占槽，旧 UUID 的 release 保留新占用；已有信使跳过，已有剑士刷新保护。
-- **骨块追踪的标记必须消费**（`consumeNatural`）：无论是否发奖励都要清掉，否则遗留标记会让后续放置的骨块被误判。
-- **玩家/机器放置的骨块不触发化石猎手奖励**，这是刻意的，不要为"手滑放置"补奖励。
-- 猫之手结构自然生成已停用，`/place structure` 是当前唯一获取路径。
-
-## 13. 相关文档
-
-- [实体与 AI 机制细节](../internals/entities-world-details.md) —— 自然骨块追踪的平台实现
-- [猫族关系系统](cat-favor.md) —— 灵体猫的召唤服务与关系状态
-- [附魔系统](enchantment.md) —— `FossilHunterEffect` 与骨块追踪
-- [注册架构](../foundation/registration.md) —— `ModEntities` / `EntityRegistrar`
-- [客户端与 GUI](client-ui.md) —— 实体渲染器与模型层
-- [Mixin](../foundation/mixin.md) —— Fabric 端骨块追踪 mixin
-- [淘洗系统](panning.md) —— 淘洗点实体（同样注册于 `ModEntities` 清单，无模型装饰、不注册属性）
-- [方块与物品](blocks-items.md) —— 结构回溯服务
+- [实体与 AI 机制细节](../internals/entities-world-details.md)
+- [猫族关系系统](cat-favor.md)
+- [附魔系统](enchantment.md)
+- [注册架构](../foundation/registration.md)
+- [客户端与 GUI](client-ui.md)
+- [Mixin 边界与接线](../foundation/mixin.md)
+- [淘洗系统](panning.md)
+- [方块与物品](blocks-items.md)
 - [猫国灵体规格](../../design/spirit-cat-npc.md)

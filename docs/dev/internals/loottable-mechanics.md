@@ -1,446 +1,218 @@
 # 战利品表机制细节
 
-> 战利品表的实现细则：四层解析管线、签名机制、概率模拟的场景规划与缓存、按需请求管线，以及展示值的派生规则。
-> 本文件不参与任务导航，只被 [战利品表系统](../subsystems/loottable.md) 链接。**新增功能只需要读那篇**；只有修改解析/签名/模拟口径时才需要读本文件。
+> 本文档说明战利品表子系统的底层实现：四层解析管线、签名与预览缓存、单输入模拟引擎与场景规划、主线程 tick 调度、结果缓存失效与按需请求链路。
+> 本文件不参与主任务导航，由[战利品表系统](../subsystems/loottable.md)按需链接；函数规则描述、执行捕获与展示派生规则见[战利品表函数与展示规则](loottable-functions-and-display.md)。
 
 ## 1. 解析管线细则
 
-[`ArchaeologyJournalCatalog.load`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/catalog/ArchaeologyJournalCatalog.java)（位于 `core/journal/catalog/`）按四层管线构建目录：
+[`ArchaeologyJournalCatalog.load`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/catalog/ArchaeologyJournalCatalog.java) 按四层流水线构建静态目录：
 
+```mermaid
+flowchart LR
+    Snap["1. capture 快照"] --> Graph["2. build 引用图"]
+    Graph --> SCC["3. 追踪可达集 SCC 环排除"]
+    SCC --> Compile["4. compile 单表编译"]
+    Compile --> Project["5. project 沿引用路径投影"]
+    Project --> Hash["6. 组装读模型 + 算每表哈希"]
+    Hash --> Pub["7. 单个 volatile 原子发布"]
 ```
-capture 快照 → build 引用图 → 在追踪根初始可达集内算 SCC 排除集 → compile 闭包内每张表
-             → project 每张表 → 组装静态读模型与分类结构 → 算每表哈希 → 原子发布
-```
 
-- **快照**（`LootTableSourceSnapshot.capture`）：一次 `listMatchingResourceStacks` 拿到全表。栈首是该表在本次重载下的**有效原文**（等价 `listMatchingResources` / `getResource`），整个栈用于哈希（等价 `getResourceStack`）；原文与 `JsonElement` 惰性读取并缓存。
-- **图**（`LootTableReferenceGraph.build`）：有效 JSON 引用边 + 平台注入合成边。合成边施加**双端存在守卫**，目标已由 JSON 引用覆盖时不重复加边；邻接表按目标去重但保序。
-- **环排除**：只对追踪根的初始可达集计算强连通分量，其成员被排除出收录闭包并输出一次性告警；与考古目录无关的第三方表循环不新增告警。
-- **编译**（`LootTableCompiler`）：单表 JSON → 上下文无关的 `CompiledLootTable`。遇到 `loot_table` 引用只记 `ReferenceSite` 不跟随；`item` / `tag` 记物品路径，其中 **item tag 在编译期展开为具体物品**（签名按具体物品生成，存档缓存也按具体签名索引）。
-- **投影**（`LootTableProjector`）：沿 JSON 引用把编译产物链接起来，复现三条语义——首跳子表归属、条件继承顺序（上层传入 → 本表内已继承 → 本事件自身）、函数继承与 `APPROX_ITEM_ONLY` 降级。引用位置按出现顺序逐个进入，**不去重也不合并**：同一子表在两处被引用且条件不同时两条获取路径都要保留。
-- **读模型**：`StaticTableProjection` 展平出的 `TableDefinition` 只收真正产出物品的表（会话保留全部追踪表的投影，含空表）；无物品的表既不进目录也不作为子表入口。此阶段概率为 `Probability.unknown(UnknownReason.UNCOVERED)` 占位，等待模拟填充。
+- **快照（`LootTableSourceSnapshot.capture`）**：通过一次 `listMatchingResourceStacks` 获取全部表。栈首是当前重载生效的 JSON 原文，整个资源栈用于计算稳定内容哈希；原文与 `JsonElement` 采用惰性解析并缓存。
+- **引用图（`LootTableReferenceGraph.build`）**：合并静态 JSON 引用边与平台声明注入边。合成边启用双端存在守卫（目标已被 JSON 引用覆盖时不重复加边），邻接表去重保序。
+- **环排除**：仅对收录根的初始可达集计算强连通分量（SCC），将闭环成员移出目录并记录一次性告警；与考古目录无关的第三方表循环不产生噪音日志。
+- **编译（`LootTableCompiler`）**：将单表 JSON 转为上下文无关的 `CompiledLootTable`。遇到 `loot_table` 引用只记录 `ReferenceSite` 而不展开；物品标签在编译期直接展开为具体物品签名。
+- **投影（`LootTableProjector`）**：沿引用边拼接编译产物，落地三条投影规则：
+  1. 首跳子表归属（孙表汇总回直接子表）；
+  2. 条件继承顺序（外层传入 → 本表累计 → 当前条目自身）；
+  3. 函数链继承与签名降级。同一子表在多处以不同条件被引用时保留各自独立路径，不合并丢失上下文。
+- **静态读模型**：`StaticTableProjection` 展平出的目录只保留实际存在物品产出的表（分析会话仍保留空表投影）；未模拟条目的初始概率占位为 `Probability.unknown(UnknownReason.UNCOVERED)`。
 
-**编译与投影的区别是刻意的**：同一个子表在不同引用位置产出的物品路径不同（条件与函数被引用位置改写），因此编译产物只记"本表直接物品路径 + 引用位置"，**绝不缓存展开后的子表结果**。
+**编译与投影解耦的原因**：同一张子表在不同父表引用点的条件与函数链各不相同，因此编译阶段绝不缓存展开后的子表结果，由投影阶段按引用路径实时合成，且条件分析、函数链拼接与多路径归并各自保持唯一实现（`LootParseUtil`、`ItemDefinitionAccumulator`）。
 
-`LootConditionHandler` / `LootFunctionHandler` 把原版条件/函数转译为可读的 `LootConditionInfo`；条件分析、函数链拼接与多路径合并各只有一份实现（`LootParseUtil`、`ItemDefinitionAccumulator`），保证编译路径与投影路径产出同源的条件身份与签名。
+### 1.1 多路径物品提示合并
 
-### 1.1 多路径物品提示的合并
-
-`ItemDefinitionAccumulator` 对同签名条目的非空提示按 `Component` 结构（包括翻译键与参数）去重，按路径首次出现顺序保留，用本地化的 `alternative_separator` 拼接；**不使用已翻译文本判断相等**。展示名的分歧判断也使用组件结构。空提示不抹去其他路径的已知提示。
-
-各路径区间相同时只出现一次——内置河流淘洗的金粒两条路径同为 `数量: 1-3`，因此不出现分隔符；区间不同时按路径出现顺序拼接，形如 `数量: 1-3 / 数量: 3-6`。这些是各路径的函数效果，**并非整张表一次抽取的总产量**，也不表示各路径一定同时触发。`uniform` 两端相等时显示 `数量: N`。
+`ItemDefinitionAccumulator` 按 `Component` 抽象语法树（含翻译键与参数）而非渲染后文本对同签名路径的非空提示去重，按路径出现顺序使用本地化 `alternative_separator` 拼接（展示名分歧同样按组件结构判定）。不同路径若拥有相同的数量区间（如内置河流淘洗金粒的两条 `1-3` 路径）仅展示一次；不同区间则展示为 `数量: 1-3 / 数量: 3-6`。该说明表达各独立路径的函数效果，而非单次抽取总产量。
 
 ## 2. 签名机制
 
-[`LootResultSignature`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultSignature.java) 是进度匹配与持久化的核心：它让"目录中的物品"与"玩家实际获得的物品"能对应起来。
+[`LootResultSignature`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultSignature.java) 将“目录物品定义”与“玩家实际获得的物品栈”绑定为一致的身份键：
 
-```
-record LootResultSignature(ResourceLocation itemId, SignatureType type, @Nullable String data)
+```java
+public record LootResultSignature(ResourceLocation itemId, SignatureType type, @Nullable String data) {}
 ```
 
-| SignatureType | 含义 | 构造场景 |
+| `SignatureType` | 语义 | 构造场景 |
 |---|---|---|
-| `PLAIN` | 普通物品，无组件差异 | 无特殊组件的物品 |
-| `COMPONENT_EXACT` | 严格组件签名 | 有 DataComponentPatch 的物品（编码为 JSON 字符串） |
-| `ENCHANTED_APPROX` | 附魔近似 | 附魔物品（不区分具体附魔，避免签名爆炸） |
-| `ENCHANTED_RANDOM` / `ENCHANTED_LEVEL` | 旧版附魔签名 | 仅作兼容别名，加载时折叠为 `ENCHANTED_APPROX` |
-| `APPROX_ITEM_ONLY` | 近似回退 | 组件编码失败等异常情况 |
+| `PLAIN` | 纯物品身份，忽略组件差异 | 无特殊组件的普通物品，或含实例态排除组件的物品 |
+| `COMPONENT_EXACT` | 严格组件匹配 | 含非排除 `DataComponentPatch` 的物品（`data` 存组件 JSON） |
+| `ENCHANTED_APPROX` | 附魔近似归类 | 带附魔的物品与附魔书（避免海量附魔组合引起条目爆炸） |
+| `ENCHANTED_RANDOM` / `ENCHANTED_LEVEL` | 历史附魔签名兼容值 | 读取旧数据时自动折叠为 `ENCHANTED_APPROX` |
+| `APPROX_ITEM_ONLY` | 异常回退签名 | 组件编码失败等边界情况 |
 
 ### 2.1 实例态组件排除
 
-签名派生时，若物品的组件补丁含配置声明的**实例态组件**（`ILootTableConfig.getSignatureExcludedComponents()`，默认 `relics:data`），该物品直接退化为 `PLAIN`（物品级）签名。这类组件随物品实例随机化或随玩家进度变化，不属于战利品定义。
+配置 `ILootTableConfig.getSignatureExcludedComponents()`（默认包含 `relics:data`）声明的组件会在每次实例生成或读取时随机物化（例如 Relics 在 `verifyComponentsAfterLoad` 中随机写回品质），不属于战利品表静态定义。命中此类组件的物品在签名派生时统一退化为 `PLAIN`：
 
-以 Relics 为例：`relics:data` 是所有 `IRelicItem` 的**默认组件**（初值 `RelicComponent.EMPTY`，即未解析态），而该模组在 `Item.verifyComponentsAfterLoad` 里"读取即物化"地用未播种随机数写回品质，`ItemStack` 构造、`copy()`、`applyComponents*` 都会触发它——把这种组件编进签名等于把 RNG 结果当物品身份，同一件饰品会随掉落次数无限增生条目（实测冰窖表 1802 条里 1796 条是两件饰品的伪变体，使该表完成度不可达）。
+- **退化为 `PLAIN` 而非“剔除后编码 `COMPONENT_EXACT`”**：精确匹配哈希与组件比对读取未剔除的原始 `ItemStack`，双侧不对称会导致永远匹配失败。退化为 `PLAIN` 后仅比对物品 ID，并与静态路径保持同键合并，代价是不区分随机实例品质。
 
-**必须落 `PLAIN`，而不是"剔除该组件后仍编 `COMPONENT_EXACT`"**：匹配比较（`isSameItemSameComponents`）与候选索引哈希（`hashItemAndComponents`）读的都是**未剔除**的组件，两侧不对称会让这类条目永远匹配不上、索引也永远查不到桶。`PLAIN` 匹配只比物品 id，不碰组件，且与静态路径产生的 `PLAIN` 共用同一个存储键，因此同一物品不会出现两条条目。代价是不再按随机变体分别收集——与附魔折叠为 `ENCHANTED_APPROX`（"避免签名爆炸"）是同一取舍。
+### 2.2 稳定存储键与附魔判定
 
-### 2.2 稳定存储键
+- **存储键格式**：`toStoredKey()` 生成形如以下文本的持久化与网络键（`fromStoredKey()` 对不带 `usb_sig|` 前缀的旧键按 `PLAIN` 兼容读取）：
+  ```text
+  usb_sig|TYPE|itemId|base64(data)
+  ```
+- **附魔判定陷阱**：原版工具默认携带空的 `ENCHANTMENTS` 组件，`isActuallyEnchanted(stack)` 必须检查 `stack.isEnchanted()` 或非空 `STORED_ENCHANTMENTS`，不能使用 `stack.has(DataComponents.ENCHANTMENTS)`。
 
-`toStoredKey()` 生成稳定字符串，用于 NBT 持久化、网络传输与 Map key：
+### 2.3 预览栈与缓存
 
-```
-usb_sig|TYPE|itemId|base64(data)
-```
+`createPreviewStack()` 根据签名重构用于展示或匹配的 `ItemStack`。由于 `COMPONENT_EXACT` 需将 JSON 文本解码为组件补丁且成本较高，[`LootResultPreviewCache`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultPreviewCache.java) 在掉落追踪、容器追踪与菜单快照三条热路径共享缓存预览栈（由签名值唯一确定，仅在数据包重载时清空以控制内存）；单表模拟工作器内部仍持有独立的无锁 `HashMap` 缓存以减少并发开销。
 
-`fromStoredKey()` 反向解析，并**兼容旧版**：不以 `usb_sig|` 开头的 key 视为旧版仅存 item id 的格式，转为 `PLAIN` 签名。这保证玩家旧存档不丢失。
+## 3. 概率模拟：引擎与场景规划
 
-### 2.3 附魔判定的陷阱
-
-`isActuallyEnchanted(stack)` **不能用 `stack.has(ENCHANTMENTS)`**，因为工具/武器默认带有**空的** `ENCHANTMENTS` 组件，`has()` 会误返回 true。正确做法是检查 `stack.isEnchanted()` 或 `STORED_ENCHANTMENTS` 非空（附魔书场景）。
-
-### 2.4 预览栈
-
-`createPreviewStack()` 根据签名重建用于 UI 展示或精确匹配的物品栈：`COMPONENT_EXACT` 应用组件 patch，附魔变体设置附魔光效覆盖。
-
-`COMPONENT_EXACT` 的预览栈需要把签名的 `data` 当 JSON 解码再套用组件补丁（**`data` 本身不是 base64**，base64 只出现在 `toStoredKey` 的存储键里），成本远高于其它类型的匹配。因此 [`LootResultPreviewCache`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultPreviewCache.java) 按签名内容缓存预览栈——预览栈由签名值唯一决定，**缓存结果永远有效、不需要失效策略**；玩家侧的掉落实时匹配（掉落追踪、容器已追踪状态、菜单快照三条来源）都通过 `LootResultPreviewCache.PROVIDER` 取用，避免每次掉落、每个槽位重复解码。缓存只在数据包重载时清空以限制内存。
-
-概率模拟热路径**不共用它**：单表模拟自带 `HashMap` 缓存，单线程且无并发开销，更快。含实例态组件的物品已退化为 `PLAIN`，其预览栈是裸物品栈、不套用任何组件补丁，也不再需要预览参与精确匹配。
-
-## 3. 概率模拟：引擎与场景策略
-
-模拟的输入身份是 `SimulationInput` = **场景身份** + `ScenarioParams`（幸运 / 工具基座 / 工具附魔等级 / 抽样次数）。服务端从当前场景 profile 恢复条件赋值，客户端仅选择场景和参数。缓存键是 `(表哈希, SimulationInputKey)`，因此"同一张表换个幸运值"是新增一条缓存，而不是覆盖旧的一条。
-
-**场景身份使用稳定字面量**：基准场景恒为 `baseline`，其余为 `scene-1`、`scene-2`…，序号由规划器的发射顺序决定。`ConditionIdentity` 用于 `SimulationProfile.conditionOutcomes` 的运行时条件赋值，独立于持久化输入键。条件通过实际注册表上下文的 Codec 编码，规范化 JSON 对象键后生成语义身份；不可编码条件保留 opaque 出处身份，并按真实逻辑求值。缓存键的形态为：
+模拟以 `SimulationInput`（场景键 `scenarioKey` + `ScenarioParams`）作为输入身份。其中场景键使用稳定字面量：`baseline` 固定代表基准场景，其余代表场景按稳定发射顺序编号为 `scene-1`、`scene-2`……。缓存键格式化为如下形式：
 
 ```text
 scenario=baseline|luck=0.00|tool=minecraft:diamond_pickaxe|ench=|n=10000
 ```
 
-### 3.1 模拟引擎
+### 3.1 模拟引擎 (`LootProbabilitySimulator`)
 
-[`LootProbabilitySimulator`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulator.java) 对**单个输入**执行模拟抽取：
+单个模拟任务 `LootProbabilitySimulationJob` 对一组 `(tableId, scenario, input)` 执行抽取并累积原始计数：
 
-```
-LootProbabilitySimulationJob(tableId, rawTable, level, scenario, input)
-  ├─ 同步一次完整 advance；Worker 按 tick 截止时间推进同一状态机
-  ├─ 从 ReloadableServerRegistries 取得数据包重载后的运行时 LootTable
-  │    保留 Fabric LootTableEvents.MODIFY 等加载期注入；不从原始 JSON 重建表
-  ├─ 合成 profile = 场景条件赋值 + 输入参数（ScenarioParams.applyTo）
-  │    SimulationProfile 提供 TOOL、BLOCK_STATE、DAMAGE_SOURCE、ORIGIN 等值
-  │    钓鱼上下文（由表**声明的 type** 判定，不看表 id 的 path）的 THIS_ENTITY 用
-  │    SimulationFishingHook 填充，使 entity_properties + fishing_hook + in_open_water
-  │    条件在模拟中可判定。
-  │    填充规则：只填该 paramSet `allowed` 内的参数，required 与 optional 都填——
-  │    只填 required 会让 optional 参数缺失，把"没填"伪装成"条件不成立"。
-  │    paramSet 不允许 ORIGIN（如 barter）时明确失败，这类表在构建期就被拦下，不走这里
-  ├─ 初始化该场景适用的候选签名 + appearanceCounts
-  └─ 循环 input.params().sampleCount() 次：
-       ├─ lootTable.getRandomItems(lootParams)
-       ├─ ArchaeologyLootInjectors.get().maybeReplace(tableId, drops, random)
-       │    Fabric 显式调用注入器；NeoForge 空实现（GLM 已在 getRandomItems 内部完成）
-       ├─ 对每个 drop：
-       │    ├─ LootResultMatcher.resolve(stack, candidates) 匹配已知签名
-       │    └─ 未匹配 -> deriveSignature 派生签名（附魔折叠为近似，其他组件严格保留）
-       │         若已是已知签名 -> 保守跳过（歧义掉落）
-       │         否则登记为注入条目（injected=true）
-       └─ 对本轮出现的签名去重后计数
+```mermaid
+flowchart TD
+    Start["LootProbabilitySimulationJob 启动"] --> Reg["从 ReloadableServerRegistries 取运行时表 (保留 Fabric 加载期修改)"]
+    Reg --> Profile["合成 SimulationProfile (场景条件赋值 + TOOL/ORIGIN/THIS_ENTITY 等 allowed 参数)"]
+    Profile --> Init["初始化本场景适用候选签名与计数器"]
+    Init --> Loop{"循环 sampleCount 次"}
+    Loop -->|"每次抽取"| Roll["lootTable.getRandomItems(lootParams)"]
+    Roll --> Inject["ArchaeologyLootInjectors.get().maybeReplace (Fabric 显式注入 / NeoForge 由 GLM 完成)"]
+    Inject --> Match["遍历产物并按 LootResultMatcher.resolve 匹配"]
+    Match -->|"未匹配"| Derive["派生新签名并标记来源"]
+    Match -->|"已匹配"| Dedup["单轮按签名去重计数"]
+    Derive --> Dedup
+    Dedup --> Loop
+    Loop -->|"完成全部轮次"| Out["输出 SimulationMeasurement (含签名计数 / 直接子表计数 / 动态发现记录)"]
 ```
 
-物品概率口径是"单次战利品表抽取中，该签名至少出现一次的概率"。同一轮返回多个相同签名的 `ItemStack` 时只计一次，**不统计物品数量或平均产量**。
+**关键机制说明**：
+- **单次至少出现一次口径**：每轮抽取对同一签名去重后最多计数一次，统计“单次抽取出现该物品的概率”，不累计掉落堆叠总数或均值。
+- **幸运处理与 `luckAffected`**：幸运值经 `LootParams.withLuck` 注入；编译器在编译阶段扫描每个池的 `bonus_rolls` 与 `quality`，若存在非零 `quality` 或无法证明恒零的 `bonus_rolls` 则标记 `LootAcquisitionPath.luckAffected = true`（用于向玩家提示“随幸运变化”，但无法静态覆盖第三方运行时注入暗读幸运的情况）。
+- **钓鱼上下文判断**：依据表自身声明的 `type`（而非路径字符串）判定钓鱼表，并为其填充 `SimulationFishingHook`，使 `entity_properties` 下的 `in_open_water` 条件可正常求值。参数填充覆盖 `paramSet.allowed` 内的全部 required 与 optional 字段；缺少 `ORIGIN` 支持的 `paramSet`（如 `barter`）在构建期即被拦下。
+- **热路径匹配优化**：`LootResultMatcher.CandidateIndex` 先按 `Item` 分组，再对精确组件候选按 `ItemStack.hashItemAndComponents` 分桶，同桶内仍严格执行 `ItemStack.isSameItemAndComponents` 校验，保持歧义返回 `null` 与单轮去重语义不变。
 
-模拟输出的是原始测量值 `SimulationMeasurement`：按签名记录测量值、按直接子表记录"至少产出一个物品"的测量值，外加模拟期动态发现的签名与其来源。**展示值由服务端当场派生**，因此"从缓存恢复"与"刚刚算完"走同一条代码，不存在两套口径。
+### 3.2 条件场景策略与规划 (`SimulationScenarioPlanner`)
 
-幸运由 `LootParams.withLuck` 注入，取 `input.params().luck()`；基准输入的幸运为 0。需要更高幸运阈值的条目会如实落到「需要条件」，而不是被伪造成一个数字。
+运行时表保留完整的原版条件树，禁止通过篡改 JSON 条件并重新解码来构造模拟副本（否则会破坏 `all_of`、`any_of`、`inverted` 组合语义并绕过加载期修改）。
 
-编译器在每个 pool 检查 `bonus_rolls` 与所有候选（含组合 entry 子节点）的 `quality`：非零质量会改变同池权重竞争，因此整个池标记为幸运敏感；无法证明恒零的奖励抽取 provider 也保守标记。该标记随引用位置向子表传递，再写入 `LootAcquisitionPath.luckAffected`，独立于真实条件树、函数等级及物品签名。物品和父表中的子表入口 tooltip 显示"随幸运变化"，**不把它误写成"必须幸运才能获得"**。此静态标记覆盖 JSON 的标准幸运机制；第三方运行时注入或自定义条件/函数暗中读取幸运时无法保证识别。
+- **逻辑树与展示树分离**：`LootConditionInfo` 将逻辑节点（`ALL` / `ANY` / `NOT` / `LEAF` 与 `logicChildren`）与纯展示文本 `ConditionDisplayRow` 分开存储；`ConditionTree.Algebra` 为规划器、推荐求解器、玩家探测和路径提示提供统一的三值求值与需求析取代数。
+- **场景控制条件处理方式**：
 
-模拟必须调用普通 `LootTable.getRandomItems`：NeoForge 会在原始抽取结束后由该入口应用 GLM，而 `getRandomItemsRaw` 不会应用 GLM。嵌套表由原版 resolver 从同一个运行时注册表解析，且嵌套抽取使用 `getRandomItemsRaw`，因此 GLM 只在根表应用一次。
-
-**热路径注意事项**（改动匹配逻辑前必读）：模拟热路径先按 `Item` 分组，再由 `LootResultMatcher.CandidateIndex` 对精确组件候选按 `ItemStack.hashItemAndComponents` 分桶。索引用**原签名解码并校验后的缓存预览**构建，查询用真实产物的同一哈希；同桶内仍逐个执行 `ItemStack.isSameItemAndComponents`，**不把哈希相等当作匹配**。普通/附魔近似/物品近似候选另存一个小列表，与命中的精确桶共用最高优先级和歧义状态；精确候选有歧义时仍返回 null，不错误回退。候选在动态发现时增量加入，场景结束后释放当前场景索引。哈希碰撞只增加同桶扫描成本，不改变结果；提供者的缓存预览在索引存活期间不得修改。匹配使用局部状态，不为每次匹配创建排序 Map 或临时 List；每个候选缓存 stable key，并由带轮次标记的原始计数器完成单轮去重。上述优化不改变签名优先级、歧义回退或"每轮最多计一次"的概率口径。
-
-### 3.2 条件场景策略
-
-`LootConditionInfo` 显式保存 ALL/ANY/NOT/LEAF 与 `logicChildren`；说明行使用独立的 `ConditionDisplayRow`。`ConditionPresentation.displayChildren` 只用于展示。`ConditionTree.Algebra` 共用结构遍历、NOT 极性与短路，三值求值和需求析取分别提供代数。Planner、推荐、玩家探测和路径提示使用逻辑节点，场景标签、页面与 tooltip 使用展示树。空 ALL 为真、空 ANY 为假；构造器拒绝非法形态，分析入口将解析失败转成未解析诊断。
-
-运行时表保留全部条件，**不能再通过读取原始 JSON、删除条件并重新解码来生成模拟副本**。那种做法会绕过 Fabric 加载期修改，也无法可靠表达 `all_of`、`any_of`、`inverted` 等组合条件的语义。
-
-`SimulationScenarioPlanner` 按类型描述符的 `SCENARIO` 能力，从每个 `LootAcquisitionPath` 提取资格条件，为路径建立最小布尔赋值场景，并汇总各场景可达的签名与直接子表。条件分析节点携带 `ConditionIdentity`，运行时 Mixin 用同一 Codec 身份查询精确 true/false。基准场景使用全部受控条件不成立的赋值，网格展示该场景的测量。规划产物保留路径条件身份到适用场景的映射，分支目录直接消费它；补充入口也使用同一需求代数。
-
-| 条件 | 当前处理方式 |
+| 条件类型 | 模拟处理方式 |
 |---|---|
-| `match_tool` | **已移出场景控制类型**：工具由 profile 填充的真实 `TOOL` 求值，能否匹配交给 `ItemPredicate` 自己回答。此前它被伪造成布尔，于是"工具匹配"与"时运等级"互不相干——条件说匹配成功，而读真实 `TOOL` 的 `apply_bonus` / `table_bonus` 拿到的是无附魔镐，基础场景的时运曲线恒为 0 级。引用它的路径在基准（无附魔钻石镐 / 钓竿）下落到「需要条件」并指名"工具"旋钮 |
-| `block_state_property` | profile 填充 `BLOCK_STATE`；条件门槛按匹配场景处理 |
-| `damage_source_properties` | profile 填充 `DamageSource`；复杂伤害谓词按匹配场景处理 |
-| `entity_properties` | 填充假玩家；钓鱼表的 THIS_ENTITY 使用 `SimulationFishingHook` |
-| `location_check` | 场景按具体条件身份分别取 true/false，不查找或生成真实区块 |
-| `weather_check`、`time_check` | 场景按具体条件取值，不修改服务器天气或时间 |
-| `entity_scores` | 场景按具体条件取值，不创建 objective、不写真实 scoreboard |
+| `location_check`、`weather_check`、`time_check`、`entity_scores` | 注册 `SCENARIO` 能力，由 `SimulationScenarioPlanner` 为其分配确定真假值并由单目标 Mixin 转交 `LootSimulationScope`（不修改世界状态、不访问真实区块或计分板） |
+| `match_tool` | **不参与场景布尔枚举**，直接由 `SimulationProfile` 填充的真实 `TOOL` 物品栈交由原版 `ItemPredicate` 求值，使工具匹配与时运/附魔等级曲线保持一致 |
+| `block_state_property`、`damage_source_properties`、`entity_properties` | 由 `SimulationProfile` 填充对应方块状态、伤害来源或假玩家/鱼钩上下文 |
 
-**场景数量的两条独立约束**：
+- **两条独立规模预算**：
+  1. **硬上界 32**：候选场景（不含先占名额的 `baseline`）按覆盖路径数降序截取至最多 `32` 个（并列时按路径枚举顺序保持确定性，防止重启后 `scene-N` 编号漂移），截断数记入 `ScenarioPlan.truncatedCount`。
+  2. **展开过程预算**：单表条件与函数树共用 `4096` 访问节点上限与 `512` 中间组合上限（且函数嵌套深度超过 `8` 层记为语义不完整）。触发预算耗尽或解析不完整时，服务端保留静态条目但停用该表数值模拟（标为未知），避免缺失条件回退真实天气或时间。
+- **条件语义身份 (`ConditionIdentity`)**：通过 `LootItemCondition.DIRECT_CODEC` 与实际 `RegistryOps` 编码并排序 JSON 键生成跨运行一致的摘要；无法编码的不透明条件仅保留本代去重身份，不参与场景枚举并在模拟中按真实逻辑求值。
+- **注入路径规划与推荐求解**：`ArchaeologyJournalServerCatalog.constraintTable` 将已声明的注入子树与继承门槛直接并入约束与规划输入，工具与附魔统一由 `ScenarioParams` 驱动而不使用额外满级工具特判。子表与物品推荐（`SimulationAssistTarget.CHILD_TABLE`）复用 `RecommendationSolver` 从最小合法等级开始联合搜索（预算 `2,048` 次尝试 / `15ms`），仅用于查找可证明的支持输入。
 
-- **硬上界 32**：候选按"覆盖的获取路径数"降序截断（覆盖更多条目的场景优先留下），被丢弃的数量如实上报（`ScenarioPlan.truncatedCount`），构建时逐表打进日志。**基准场景先占名额**——它由全假赋值产生、覆盖度天然最低，排序后会第一个被丢掉。
-- **展开预算**：函数与条件树共用每表 4096 节点预算，中间组合上限 512，最终场景上限仍为 32。函数描述嵌套达到 8 层时写 `analysis_incomplete=depth`；条件解析异常也会标记语义不完整。语义不完整或展开超预算时，服务端保留静态条目，将概率标为未知/未解析，不恢复旧测量、不排队、不接受按需模拟，避免遗漏条件回退真实天气/时间后仍被当作稳定输入。单纯展示裁剪或最终场景数量截断不触发停用。
+### 3.3 逐路径幸运门槛 (`LuckGateAnalysis`)
 
-每条路径的需求集合只计算一次，供"候选收集 / 覆盖度排序 / 适用性判定"三处共用。
+[`LuckGateAnalysis`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckGateAnalysis.java) 基于编译期采集的 [`LuckSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckSpec.java) 计算每条获取路径的最小幸运门槛（独立保存在 `LootAcquisitionPath.luckGate`，不跨路径合并）：
 
-**发射顺序必须可复现，因为它决定场景键**。候选集合按解析路径枚举顺序插入，覆盖度排序只按覆盖路径数降序，并列时保持插入顺序。条件和场景语义变化通过表 hash 的版本化语义因子触发重算，表级发现记录继续保留。
+1. **原版真实公式**：同时校验权重竞争 `max(floor(weight + quality * luck), 0) >= 1` 与额外抽取 `floor(bonus_rolls * luck) >= 1`。
+2. **网格对齐与回验**：代数求得候选解后向上对齐至 `0.01` 步长，并带入原版两条公式回验，必要时按 `0.01` 递增直至通过。
+3. **安全降级**：遇到负 `quality` 导致的上限约束、超界、步进超时或动态 `bonus_rolls` 时，不输出误导数值，改标为“区间受限”或“未知”。
+4. **编译期采集细节**：原版缺省 `bonus_rolls` 等于常量 `0`；`group` 与 `sequence` 的子节点不参与权重竞争，其 `weight` / `quality` 按缺省值处理。
 
-**条件身份与类型能力**：`ConditionIdentity` 使用 `LootItemCondition.DIRECT_CODEC` 和实际 `RegistryOps` 编码；对象键排序、数组保序后生成摘要。等价实例共享语义身份，opaque 出处身份随节点复制和投影保留，只用于本代去重。无法编码的条件不参与场景覆盖，运行时按真实逻辑求值并汇总未覆盖告警。`ConditionTypeDescriptor` 一次登记 handler、可组合能力及必需上下文参数，默认不确定性读取 handler，节点的 partial/unreadable 标记单独保留；数字提供器有独立参数登记。
+### 3.4 嵌套子表观测
 
-**注入入口参与约束规划，不另造满级工具场景**：`ArchaeologyJournalServerCatalog.constraintTable` 将注入子树的路径和继承门槛补入规划/求解输入。场景只描述受控环境假设；工具与附魔来自 `ScenarioParams`，`tool_enchantment` 不被强制置真，最低等级与随机曲线保持真实判定。旧文档里的 `keepBaseTool` 满级钓竿描述已不适用，不能据此忽略玩家参数。
+`NestedLootTableMixin` 在模拟作用域中直接观测父表抽取时触发的直接子表调用，使用 `IdentityHashMap` 与轻量列表统计“该直接子表至少产出一个物品”的次数（不通过物品签名反推，防止父子表共用物品产生归因错位）。NeoForge GLM 触发嵌套子表时同样显式写入观测作用域。子表入口与普通物品共用 `PathHintAnalyzer` 展示派生，其条件树取自服务端计算的共同前置条件与注入门槛（`RuntimeLootLinks`）。
 
-**子表推荐是完整输入的联合见证**：`SimulationAssistTarget.CHILD_TABLE` 按路径的首跳 `sourceChildTable` 筛选，复用 `RecommendationSolver` 的幸运、环境、工具、附魔与随机非零支持检查；候选优先当前场景与当前工具，等级从合法最小值搜索，不默认满级。搜索仍受 2,048 次尝试与 15ms 预算约束，未找到只表示不能证明，不表示不可达。总入口可通过不含额外环境条件的直接物品路径，因此不会一概附加沼泽/开阔水域；加成物品的推荐保留对应路径要求。预览、应用与显式计算交互见 [笔记 GUI 内部机制](journal-ui-internals.md)。
+## 4. 主线程调度与性能观测
 
-`LootSimulationScope` 通过 `ThreadLocal` 仅在当前主线程该输入的全部抽取期间暴露 profile，并由 try-with-resources 确保异常时清理。窄 Mixin 只把场景控制叶条件的 `test` 转交作用域；`all_of` / `any_of` / `inverted` 始终由原版逻辑根据叶子结果求值，随机条件、权重和 rolls 不覆盖。
+[`LootProbabilitySimulationWorker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulationWorker.java) 在服务端 `END_SERVER_TICK` 调度全部模拟任务：
 
-### 3.3 逐路径幸运门槛
+- **单线程安全性**：`getRandomItems` 与 `LootContextParamFiller` 访问非线程安全的 `LegacyRandomSource`，故严格在服务端主线程分片运行，每 tick 使用 `15ms` 软预算（每 32 次抽取检查一次截止时间），并在时间片内复用模拟作用域。
+- **双队列与抢占**：`highQueue`（玩家按需请求与解锁插队）优先于 `lowQueue`（启动基准填充）；已排在低队列的同输入会被提升，新到达的高优先级任务可在下个 tick 边界无损抢占低优先级任务。
+- **去重与限流**：任务按 `(tableId, inputKey)` 去重；多请求者命中队列中已有任务时合并登记为等待者，完成后逐个回执。`highQueue` 待处理上限 `32`、每玩家在途按需请求上限 `2`（仅约束玩家手动按需请求，不限制启动批处理与物品解锁插队）。
+- **三口径完成日志**：完成日志分别报告**线程 CPU 时间**（衡量单表计算真实成本）、**有效计算耗时**（受启动阶段并发争抢影响较大）与**跨 tick 总历时**。
 
-[`LuckGateAnalysis`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckGateAnalysis.java) 从编译期记下的 [`LuckSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckSpec.java) 推出每条路径的最小幸运门槛，结果按**路径分别保留**（`LootAcquisitionPath.luckGate`）——取多路径的最小值会得到一个无法指回是哪条路径需要它的数字。tooltip 因此**逐条目、逐路径**各自显示自己的门槛（同一物品的不同路径门槛不同时两条都会出现），不合并成一条全表通用的说明。
+### 4.1 可选性能观测 (`LootSimulationMetrics`)
 
-判定读原版的两条真实公式（1.21.1）：权重竞争 `max(floor(weight + quality × luck), 0)`（只有 ≥ 1 才进入抽取），奖励抽取 `rolls + floor(bonus_rolls × luck)`（额外抽取只在 `floor(bonus_rolls × luck) ≥ 1` 时出现）。**没有任何原版战利品条件直接读幸运**，因此这两条就是"幸运能不能改变这条路径"的全部入口。
+默认关闭；开发期可通过 JVM 参数 `-Dusb.loot.profile=true` 或环境变量 `USB_LOOT_PROFILE=true` 开启（完成日志追加 `profile=v1` 与各分段统计）：
 
-算法分两步：先由代数解出候选门槛，**向上对齐到 0.01 网格**，再用上面两条真实公式**回验**；回验不通过就按 0.01 步进直到通过或触及预算。这样给出的数值是"照着填就能生效"的值（`1/3` 的上对齐结果是 `0.34`，且 `floor(3 × 0.34) = 1` 确实成立），而不是填不进去的"约 1/3"。
-
-降级原则：满足集合不是"从某个数往上全满足"时（负 quality 造成的上限、代数解落在可表示范围之外、或步进预算耗尽），一律**不给数值**并标记为"区间受限"——给一个数就等于承诺"高过它就能拿到"。同理，无法静态求值的 `bonus_rolls` 记为"未知"而不是零。工具不参与门槛：它由 `ItemPredicate` 单独判定。
-
-`LuckSpec` 的采集有两条易错点，都在编译期处理：
-
-- `bonus_rolls` **缺省**在原版是 `constant 0`（**不是**"未知"），而字段存在但值是动态提供器时必须保留为"未知"；
-- `group` / `sequence` 的子节点**不参与权重选择**（只有 `alternatives` 才按权重挑一个），因此那里的 `weight`/`quality` 按原版缺省处理——照抄数值会把"组内必然产出"的条目误判为需要幸运或不可达。
-
-### 3.4 静态信息性提示的组成规则
-
-`PathHintAnalyzer.hintsFor` 把一个条目的获取路径翻译成"需要条件"的逐行陈述。两条易错的组成规则：
-
-- **逻辑节点与说明行分别保存**。`logicChildren` 只承载真正的子条件；`ConditionDisplayRow` 保留等级门槛与按等级概率等展示信息，逻辑遍历、条件身份和声明触发率均不读取这些行。
-- **附魔提示不写死等级门槛**。原文案硬编码"（等级 ≥ 1）"，但 `min_level` 由数据包给出，写死就会在 `min_level > 1` 的表上说谎。提示只陈述"需要工具带 X 附魔"（"带有该附魔"本身就是该条件类型的固有语义），具体等级以条件树的子行为准。
-
-未解析条件另用 `PathHint.UnresolvedConditions` 表达，与可调旋钮和场景条件分开；组合条件递归收集其未解析叶子，避免把组合父行和叶子重复列出。该提示由 `CatalogStreamCodec` 下发，并参与目录摘要。
-
-幸运提示优先给具体数值：能算出门槛就写"该路径需要：幸运 ≥ 0.34"（玩家可直接照填），只有 `luckAffected` 而无从计算时才退回"该路径需要幸运加成"这句无具体目标的陈述。
-
-tooltip 里同时给出其它代表场景的最小/最大值供对照（网格给的是当前输入的值，两者口径不同，不互相冒充）。代表场景用于控制组合数量与 UI 长度，因此范围**不是所有现实条件组合的严格数学上下界**。同一场景内多条路径产出同一签名时仍由整表模拟自然合并。
-
-### 3.5 嵌套子表观测
-
-嵌套子表由 `NestedLootTableMixin` 在模拟作用域中直接观测。每次父表抽取内按子表 ID 去重，统计"该直接子表至少产出一个物品"的概率；**不通过物品签名反推**，因此父子表产物重叠不会造成误判。作用域只保留根表的直接子表，使用复用 List 记录本轮命中，并通过 `IdentityHashMap` 关联产物来源；身份未保留时再按物品与组件相等回退。内部命中集合由同步回调直接遍历，不为每轮创建副本。父表 UI 不再平铺 `sourceChildTable != null` 的物品路径，而是显示可点击的子表入口及该概率。
-
-平台运行时注入的 `minecraft:gameplay/fishing -> unsuspiciousblock:gameplay/fishing/mud_dredging` 关系由公共目录加载器补入引用图；NeoForge GLM 直接调用子表时也显式写入同一模拟观测作用域。
-
-原版 fishing JSON 看不到 Fabric 加载期注入池或 NeoForge GLM。规划器因此额外建立普通群系与加成群系两个代表场景（使用泥地打捞满级工具，等级取自附魔自身的 `max_level`，且 `keepBaseTool = true` 使其不被参数覆盖），**只用于让运行时注入的条目仍被模拟发现**。这两个场景不是基准场景——启动只跑基准输入（无附魔钓竿），因此注入条目在**被请求之前**显示为「未覆盖」而不是某个"最有利组合"的数字。
-
-**父表页的子表入口按这条门槛报「需要条件」**：入口被门槛挡住时，报"抽样零命中"是错误归因——它把确定的原因说成运气。因此子表入口的展示值走与物品同构的派生（`PathHintAnalyzer.deriveEntryDisplay`：零命中 + 有可陈述门槛 → `NeedsCondition`），条件树由服务端下发（路径共同成立的条件 ∩ + 注入门槛），客户端不再从物品路径本地重推——注入边不写在任何 JSON 里，本地重推必然漏掉它（历史症状：泥底打捞入口显示成没有原因的「未命中」）。调好条件后（例如带满级附魔的注入场景）该入口显示的就是那个场景测到的数值，不需要另一套逻辑。
-
-## 4. 概率模拟：主线程 tick 驱动
-
-[`LootProbabilitySimulationWorker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulationWorker.java) 是模拟的调度器。**关键约束**：`LootTable.getRandomItems` 与 `LootContextParamFiller` 会触碰 `ServerLevel` 关联的 `LegacyRandomSource`，后者不是线程安全的，后台线程与主线程 tick 并发会触发 `ThreadingDetector` 报错。因此**不用后台线程**，改为：
-
-- 在服务端每 tick 末尾（`END_SERVER_TICK`）由 `tick(server)` 消费队列。
-- 任务由 `LootProbabilitySimulationJob` 保存抽取次数、签名与计数，可跨 tick 续跑；一个任务只跑**一个输入**。
-- 每 tick 使用 15ms 软预算，每 32 次抽取检查一次时间；同一输入的模拟作用域在当前 tick 时间片内复用，避免每批重建观测容器。该预算优先保证服务端启动阶段尽快完成模拟，单次抽取无法中断，因此极端复杂的单次抽取仍可能略超预算。
-- 高优先级请求会把已在低队列中的**同一输入**提升到高队列；不同的高优先级任务会在下个 tick 边界抢占当前低优先级任务，且不丢失进度。
-- **双优先级队列**：`highQueue`（玩家按需请求与解锁插队）先于 `lowQueue`（启动基准填充）。
-- **去重键是 `(表, 输入键)` 而不是表**：抽样次数与参数都进了输入身份，同一张表的两个参数组合是两个不同的问题，按表去重会让后一个请求把前一个顶掉。
-- **限流**：HIGH 队列待处理上界 32、每玩家在途上界 2。两条都**只约束玩家触发**的部分——启动批量填充由服务端自己排定、数量等于收录表数，把上界也套在它身上只会让"表很多"被误判成"被刷爆"。玩家解锁触发的插队（`enqueuePriority`）同样不计入玩家额度：解锁是游戏进程自然发生、每表至多一次的事件。
-- **同一个输入的多个等待者都会收到结果**：队列里已有 `(表, 输入)` 时不重复排一次，而是把新请求者登记为等待者，完成时逐个回执——否则"启动批量正在算的正好是我要的那个输入"会让玩家点了却永远收不到结果。
-- 数据包重载期间 `pauseForReload()` / `resumeAfterReload()` 暂停消费。
-- 队列排空后触发 `queueDrainedHandler`（批量广播目录哈希）。
-- `isBusy()` 同时检查 reload 暂停、当前任务和待处理队列；需要读取完整动态物品集合的命令据此拒绝半成品目录。
-
-**完成日志输出三个时间，用途各不相同**：**线程 CPU 时间**回答"这张表本身有多贵"；**有效计算耗时**是累计在 `advance` 内的墙钟时间，在服务端启动阶段会因与区块生成、视距调整等工作争抢 CPU 而明显虚高；**跨 tick 历时**还包含任务在 tick 之间等待的时间。判断某张表是否变慢要看 CPU 时间，不要直接比"有效计算耗时"。日志同时报出该输入的场景键与参数。
-
-### 4.1 可选性能观测与日志解析
-
-`LootSimulationMetrics` 默认关闭；当前归因阶段的 NeoForge 开发 `runClient` 已在 Gradle 配置中开启，IDEA 的 Gradle 面板启动同样生效，发布 mod 不受影响。其他启动方式以环境变量 `USB_LOOT_PROFILE=true` 启动游戏，或在**游戏 JVM** 设置 `-Dusb.loot.profile=true` 后，完成日志保留原有格式并追加 `profile=v1` 和以下字段。观测器只在 `advance` 时间片内绑定当前线程，正常返回、提前让出与异常路径都会恢复绑定。它不修改 15ms 预算、32 次检查间隔或随机源；开启时的时钟和计数开销仍会占用真实时间，所以可能增加跨 tick 切片数，**不能宣称零性能开销**。关闭时不读取分段时钟、不查线程绑定、不追加字段。
-
-| 字段 | 口径 |
+| 字段 | 统计口径 |
 |---|---|
-| `SCENARIOS` / `ROLLS` | 实际准备的场景数 / 根表 `getRandomItems` 调用数，含全部场景 |
-| `DROPS` | 显式注入处理后送入匹配的非空 `ItemStack` 数，不是栈内物品数量 |
-| `SCANS` | `resolve` 实际扫描的候选总数，包含当前场景及原始候选的回退扫描 |
-| `EXACT_SERIALIZATIONS` | `encodeComponentPatch` 的实际编码次数；空补丁及缓存命中不计 |
-| `STORED_KEY_CALLS` | 时间片内实际进入 `toStoredKey` 的次数，含准备与结果组装；存储键缓存命中不计 |
-| `PREVIEW_BUILDS` | 任务内预览缓存未命中的构造次数 |
-| `MATCHED` / `RAW_SKIPPED` / `DERIVED` | 三个掉落处理分支，成功任务中三者之和必须等于 `DROPS` |
-| `CANDIDATES_ADDED` | 各场景实际新增候选数，包含静态初始候选及动态发现 |
+| `SCENARIOS` / `ROLLS` | 实际准备的场景数 / 根表 `getRandomItems` 调用总次数 |
+| `DROPS` | 经过注入处理后送入匹配的非空 `ItemStack` 数量 |
+| `SCANS` | `resolve` 扫描候选总数（含当前场景与原始回退扫描） |
+| `EXACT_SERIALIZATIONS` / `STORED_KEY_CALLS` / `PREVIEW_BUILDS` | 组件实际序列化、存储键编码与预览缓存未命中构造次数 |
+| `MATCHED` / `RAW_SKIPPED` / `DERIVED` | 三个掉落处理分支计数，正常任务三者之和等于 `DROPS` |
+| `CANDIDATES_ADDED` | 各场景动态新增的候选签名总数 |
 
-分段的 `_ns` 字段均为 **`System.nanoTime` 累计墙钟纳秒，不是 CPU 时间**：
+各阶段 `*_ns` 字段记录 `System.nanoTime` 累计墙钟纳秒；其中 `GENERATE` 包含原版、Mixin 与 NeoForge GLM，而 `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 为嵌套子明细（已包含在父段内，不可重复叠加）。使用 [`scripts/loot_simulation_profile.py`](../../../scripts/loot_simulation_profile.py) 解析 `/usb journal reload` 标记后的完整测试轮次。
 
-- `PREPARE` / `FINISH` / `RESULT`：上下文和候选准备 / 场景收尾 / 最终结果组装。
-- `BEGIN_ROLL` / `GENERATE` / `INJECT`：清理单轮作用域 / `getRandomItems` / 显式注入。`GENERATE` 包含 vanilla、现有 Mixin 与 **NeoForge GLM**；不能直接称为"vanilla CPU"。
-- `MATCH` / `RAW_MATCH`：当前候选匹配 / 原始候选回退，包含候选查找和预览缓存查询。
-- `DERIVE` / `KEY_LOOKUP` / `RECORD` / `CHILD_RECORD`：派生签名 / 查询存储键缓存 / 更新计数、发现来源和增量候选索引 / 子表计数。精确候选首次加入索引时构造缓存预览，所以其 `PREVIEW_DETAIL` 会落在候选准备或 `RECORD` 内；原始索引构建计入任务创建。
-- `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 是**嵌套明细，已包含在父段中，不得再次相加**。未分配时间还包括任务创建/场景规划、循环、观测本身及时间片作用域维护。
+## 5. 结果缓存与失效机制
 
-使用 [`scripts/loot_simulation_profile.py`](../../../scripts/loot_simulation_profile.py) 解析明确的 `/usb journal reload` 标记后的完整轮次，拒绝启动轮、未结束轮及重复表；用同一脚本导出基线和后续数据。原始热运行证据、存档摘要与操作说明随对应本地 Issue 保存，完成后按 [Issue 追踪器](../../agents/issue-tracker.md)约定归档到 `.local/archive/`。小任务的线程 CPU 可能因平台计时分辨率显示 0ms，不能据此断言零成本。最终性能收益需在相同观测模式、相同抽样次数和表集合、完成预热的条件下复测。
+模拟结果通过 `LootProbabilityData`（挂载于主世界 `SavedData`）持久化，当前存储结构版本 `format_version = 5`（更早版本或 NBT 标签类型不匹配时整体按缓存未命中处理，不做迁移）。
 
-## 5. 概率模拟：结果缓存与失效
-
-模拟结果通过 `LootProbabilityData`（SavedData，附加在 overworld）持久化。测量值按**输入键**保存（`inputKey -> {该输入的每签名测量值, 每直接子表测量值}`）；**落盘只用窄类型 `SimulatedValue`（`Unknown` / `Measured`），并只持久化"该输入测到了多少"**——不可用场景的「需要条件」恢复时由规划出的场景与路径静态结构重新派生，因此改了静态分析规则不需要迁移存档。嵌套引用的获取路径在每个根表视角下保留第一层子表来源，使孙表条件导致的不可达场景能够汇总到直接子表。动态条目的直接来源标记（`hasDirectSource`）与子表来源列表（`sourceChildTables`）会一并持久化到父表缓存，恢复时优先使用缓存的来源信息，仅在其缺失时才用直接子表及其后代缓存中的相同签名重建获取路径。
-
-**存档结构分三层**（`format_version = 5`；4 及以前不含函数观测，更早的扁平结构是"items + 每签名分场景值"，版本不符即整体按缓存未命中处理，不做迁移）：
-
-| 层 | 内容 | 淘汰 |
+| 缓存层级 | 键与内容 | 淘汰与失效策略 |
 |---|---|---|
-| `hash` | 该表的内容哈希（SHA-256） | 变化即整表作废 |
-| `discovery` | 表级发现记录：动态发现签名的"是否直接产出 / 来源直接子表" | **LRU 不淘汰** |
-| `inputs` | `inputKey → { 抽样次数, 每签名测量值, 每直接子表测量值, 每签名函数观测摘要 }` | 按参数组合 LRU |
+| `hash` | 整棵子树内容与依赖摘要（SHA-256） | 变化即整表作废 |
+| `discovery` | 表级动态发现签名及来源标记（`hasDirectSource` / `sourceChildTables`） | **永不进入 LRU**（防止动态条目在重启后消失） |
+| `inputs` | `inputKey → { 抽样数, 签名测量, 直接子表测量, 函数观测摘要 }` | 按参数组合（不含抽样数）执行上限 `8` 的 LRU 淘汰 |
 
-- **发现记录挂表级、LRU 不淘汰**：动态条目（GLM / `LootTableEvents.MODIFY` 注入）没有静态路径，它的"直接来源 / 来源子表"只能从模拟观测里得到。若把它放进会被淘汰的测量值里，淘汰一次就会让这批条目在重启后**从网格里消失**——那是信息丢失，不是缓存失效。
-- **测量值按输入键索引**：键是 `(表哈希, SimulationInputKey)`，于是"同一张表换个幸运值"是新增一条，而不是覆盖旧的一条。
-- **LRU 按参数组合计数**：每个参数组合（**不含抽样次数**）最多保留全部次数档位，参数组合数上限 8，实际条目 ≤ 8 × 档位数。理由是换参数是换**问题**，换次数是换**答案的精度**——高精度答案不该把问题本身挤出缓存。访问顺序在内存中按"最近使用"更新（`LinkedHashMap` 访问顺序），落盘沿用上一次写盘时的顺序；重启后精度可能回退到上次写盘的状态，代价只是"换一个组合被淘汰"，不影响正确性。
-- 存档根带 `format_version`（当前 5）。读取时先校验版本与**严格的 NBT tag 类型**——根缺少版本、版本不符、概率仍是旧版 `StringTag`（注意这并**不是**"字段缺失"，必须按类型显式判定），或单个表的条目无法解析时，一律把对应表按**缓存未命中**处理：既不报错中断，也不迁移数值、更不把类型不匹配解成 0。
-- 每表还存一份内容哈希（SHA-256），输入覆盖**整棵子树**：每张表的完整资源栈摘要 + 编译产物摘要（物品签名与 id）+ **被引用附魔的定义摘要**（附魔 id 与其 `max_level`）。必须覆盖子树而不只是本表，否则"子表引用的 item tag 成员变化"（JSON 文本不变、只有展开结果变）不会让父表失效。该哈希一并发给客户端（`CatalogTableDto.hash`），供按需请求声明"我按的是这一版内容"。
+### 内容哈希、重载盐与分析版本
 
-**失效保证拆成两句，不要读成一句更大的保证**：
+- **子树摘要覆盖范围**：每表 SHA-256 包含子树完整资源栈原文、编译产物摘要、实例态排除组件配置、`SIMULATION_CACHE_VERSION`（以 `ArchaeologyJournalServerCatalog` 常量为准），以及被引用附魔 ID 与 `max_level`。
+- **外部依赖重载盐**：对包含 `reference`、`furnace_smelt`（或解析超节点预算）的表及其祖先在每次目录生成时混入新的重载盐，使修饰器或配方变更在跨重载时触发重算，同时让普通静态表跨重启持久命中。
+- **明确不纳入摘要的残留范围**：附魔的铁砧花费/权重字段、第三方 GLM 私有外部状态、以及（经确认已由条件身份与 Profile 隔离的）群系 Tag 和伤害类型定义。
 
-1. **"表 JSON 变化必然失效"**——由资源栈摘要承担，成立；
-2. **外部依赖按明确范围失效**——附魔定义沿用已有摘要；含 `reference` 或 `furnace_smelt` 的表及其父表在每次目录 generation 构建时混入新的 UUID 盐。它覆盖 modifier 间接引用、数组包装、熔炼输入、tag 与输出组件的重载变化，但不构成完整第三方外部依赖图。
+### 启动、重载与失败保护
 
-**已知残余**（不在上述摘要覆盖内，明确列出以免把"没进摘要"一律当成漏洞）：
+- **启动只算基准输入**：首次加载仅从缓存恢复或入队每表的 `baseline` 输入，按「哈希变化」与「缺少测量」分别统计未命中原因；其余场景按需触发。
+- **数据包重载**：`DataPackReloadListener` 仅置脏标记，由 `ServerLootTableConfigManager` 在服务端 tick 路径统一失效重建（避免阻塞平台重载回调）。
+- **构建期机制拦截**：`LootMechanismSupport` 在构建期拦截 `paramSet` 不兼容的表（如 `barter` 缺少 `ORIGIN`、或在非工具上下文引用 `enchantment_level`），直接标为 `Unknown(UNPARSED)` 并输出一次可行动日志；同时遵循原版缺省语义，将空 `type` 视为 `generic`。
+- **确定性失败不自动重排**：执行异常的输入记录为失败并维持「未知」展示，直到下次数据包重载或执行 `/usb journal reload` 时才重新尝试。
+- **唯一展示派生路径**：从缓存恢复与刚刚模拟完成统一调用 `ArchaeologyJournalServerCatalog.deriveTable` 装配展示结果。
 
-- 附魔定义的 `max_level` 之外的字段（anvil 花费、权重等）——它们不影响任何概率；
-- 第三方 GLM 自读的其它注册表、脚本状态及同一 generation 内直接修改的外部状态不在保证范围；含已识别 `reference` / `furnace_smelt` 的表在下一代重算；
-- **经核实不受影响、因此不列入残余**的两类：biome tag 成员（`location_check` 由条件身份回答，不查真实区块与 tag）与 damage type 定义（`DAMAGE_SOURCE` 由 profile 填充，不读注册表）。
+## 6. 约束目录与按需请求链路
 
-目录 DTO 的注入归一和 child conditions/branches/options 由 `CatalogProjection` 计算，声明与来源名由宿主按代捕获。完整目录摘要使用同 revision 的冻结线路快照，覆盖字段与网络 codec 同源；详见 [目录构建](journal-catalog-build.md)。
+[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 仅签发合法参数边界（场景列表、基座工具、被引用附魔最高等级与抽样档位），**不预先枚举笛卡尔乘积**，从源头避免数万组合造成的计算与缓存爆炸。默认工具直接复用 `JournalCategoryLoader` 分类的 `default_tool`（缺省回退空手）；基座工具列表取自整棵子树的 `match_tool`（标签谓词仅取首个成员作为代表，并随附谓词原文说明）。
 
-统计口径与语义变化通过 `SIMULATION_CACHE_VERSION` 失效，当前为 `loot-analysis-v25`。函数分级、幸运影响标记和声明触发率元数据参与目录哈希；抽样次数属于输入身份。模拟异常或无法取得有效表时不写入缓存。
+```mermaid
+sequenceDiagram
+    actor C as 客户端
+    participant S as 服务端主线程
+    participant D as "LootProbabilityData (存档)"
 
-**实例态组件排除改变了签名派生结果**，因此该组件 id 列表并入每表哈希的输入：前者覆盖"派生规则本身变了"（第三方 GLM 注入的饰品条目不在静态编译产物摘要里，只靠子树摘要无法失效），后者覆盖"改配置"。两者都只让相关表重算，不需要迁移玩家进度。验证时通过 `/usb journal reload` 强制重算。
-
-**启动只跑基准输入**：由 SavedData 里**该表基准输入**的那一条测量值决定缓存是否命中；未命中才入队。基准输入 = 基准场景（条件全不成立）的条件赋值 + 基准参数（默认工具、幸运 0、基准档位、无附魔）。因此"启动成本"从"每表 × 场景数"降到"每表 × 1"，其余场景在玩家请求时才算。启动日志按原因分账（`概率缓存命中 X 个表的基准输入，Y 个待模拟（未命中原因：哈希变化 A 个、缺少该输入的测量值 B 个）`）：**哈希变化**＝内容变了、本该重算，**缺少该输入的测量值**＝内容没变但这条输入没算过；混成一个数字时"缓存机制坏了"与"内容确实变了"看起来一模一样。验证普通表第二次启动是否命中；含外部依赖的敏感表按设计重算，不要求跨启动命中。
-
-**按需结果只回给请求者，不写共享目录**：按内容去重的缓存是全服共享的，但"当前展示哪个输入"是每个玩家自己的选择，写进共享目录会让两个玩家互相覆盖对方的界面。共享目录里的数字始终是**基准输入**的。
-
-**数据包重载会真正触发重算**：Fabric 用 `ResourceManagerHelper.get(PackType.SERVER_DATA)`、NeoForge 用 `AddReloadListenerEvent` 注册 [`DataPackReloadListener`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/bootstrap/DataPackReloadListener.java)，它**只置脏标记**，重建由 `ServerLootTableConfigManager.tick` 在服务端 tick 路径上消费（在重载回调里同步跑全量构建会拖住重载，且两个平台的重载事件时序不同）。服务端启动时的首次资源加载也会触发监听器，但那时目录尚未加载，标记被忽略。
-
-**不可用机制的表在构建期被拦下**：`LootMechanismSupport` 识别"paramSet 不允许的参数引用"（如 `enchantment_level` 提供器、`enchantment_active_check`）与和填充模型根本不相容的 paramSet（如 `barter`，其 allowed 集合不含 `ORIGIN`）。判定时**空 `type` 按 vanilla 语义等价于 `generic`**（`LootTable.DIRECT_CODEC` 里 `type` 缺省为 `ALL_PARAMS`）——实测有整套模组（BetterArcheology 的 7 张宝箱表）不写 `type`，把空串当成"未知 paramSet"会把它们误判为不可用。这类表不入队模拟（否则会在 `getRandomItems` 里抛异常后静默失败），而是标记为 `Unknown(UNPARSED)` 并输出一次可行动的诊断。
-
-Job 独占未完成、成功和失败终态；未完成时读取结果会报错。普通 Exception 转成保留表与输入的失败，Error 沿同步与 Worker 路径传播；作用域和指标在 finally 清理。
-
-**失败输入不会自动重试**：能确定性失败的情形（注册表里没有该表、条件求值抛异常）用同一份输入重跑只会再失败一次并持续占用 tick 预算，因此失败输入只记录不重排。它的概率保持「未知」（不会显示成 0%），本轮队列排空时汇总列出一次 `N 个模拟输入失败…将在下次数据包重载或 /usb journal reload 时重新尝试`。
-
-`/usb journal reload` 只清除此处的概率缓存与内存目录，不清除玩家笔记进度。
-
-**展示派生只有一份实现**：`ArchaeologyJournalServerCatalog.deriveTable` 从"该表场景规划 + 指定输入的测量值 + 表级发现记录"派生展示用的 `TableDefinition`，**从缓存恢复与刚刚算完都走它**。它因此不可能出现"两条路径两套口径"，也解释了为什么测量值类型（`SimulationMeasurement`）刻意不含展示结论。
-
-## 6. 约束目录与按需管线
-
-**目录只发布约束，不枚举候选输入**。[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 是一张表的四份清单：场景候选（≤32，附截断数量）、工具基座、被引用附魔的等级上限、抽样次数档位。`toolSelectionAllowed` 由服务端检查整棵子树的 `match_tool` 引用后签发，客户端不以候选数量判断是否显示工具选择；只有附魔或组件谓词、没有可枚举物品的 `match_tool` 也会开启选择。
-
-默认工具复用 `JournalCategoryLoader` 的分类结果，取分类 JSON 的 `default_tool`，缺失或物品无效时回退空手（`minecraft:air`）。当前考古为刷子、钓鱼为钓竿、化石采集为钻石镐、淘洗为铜淘盘，箱子、陶罐及其他为空手。每张子表按自身分类设置默认值。工具只作为 `TOOL` 输入，不自动叠加淘盘的实际幸运加成；幸运仍由模拟参数单独指定。
-
-为什么不枚举：首版计划让目录生成"场景 × 基座工具 × 附魔等级赋值"的完整集合，但那是一个**乘积**——32 的上限只约束其中一维，6 个附魔各 4 档就是 4⁶ × 32 = 131,072 个组合。关键认识是缓存 LRU 限制的是**结果数量**，限制不了这部分**计算**，所以必须从源头取消枚举：单个输入在请求时构造，由 `SimulationConstraintCatalog.resolve` 逐项校验（场景已签发、幸运有限且在界内且已量化到 0.01、工具已签发、每个附魔等级在 `0..max_level`、抽样次数在档位内）。任何一项越权即**整体拒绝，不做部分修正**——把一个越权值悄悄改成最近合法值，会让玩家看到的数字与他填的参数不一致，那比直接拒绝更坏。
-
-**工具与附魔取自整棵子树**（`referenceGraph.descendantsInclusive`）：父表页签里出现的物品来自子表，其 `match_tool` 谓词与读附魔的机制也都写在子表里，只看本表 JSON 会让这些旋钮在父表上凭空消失。工具基座的枚举方式有一条被明确接受的代价：**标签谓词只取首个成员**，因为 `ItemPredicate` 可含任意物品、标签、组件、数量与子谓词，穷举不可能。因此 `ToolOption` 必须同时携带**谓词原文**，提示里才能写清"下拉不等于谓词允许的全部物品"；未列入下拉的成员必然找不到联合见证，于是行为是诚实的降级（只渲染静态提示），而不是挂着一个点不动的死按钮。
-
-**按需请求的完整链路**：
-
-```text
-客户端                  服务端主线程                                 存档
-──────────              ────────────────────────────────────        ──────────────────
-选场景/改旋钮
-  → RequestScenarioSimulationPayload
-    (generation, 表 id, 表哈希, 场景 key, 幸运, 工具, 附魔等级, 次数)
-                        ScenarioSimulationHandler
-                          ├─ 每玩家在途 ≤2（worker.canAcceptFor）
-                          └─ ScenarioParams 构造（越界即拒绝）
-                        ArchaeologyJournalServerCatalog.requestSimulation
-                          ├─ 表仍被追踪？ 哈希一致？ 输入被签发？
-                          ├─ 命中缓存则不重算
-                          └─ 入 HIGH 队列，去重键 (表, 输入键)
-                        worker 在主线程分片推进 → 写 SavedData
-                          └─ 只回给请求者（不写共享目录）
-  ← SyncScenarioResultPayload(generation, 表哈希, inputKey, 单表 DTO)
-  ← （被拒绝时）ScenarioRequestRejectedPayload(generation, 表 id, inputKey, 原因)
+    C->>S: RequestScenarioSimulationPayload (generation, tableId, tableHash, sceneKey, params)
+    S->>S: ScenarioSimulationHandler (校验在途<=2，构建并校验 ScenarioParams)
+    S->>S: requestSimulation 校验追踪资格 / 表哈希 / 约束签发
+    alt 参数越权或目录过期
+        S-->>C: ScenarioRequestRejectedPayload(原因)
+    else 命中缓存
+        D-->>S: 读取对应 inputKey 测量值
+        S-->>C: SyncScenarioResultPayload(单表 DTO)
+    else 未命中缓存
+        S->>S: 入 HIGH 队列，按 tick 15ms 分片计算
+        S->>D: 写回测量结果与动态发现记录
+        S-->>C: SyncScenarioResultPayload(单表 DTO，仅发请求者)
+    end
 ```
 
-- 三条校验都**必须在服务端**：客户端持有的目录可能已经过期（哈希不一致 → `STALE_HASH`，让它先重新同步），输入可能被自造（→ `REJECTED_INPUT`）。判定的权威是约束描述本身，不是网络层的另一份副本。
-- **被拒绝的请求一定回执**：这些情形都不会产出结果包，没有回执的话"点了没反应"与"还在计算中"在界面上无法区分。回执不携带任何概率，也不进缓存。
-- 结果包的三个标识缺一不可：**代次**（切参数或 `/reload` 之后旧结果可能后到）、**表哈希**（哈希变了说明这些数字属于上一版内容）、**输入键**（客户端据此判断"这是不是我此刻选中的那个输入"）。三者不符即丢弃。
-- 客户端缓存的键与缓存键同源（`表 id + '#' + inputKey`），容量有界、按最旧淘汰。
+- **结果包三要素校验**：客户端同时核对 `generation`、`tableHash` 与 `inputKey`，任一不符立即丢弃；客户端本地按 `(tableId, inputKey)` 有限容量缓存最近查看的结果。
+- **推荐/辅助通道分离**：`SimulationAssistHandler` 独立响应辅助推荐请求，执行版本校验与每玩家 `500ms` 冷却（通过 `notes` 返回 `assist_busy` / `assist_stale`）；客户端绑定请求序号，15 秒无答复提示超时，“应用参数”只更新输入草稿，仍需玩家显式触发计算。
 
-**目录构建期就要算出约束描述**：启动只跑基准输入，而"基准输入是哪一个"需要先知道基准场景的条件赋值，因此这一步是缓存查询的前置条件，不是可以省的预计算。构建时为每张表打印一行摘要（只对有信息量的表：场景数 >1、有截断、或超预算），运维据此核对上界与降级行为。
+## 7. 相关文档
 
-## 7. 展示值的派生规则
-
-`ItemDefinition.probability` 是**服务端派生的当前输入展示状态**（`Probability` 四态，可适用性 × 计算状态两轴）。物品与子表的 `scenarioProbabilities` 仅携带**同一份参数下存在测量缓存**的场景引用，并分别走与主行相同的 `deriveDisplay` / `deriveEntryDisplay`，原始计数仍保存在测量缓存。没有计算的场景不下发引用，客户端缺引用时显示 `Unknown(NOT_SIMULATED)`，不能仅凭静态候选存在就标成已缓存。这样跨场景缓存投影不会将入口的「需要条件」降回原始零命中的「未命中」，也不需要客户端重新评估门槛。
-
-**未计算也有入口说明**：`clientTable` 为每个直接子表补齐「路径共同条件 + 注入边门槛」，保留已有概率、引用与条件；该静态说明与环境假设分开展示，不把各子表要求拼成全表 AND。入口随机条件只描述曲线，不承诺应用配置就必过。
-
-判定规则（`PathHintAnalyzer.deriveDisplay`）：
-
-- 全部获取路径都被**逐路径幸运门槛**证明在任何可表示的幸运下拿不到 → `Unreachable`，网格 `0%`。这是**唯一的静态不可达判据**（有效权重恒为 0）；只有**所有**路径都如此才成立，任一条可达就不写 `0%`。
-- 当前输入下适用且测到非零值 → 报测量值；适用但零命中且无路径提示 → `Measured(0.0)`，网格显示「未命中」。
-- 当前输入下不适用或测值为零、但路径引用了可调整旋钮/场景条件 → `NeedsCondition`，网格显示「需要条件」，tooltip 逐条列出引用了什么（**只是陈述**，不承诺调完一定能拿到）。
-- 上述路径若含未解析条件，则同样保留提示与测量事实，但网格优先显示「条件未解析」；该文案只说明解析缺口，不断言未知条件必然造成零命中。tooltip 列出条件 id，正数测量与静态不可达仍优先。
-- 条目在**所有**代表场景中都不适用（条件组合因场景上限被截断）→ `Unknown(UNCOVERED)`，网格 `?`，而不是逐个写 `0`——否则"没算到"会被显示成"不可能获得"。
-- 某条路径在某个场景下不可用**不是**静态不可达，它在该场景里记为「需要条件」，不再写 `0%`。
-
-**声明触发率与模拟掉落率分开**：`random_chance` 解析器把常量值或两端皆为常量的 `uniform` 范围写入条件 metadata 的 `declared_chance_min/max`。公共值类型 `DeclaredChance` 从当前页直接路径的条件树（含继承条件及组合条件的叶节点）收集这些值，保序去重。网格的**显示优先级链**固定为：可适用性状态 → （可展示时）声明触发率 → 否则模拟值。即状态为已测量/静态不可达时网格显示"触发率 X%"或范围（多条用 `/` 分隔）；状态是「需要条件」或未知时网格只显示状态词、不显示任何数字，声明值退到 tooltip。tooltip 里两者始终并列并注明各自口径，后者是整张表抽取的统计结果。
-
-声明值描述各个 `random_chance` 节点自身，**不对多个节点做乘法、并集或取反**，也不把权重竞争、rolls 或多 pool 的结果混进声明值；完整条件树用于解释组合关系。动态或非法范围不作为明确声明值，未找到明确值时沿用模拟展示。声明值不套用抽样的两位有效数字或零出现阈值，因此 `0%`、小概率和明确区间均按数据值展示。
-
-**条件展示带保真度三态**，由服务端解析层在 `analyzeAll` 时以 metadata 给出（键 `analysis_fidelity`，见 `LootConditionHandlers`）：描述完整时不写该键，只给出"成立但有未展示约束"的描述时标 `partial`，没有解析器或解析器失败时标 `unreadable`（此时文案统一为"未解析条件：<条件注册名>"，保留 id 作为唯一的定位入口）。JSON 解码失败与条件对象缺少分析器都保留 `unreadable` 节点；无法取得注册 id 时使用明确的占位 id。编译时按表和类型去重告警，便于定位第三方条件。客户端只据该标记映射样式（`partial` 与 `unreadable` 用斜体，`unreadable` 另用 `TooltipBuilder.CONDITION_UNREADABLE` 上色），**不推断条件语义**。同理，拿不到确定数值的概率条件一律承认是动态值（`random_chance` 只在常量或 `uniform` 两端皆为常量时给出百分比），**绝不展示编造的 `100%`**。
-
-`entity_properties` 同时展示已识别的实体类型与 `type_specific` 子谓词，未覆盖的其它字段仍标 `partial`；状态属性的 `min`/`max` 区间显示为可读范围。`value_check`、`table_bonus`、`enchantment_active_check` 和 `random_chance_with_enchanted_bonus` 已补充参数描述，动态或尚未完整解释的值继续标 `partial`。
-
-**函数树在 tooltip 里递归渲染**：每条获取路径依次列出掉落条件、来源和生成效果；函数自身条件以「生效条件」分支列在所属节点下。完整且无自身条件的 `sequence` / `reference` 省去包装层，按原顺序展示子效果；其他包装器保留自身语义，子效果直接缩进，不再增加「内层函数」标题。递归深度上限 8，超限输出省略行。普通 tooltip 不显示执行记录或签名内部分类。
-
-概率文本与颜色共用**一份**判定：`ItemDefinition.uncertaintyLevel()` 与 `hasConditions()` 读同一批数据（全部获取路径的条件树 + 近似签名及函数分级），UI 不再在客户端另起规则、也不再用 tooltip 文案比较来识别近似条目（那种做法会受语言差异影响）。等级只决定数值的**颜色**；状态词（`?`、「需要条件」「未命中」）一律由服务端派生的 `Probability` 决定，不再出现"颜色说不确定、概率却从不显示 `?`"或反过来的错配。存在场景条件时，概率文字明确标为"条件满足时至少出现一次"，**不是这些条件在自然游戏过程中的发生概率**。
-
-## 8. 重载一致性
-
-整轮重载的静态部分（快照 / 图 / 编译产物 / 静态投影 / 每表哈希 / 分类结构）在同一轮局部构建完成，再通过单个 volatile 引用**原子发布**，读取方只会看到上一代的完整状态或新一代的完整静态部分。模拟结果作为该代的 overlay 随进度增长，提交时校验代次，旧代结果不会写入新代。`invalidate()` 只需丢掉引用，资源快照与投影随之释放。详见 [考古笔记系统](../subsystems/journal.md) 的「目录构建」。
-
-## 9. 函数规则与执行捕获
-
-静态规则与运行时观测是**两条不可互推的轴**（静态侧语义见 [战利品表系统](../subsystems/loottable.md) 的「函数规则描述与运行时观测」）。捕获逻辑全在 `FunctionTraceSession`，Mixin 只转交参数与返回值。
-
-静态投影期间安装 `LootFunctionPreviewContext`，从当前服务器读取 `ITEM_MODIFIER` 与熔炼配方；不创建 `LootContext`、不运行随机掉落函数。包装预览和内层描述分别限制为 8 层、每次内层展开 128 个节点；预算耗尽的描述写入 `analysis_incomplete` / `truncated`，不能把缺失条件当成无条件。数量变化和条目掉落条件不降低结果身份精度，同签名合并获取路径，模拟仍逐轮去重计数。缓存分析版本升为 `loot-analysis-v24`，旧测量重新计算。
-
-容器内容摘要最多列 8 项、最多 8 层并共享 32 个条目节点预算；保留条目条件、函数生效条件与包装分支关系。容器内部物品不加入外层物品目录、概率或进度。历史 `APPROX_ITEM_ONLY(function)` 进度经既有目录迁移入口，仅在同物品当前签名唯一时合并，含歧义的记录不猜测归属。
-
-### 9.1 捕获机制
-
-- **两个注入点**（清单见 [Mixin](../foundation/mixin.md) 的「loottable/ - 模拟条件作用域」）：
-  - `LootItemConditionalFunctionMixin` 以 `@WrapOperation` 包住 `apply(ItemStack, LootContext)` 内对 `run` 的那次调用，语义严格等于"外层条件通过并进入执行体"——不重掷 `conditions.test`、不重试、不额外消费随机数；`method` 必须写完整描述符，否则会同时命中编译器生成的桥接方法。
-  - `LootTableSplitterMixin` 在 `createStackSplitter` 上 `@ModifyVariable` 包装输出 `Consumer`、`@ModifyReturnValue` 包装拆栈器本身。拆栈算法与随机序列仍由原版决定，本模组只让拆出的副本继承来源链；为什么不用 lambda 窄注入见 [Mixin](../foundation/mixin.md) 的同一节。
-- **对象身份传递**：`IdentityHashMap<ItemStack, TraceHandle>` 把产物对象映射到执行链，**不写追踪组件、不写 NBT**，因此不干扰物品比较、堆叠与其他函数。对象关系断裂（第三方复制、平台后处理替换）时不做"相同物品 + 相同组件"回退归因，直接按未建立关联处理；拆栈副本按身份从拆栈输入继承。
-- **包装与顺序**：执行帧栈记录进入顺序，内层节点挂到触发它的外层节点下，最终按深度优先展平——重复执行保留为多个节点，不折叠。同一函数对象实例的描述按 `IdentityHashMap` 缓存一次；描述生成期间挂起捕获，避免 handler 的静态预览执行被误记成真实执行。
-- **语义分析与展示裁剪分离**：`LootTableProjector` 保留完整兄弟/子函数列表供场景规划使用，不再执行 `boundFunctions`。`CatalogStreamCodec` 只在写包时裁剪：顶层最多 64 个、子节点共用 `LootFunctionInfo.MAX_CHILDREN_PER_NODE=64`、嵌套最多 16 层。裁剪位置写 `metadata.truncated=siblings/children/depth`，tooltip 显示双语省略提示；读端使用对应上限校验。第 65 个以后的函数条件仍参与服务端分析。
-- **容器隔离**：`set_contents` / `modify_contents` 执行期间不采集子内容（容器节点本身仍记录），避免把容器内部函数串到外层容器上；这类节点在链上标 `contentExpanded = false`。
-- **内层条件只在静态描述里补挂**：`LootFunctionDescribeSupport.describeNested` 通过 `LootFunctionDescriptions.withConditionOps` 安装的 `RegistryOps` 上下文解析包装器内层函数的条件并原位补挂；运行时捕获路径**不安装**该上下文，因此那里描述的 `children` 内层条件保持为空。
-
-### 9.2 预算与截断
-
-| 预算 | 上限 | 越界行为 |
-|---|---|---|
-| 单条链的节点数 | 64 | `TraceHandle` 增量构造，达到上限立即停止（不再先全展平后裁剪），链标记为 `PARTIAL` |
-| 函数嵌套深度（执行帧） | 16 | 放弃新增该帧，并置本轮截断标志 |
-| 单个结果的子节点数（`Frame.addChild`） | 64 | 不再挂入该子节点，并置截断标志 |
-| 单个结果签名的观测链数 | 16 | 丢弃多余链，并置 `truncated` + `incomplete` |
-| 单个输入的唯一链条目数 | 4096 | 停止新增条目 |
-| 单轮建立的栈对象关联数 | 4096 | 暂停本轮新增捕获 |
-| 会话内缓存的唯一函数描述数 | 4096 | 停止新增描述 |
-
-越界一律**显式置截断标志**，不静默丢弃。截断只暂停"新增捕获"：**原函数照常执行**（包装只做旁路记录），**drops 与概率计数照常完整消费**——观测缺失或裁剪不改变模拟结果。记录器自有异常（进入/退出执行帧、描述生成）就地降级为"观测不可用"，不影响原执行路径；被包装的**原函数**异常只用于退出执行帧，随后**原样传播**给既有模拟失败处理，不吞掉、不重试。
-
-### 9.3 缓存与失效
-
-- `LootProbabilityData` 的 `format_version` 当前为 **5**（4 及以前不含函数观测）。版本或 NBT tag 类型不符一律按**缓存未命中**处理，不迁移数值。
-- **观测属输入级**：`InputMeasurement` 携带"签名存储键 → 函数观测摘要"，与概率一起按 `(表哈希, 输入键)` 落盘、**一起被参数组合 LRU 淘汰**；因此一个输入看不到另一个输入的观测。
-- **动态条目的存在性属表级**：`discovery` 记录动态发现签名及其"是否直接产出 / 来源直接子表"，**LRU 不淘汰**。把存在性放进会被淘汰的测量层，淘汰一次就会让这批条目在重启后从网格里消失——那是信息丢失，不是缓存失效。
-- 观测**不进目录摘要**：目录哈希由 `origins` 与静态函数树逐字段参与（不计按代失效的外部依赖盐时，静态内容摘要稳定），观测是当前输入的运行时事实，不改变同步内容。
-- **观测只在精确命中当前输入的 DTO 上**：客户端合并公共结构（`mergeStructure`）、跨场景投影与 overlay 的非命中分支一律把 `observedFunctions` 置空，只有 overlay 中 `exactInput()` 命中的那份 DTO 才携带观测，避免一个输入的观测被画到另一个输入上。**baseline 是例外**：`catalog()` 收到的公共目录本身就是 baseline 输入那一份，其观测可保留。
-- **外部依赖重载盐**：`hasReloadSensitiveFunctions` 迭代扫描编译事件的原始函数 JSON，兼容数组及对象包装。出现 `reference` / `furnace_smelt`、编译结果缺失或超过 4096 个 JSON 节点预算时保守判为敏感。每代每个表节点只分析一次，盐通过现有子树摘要传播到父表。同代输入缓存照常使用；敏感表跨重载/重启重算，无关表仍可持久复用。已删除只覆盖直接 modifier 及配方 id/产物/数量的旧摘要。
-- **同签名的"普通来源"与"模组联动"合并为一条**：注入路径并入既有条目、来源集合取并集加入 `MOD_INTEGRATION`，服务端构建期（`buildGeneration`）与客户端视图（`clientTable`）两处同口径，不再各自造一条同签名条目。
-
-### 9.4 四种降级状态
-
-| 状态 | 判据 | 含义 |
-|---|---|---|
-| 未观测 | `chains` 为空 | 本次模拟没记录到执行链；**不代表没有函数执行过**（记录器可能未挂接，或产物未建立关联） |
-| 未完整 | `incomplete = true` | 至少一件产物没有可归因的函数链，或链本身被截断；没有被捕获的函数执行也会产生此标记，因此不能单凭它断定对象身份丢失，有链也不能当成完整生成过程 |
-| 截断 | `truncated = true` | 观测详情因预算耗尽被裁剪；预算不够不代表规则不存在 |
-| 未解析 | `FunctionFidelity.UNRESOLVED` | 静态侧连描述都取不到（未知 mod 函数、Codec 解码失败）；与运行时是否捕获到执行无关 |
-
-玩家 tooltip 不展示函数执行捕获及其完整性状态；静态获取条件与生成效果挂在获取路径下。捕获数据继续用于诊断，完整性状态不改变掉落数量或概率计数。没有函数的海洋之心也可能出现未关联状态，不能据此断定对象身份丢失。
-
-此外 `unavailable = true` 表示记录器自有异常，它同时置 `incomplete`。四者**不可互推**：不要用"有链"推断规则已完整解析，也不要用"未解析"推断没有执行。
-
-### 函数策略与能力登记
-
-`LootFunctionInfo.semantics()` 返回 `FunctionSemantics`，分别表达效果、描述保真度、随机性、预览不确定性与身份影响。内建 handler 的 `describe` 同时生成文本和策略；包装器聚合子策略，未知或未完整展开的包装保持保守。数量变化保留身份，容器内容只参与容器效果。随机附魔的书预览和签名派生仍由原 handler 提供。
-
-空附魔映射通过当前预览输入和前序身份影响证明空操作：普通书或此前可能变换基础物品时保留该节点，其余输入通过类型化 `displayNoOp` 控制 tooltip 省略。预览失败保留描述；函数自身条件留在函数节点。
-
-策略使用 `semantics_v1` 元数据编码。线路最多保留 32 项，优先策略、语义不完整、裁剪与空操作标记，再按键名稳定排列辅助信息；键和值沿用 64/512 字符上限。字段顺序保持，旧读取端按普通元数据保存未知键。
-
-`LootFunctionHandler` 登记必需的 `LootFunctionDescription` 与可选的 `LootFunctionPreview`。描述始终尝试生成规则树；预览返回 `Applied`、`NeedsContext` 或 `Unsupported`，只发布已应用的隔离副本。动态值与函数条件沿描述语义保留不确定性；签名覆盖只由预览能力提供。描述用 `withSemantics` 给出策略事实，缺失或无效语义按未知解释。运行时从 Codec 取得 JSON，无法编码或描述时生成未解析产物。
-
-### 9.5 场景规划与函数条件
-
-`SimulationScenarioPlanner` 的候选枚举除物品**生成条件**外，还递归收集每个函数节点自身的条件（`LootFunctionInfo.conditions()`，含 `children`），内层节点继承外层包装函数条件，用来决定"哪些场景需要被规划出来"——把函数条件钉成场景内的确定赋值，避免它回退到真实天气/时间求值、让同一个输入键时好时坏。
-
-判定口径**没有放宽**：`satisfiedBy` 与物品可达性仍只看生成条件（`PathRequirements.requirements`）——函数条件不成立时物品照常掉落，只是该函数不生效；函数条件只进 `scenarioRequirements`。多条件的组合仍是 one-hot 近似，并受 `MAX_SCENARIOS`（32）截断约束。
-
-### 9.6 开发模式调试表
-
-`LootDebugMode`（`core/loottable/diagnostics/`）是调试内容的**进程级开关**：先读系统属性 `usb.loot.debug`，其次读环境变量 `USB_LOOT_DEBUG`，进程内只解析一次。
-
-- **开启**（`-Dusb.loot.debug=true` 或 `USB_LOOT_DEBUG=true`）：路径前缀 `archaeology/debug/` 下的调试表进入考古笔记目录，调试分类资源生效，可逐项核对函数捕获、包装嵌套与截断表现。
-- **关闭**（默认）：`ArchaeologyJournalCatalog` 的收录门禁把调试表挡在收录闭包之外，`JournalCategoryLoader` 跳过调试分类资源，普通玩家的目录里不会出现任何调试条目。表本身仍是正常注册的战利品表（数据包资源无法按运行时开关条件化），只是没有游戏内路径会抽取它。
-- 开关口径与 `LootSimulationMetrics` 一致（系统属性优先、其次环境变量），common 层直接可读，两端行为一致。
-
-相关资源位于 `data/unsuspiciousblock/journal_categories/dev_debug.json`、`loot_table/archaeology/debug/` 和 `item_modifier/debug_*.json`。现已覆盖数组包装、天气/时间、超过 64 个函数、分析深度超限、A→B 引用和父表失效。执行材料按本地 Issue 约定保存在 `.scratch/`，当前机制以本篇和源码为准。
+- [战利品表系统](../subsystems/loottable.md)
+- [战利品表函数与展示规则](loottable-functions-and-display.md)
+- [笔记目录构建细节](journal-catalog-build.md)
+- [网络与同步](../foundation/network.md)
+- [本地持久化与数据迁移](../foundation/persistence.md)

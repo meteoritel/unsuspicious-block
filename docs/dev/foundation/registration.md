@@ -1,84 +1,85 @@
 # 注册架构
 
-> 如何在 `common` 声明注册清单，由 Fabric / NeoForge 各自完成实际注册并回写引用。
-> 本文件是"清单 + 回调"注册模式与**新增内容标准流程**的唯一权威。
+> 本文档说明如何在 `common` 声明内容清单，由 Fabric 与 NeoForge 各自完成平台注册与引用回写。
+> 本文件是「清单 + 回调」注册模式与**新增可注册内容流程**的唯一权威。
 
-## 1. 设计目标
+## 1. 设计目标与即时/延迟机制
 
-多平台 mod 的注册难点在于：Fabric 用 `Registry.register`，NeoForge 的 static 块在注册器与回写队列就绪后调用 `registerContent`。`ModContent` 按同一声明顺序调用 Adapter，所有工厂继续由 `DeferredRegister` 延迟执行。Item 回调保存 `DeferredItem` 与 setter 到 `ITEM_SYNC_LIST`；其他族回写 holder 或 supplier。
+多平台模组注册的核心差异在于生命周期时序：
 
-关键差异：**Item 不能在 static 块立即回写**，因为 Item 工厂可能依赖 Block 实例（如 `BlockItem` 需要 `ModBlocks.XXX.get()`），而 Block 的 `DeferredHolder` 在 `FMLCommonSetupEvent` 阶段才实例化。因此 Item 回写延迟到：
+- **Fabric**：在模组初始化期间直接调用 `Registry.register(...)`，创建对象并**即时回写**到 `common` 的静态字段或持有者。
+- **NeoForge**：在模组构造阶段的静态块绑定注册器后，由 `DeferredRegister` 将对象创建推迟到注册事件阶段；因此 `ModContent` 按统一声明顺序调用平台适配器，并将真实实例或延迟代理（`DeferredHolder` / `Supplier`）交回给 `common`。
+
+**Item 静态字段延迟回写的关键原因**：物品工厂可能依赖已完成创建的方块实例（例如 `BlockItem` 构造时需调用 `ModBlocks.XXX.get()`），而方块的 `DeferredHolder` 在 `FMLCommonSetupEvent` 之前尚未填充。因此 Item 的静态字段不能在注册回调期立即赋值，平台需收集 `(DeferredItem, setter)` 列表并在 `FMLCommonSetupEvent#enqueueWork` 中统一写回：
 
 ```java
 private void syncCommonItemRefs(FMLCommonSetupEvent event) {
     event.enqueueWork(() -> {
         for (ItemSyncEntry entry : ITEM_SYNC_LIST) {
-            entry.setter().accept(entry.deferred().get());  // 此时才回写真实 Item
+            entry.setter().accept(entry.deferred().get());
         }
     });
 }
 ```
 
-Block / BlockEntity / Entity / Recipe 的回交引用为 Supplier，Effect / Sound 为 Holder，可在声明阶段保存，注册完成后求值。`Registrar<T,H>` 明确注册值与回交值的类型；Entity 属性、BlockEntity 及 Menu 的泛型关联保留具名注册接口，Feature 与创造标签用具名入口表达无回写注册。
+不同内容族采用与各自时序匹配的回写类型：`Block` / `BlockEntity` / `Entity` / `RecipeSerializer` 回写 `Supplier`，`MobEffect` / `SoundEvent` 回写 `Holder`；通用注册接口 `Registrar<T, H>` 明确约束注册原值与回写句柄类型，实体属性、方块实体、菜单等关联注册使用专用具名接口，地物（`Feature`）与创造模式标签页使用无回写注册入口。
 
-## 菜单与条件类型的获取相位
+## 2. 菜单与条件类型的获取时机
 
-Menu 注册通过 setter 将 `Supplier<MenuType<T>>` 保存到 `ModContent`；菜单构造与客户端 Screen 清单都调用同一 getter。Fabric 注册后可求值，NeoForge 在注册事件完成后的 Screen 注册相位求值。Menu 不维护公共可写 TYPE，也不依赖 Item 的 enqueueWork 回写。
+- **菜单类型 (`MenuType`)**：注册时通过 setter 将 `Supplier<MenuType<T>>` 写入 `ModContent`，菜单构造器与客户端 `ModMenuScreens` 清单统一调用同一 getter。Fabric 在注册后立即可求值，NeoForge 在注册事件完成后的客户端 Screen 注册阶段求值，避免依赖物品的 `enqueueWork` 队列。
+- **战利品条件类型 (`LootItemConditionType`)**：平台将工具附魔条件类型的 `Supplier` 传入 `UnsuspiciousBlockCommon.init`。`ModLootConditions.registerAnalysisHandlers` 在初始化期完成引用绑定与描述符登记而不提前求值（未绑定或重复绑定会立即 fail-fast 报错），待注册表可用时再实际解析条件实例。
 
-平台将工具附魔条件类型 Supplier 作为 `UnsuspiciousBlockCommon.init` 的输入。`ModLootConditions.registerAnalysisHandlers` 一次绑定引用并登记描述符，绑定时不求值。未绑定或重复绑定提供具名异常；实际条件调用在注册表可用时求值。
+## 3. 清单 + 遍历回调模式
 
-## 5. 其他清单模式
+「清单 + 遍历回调」模式同样用于所有需要双端对称执行的批量注册或渲染装配任务：
 
-"清单 + 遍历回调"模式不只用于注册，也用于其他需要双平台对称执行的批量任务：
-
-| 清单类 | 用途 | 遍历方法 |
+| 清单类 | 用途 | 遍历方式与详细文档 |
 |---|---|---|
-| `ModPayloads` | 网络 payload 注册清单（C2S / S2C） | 平台入口遍历 `C2S_PAYLOADS` / `S2C_PAYLOADS`；客户端遍历 `ClientPayloadBindings` |
-| `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(EntityRendererRegistrar)` |
+| `ModPayloads` | 网络 Payload 声明（C2S / S2C） | 平台遍历 `C2S_PAYLOADS` / `S2C_PAYLOADS`；客户端遍历 `ClientPayloadBindings`（见[网络与同步](network.md)） |
+| `ModEntityRenderers` | 实体渲染器注册清单 | `forEach(EntityRendererRegistrar)`（见[客户端与 GUI](../subsystems/client-ui.md)） |
 | `ModModelLayers` | 模型层注册清单 | `forEach(LayerRegistrar)` |
-| `ModBlockEntityRenderers` | 方块实体渲染器注册清单 | `forEach(RendererRegistrar)` |
-| `ModMenuScreens` | Menu 与 Screen 注册清单 | `forEach(ScreenRegistrar)` |
-| `ModTooltipComponents` | 客户端 tooltip component 工厂清单 | 平台事件遍历 |
-| `ModKeyBindings` | 按键注册清单 | 平台遍历 `MANIFEST` |
-| `ModHudRenderers` | HUD 绘制清单 | `renderAll`，各 HUD 保留显示门禁 |
-| `ModWorldRenderers` | 世界叠加绘制清单 | `renderAll`，平台保留世界阶段适配 |
+| `ModBlockEntityRenderers` | 方块实体渲染器清单 | `forEach(RendererRegistrar)` |
+| `ModMenuScreens` | 菜单与 Screen 绑定清单 | `forEach(ScreenRegistrar)` |
+| `ModTooltipComponents` | 客户端富 Tooltip 工厂清单 | 平台在 Tooltip 注册事件中遍历 |
+| `ModKeyBindings` | 客户端按键清单 | 平台遍历 `MANIFEST` |
+| `ModHudRenderers` | HUD 叠加绘制清单 | `renderAll`（各 HUD 自持显示门禁） |
+| `ModWorldRenderers` | 世界半透明后阶段叠加绘制清单 | `renderAll` |
 
-详见 [网络与同步](network.md) 与 [客户端与 GUI](../subsystems/client-ui.md)。
+## 4. 创造模式物品栏与派生视图
 
-## 6. 创造模式物品栏
+`ModContent` 集中声明菜单、创造标签页标题、图标及展示顺序；平台提供类型化注册适配器与标签页构建器。
 
-`ModContent` 声明菜单工厂和创造标签标题、图标及内容；平台提供类型化注册 Adapter 与创造标签 builder。
+`ModItems.ItemEntry` 同时声明物品工厂、静态字段回写 setter、延迟 getter、可选创造栏顺序与分类标记：
 
-`ModItems.ItemEntry` 同时声明注册工厂、回写、延迟 getter、可选创造栏顺序和类别。`CREATIVE_TAB_ITEMS` 按顺序投影，重复排序值在初始化时拒绝；`PAN_ITEMS` 按 PAN 类别投影。投影只保存 Supplier，使用时才读取已回写物品，保持 NeoForge 的延迟相位。
+- `CREATIVE_TAB_ITEMS`：按 `creativeOrder` 升序投影为 `Supplier<Item>` 列表（初始化时校验重复排序值，隐藏物品填 `null`）。
+- `PAN_ITEMS`：按 `Category.PAN` 筛选投影，供客户端动态注册淘盘模型属性时遍历。
 
-`UnsuspiciousCarrier` 是封存与空方块制作共用的载体。序列化器清单用载体和合成种类组成键，初始化检查重复与缺失组合；烧制项保留独立注册。配方从同一映射获取已注册 serializer。
+所有投影视图仅保存 `Supplier`，直到游戏内实际构造物品栏或注册客户端属性时才求值，以此兼容 NeoForge 的延迟初始化时序。
 
-## 7. 扩展点：新增注册内容
+## 5. 扩展点：新增注册内容
 
-以新增一个物品为例：
+以新增一个普通物品为例：
 
-1. 在 `ModItems` 加静态字段：`public static XxxItem FOO;`
-2. 加工厂方法：`public static XxxItem createFoo() { return new XxxItem(new Item.Properties()...); }`
-3. 在 `REGISTRY_MANIFEST` 加一行：`new ItemEntry("foo", ModItems::createFoo, item -> FOO = item, () -> FOO, order, Category.STANDARD)`
-4. 创造栏顺序填唯一排序值，隐藏项填 null；淘盘选择 `Category.PAN`，客户端模型属性视图随清单派生
-5. 添加数据资源（`assets/.../models/item/foo.json`、`lang` 键、可能的 `recipe` 等）
+1. 在 `ModItems` 中声明静态字段：`public static XxxItem FOO;`
+2. 编写静态工厂方法：`public static XxxItem createFoo() { return new XxxItem(new Item.Properties()...); }`
+3. 在 `ModItems.REGISTRY_MANIFEST` 追加条目：`new ItemEntry("foo", ModItems::createFoo, item -> FOO = item, () -> FOO, order, Category.STANDARD)`（创造栏排序值须唯一，隐藏物品填 `null`，淘盘类选择 `Category.PAN`）。
+4. 添加客户端与数据资源：`assets/unsuspiciousblock/models/item/foo.json`、`en_us.json` / `zh_cn.json` 键及所需配方 JSON。
+5. **无需改动任何平台代码**，`fabric` 与 `neoforge` 会自动遍历清单完成注册。
 
-**无需修改任何平台代码** —— `forEach` 会自动遍历新条目，Fabric / NeoForge 的注册逻辑都是通用的。方块、实体、效果等同理，只是条目 record 字段略有不同。
+新增方块、方块实体、实体、配方序列化器或状态效果流程相同，只需按对应 `ModXxx` 的清单记录格式追加一行；若涉及新玩法逻辑，需同步更新对应子系统文档的「代码地图」与「扩展点」。
 
-> 新增内容若带玩法逻辑，记得同步该子系统的「代码地图」与「扩展点」两节（见[文档维护](../../README.md)）。
+## 6. 约束与陷阱
 
-## 8. 约束与陷阱
+- **清单声明期不得直接引用尚未回写的静态字段**：跨对象依赖一律通过 `Supplier` 或工厂方法内的延迟调用获取。
+- **不将注册条目总数写入文档**：条目数量随版本迭代持续变动，具体清单一律以源码为准。
+- **实体渲染器注册接口兼容性**：`EntityRegistrar` 因泛型约束需使用匿名内部类实现，不可简写为 Lambda 表达式。
+- **资源缺失不触发注册期异常**：漏写模型或语言键仅在游戏中表现为紫黑块或未翻译 key，新增内容后应核对 `assets/` 与语言文件。
 
-- **清单内不得引用尚未回写的静态字段**：需要延迟求值时用 `Supplier`（第 6 节）。
-- **条目数不要写进文档**：它会随每次新增功能变化。
-- **`EntityRegistrar` 只能用匿名内部类**，不能用 lambda（泛型方法的限制）。
-- **新注册内容的资源缺失不会在注册期报错**：缺 `lang` 键或模型只会在游戏里显示为 `item.unsuspiciousblock.foo` 字面量或紫黑方块，排查时先看 `assets/`。
+## 7. 相关文档
 
-## 9. 相关文档
-
-- [架构总览](architecture.md) —— 三模块划分与初始化流程
-- [平台抽象](platform-spi.md) —— SPI 接口如何被加载
-- [网络与同步](network.md) —— `ModPayloads` 清单
-- [客户端与 GUI](../subsystems/client-ui.md) —— 渲染器与模型层清单
-- [方块与物品](../subsystems/blocks-items.md) —— 各物品/方块类的具体行为
-- [实体与 AI](../subsystems/entities-world.md) —— 实体注册与属性
+- [架构总览](architecture.md)
+- [平台抽象](platform-spi.md)
+- [网络与同步](network.md)
+- [客户端与 GUI](../subsystems/client-ui.md)
+- [方块与物品](../subsystems/blocks-items.md)
+- [实体与 AI](../subsystems/entities-world.md)

@@ -1,200 +1,168 @@
 # 方块与物品
 
-> `core/block/`、`core/blockentity/`、`core/item/`、`core/specimen/`、`core/pottery/`、`core/recipe/`、`core/inventory/` 包：方块与物品的实现、便携容器机制、制陶系统、结构回溯与自定义配方。
-> 本文件是这些内容的唯一权威。注册清单模式见 [注册架构](../foundation/registration.md)；淘洗点机制与变体系统见 [淘洗系统](panning.md)。
+> `core/block/`、`core/blockentity/`、`core/item/`、`core/specimen/`、`core/pottery/`、`core/recipe/` 与 `core/inventory/` 包的架构：不可疑方块封存、制陶工作站、可疑解析仪与考古铲、标本箱便携代理、回溯粉与自定义配方。
+> 本文件是上述内容的权威入口。通用清单注册模式见[注册架构](../foundation/registration.md)；淘盘变体与淘洗点系统见[淘洗系统](panning.md)；结构回溯的随机重放细节见[方块与物品机制细节](../internals/blocks-items-details.md)。
 
 ## 1. 代码地图
 
 **方块与方块实体**
 
-| 内容 | 类 | 角色 |
+| 内容 | 类位置 | 角色 |
 |---|---|---|
-| 不可疑的沙子 / 沙砾 | `core/block/UnsuspiciousBlock` + `core/blockentity/UnsuspiciousBlockEntity` | 可放置的"已刷完"可疑方块，封存战利品，有重力与碎裂掉落 |
-| 陶轮台 | `core/block/PotteryWheelBlock` + `core/blockentity/PotteryWheelBlockEntity` + `core/pottery/PotteryWheelMenu` | 制陶工作站 |
-| 未烧制陶罐 | `core/block/UnfiredDecoratedPotBlock` + `core/blockentity/UnfiredDecoratedPotBlockEntity` | 带四面纹饰数据的陶罐半成品 |
-| 扫描状态注入 | `core/blockentity/ScanStateHost` / `BrushableBlockEntityScanState` | 经 mixin 注入原版可疑方块实体（见 [Mixin](../foundation/mixin.md)） |
-| 容器追踪状态 | `core/blockentity/TrackedContainerLootState`、`core/journal/tracking/ContainerLootTracking`、`core/blockentity/DecoratedPotLootState` | 宿主内容器状态与陶罐开箱追踪 |
+| 不可疑的沙子 / 沙砾 | `core/block/UnsuspiciousBlock` + `core/blockentity/UnsuspiciousBlockEntity` | 可放置的伪装可疑方块，封存玩家放入的物品，具重力与碎裂掉落 |
+| 纹饰陶轮台 | `core/block/PotteryWheelBlock` + `core/blockentity/PotteryWheelBlockEntity` + `core/pottery/PotteryWheelMenu` | 制陶工作站，支持漏斗自动化 |
+| 未烧制陶罐 | `core/block/UnfiredDecoratedPotBlock` + `core/blockentity/UnfiredDecoratedPotBlockEntity` | 携带四面纹饰数据的半成品方块 |
+| 扫描与容器状态注入 | `ScanStateHost`、`BrushableBlockEntityScanState`、`TrackedContainerLootState`、`ContainerLootTracking`、`DecoratedPotLootState` | 注入原版方块实体与容器的鸭子接口及持久状态（见[Mixin 边界与接线](../foundation/mixin.md)） |
 
-**物品**（均在 `core/item/`；`ModItems.REGISTRY_MANIFEST` 是唯一清单）
+**物品**（统一登记在 `core/item/ModItems.REGISTRY_MANIFEST`）
 
-| 物品 | 类 | 角色 |
+| 物品 | 类位置 | 角色 |
 |---|---|---|
-| 可疑解析仪 | `SuspiciousReaderItem` | 扫描可疑方块内部战利品；范围扫描 + 能量系统 |
-| 考古铲 | `ArchaeologicalShovelItem` | 对已扫描点直接取物；向下连挖 |
-| 淘盘 ×3（铜/金/黑曜石） | `PanItem` + `PanProfile` | 对淘洗点长按淘洗；三把盘共用基类 |
-| 考古笔记 | `ArchaeologyJournalItem` | 打开笔记 GUI 的入口（不持有数据） |
-| 猫之瞳 | `EyeOfCatItem` | 附魔台候选 / 铁砧分解 / 砂轮预览的持有判据 |
-| 猫之手 | `HandOfCatItem` | 猫族身份信物，绑定 owner UUID |
-| 标本箱 | `SpecimenBoxItem` | 5 格便携容器 |
-| 回溯粉 | `RewindDustItem` | 结构原位重生成 |
-| 古代金币 / 失落书页 / 基页 / 花火粉 | 无独立类，`ModItems` 工厂返回 `Item` 或 `DescribedItem` | 经济与合成材料 |
-| 素材类基类 | `DescribedItem` | 只需一行 GRAY 简介的物品基类 |
+| 可疑解析仪 | `core/item/SuspiciousReaderItem` | 扫描单方块/范围战利品与容器高亮，含能量系统 |
+| 考古铲 | `core/item/ArchaeologicalShovelItem` | 直接取出已扫描战利品、向下连挖与潜行防误挖保护 |
+| 淘盘（铜/金/黑曜石） | `core/item/PanItem` + `core/item/PanProfile` | 长按淘洗（详见[淘洗系统](panning.md)） |
+| 考古笔记 | `core/item/ArchaeologyJournalItem` | 打开笔记 GUI 的无状态入口 |
+| 猫之瞳 | `core/item/EyeOfCatItem` | 驱动附魔台候选揭示与铁砧/砂轮分解预览 |
+| 猫之手 | `core/item/HandOfCatItem` | 绑定玩家 UUID 的猫族信物（详见[猫族关系系统](cat-favor.md)） |
+| 标本箱 | `core/item/SpecimenBoxItem` | 5 格便携容器，代理箱内随身物品、图腾与饰品效果 |
+| 回溯粉 | `core/item/RewindDustItem` | 在原位置重新放置世界生成结构 |
+| 古代金币 / 失落书页 / 基页 / 花火粉 | `ModItems` 工厂返回 `Item` 或 `DescribedItem` | 货币、合成材料与燃料（`DescribedItem` 统一单行灰色简介） |
 
-**其他**
+**数据资源与平台差异**
 
-| 层 | 位置 |
-|---|---|
-| 数据资源 | `data/unsuspiciousblock/recipe/*.json`；`assets/.../models/{block,item}/`、`blockstates/`、`lang/` |
-| 网络 | 无专属 payload（解析仪扫描结果走 `SyncReaderScanResultPayload`，见 [网络与同步](../foundation/network.md)） |
-| 客户端 | `client/ui/screen/{SpecimenBoxScreen,PotteryWheelScreen}`、`client/ui/tooltip/ClientSpecimenBoxTooltip`、`client/renderer/{PotteryWheelRenderer,PotteryWheelModel}`、`client/hud/SuspiciousReaderHud`、`client/state/SuspiciousReaderClientState`、`client/ui/PotteryPreviewRenderer`（见 [客户端与 GUI](client-ui.md)） |
-| Mixin | `core/mixin/block/*`（扫描状态、陶罐行为）、`core/mixin/container/*`（容器追踪） |
-| 平台差异 | 花火粉燃料：Fabric 用 `FuelRegistry`，NeoForge 用 `FurnaceFuelBurnTimeEvent`；标本箱图腾代理：Fabric 用 `ServerLivingEntityEvents.ALLOW_DEATH`，NeoForge 用 `LivingDeathEvent` |
+- **数据资源**：配方位于 `data/unsuspiciousblock/recipe/*.json`；模型、方块状态与语言文件位于 `assets/unsuspiciousblock/`。
+- **网络与客户端**：扫描结果同步使用 `SyncReaderScanResultPayload`（见[网络与同步](../foundation/network.md)）；GUI、HUD 与模型渲染位于 `client/`（见[客户端与 GUI](client-ui.md)）。
+- **平台差异**：花火粉燃料时间（Fabric `FuelRegistry` vs NeoForge `FurnaceFuelBurnTimeEvent`）；标本箱不死图腾代理（Fabric `ServerLivingEntityEvents.ALLOW_DEATH` vs NeoForge `LivingDeathEvent`）。
 
-## 2. 数据流
+## 2. 核心数据流
 
-**封存（合成 → 放置 → 取出）**
+### 2.1 不可疑方块封存（合成 → 放置 → 取出）
 
-```
-合成：UnsuspiciousSealingRecipe / UnsuspiciousCreationRecipe
-  └─ SealedContents.seal(carrier, item)  写入 CONTAINER 组件（+ recordCrafter 记合成者）
-放置：UnsuspiciousBlock.setPlacedBy
-  └─ 从 CONTAINER 组件加载到 UnsuspiciousBlockEntity
-取出：UnsuspiciousBlock.onRemove
-  └─ popResource 取出封存物品
+```mermaid
+flowchart LR
+    Craft["合成：UnsuspiciousSealingRecipe / UnsuspiciousCreationRecipe"] --> Seal["SealedContents.seal(carrier, item) — 写入 CONTAINER 组件并记录合成者"]
+    Seal --> Place["放置：UnsuspiciousBlock.setPlacedBy — 从 CONTAINER 读取至 UnsuspiciousBlockEntity"]
+    Place --> Remove["刷拭或破坏：UnsuspiciousBlock.onRemove — popResource 弹出封存物品"]
 ```
 
-**解析仪扫描（接入考古笔记）**
+### 2.2 解析仪扫描与笔记追踪
 
-```
-SuspiciousReaderItem.useOn（0 级单方块 / 1-3 级范围）
-  └─ scanBrushable 解析战利品
-       └─ LootTrackingContext + LootTrackingEvents.submit（deferred 结算策略：
-            日志暂存到方块实体，物品被实际取出后转正）
+```mermaid
+flowchart LR
+    Use["SuspiciousReaderItem.useOn (0 级单方块 / 1-3 级范围)"] --> Scan["scanBrushable 解析战利品与绑定宿主"]
+    Scan --> Track["LootTrackingContext + LootTrackingEvents.submit (Deferred 策略：先暂存待定日志，物品实际取出后转正)"]
 ```
 
-**便携容器存在检测**
+### 2.3 便携容器携带检测
 
-```
-玩法、按键或 tooltip 查询
-  └─ CarriedItems.isPresent / containsMatching / mutateFirst
-       └─ 原版背包 + 饰品栏 + PortableContainer 第一层
-            （修改容器内容时由容器实现写回父物品）
+```mermaid
+flowchart LR
+    Query["玩法 / 按键 / Tooltip 查询"] --> Carried["CarriedItems.isPresent / containsMatching / mutateFirst"]
+    Carried --> Scope["同步扫描：原版背包 + 饰品栏 + PortableContainer 第一层"]
+    Scope --> Write["若修改箱内物品，由容器实现写回父物品"]
 ```
 
 ## 3. 关键类
 
 | 类 | 职责 |
 |---|---|
-| `core/block/UnsuspiciousBlock` | 不可疑方块共用实现，继承 `FallingBlock` + `EntityBlock` |
-| `core/block/SealedContents` | 封存内容读写：`seal` / `getSealedItem` / `isSealed` / `recordCrafter` / `getCrafter` |
-| `core/block/SealedContentsDisplay` | 封存物品的展示行构建（物品 tooltip 与 Jade 共用） |
-| `core/block/UnsuspiciousBlockInteractions` | 不可疑方块上的交互收敛点 |
-| `core/item/SuspiciousReaderItem` | 解析仪：能量、扫描等级、范围扫描、主副手协作 |
-| `core/item/ArchaeologicalShovelItem` | 考古铲：取物、连挖、沙子中找金币 |
-| `core/item/PanItem` / `core/item/PanProfile` | 淘盘基类 / 三把盘的差异（可采变体、幸运加成、再生概率） |
-| `core/item/SpecimenBoxItem` + `core/specimen/SpecimenBoxContents` | 标本箱物品与盒内物品读写 |
-| `core/specimen/SpecimenBoxMenu` / `SpecimenBoxTooltip` / `SpecimenBoxTotemProxy` | 5 格菜单 / 悬停预览 / 图腾代理 |
-| `core/item/RewindDustItem` + `core/world/StructureRewindService` + `core/world/StructureRewindCooldownData` | 结构回溯的入口、执行服务与冷却账本 |
-| `core/inventory/PortableContainer` | 物品实现此接口后，其第一层内容纳入携带范围 |
-| `core/inventory/CarriedItems` | 统一查询入口：`isPresent` / `containsMatching` / `mutateFirst` |
-| `core/recipe/ModRecipeSerializers` | 四个自定义配方序列化器的注册清单 |
+| `UnsuspiciousBlock` | 不可疑的沙子与沙砾共用实现，继承 `FallingBlock` + `EntityBlock` |
+| `SealedContents` / `SealedContentsDisplay` | 封存物品与合成者读写（`seal` / `getSealedItem` / `recordCrafter`）；物品 Tooltip 与 Jade 共用的封存展示行 |
+| `UnsuspiciousBlockInteractions` | 不可疑方块上的交互收敛点 |
+| `SuspiciousReaderItem` | 能量管理、扫描等级、范围扫描与主副手协作 |
+| `ArchaeologicalShovelItem` | 已扫描取物、向下连挖与沙砾掘金 |
+| `PanItem` / `PanProfile` | 淘盘共同基类与三把盘的能力数据 |
+| `SpecimenBoxItem` / `SpecimenBoxContents` / `SpecimenBoxMenu` / `SpecimenBoxTooltip` / `SpecimenBoxTotemProxy` | 标本箱本体、读写封装、5 格菜单、悬浮预览与图腾死亡代理 |
+| `RewindDustItem` / `StructureRewindService` / `StructureRewindCooldownData` | 结构回溯入口、逐区块调度服务与维度冷却账本 |
+| `PortableContainer` / `CarriedItems` | 便携容器第一层内容暴露接口与全携带范围查询入口 |
+| `AncientCoinRepair` | 双端共用的古代金币铁砧修复计算逻辑 |
+| `ModRecipeSerializers` | 4 个自定义配方序列化器注册清单 |
 
-## 4. 不可疑方块与封存
+## 4. 不可疑方块与制陶系统
 
-[`UnsuspiciousBlock`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/UnsuspiciousBlock.java) 是"不可疑的沙子"与"不可疑的沙砾"的共用实现：
+### 4.1 不可疑方块与封存
 
-- **重力检测**：`tick` 中检测下方是否空闲，空闲则 `destroyBlock` 掉落（与原版沙子一致）。
-- **封存数据**：`setPlacedBy` 从物品的 `CONTAINER` 组件加载封存物品到方块实体；`onRemove` 取出封存物品 `popResource`。
-- **方块实体**：`UnsuspiciousBlockEntity` 持有封存物品与合成者身份。
-- **属性**：`ofFullCopy(SUSPICIOUS_SAND / SUSPICIOUS_GRAVEL)`，与原版可疑方块一致。
+[`UnsuspiciousBlock`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/UnsuspiciousBlock.java) 复制原版可疑沙子/沙砾的方块属性（`ofFullCopy`）与下落碎裂物理：
 
-`SealedContents` 的 `recordCrafter` 记录合成者身份（`CrafterIdentity{uuid, name}`），用于解析仪显示"由谁封存"。
+- **重力与数据保留**：`tick` 检测到下方为空时按沙子逻辑掉落；`setPlacedBy` 将物品 `CONTAINER` 组件同步到 `UnsuspiciousBlockEntity`，`onRemove` 弹出封存物品。
+- **合成者记录**：`SealedContents.recordCrafter` 保存 `CrafterIdentity{uuid, name}`，用于解析仪展示“由谁封存”。
 
-## 5. 制陶
+### 4.2 纹饰陶轮台与半成品
 
-- **陶轮台**：纹饰陶轮台，方块属性沿用橡木板 + 强度 2.5 + noOcclusion；方块实体持有加工状态；`PotteryWheelMenu` 提供交互界面，客户端有 `PotteryWheelScreen` 与 `PotteryWheelRenderer`。
-- **未烧制陶罐 / 陶片**：`UnfiredDecoratedPotBlock` + `UnfiredDecoratedPotItem` + `UnfiredDecoratedPotBlockEntity` 构成可携带四面纹饰数据的半成品；`UnfiredDecoratedSherdItem` 保存纹饰数据。烧制由 `UnfiredDecoratedPotSmeltingRecipe` / `UnfiredDecoratedSherdSmeltingRecipe` 处理。
+- **纹饰陶轮台**：`PotteryWheelBlock` 与 `PotteryWheelBlockEntity` 实现制陶工作站及漏斗自动化，由 `PotteryWheelMenu` / `PotteryWheelScreen` 提供界面与预览，`PotteryWheelRenderer` 渲染方块实体状态。
+- **未烧制陶罐与陶片**：`UnfiredDecoratedPotBlock`（配 `UnfiredDecoratedPotItem` 与方块实体）及 `UnfiredDecoratedSherdItem` 承载四面纹饰数据，烧制后经 `UnfiredDecoratedPotSmeltingRecipe` / `UnfiredDecoratedSherdSmeltingRecipe` 转为成品。
 
-## 6. 可疑解析仪与考古铲
+## 5. 可疑解析仪与考古铲
 
-[`SuspiciousReaderItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/SuspiciousReaderItem.java) 是模组核心工具，能量与扫描等级存在 `CUSTOM_DATA` 组件（`MAX_ENERGY = 512`、`ENERGY_PER_COIN = 256`、`MAX_SCAN_LEVEL = 3`）：
+### 5.1 可疑解析仪 (`SuspiciousReaderItem`)
 
-- **扫描模式**（`V` 键切换）：0 级右键单方块免费查看内部战利品（不取出）；1-3 级以点击面反向偏移 `scanLevel` 格为中心扫描 `(2*level+1)^3` 立方体，消耗 = 等级数 + 新扫描的可疑方块数（已扫描的不额外消耗），同时高亮战利品容器。
-- **能量与充能**：耐久条显示能量（绿/黄/红三色）；能量不足时自动从背包消耗古代金币充能（`tryRecharge`）；shift+右键空气手动充能，带**浪费保护**——剩余空间不足一枚金币的充能值时先提示，20t 内双击强制充能。
-- **主副手协作**：主手解析仪 + 副手考古铲时，点击已扫描的可疑方块会**让位给副手考古铲**取物（`useOn` 开头判定，客户端须返回 PASS 触发原版副手流程）。
-- **扫描宿主**：`ScanStateHost` 统一身份查询、标记和清除；身份实际清除后普通/Lootr 宿主丢弃 pending，Lootr 另清临时库存；封存宿主只清身份。`BlockEntitySync` 统一脏标记与广播，状态来源由宿主决定。
-- **追踪接入**：`scanBrushable` 只为 PendingJournalHost 用 `deferred` 结算策略接入考古笔记；封存物只扫描、不建立 pending（见 [考古笔记系统](journal.md)）。
+能量与扫描等级存储在物品 `CUSTOM_DATA` 组件中（`MAX_ENERGY = 512`、`ENERGY_PER_COIN = 256`、`MAX_SCAN_LEVEL = 3`）：
 
-**考古铲**：右键已扫描的可疑方块直接取物，无需完整刷拭。直接挖掘可疑方块时，未潜行虽显示破坏裂纹但最终无法破坏、也不触发连挖，**必须按住 Shift**；挖掘普通铲类方块时向下连挖最多 3 格，避开可疑方块及其支撑方块；挖掘沙子/红沙/砂砾有 0.3% 概率找到古代金币。
+- **扫描模式（`V` 键切换）**：`0` 级免费单方块查看内容；`1–3` 级以点击面反向偏移 `scanLevel` 格为中心扫描 `(2*level+1)^3` 立方体并高亮战利品容器，消耗 `等级数 + 新扫描可疑方块数` 点能量（已扫描过的不重复计费）。
+- **充能与浪费保护**：耐久条按绿/黄/红显示电量，范围扫描能量不足时自动消耗背包古代金币充能（`tryRecharge`）；潜行右键空气手动充能时，若已损能量不足 `256`，先提示可能浪费并在 `20` tick 窗口内再次操作才强制确认。
+- **主副手让位**：主手解析仪、副手考古铲面对**已扫描**的可疑方块时，`useOn` 开头识别并让位给副手取物（客户端须返回 `PASS` 以触发原版副手交互）。
+- **扫描宿主与追踪接线**：`ScanStateHost` 统一查询、标记与清除；清除扫描身份时，普通与 Lootr 宿主丢弃 pending（Lootr 另清临时库存），封存宿主仅清身份；`BlockEntitySync` 统一标脏同步。`scanBrushable` 仅为 `PendingJournalHost` 以 `Deferred` 策略接入考古笔记（封存方块只扫描，不入待定日志）。
 
-## 7. 淘盘（PanItem + PanProfile）
+### 5.2 考古铲 (`ArchaeologicalShovelItem`)
 
-[`PanItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/PanItem.java) 是三把盘的共同基类，对**本工具可采的**淘洗点长按右键淘洗；使用行为复用原版「正在使用物品」减速规则（不施加药水效果），客户端渲染入口负责专属摇洗动画。差异全部由 [`PanProfile`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/PanProfile.java) 提供，因此**新增淘盘不需要新类**：
+- **直接取物与防误挖保护**：右键已由自己扫描的可疑方块立即取出战利品；普通左键挖掘可疑方块仅显示裂纹而无法破坏、也不触发连挖，**必须按住 Shift 潜行**才能单格破坏。
+- **向下连挖与掘金**：非潜行挖掘沙子/红沙/砂砾等铲类方块时向下连挖最多 `3` 格，自动避开可疑方块及其下方支撑方块；挖掘沙子/红沙/砂砾有 `0.3%` 概率额外掉落古代金币。
 
-| 淘盘 | 耐久 | 铁砧修复材料 | 可采变体 | 幸运加成（水域） | 再生概率 |
-|---|---|---|---|---|---|
-| 铜淘盘 `copper_pan` | 32 | `c:ingots/copper` | 水域 | 0 | 0 |
-| 金淘盘 `gold_pan` | 24 | `c:ingots/gold` | 水域 | `+gold_pan_luck_bonus`（默认 1.0） | `gold_pan_regeneration_chance`（默认 0.10） |
-| 黑曜石淘盘 `obsidian_pan` | 64 | `c:obsidians/normal` | 水域 + 幽微的光 | `-obsidian_pan_luck_penalty`（默认 0.5） | 0 |
+## 6. 淘盘、标本箱与便携容器
 
-三把盘经 `minecraft:enchantable/durability` 兼容耐久与经验修补。工具与点是**能力交集**判定（`PanProfile.harvestTargets` 与点的变体取交集），因此不支持的组合直接 `PASS` 让位给原版，不会出现"铜盘持续淘洗幽微的光"这类越界行为。淘洗结算、战利品表、变体系统与淘洗点实体详见 [淘洗系统](panning.md)。
+- **淘盘 (`PanItem` + `PanProfile`)**：铜、金、黑曜石三把盘共享基类，差异全部由 `PanProfile` 声明（耐久、铁砧材料、可采变体集合、幸运加成与再生概率），通过能力交集判定保证不支持的组合直接让位原版；详情见[淘洗系统](panning.md)。
+- **标本箱与 `CarriedItems`**：[`SpecimenBoxItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/SpecimenBoxItem.java) 为 `5` 格便携容器（`SpecimenBoxContents` 封装 `CONTAINER` 读写，`SpecimenBoxTooltip` 提供悬停预览）。放于背包、饰品栏时，箱内**第一层**可随身生效物品（如考古笔记、猫之瞳、猫之手绑定、兼容 Artifacts 饰品）经 `CarriedItems` 纳入个人携带范围；箱内不死图腾经 `SpecimenBoxTotemProxy` 代理原版死亡保护（详情见[方块与物品机制细节](../internals/blocks-items-details.md)）。
 
-## 8. 标本箱与便携容器
+## 7. 结构回溯 (`RewindDustItem`)
 
-`core/inventory/` 包由 `CarriedItems` 按需查询个人携带范围，`PortableContainer` 提供第一层内容与修改写回，细节见 [方块与物品机制细节](../internals/blocks-items-details.md) 的「便携容器存在检测」。
+对世界生成结构的任意部件包围盒内方块右键，消费一份回溯粉（创造模式不消耗），由 `StructureRewindService` 在服务端逐区块（每 tick 一区块）重新放置整个结构（客户端仅预测交互；未命中结构、处于冷却或已有任务时均不消耗）。
 
-[`SpecimenBoxItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/SpecimenBoxItem.java) 是 5 格便携容器：
+> **重要语义**：结构回溯是重新运行结构放置而非历史快照，会覆盖玩家改建并重复生成战利品与实体。合成配方、双层冷却（物品 `20t` / 结构 `48000t`）、随机序列重放与行为边界详见[方块与物品机制细节](../internals/blocks-items-details.md)。
 
-- 右键打开 `SpecimenBoxMenu`；`getContents` 返回盒内非空物品流供递归扫描；`mutateFirst` 修改第一个匹配物品（如绑定猫之手）后写回 `CONTAINER` 组件。
-- `getTooltipImage` 悬停预览盒内物品（`SpecimenBoxTooltip` → `ClientSpecimenBoxTooltip`）。
-- 放背包/饰品栏时，箱内需要"随身携带"或"装备"才生效的物品（考古笔记、猫之瞳）仍正常工作——这是本机制要解决的核心问题。
-- **箱内不死图腾代理**原版死亡保护：两端分别经 `ServerLivingEntityEvents.ALLOW_DEATH` / `LivingDeathEvent` 接入，共用 `SpecimenBoxTotemProxy` 消费箱内图腾并施加原版保护结果。
-- 装备到饰品栏（Trinkets/Curios）后代理箱内兼容饰品的属性与效果（Artifacts 适配），见 [配置与第三方联动](../foundation/config-and-integrations.md)。
+## 8. 其他材料物品与金币修复
 
-`SpecimenBoxContents` 封装盒内物品的读写（`read` / `writeIfChanged`）。
+`AncientCoinRepair.calculate` 统一计算古代金币铁砧修复（每枚恢复 `25%` 最大耐久、包含命名与 `REPAIR_COST`）：Fabric 经 `AnvilMenuMixin`、NeoForge 经 `LOW` 优先级 `AnvilUpdateEvent` 在原版未产出结果时写回。
 
-## 9. 结构回溯（回溯粉）
-
-对世界生成结构的任意部件包围盒内方块右键，消费一份回溯粉（创造模式不消耗），由 `core/world/StructureRewindService` 在原位置逐区块重新放置整个结构。客户端仅预测交互，**实际识别与写入均在服务端执行**；未找到结构、布局读取失败、越过世界边界、处于冷却或已有任务时不消耗。
-
-**这是重新执行结构放置，并非历史快照**：可能覆盖玩家改建、重新产生战利品及重复生成实体。合成配方、双层冷却、随机序列重放、原版一次性状态重置、调度表现与行为边界见 [方块与物品机制细节](../internals/blocks-items-details.md) 的「结构回溯」。
-
-## 10. 其他材料物品
-
-金币铁砧修复由 `core/inventory/AncientCoinRepair.calculate` 统一计算输出副本、经验与材料消耗。Fabric `AnvilMenuMixin` 在 RETURN 后、NeoForge LOW 优先级事件在现有结果为空时写回；名称、清名与左右 `REPAIR_COST` 均纳入计算。
-
-| 物品 | 说明 |
+| 物品 | 用途说明 |
 |---|---|
-| 古代金币 | 连接考古与猫国经济的通用稀有资源：解析仪充能、铁砧修复（每枚恢复 25% 最大耐久）、流浪商人交易（1 枚换 5 绿宝石）、猫猫商人回收 |
-| 失落书页 | 稀有考古战利品，与基页 + 书在锻造台合成随机附魔书（见 [附魔系统](enchantment.md) 的「失落书页锻造」） |
-| 基页 | 由瓶子草合成，失落书页锻造的中间材料 |
-| 猫之手 | 猫族身份信物，`CUSTOM_DATA` 存 `owner_uuid` + `owner_name`；`bindTo` / `isBound` / `isBoundTo` / `getOwnerUuid` / `getOwnerName`；tooltip 五段式含羁绊值与能力清单（见 [猫族关系系统](cat-favor.md)） |
-| 猫之瞳 | 放在背包/饰品栏/标本箱中即提供三项信息能力（见 [附魔系统](enchantment.md) 的「附魔揭示」与 [客户端与 GUI](client-ui.md)） |
-| 花火粉 | 2 个火把花无序合成 4 个；燃料 800t（恰好烧炼 4 个物品）；1 花火粉 + 1 木棍 → 2 个火把。**刻意不加入 `minecraft:coals` 标签**——加入后会被原版火把配方识别为煤炭，产出变 4 个 |
-| 考古笔记 | 右键或按 `C` 打开笔记 GUI；物品本身不持有数据，进度通过 mixin 附加在玩家 NBT（见 [客户端与 GUI](client-ui.md)） |
+| 古代金币 | 解析仪充能、铁砧万能修复、流浪商人交易（1 换 5 绿宝石）、猫猫商人货币 |
+| 失落书页 / 基页 | 基页由瓶子草合成；两者与书在锻造台合成为随机附魔书（见[附魔系统](enchantment.md)） |
+| 猫之手 | 绑定玩家 UUID 的猫族信物（见[猫族关系系统](cat-favor.md)） |
+| 猫之瞳 | 置于背包、饰品栏或标本箱内激活附魔揭示与铁砧/砂轮成本分解 |
+| 花火粉 | 2 火把花无序合成为 4 花火粉；作燃料可烧炼 `800t`（4 个物品）；与木棍合成 2 火把（**刻意不加入 `minecraft:coals` 标签**，防止被原版配方识别为煤炭而产出 4 个火把） |
+| 考古笔记 | 右键或按 `C` 打开笔记 GUI（数据挂接于玩家存档而非物品自身） |
 
-## 11. 配方序列化器
+## 9. 自定义配方序列化器 (`ModRecipeSerializers`)
 
-[`ModRecipeSerializers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/recipe/ModRecipeSerializers.java) 注册 4 个自定义配方序列化器（沿用清单 + 回调模式）：`UnsuspiciousCreationRecipe`（不可疑方块合成）、`UnsuspiciousSealingRecipe`（封存配方）、`UnfiredDecoratedPotSmeltingRecipe` / `UnfiredDecoratedSherdSmeltingRecipe`（未烧制陶罐 / 陶片烧制）。
+[`ModRecipeSerializers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/recipe/ModRecipeSerializers.java) 沿用「清单 + 回调」注册 4 个自定义合成/烧炼序列化器：
 
-**失落书页锻造不经此清单**：它由数据配方 `data/unsuspiciousblock/recipe/enchant_book_smithing.json` + `SmithingMenuMixin`（拦截 `SmithingMenu.onTake`）触发（见 [附魔系统](enchantment.md)）。
+- **不可疑方块合成**：`UnsuspiciousCarrier`（`SAND` / `GRAVEL`）作为空方块制作（`UnsuspiciousCreationRecipe`）与封存（`UnsuspiciousSealingRecipe`）的共用载体；序列化器清单以 `(UnsuspiciousCarrier, CraftingKind)` 为键建立映射，初始化时校验重复与缺失组合，配方直接从同一映射获取对应序列化器。
+- **制陶烧炼**：`UnfiredDecoratedPotSmeltingRecipe` 与 `UnfiredDecoratedSherdSmeltingRecipe` 保留独立注册以传递四面纹饰组件数据。
+- **失落书页锻造**：不走此清单，由数据配方 `enchant_book_smithing.json` 与 `SmithingMenuMixin` 协同触发（见[附魔系统](enchantment.md)）。
 
-## 12. 扩展点：新增物品 / 方块 / 容器 / 配方
+## 10. 扩展点
 
-- **新增物品 / 方块**：按 [注册架构](../foundation/registration.md) 的「扩展点：新增注册内容」步骤，在 `ModItems` / `ModBlocks` 清单加一行。
-- **新增便携容器**：物品实现 `PortableContainer` 接口，`CarriedItems` 自动查询第一层内容；支持修改时实现 `mutateFirst` 并写回父物品。
-- **箱内生效**：玩法使用 `CarriedItems.isPresent` 或 `containsMatching` 读取携带范围；修改使用 `mutateFirst`。
-- **新增封存方块**：参考 `UnsuspiciousBlock` + `SealedContents`，用 `CONTAINER` 组件存储封存物品。
-- **新增配方**：实现 `RecipeSerializer`，在 `ModRecipeSerializers` 清单注册，并添加 `data/unsuspiciousblock/recipe/` JSON。
-- **新增淘盘**：加一个 `PanProfile` + 在 `ModItems` 条目选择 `Category.PAN`（见 [淘洗系统](panning.md) 的「新增淘盘」）。
-- **解析仪能量调优**：修改 `MAX_ENERGY` / `ENERGY_PER_COIN` / `MAX_SCAN_LEVEL` 常量。
+- **新增物品 / 方块**：按[注册架构](../foundation/registration.md)在 `ModItems` / `ModBlocks` 清单添加一行。
+- **新增便携容器**：实现 `PortableContainer` 接口提供第一层物品流与写回逻辑，`CarriedItems` 自动将其纳入查询范围。
+- **新增封存方块**：参考 `UnsuspiciousBlock` 与 `SealedContents` 读写 `CONTAINER` 组件。
+- **新增自定义配方序列化器**：实现 `RecipeSerializer` 并在 `ModRecipeSerializers` 清单登记，同步添加 `data/unsuspiciousblock/recipe/*.json`。
+- **新增淘盘**：新增 `PanProfile` 并在 `ModItems` 选用 `Category.PAN`（见[淘洗系统](panning.md)）。
 
-## 13. 约束与陷阱
+## 11. 约束与陷阱
 
-- **花火粉不能进 `minecraft:coals` 标签**（见「其他材料物品」表）。
-- **考古铲必须潜行才能挖掘可疑方块**；未潜行只显示裂纹，不破坏、不连挖，这是刻意行为。
-- **淘盘能力交集必须三处共用**（起手 / 持续 / 结算），改 `canHarvest` 时不要只改一处。
-- **结构回溯是重新执行放置，不是历史快照**：会覆盖玩家改建、重复生成实体与战利品，任何"精确还原"的预期都不成立（见「结构回溯」的「行为边界」）。
-- 结构回溯最多一个任务、每 tick 一个区块，且**仅驻留内存、停服取消**，已完成的写入不回滚。
+- **花火粉禁止加入 `minecraft:coals` 标签**：否则会命中原版火把配方，导致火把产出翻倍。
+- **考古铲必须潜行才能破坏可疑方块**：非潜行下仅显示裂纹而不完成破坏或连挖，属防误操作刻意设计。
+- **淘盘 `canHarvest` 校验须三处一致**：起手、持续使用与结算必须共用能力交集判定。
+- **结构回溯不是快照回档且不跨停服续跑**：任务仅驻留内存，停服即取消且已写入区块不回滚；会覆盖玩家建筑并重新产生容器/实体。
 
-## 14. 相关文档
+## 12. 相关文档
 
-- [方块与物品机制细节](../internals/blocks-items-details.md) —— 结构回溯与便携容器机制
-- [注册架构](../foundation/registration.md) —— `ModItems` / `ModBlocks` 清单模式
-- [考古笔记系统](journal.md) —— 解析仪的追踪接入
-- [战利品表系统](loottable.md) —— 解析仪与考古铲涉及的战利品解析
-- [淘洗系统](panning.md) —— 淘盘与淘洗点
-- [猫族关系系统](cat-favor.md) —— 猫之手绑定
-- [附魔系统](enchantment.md) —— 猫之瞳、失落书页锻造
-- [客户端与 GUI](client-ui.md) —— 标本箱/陶轮 Screen、tooltip
-- [配置与第三方联动](../foundation/config-and-integrations.md) —— 标本箱饰品代理、花火粉燃料接入
+- [方块与物品机制细节](../internals/blocks-items-details.md)
+- [注册架构](../foundation/registration.md)
+- [考古笔记系统](journal.md)
+- [战利品表系统](loottable.md)
+- [淘洗系统](panning.md)
+- [猫族关系系统](cat-favor.md)
+- [附魔系统](enchantment.md)
+- [客户端与 GUI](client-ui.md)
+- [配置与第三方联动](../foundation/config-and-integrations.md)

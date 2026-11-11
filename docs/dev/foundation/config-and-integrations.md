@@ -1,195 +1,136 @@
 # 配置与第三方联动
 
-本文档描述模组的配置系统、数据驱动与硬编码的边界，以及与第三方模组（Jade / JEI / Lootr / Trinkets / Curios / Artifacts / ModMenu）的联动实现。
+本文档说明模组的配置架构、双端存储与配置界面、数据驱动与硬编码边界，以及与第三方模组的联动接入方式。
 
-> 本文件描述配置作用域、生命周期与联动入口；键名、范围和默认值以实际接口和平台声明为准。
-> 可选依赖的反射加载机制以 [平台抽象](platform-spi.md) 为权威，本篇只列联动清单。
+> 配置键名、默认数值与合法上下限以各 SPI 接口与平台声明为唯一事实源；可选联动的惰性反射机制见[平台抽象](platform-spi.md)。
 
-## 1. 职责概述
+## 1. 配置接口概览
 
-- **配置系统**：通过 `ILootTableConfig`、`ISpiritCatConfig` 与 `IPanningConfig` 配置能力通过 [平台 SPI](platform-spi.md) 注入，完整参数与约束直接查声明：
+模组通过三个配置 SPI 接口将可调参数注入 `common`：
 
-| 接口 | 职责 |
-|---|---|
-| [`ILootTableConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ILootTableConfig.java) | 世界追踪范围、排除规则、签名排除组件、日志与追踪期限 |
-| [`ISpiritCatConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ISpiritCatConfig.java) | 灵体现世时长与九命效果持续时间 |
-| [`IPanningConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IPanningConfig.java) | 淘洗生成、寿命、间距、结算和工具强度 |
+| SPI 接口 | 覆盖范围 | 说明 |
+|---|---|---|
+| [`ILootTableConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ILootTableConfig.java) | 世界追踪范围规则、精确排除项、实例态排除组件、日志上限与容器追踪超时 | 按世界保存，服务端权威 |
+| [`ISpiritCatConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ISpiritCatConfig.java) | 灵体猫现世时长与猫之九命触发后的保护效果时长 | 全局配置 |
+| [`IPanningConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IPanningConfig.java) | 淘洗点自然生成节拍、寿命、间距、采空冷却与淘盘数值加成 | 独立配置文件 / Spec |
 
-淘洗工具标量由 `PanProfile` 通过 `DoubleSupplier` 延迟读取，避免在 NeoForge SERVER spec 尚未加载的物品构造期求值。世界生成稀有度由 placed feature 资源控制，详见[淘洗系统](../subsystems/panning.md)。
+> **物品构造期的延迟求值约束**：`PanProfile` 读取 `gold_pan_luck_bonus` 等工具标量时必须使用 `DoubleSupplier` 延迟求值，因为 NeoForge 在注册物品期间尚未加载 `SERVER` 类型的 `ModConfigSpec`。
 
-### 2.2 Fabric 实现
+## 2. 双端配置实现与生命周期
 
-[`FabricLootTableConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) **同时实现战利品与灵体配置接口**（`ILootTableConfig` + `ISpiritCatConfig`），用 GSON 读写 JSON：
+### 2.1 Fabric 实现
 
-- 战利品追踪配置：`<世界目录>/serverconfig/unsuspiciousblock.json`，服务端启动时加载，停止时解除世界绑定。
-- 淘洗配置：[`FabricPanningConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricPanningConfig.java) 实现第三接口，全局 JSON `config/unsuspiciousblock/panning.json`，字段缺失时自动补写默认值。
-- 灵体猫全局配置：`config/unsuspiciousblock/unsuspiciousblock.json`。
-- 世界配置首次创建时，以旧全局 JSON 中的三项战利品配置作为迁移初值，兼容已有玩家设置。
-- 自动生成中英文 `README_CN.txt` / `README_EN.txt`（弥补 JSON 无注释的限制），已存在则保留玩家自定义备注。
-- 钳制到合法范围（`clampLogEntries` / `clampTrackingTimeout` / `clampNpcLifetime` / `clampEffectDuration`），越界回退默认值，与 NeoForge 端 `defineInRange` 行为一致。
-- 缺失灵体配置字段时自动补写修复。
-- `save(rawPrefixes, rawExclusions, rawMaxLogEntries, rawTrackingTimeoutTicks)` 仅在集成服务器运行时可用，清洗（去空/去重）+ 钳制后写入当前世界配置。
+- [`FabricLootTableConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) 同时实现 `ILootTableConfig` 与 `ISpiritCatConfig`，使用 GSON 读写 JSON：
+  - **世界战利品追踪配置**：保存在 `<世界目录>/serverconfig/unsuspiciousblock.json`，服务端启动时加载，停止时解除世界绑定；首次为世界创建配置时，会从旧全局 JSON 迁移三项战利品设置。
+  - **灵体猫全局配置**：保存在 `config/unsuspiciousblock/unsuspiciousblock.json`，缺失字段自动补写默认值。
+  - 自动在配置旁生成 `README_CN.txt` / `README_EN.txt`（若已存在则保留用户修改）。
+- [`FabricPanningConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricPanningConfig.java) 实现 `IPanningConfig`，读写全局文件 `config/unsuspiciousblock/panning.json`，缺失字段自动补齐。
+- 所有数值读取与写盘均经过范围钳制（越界回退默认值）；`save(...)` 仅在集成服务器运行期间允许写入当前世界配置，并在落盘前完成去重清洗。
 
-### 2.3 NeoForge 实现
+### 2.2 NeoForge 实现
 
-[`NeoForgeLootTableConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgeLootTableConfig.java) 用 NeoForge 的 `ModConfigSpec`：
+- [`NeoForgeLootTableConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgeLootTableConfig.java) 基于 `ModConfigSpec` 同时实现 `ILootTableConfig` 与 `ISpiritCatConfig`：
+  - `SERVER_CONFIG_SPEC`（`ModConfig.Type.SERVER`）：由 NeoForge 放入世界目录的 `serverconfig/` 下；首次加载新世界时通过一次性迁移标记复制旧 `COMMON` 配置中的追踪值，此后世界配置独立演进。
+  - `COMMON_CONFIG_SPEC`：保存灵体猫全局参数及仅用于初次迁移的旧追踪字段。
+- [`NeoForgePanningConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgePanningConfig.java) 实现 `IPanningConfig`，注册为独立的 `SERVER` 规格并显式指定文件名 `unsuspiciousblock-panning-server.toml`，避免与同模组同类型默认配置文件名冲突导致 `ConfigTracker` 中断启动。
+- 所有范围校验由 `defineInRange` 声明，与 Fabric 端钳制规则保持一致；多人游戏以服务端配置为权威。
 
-- `SERVER_CONFIG_SPEC` 注册为 `ModConfig.Type.SERVER`，保存三项战利品追踪配置并由 NeoForge 放入世界 `serverconfig`。
-- 淘洗配置：[`NeoForgePanningConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgePanningConfig.java) 实现第三接口，注册为独立的 SERVER ModConfigSpec。同一模组的同类配置默认文件名相同，因此必须显式指定文件名 `unsuspiciousblock-panning-server.toml`，否则 `ConfigTracker` 判定配置文件冲突并中断模组构造。
-- `COMMON_CONFIG_SPEC` 保留灵体猫参数和旧版三项追踪值；旧值只作为新世界首次迁移初值，不再作为运行时权威配置。
-- SERVER spec 使用一次性迁移标记，首次加载世界时复制旧 COMMON 值，之后不会覆盖该世界自己的设置。
-- 用 `defineInRange` 声明范围约束，与 Fabric 端钳制行为对齐。
-- 同样**同时实现战利品与灵体配置接口**。
-- 玩家通过 NeoForge 的模组配置界面或服务端配置文件调整；多人游戏以服务器文件为权威。
+### 2.3 配置界面与可写性规则
 
-### 2.4 ModMenu 配置界面
+两端配置页面均使用 **Meteo's UI Kit** 的通用表单容器 `ConfigFormScreen` 负责滚动排版、输入控件与固定底部操作栏；字段定义、校验规则与保存逻辑仍由各自平台页面持有。重置操作仅修改草稿状态，点击取消不落盘。
 
-Fabric 端通过 [`ModMenuIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuIntegration.java) + [`ModMenuConfigScreen`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuConfigScreen.java) 提供分层图形化配置界面：
+- **Fabric（ModMenu 入口）**：[`ModMenuIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuIntegration.java) 与 [`ModMenuConfigScreen`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuConfigScreen.java) 提供入口，划分为两类子页：
+  - `SpiritCatConfigScreen`：编辑灵体猫全局参数并保存到 `config/unsuspiciousblock/unsuspiciousblock.json`。
+  - `ServerLootConfigScreen`：编辑当前世界的战利品追踪规则（重置时同步清空管理页产生的精确排除项）。仅在本机运行集成服务器时允许修改与保存；主菜单或多人游戏客户端仅显示提示，防止本地修改误导玩家。
+- **NeoForge（Mods 配置工厂）**：从本模组已注册的 `ModConfigSpec` 自动派生文件入口与字段（含独立的淘洗 `SERVER` 配置），复用同一组默认值与校验器，全部通过校验后写回并调用 `save()`。未加载的规格、远程多人服务器配置以及已开放局域网联机的集成服务器 `SERVER` 配置均为只读。当前所有配置项均不需要重启游戏。
 
-- **通用配置**：编辑灵体猫的六项全局参数，保存到 `config/unsuspiciousblock/unsuspiciousblock.json`，供本机托管的集成服务器使用。
-- **服务端配置**：编辑当前世界的战利品追踪规则、日志上限与追踪超时。重置时同时清空管理页面产生的精确排除项。只有当前客户端正在运行集成服务器时允许写入；主菜单和多人客户端显示为服务端管理，避免本地修改造成误导。
-
-### 2.5 运行时变更
+### 2.4 运行时热重载与补充表名文件
 
 [`ServerLootTableConfigManager`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/ServerLootTableConfigManager.java) 统一管理服务端配置生命周期：
 
-- 服务端启动时在目录首次解析前加载当前世界配置，停止时清除世界绑定。
-- 每秒比较一次配置快照。日志上限和追踪超时由业务代码实时读取，不需要重建。
-- 追踪规则变化时暂停概率模拟、失效并重建目录，随后向在线玩家同步新目录哈希。
-- 数据包重载（`/reload`、整合包换表）经平台重载监听器只置脏标记，重建在同一个 tick 路径上消费，与追踪规则变化走同一条重建路径；机制见 [战利品表机制细节](../internals/loottable-mechanics.md) 的「模拟结果缓存」一节。
-- `/reload` 会重新读取 Fabric 世界 JSON；NeoForge SERVER spec 由平台负责加载。
-
-### 2.6 战利品表名称文件
-
-追踪规则属于按世界保存的 `ILootTableConfig`；补充语言按标准 JSON 保存到服务端全局 `config/unsuspiciousblock/loot_table_lang/<language>.json`，用于整合包分发和开发期补全。名称合并迁移、资源优先语义与运行时覆盖规则以 [战利品表机制细节](../internals/loottable-mechanics.md) 的「收录范围与自定义表名」一节为权威，此处只记录文件位置。
+- 服务端启动时先于目录解析加载当前世界配置，停服时清除绑定。
+- 每秒比对一次配置快照：
+  - 日志保留上限与追踪超时由业务代码实时读取，更改后立即生效，无需重建目录；
+  - 追踪前缀或排除规则变化时，暂停概率模拟并失效重建目录，完成后向在线玩家广播新的目录哈希。
+- 数据包重载（`/reload`）时，平台监听仅标记脏状态，由管理器在服务端 tick 路径上与配置变更走同一条重建链路；Fabric 端在 `/reload` 时同步重读世界 JSON，NeoForge 端由平台自动重载 `SERVER` 规格。
+- **补充表名语言文件**：服务端将自定义战利品表名称保存在全局文件 `config/unsuspiciousblock/loot_table_lang/<language>.json`（与按世界保存的 `ILootTableConfig` 分离）。合并迁移、资源优先语义与运行时覆盖规则见[战利品表系统](../subsystems/loottable.md)与[战利品表机制细节](../internals/loottable-mechanics.md)。
 
 ## 3. 数据驱动与硬编码边界
 
-数据驱动三层分离原则：
+### 3.1 数据驱动内容（支持 `/reload`）
 
-### 3.1 数据驱动（可通过数据包修改）
+| 内容 | 数据包位置 / 格式 | 说明 |
+|---|---|---|
+| 猫猫信使礼物 | `data/unsuspiciousblock/loot_table/gameplay/cat/ghost_gift.json` | 标准战利品表 |
+| 猫猫商人交易 | `data/unsuspiciousblock/merchant_cat_trades/*.json` | 支持输入/输出、次数、权重与条件 |
+| 猫之手结构与世界生成 | `data/unsuspiciousblock/structure/` 与 `worldgen/` | 结构模板与群系范围（自然生成当前停用） |
+| 交易随机商品包装 Tag | `data/unsuspiciousblock/tags/item/random/*.json` | 聚合 `c:` 通用 Tag，供外部数据包统一切入扩展 |
+| 考古笔记目录分类 | `data/<namespace>/journal_categories/*.json` | 支持任意命名空间扩展，见[笔记分类格式](../../api/journal-categories.md) |
+| 附魔、配方、战利品表与地物 | `data/unsuspiciousblock/{enchantment,recipe,loot_table,worldgen}/` | 标准 1.21.1 数据驱动资源 |
 
-- **猫猫信使礼物**：标准 Loot Table（`gameplay/cat/ghost_gift`）。
-- **猫猫商人交易**：自定义 JSON（`data/merchant_cat_trades/`），支持输入/输出/次数/权重/条件。
-- **猫之手结构**：结构 NBT + worldgen JSON + template_pool。
-- **结构战利品**：标准 Loot Table。
-- **Worldgen**：结构、structure_set、biome tag。
-- **交易输入 Tag**：`unsuspiciousblock:random/*` 包装 Item Tag（随机陶片/唱片/盔甲纹饰模板），纳入 `c:` Conventional Tag，外部数据包扩展一个稳定入口即可。
-- **考古笔记目录分类**：`data/journal_categories/`。
-- **附魔定义**：`data/enchantment/*.json`（1.21 数据驱动附魔）。
-- **配方**：`data/recipe/`。
-- **战利品表**：`data/loot_table/`。
+### 3.2 服务端配置与代码核心常量边界
 
-所有数据驱动内容支持 `/reload`。
+- **服务端配置暴露**：战利品追踪前缀/排除规则、日志上限与追踪超时（`ILootTableConfig`）；灵体猫现世时长与九命效果持续时间（`ISpiritCatConfig`）；淘洗生成频率、寿命、冷却与工具数值加成（`IPanningConfig`）。
+- **保持硬编码的核心契约**：
+  - 猫族关系的基础不变量（0–100 范围、6 个阶段边界与恩惠归属、UUID 绑定替代、扣分去重、跌破 100 清空命数、九命与图腾/虚空规则、灵体单玩家数量限制与剑士排除玩家）；目前行为增减与冷却也在 `CatFavorAction` 中以代码常量维护；
+  - 玩家状态偏好（猫之威慑与轻步开关）保存于服务端玩家存档；猫之恩惠 HUD 始终按携带与阶段规则自动绘制，不提供客户端隐藏开关。
+  - 玩法规则细节以[猫族关系规格](../../design/cat-bond.md)与[猫国灵体规格](../../design/spirit-cat-npc.md)为准。
 
-### 3.2 可配置（服务端配置）
+## 4. 第三方联动清单
 
-- 羁绊增减与冷却（`CatFavorAction` 的 favorDelta / cooldownTicks 目前硬编码，预留可调空间）。
-- 坐卧时间和半径、恩惠数值。
-- 灵体战斗与生命周期（`ISpiritCatConfig`）。
-- 商人生成参数。
-- 信使阶段时长。
-- 战利品追踪前缀、日志上限、追踪超时（`ILootTableConfig`）。
-
-### 3.3 硬编码（身份与关系语义，不可配置）
-
-- 0-100 羁绊范围与六个羁绊阶段。
-- 恩惠归属（能力与阶段的绑定）。
-- 猫之手 UUID 绑定语义。
-- 扣分优先级。
-- 封顶跌落时清空命数（`catBond < 100 -> nineLivesCount = 0`）。
-- 图腾与虚空规则（九命不与图腾叠加）。
-- 剑士猫猫排除玩家（不攻击玩家）。
-- 每名玩家同时一只信使和一只剑士的限制。
-
-> 威慑与轻步是服务端保存的玩家偏好；猫之恩惠 HUD 没有客户端显示开关，始终按固定规则绘制。这避免服务端配置制造无法由 UI 和本地化正确解释的关系状态。
-
-## 4. 第三方联动
-
-所有联动均为**可选**，统一采用 `compileOnly` + `runtimeOnly`（开发运行环境）模式，发布时不强制安装。
+所有联动均为可选依赖，使用 `compileOnly` + 开发期 `runtimeOnly` 引入，缺失时平滑降级。
 
 ### 4.1 Jade（方块与实体信息）
 
-[`JadePlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/jade/JadePlugin.java)（common 的 platform 接入桥，通过 Fabric `jade` entrypoint 与 NeoForge `@WailaPlugin` 扫描发现）：
+- **发现入口**：[`JadePlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/jade/JadePlugin.java) 与 [`JadeClientPlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jade/JadeClientPlugin.java) 位于 `common`，由 Fabric `jade` entrypoint 与 NeoForge `@WailaPlugin` 扫描装配。插件构造期不接触客户端类，客户端 Provider 仅在物理客户端调用 `registerClient` 时注册。
+- **服务端/客户端分离**：`core.plugin.jade.JadeServerProviders` 注册服务端数据提供器，`client.plugin.jade.JadeClientProviders` 注册显示组件，共享字段声明在 `JadeData`。
+- **提供信息**：显示已扫描的可疑方块战利品；针对淘洗点（如闪烁的光），按需同步剩余游戏刻并在客户端显示“X 分 Y 秒后消散”或“不会自然消失”（无服务端数据时不显示寿命）。
 
-- 在 Jade 的方块信息中显示已扫描出的可疑方块战利品。
-- 闪烁的光：通过实体服务端数据提供器按需同步剩余游戏刻，客户端显示距离自然消失的分钟与秒数（秒向上取整），世界生成点显示“不会自然消失”。未收到服务端数据时不显示寿命；显示随 Jade 数据刷新更新。
-- `core.plugin.jade.JadeServerProviders` 注册服务端数据提供者，`client.plugin.jade.JadeClientProviders` 注册显示组件，共享字段由 `JadeData` 声明。
-- `JadePlugin.register` 装配服务端 provider；[`JadeClientPlugin.registerClient`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jade/JadeClientPlugin.java) 直接装配客户端 provider。Fabric 的 `jade` entrypoint 和 NeoForge 的 `@WailaPlugin` 扫描发现这两个 common 入口；插件构造不访问客户端实现，Jade 仅在物理客户端调用 `registerClient`。
+### 4.2 JEI（配方与物品查询）
 
-### 4.2 JEI（配方查看）
-
-[`JeiPlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jei/JeiPlugin.java) + `PotteryWheelJeiCategory` + `PotteryWheelJeiRecipe`（common）：
-
-- 注册陶轮配方的 JEI 类别。
-- 注册 `JournalJeiGuiHandler`，将考古笔记中的已解锁物品条目暴露为 JEI clickable ingredient，支持 U/R 查看配方与用法；JEI 关闭后按其原生 Screen 返回链回到考古笔记。
-- JEI runtime 向 `ArchaeologyJournalKeyHandler` 提供当前悬停原料，使玩家可在 JEI 物品上按手册快捷键按注册名搜索考古笔记。
-- Fabric 端通过 `fabric.mod.json` 的 `jei_mod_plugin` entrypoint 注册；NeoForge 端无注册代码，由 JEI 自行扫描 `@JeiPlugin` 注解发现。
-- JEI API 跨平台一致，故放在 common。陶轮自有背景、进度和物品/模型预览使用 kit，ingredient slot 和 focus link 继续由 JEI 持有。笔记联动直接读取根的唯一命中结果，覆盖面和捕获期间不暴露底层物品。
+- **发现入口**：[`JeiPlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jei/JeiPlugin.java) 位于 `common/client/`（Fabric 由 `fabric.mod.json` 声明，NeoForge 由 `@JeiPlugin` 注解自动发现）。
+- **集成能力**：
+  - `PotteryWheelJeiCategory` / `PotteryWheelJeiRecipe`：注册纹饰陶轮台配方类别（背景、进度与模型预览复用 UI Kit 绘制，原料槽位与焦点链接交由 JEI 管理）。
+  - `JournalJeiGuiHandler`：将考古笔记网格与介绍页中的已解锁物品暴露为 JEI 可点击原料，支持 `U` / `R` 键跳转并沿 Screen 返回链回到笔记；浮层或输入捕获激活时不暴露底层物品。
+  - JEI 运行时悬停原料查询配合 `ArchaeologyJournalKeyHandler`，支持在 JEI 列表上按笔记快捷键按注册名搜索。
 
 ### 4.3 Lootr（每人独立战利品）
 
-`common/core/plugin/lootr/`（可选，构建时可通过 `lootr_compat_*` 排除）：
-
-- [`LootrArchaeologyFilterProvider`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrArchaeologyFilterProvider.java)：实现 Lootr 的 `ILootrFilterProvider`，通过 `META-INF/services` 注册。
-- `LootrBrushableTrackingAccess` / `LootrTrackingBridge`：桥接 Lootr 的每人独立战利品机制与模组的追踪系统。
-- 配套 Lootr Mixin 由独立配置登记，接线见 [Mixin](mixin.md)。
-- 当前发布配置：NeoForge 带 Lootr 兼容，Fabric 不带。
+- 实现位于 `common/core/plugin/lootr/`（受 `gradle.properties` 的 `lootr_compat_*` 构建开关控制；当前发布配置仅 NeoForge 启用）：
+  - [`LootrArchaeologyFilterProvider`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrArchaeologyFilterProvider.java) 通过 `META-INF/services` 注册；
+  - `LootrBrushableTrackingAccess` 与 `LootrTrackingBridge` 负责把 Lootr 的每人独立容器/可疑方块接入模组追踪体系；配套 Mixin 见[Mixin 边界与接线](mixin.md)。
 
 ### 4.4 Trinkets / Curios（饰品栏）
 
-标本箱可装备到饰品栏，并代理箱内兼容饰品的属性与效果：
+使标本箱可装备到饰品栏并参与 `CarriedItems` 的便携携带查询：
 
-| 平台 | 集成类 | 职责 |
+| 平台 | 集成入口与组件 | 职责 |
 |---|---|---|
-| Fabric | [`FabricTrinketsIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/trinket/FabricTrinketsIntegration.java) | 入口，通过 `OptionalModIntegration` 反射加载 |
-| | `SpecimenBoxTrinket` | 标本箱作为 Trinkets 饰品 |
-| | `TrinketSlotResolver` | 饰品槽解析 |
-| | `TrinketsAccessoryHelper` | 实现 `IAccessoryHelper`（查询饰品栏） |
-| NeoForge | [`NeoForgeCuriosIntegration`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/curio/NeoForgeCuriosIntegration.java) | 入口 |
-| | `SpecimenBoxCurio` | 标本箱作为 Curios 饰品 |
-| | `CuriosAccessoryHelper` | 实现 `IAccessoryHelper` |
+| Fabric | [`FabricTrinketsIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/trinket/FabricTrinketsIntegration.java) | 由 `OptionalModIntegration` 反射加载；含 `SpecimenBoxTrinket`、`TrinketSlotResolver` 与 `TrinketsAccessoryHelper`（实现 `IAccessoryHelper`） |
+| NeoForge | [`NeoForgeCuriosIntegration`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/curio/NeoForgeCuriosIntegration.java) | 入口及 `SpecimenBoxCurio`、`CuriosAccessoryHelper`（实现 `IAccessoryHelper`） |
 
-两端 `IAccessoryHelper` 实现在饰品模组未安装时返回 false / 空流，玩法降级为"未装备饰品"。
+当饰品模组未安装时，`IAccessoryHelper` 默认回退实现返回空流，玩法等价于“未装备饰品”。
 
 ### 4.5 Artifacts（饰品效果代理）
 
-`fabric/platform/plugin/artifacts/` 与 `neoforge/platform/plugin/artifacts/` 各有 `ArtifactsSpecimenBoxSlotProvider`：
+`fabric/platform/plugin/artifacts/` 与 `neoforge/platform/plugin/artifacts/` 各自实现 `ArtifactsSpecimenBoxSlotProvider`，使标本箱放在背包或饰品栏时能代理箱内兼容 Artifacts 饰品的装备效果。
 
-- 标本箱代理箱内 Artifacts 兼容饰品的装备效果。
-- 仅编译其装备 provider API，运行时保持可选联动。
+## 5. 扩展点
 
-### 4.6 ModMenu（配置界面入口）
-
-`fabric/client/modmenu/`（仅 Fabric）：
-
-- `ModMenuIntegration`：注册 ModMenu 入口。
-- `ModMenuConfigScreen`：区分通用配置与当前世界服务端配置的入口页面。
-- `SpiritCatConfigScreen`：编辑灵体猫全局配置，通过 `FabricLootTableConfig.saveSpiritCatConfig` 落盘。
-- `ServerLootConfigScreen`：编辑当前世界的战利品服务端配置，通过 `FabricLootTableConfig.save` 落盘。
-
-### 4.7 配置页面
-
-Fabric ModMenu 首页及配置页、NeoForge Mods 配置工厂均使用独立 Meteo’s UI Kit。`ConfigFormScreen` 只负责配置页的滚动排版、稳定控件与固定操作区；平台页面保留字段、校验和保存所有权。重置只改草稿，取消不保存。
-
-NeoForge 页面从本模组已注册的 `ModConfigSpec` 派生配置文件入口与字段，包含独立淘洗 SERVER 配置。字段采用同一 spec 的类型、默认值和校验器，全部验证后写入并调用 `save()`。未加载的 spec、远程服务器 SERVER 配置与已开放到 LAN 的集成服务器 SERVER 配置不可编辑。当前注册字段均无重启标记。
-
-
-## 5. 扩展点：新增配置项 / 数据驱动内容 / 联动
-
-- **新增可配置参数**：在 `ILootTableConfig` 或 `ISpiritCatConfig` 加方法与默认值常量，两端配置类各自实现并读取。
-- **新增数据驱动内容**：在 `data/unsuspiciousblock/` 对应目录添加 JSON（战利品表、配方、商人交易、目录分类等）。
+- **新增配置参数**：在 `ILootTableConfig`、`ISpiritCatConfig` 或 `IPanningConfig` 中增加方法与默认值/边界常量，并在两端平台配置类与配置页面同步实现。
+- **新增数据驱动条目**：在 `common/src/main/resources/data/unsuspiciousblock/` 对应子目录添加 JSON 定义。
 - **新增第三方联动**：
-  1. `compileOnly` 引用第三方 API（两端 build.gradle）。
-  2. 按职责在 core/plugin、client/plugin 或 Loader platform/plugin 放置实现；需要惰性加载时使用 `OptionalModIntegration`，机制见[平台抽象](platform-spi.md)。
-  3. 跨平台 API 放 common，平台专属 API 放 fabric/neoforge。
-- **调整 Lootr 兼容**：通过 `gradle.properties` 的 `lootr_compat_*` 属性控制构建。
+  1. 在 `fabric/build.gradle` 与 `neoforge/build.gradle` 添加 `compileOnly`（及按需 `runtimeOnly`）；
+  2. 跨平台 API 置于 `common` 的 `core/plugin`、`client/plugin` 或 `platform/plugin`；平台专属 API 置于对应 Loader 的 `platform/plugin/`，需要惰性加载时使用 `OptionalModIntegration`（见[平台抽象](platform-spi.md)）。
+- **调整 Lootr 构建范围**：修改 `gradle.properties` 中的 `lootr_compat_fabric` / `lootr_compat_neoforge` 属性。
 
 ## 6. 相关文档
 
-- [平台抽象](platform-spi.md) - SPI 接口与 `OptionalModIntegration`
-- [猫族关系系统](../subsystems/cat-favor.md) - `ISpiritCatConfig` 的使用
-- [战利品表系统](../subsystems/loottable.md) - `ILootTableConfig` 的追踪前缀
-- [考古笔记系统](../subsystems/journal.md) - 日志上限与追踪超时
-- [方块与物品](../subsystems/blocks-items.md) - 标本箱饰品代理
-- [架构总览](architecture.md) - 构建与可选依赖
+- [平台抽象](platform-spi.md)
+- [架构总览](architecture.md)
+- [Mixin 边界与接线](mixin.md)
+- [战利品表系统](../subsystems/loottable.md)
+- [考古笔记系统](../subsystems/journal.md)
+- [猫族关系系统](../subsystems/cat-favor.md)
+- [淘洗系统](../subsystems/panning.md)
+- [方块与物品](../subsystems/blocks-items.md)

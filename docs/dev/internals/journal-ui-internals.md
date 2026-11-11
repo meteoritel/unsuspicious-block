@@ -1,95 +1,106 @@
 # 笔记 GUI 内部机制
 
-> 笔记的输入组合、业务展示、场景交互与阅读状态。客户端入口见 [客户端与 GUI](../subsystems/client-ui.md)，独立库消费契约见 [UI kit 公开 API 与兼容策略](ui-kit-api.md)。
+> 考古笔记与战利品表管理界面的内部结构：组件分层、唯一输入与焦点路由、右页与工具栏组装、网格与日志展示规则、场景详情与浮层交互，以及本地阅读状态持久化。
+> 本文件不参与主任务导航，由[客户端与 GUI](../subsystems/client-ui.md)按需链接；UI Kit 公开接口与兼容性规范见[UI kit 公开 API 与兼容策略](ui-kit-api.md)。
 
-## 1. 职责与输入拓扑
+## 1. 组件职责与输入拓扑
 
-| 所有者 | 职责 |
+| 组件 / 目录 | 职责 |
 |---|---|
-| `ArchaeologyJournalScreen` | kit `UiScreen` 根，选择顶层作用域，组合书本与页面，管理导航历史和返回快照 |
-| `JournalViewport` / `JournalBookBackground` | 书本逻辑坐标与缩放；使用 kit Sprite 绘制宿主书本纹理 |
-| `JournalViewModel` | 分类、目录投影、展开路径和所选表 |
-| `CatalogToolbar` / `LogToolbar` | 稳定搜索草稿、防抖、排序、过滤与批量操作入口 |
-| `CatalogPanel` / `RightPageContainer` | 左页目录与右页 INTRO / ARCHAEOLOGY / LOG / SCENARIO 的实际内容树 |
-| `JournalControls` / `UnsuspiciousUiTheme` | 宿主图集、书签与热点皮肤；羊皮纸和深色主题 |
-| `JournalOverlays` | 当前场景层的所有权、准备与关闭回调 |
-| `UiPanelRegistry` / `LayoutAware` / `UiStateful` | 面板布局及 NBT 阅读状态装配 |
-| `support/` | 搜索、排序、格式、概率显示、持久化与网络动作适配 |
+| `ArchaeologyJournalScreen` | 消费 UI Kit `UiScreen` 的根界面：持有唯一 `UiInputRouter`、选择当前顶层作用域、管理页面返回历史栈与返回快照 |
+| `JournalViewport` / `JournalBookBackground` | 换算逻辑书页坐标与缩放比例，使用 UI Kit 精灵图层绘制宿主书本贴图 |
+| `JournalViewModel` | 维护当前选中分类、目录投影、父子表展开路径与选中表 |
+| `CatalogToolbar` / `LogToolbar` | 维护搜索草稿、防抖输入、排序、过滤与日志批量操作入口 |
+| `CatalogPanel` / `RightPageContainer` | 组装左页目录面板与右页（`INTRO` / `ARCHAEOLOGY` / `LOG` / `SCENARIO`）内容树与侧边书签/翻页控件 |
+| `JournalControls` / `UnsuspiciousUiTheme` | 切片宿主图集、构造侧签/书签/行热点皮肤，维护羊皮纸与深色两套主题 |
+| `JournalOverlays` | 持有当前打开的场景浮层/灯箱的准备与退出清理回调 |
+| `UiPanelRegistry` / `LayoutAware` / `UiStateful` | 登记可持久化阅读状态的面板，协调布局刷新与 NBT 状态读写 |
+| `support/` | 提供搜索、排序、格式转换、概率显示、本地持久化与网络请求适配 |
 
-根使用唯一 kit router，绘制、鼠标位置和拖动距离都经 `JournalViewport` 换算。`UiChildren` 反映实际成员，控件、页签和行热点按稳定业务 key 复用；焦点与持续交互归当前 `UiInputScope`。目录和条件区各贡献自己的键盘停靠点，其余焦点来自真实 kit 控件。
+### 1.1 输入路由与焦点规则
 
-按钮在配对释放且仍命中时执行；拖出释放取消。鼠标可设置逻辑焦点，轮廓随键盘模式显示。目录方向键只在目录持焦时导航，输入框编辑优先。搜索保留防抖；Backspace 优先交给文本和顶层浮层，再回退导航历史，无历史时关闭笔记。历史恢复阅读，不撤销已提交参数或服务端操作。
+- **单一根路由与逻辑坐标**：`ArchaeologyJournalScreen` 只持有一个 UI Kit 路由器，所有渲染、指针坐标与拖动增量均经 `JournalViewport` 换算；`UiChildren` 按真实绘制顺序维护成员树，控件与行热点按稳定业务键复用。
+- **焦点与键盘导航**：当前顶层 `UiInputScope` 拥有唯一输入与焦点权。目录列表与条件文档区各贡献自身的键盘停靠点；鼠标点击可切换逻辑焦点，轮廓随键盘模式显隐。输入框编辑与顶层浮层优先截获按键，`Backspace` 未被文本编辑或浮层消费时才回退导航历史（无历史则关闭笔记；历史回退只恢复阅读状态，不撤回已提交的网络请求）。
+- **按钮激活与悬停命中**：按钮遵循“按下并同目标释放”才执行动作，拖出范围释放取消。`UiPointerHit` 是 Tooltip 与 JEI 物品查询的统一来源（网格、介绍页与日志详情在准备阶段将已解析的 `ItemStack` 写入 `UiPointerHit.Row.key`，不再二次反查坐标）；当模态框、文本框或持续拖动占用输入时，底层 JEI 悬停查询返回空栈。
 
-`UiPointerHit` 是 tooltip 和 JEI 悬停查询的共同来源；查询前准备当前布局。模态、文本输入或持续捕获占用输入时，底层 JEI 物品查询返回空，提示也遵循当前作用域门禁。
+### 1.2 右页装配 (`RightPageContainer`)
 
-`RightPageContainer` 的局部 `PageDescriptor` 绑定稳定 Tab、活动内容、书签、指示器位置/可见性与进入/离开动作。容器同时持有书签和翻页控件，通过 `chromeControls()` 交给 Screen 注册；Screen 只用 `setChromeAvailable` 控制分类首页等整体可见性。新增右页时在同一描述列表接入内容与 chrome，领域导航仍由业务动作执行。
+- `RightPageContainer` 通过局部 `PageDescriptor` 绑定右页各 Tab 的内容面板、书签皮肤、指示器位置及切换生命周期回调，并通过 `chromeControls()` 将书签与翻页按钮统一交给 Screen 注册（分类首页时 Screen 通过 `setChromeAvailable(false)` 整体隐藏）。
+- **分页状态由活动面板自有**：`ARCHAEOLOGY` 由 `ArchaeologyPage` 组合 `ItemGridPanel` 与 `ScenarioPanel`（场景栏命中优先，Tab 焦点顺序为网格 → 场景栏）；`LOG` 按列表/详情模式切换面板。分页动作调用活动面板的 `setPage` / `changePage`，由面板自身维护脏状态、页码边界并在准备阶段同步更新翻页按钮状态。
 
-ARCHAEOLOGY 由 `ArchaeologyPage` 组合网格和场景栏，场景栏优先命中，焦点按网格再场景栏收集；普通输入继续复用现有 kit。LOG 的内容 Supplier 按 list/detail 模式选择实际面板。准备、绘制、控件、tooltip 与输入均经实际 PagePanel，分页调用面板的 `setPage/changePage`，由面板维护 dirty、页码范围与刷新；容器在同一准备阶段同步页码、指示器和翻页按钮。
+## 2. 目录面板与追踪管理界面
 
-## 2. 目录与追踪管理
+### 2.1 左页分类与表目录
 
-目录分类使用 kit 网格几何，表目录使用行几何，连续滚动及滚动条由 `UiScrollView` 管理。绘制、点击和提示使用相同几何。分类按两列卡片组织，表目录保留节点独立展开；展开父表只展示直接子表。点击子表入口先展开当前父路径，再选其下的目标行；搜索结果选中后同步所属分类和父级展开。
+- 分类首页使用两列卡片网格，战利品表目录使用支持独立展开的树形行列表；两者均由 `UiScrollView` 驱动连续滚动，绘制、命中与 Tooltip 共用同一几何投影。
+- 展开父表仅展示其直接子表；从父表点击子表入口或从全局搜索选中条目时，同步切换所属分类并自动展开对应父路径。
+- 对外暴露的滚动偏移 API（`getScrollOffset` / `setScrollOffset`）保持以条目为单位，内部按当前视图步长转换为像素并在模式切换或窗口变化后重新钳制。
 
-目录对外 `getScrollOffset/setScrollOffset` 和快照仍使用条目单位，内部按当前分类或列表步长转换为像素。切换形态时重算首项和步长，窗口变化后钳制。
+### 2.2 追踪管理页面 (`LootTableManagementScreen`)
 
-左侧管理入口打开独立 `LootTableManagementScreen`：
+从笔记左侧管理侧签进入，供管理员调整战利品表追踪规则与多语言名称：
 
-- 数据只来自 `LootTableManagementClientState` 的服务端快照；按 namespace/path 形成树，搜索时展开匹配分支。“最近遇到”按服务端记录组织分支顺序。
-- kit 列表处理滚动与导航，重建后按行 key 恢复浏览选择；所选表由 ResourceLocation 标识。浏览和激活分开，点击或 Enter 激活条目。
-- 详情使用 kit 滚动体，导入与返回固定在底部；Tab 聚焦字段时滚动到可见位置。
-- 名称草稿以语言代码和表 ID 为键。资源栈已有名称时展示来源并锁定编辑；资源缺失时可编辑服务端补充名称，缺省提示回退 `en_us`。资源失效时重新构造投影并协调草稿。
-- 语言代码使用 kit 文本输入，选择器和导入预览使用 kit 模态。系统文件选择器继续由原接口提供，读取、大小和格式失败保留独立原因。确认后才提交。
-- 无权限仍可浏览；权限与保存语义以 [战利品表系统](../subsystems/loottable.md) 为准，服务端名称快照只驻留当前连接。
+- **数据来源与权限**：仅读取服务端快照 `LootTableManagementClientState` 按命名空间与路径构造目录树（“最近遇到”按服务端记录排序）；所有玩家均可只读浏览，修改与保存要求服务端权限等级 `2`（操作入口与文件校验在 `LootTableManagementActions` / `LootTableImportValidator`）。
+- **浏览与激活分离**：列表支持按行键稳定恢复滚动与选择状态，点击或 `Enter` 才激活右侧详情；详情体支持滚轮浏览并将导入/返回按钮固定在底部，Tab 聚焦字段时自动滚动可见。
+- **自定义表名草稿与导入**：以 `(languageCode, tableId)` 隔离暂存未提交草稿（游戏资源中已存在的名称显示来源并锁定编辑，缺失时允许编辑服务端补充名称，并按 `en_us` 回退提示）。支持通过系统文件选择器导入标准语言 JSON，在 UI Kit 模态框内展示新增/更新/跳过/非法明细预览，确认后批量提交。
 
-## 3. 网格、详情与日志
+## 3. 网格、介绍与日志面板
 
-`ItemGridPanel` 先按 tag、子表、直属物品形成逻辑序列，再切出当前页的 `visibleCells` 投影。绘制、提示、控件装配和命中都读取同一投影；单元保留物品、tag、子表和返回入口的业务区分，留白、间隙和不满末行没有目标。物品、来源与预览使用 kit 局部物品层，装饰留在同一层，数量角标用前景层。卡片的颜色、纹理、概率解释和业务分页由宿主提供。
+### 3.1 网格展示与未解锁隐藏规则 (`ItemGridPanel`)
 
-网格只展示当前表自身路径。普通物品卡片只读，不跳转场景或请求推荐。未发现物品只展示未知图标与“待解析”，tooltip 不透露物品、概率、声明触发率、区间或路径。已发现条目按“可适用状态 → 可展示的声明触发率 → 模拟值”显示：需要条件与未知只显示状态，零命中显示未命中，静态不可达才显示 `0%`。
+`ItemGridPanel` 将条目按「物品标签组 → 直接子表入口 → 直属物品」顺序生成逻辑序列并切片为 `visibleCells` 投影，渲染、点击、Tooltip 与 JEI 命中全部读取同一投影。
 
-子表入口使用同一优先级链，条件来自服务端下发的 `ChildTableProbability.conditions`，客户端不重新推导注入边。tag 取本组成员、子表取其后代物品闭包；有成员已发现后才解锁名称、预览和概率。未解锁入口不泄露 ID、成员数和概率。子表预览只取已发现成员。子表物品不进入父表网格或父表物品搜索；Intro 递归映射后代，按物品签名去重，并读取父表自身发现记录。
+| 条目状态 | 网格与入口展示 | Tooltip 行为 |
+|---|---|---|
+| **未发现物品** | 统一显示未知图标与「待解析」 | **严禁剧透**物品名称、概率、声明触发率或具体路径；普通物品卡片不提供点击跳转 |
+| **已发现物品** | 固定显示优先级：`不可用状态（需要条件 / 未知） → 可展示的声明触发率 → 模拟值`（零命中显示「未命中」，静态不可达才显示 `0%`） | 并列显示声明触发率与模拟值，并渲染带获取条件和折叠效果的函数树 |
+| **直接子表入口** | 至少有一项后代物品已发现后才解锁名称与预览 | 条件直接读取服务端下发的 `ChildTableProbability.conditions`（含注入门槛），客户端不自行重推 |
 
-日志分页、分组、批选和选中 entry ID 由业务模型持有。`UiControlGroup` 复用日志行、复制和备注操作；富提示从行命中生成。网格、介绍页和日志详情在物品命中时把已解析的 `ItemStack` 放入 `UiPointerHit.Row.key`，Screen 的 JEI 查询直接消费该行，不再通过坐标二次反查。详情物品区域在输入准备时生成几何，不依赖上一渲染帧。删除单条、本表及全部日志均通过 kit 确认，确认前无请求。
+> 物品标签组（Tag）读取本组成员、子表读取其后代物品闭包；子表物品不混入父表网格或父表搜索，介绍页（`Intro`）则递归合并全部后代按签名去重展示。
 
-`JournalLogNoteEditScreen` 和 `JournalLogRetentionScreen` 稳定持有编辑器与 scope，resize 只更新布局。备注保存按服务端的 500 UTF-16 单元上限校验，超限保留草稿并提示。自动保留值至少为 1，一次清理允许保留 0 条；数字解析和范围校验通过后才发送原 payload。保留设置正文滚动，完成按钮固定。返回笔记恢复子页打开前的阅读快照。
+### 3.2 日志列表、详情与编辑子页
 
-首页统计沿原数据版本缓存，最近记录和物品的提示在当前命中时生成。
+- 日志分页、时间/维度/群系/备注分组、批量选择模式与选中条目由业务模型维护；`UiControlGroup` 按业务键复用列表行、复制坐标与备注按钮。
+- 单条删除、清空当前表与清空全部日志均先弹出 UI Kit 确认模态（`UiModalStack`）再发送网络请求。
+- `JournalLogNoteEditScreen` 与 `JournalLogRetentionScreen` 稳定持有编辑框与输入作用域（窗口大小变化仅重算排版）：备注严格校验服务端 `500` UTF-16 字符上限，保留设置校验自动保留 `>= 1`、一次性裁剪 `>= 0` 后才发包，返回后恢复子页打开前的阅读快照。
 
-## 4. 场景条件与文档动作
+## 4. 场景条件页与文档动作
 
-`ScenarioPanel` 提供网格页头部的场景选择与显式计算；`ScenarioDetailPanel` 提供短场景名、状态、工具与参数读数、配置、计算、条件标题和放大入口。场景详情页是单页连续阅读面，标题打开 `ScenarioSelectionOverlay`，方向键只浏览，点击或 Enter 激活后才调用选择入口；通用分页和条件区未消费的滚轮不提交场景。工具图标只读，不进入 Tab 序列。物品与概率统一留在网格。
+- **面板分工**：`ScenarioPanel` 置于网格页顶部提供快捷场景切换与计算触发；`ScenarioDetailPanel` 专门用于阅读复杂条件树（展示短场景名、状态、工具/参数读数、配置/计算入口与放大按钮），**物品列表与概率统一留在网格页**。
+- **场景详情阅读与选择**：条件树由 `ScenarioPageBuilder` 直接从服务端场景与条件 DTO 组装（逻辑、取反、`partial`/`unreadable` 及不成立项均按分组展开），并由 `ScenarioConditionLayout` 按当前字体宽度折行（续行不重复连接线与动作按钮）。点击详情页标题弹出场景选择列表，方向键仅预览高亮，点击或 `Enter` 激活后才切换场景（普通翻页与条件区未消费的滚轮不意外切换场景）。
+- **文档动作与聚焦 (`UiDocument`)**：条件区使用独立的 UI Kit `UiDocument` 配合 `UiScrollView`，动作列表、标题底纹与键盘/鼠标命中统一读取 `UiDocument.targets()` 的实时布局。Tab 聚焦条件区后支持上下选择动作、PageUp/PageDown 翻页及 `Enter`/`Space` 触发动作；内容版本、字体、资源或视口变化时重建文档缓存。
+- **跨场景来源一致性**：`ScenarioSimulationClientState.sceneSource` 统一详情、列表与网格的场景口径；仅当目标场景存在同参数/同档位缓存引用时复用测值，缺引用保持未知，客户端绝不擅自挑选“最有利场景”充当当前显示值。
 
-`ScenarioPageBuilder` 只从服务端场景及条件 DTO 构造条件树；假设与子表入口分组，保留逻辑、取反、目标、partial/unreadable 与不成立项展开。`ScenarioConditionLayout` 按字体和宽度产生视觉行，续行保留样式但不重复连线、图标与动作。
+## 5. 场景浮层与灯箱 (`JournalOverlays`)
 
-条件区使用独立 kit `UiDocument` 和 `UiScrollView`。标题底纹、动作列表和导航几何直接取 `UiDocument.targets()`，与鼠标点命中共用真实排版。Tab 进入条件区，上下选择动作，PageUp/PageDown 阅读，Enter/Space 执行；鼠标动作在同目标释放时执行。资源、输入 key、目录版本、请求状态、字体或布局改变时重建相关投影。
+所有浮层使用 UI Kit `UiOverlay`、灯箱使用 `UiLightbox`、确认提示使用 `UiModalStack`；根屏幕只选择顶层 `UiInputScope`，由 UI Kit 统一处理遮罩拦截、焦点归还与迟到事件隔离。
 
-`ScenarioSimulationClientState.sceneSource` 统一详情、列表与网格来源。跨场景结果仅在具有目标场景引用且参数、样本档位相符时复用；缺引用保持未知，当前输入直接结果优先。客户端不推断条件语义或取其他场景最有利概率。
+| 浮层类 | 职责与交互约束 |
+|---|---|
+| `ScenarioSelectionOverlay` | 按服务端顺序展示代表场景列表（短名、状态与摘要，完整条件见 Tooltip）；方向键预览，点击/`Enter` 激活并关闭，`Esc` 取消 |
+| `ScenarioParamsOverlay` | 持有单份独立参数草稿：合法幸运范围的 `UiNumberField` + `UiScalarSlider`（精细步长 `0.01`）、工具选择列表、附魔搜索与等级增减按钮及固定抽样次数读数。「仅应用」保存输入草稿，「应用并计算」校验表哈希、选项代次与参数边界后发包（失败保留草稿） |
+| `ScenarioRecommendationOverlay` | 展示物品/子表入口推荐求解的等待、失败重试与参数变更预览；应用推荐只填回参数草稿，仍需显式计算。关闭、切表、切输入或目录失效时取消旧请求 |
+| `ScenarioExpandedOverlay` | 在 `UiLightbox` 中使用 `ScenarioFrameView` 全屏放大条件树：初始按窗口尺寸适配档位（不超过自然字号），支持滚轮缩放与拖动平移，窗口 resize 保持手动缩放比并钳制；`Esc` 关闭（点击遮罩不关闭），关闭不破坏页内原滚动位置 |
 
-## 5. 场景浮层与灯箱
+场景底纹与控件贴图（`scenario_controls.png`、`scenario_panel.png`）由 `scripts/drawer/generate_scenario_ui.py` 生成；共享工具栏图标 UV 见[工具栏图标图集](toolbar-icon-atlas.md)。
 
-场景覆盖面使用 `UiOverlay` 或直接使用 `UiLightbox` 的层；确认使用 `UiModalStack`。根只选顶层 scope，kit 负责遮罩、焦点恢复和迟到事件阻断。`JournalOverlays` 仅调用当前层的准备和业务清理，不维护平行输入分发器。
+## 6. 阅读状态与本地持久化
 
-- `ScenarioSelectionOverlay` 用 kit 滚动列表保留服务端顺序，展示短名称、状态和摘要，完整定义在 tooltip。方向键只浏览，点击或 Enter 激活后选择并关闭，Escape 取消。
-- `ScenarioParamsOverlay` 持有单份草稿：合法幸运域的 `UiNumberField`、`UiScalarSlider` 和文本输入；工具列表；附魔搜索与等级增减；固定样本读数。滑条使用 kit 数值策略，精细步长为 0.01。“仅应用”保存输入，“应用并计算”显式发请求。提交前重新验证表 hash、选项 generation 和输入合法性；失败保留草稿。条件门槛由条件树阅读，参数窗口使用标准滑条和列表，不绘制伙伴肖像、宠物动画或滑条门槛/玩家标记。
-- `ScenarioRecommendationOverlay` 保留等待、失败、重试与变更预览；正文滚动，按钮可聚焦。应用只选择合法参数，仍需显式计算；关闭、切表、切输入及目录失效会取消旧辅助请求。
-- `ScenarioExpandedOverlay` 是灯箱内容与单个焦点目标，使用独立 `ScenarioFrameView`。fit 按窗口选择适合内容的档位且不超过自然字号；滚轮缩放、拖动平移，resize 保留手动缩放并钳制。动作导航从文档快照派生，灯箱将键盘送到持焦内容；Escape 关闭，遮罩点击不关闭。灯箱关闭不修改页内滚动。
+- **统一阅读快照 (`UiStateSnapshot`)**：聚合右页 `ReadingState`（Tab、tag、日志列表/详情、`entryId`、批选与页号）、目录工具栏 `CatalogQueryState`（含防抖 `effectiveSearch()`）、目录选中与滚动偏移以及已登记的 `UiStateful` 面板状态。在窗口 resize、子页返回与历史回退时共用同一恢复入口；窗口 resize 会关闭临时场景浮层并丢弃未确认草稿，独立子页内的草稿保留。
+- **按世界隔离的本地文件**：
+  - `journal_ui_preferences.dat`：保存面板状态（`panels` 子树，保留旧键 `intro`/`grid`/`log`/`logDetail` 与有界的 `tableId#inputKey` 条件滚动记录）及模拟参数偏好（`simulationPreferences` 子树）。
+  - `journal_log_state.dat`：由 `JournalMirror` 独占管理会话、序号与本地日志镜像（支持 2 秒重同步冷却与快照整批替换，不混入网络或 IO 回调）。
+- **原子写盘与断连处理 (`JournalLocalPersistence`)**：写盘使用同目录 `.tmp` 临时文件与 `ATOMIC_MOVE`（不支持时降级 `REPLACE_EXISTING`）。保存失败保留待写冻结 NBT 并在客户端 tick 或退出时重试，同路径重连优先加载未写盘快照；切换世界或断连先同步落盘旧路径，再推进连接 `epoch` 复位世界状态。已废弃的全局旧文件 `config/unsuspiciousblock-simulation.properties` 不再读取或导入。
 
-场景纸面与图标在 `ScenarioUi` 定义，`scenario_controls.png` 与 `scenario_panel.png` 由 `scripts/drawer/generate_scenario_ui.py` 生成；共享工具栏 UV 见 [工具栏图标图集](toolbar-icon-atlas.md)。
+## 7. 文本配色与裁剪生命周期
 
-## 6. 阅读状态与存储
+- 文本语义配色遵循[文本格式规范](../foundation/text-format.md)的「GUI 内文本规范」：Tooltip 使用 `TooltipBuilder`，书页自绘文本取 `UiTextScheme.PARCHMENT` 配合 `JournalTextColors`，管理/暗色页面取 `UiTextScheme.DARK`。
+- 节点与文档缓存仅随内容版本、字体、资源或视口变化刷新，不在每帧重建树结构；3D 物品与模型在 `UiRenderLayers` 局部裁剪上下文内绘制，关屏时按作用域自动释放模型工作区。
 
-`UiStateSnapshot` 组合右页 `ReadingState`、目录工具栏、目录上下文、目录偏移和面板状态。目录工具栏以 `CatalogQueryState` 整组应用；捕获使用含防抖草稿的 `effectiveSearch()`，恢复时重新设置查询并清理旧草稿。右页通过 `captureReadingState/restoreReadingState` 统一保存/恢复 Tab、当前 tag、日志 list/detail、entry ID、批选和页号。根在 resize、子页返回和历史回退时使用同一恢复入口；重新投影会丢弃已失效的业务选择。窗口调整关闭临时场景浮层，未确认浮层草稿随之结束；独立编辑页面的稳定草稿保留。
+## 8. 相关文档
 
-新面板实现 `LayoutAware` / `UiStateful`，在 `UiPanelRegistry` 注册。右页内部的页号绑定保留 `intro / grid / log / logDetail` NBT 键；场景面板继续由 UiPanelRegistry 序列化。场景条件滚动按 `tableId#inputKey` 保存，并使用有界缓存；旧结果分区字段忽略。
-
-UI 偏好和模拟选择存于按存档、玩家隔离的 `journal_ui_preferences.dat`，分别属于 `panels` 与 `simulationPreferences` 子树。`JournalClientConnection` 在 tick 建立连接 epoch、复位世界默认值并加载本地数据；尚未就绪的报文保留其原连接，ready 后按接收顺序应用，迟到的旧连接报文丢弃。Fabric 从 context.player().connection、NeoForge 从 context.listener() 取得接收者。
-
-`JournalMirror` 独占 session/snapshot/sequence、完整性与 2 秒重同步冷却，完整快照一次提交，快照后的增量按 sequence 排序应用。时间和重同步动作由连接宿主注入，current 返回保护性副本。查询与接包均不读写文件。
-
-日志 `journal_log_state.dat` 与偏好由 `JournalLocalPersistence` 共用原路径规则和原子替换：同目录 `.tmp` 写完后 ATOMIC_MOVE，不支持时 REPLACE_EXISTING。保存输入为冻结 NBT；失败以原路径保留待写，同路径更新为最新快照，后续 tick/显式退出重试，成功后才清对应 dirty。回到同一路径时优先加载未写快照。正常保存仍在客户端线程同步执行。断连先保存旧路径，再整体替换连接数据与世界偏好。旧全局 `config/unsuspiciousblock-simulation.properties` 不再读取或自动导入；其已无消费者的 SPI 链说明见 [平台抽象](../foundation/platform-spi.md)。
-
-## 7. 文本、裁剪与生命周期
-
-GUI 使用 kit 的 `UiTextScheme` 和主题，书页专属名称与严重状态色由 `JournalTextColors` 提供；tooltip 使用 `TooltipBuilder` 的语义色。文字规则见[文本格式](../foundation/text-format.md#8-gui-内文本规范)。超宽标题与说明走 kit 滚动或 tooltip；非交互行使用带省略号裁剪。进度读数按填充边界分色。
-
-文档缓存随内容版本、字体、资源和尺寸失效；变换变化只更新几何，不逐帧重建业务树。`UiRenderLayers` 处理 pose 下的裁剪和局部模型层，模型回调只使用传入的局部绘制上下文。关屏按 scope 结束捕获，由 kit 释放模型工作区。
+- [客户端与 GUI](../subsystems/client-ui.md)
+- [UI kit 公开 API 与兼容策略](ui-kit-api.md)
+- [工具栏图标图集](toolbar-icon-atlas.md)
+- [文本格式规范](../foundation/text-format.md)
+- [战利品表系统](../subsystems/loottable.md)

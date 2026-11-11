@@ -1,104 +1,105 @@
 # 网络与同步
 
-公共声明管理 payload 类型、codec 与 C2S 服务端处理；S2C 的客户端接收绑定由 client 持有。本文说明端边界与线路约束，子系统文档维护状态归属和同步时机。
+本文档规定模组的双端网络边界、`ModPayloads` 通道声明与注册机制、通用同步模式及线路容量约束。各业务状态的所有权、具体触发时机与Payload 内部字段语义以对应子系统文档为准。
 
-## 声明与数据流
+## 1. 声明与数据流
 
-[`core.network.ModPayloads`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/network/ModPayloads.java) 统一维护通道与协议版本：
+[`core.network.ModPayloads`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/network/ModPayloads.java) 集中维护全部通道声明与协议版本（`PROTOCOL_VERSION`）：
 
-| 声明 | 消费方式 |
+| 声明清单 | 持有内容与消费方式 |
 |---|---|
-| `C2S_PAYLOADS` | 类型、codec 与服务端 handler，校验请求后转交业务服务 |
-| `S2C_PAYLOADS` | 类型与 codec；客户端绑定由 `ClientPayloadBindings` 提供 |
+| `C2S_PAYLOADS` | 包含类型、Codec 与服务端处理器；服务端校验权限与参数合法性后转交业务服务 |
+| `S2C_PAYLOADS` | 仅声明类型与 Codec；客户端接收处理由 `ClientPayloadBindings` 统一绑定 |
 
-公共 `ModPayloads.S2C<T>` 以类型化常量声明 payload 类型与 codec，聚合进 `S2C_PAYLOADS`。客户端 [`ClientPayloadBindings`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/network/ClientPayloadBindings.java) 维护类型到状态所有者的唯一绑定；平台入口遍历绑定并把接收动作交给 `JournalClientConnection`。公共声明初始化保持独立于客户端实现。
+```mermaid
+flowchart LR
+    subgraph Common["common（共享与客户端隔离）"]
+        MP["ModPayloads.S2C / C2S"]
+        CB["ClientPayloadBindings（客户端状态绑定）"]
+        CN["ClientNetwork（客户端发送入口）"]
+        SN["Services.NETWORK（服务端发送 SPI）"]
+    end
+    subgraph Platform["Fabric / NeoForge 入口"]
+        PR["公共入口遍历 C2S_PAYLOADS / S2C_PAYLOADS — 注册通道并绑定 C2S 处理器"]
+        PC["客户端入口遍历 ClientPayloadBindings — 绑定 S2C 接收器并安装 ClientNetwork"]
+    end
+    MP --> PR
+    MP --> CB
+    CB --> PC
+    PC -->|"接收经 JournalClientConnection 入队"| CB
+    CN -->|"C2S 发送"| PR
+    SN -->|"S2C 发送"| PC
+```
 
-初始化检查同方向通道唯一，客户端绑定同时检查重复项与声明覆盖；绑定工厂接收 `S2C<T>` 声明与 `Consumer<T>`，直接保存声明；平台通过泛型捕获遍历，无需查表强转。具体 payload 查声明；笔记、模拟、猫族与附魔的状态归属和同步时机见对应子系统。
+- **通道唯一性校验**：初始化阶段检查同方向通道不重复；`ClientPayloadBindings` 校验绑定无重复且完整覆盖已声明的 `S2C` 条目，平台入口通过泛型捕获直接遍历绑定，无需查表强转。
+- **公共声明隔离**：`ModPayloads` 仅依赖共享数据类型，不包含任何客户端类导入，保证专用服务端安全加载。
 
-## 端隔离与平台注册
+## 2. 端隔离与平台注册
 
 | 平台入口 | 注册职责 |
 |---|---|
-| Fabric 公共入口 | 登记 C2S/S2C 类型与 codec，安装 C2S receiver |
-| Fabric 客户端入口 | 遍历 `ClientPayloadBindings`，绑定客户端 receiver |
-| NeoForge 公共入口 | 登记 C2S；专用服务端登记 S2C 类型与 codec |
-| NeoForge 客户端入口 | 遍历 `ClientPayloadBindings`，登记 S2C 类型、codec 与客户端 receiver |
+| Fabric 公共入口 | 注册 C2S / S2C 类型与 Codec，并安装 C2S 接收器 |
+| Fabric 客户端入口 | 遍历 `ClientPayloadBindings` 绑定 S2C 客户端接收器，并向 `ClientNetwork` 安装 `ClientPlayNetworking` |
+| NeoForge 公共入口 | 注册 C2S；在专用服务端注册 S2C 类型与 Codec |
+| NeoForge 客户端入口 | 遍历 `ClientPayloadBindings` 注册 S2C 类型、Codec 与客户端接收器，并安装 `PacketDistributor` |
 
-NeoForge 握手要求服务端具备客户端声明的必需通道。同一通道在一个物理端登记一次，两端 registrar 使用 `ModPayloads.PROTOCOL_VERSION`。
+NeoForge 握手阶段要求服务端具备客户端声明的必需通道；同一通道在一个物理端上只注册一次，两端统一使用 `ModPayloads.PROTOCOL_VERSION`。
 
-客户端发送通过 [`ClientNetwork`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/network/ClientNetwork.java)；`ModClientLifecycle.install` 接收当前 Loader 的发送函数。Fabric 客户端直接使用 `ClientPlayNetworking`，NeoForge 客户端使用 `PacketDistributor`。公共 `Services.NETWORK` 仅提供服务端向玩家发送消息的能力。
+**线程与连接代次约束**：
+- Fabric C2S 接收后自动调度到服务器主线程；NeoForge 默认在主线程执行。
+- S2C 回调保留原连接身份并交由 `JournalClientConnection` 在客户端 tick 内应用；断连或切服时推进连接代次（epoch），迟到的旧连接报文按归属直接丢弃。
+- 源码端隔离检查规则见[仓库工具](../../../tools/README.md)。
 
-Fabric C2S 调度到服务器线程，NeoForge handler 使用主线程执行。S2C 保留原连接身份，经 `JournalClientConnection` 在客户端 tick 应用；断连清理维持连接代次，迟到回调按归属丢弃。
+## 3. 同步模式与线路契约
 
-源码引用与端归属规则见[仓库工具](../../../tools/README.md)，动态接入和加载相位由平台入口及运行验收核对。
+### 3.1 通用协议原则
 
-## 目录线格式
+- **协议版本与共用编解码器**：目录全量下发与按需结果共用 `CatalogStreamCodec` 和 `CatalogTableDto`。线格式字段顺序或结构调整必须成套修改读写两端并同步递增 `ModPayloads.PROTOCOL_VERSION`。
+- **目录快照一致性**：全量目录下发与目录 SHA-256 计算共同消费 `CatalogGeneration.readSnapshot()` 生成的冻结字节流，确保服务端校验与客户端读取同源（构建细节见[笔记目录构建细节](../internals/journal-catalog-build.md)）。
+- **按需模拟的协议不变量**（业务链路见[战利品表系统](../subsystems/loottable.md)）：
+  - **传结构化字段而非拼装键**：客户端传场景 key 与独立参数字段，条件赋值由服务端从场景规划恢复，防止客户端通过构造非法字符串绕过校验；
+  - **结果三要素校验**：响应携带有 `generation`（目录代次）、`tableHash`（表哈希）与 `inputKey`（输入键），任一不匹配时客户端直接丢弃，防止 `/reload` 或切换参数后的迟到包覆盖当前画面；
+  - **拒绝必回执**：请求被限流、过期或越界拒绝时必须返回 `ScenarioRequestRejectedPayload`，使界面能明确区分“计算中”与“已拒绝”；
+  - **结果个人独享**：按需模拟结果只单播回请求玩家，不写入全服共享目录；
+  - **推荐请求与模拟分离**：辅助推荐请求与模拟请求使用独立通道、独立冷却与请求序号，只更新前端参数草稿，不跳过显式模拟确认。
 
-完整目录下发和目录 hash 共用 `CatalogReadSnapshot`，快照按 overlay revision 缓存。实际 codec 负责裁剪、稳定编码及 SHA-256 输入，详见[目录构建](../internals/journal-catalog-build.md)。
+### 3.2 三种可复用同步模式
 
-未知原因只编码规则未覆盖、未解析、尚未模拟和模拟失败；LRU 删除测量后按当前无测量派生。该展示状态不进入概率持久化。
+| 模式 | 适用场景 | 机制要点 | 权威实现文档 |
+|---|---|---|---|
+| **增量 + 间隙恢复** | 玩家笔记进度 | 业务修改只标记脏表，发包时 `revision + 1`；客户端发现 `incomingRevision > lastNotified + 1` 时按 2 秒冷却主动请求全量重同步 | [考古笔记系统](../subsystems/journal.md) |
+| **按需哈希比对** | 考古目录结构与静态概率 | 登录或批处理完成后只广播目录 SHA-256；客户端比对不一致时再请求全量目录，避免每次登录传输大包 | [笔记目录构建细节](../internals/journal-catalog-build.md) |
+| **分片会话快照** | 玩家全量考古日志 | 携带会话 ID 与自增序号：发送 `Start` → 按表独立压缩并切分为最大 128 KiB 分片 → 发送 `End`，客户端校验完整后一次性替换本地镜像 | [考古日志存储与迁移](../internals/journal-log-storage.md) |
 
-全量目录与按需结果共用 `CatalogStreamCodec` 和 `CatalogTableDto`，读写字段顺序成套变更；线字段变化更新协议版本，双端使用配套发布物。协议版本以 `ModPayloads.PROTOCOL_VERSION` 为准。
+### 3.3 线路规模硬上限
 
-- 条件节点编码显式形态、条件身份、逻辑子节点、独立说明行和元数据；`source` 原始谓词只驻留服务端本代，解码后为空。逻辑消费者与展示消费者分别读取各自结构。
-- 物品的 `origins` 位图承载来源集合，位于兼容字段 `injected` 后；后者是其兼容投影。
-- 获取路径携带有界函数树：类型、本地化描述、保真度、效果类别、自身条件、子函数与元数据。嵌套最多 16 层、元数据最多 32 项、每条路径及每节点子函数最多 64 项，读写共用相应常量。
-- 超限子函数由写端裁剪并标记 `truncated=children`，读端按同一限制校验长度。服务端语义树保留业务分析需要的内容，线路传输结构化摘要。
-- 函数策略使用 metadata 的 `semantics_v1`，必要策略和裁剪标记优先保留，辅助键按名称稳定排序。策略细节见[战利品表机制](../internals/loottable-mechanics.md)的「函数策略与兼容扩展」。
-- `observedFunctions` 位于 `scenarioProbabilities` 后，携带观测链及 `truncated / incomplete / unavailable` 标志；最多 16 条链、每条链最多 64 个节点。输入观测与静态规则树分别表达。
-- 条件入口树由服务端根据路径共同条件和注入边门槛派生下发，客户端读取服务端结果。
+修改以下限制等同于修改通信协议，需同步评估双端内存与原版 2 MiB 包上限：
 
-## 按需模拟的网络约定
+- **日志全量快照**：单表压缩后不超过 `16 MiB`，解压后 NBT 不超过 `64 MiB`，单次快照最多 `65,536` 张表，传输分片不超过 `128 KiB`。全量快照按表流式解压读取，避开整份日志的单次原版 `readNbt` 上限。
+- **日志增量操作**：`SyncJournalLogPayload`（含 `REPLACE_TABLE`）仍走原版 `readNbt` 解码路径。
+- **批量删除**：删除请求与回执的 UUID 列表按单包上限自动分批拆包。
+- **目录函数树裁剪**：通过 `CatalogStreamCodec` 写入时限深 `16` 层、每节点最多 `32` 项元数据与 `64` 个子函数/顶层节点，观测链每条目最多 `16` 条、每条最多 `64` 个节点（细节见[战利品表函数与展示规则](../internals/loottable-functions-and-display.md)）。
 
-玩家选定一个模拟输入（场景 + 参数）后，客户端发 `RequestScenarioSimulationPayload`，服务端回 `SyncScenarioResultPayload`（成功）或 `ScenarioRequestRejectedPayload`（被拒绝）。完整链路与校验语义以 [战利品表系统](../subsystems/loottable.md) 为权威，此处只记网络侧的约定：
+## 4. 扩展点：新增 Payload
 
-- **请求传结构化字段而不是拼好的输入键**：服务端必须能逐项校验（场景、工具、抽样次数只能取签发值，幸运有界）。把校验建立在一个自造字符串上，等于把校验逻辑也写成一个解析器，而解析器的每一处"宽松处理"都是越权的入口。
-- **客户端的条件赋值由服务端还原**：客户端只挑场景（传场景 key），不构造条件赋值表。
-- **结果包的三个标识缺一不可**：目录代次、表哈希、输入键。三者在客户端都要校验，任一不符即丢弃——切参数或 `/reload` 之后旧结果可能后到，不校验就会把上一代的数据画到当前界面上。
-- **被拒绝的请求一定回执**：这些情形都不会产出结果包，没有回执的话"点了没反应"与"还在计算中"在界面上无法区分。回执不携带任何概率，也不进缓存。
-- **结果只回给请求者**，不写共享目录：按内容去重的缓存是全服共享的，但"当前展示哪个输入"是每个玩家自己的选择，写进共享目录会让两个玩家互相覆盖对方的界面。
-- **推荐/读取（assist）与模拟请求分开**：`SimulationAssistHandler` 只在主动请求时执行，用版本校验 + 每玩家 500ms 冷却拒绝过期或过频请求，通过 `notes` 回传 `assist_busy` / `assist_stale`，不产出概率。
-- **推荐先预览后应用**：答复仍绑定原请求序号、目录代次、表哈希及原输入。关闭预览或切表会取消客户端接收资格；15 秒无答复显示超时并允许重试，不能由迟到答复覆盖当前选择。应用只修改输入，模拟仍需显式计算。
+1. 在 `core/network/payload/c2s/` 或 `core/network/payload/s2c/` 新建 Payload 类，定义 `TYPE` 与 `STREAM_CODEC`。
+2. **C2S**：在 `ModPayloads.C2S_PAYLOADS` 注册条目（type + codec + handler），handler 内完成权限和参数校验后转交业务服务。
+3. **S2C**：在 `ModPayloads.S2C_PAYLOADS` 声明 type 与 codec，同时在 `ClientPayloadBindings` 添加对应类型的客户端状态绑定；服务端序列化视图自动从同一声明派生。
+4. **无需修改平台入口代码**：双端自动遍历上述清单完成注册。
+5. 若传输战利品表目录对象，必须复用 `CatalogStreamCodec`；变更线上字段时同步更新 `ModPayloads.PROTOCOL_VERSION`。
 
-## 同步模式
+## 5. 约束与陷阱
 
-网络层有三种可复用的同步模式，各自的语义与规模限制以下列子系统文档为权威：
+- **禁止在处理器中编写状态推拉循环**：Payload 处理器仅负责接收校验与事件转交，同步策略统一遵循第 3 节的三种模式。
+- **严禁在 `common` 公共 S2C 声明中引用客户端类**：客户端处理逻辑必须隔离在 `ClientPayloadBindings` 中，由客户端入口装配。
+- **个人展示状态禁止写入全服共享结构**：按需模拟结果、推荐预览等每玩家状态只能返回给请求者。
 
-| 模式 | 机制要点 | 权威文档 |
-|---|---|---|
-| 增量 + 全量 | revision + 脏表；客户端检测 revision 间隙（`incomingRevision > lastNotified + 1`）并带 2s 限流主动请求全量 | [考古笔记系统](../subsystems/journal.md) |
-| 按需哈希比对 | 服务端算目录 SHA-256，模拟完成后广播；客户端比对不一致才请求全量目录，避免每次登录全量下发 | [考古笔记系统](../subsystems/journal.md) |
-| 分片会话快照 | 会话 ID + 增量序号；先发 Start，每表压缩后切成最多 128 KiB 分片，再发 End，客户端校验完一次性替换 | [考古笔记系统](../subsystems/journal.md) |
+## 6. 相关文档
 
-网络侧的规模上限（线路契约，改这些值等于改协议）：
-
-- 单表压缩后 ≤ 16 MiB；解压 NBT ≤ 64 MiB；一次快照 ≤ 65,536 张表。
-- 全量日志快照按表压缩并以字节块传输，避开整份日志的单次 NBT 解码。增量 `SyncJournalLogPayload` 仍使用 `readNbt`，包括 `REPLACE_TABLE`，沿用原版单次 NBT 解码上限。
-- 删除 payload 的批量 UUID 列表有单包数量限制，客户端按限制自动拆包。
-
-## 扩展点：新增 payload
-
-1. 在 `payload/c2s/` 或 `payload/s2c/` 创建 payload 类（含 `TYPE` 与 `STREAM_CODEC`）。
-2. C2S：在 `ModPayloads.C2S_PAYLOADS` 加条目（type + codec + handler）。
-3. S2C：在 `S2C_PAYLOADS` 加一条类型与 codec，再在 `ClientPayloadBindings` 加一条类型化状态绑定。服务端 codec 视图从同一声明派生。
-4. **无需修改平台代码**，两端自动遍历注册。
-5. 传输目录数据时**必须**走 `CatalogStreamCodec`，不要另写一份字段顺序。
-6. 线字段变更时同步更新 `ModPayloads.PROTOCOL_VERSION`，核对共用 codec 和两端接收绑定。
-
-> 新增同步策略时，参考「同步模式」的三种模式，不要把状态推拉逻辑写进 handler —— handler 只做校验与转交。
-
-## 约束与陷阱
-
-- payload 完整声明以 `ModPayloads` 为准，扩展后核对类型、codec 和绑定视图。
-- 公共 S2C 声明和服务端入口只使用 type/codec；状态接收函数由客户端绑定清单持有。
-- 需要"每玩家独立"的数据不要写进共享缓存或共享目录（见「按需模拟的网络约定」）。
-
-## 相关文档
-
-- [架构总览](architecture.md) —— 平台入口的 payload 注册
-- [考古笔记系统](../subsystems/journal.md) —— 同步的上层调度与三种同步模式
-- [战利品表系统](../subsystems/loottable.md) —— 按需模拟的完整链路
-- [客户端与 GUI](../subsystems/client-ui.md) —— S2C 接收与客户端状态
-- [猫族关系系统](../subsystems/cat-favor.md) —— `SyncCatFavorPayload`
-- [附魔系统](../subsystems/enchantment.md) —— `SyncEnchantmentRevealListPayload`
-- [平台抽象](platform-spi.md) —— `INetworkHelper` SPI
+- [架构总览](architecture.md)
+- [平台抽象](platform-spi.md)
+- [考古笔记系统](../subsystems/journal.md)
+- [战利品表系统](../subsystems/loottable.md)
+- [客户端与 GUI](../subsystems/client-ui.md)
+- [猫族关系系统](../subsystems/cat-favor.md)
+- [附魔系统](../subsystems/enchantment.md)

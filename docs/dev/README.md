@@ -24,7 +24,7 @@
 | 新增 / 修改 Mixin | [Mixin 总览](foundation/mixin.md) |
 | 调整可调参数 / 接入第三方 mod | [配置与第三方联动](foundation/config-and-integrations.md) |
 | 新增 / 修改物品 tooltip、Jade 文本、GUI 内文本 | [文本格式规范](foundation/text-format.md) |
-| 改战利品收录范围 / 签名 / 概率 / 注入 | [战利品表系统](subsystems/loottable.md)；模拟与缓存细节见 [机制细节](internals/loottable-mechanics.md) |
+| 改战利品收录范围 / 签名 / 概率 / 注入 | [战利品表系统](subsystems/loottable.md)；机制细节见[战利品表机制](internals/loottable-mechanics.md)与[函数与展示规则](internals/loottable-functions-and-display.md) |
 | 改笔记目录 / 进度 / 追踪 / 日志 | [考古笔记系统](subsystems/journal.md) |
 | 新增 GUI 面板 / HUD / 渲染器 / 按键 | [客户端与 GUI](subsystems/client-ui.md)；UI kit 契约见 [笔记 GUI 内部机制](internals/journal-ui-internals.md) |
 | 接入 UI kit / 查公开 API 与兼容策略 | [UI kit 公开 API 与兼容策略](internals/ui-kit-api.md) 的「公开入口清单」与「接入指南」 |

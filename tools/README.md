@@ -21,15 +21,15 @@
 
 语言检查覆盖源码资源中的 `en_us.json` 与 `zh_cn.json`；格式合法、顶层对象、翻译字符串和 key 集合分别核对。接线检查读取源码配置，生成的 refmap 和元数据展开结果由构建处理；外部类型由编译依赖解析。
 
-## 依赖检查
+## 依赖与边界检查
 
-Java 引用读取屏蔽注释、字符串、字符与 text block，解析 import/static import、全限定引用及源码可确定的同包、通配导入类型。Loader API 和平台实现类型留在可见源集，客户端类型由客户端所有者消费。
+Java 引用扫描会跳过注释、字符串、字符字面量与 Text Block，解析显式导入、静态导入、全限定引用以及源码可判定的同包和通配导入类型。Loader API 与平台实现类型留在平台源集，客户端类型由客户端所有者消费。
 
-客户端所有者统一按模组根包下的 `client` 包及其子包识别，规则见 [boundaries.py](toolslib/boundaries.py)。core、公共 platform 和公共 Loader 入口只使用共享契约；Minecraft、Loader 客户端 API、渲染类型和 UI Kit 由客户端所有者消费。`ModPayloads` 的 S2C 只声明 type/codec，客户端接收函数由 `ClientPayloadBindings` 持有。
+客户端所有者统一按模组根包下的 `client` 包及其子包识别（规则见 [boundaries.py](toolslib/boundaries.py)）。`core`、公共 `platform` 与公共 Loader 入口仅使用共享契约；原版 Minecraft、Loader 客户端 API、渲染类型与 UI Kit 仅由客户端所有者消费。`ModPayloads` 中的 S2C 条目仅声明类型与 Codec，客户端接收函数由 `ClientPayloadBindings` 持有。
 
-隔离检查同时核对 common 的 core/client/platform 归属、Loader 的 client/platform 归属、保留的根入口以及 package 与源码路径的一致性。接线检查要求 Mixin package 限于专属注入包，客户端 Mixin 登记在 client 数组；SPI、元数据与反射加载的运行时语义按对应入口及实机验收核对。
+隔离检查同时核对 `common` 下的 `core / client / platform` 归属、Loader 下的 `client / platform` 归属、根包保留入口以及 `package` 与源码目录路径的一致性。接线检查要求 Mixin 的 `package` 限定在专属注入包，且客户端 Mixin 登记在 `client` 数组；SPI、元数据与反射加载的运行时语义结合对应入口及实机验收核对。
 
-UI Kit 检查覆盖公开包消费、客户端归属、旧 kit 目录/包和自有原生控件。静态引用与可定位结构由脚本判定；环境守卫、反射、回调和游戏效果按源码及实机验收核对。
+UI Kit 检查覆盖公开包消费、客户端归属、已退出仓内的旧 kit 目录/包以及遗留原生控件。静态引用与可定位结构由脚本判定；环境守卫、反射、回调与游戏效果结合源码及实机验收核对。
 
 ## 构建与产物
 
