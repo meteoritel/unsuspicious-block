@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.cat.merchant;
 
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.core.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.core.entity.MerchantCat;
 import com.meteorite.unsuspiciousblock.core.entity.ModEntities;
@@ -63,7 +64,7 @@ public final class MerchantCatSpawner {
 
         List<ServerPlayer> candidates = level.players().stream()
                 .filter(ServerPlayer::isAlive)
-                .filter(player -> CatFavorManager.getCatBond(player) >= 100)
+                .filter(player -> CatBondStage.fromBond(CatFavorManager.getCatBond(player)) == CatBondStage.BEST_FRIEND)
                 .filter(CatFavorManager::hasOwnedHandOfCat)
                 .toList();
         if (candidates.isEmpty()) {

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
+import com.meteorite.unsuspiciousblock.core.cat.CatFavorAbility;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.meteosuikit.api.text.TextWrap;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
@@ -84,7 +85,7 @@ public class CatBondToast implements Toast {
     public static void showRelationshipEstablished() {
         Component title = Component.translatable("toast.unsuspiciousblock.cat_bond.established");
         Component detail = Component.translatable(
-                "toast.unsuspiciousblock.cat_bond.gained", abilityName(CatBondStage.ACQUAINTED));
+                "toast.unsuspiciousblock.cat_bond.gained", Component.translatable(CatFavorAbility.CAT_EYE.nameKey()));
         show(title, detail);
     }
 
@@ -112,11 +113,15 @@ public class CatBondToast implements Toast {
         List<Component> names = new ArrayList<>();
         if (increased) {
             for (int i = oldStage.ordinal() + 1; i <= newStage.ordinal(); i++) {
-                names.add(abilityName(CatBondStage.values()[i]));
+                for (CatFavorAbility ability : CatFavorAbility.values()) {
+                    if (ability.unlocksAt() == CatBondStage.values()[i]) names.add(Component.translatable(ability.nameKey()));
+                }
             }
         } else {
             for (int i = oldStage.ordinal(); i > newStage.ordinal(); i--) {
-                names.add(abilityName(CatBondStage.values()[i]));
+                for (CatFavorAbility ability : CatFavorAbility.values()) {
+                    if (ability.unlocksAt() == CatBondStage.values()[i]) names.add(Component.translatable(ability.nameKey()));
+                }
             }
         }
         MutableComponent joined = Component.empty();
@@ -127,17 +132,6 @@ public class CatBondToast implements Toast {
             joined.append(names.get(i));
         }
         return joined;
-    }
-
-    private static Component abilityName(CatBondStage stage) {
-        return switch (stage) {
-            case ACQUAINTED -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.cat_eye");
-            case CLOSE -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.deterrence");
-            case TRUSTED -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.light_step");
-            case FAVORED -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.soft_paws");
-            case HONORED_GUEST -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.ancient_gift");
-            case BEST_FRIEND -> Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.best_friend_access");
-        };
     }
 
     private static void show(Component title, Component detail) {

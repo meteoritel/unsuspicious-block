@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.cat;
 
+import com.meteorite.unsuspiciousblock.core.entity.ai.spiritcat.SpiritCatRole;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.entity.MessengerCat;
 import com.meteorite.unsuspiciousblock.core.entity.ModEntities;
@@ -13,6 +14,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.level.storage.loot.LootTable;
+
+import java.util.UUID;
 
 /**
  * 古国往礼服务——当满足条件的玩家触发猫的晨礼时，召唤幽灵猫送来更丰厚的礼物。
@@ -42,8 +45,9 @@ public final class CatGiftService {
         if (state == null) {
             return;
         }
-        if (state.getActiveMessengerUuid() != null
-                && level.getEntity(state.getActiveMessengerUuid()) instanceof MessengerCat existing
+        UUID messengerUuid = state.activeSpirit(SpiritCatRole.MESSENGER).find();
+        if (messengerUuid != null
+                && level.getEntity(messengerUuid) instanceof MessengerCat existing
                 && !existing.isRemoved()) {
             return;
         }
@@ -59,7 +63,7 @@ public final class CatGiftService {
         ghost.assignBehavior(behavior);
         ghost.activateDuty(behavior.getMaxLifetime());
         if (level.addFreshEntity(ghost)) {
-            state.setActiveMessengerUuid(ghost.getUUID());
+            state.activeSpirit(SpiritCatRole.MESSENGER).occupy(ghost.getUUID());
         }
     }
 }

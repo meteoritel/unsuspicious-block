@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.core.command;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorState;
+import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorView;
+import com.meteorite.unsuspiciousblock.core.cat.state.CatBondLedger;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -38,7 +40,7 @@ public final class CatFavorDebugCommand {
                         .then(Commands.argument(AMOUNT_ARG, IntegerArgumentType.integer())
                                 .executes(CatFavorDebugCommand::addFavor)))
                 .then(Commands.literal("set")
-                        .then(Commands.argument(AMOUNT_ARG, IntegerArgumentType.integer(0, 100))
+                        .then(Commands.argument(AMOUNT_ARG, IntegerArgumentType.integer(CatFavorState.MIN_FAVOR, CatFavorState.MAX_FAVOR))
                                 .executes(CatFavorDebugCommand::setFavor)))
                 .then(Commands.literal("get")
                         .executes(CatFavorDebugCommand::getFavor))
@@ -50,14 +52,13 @@ public final class CatFavorDebugCommand {
     private static int addFavor(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         int amount = IntegerArgumentType.getInteger(context, AMOUNT_ARG);
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.favor.error.state_unavailable"));
             return 0;
         }
-        state.addFavor(amount);
-        CatFavorManager.sync(player);
+        CatFavorManager.apply(player, new CatBondLedger.AddBond(amount));
         final int current = state.getFavor();
         context.getSource().sendSuccess(() -> Component.translatable(
                 "command.unsuspiciousblock.usb.favor.add.success", amount, current), true);
@@ -68,14 +69,13 @@ public final class CatFavorDebugCommand {
     private static int setFavor(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         int amount = IntegerArgumentType.getInteger(context, AMOUNT_ARG);
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.favor.error.state_unavailable"));
             return 0;
         }
-        state.setFavor(amount);
-        CatFavorManager.sync(player);
+        CatFavorManager.apply(player, new CatBondLedger.SetBond(amount));
         context.getSource().sendSuccess(() -> Component.translatable(
                 "command.unsuspiciousblock.usb.favor.set.success", amount), true);
         return amount;
@@ -84,7 +84,7 @@ public final class CatFavorDebugCommand {
     // get：查询当前恩惠值
     private static int getFavor(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.favor.error.state_unavailable"));
@@ -99,14 +99,13 @@ public final class CatFavorDebugCommand {
     // reset：清零恩惠值并同步
     private static int resetFavor(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             context.getSource().sendFailure(Component.translatable(
                     "command.unsuspiciousblock.usb.favor.error.state_unavailable"));
             return 0;
         }
-        state.clear();
-        CatFavorManager.sync(player);
+        CatFavorManager.apply(player, CatBondLedger.Event.RESET);
         context.getSource().sendSuccess(() -> Component.translatable(
                 "command.unsuspiciousblock.usb.favor.reset.success"), true);
         return 0;

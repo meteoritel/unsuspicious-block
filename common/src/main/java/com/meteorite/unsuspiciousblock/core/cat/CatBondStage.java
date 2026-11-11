@@ -27,7 +27,7 @@ public enum CatBondStage {
 
     // 根据羁绊值返回当前阶段。
     public static CatBondStage fromBond(int bond) {
-        int clamped = Math.max(0, Math.min(100, bond));
+        int clamped = Math.clamp(bond, ACQUAINTED.minimumBond, BEST_FRIEND.maximumBond);
         for (CatBondStage stage : values()) {
             if (clamped >= stage.minimumBond && clamped <= stage.maximumBond) {
                 return stage;

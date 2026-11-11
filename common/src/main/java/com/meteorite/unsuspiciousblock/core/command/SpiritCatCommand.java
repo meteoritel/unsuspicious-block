@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.command;
 
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import java.util.stream.Stream;
 import com.meteorite.unsuspiciousblock.core.cat.CatGiftService;
@@ -155,7 +156,7 @@ public final class SpiritCatCommand {
         cat.activateDebugDuty(Services.SPIRIT_CAT_CONFIG.getMerchantLifetimeTicks());
         cat.configureActivityCenter(center);
         cat.configureDebugOwner(player.getUUID());
-        cat.initializeTrades(level, 100);
+        cat.initializeTrades(level, CatBondStage.BEST_FRIEND.maximumBond());
         return cat;
     }
 

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.entity;
 
+import com.meteorite.unsuspiciousblock.core.entity.ai.spiritcat.SpiritCatRole;
 import com.meteorite.unsuspiciousblock.core.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.core.entity.ai.spiritcat.SpiritMovementState;
@@ -422,7 +423,7 @@ public class SwordsmanCat extends SpiritCat {
                 && level.getPlayerByUUID(this.ownerUuid) instanceof ServerPlayer owner) {
             CatFavorState state = CatFavorManager.getState(owner);
             if (state != null) {
-                state.clearActiveSwordsmanUuid(this.getUUID());
+                state.activeSpirit(SpiritCatRole.SWORDSMAN).release(this.getUUID());
             }
         }
         super.remove(reason);

@@ -10,6 +10,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.UUID;
+
 /**
  * 剑士猫猫召唤服务——保证每名玩家同时最多一只，并在再次触发九命时刷新寿命。
  */
@@ -28,8 +30,9 @@ public final class SwordsmanCatService {
         if (state == null) {
             return;
         }
-        if (state.getActiveSwordsmanUuid() != null
-                && level.getEntity(state.getActiveSwordsmanUuid()) instanceof SwordsmanCat existing
+        UUID swordsmanUuid = state.activeSpirit(SpiritCatRole.SWORDSMAN).find();
+        if (swordsmanUuid != null
+                && level.getEntity(swordsmanUuid) instanceof SwordsmanCat existing
                 && !existing.isRemoved()) {
             existing.moveTo(owner.getX(), owner.getY() + 1.0, owner.getZ(), owner.getYRot(), 0.0F);
             existing.configureProtection(owner.getUUID(), preferredTarget, lifetimeTicks);
@@ -50,7 +53,7 @@ public final class SwordsmanCatService {
         swordsman.activateDuty(lifetimeTicks);
         swordsman.configureProtection(owner.getUUID(), preferredTarget, lifetimeTicks);
         if (level.addFreshEntity(swordsman)) {
-            state.setActiveSwordsmanUuid(swordsman.getUUID());
+            state.activeSpirit(SpiritCatRole.SWORDSMAN).occupy(swordsman.getUUID());
         }
     }
 
@@ -65,8 +68,9 @@ public final class SwordsmanCatService {
             return;
         }
         CatFavorState state = CatFavorManager.getState(owner);
-        if (state != null && state.getActiveSwordsmanUuid() != null
-                && level.getEntity(state.getActiveSwordsmanUuid()) instanceof SwordsmanCat swordsman
+        UUID swordsmanUuid = state == null ? null : state.activeSpirit(SpiritCatRole.SWORDSMAN).find();
+        if (swordsmanUuid != null
+                && level.getEntity(swordsmanUuid) instanceof SwordsmanCat swordsman
                 && !swordsman.isRemoved()) {
             swordsman.notifyOwnerHurt(attacker);
         }

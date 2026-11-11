@@ -7,28 +7,33 @@ package com.meteorite.unsuspiciousblock.core.cat;
  * 枚举声明顺序即 tooltip 展示顺序（由低阈值到高阈值）。
  */
 public enum CatFavorAbility {
-    CAT_EYE(0, "cat_eye"),
-    DETERRENCE(20, "deterrence"),
-    LIGHT_STEP(40, "light_step"),
-    SOFT_PAWS(60, "soft_paws"),
-    ANCIENT_GIFT(80, "ancient_gift"),
-    NINE_LIVES(100, "nine_lives");
+    CAT_EYE(CatBondStage.ACQUAINTED, "cat_eye"),
+    DETERRENCE(CatBondStage.CLOSE, "deterrence"),
+    LIGHT_STEP(CatBondStage.TRUSTED, "light_step"),
+    SOFT_PAWS(CatBondStage.FAVORED, "soft_paws"),
+    ANCIENT_GIFT(CatBondStage.HONORED_GUEST, "ancient_gift"),
+    NINE_LIVES(CatBondStage.BEST_FRIEND, "nine_lives");
 
     private static final String KEY_PREFIX = "item.unsuspiciousblock.hand_of_cat.ability.";
 
-    private final int threshold;
+    private final CatBondStage unlocksAt;
     private final String nameKey;
     private final String descKey;
 
-    CatFavorAbility(int threshold, String id) {
-        this.threshold = threshold;
+    CatFavorAbility(CatBondStage unlocksAt, String id) {
+        this.unlocksAt = unlocksAt;
         this.nameKey = KEY_PREFIX + id;
         this.descKey = KEY_PREFIX + id + ".desc";
     }
 
+    /** 能力的解锁阶段，也是 toast 与 tooltip 的共同刻度。 */
+    public CatBondStage unlocksAt() {
+        return this.unlocksAt;
+    }
+
     // 该能力解锁所需的恩惠值
     public int threshold() {
-        return this.threshold;
+        return this.unlocksAt.minimumBond();
     }
 
     // 能力名称的本地化键（用于 tooltip / HUD 标题）
@@ -43,6 +48,6 @@ public enum CatFavorAbility {
 
     // 当前恩惠值是否已解锁该能力
     public boolean isUnlockedAt(int favor) {
-        return favor >= this.threshold;
+        return favor >= threshold();
     }
 }

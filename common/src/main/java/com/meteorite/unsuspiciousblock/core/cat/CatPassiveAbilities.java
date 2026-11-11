@@ -4,6 +4,9 @@ import java.util.List;
 import net.minecraft.world.damagesource.DamageSource;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorState;
+import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorView;
+import com.meteorite.unsuspiciousblock.core.cat.state.CatBondLedger;
+import com.meteorite.unsuspiciousblock.core.cat.state.CatBondLedger.Event;
 import com.meteorite.unsuspiciousblock.core.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
@@ -51,28 +54,30 @@ public final class CatPassiveAbilities {
 
     /** 服务端每玩家每 tick 主驱动 */
     public static void serverTick(ServerPlayer player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             return;
         }
         boolean hasHand = CatFavorManager.hasHandOfCatInInventory(player);
         int favor = state.getCatBond();
 
-        updateAbilityMask(state, hasHand, favor);
+        int mask = abilityMask(state, hasHand, favor);
         updateStepHeight(player, hasHand && favor >= CatFavorAbility.SOFT_PAWS.threshold());
-        updateNightVision(player, state, hasHand, favor);
-        detectRaidVictory(player, state);
-        grantNineLivesOnCap(state, player, favor);
+        int nightVisionCooldown = updateNightVision(player, state, hasHand, favor);
+        boolean hasHero = player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE);
+        if (hasHero && !state.hadHeroEffect()) CatFavorManager.tryAccumulate(player, CatFavorAction.REPEL_RAID);
+        CatFavorManager.apply(player, new CatBondLedger.PassiveSnapshot(mask, nightVisionCooldown, hasHero));
+        if (CatFavorAbility.NINE_LIVES.isUnlockedAt(favor)) CatFavorManager.apply(player, Event.GRANT_INITIAL_LIFE);
     }
 
     // 计算并缓存能力位掩码（仅缓存供高频 mixin 查询的能力）
-    private static void updateAbilityMask(CatFavorState state, boolean hasHand, int favor) {
+    private static int abilityMask(CatFavorView state, boolean hasHand, int favor) {
         int mask = 0;
         if (hasHand) {
             if (CatFavorAbility.DETERRENCE.isUnlockedAt(favor) && !state.isDeterrenceDisabled()) {
                 mask |= FLAG_DETERRENCE;
             }
-            if (CatFavorAbility.LIGHT_STEP.isUnlockedAt(favor) && !state.isLightStepDisabled()) {
+            if (CatFavorAbility.LIGHT_STEP.isUnlockedAt(favor) && state.isLightStepEnabled()) {
                 mask |= FLAG_LIGHT_STEP_TRAMPLE;
                 mask |= FLAG_LIGHT_STEP_NO_PRESSURE;
             }
@@ -80,7 +85,7 @@ public final class CatPassiveAbilities {
                 mask |= FLAG_SOFT_PAWS;
             }
         }
-        state.setAbilityMask(mask);
+        return mask;
     }
 
     // 「猫的步伐」：幂等增减步高属性修饰符；按住shift潜行时不应用，避免影响从方块边缘下落
@@ -102,12 +107,11 @@ public final class CatPassiveAbilities {
 
     // 「猫的眼」夜视：服务端分级检测亮度
     // 空闲态每 1s 侦测一次进入黑暗；激活后每 5s 刷新一次夜视，刷新时若条件不再满足则回到空闲态
-    private static void updateNightVision(ServerPlayer player, CatFavorState state,
+    private static int updateNightVision(ServerPlayer player, CatFavorView state,
                                           boolean hasHand, int favor) {
         int cooldown = state.getNightVisionCheckCooldown();
         if (cooldown > 0) {
-            state.setNightVisionCheckCooldown(cooldown - 1);
-            return;
+            return cooldown - 1;
         }
         boolean eligible = hasHand
                 && CatFavorAbility.CAT_EYE.isUnlockedAt(favor)
@@ -116,29 +120,10 @@ public final class CatPassiveAbilities {
             // 授予/刷新 16s 夜视；MC 仅在新时长更长时覆盖，剩余约 20tick 时刷新到 120tick 平滑续期
             player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION,
                     NIGHT_VISION_DURATION, 0, true, false, false));
-            state.setNightVisionCheckCooldown(NIGHT_VISION_CHECK_ACTIVE - 1);
+            return NIGHT_VISION_CHECK_ACTIVE - 1;
         } else {
             // 条件不满足：不再续期，夜视自然过期；回到空闲态高频侦测
-            state.setNightVisionCheckCooldown(NIGHT_VISION_CHECK_IDLE - 1);
-        }
-    }
-
-    // 「击退袭击」：检测「村庄英雄」效果由无→有的上升沿
-    private static void detectRaidVictory(ServerPlayer player, CatFavorState state) {
-        boolean hasHero = player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE);
-        if (hasHero && !state.hadHeroEffect()) {
-            CatFavorManager.tryAccumulate(player, CatFavorAction.REPEL_RAID);
-        }
-        state.setHadHeroEffect(hasHero);
-    }
-
-    // 玩家首次成为猫国挚友时永久记录并授予 1 条命。
-    private static void grantNineLivesOnCap(CatFavorState state, ServerPlayer player, int favor) {
-        if (CatFavorAbility.NINE_LIVES.isUnlockedAt(favor)
-                && !state.isInitialBestFriendLifeGranted()) {
-            state.markInitialBestFriendLifeGranted();
-            state.setNineLivesCount(Math.max(1, state.getNineLivesCount()));
-            CatFavorManager.sync(player);
+            return NIGHT_VISION_CHECK_IDLE - 1;
         }
     }
 
@@ -146,23 +131,26 @@ public final class CatPassiveAbilities {
 
     // 处理「猫的威慑」开关切换，返回切换后是否已关闭
     public static boolean onDeterrenceToggle(ServerPlayer player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             return false;
         }
-        return state.toggleDeterrence();
+        CatFavorManager.apply(player, Event.TOGGLE_DETERRENCE);
+        return state.isDeterrenceDisabled();
     }
 
     // 处理轻步总开关切换，返回切换后是否启用。
     public static boolean onLightStepToggle(ServerPlayer player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         if (state == null) {
             return true;
         }
-        boolean enabled = state.toggleLightStepPressure();
+        CatFavorManager.apply(player, Event.TOGGLE_LIGHT_STEP);
+        boolean enabled = state.isLightStepEnabled();
         // 立即刷新位掩码
         boolean hasHand = CatFavorManager.hasHandOfCatInInventory(player);
-        updateAbilityMask(state, hasHand, state.getCatBond());
+        CatFavorManager.apply(player, new CatBondLedger.PassiveSnapshot(
+                abilityMask(state, hasHand, state.getCatBond()), state.getNightVisionCheckCooldown(), state.hadHeroEffect()));
         return enabled;
     }
 
@@ -170,19 +158,19 @@ public final class CatPassiveAbilities {
 
     // 苦力怕与幻翼是否应回避该玩家（猫之威慑，羁绊至少 20 且未关闭）。
     public static boolean hasActiveDeterrence(Player player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         return state != null && (state.getAbilityMask() & FLAG_DETERRENCE) != 0;
     }
 
     // 玩家是否拥有已开启的轻步，用于耕地不退化。
     public static boolean hasLightStep(Player player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         return state != null && (state.getAbilityMask() & FLAG_LIGHT_STEP_TRAMPLE) != 0;
     }
 
     // 玩家是否应忽略压力板与绊线。
     public static boolean hasLightStepPressurePlateIgnored(Player player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         return state != null && (state.getAbilityMask() & FLAG_LIGHT_STEP_NO_PRESSURE) != 0;
     }
 
@@ -193,7 +181,7 @@ public final class CatPassiveAbilities {
 
     // 玩家是否拥有柔软肉垫（羁绊至少 60），用于摔落减伤。
     public static boolean hasSoftPaws(Player player) {
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         return state != null && (state.getAbilityMask() & FLAG_SOFT_PAWS) != 0;
     }
 
@@ -207,7 +195,7 @@ public final class CatPassiveAbilities {
         if (!CatFavorManager.hasHandOfCatInInventory(player)) {
             return false;
         }
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         return state != null && CatFavorAbility.ANCIENT_GIFT.isUnlockedAt(state.getCatBond());
     }
 
@@ -216,7 +204,7 @@ public final class CatPassiveAbilities {
         if (!CatFavorManager.hasHandOfCatInInventory(player)) {
             return false;
         }
-        CatFavorState state = CatFavorManager.getState(player);
+        CatFavorView state = CatFavorManager.view(player);
         return state != null
                 && state.getCatBond() == CatFavorState.MAX_FAVOR
                 && state.getNineLivesCount() > 0;
@@ -226,8 +214,8 @@ public final class CatPassiveAbilities {
 
     // 触发九命：恢复满血、清除负面效果、提供保护效果并召唤剑士猫猫。
     public static void triggerNineLives(ServerPlayer player, DamageSource source) {
-        CatFavorState state = CatFavorManager.getState(player);
-        if (state == null || !state.consumeOneLife()) {
+        CatFavorView state = CatFavorManager.view(player);
+        if (state == null || !CatFavorManager.apply(player, Event.CONSUME_LIFE)) {
             return;
         }
         player.setHealth(player.getMaxHealth());
@@ -239,7 +227,6 @@ public final class CatPassiveAbilities {
         grantNineLivesProtection(player, source.is(DamageTypeTags.IS_FIRE));
         LivingEntity preferredTarget = source.getEntity() instanceof LivingEntity living ? living : null;
         SwordsmanCatService.summonOrRefresh(player, preferredTarget);
-        CatFavorManager.sync(player);
     }
 
     // 授予九命保护效果；调试剑士复用该入口但不消耗命数。

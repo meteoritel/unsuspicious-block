@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.cat.merchant;
 
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -96,12 +97,12 @@ public final class MerchantCatTradeManager {
 
     private static MerchantCatTradeDefinition.TradeConditions parseConditions(JsonObject object) {
         if (object == null) {
-            return new MerchantCatTradeDefinition.TradeConditions(0, 100, Set.of());
+            return new MerchantCatTradeDefinition.TradeConditions(CatBondStage.ACQUAINTED.minimumBond(), CatBondStage.BEST_FRIEND.maximumBond(), Set.of());
         }
         int minimumBond = Math.max(0, object.has("min_cat_bond")
                 ? object.get("min_cat_bond").getAsInt() : 0);
-        int maximumBond = Math.min(100, object.has("max_cat_bond")
-                ? object.get("max_cat_bond").getAsInt() : 100);
+        int maximumBond = Math.min(CatBondStage.BEST_FRIEND.maximumBond(), object.has("max_cat_bond")
+                ? object.get("max_cat_bond").getAsInt() : CatBondStage.BEST_FRIEND.maximumBond());
         Set<ResourceLocation> dimensions = new HashSet<>();
         if (object.has("dimensions")) {
             for (JsonElement element : object.getAsJsonArray("dimensions")) {

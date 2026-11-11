@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.entity;
 
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.core.cat.CatFavorManager;
 import com.meteorite.unsuspiciousblock.core.cat.merchant.MerchantCatSpawnData;
 import com.meteorite.unsuspiciousblock.core.cat.merchant.MerchantCatTradeManager;
@@ -410,7 +411,7 @@ public class MerchantCat extends SpiritCat implements Merchant {
 
     private boolean isQualified(ServerPlayer player) {
         return this.isDebugDuty() && player.getUUID().equals(this.debugOwnerUuid)
-                || CatFavorManager.getCatBond(player) >= 100 && CatFavorManager.hasOwnedHandOfCat(player);
+                || CatBondStage.fromBond(CatFavorManager.getCatBond(player)) == CatBondStage.BEST_FRIEND && CatFavorManager.hasOwnedHandOfCat(player);
     }
 
     private static boolean isOpen(ServerLevel level, BlockPos pos) {
@@ -470,7 +471,7 @@ public class MerchantCat extends SpiritCat implements Merchant {
             return InteractionResult.CONSUME;
         }
         if (this.offers.isEmpty() && this.level() instanceof ServerLevel serverLevel) {
-            this.initializeTrades(serverLevel, 100);
+            this.initializeTrades(serverLevel, CatBondStage.BEST_FRIEND.maximumBond());
         }
         if (!this.offers.isEmpty()) {
             this.tradeOccurred = false;

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.cat.merchant;
 
+import com.meteorite.unsuspiciousblock.core.cat.state.ActiveSpiritSlot;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -25,8 +26,7 @@ public final class MerchantCatSpawnData extends SavedData {
 
     private long nextAttempt;
     private int failureStep;
-    @Nullable
-    private UUID activeMerchantUuid;
+    private final ActiveSpiritSlot activeMerchant = new ActiveSpiritSlot();
 
     private MerchantCatSpawnData() {
     }
@@ -40,7 +40,7 @@ public final class MerchantCatSpawnData extends SavedData {
         data.nextAttempt = tag.getLong(NEXT_ATTEMPT_TAG);
         data.failureStep = Math.max(0, Math.min(2, tag.getInt(FAILURE_STEP_TAG)));
         if (tag.hasUUID(ACTIVE_MERCHANT_TAG)) {
-            data.activeMerchantUuid = tag.getUUID(ACTIVE_MERCHANT_TAG);
+            data.activeMerchant.occupy(tag.getUUID(ACTIVE_MERCHANT_TAG));
         }
         return data;
     }
@@ -50,8 +50,8 @@ public final class MerchantCatSpawnData extends SavedData {
                                      HolderLookup.@NotNull Provider registries) {
         tag.putLong(NEXT_ATTEMPT_TAG, this.nextAttempt);
         tag.putInt(FAILURE_STEP_TAG, this.failureStep);
-        if (this.activeMerchantUuid != null) {
-            tag.putUUID(ACTIVE_MERCHANT_TAG, this.activeMerchantUuid);
+        if (this.activeMerchant.find() != null) {
+            tag.putUUID(ACTIVE_MERCHANT_TAG, this.activeMerchant.find());
         }
         return tag;
     }
@@ -80,17 +80,16 @@ public final class MerchantCatSpawnData extends SavedData {
 
     public void recordSuccess(UUID merchantUuid) {
         this.failureStep = 0;
-        this.activeMerchantUuid = merchantUuid;
+        this.activeMerchant.occupy(merchantUuid);
         this.setDirty();
     }
 
     public @Nullable UUID getActiveMerchantUuid() {
-        return this.activeMerchantUuid;
+        return this.activeMerchant.find();
     }
 
     public void clearActive(UUID merchantUuid) {
-        if (merchantUuid.equals(this.activeMerchantUuid)) {
-            this.activeMerchantUuid = null;
+        if (this.activeMerchant.release(merchantUuid)) {
             this.setDirty();
         }
     }

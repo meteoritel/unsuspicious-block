@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.cat.state;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatFavorAction;
+import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
+import com.meteorite.unsuspiciousblock.core.entity.ai.spiritcat.SpiritCatRole;
 import com.meteorite.unsuspiciousblock.core.persistence.migration.MigrationVersions;
 import com.meteorite.unsuspiciousblock.core.persistence.migration.NbtMigration;
 import net.minecraft.nbt.CompoundTag;
@@ -14,11 +16,12 @@ import java.util.UUID;
  * 玩家猫族关系持久化状态——保存关系是否建立、0-100 猫族羁绊、行为冷却与玩家偏好。
  * 通过 mixin 附加在玩家 NBT 中持久化，并负责从旧版猫之恩惠数据迁移。
  */
-public final class CatFavorState {
+public final class CatFavorState implements CatFavorView {
     public static final int CURRENT_DATA_VERSION = 2;
-    public static final int MIN_FAVOR = 0;
-    public static final int MAX_FAVOR = 100;
+    public static final int MIN_FAVOR = CatBondStage.ACQUAINTED.minimumBond();
+    public static final int MAX_FAVOR = CatBondStage.BEST_FRIEND.maximumBond();
 
+    private static final String PLAYER_TAG = "unsuspiciousblock_cat_favor";
     private static final String DATA_VERSION_TAG = "data_version";
     private static final String CAT_BOND_TAG = "cat_bond";
     private static final String RELATIONSHIP_ESTABLISHED_TAG = "relationship_established";
@@ -62,15 +65,14 @@ public final class CatFavorState {
     // 记录最近一次由玩家造成的猫伤害，用于致命一击扣分去重。
     private transient UUID recentlyHitCatUuid;
     private transient long recentlyHitCatGameTime = Long.MIN_VALUE;
-    private transient UUID activeMessengerUuid;
-    private transient UUID activeSwordsmanUuid;
+    private final Map<SpiritCatRole, ActiveSpiritSlot> activeSpirits = new EnumMap<>(SpiritCatRole.class);
 
     public boolean isRelationshipEstablished() {
         return this.relationshipEstablished;
     }
 
     // 建立猫族关系，返回状态是否发生变化。
-    public boolean establishRelationship() {
+    boolean establishRelationship() {
         if (this.relationshipEstablished) {
             return false;
         }
@@ -83,8 +85,8 @@ public final class CatFavorState {
     }
 
     // 设置猫族羁绊并限制到 0-100。
-    public boolean setCatBond(int value) {
-        int clamped = Math.max(MIN_FAVOR, Math.min(MAX_FAVOR, value));
+    boolean setCatBond(int value) {
+        int clamped = Math.clamp(value, MIN_FAVOR, MAX_FAVOR);
         if (clamped == this.catBond) {
             return false;
         }
@@ -100,18 +102,8 @@ public final class CatFavorState {
         return this.getCatBond();
     }
 
-    // 兼容现有调用，后续阶段逐步迁移为猫族羁绊术语。
-    public boolean setFavor(int value) {
-        return this.setCatBond(value);
-    }
-
-    public boolean addCatBond(int delta) {
+    boolean addCatBond(int delta) {
         return this.setCatBond(this.catBond + delta);
-    }
-
-    // 兼容现有调用，后续阶段逐步迁移为猫族羁绊术语。
-    public boolean addFavor(int delta) {
-        return this.addCatBond(delta);
     }
 
     // 判断指定行为在给定游戏时间是否已过冷却（可再次累积）
@@ -124,7 +116,7 @@ public final class CatFavorState {
     }
 
     // 记录指定行为在给定游戏时间被触发（刷新冷却起点）
-    public void markTriggered(CatFavorAction action, long gameTime) {
+    void markTriggered(CatFavorAction action, long gameTime) {
         this.lastTriggerGameTime.put(action, gameTime);
     }
 
@@ -134,9 +126,8 @@ public final class CatFavorState {
     }
 
     // 翻转威慑开关，返回翻转后的新状态
-    public boolean toggleDeterrence() {
+    void toggleDeterrence() {
         this.deterrenceDisabled = !this.deterrenceDisabled;
-        return this.deterrenceDisabled;
     }
 
     // ========== 猫之九命命数（持久化） ==========
@@ -145,19 +136,19 @@ public final class CatFavorState {
     }
 
     // 设置命数，自动 clamp 到 0-9
-    public void setNineLivesCount(int value) {
-        this.nineLivesCount = Math.max(0, Math.min(9, value));
+    void setNineLivesCount(int value) {
+        this.nineLivesCount = Math.clamp(value, 0, 9);
     }
 
     // 增加一条命（上限 9）
-    public void addOneLife() {
+    void addOneLife() {
         if (this.nineLivesCount < 9) {
             this.nineLivesCount++;
         }
     }
 
     // 消耗一条命，返回是否消耗成功（命数>0 时才可消耗）
-    public boolean consumeOneLife() {
+    boolean consumeOneLife() {
         if (this.nineLivesCount <= 0) {
             return false;
         }
@@ -169,53 +160,24 @@ public final class CatFavorState {
         return this.initialBestFriendLifeGranted;
     }
 
-    public void markInitialBestFriendLifeGranted() {
+    void markInitialBestFriendLifeGranted() {
         this.initialBestFriendLifeGranted = true;
     }
 
-    public UUID getActiveMessengerUuid() {
-        return this.activeMessengerUuid;
-    }
-
-    public void setActiveMessengerUuid(UUID entityUuid) {
-        this.activeMessengerUuid = entityUuid;
-    }
-
-    // 仅在 UUID 匹配时清除活跃信使，避免旧实体移除时覆盖新记录。
-    public void clearActiveMessengerUuid(UUID entityUuid) {
-        if (entityUuid.equals(this.activeMessengerUuid)) {
-            this.activeMessengerUuid = null;
-        }
-    }
-
-    public UUID getActiveSwordsmanUuid() {
-        return this.activeSwordsmanUuid;
-    }
-
-    public void setActiveSwordsmanUuid(UUID entityUuid) {
-        this.activeSwordsmanUuid = entityUuid;
-    }
-
-    // 仅在 UUID 匹配时清除活跃剑士，避免旧实体移除时覆盖新记录。
-    public void clearActiveSwordsmanUuid(UUID entityUuid) {
-        if (entityUuid.equals(this.activeSwordsmanUuid)) {
-            this.activeSwordsmanUuid = null;
-        }
+    /** 玩家只拥有信使与剑士槽，商人归属 ServerLevel 存档。 */
+    public ActiveSpiritSlot activeSpirit(SpiritCatRole role) {
+        if (role == SpiritCatRole.MERCHANT) throw new IllegalArgumentException("Merchant slot belongs to ServerLevel");
+        return activeSpirits.computeIfAbsent(role, ignored -> new ActiveSpiritSlot());
     }
 
     // ========== 轻步总开关（持久化） ==========
-    public boolean isLightStepPressurePrevented() {
+    public boolean isLightStepEnabled() {
         return !this.lightStepDisabled;
     }
 
-    public boolean isLightStepDisabled() {
-        return this.lightStepDisabled;
-    }
-
-    // 翻转整个轻步能力，返回翻转后是否启用。
-    public boolean toggleLightStepPressure() {
+    // 偏好存储仍使用原有 disabled 字段。
+    void toggleLightStepPressure() {
         this.lightStepDisabled = !this.lightStepDisabled;
-        return !this.lightStepDisabled;
     }
 
     // ========== 瞬态状态访问 ==========
@@ -223,7 +185,7 @@ public final class CatFavorState {
         return this.hadHeroEffect;
     }
 
-    public void setHadHeroEffect(boolean value) {
+    void setHadHeroEffect(boolean value) {
         this.hadHeroEffect = value;
     }
 
@@ -231,7 +193,7 @@ public final class CatFavorState {
         return this.nightVisionCheckCooldown;
     }
 
-    public void setNightVisionCheckCooldown(int ticks) {
+    void setNightVisionCheckCooldown(int ticks) {
         this.nightVisionCheckCooldown = ticks;
     }
 
@@ -239,32 +201,32 @@ public final class CatFavorState {
         return this.abilityMask;
     }
 
-    public void setAbilityMask(int mask) {
+    void setAbilityMask(int mask) {
         this.abilityMask = mask;
     }
 
-    public void queueFeedReward() {
+    void queueFeedReward() {
         this.pendingFeedReward = true;
     }
 
-    public void cancelPendingFeedReward() {
+    void cancelPendingFeedReward() {
         this.pendingFeedReward = false;
     }
 
     // 取出并清除待结算的喂食奖励。
-    public boolean consumePendingFeedReward() {
+    boolean consumePendingFeedReward() {
         boolean pending = this.pendingFeedReward;
         this.pendingFeedReward = false;
         return pending;
     }
 
-    public void recordCatHit(UUID catUuid, long gameTime) {
+    void recordCatHit(UUID catUuid, long gameTime) {
         this.recentlyHitCatUuid = catUuid;
         this.recentlyHitCatGameTime = gameTime;
     }
 
     // 判断死亡是否来自同 tick 已扣过 5 点的致命攻击，并清除记录。
-    public boolean consumeMatchingCatHit(UUID catUuid, long gameTime) {
+    boolean consumeMatchingCatHit(UUID catUuid, long gameTime) {
         boolean matches = catUuid.equals(this.recentlyHitCatUuid)
                 && gameTime == this.recentlyHitCatGameTime;
         this.recentlyHitCatUuid = null;
@@ -273,7 +235,7 @@ public final class CatFavorState {
     }
 
     // 清空所有状态
-    public void clear() {
+    void clear() {
         this.relationshipEstablished = false;
         this.catBond = MIN_FAVOR;
         this.lastTriggerGameTime.clear();
@@ -287,12 +249,26 @@ public final class CatFavorState {
         this.pendingFeedReward = false;
         this.recentlyHitCatUuid = null;
         this.recentlyHitCatGameTime = Long.MIN_VALUE;
-        this.activeMessengerUuid = null;
-        this.activeSwordsmanUuid = null;
+        this.activeSpirits.clear();
     }
 
-    // 从另一个状态复制全部数据（用于玩家重生时保留恩惠）
+    /** NBT 根字段缺失时恢复空状态，供玩家加载接线使用。 */
+    public void restoreAbsent() {
+        clear();
+    }
+
+    public void writePlayerTag(CompoundTag tag) {
+        tag.put(PLAYER_TAG, toTag());
+    }
+
+    public void readPlayerTag(CompoundTag tag) {
+        if (tag.contains(PLAYER_TAG, Tag.TAG_COMPOUND)) readFrom(tag.getCompound(PLAYER_TAG));
+        else restoreAbsent();
+    }
+
+    // 持久偏好与冷却跟随重生，运行时状态从空快照开始。
     public void copyFrom(CatFavorState other) {
+        this.clear();
         this.relationshipEstablished = other.relationshipEstablished;
         this.catBond = other.catBond;
         this.lastTriggerGameTime.clear();
@@ -327,13 +303,13 @@ public final class CatFavorState {
         MIGRATION.migrate(tag);
         this.clear();
         this.relationshipEstablished = tag.getBoolean(RELATIONSHIP_ESTABLISHED_TAG);
-        this.catBond = Math.max(MIN_FAVOR, Math.min(MAX_FAVOR, tag.getInt(CAT_BOND_TAG)));
+        this.catBond = Math.clamp(tag.getInt(CAT_BOND_TAG), MIN_FAVOR, MAX_FAVOR);
         if (this.catBond > MIN_FAVOR) {
             this.relationshipEstablished = true;
         }
         this.deterrenceDisabled = tag.getBoolean(DETERRENCE_DISABLED_TAG);
         if (tag.contains(NINE_LIVES_COUNT_TAG, Tag.TAG_INT)) {
-            this.nineLivesCount = Math.max(0, Math.min(9, tag.getInt(NINE_LIVES_COUNT_TAG)));
+            this.nineLivesCount = Math.clamp(tag.getInt(NINE_LIVES_COUNT_TAG), 0, 9);
         }
         this.initialBestFriendLifeGranted = tag.getBoolean(INITIAL_BEST_FRIEND_LIFE_GRANTED_TAG);
         this.lightStepDisabled = tag.getBoolean(LIGHT_STEP_DISABLED_TAG);

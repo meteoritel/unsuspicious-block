@@ -3,11 +3,9 @@ package com.meteorite.unsuspiciousblock.client.hud;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
+import com.meteorite.unsuspiciousblock.core.cat.HandOfCatBinding;
 import com.meteorite.unsuspiciousblock.core.cat.state.CatFavorState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
-import com.meteorite.unsuspiciousblock.core.inventory.InventoryPresenceRegistry;
-import com.meteorite.unsuspiciousblock.core.item.HandOfCatItem;
-import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -53,7 +51,7 @@ public final class CatFavorHud {
             return;
         }
         // 仅当背包存在猫之手时显示
-        if (!HandOfCatClientState.isRelationshipEstablished() || !hasOwnedHandOfCat(player)) {
+        if (!HandOfCatClientState.isRelationshipEstablished() || !HandOfCatBinding.hasOwned(player)) {
             return;
         }
         int favor = HandOfCatClientState.getCachedFavor();
@@ -120,13 +118,4 @@ public final class CatFavorHud {
         gui.drawString(font, text, x, y, BADGE_COLOR, true);
     }
 
-    // 客户端侧检查背包（含标本箱等便携容器与饰品栏）是否存在猫之手
-    private static boolean hasOwnedHandOfCat(LocalPlayer player) {
-        if (ModItems.HAND_OF_CAT == null) {
-            return false;
-        }
-        return InventoryPresenceRegistry.containsMatching(player,
-                stack -> stack.getItem() == ModItems.HAND_OF_CAT
-                        && HandOfCatItem.isBoundTo(stack, player.getUUID()));
-    }
 }
