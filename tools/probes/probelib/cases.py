@@ -171,12 +171,14 @@ def scan_and_take(case, table=SCAN_TABLE, item='minecraft:iron_ingot'):
                                     'off:String(Probe.client().player.getOffhandItem().getItem()),ready:Probe.scanInputReady()})'),
              lambda value: abs(value['x'] - .5) < .01 and abs(value['z'] + 1.5) < .01
              and 'archaeological_shovel' in value['off'] and value['ready'])
-    case.action('client', 'Probe.use()')
+    dispatched = case.action('client', 'Probe.use()')
     scanned = wait_for(lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['scanned'])
     case.equal('扫描解锁表', scanned['unlocked'], True)
     case.equal('扫描解锁物品', scanned['items'][item]['unlocked'], True)
     case.equal('扫描不累计实得', scanned['items'][item]['count'], before['items'].get(item, {}).get('count', 0))
     case.equal('扫描暂存待定日志', scanned['pending'], True)
+    # 原版 startUseItem 的右键间隔为四个客户端 tick；观察 tick 后再投递下一次独立点击。
+    wait_for(lambda: client.evaluate('Probe.ready()'), lambda value: value['tick'] >= dispatched['tick'] + 4)
     case.action('client', 'Probe.use()')
     taken = wait_for(lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['loot'] == 0 and not value['pending'])
     case.equal('取物只累计一次', taken['items'][item]['count'], scanned['items'][item]['count'] + 1)
@@ -211,19 +213,28 @@ def select_probe_table(case, table=SCAN_TABLE):
     case.click(f'table/{table}')
 
 
+def open_log_list(case):
+    case.click('journal/tab/log')
+    if any(node['key'] == 'journal/log-back' and node['visible'] for node in case.stable_layout()['nodes']):
+        case.click('journal/log-back')
+
+
 def scan_take_journal(case):
     taken = scan_and_take(case)
     case.equal('保留未发现项不发完成奖励', taken['claimed'], False)
     select_probe_table(case)
-    case.click('journal/tab/log')
+    open_log_list(case)
     case.click('log/' + taken['logs'][-1]['id'])
+    detail_key = 'log/coordinates/' + taken['logs'][-1]['id']
+    case.equal('点击日志条目打开实际详情',
+               any(node['key'] == detail_key for node in case.stable_layout()['nodes']), True)
     case.screenshot('log-detail')
 
 
 def journal_viewport(case):
     taken = scan_and_take(case)
     select_probe_table(case)
-    case.click('journal/tab/log')
+    open_log_list(case)
     entry_key = 'log/' + taken['logs'][-1]['id']
     detail_key = 'log/coordinates/' + taken['logs'][-1]['id']
     case.click(entry_key)
@@ -379,7 +390,7 @@ def journal_restart(case):
     case.action('client', 'Probe.openJournal()')
     wait_for(lambda: client.evaluate('Probe.ready()'), lambda value: (value['screen'] or '').endswith('ArchaeologyJournalScreen'))
     select_probe_table(case, COMPLETE_TABLE)
-    case.click('journal/tab/log')
+    open_log_list(case)
     case.click('log/' + expected['logs'][-1]['id'])
     case.screenshot('restored-log')
 
@@ -422,8 +433,23 @@ def simulation_reload(case):
     case.screenshot('after-reload')
 
 
+def ui_member_tree(case):
+    from .ui_cases import member_tree
+    taken = scan_and_take(case)
+    select_probe_table(case)
+    member_tree(case, taken, SCAN_TABLE)
+
+
+def ui_form_bodies(case):
+    from .ui_cases import form_bodies
+    scan_and_take(case)
+    select_probe_table(case)
+    form_bodies(case, SCAN_TABLE)
+
+
 CASES = {'runtime-artifact': ('server', runtime_artifact),
          'scan-take-journal': ('gui', scan_take_journal), 'journal-viewport': ('gui', journal_viewport),
          'cat-ledger': ('model', cat_ledger), 'cat-carried-binding': ('server', cat_carried_binding),
          'panning-settlement': ('server', panning_settlement), 'journal-restart': ('gui', journal_restart),
-         'simulation-reload': ('gui', simulation_reload)}
+         'simulation-reload': ('gui', simulation_reload),
+         'ui-member-tree': ('gui', ui_member_tree), 'ui-form-bodies': ('gui', ui_form_bodies)}

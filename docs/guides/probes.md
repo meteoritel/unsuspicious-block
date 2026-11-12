@@ -21,7 +21,8 @@ Agent 调用任何探针前，须遵守仓库根目录 `AGENTS.md` 中的「探�
 
 1. **构建宿主 JAR 与 Manifest**：用户级 Gradle 属性 `meteos_ui_kit_maven_dir` 指向本地 UI Kit Maven 仓库，运行 `./gradlew.bat build writeProbeArtifact --no-daemon` 生成 `build/probes/artifact.json`。
 2. **本地探针配置**：复制 [`config.example.json`](../../tools/probes/config.example.json) 为仓库根目录 `.local/probes.json`（已纳入 Git 忽略），填入本机 `autojsJar` 与 `rhinoJar` 绝对路径；接受 Minecraft EULA 后显式设置 `"acceptEula": true`。
-3. **检查端口与配置**：默认使用 `serverMcpPort`（25585）、`clientMcpPort`（25586）和 `gamePort`（25575），三个端口需互异且空闲。
+3. **后台客户端**：Windows 在本地配置设置 `"background": true`，或命令行传入 `--background`。客户端在独立 desktop 内渲染，主桌面与系统鼠标保持原有归属；运行结果见 `manifest.json` 的 `desktop` 字段。
+4. **检查端口与配置**：默认使用 `serverMcpPort`（25585）、`clientMcpPort`（25586）和 `gamePort`（25575），三个端口需互异且空闲。
 
 快速干跑验证配置与产物配对（不启动游戏进程）：
 
@@ -35,10 +36,10 @@ python tools/probes/run.py --validate --only runtime-artifact
 
 ```powershell
 # 运行指定核心用例
-python tools/probes/run.py --artifact build/probes/artifact.json --only scan-take-journal --only journal-viewport
+python tools/probes/run.py --background --artifact build/probes/artifact.json --only scan-take-journal --only journal-viewport
 
 # 运行完整核心回归套件（将使用默认隔离运行目录并重新构建）
-python tools/probes/run.py
+python tools/probes/run.py --background
 ```
 
 判定与输出约定：
@@ -95,9 +96,9 @@ finally:
 
 ### 4.3 GUI 操作、悬停与截图时序
 
-1. **打开笔记与点击控件**：使用 `Probe.openJournal()` 或执行 `/execute as UsbProbe run ...` 后 `case.stable_layout()`，再用 `case.click('<layout-key>')` 点击目标；每次交互前后重新读取 `Probe.layout()` 获取最新坐标与可见裁剪区。
-2. **模拟滚轮与按键**：可通过 `client.evaluate(...)` 直接调用当前 `Screen.mouseScrolled(x, y, 0, delta)` 或 `Screen.keyPressed(keyCode, scanCode, modifiers)`；发送滚轮后若界面启用平滑滚动插值，使用 `wait_for(...)` 或短轮询等待几帧再截图，确保看到稳定位置或滚动中帧。
-3. **悬停 Tooltip 截图**：使用 `case.hover('<layout-key>')` 移动真实 GLFW 指针并沿回调触发 `MouseHandler`，再调用 `case.screenshot('<tag>')`；`Case.screenshot` 会自动等待 Toast 消失、布局连续两帧稳定并验证输出 PNG 尺寸。
+1. **打开笔记与点击控件**：使用 `Probe.openJournal()` 或执行 `/execute as UsbProbe run ...` 后 `case.stable_layout()`，再用 `case.click('<layout-key>')` 点击目标；每次交互前后重新读取 `Probe.layout()` 获取最新坐标与可见裁剪区。无业务 key 的字段可通过唯一语义选择器定位，例如 `case.click({'kind': 'TEXT_INPUT', 'name': '<字段名>'})`；字段值与逻辑焦点也来自同一活动快照。
+2. **模拟滚轮与按键**：使用 `Probe.scroll(selector, delta)` 与 `Probe.key(keyCode, modifiers)`，由 UI 输入 module 统一派发。发送滚轮后若界面启用平滑滚动插值，使用 `wait_for(...)` 等待预期位置后再截图。
+3. **悬停 Tooltip 截图**：使用 `case.hover('<layout-key>')` 由已安装的 GLFW 回调更新 `MouseHandler`，系统鼠标保持原位，再调用 `case.screenshot('<tag>')`；`Case.screenshot` 会自动等待 Toast 消失、布局连续两帧稳定并验证输出 PNG 尺寸。
 
 ### 4.4 Rhino / AutoJS 短求值注意事项
 

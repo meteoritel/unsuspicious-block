@@ -58,7 +58,8 @@ def read_artifact(path: Path) -> dict:
 def gradle(root: Path, arguments: list[str], log: Path):
     command = [str(root / ('gradlew.bat' if os.name == 'nt' else 'gradlew')), *arguments, '--console=plain']
     with log.open('w', encoding='utf-8') as output:
-        result = subprocess.run(command, cwd=root, stdout=output, stderr=subprocess.STDOUT, check=False)
+        result = subprocess.run(command, cwd=root, stdout=output, stderr=subprocess.STDOUT, check=False,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     if result.returncode:
         raise ProbeError(f'Gradle 退出 {result.returncode}: {log}')
 
@@ -72,6 +73,7 @@ class Runtime:
         self.launch = {}
         self.manifest = {}
         self.history = []
+        self.desktop = None
 
     def prepare(self, artifact: Path | None):
         if artifact is None:
@@ -135,8 +137,21 @@ class Runtime:
                      '--accessToken', '0', '--quickPlayMultiplayer', f'127.0.0.1:{self.config["gamePort"]}',
                      '--width', '1100', '--height', '720']
         environment = {key: value for key, value in os.environ.items() if not key.startswith('AUTOJS_')}
-        process = subprocess.Popen(argv, cwd=self.directory / side, stdin=subprocess.PIPE,
-                                   stdout=output, stderr=subprocess.STDOUT, text=True, encoding='utf-8', env=environment)
+        try:
+            if side == 'client' and self.config.get('background', False):
+                from .desktop import BackgroundDesktop
+                if self.desktop is None:
+                    self.desktop = BackgroundDesktop()
+                self.manifest['desktop'] = self.desktop.state()
+                process = self.desktop.start(argv, self.directory / side, output, environment)
+            else:
+                process = subprocess.Popen(argv, cwd=self.directory / side, stdin=subprocess.PIPE,
+                        stdout=output, stderr=subprocess.STDOUT, text=True, encoding='utf-8', env=environment,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        except (OSError, ProbeError):
+            output.close()
+            self.outputs.pop(side)
+            raise
         self.processes[side] = process
         self.history.append(dict(side=side, pid=process.pid, argv=argv, gameDir=str(self.directory / side),
                                  log=Path(output.name).name, exitCode=None))
@@ -151,6 +166,8 @@ class Runtime:
         source = (self.root / 'tools/probes/scripts/shared.js').read_text(encoding='utf-8')
         source += f'\nProbe.runId = {json.dumps(self.directory.name)};\n'
         source += (self.root / f'tools/probes/scripts/{side}.js').read_text(encoding='utf-8')
+        if side == 'client':
+            source += (self.root / 'tools/probes/scripts/ui.js').read_text(encoding='utf-8')
         self.controls[side].install(source)
 
     def stop(self, side: str):
@@ -204,4 +221,17 @@ class Runtime:
                 self.stop(side)
             except (ProbeError, OSError) as error:
                 errors.append(str(error))
+        if self.desktop:
+            try:
+                self.manifest['desktop'] = self.desktop.state()
+                if not self.manifest['desktop']['isolated']:
+                    errors.append('后台 desktop 成为了输入桌面')
+                write_json(self.directory / 'manifest.json', self.manifest)
+            except OSError as error:
+                errors.append(str(error))
+            finally:
+                try:
+                    self.desktop.close()
+                except OSError as error:
+                    errors.append(str(error))
         return errors

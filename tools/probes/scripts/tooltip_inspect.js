@@ -229,15 +229,7 @@ Probe.hoverContainerSlot = function(slotIndex) {
     var window = client.getWindow();
     var px = x * window.getScreenWidth() / window.getGuiScaledWidth();
     var py = y * window.getScreenHeight() / window.getGuiScaledHeight();
-    var glfw = this.type('org.lwjgl.glfw.GLFW');
-    var handle = window.getWindow();
-    glfw.glfwSetCursorPos(handle, px, py);
-    // 直接以目标窗口坐标触发两次回调，避免未聚焦时 glfwGetCursorPos 读回旧坐标或被 ignoreFirstMove 吸收
-    var callback = glfw.glfwSetCursorPosCallback(handle, null);
-    glfw.glfwSetCursorPosCallback(handle, callback);
-    if (callback === null) throw new Error('窗口未安装指针回调');
-    callback.invoke(handle, px, py);
-    callback.invoke(handle, px, py);
+    this.movePointer(x, y);
     client.getToasts().clear();
     return { slot: Number(slotIndex), x: x, y: y, px: px, py: py };
 };

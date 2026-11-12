@@ -62,7 +62,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 ### 4.1 布局与帧采集
 
-`UiScreen.layoutNodes()` 从当前活动输入树提供原版 GUI 坐标的只读快照，包含稳定 key、原始矩形和有效裁剪。`UiListView` 直接贡献列表根与可见行，管理树通过 `TreeRow.key()`、语言列表通过语言码提供行身份；行 target 仍为实际列表。宿主为自绘目录、日志及固定控件提供业务身份；未解锁条目遵守原有隐藏规则。实际绘制后读取快照，点击前使用 `isLayoutTarget` 校验真实 hitTest；查询不触发业务准备或业务动作。
+`UiScreen.layoutNodes()` 从当前活动输入树提供原版 GUI 坐标的只读快照，包含稳定 key、原始矩形和有效裁剪。`UiOverlay` 转发当前内容的布局，模态字段与底层页面沿相同入口查询。`UiListView` 直接贡献列表根与可见行，管理树通过 `TreeRow.key()`、语言列表通过语言码提供行身份；行 target 仍为实际列表。宿主为自绘目录、日志及固定控件提供业务身份；未解锁条目遵守原有隐藏规则。实际绘制后读取快照，点击前使用 `isLayoutTarget` 校验真实 hitTest；查询不触发业务准备或业务动作。
 
 `UiFrameCapture.capture(Path)` 接收客户端主线程请求，在后续完成帧采集并异步写入原尺寸 PNG。请求绑定当前世界、Screen 与窗口尺寸；采样前上下文变化、重复请求、目标已存在或停止会明确结清。库拥有帧生命周期与图像资源，AutoJS 调度、业务 readiness、断言和报告归[核心探针](../../../tools/probes/README.md)。
 

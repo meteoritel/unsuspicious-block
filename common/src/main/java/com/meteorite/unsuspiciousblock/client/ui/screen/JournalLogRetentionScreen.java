@@ -47,12 +47,14 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
         this.parent = parent;
         this.tableId = tableId;
         int limit = Math.max(1, initialRetentionLimit);
-        retention = numericField(limit);
-        recent = numericField(Math.clamp(currentEntryCount, 0, limit));
+        Component limitLabel = Component.translatable(PREFIX + "limit_label");
+        Component recentLabel = Component.translatable(PREFIX + "keep_recent_label");
+        retention = numericField(limitLabel, limit);
+        recent = numericField(recentLabel, Math.clamp(currentEntryCount, 0, limit));
         body = new UiFormBody(theme(), TextMeasurer.of(Minecraft.getInstance().font));
-        body.add(Component.translatable(PREFIX + "limit_label"), retention, 20);
+        body.add(limitLabel, retention, 20);
         body.add(Component.empty(), apply, 20);
-        body.add(Component.translatable(PREFIX + "keep_recent_label"), recent, 20);
+        body.add(recentLabel, recent, 20);
         body.add(Component.empty(), prune, 20);
         ProtectionNotice notice = new ProtectionNotice();
         body.add(Component.empty(), notice, notice, List.of());
@@ -98,8 +100,8 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
         }
     }
 
-    private UiTextInput numericField(int value) {
-        return new UiTextInput(theme(), Minecraft.getInstance().font, Component.empty())
+    private UiTextInput numericField(Component label, int value) {
+        return new UiTextInput(theme(), Minecraft.getInstance().font, label)
                 .setMaxLength(10).setFilter(text -> text.chars().allMatch(c -> c >= '0' && c <= '9'))
                 .setValue(Integer.toString(value)).setOnCancel(this::onClose);
     }

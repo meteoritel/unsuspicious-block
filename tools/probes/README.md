@@ -8,14 +8,15 @@ Agent 调用前先按根目录 `AGENTS.md` 的「探针调用授权」核对授�
 
 将[配置示例](config.example.json)复制到被忽略的 `.local/probes.json`，填写 AutoJS 与 Rhino NeoForge JAR 的绝对路径。接受 [Minecraft EULA](https://aka.ms/MinecraftEULA) 后显式设置 `acceptEula: true`，工具仅在本次隔离服务器写入 `eula=true`。可指定 `java`，默认使用独立运行工程的 Java 21 Toolchain。宿主构建继续使用用户级 Gradle 属性 `meteos_ui_kit_maven_dir` 定位本地 kit Maven。
 
-AutoJS 使用 `/mcp` 的 `initialize → tools/list → status → eval_js`；每端独立进程、端口和 JS 作用域。脚本使用 `Java.loadClass`，仅依赖 Rhino，无需安装 KubeJS。客户端需要可用的桌面与 OpenGL 环境。游戏与 MCP 仅监听 loopback，端口须互异且空闲。
+AutoJS 使用 `/mcp` 的 `initialize → tools/list → status → eval_js`；每端独立进程、端口和 JS 作用域。脚本使用 `Java.loadClass`，仅依赖 Rhino，无需安装 KubeJS。客户端需要可用的桌面与 OpenGL 环境。Windows 使用 `--background` 或本地配置 `background: true` 在独立 desktop 启动客户端；启动器保留原生进程所有权，不切换用户输入 desktop。服务端与 Gradle 隐藏控制台运行。游戏与 MCP 仅监听 loopback，端口须互异且空闲。
 
 ```powershell
 python tools/probes/run.py --validate --only runtime-artifact
 python tools/probes/run.py --only runtime-artifact
-python tools/probes/run.py --only scan-take-journal --only journal-viewport
-python tools/probes/run.py --artifact build/probes/artifact.json
-python tools/probes/inspect_tooltips.py --artifact build/probes/artifact.json --lang both --shift both
+python tools/probes/run.py --background --only scan-take-journal --only journal-viewport
+python tools/probes/run.py --background --artifact build/probes/artifact.json
+python tools/probes/run.py --background --artifact build/probes/artifact.json --only ui-member-tree --only ui-form-bodies
+python tools/probes/inspect_tooltips.py --background --artifact build/probes/artifact.json --lang both --shift both
 ```
 
 默认串行执行宿主完整构建、运行准备和探针。已有本次构建时，传 `--artifact build/probes/artifact.json` 消费其准确归档；该 manifest 由 Gradle `writeProbeArtifact` 从实际任务输出生成。运行目录须全新，原始记录、进程日志和派生报告保存在控制台显示的目录中。
@@ -42,9 +43,15 @@ flowchart TD
 
 `runtime/` 是独立 ModDevGradle 工程，只准备 Minecraft、NeoForge、启动依赖和参数文件；不接入宿主源码输出。`mods/` 只放本次宿主 JAR、AutoJS 和 Rhino，kit 从宿主内嵌加载。运行记录核对实际模组路径与 SHA-256，清单保存依赖摘要、启动参数、PID、退出码和客户端图形环境。
 
-`scripts/` 构造场景并读取真实业务对象；`probelib/cases.py` 用普通函数组织输入、等待和独立预期。服务端状态与客户端镜像分别读取。主副手用例等待加载覆盖层退出、物品同步及准星命中后，向原版 `KeyMapping` 投递右键；淘洗用例保持客户端右键并由服务端观察真实 use/tick/finish 链。UI 使用当前 Screen 的真实输入与 NeoForge Pre/Post Hook，每次点击重新查询布局 key 并确认实际命中。悬停移动 GLFW 指针，读取实际窗口位置后沿已安装的回调通知 MouseHandler，并复核目标命中。截图等待业务就绪、几何稳定及进度和非安全服务器通知退出，由 kit 在后续完成帧采集，工具校验 PNG 数据和原始尺寸。
+`scripts/` 构造场景并读取真实业务对象；`probelib/cases.py` 用普通函数组织输入、等待和独立预期。服务端状态与客户端镜像分别读取。主副手用例等待加载覆盖层退出、物品同步及准星命中后，向原版 `KeyMapping` 投递右键；淘洗用例保持客户端右键并由服务端观察真实 use/tick/finish 链。UI 输入 module 位于 `scripts/ui.js`，从当前活动布局读取唯一业务 key，或由 `kind/name/text` 组成的唯一语义选择器。几何、裁剪、可见/可用状态与焦点值来自真实 target；有 key 时核对根命中，无 key 时核对字段命中，最终由 Screen 和 NeoForge Pre/Post Hook 派发输入。悬停只调用已安装的 GLFW 指针回调通知 MouseHandler，不移动系统鼠标。截图等待业务就绪、几何稳定及进度和非安全服务器通知退出，由 kit 在后续完成帧采集，工具校验 PNG 数据和原始尺寸。
+
+UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等待和截图 interface。`scripts/ui_scenarios.js` 仅装配已注册配置的真实 Screen；场景不反射控件，不维护第二份输入树。后台 native adapter 收敛在 `probelib/desktop.py`，Runtime 统一关闭自有客户端再释放 desktop；`manifest.json` 保存后台 desktop 与输入 desktop 状态。
+
+新增 UI 场景时，优先选择稳定业务 key；无 key 的字段可使用 `case.click({'kind': 'TEXT_INPUT', 'name': '<字段无障碍名称>'})`。每个选择器须唯一，操作后断言实际页面、字段或服务端结果；PNG 用于复核渲染。普通 Tab 路径验证 reveal，避免直接调用字段 setter 或正文 reveal 代替用户操作。
 
 `probe-run.json` 是判定源，HTML 与 JUnit 从它派生。GUI 成功同时要求目标 PNG；失败时尽力采诊断图，采集错误单独记录。准备或协议错误结束实例，业务失败保留断言，清理错误使整体返回 `2`。原始记录先写入，再生成展示；派生失败保留已有证据。每次使用全新目录，正常重启在同一服务器存档进行，客户端旧目录保留并换用空缓存目录验证恢复来源。
+
+场景模板发生未预期异常时，运行器保存异常类型、消息和 traceback，停止后续场景，仍执行自身进程清理并生成 HTML/JUnit；模板错误不会被重试或吞掉。新增场景先用系统临时输入验证该故障路径，再接入真实 NeoForge 用例。
 
 ## 核心用例与选择
 
@@ -55,6 +62,8 @@ flowchart TD
 | `runtime-artifact` | P0 / server | 指定发布 JAR 来源与摘要、专用服务器加载 |
 | `scan-take-journal` | P0 / gui | 扫描发现与实得分开、主副手让位、pending、去重、两端日志与详情 PNG |
 | `journal-viewport` | P0 / gui | 默认/奇数窗口、缩小/恢复/GUI scale、整数物理倍率、实际命中、搜索与日志阅读状态、普通/物品 Tooltip PNG、resize 关闭确认框 |
+| `ui-member-tree` | P0 / gui | 日志详情真实打开、双向 Tab、离焦字符、resize 旧释放、模态遮挡、活动右页与唯一业务 key |
+| `ui-form-bodies` | P0 / gui | 日志数字过滤/下限与两种提交、正文 Tab reveal、管理列表/语言模态/复合草稿、配置失败/重置/取消及窄窗 PNG |
 | `cat-ledger` | P0 / model | 关系门槛、冷却边界、同猫同 tick 去重、阶段、命数和状态序列化 |
 | `journal-restart` | P0 / gui | 正常停服恢复、空缓存同步、重复登录奖励去重和恢复详情 PNG |
 | `panning-settlement` | P1 / server | 正式交互与真实 tick 完成、剩余次数/耐久/实际产出/即时日志、中断和变体门槛 |
@@ -67,7 +76,8 @@ flowchart TD
 |---|---|
 | 依赖、打包、平台启动 | `runtime-artifact` |
 | 扫描、挖取、日志结算 | `scan-take-journal`、`journal-restart` |
-| kit 视口、输入树、笔记布局 | `scan-take-journal`、`journal-viewport` |
+| kit 视口、输入树、笔记布局 | `scan-take-journal`、`journal-viewport`、`ui-member-tree` |
+| 配置、表单正文、管理详情 | `ui-form-bodies` |
 | 猫族记账或携带扫描 | `cat-ledger`、`cat-carried-binding` |
 | 淘盘与淘洗点 | `panning-settlement` |
 | 模拟、目录重载、相关网络 | `simulation-reload` |

@@ -174,10 +174,13 @@ def main() -> int:
     parser.add_argument('--no-screenshots', dest='screenshots', action='store_false', help='只检查文本/色值/宽度，不截 PNG')
     parser.add_argument('--max-line-px', type=int, default=DEFAULT_MAX_LINE_PX, help='单行最大像素宽度告警阈值')
     parser.add_argument('--run-dir', type=Path, help='本次全新输出目录')
+    parser.add_argument('--background', action='store_true', help='在独立 Windows desktop 运行客户端')
     args = parser.parse_args()
 
     root = repo_root()
     config = read_config(args.config or root / '.local/probes.json')
+    if args.background:
+        config['background'] = True
     artifact_path = (args.artifact or root / 'build/probes/artifact.json').resolve()
     read_artifact(artifact_path)
 

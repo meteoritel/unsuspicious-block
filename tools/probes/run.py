@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--validate', action='store_true', help='只校验输入，不构建或启动')
     parser.add_argument('--run-dir', type=Path, help='本次全新输出目录')
     parser.add_argument('--artifact', type=Path, help='使用本次已构建的 artifact manifest，跳过宿主构建')
+    parser.add_argument('--background', action='store_true', help='在独立 Windows desktop 运行客户端，不抢焦点或鼠标')
     arguments = parser.parse_args()
     root = repo_root()
     selected = list(dict.fromkeys(arguments.only or CASES))
@@ -34,6 +35,8 @@ def main():
     exit_code = 0
     try:
         config = read_config(arguments.config or root / '.local/probes.json')
+        if arguments.background:
+            config['background'] = True
         if directory.exists():
             raise ProbeError(f'运行目录须尚不存在: {directory}')
         if arguments.artifact:
@@ -53,6 +56,7 @@ def main():
             case = dict(name=name, surface=surface, status='error', assertions=[], screenshots=[], duration=0)
             record['cases'].append(case)
             started = time.monotonic()
+            probe = None
             try:
                 probe = Case(runtime, case)
                 execute(probe)
@@ -62,11 +66,12 @@ def main():
             except AssertionError as error:
                 case.update(status='fail', message=str(error))
                 exit_code = max(exit_code, 1)
-            except (ProbeError, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as error:
+            except Exception as error:
+                # 用例边界保留场景实现错误的完整证据，并终止当前实例。
                 case.update(status='error', message=str(error), traceback=traceback.format_exc())
                 exit_code = 2
             finally:
-                if case['status'] != 'pass':
+                if case['status'] != 'pass' and probe is not None:
                     probe.diagnostic_screenshot()
                 if 'client' in runtime.controls:
                     try:

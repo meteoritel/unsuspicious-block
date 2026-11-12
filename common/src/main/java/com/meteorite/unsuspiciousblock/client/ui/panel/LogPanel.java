@@ -60,7 +60,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
     @Override
     public UiPointerHit hitTest(double x, double y) {
-        return controls.hitTest(x, y);
+        return UiInputContainer.super.hitTest(x, y);
     }
 
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
