@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import net.minecraft.world.item.ItemStack;
@@ -39,16 +40,35 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-/** 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图 */
+/**
+ * 日志列表面板——紧凑两行布局、精灵图集背景、搜索排序、分组视图
+ */
 public final class LogPanel implements PagePanel, UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
     private boolean controlsDirty = true;
-    private Consumer<ExcavationLogEntry> onOpenEntry = entry -> { };
-    public void setOnOpenEntry(Consumer<ExcavationLogEntry> action) { onOpenEntry = action; }
-    @Override public UiChildren<UiControl> inputChildren() { return controls.inputChildren(); }
-    @Override public UiPointerHit hitTest(double x, double y) { return controls.hitTest(x, y); }
-    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) { controls.render(graphics, font, pointer); }
-    @Override public void prepareUi() {
+    private Consumer<ExcavationLogEntry> onOpenEntry = entry -> {
+    };
+
+    public void setOnOpenEntry(Consumer<ExcavationLogEntry> action) {
+        onOpenEntry = action;
+    }
+
+    @Override
+    public UiChildren<UiControl> inputChildren() {
+        return controls.inputChildren();
+    }
+
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
+        return controls.hitTest(x, y);
+    }
+
+    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+        controls.render(graphics, font, pointer);
+    }
+
+    @Override
+    public void prepareUi() {
         if (!controlsDirty) return;
         controlsDirty = false;
         controls.beginUpdate();
@@ -70,11 +90,14 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                 entry.setLayoutKey("log/" + state.entry.entryId());
                 entry.setBounds(bgX, y, JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, row.height());
                 JournalControls.configureHotspot(entry, Component.literal(entryTimeText(state)), noteTooltip(state.entry),
-                        () -> { if (batchSelectionMode) toggleEntrySelection(state.entry.entryId()); else onOpenEntry.accept(state.entry); });
+                        () -> {
+                            if (batchSelectionMode) toggleEntrySelection(state.entry.entryId());
+                            else onOpenEntry.accept(state.entry);
+                        });
                 if (!batchSelectionMode) {
                     UiControl copy = controls.obtain("copy:" + state.entry.entryId());
                     copy.setBounds(bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - CopyCoordinateButton.WIDTH
-                            - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD, y + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET,
+                                    - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD, y + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET,
                             CopyCoordinateButton.WIDTH, CopyCoordinateButton.HEIGHT);
                     CopyCoordinateButton.configure(copy, state.entry);
                     if (state.entry.hasNote()) {
@@ -83,7 +106,9 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                         note.setBounds(badge.hitX(), badge.hitY(), badge.hitW(), badge.hitH());
                         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip");
                         JournalControls.configureHotspot(note, label, List.of(label),
-                                () -> { if (noteClickHandler != null) noteClickHandler.accept(state.entry); });
+                                () -> {
+                                    if (noteClickHandler != null) noteClickHandler.accept(state.entry);
+                                });
                     }
                 }
             }
@@ -91,6 +116,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         }
         controls.endUpdate();
     }
+
     private static List<Component> noteTooltip(ExcavationLogEntry entry) {
         if (!entry.hasNote()) return List.of();
         List<Component> lines = new ArrayList<>();
@@ -112,16 +138,22 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     @Nullable
     private Consumer<ExcavationLogEntry> noteClickHandler;
 
-    /** 显示行：组头或条目，混合高度分页 */
+    /**
+     * 显示行：组头或条目，混合高度分页
+     */
     private interface DisplayRow {
         int height();
     }
 
-    /** 行索引区间 [start, end) */
+    /**
+     * 行索引区间 [start, end)
+     */
     private record IntRange(int start, int end) {
     }
 
-    /** 计算指定页码下可见行索引区间 [start, end)；越界返回空区间 */
+    /**
+     * 计算指定页码下可见行索引区间 [start, end)；越界返回空区间
+     */
     private IntRange computeVisibleRows(int page) {
         if (page < 0 || page >= this.pageRanges.size()) {
             return new IntRange(0, 0);
@@ -567,7 +599,9 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         return Math.max(1, this.pageRanges.size());
     }
 
-    /** 备注铅笔图标的绘制位置与命中盒——绘制、悬停底色与点击命中共用同一几何来源（R-5）。 */
+    /**
+     * 备注铅笔图标的绘制位置与命中盒——绘制、悬停底色与点击命中共用同一几何来源（R-5）。
+     */
     private record NoteBadge(int x, int y, int hitX, int hitY, int hitW, int hitH) {
         private boolean hit(double mouseX, double mouseY) {
             return mouseX >= this.hitX && mouseX <= this.hitX + this.hitW
@@ -615,8 +649,10 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         private boolean wasHovered;
         // 逐帧行文案缓存（语言失效点见 syncEntryText）
         private Language cachedLanguage;
-        @Nullable private String timeText;
-        @Nullable private String dimensionPosText;
+        @Nullable
+        private String timeText;
+        @Nullable
+        private String dimensionPosText;
 
         private LogEntryState(ExcavationLogEntry entry) {
             this.entry = entry;

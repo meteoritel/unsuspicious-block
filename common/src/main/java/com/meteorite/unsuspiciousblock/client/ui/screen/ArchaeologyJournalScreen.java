@@ -1,9 +1,12 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.JournalViewModel;
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogToolbar;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+
 import java.util.Set;
-import java.util.function.Consumer;
+
 import net.minecraft.world.item.ItemStack;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.*;
@@ -23,8 +26,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesSto
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
-import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
@@ -66,8 +68,15 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private static final int MINIMUM_CANVAS_WIDTH = 412;
     private static final int MINIMUM_CANVAS_HEIGHT = 256;
 
-    @Override protected int minimumUiWidth() { return MINIMUM_CANVAS_WIDTH; }
-    @Override protected int minimumUiHeight() { return MINIMUM_CANVAS_HEIGHT; }
+    @Override
+    protected int minimumUiWidth() {
+        return MINIMUM_CANVAS_WIDTH;
+    }
+
+    @Override
+    protected int minimumUiHeight() {
+        return MINIMUM_CANVAS_HEIGHT;
+    }
 
     private static final int WELCOME_LINK_BUTTON_SIZE = 20;
     private static final int WELCOME_LINK_BUTTON_GAP = 4;
@@ -79,7 +88,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
-    /** 模态浮层：打开期间接管全部输入，是本页面唯一的浮层来源。 */
+    /**
+     * 模态浮层：打开期间接管全部输入，是本页面唯一的浮层来源。
+     */
     private final JournalOverlays overlays = new JournalOverlays();
     private WelcomeStatsPanel welcomeStatsPanel;
     private List<UiControl> externalLinkButtons = List.of();
@@ -95,14 +106,19 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final UiModalStack confirmations = new UiModalStack(() -> UnsuspiciousUiTheme.PARCHMENT);
     private final UiNavigationHistory<NavigationState> history =
             new UiNavigationHistory<>(64);
-    /** 只恢复阅读状态与条件勾选，不回滚参数提交或服务端操作。 */
+
+    /**
+     * 只恢复阅读状态与条件勾选，不回滚参数提交或服务端操作。
+     */
     private record NavigationState(@Nullable ResourceLocation table, List<String> conditions, UiStateSnapshot view,
-                                   boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {}
+                                   boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {
+    }
 
     private record NavigationKey(@Nullable ResourceLocation table, List<String> conditions, boolean home,
                                  @Nullable ResourceLocation category, RightPageContainer.Tab tab,
                                  boolean logDetail, @Nullable UUID logEntryId,
-                                 @Nullable ResourceLocation activeItemTag) {}
+                                 @Nullable ResourceLocation activeItemTag) {
+    }
 
     private NavigationState navigationState() {
         ResourceLocation table = viewModel.selectedTableId();
@@ -150,7 +166,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (resumeStateEpoch != JournalClientConnection.epoch()) resumeState = null;
         this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
         this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
-        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays);
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, scope);
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         // 恢复上次关闭时持久化的 UI 状态
@@ -171,11 +187,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.categoryFocusIndex = JournalUiPreferencesStore.getLastCategoryFocus();
         this.restoredCatalogScrollOffset = JournalUiPreferencesStore.getLastDirectoryPage();
         this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
-        this.viewModel.rebuildViewModels(null);
+        this.viewModel.rebuildViewModels();
         this.viewModel.initRevisions();
         this.rebuildWidgets();
-        if (resumeState != null) { restoreUiState(resumeState); restorePendingReading(); }
-        else if (initialItemSearch == null) {
+        if (resumeState != null) {
+            restoreUiState(resumeState);
+            restorePendingReading();
+        } else if (initialItemSearch == null) {
             pendingReading = JournalUiPreferencesStore.readingState();
             pendingReadingEpoch = JournalClientConnection.epoch();
             restorePendingReading();
@@ -277,9 +295,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
         try {
             if (super.keyPressed(keyCode, scanCode, modifiers)) return true;
             if (catalogToolbar.isSearchFocused()) return false;
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) { goBack(); return true; }
+            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+                goBack();
+                return true;
+            }
             if (this.minecraft != null && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
-                onClose(); return true;
+                onClose();
+                return true;
             }
             return false;
         } finally {
@@ -295,9 +317,18 @@ public class ArchaeologyJournalScreen extends UiScreen {
         return switch (keyCode) {
             case GLFW.GLFW_KEY_UP, GLFW.GLFW_KEY_W -> moveCatalogSelection(-1);
             case GLFW.GLFW_KEY_DOWN, GLFW.GLFW_KEY_S -> moveCatalogSelection(1);
-            case GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_A -> { setCurrentExpansion(false); yield true; }
-            case GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_D -> { setCurrentExpansion(true); yield true; }
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { updateItemGridPanel(); yield true; }
+            case GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_A -> {
+                setCurrentExpansion(false);
+                yield true;
+            }
+            case GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_D -> {
+                setCurrentExpansion(true);
+                yield true;
+            }
+            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                updateItemGridPanel();
+                yield true;
+            }
             case GLFW.GLFW_KEY_PAGE_UP -> moveCatalogViewport(-1);
             case GLFW.GLFW_KEY_PAGE_DOWN -> moveCatalogViewport(1);
             default -> false;
@@ -319,7 +350,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 enterFocusedCategory();
                 return true;
             }
-            default -> { return false; }
+            default -> {
+                return false;
+            }
         }
         this.categoryFocusIndex = Mth.clamp(target, 0, count - 1);
         this.catalogPanel.ensureIndexVisible(this.categoryFocusIndex, true);
@@ -372,7 +405,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
         this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
         this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
-        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays);
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, scope);
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         restoreUiState(snapshot);
@@ -440,7 +473,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.catalogToolbar.flushPendingSearchIfDue();
         if (this.viewModel.refreshIfNeeded()) {
             this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
-            this.viewModel.rebuildViewModels(this.catalogPanel);
+            this.viewModel.rebuildViewModels();
+            syncCatalogProjection();
             this.updateItemGridPanel();
             restorePendingReading();
             this.syncButtonState();
@@ -535,13 +569,20 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void restorePendingReading() {
         JournalReadingState target = pendingReading;
         if (target == null) return;
-        if (pendingReadingEpoch != JournalClientConnection.epoch()) { pendingReading = null; return; }
+        if (pendingReadingEpoch != JournalClientConnection.epoch()) {
+            pendingReading = null;
+            return;
+        }
         if (!ArchaeologyJournalClientState.isReadingReady()) return;
         pendingReading = null;
-        if (target.table() == null) { viewModel.showCategoryHome(); rebuildViewModels(); }
+        if (target.table() == null) {
+            viewModel.showCategoryHome();
+            rebuildViewModels();
+        }
         if (target.table() != null && viewModel.isNavigationTargetValid(target.table())) {
             if (catalogToolbar.effectiveSearch().isEmpty()) viewModel.prepareNavigationTo(target.table());
-            viewModel.rebuildViewModels(catalogPanel);
+            viewModel.rebuildViewModels();
+            syncCatalogProjection();
             setSelectedTable(target.table());
         }
         updateItemGridPanel();
@@ -559,89 +600,96 @@ public class ArchaeologyJournalScreen extends UiScreen {
     public boolean mouseClicked(double x, double y, int button) {
         pendingReading = null;
         NavigationState before = navigationState();
-        try { return super.mouseClicked(x, y, button); }
-        finally { rememberNavigation(before); }
+        try {
+            return super.mouseClicked(x, y, button);
+        } finally {
+            rememberNavigation(before);
+        }
     }
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
         NavigationState before = navigationState();
-        try { return super.mouseReleased(x, y, button); }
-        finally { rememberNavigation(before); }
+        try {
+            return super.mouseReleased(x, y, button);
+        } finally {
+            rememberNavigation(before);
+        }
     }
 
     // 书页内容与控件共用根命中；页内业务由当前页容器处理。
     private final class JournalContent implements UiInputContainer {
-        @Override public UiChildren<UiWidget> inputChildren() { return widgets; }
-        @Override public List<UiLayoutNode> layoutNodes() {
-            List<UiLayoutNode> nodes = new ArrayList<>(widgets.layoutNodes());
-            if (catalogPanel != null) nodes.addAll(catalogPanel.layoutNodes());
-            if (hasSelectedTable()) nodes.addAll(rightPage.layoutNodes());
-            return List.copyOf(nodes);
+        private final UiChildren<UiInputTarget> members = new UiChildren<>();
+
+        private void syncMembers() {
+            List<UiInputTarget> next = new ArrayList<>();
+            if (catalogPanel != null) next.add(catalogPanel);
+            if (viewModel.isCategoryHome() && welcomeStatsPanel != null) next.add(welcomeStatsPanel);
+            else if (hasSelectedTable()) next.add(rightPage);
+            next.add(widgets);
+            if (members.equals(next)) return;
+            for (UiInputTarget previous : List.copyOf(members))
+                if (!next.contains(previous)) {
+                    scope.interaction().end(UiInteractionSession.EndReason.UNMOUNTED);
+                    previous.scopeExited(UiInteractionSession.EndReason.UNMOUNTED);
+                }
+            members.clear();
+            members.addAll(next);
+            members.setTabOrder(widgets, -1);
         }
-        @Override public void addFocusTargets(Consumer<UiFocusTarget> out) {
-            widgets.addFocusTargets(out);
-            if (catalogPanel != null) catalogPanel.addFocusTargets(out);
-            if (hasSelectedTable()) rightPage.addFocusTargets(out);
+
+        @Override
+        public UiChildren<UiInputTarget> inputChildren() {
+            return members;
         }
-        @Override public long focusRevision() { return 31 * widgets.focusRevision()
-                + (hasSelectedTable() ? rightPage.focusRevision() : 0) + (catalogPanel == null ? 0 : System.identityHashCode(catalogPanel)); }
-        @Override public boolean keyPressed(int key, int scan, int modifiers) {
-            return catalogPanel != null && catalogPanel.keyPressed(key, scan, modifiers) || widgets.keyPressed(key, scan, modifiers)
-                    || hasSelectedTable() && rightPage.keyPressed(key, scan, modifiers);
+
+        @Override
+        public UiPointerHit hitTest(double x, double y) {
+            UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
+            return hit != null && catalogPanel != null && hit.owns(catalogPanel) ? catalogTooltip(hit) : hit;
         }
-        @Override public UiPointerHit hitTest(double x, double y) {
-            UiPointerHit hit = widgets.hitTest(x, y);
-            if (hit != null) return hit.within(this);
-            if (catalogPanel != null) {
-                hit = catalogPanel.hitTest(x, y);
-                if (hit != null) return catalogTooltip(hit).within(this);
-            }
-            if (viewModel.isCategoryHome()) {
-                hit = welcomeStatsPanel.hitTest(x, y);
-                return hit == null ? null : hit.within(this);
-            }
-            if (!hasSelectedTable()) return null;
-            hit = rightPage.hitTest(x, y);
-            return hit == null ? null : hit.within(this);
-        }
-        @Override public boolean mousePressed(UiInputContext context) {
-            if (context.hit() != null && context.hit().owns(widgets)) return widgets.mousePressed(context);
-            if (catalogPanel != null && context.hits(catalogPanel)) return catalogPanel.mousePressed(context);
-            if (!hasSelectedTable()) return false;
-            boolean consumed = rightPage.mousePressed(context);
-            if (consumed) {
+
+        @Override
+        public boolean mousePressed(UiInputContext context) {
+            boolean consumed = UiInputContainer.super.mousePressed(context);
+            if (consumed && context.hits(rightPage)) {
                 ResourceLocation target = rightPage.consumeNavigationTarget();
                 if (target != null) navigateToChildTable(target);
                 syncButtonState();
             }
             return consumed;
         }
-        @Override public boolean keyReleased(int key, int scan, int modifiers) {
-            return widgets.keyReleased(key, scan, modifiers) || hasSelectedTable() && rightPage.keyReleased(key, scan, modifiers);
-        }
-        @Override public boolean charTyped(char value, int modifiers) {
+
+        @Override
+        public boolean charTyped(char value, int modifiers) {
             pendingReading = null;
-            return widgets.charTyped(value, modifiers) || hasSelectedTable() && rightPage.charTyped(value, modifiers);
+            return UiInputContainer.super.charTyped(value, modifiers);
         }
-        @Override public boolean mouseScrolled(UiInputContext context, double sx, double sy) {
-            if (context.hit() != null && context.hit().owns(widgets)) return widgets.mouseScrolled(context, sx, sy);
-            if (catalogPanel != null && context.hits(catalogPanel)) return catalogPanel.mouseScrolled(context, sx, sy);
-            if (!hasSelectedTable()) return false;
-            if (rightPage.mouseScrolled(context, sx, sy)) return true;
-            rightPage.handleScroll(sy); syncButtonState(); return true;
+
+        @Override
+        public boolean mouseScrolled(UiInputContext context, double sx, double sy) {
+            if (UiInputContainer.super.mouseScrolled(context, sx, sy)) return true;
+            if (!context.hits(rightPage)) return false;
+            rightPage.handleScroll(sy);
+            syncButtonState();
+            return true;
         }
     }
 
     private void activateCatalog(CatalogPanel.ClickResult click, boolean shift) {
         int index = click.index();
         if (index < 0) return;
-        if (viewModel.isCategoryHome()) { categoryFocusIndex = index; enterFocusedCategory(); }
-        else if (click.toggleExpansion()) {
+        if (viewModel.isCategoryHome()) {
+            categoryFocusIndex = index;
+            enterFocusedCategory();
+        } else if (click.toggleExpansion()) {
             ResourceLocation selected = viewModel.tableViews().get(index).id();
-            viewModel.toggleExpanded(index); rebuildViewModels(); setSelectedTable(selected);
+            viewModel.toggleExpanded(index);
+            rebuildViewModels();
+            setSelectedTable(selected);
         } else if (shift) {
-            JournalUiPreferencesStore.toggleFavorite(viewModel.tableViews().get(index).id()); rebuildViewModels();
+            JournalUiPreferencesStore.toggleFavorite(viewModel.tableViews().get(index).id());
+            rebuildViewModels();
         } else setSelectedIndex(index);
     }
 
@@ -649,8 +697,10 @@ public class ArchaeologyJournalScreen extends UiScreen {
     protected void rebuildWidgets() {
         int previousCatalogScrollOffset = this.catalogPanel != null
                 ? this.catalogPanel.getScrollOffset() : this.restoredCatalogScrollOffset;
-        // 重建 widget 前，同步工具栏搜索/排序状态到 ViewModel；目录面板紧接着会被替换，跳过对旧面板的装配
+        // 同步目录投影后统一提交视图，保留跨模式的目录偏移。
         this.rebuildViewModels(false);
+        scope.interaction().end(UiInteractionSession.EndReason.UNMOUNTED);
+        widgets.scopeExited(UiInteractionSession.EndReason.UNMOUNTED);
         this.widgets.clear();
 
         // 右页 chrome 由容器统一持有，根只注册实际控件。
@@ -697,20 +747,11 @@ public class ArchaeologyJournalScreen extends UiScreen {
         else this.catalogPanel.applyLayout(this.bookLayout);
         this.catalogPanel.setNavigation(this::handleCatalogNavigation);
         this.catalogPanel.setOnActivate(this::activateCatalog);
-        if (this.viewModel.isCategoryHome()) {
-            CatalogPanel.Mode prevMode = this.catalogPanel.mode();
-            this.catalogPanel.setCategories(this.viewModel.categoryViews());
-            if (isNewCatalogPanel || prevMode != CatalogPanel.Mode.CATEGORIES) {
-                this.catalogPanel.setScrollOffset(previousCatalogScrollOffset);
-            }
-            this.catalogPanel.ensureIndexVisible(this.categoryFocusIndex);
-        } else {
-            CatalogPanel.Mode prevMode = this.catalogPanel.mode();
-            this.catalogPanel.setEntries(this.viewModel.buildCatalogEntries());
-            if (isNewCatalogPanel || prevMode != CatalogPanel.Mode.TABLES) {
-                this.catalogPanel.setScrollOffset(previousCatalogScrollOffset);
-            }
-            this.catalogPanel.ensureIndexVisible(this.viewModel.selectedIndex());
+        CatalogPanel.Mode previousMode = catalogPanel.mode();
+        syncCatalogProjection();
+        if (isNewCatalogPanel || previousMode != catalogPanel.mode()) {
+            catalogPanel.setScrollOffset(previousCatalogScrollOffset);
+            catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
         }
         this.restoredCatalogScrollOffset = 0;
 
@@ -775,7 +816,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private UiControl createExternalLinkButton(int x, int y, UiIcon icon,
-                                             String url, String tooltipKey) {
+                                               String url, String tooltipKey) {
         UiControl button = JournalControls.iconButton(x, y, WELCOME_LINK_BUTTON_SIZE, icon,
                 Component.translatable(tooltipKey), () -> confirmExternalLink(url));
         return registerWidget(button);
@@ -807,16 +848,25 @@ public class ArchaeologyJournalScreen extends UiScreen {
         rebuildViewModels(true);
     }
 
-    // syncCatalogPanel=false 供 rebuildWidgets 使用：目录面板紧接着会被新实例替换，无需先装配旧实例
+    // 控件重建统一提交目录投影，普通数据刷新直接同步现有面板。
     private void rebuildViewModels(boolean syncCatalogPanel) {
         // 同步目录工具栏状态到 ViewModel（含防抖窗口内尚未提交的搜索草稿）
         this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
-        this.viewModel.rebuildViewModels(syncCatalogPanel ? this.catalogPanel : null);
+        this.viewModel.rebuildViewModels();
+        if (syncCatalogPanel) syncCatalogProjection();
         updateItemGridPanel();
         syncButtonState();
     }
 
+    private void syncCatalogProjection() {
+        if (catalogPanel == null) return;
+        if (viewModel.isCategoryHome()) catalogPanel.setCategories(viewModel.categoryViews());
+        else catalogPanel.setEntries(viewModel.buildCatalogEntries());
+        catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
+    }
+
     private void applySearchFocusRequest() {
+        content.syncMembers();
         if (!catalogToolbar.isSearchFocusRequested()) return;
         catalogToolbar.clearSearchFocusRequest();
         if (catalogToolbar.searchExpanded()) {
@@ -900,6 +950,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         applyButtonState(this.rightPage.getLogDetailPanel().getBackButton(), isLogDetailMode, isLogDetailMode);
         applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode, isLogDetailMode);
         applyButtonState(this.rightPage.getLogDetailPanel().getDeleteButton(), isLogDetailMode, isLogDetailMode);
+        content.syncMembers();
     }
 
     private static void applyButtonState(@Nullable UiControl btn, boolean visible, boolean active) {
@@ -1108,6 +1159,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             @Nullable ResourceLocation category,
             Set<ResourceLocation> expanded,
             int categoryFocusIndex
-    ) {}
-
+    ) {
     }
+
+}

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.meteosuikit.api.input.UiPointerHit;
@@ -25,7 +26,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** 考古信息面板 —— 玩家个人进度：进度条 + 已发现物品列表 + 模组来源 */
+/**
+ * 考古信息面板 —— 玩家个人进度：进度条 + 已发现物品列表 + 模组来源
+ */
 public final class DetailOverlayPanel implements PagePanel {
     private static final int BAR_HEIGHT = 12;
     // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
@@ -250,7 +253,8 @@ public final class DetailOverlayPanel implements PagePanel {
         return Optional.of(this.unlockedItems.get(itemIndex).item.stack());
     }
 
-    @Override public UiPointerHit hitTest(double x, double y) {
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
         ItemStack stack = getHoveredItemStack(x, y).orElse(ItemStack.EMPTY);
         if (stack.isEmpty()) return null;
         int leftX = this.layout.rightPageX() + 8;
@@ -302,7 +306,9 @@ public final class DetailOverlayPanel implements PagePanel {
         }
     }
 
-    /** Intro 列表使用的轻量物品引用，记录值来自当前选中表。 */
+    /**
+     * Intro 列表使用的轻量物品引用，记录值来自当前选中表。
+     */
     public record IntroItem(ResourceLocation id, Component displayName, LootResultSignature signature,
                             boolean unlocked, int count, boolean highlighted) {
         public ItemStack stack() {

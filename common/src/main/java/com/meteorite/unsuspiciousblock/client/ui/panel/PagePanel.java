@@ -1,15 +1,25 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
-/** 可分页面板的通用契约——统一 render、containsMouse 与分页操作 */
-public interface PagePanel extends com.meteorite.meteosuikit.api.input.UiInputTarget {
-    default void prepareUi() { }
+/**
+ * 可分页面板的通用契约——统一 render、containsMouse 与分页操作
+ */
+public interface PagePanel extends UiInputTarget {
+    default void prepareUi() {
+    }
+
     default void renderControls(GuiGraphics graphics, Font font,
-                                com.meteorite.meteosuikit.api.input.UiPointer pointer) { }
-    @Override default com.meteorite.meteosuikit.api.input.UiPointerHit hitTest(double x, double y) {
-        return containsMouse(x, y) ? com.meteorite.meteosuikit.api.input.UiPointerHit.leaf(this, x, y) : null;
+                                UiPointer pointer) {
+    }
+
+    @Override
+    default UiPointerHit hitTest(double x, double y) {
+        return containsMouse(x, y) ? UiPointerHit.leaf(this, x, y) : null;
     }
 
 

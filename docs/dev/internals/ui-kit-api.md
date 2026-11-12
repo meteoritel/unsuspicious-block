@@ -8,7 +8,7 @@
 
 | API 包 | 宿主消费场景 |
 |---|---|
-| `control` | `UiScreen` / `UiThemedScreen`、单多行文本编辑、列表与滚动视图/容器、分页状态、控件组、文档阅读控件、模态框与灯箱 |
+| `control` | `UiScreen` / `UiThemedScreen`、单多行文本编辑、列表、表单正文与滚动视图/容器、分页状态、控件组、文档阅读控件、模态框与灯箱 |
 | `input` | 成员树 `UiChildren`、输入作用域 `UiInputScope`、唯一路由器 `UiInputRouter`、容器桥 `UiInputBridge`、焦点与持续交互 |
 | `layout` / `geometry` | 排版文档 `UiDocument` 及其目标快照、行/网格几何计算、坐标变换与矩形 |
 | `style` | 主题上下文、语义文字配色（`UiTextScheme`）、控件与滑块外观、宿主皮肤与表面样式 |
@@ -22,7 +22,9 @@
 Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端内嵌配置见[架构总览](../foundation/architecture.md)的「Meteo's UI Kit 依赖环境」一节。
 
 - 当前开发消费 `dev` 版本坐标（在 `gradle.properties` 的 `meteos_ui_kit_version` 固定）：Fabric 元数据采用精确版本字符串，NeoForge 元数据与 Jar-in-Jar 采用 `[版本]` 精确区间并配置 `prefer`，锁定编译、内嵌与运行期完全一致。
-- `dev` 版本允许破坏性接口演进，升级时须先完成 UI Kit 自身构建与基线校验并发布新版本，再同步升级宿主并核对最终打包 JAR 的嵌套依赖与元数据（库中的开发样例不得打入宿主发布包）。
+- `dev` 版本允许破坏性接口演进，升级时须先完成 UI Kit 自身源码、行为、公开面、JavaDoc 与独立样例校验，发布后核对 publication 和各端 Maven 消费，再同步升级宿主并核对最终打包 JAR 的嵌套依赖与元数据（库中的开发样例不得打入宿主发布包）。
+
+本地供应使用专用 Maven；空仓库从对应源码恢复，隔离缓存核对消费来源。完整流程和不可覆盖规则由 kit 的 `tools/README.md` 维护。
 
 ## 3. 接入规范
 
@@ -35,7 +37,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
 - **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 根据实际 framebuffer 与原版 GUI 倍率选择整数物理像素倍率，统一 GUI 与书页逻辑坐标的正逆换算；绘制、鼠标位置和拖动增量共用同一比例。像素不足 `1×` 时连续缩小以保留访问能力。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **Tooltip 与裁剪**：普通与物品提示统一经过 `UiPointerHit.renderTooltip` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。
-- **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置表单由 `UiFormLayout` 驱动排版与焦点自动滚动（底部固定操作栏留在滚动视口之外）。
+- **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置、日志保留和管理详情使用 `UiFormBody` 装配真实字段、标签、动作和自绘说明。正文拥有排版、滚动与裁剪，宿主将 `reveal(current)` 接入已有焦点 listener；底部固定操作栏留在正文之外。短正文固定预留轨道带宽，内容、自然高度或字体资源改变后调用 `invalidateLayout()`。
 
 ### 3.2 模态框与持续交互
 
@@ -60,7 +62,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 ### 4.1 布局与帧采集
 
-`UiScreen.layoutNodes()` 从当前活动输入树提供原版 GUI 坐标的只读快照，包含稳定 key、原始矩形和有效裁剪。宿主为表、日志及固定控件提供业务身份；未解锁条目遵守原有隐藏规则。点击前使用 `isLayoutTarget` 校验实际 hitTest，快照查询本身不准备布局或执行业务动作。
+`UiScreen.layoutNodes()` 从当前活动输入树提供原版 GUI 坐标的只读快照，包含稳定 key、原始矩形和有效裁剪。`UiListView` 直接贡献列表根与可见行，管理树通过 `TreeRow.key()`、语言列表通过语言码提供行身份；行 target 仍为实际列表。宿主为自绘目录、日志及固定控件提供业务身份；未解锁条目遵守原有隐藏规则。实际绘制后读取快照，点击前使用 `isLayoutTarget` 校验真实 hitTest；查询不触发业务准备或业务动作。
 
 `UiFrameCapture.capture(Path)` 接收客户端主线程请求，在后续完成帧采集并异步写入原尺寸 PNG。请求绑定当前世界、Screen 与窗口尺寸；采样前上下文变化、重复请求、目标已存在或停止会明确结清。库拥有帧生命周期与图像资源，AutoJS 调度、业务 readiness、断言和报告归[核心探针](../../../tools/probes/README.md)。
 

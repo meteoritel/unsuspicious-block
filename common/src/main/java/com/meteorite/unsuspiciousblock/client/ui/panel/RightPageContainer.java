@@ -1,20 +1,17 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState.PagePositions;
-import java.util.Map;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
+import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState.PagePositions;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -22,44 +19,53 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-import java.util.Locale;
-import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
-import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-/** 右侧页面容器 —— 通过四枚书签 Tab 切换介绍信息/考古信息/日志/场景 */
-public final class RightPageContainer implements UiInputTarget {
+/**
+ * 右侧页面容器 —— 通过四枚书签 Tab 切换介绍信息/考古信息/日志/场景
+ */
+public final class RightPageContainer implements UiInputContainer {
     public void prepareUi() {
         activePanel().prepareUi();
         syncPageChrome();
     }
+
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
         activePanel().renderControls(graphics, font, pointer);
     }
-    @Override public void addFocusTargets(Consumer<UiFocusTarget> out) { activePanel().addFocusTargets(out); }
-    @Override public long focusRevision() { return activePanel().focusRevision() * 31 + activeTab.ordinal() * 2L + logMode.ordinal(); }
-    @Override public UiPointerHit hitTest(double x, double y) {
-        UiPointerHit hit = activePanel().hitTest(x, y);
-        return hit == null ? null : hit.within(this);
+
+    private final UiChildren<UiInputTarget> members = new UiChildren<>();
+    private final UiInputScope scope;
+
+    /**
+     * 活动页是实际输入成员，chrome 继续由根登记。
+     */
+    @Override
+    public UiChildren<UiInputTarget> inputChildren() {
+        return members;
     }
-    @Override public boolean mousePressed(UiInputContext context) { return activePanel().mousePressed(context); }
-    @Override public boolean mouseReleased(UiInputContext context) { return activePanel().mouseReleased(context); }
-    @Override public boolean keyPressed(int key, int scan, int modifiers) { return activePanel().keyPressed(key, scan, modifiers); }
-    @Override public boolean keyReleased(int key, int scan, int modifiers) { return activePanel().keyReleased(key, scan, modifiers); }
-    @Override public boolean charTyped(char value, int modifiers) { return activePanel().charTyped(value, modifiers); }
-    @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return activePanel().mouseScrolled(context, x, y); }
+
+    private void syncActiveMember() {
+        PagePanel next = activePanel();
+        if (!members.isEmpty() && members.getFirst() == next) return;
+        if (!members.isEmpty()) {
+            scope.interaction().end(UiInteractionSession.EndReason.UNMOUNTED);
+            members.scopeExited(UiInteractionSession.EndReason.UNMOUNTED);
+        }
+        members.clear();
+        members.add(next);
+    }
 
     // 书签尺寸与间距
     private static final int BOOKMARK_HEIGHT = 22;
     private static final int BOOKMARK_GAP = 4;
     private static final int BOOKMARK_TOP_OFFSET = 20; // 距右页顶部偏移
 
-    public enum Tab { INTRO, ARCHAEOLOGY, LOG, SCENARIO }
+    public enum Tab {INTRO, ARCHAEOLOGY, LOG, SCENARIO}
 
-    private enum LogMode { LIST, DETAIL }
+    private enum LogMode {LIST, DETAIL}
 
     private final ScenarioPanel scenarioPanel;
     private final JournalBookBackground.BookLayout layout;
@@ -75,7 +81,9 @@ public final class RightPageContainer implements UiInputTarget {
     private boolean chromeAvailable;
 
     private record PageDescriptor(Tab tab, Supplier<PagePanel> content,
-            int indicatorOffset, boolean alwaysIndicator, Runnable enter, Runnable leave, UiControl bookmark) {}
+                                  int indicatorOffset, boolean alwaysIndicator, Runnable enter, Runnable leave,
+                                  UiControl bookmark) {
+    }
 
     @Nullable
     private ResourceLocation currentTableId;
@@ -86,7 +94,8 @@ public final class RightPageContainer implements UiInputTarget {
     private final JournalOverlays overlays;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout,
-                              JournalOverlays overlays) {
+                              JournalOverlays overlays, UiInputScope scope) {
+        this.scope = scope;
         this.layout = layout;
         this.overlays = overlays;
         this.scenarioPanel = new ScenarioPanel(layout);
@@ -109,7 +118,8 @@ public final class RightPageContainer implements UiInputTarget {
         this.logDetailPanel = new LogDetailPanel(layout);
 
         PagePanel archaeology = new ArchaeologyPage(gridPanel, scenarioPanel);
-        Runnable noAction = () -> {};
+        Runnable noAction = () -> {
+        };
         Runnable leaveLog = () -> logPanel.setBatchSelectionMode(false);
         this.pages = List.of(
                 page(Tab.INTRO, () -> detailPanel, JournalLayout.INTRO_PAGE_INDICATOR_Y, false,
@@ -128,6 +138,7 @@ public final class RightPageContainer implements UiInputTarget {
                     overlays, currentTableId, target);
         });
         logPanel.setOnOpenEntry(entry -> restoreLogSelection(entry.entryId(), true));
+        syncActiveMember();
     }
 
     private static Component tabLabel(String name) {
@@ -135,7 +146,7 @@ public final class RightPageContainer implements UiInputTarget {
     }
 
     private PageDescriptor page(Tab tab, Supplier<PagePanel> content, int indicatorOffset,
-            boolean alwaysIndicator, Component label, Runnable enter, Runnable leave) {
+                                boolean alwaysIndicator, Component label, Runnable enter, Runnable leave) {
         UiControl bookmark = JournalControls.bookmark(layout.rightPageX() + layout.rightPageWidth(),
                 layout.rightPageY() + BOOKMARK_TOP_OFFSET + tab.ordinal() * (BOOKMARK_HEIGHT + BOOKMARK_GAP),
                 label, () -> setActiveTab(tab));
@@ -143,7 +154,9 @@ public final class RightPageContainer implements UiInputTarget {
         return new PageDescriptor(tab, content, indicatorOffset, alwaysIndicator, enter, leave, bookmark);
     }
 
-    private PageDescriptor activePage() { return pages.get(activeTab.ordinal()); }
+    private PageDescriptor activePage() {
+        return pages.get(activeTab.ordinal());
+    }
 
     private void syncBookmarks() {
         pages.forEach(page -> page.bookmark().setSelected(page.tab() == activeTab));
@@ -165,7 +178,10 @@ public final class RightPageContainer implements UiInputTarget {
             overlays.close();
             ScenarioSimulationClientState.cancelAssist();
             gridPanel.setActiveTag(null);
-            gridPanel.resetPage(); detailPanel.setPage(0); logPanel.setPage(0); logDetailPanel.setPage(0);
+            gridPanel.resetPage();
+            detailPanel.setPage(0);
+            logPanel.setPage(0);
+            logDetailPanel.setPage(0);
             logPanel.setBatchSelectionMode(false);
             restoreLogSelection(null, false);
         }
@@ -190,11 +206,6 @@ public final class RightPageContainer implements UiInputTarget {
             this.logDetailPanel.setEntry(null, null);
         }
         syncPageChrome();
-    }
-
-    /** 当前右页贡献实际输入内容；chrome 由根已有成员树导出。 */
-    public List<UiLayoutNode> layoutNodes() {
-        return activePage().content().get() instanceof UiLayoutSource source ? source.layoutNodes() : List.of();
     }
 
     public List<UiControl> chromeControls() {
@@ -222,7 +233,9 @@ public final class RightPageContainer implements UiInputTarget {
         }
     }
 
-    /** 获取当前活跃的可分页面板 */
+    /**
+     * 获取当前活跃的可分页面板
+     */
     private PagePanel activePanel() {
         return activePage().content().get();
     }
@@ -238,28 +251,45 @@ public final class RightPageContainer implements UiInputTarget {
         }
     }
 
-    /** 右页完整阅读快照，持久投影由 JournalReadingState 明确裁剪。 */
+    /**
+     * 右页完整阅读快照，持久投影由 JournalReadingState 明确裁剪。
+     */
     public record ReadingState(Tab tab, PagePositions pages, @Nullable ResourceLocation activeItemTag,
-            boolean logDetail, @Nullable UUID logEntryId, boolean logBatchSelectionMode,
-            List<UUID> selectedLogEntryIds, Map<String, Integer> conditionOffsets) {
-        /** 集合冻结后可跨布局重建复用。 */
-        public ReadingState { selectedLogEntryIds = List.copyOf(selectedLogEntryIds); conditionOffsets = Map.copyOf(conditionOffsets); }
-        /** 默认阅读起点。 */
-        public static ReadingState empty() { return new ReadingState(Tab.INTRO, PagePositions.empty(), null, false, null, false, List.of(), Map.of()); }
+                               boolean logDetail, @Nullable UUID logEntryId, boolean logBatchSelectionMode,
+                               List<UUID> selectedLogEntryIds, Map<String, Integer> conditionOffsets) {
+        /**
+         * 集合冻结后可跨布局重建复用。
+         */
+        public ReadingState {
+            selectedLogEntryIds = List.copyOf(selectedLogEntryIds);
+            conditionOffsets = Map.copyOf(conditionOffsets);
+        }
+
+        /**
+         * 默认阅读起点。
+         */
+        public static ReadingState empty() {
+            return new ReadingState(Tab.INTRO, PagePositions.empty(), null, false, null, false, List.of(), Map.of());
+        }
     }
 
-    /** 从实际内容捕获所有右页阅读位置。 */
+    /**
+     * 从实际内容捕获所有右页阅读位置。
+     */
     public ReadingState captureReadingState() {
         return new ReadingState(activeTab, new PagePositions(detailPanel.getPage(), gridPanel.getPage(), logPanel.getPage(), logDetailPanel.getPage()),
                 gridPanel.getActiveTag(), isShowingLogDetail(), selectedLogEntryId, logPanel.isBatchSelectionMode(),
                 logPanel.getSelectedEntryIds(), scenarioDetailPanel.captureConditionOffsets());
     }
 
-    /** 内容准备后先恢复身份，再恢复页号与偏移，最后更新 chrome。 */
+    /**
+     * 内容准备后先恢复身份，再恢复页号与偏移，最后更新 chrome。
+     */
     public void restoreReadingState(ReadingState state) {
         setActiveItemTag(state.activeItemTag());
         restoreLogSelection(state.logEntryId(), state.logDetail());
-        detailPanel.setPage(state.pages().intro()); gridPanel.setPage(state.pages().grid());
+        detailPanel.setPage(state.pages().intro());
+        gridPanel.setPage(state.pages().grid());
         logPanel.setPage(state.pages().log());
         logDetailPanel.setPage(isShowingLogDetail() ? state.pages().logDetail() : 0);
         scenarioDetailPanel.restoreConditionOffsets(state.conditionOffsets());
@@ -309,7 +339,6 @@ public final class RightPageContainer implements UiInputTarget {
     }
 
 
-
     public void setActiveItemTag(@Nullable ResourceLocation tagId) {
         this.gridPanel.setActiveTag(tagId);
         syncPageChrome();
@@ -328,7 +357,6 @@ public final class RightPageContainer implements UiInputTarget {
     }
 
 
-
     // 网格页的「条件栏」打开条件勾选浮层，也可在浮层内一键同步状态或切换参数。
     private void openSceneOverlay() {
         if (currentTableId == null) return;
@@ -340,6 +368,7 @@ public final class RightPageContainer implements UiInputTarget {
     }
 
     private void syncPageChrome() {
+        syncActiveMember();
         int indicatorY = layout.rightPageY() + activePage().indicatorOffset();
         this.pageIndicator.setTextY(indicatorY);
         PagePanel panel = activePanel();
@@ -358,45 +387,71 @@ public final class RightPageContainer implements UiInputTarget {
         pageControls.get(1).setEnabled(hasPages && panel.getPage() < panel.pageCount() - 1);
     }
 
-    /** 网格与场景栏共享一个 PagePanel；命中优先级与持续输入仍交现有 kit。 */
-    private record ArchaeologyPage(ItemGridPanel grid, ScenarioPanel scenario) implements PagePanel, UiLayoutSource {
-        @Override public List<UiLayoutNode> layoutNodes() {
-            return Stream.concat(scenario.layoutNodes().stream(), grid.layoutNodes().stream()).toList();
+    /**
+     * 网格与场景栏共享一个 PagePanel；命中优先级与持续输入仍交现有 kit。
+     */
+    private static final class ArchaeologyPage implements PagePanel, UiInputContainer {
+        private final ItemGridPanel grid;
+        private final ScenarioPanel scenario;
+        private final UiChildren<UiInputTarget> members = new UiChildren<>();
+
+        private ArchaeologyPage(ItemGridPanel grid, ScenarioPanel scenario) {
+            this.grid = grid;
+            this.scenario = scenario;
+            members.addAll(List.of(grid, scenario));
         }
-        @Override public void prepareUi() { grid.prepareUi(); scenario.prepareUi(); }
-        @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
+
+        @Override
+        public UiChildren<UiInputTarget> inputChildren() {
+            return members;
+        }
+
+        @Override
+        public void prepareUi() {
+            grid.prepareUi();
+            scenario.prepareUi();
+        }
+
+        @Override
+        public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
             grid.render(graphics, font, mouseX, mouseY);
         }
-        @Override public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+
+        @Override
+        public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
             grid.renderControls(graphics, font, pointer);
             scenario.renderControls(graphics, font, pointer);
         }
-        @Override public void addFocusTargets(Consumer<UiFocusTarget> out) {
-            grid.addFocusTargets(out); scenario.addFocusTargets(out);
+
+        @Override
+        public UiPointerHit hitTest(double x, double y) {
+            UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
+            return hit == null && grid.containsMouse(x, y) ? UiPointerHit.leaf(this, x, y) : hit;
         }
-        @Override public long focusRevision() { return grid.focusRevision() * 31 + 17 * scenario.focusRevision(); }
-        @Override public UiPointerHit hitTest(double x, double y) {
-            UiPointerHit hit = scenario.hitTest(x, y);
-            if (hit == null) hit = grid.hitTest(x, y);
-            if (hit == null && grid.containsMouse(x, y)) return UiPointerHit.leaf(this, x, y);
-            return hit == null ? null : hit.within(this);
+
+        @Override
+        public boolean containsMouse(double x, double y) {
+            return grid.containsMouse(x, y);
         }
-        @Override public boolean containsMouse(double x, double y) { return grid.containsMouse(x, y); }
-        @Override public boolean mousePressed(UiInputContext context) {
-            return context.hits(scenario) ? scenario.mousePressed(context) : grid.mousePressed(context);
+
+        @Override
+        public int pageCount() {
+            return grid.pageCount();
         }
-        @Override public boolean mouseReleased(UiInputContext context) {
-            return context.hits(scenario) ? scenario.mouseReleased(context) : grid.mouseReleased(context);
+
+        @Override
+        public int getPage() {
+            return grid.getPage();
         }
-        @Override public boolean keyPressed(int key, int scan, int modifiers) {
-            return grid.keyPressed(key, scan, modifiers) || scenario.keyPressed(key, scan, modifiers);
+
+        @Override
+        public void setPage(int page) {
+            grid.setPage(page);
         }
-        @Override public boolean keyReleased(int key, int scan, int modifiers) { return grid.keyReleased(key, scan, modifiers); }
-        @Override public boolean charTyped(char value, int modifiers) { return grid.charTyped(value, modifiers); }
-        @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return grid.mouseScrolled(context, x, y); }
-        @Override public int pageCount() { return grid.pageCount(); }
-        @Override public int getPage() { return grid.getPage(); }
-        @Override public void setPage(int page) { grid.setPage(page); }
-        @Override public void changePage(int delta) { grid.changePage(delta); }
+
+        @Override
+        public void changePage(int delta) {
+            grid.changePage(delta);
+        }
     }
 }

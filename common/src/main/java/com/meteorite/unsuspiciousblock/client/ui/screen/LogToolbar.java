@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogToolbar;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.panel.LogPanel;
@@ -29,7 +30,8 @@ public class LogToolbar {
     private UiControl groupBtn;
     private UiControl batchSelectBtn;
     private UiControl executeBatchBtn;
-    private Runnable onToggleBatch = () -> { };
+    private Runnable onToggleBatch = () -> {
+    };
     private final List<UiControl> toolbarButtons = new ArrayList<>();
 
     public LogToolbar() {
@@ -56,7 +58,9 @@ public class LogToolbar {
 
     // —— 事件处理 ——
 
-    /** 切换日志排序方向 */
+    /**
+     * 切换日志排序方向
+     */
     public void toggleSortDirection(LogPanel logPanel) {
         this.sortDescending = !this.sortDescending;
         logPanel.setSortDescending(this.sortDescending);
@@ -66,7 +70,9 @@ public class LogToolbar {
         }
     }
 
-    /** 循环切换分组方式 */
+    /**
+     * 循环切换分组方式
+     */
     public void cycleGroupMode(LogPanel logPanel) {
         this.groupMode = this.groupMode.next();
         logPanel.setGroupMode(this.groupMode);
@@ -201,7 +207,9 @@ public class LogToolbar {
         screen.registerWidget(button);
     }
 
-    /** 同步日志工具栏 widget 可见性 */
+    /**
+     * 同步日志工具栏 widget 可见性
+     */
     public void syncVisibility(boolean toolbarVisible, boolean batchSelectionMode, int selectedEntryCount) {
         this.toolbarButtons.forEach(button -> button.setVisible(toolbarVisible));
         if (batchSelectBtn != null) {

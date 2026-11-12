@@ -1,5 +1,6 @@
-package com.meteorite.unsuspiciousblock.client.ui.panel;
+package com.meteorite.unsuspiciousblock.client.ui.journal.catalog;
 
+import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
 import com.meteorite.meteosuikit.api.control.UiScrollView;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.UiFocusState;
@@ -28,7 +29,6 @@ import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -46,18 +46,48 @@ import java.util.function.IntPredicate;
  * 推进；对外持久化/快照仍以条目索引为单位。</p>
  */
 public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.Target, UiLayoutSource {
-    private BiConsumer<ClickResult, Boolean> onActivate = (click, shift) -> { };
+    private BiConsumer<ClickResult, Boolean> onActivate = (click, shift) -> {
+    };
     private final UiFocusState focus = new UiFocusState();
     private IntPredicate navigate = key -> false;
-    public void setNavigation(IntPredicate navigate) { this.navigate = navigate; }
-    @Override public UiFocusState focusState() { return focus; }
-    @Override public UiRect bounds() { return view.viewport(); }
-    @Override public Component accessibleName() { return Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"); }
-    @Override public boolean activate() { return navigate.test(GLFW.GLFW_KEY_ENTER); }
-    @Override public boolean keyPressed(int key, int scan, int modifiers) { return isFocused() && navigate.test(key); }
+
+    public void setNavigation(IntPredicate navigate) {
+        this.navigate = navigate;
+    }
+
+    @Override
+    public UiFocusState focusState() {
+        return focus;
+    }
+
+    @Override
+    public UiRect bounds() {
+        return view.viewport();
+    }
+
+    @Override
+    public Component accessibleName() {
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.title");
+    }
+
+    @Override
+    public boolean activate() {
+        return navigate.test(GLFW.GLFW_KEY_ENTER);
+    }
+
+    @Override
+    public boolean keyPressed(int key, int scan, int modifiers) {
+        return isFocused() && navigate.test(key);
+    }
+
     private ClickResult pressed = ClickResult.NONE;
-    public void setOnActivate(BiConsumer<ClickResult, Boolean> action) { onActivate = action; }
-    @Override public UiPointerHit hitTest(double x, double y) {
+
+    public void setOnActivate(BiConsumer<ClickResult, Boolean> action) {
+        onActivate = action;
+    }
+
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
         if (!containsMouse(x, y)) return null;
         UiPointerHit thumb = view.hitTest(x, y);
         if (thumb != null) return thumb.within(this);
@@ -65,7 +95,9 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         UiPointerHit hit = UiPointerHit.leaf(this, x, y);
         return index < 0 ? hit : hit.withRow(this, index, index, view.viewport());
     }
-    @Override public boolean mousePressed(UiInputContext context) {
+
+    @Override
+    public boolean mousePressed(UiInputContext context) {
         if (view.mousePressed(context)) {
             syncScrollImmediate();
             return true;
@@ -76,15 +108,23 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         context.scope().interaction().begin(this, UiInteractionSession.Source.POINTER, 0);
         return true;
     }
-    @Override public boolean mouseReleased(UiInputContext context) {
+
+    @Override
+    public boolean mouseReleased(UiInputContext context) {
         ClickResult clicked = handleClick(context.pointerX(), context.pointerY());
         ClickResult original = pressed;
         pressed = ClickResult.NONE;
         if (original.index() >= 0 && original.equals(clicked)) onActivate.accept(clicked, context.shift());
         return true;
     }
-    @Override public void interactionEnded(UiInteractionSession.EndReason reason) { pressed = ClickResult.NONE; }
-    @Override public boolean mouseScrolled(UiInputContext context, double sx, double sy) {
+
+    @Override
+    public void interactionEnded(UiInteractionSession.EndReason reason) {
+        pressed = ClickResult.NONE;
+    }
+
+    @Override
+    public boolean mouseScrolled(UiInputContext context, double sx, double sy) {
         if (sy == 0.0 || this.view.maxOffset() <= 0) {
             return false;
         }
@@ -142,7 +182,9 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         syncScrollImmediate();
     }
 
-    /** 每渲染帧推进一次平滑滚动阻尼插值；拖动滚动条时直接跟随真实位置。 */
+    /**
+     * 每渲染帧推进一次平滑滚动阻尼插值；拖动滚动条时直接跟随真实位置。
+     */
     public void advanceFrame() {
         long now = Util.getMillis();
         if (this.view.isDragging()) {
@@ -158,7 +200,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
             this.view.setOffset((int) Math.round(this.animatedOffset));
             return;
         }
-        double dt = Math.min(0.1, Math.max(0.0, (now - this.lastScrollFrameMs) / 1000.0));
+        double dt = Math.clamp((now - this.lastScrollFrameMs) / 1000.0, 0.0, 0.1);
         this.lastScrollFrameMs = now;
         double delta = this.targetOffset - this.animatedOffset;
         if (Math.abs(delta) <= SMOOTH_SCROLL_SNAP_PX) {
@@ -202,8 +244,11 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         return this.mode;
     }
 
-    /** 使用绘制时同一视口像素区间与展示语义，未解锁表不导出真实身份。 */
-    @Override public List<UiLayoutNode> layoutNodes() {
+    /**
+     * 使用绘制时同一视口像素区间与展示语义，未解锁表不导出真实身份。
+     */
+    @Override
+    public List<UiLayoutNode> layoutNodes() {
         List<UiLayoutNode> nodes = new ArrayList<>();
         int count = mode == Mode.CATEGORIES ? categories.size() : entries.size();
         int[] range = visibleRange(count);
@@ -419,7 +464,9 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         graphics.fill(rect.right() - 1, rect.y(), rect.right(), rect.bottom(), color);
     }
 
-    private int categoryLeft() { return layout.leftPageX() + (layout.leftPageWidth() - CATEGORY_GRID_WIDTH) / 2; }
+    private int categoryLeft() {
+        return layout.leftPageX() + (layout.leftPageWidth() - CATEGORY_GRID_WIDTH) / 2;
+    }
 
     private UiRect categoryRect(int index) {
         UiRect cell = CATEGORY_METRICS.cellBounds(index);
@@ -484,20 +531,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         return JournalLayout.CATALOG_TEXTURE_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_GAP - 1;
     }
 
-    public enum Mode { CATEGORIES, TABLES }
-
-    public record CategoryEntryData(ResourceLocation id, Component name, Component description,
-                                    ItemStack icon, int unlocked, int total) {
-    }
-
-    public record CatalogEntryData(ResourceLocation id, Component displayName, boolean unlocked, boolean favorite,
-                                   int depth, boolean child, boolean hasChildren, boolean expanded,
-                                   List<ResourceLocation> parentPath, List<ResourceLocation> categoryIds) {
-        public CatalogEntryData {
-            parentPath = List.copyOf(parentPath);
-            categoryIds = List.copyOf(categoryIds);
-        }
-    }
+    public enum Mode {CATEGORIES, TABLES}
 
     public record ClickResult(int index, boolean toggleExpansion) {
         public static final ClickResult NONE = new ClickResult(-1, false);

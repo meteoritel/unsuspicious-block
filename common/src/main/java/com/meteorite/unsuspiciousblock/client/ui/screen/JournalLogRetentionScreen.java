@@ -2,7 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
-import com.meteorite.meteosuikit.api.control.UiFocusFollow;
+import com.meteorite.meteosuikit.api.layout.UiFormLayout;
+import com.meteorite.meteosuikit.api.text.TextMeasurer;
 
 import com.meteorite.meteosuikit.api.input.UiAction;
 
@@ -16,6 +17,7 @@ import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLog
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,14 +25,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** 日志保留与一次性清理设置；数值草稿在明确提交时按对应业务范围校验。 */
+/**
+ * 日志保留与一次性清理设置；数值草稿在明确提交时按对应业务范围校验。
+ */
 public final class JournalLogRetentionScreen extends UiThemedScreen {
     private static final String PREFIX = "screen.unsuspiciousblock.archaeology_journal.log_retention.";
     private final Screen parent;
     private final ResourceLocation tableId;
     private final UiChildren<UiInputTarget> content = new UiChildren<>();
     private final UiInputScope scope = new UiInputScope(content);
-    private final UiScrollView scroll = new UiScrollView();
+    private final UiFormBody body;
     private final UiTextInput retention;
     private final UiTextInput recent;
     private final UiControl apply = new UiControl();
@@ -45,15 +49,53 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
         int limit = Math.max(1, initialRetentionLimit);
         retention = numericField(limit);
         recent = numericField(Math.clamp(currentEntryCount, 0, limit));
-        UiChildren<UiInputTarget> fields = new UiChildren<>();
-        fields.addAll(List.of(retention, apply, recent, prune));
-        UiScrollContainer body = new UiScrollContainer(scroll, fields);
+        body = new UiFormBody(theme(), TextMeasurer.of(Minecraft.getInstance().font));
+        body.add(Component.translatable(PREFIX + "limit_label"), retention, 20);
+        body.add(Component.empty(), apply, 20);
+        body.add(Component.translatable(PREFIX + "keep_recent_label"), recent, 20);
+        body.add(Component.empty(), prune, 20);
+        ProtectionNotice notice = new ProtectionNotice();
+        body.add(Component.empty(), notice, notice, List.of());
         content.addAll(List.of(body, done));
         scope.setEscape(this::onClose);
-        scope.focus().setListener(new UiFocusFollow(scroll,
-                target -> target == retention || target == apply || target == recent || target == prune,
-                target -> new UiRect(0, target.bounds().y() - scroll.viewport().y() + scroll.offset() - 13,
-                        target.bounds().width(), target.bounds().height() + 13), this::layoutUi));
+        scope.focus().setListener((previous, current) -> body.reveal(current));
+    }
+
+    private static final class ProtectionNotice implements UiWidget, UiFormLayout.Control {
+        private final Component message = Component.translatable(PREFIX + "note_protection");
+        private UiRect bounds = new UiRect(0, 0, 0, 0);
+        private List<Component> lines = List.of();
+
+        @Override
+        public int preferredWidth(int width) {
+            return width;
+        }
+
+        @Override
+        public int measureHeight(int width) {
+            TextMeasurer text = TextMeasurer.of(Minecraft.getInstance().font);
+            lines = text.wrap(message, width);
+            return lines.size() * (text.lineHeight() + 2);
+        }
+
+        @Override
+        public UiRect bounds() {
+            return bounds;
+        }
+
+        @Override
+        public void setBounds(int x, int y, int width, int height) {
+            bounds = new UiRect(x, y, width, height);
+        }
+
+        @Override
+        public void render(GuiGraphics graphics, Font font, UiPointer pointer) {
+            int y = bounds.y();
+            for (Component line : lines) {
+                graphics.drawString(font, line, bounds.x(), y, UiTextScheme.DARK.accent(), false);
+                y += font.lineHeight + 2;
+            }
+        }
     }
 
     private UiTextInput numericField(int value) {
@@ -62,7 +104,8 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
                 .setValue(Integer.toString(value)).setOnCancel(this::onClose);
     }
 
-    @Override protected void init() {
+    @Override
+    protected void init() {
         configure(apply, Component.translatable(PREFIX + "apply_limit"),
                 () -> submit(UpdateJournalLogRetentionPayload.Action.SET_LIMIT, retention, 1));
         configure(prune, Component.translatable(PREFIX + "prune_now"),
@@ -76,21 +119,17 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
         control.configure(font, label, null, List.of(), action);
     }
 
-    @Override protected UiInputScope inputScope() { return scope; }
+    @Override
+    protected UiInputScope inputScope() {
+        return scope;
+    }
 
-    @Override protected void layoutUi() {
+    @Override
+    protected void layoutUi() {
         int bodyWidth = Math.clamp(width - 24, 0, 300);
-        scroll.setViewport((width - bodyWidth) / 2, 50, bodyWidth, Math.max(0, height - 100));
-        scroll.setContentHeight(154);
-        scroll.setScrollbarVisible(scroll.maxOffset() > 0);
+        body.setBounds((width - bodyWidth) / 2, 50, bodyWidth, Math.max(0, height - 100));
         int fieldWidth = Math.min(bodyWidth, 112);
-        int fieldX = (width - fieldWidth) / 2;
-        int top = scroll.toScreenY(0);
-        retention.setBounds(fieldX, top + 16, fieldWidth, 20);
-        apply.setBounds(fieldX, top + 40, fieldWidth, 20);
-        recent.setBounds(fieldX, top + 86, fieldWidth, 20);
-        prune.setBounds(fieldX, top + 110, fieldWidth, 20);
-        done.setBounds(fieldX, height - 30, fieldWidth, 20);
+        done.setBounds((width - fieldWidth) / 2, height - 30, fieldWidth, 20);
     }
 
     private void submit(UpdateJournalLogRetentionPayload.Action action, UiTextInput field, int minimum) {
@@ -109,30 +148,26 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
         onClose();
     }
 
-    @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
+    @Override
+    public void onClose() {
+        Minecraft.getInstance().setScreen(parent);
+    }
 
-    @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
+    @Override
+    protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
         graphics.drawCenteredString(font, title, width / 2, 18, UiTextScheme.DARK.title());
         graphics.drawCenteredString(font, Component.translatable(PREFIX + "table", tableId.toString()),
                 width / 2, 33, UiTextScheme.DARK.label());
         var pointer = scope.pointer(x, y).resolve(content);
-        UiRect viewport = scroll.viewport();
-        graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
-        graphics.drawCenteredString(font, Component.translatable(PREFIX + "limit_label"),
-                width / 2, retention.bounds().y() - 13, UiTextScheme.DARK.body());
-        graphics.drawCenteredString(font, Component.translatable(PREFIX + "keep_recent_label"),
-                width / 2, recent.bounds().y() - 13, UiTextScheme.DARK.body());
-        graphics.drawCenteredString(font, Component.translatable(PREFIX + "note_protection"),
-                width / 2, prune.bounds().bottom() + 6, UiTextScheme.DARK.accent());
-        var bodyPointer = pointer.restrict(viewport.contains(x, y));
-        for (UiWidget widget : List.of(retention, apply, recent, prune)) widget.render(graphics, font, bodyPointer);
-        graphics.disableScissor();
-        scroll.renderScrollbar(graphics, theme());
+        body.render(graphics, font, pointer);
         done.render(graphics, font, pointer);
         if (validationMessage != null) graphics.drawCenteredString(font, validationMessage,
                 width / 2, height - 13, UiTextScheme.DARK.negative());
     }
 
-    @Override public boolean isPauseScreen() { return false; }
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
 
 }

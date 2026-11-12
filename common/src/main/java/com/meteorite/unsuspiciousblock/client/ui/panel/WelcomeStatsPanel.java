@@ -7,6 +7,8 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
+import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import net.minecraft.client.Minecraft;
@@ -34,7 +36,7 @@ import java.util.Map;
 /**
  * 考古笔记分类首页的信息面板，负责汇总并渲染玩家统计与最近发现。
  */
-public final class WelcomeStatsPanel implements UiInputTarget {
+public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     // 与语义色表同值，直接引用以消除重复字面量（值未变）
     private static final int TITLE_COLOR = UiTextScheme.PARCHMENT.title();
     // 次要标签：原字面量 0x8A7358 在书页底色 #E8DCBC 上只有 3.29:1，改引语义色表的 LABEL（5.03:1）。
@@ -123,17 +125,46 @@ public final class WelcomeStatsPanel implements UiInputTarget {
         graphics.fill(separatorLeft, secondSeparatorY, separatorRight, secondSeparatorY + 1, SEPARATOR_COLOR);
     }
 
-    private int recentY(Font font) { return layout.rightPageY() + 83 + font.lineHeight; }
-    private UiGridMetrics itemGrid() { return new UiGridMetrics(Math.max(1, (layout.rightPageWidth() - 24) / (ITEM_SIZE + ITEM_GAP)), ITEM_SIZE, ITEM_SIZE, ITEM_GAP, 2); }
-    @Override public UiPointerHit hitTest(double x, double y) {
+    private int recentY(Font font) {
+        return layout.rightPageY() + 83 + font.lineHeight;
+    }
+
+    private UiGridMetrics itemGrid() {
+        return new UiGridMetrics(Math.max(1, (layout.rightPageWidth() - 24) / (ITEM_SIZE + ITEM_GAP)), ITEM_SIZE, ITEM_SIZE, ITEM_GAP, 2);
+    }
+
+    private UiRect itemBounds(int index, Font font) {
+        UiRect cell = itemGrid().cellBounds(index);
+        return new UiRect(layout.rightPageX() + 12 + cell.x(), recentY(font) + 36 + cell.y(), ITEM_SIZE, ITEM_SIZE);
+    }
+
+    /**
+     * 欢迎页实际物品位置随同一输入成员贡献，展示行不声明独立动作。
+     */
+    @Override
+    public List<UiLayoutNode> layoutNodes() {
+        refreshSnapshot();
+        Font font = Minecraft.getInstance().font;
+        List<UiLayoutNode> items = new ArrayList<>();
+        for (int index = 0; index < latestItems.size(); index++) {
+            UiRect cell = itemBounds(index, font);
+            items.add(new UiLayoutNode(UiLayoutNode.Kind.ROW, cell, latestItems.get(index).getHoverName(),
+                    0, 0, true, true, List.of()));
+        }
+        UiRect page = new UiRect(layout.rightPageX(), layout.rightPageY(), layout.rightPageWidth(),
+                layout.rightPageBottom() - layout.rightPageY());
+        return List.of(new UiLayoutNode(UiLayoutNode.Kind.FRAME, page, Component.empty(), 0, 0,
+                true, true, items, "journal/welcome", page, this));
+    }
+
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
         refreshSnapshot();
         Font font = Minecraft.getInstance().font;
         int left = layout.rightPageX() + 12;
         int recentY = recentY(font);
-        UiGridMetrics grid = itemGrid();
         for (int index = 0; index < latestItems.size(); index++) {
-            UiRect cell = grid.cellBounds(index);
-            UiRect bounds = new UiRect(left + cell.x(), recentY + 36 + cell.y(), ITEM_SIZE, ITEM_SIZE);
+            UiRect bounds = itemBounds(index, font);
             if (bounds.contains(x, y)) {
                 ItemStack stack = latestItems.get(index);
                 return UiPointerHit.leaf(this, x, y).withRow(this, index, stack, bounds)
@@ -191,17 +222,17 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     }
 
     private static final Comparator<ExcavationLogEntry> RECENCY = Comparator
-                .comparingLong(ExcavationLogEntry::lastUpdatedGameTime)
-                .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime)
-                .thenComparingLong(ExcavationLogEntry::createdGameTime)
-                .thenComparingLong(ExcavationLogEntry::createdDayTime)
-                .thenComparing(ExcavationLogEntry::entryId);
+            .comparingLong(ExcavationLogEntry::lastUpdatedGameTime)
+            .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime)
+            .thenComparingLong(ExcavationLogEntry::createdGameTime)
+            .thenComparingLong(ExcavationLogEntry::createdDayTime)
+            .thenComparing(ExcavationLogEntry::entryId);
 
     @Nullable
     private static LatestEntry findLatestEntry(ArchaeologyJournalLogState logState) {
         LatestEntry latest = null;
         for (Map.Entry<ResourceLocation, ArchaeologyJournalLogState.TableLogHistory> table
-            : logState.getTables().entrySet()) {
+                : logState.getTables().entrySet()) {
             for (ExcavationLogEntry entry : table.getValue().getEntries()) {
                 if (entry.tableStack() != null && !entry.tableStack().isEmpty()
                         && !table.getKey().equals(entry.tableStack().getFirst())) {
@@ -226,7 +257,7 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     }
 
     private static void drawLabelAndValue(GuiGraphics graphics, Font font, int x, int y, int width,
-                                             Component label, Component value) {
+                                          Component label, Component value) {
         String labelText = label.getString();
         graphics.drawString(font, labelText, x, y, LABEL_COLOR, false);
         int valueX = x + font.width(labelText) + 5;
@@ -236,7 +267,7 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     }
 
     private static void drawCenteredTrimmed(GuiGraphics graphics, Font font, Component text,
-                                             int x, int y, int width, int color) {
+                                            int x, int y, int width, int color) {
         String rendered = TextScroll.trimToWidth(font, text.getString(), width);
         graphics.drawString(font, rendered, x + (width - font.width(rendered)) / 2, y, color, false);
     }

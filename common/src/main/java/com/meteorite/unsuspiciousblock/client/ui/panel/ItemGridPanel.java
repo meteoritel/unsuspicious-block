@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
@@ -7,8 +8,10 @@ import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+
 import java.util.Objects;
 import java.util.function.Consumer;
+
 import net.minecraft.locale.Language;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiControlGroup;
@@ -50,19 +53,31 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** 右侧物品网格面板 —— 渲染物品图标、名称、概率与数量角标，补充信息通过 tooltip 展示 */
+/**
+ * 右侧物品网格面板 —— 渲染物品图标、名称、概率与数量角标，补充信息通过 tooltip 展示
+ */
 public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static final UiGridMetrics GRID = new UiGridMetrics(JournalLayout.GRID_CELLS_PER_ROW,
             JournalLayout.GRID_CELL_WIDTH, JournalLayout.GRID_CELL_HEIGHT, JournalLayout.GRID_COLUMN_GAP, 0);
     private final UiControlGroup controls = new UiControlGroup();
     private boolean controlsDirty = true;
-    private Runnable onNavigate = () -> { };
-    private Consumer<SimulationAssistTarget> onRecommend = target -> { };
+    private Runnable onNavigate = () -> {
+    };
+    private Consumer<SimulationAssistTarget> onRecommend = target -> {
+    };
+
     public void setActions(Runnable navigate, Consumer<SimulationAssistTarget> recommend) {
-        onNavigate = navigate; onRecommend = recommend;
+        onNavigate = navigate;
+        onRecommend = recommend;
     }
-    @Override public UiChildren<UiControl> inputChildren() { return controls.inputChildren(); }
-    @Override public void prepareUi() {
+
+    @Override
+    public UiChildren<UiControl> inputChildren() {
+        return controls.inputChildren();
+    }
+
+    @Override
+    public void prepareUi() {
         if (!controlsDirty) return;
         controlsDirty = false;
         controls.beginUpdate();
@@ -96,8 +111,13 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         }
         controls.endUpdate();
     }
-    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) { controls.render(graphics, font, pointer); }
-    @Override public UiPointerHit hitTest(double x, double y) {
+
+    public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+        controls.render(graphics, font, pointer);
+    }
+
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
         GridCell cell = cellAt(x, y);
         if (cell == null) return null;
         UiPointerHit hit = controls.hitTest(x, y);
@@ -113,29 +133,58 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         return lines == null ? hit : hit.withTextTooltip(lines, cell.bounds());
     }
 
-    /** 网格内容按业务类型区分，返回入口保留所属 tag。 */
-    private sealed interface GridContent permits GridItem, TagGroup, ChildTableEntry, TagBack { }
-    /** tag 成员页的返回入口。 */
-    private record TagBack(ResourceLocation tagId) implements GridContent { }
-    /** 几何、业务身份及内容来自同一个单元投影。 */
-    private record GridCell(int index, UiRect bounds, GridContent content) {
-        Object key() { return switch (content) {
-            case TagBack back -> "back:" + back.tagId();
-            case TagGroup tag -> "tag:" + tag.id();
-            case ChildTableEntry child -> "table:" + child.tableId();
-            case GridItem item -> "item:" + item.signature().toStoredKey();
-        }; }
-        Component name() { return switch (content) {
-            case TagBack ignored -> Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip");
-            case TagGroup tag -> Component.literal(tag.id().toString());
-            case ChildTableEntry child -> child.displayName();
-            case GridItem item -> item.displayName();
-        }; }
-        @Nullable GridItem item() { return content instanceof GridItem item ? item : null; }
-        @Nullable TagGroup tag() { return content instanceof TagGroup tag ? tag : null; }
-        @Nullable ChildTableEntry child() { return content instanceof ChildTableEntry child ? child : null; }
-        boolean back() { return content instanceof TagBack; }
+    /**
+     * 网格内容按业务类型区分，返回入口保留所属 tag。
+     */
+    private sealed interface GridContent permits GridItem, TagGroup, ChildTableEntry, TagBack {
     }
+
+    /**
+     * tag 成员页的返回入口。
+     */
+    private record TagBack(ResourceLocation tagId) implements GridContent {
+    }
+
+    /**
+     * 几何、业务身份及内容来自同一个单元投影。
+     */
+    private record GridCell(int index, UiRect bounds, GridContent content) {
+        Object key() {
+            return switch (content) {
+                case TagBack back -> "back:" + back.tagId();
+                case TagGroup tag -> "tag:" + tag.id();
+                case ChildTableEntry child -> "table:" + child.tableId();
+                case GridItem item -> "item:" + item.signature().toStoredKey();
+            };
+        }
+
+        Component name() {
+            return switch (content) {
+                case TagBack ignored ->
+                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip");
+                case TagGroup tag -> Component.literal(tag.id().toString());
+                case ChildTableEntry child -> child.displayName();
+                case GridItem item -> item.displayName();
+            };
+        }
+
+        @Nullable GridItem item() {
+            return content instanceof GridItem item ? item : null;
+        }
+
+        @Nullable TagGroup tag() {
+            return content instanceof TagGroup tag ? tag : null;
+        }
+
+        @Nullable ChildTableEntry child() {
+            return content instanceof ChildTableEntry child ? child : null;
+        }
+
+        boolean back() {
+            return content instanceof TagBack;
+        }
+    }
+
     private int visibleCellCount() {
         return visibleCells.size();
     }
@@ -168,23 +217,33 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         }
         visibleCells = List.copyOf(cells);
     }
+
     private UiRect cellBounds(int index) {
         UiRect r = GRID.cellBounds(index);
         return new UiRect(layout.rightPageX() + JournalLayout.GRID_LEFT_PAD + r.x(),
                 layout.rightPageY() + JournalLayout.GRID_TOP + r.y(), r.width(), r.height());
     }
+
     private @Nullable GridCell cellAt(double x, double y) {
         return cell(GRID.indexAt(x - layout.rightPageX() - JournalLayout.GRID_LEFT_PAD,
                 y - layout.rightPageY() - JournalLayout.GRID_TOP, visibleCellCount()));
     }
+
     private static UiRect recommendationBounds(GridCell cell) {
         UiRect r = cell.bounds();
         return new UiRect(r.right() - 13, r.y() + 1, 12, 13);
     }
+
     private void activateCell(GridCell cell) {
-        if (cell.back()) { activeTag = null; pagination.reset(); }
-        else if (cell.tag() != null) { activeTag = cell.tag().id(); pagination.reset(); }
-        else if (cell.child() != null) { navigationTarget = cell.child().tableId(); }
+        if (cell.back()) {
+            activeTag = null;
+            pagination.reset();
+        } else if (cell.tag() != null) {
+            activeTag = cell.tag().id();
+            pagination.reset();
+        } else if (cell.child() != null) {
+            navigationTarget = cell.child().tableId();
+        }
         rebuildVisibleCells();
         resetHoverState();
         onNavigate.run();
@@ -270,12 +329,17 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 / JournalLayout.GRID_ITEMS_PER_PAGE);
     }
 
-    public int pageCount() { return pagination.pageCount(); }
+    public int pageCount() {
+        return pagination.pageCount();
+    }
 
-    public int getPage() { return pagination.getPage(); }
+    public int getPage() {
+        return pagination.getPage();
+    }
 
     public boolean locateTarget(String kind, String target) {
-        locatedKind = kind; locatedTarget = target;
+        locatedKind = kind;
+        locatedTarget = target;
         int index = -1;
         if (kind.equals("tag")) {
             index = tagIdView.indexOf(ResourceLocation.tryParse(target));
@@ -513,7 +577,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                     local.pose().translate(iconX, iconY, 0);
                     local.pose().scale(ICON_SIZE / 16f, ICON_SIZE / 16f, 1);
                     local.renderItem(stack, 0, 0);
-                } finally { local.pose().popPose(); }
+                } finally {
+                    local.pose().popPose();
+                }
             });
         }
     }
@@ -585,7 +651,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 local.pose().scale(ICON_SIZE / 16f, ICON_SIZE / 16f, 1);
                 local.renderItem(stack, 0, 0);
                 local.renderItemDecorations(font, stack, 0, 0, "");
-            } finally { local.pose().popPose(); }
+            } finally {
+                local.pose().popPose();
+            }
         });
 
         // 数量角标（图标右下角；大数模糊化为 1.2K/1.2M 等）
@@ -710,17 +778,20 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private List<Component> navigationTooltip(double mouseX, double mouseY) {
         GridCell cell = cellAt(mouseX, mouseY);
         if (cell == null || cell.item() != null) return null;
-        if (cell.content() instanceof TagBack(ResourceLocation tagId)) return List.of(Component.literal(tagId.toString()),
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip"));
+        if (cell.content() instanceof TagBack(ResourceLocation tagId))
+            return List.of(Component.literal(tagId.toString()),
+                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip"));
         if (cell.tag() != null) {
             TagGroup group = cell.tag();
-            if (!group.unlocked()) return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
+            if (!group.unlocked())
+                return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
             return List.of(Component.literal(group.id().toString()).withStyle(TooltipBuilder.ACCENT),
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_progress", group.discoveredCount(), group.members().size()),
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_open"));
         }
         if (!(cell.content() instanceof ChildTableEntry child)) return null;
-        if (!child.unlocked()) return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
+        if (!child.unlocked())
+            return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
         if (recommendationBounds(cell).contains(mouseX, mouseY)) return List.of(
                 ScenarioSimulationClientState.text("recommend.title"));
         return JournalTooltipBuilder.buildChildTable(child.displayName(), child.tableId(), child.probability(),
@@ -801,7 +872,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                             List<ItemStack> previewStacks) implements GridContent {
     }
 
-    /** 子表导航入口展示数据。 */
+    /**
+     * 子表导航入口展示数据。
+     */
     public record ChildTableEntry(ResourceLocation tableId, Component displayName, boolean unlocked,
                                   Probability probability,
                                   List<ScenarioProbability> scenarioProbabilities,
@@ -824,16 +897,16 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
      * discovered=false 时只展示未发现状态，不携带物品身份、概率或获取路径。
      */
     public record TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable Probability probability,
-                               List<LootAcquisitionPath> acquisitionPaths,
-                               boolean injected,
-                               LootConditionHandler.UncertaintyLevel uncertaintyLevel,
-                               boolean discovered,
-                               List<ScenarioProbability> scenarioProbabilities,
-                               List<DeclaredChance> declaredChances,
-                               int simulationCount,
-                               @Nullable FunctionObservationSummary observedFunctions,
-                               @Nullable Component displayName,
-                               @Nullable LootResultSignature signature) {
+                              List<LootAcquisitionPath> acquisitionPaths,
+                              boolean injected,
+                              LootConditionHandler.UncertaintyLevel uncertaintyLevel,
+                              boolean discovered,
+                              List<ScenarioProbability> scenarioProbabilities,
+                              List<DeclaredChance> declaredChances,
+                              int simulationCount,
+                              @Nullable FunctionObservationSummary observedFunctions,
+                              @Nullable Component displayName,
+                              @Nullable LootResultSignature signature) {
         // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
         public TooltipData(ItemStack stack, @Nullable Component hint) {
             this(stack, hint, -1, null, List.of(), false,

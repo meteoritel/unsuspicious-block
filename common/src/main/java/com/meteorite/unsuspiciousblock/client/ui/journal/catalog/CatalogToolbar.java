@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.client.ui.screen;
+package com.meteorite.unsuspiciousblock.client.ui.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
@@ -16,7 +16,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** 目录查询、排序与 kit 控件装配；搜索草稿按防抖窗口提交。 */
+import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+
+/**
+ * 目录查询、排序与 kit 控件装配；搜索草稿按防抖窗口提交。
+ */
 public class CatalogToolbar {
     // 搜索输入防抖窗口：逐字符提交会重建整份目录投影，200ms 内连打只提交一次
     private static final long SEARCH_DEBOUNCE_MILLIS = 200L;
@@ -112,18 +116,25 @@ public class CatalogToolbar {
 
     // —— 搜索输入的防抖与焦点请求 ——
 
-    /** 含未提交草稿的当前搜索：宿主在目录动作前一律用它，避免读到防抖窗口内的旧值 */
+    /**
+     * 含未提交草稿的当前搜索：宿主在目录动作前一律用它，避免读到防抖窗口内的旧值
+     */
     public JournalSearchQuery effectiveSearch() {
         return this.pendingSearchText == null
                 ? this.currentSearch : JournalSearchQuery.parse(this.pendingSearchText);
     }
 
-    CatalogQueryState queryState() {
+    /**
+     * 返回模型重建所需的同批查询输入，包含防抖中的有效草稿。
+     */
+    public CatalogQueryState queryState() {
         return new CatalogQueryState(this.effectiveSearch().rawQuery(), this.currentSortOrder,
                 this.sortDescending, this.hideLocked);
     }
 
-    /** 防抖到点才提交搜索输入；由宿主逐帧调用 */
+    /**
+     * 防抖到点才提交搜索输入；由宿主逐帧调用
+     */
     public void flushPendingSearchIfDue() {
         if (this.pendingSearchText == null
                 || System.currentTimeMillis() - this.pendingSearchChangedAt < SEARCH_DEBOUNCE_MILLIS) {
@@ -132,7 +143,9 @@ public class CatalogToolbar {
         commitPendingSearch();
     }
 
-    /** 立即提交未生效的搜索输入（resize 快照、退出子屏、其它目录动作前） */
+    /**
+     * 立即提交未生效的搜索输入（resize 快照、退出子屏、其它目录动作前）
+     */
     public void flushPendingSearch() {
         if (this.pendingSearchText != null) {
             commitPendingSearch();
@@ -147,25 +160,33 @@ public class CatalogToolbar {
         this.onContentChanged.run();
     }
 
-    /** 是否存在等待宿主兑现的搜索框焦点请求 */
+    /**
+     * 是否存在等待宿主兑现的搜索框焦点请求
+     */
     public boolean isSearchFocusRequested() {
         return this.searchFocusRequested;
     }
 
-    /** 作废未兑现的焦点请求：模态打开、收起搜索、切页与控件重建后由宿主调用 */
+    /**
+     * 作废未兑现的焦点请求：模态打开、收起搜索、切页与控件重建后由宿主调用
+     */
     public void clearSearchFocusRequest() {
         this.searchFocusRequested = false;
     }
 
     // —— 事件处理 ——
 
-    /** 搜索框内容变化：只登记草稿，等防抖窗口到点或宿主显式提交 */
+    /**
+     * 搜索框内容变化：只登记草稿，等防抖窗口到点或宿主显式提交
+     */
     public void onSearchChanged(String text) {
         this.pendingSearchText = text;
         this.pendingSearchChangedAt = System.currentTimeMillis();
     }
 
-    /** 切换搜索框展开/收起 */
+    /**
+     * 切换搜索框展开/收起
+     */
     public void toggleSearch() {
         this.searchExpanded = !this.searchExpanded;
         if (this.searchExpanded) {
@@ -178,7 +199,9 @@ public class CatalogToolbar {
         this.onLayoutChanged.run();
     }
 
-    /** 循环切换排序方式 */
+    /**
+     * 循环切换排序方式
+     */
     public void cycleSortOrder() {
         this.currentSortOrder = this.currentSortOrder.next();
         if (this.sortButton != null) {
@@ -188,7 +211,9 @@ public class CatalogToolbar {
         this.onContentChanged.run();
     }
 
-    /** 切换正序/倒序 */
+    /**
+     * 切换正序/倒序
+     */
     public void toggleSortDirection() {
         this.sortDescending = !this.sortDescending;
         if (this.sortOrderButton != null) {
@@ -198,7 +223,9 @@ public class CatalogToolbar {
         this.onContentChanged.run();
     }
 
-    /** 切换是否隐藏未解锁条目 */
+    /**
+     * 切换是否隐藏未解锁条目
+     */
     public void toggleHideLocked() {
         this.hideLocked = !this.hideLocked;
         if (this.hideLockedButton != null) {
@@ -270,7 +297,7 @@ public class CatalogToolbar {
     /**
      * 创建所有目录工具栏 widget，通过 adder 回调注册到 Screen。
      *
-     * @param screen    ArchaeologyJournalScreen，用于通过 registerWidget 注册 widget
+     * @param screen     ArchaeologyJournalScreen，用于通过 registerWidget 注册 widget
      * @param bookLayout 书页布局
      * @param font       字体
      */

@@ -2,9 +2,10 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
-import com.meteorite.meteosuikit.api.control.UiFocusFollow;
+import com.meteorite.meteosuikit.api.layout.UiFormLayout;
+import com.meteorite.meteosuikit.api.text.TextMeasurer;
+import net.minecraft.client.gui.Font;
 
-import net.minecraft.Util;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
@@ -26,7 +27,9 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.file.Path;
 import java.util.*;
 
-/** 战利品追踪管理；业务树和草稿归宿主，列表、输入与确认统一使用 kit。 */
+/**
+ * 战利品追踪管理；业务树和草稿归宿主，列表、输入与确认统一使用 kit。
+ */
 public final class LootTableManagementScreen extends UiThemedScreen {
     private static final int SCREEN_MARGIN = 6;
     private static final int MAX_PANEL_WIDTH = 520;
@@ -44,7 +47,9 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private final UiInputScope scope = new UiInputScope(content);
     private final UiControlGroup controls = new UiControlGroup();
     private final UiControlGroup detailControls = new UiControlGroup();
-    private final UiScrollView detailScroll = new UiScrollView();
+    private final UiFormBody details;
+    private final DetailSummary summary = new DetailSummary();
+    private boolean detailsAssembled;
     private final UiModalStack modals = new UiModalStack(theme());
     private final UiListView<TreeRow> list;
     private final UiTextInput searchBox;
@@ -98,6 +103,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                     Math.max(0, rect.right() - x)), x, rect.y() + 6, UiTextScheme.DARK.body(), false);
         });
         list.setRowHeight(ROW_HEIGHT);
+        list.setLayoutKey("management/tables");
+        list.setItemKey(TreeRow::key);
         list.setActivateOnSingleClick(true);
         list.setOnActivate(row -> {
             if (row.entry() != null) {
@@ -107,19 +114,15 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             if (row.expandable()) toggleExpanded(row);
             syncControls();
         });
-        UiChildren<UiInputTarget> fields = new UiChildren<>();
-        fields.addAll(List.of(languageBox, nameBox, detailControls));
-        UiScrollContainer details = new UiScrollContainer(detailScroll, fields);
+        details = new UiFormBody(theme(), TextMeasurer.of(font));
         content.addAll(List.of(searchBox, list, details, controls));
         scope.setEscape(this::onClose);
-        scope.focus().setListener(new UiFocusFollow(detailScroll,
-                target -> target == languageBox || target == nameBox || (target instanceof UiControl control && detailControls.controls().contains(control)),
-                target -> new UiRect(0, target.bounds().y() - detailScroll.viewport().y() + detailScroll.offset() - 13,
-                        target.bounds().width(), target.bounds().height() + 13), this::layoutUi));
+        scope.focus().setListener((previous, current) -> details.reveal(current));
         modals.setOnScopeChanged(this::refreshUiState);
     }
 
-    @Override protected void init() {
+    @Override
+    protected void init() {
         controls.setTheme(theme());
         detailControls.setTheme(theme());
         controls.beginUpdate();
@@ -127,7 +130,19 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         configureControls();
         controls.endUpdate();
         detailControls.endUpdate();
-        if (!initialized) { initialized = true; actions.requestSnapshot(); }
+        if (!detailsAssembled) {
+            detailsAssembled = true;
+            details.add(Component.empty(), summary, summary, List.of());
+            details.add(Component.translatable(PREFIX + "language"), languageBox, 20);
+            details.add(Component.empty(), languageButton, 20);
+            details.add(Component.translatable(PREFIX + "localized_name"), nameBox, 20);
+            details.add(Component.empty(), applyButton, 20);
+            details.add(Component.empty(), saveNameButton, 20);
+        }
+        if (!initialized) {
+            initialized = true;
+            actions.requestSnapshot();
+        }
         refreshSnapshot();
         syncControls();
     }
@@ -152,35 +167,40 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         rebuildTree();
     }
 
-    @Override protected UiInputScope inputScope() { return modals.isEmpty() ? scope : modals.top().inputScope(); }
-    @Override protected void prepareUi() { refreshSnapshot(); syncControls(); modals.prepareUi(); }
-    @Override protected void advanceUiFrame() { modals.tick(); }
-    @Override protected void invalidateUiResources() {
+    @Override
+    protected UiInputScope inputScope() {
+        return modals.isEmpty() ? scope : modals.top().inputScope();
+    }
+
+    @Override
+    protected void prepareUi() {
+        refreshSnapshot();
+        syncControls();
+        modals.prepareUi();
+    }
+
+    @Override
+    protected void advanceUiFrame() {
+        modals.tick();
+    }
+
+    @Override
+    protected void invalidateUiResources() {
         initializeLanguageCodes();
         reconcileDrafts();
         rebuildTree();
     }
-    @Override protected void layoutUi() {
+
+    @Override
+    protected void layoutUi() {
         int left = panelLeft();
         int top = panelTop();
         int detailsX = left + INNER_MARGIN + listWidth() + COLUMN_GAP;
-        detailScroll.setViewport(detailsX, top + 28, detailsWidth(), Math.max(0, panelHeight() - 64));
-        detailScroll.setContentHeight(224);
-        detailScroll.setScrollbarVisible(detailScroll.maxOffset() > 0);
-        int detailsWidth = detailScroll.contentWidth();
+        details.setBounds(detailsX, top + 28, detailsWidth(), Math.max(0, panelHeight() - 64));
         int backY = top + panelHeight() - 30;
-        int actionY = detailScroll.toScreenY(194);
-        int nameY = detailScroll.toScreenY(164);
-        int languageY = detailScroll.toScreenY(100);
         searchBox.setBounds(left + INNER_MARGIN, top + 28, Math.max(0, listWidth() - 76), 20);
         filterButton.setBounds(left + INNER_MARGIN + Math.max(0, listWidth() - 72), top + 28, 72, 20);
-        languageBox.setBounds(detailsX, languageY, detailsWidth, 20);
-        languageButton.setBounds(detailsX, languageY + 23, detailsWidth, 20);
-        nameBox.setBounds(detailsX, nameY, detailsWidth, 20);
-        int actionWidth = Math.max(0, (detailsWidth - 5) / 2);
-        applyButton.setBounds(detailsX, actionY, actionWidth, 20);
-        saveNameButton.setBounds(detailsX + actionWidth + 5, actionY, actionWidth, 20);
-        actionWidth = Math.max(0, (detailsWidth() - 5) / 2);
+        int actionWidth = Math.max(0, (detailsWidth() - 5) / 2);
         importButton.setBounds(detailsX, backY, actionWidth, 20);
         backButton.setBounds(detailsX + actionWidth + 5, backY, actionWidth, 20);
         syncListGeometry();
@@ -200,23 +220,21 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         nameBox.setEnabled(selected && hasValidLanguageCode()
                 && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null);
         importButton.setEnabled(LootTableManagementClientState.canEdit());
+        summary.refresh();
     }
 
-    @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
-    @Override protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
+    @Override
+    public void onClose() {
+        Minecraft.getInstance().setScreen(parent);
+    }
+
+    @Override
+    protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
         graphics.drawCenteredString(font, title, width / 2, panelTop() + 9, UiTextScheme.DARK.title());
         UiPointer pointer = scope.pointer(x, y).resolve(content);
         list.render(graphics, font, pointer);
         searchBox.render(graphics, font, pointer);
-        UiRect viewport = detailScroll.viewport();
-        graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
-        var detailPointer = pointer.restrict(viewport.contains(x, y));
-        renderDetails(graphics, viewport.x(), detailScroll.toScreenY(0), detailScroll.contentWidth());
-        languageBox.render(graphics, font, detailPointer);
-        nameBox.render(graphics, font, detailPointer);
-        detailControls.render(graphics, font, detailPointer);
-        graphics.disableScissor();
-        detailScroll.renderScrollbar(graphics, theme());
+        details.render(graphics, font, pointer);
         controls.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {
             int index = pointer.hit().rowIndex(list);
@@ -230,6 +248,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         UiListView<String> languages = new UiListView<>(theme(), (graphics, font, code, index, row, selected, hovered, focused) ->
                 graphics.drawString(font, TextScroll.trimToWidth(font, languageOptionLabel(code).getString(), row.width()),
                         row.x(), row.y() + 5, UiTextScheme.DARK.body(), false));
+        languages.setLayoutKey("management/languages");
+        languages.setItemKey(code -> "language/" + code);
         languages.setItems(languageCodes).setSelectedIndex(languageCodes.indexOf(validLanguageCodeOrFallback()));
         modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "language_select"))
                 .preferredWidth(340).contentWidget(languages, Math.clamp(height - 110, 20, 180))
@@ -252,70 +272,107 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                 }).cancel(Component.translatable("gui.cancel")));
     }
 
-    private void syncListGeometry() { list.setBounds(panelLeft() + INNER_MARGIN, panelTop() + 55,
-            listWidth(), Math.max(0, panelHeight() - 65)); }
-    private int panelWidth() { return Math.clamp(width - SCREEN_MARGIN * 2, 0, MAX_PANEL_WIDTH); }
-    private int panelHeight() { return Math.clamp(height - SCREEN_MARGIN * 2, 0, MAX_PANEL_HEIGHT); }
-    private int panelLeft() { return (width - panelWidth()) / 2; }
-    private int panelTop() { return (height - panelHeight()) / 2; }
-    private int detailsWidth() { return Math.max(0, (panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP) * 42 / 100); }
-    private int listWidth() { return Math.max(0, panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP - detailsWidth()); }
+    private void syncListGeometry() {
+        list.setBounds(panelLeft() + INNER_MARGIN, panelTop() + 55,
+                listWidth(), Math.max(0, panelHeight() - 65));
+    }
+
+    private int panelWidth() {
+        return Math.clamp(width - SCREEN_MARGIN * 2, 0, MAX_PANEL_WIDTH);
+    }
+
+    private int panelHeight() {
+        return Math.clamp(height - SCREEN_MARGIN * 2, 0, MAX_PANEL_HEIGHT);
+    }
+
+    private int panelLeft() {
+        return (width - panelWidth()) / 2;
+    }
+
+    private int panelTop() {
+        return (height - panelHeight()) / 2;
+    }
+
+    private int detailsWidth() {
+        return Math.max(0, (panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP) * 42 / 100);
+    }
+
+    private int listWidth() {
+        return Math.max(0, panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP - detailsWidth());
+    }
+
     private static String readableName(ResourceLocation id) {
         String path = id.getPath();
         int slash = path.lastIndexOf('/');
         return path.substring(slash + 1).replace('_', ' ').replace('-', ' ');
     }
 
-    private void renderOverflowText(GuiGraphics graphics, String text, int x, int y, int width, int color) {
-        TextScroll.draw(graphics, font, text, x, y, width, color, true,
-                (int) (Util.getMillis() / 50), false);
+    private record DetailLine(Component text, int color) {
     }
 
-    private void renderDetails(GuiGraphics graphics, int x, int top, int width) {
-        SyncLootTableManagementPayload.Entry selected = selectedEntry();
-        graphics.drawString(this.font,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.details"),
-                x, top + 4, UiTextScheme.DARK.title(), false);
-        if (!this.nameDrafts.isEmpty()) {
-            Component draftStatus = Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.source.draft", this.nameDrafts.size());
-            renderOverflowText(graphics, draftStatus.getString(), x, top + 78, width, UiTextScheme.DARK.accent());
+    private final class DetailSummary implements UiWidget, UiFormLayout.Control {
+        private UiRect bounds = new UiRect(0, 0, 0, 0);
+        private List<DetailLine> content = List.of();
+        private List<DetailLine> wrapped = List.of();
+
+        private void refresh() {
+            List<DetailLine> next = new ArrayList<>();
+            next.add(new DetailLine(Component.translatable(PREFIX + "details"), UiTextScheme.DARK.title()));
+            var selected = selectedEntry();
+            if (selected != null) {
+                next.add(new DetailLine(Component.literal(selected.tableId().toString()), UiTextScheme.DARK.label()));
+                next.add(new DetailLine(Component.translatable(PREFIX + (selected.tracked() ? "tracked" : "not_tracked")),
+                        selected.tracked() ? UiTextScheme.DARK.positive() : UiTextScheme.DARK.hint()));
+            }
+            if (!nameDrafts.isEmpty())
+                next.add(new DetailLine(Component.translatable(PREFIX + "source.draft", nameDrafts.size()), UiTextScheme.DARK.accent()));
+            if (!LootTableManagementClientState.canEdit())
+                next.add(new DetailLine(Component.translatable(PREFIX + "read_only"), UiTextScheme.DARK.accent()));
+            else if (!hasValidLanguageCode())
+                next.add(new DetailLine(Component.translatable(PREFIX + "invalid_language_code"), UiTextScheme.DARK.negative()));
+            else if (requiresEnglishName())
+                next.add(new DetailLine(Component.translatable(PREFIX + "english_name_required"), UiTextScheme.DARK.accent()));
+            else if (selected != null)
+                next.add(new DetailLine(nameSourceLabel(selected.tableId()), UiTextScheme.DARK.label()));
+            if (importStatus != null) next.add(new DetailLine(importStatus, importStatusColor));
+            if (next.equals(content)) return;
+            content = List.copyOf(next);
+            details.invalidateLayout();
         }
-        if (selected != null) {
-            renderOverflowText(graphics, selected.tableId().toString(), x, top + 23,
-                    width, UiTextScheme.DARK.label());
-            Component status = Component.translatable(selected.tracked()
-                    ? "screen.unsuspiciousblock.loot_table_management.tracked"
-                    : "screen.unsuspiciousblock.loot_table_management.not_tracked");
-            graphics.drawString(this.font, status, x, top + 39,
-                    selected.tracked() ? UiTextScheme.DARK.positive() : UiTextScheme.DARK.hint(), false);
+
+        @Override
+        public int preferredWidth(int width) {
+            return width;
         }
-        graphics.drawString(this.font,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.language"),
-                x, this.languageBox.bounds().y() - 11, UiTextScheme.DARK.label(), false);
-        graphics.drawString(this.font,
-                Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"),
-                x, this.nameBox.bounds().y() - 11, UiTextScheme.DARK.label(), false);
-        int warningY = top + 52;
-        if (!LootTableManagementClientState.canEdit()) {
-            renderOverflowText(graphics, Component.translatable(
-                            "screen.unsuspiciousblock.loot_table_management.read_only").getString(),
-                    x, warningY, width, UiTextScheme.DARK.accent());
-        } else if (!hasValidLanguageCode()) {
-            renderOverflowText(graphics, Component.translatable(
-                            "screen.unsuspiciousblock.loot_table_management.invalid_language_code").getString(),
-                    x, warningY, width, UiTextScheme.DARK.negative());
-        } else if (requiresEnglishName()) {
-            renderOverflowText(graphics, Component.translatable(
-                            "screen.unsuspiciousblock.loot_table_management.english_name_required").getString(),
-                    x, warningY, width, UiTextScheme.DARK.accent());
-        } else if (selected != null) {
-            renderOverflowText(graphics, nameSourceLabel(selected.tableId()).getString(),
-                    x, warningY, width, UiTextScheme.DARK.label());
+
+        @Override
+        public int measureHeight(int width) {
+            TextMeasurer text = TextMeasurer.of(Minecraft.getInstance().font);
+            List<DetailLine> result = new ArrayList<>();
+            for (DetailLine line : content)
+                for (Component fragment : text.wrap(line.text(), width))
+                    result.add(new DetailLine(fragment, line.color()));
+            wrapped = List.copyOf(result);
+            return wrapped.size() * (text.lineHeight() + 3);
         }
-        if (this.importStatus != null) {
-            renderOverflowText(graphics, this.importStatus.getString(),
-                    x, warningY + 12, width, this.importStatusColor);
+
+        @Override
+        public UiRect bounds() {
+            return bounds;
+        }
+
+        @Override
+        public void setBounds(int x, int y, int width, int height) {
+            bounds = new UiRect(x, y, width, height);
+        }
+
+        @Override
+        public void render(GuiGraphics graphics, Font font, UiPointer pointer) {
+            int y = bounds.y();
+            for (DetailLine line : wrapped) {
+                graphics.drawString(font, line.text(), bounds.x(), y, line.color(), false);
+                y += font.lineHeight + 3;
+            }
         }
     }
 
@@ -358,7 +415,10 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         if (selectedEntry() == null) this.selectedTableId = null;
         int selectedIndex = -1;
         for (int i = 0; i < visibleRows.size(); i++) {
-            if (Objects.equals(visibleRows.get(i).key(), selectedKey)) { selectedIndex = i; break; }
+            if (Objects.equals(visibleRows.get(i).key(), selectedKey)) {
+                selectedIndex = i;
+                break;
+            }
         }
         list.setSelectedIndex(selectedIndex);
         populateName();
@@ -626,7 +686,9 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         };
     }
 
-    /** 按命名空间与路径构建的业务目录节点。 */
+    /**
+     * 按命名空间与路径构建的业务目录节点。
+     */
     private static final class TreeNode {
         private final String label;
         private final String key;
@@ -640,16 +702,22 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         }
     }
 
-    /** 页面内未提交名称的复合键。 */
+    /**
+     * 页面内未提交名称的复合键。
+     */
     private record DraftKey(String languageCode, ResourceLocation tableId) {
     }
 
-    /** 管理目录的可见行投影。 */
+    /**
+     * 管理目录的可见行投影。
+     */
     private record TreeRow(String label, String key, int depth, boolean expandable,
                            boolean expanded, @Nullable SyncLootTableManagementPayload.Entry entry) {
     }
 
-    /** 管理页筛选语义。 */
+    /**
+     * 管理页筛选语义。
+     */
     private enum Filter {
         ALL("screen.unsuspiciousblock.loot_table_management.filter.all"),
         TRACKED("screen.unsuspiciousblock.loot_table_management.filter.tracked"),

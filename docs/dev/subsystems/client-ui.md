@@ -83,6 +83,8 @@ flowchart TD
 | `EnchantmentRevealClientState` | 缓存服务端计算的附魔台完整候选列表 |
 | `JournalHoveredItemProvider` / `ArchaeologyJournalKeyHandler` | 优先读取 JEI 悬停原料，否则读取容器槽位，以完整注册名预检后打开笔记搜索 |
 
+目录功能集中在 `client/ui/journal/catalog/`，由根 Screen 装配模型投影与具体视图；共享动态文本测量位于 `client/ui/text/`。普通配置、日志保留及管理详情使用 kit 表单正文，业务页面保留校验、草稿和提交动作。
+
 > 笔记界面内部的页面组装（`RightPageContainer`、`ArchaeologyPage`）、输入焦点路由与偏好读写细则见[笔记 GUI 内部机制](../internals/journal-ui-internals.md)。
 
 ## 6. HUD 表现

@@ -1,7 +1,8 @@
-package com.meteorite.unsuspiciousblock.client.ui.screen;
+package com.meteorite.unsuspiciousblock.client.ui.journal.catalog;
 
 import java.util.Objects;
 import java.util.stream.Collectors;
+
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 
@@ -9,7 +10,6 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
-import com.meteorite.unsuspiciousblock.client.ui.panel.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
@@ -58,13 +58,14 @@ public class JournalViewModel {
     private final Map<ResourceLocation, ArchaeologyJournalEntry> allViews = new LinkedHashMap<>();
     private final List<ArchaeologyJournalEntry> tableViews = new ArrayList<>();
     private final List<RowMeta> rowMetadata = new ArrayList<>();
-    private final List<CatalogPanel.CategoryEntryData> categoryViews = new ArrayList<>();
+    private final List<CategoryEntryData> categoryViews = new ArrayList<>();
     private final Map<ResourceLocation, List<ResourceLocation>> parentIdsByChild = new LinkedHashMap<>();
     private final Map<ResourceLocation, Set<ResourceLocation>> categoryIdsByTable = new LinkedHashMap<>();
     private CatalogStructure structure = CatalogStructure.empty();
     private final Set<ResourceLocation> expandedRoots = new LinkedHashSet<>();
     private boolean categoryHome = true;
-    @Nullable private ResourceLocation selectedCategory;
+    @Nullable
+    private ResourceLocation selectedCategory;
     private int selectedIndex = -1;
     private int totalTableCount;
     private int globalUnlockedTableCount;
@@ -90,8 +91,10 @@ public class JournalViewModel {
     private final Map<ResourceLocation, List<ItemDefinition>> subtreeItemsCache = new LinkedHashMap<>();
     private long subtreeItemsRevision = Long.MIN_VALUE;
     // 网格装配结果缓存：输入不变时直接返回同一份不可变结果
-    @Nullable private GridCacheKey gridCacheKey;
-    @Nullable private BuildGridResult gridCacheResult;
+    @Nullable
+    private GridCacheKey gridCacheKey;
+    @Nullable
+    private BuildGridResult gridCacheResult;
 
     // —— 名称文本缓存 ——
     // 输入 = 目录定义 + 客户端语言（显示名的 getString() 是一次翻译查询）；
@@ -116,7 +119,10 @@ public class JournalViewModel {
         this.lastLogRevision = ArchaeologyJournalLogLocalStore.getRevision();
     }
 
-    void applyCatalogState(CatalogQueryState queryState) {
+    /**
+     * 接收目录工具栏的同批查询输入，投影刷新由根装配点调用。
+     */
+    public void applyCatalogState(CatalogQueryState queryState) {
         this.currentSearch = queryState.search();
         // 物品文本缓存只服务搜索匹配：离开搜索态即释放，避免大目录长期驻留整份物品小写名
         if (this.currentSearch.isEmpty()) {
@@ -126,13 +132,24 @@ public class JournalViewModel {
         this.sortDescending = queryState.sortDescending();
         this.hideLocked = queryState.hideLocked();
     }
-    public List<ArchaeologyJournalEntry> tableViews() { return this.tableViews; }
+
+    public List<ArchaeologyJournalEntry> tableViews() {
+        return this.tableViews;
+    }
+
     public boolean isNavigationTargetValid(ResourceLocation table) {
         var entry = allViews.get(table);
         return entry != null && entry.unlocked();
     }
-    public List<CatalogPanel.CategoryEntryData> categoryViews() { return this.categoryViews; }
-    public int selectedIndex() { return this.selectedIndex; }
+
+    public List<CategoryEntryData> categoryViews() {
+        return List.copyOf(this.categoryViews);
+    }
+
+    public int selectedIndex() {
+        return this.selectedIndex;
+    }
+
     public void setSelectedIndex(int index) {
         this.selectedIndex = index;
         if (index < 0 || index >= this.tableViews.size()) {
@@ -150,10 +167,23 @@ public class JournalViewModel {
                     this.selectedCategory, selectedId);
         }
     }
-    public boolean isCategoryHome() { return this.categoryHome && this.currentSearch.isEmpty(); }
-    public boolean isCategoryHomeMode() { return this.categoryHome; }
-    @Nullable public ResourceLocation selectedCategory() { return this.selectedCategory; }
-    public Set<ResourceLocation> expandedRoots() { return Set.copyOf(this.expandedRoots); }
+
+    public boolean isCategoryHome() {
+        return this.categoryHome && this.currentSearch.isEmpty();
+    }
+
+    public boolean isCategoryHomeMode() {
+        return this.categoryHome;
+    }
+
+    @Nullable
+    public ResourceLocation selectedCategory() {
+        return this.selectedCategory;
+    }
+
+    public Set<ResourceLocation> expandedRoots() {
+        return Set.copyOf(this.expandedRoots);
+    }
 
     public void showCategoryHome() {
         this.categoryHome = true;
@@ -275,26 +305,31 @@ public class JournalViewModel {
                 ? this.tableViews.get(this.selectedIndex) : null;
     }
 
-    public int totalTableCount() { return this.totalTableCount; }
+    public int totalTableCount() {
+        return this.totalTableCount;
+    }
 
     public int displayedUnlockedTableCount() {
-        CatalogPanel.CategoryEntryData category = selectedCategoryView();
+        CategoryEntryData category = selectedCategoryView();
         return category != null ? category.unlocked() : this.globalUnlockedTableCount;
     }
 
     public int displayedTableCount() {
-        CatalogPanel.CategoryEntryData category = selectedCategoryView();
+        CategoryEntryData category = selectedCategoryView();
         return category != null ? category.total() : this.totalTableCount;
     }
 
     @Nullable
-    private CatalogPanel.CategoryEntryData selectedCategoryView() {
+    private CategoryEntryData selectedCategoryView() {
         if (this.categoryHome || this.selectedCategory == null) return null;
         return this.categoryViews.stream()
                 .filter(category -> category.id().equals(this.selectedCategory))
                 .findFirst().orElse(null);
     }
-    public boolean isEmpty() { return this.tableViews.isEmpty(); }
+
+    public boolean isEmpty() {
+        return this.tableViews.isEmpty();
+    }
 
     public void reloadCatalog() {
         this.catalogDefinitions.clear();
@@ -330,7 +365,10 @@ public class JournalViewModel {
         return true;
     }
 
-    public void rebuildViewModels(@Nullable CatalogPanel catalogPanel) {
+    /**
+     * 同批重建分类、目录行与选择，视图提交由根 Screen 统一完成。
+     */
+    public void rebuildViewModels() {
         ResourceLocation selectedId = selectedTableId();
         this.allViews.clear();
         int unlocked = 0;
@@ -356,11 +394,6 @@ public class JournalViewModel {
 
         this.selectedIndex = resolveSelectedIndex(selectedId);
 
-        if (catalogPanel != null) {
-            if (isCategoryHome()) catalogPanel.setCategories(this.categoryViews);
-            else catalogPanel.setEntries(buildCatalogEntries());
-            catalogPanel.ensureIndexVisible(this.selectedIndex);
-        }
     }
 
     private void rebuildCategories() {
@@ -382,7 +415,7 @@ public class JournalViewModel {
             Component description = definition.descriptionKey().isBlank()
                     ? Component.literal(definition.descriptionFallback())
                     : Component.translatableWithFallback(definition.descriptionKey(), definition.descriptionFallback());
-            this.categoryViews.add(new CatalogPanel.CategoryEntryData(
+            this.categoryViews.add(new CategoryEntryData(
                     definition.id(), name, description, new ItemStack(iconItem), unlocked, members.size()));
         }
     }
@@ -615,12 +648,12 @@ public class JournalViewModel {
         }
     }
 
-    public List<CatalogPanel.CatalogEntryData> buildCatalogEntries() {
-        List<CatalogPanel.CatalogEntryData> result = new ArrayList<>();
+    public List<CatalogEntryData> buildCatalogEntries() {
+        List<CatalogEntryData> result = new ArrayList<>();
         for (int index = 0; index < this.tableViews.size(); index++) {
             ArchaeologyJournalEntry view = this.tableViews.get(index);
             RowMeta meta = this.rowMetadata.get(index);
-            result.add(new CatalogPanel.CatalogEntryData(view.id(), view.displayName(), view.unlocked(), view.favorite(),
+            result.add(new CatalogEntryData(view.id(), view.displayName(), view.unlocked(), view.favorite(),
                     meta.depth(), meta.child(), meta.hasChildren(), meta.expanded(),
                     meta.parentPath(), meta.categoryIds()));
         }
