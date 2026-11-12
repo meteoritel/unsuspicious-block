@@ -22,6 +22,12 @@ Probe.use = function() {
     client.options.keyUse.setDown(false);
     return {tick: client.player.tickCount};
 };
+Probe.scanInputReady = function() {
+    var client = this.client(), hit = client.hitResult;
+    return client.getOverlay() === null && hit instanceof this.type('net.minecraft.world.phys.BlockHitResult')
+            && hit.getBlockPos().equals(new (this.type('net.minecraft.core.BlockPos'))(0, 100, 1))
+            && client.level.getBlockState(hit.getBlockPos()).is(this.type('net.minecraft.world.level.block.Blocks').SUSPICIOUS_SAND);
+};
 Probe.holdUse = function() {
     var client = this.client();
     if (client.screen !== null) throw new Error('持续右键需要关闭 Screen');
@@ -52,8 +58,36 @@ Probe.layout = function() {
         }
     }
     visit(screen.layoutNodes());
+    var window = client.getWindow(), viewport = screen.viewport();
     return {screen: this.screenName(), width: screen.width, height: screen.height,
-            scale: screen.viewport().scale(), nodes: nodes};
+            framebuffer: [window.getWidth(), window.getHeight()], guiScale: window.getGuiScale(),
+            window: [window.getScreenWidth(), window.getScreenHeight()],
+            logical: [viewport.logicalWidth(), viewport.logicalHeight()], scale: viewport.scale(), nodes: nodes};
+};
+Probe.hover = function(key) {
+    var nodes = this.layout().nodes.filter(function(node) { return node.key === key; });
+    if (nodes.length !== 1) throw new Error('目标数量 ' + nodes.length + ': ' + key);
+    var clip = nodes[0].clip, x = clip.x + clip.width / 2, y = clip.y + clip.height / 2;
+    var client = this.client(), window = client.getWindow();
+    if (!client.screen.isLayoutTarget(key, x, y)) throw new Error('目标不可悬停: ' + key);
+    var glfw = this.type('org.lwjgl.glfw.GLFW'), handle = window.getWindow();
+    glfw.glfwSetCursorPos(handle,
+            x * window.getScreenWidth() / window.getGuiScaledWidth(),
+            y * window.getScreenHeight() / window.getGuiScaledHeight());
+    var buffers = this.type('org.lwjgl.BufferUtils'), cursorX = buffers.createDoubleBuffer(1), cursorY = buffers.createDoubleBuffer(1);
+    glfw['glfwGetCursorPos(long,java.nio.DoubleBuffer,java.nio.DoubleBuffer)'](handle, cursorX, cursorY);
+    // 程序化移动可能只更新 GLFW 指针；沿已安装的回调通知 MouseHandler，使用实际窗口位置。
+    var callback = glfw.glfwSetCursorPosCallback(handle, null);
+    glfw.glfwSetCursorPosCallback(handle, callback);
+    if (callback === null) throw new Error('窗口未安装指针回调');
+    callback.invoke(handle, Number(cursorX['get(int)'](0)), Number(cursorY['get(int)'](0)));
+    return {key: key, x: x, y: y};
+};
+Probe.hovered = function(key) {
+    var client = this.client(), window = client.getWindow();
+    var x = client.mouseHandler.xpos() * window.getGuiScaledWidth() / window.getScreenWidth();
+    var y = client.mouseHandler.ypos() * window.getGuiScaledHeight() / window.getScreenHeight();
+    return client.screen.isLayoutTarget(key, x, y);
 };
 Probe.click = function(key) {
     var nodes = this.layout().nodes.filter(function(node) { return node.key === key; });
@@ -107,6 +141,12 @@ Probe.capture = function(path) {
     this.captureFuture = this.type('com.meteorite.meteosuikit.api.render.UiFrameCapture').capture(
             this.type('java.nio.file.Path').of(path));
     return true;
+};
+Probe.toastsCleared = function() {
+    var toasts = this.client().getToasts(), toast = this.type('net.minecraft.client.gui.components.toasts.Toast');
+    return toasts.getToast(toast, toast.NO_TOKEN) === null
+            && toasts.getToast(this.type('net.minecraft.client.gui.components.toasts.SystemToast'),
+                    this.type('net.minecraft.client.gui.components.toasts.SystemToast$SystemToastId').UNSECURE_SERVER_WARNING) === null;
 };
 Probe.captureResult = function() {
     var future = this.captureFuture;

@@ -218,10 +218,14 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     public void render(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
         refreshTextCacheLanguage();
         this.metrics.beginFrame(font);
-        graphics.enableScissor(view.viewport().x(), listTop(), view.viewport().right(), listBottom());
-        if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
-        else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
-        graphics.disableScissor();
+        UiRenderLayers.enableScissor(graphics,
+                new UiRect(view.viewport().x(), listTop(), view.viewport().width(), listBottom() - listTop()));
+        try {
+            if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
+            else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
+        } finally {
+            UiRenderLayers.disableScissor(graphics);
+        }
         this.view.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
     }
 

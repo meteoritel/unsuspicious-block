@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
+import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
@@ -73,6 +74,18 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                 .withRow(this, 0, slot.entry().stack(), new UiRect(slot.x(), slot.y(), ICON_SIZE, ICON_SIZE))
                 .withPresentation((g, font, px, py) -> g.renderTooltip(font, slot.entry().stack(), px, py));
         return null;
+    }
+    /** 战利品布局复用实际悬停槽位，和输入命中保持同一几何。 */
+    @Override public List<UiLayoutNode> layoutNodes() {
+        List<UiLayoutNode> nodes = new ArrayList<>(contentControls.layoutNodes());
+        if (entry == null) return nodes;
+        for (IconSlot slot : renderTooltipSlots) {
+            UiRect rect = new UiRect(slot.x(), slot.y(), ICON_SIZE, ICON_SIZE);
+            nodes.add(new UiLayoutNode(UiLayoutNode.Kind.ROW, rect, slot.entry().stack().getHoverName(),
+                    0, 0, true, true, List.of()).identified(
+                    "log/loot/" + entry.entryId() + "/" + slot.entry().signatureKey(), this));
+        }
+        return nodes;
     }
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) { copyButton.render(graphics, font, pointer); }
 

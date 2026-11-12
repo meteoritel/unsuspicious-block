@@ -1,6 +1,7 @@
 """普通函数表达核心链路，准备场景与断言保持同一层控制流。"""
 from pathlib import Path
 import json
+import math
 import struct
 import time
 import zlib
@@ -68,8 +69,14 @@ class Case:
         self.stable_layout()
         return self.action('client', f'Probe.click({json.dumps(key)})')
 
+    def hover(self, key):
+        self.stable_layout()
+        self.action('client', f'Probe.hover({json.dumps(key)})')
+        wait_for(lambda: self.client.evaluate(f'Probe.hovered({json.dumps(key)})'), bool)
+
     def screenshot(self, name):
         self.record['phase'] = 'capture'
+        wait_for(lambda: self.client.evaluate('Probe.toastsCleared()'), bool)
         layout = self.stable_layout()
         path = self.runtime.directory / f'{self.record["name"]}-{name}.png'
         self.action('client', f'Probe.capture({json.dumps(str(path))})')
@@ -159,11 +166,11 @@ def scan_and_take(case, table=SCAN_TABLE, item='minecraft:iron_ingot'):
              lambda value: value['exists'] and value['tracked'])
     before = case.action('server', f'Probe.prepareScan({json.dumps(table)})')
     wait_for(lambda: client.evaluate('Probe.ready()'), lambda value: value['screen'] is None)
-    # 玩家位置与两手物品需由正常网络同步后再输入。
+    # 等待正常网络同步、加载层退出与实际准星命中，再向原版输入队列投递右键。
     wait_for(lambda: client.evaluate('({x:Probe.client().player.getX(),z:Probe.client().player.getZ(),'
-                                    'off:String(Probe.client().player.getOffhandItem().getItem())})'),
+                                    'off:String(Probe.client().player.getOffhandItem().getItem()),ready:Probe.scanInputReady()})'),
              lambda value: abs(value['x'] - .5) < .01 and abs(value['z'] + 1.5) < .01
-             and 'archaeological_shovel' in value['off'])
+             and 'archaeological_shovel' in value['off'] and value['ready'])
     case.action('client', 'Probe.use()')
     scanned = wait_for(lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['scanned'])
     case.equal('扫描解锁表', scanned['unlocked'], True)
@@ -221,11 +228,24 @@ def journal_viewport(case):
     detail_key = 'log/coordinates/' + taken['logs'][-1]['id']
     case.click(entry_key)
     case.screenshot('natural')
-    for name, expression in [('small', 'Probe.resize(640,480)'), ('restored', 'Probe.resize(1100,720)'),
-                              ('gui-scale', 'Probe.guiScale(3)')]:
-        case.action('client', expression)
+    case.action('client', 'Probe.guiScale(2)')
+    for name, size in [('default', [854, 480]), ('odd', [853, 481]),
+                       ('small', [640, 480]), ('restored', [1100, 720]), ('gui-scale', None)]:
+        if size is None:
+            case.action('client', 'Probe.guiScale(3)')
+        else:
+            case.action('client', f'Probe.resize({size[0]},{size[1]})')
+            wait_for(lambda: case.client.evaluate('Probe.layout()'), lambda value: value['window'] == size)
         layout = case.stable_layout()
-        case.equal('视口适配最小画布', layout['scale'], min(1, layout['width'] / 412, layout['height'] / 256))
+        width, height = layout['framebuffer']
+        gui_scale = layout['guiScale']
+        case.equal('原版 GUI 倍率', gui_scale, 3 if name == 'gui-scale' else 2)
+        pixels = math.floor(min(gui_scale, width / 412, height / 256))
+        case.equal('物理窗口容纳整数倍率', pixels >= 1, True)
+        case.equal('视口整数物理倍率', layout['scale'], pixels / gui_scale)
+        logical = ([layout['width'], layout['height']] if pixels == gui_scale
+                   else [width // pixels, height // pixels])
+        case.equal('逻辑画布按实际像素取整', layout['logical'], logical)
         case.equal('resize 保留所选日志详情', any(node['key'] == detail_key for node in layout['nodes']), True)
         search = next(node for node in layout['nodes'] if node['key'] == 'journal/search')
         case.equal('resize 保留搜索草稿', search['text'], '@usb_probe')
@@ -240,6 +260,12 @@ def journal_viewport(case):
         case.click('journal/tab/log')
         case.click(entry_key)
         case.screenshot(name)
+        if name in ('default', 'odd', 'gui-scale'):
+            case.hover(detail_key)
+            case.screenshot(name + '-text-tooltip')
+            loot = next(node['key'] for node in case.stable_layout()['nodes'] if node['key'].startswith('log/loot/'))
+            case.hover(loot)
+            case.screenshot(name + '-item-tooltip')
     case.action('client', 'Probe.guiScale(2)')
     case.click('journal/log-back')
     case.click('journal/tab/log')

@@ -39,7 +39,7 @@ flowchart TD
 
 `runtime/` 是独立 ModDevGradle 工程，只准备 Minecraft、NeoForge、启动依赖和参数文件；不接入宿主源码输出。`mods/` 只放本次宿主 JAR、AutoJS 和 Rhino，kit 从宿主内嵌加载。运行记录核对实际模组路径与 SHA-256，清单保存依赖摘要、启动参数、PID、退出码和客户端图形环境。
 
-`scripts/` 构造场景并读取真实业务对象；`probelib/cases.py` 用普通函数组织输入、等待和独立预期。服务端状态与客户端镜像分别读取。主副手用例向原版 `KeyMapping` 投递右键，淘洗用例保持客户端右键并由服务端观察真实 use/tick/finish 链；UI 使用当前 Screen 的真实输入与 NeoForge Pre/Post Hook。每次点击重新查询布局 key 并确认实际命中。截图等待业务就绪与几何稳定，由 kit 在后续完成帧采集，工具校验 PNG 数据和原始尺寸。
+`scripts/` 构造场景并读取真实业务对象；`probelib/cases.py` 用普通函数组织输入、等待和独立预期。服务端状态与客户端镜像分别读取。主副手用例等待加载覆盖层退出、物品同步及准星命中后，向原版 `KeyMapping` 投递右键；淘洗用例保持客户端右键并由服务端观察真实 use/tick/finish 链。UI 使用当前 Screen 的真实输入与 NeoForge Pre/Post Hook，每次点击重新查询布局 key 并确认实际命中。悬停移动 GLFW 指针，读取实际窗口位置后沿已安装的回调通知 MouseHandler，并复核目标命中。截图等待业务就绪、几何稳定及进度和非安全服务器通知退出，由 kit 在后续完成帧采集，工具校验 PNG 数据和原始尺寸。
 
 `probe-run.json` 是判定源，HTML 与 JUnit 从它派生。GUI 成功同时要求目标 PNG；失败时尽力采诊断图，采集错误单独记录。准备或协议错误结束实例，业务失败保留断言，清理错误使整体返回 `2`。原始记录先写入，再生成展示；派生失败保留已有证据。每次使用全新目录，正常重启在同一服务器存档进行，客户端旧目录保留并换用空缓存目录验证恢复来源。
 
@@ -51,7 +51,7 @@ flowchart TD
 |---|---|---|
 | `runtime-artifact` | P0 / server | 指定发布 JAR 来源与摘要、专用服务器加载 |
 | `scan-take-journal` | P0 / gui | 扫描发现与实得分开、主副手让位、pending、去重、两端日志与详情 PNG |
-| `journal-viewport` | P0 / gui | 缩小/恢复/GUI scale、实际命中、搜索与日志阅读状态、resize 关闭确认框 |
+| `journal-viewport` | P0 / gui | 默认/奇数窗口、缩小/恢复/GUI scale、整数物理倍率、实际命中、搜索与日志阅读状态、普通/物品 Tooltip PNG、resize 关闭确认框 |
 | `cat-ledger` | P0 / model | 关系门槛、冷却边界、同猫同 tick 去重、阶段、命数和状态序列化 |
 | `journal-restart` | P0 / gui | 正常停服恢复、空缓存同步、重复登录奖励去重和恢复详情 PNG |
 | `panning-settlement` | P1 / server | 正式交互与真实 tick 完成、剩余次数/耐久/实际产出/即时日志、中断和变体门槛 |
