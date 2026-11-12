@@ -9,6 +9,7 @@ import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -27,13 +28,6 @@ import java.util.Optional;
 /** 考古信息面板 —— 玩家个人进度：进度条 + 已发现物品列表 + 模组来源 */
 public final class DetailOverlayPanel implements PagePanel {
     private static final int BAR_HEIGHT = 12;
-    private static final int BAR_BG_COLOR = 0xFF555555;
-    private static final int BAR_FG_COLOR = 0xFFC8A050;
-    private static final int BAR_DONE_COLOR = 0xFF6BA050;
-    // 条内读数按填充边界分色：填充侧深色（金色上 6.40:1 / 完成绿上 5.04:1），未填充侧浅色（条底上 7.46:1）
-    private static final int READOUT_ON_FILL_COLOR = 0xFF2E2114;
-    private static final int READOUT_ON_BAR_COLOR = 0xFFFFFFFF;
-    private static final int TEXT_COLOR = 0x4A3320;
     // 与语义色表 BODY 同值，直接引用以消除重复字面量（值未变）
     private static final int LABEL_COLOR = UiTextScheme.PARCHMENT.body();
     // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）。
@@ -114,51 +108,17 @@ public final class DetailOverlayPanel implements PagePanel {
 
         y += 14;
 
-        // 进度条本体
+        // 进度条本体（与目录、日志详情统一使用 JournalPalette 羊皮纸色系进度条）
         int barTop = y;
-        guiGraphics.fill(leftX, barTop, leftX + contentWidth, barTop + BAR_HEIGHT, BAR_BG_COLOR);
-
-        int filledWidth = 0;
-        if (this.totalCount > 0) {
-            double ratio = (double) this.parsedCount / this.totalCount;
-            filledWidth = (int) (contentWidth * ratio);
-            if (filledWidth > 0) {
-                int progressColor = ratio >= 1.0 ? BAR_DONE_COLOR : BAR_FG_COLOR;
-                guiGraphics.fill(leftX + 1, barTop + 1, leftX + filledWidth - 1, barTop + BAR_HEIGHT - 1, progressColor);
-            }
-        }
-
-        // 读数画在**条内**并与填充边界分色：填充侧深色、未填充侧浅色，两侧都满足 ≥4.5:1
+        Component barLabel = Component.empty();
         if (this.totalCount > 0) {
             int percent = (int) ((double) this.parsedCount / this.totalCount * 100.0);
-            String valueText = Component.translatable(
+            barLabel = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.parse_progress_value",
-                    percent, this.parsedCount, this.totalCount).getString();
-            // 条内可用宽度（左右各留 4 像素内边距），超宽按统一省略号口径截断
-            String readout = TextScroll.trimToWidth(font, valueText, Math.max(0, contentWidth - 8));
-            int readoutWidth = font.width(readout);
-            int readoutX = leftX + (contentWidth - readoutWidth) / 2;
-            int readoutY = barTop + (BAR_HEIGHT - font.lineHeight + 1) / 2;
-            // 找出跨过填充边界的字符下标；两段各自用原版测量定位，避免逐字符累加带来的偏移
-            int fillEnd = leftX + filledWidth;
-            int split = readout.length();
-            int accumulated = 0;
-            for (int i = 0; i < readout.length(); i++) {
-                accumulated += font.width(String.valueOf(readout.charAt(i)));
-                if (readoutX + accumulated > fillEnd) {
-                    split = i;
-                    break;
-                }
-            }
-            String onFill = readout.substring(0, split);
-            String onBar = readout.substring(split);
-            if (!onFill.isEmpty()) {
-                guiGraphics.drawString(font, onFill, readoutX, readoutY, READOUT_ON_FILL_COLOR, false);
-            }
-            if (!onBar.isEmpty()) {
-                guiGraphics.drawString(font, onBar, readoutX + font.width(onFill), readoutY, READOUT_ON_BAR_COLOR, false);
-            }
+                    percent, this.parsedCount, this.totalCount);
         }
+        JournalPalette.drawProgressBar(guiGraphics, font, leftX, barTop, contentWidth, BAR_HEIGHT,
+                this.parsedCount, this.totalCount, barLabel, false, 0);
         y += BAR_HEIGHT + 10;
 
         // 已发现物品列表
@@ -224,7 +184,7 @@ public final class DetailOverlayPanel implements PagePanel {
                     entry.scrollTicks++;
                 }
                 // 名称（搜索不匹配时变暗）
-                int nameColor = entry.highlighted ? TEXT_COLOR : MUTED_COLOR;
+                int nameColor = entry.highlighted ? LABEL_COLOR : MUTED_COLOR;
                 PanelTextMetrics.Measured name = this.metrics.measure(item.displayName().getString(), font);
                 TextScroll.draw(guiGraphics, font, name.text(), name.width(),
                         nameX, rowY + 2, nameMaxWidth, nameColor, hovered, entry.scrollTicks, false);
@@ -241,14 +201,14 @@ public final class DetailOverlayPanel implements PagePanel {
         int sourceWidth = this.metrics.measure(this.modSource, font).width();
         guiGraphics.drawString(font, labelText.text(), leftX, y, LABEL_COLOR, false);
         if (labelWidth + gap + sourceWidth <= contentWidth) {
-            guiGraphics.drawString(font, this.modSource, leftX + labelWidth + gap, y, TEXT_COLOR, false);
+            guiGraphics.drawString(font, this.modSource, leftX + labelWidth + gap, y, LABEL_COLOR, false);
         } else {
             int sourceY = y + font.lineHeight + 2;
             List<FormattedCharSequence> sourceLines = font.split(
                     Component.literal(this.modSource), contentWidth);
             for (int index = 0; index < sourceLines.size(); index++) {
                 guiGraphics.drawString(font, sourceLines.get(index), leftX,
-                        sourceY + index * (font.lineHeight + 2), TEXT_COLOR, false);
+                        sourceY + index * (font.lineHeight + 2), LABEL_COLOR, false);
             }
         }
     }

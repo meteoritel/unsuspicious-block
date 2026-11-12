@@ -101,9 +101,12 @@ public final class JournalControls {
             int v = button.isSelected() ? 44 : expanded ? 22 : 0;
             graphics.blit(JournalLayout.BOOKMARK_TEXTURE, r.x(), r.y(), 40 - width, v, width, 22, 40, 66);
             if (expanded) {
+                int labelColor = button.isSelected()
+                        ? UiTextScheme.PARCHMENT.title()
+                        : UiTextScheme.PARCHMENT.body();
                 graphics.drawString(Minecraft.getInstance().font, label,
                         r.x() + Math.max(3, (width - Minecraft.getInstance().font.width(label)) / 2), r.y() + 7,
-                        UiTextScheme.PARCHMENT.body(), false);
+                        labelColor, false);
             }
         }, UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint()));
         return button;

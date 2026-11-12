@@ -11,6 +11,7 @@ import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
@@ -105,7 +106,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
     // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）
     private static final int MUTED_COLOR = UiTextScheme.PARCHMENT.label();
-    private static final int SELECTED_TEXT_COLOR = 0x7B3E18;
+    private static final int SELECTED_TEXT_COLOR = JournalTextColors.SELECTED;
 
     // 备注图标点击回调（由外部 screen 设置，打开备注编辑界面）
     @Nullable

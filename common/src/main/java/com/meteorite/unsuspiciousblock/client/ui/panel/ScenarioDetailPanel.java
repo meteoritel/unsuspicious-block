@@ -171,13 +171,13 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         summary.setBounds(x, y + 19, 20, 16);
         paramsButton.setBounds(x + width - 16, y + 19, 16, 16);
         int readoutWidth = Math.max(0, width - 42);
-        int luckWidth = readoutWidth * 2 / 5;
+        int luckWidth = readoutWidth / 2;
         luck.setBounds(x + 22, y + 19, luckWidth, 16);
         samples.setBounds(x + 22 + luckWidth, y + 19, readoutWidth - luckWidth, 16);
         calculateButton.setBounds(x, y + 37, width, 14);
         conditionsHeading.setBounds(x, y + 53, width - 20, 12);
         expandButton.setBounds(x + width - 18, y + 52, 18, 14);
-        int contentHeight = Math.max(1, layout.rightPageBottom() - 24 - (y + 67));
+        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - (y + 67));
         conditions.setBounds(x, y + 67, width, contentHeight);
 
         var choice = selection();

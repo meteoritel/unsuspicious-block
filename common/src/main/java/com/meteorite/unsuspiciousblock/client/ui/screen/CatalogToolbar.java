@@ -9,7 +9,7 @@ import com.meteorite.meteosuikit.api.control.UiTextInput;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -287,16 +287,16 @@ public class CatalogToolbar {
                 JournalLayout.SEARCH_ICON_SIZE,
                 this.searchExpanded ? UiAtlas.Icon.CLOSE : UiAtlas.Icon.SEARCH,
                 List.of(
-                        Component.translatable(tooltipBase).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
-                        Component.translatable(tooltipBase + ".rule_table.syntax").withStyle(ChatFormatting.AQUA),
+                        Component.translatable(tooltipBase).withStyle(TooltipBuilder.TITLE),
+                        Component.translatable(tooltipBase + ".rule_table.syntax").withStyle(TooltipBuilder.ACCENT),
                         tooltipDescription(tooltipBase + ".rule_table.description"),
-                        Component.translatable(tooltipBase + ".rule_mod.syntax").withStyle(ChatFormatting.AQUA),
+                        Component.translatable(tooltipBase + ".rule_mod.syntax").withStyle(TooltipBuilder.ACCENT),
                         tooltipDescription(tooltipBase + ".rule_mod.description"),
-                        Component.translatable(tooltipBase + ".rule_type.syntax").withStyle(ChatFormatting.AQUA),
+                        Component.translatable(tooltipBase + ".rule_type.syntax").withStyle(TooltipBuilder.ACCENT),
                         tooltipDescription(tooltipBase + ".rule_type.description"),
-                        Component.translatable(tooltipBase + ".rule_item.syntax").withStyle(ChatFormatting.AQUA),
+                        Component.translatable(tooltipBase + ".rule_item.syntax").withStyle(TooltipBuilder.ACCENT),
                         tooltipDescription(tooltipBase + ".rule_item.description"),
-                        Component.translatable(tooltipBase + ".rule_tag.syntax").withStyle(ChatFormatting.AQUA),
+                        Component.translatable(tooltipBase + ".rule_tag.syntax").withStyle(TooltipBuilder.ACCENT),
                         tooltipDescription(tooltipBase + ".rule_tag.description")),
                 this::toggleSearch
         );
@@ -355,7 +355,7 @@ public class CatalogToolbar {
 
     private static Component tooltipDescription(String translationKey) {
         return Component.literal("  ")
-                .append(Component.translatable(translationKey).withStyle(ChatFormatting.GRAY));
+                .append(Component.translatable(translationKey).withStyle(TooltipBuilder.LABEL));
     }
 
 }

@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.layout;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import net.minecraft.resources.ResourceLocation;
 
 /** 考古笔记 GUI 所有布局参数集中定义，便于手动调整测试 */
@@ -58,7 +60,7 @@ public final class JournalLayout {
     public static final int INTRO_PAGE_INDICATOR_Y = 208;
     public static final int LOG_PAGE_INDICATOR_Y = 208;
     public static final int SCENARIO_PAGE_INDICATOR_Y = 208;
-    public static final int GRID_SEPARATOR_COLOR = 0x40A0A0A0;
+    public static final int GRID_SEPARATOR_COLOR = JournalPalette.GRID_SEPARATOR;
 
     // —— 右侧日志页 ——
     // 与右页网格内容同起点，对齐左页工具栏行
@@ -87,21 +89,20 @@ public final class JournalLayout {
     public static final int LOG_ENTRY_COPY_BTN_RIGHT_PAD = 4;   // 按钮与条目背景右边缘的距离
     public static final int LOG_ENTRY_COPY_BTN_TOP_OFFSET = 2;  // 按钮距条目顶部偏移
 
-    // 日志条目文字配色（区分优先级）
-    public static final int LOG_ENTRY_TIME_COLOR = 0x3A2A1A;       // 时间：最高优先级（深棕）
-    // 维度+坐标：次要信息，取语义色表 LABEL（书页底色 #E8DCBC 上 5.03:1；原 #7A6247 只有 4.20:1）
+    // 日志条目文字配色（统一引自语义色表与书页专属色）
+    public static final int LOG_ENTRY_TIME_COLOR = JournalTextColors.NAME;
     public static final int LOG_ENTRY_DIM_POS_COLOR = UiTextScheme.PARCHMENT.label();
-    public static final int LOG_ENTRY_NOTE_BADGE_BG_HOVER = 0x60A08060;    // 已备注标记悬停背景（半透明暖色）
+    public static final int LOG_ENTRY_NOTE_BADGE_BG_HOVER = JournalPalette.NOTE_BADGE_HOVER_BG;
 
     // 日志分组头
     public static final int LOG_GROUP_HEADER_HEIGHT = 14;   // 组头行高度
     public static final int LOG_GROUP_ICON_SIZE = LOG_TOOLBAR_ICON_SIZE; // 分组按钮图标尺寸
-    public static final int LOG_GROUP_HEADER_COLOR = 0x5A422C;  // 组头行文字颜色
-    public static final int LOG_GROUP_HEADER_BG = 0x18A08060;   // 组头行背景色（复用详情卡片背景）
-    public static final int LOG_GROUP_HEADER_BORDER = 0x30C8B090; // 组头行边框色（复用详情卡片边框）
+    public static final int LOG_GROUP_HEADER_COLOR = UiTextScheme.PARCHMENT.body();
+    public static final int LOG_GROUP_HEADER_BG = JournalPalette.CARD_SUBTLE_LIGHT;
+    public static final int LOG_GROUP_HEADER_BORDER = JournalPalette.BORDER_SOFT;
 
     // 日志列表选中态色条（强化选中识别）
-    public static final int LOG_LIST_SELECTED_BAR_COLOR = 0xC07B3E18; // 选中态左侧色条（红棕）
+    public static final int LOG_LIST_SELECTED_BAR_COLOR = JournalPalette.SELECTED_BAR;
     public static final int LOG_LIST_SELECTED_BAR_WIDTH = 2;          // 色条宽度
 
     // 日志排序工具栏
@@ -109,12 +110,12 @@ public final class JournalLayout {
     public static final int LOG_TOOLBAR_GAP = 2;
 
     // —— 日志详情页 ——
-    public static final int LOG_DETAIL_CARD_BG = 0x28A08060;      // 卡片暖色半透明背景
-    public static final int LOG_DETAIL_CARD_BORDER = 0x50C8B090;  // 卡片顶部边框色
+    public static final int LOG_DETAIL_CARD_BG = JournalPalette.CARD_SUBTLE;
+    public static final int LOG_DETAIL_CARD_BORDER = JournalPalette.BORDER_SOFT;
     public static final int LOG_DETAIL_BACK_BTN_SIZE = 14;        // 返回按钮（kit 控件）尺寸
     public static final int LOG_DETAIL_CARD_PAD = 4;              // 卡片内边距
     public static final int LOG_DETAIL_CARD_GAP = 4;              // 卡片之间间距
-    public static final int LOG_DETAIL_COMPLETION_COLOR = 0x3A8C3A; // 完成标志绿色
+    public static final int LOG_DETAIL_COMPLETION_COLOR = JournalTextColors.COMPLETED;
 
     // Spacetime 卡片文字布局（无图标，标签+值两列）
     public static final int LOG_DETAIL_META_LABEL_GAP = 4;        // 标签与值间距
@@ -122,24 +123,19 @@ public final class JournalLayout {
     public static final int LOG_DETAIL_META_ROWS = 6;             // 元信息行数（创建时间/更新时间/结构/群系/维度/坐标）
 
     // 文字配色：区分信息权重
-    // 标签（次要）：语义色表 LABEL（5.03:1；原 #7A6247 只有 4.20:1）
     public static final int LOG_DETAIL_LABEL_COLOR = UiTextScheme.PARCHMENT.label();
-    public static final int LOG_DETAIL_VALUE_COLOR = 0x4A3320;    // 值（主要）
-    // 未知值（最低视觉权重）：语义色表 HINT（压暗后 4.87:1；原 #9A8A70 只有 2.47:1）
+    public static final int LOG_DETAIL_VALUE_COLOR = UiTextScheme.PARCHMENT.body();
     public static final int LOG_DETAIL_UNKNOWN_COLOR = UiTextScheme.PARCHMENT.hint();
 
     // 战利品角标颜色
-    public static final int LOG_DETAIL_LOOT_BADGE_FULL_COLOR = 0xFF3A8C3A;    // 完全获得角标（绿）
-    public static final int LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR = 0xFFB08C00; // 部分获得角标（黄褐）
+    public static final int LOG_DETAIL_LOOT_BADGE_FULL_COLOR = JournalPalette.LOOT_BADGE_FULL;
+    public static final int LOG_DETAIL_LOOT_BADGE_PARTIAL_COLOR = JournalPalette.LOOT_BADGE_PARTIAL;
 
     // 战利品卡片标题与图标网格的间距
     public static final int LOG_DETAIL_TITLE_TO_GRID_GAP = 6;
 
-    // 战利品卡底部总进度条（文字直接渲染在进度条本体上）
+    // 战利品卡底部总进度条（统一尺寸与羊皮纸色板）
     public static final int LOG_DETAIL_PROGRESS_BAR_HEIGHT = 12;  // 进度条厚度（容纳文字）
-    public static final int LOG_DETAIL_PROGRESS_BAR_BG = 0xFF5A422C;   // 进度条底色（不透明深棕）
-    public static final int LOG_DETAIL_PROGRESS_BAR_FILL = 0xFFA08060; // 进度条前景（未完成暖棕，不透明）
-    public static final int LOG_DETAIL_PROGRESS_BAR_TEXT = 0xFFFFFFFF; // 进度条上文字颜色（白）
     public static final int LOG_DETAIL_PROGRESS_BAR_GAP = 4;      // 进度条与图标区间距
 
     // —— 翻页按钮 ——

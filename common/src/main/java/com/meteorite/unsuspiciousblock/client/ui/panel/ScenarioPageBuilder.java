@@ -61,8 +61,6 @@ final class ScenarioPageBuilder {
             content.add(new UiNode.Row(text("no_assumptions"), UiTextScheme.PARCHMENT.label()));
         content.add(new UiNode.Gap(9));
         content.add(heading(text("conditions.branches"), Heading.SECTION, List.of(text("conditions.candidates_hint"))));
-        content.add(new UiNode.Row(4, UiNode.NO_PARENT, text("conditions.candidates_hint"), UiTextScheme.PARCHMENT.hint(),
-                List.of(), List.of(), null, null));
         Map<Group, List<ScenarioBranch>> groups = new LinkedHashMap<>();
         for (var branch : structure.branches()) {
             if (branch.injectionSource().isEmpty() && branch.conditions().isEmpty()
@@ -81,7 +79,6 @@ final class ScenarioPageBuilder {
         if (hasInjection) {
             content.add(new UiNode.Gap(12));
             content.add(heading(text("injection.title"), Heading.SECTION, List.of(text("injection.limit"))));
-            content.add(new UiNode.Row(text("injection.limit"), UiTextScheme.PARCHMENT.hint()));
             for (var entry : groups.entrySet()) {
                 if (entry.getKey().source().isEmpty()) continue;
                 addBranch(content, structure, sceneKey, ++ordinal, entry.getKey(), entry.getValue(), visible, locate, recommend);

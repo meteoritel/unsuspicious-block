@@ -275,11 +275,11 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         SyncLootTableManagementPayload.Entry selected = selectedEntry();
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.details"),
-                x, top + 4, 0xFFFFFF, false);
+                x, top + 4, UiTextScheme.DARK.title(), false);
         if (!this.nameDrafts.isEmpty()) {
             Component draftStatus = Component.translatable(
                     "screen.unsuspiciousblock.loot_table_management.source.draft", this.nameDrafts.size());
-            renderOverflowText(graphics, draftStatus.getString(), x, top + 78, width, 0xFFAA00);
+            renderOverflowText(graphics, draftStatus.getString(), x, top + 78, width, UiTextScheme.DARK.accent());
         }
         if (selected != null) {
             renderOverflowText(graphics, selected.tableId().toString(), x, top + 23,
@@ -288,14 +288,14 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                     ? "screen.unsuspiciousblock.loot_table_management.tracked"
                     : "screen.unsuspiciousblock.loot_table_management.not_tracked");
             graphics.drawString(this.font, status, x, top + 39,
-                    selected.tracked() ? 0x78D66A : 0x999999, false);
+                    selected.tracked() ? UiTextScheme.DARK.positive() : UiTextScheme.DARK.hint(), false);
         }
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.language"),
-                x, this.languageBox.bounds().y() - 11, 0xB8B8B8, false);
+                x, this.languageBox.bounds().y() - 11, UiTextScheme.DARK.label(), false);
         graphics.drawString(this.font,
                 Component.translatable("screen.unsuspiciousblock.loot_table_management.localized_name"),
-                x, this.nameBox.bounds().y() - 11, 0xB8B8B8, false);
+                x, this.nameBox.bounds().y() - 11, UiTextScheme.DARK.label(), false);
         int warningY = top + 52;
         if (!LootTableManagementClientState.canEdit()) {
             renderOverflowText(graphics, Component.translatable(

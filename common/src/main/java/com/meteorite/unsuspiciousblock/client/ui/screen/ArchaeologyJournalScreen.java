@@ -8,9 +8,12 @@ import net.minecraft.world.item.ItemStack;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.Util;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
@@ -32,7 +35,6 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStat
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -93,7 +95,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final UiModalStack confirmations = new UiModalStack(() -> UnsuspiciousUiTheme.PARCHMENT);
     private final UiNavigationHistory<NavigationState> history =
             new UiNavigationHistory<>(64);
-    private UiControl backButton;
     /** 只恢复阅读状态与场景选择，不回滚参数提交或服务端操作。 */
     private record NavigationState(@Nullable ResourceLocation table, String scene, UiStateSnapshot view,
                                    boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {}
@@ -114,7 +115,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         NavigationState after = navigationState();
         if (before == null || after == null) return;
         if (!navigationKey(before).equals(navigationKey(after))) history.push(before);
-        if (backButton != null) backButton.setEnabled(history.canGoBack(this::validNavigation));
     }
 
     private static NavigationKey navigationKey(NavigationState state) {
@@ -261,7 +261,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     @Override
-    protected void advanceUiFrame() { confirmations.tick(); }
+    protected void advanceUiFrame() {
+        confirmations.tick();
+        if (this.catalogPanel != null) {
+            this.catalogPanel.advanceFrame();
+        }
+    }
 
     @Override
     protected void layoutUi() {
@@ -280,8 +285,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             }
             return false;
         } finally {
-            if (keyCode != GLFW.GLFW_KEY_BACKSPACE && !backWasClicked) rememberNavigation(before);
-            backWasClicked = false;
+            if (keyCode != GLFW.GLFW_KEY_BACKSPACE) rememberNavigation(before);
         }
     }
 
@@ -320,7 +324,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             default -> { return false; }
         }
         this.categoryFocusIndex = Mth.clamp(target, 0, count - 1);
-        this.catalogPanel.ensureIndexVisible(this.categoryFocusIndex);
+        this.catalogPanel.ensureIndexVisible(this.categoryFocusIndex, true);
         syncButtonState();
         return true;
     }
@@ -467,7 +471,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             this.emptyCatalogScrollTicks = hovered ? this.emptyCatalogScrollTicks + 1 : 0;
             TextScroll.draw(guiGraphics, this.font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_catalog").getString(),
-                    x, y, width, 0x7A6247, hovered, this.emptyCatalogScrollTicks, false);
+                    x, y, width, UiTextScheme.PARCHMENT.label(), hovered, this.emptyCatalogScrollTicks, false);
         } else {
             this.emptyCatalogScrollTicks = 0;
         }
@@ -482,19 +486,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
         int y = this.bookLayout.leftPageY() + JournalLayout.CATALOG_SUMMARY_Y - 1;
         int width = JournalLayout.CATALOG_TEXTURE_WIDTH;
         int height = 11;
-        graphics.fill(x, y, x + width, y + height, 0xFF8B6914);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xFFD8C0A0);
-        int innerWidth = width - 2;
-        int filled = total > 0 ? Mth.clamp(Math.round(innerWidth * (unlocked / (float) total)), 0, innerWidth) : 0;
-        if (filled > 0) {
-            graphics.fill(x + 1, y + 1, x + 1 + filled, y + height - 1, 0xFF8FA65A);
-        }
         Component label = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.unlocked_tables", unlocked, total);
         boolean hovered = isTextHovered(mouseX, mouseY, x + 2, y + 1, width - 4);
         this.catalogProgressScrollTicks = hovered ? this.catalogProgressScrollTicks + 1 : 0;
-        TextScroll.draw(graphics, this.font, label.getString(), x + 2, y + 2, width - 4,
-                0xFF3D2810, hovered, this.catalogProgressScrollTicks, true);
+        JournalPalette.drawProgressBar(graphics, this.font, x, y, width, height, unlocked, total,
+                label, hovered, this.catalogProgressScrollTicks);
     }
 
     private boolean isTextHovered(int mouseX, int mouseY, int x, int y, int width) {
@@ -509,7 +506,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         int x = this.bookLayout.rightPageX() + 16;
         int y = this.bookLayout.rightPageY() + 72;
         for (var line : this.font.split(message, width)) {
-            graphics.drawString(this.font, line, x, y, 0x7A6247, false);
+            graphics.drawString(this.font, line, x, y, UiTextScheme.PARCHMENT.label(), false);
             y += this.font.lineHeight + 2;
         }
     }
@@ -518,32 +515,36 @@ public class ArchaeologyJournalScreen extends UiScreen {
         int index = hit.rowIndex(catalogPanel);
         if (viewModel.isCategoryHome() && index >= 0 && index < viewModel.categoryViews().size()) {
             var category = viewModel.categoryViews().get(index);
-            return hit.withTextTooltip(List.of(category.name(), category.description()), catalogPanel.bounds());
+            return hit.withTextTooltip(List.of(
+                    category.name().copy().withStyle(TooltipBuilder.TITLE),
+                    category.description().copy().withStyle(TooltipBuilder.LABEL)), catalogPanel.bounds());
         }
         if (!viewModel.rowIsChild(index)) return hit;
         List<Component> lines = new ArrayList<>();
         List<Component> parents = viewModel.rowReferencingParentNames(index);
-        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_references", parents.size()));
-        parents.forEach(name -> lines.add(Component.literal("∈ ").append(name)));
-        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_probability_short"));
+        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_references", parents.size())
+                .withStyle(TooltipBuilder.TITLE));
+        parents.forEach(name -> lines.add(Component.literal("∈ ").withStyle(TooltipBuilder.ACCENT)
+                .append(name.copy().withStyle(TooltipBuilder.BODY))));
+        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_probability_short")
+                .withStyle(TooltipBuilder.LABEL));
         return hit.withTextTooltip(lines, catalogPanel.bounds());
     }
 
-    private boolean backWasClicked;
     private @Nullable UiStateSnapshot resumeState;
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         NavigationState before = navigationState();
         try { return super.mouseClicked(x, y, button); }
-        finally { if (!backWasClicked) rememberNavigation(before); backWasClicked = false; }
+        finally { rememberNavigation(before); }
     }
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
         NavigationState before = navigationState();
         try { return super.mouseReleased(x, y, button); }
-        finally { if (!backWasClicked) rememberNavigation(before); backWasClicked = false; }
+        finally { rememberNavigation(before); }
     }
 
     // 书页内容与控件共用根命中；页内业务由当前页容器处理。
@@ -667,17 +668,24 @@ public class ArchaeologyJournalScreen extends UiScreen {
                     }));
         }
 
-        if (this.catalogPanel == null) this.catalogPanel = new CatalogPanel(this.bookLayout);
+        boolean isNewCatalogPanel = this.catalogPanel == null;
+        if (isNewCatalogPanel) this.catalogPanel = new CatalogPanel(this.bookLayout);
         else this.catalogPanel.applyLayout(this.bookLayout);
         this.catalogPanel.setNavigation(this::handleCatalogNavigation);
         this.catalogPanel.setOnActivate(this::activateCatalog);
         if (this.viewModel.isCategoryHome()) {
+            CatalogPanel.Mode prevMode = this.catalogPanel.mode();
             this.catalogPanel.setCategories(this.viewModel.categoryViews());
-            this.catalogPanel.setScrollOffset(previousCatalogScrollOffset);
+            if (isNewCatalogPanel || prevMode != CatalogPanel.Mode.CATEGORIES) {
+                this.catalogPanel.setScrollOffset(previousCatalogScrollOffset);
+            }
             this.catalogPanel.ensureIndexVisible(this.categoryFocusIndex);
         } else {
+            CatalogPanel.Mode prevMode = this.catalogPanel.mode();
             this.catalogPanel.setEntries(this.viewModel.buildCatalogEntries());
-            this.catalogPanel.setScrollOffset(previousCatalogScrollOffset);
+            if (isNewCatalogPanel || prevMode != CatalogPanel.Mode.TABLES) {
+                this.catalogPanel.setScrollOffset(previousCatalogScrollOffset);
+            }
             this.catalogPanel.ensureIndexVisible(this.viewModel.selectedIndex());
         }
         this.restoredCatalogScrollOffset = 0;
@@ -708,12 +716,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
         ));
         int helpY = managementY + JournalLayout.SIDE_TAB_HEIGHT + JournalLayout.SIDE_TAB_GAP;
-        this.backButton = this.registerWidget(JournalControls.iconButton(
-                this.bookLayout.rightPageX() + 2, this.bookLayout.rightPageBottom() - 14, 14, UiAtlas.Icon.BACK,
-                List.of(Component.translatable("screen.unsuspiciousblock.navigation.back")), () -> {
-                    backWasClicked = true;
-                    goBack();
-                }));
         this.registerWidget(JournalControls.sideTab(
                 sideTabX, helpY,
                 JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
@@ -755,26 +757,26 @@ public class ArchaeologyJournalScreen extends UiScreen {
         return registerWidget(button);
     }
 
-    // 构建分层配色的帮助提示，长说明主动拆行以控制宽度。
+    // 构建分层配色的帮助提示，统一使用 TooltipBuilder 暗底亮色语义常量。
     private static List<Component> buildHelpTooltip() {
         String tooltipBase = "screen.unsuspiciousblock.archaeology_journal.help_tooltip";
         return List.of(
                 Component.translatable(tooltipBase + ".title")
-                        .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
-                Component.translatable(tooltipBase + ".favorite.label").withStyle(ChatFormatting.AQUA),
+                        .withStyle(TooltipBuilder.TITLE),
+                Component.translatable(tooltipBase + ".favorite.label").withStyle(TooltipBuilder.ACCENT),
                 tooltipDescription(tooltipBase + ".favorite"),
-                Component.translatable(tooltipBase + ".probability.label").withStyle(ChatFormatting.AQUA),
+                Component.translatable(tooltipBase + ".probability.label").withStyle(TooltipBuilder.ACCENT),
                 tooltipDescription(tooltipBase + ".probability.summary"),
                 tooltipDescription(tooltipBase + ".probability.range"),
-                Component.translatable(tooltipBase + ".sort.label").withStyle(ChatFormatting.AQUA),
+                Component.translatable(tooltipBase + ".sort.label").withStyle(TooltipBuilder.ACCENT),
                 tooltipDescription(tooltipBase + ".sort"),
-                Component.translatable(tooltipBase + ".wiki").withStyle(ChatFormatting.GREEN)
+                Component.translatable(tooltipBase + ".wiki").withStyle(TooltipBuilder.POSITIVE)
         );
     }
 
     private static Component tooltipDescription(String translationKey) {
         return Component.literal("  ")
-                .append(Component.translatable(translationKey).withStyle(ChatFormatting.GRAY));
+                .append(Component.translatable(translationKey).withStyle(TooltipBuilder.LABEL));
     }
 
     private void rebuildViewModels() {
@@ -839,7 +841,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
         this.viewModel.setSelectedIndex(Mth.clamp(index, 0, this.viewModel.tableViews().size() - 1));
         if (this.catalogPanel != null) {
-            this.catalogPanel.ensureIndexVisible(this.viewModel.selectedIndex());
+            this.catalogPanel.ensureIndexVisible(this.viewModel.selectedIndex(), true);
         }
         updateItemGridPanel();
         syncButtonState();
@@ -851,7 +853,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private void syncButtonState() {
-        if (backButton != null) backButton.setEnabled(history.canGoBack(this::validNavigation));
         boolean showRightPageTabs = !this.viewModel.isCategoryHome();
         this.rightPage.setChromeAvailable(showRightPageTabs);
 

@@ -48,7 +48,11 @@ final class ScenarioConditionLayout {
                         text, row.color(), line == 0 ? row.icons() : List.of(), row.tooltip(),
                         row.payload(), line == 0 ? row.action() : null));
             }
-            if (lines.isEmpty()) output.add(row);
+            if (lines.isEmpty()) {
+                // 空文本行（如仅图标候选行）同样需要把 parentRow 重映射到折行后的下标。
+                output.add(new UiNode.Row(indent, parent, row.leading(), row.text(),
+                        row.color(), row.icons(), row.tooltip(), row.payload(), row.action()));
+            }
         }
         return List.copyOf(output);
     }

@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -38,8 +39,8 @@ public final class WelcomeStatsPanel implements UiInputTarget {
     private static final int TITLE_COLOR = UiTextScheme.PARCHMENT.title();
     // 次要标签：原字面量 0x8A7358 在书页底色 #E8DCBC 上只有 3.29:1，改引语义色表的 LABEL（5.03:1）。
     private static final int LABEL_COLOR = UiTextScheme.PARCHMENT.label();
-    private static final int VALUE_COLOR = 0x5A3D23;
-    private static final int SEPARATOR_COLOR = 0x608B6914;
+    private static final int VALUE_COLOR = UiTextScheme.PARCHMENT.body();
+    private static final int SEPARATOR_COLOR = JournalPalette.SEPARATOR;
     private static final int COLUMN_GAP = 8;
     private static final int ITEM_SIZE = 16;
     private static final int ITEM_GAP = 2;
@@ -71,21 +72,16 @@ public final class WelcomeStatsPanel implements UiInputTarget {
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.title"),
                 titleX, titleY, titleWidth, TITLE_COLOR);
 
-        int greetingY = titleY + 19;
-        drawCenteredTrimmed(graphics, font,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.greeting"),
-                titleX, greetingY, titleWidth, LABEL_COLOR);
-
         int separatorLeft = pageX + 14;
         int separatorRight = pageRight - 14;
-        int firstSeparatorY = greetingY + font.lineHeight + 8;
+        int firstSeparatorY = titleY + font.lineHeight + 8;
         graphics.fill(separatorLeft, firstSeparatorY, separatorRight, firstSeparatorY + 1, SEPARATOR_COLOR);
 
         int contentX = pageX + 12;
         int contentWidth = this.layout.rightPageWidth() - 24;
         int columnWidth = (contentWidth - COLUMN_GAP) / 2;
         int rightColumnX = contentX + columnWidth + COLUMN_GAP;
-        int firstRowY = firstSeparatorY + 14;
+        int firstRowY = firstSeparatorY + 12;
 
         ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
         drawMetric(graphics, font, contentX, firstRowY, columnWidth,
@@ -127,7 +123,7 @@ public final class WelcomeStatsPanel implements UiInputTarget {
         graphics.fill(separatorLeft, secondSeparatorY, separatorRight, secondSeparatorY + 1, SEPARATOR_COLOR);
     }
 
-    private int recentY(Font font) { return layout.rightPageY() + 102 + font.lineHeight; }
+    private int recentY(Font font) { return layout.rightPageY() + 83 + font.lineHeight; }
     private UiGridMetrics itemGrid() { return new UiGridMetrics(Math.max(1, (layout.rightPageWidth() - 24) / (ITEM_SIZE + ITEM_GAP)), ITEM_SIZE, ITEM_SIZE, ITEM_GAP, 2); }
     @Override public UiPointerHit hitTest(double x, double y) {
         refreshSnapshot();

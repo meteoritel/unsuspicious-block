@@ -7,6 +7,7 @@ import com.meteorite.meteosuikit.api.layout.*;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.gui.Font;
@@ -66,7 +67,9 @@ final class ScenarioConditionView implements UiFocusTarget, UiInteractionSession
                 if (target.hit().payload() instanceof ScenarioPageBuilder.Heading heading) {
                     UiRect rect = target.contentBounds();
                     graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(),
-                            heading == ScenarioPageBuilder.Heading.SECTION ? 0x40B99A60 : 0x18B99A60);
+                            heading == ScenarioPageBuilder.Heading.SECTION
+                                    ? JournalPalette.SCENARIO_SECTION_FILL
+                                    : JournalPalette.SCENARIO_ENTRY_FILL);
                 }
             }
             if (isFocusVisible() && !actions.isEmpty()) {

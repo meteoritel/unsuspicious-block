@@ -17,7 +17,6 @@ import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -145,7 +144,7 @@ public final class RightPageContainer implements UiInputTarget {
             boolean alwaysIndicator, Component label, Runnable enter, Runnable leave) {
         UiControl bookmark = JournalControls.bookmark(layout.rightPageX() + layout.rightPageWidth(),
                 layout.rightPageY() + BOOKMARK_TOP_OFFSET + tab.ordinal() * (BOOKMARK_HEIGHT + BOOKMARK_GAP),
-                label.copy().withStyle(ChatFormatting.YELLOW), () -> setActiveTab(tab));
+                label, () -> setActiveTab(tab));
         bookmark.setLayoutKey("journal/tab/" + tab.name().toLowerCase(Locale.ROOT));
         return new PageDescriptor(tab, content, indicatorOffset, alwaysIndicator, enter, leave, bookmark);
     }

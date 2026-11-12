@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
@@ -127,14 +128,14 @@ public final class ScenarioLabel {
         return List.copyOf(lines);
     }
 
-    // 场景 tooltip 按标题、条件分组和逐条定义组织，避免多个条件挤在同一行。
+    // 场景 tooltip 仅用于暗底悬浮框，必须使用 TooltipBuilder 亮色语义，严禁混入羊皮纸棕色。
     public static List<Component> tooltip(SimulationOptions options, String sceneKey) {
         List<Component> lines = new ArrayList<>();
-        lines.add(shortLabel(sceneKey));
-        lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions"));
+        lines.add(shortLabel(sceneKey).copy().withStyle(TooltipBuilder.TITLE));
+        lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions").copy().withStyle(TooltipBuilder.LABEL));
         for (Component definition : definition(options, sceneKey)) {
-            lines.add(Component.literal("• ").withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent()))
-                    .append(definition.copy()));
+            lines.add(Component.literal("• ").withStyle(TooltipBuilder.ACCENT)
+                    .append(definition.copy().withStyle(TooltipBuilder.BODY)));
         }
         return List.copyOf(lines);
     }

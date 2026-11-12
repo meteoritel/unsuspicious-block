@@ -4,6 +4,7 @@ import com.meteorite.meteosuikit.api.control.UiLightbox;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.gui.GuiGraphics;
@@ -13,7 +14,7 @@ import java.util.Map;
 
 /** 场景界面的轻量纸面容器、连线色与灯箱样式装配。 */
 public final class ScenarioUi {
-    public static final int BRANCH = 0xFFA99370;
+    public static final int BRANCH = JournalPalette.SCENARIO_BRANCH_LINE;
 
     private ScenarioUi() {
     }

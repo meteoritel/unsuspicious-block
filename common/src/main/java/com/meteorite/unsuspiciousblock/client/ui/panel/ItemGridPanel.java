@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
@@ -30,7 +32,6 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.FunctionObservationSummary;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -185,22 +186,16 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static final int PROB_Y_OFFSET = 37;        // 概率文字 y 偏移
     // 物品名/数量角标颜色
     private static final int NAME_COLOR = JournalTextColors.NAME;
-    // 模拟值：原 #8B5A2B 在纸面底色 #E8DCBC 上仅 4.28:1，压暗到 #7F4E1F 后为 5.11:1。
-    private static final int PROB_COLOR = 0xFF7F4E1F;
-    // 概率文字画在羊皮纸底色（含格子半透明填充，实测约 #E8DCBC）上，且不带文字阴影，
-    // 因此亮色系对比度不足：亮金 #C8A014 仅约 2.1:1、亮橙红 #C06040 仅约 3.4:1，实际看不清。
-    // 这里压暗到 4.5:1 以上（WCAG 相对亮度公式），同时保留"金 = 概率型条件""橙红 = 运行时条件"的色相语义。
-    private static final int PROB_COLOR_PROBABILISTIC = 0xFF7A5700; // 深金色——有概率型条件（约 4.8:1）
-    private static final int PROB_COLOR_RUNTIME = 0xFF9E4326;       // 深橙红——有运行时条件（约 4.7:1）
-    private static final int PROB_COLOR_UNKNOWN = 0xFF4A4038;       // 深暖灰——状态词（需要条件／问号）约 7.4:1，浅色纸面上必须读得清
-    // 「待解析／未解锁」与「需要条件／问号」同属"给不出数字"的状态词，直接复用同一深暖灰（7.40:1），
-    // 不再单独取只有 4.20:1 的 #7A6247。
-    private static final int PENDING_COLOR = PROB_COLOR_UNKNOWN;
-    private static final int BADGE_COLOR_NORMAL = 0xFFFFFFFF;
-    private static final int BADGE_COLOR_ABBR = 0xFFFFC060;
-    private static final int TAG_GROUP_BORDER_COLOR = 0x806B7D46;
-    private static final int TAG_GROUP_BG_COLOR = 0x186B7D46;
-    private static final int TAG_GROUP_TEXT_COLOR = 0xFF3F5128;
+    private static final int PROB_COLOR = JournalTextColors.PROB_DEFAULT;
+    private static final int PROB_COLOR_PROBABILISTIC = JournalTextColors.PROB_PROBABILISTIC;
+    private static final int PROB_COLOR_RUNTIME = JournalTextColors.PROB_RUNTIME;
+    private static final int PROB_COLOR_UNKNOWN = JournalTextColors.PROB_UNKNOWN;
+    private static final int PENDING_COLOR = JournalTextColors.PROB_UNKNOWN;
+    private static final int BADGE_COLOR_NORMAL = JournalPalette.ITEM_COUNT_NORMAL;
+    private static final int BADGE_COLOR_ABBR = JournalPalette.ITEM_COUNT_ABBR;
+    private static final int TAG_GROUP_BORDER_COLOR = JournalPalette.COLLECTION_BORDER;
+    private static final int TAG_GROUP_BG_COLOR = JournalPalette.COLLECTION_BG;
+    private static final int TAG_GROUP_TEXT_COLOR = JournalTextColors.COLLECTION;
     private static final int TAG_GROUP_MEMBERS_PER_PAGE = JournalLayout.GRID_ITEMS_PER_PAGE - 1;
 
     private final List<GridItem> items = new ArrayList<>();
@@ -431,7 +426,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
-                hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
+                hovered ? JournalPalette.COLLECTION_HOVER : TAG_GROUP_BG_COLOR);
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
         guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
 
@@ -455,7 +450,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 cellY + PROB_Y_OFFSET, TAG_GROUP_TEXT_COLOR, false);
 
         if (!group.hasHighlightedMember()) {
-            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, 0x80808080);
+            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, JournalPalette.DIM_MASK);
         }
     }
 
@@ -468,7 +463,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
-                hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
+                hovered ? JournalPalette.COLLECTION_HOVER : TAG_GROUP_BG_COLOR);
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
         guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
         if (!child.unlocked()) {
@@ -529,7 +524,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
         guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
-                hovered ? 0x306B7D46 : TAG_GROUP_BG_COLOR);
+                hovered ? JournalPalette.COLLECTION_HOVER : TAG_GROUP_BG_COLOR);
         UiAtlas.icon(UiAtlas.Icon.BACK).render(guiGraphics,
                 cellX + (cellW - UiAtlas.ICON_SIZE) / 2, cellY + ICON_TOP + 4);
         PanelTextMetrics.Measured tagText = this.metrics.measure(tagId.toString(), font);
@@ -553,7 +548,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         int iconY = cellY + ICON_TOP;
 
         // 单元格背景
-        int bgColor = unlocked ? (hovered ? 0x22C8B090 : 0x00000000) : (hovered ? 0x22776456 : 0x00000000);
+        int bgColor = unlocked
+                ? (hovered ? JournalPalette.CARD_SUBTLE_HOVER : 0x00000000)
+                : (hovered ? JournalPalette.CARD_MUTED_HOVER : 0x00000000);
         if (bgColor != 0) {
             guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, bgColor);
         }
@@ -608,9 +605,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 cellX + 3, cellY + PROB_Y_OFFSET, cellW - 6,
                 probColor, hovered, scrollTicks, true);
 
-        // 搜索不匹配：覆盖半透明灰色遮罩降低视觉权重
+        // 搜索不匹配：覆盖暖棕半透明遮罩降低视觉权重
         if (!item.highlighted()) {
-            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, 0x80808080);
+            guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, JournalPalette.DIM_MASK);
         }
     }
 
@@ -704,7 +701,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (cell.tag() != null) {
             TagGroup group = cell.tag();
             if (!group.unlocked()) return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
-            return List.of(Component.literal(group.id().toString()).withStyle(ChatFormatting.AQUA),
+            return List.of(Component.literal(group.id().toString()).withStyle(TooltipBuilder.ACCENT),
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_progress", group.discoveredCount(), group.members().size()),
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_open"));
         }

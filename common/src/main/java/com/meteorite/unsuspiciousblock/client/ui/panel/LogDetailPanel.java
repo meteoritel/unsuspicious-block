@@ -13,6 +13,7 @@ import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -428,12 +429,22 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         // 绘制卡片背景，明确区域边界
         drawCardBackground(g, x, y, w, cardH);
 
-        // 绘制标题
-        g.drawString(font, title, x + pad, titleY, JournalLayout.LOG_DETAIL_LABEL_COLOR, false);
+        // 绘制标题与完成标记，统一限制在卡片内边距范围内避免溢出书页右侧
+        int innerW = Math.max(0, w - pad * 2);
         if (allCompleted) {
             Component badge = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_completed");
-            int badgeX = x + pad + font.width(title) + 6;
-            g.drawString(font, badge, badgeX, titleY, JournalLayout.LOG_DETAIL_COMPLETION_COLOR, false);
+            String badgeText = badge.getString();
+            int badgeW = font.width(badgeText);
+            int shownBadgeW = Math.min(badgeW, innerW);
+            int titleMaxW = Math.max(0, innerW - shownBadgeW - 6);
+            TextScroll.draw(g, font, title.getString(), x + pad, titleY, titleMaxW,
+                    JournalLayout.LOG_DETAIL_LABEL_COLOR, false, 0, false);
+            int badgeX = x + w - pad - shownBadgeW;
+            TextScroll.draw(g, font, badgeText, badgeX, titleY, shownBadgeW,
+                    JournalLayout.LOG_DETAIL_COMPLETION_COLOR, false, 0, false);
+        } else {
+            TextScroll.draw(g, font, title.getString(), x + pad, titleY, innerW,
+                    JournalLayout.LOG_DETAIL_LABEL_COLOR, false, 0, false);
         }
 
         if (this.cachedLoot.isEmpty()) {
@@ -509,34 +520,16 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                 () -> g.drawString(font, text, badgeX, badgeY, color, true));
     }
 
-    // 绘制底部总进度条，"Collected X/Y" 文字直接渲染在进度条本体上（居中，白色带阴影）
+    // 绘制底部总进度条，"Collected X/Y" 文字直接渲染在进度条本体上
     private static void drawProgressBar(GuiGraphics g, Font font, int x, int y, int width,
                                         int obtained, int total) {
         if (total <= 0) {
             return;
         }
-        int barH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
-        boolean allDone = obtained >= total;
-
-        // 进度条底色（不透明，清晰可见）
-        g.fill(x, y, x + width, y + barH, JournalLayout.LOG_DETAIL_PROGRESS_BAR_BG);
-        // 进度条前景（完成时用绿色，否则暖棕）
-        int fillWidth = (int) ((long) width * obtained / total);
-        int fillColor = allDone
-                ? JournalLayout.LOG_DETAIL_COMPLETION_COLOR
-                : JournalLayout.LOG_DETAIL_PROGRESS_BAR_FILL;
-        if (fillWidth > 0) {
-            g.fill(x, y, x + fillWidth, y + barH, fillColor);
-        }
-
-        // "Collected X/Y" 文字居中渲染在进度条本体上
         Component progressText = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_loot_progress", obtained, total);
-        int textWidth = font.width(progressText);
-        int textX = x + (width - textWidth) / 2;
-        int textY = y + (barH - font.lineHeight + 1) / 2;
-        g.drawString(font, progressText, textX, textY,
-                JournalLayout.LOG_DETAIL_PROGRESS_BAR_TEXT, true);
+        JournalPalette.drawProgressBar(g, font, x, y, width,
+                JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT, obtained, total, progressText, false, 0);
     }
 
     // —— 战利品构建 ——
