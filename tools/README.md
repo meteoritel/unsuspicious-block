@@ -87,5 +87,7 @@ Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>`
 ## 相关文档
 
 - [开发流程](../docs/guides/development.md)
+- [探针使用指南](../docs/guides/probes.md)
+- [核心探针](probes/README.md)
 - [UI Kit 宿主接入](../docs/dev/internals/ui-kit-api.md)
 - [UI 图标与控件皮肤图集](../docs/dev/internals/toolbar-icon-atlas.md)
