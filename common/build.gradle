@@ -36,8 +36,8 @@ def lootrCompat = lootrCompatFabric || lootrCompatNeoForge
 
 dependencies {
     compileOnly "com.meteorite.meteosuikit:meteos-ui-kit-common-1.21.1:${meteos_ui_kit_version}"
-    compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
-    // IMixinConfigPlugin 依赖 ASM ClassNode，mixin 0.8.5 未传递暴露，需显式声明
+    compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.7'
+    // IMixinConfigPlugin 使用 ASM ClassNode，需显式声明 ASM 编译依赖
     compileOnly "org.ow2.asm:asm-tree:9.7.1"
     compileOnly "org.ow2.asm:asm-commons:9.7.1"
     // fabric and neoforge both bundle mixinextras, so it is safe to use it in common
