@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 import sys
 from PIL import Image, ImageDraw
@@ -11,7 +12,7 @@ _DRAWER_ROOT = Path(__file__).resolve().parents[1]
 if str(_DRAWER_ROOT) not in sys.path:
     sys.path.insert(0, str(_DRAWER_ROOT))
 
-from drawlib import AtlasBuilder, Palette, Region, parse_color
+from drawlib import AsciiLayer, AtlasBuilder, Palette, Region, parse_color
 
 ATLAS_W = 256
 ATLAS_H = 128
@@ -66,6 +67,48 @@ UI_PALETTE = Palette({
 })
 
 CAT_FAVOR_PALETTE = Palette({'r': (128, 128, 128, 255), 'p': (206, 206, 206, 255), 'W': (255, 255, 255, 255)})
+ZONE1_CELL_SIZE = 10
+
+
+@dataclass(frozen=True)
+class LayeredIcon:
+    """支持多图层叠加、局部色板覆写与水平镜像的 Zone 1 图标规格。"""
+
+    layers: Sequence[Sequence[str] | AsciiLayer]
+    palette: Palette | None = None
+    mirror_x: bool = False
+
+
+IconSpec = Sequence[str] | LayeredIcon
+
+
+def place_zone1_icons(
+    atlas: AtlasBuilder,
+    icons: Mapping[tuple[int, int, str], IconSpec],
+    *,
+    cell_size: int = ZONE1_CELL_SIZE,
+    palette: Palette = UI_PALETTE,
+) -> None:
+    """将 Zone 1 (10x10 网格) 图标规格批量写入图集，统一支持单层与多图层叠加。"""
+    for (col, row, name), spec in icons.items():
+        if isinstance(spec, LayeredIcon):
+            atlas.place_grid_layers(
+                col,
+                row,
+                cell_size,
+                cell_size,
+                name,
+                spec.layers,
+                spec.palette or palette,
+                mirror_x=spec.mirror_x,
+            )
+        else:
+            atlas.place_grid_ascii(col, row, cell_size, cell_size, name, spec, palette)
+
+
+def _is_dark_color(bg: str) -> bool:
+    r, g, b, _ = parse_color(bg)
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128
 
 
 def render_source_sheet(
@@ -75,30 +118,40 @@ def render_source_sheet(
     bg: str = '#F3E7C8',
     scale: int = 6,
     cols: int = 8,
+    show_coords: bool = False,
 ) -> Image.Image:
-    """将一组图集区域按真实底色平铺放大，便于单独打磨某个来源的图标。"""
+    """将一组图集区域按真实底色平铺放大，保留完整标签与可选网格坐标以便审校。"""
     if not regions:
         return Image.new('RGBA', (64, 64), parse_color(bg))
     pad = 12
-    label_h = 16
-    cell_w = max(r.width * scale for r in regions) + 28
-    cell_h = max(r.height * scale for r in regions) + label_h + 12
+    label_h = 26 if show_coords else 16
+    max_label_len = max(len(r.name) for r in regions)
+    min_label_w = max_label_len * 7 + 16
+    cell_w = max(max(r.width * scale for r in regions) + 28, min_label_w)
+    cell_h = max(r.height * scale for r in regions) + label_h + 14
     rows = (len(regions) + cols - 1) // cols
     sheet = Image.new('RGBA', (cols * cell_w + pad * 2, rows * cell_h + pad * 2), parse_color(bg))
     draw = ImageDraw.Draw(sheet)
-    dark_bg = bg in ('#2E3036', '#404040')
+    dark_bg = _is_dark_color(bg)
     text_color = (232, 236, 242, 255) if dark_bg else (78, 52, 32, 255)
+    sub_color = (165, 174, 190, 255) if dark_bg else (130, 96, 64, 255)
     frame_color = (90, 96, 110, 120) if dark_bg else (170, 140, 100, 120)
 
     for idx, region in enumerate(regions):
-        cx = pad + (idx % cols) * cell_w + (cell_w - region.width * scale) // 2
+        slot_x = pad + (idx % cols) * cell_w
+        cx = slot_x + (cell_w - region.width * scale) // 2
         cy = pad + (idx // cols) * cell_h + 4
         crop = source.crop((region.x, region.y, region.x + region.width, region.y + region.height))
         zoom = crop.resize((region.width * scale, region.height * scale), Image.Resampling.NEAREST)
         draw.rectangle((cx - 1, cy - 1, cx + region.width * scale, cy + region.height * scale), outline=frame_color)
         sheet.paste(zoom, (cx, cy), zoom)
-        short_name = region.name[:12]
-        draw.text((pad + (idx % cols) * cell_w + 4, cy + region.height * scale + 3), short_name, fill=text_color)
+        text_y = cy + region.height * scale + 3
+        if show_coords and region.width == ZONE1_CELL_SIZE and region.height == ZONE1_CELL_SIZE:
+            coord = f'({region.x // ZONE1_CELL_SIZE},{region.y // ZONE1_CELL_SIZE})'
+            draw.text((slot_x + 4, text_y), coord, fill=sub_color)
+            draw.text((slot_x + 4, text_y + 10), region.name, fill=text_color)
+        else:
+            draw.text((slot_x + 4, text_y), region.name, fill=text_color)
     return sheet
 
 
@@ -118,7 +171,7 @@ def run_source_preview(
     atlas = AtlasBuilder(ATLAS_W, ATLAS_H)
     applier(atlas)
     result = atlas.build()
-    sheet = render_source_sheet(result.regions, result.image, bg=args.bg, scale=args.scale)
+    sheet = render_source_sheet(result.regions, result.image, bg=args.bg, scale=args.scale, show_coords=True)
     args.preview.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(args.preview)
     print(f'[预览] {source_name}: {len(result.regions)} regions -> {args.preview}')

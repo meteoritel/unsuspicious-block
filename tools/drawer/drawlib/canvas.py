@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from PIL import Image, ImageDraw
 
 from .color import ColorLike, Palette, TRANSPARENT, lerp_color, parse_color
-from .pixel_art import paint_ascii
+from .pixel_art import AsciiLayer, paint_ascii, paint_ascii_layers
 
 
 class PixelCanvas:
@@ -198,6 +198,7 @@ class PixelCanvas:
         expected_size: tuple[int, int] | None = None,
         mirror_x: bool = False,
         skip_transparent: bool = False,
+        cutout_token: str | None = None,
     ) -> PixelCanvas:
         paint_ascii(
             self,
@@ -208,6 +209,28 @@ class PixelCanvas:
             expected_size=expected_size,
             mirror_x=mirror_x,
             skip_transparent=skip_transparent,
+            cutout_token=cutout_token,
+        )
+        return self
+
+    def put_ascii_layers(
+        self,
+        x: int,
+        y: int,
+        layers: Sequence[Sequence[str] | AsciiLayer],
+        palette: Palette,
+        *,
+        expected_size: tuple[int, int] | None = None,
+        mirror_x: bool = False,
+    ) -> PixelCanvas:
+        paint_ascii_layers(
+            self,
+            x,
+            y,
+            layers,
+            palette,
+            expected_size=expected_size,
+            mirror_x=mirror_x,
         )
         return self
 

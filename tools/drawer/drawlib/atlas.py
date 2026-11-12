@@ -7,6 +7,7 @@ from PIL import Image
 
 from .canvas import PixelCanvas
 from .color import ColorLike, Palette, TRANSPARENT
+from .pixel_art import AsciiLayer
 
 
 @dataclass(frozen=True)
@@ -92,13 +93,51 @@ class AtlasBuilder:
         *,
         expected_size: tuple[int, int] | None = None,
         mirror_x: bool = False,
+        skip_transparent: bool = False,
     ) -> Region:
         """按模板尺寸预留图集区块并绘制 ASCII 字符画。"""
         if not rows:
             raise ValueError(f'{name} 的 ASCII 模板不能为空')
         width, height = len(rows[0]), len(rows)
         region = self.reserve(name, x, y, width, height)
-        self.canvas.put_ascii(x, y, rows, palette, expected_size=expected_size, mirror_x=mirror_x)
+        self.canvas.put_ascii(
+            x,
+            y,
+            rows,
+            palette,
+            expected_size=expected_size,
+            mirror_x=mirror_x,
+            skip_transparent=skip_transparent,
+        )
+        return region
+
+    def place_ascii_layers(
+        self,
+        name: str,
+        x: int,
+        y: int,
+        layers: Sequence[Sequence[str] | AsciiLayer],
+        palette: Palette,
+        *,
+        expected_size: tuple[int, int] | None = None,
+        mirror_x: bool = False,
+    ) -> Region:
+        """按首层尺寸预留图集区块并逐层叠加 ASCII 字符画。"""
+        if not layers:
+            raise ValueError(f'{name} 的 ASCII 图层列表不能为空')
+        first_rows = layers[0].rows if isinstance(layers[0], AsciiLayer) else layers[0]
+        if not first_rows:
+            raise ValueError(f'{name} 的首层 ASCII 模板不能为空')
+        width, height = len(first_rows[0]), len(first_rows)
+        region = self.reserve(name, x, y, width, height)
+        self.canvas.put_ascii_layers(
+            x,
+            y,
+            layers,
+            palette,
+            expected_size=expected_size,
+            mirror_x=mirror_x,
+        )
         return region
 
     def place_grid_ascii(
@@ -112,11 +151,30 @@ class AtlasBuilder:
         palette: Palette,
         *,
         origin: tuple[int, int] = (0, 0),
+        mirror_x: bool = False,
     ) -> Region:
         """按固定网格槽位坐标放置等宽高 ASCII 图标。"""
         x = origin[0] + col * cell_w
         y = origin[1] + row * cell_h
-        return self.place_ascii(name, x, y, rows, palette, expected_size=(cell_w, cell_h))
+        return self.place_ascii(name, x, y, rows, palette, expected_size=(cell_w, cell_h), mirror_x=mirror_x)
+
+    def place_grid_layers(
+        self,
+        col: int,
+        row: int,
+        cell_w: int,
+        cell_h: int,
+        name: str,
+        layers: Sequence[Sequence[str] | AsciiLayer],
+        palette: Palette,
+        *,
+        origin: tuple[int, int] = (0, 0),
+        mirror_x: bool = False,
+    ) -> Region:
+        """按固定网格槽位坐标放置多层叠加 ASCII 图标。"""
+        x = origin[0] + col * cell_w
+        y = origin[1] + row * cell_h
+        return self.place_ascii_layers(name, x, y, layers, palette, expected_size=(cell_w, cell_h), mirror_x=mirror_x)
 
     def build(self) -> RenderResult:
         return RenderResult(self.canvas.image, tuple(self._regions))

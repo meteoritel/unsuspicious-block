@@ -9,11 +9,12 @@ if str(_TOOLS_ROOT) not in sys.path:
 from .atlas import AtlasBuilder, Region, RenderResult
 from .canvas import PixelCanvas
 from .color import ColorLike, Palette, Rgba, TRANSPARENT, lerp_color, parse_color, with_alpha
-from .pixel_art import paint_ascii
+from .pixel_art import AsciiLayer, flip_y_ascii, paint_ascii, paint_ascii_layers
 from .preview import render_preview
 from .spec import TextureSpec, check_texture_parity, run_batch_cli, run_texture_cli, write_texture
 
 __all__ = [
+    'AsciiLayer',
     'AtlasBuilder',
     'ColorLike',
     'Palette',
@@ -24,8 +25,10 @@ __all__ = [
     'TRANSPARENT',
     'TextureSpec',
     'check_texture_parity',
+    'flip_y_ascii',
     'lerp_color',
     'paint_ascii',
+    'paint_ascii_layers',
     'parse_color',
     'render_preview',
     'run_batch_cli',

@@ -7,34 +7,28 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atlas.palette import UI_PALETTE, run_source_preview
+from atlas.palette import IconSpec, LayeredIcon, UI_PALETTE, place_zone1_icons, run_source_preview
 from drawlib import AtlasBuilder, Palette, PixelCanvas
 
-ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
+_HELP_SHAPE = (
+    '..........',
+    '..IIIII...',
+    '.II...II..',
+    '......II..',
+    '.....II...',
+    '....II....',
+    '....II....',
+    '..........',
+    '....II....',
+    '....II....',
+)
+
+ICONS: dict[tuple[int, int, str], IconSpec] = {
     # 浅羊皮纸底帮助问号 (Row 1, col 5) 与绿色侧签高亮反白问号 (Row 3, col 9)
-    (5, 1, 'HELP'): (
-        '..........',
-        '..IIIII...',
-        '.II...II..',
-        '......II..',
-        '.....II...',
-        '....II....',
-        '....II....',
-        '..........',
-        '....II....',
-        '....II....',
-    ),
-    (9, 3, 'HELP_CREAM'): (
-        '..........',
-        '..KKKKK...',
-        '.KK...KK..',
-        '......KK..',
-        '.....KK...',
-        '....KK....',
-        '....KK....',
-        '..........',
-        '....KK....',
-        '....KK....',
+    (5, 1, 'HELP'): _HELP_SHAPE,
+    (9, 3, 'HELP_CREAM'): LayeredIcon(
+        layers=(_HELP_SHAPE,),
+        palette=UI_PALETTE.extend({'I': UI_PALETTE['K']}),
     ),
 }
 
@@ -193,8 +187,7 @@ def _paint_side_tab(c: PixelCanvas, pal: dict[str, str]) -> None:
 
 def apply(atlas: AtlasBuilder) -> None:
     """将书本导航、帮助问号、外链与按钮皮肤写入图集。"""
-    for (col, row, name), rows in ICONS.items():
-        atlas.place_grid_ascii(col, row, 10, 10, name, rows, UI_PALETTE)
+    place_zone1_icons(atlas, ICONS)
 
     for name, u, grid in EXTERNAL_LOGOS:
         atlas.place_ascii(name, u, 18, grid, UI_PALETTE, expected_size=(16, 16))

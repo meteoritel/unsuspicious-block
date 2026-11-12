@@ -7,10 +7,66 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atlas.palette import UI_PALETTE, run_source_preview
-from drawlib import AtlasBuilder
+from atlas.palette import IconSpec, LayeredIcon, place_zone1_icons, run_source_preview
+from drawlib import AsciiLayer, AtlasBuilder, flip_y_ascii
 
-ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
+_ARROW_UP = (
+    '..........',
+    '....II....',
+    '...IIII...',
+    '..IIIIII..',
+    '.IIIIIIII.',
+    '....II....',
+    '....II....',
+    '....II....',
+    '....II....',
+    '..........',
+)
+
+_EYE_OPEN = (
+    '..........',
+    '..........',
+    '..IIIIII..',
+    '.ITTIITTI.',
+    'ITTIIIITTI',
+    '.ITTIITTI.',
+    '..IIIIII..',
+    '..........',
+    '..........',
+    '..........',
+)
+
+# 严格按 x + y = 9 绘制 1px 对角斜杠，并用 'x' (x + y = 8 及中央瞳孔右侧) 挖空隔离，消除断折与糊团
+_EYE_HIDE_OVERLAY = AsciiLayer(
+    rows=(
+        '..........',
+        '.......xI.',
+        '......xIx.',
+        '.....xIx..',
+        '....xIx...',
+        '...xIx....',
+        '..xIx.....',
+        '.xIx......',
+        'xI........',
+        '..........',
+    ),
+    cutout_token='x',
+)
+
+_STAR_TEMPLATE = (
+    '..........',
+    '....gg....',
+    '...gYYg...',
+    'gggGGGGggg',
+    '.gGGYYGGg.',
+    '..gGGGGg..',
+    '..gGggGg..',
+    '.gGg..gGg.',
+    '.gg....gg.',
+    '..........',
+)
+
+ICONS: dict[tuple[int, int, str], IconSpec] = {
     # —— 目录工具栏 (Row 0, cols 0..11) ——
     (0, 0, 'SEARCH'): (
         '..........',
@@ -36,54 +92,10 @@ ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
         '.II....II.',
         '..........',
     ),
-    (2, 0, 'ARROW_UP'): (
-        '..........',
-        '....II....',
-        '...IIII...',
-        '..IIIIII..',
-        '.IIIIIIII.',
-        '....II....',
-        '....II....',
-        '....II....',
-        '....II....',
-        '..........',
-    ),
-    (3, 0, 'ARROW_DOWN'): (
-        '..........',
-        '....II....',
-        '....II....',
-        '....II....',
-        '....II....',
-        '.IIIIIIII.',
-        '..IIIIII..',
-        '...IIII...',
-        '....II....',
-        '..........',
-    ),
-    (4, 0, 'SHOW_LOCKED'): (
-        '..........',
-        '..........',
-        '...IIII...',
-        '..ITTTTI..',
-        '.ITTIITTI.',
-        '.ITTIKTTI.',
-        '..ITTTTI..',
-        '...IIII...',
-        '..........',
-        '..........',
-    ),
-    (5, 0, 'HIDE_LOCKED'): (
-        '..........',
-        '.......II.',
-        '...II..II.',
-        '..ILL.II..',
-        '.IL..IILI.',
-        '.IL.II.LI.',
-        '..III.LLI.',
-        '..II..II..',
-        '.II.......',
-        '..........',
-    ),
+    (2, 0, 'ARROW_UP'): _ARROW_UP,
+    (3, 0, 'ARROW_DOWN'): flip_y_ascii(_ARROW_UP),
+    (4, 0, 'SHOW_LOCKED'): _EYE_OPEN,
+    (5, 0, 'HIDE_LOCKED'): LayeredIcon(layers=(_EYE_OPEN, _EYE_HIDE_OVERLAY)),
     (6, 0, 'SORT_DEFAULT'): (
         '..........',
         '.II.IIIII.',
@@ -120,18 +132,7 @@ ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
         '...I..I...',
         '..........',
     ),
-    (9, 0, 'SORT_FAVORITE'): (
-        '....g.....',
-        '...gGg....',
-        '...gGg....',
-        'gggGGGggg.',
-        '.gGGGGGGg.',
-        '..gGGGGg..',
-        '..gGggGg..',
-        '.gGg..gGg.',
-        '.gg....gg.',
-        '..........',
-    ),
+    (9, 0, 'SORT_FAVORITE'): _STAR_TEMPLATE,
     (10, 0, 'SORT_UNLOCK'): (
         '..........',
         '...IIII...',
@@ -181,18 +182,7 @@ ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
         '..........',
         '..........',
     ),
-    (2, 3, 'FAVORITE_BADGE'): (
-        '..........',
-        '....g.....',
-        '...gGg....',
-        '.ggGGGgg..',
-        '..gGGGg...',
-        '..gGgGg...',
-        '.gG...Gg..',
-        '.g.....g..',
-        '..........',
-        '..........',
-    ),
+    (2, 3, 'FAVORITE_BADGE'): _STAR_TEMPLATE,
     (3, 3, 'CHILD_BADGE'): (
         '..........',
         '..O.......',
@@ -210,8 +200,7 @@ ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
 
 def apply(atlas: AtlasBuilder) -> None:
     """将目录来源图标写入图集 Zone 1。"""
-    for (col, row, name), rows in ICONS.items():
-        atlas.place_grid_ascii(col, row, 10, 10, name, rows, UI_PALETTE)
+    place_zone1_icons(atlas, ICONS)
 
 
 if __name__ == '__main__':

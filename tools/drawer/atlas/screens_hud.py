@@ -7,10 +7,10 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atlas.palette import CAT_FAVOR_PALETTE, UI_PALETTE, run_source_preview
+from atlas.palette import CAT_FAVOR_PALETTE, IconSpec, place_zone1_icons, run_source_preview
 from drawlib import AtlasBuilder
 
-ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
+ICONS: dict[tuple[int, int, str], IconSpec] = {
     # —— 管理界面暗底折叠箭头 (Row 3, cols 10..11) ——
     (10, 3, 'DARK_TREE_COLLAPSED'): (
         '..........',
@@ -121,8 +121,7 @@ CAT_FAVOR_GRID = (
 
 def apply(atlas: AtlasBuilder) -> None:
     """将暗色界面与猫爪 HUD 图标写入图集。"""
-    for (col, row, name), rows in ICONS.items():
-        atlas.place_grid_ascii(col, row, 10, 10, name, rows, UI_PALETTE)
+    place_zone1_icons(atlas, ICONS)
     atlas.place_ascii('CAT_FAVOR_HUD', 196, 0, CAT_FAVOR_GRID, CAT_FAVOR_PALETTE, expected_size=(16, 16))
 
 

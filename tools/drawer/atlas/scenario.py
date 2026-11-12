@@ -7,10 +7,23 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atlas.palette import UI_PALETTE, run_source_preview
-from drawlib import AtlasBuilder, PixelCanvas
+from atlas.palette import IconSpec, place_zone1_icons, run_source_preview
+from drawlib import AtlasBuilder, PixelCanvas, flip_y_ascii
 
-ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
+_CHEVRON_DOWN = (
+    '..........',
+    '..........',
+    '..........',
+    '.II....II.',
+    '..II..II..',
+    '...IIII...',
+    '....II....',
+    '..........',
+    '..........',
+    '..........',
+)
+
+ICONS: dict[tuple[int, int, str], IconSpec] = {
     # —— 场景操作与灯箱控件 (Row 2, cols 3..11) ——
     (3, 2, 'EXPAND'): (
         '..........',
@@ -96,30 +109,8 @@ ICONS: dict[tuple[int, int, str], tuple[str, ...]] = {
         '....g.....',
         '..........',
     ),
-    (10, 2, 'CHEVRON_DOWN'): (
-        '..........',
-        '..........',
-        '..........',
-        '.II....II.',
-        '..II..II..',
-        '...IIII...',
-        '....II....',
-        '..........',
-        '..........',
-        '..........',
-    ),
-    (11, 2, 'CHEVRON_UP'): (
-        '..........',
-        '..........',
-        '..........',
-        '....II....',
-        '...IIII...',
-        '..II..II..',
-        '.II....II.',
-        '..........',
-        '..........',
-        '..........',
-    ),
+    (10, 2, 'CHEVRON_DOWN'): _CHEVRON_DOWN,
+    (11, 2, 'CHEVRON_UP'): flip_y_ascii(_CHEVRON_DOWN),
     # —— 条件分支引导 (Row 3, col 8) ——
     (8, 3, 'BRANCH_ARROW'): (
         '..........',
@@ -179,8 +170,7 @@ def _paint_unknown_item(c: PixelCanvas) -> None:
 
 def apply(atlas: AtlasBuilder) -> None:
     """将场景与条件树来源图标、状态角标及 9-slice 面板写入图集。"""
-    for (col, row, name), rows in ICONS.items():
-        atlas.place_grid_ascii(col, row, 10, 10, name, rows, UI_PALETTE)
+    place_zone1_icons(atlas, ICONS)
 
     badge_specs = (
         ('STATUS_UNCOMPUTED', (244, 232, 202, 255), (255, 246, 224, 255), 'uncomputed'),
