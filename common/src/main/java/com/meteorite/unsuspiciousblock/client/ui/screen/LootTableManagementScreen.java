@@ -196,8 +196,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                 + (entry != null && entry.tracked() ? "remove" : "add")), null, List.of(), this::applySelection);
         saveNameButton.setEnabled(LootTableManagementClientState.canEdit() && !nameDrafts.isEmpty() && !hasInvalidEnglishDraft());
         languageButton.setEnabled(selected);
-        languageBox.shell().setEnabled(selected);
-        nameBox.shell().setEnabled(selected && hasValidLanguageCode()
+        languageBox.setEnabled(selected);
+        nameBox.setEnabled(selected && hasValidLanguageCode()
                 && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null);
         importButton.setEnabled(LootTableManagementClientState.canEdit());
     }

@@ -17,9 +17,10 @@ import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.Util;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
+import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
-import net.minecraft.nbt.CompoundTag;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
@@ -75,7 +76,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final CatalogToolbar catalogToolbar;
     private final LogToolbar logToolbar;
 
-    private final UiPanelRegistry panels = new UiPanelRegistry();
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
     private RightPageContainer rightPage;
@@ -147,11 +147,10 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void init() {
         super.init();
+        if (resumeStateEpoch != JournalClientConnection.epoch()) resumeState = null;
         this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
         this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
-        this.panels.clear();
-        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, this.panels);
-        this.panels.applyLayout(this.bookLayout);
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays);
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         // 恢复上次关闭时持久化的 UI 状态
@@ -175,8 +174,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.viewModel.rebuildViewModels(null);
         this.viewModel.initRevisions();
         this.rebuildWidgets();
-        this.panels.loadUiState(JournalUiPreferencesStore.getPanelStates());
-        if (resumeState != null) restoreUiState(resumeState);
+        if (resumeState != null) { restoreUiState(resumeState); restorePendingReading(); }
+        else if (initialItemSearch == null) {
+            pendingReading = JournalUiPreferencesStore.readingState();
+            pendingReadingEpoch = JournalClientConnection.epoch();
+            restorePendingReading();
+        }
     }
 
     // 从 ClientState 恢复跨打开/关闭的 UI 状态
@@ -196,21 +199,18 @@ public class ArchaeologyJournalScreen extends UiScreen {
             this.logToolbar.setGroupMode(savedLogGroupMode);
         }
 
-        // 恢复右侧 tab 选择
-        RightPageContainer.Tab savedTab = JournalUiPreferencesStore.getLastRightPageTab();
-        if (savedTab != null) {
-            this.rightPage.setActiveTab(savedTab);
-        }
+
     }
 
     @Override
     public void removed() {
         resumeState = captureUiState();
-        JournalUiPreferencesStore.setPanelStates(this.panels.snapshot());
+        resumeStateEpoch = JournalClientConnection.epoch();
+        JournalUiPreferencesStore.rememberReadingState(pendingReading != null ? pendingReading
+                : new JournalReadingState(resumeState.table(), resumeState.rightPage()));
         this.overlays.close();
         this.confirmations.clear();
         SimulationPreferenceStore.flush();
-        JournalUiPreferencesStore.rememberLastSelectedTable(this.viewModel.selectedTableId());
         JournalUiPreferencesStore.rememberDirectoryState(this.viewModel.isCategoryHomeMode(),
                 this.viewModel.selectedCategory(), this.viewModel.expandedRoots(),
                 this.catalogPanel != null ? this.catalogPanel.getScrollOffset() : 0, this.categoryFocusIndex);
@@ -224,10 +224,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         // 持久化日志工具栏状态
         JournalUiPreferencesStore.setLastLogSortDescending(this.logToolbar.sortDescending());
         JournalUiPreferencesStore.setLastLogGroupMode(this.logToolbar.groupMode());
-        // 持久化右侧 tab 选择
-        if (this.rightPage != null) {
-            JournalUiPreferencesStore.setLastRightPageTab(this.rightPage.getActiveTab());
-        }
         JournalUiPreferencesStore.flushIfDirty();
         super.removed();
     }
@@ -276,6 +272,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        pendingReading = null;
         NavigationState before = navigationState();
         try {
             if (super.keyPressed(keyCode, scanCode, modifiers)) return true;
@@ -375,9 +372,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
         this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
         this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
-        this.panels.clear();
-        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, this.panels);
-        this.panels.applyLayout(this.bookLayout);
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays);
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         restoreUiState(snapshot);
@@ -406,8 +401,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
 
         this.rebuildWidgets();
-        this.rightPage.restoreReadingState(snapshot.rightPage());
-        this.panels.loadUiState(snapshot.panelStates());
+        restoreRightPage(snapshot.table(), snapshot.rightPage());
         this.categoryFocusIndex = snapshot.categoryFocusIndex();
         if (this.catalogPanel != null) {
             this.catalogPanel.setScrollOffset(snapshot.catalogScrollOffset());
@@ -448,6 +442,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
             this.viewModel.rebuildViewModels(this.catalogPanel);
             this.updateItemGridPanel();
+            restorePendingReading();
             this.syncButtonState();
         }
     }
@@ -533,9 +528,36 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private @Nullable UiStateSnapshot resumeState;
+    private long resumeStateEpoch;
+    private @Nullable JournalReadingState pendingReading;
+    private long pendingReadingEpoch;
+
+    private void restorePendingReading() {
+        JournalReadingState target = pendingReading;
+        if (target == null) return;
+        if (pendingReadingEpoch != JournalClientConnection.epoch()) { pendingReading = null; return; }
+        if (!ArchaeologyJournalClientState.isReadingReady()) return;
+        pendingReading = null;
+        if (target.table() == null) { viewModel.showCategoryHome(); rebuildViewModels(); }
+        if (target.table() != null && viewModel.isNavigationTargetValid(target.table())) {
+            if (catalogToolbar.effectiveSearch().isEmpty()) viewModel.prepareNavigationTo(target.table());
+            viewModel.rebuildViewModels(catalogPanel);
+            setSelectedTable(target.table());
+        }
+        updateItemGridPanel();
+        restoreRightPage(target.table(), target.rightPage());
+        syncButtonState();
+    }
+
+    private void restoreRightPage(@Nullable ResourceLocation table, RightPageContainer.ReadingState reading) {
+        if (Objects.equals(table, viewModel.selectedTableId())) rightPage.restoreReadingState(reading);
+        else rightPage.restoreReadingState(new RightPageContainer.ReadingState(reading.tab(),
+                JournalReadingState.PagePositions.empty(), null, false, null, false, List.of(), reading.conditionOffsets()));
+    }
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
+        pendingReading = null;
         NavigationState before = navigationState();
         try { return super.mouseClicked(x, y, button); }
         finally { rememberNavigation(before); }
@@ -599,6 +621,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             return widgets.keyReleased(key, scan, modifiers) || hasSelectedTable() && rightPage.keyReleased(key, scan, modifiers);
         }
         @Override public boolean charTyped(char value, int modifiers) {
+            pendingReading = null;
             return widgets.charTyped(value, modifiers) || hasSelectedTable() && rightPage.charTyped(value, modifiers);
         }
         @Override public boolean mouseScrolled(UiInputContext context, double sx, double sy) {
@@ -1031,7 +1054,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
         return new UiStateSnapshot(
                 this.rightPage != null ? this.rightPage.captureReadingState() : RightPageContainer.ReadingState.empty(),
-                this.panels.snapshot(),
                 this.catalogPanel != null ? this.catalogPanel.getScrollOffset() : 0,
                 this.logToolbar.sortDescending(),
                 this.logToolbar.groupMode(),
@@ -1072,7 +1094,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态
     private record UiStateSnapshot(
             RightPageContainer.ReadingState rightPage,
-            CompoundTag panelStates,
             int catalogScrollOffset,
             boolean logSortDescending,
             LogGrouper.GroupMode groupMode,

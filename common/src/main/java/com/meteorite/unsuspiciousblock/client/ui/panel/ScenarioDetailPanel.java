@@ -1,6 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiDocumentView;
+import com.meteorite.meteosuikit.api.layout.UiDocumentTarget;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.text.TextMeasurer;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.meteosuikit.api.control.UiLightbox;
 import com.meteorite.meteosuikit.api.input.UiChildren;
 import com.meteorite.meteosuikit.api.input.UiInputContainer;
@@ -20,7 +25,6 @@ import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiStateful;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
@@ -33,7 +37,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -49,7 +52,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 
 /** 场景详情页：顶部总览与快捷控制栏 + 原子环境条件勾选与实时分支/物品状态清单。 */
-public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStateful, UiInputContainer {
+public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInputContainer {
     private static final int MAX_SAVED_POSITIONS = 512;
 
     private final JournalOverlays overlays;
@@ -71,7 +74,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     private BookLayout layout;
     @Nullable private ResourceLocation table;
     @Nullable private Font measuredFont;
-    @Nullable private ScenarioConditionView conditions;
+    @Nullable private UiDocumentView conditions;
     @Nullable private String viewKey;
     private long catalogRevision = Long.MIN_VALUE;
     private long simulationRevision = Long.MIN_VALUE;
@@ -148,7 +151,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             control.render(graphics, font, pointer);
         }
         if (conditions != null) {
-            conditions.render(graphics, pointer);
+            UiRect inner = conditions.bounds();
+            UiAtlas.SCENARIO_PANEL.render(graphics, new UiRect(inner.x() - 6, inner.y() - 6, inner.width() + 12, inner.height() + 12));
+            conditions.render(graphics, font, pointer);
         }
     }
 
@@ -197,7 +202,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             if (conditions != null) {
                 children.remove(conditions);
             }
-            conditions = new ScenarioConditionView(font);
+            conditions = new UiDocumentView(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT, ScenarioSimulationClientState.text("conditions.heading"));
+            conditions.setBackground(ScenarioDetailPanel::renderConditionBackground);
             children.add(conditions);
             viewKey = null;
             catalogRevision = Long.MIN_VALUE;
@@ -217,7 +223,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         resetButton.setBounds(x + width - 16, y + 19, 16, 16);
         calculateButton.setBounds(x, y + 37, width, 14);
         int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - (y + 54));
-        conditions.setBounds(x, y + 54, width, contentHeight);
+        conditions.setBounds(x + 6, y + 60, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
 
         var choice = selection();
         CatalogTableDto structure = structure();
@@ -240,6 +246,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         }
         catalogRevision = nextCatalogRev;
         simulationRevision = nextSimRev;
+        if (language != nextLanguage) conditions.invalidateLayout();
         language = nextLanguage;
         input = nextInput;
         requestStatus = nextStatus;
@@ -257,7 +264,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
     }
 
     private void configureUnavailable(Font font) {
-        ScenarioConditionView conditionView = Objects.requireNonNull(conditions);
+        UiDocumentView conditionView = Objects.requireNonNull(conditions);
         conditionTree = List.of(new UiNode.Row(ScenarioSimulationClientState.text("unavailable"),
                 UiTextScheme.PARCHMENT.label()));
         conditionView.setContent(conditionTree);
@@ -274,7 +281,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
 
     private void configureAvailable(Font font, CatalogTableDto structure,
                                     SimulationPreferenceStore.Selection choice, String rawStatus) {
-        ScenarioConditionView conditionView = Objects.requireNonNull(conditions);
+        UiDocumentView conditionView = Objects.requireNonNull(conditions);
         SimulationOptions options = Objects.requireNonNull(structure.options());
         for (UiControl control : controls) {
             control.setVisible(true);
@@ -369,7 +376,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         expandButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.EXPAND),
                 List.of(ScenarioSimulationClientState.text("frame.expand").copy().withStyle(TooltipBuilder.BODY)),
                 () -> {
-                    ScenarioExpandedOverlay content = new ScenarioExpandedOverlay(this, font);
+                    var content = ScenarioExpandedOverlay.create(this, font);
                     UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
                     ScenarioUi.styleLightbox(lightbox);
                     lightbox.setText(ScenarioSimulationClientState.text("conditions.title",
@@ -404,6 +411,15 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         control.configure(font, label, null, List.of(full.copy().withStyle(TooltipBuilder.BODY)), null);
     }
 
+    static void renderConditionBackground(GuiGraphics graphics, UiDocumentTarget target, boolean selected) {
+        UiRect rect = target.contentBounds();
+        if (target.hit().payload() instanceof ScenarioPageBuilder.Heading heading) {
+            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), heading == ScenarioPageBuilder.Heading.SECTION
+                    ? JournalPalette.SCENARIO_SECTION_FILL : JournalPalette.SCENARIO_ENTRY_FILL);
+        }
+        if (selected) graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), ScenarioUi.selectionHighlight());
+    }
+
     List<UiNode> tree() {
         return conditionTree;
     }
@@ -422,32 +438,18 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         }
     }
 
-    @Override
-    public void saveUiState(CompoundTag tag) {
+    /** 按表捕获条件正文位置，供宿主阅读快照统一持有。 */
+    public Map<String, Integer> captureConditionOffsets() {
         saveCurrentPosition();
-        tag.put("conditionOffsets", savePositions(conditionPositions));
+        return new LinkedHashMap<>(conditionPositions);
     }
 
-    @Override
-    public void loadUiState(CompoundTag tag) {
+    /** 恢复有界位置表，正文重建后由实际视口钳制偏移。 */
+    public void restoreConditionOffsets(Map<String, Integer> offsets) {
+        if (conditionPositions.equals(offsets)) return;
         conditionPositions.clear();
-        loadPositions(tag.getCompound("conditionOffsets"), conditionPositions);
+        offsets.forEach((key, value) -> remember(conditionPositions, key, Math.max(0, value)));
         viewKey = null;
         catalogRevision = Long.MIN_VALUE;
-    }
-
-    private static CompoundTag savePositions(Map<String, Integer> positions) {
-        CompoundTag tag = new CompoundTag();
-        positions.forEach(tag::putInt);
-        return tag;
-    }
-
-    private static void loadPositions(CompoundTag tag, Map<String, Integer> positions) {
-        for (String key : tag.getAllKeys()) {
-            if (positions.size() >= MAX_SAVED_POSITIONS) {
-                break;
-            }
-            positions.put(key, Math.max(0, tag.getInt(key)));
-        }
     }
 }

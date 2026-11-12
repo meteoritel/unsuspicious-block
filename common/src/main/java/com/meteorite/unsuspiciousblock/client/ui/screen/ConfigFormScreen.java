@@ -30,7 +30,7 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
     private static final int ROW_GAP = 11;
     private static final UiFormLayout.Metrics FORM_METRICS = new UiFormLayout.Metrics(
             0, 0, LABEL_HEIGHT, 0, 0, 0, 0, 0, 0, ROW_GAP);
-    private record Row(Component label, UiWidget editor, int height) implements UiFormLayout.Control {
+    private record Row(Component label, UiStatefulWidget editor, int height) implements UiFormLayout.Control {
         @Override public int preferredWidth(int availableWidth) { return availableWidth; }
         @Override public int measureHeight(int width) { return height; }
     }
@@ -79,7 +79,7 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
         return editor;
     }
 
-    protected final void addField(Component label, UiWidget editor, int height) {
+    protected final void addField(Component label, UiStatefulWidget editor, int height) {
         rows.add(new Row(label, editor, height));
         bodyChildren.add(editor);
     }
@@ -103,7 +103,7 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
 
     @Override protected void prepareUi() {
         boolean editable = canEdit();
-        for (Row row : rows) if (row.editor() instanceof UiShellWidget widget) widget.shell().setEnabled(editable);
+        for (Row row : rows) row.editor().setEnabled(editable);
         List<UiControl> buttons = actions.controls();
         for (int i = 0; i < buttons.size(); i++) buttons.get(i).setEnabled(i == 1 || editable);
     }

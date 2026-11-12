@@ -14,7 +14,7 @@
 | `CatalogPanel` / `RightPageContainer` | 组装左页目录面板与右页（`INTRO` / `ARCHAEOLOGY` / `LOG` / `SCENARIO`）内容树与侧边书签/翻页控件 |
 | `JournalControls` / `UiAtlas` / `UnsuspiciousUiTheme` | 切分 `ui_atlas.png` 图标与九宫格皮肤、构造侧签/书签/翻页/行热点皮肤，维护羊皮纸与深色两套主题 |
 | `JournalOverlays` | 持有当前打开的场景浮层/灯箱的准备与退出清理回调 |
-| `UiPanelRegistry` / `LayoutAware` / `UiStateful` | 登记可持久化阅读状态的面板，协调布局刷新与 NBT 状态读写 |
+| `journal/` / `RightPageContainer` | 类型化捕获与恢复阅读位置，生成持久投影；NBT 编码集中在 `JournalReadingStateCodec` |
 | `support/` | 提供搜索、排序、格式转换、概率显示、本地持久化与网络请求适配 |
 
 ### 1.1 输入路由与焦点规则
@@ -69,8 +69,8 @@
 ## 4. 场景条件页与文档动作
 
 - **面板分工**：`ScenarioPanel` 置于网格页顶部提供当前已启用条件摘要与参数/计算/条件配置入口（点击条件区弹出 `ScenarioConditionOverlay`）；`ScenarioDetailPanel` 专注于直观展现战利品表的条件结构与交互式组合试算，**物品具体概率仍留在网格页**（且严格遵循未解锁物品 `?` 防剧透规则）。
-- **场景详情交互式布局 (`ScenarioPageBuilder`)**：页面自顶向下由状态摘要横幅（无额外条件 / 有条件掉落待选或已选数量 / 当前结果状态与缓存提示）、操作栏（`[同步自身]` 触发 `PlayerStateProbe`、`[重置]` 回退基准、`[参数…]` 与 `[计算]`）、可交互条件勾选清单（原子环境条件复选框 + 当前工具/附魔/幸运生效条件即时求值状态）、以及分目标条件树（子表与物品分支及对应的「推荐参数」快捷按钮）构成；条件文本经 `ScenarioConditionLayout` 按当前字体宽度折行（续行不重复连接线与动作按钮）。
-- **文档动作与聚焦 (`UiDocument`)**：条件区使用独立的 UI Kit `UiDocument` 配合 `UiScrollView`，复选框切换、分支推荐按钮、标题底纹与键盘/鼠标命中统一读取 `UiDocument.targets()` 的实时布局。Tab 聚焦条件区后支持上下选择动作、PageUp/PageDown 翻页及 `Enter`/`Space` 触发动作；内容版本、字体、资源或视口变化时重建文档缓存。
+- **场景详情交互式布局 (`ScenarioPageBuilder`)**：页面自顶向下由状态摘要横幅（无额外条件 / 有条件掉落待选或已选数量 / 当前结果状态与缓存提示）、操作栏（`[同步自身]` 触发 `PlayerStateProbe`、`[重置]` 回退基准、`[参数…]` 与 `[计算]`）、可交互条件勾选清单（原子环境条件复选框 + 当前工具/附魔/幸运生效条件即时求值状态）、以及分目标条件树（子表与物品分支及对应的「推荐参数」快捷按钮）构成；逻辑条件树交给 kit reader 按当前字体宽度折行，续行保持同一逻辑行与动作。
+- **文档动作与聚焦**：`ScenarioDetailPanel` 持有 kit `UiDocumentView`，业务只提供逻辑树、Heading 背景及条件/推荐回调。reader 统一持有折行、滚动、命中、动作导航和配对激活，具体契约见 [UI kit 文档阅读](ui-kit-api.md#33-文档阅读与业务呈现)。条件阅读 offset 按表 ID 捕获进宿主阅读快照。
 - **跨输入来源一致性**：`ScenarioSimulationClientState.selection` 统一详情、浮层与网格页的 `enabledConditions + params` 组合；仅当当前规范化的 `inputKey` 存在同参数/同档位缓存引用时复用测值，缺引用保持未知并保留已有结果缓存供切换对比，客户端绝不擅自挑选“最有利条件组合”充当当前显示值。
 
 ## 5. 场景浮层与灯箱 (`JournalOverlays`)
@@ -82,17 +82,26 @@
 | `ScenarioConditionOverlay` | 供网格页顶部栏打开的轻量条件勾选浮层：展示可勾选原子 `ConditionOption` 清单与条件 Tooltip，提供 `[重置]`、`[同步自身]`、`[参数…]`、`[应用并计算]`、`[仅应用]` 与 `[取消]`；方向键与 `Space` 预览勾选，确认后才提交选中状态 |
 | `ScenarioParamsOverlay` | 持有单份独立参数草稿：合法幸运范围的 `UiNumberField` + `UiScalarSlider`（精细步长 `0.01`）、工具选择列表、附魔搜索与等级增减按钮及固定抽样次数读数。「仅应用」保存输入草稿，「应用并计算」校验表哈希、选项代次与参数边界后发包（失败保留草稿） |
 | `ScenarioRecommendationOverlay` | 展示物品/子表入口推荐求解的等待、失败重试与参数及建议启用条件变更预览；应用推荐同时填回推荐的启用条件与参数草稿，仍需显式计算。关闭、切表、切输入或目录失效时取消旧请求 |
-| `ScenarioExpandedOverlay` | 在 `UiLightbox` 中使用 `ScenarioFrameView` 全屏放大条件树：初始按窗口尺寸适配档位（不超过自然字号），支持滚轮缩放与拖动平移，窗口 resize 保持手动缩放比并钳制；`Esc` 关闭（点击遮罩不关闭），关闭不破坏页内原滚动位置 |
+| `ScenarioExpandedOverlay` | 为 `UiLightbox` 装配 `UiDocumentLightboxContent` 全屏放大条件树：初始按窗口尺寸适配档位（不超过自然字号），支持滚轮缩放与拖动平移，窗口 resize 保持手动缩放比并钳制；`Esc` 关闭（点击遮罩不关闭），关闭不破坏页内原滚动位置 |
 
 所有功能图标、状态徽章、按钮九宫格与场景底纹均统一取自 `ui_atlas.png`（由 `tools/drawer/generate_ui_atlas.py` 生成），分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
 
 ## 6. 阅读状态与本地持久化
 
-- **统一阅读快照 (`UiStateSnapshot`)**：聚合右页 `ReadingState`（Tab、tag、日志列表/详情、`entryId`、批选与页号）、目录工具栏 `CatalogQueryState`（含防抖 `effectiveSearch()`）、目录选中与滚动偏移以及已登记的 `UiStateful` 面板状态。在窗口 resize、子页返回与历史回退时共用同一恢复入口；窗口 resize 会关闭临时场景浮层并丢弃未确认草稿，独立子页内的草稿保留。
-- **按世界隔离的本地文件**：
-  - `journal_ui_preferences.dat`：保存面板状态（`panels` 子树，保留旧键 `intro`/`grid`/`log`/`logDetail` 与有界的 `tableId#inputKey` 条件滚动记录）及模拟参数偏好（`simulationPreferences` 子树）。
-  - `journal_log_state.dat`：由 `JournalMirror` 独占管理会话、序号与本地日志镜像（支持 2 秒重同步冷却与快照整批替换，不混入网络或 IO 回调）。
-- **原子写盘与断连处理 (`JournalLocalPersistence`)**：写盘使用同目录 `.tmp` 临时文件与 `ATOMIC_MOVE`（不支持时降级 `REPLACE_EXISTING`）。保存失败保留待写冻结 NBT 并在客户端 tick 或退出时重试，同路径重连优先加载未写盘快照；切换世界或断连先同步落盘旧路径，再推进连接 `epoch` 复位世界状态。已废弃的全局旧文件 `config/unsuspiciousblock-simulation.properties` 不再读取或导入。
+`RightPageContainer` 是右页阅读状态的唯一捕获/恢复入口。`ReadingState` 使用具名 `PagePositions` 保存介绍、网格、日志列表和日志详情页号，同时携带 Tab、active tag、日志身份、批选与按表条件偏移。集合不可变，NBT 只存在于 codec 与存储边界。面板布局随直接构造和 `applyLayout` 完成。
+
+`UiStateSnapshot` 聚合这份阅读状态和目录、工具栏字段，在 resize、同 Screen 子页返回与历史回退时复用。普通关屏从同一次捕获生成 `JournalReadingState.persistent()`，写入 `JournalUiPreferencesStore`；持久投影剔除批选。新建 Screen 与同世界重连可恢复最后表、Tab、各页号、tag、日志详情和条件偏移。目录展开、目录滚动和分类选择继续只在当前连接记忆；显式物品搜索使用其请求的内容上下文。
+
+恢复先选择有效表并准备内容，再校验 tag、日志 entry 与详情模式，随后应用并钳制页号和 offset，最后恢复 Tab、过滤批选并更新 chrome。切表重置右页内容身份和页号；同表刷新先捕获后恢复。失效表或被当前投影过滤的表清除旧右页上下文，日志条目删除时回到列表并清除详情页号。
+
+Screen 在目录与进度尚未完整提交时保留一次待恢复目标。客户端数据所有者的就绪状态和 revision 一同驱动既有刷新点，覆盖首次 revision 与初始值相同的情形；空目录也属于已就绪。恢复受连接 epoch 限定，新导航、键盘或搜索输入取消旧目标。过早关屏保存待恢复目标，避免将尚未加载的默认页覆盖到偏好。
+
+本地文件按世界和玩家隔离：
+
+- `journal_ui_preferences.dat` 由偏好 store 管理阅读投影、排序、搜索、收藏和模拟偏好；格式与连续迁移见[本地持久化](../foundation/persistence.md#21-客户端笔记偏好)。
+- `journal_log_state.dat` 由 `JournalMirror` 管理会话、序号与本地日志镜像，沿既有冷却与整批快照协议工作。
+
+`JournalLocalPersistence` 使用同目录临时文件和原子替换，保存失败保留待写冻结 NBT，由既有 tick/退出路径重试；同路径重连优先加载待写快照。切连接先保存旧路径，再推进 epoch 并复位。偏好格式读取失败或未来版本被拒时报告原因，当前路径保持只读以保留原文件。
 
 ## 7. 文本配色与裁剪生命周期
 

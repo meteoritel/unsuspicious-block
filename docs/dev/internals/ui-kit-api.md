@@ -8,7 +8,7 @@
 
 | API 包 | 宿主消费场景 |
 |---|---|
-| `control` | `UiScreen` / `UiThemedScreen`、单多行文本编辑、列表与滚动视图/容器、分页状态、控件组、模态框与灯箱 |
+| `control` | `UiScreen` / `UiThemedScreen`、单多行文本编辑、列表与滚动视图/容器、分页状态、控件组、文档阅读控件、模态框与灯箱 |
 | `input` | 成员树 `UiChildren`、输入作用域 `UiInputScope`、唯一路由器 `UiInputRouter`、容器桥 `UiInputBridge`、焦点与持续交互 |
 | `layout` / `geometry` | 排版文档 `UiDocument` 及其目标快照、行/网格几何计算、坐标变换与矩形 |
 | `style` | 主题上下文、语义文字配色（`UiTextScheme`）、控件与滑块外观、宿主皮肤与表面样式 |
@@ -30,6 +30,8 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 - **继承与生命周期**：独立界面继承 `UiThemedScreen`，考古笔记继承 `UiScreen`。控件实例与 `UiInputScope` 由页面稳定持有；准备阶段同步业务投影，布局阶段刷新几何，绘制阶段读取同一命中快照。
 - **主题注入**：主题化根页面传入 `Supplier<? extends UiStyleSource>`（动态上下文使用 `context::current`，固定主题传入固定供应商），主题发布版本号变化时自动刷新控件排版与缓存，并保持现有焦点和编辑草稿。
+- **语义状态入口**：普通页面直接使用 `UiStatefulWidget` 的 bounds、可见性、可用性和布局身份操作。具体控件同步原版模型并在隐藏/禁用时结清子会话；配置行通过 editor 的 `setEnabled` 应用权限。自定义控件私有组合 `UiWidgetShell`，包装器与核心共享真实焦点和状态。
+- **主题覆盖**：换根主题保留显式结构、完整 skin 与文字覆盖；组 `setStyle` / `clearStyleOverride` 广播到当前成员并更新后续默认值，组 `style()` 查询后续成员默认。单控件清结构与清完整 skin 使用各自明确入口。
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
 - **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 根据实际 framebuffer 与原版 GUI 倍率选择整数物理像素倍率，统一 GUI 与书页逻辑坐标的正逆换算；绘制、鼠标位置和拖动增量共用同一比例。像素不足 `1×` 时连续缩小以保留访问能力。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **Tooltip 与裁剪**：普通与物品提示统一经过 `UiPointerHit.renderTooltip` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。
@@ -40,10 +42,13 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - 每个根屏幕同一时刻只激活当前顶层 `UiInputScope`：二次确认使用 `UiModalStack`，场景选择与参数浮层使用 `UiOverlay`，条件放大使用 `UiLightbox`；笔记由 `JournalOverlays` 统一管理层切换和业务清理回调，底层路由器自动负责遮罩拦截、焦点归还与迟到事件阻断。
 - 拖动、长按与框选等持续操作通过所属作用域的 `UiInteractionSession` 绑定实际交互目标，在目标隐藏、禁用、切域或销毁时自动结清，禁止在控件内部自建第二套全局指针捕获。
 
-### 3.3 文档排版动作 (`UiDocument.targets()`)
+### 3.3 文档阅读与业务呈现
 
-- `UiDocument.targets()` 输出当前排版后的真实交互目标 `UiDocumentTarget`（所属叶子文档、出现路径、业务负载、标签与文档/屏幕坐标矩形），条件区的标题底纹、鼠标命中与键盘动作导航均直接消费该快照。
-- 出现路径仅描述当前内容树拓扑，跨内容更新的身份标识必须写入业务负载。内容、字体、资源或尺寸变化后需重新获取快照；视口平移或缩放后需刷新屏幕坐标几何。
+场景页由 `ScenarioPageBuilder` 构造逻辑 `UiNode` 与业务动作，`ScenarioDetailPanel` 组合 `UiDocumentView`，通过背景回调识别 Heading payload、绘制分区底纹与键盘选择提示。宿主绘制外边框并保存 offset；折行、滚动条、动作导航、裁剪与鼠标/键盘配对激活归 kit。`ScenarioExpandedOverlay` 只装配业务节点与背景，灯箱持有独立的 `UiDocumentLightboxContent`。
+
+`UiDocument` 默认单行悬停滚动，reader 显式使用带样式折行。视觉续行共用逻辑父行和动作身份，leading/trailing 图标只出现一次；命中使用实际片段，Frame 使用自身裁剪和变换。`UiDocument.targets()` 提供实际叶子文档、出现路径、payload 与内容/屏幕矩形；`contentClip()` 给出祖先 Frame 裁剪，根外层由 reader 裁剪。出现路径服务当前内容树，跨内容版本的业务身份放入 payload。
+
+内容版本、宽度、字体或语言失效触发排版；滚动、平移与缩放复用布局。按压期间内容或排版变化会取消旧目标。语言变化由宿主调用布局失效入口，资源重载通过已有灯箱生命周期失效。灯箱 fit 不放大小内容，手动缩放后的 resize 保留档位并钳制；关闭灯箱保留页内 offset。
 
 ### 3.4 容器屏幕与只读呈现
 

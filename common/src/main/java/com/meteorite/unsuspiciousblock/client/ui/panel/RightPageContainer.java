@@ -2,15 +2,14 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
+import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState.PagePositions;
+import java.util.Map;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
-import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
@@ -73,12 +72,10 @@ public final class RightPageContainer implements UiInputTarget {
     private final LogDetailPanel logDetailPanel;
     private final List<PageDescriptor> pages;
     private final List<UiControl> bookmarks;
-    private final List<SavedPage> savedPages;
     private boolean chromeAvailable;
 
     private record PageDescriptor(Tab tab, Supplier<PagePanel> content,
             int indicatorOffset, boolean alwaysIndicator, Runnable enter, Runnable leave, UiControl bookmark) {}
-    private record SavedPage(String key, PagePanel panel) {}
 
     @Nullable
     private ResourceLocation currentTableId;
@@ -89,13 +86,12 @@ public final class RightPageContainer implements UiInputTarget {
     private final JournalOverlays overlays;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout,
-                              JournalOverlays overlays,
-                              UiPanelRegistry panels) {
+                              JournalOverlays overlays) {
         this.layout = layout;
         this.overlays = overlays;
         this.scenarioPanel = new ScenarioPanel(layout);
         this.scenarioPanel.setOpenScenes(this::openSceneOverlay);
-        this.scenarioDetailPanel = panels.register("scenario", new ScenarioDetailPanel(layout, overlays));
+        this.scenarioDetailPanel = new ScenarioDetailPanel(layout, overlays);
         this.gridPanel = new ItemGridPanel(layout);
         this.scenarioDetailPanel.setTargetNavigation(gridPanel::targetVisible, (kind, target) -> {
             if (gridPanel.locateTarget(kind, target)) setActiveTab(Tab.ARCHAEOLOGY);
@@ -126,8 +122,6 @@ public final class RightPageContainer implements UiInputTarget {
                 page(Tab.SCENARIO, () -> scenarioDetailPanel, JournalLayout.SCENARIO_PAGE_INDICATOR_Y, false,
                         ScenarioSimulationClientState.text("tab"), leaveLog, noAction));
         this.bookmarks = this.pages.stream().map(PageDescriptor::bookmark).toList();
-        this.savedPages = List.of(new SavedPage("intro", detailPanel), new SavedPage("grid", gridPanel),
-                new SavedPage("log", logPanel), new SavedPage("logDetail", logDetailPanel));
         syncBookmarks();
         gridPanel.setActions(this::syncPageChrome, target -> {
             if (currentTableId != null) ScenarioRecommendationOverlay.open(
@@ -161,32 +155,25 @@ public final class RightPageContainer implements UiInputTarget {
                          int parsedCount, int totalCount,
                          @Nullable ArchaeologyEntryLogRef logRef) {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
-        int archaeologyPage = this.gridPanel.getPage();
-        int introPage = this.detailPanel.getPage();
-        int logListPage = this.logPanel.getPage();
-        LogMode savedLogMode = this.logMode;
-        UUID savedSelectedLogEntryId = this.selectedLogEntryId;
+        ReadingState previous = captureReadingState();
 
         this.gridPanel.setTable(items, childTables);
         this.detailPanel.setData(tableId, parsedCount, totalCount, introItems);
         this.logPanel.setData(logRef);
 
-        if (sameTable) {
-            this.gridPanel.setPage(archaeologyPage);
-            this.detailPanel.setPage(introPage);
-            this.logPanel.setPage(logListPage);
-            restoreLogSelection(savedSelectedLogEntryId, savedLogMode == LogMode.DETAIL);
-        } else {
+        if (!sameTable) {
             overlays.close();
             ScenarioSimulationClientState.cancelAssist();
-            this.logPanel.setBatchSelectionMode(false);
-            this.gridPanel.resetPage();
+            gridPanel.setActiveTag(null);
+            gridPanel.resetPage(); detailPanel.setPage(0); logPanel.setPage(0); logDetailPanel.setPage(0);
+            logPanel.setBatchSelectionMode(false);
             restoreLogSelection(null, false);
         }
 
         this.currentTableId = tableId;
         this.scenarioPanel.setTable(tableId);
         this.scenarioDetailPanel.setTable(tableId);
+        if (sameTable) restoreReadingState(previous);
         syncPageChrome();
     }
 
@@ -251,39 +238,33 @@ public final class RightPageContainer implements UiInputTarget {
         }
     }
 
-    public record ReadingState(Tab tab, CompoundTag pages, @Nullable ResourceLocation activeItemTag,
+    /** 右页完整阅读快照，持久投影由 JournalReadingState 明确裁剪。 */
+    public record ReadingState(Tab tab, PagePositions pages, @Nullable ResourceLocation activeItemTag,
             boolean logDetail, @Nullable UUID logEntryId, boolean logBatchSelectionMode,
-            List<UUID> selectedLogEntryIds) {
-        public ReadingState {
-            pages = pages.copy();
-            selectedLogEntryIds = List.copyOf(selectedLogEntryIds);
-        }
-        public static ReadingState empty() {
-            return new ReadingState(Tab.INTRO, new CompoundTag(), null, false, null, false, List.of());
-        }
+            List<UUID> selectedLogEntryIds, Map<String, Integer> conditionOffsets) {
+        /** 集合冻结后可跨布局重建复用。 */
+        public ReadingState { selectedLogEntryIds = List.copyOf(selectedLogEntryIds); conditionOffsets = Map.copyOf(conditionOffsets); }
+        /** 默认阅读起点。 */
+        public static ReadingState empty() { return new ReadingState(Tab.INTRO, PagePositions.empty(), null, false, null, false, List.of(), Map.of()); }
     }
 
+    /** 从实际内容捕获所有右页阅读位置。 */
     public ReadingState captureReadingState() {
-        return new ReadingState(activeTab, savePages(), gridPanel.getActiveTag(), isShowingLogDetail(),
-                selectedLogEntryId, logPanel.isBatchSelectionMode(), logPanel.getSelectedEntryIds());
+        return new ReadingState(activeTab, new PagePositions(detailPanel.getPage(), gridPanel.getPage(), logPanel.getPage(), logDetailPanel.getPage()),
+                gridPanel.getActiveTag(), isShowingLogDetail(), selectedLogEntryId, logPanel.isBatchSelectionMode(),
+                logPanel.getSelectedEntryIds(), scenarioDetailPanel.captureConditionOffsets());
     }
 
+    /** 内容准备后先恢复身份，再恢复页号与偏移，最后更新 chrome。 */
     public void restoreReadingState(ReadingState state) {
         setActiveItemTag(state.activeItemTag());
         restoreLogSelection(state.logEntryId(), state.logDetail());
+        detailPanel.setPage(state.pages().intro()); gridPanel.setPage(state.pages().grid());
+        logPanel.setPage(state.pages().log());
+        logDetailPanel.setPage(isShowingLogDetail() ? state.pages().logDetail() : 0);
+        scenarioDetailPanel.restoreConditionOffsets(state.conditionOffsets());
         setActiveTab(state.tab());
         logPanel.restoreBatchSelection(state.logBatchSelectionMode(), state.selectedLogEntryIds());
-        loadPages(state.pages());
-    }
-
-    private CompoundTag savePages() {
-        CompoundTag tag = new CompoundTag();
-        savedPages.forEach(saved -> tag.putInt(saved.key(), saved.panel().getPage()));
-        return tag;
-    }
-
-    private void loadPages(CompoundTag tag) {
-        savedPages.forEach(saved -> saved.panel().setPage(tag.getInt(saved.key())));
         syncPageChrome();
     }
 

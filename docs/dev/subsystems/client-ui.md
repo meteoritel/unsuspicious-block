@@ -12,7 +12,7 @@
 | 笔记 UI 入口与分层 | `client/ui/ArchaeologyJournalUi`、`JournalBookBackground`、`PotteryPreviewRenderer`；分层包 `client/ui/{entry,layout,panel,screen,support,toast,widget,tooltip,overlay,theme}/`（详情见[笔记 GUI 内部机制](../internals/journal-ui-internals.md)） |
 | 独立 UI Kit | 消费 `com.meteorite.meteosuikit.api`；`client/ui/theme/` 提供宿主主题与皮肤 |
 | 客户端业务状态 | `client/state/`：`ArchaeologyJournalKeyHandler`、`HandOfCatClientState`、`CatHandClientState`、`ReaderScanHudState`、`SuspiciousReaderClientState`、`ScenarioSimulationClientState`、`SimulationPreferenceStore`、`JournalHoveredItemProvider` |
-| UI 侧状态 | `client/ui/support/`：`ArchaeologyJournalClientState`、`LootTableManagementClientState`、`ClientLootTableLanguageStore`、`JournalUiPreferencesStore`、`UiPanelRegistry` 等 |
+| UI 侧状态 | `client/ui/support/`：`ArchaeologyJournalClientState`、`LootTableManagementClientState`、`ClientLootTableLanguageStore`、`JournalUiPreferencesStore`；`client/ui/journal/` 持有类型化阅读投影与 codec |
 | HUD 与模型 | `client/hud/`：`CatFavorHud`、`SuspiciousReaderHud`；`client/model/MessengerCatClothesModel`、`client/renderer/layer/` |
 | 渲染器与世界渲染 | `client/renderer/`：`ModEntityRenderers`、`ModModelLayers`、各实体/方块实体渲染器、`SuspiciousReaderRangeHighlight`、`CatFavorShieldRenderer`、`ShimmerSurfaceRenderer`（见[淘洗系统](panning.md)） |
 | 成本分解预览 | `client/anvil/`、`client/grindstone/`、`client/tooltip/BreakdownPreview` |
@@ -51,7 +51,7 @@ flowchart TD
 | `ModClientLifecycle` | 双端共用的安装（Tooltip 桥、语言存储、淘洗表现、笔记打开器、通知回调）、tick 驱动与断连复位 |
 | `ArchaeologyJournalClientState` | 服务端目录与玩家进度的客户端只读模型，以及解锁/完成/删除结果通知分发 |
 | `JournalClientConnection` | 管理当前连接 `epoch`、日记本地镜像与偏好加载，按连接身份应用报文并丢弃迟到旧包 |
-| `JournalUiPreferencesStore` | 按存档与玩家隔离持久化 UI 偏好和面板状态（`journal_ui_preferences.dat`） |
+| `JournalUiPreferencesStore` | 按存档与玩家隔离持久化 UI 偏好和类型化阅读投影（`journal_ui_preferences.dat`） |
 | `CatFavorHud` / `SuspiciousReaderHud` | 猫之恩惠 HUD；可疑解析仪扫描汇总与准星目标详情 HUD |
 | `ReaderScanHudState` | 维护范围扫描结果、图标分组、聚焦目标及世界透视描边的单调时钟生命周期 |
 | `ModKeyBindings` | 集中定义客户端按键绑定清单 |
@@ -74,7 +74,7 @@ flowchart TD
 | 状态类 | 职责与生命周期 |
 |---|---|
 | `ArchaeologyJournalClientState` | 持有当前连接的目录、结构、进度、哈希与同步状态；`receiveCatalogHash` 比对不一致时请求全量目录；全量同步首次不弹 Toast，增量同步检测到 `incomingRevision > lastNotifiedRevision + 1` 时按 2 秒冷却请求全量重同步（`detectAndNotifyUnlocks` 仅对追踪目录内表触发） |
-| `JournalUiPreferencesStore` | 管理排序、搜索、收藏、分组、右页选择与本次会话展开状态；切换连接先冻结并保存旧路径待写数据，再恢复默认值并加载新世界数据 |
+| `JournalUiPreferencesStore` | 管理排序、搜索、收藏、分组、持久阅读投影与连接内目录状态；切换连接先冻结并保存旧路径待写数据，再恢复默认值并加载新世界数据 |
 | `ArchaeologyJournalLogLocalStore` / `JournalMirror` | 管理分片快照重组、序号递增增量合并与本地镜像持久化 |
 | `LootTableManagementClientState` | 持有服务端战利品表索引、权限与自定义表名内存快照，断连时 `reset()` 清空 |
 | `ClientLootTableLanguageStore` | 组合游戏资源语言、服务端内存表名与动态语言补充 |

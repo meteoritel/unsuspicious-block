@@ -66,7 +66,6 @@ public class JournalViewModel {
     private boolean categoryHome = true;
     @Nullable private ResourceLocation selectedCategory;
     private int selectedIndex = -1;
-    private boolean selectionInitialized;
     private int totalTableCount;
     private int globalUnlockedTableCount;
     private JournalSearchQuery currentSearch = JournalSearchQuery.EMPTY;
@@ -76,6 +75,7 @@ public class JournalViewModel {
     private long lastConnectionEpoch;
     private long lastCatalogRevision;
     private long lastStateRevision;
+    private boolean lastReadingReady;
     private long lastLogRevision;
 
     // —— 目录派生数据缓存（键均为 loadedCatalogRevision，即当前 catalogDefinitions 的版本）——
@@ -112,6 +112,7 @@ public class JournalViewModel {
         this.lastConnectionEpoch = JournalClientConnection.epoch();
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
+        this.lastReadingReady = ArchaeologyJournalClientState.isReadingReady();
         this.lastLogRevision = ArchaeologyJournalLogLocalStore.getRevision();
     }
 
@@ -309,9 +310,12 @@ public class JournalViewModel {
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         long stateRevision = ArchaeologyJournalClientState.getStateRevision();
         long logRevision = ArchaeologyJournalLogLocalStore.getRevision();
-        if (!connectionChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
+        boolean readingReady = ArchaeologyJournalClientState.isReadingReady();
+        boolean readinessChanged = readingReady != lastReadingReady;
+        lastReadingReady = readingReady;
+        if (!connectionChanged && !readinessChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
                 && logRevision == this.lastLogRevision) return false;
-        if (connectionChanged || stateRevision != this.lastStateRevision) {
+        if (connectionChanged || readinessChanged || stateRevision != this.lastStateRevision) {
             this.lastStateRevision = stateRevision;
             this.state.copyFrom(ArchaeologyJournalClientState.getState());
         }
@@ -350,10 +354,7 @@ public class JournalViewModel {
         }
         rebuildTableRows();
 
-        ResourceLocation remembered = this.selectionInitialized ? null
-                : JournalUiPreferencesStore.getLastSelectedTableId();
-        this.selectedIndex = resolveSelectedIndex(selectedId, remembered);
-        if (!this.selectionInitialized && !this.tableViews.isEmpty()) this.selectionInitialized = true;
+        this.selectedIndex = resolveSelectedIndex(selectedId);
 
         if (catalogPanel != null) {
             if (isCategoryHome()) catalogPanel.setCategories(this.categoryViews);
@@ -748,7 +749,7 @@ public class JournalViewModel {
         return probability.upperBound();
     }
 
-    private int resolveSelectedIndex(@Nullable ResourceLocation selectedId, @Nullable ResourceLocation rememberedId) {
+    private int resolveSelectedIndex(@Nullable ResourceLocation selectedId) {
         if (this.tableViews.isEmpty()) return -1;
         int current = findTableIndex(selectedId);
         if (current >= 0) return current;
@@ -757,8 +758,6 @@ public class JournalViewModel {
                     JournalUiPreferencesStore.getCategorySelection(this.selectedCategory));
             if (categoryRemembered >= 0) return categoryRemembered;
         }
-        int remembered = findTableIndex(rememberedId);
-        if (remembered >= 0) return remembered;
         for (int index = 0; index < this.tableViews.size(); index++) {
             if (this.tableViews.get(index).unlocked()) return index;
         }

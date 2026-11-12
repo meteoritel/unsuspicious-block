@@ -19,7 +19,8 @@
 | 服务端考古日志目录 | 布局 v2 | `JournalDataVersion`；保留单文件 v1 → 分片目录 v2 迁移 |
 | 玩家猫族关系 | NBT v2 | `CatFavorState`；兼容无版本旧格式及历史整数版本读取 |
 | 战利品表概率模拟缓存 | 格式 v5 | `LootProbabilityData`；版本或标签类型不匹配时整体按缓存未命中重算，不做迁移 |
-| 淘洗账本、商人生成、结构回溯冷却、实体/方块实体扩展及客户端偏好 | 各自现有格式 | 沿用既有序列化器与字段位置；若未来首次变更，以当前无标记格式作为隐式 v0 |
+| 客户端笔记 UI 偏好 | NBT v1 | `JournalReadingStateCodec`；无标记 v0 经副本迁移，保留旧偏好与条件偏移键 |
+| 淘洗账本、商人生成、结构回溯冷却、实体/方块实体扩展 | 各自现有格式 | 沿用既有序列化器与字段位置；若未来首次变更，以当前无标记格式作为隐式 v0 |
 
 ## 2. 通用迁移底座
 
@@ -27,7 +28,7 @@
 
 - **`MigrationVersions`**：定义单一格式的最低与最高支持版本，读入时校验版本类型并拒绝越界版本或跳步。
 - **`NbtMigration`**：注册 `vN → vN+1` 的逐级字段转换步骤。读取数据时执行整条迁移链的**副本转换**，全部成功后才替换原始输入；已是当前版本的数据直接通过（保留未知字段），缺少版本标记的历史数据按最早支持版本处理。
-  - 由 `JournalNbtMigrator`（考古笔记）与 `CatFavorState`（猫族关系）各自登记；客户端本地日志通过同一反序列化入口复用该迁移链。
+  - 由 `JournalNbtMigrator`（考古笔记）、`CatFavorState`（猫族关系）与 `JournalReadingStateCodec`（客户端偏好）各自登记；客户端本地日志通过同一反序列化入口复用该迁移链。
 - **`StorageMigration`**：管理文件级布局迁移步骤、断点恢复策略与提交后清理动作，由 `JournalLogStorage` 调用：
 
 ```mermaid
@@ -42,6 +43,12 @@ flowchart LR
 - `ABORT_IF_INTERRUPTED`：非幂等迁移必须使用该策略，若中途崩溃则阻止继续启动并交由维护者人工核对恢复，避免数据损毁。
 
 底座负责逐步维护状态检查点，底层存储文件仍需各自使用同目录临时文件保证单文件原子替换。
+
+### 2.1 客户端笔记偏好
+
+`JournalReadingStateCodec` 以 `uiPreferencesVersion` 管理 `journal_ui_preferences.dat`：无版本视为 v0，迁移在副本中加入阅读默认值后标记 v1。保留根 `lastSelectedTable`、`lastRightPageTab`、排序/搜索/收藏与 `simulationPreferences`，已有 `panels.scenario.conditionOffsets` 仍按表 ID 保存有界偏移。
+
+v1 的 `reading` compound 保存具名页号、可选 active tag、日志 entry ID 与详情模式；表身份与 Tab 来自同一次快照。批选和临时输入不落盘，页号上界由内容面板钳制。旧偏好缺页号时使用首页，合法旧字段照常恢复。`JournalUiPreferencesStore` 在版本类型错误、未来版本或 IO 读取失败时报告并禁止覆盖当前路径源文件，连接切换重新载入对应路径资格。
 
 ## 3. 新增格式迁移流程
 

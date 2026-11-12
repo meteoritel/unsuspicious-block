@@ -61,6 +61,7 @@ public final class ArchaeologyJournalClientState {
         private Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
         private long catalogProjectionRevision = -1L;
         private @Nullable String cachedCatalogHash;
+        private boolean catalogInitialized;
         private boolean stateInitialized;
         private long lastNotifiedRevision = -1L;
         private final ResyncPolicy resyncPolicy = new ResyncPolicy(System::currentTimeMillis);
@@ -88,6 +89,9 @@ public final class ArchaeologyJournalClientState {
         logDeleteNotifier = notifier;
     }
 
+    /** 完整目录与进度均已提交，空目录也属于已就绪状态。 */
+    public static boolean isReadingReady() { return connectionState.catalogInitialized && connectionState.stateInitialized; }
+
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
         // 网络形态还原为客户端内存读模型：表级场景假设按 key 回填到每个分场景概率
         Map<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
@@ -97,6 +101,7 @@ public final class ArchaeologyJournalClientState {
         ScenarioSimulationClientState.catalog(payload.catalog());
         connectionState.serverCatalog = Collections.unmodifiableMap(tables);
         connectionState.catalogStructure = payload.structure();
+        connectionState.catalogInitialized = true;
         catalogRevision.incrementAndGet();
         // 收到完整目录后，哈希由服务端下次同步时更新
     }

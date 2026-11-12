@@ -77,7 +77,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         });
         tools.setItems(options.tools()).setRowHeight(22);
         for (int i = 0; i < options.tools().size(); i++) if (options.tools().get(i).id().equals(current.toolId())) tools.setSelectedIndex(i);
-        tools.shell().setEnabled(options.toolSelectionAllowed());
+        tools.setEnabled(options.toolSelectionAllowed());
         enchantments = new UiListView<>(() -> UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, id, index, row, selected, hovered, focused) -> {
             Component name = text("params.enchant_level", enchantmentName(id), levels.getOrDefault(id, 0));
             graphics.drawString(rowFont, rowFont.plainSubstrByWidth(name.getString(), Math.max(0, row.width() - 6)),

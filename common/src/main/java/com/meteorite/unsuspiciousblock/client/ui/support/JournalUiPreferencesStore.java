@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
+import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingStateCodec;
+import com.meteorite.unsuspiciousblock.Constants;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -24,11 +26,10 @@ public final class JournalUiPreferencesStore {
     private static volatile Path loadedPath;
     private static final JournalLocalPersistence.PendingWrites writes = new JournalLocalPersistence.PendingWrites();
     private static volatile boolean dirty;
-    private static CompoundTag panelStates = new CompoundTag();
+    private static JournalReadingState readingState = JournalReadingState.empty();
+    private static boolean writable = true;
     private static CompoundTag simulationPreferences = new CompoundTag();
 
-    @Nullable
-    private static ResourceLocation lastSelectedTableId;
     @Nullable
     private static CatalogSorter.SortOrder lastCatalogSortOrder;
     private static boolean lastCatalogSortDescending;
@@ -44,8 +45,6 @@ public final class JournalUiPreferencesStore {
     private static boolean lastLogSortDescending = true;
     @Nullable
     private static LogGrouper.GroupMode lastLogGroupMode;
-    @Nullable
-    private static RightPageContainer.Tab lastRightPageTab;
     private static Set<ResourceLocation> favorites = Collections.emptySet();
 
     private JournalUiPreferencesStore() {
@@ -64,23 +63,12 @@ public final class JournalUiPreferencesStore {
         dirty = true;
     }
 
-    public static synchronized CompoundTag getPanelStates() {
-        return panelStates.copy();
-    }
+    /** 当前路径的持久阅读投影，目录位置仍属于连接内记忆。 */
+    public static synchronized JournalReadingState readingState() { return readingState; }
 
-    public static synchronized void setPanelStates(CompoundTag state) {
-        panelStates = state.copy();
-        dirty = true;
-    }
-
-    @Nullable
-    public static synchronized ResourceLocation getLastSelectedTableId() {
-        return lastSelectedTableId;
-    }
-
-    /** 记住当前选择并标记待保存；null 表示尚未选表。 */
-    public static synchronized void rememberLastSelectedTable(@Nullable ResourceLocation tableId) {
-        lastSelectedTableId = tableId;
+    /** 保存同一次捕获的阅读目标，自动排除批选。 */
+    public static synchronized void rememberReadingState(JournalReadingState state) {
+        readingState = state.persistent();
         dirty = true;
     }
 
@@ -178,16 +166,6 @@ public final class JournalUiPreferencesStore {
         dirty = true;
     }
 
-    @Nullable
-    public static synchronized RightPageContainer.Tab getLastRightPageTab() {
-        return lastRightPageTab;
-    }
-
-    public static synchronized void setLastRightPageTab(@Nullable RightPageContainer.Tab tab) {
-        lastRightPageTab = tab;
-        dirty = true;
-    }
-
     public static synchronized boolean isFavorite(ResourceLocation id) {
         return favorites.contains(id);
     }
@@ -208,7 +186,7 @@ public final class JournalUiPreferencesStore {
 
     /** 冻结当前路径的脏快照，并重试尚未成功的待写数据。 */
     public static synchronized void flushIfDirty() {
-        if (dirty && loadedPath != null) {
+        if (dirty && loadedPath != null && writable) {
             if (save()) {
                 dirty = false;
             }
@@ -220,7 +198,8 @@ public final class JournalUiPreferencesStore {
     static synchronized void beginConnection() {
         flushIfDirty();
         loadedPath = null;
-        panelStates = new CompoundTag();
+        readingState = JournalReadingState.empty();
+        writable = true;
         simulationPreferences = new CompoundTag();
         resetPreferences();
         dirty = false;
@@ -238,8 +217,13 @@ public final class JournalUiPreferencesStore {
         JournalLocalPersistence.Loaded result = pending == null
                 ? JournalLocalPersistence.load(path, Long.MAX_VALUE)
                 : new JournalLocalPersistence.Loaded(pending, true);
-        if (result.successful()) {
-            applyTag(result.tag());
+        writable = result.successful();
+        if (!writable) return;
+        try {
+            applyTag(JournalReadingStateCodec.migrate(result.tag()));
+        } catch (IllegalArgumentException exception) {
+            writable = false;
+            Constants.LOG.warn("[{}] 笔记 UI 偏好格式无法读取，保留源文件: {}", Constants.MOD_ID, path, exception);
         }
     }
 
@@ -255,11 +239,8 @@ public final class JournalUiPreferencesStore {
 
     private static void applyTag(CompoundTag tag) {
         resetPreferences();
-        panelStates = tag.getCompound("panels").copy();
+        readingState = JournalReadingStateCodec.read(tag);
         simulationPreferences = tag.getCompound("simulationPreferences").copy();
-        if (tag.contains("lastSelectedTable", Tag.TAG_STRING)) {
-            lastSelectedTableId = ResourceLocation.tryParse(tag.getString("lastSelectedTable"));
-        }
         if (tag.contains("lastCatalogSortOrder", Tag.TAG_STRING)) {
             try {
                 lastCatalogSortOrder = CatalogSorter.SortOrder.valueOf(tag.getString("lastCatalogSortOrder"));
@@ -286,13 +267,6 @@ public final class JournalUiPreferencesStore {
                 lastLogGroupMode = null;
             }
         }
-        if (tag.contains("lastRightPageTab", Tag.TAG_STRING)) {
-            try {
-                lastRightPageTab = RightPageContainer.Tab.valueOf(tag.getString("lastRightPageTab"));
-            } catch (IllegalArgumentException ignored) {
-                lastRightPageTab = null;
-            }
-        }
         ListTag favoriteList = tag.getList("favorites", Tag.TAG_STRING);
         Set<ResourceLocation> loadedFavorites = new HashSet<>();
         for (Tag entry : favoriteList) {
@@ -306,11 +280,8 @@ public final class JournalUiPreferencesStore {
 
     private static CompoundTag snapshot() {
         CompoundTag tag = new CompoundTag();
-        tag.put("panels", panelStates.copy());
+        JournalReadingStateCodec.write(tag, readingState);
         tag.put("simulationPreferences", simulationPreferences.copy());
-        if (lastSelectedTableId != null) {
-            tag.putString("lastSelectedTable", lastSelectedTableId.toString());
-        }
         if (lastCatalogSortOrder != null) {
             tag.putString("lastCatalogSortOrder", lastCatalogSortOrder.name());
         }
@@ -321,9 +292,6 @@ public final class JournalUiPreferencesStore {
         if (lastLogGroupMode != null) {
             tag.putString("lastLogGroupMode", lastLogGroupMode.name());
         }
-        if (lastRightPageTab != null) {
-            tag.putString("lastRightPageTab", lastRightPageTab.name());
-        }
         ListTag favoritesTag = new ListTag();
         for (ResourceLocation id : favorites) {
             favoritesTag.add(StringTag.valueOf(id.toString()));
@@ -333,7 +301,7 @@ public final class JournalUiPreferencesStore {
     }
 
     private static void resetPreferences() {
-        lastSelectedTableId = null;
+        readingState = JournalReadingState.empty();
         lastCatalogSortOrder = null;
         lastCatalogSortDescending = false;
         lastCatalogHideLocked = false;
@@ -346,7 +314,6 @@ public final class JournalUiPreferencesStore {
         categorySelections.clear();
         lastLogSortDescending = true;
         lastLogGroupMode = null;
-        lastRightPageTab = null;
         favorites = Collections.emptySet();
     }
 }
