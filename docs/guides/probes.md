@@ -12,6 +12,7 @@ Agent 调用任何探针前，须遵守仓库根目录 `AGENTS.md` 中的「探�
 | 探针形态 | 存放位置 | 用途与生命周期 |
 |---|---|---|
 | **核心回归探针** | [`tools/probes/`](../../tools/probes/README.md) | 覆盖主链路记账、同步、持久化与关键视口；随代码长期演进并纳入 Git |
+| **可复用专项巡检模板** | [`tools/probes/inspect_tooltips.py`](../../tools/probes/inspect_tooltips.py) | 纯检查全部物品 Tooltip 双语文案、色值、像素行宽与真实容器悬停 PNG |
 | **临时诊断 / 截图探针** | 会话 `scratch/` 目录或 `.local/`（不入库） | 定向复现 UI 缺陷、切换语言截多图、排查崩溃；任务验收后随临时目录清理，勿污染 `tools/probes/` |
 
 ## 2. 环境准备与快速校验

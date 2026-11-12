@@ -25,18 +25,20 @@ public class EyeOfCatItem extends Item {
         super.appendHoverText(stack, context, tooltipLines, flag);
         TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
 
-        // 一句话暗示
+        // 一句话说明核心功能；详尽模式列出三项能力
         tooltip.intro("item.unsuspiciousblock.eye_of_cat.tooltip.hint");
 
-        // 详尽模式：列出能力名；否则显示通用 Shift 展开提示
         tooltip.expandable(t -> {
             t.section("item.unsuspiciousblock.eye_of_cat.tooltip.abilities");
-            t.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.enchant_reveal")
-                    .withStyle(TooltipBuilder.POSITIVE));
-            t.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.anvil_breakdown")
-                    .withStyle(TooltipBuilder.POSITIVE));
-            t.add(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.grindstone_breakdown")
-                    .withStyle(TooltipBuilder.POSITIVE));
+            t.add(Component.literal("✔ ").withStyle(TooltipBuilder.POSITIVE)
+                    .append(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.enchant_reveal")
+                            .withStyle(TooltipBuilder.POSITIVE)));
+            t.add(Component.literal("✔ ").withStyle(TooltipBuilder.POSITIVE)
+                    .append(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.anvil_breakdown")
+                            .withStyle(TooltipBuilder.POSITIVE)));
+            t.add(Component.literal("✔ ").withStyle(TooltipBuilder.POSITIVE)
+                    .append(Component.translatable("item.unsuspiciousblock.eye_of_cat.tooltip.grindstone_breakdown")
+                            .withStyle(TooltipBuilder.POSITIVE)));
         });
     }
 }

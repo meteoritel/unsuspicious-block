@@ -42,13 +42,14 @@ public final class SealedContentsDisplay {
         return sealedByNameLine(crafterName);
     }
 
-    // 从服务端已解析的玩家名构建“封存玩家”行
+    // 从服务端已解析的玩家名构建“封存玩家”行：标签灰 + 玩家名高亮，与封存物品行对齐
     public static MutableComponent sealedByNameLine(@Nullable String crafterName) {
-        Component displayName = crafterName == null || crafterName.isBlank()
+        MutableComponent displayName = (crafterName == null || crafterName.isBlank()
                 ? Component.translatable("unsuspiciousblock.sealed.unknown_player")
-                : Component.literal(crafterName);
+                : Component.literal(crafterName))
+                .withStyle(TooltipBuilder.NAME);
         return Component.translatable("unsuspiciousblock.sealed.by", displayName)
-                .withStyle(TooltipBuilder.ACCENT);
+                .withStyle(TooltipBuilder.LABEL);
     }
 
     // 玩家名缺失时使用 UUID，确保已有身份数据始终可识别

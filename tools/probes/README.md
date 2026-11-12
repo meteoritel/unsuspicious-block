@@ -15,9 +15,12 @@ python tools/probes/run.py --validate --only runtime-artifact
 python tools/probes/run.py --only runtime-artifact
 python tools/probes/run.py --only scan-take-journal --only journal-viewport
 python tools/probes/run.py --artifact build/probes/artifact.json
+python tools/probes/inspect_tooltips.py --artifact build/probes/artifact.json --lang both --shift both
 ```
 
 默认串行执行宿主完整构建、运行准备和探针。已有本次构建时，传 `--artifact build/probes/artifact.json` 消费其准确归档；该 manifest 由 Gradle `writeProbeArtifact` 从实际任务输出生成。运行目录须全新，原始记录、进程日志和派生报告保存在控制台显示的目录中。
+
+> **专项巡检模板**：[`inspect_tooltips.py`](inspect_tooltips.py) 配合 [`scripts/tooltip_inspect.js`](scripts/tooltip_inspect.js) 提供纯检查全部物品 Tooltip 的独立入口（支持 `--lang zh_cn|en_us|both`、`--shift up|down|both`、`--items` 与 `--no-screenshots`），输出 `tooltip-report.json` / `tooltip-report.md` 及容器槽位悬停 PNG，不拖慢日常核心回归套件。
 
 运行器仅关闭自身进程。正常停服保留存档；超时后的副作用先查询动作结果，状态不明时结束实例。退出码 `0` 为选定集合通过，`1` 为业务断言失败，`2` 为配置、协议、采集或环境错误。
 

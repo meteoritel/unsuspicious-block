@@ -1,5 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.text;
 
+import net.minecraft.network.chat.Component;
+
+import java.util.List;
 import java.util.UUID;
 
 /***
@@ -10,7 +13,7 @@ import java.util.UUID;
  * 客户端入口（fabric / neoforge）在初始化时安装 {@link Hooks} 实现。
  * <p>
  * 未安装实现时的缺省语义：Shift 展开视为未按下、打开界面为空操作、
- * 猫族数据为 0、任何 UUID 都不是本地玩家。
+ * 文本折行按原组件单行返回、猫族数据为 0、任何 UUID 都不是本地玩家。
  */
 public final class ClientTooltipBridge {
 
@@ -19,6 +22,9 @@ public final class ClientTooltipBridge {
 
         // Shift 是否按下（控制 tooltip 是否展开详情）
         boolean isExpandKeyDown();
+
+        // 按最大像素宽度拆分长文本并保留原样式
+        List<Component> splitLines(Component text, int maxWidth);
 
         // 打开考古笔记界面
         void openJournal();
@@ -46,6 +52,11 @@ public final class ClientTooltipBridge {
     public static boolean isExpandKeyDown() {
         Hooks current = hooks;
         return current != null && current.isExpandKeyDown();
+    }
+
+    public static List<Component> splitLines(Component text, int maxWidth) {
+        Hooks current = hooks;
+        return current == null ? List.of(text) : current.splitLines(text, maxWidth);
     }
 
     public static void openJournal() {

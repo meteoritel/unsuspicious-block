@@ -17,13 +17,13 @@
 
 | 段 | 内容 | 样式 | 说明 |
 |---|---|---|---|
-| 1 | WIP 横幅 | RED + ITALIC | 仅开发中物品；使用通用键，永远置顶 |
-| 2 | 简介行 | GRAY | 这是什么 / 怎么用，一句话 |
-| 3 | 动态状态行 | 整行 GRAY，值可按语义单独上色 | 能量、羁绊、纹饰等运行时数据 |
-| 4 | 操作提示行 | DARK_GRAY | 按键 / 右键等交互提示；按键名用 ACCENT 高亮 |
-| 5 | Shift 展开详情 | 分区标题 GOLD + 明细 | 见下方展开规则 |
+| 1 | WIP 横幅 | `NEGATIVE + ITALIC` | 仅开发中物品；使用通用键，永远置顶 |
+| 2 | 简介行 | `LABEL`（自动折行） | 这是什么 / 核心用途，一句短语精炼表达 |
+| 3 | 动态状态行 | 标签 `LABEL`，值按语义单独上色 | 使用 `labelValue` 分离标签与数值/状态色 |
+| 4 | 操作提示 / 风险警告行 | 提示 `HINT`（按键/动作 `ACCENT`）；警告 `NEGATIVE` | 交互提示突出按键或动作；破坏性后果走 `warning()`（`⚠ ` 前缀） |
+| 5 | Shift 展开详情 | 分区标题 `TITLE` + 明细 | 见下方展开与折行规则 |
 
-**Shift 展开规则**：详情 ≥ 4 行或属"能力清单"类内容时使用展开模式；未按 Shift 时只显示通用提示行（`tooltip.unsuspiciousblock.expand_hint`）。展开/收起逻辑统一走 `TooltipBuilder#expandable`，不要在物品里各自判断 `Screen.hasShiftDown()`；`expandable` 的按键状态经 `core/text/ClientTooltipBridge` 由客户端入口注入，专用服务端取缺省值、不加载客户端类。
+**Shift 展开与折行规则**：详情 ≥ 4 行或属"能力清单"类内容时使用展开模式；未按 Shift 时只显示通用提示行（`tooltip.unsuspiciousblock.expand_hint`，自动将高亮后的 `Shift` 传入占位符）。展开/收起统一走 `TooltipBuilder#expandable`，长文本经 `TooltipBuilder#wrapped` 按 `DEFAULT_MAX_LINE_WIDTH`（`200px`）自动折行；按键检测与文本拆分通过 `core/text/ClientTooltipBridge` 由客户端入口注入，专用服务端取安全缺省值、不加载客户端类。
 
 ## 3. 语义色表
 
@@ -32,16 +32,17 @@
 | 常量 | 颜色 | 语义 |
 |---|---|---|
 | `TITLE` | GOLD | 分区标题、关键数值（总计、羁绊值） |
-| `BODY` | WHITE | 正文行：Jade 数量、封存信息等（物品简介行自 2026-09-14 起改用 GRAY，与 `LABEL` 同色） |
-| `LABEL` | GRAY | 状态行 / 次要信息 / 标签 |
-| `HINT` | DARK_GRAY | 操作提示、未激活内容 |
-| `POSITIVE` | GREEN | 正面、已解锁、增益 |
-| `NEGATIVE` | RED | 负面、警告、损失 |
+| `BODY` | WHITE | 突出正文与关键状态值（Jade 数量、模式名、纹饰名等） |
+| `LABEL` | GRAY | 物品简介、状态标签、次要描述 |
+| `HINT` | GRAY | 操作提示、未激活内容（与 `LABEL` 同取 `#AAAAAA` 保证暗底可读性，交互焦点通过 `ACCENT` 区分） |
+| `POSITIVE` | GREEN | 正面、已解锁、增益、高电量 |
+| `NEGATIVE` | RED | 负面、风险警告、损失、低电量 |
 | `SEVERE` | DARK_RED | 严重负面（诅咒等） |
-| `ACCENT` | AQUA | 特殊强调（按键名、残存命数） |
-| `NAME` | YELLOW | 归属者、物品名 |
+| `ACCENT` | AQUA | 特殊强调（按键名、操作动作词、残存命数、特殊适用条件） |
+| `NAME` | YELLOW | 归属者、物品名、中电量 |
+| `SPECIAL` | LIGHT_PURPLE | 满级或稀有巅峰状态（如「猫国挚友」） |
 
-灰阶只有两档：`LABEL`（#AAAAAA）与 `HINT`（#555555）。Jade 侧历史上使用的 `0xAAAAAA` 与 `LABEL` 同值，`0xFFE040` 已归并为 `TITLE`。
+暗底 Tooltip 上不再使用 `DARK_GRAY`（`#555555` 对比度仅约 1.9:1）。Jade 侧历史上使用的 `0xAAAAAA` 与 `LABEL` 同值，`0xFFE040` 已归并为 `TITLE`。
 
 > **语义层与实现层分离**：「语义色表」一节是唯一语义层，定义"语义 → ChatFormatting"的实现（原版暗底 tooltip / Jade）。GUI 自绘文本（羊皮纸 / 暗色底）沿用同一批语义槽、各自提供 int 色实现，见「GUI 内文本规范」。
 
@@ -93,21 +94,21 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 
 | 类 | 职责 |
 |---|---|
-| [`core/text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/text/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `hint` / `section` / `expandable`）。仅依赖共享类，common 与专用服务端都可安全引用；客户端能力（Shift 检测）经 `core/text/ClientTooltipBridge` 桥接 |
-| [`core/item/DescribedItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/DescribedItem.java) | 只需一行 GRAY 简介的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
+| [`core/text/TooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/text/TooltipBuilder.java) | 语义色常量 + 五段式构建器（`wip` / `intro` / `status` / `labelValue` / `hint` / `warning` / `bullet` / `section` / `blank` / `wrapped` / `expandable`）。仅依赖共享类，common 与专用服务端都可安全引用；客户端能力（Shift 检测、按像素折行）经 `core/text/ClientTooltipBridge` 桥接 |
+| [`core/item/DescribedItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/DescribedItem.java) | 只需简介说明的素材类物品基类（古代金币 / 失落书页 / 基页 / 花火粉） |
 | [`core/block/SealedContentsDisplay`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
 | kit `style.UiTextScheme`、[`client/ui/theme/JournalTextColors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalTextColors.java) | GUI 共同文字语义色与书页专属色（`NAME`、`SEVERE`、`SELECTED`、`COLLECTION`、`PROB_*`），见「GUI 内文本规范」 |
 | [`client/ui/theme/JournalPalette`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalPalette.java) | 羊皮纸书页边框、卡片底纹、遮罩与统一进度条（`drawProgressBar`），全部显式 8 位 ARGB |
 | [`client/ui/support/JournalTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记 tooltip 行构建；条件树按「条件树映射」的颜色 + 字重双维度渲染 |
-| [`client/anvil/AnvilBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java) | 铁砧 / 砂轮分解预览（猫之瞳持有者可见）。2026-09-15 起已迁移至 `TooltipBuilder` 语义色常量 |
+| [`client/anvil/AnvilBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java)、[`client/enchantment/EnchantmentRevealTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/enchantment/EnchantmentRevealTooltipBuilder.java) | 附魔台候选揭示与铁砧 / 砂轮分解预览（猫之瞳携带者可见），统一使用 `TooltipBuilder` 语义色常量 |
 
 ## 7. 扩展点：新增物品 tooltip 的标准流程
 
-1. 物品有交互逻辑 → 在其 `appendHoverText` 中先调 `super`，再用 `new TooltipBuilder(tooltipLines)` 按五段式追加；
+1. 物品有交互逻辑 → 在其 `appendHoverText` 中先调 `super`，再用 `new TooltipBuilder(tooltipLines)` 按五段式追加（状态行用 `labelValue`，警告用 `warning`，长句用 `wrapped`）；方块物品可直接覆写 `Block#appendHoverText`；
 2. 物品只是一句说明（素材类）→ 直接继承 `DescribedItem`，注册时传入 `item.unsuspiciousblock.<name>.tooltip.desc`；
 3. 需要展开详情 → 用 `tooltip.expandable(t -> { t.section(...); ... })`，不要自行读 Shift 状态；
 4. 上色 → 只从 `TooltipBuilder` 常量取，需要新语义时先在本文档「语义色表」一节补行；
-5. 同步添加 en_us / zh_cn 两个键，并校验 JSON。
+5. 同步添加 en_us / zh_cn 两个键（中文全角冒号 `：`、英文 `: `），并跑 `check-i18n.py` 与 Tooltip 探针模板（`tools/probes/inspect_tooltips.py`）校验行宽与双语表现。
 
 GUI 内文本提示的新增 / 修改流程见「GUI 内文本规范」的「新增 GUI 文本的标准流程」。
 

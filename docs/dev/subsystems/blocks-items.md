@@ -21,12 +21,12 @@
 | 可疑解析仪 | `core/item/SuspiciousReaderItem` | 扫描单方块/范围战利品与容器高亮，含能量系统 |
 | 考古铲 | `core/item/ArchaeologicalShovelItem` | 直接取出已扫描战利品、向下连挖与潜行防误挖保护 |
 | 淘盘（铜/金/黑曜石） | `core/item/PanItem` + `core/item/PanProfile` | 长按淘洗（详见[淘洗系统](panning.md)） |
-| 考古笔记 | `core/item/ArchaeologyJournalItem` | 打开笔记 GUI 的无状态入口 |
+| 考古笔记 | `core/item/ArchaeologyJournalItem` | 打开笔记 GUI 的无状态入口（含按键提示） |
 | 猫之瞳 | `core/item/EyeOfCatItem` | 驱动附魔台候选揭示与铁砧/砂轮分解预览 |
 | 猫之手 | `core/item/HandOfCatItem` | 绑定玩家 UUID 的猫族信物（详见[猫族关系系统](cat-favor.md)） |
 | 标本箱 | `core/item/SpecimenBoxItem` | 5 格便携容器，代理箱内随身物品、图腾与饰品效果 |
 | 回溯粉 | `core/item/RewindDustItem` | 在原位置重新放置世界生成结构 |
-| 古代金币 / 失落书页 / 基页 / 花火粉 | `ModItems` 工厂返回 `Item` 或 `DescribedItem` | 货币、合成材料与燃料（`DescribedItem` 统一单行灰色简介） |
+| 古代金币 / 失落书页 / 基页 / 花火粉 | `ModItems` 工厂返回 `Item` 或 `DescribedItem` | 货币、合成材料与燃料（`DescribedItem` 统一按 `TooltipBuilder` 规范输出并支持安全折行） |
 
 **数据资源与平台差异**
 

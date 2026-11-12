@@ -1,6 +1,11 @@
 package com.meteorite.unsuspiciousblock.core.block;
 
 import com.meteorite.unsuspiciousblock.core.blockentity.ModBlockEntities;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Item.TooltipContext;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import com.meteorite.unsuspiciousblock.core.blockentity.PotteryWheelBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -27,6 +32,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
+
 /** 纹饰陶轮台方块，提供陶罐合成和陶片压印工作界面。 */
 public class PotteryWheelBlock extends Block implements EntityBlock {
     public static final BooleanProperty WET_CLAY = BooleanProperty.create("wet_clay");
@@ -46,6 +53,13 @@ public class PotteryWheelBlock extends Block implements EntityBlock {
                 .setValue(HorizontalDirectionalBlock.FACING, Direction.NORTH)
                 .setValue(WET_CLAY, false)
                 .setValue(WORKING, false));
+    }
+
+    @Override
+    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
+                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        super.appendHoverText(stack, context, tooltipLines, flag);
+        new TooltipBuilder(tooltipLines).intro("block.unsuspiciousblock.pottery_wheel.tooltip.desc");
     }
 
     @Override

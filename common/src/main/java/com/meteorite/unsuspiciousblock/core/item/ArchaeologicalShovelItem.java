@@ -99,7 +99,14 @@ public class ArchaeologicalShovelItem extends ShovelItem {
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltipLines, flag);
-        new TooltipBuilder(tooltipLines).intro("item.unsuspiciousblock.archaeological_shovel.tooltip.extract");
+        TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
+        tooltip.intro("item.unsuspiciousblock.archaeological_shovel.tooltip.extract");
+        tooltip.expandable(t -> {
+            t.section("item.unsuspiciousblock.archaeological_shovel.tooltip.features");
+            t.bullet("item.unsuspiciousblock.archaeological_shovel.tooltip.chain_dig", TooltipBuilder.LABEL);
+            t.bullet("item.unsuspiciousblock.archaeological_shovel.tooltip.safe_mining", TooltipBuilder.LABEL);
+            t.bullet("item.unsuspiciousblock.archaeological_shovel.tooltip.coin_drop", TooltipBuilder.LABEL);
+        });
     }
 
     // ========== 挖掘行为 ==========

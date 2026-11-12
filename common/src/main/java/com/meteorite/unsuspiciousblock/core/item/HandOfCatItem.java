@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.core.cat.CatFavorAbility;
 import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.meteorite.unsuspiciousblock.core.text.ClientTooltipBridge;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -90,32 +91,36 @@ public class HandOfCatItem extends Item {
         Optional<UUID> ownerUuid = getOwnerUuid(stack);
 
         if (ownerUuid.isEmpty()) {
-            tooltip.status("item.unsuspiciousblock.hand_of_cat.tooltip.unbound");
+            tooltip.labelValue("item.unsuspiciousblock.hand_of_cat.tooltip.status",
+                    Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip.unbound")
+                            .withStyle(TooltipBuilder.HINT));
+            tooltip.hint("item.unsuspiciousblock.hand_of_cat.tooltip.bind_hint");
             return;
         }
 
         String ownerName = getOwnerName(stack).orElseGet(() -> abbreviateUuid(ownerUuid.get()));
-        tooltip.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip.owner", ownerName)
-                .withStyle(TooltipBuilder.NAME));
+        tooltip.labelValue("item.unsuspiciousblock.hand_of_cat.tooltip.owner",
+                Component.literal(ownerName).withStyle(TooltipBuilder.NAME));
 
         if (!ClientTooltipBridge.isLocalPlayer(ownerUuid.get())) {
             return;
         }
 
-        // 本人信物显示猫族羁绊与当前阶段。
-        tooltip.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip.favor",
-                favor, CatFavorAbility.NINE_LIVES.threshold()).withStyle(TooltipBuilder.TITLE));
+        // 本人信物显示猫族羁绊、当前阶段与残存命数，标签灰 + 数值按语义上色
+        tooltip.labelValue("item.unsuspiciousblock.hand_of_cat.tooltip.favor",
+                Component.literal(favor + "/" + CatFavorAbility.NINE_LIVES.threshold())
+                        .withStyle(TooltipBuilder.TITLE));
         CatBondStage stage = CatBondStage.fromBond(favor);
-        tooltip.status("item.unsuspiciousblock.hand_of_cat.tooltip.stage",
-                Component.translatable(stage.translationKey()));
+        tooltip.labelValue("item.unsuspiciousblock.hand_of_cat.tooltip.stage",
+                Component.translatable(stage.translationKey()).withStyle(stageColor(stage)));
 
         // 简要信息：残存命数（>0 时显示）
         if (lives > 0) {
-            tooltip.add(Component.translatable("item.unsuspiciousblock.hand_of_cat.tooltip.lives",
-                    lives).withStyle(TooltipBuilder.ACCENT));
+            tooltip.labelValue("item.unsuspiciousblock.hand_of_cat.tooltip.lives",
+                    Component.literal(lives + "/9").withStyle(TooltipBuilder.ACCENT));
         }
 
-        // 详尽模式：遍历枚举列出全部能力 + 描述；否则显示通用 Shift 展开提示
+        // 详尽模式：遍历枚举列出全部能力 + 自动折行描述；否则显示通用 Shift 展开提示
         tooltip.expandable(t -> {
             t.section("item.unsuspiciousblock.hand_of_cat.tooltip.abilities");
             for (CatFavorAbility ability : CatFavorAbility.values()) {
@@ -124,25 +129,36 @@ public class HandOfCatItem extends Item {
         });
     }
 
+    private static ChatFormatting stageColor(CatBondStage stage) {
+        return switch (stage) {
+            case ACQUAINTED -> TooltipBuilder.LABEL;
+            case CLOSE -> TooltipBuilder.POSITIVE;
+            case TRUSTED -> TooltipBuilder.ACCENT;
+            case FAVORED -> TooltipBuilder.NAME;
+            case HONORED_GUEST -> TooltipBuilder.TITLE;
+            case BEST_FRIEND -> TooltipBuilder.SPECIAL;
+        };
+    }
+
     private static String abbreviateUuid(UUID uuid) {
         String value = uuid.toString();
         return value.substring(0, Math.min(8, value.length()));
     }
 
-    // 追加一条能力状态：已解锁显示绿色 + 描述，未解锁显示灰色并标注所需恩惠
+    // 追加一条能力状态：已解锁显示绿色 + 折行描述，未解锁显示灰色并标注所需羁绊
     private static void appendAbility(TooltipBuilder tooltip, CatFavorAbility ability, int favor) {
         boolean unlocked = ability.isUnlockedAt(favor);
         MutableComponent name = Component.translatable(ability.nameKey());
         if (unlocked) {
-            tooltip.add(Component.literal(" ✔ ").withStyle(TooltipBuilder.POSITIVE)
-                    .append(name.withStyle(TooltipBuilder.POSITIVE)));
-            tooltip.add(Component.literal("    ").withStyle(TooltipBuilder.HINT)
-                    .append(Component.translatable(ability.descKey()).withStyle(TooltipBuilder.HINT)));
+            tooltip.wrapped(" ✔ ", "    ", name.withStyle(TooltipBuilder.POSITIVE));
+            tooltip.wrapped("    ", "    ",
+                    Component.translatable(ability.descKey()).withStyle(TooltipBuilder.LABEL));
         } else {
-            tooltip.add(Component.literal(" ✖ ").withStyle(TooltipBuilder.HINT)
-                    .append(name.withStyle(TooltipBuilder.HINT))
-                    .append(Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.required", ability.threshold())
-                            .withStyle(TooltipBuilder.HINT)));
+            MutableComponent locked = name
+                    .append(Component.translatable("item.unsuspiciousblock.hand_of_cat.ability.required",
+                            ability.threshold()))
+                    .withStyle(TooltipBuilder.HINT);
+            tooltip.wrapped(" ✖ ", "    ", locked);
         }
     }
 }

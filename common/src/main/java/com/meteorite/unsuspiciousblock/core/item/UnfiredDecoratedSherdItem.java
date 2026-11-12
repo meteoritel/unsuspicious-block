@@ -19,14 +19,16 @@ public class UnfiredDecoratedSherdItem extends Item {
 
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
-                                @NotNull List<Component> tooltip, @NotNull TooltipFlag flag) {
-        super.appendHoverText(stack, context, tooltip, flag);
+                                @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
+        super.appendHoverText(stack, context, tooltipLines, flag);
+        TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
+        tooltip.intro("item.unsuspiciousblock.unfired_decorated_sherd.tooltip.desc");
         PotDecorations decorations = stack.get(DataComponents.POT_DECORATIONS);
         if (decorations != null && decorations.ordered().stream().findFirst().isPresent()) {
             Item pattern = decorations.ordered().getFirst();
-            // 状态行：展示当前记录的纹饰
-            new TooltipBuilder(tooltip).status("item.unsuspiciousblock.unfired_decorated_sherd.tooltip.pattern",
-                    pattern.getDescription());
+            // 状态行：标签灰 + 纹饰名高亮
+            tooltip.labelValue("item.unsuspiciousblock.unfired_decorated_sherd.tooltip.pattern",
+                    pattern.getDescription().copy().withStyle(TooltipBuilder.BODY));
         }
     }
 }

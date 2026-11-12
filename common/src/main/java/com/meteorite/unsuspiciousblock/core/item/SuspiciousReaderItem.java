@@ -81,23 +81,39 @@ public class SuspiciousReaderItem extends Item {
         int energy = getEnergyOrDefault(stack);
         int scanLevel = getScanLevel(stack);
 
-        // 状态行：当前扫描模式与能量
+        tooltip.intro("item.unsuspiciousblock.suspicious_reader.tooltip.desc");
+
+        // 状态行：扫描模式与能量比例分别按语义上色，能量色档与耐久条阈值保持一致
         String modeKey = switch (scanLevel) {
             case 1 -> "item.unsuspiciousblock.suspicious_reader.scan_mode_1";
             case 2 -> "item.unsuspiciousblock.suspicious_reader.scan_mode_2";
             case 3 -> "item.unsuspiciousblock.suspicious_reader.scan_mode_3";
             default -> "item.unsuspiciousblock.suspicious_reader.scan_mode";
         };
-        tooltip.status("item.unsuspiciousblock.suspicious_reader.tooltip.scan_level",
-                Component.translatable(modeKey));
-        tooltip.status("item.unsuspiciousblock.suspicious_reader.tooltip.energy", energy, MAX_ENERGY);
+        Component modeValue = Component.translatable(modeKey)
+                .withStyle(scanLevel == 0 ? TooltipBuilder.BODY : TooltipBuilder.ACCENT);
+        tooltip.labelValue("item.unsuspiciousblock.suspicious_reader.tooltip.scan_level", modeValue);
 
-        // 操作提示行：充能与按键切换
-        tooltip.hint("item.unsuspiciousblock.suspicious_reader.tooltip.recharge");
-        // 按键切换提示：按键绑定名以青色高亮，便于识别
-        Component keybind = Component.keybind("key.unsuspiciousblock.scan_level_cycle")
+        float ratio = energy / (float) MAX_ENERGY;
+        ChatFormatting energyColor = ratio > 0.66F ? TooltipBuilder.POSITIVE
+                : ratio > 0.33F ? TooltipBuilder.NAME : TooltipBuilder.NEGATIVE;
+        Component energyValue = Component.literal(energy + "/" + MAX_ENERGY).withStyle(energyColor);
+        tooltip.labelValue("item.unsuspiciousblock.suspicious_reader.tooltip.energy", energyValue);
+
+        // 操作提示行：按键名以青色高亮
+        Component cycleKey = Component.keybind("key.unsuspiciousblock.scan_level_cycle")
                 .withStyle(TooltipBuilder.ACCENT);
-        tooltip.hint("item.unsuspiciousblock.suspicious_reader.tooltip.switch_mode", keybind);
+        tooltip.hint("item.unsuspiciousblock.suspicious_reader.tooltip.switch_mode", cycleKey);
+        tooltip.hint("item.unsuspiciousblock.suspicious_reader.tooltip.recharge");
+
+        tooltip.expandable(t -> {
+            t.section("item.unsuspiciousblock.suspicious_reader.tooltip.details");
+            t.bullet("item.unsuspiciousblock.suspicious_reader.tooltip.detail_cost", TooltipBuilder.LABEL);
+            Component hudKey = Component.keybind("key.unsuspiciousblock.reader_hud_toggle")
+                    .withStyle(TooltipBuilder.ACCENT);
+            t.bullet("item.unsuspiciousblock.suspicious_reader.tooltip.detail_combo",
+                    TooltipBuilder.LABEL, hudKey);
+        });
     }
 
     // ========== 能量与等级 CustomData 操作 ==========

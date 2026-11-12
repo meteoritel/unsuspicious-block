@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.enchantment;
 
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncEnchantmentRevealListPayload;
-import net.minecraft.ChatFormatting;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
@@ -70,7 +70,7 @@ public final class EnchantmentRevealTooltipBuilder {
         int clueLevel = menu.levelClue[hoverSlot];
         List<Component> lines = new ArrayList<>();
         lines.add(Component.translatable("unsuspiciousblock.container.enchant.reveal.header")
-                .withStyle(ChatFormatting.WHITE));
+                .withStyle(TooltipBuilder.BODY));
         // 原版同步到客户端的候选（enchantClue/levelClue 对应条目）排在候选列表第一行
         MutableComponent selectedName = null;
         List<MutableComponent> otherNames = new ArrayList<>();
@@ -86,7 +86,7 @@ public final class EnchantmentRevealTooltipBuilder {
             boolean selected = clueHolder.isPresent()
                     && instance.enchantment.equals(clueHolder.get())
                     && instance.level == clueLevel;
-            name.withStyle(selected ? ChatFormatting.GOLD : ChatFormatting.GRAY);
+            name.withStyle(selected ? TooltipBuilder.TITLE : TooltipBuilder.LABEL);
             if (selected) {
                 selectedName = name;
             } else {

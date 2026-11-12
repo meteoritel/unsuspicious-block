@@ -10,7 +10,7 @@
 | [`checks/`](checks/) | 源码、文档、i18n、隔离、UI Kit 与发布物校验 | 独占 [`checkslib/`](checks/checkslib/) 解析源码与配置，不修改被检文件 |
 | [`drawer/`](drawer/) | 程序化像素艺术与 UI 纹理生成框架及脚本 | 基于 [`drawlib/`](drawer/drawlib/) 封装画布、色板、ASCII 字形、九宫格、防重叠图集与预览 |
 | [`diagnostics/`](diagnostics/) | 游戏运行期日志性能分析与存档检验 | 读取指定或最新测试日志与 `.dat` 缓存，只读源存档、仅向显式路径输出报告 |
-| [`probes/`](probes/README.md) | NeoForge 开发阶段核心探针 | 本地命令入口；独立存档、AutoJS 短调用、真实客户端与帧末 PNG |
+| [`probes/`](probes/README.md) | NeoForge 开发阶段核心探针与专项巡检模板 | 本地命令入口；独立存档、AutoJS 短调用、真实客户端与帧末 PNG（含 [`inspect_tooltips.py`](probes/inspect_tooltips.py) 纯 Tooltip 巡检） |
 
 ```mermaid
 flowchart LR

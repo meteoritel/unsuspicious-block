@@ -40,7 +40,11 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltipLines, flag);
-        new TooltipBuilder(tooltipLines).intro("item.unsuspiciousblock.specimen_box.tooltip.desc");
+        TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
+        tooltip.intro("item.unsuspiciousblock.specimen_box.tooltip.desc");
+        Component action = Component.translatable("item.unsuspiciousblock.specimen_box.tooltip.action")
+                .withStyle(TooltipBuilder.ACCENT);
+        tooltip.hint("item.unsuspiciousblock.specimen_box.tooltip.open", action);
     }
 
     @Override

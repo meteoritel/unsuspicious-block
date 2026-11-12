@@ -45,15 +45,15 @@ public class PanItem extends Item {
         return this.profile;
     }
 
-    // 引导文案按物品注册名派生，新增淘盘无需改动代码，只需补语言键；品质暗示行仅在档案登记时追加
+    // 引导文案按物品注册名派生，新增淘盘无需改动代码，只需补语言键；品质特性行按档案语义色逐条追加
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context,
                                 @NotNull List<Component> tooltipLines, @NotNull TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltipLines, flag);
         TooltipBuilder builder = new TooltipBuilder(tooltipLines);
         builder.intro(this.getDescriptionId() + ".tooltip.use");
-        if (this.profile.qualityTooltipKey() != null) {
-            builder.intro(this.profile.qualityTooltipKey());
+        for (PanProfile.QualityNote note : this.profile.qualityNotes()) {
+            builder.wrapped(Component.translatable(note.key()).withStyle(note.tone().color()));
         }
     }
 

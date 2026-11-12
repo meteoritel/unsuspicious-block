@@ -205,7 +205,7 @@ public class ModItems {
                 commonItemTag("ingots/copper"),
                 Map.of(),
                 () -> 0.0D,
-                null));
+                List.of()));
     }
 
     // 创建金淘盘实例——水域专属，耐久 24，可在铁砧上用金锭修复；
@@ -216,7 +216,9 @@ public class ModItems {
                 commonItemTag("ingots/gold"),
                 Map.of(ShimmerVariants.WATER_ID, Services.PANNING_CONFIG::getGoldPanLuckBonus),
                 Services.PANNING_CONFIG::getGoldPanRegenerationChance,
-                "item.unsuspiciousblock.gold_pan.tooltip.quality"));
+                List.of(new PanProfile.QualityNote(
+                        "item.unsuspiciousblock.gold_pan.tooltip.quality",
+                        PanProfile.NoteTone.POSITIVE))));
     }
 
     // 创建黑曜石淘盘实例——耐久 64，可在铁砧上用黑曜石修复；
@@ -228,7 +230,13 @@ public class ModItems {
                 Map.of(ShimmerVariants.WATER_ID,
                         () -> -Services.PANNING_CONFIG.getObsidianPanLuckPenalty()),
                 () -> 0.0D,
-                "item.unsuspiciousblock.obsidian_pan.tooltip.quality"));
+                List.of(
+                        new PanProfile.QualityNote(
+                                "item.unsuspiciousblock.obsidian_pan.tooltip.nether",
+                                PanProfile.NoteTone.ACCENT),
+                        new PanProfile.QualityNote(
+                                "item.unsuspiciousblock.obsidian_pan.tooltip.quality",
+                                PanProfile.NoteTone.NEGATIVE))));
     }
 
     // 铁砧修复材料统一引用 c: 通用标签，两端数据包均会填充原版物品

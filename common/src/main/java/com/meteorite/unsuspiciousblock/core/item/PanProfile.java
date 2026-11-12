@@ -1,16 +1,18 @@
 package com.meteorite.unsuspiciousblock.core.item;
 
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.ChatFormatting;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
-import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
 
 /***
- * 淘盘档案——一把淘盘的全部差异数据：可采变体集、铁砧修复材料、按变体分档的幸运加成、再生概率与品质暗示文案。
+ * 淘盘档案——一把淘盘的全部差异数据：可采变体集、铁砧修复材料、按变体分档的幸运加成、再生概率与品质特性提示。
  * <p>
  * 幸运加成与再生概率都以 {@link DoubleSupplier} 持有：配置项在注册表填充期尚未加载，
  * 若在物品构造时立即求值，NeoForge 端会抛出「配置尚未加载」异常。
@@ -18,13 +20,40 @@ import java.util.function.DoubleSupplier;
 public record PanProfile(
         Set<ResourceLocation> harvestTargets,                   // 可采变体集合
         TagKey<Item> repairTag,                                 // 铁砧修复材料
-        Map<ResourceLocation, DoubleSupplier> luckByVariant,     // 按目标变体分档的幸运加成，缺省 0
+        Map<ResourceLocation, DoubleSupplier> luckByVariant,    // 按目标变体分档的幸运加成，缺省 0
         DoubleSupplier regenerationChance,                      // 自然点淘空后的再生概率
-        @Nullable String qualityTooltipKey                      // 品质暗示文案的语言键，基础淘盘为 null
+        List<QualityNote> qualityNotes                          // 品质与介质特性提示列表
 ) {
+    /** 淘盘品质提示的语义色调。 */
+    public enum NoteTone {
+        /** 正面优势（高稀有度、再生）。 */
+        POSITIVE(TooltipBuilder.POSITIVE),
+        /** 专属能力强调（如岩浆介质）。 */
+        ACCENT(TooltipBuilder.ACCENT),
+        /** 负面权衡（如水中减损）。 */
+        NEGATIVE(TooltipBuilder.NEGATIVE),
+        /** 常规补充说明。 */
+        NEUTRAL(TooltipBuilder.LABEL);
+
+        private final ChatFormatting color;
+
+        NoteTone(ChatFormatting color) {
+            this.color = color;
+        }
+
+        /** 返回对应 {@link TooltipBuilder} 语义色。 */
+        public ChatFormatting color() {
+            return this.color;
+        }
+    }
+
+    /** 单条淘盘品质提示及其语义色调。 */
+    public record QualityNote(String key, NoteTone tone) {}
+
     public PanProfile {
         harvestTargets = Set.copyOf(harvestTargets);
         luckByVariant = Map.copyOf(luckByVariant);
+        qualityNotes = List.copyOf(qualityNotes);
     }
 
     // 该工具能否作用于指定变体——工具与点的能力交集判定

@@ -58,7 +58,9 @@ public class RewindDustItem extends Item {
         super.appendHoverText(stack, context, tooltipLines, flag);
         TooltipBuilder tooltip = new TooltipBuilder(tooltipLines);
         tooltip.intro(descriptionKey);
-        tooltip.hint("item.unsuspiciousblock.rewind_dust.tooltip.use");
-        tooltip.hint("item.unsuspiciousblock.rewind_dust.tooltip.warning");
+        Component action = Component.translatable("item.unsuspiciousblock.rewind_dust.tooltip.action")
+                .withStyle(TooltipBuilder.ACCENT);
+        tooltip.hint("item.unsuspiciousblock.rewind_dust.tooltip.use", action);
+        tooltip.warning("item.unsuspiciousblock.rewind_dust.tooltip.warning");
     }
 }
