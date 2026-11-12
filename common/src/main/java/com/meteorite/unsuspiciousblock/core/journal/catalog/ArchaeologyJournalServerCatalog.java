@@ -86,7 +86,7 @@ import java.util.UUID;
  *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，构建并发布新一代目录 + 从 SavedData 恢复已缓存的
  *       **基准输入** + 把未缓存的基准输入排进低优先级队列分 tick 模拟。构建失败时保留上一代完整状态；
  *       无上一代可用时进入明确的空状态。</li>
- *   <li>{@link #requestSimulation(ServerPlayer, ResourceLocation, String, String, ScenarioParams)}：
+ *   <li>{@link #requestSimulation(ServerPlayer, ResourceLocation, String, List, ScenarioParams)}：
  *       由网络层在主线程调用，校验后把玩家的按需输入排进高优先级队列。</li>
  *   <li>{@link #invalidate()}：释放当代目录（含资源快照与投影），下次 ensureLoaded 重新构建。</li>
  * </ul>
@@ -114,7 +114,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 沿用会展示过期口径；{@code LootProbabilityData} 的 {@code format_version} 同时升到 5，
      * 两者共同保证旧数据不会被当成缓存命中。
      */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v27";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v28";
 
     /** 唯一发布点：整代目录状态一次成型后整体替换。 */
     private static volatile CatalogGeneration currentGeneration;
@@ -211,9 +211,8 @@ public final class ArchaeologyJournalServerCatalog {
             SimulationConstraintCatalog constraint = buildConstraintCatalog(
                     loadResult.session(), entry.getKey(), expansions.get(entry.getKey()), level,
                     loadResult.defaultTools().get(entry.getKey()));
-            // 只为"有信息量"的表留一行：单场景且无截断的表没什么可说的，逐表刷屏会淹掉真正的异常
-            if (constraint.scenarios().size() > 1 || constraint.truncatedScenarioCount() > 0
-                    || constraint.scenarioBudgetExhausted()) {
+            // 只为"有信息量"的表留一行：存在可勾选环境条件或分析预算异常的表
+            if (!constraint.conditions().isEmpty() || constraint.scenarioBudgetExhausted()) {
                 LOGGER.info("战利品表 {} 的模拟约束：{}；可见旋钮 {}",
                         entry.getKey(), constraint.describe(), constraint.parameterKinds());
             }
@@ -271,7 +270,8 @@ public final class ArchaeologyJournalServerCatalog {
             }
             {
                 uncached.add(new LootProbabilitySimulationWorker.SimulationRequest(
-                        tableId, entry.getValue(), baseline, constraint.baselineScenario(),
+                        tableId, entry.getValue(), baseline,
+                        constraint.baselineScenario(expansions.get(tableId).planning()),
                         generation, hash, null));
             }
         }
@@ -286,7 +286,7 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     /**
-     * 由表内容派生约束描述——场景规划结果、工具基座与被引用附魔三份清单。
+     * 由表内容派生约束描述——可勾选环境条件清单、工具基座与被引用附魔三份清单。
      * <p>
      * 工具与附魔都取自**整棵子树**：父表页签里出现的物品来自子表，其 {@code match_tool} 谓词与
      * 读附魔的机制也都写在子表里；只看本表 JSON 会让这些旋钮在父表上凭空消失。
@@ -295,7 +295,7 @@ public final class ArchaeologyJournalServerCatalog {
             LootTableAnalysisSession session, ResourceLocation tableId, ExpandedTable expansion,
             ServerLevel level, ResourceLocation defaultToolId) {
         TableDefinition table = expansion.planning();
-        SimulationScenarioPlanner.ScenarioPlan plan = SimulationScenarioPlanner.plan(tableId, table, level);
+        SimulationScenarioPlanner.ConditionPlan plan = SimulationScenarioPlanner.planConditions(tableId, table);
         SimulationProfile baseProfile = SimulationProfile.eligibleConditions(level, table.type())
                 .withTool(new ItemStack(BuiltInRegistries.ITEM.get(defaultToolId)));
 
@@ -324,8 +324,8 @@ public final class ArchaeologyJournalServerCatalog {
                                 holder.value().definition().maxLevel()));
             }
         }
-        return SimulationConstraintCatalog.build(plan, baseProfile, tools, toolSelectionAllowed, enchantmentLevels,
-                expansion.childEntryGates());
+        return SimulationConstraintCatalog.build(plan, table, level, baseProfile, tools, toolSelectionAllowed,
+                enchantmentLevels, expansion.childEntryGates());
     }
 
     public static CatalogTableDto clientTable(TableDefinition table) {
@@ -420,72 +420,69 @@ public final class ArchaeologyJournalServerCatalog {
      * 而按需模型的意义正是"一个问题只算一次"。命中缓存时直接派生下发，不占队列、不烧 tick 预算，
      * 也不受在途额度限制——额度保护的是抽取成本，而这里没有抽取。
      */
-    public static CachedScenes cachedScenes(ServerPlayer player, ResourceLocation tableId, String hash,
-                                           String scene, ScenarioParams params, boolean fetchSelected) {
+    /** 查询当前选定条件组合与参数的服务端缓存状态，并在请求时直接下发命中结果。 */
+    public static CachedStatus cachedStatus(ServerPlayer player, ResourceLocation tableId, String hash,
+                                            List<String> enabledConditions, ScenarioParams params,
+                                            boolean fetchSelected) {
         CatalogGeneration generation = currentGeneration;
-        if (generation == null || !generation.isTracked(tableId) || !hash.equals(generation.tableHash(tableId)))
+        if (generation == null || !generation.isTracked(tableId) || !hash.equals(generation.tableHash(tableId))) {
             throw new IllegalArgumentException("stale_hash");
-        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
-        if (constraint == null || constraint.resolve(scene, params).isEmpty())
-            throw new IllegalArgumentException("rejected_input");
-        LootProbabilityData data = LootProbabilityData.get(player.server.overworld());
-        if (data.needsResimulation(tableId, hash)) return new CachedScenes(List.of(), null);
-        List<String> available = new ArrayList<>();
-        ScenarioResult selected = null;
-        for (SimulationScenario candidate : constraint.scenarios()) {
-            SimulationInput input = constraint.resolve(candidate.key(), params).orElseThrow();
-            if (!data.hasMeasurement(tableId, input.key())) continue;
-            available.add(candidate.key());
-            if (fetchSelected && candidate.key().equals(scene)) selected = scenarioResult(generation, tableId, input, data);
         }
-        return new CachedScenes(List.copyOf(available), selected);
+        SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
+        Optional<SimulationInput> resolved = constraint == null
+                ? Optional.empty() : constraint.resolve(enabledConditions, params);
+        if (resolved.isEmpty()) {
+            throw new IllegalArgumentException("rejected_input");
+        }
+        SimulationInput input = resolved.get();
+        LootProbabilityData data = LootProbabilityData.get(player.server.overworld());
+        if (data.needsResimulation(tableId, hash)) {
+            return new CachedStatus(false, null);
+        }
+        boolean cached = data.hasMeasurement(tableId, input.key());
+        ScenarioResult selected = cached && fetchSelected
+                ? scenarioResult(generation, tableId, input, data) : null;
+        return new CachedStatus(cached, selected);
     }
 
+    /** 服务端受理一次按需模拟请求：校验输入与表哈希，命中缓存则直接派生，否则入高优先级队列。 */
     public static OnDemandResult requestSimulation(ServerPlayer player, ResourceLocation tableId,
-                                                   String expectedTableHash, String scenarioKey,
+                                                   String expectedTableHash, List<String> enabledConditions,
                                                    ScenarioParams params) {
         CatalogGeneration generation = currentGeneration;
         if (generation == null || !generation.isTracked(tableId)) {
             return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
         }
         TableDefinition raw = generation.staticTable(tableId);
+        TableDefinition planningTable = generation.planningTable(tableId);
         SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
-        if (raw == null || constraint == null) {
+        if (raw == null || planningTable == null || constraint == null) {
             return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
         }
         String hash = generation.tableHash(tableId);
         if (!hash.equals(expectedTableHash)) {
-            // 客户端拿的是上一版目录：拒绝而不是按旧参数算，否则结果会落在一个已失效的输入上
             return new OnDemandResult(OnDemandOutcome.STALE_HASH, null);
         }
-        Optional<SimulationInput> resolved = constraint.resolve(scenarioKey, params);
+        Optional<SimulationInput> resolved = constraint.resolve(enabledConditions, params);
         if (resolved.isEmpty()) {
             return new OnDemandResult(OnDemandOutcome.REJECTED_INPUT, null);
         }
         SimulationInput input = resolved.get();
-        SimulationScenario scenario = constraint.scenario(scenarioKey);
-        if (scenario == null) {
-            return new OnDemandResult(OnDemandOutcome.REJECTED_INPUT, input);
-        }
 
-        // 读缓存前必须先过 needsResimulation：getMeasurement 只看输入键，不看内容哈希，
-        // 表内容变过而条目尚未被重写时，那条测量值属于上一版内容，不能拿来当答案。
         LootProbabilityData probabilityData = LootProbabilityData.get(player.server.overworld());
         if (!probabilityData.needsResimulation(tableId, hash)
                 && probabilityData.getMeasurement(tableId, input.key()) != null) {
-            // debug 而不是 info：切场景是高频动作，命中一次就写一行 info 会把真正的重算日志淹掉
             LOGGER.debug("复用缓存的测量值：表 {} 输入 {}", tableId, input.key());
             return new OnDemandResult(OnDemandOutcome.CACHE_HIT, input,
                     scenarioResult(generation, tableId, input, probabilityData));
         }
 
+        SimulationScenario scenario = constraint.buildExecutionScenario(input.enabledConditions(), planningTable);
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if (worker == null) {
             LootProbabilitySimulator.SimResult result = LootProbabilitySimulator.simulateOne(
                     tableId, raw, player.server.overworld(), input, scenario);
             if (!result.successful()) {
-                // 失败既不写缓存也不下发：由网络层按 SIMULATION_FAILED 回执，
-                // 否则玩家只能等到 120 秒超时，而超时会把"确定的失败"说成"可能只是慢"
                 return new OnDemandResult(OnDemandOutcome.SIMULATION_FAILED, input);
             }
             var request = new LootProbabilitySimulationWorker.SimulationRequest(tableId, raw, input, scenario,
@@ -494,7 +491,6 @@ public final class ArchaeologyJournalServerCatalog {
                     new CatalogSimulationSubmission(request, Set.of(player.getUUID())), player.server);
             return new OnDemandResult(OnDemandOutcome.SIMULATED_INLINE, input, committed.scenario());
         }
-        // 在途额度到这一步才判：缓存命中不该因为它被拒（见方法注释）
         if (!worker.canAcceptFor(player.getUUID())) {
             return new OnDemandResult(OnDemandOutcome.PLAYER_LIMIT, input);
         }
@@ -509,10 +505,7 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     /**
-     * 玩家解锁一张表时的插队模拟——把它**基准输入**提到高优先级队列。
-     * <p>
-     * 只排基准输入：按需模型下其余场景由玩家在界面上选，而解锁时最需要的是"这张表的基本数字"。
-     * 表已有基准结果时什么也不做（{@code hasSimulated}），避免解锁动作反复触发重算。
+     * 玩家解锁一张表时的插队模拟——把它基准输入提到高优先级队列。
      */
     public static void enqueueBaselinePriority(ResourceLocation tableId) {
         CatalogGeneration generation = currentGeneration;
@@ -520,8 +513,9 @@ public final class ArchaeologyJournalServerCatalog {
             return;
         }
         TableDefinition raw = generation.staticTable(tableId);
+        TableDefinition planningTable = generation.planningTable(tableId);
         SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
-        if (raw == null || constraint == null) {
+        if (raw == null || planningTable == null || constraint == null) {
             return;
         }
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
@@ -530,7 +524,7 @@ public final class ArchaeologyJournalServerCatalog {
         }
         CatalogSimulationDelivery.install(worker, generation.generation());
         worker.enqueuePriority(new LootProbabilitySimulationWorker.SimulationRequest(
-                tableId, raw, constraint.baselineInput(), constraint.baselineScenario(),
+                tableId, raw, constraint.baselineInput(), constraint.baselineScenario(planningTable),
                 generation.generation(), generation.tableHash(tableId), null));
     }
 
@@ -542,8 +536,8 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    /** 缓存查询及可选的当前选择结果，由 handler 发送。 */
-    public record CachedScenes(List<String> scenes, @Nullable ScenarioResult selected) {}
+    /** 单输入缓存查询及可选的当前选择结果，由 handler 发送。 */
+    public record CachedStatus(boolean cached, @Nullable ScenarioResult selected) {}
 
     /** 完整且归属于一份签发输入的展示结果。 */
     public record ScenarioResult(long generation, String hash, String inputKey, CatalogTableDto table) {}
@@ -599,7 +593,7 @@ public final class ArchaeologyJournalServerCatalog {
                 || !result.tableId().equals(request.tableId()) || !result.input().equals(request.input()))
             return submissionResult(SubmissionOutcome.STALE, submission, null);
         SimulationConstraintCatalog constraint = generation.constraintCatalog(result.tableId());
-        if (constraint == null || constraint.resolve(result.input().scenarioKey(), result.input().params()).isEmpty())
+        if (constraint == null || constraint.resolve(result.input().enabledConditions(), result.input().params()).isEmpty())
             return submissionResult(SubmissionOutcome.STALE, submission, null);
         if (submission.publishesBaseline() && !request.input().equals(constraint.baselineInput()))
             return submissionResult(SubmissionOutcome.STALE, submission, null);
@@ -722,30 +716,27 @@ public final class ArchaeologyJournalServerCatalog {
     private static TableDefinition deriveTable(CatalogGeneration generation, ResourceLocation tableId,
             SimulationConstraintCatalog constraint, SimulationInput input, LootProbabilityData probabilityData) {
         TableDefinition raw = generation.staticTable(tableId);
-        if (raw == null) throw new IllegalStateException("表不在当代目录中: " + tableId);
-        return CatalogDisplayDerivation.derive(raw, constraint, input,
-                new CatalogDisplayDerivation.Readings(measurementsByScenario(tableId, constraint, input.params(),
+        TableDefinition planning = generation.planningTable(tableId);
+        if (raw == null || planning == null) throw new IllegalStateException("表不在当代目录中: " + tableId);
+        return CatalogDisplayDerivation.derive(raw, constraint, planning, input,
+                new CatalogDisplayDerivation.Readings(measurementsByScenario(tableId, input.params(),
                         probabilityData), probabilityData.getDiscovery(tableId)));
     }
 
-    /**
-     * 同一份参数下、每个场景各自的测量值。
-     * <p>
-     * 缓存键是"场景的稳定身份 + 参数"，因此这里直接用 {@code scenario.key()} 构造输入——
-     * 绝不从条件指纹反算场景键：指纹跨 JVM 运行可能不重复，反算会让同一个场景每次启动换一个键
-     * （读路径按新键找不到旧的、写路径又不断新增键，存档里于是无限累积）。
-     * 只有被算过的场景才有条目——这正是按需模型下"尚未计算"能如实呈现的原因。
-     */
     private static Map<String, LootProbabilityData.InputMeasurement> measurementsByScenario(
-            ResourceLocation tableId, SimulationConstraintCatalog constraint, ScenarioParams params,
-            LootProbabilityData probabilityData) {
+            ResourceLocation tableId, ScenarioParams params, LootProbabilityData probabilityData) {
+        String marker = SimulationInputKey.ofScenarioSegment("", params);
+        String paramsSuffix = marker.substring(marker.indexOf('|'));
         Map<String, LootProbabilityData.InputMeasurement> result = new LinkedHashMap<>();
-        for (SimulationScenario scenario : constraint.scenarios()) {
-            String inputKey = SimulationInputKey.of(scenario.key(), params);
-            LootProbabilityData.InputMeasurement measurement =
-                    probabilityData.getMeasurement(tableId, inputKey);
-            if (measurement != null) {
-                result.put(scenario.key(), measurement);
+        for (Map.Entry<String, LootProbabilityData.InputMeasurement> entry :
+                probabilityData.getMeasurements(tableId).entrySet()) {
+            String key = entry.getKey();
+            if (!key.startsWith("scenario=") || !key.endsWith(paramsSuffix)) {
+                continue;
+            }
+            int separator = key.indexOf('|');
+            if (separator > "scenario=".length()) {
+                result.put(key.substring("scenario=".length(), separator), entry.getValue());
             }
         }
         return result;

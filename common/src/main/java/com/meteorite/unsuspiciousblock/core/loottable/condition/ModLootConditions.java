@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHand
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator;
 import java.util.Set;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.network.chat.Component;
@@ -88,8 +89,17 @@ public final class ModLootConditions {
             if (chance.isPresent()) {
                 children.add(chanceRow(chance.get()));
             }
-            return new LootConditionInfo(TOOL_ENCHANTMENT,
+            LootConditionInfo info = new LootConditionInfo(TOOL_ENCHANTMENT,
                     toolCondition.enchantment().value().description(), null, children);
+            String enchantmentId = toolCondition.enchantment().unwrapKey()
+                    .map(key -> key.location().toString())
+                    .orElse(null);
+            if (enchantmentId != null) {
+                info = info.withMetadata(ScenarioConditionEvaluator.METADATA_ENCHANTMENT, enchantmentId)
+                        .withMetadata(ScenarioConditionEvaluator.METADATA_MIN_LEVEL,
+                                Integer.toString(toolCondition.minLevel()));
+            }
+            return info;
         }
 
         private LootConditionInfo chanceRow(LevelBasedValue chance) {

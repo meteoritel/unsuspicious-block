@@ -1,67 +1,123 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
-
-import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
-import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.StringJoiner;
+import java.util.Set;
 
 /**
- * 场景的展示口径：可读名、条件行文本与完整定义。
- *
- * <p>场景的假设是一张「指纹 → 布尔」的完整赋值表：为真的放原条件，为假的放合成的
- * {@code minecraft:inverted} 包装。因此**相对基准的差异就是被置真的那一批**，展示只取它们，
- * 否则每个场景页都会多出整屏恒为「不成立」的重复行（基准页本身除外，见
- * {@link #definition}）。</p>
- *
- * <p>摘要保留服务端的组合结构；标题不再拼接叶子，实体目标与不完整描述不折叠。</p>
+ * 场景与原子条件勾选的展示文案工具：提供简洁勾选文本、当前勾选摘要与完整暗底 Tooltip。
  */
 public final class ScenarioLabel {
     private static final String CONDITION_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
-    private static final String BASELINE = "baseline";
 
     private ScenarioLabel() {
     }
 
-    public static boolean isBaseline(String sceneKey) { return BASELINE.equals(sceneKey); }
-
-    /** 有限宽页头的短名称；条件摘要与完整定义单独提供。 */
-    public static Component shortLabel(String sceneKey) {
-        return isBaseline(sceneKey)
-                ? ScenarioSimulationClientState.text("baseline")
-                : ScenarioSimulationClientState.text("scene", ordinal(sceneKey));
+    /** 勾选框与列表行的紧凑文本：优先展示具象子描述（如具体群系/天气/开阔水域），避免千篇一律的通用前缀。 */
+    public static Component shortConditionLabel(ConditionPresentation condition) {
+        if (condition.displayChildren().isEmpty()) {
+            return conditionText(condition);
+        }
+        if (condition instanceof LootConditionInfo info && info.kind() != ConditionTree.Kind.LEAF) {
+            return expression(condition);
+        }
+        List<? extends ConditionPresentation> children = condition.displayChildren();
+        if (children.size() == 1) {
+            return conditionText(children.getFirst());
+        }
+        MutableComponent joined = Component.empty();
+        for (int index = 0; index < children.size(); index++) {
+            if (index > 0) {
+                joined.append(symbol(" · "));
+            }
+            joined.append(conditionText(children.get(index)));
+        }
+        return joined;
     }
 
-    /** 列表第二行的条件摘要，不重复场景序号。 */
-    public static Component detailLabel(SimulationOptions options, String sceneKey) {
-        if (isBaseline(sceneKey)) {
-            var negatives = negativeConditions(options, sceneKey);
-            if (negatives.isEmpty()) return ScenarioSimulationClientState.text("no_assumptions");
-            var label = Component.empty();
-            for (int index = 0; index < negatives.size(); index++) {
-                if (index > 0) label.append(symbol(" ∧ "));
-                label.append(expression(negatives.get(index)));
+    /** 网格顶栏或页头的简洁状态摘要。 */
+    public static Component selectionSummary(SimulationOptions options, List<String> enabledConditions) {
+        int total = options.conditions().size();
+        if (total == 0) {
+            return ScenarioSimulationClientState.text("no_assumptions");
+        }
+        if (enabledConditions.isEmpty()) {
+            return ScenarioSimulationClientState.text("conditions.summary_count", 0, total);
+        }
+        if (enabledConditions.size() == 1) {
+            String target = enabledConditions.getFirst();
+            for (ConditionOption option : options.conditions()) {
+                if (option.id().equals(target)) {
+                    return ScenarioSimulationClientState.text("conditions.summary_single",
+                            shortConditionLabel(option.condition()).getString());
+                }
             }
-            return label;
         }
-        List<LootConditionInfo> atoms = positiveAssumptions(options, sceneKey);
-        if (atoms.isEmpty()) return ScenarioSimulationClientState.text("no_assumptions");
-        var summary = Component.empty();
-        for (int index = 0; index < atoms.size(); index++) {
-            if (index > 0) summary.append(symbol(" ∧ "));
-            summary.append(expression(atoms.get(index)));
+        return ScenarioSimulationClientState.text("conditions.summary_count", enabledConditions.size(), total);
+    }
+
+    /** 暗底 Tooltip：展示当前勾选条件与工具/幸运/附魔摘要（严格使用 {@link TooltipBuilder} 亮色语义）。 */
+    public static List<Component> selectionTooltip(SimulationOptions options, List<String> enabledConditions,
+                                                   ScenarioParams params) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions").copy().withStyle(TooltipBuilder.TITLE));
+        if (options.conditions().isEmpty()) {
+            lines.add(ScenarioSimulationClientState.text("no_assumptions").copy().withStyle(TooltipBuilder.LABEL));
+        } else if (enabledConditions.isEmpty()) {
+            lines.add(ScenarioSimulationClientState.text("conditions.none_checked", options.conditions().size())
+                    .copy().withStyle(TooltipBuilder.LABEL));
+        } else {
+            Set<String> enabled = new LinkedHashSet<>(enabledConditions);
+            for (ConditionOption option : options.conditions()) {
+                if (!enabled.contains(option.id())) {
+                    continue;
+                }
+                lines.add(Component.literal("✓ ").withStyle(TooltipBuilder.POSITIVE)
+                        .append(shortConditionLabel(option.condition()).copy().withStyle(TooltipBuilder.BODY)));
+            }
         }
-        return summary;
+        Component toolName = toolDisplayName(options, params);
+        lines.add(ScenarioSimulationClientState.text("params.current", toolName, params.luck(), params.sampleCount())
+                .copy().withStyle(TooltipBuilder.LABEL));
+        params.toolEnchantments().forEach((id, level) -> lines.add(
+                ScenarioSimulationClientState.text("params.enchant_level",
+                                ScenarioParamsOverlay.enchantmentName(id), level)
+                        .copy().withStyle(TooltipBuilder.ACCENT)));
+        return List.copyOf(lines);
+    }
+
+    /** 单个原子条件的暗底完整 Tooltip。 */
+    public static List<Component> conditionTooltip(ConditionPresentation condition, boolean checked) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(shortConditionLabel(condition).copy().withStyle(TooltipBuilder.TITLE));
+        lines.add(displayDescription(condition).copy().withStyle(TooltipBuilder.BODY));
+        for (ConditionPresentation child : condition.displayChildren()) {
+            lines.add(Component.literal("• ").withStyle(TooltipBuilder.ACCENT)
+                    .append(displayDescription(child).copy().withStyle(TooltipBuilder.LABEL)));
+        }
+        lines.add(Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT));
+        lines.add(ScenarioSimulationClientState.text(checked
+                        ? "conditions.click_uncheck" : "conditions.click_check")
+                .copy().withStyle(TooltipBuilder.POSITIVE));
+        return List.copyOf(lines);
     }
 
     public static Component symbol(String value) {
@@ -70,12 +126,15 @@ public final class ScenarioLabel {
 
     public static Component expression(ConditionPresentation condition) {
         ConditionTree.Kind kind = condition instanceof LootConditionInfo node ? node.kind() : ConditionTree.Kind.LEAF;
-        if (kind == ConditionTree.Kind.NOT && condition.displayChildren().size() == 1)
+        if (kind == ConditionTree.Kind.NOT && condition.displayChildren().size() == 1) {
             return symbol("¬(").copy().append(expression(condition.displayChildren().getFirst())).append(symbol(")"));
+        }
         if (kind == ConditionTree.Kind.ANY || kind == ConditionTree.Kind.ALL) {
             var result = Component.empty().append(symbol("("));
             for (int index = 0; index < condition.displayChildren().size(); index++) {
-                if (index > 0) result.append(symbol(kind == ConditionTree.Kind.ANY ? " ∨ " : " ∧ "));
+                if (index > 0) {
+                    result.append(symbol(kind == ConditionTree.Kind.ANY ? " ∨ " : " ∧ "));
+                }
                 result.append(expression(condition.displayChildren().get(index)));
             }
             return result.append(symbol(")"));
@@ -84,7 +143,9 @@ public final class ScenarioLabel {
         if (!condition.displayChildren().isEmpty()) {
             label.append(symbol("("));
             for (int index = 0; index < condition.displayChildren().size(); index++) {
-                if (index > 0) label.append(symbol(" · "));
+                if (index > 0) {
+                    label.append(symbol(" · "));
+                }
                 label.append(expression(condition.displayChildren().get(index)));
             }
             label.append(symbol(")"));
@@ -102,77 +163,13 @@ public final class ScenarioLabel {
                 values[index] = value.copy().withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.positive()));
             }
             String shortKey = contents.getKey().startsWith(CONDITION_PREFIX)
-                    ? "screen.unsuspiciousblock.archaeology_journal.simulation.short." + contents.getKey().substring(CONDITION_PREFIX.length()) : "";
+                    ? "screen.unsuspiciousblock.archaeology_journal.simulation.short."
+                    + contents.getKey().substring(CONDITION_PREFIX.length())
+                    : "";
             label = Component.translatable(Language.getInstance().has(shortKey)
                     ? shortKey : contents.getKey(), values).setStyle(label.getStyle());
         }
         return label;
-    }
-
-    /** 场景的完整定义（tooltip）：基准列出全部被置假的条件，其余场景列出为真者与「其余不成立」。 */
-    public static List<Component> definition(SimulationOptions options, String sceneKey) {
-        List<Component> lines = new ArrayList<>();
-        if (isBaseline(sceneKey)) {
-            List<Component> negatives = negativeAssumptions(options, sceneKey);
-            lines.add(ScenarioSimulationClientState.text("baseline_all_false", negatives.size()));
-            lines.addAll(negatives);
-            return List.copyOf(lines);
-        }
-        List<LootConditionInfo> atoms = positiveAssumptions(options, sceneKey);
-        if (atoms.isEmpty()) {
-            lines.add(ScenarioSimulationClientState.text("no_assumptions"));
-        } else {
-            for (LootConditionInfo atom : atoms) lines.add(Component.literal(describe(atom)));
-        }
-        lines.add(ScenarioSimulationClientState.text("conditions_others_false"));
-        return List.copyOf(lines);
-    }
-
-    // 场景 tooltip 仅用于暗底悬浮框，必须使用 TooltipBuilder 亮色语义，严禁混入羊皮纸棕色。
-    public static List<Component> tooltip(SimulationOptions options, String sceneKey) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(shortLabel(sceneKey).copy().withStyle(TooltipBuilder.TITLE));
-        lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions").copy().withStyle(TooltipBuilder.LABEL));
-        for (Component definition : definition(options, sceneKey)) {
-            lines.add(Component.literal("• ").withStyle(TooltipBuilder.ACCENT)
-                    .append(definition.copy().withStyle(TooltipBuilder.BODY)));
-        }
-        return List.copyOf(lines);
-    }
-
-    /** 场景相对基准成立的条件；只过滤合成取反包装，保留完整逻辑树。 */
-    public static List<LootConditionInfo> positiveAssumptions(SimulationOptions options, String sceneKey) {
-        for (var scene : options.scenes()) {
-            if (!scene.scenarioKey().equals(sceneKey)) continue;
-            List<LootConditionInfo> atoms = new ArrayList<>();
-            for (LootConditionInfo assumption : scene.assumptions()) {
-                if (isInverted(assumption)) continue;
-                atoms.add(assumption);
-            }
-            return List.copyOf(atoms);
-        }
-        return List.of();
-    }
-
-    /** 场景被置假的条件（合成包装的描述，形如「非: X」）；基准场景即该表的全部旋钮。 */
-    public static List<Component> negativeAssumptions(SimulationOptions options, String sceneKey) {
-        for (var scene : options.scenes()) {
-            if (!scene.scenarioKey().equals(sceneKey)) continue;
-            List<Component> lines = new ArrayList<>();
-            for (LootConditionInfo assumption : scene.assumptions()) {
-                if (isInverted(assumption)) lines.add(assumption.description().copy());
-            }
-            return List.copyOf(lines);
-        }
-        return List.of();
-    }
-
-    /** 逐条列出完整结构；取反和组合节点也保留子树。 */
-    private static String describe(ConditionPresentation node) {
-        if (node.displayChildren().isEmpty()) return displayDescription(node).getString();
-        StringJoiner joiner = new StringJoiner("、");
-        for (ConditionPresentation child : node.displayChildren()) joiner.add(describe(child));
-        return displayDescription(node).getString() + "(" + joiner + ")";
     }
 
     public static Component displayDescription(ConditionPresentation node) {
@@ -182,26 +179,20 @@ public final class ScenarioLabel {
                 && contents.getArgs().length == 1) {
             Object value = contents.getArgs()[0];
             String id = value instanceof Component component ? component.getString() : String.valueOf(value);
-            if (id.equals("#c:is_swamp")) return Component.translatable(contents.getKey(),
-                    Component.translatable(CONDITION_PREFIX + "tag.c.is_swamp")).setStyle(description.getStyle());
+            if (id.equals("#c:is_swamp")) {
+                return Component.translatable(contents.getKey(),
+                        Component.translatable(CONDITION_PREFIX + "tag.c.is_swamp")).setStyle(description.getStyle());
+            }
         }
         return description.copy();
     }
 
-    public static List<LootConditionInfo> negativeConditions(SimulationOptions options, String sceneKey) {
-        return options.scenes().stream().filter(scene -> scene.scenarioKey().equals(sceneKey))
-                .flatMap(scene -> scene.assumptions().stream()).filter(ScenarioLabel::isInverted).toList();
-    }
-
-    private static boolean isInverted(LootConditionInfo info) {
-        return ConditionTree.kind(info) == ConditionTree.Kind.NOT;
-    }
-
-    private static int ordinal(String sceneKey) {
-        try {
-            return Integer.parseInt(sceneKey.substring(sceneKey.lastIndexOf('-') + 1));
-        } catch (NumberFormatException e) {
-            return 0;
+    private static Component toolDisplayName(SimulationOptions options, ScenarioParams params) {
+        for (var tool : options.tools()) {
+            if (tool.id().equals(params.toolId())) {
+                return tool.displayName();
+            }
         }
+        return new ItemStack(BuiltInRegistries.ITEM.get(params.toolId())).getHoverName();
     }
 }

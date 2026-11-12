@@ -95,11 +95,11 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final UiModalStack confirmations = new UiModalStack(() -> UnsuspiciousUiTheme.PARCHMENT);
     private final UiNavigationHistory<NavigationState> history =
             new UiNavigationHistory<>(64);
-    /** 只恢复阅读状态与场景选择，不回滚参数提交或服务端操作。 */
-    private record NavigationState(@Nullable ResourceLocation table, String scene, UiStateSnapshot view,
+    /** 只恢复阅读状态与条件勾选，不回滚参数提交或服务端操作。 */
+    private record NavigationState(@Nullable ResourceLocation table, List<String> conditions, UiStateSnapshot view,
                                    boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {}
 
-    private record NavigationKey(@Nullable ResourceLocation table, String scene, boolean home,
+    private record NavigationKey(@Nullable ResourceLocation table, List<String> conditions, boolean home,
                                  @Nullable ResourceLocation category, RightPageContainer.Tab tab,
                                  boolean logDetail, @Nullable UUID logEntryId,
                                  @Nullable ResourceLocation activeItemTag) {}
@@ -107,7 +107,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private NavigationState navigationState() {
         ResourceLocation table = viewModel.selectedTableId();
         var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
-        return rightPage == null ? null : new NavigationState(table, selection == null ? "" : selection.scene(),
+        return rightPage == null ? null : new NavigationState(table,
+                selection == null ? List.of() : selection.conditions(),
                 captureUiState(), viewModel.isCategoryHomeMode(), viewModel.selectedCategory(), viewModel.expandedRoots());
     }
 
@@ -119,7 +120,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private static NavigationKey navigationKey(NavigationState state) {
         RightPageContainer.ReadingState reading = state.view().rightPage();
-        return new NavigationKey(state.table(), state.scene(), state.home(), state.category(), reading.tab(),
+        return new NavigationKey(state.table(), state.conditions(), state.home(), state.category(), reading.tab(),
                 reading.logDetail(), reading.logEntryId(), reading.activeItemTag());
     }
 
@@ -399,8 +400,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (snapshot.table() != null) {
             setSelectedTable(snapshot.table());
             var choice = ScenarioSimulationClientState.selection(snapshot.table());
-            if (choice != null && !snapshot.scene().isEmpty()) {
-                ScenarioSimulationClientState.select(snapshot.table(), snapshot.scene(), choice.params());
+            if (choice != null) {
+                ScenarioSimulationClientState.select(snapshot.table(), snapshot.conditions(), choice.params());
             }
         }
 
@@ -1040,7 +1041,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 this.catalogToolbar.searchExpanded(),
                 this.catalogToolbar.hideLocked(),
                 table,
-                selection == null ? "" : selection.scene(),
+                selection == null ? List.of() : List.copyOf(selection.conditions()),
                 this.viewModel.isCategoryHomeMode(),
                 this.viewModel.selectedCategory(),
                 this.viewModel.expandedRoots(),
@@ -1081,7 +1082,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             boolean catalogSearchExpanded,
             boolean catalogHideLocked,
             @Nullable ResourceLocation table,
-            String scene,
+            List<String> conditions,
             boolean home,
             @Nullable ResourceLocation category,
             Set<ResourceLocation> expanded,

@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationCompositeConditionAccess;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
@@ -477,9 +478,25 @@ public final class LootConditionHandlers {
                         + new BigDecimal(Float.toString(values.get(level)))
                         .movePointRight(2).stripTrailingZeros().toPlainString() + "%");
             }
-            return new LootConditionInfo(keyOf(condition),
+            LootConditionInfo info = new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "table_bonus_detail",
                             enchantment.value().description(), String.join(", ", chances)), null);
+            String enchantmentId = enchantment.unwrapKey().map(key -> key.location().toString()).orElse(null);
+            if (enchantmentId != null && !values.isEmpty() && values.getFirst() <= 0.0F) {
+                int firstNonZero = -1;
+                for (int level = 1; level < values.size(); level++) {
+                    if (values.get(level) > 0.0F) {
+                        firstNonZero = level;
+                        break;
+                    }
+                }
+                if (firstNonZero > 0) {
+                    info = info.withMetadata(ScenarioConditionEvaluator.METADATA_ENCHANTMENT, enchantmentId)
+                            .withMetadata(ScenarioConditionEvaluator.METADATA_MIN_LEVEL,
+                                    Integer.toString(firstNonZero));
+                }
+            }
+            return info;
         }
 
         @Override
@@ -614,10 +631,16 @@ public final class LootConditionHandlers {
                     Component.translatable(I18N_PREFIX + "random_chance_with_enchanted_bonus_enchanted",
                             enchantment.value().description(),
                             encoded != null ? compactJsonValue(encoded) : "?"), null));
-            return partial(new LootConditionInfo(keyOf(condition),
+            LootConditionInfo info = partial(new LootConditionInfo(keyOf(condition),
                     Component.translatable(I18N_PREFIX + "random_chance_with_enchanted_bonus",
                             Math.round(baseChance * 100)),
                     baseChance, List.of(enchanted)));
+            String enchantmentId = enchantment.unwrapKey().map(key -> key.location().toString()).orElse(null);
+            if (enchantmentId != null && baseChance <= 0.0F) {
+                info = info.withMetadata(ScenarioConditionEvaluator.METADATA_ENCHANTMENT, enchantmentId)
+                        .withMetadata(ScenarioConditionEvaluator.METADATA_MIN_LEVEL, "1");
+            }
+            return info;
         }
 
         @Override

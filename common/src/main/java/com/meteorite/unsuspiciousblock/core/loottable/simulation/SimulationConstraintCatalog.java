@@ -1,124 +1,140 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
-import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
-import com.mojang.serialization.JsonOps;
-import net.minecraft.resources.RegistryOps;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
+import com.mojang.serialization.JsonOps;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.loot.LootContext;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
- * 由表内容派生出的**约束描述**——它只回答"这张表能调什么、引用了什么"，
- * **不生成任何输入组合**（决策 32）。
- * <p>
- * 这是本阶段最重要的一处结构性改动。首版计划让目录枚举"场景 × 基座工具 × 附魔等级赋值"的完整候选集合，
- * 但那是一个**乘积**：32 的上限只约束其中一维，6 个附魔各 4 档就是 4⁶ × 32 = 131,072 个组合。
- * 关键认识是缓存 LRU 限制的是**结果数量**，限制不了这部分**计算**——所以必须从源头取消枚举：
- * 目录发布约束，单个输入在请求时构造并由 {@link #resolve} 校验。
- * <p>
- * 于是"目录"在这里退化成四份清单：场景候选（≤32，附截断数量）、工具基座、被引用附魔的等级上限、
- * 抽样次数档位。所有越权取值（自造场景、超界幸运、未签发的档位或附魔）都在
- * {@link #resolve} 处被拒绝，而不是靠客户端自觉。
- *
- * @param scenarios               代表场景（含基准），≤ {@link SimulationScenarioPlanner#MAX_SCENARIOS}
- * @param truncatedScenarioCount  因超出上界而未列出的场景数；{@code 0} 表示全部列出
- * @param scenarioBudgetExhausted 语义分析不完整或展开超预算；该表不发布到可执行约束目录
- * @param tools                   工具基座清单，第一项恒为默认工具
- * @param enchantmentMaxLevels    该表子树实际引用到的附魔 → 其 {@code max_level}；等级旋钮的范围就是 0..它
- * @param sampleCounts            签发的抽样次数档位
- * @param childEntryGates         该表各子表入口的**注入门槛**描述（子表 id → 条件树）。
- *                                注入边不在任何 JSON 里，静态投影看不到它，因此这条说明只能来自
- *                                约束描述：父表页据此说明"进这张子表需要什么"，并让"零命中"能报成
- *                                「需要条件」而不是「未命中」
+ * 由表内容派生的模拟约束目录：签发可勾选环境条件清单、工具基座（附预求值的匹配条件集）、
+ * 被引用附魔上限与抽样次数档位，并在按需请求时校验并即时构造执行场景。
  */
 public record SimulationConstraintCatalog(
-        List<SimulationScenario> scenarios,
-        int truncatedScenarioCount,
+        List<ConditionOption> conditions,
         boolean scenarioBudgetExhausted,
         List<ToolOption> tools,
         boolean toolSelectionAllowed,
         Map<ResourceLocation, Integer> enchantmentMaxLevels,
         List<Integer> sampleCounts,
         Map<ResourceLocation, List<LootConditionInfo>> childEntryGates,
-        Map<List<ConditionIdentity>, List<String>> pathScenes) {
+        SimulationProfile baseProfile) {
+
+    private static final ResourceLocation MATCH_TOOL = ResourceLocation.withDefaultNamespace("match_tool");
 
     public SimulationConstraintCatalog {
-        scenarios = List.copyOf(scenarios);
-        pathScenes = Map.copyOf(pathScenes);
+        conditions = List.copyOf(conditions);
         tools = List.copyOf(tools);
         enchantmentMaxLevels = Map.copyOf(enchantmentMaxLevels);
         sampleCounts = List.copyOf(sampleCounts);
         Map<ResourceLocation, List<LootConditionInfo>> gates = new LinkedHashMap<>();
-        childEntryGates.forEach((childTable, conditions) ->
-                gates.put(childTable, List.copyOf(conditions)));
+        childEntryGates.forEach((childTable, gateConditions) ->
+                gates.put(childTable, List.copyOf(gateConditions)));
         childEntryGates = Map.copyOf(gates);
         if (tools.isEmpty()) {
             throw new IllegalArgumentException("工具基座清单至少要含默认工具");
         }
     }
 
-    /** 优先读取已规划路径；补充入口使用同一个规划代数。 */
-    public List<String> activeScenes(List<LootConditionInfo> conditions) {
-        List<ConditionIdentity> identity = conditions.stream().map(LootConditionInfo::identity).toList();
-        List<String> planned = pathScenes.get(identity);
-        return planned != null ? planned : SimulationScenarioPlanner.applicableScenes(conditions, scenarios);
-    }
-
-    /**
-     * 由场景规划结果与表内容派生约束描述。
-     *
-     * @param baseProfile        该表的基座 profile（默认工具由它给出，与基准输入同源）
-     * @param subtreeTools       子树内 {@code match_tool} 谓词可枚举出的基座物品 → 谓词原文
-     * @param enchantmentMaxLevels 子树内被引用附魔 → {@code max_level}
-     * @param childEntryGates    各子表入口的注入门槛描述（见 record 说明）
-     */
-    public static SimulationConstraintCatalog build(SimulationScenarioPlanner.ScenarioPlan plan,
+    /** 由条件规划结果与表内容派生约束目录，并为各工具基座预求值 {@code match_tool} 命中情况。 */
+    public static SimulationConstraintCatalog build(SimulationScenarioPlanner.ConditionPlan plan,
+                                                    TableDefinition planningTable,
+                                                    ServerLevel level,
                                                     SimulationProfile baseProfile,
                                                     Map<ResourceLocation, String> subtreeTools,
                                                     boolean toolSelectionAllowed,
                                                     Map<ResourceLocation, Integer> enchantmentMaxLevels,
                                                     Map<ResourceLocation, List<LootConditionInfo>> childEntryGates) {
+        Map<String, LootConditionInfo> toolConditions = collectToolConditions(planningTable);
         List<ToolOption> tools = new ArrayList<>(subtreeTools.size() + 1);
-        tools.add(defaultTool(baseProfile));
+        ResourceLocation defaultToolId = baseProfile.toolItemId();
+        ToolOption defaultOption = defaultTool(baseProfile);
+        tools.add(withEvaluatedToolMatches(defaultOption, level, toolConditions));
         for (Map.Entry<ResourceLocation, String> entry : subtreeTools.entrySet()) {
-            if (entry.getKey().equals(baseProfile.toolItemId())) {
-                // 默认工具已在首位，谓词原文仍要保留——它才是"这个工具为什么出现在这里"的说明
-                tools.set(0, new ToolOption(entry.getKey(), tools.getFirst().displayName(),
-                        Component.literal(entry.getValue())));
+            if (entry.getKey().equals(defaultToolId)) {
+                ToolOption updated = new ToolOption(entry.getKey(), defaultOption.displayName(),
+                        Component.literal(entry.getValue()));
+                tools.set(0, withEvaluatedToolMatches(updated, level, toolConditions));
                 continue;
             }
-            tools.add(new ToolOption(entry.getKey(),
+            ToolOption option = new ToolOption(entry.getKey(),
                     new ItemStack(BuiltInRegistries.ITEM.get(entry.getKey())).getHoverName().copy(),
-                    Component.literal(entry.getValue())));
+                    Component.literal(entry.getValue()));
+            tools.add(withEvaluatedToolMatches(option, level, toolConditions));
         }
-        return new SimulationConstraintCatalog(plan.scenarios(), plan.truncatedCount(),
-                plan.budgetExhausted(), tools, toolSelectionAllowed, enchantmentMaxLevels,
-                ScenarioParams.SAMPLE_COUNT_TIERS, childEntryGates, plan.pathScenes());
+        return new SimulationConstraintCatalog(plan.conditions(), plan.budgetExhausted(),
+                tools, toolSelectionAllowed, enchantmentMaxLevels,
+                ScenarioParams.SAMPLE_COUNT_TIERS, childEntryGates, baseProfile);
     }
 
-    /**
-     * 把一个注入门槛翻译成条件树描述——与玩法同源：门槛声明 → 同一个条件对象 → 同一份分析处理器。
-     * 因此 tooltip 上写的等级/概率不可能与实际判定走两套数字。
-     */
+    private static Map<String, LootConditionInfo> collectToolConditions(TableDefinition table) {
+        Map<String, LootConditionInfo> result = new LinkedHashMap<>();
+        for (ItemDefinition item : table.items()) {
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                for (LootConditionInfo condition : path.allConditions()) {
+                    ConditionTree.walkLogic(condition, node -> {
+                        if (MATCH_TOOL.equals(node.conditionType()) && node.source() != null) {
+                            result.putIfAbsent(node.identity().key(), node);
+                        }
+                    });
+                }
+            }
+        }
+        return result;
+    }
+
+    private static ToolOption withEvaluatedToolMatches(ToolOption option, ServerLevel level,
+                                                       Map<String, LootConditionInfo> toolConditions) {
+        if (toolConditions.isEmpty()) {
+            return option;
+        }
+        ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(option.id()));
+        LootContext context = LootContextParamFiller.createConditionTestContext(
+                level, Vec3.ZERO, stack, null, 0.0F);
+        Set<String> matched = new LinkedHashSet<>();
+        for (Map.Entry<String, LootConditionInfo> entry : toolConditions.entrySet()) {
+            try {
+                if (entry.getValue().source() != null && entry.getValue().source().test(context)) {
+                    matched.add(entry.getKey());
+                }
+            } catch (RuntimeException ignored) {
+                // 第三方自定义谓词在缺少额外参数时保守视作未预匹配
+            }
+        }
+        return new ToolOption(option.id(), option.displayName(), option.predicateText(), matched);
+    }
+
+    /** 把注入门槛翻译成结构化条件树，与玩法共用同一套条件分析处理器。 */
     public static List<LootConditionInfo> describeGate(RuntimeLootLinks.InjectionGate gate,
                                                        HolderLookup.Provider registries) {
-        return List.copyOf(LootConditionHandlers.analyzeAll(List.of(gate.condition(registries)), RegistryOps.create(JsonOps.INSTANCE, registries)));
+        return List.copyOf(LootConditionHandlers.analyzeAll(
+                List.of(gate.condition(registries)),
+                RegistryOps.create(JsonOps.INSTANCE, registries)));
     }
 
-    /** 默认工具基座——与基准输入用的是同一份 profile，两者不会漂移。 */
+    /** 默认工具基座——与基准输入共用同一份 profile。 */
     public static ToolOption defaultTool(SimulationProfile baseProfile) {
         ItemStack tool = baseProfile.tool();
         Component name = tool.isEmpty() ? Component.translatable(
@@ -126,48 +142,30 @@ public record SimulationConstraintCatalog(
         return new ToolOption(baseProfile.toolItemId(), name, null);
     }
 
-    /** 基准参数：默认工具 + 幸运 0 + 基准档位 + 无附魔（决策 17）。 */
+    /** 基准参数：默认工具 + 幸运 0 + 基准档位 + 无附魔。 */
     public ScenarioParams baselineParams() {
         return ScenarioParams.baseline(this.tools.getFirst().id());
     }
 
-    /** 基准场景——条件全部不成立的那个场景（决策 2）；规划为空时返回 {@code null}。 */
-    @Nullable
-    public SimulationScenario baselineScenario() {
-        for (SimulationScenario scenario : this.scenarios) {
-            if (scenario.baseline()) {
-                return scenario;
-            }
-        }
-        return this.scenarios.isEmpty() ? null : this.scenarios.getFirst();
-    }
-
-    /**
-     * 启动时每表只跑的那一个输入（决策 17/32）：基准场景的条件全假赋值 + 基准参数。
-     * <p>
-     * 条件赋值取自基准场景的 profile（已补齐该表全部指纹），因此它就是"条件全部不成立"那个赋值；
-     * 由服务端自己还原赋值而不是让客户端传指纹，是为了让"这个输入是否被目录签发"变成一个查表动作。
-     * <p>
-     * 场景键用基准场景自己的稳定键；无场景表（理论上不该发生）兜底为
-     * {@link SimulationScenarioPlanner#BASELINE_SCENARIO_KEY} + 空赋值——没有指纹时基准赋值本就是空的。
-     */
+    /** 启动时每表运行的基准输入：空勾选集合 + 基准参数。 */
     public SimulationInput baselineInput() {
-        SimulationScenario scenario = baselineScenario();
-        if (scenario == null) {
-            return new SimulationInput(SimulationScenarioPlanner.BASELINE_SCENARIO_KEY, baselineParams());
-        }
-        return new SimulationInput(scenario.key(), baselineParams());
+        return new SimulationInput(List.of(), baselineParams());
     }
 
-    /** 按 key 取已签发的场景；未签发时返回 {@code null}。 */
-    @Nullable
-    public SimulationScenario scenario(String scenarioKey) {
-        for (SimulationScenario scenario : this.scenarios) {
-            if (scenario.key().equals(scenarioKey)) {
-                return scenario;
-            }
-        }
-        return null;
+    /** 构建基准执行场景。 */
+    public SimulationScenario baselineScenario(TableDefinition planningTable) {
+        return buildExecutionScenario(List.of(), planningTable);
+    }
+
+    /** 根据校验后的勾选条件列表即时构建模拟执行场景。 */
+    public SimulationScenario buildExecutionScenario(List<String> enabledConditions, TableDefinition planningTable) {
+        List<String> canonical = SimulationInput.canonicalize(enabledConditions);
+        return SimulationScenarioPlanner.buildScenario(
+                SimulationInputKey.scenarioSegment(canonical),
+                canonical,
+                this.conditions,
+                planningTable,
+                this.baseProfile);
     }
 
     /** 按 id 取已签发的工具基座；未签发时返回 {@code null}。 */
@@ -181,17 +179,13 @@ public record SimulationConstraintCatalog(
         return null;
     }
 
-    /**
-     * 客户端可用的旋钮种类。
-     * <p>
-     * 幸运恒可见；工具选择只在子树引用 {@code match_tool} 时出现，
-     * {@code ENCHANT_LEVEL} **只在该表子树确实引用了附魔时**才出现——
-     * 不会出现"没被引用却给控件"的情形（决策 23/26）。
-     */
+    /** 客户端可用的旋钮种类。 */
     public List<ParameterKind> parameterKinds() {
         List<ParameterKind> kinds = new ArrayList<>(4);
         kinds.add(ParameterKind.LUCK);
-        if (toolSelectionAllowed) kinds.add(ParameterKind.TOOL);
+        if (toolSelectionAllowed) {
+            kinds.add(ParameterKind.TOOL);
+        }
         if (!this.enchantmentMaxLevels.isEmpty()) {
             kinds.add(ParameterKind.ENCHANT_LEVEL);
         }
@@ -199,17 +193,22 @@ public record SimulationConstraintCatalog(
     }
 
     /**
-     * 校验一份请求是否落在本目录签发的取值范围内（决策 15：服务端只接受目录签发的输入）。
-     * <p>
-     * 逐项判定，任何一项越权即整体拒绝——**不做部分修正**：把一个越权值悄悄改成最近合法值，
-     * 会让玩家看到的数字与他填的参数不一致，那比直接拒绝更坏。
-     *
-     * @return 通过校验的输入；任一项不合法时返回空
+     * 校验一份请求是否落在本目录签发的取值范围内。
+     * 任一项越权或包含未签发条件 ID 时整体拒绝，不做静默修正。
      */
-    public Optional<SimulationInput> resolve(String scenarioKey, ScenarioParams params) {
-        SimulationScenario scenario = scenario(scenarioKey);
-        if (scenario == null) {
+    public Optional<SimulationInput> resolve(List<String> enabledConditions, ScenarioParams params) {
+        if (enabledConditions == null || params == null) {
             return Optional.empty();
+        }
+        if (enabledConditions.size() > this.conditions.size()) {
+            return Optional.empty();
+        }
+        Set<String> validIds = validConditionIds();
+        Set<String> seen = new LinkedHashSet<>(enabledConditions.size());
+        for (String id : enabledConditions) {
+            if (id == null || !validIds.contains(id) || !seen.add(id)) {
+                return Optional.empty();
+            }
         }
         if (!this.sampleCounts.contains(params.sampleCount())) {
             return Optional.empty();
@@ -223,18 +222,22 @@ public record SimulationConstraintCatalog(
                 return Optional.empty();
             }
         }
-        // 条件赋值由服务端按已签发场景还原，客户端不传指纹——它只挑场景，不构造赋值。
-        // 场景键取自场景自身的稳定身份，绝不从条件指纹反算：指纹跨运行不稳定，用它做键会让
-        // 同一个场景每次启动换一个键，缓存永不命中。
-        return Optional.of(new SimulationInput(scenario.key(), params));
+        return Optional.of(new SimulationInput(List.copyOf(seen), params));
+    }
+
+    private Set<String> validConditionIds() {
+        Set<String> ids = new LinkedHashSet<>(this.conditions.size());
+        for (ConditionOption option : this.conditions) {
+            ids.add(option.id());
+        }
+        return ids;
     }
 
     /** 状态标记用的紧凑描述。 */
     public String describe() {
         Map<String, Integer> levels = new LinkedHashMap<>();
         this.enchantmentMaxLevels.forEach((id, level) -> levels.put(id.toString(), level));
-        return "scenarios=" + this.scenarios.size()
-                + (this.truncatedScenarioCount > 0 ? "(+" + this.truncatedScenarioCount + " truncated)" : "")
+        return "conditions=" + this.conditions.size()
                 + ",tools=" + this.tools.size() + ",ench=" + levels
                 + ",samples=" + this.sampleCounts;
     }

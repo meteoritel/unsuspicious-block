@@ -11,7 +11,7 @@ Probe.requestSimulation = function(table) {
     var state = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState');
     var id = this.id(table), dto = state.table(id);
     var Params = this.type('com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams');
-    state.select(id, 'baseline', new Params(0.37, dto.options().tools().getFirst().id(), this.type('java.util.Map').of(), 10000));
+    state.select(id, this.type('java.util.List').of(), new Params(0.37, dto.options().tools().getFirst().id(), this.type('java.util.Map').of(), 10000));
     state.request(id, true);
     return this.simulationState(table);
 };
@@ -23,15 +23,15 @@ Probe.requestUnissuedTool = function(table) {
     tools.add(new (this.type('com.meteorite.unsuspiciousblock.core.loottable.simulation.ToolOption'))(
             this.id('minecraft:stick'), component.literal('Probe unissued tool'), component.empty()));
     var altered = new (this.type('com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions'))(
-            options.generation(), options.scenes(), tools, options.enchantments(), options.samples(),
-            options.truncated(), options.budgetExhausted(), options.toolSelectionAllowed());
+            options.generation(), options.conditions(), tools, options.enchantments(), options.samples(),
+            options.budgetExhausted(), options.toolSelectionAllowed());
     var Catalog = this.type('com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto');
-    var input = new Catalog(dto.id(), dto.hash(), dto.displayName(), dto.type(), 0, dto.childTables(), dto.scenarios(),
+    var input = new Catalog(dto.id(), dto.hash(), dto.displayName(), dto.type(), 0, dto.childTables(),
             dto.items(), dto.childProbabilities(), altered, dto.branches());
     // 在公开目录接收 Interface 构造不可信客户端输入；服务端目录保持真实签发集合。
     state.catalog(this.type('java.util.List').of(input));
     var Params = this.type('com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams');
-    state.select(id, 'baseline', new Params(0.37, this.id('minecraft:stick'), this.type('java.util.Map').of(), 10000));
+    state.select(id, this.type('java.util.List').of(), new Params(0.37, this.id('minecraft:stick'), this.type('java.util.Map').of(), 10000));
     state.request(id, true);
     return this.simulationState(table);
 };

@@ -67,9 +67,9 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
 
 `createPreviewStack()` 根据签名重构用于展示或匹配的 `ItemStack`。由于 `COMPONENT_EXACT` 需将 JSON 文本解码为组件补丁且成本较高，[`LootResultPreviewCache`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/signature/LootResultPreviewCache.java) 在掉落追踪、容器追踪与菜单快照三条热路径共享缓存预览栈（由签名值唯一确定，仅在数据包重载时清空以控制内存）；单表模拟工作器内部仍持有独立的无锁 `HashMap` 缓存以减少并发开销。
 
-## 3. 概率模拟：引擎与场景规划
+## 3. 概率模拟：引擎与条件规划
 
-模拟以 `SimulationInput`（场景键 `scenarioKey` + `ScenarioParams`）作为输入身份。其中场景键使用稳定字面量：`baseline` 固定代表基准场景，其余代表场景按稳定发射顺序编号为 `scene-1`、`scene-2`……。缓存键格式化为如下形式：
+模拟以 `SimulationInput`（已勾选原子条件 ID 列表 `enabledConditions` + `ScenarioParams`）作为输入身份。其中场景段身份使用稳定键：未勾选任何条件时固定为 `baseline`；勾选至少一项原子条件时对规范去重排序后的条件 ID 列表取 SHA-256 前 16 位 hex，记为 `cond:<16位hex>`。缓存键格式化为如下形式：
 
 ```text
 scenario=baseline|luck=0.00|tool=minecraft:diamond_pickaxe|ench=|n=10000
@@ -101,24 +101,22 @@ flowchart TD
 - **钓鱼上下文判断**：依据表自身声明的 `type`（而非路径字符串）判定钓鱼表，并为其填充 `SimulationFishingHook`，使 `entity_properties` 下的 `in_open_water` 条件可正常求值。参数填充覆盖 `paramSet.allowed` 内的全部 required 与 optional 字段；缺少 `ORIGIN` 支持的 `paramSet`（如 `barter`）在构建期即被拦下。
 - **热路径匹配优化**：`LootResultMatcher.CandidateIndex` 先按 `Item` 分组，再对精确组件候选按 `ItemStack.hashItemAndComponents` 分桶，同桶内仍严格执行 `ItemStack.isSameItemAndComponents` 校验，保持歧义返回 `null` 与单轮去重语义不变。
 
-### 3.2 条件场景策略与规划 (`SimulationScenarioPlanner`)
+### 3.2 条件组合模型与按需规划 (`SimulationScenarioPlanner`)
 
 运行时表保留完整的原版条件树，禁止通过篡改 JSON 条件并重新解码来构造模拟副本（否则会破坏 `all_of`、`any_of`、`inverted` 组合语义并绕过加载期修改）。
 
-- **逻辑树与展示树分离**：`LootConditionInfo` 将逻辑节点（`ALL` / `ANY` / `NOT` / `LEAF` 与 `logicChildren`）与纯展示文本 `ConditionDisplayRow` 分开存储；`ConditionTree.Algebra` 为规划器、推荐求解器、玩家探测和路径提示提供统一的三值求值与需求析取代数。
+- **逻辑树与展示树分离**：`LootConditionInfo` 将逻辑节点（`ALL` / `ANY` / `NOT` / `LEAF` 与 `logicChildren`）与纯展示文本 `ConditionDisplayRow` 分开存储；`ScenarioConditionEvaluator` 基于三值 Kleene 逻辑（`TRUE` / `FALSE` / `UNKNOWN`）结合已勾选原子条件与当前工具/附魔/幸运对分支条件即时求值，为前端展示与服务端按需规划提供统一判据。
 - **场景控制条件处理方式**：
 
 | 条件类型 | 模拟处理方式 |
 |---|---|
-| `location_check`、`weather_check`、`time_check`、`entity_scores` | 注册 `SCENARIO` 能力，由 `SimulationScenarioPlanner` 为其分配确定真假值并由单目标 Mixin 转交 `LootSimulationScope`（不修改世界状态、不访问真实区块或计分板） |
-| `match_tool` | **不参与场景布尔枚举**，直接由 `SimulationProfile` 填充的真实 `TOOL` 物品栈交由原版 `ItemPredicate` 求值，使工具匹配与时运/附魔等级曲线保持一致 |
+| `location_check`、`weather_check`、`time_check`、`entity_scores` | 注册 `SCENARIO` 能力，由 `SimulationScenarioPlanner` 提取去重后的原子条件选项 `ConditionOption` 下发；玩家自主勾选要启用的条件 ID 后，服务端按需构造 `SimulationScenario` 并由单目标 Mixin 转交 `LootSimulationScope`（未勾选的条件在模拟作用域中按不成立处理，不修改世界状态、不访问真实区块或计分板） |
+| `match_tool`、`tool_enchantment`、`table_bonus` | **不作为环境勾选条件**，直接由 `SimulationProfile` 填充的真实 `TOOL` 物品栈与附魔交由原版 `ItemPredicate` / 自定义条件求值，使工具匹配与时运/附魔等级曲线保持一致 |
 | `block_state_property`、`damage_source_properties`、`entity_properties` | 由 `SimulationProfile` 填充对应方块状态、伤害来源或假玩家/鱼钩上下文 |
 
-- **两条独立规模预算**：
-  1. **硬上界 32**：候选场景（不含先占名额的 `baseline`）按覆盖路径数降序截取至最多 `32` 个（并列时按路径枚举顺序保持确定性，防止重启后 `scene-N` 编号漂移），截断数记入 `ScenarioPlan.truncatedCount`。
-  2. **展开过程预算**：单表条件与函数树共用 `4096` 访问节点上限与 `512` 中间组合上限（且函数嵌套深度超过 `8` 层记为语义不完整）。触发预算耗尽或解析不完整时，服务端保留静态条目但停用该表数值模拟（标为未知），避免缺失条件回退真实天气或时间。
-- **条件语义身份 (`ConditionIdentity`)**：通过 `LootItemCondition.DIRECT_CODEC` 与实际 `RegistryOps` 编码并排序 JSON 键生成跨运行一致的摘要；无法编码的不透明条件仅保留本代去重身份，不参与场景枚举并在模拟中按真实逻辑求值。
-- **注入路径规划与推荐求解**：`ArchaeologyJournalServerCatalog.constraintTable` 将已声明的注入子树与继承门槛直接并入约束与规划输入，工具与附魔统一由 `ScenarioParams` 驱动而不使用额外满级工具特判。子表与物品推荐（`SimulationAssistTarget.CHILD_TABLE`）复用 `RecommendationSolver` 从最小合法等级开始联合搜索（预算 `2,048` 次尝试 / `15ms`），仅用于查找可证明的支持输入。
+- **原子提取规模预算**：`SimulationScenarioPlanner.planConditions` 提取全表与注入子树去重后的原子 `SCENARIO` 条件 `ConditionOption` 并保留稳定顺序，单表展开过程共享 `4096` 访问节点上限（且条件/函数嵌套深度受解析预算约束）。触发预算耗尽或解析不完整时标记 `budgetExhausted = true`，服务端保留静态条目但停用该表数值模拟（标为未知），避免缺失条件回退真实天气或时间。
+- **条件语义身份 (`ConditionIdentity`)**：通过 `LootItemCondition.DIRECT_CODEC` 与实际 `RegistryOps` 编码并排序 JSON 键生成跨运行一致的摘要；无法编码的不透明条件仅保留本代去重身份，不作为可选条件选项并在模拟中按真实逻辑求值。
+- **注入路径规划与推荐求解**：`ArchaeologyJournalServerCatalog.constraintTable` 将已声明的注入子树与继承门槛直接并入约束与规划输入，工具与附魔统一由 `ScenarioParams` 驱动而不使用额外满级工具特判。子表与物品推荐（`SimulationAssistTarget.CHILD_TABLE` / `ITEM`）复用 `RecommendationSolver` 从最小合法等级与最小需勾选环境条件组合开始联合搜索（预算 `2,048` 次尝试 / `15ms`），仅用于查找可证明的支持输入。
 
 ### 3.3 逐路径幸运门槛 (`LuckGateAnalysis`)
 
@@ -183,7 +181,7 @@ flowchart TD
 
 ## 6. 约束目录与按需请求链路
 
-[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 仅签发合法参数边界（场景列表、基座工具、被引用附魔最高等级与抽样档位），**不预先枚举笛卡尔乘积**，从源头避免数万组合造成的计算与缓存爆炸。默认工具直接复用 `JournalCategoryLoader` 分类的 `default_tool`（缺省回退空手）；基座工具列表取自整棵子树的 `match_tool`（标签谓词仅取首个成员作为代表，并随附谓词原文说明）。
+[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 仅签发合法参数边界（可选原子条件列表 `ConditionOption`、基座工具与已满足工具条件、被引用附魔最高等级与抽样档位），**不预先枚举笛卡尔乘积**，从源头避免数万组合造成的计算与缓存爆炸。默认工具直接复用 `JournalCategoryLoader` 分类的 `default_tool`（缺省回退空手）；基座工具列表取自整棵子树的 `match_tool`（标签谓词仅取首个成员作为代表，并随附谓词原文说明）。
 
 ```mermaid
 sequenceDiagram
@@ -191,10 +189,10 @@ sequenceDiagram
     participant S as 服务端主线程
     participant D as "LootProbabilityData (存档)"
 
-    C->>S: RequestScenarioSimulationPayload (generation, tableId, tableHash, sceneKey, params)
+    C->>S: RequestScenarioSimulationPayload (generation, tableId, tableHash, enabledConditions, params)
     S->>S: ScenarioSimulationHandler (校验在途<=2，构建并校验 ScenarioParams)
-    S->>S: requestSimulation 校验追踪资格 / 表哈希 / 约束签发
-    alt 参数越权或目录过期
+    S->>S: requestSimulation 校验追踪资格 / 表哈希 / 条件与参数约束
+    alt 参数或条件越权或目录过期
         S-->>C: ScenarioRequestRejectedPayload(原因)
     else 命中缓存
         D-->>S: 读取对应 inputKey 测量值

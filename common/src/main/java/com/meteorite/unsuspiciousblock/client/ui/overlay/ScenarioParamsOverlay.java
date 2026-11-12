@@ -32,7 +32,7 @@ import java.util.*;
 public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiInputContainer {
     private final JournalOverlays owner;
     private final ResourceLocation table;
-    private final String scene;
+    private final List<String> conditions;
     private final String tableHash;
     private final SimulationOptions options;
     private final Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
@@ -49,11 +49,11 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     private @Nullable Component error;
     private String query = "";
 
-    public ScenarioParamsOverlay(JournalOverlays owner, ResourceLocation table, String scene,
+    public ScenarioParamsOverlay(JournalOverlays owner, ResourceLocation table, List<String> conditions,
                                   SimulationOptions options, ScenarioParams current) {
         this.owner = owner;
         this.table = table;
-        this.scene = scene;
+        this.conditions = List.copyOf(conditions);
         this.options = options;
         var structure = ScenarioSimulationClientState.table(table);
         tableHash = structure == null ? "" : structure.hash();
@@ -135,10 +135,10 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         ScenarioParams params = new ScenarioParams(value.floatValue(), tool.id(), levels, ScenarioParams.DEFAULT_SAMPLE_COUNT);
         var latest = ScenarioSimulationClientState.table(table);
         if (latest == null || latest.options() == null || !latest.hash().equals(tableHash)
-                || latest.options().generation() != options.generation() || latest.options().rejects(scene, params)) {
+                || latest.options().generation() != options.generation() || latest.options().rejects(conditions, params)) {
             error = text("failure.rejected_input"); return;
         }
-        ScenarioSimulationClientState.select(table, scene, params);
+        ScenarioSimulationClientState.select(table, conditions, params);
         if (calculate) ScenarioSimulationClientState.request(table, true);
         owner.close();
     }

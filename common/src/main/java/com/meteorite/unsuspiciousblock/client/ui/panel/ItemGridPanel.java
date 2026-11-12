@@ -32,6 +32,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -56,8 +57,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
     private boolean controlsDirty = true;
     private Runnable onNavigate = () -> { };
-    private Consumer<ResourceLocation> onRecommend = target -> { };
-    public void setActions(Runnable navigate, Consumer<ResourceLocation> recommend) {
+    private Consumer<SimulationAssistTarget> onRecommend = target -> { };
+    public void setActions(Runnable navigate, Consumer<SimulationAssistTarget> recommend) {
         onNavigate = navigate; onRecommend = recommend;
     }
     @Override public UiChildren<UiControl> inputChildren() { return controls.inputChildren(); }
@@ -81,7 +82,16 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 control.setBounds(r.x(), r.y(), r.width(), r.height());
                 JournalControls.configureHotspot(control,
                         ScenarioSimulationClientState.text("recommend.title"),
-                        () -> onRecommend.accept(child.tableId()));
+                        () -> onRecommend.accept(SimulationAssistTarget.childTable(child.tableId())));
+            } else if (cell.item() != null && cell.item().unlocked()
+                    && cell.item().probability() instanceof Probability.NeedsCondition) {
+                String storedKey = cell.item().signature().toStoredKey();
+                UiControl control = controls.obtain("recommend:item:" + storedKey);
+                UiRect r = recommendationBounds(cell);
+                control.setBounds(r.x(), r.y(), r.width(), r.height());
+                JournalControls.configureHotspot(control,
+                        ScenarioSimulationClientState.text("recommend.title"),
+                        () -> onRecommend.accept(SimulationAssistTarget.item(storedKey)));
             }
         }
         controls.endUpdate();
@@ -586,6 +596,10 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             int badgeY = iconY + ICON_SIZE - font.lineHeight + 1;
             UiRenderLayers.draw(guiGraphics, UiRenderLayers.FOREGROUND,
                     () -> guiGraphics.drawString(font, countText, badgeX, badgeY, badgeColor, true));
+        }
+        if (item.probability() instanceof Probability.NeedsCondition) {
+            UiAtlas.icon(UiAtlas.Icon.RECOMMEND)
+                    .render(guiGraphics, cellX + cellW - 12, cellY + 2);
         }
 
         // 物品名（悬停时走马灯滚动，与 intro/Catalog 风格一致；非悬停时居中静态）

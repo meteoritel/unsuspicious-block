@@ -10,7 +10,6 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.UiPanelRegistry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.meteosuikit.api.control.UiControl;
@@ -48,6 +47,7 @@ public final class RightPageContainer implements UiInputTarget {
         return hit == null ? null : hit.within(this);
     }
     @Override public boolean mousePressed(UiInputContext context) { return activePanel().mousePressed(context); }
+    @Override public boolean mouseReleased(UiInputContext context) { return activePanel().mouseReleased(context); }
     @Override public boolean keyPressed(int key, int scan, int modifiers) { return activePanel().keyPressed(key, scan, modifiers); }
     @Override public boolean keyReleased(int key, int scan, int modifiers) { return activePanel().keyReleased(key, scan, modifiers); }
     @Override public boolean charTyped(char value, int modifiers) { return activePanel().charTyped(value, modifiers); }
@@ -131,7 +131,7 @@ public final class RightPageContainer implements UiInputTarget {
         syncBookmarks();
         gridPanel.setActions(this::syncPageChrome, target -> {
             if (currentTableId != null) ScenarioRecommendationOverlay.open(
-                    overlays, currentTableId, SimulationAssistTarget.childTable(target));
+                    overlays, currentTableId, target);
         });
         logPanel.setOnOpenEntry(entry -> restoreLogSelection(entry.entryId(), true));
     }
@@ -348,24 +348,14 @@ public final class RightPageContainer implements UiInputTarget {
 
 
 
-    // 网格页的「切换场景」与场景页的「场景」按钮打开同一套浮层；这里只切换选择（网格数字随之更新），
-    // 不跳页也不改参数。缺数据时静默不开，避免空浮层。
+    // 网格页的「条件栏」打开条件勾选浮层，也可在浮层内一键同步状态或切换参数。
     private void openSceneOverlay() {
         if (currentTableId == null) return;
         CatalogTableDto dto = ScenarioSimulationClientState.table(currentTableId);
         var selection = ScenarioSimulationClientState.selection(currentTableId);
         if (dto == null || dto.options() == null || selection == null) return;
-        SimulationOptions options = dto.options();
-        List<CatalogTableDto.ScenarioAssumptions> scenes = options.scenes();
-        if (scenes.isEmpty()) return;
-        int current = 0;
-        for (int i = 0; i < scenes.size(); i++) {
-            if (scenes.get(i).scenarioKey().equals(selection.scene())) current = i;
-        }
-        ResourceLocation table = currentTableId;
-        overlays.open(new ScenarioSelectionOverlay(overlays,
-                table, options, selection.params(), current,
-                index -> ScenarioSimulationClientState.select(table, scenes.get(index).scenarioKey(), selection.params())));
+        overlays.open(new ScenarioConditionOverlay(overlays,
+                currentTableId, dto.options(), selection.conditions(), selection.params()));
     }
 
     private void syncPageChrome() {
@@ -388,7 +378,10 @@ public final class RightPageContainer implements UiInputTarget {
     }
 
     /** 网格与场景栏共享一个 PagePanel；命中优先级与持续输入仍交现有 kit。 */
-    private record ArchaeologyPage(ItemGridPanel grid, ScenarioPanel scenario) implements PagePanel {
+    private record ArchaeologyPage(ItemGridPanel grid, ScenarioPanel scenario) implements PagePanel, UiLayoutSource {
+        @Override public List<UiLayoutNode> layoutNodes() {
+            return Stream.concat(scenario.layoutNodes().stream(), grid.layoutNodes().stream()).toList();
+        }
         @Override public void prepareUi() { grid.prepareUi(); scenario.prepareUi(); }
         @Override public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
             grid.render(graphics, font, mouseX, mouseY);
@@ -410,6 +403,9 @@ public final class RightPageContainer implements UiInputTarget {
         @Override public boolean containsMouse(double x, double y) { return grid.containsMouse(x, y); }
         @Override public boolean mousePressed(UiInputContext context) {
             return context.hits(scenario) ? scenario.mousePressed(context) : grid.mousePressed(context);
+        }
+        @Override public boolean mouseReleased(UiInputContext context) {
+            return context.hits(scenario) ? scenario.mouseReleased(context) : grid.mouseReleased(context);
         }
         @Override public boolean keyPressed(int key, int scan, int modifiers) {
             return grid.keyPressed(key, scan, modifiers) || scenario.keyPressed(key, scan, modifiers);

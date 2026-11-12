@@ -1,37 +1,38 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
-
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiLightbox;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.layout.UiNode;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
-import com.meteorite.meteosuikit.api.input.UiAction;
-
-import java.util.function.BiConsumer;
-import java.util.function.BiPredicate;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground.BookLayout;
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.geometry.*;
-import com.meteorite.meteosuikit.api.input.*;
-import com.meteorite.meteosuikit.api.layout.*;
-import com.meteorite.meteosuikit.api.render.*;
-import com.meteorite.meteosuikit.api.style.*;
-import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
-import com.meteorite.unsuspiciousblock.client.ui.support.*;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.support.UiStateful;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.locale.Language;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -44,165 +45,214 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 
-/** 场景详情页：紧凑参数栏与条件树；物品及其概率统一在物品网格阅读。 */
+/** 场景详情页：顶部总览与快捷控制栏 + 原子环境条件勾选与实时分支/物品状态清单。 */
 public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStateful, UiInputContainer {
     private static final int MAX_SAVED_POSITIONS = 512;
+
     private final JournalOverlays overlays;
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
-    private final UiControl title = new UiControl();
+    private final UiControl overview = new UiControl();
+    private final UiControl expandButton = new UiControl();
     private final UiControl summary = new UiControl();
     private final UiControl luck = new UiControl();
-    private final UiControl samples = new UiControl();
+    private final UiControl enchantments = new UiControl();
+    private final UiControl probeButton = new UiControl();
     private final UiControl paramsButton = new UiControl();
+    private final UiControl resetButton = new UiControl();
     private final UiControl calculateButton = new UiControl();
-    private final UiControl conditionsHeading = new UiControl();
-    private final UiControl expandButton = new UiControl();
-    private final List<UiControl> controls = List.of(title, summary, luck, samples, paramsButton,
-            calculateButton, conditionsHeading, expandButton);
+    private final List<UiControl> controls = List.of(
+            overview, expandButton, summary, luck, enchantments,
+            probeButton, paramsButton, resetButton, calculateButton);
     private final Map<String, Integer> conditionPositions = new LinkedHashMap<>();
+
     private BookLayout layout;
     @Nullable private ResourceLocation table;
     @Nullable private Font measuredFont;
     @Nullable private ScenarioConditionView conditions;
     @Nullable private String viewKey;
-    private long revision = Long.MIN_VALUE;
+    private long catalogRevision = Long.MIN_VALUE;
+    private long simulationRevision = Long.MIN_VALUE;
     private String input = "";
     private String requestStatus = "";
     private Language language;
-    private boolean showOther;
     private List<UiNode> conditionTree = List.of();
-    @Nullable private Component fullSceneLabel;
+    @Nullable private Component overviewLabel;
     private BiPredicate<String, String> targetVisible = (kind, target) -> false;
-    private BiConsumer<String, String> locateTarget = (kind, target) -> {};
-    private Runnable viewDrops = () -> {};
-
-    public void setTargetNavigation(BiPredicate<String, String> visible,
-                                    BiConsumer<String, String> locate, Runnable viewDrops) {
-        this.targetVisible = visible;
-        this.locateTarget = (kind, target) -> { if (overlays.isOpen()) overlays.close(); locate.accept(kind, target); };
-        this.viewDrops = viewDrops;
-    }
+    private BiConsumer<String, String> locateTarget = (kind, target) -> { };
+    private Runnable viewDrops = () -> { };
 
     public ScenarioDetailPanel(BookLayout layout, JournalOverlays overlays) {
         this.layout = layout;
         this.overlays = overlays;
         children.addAll(controls);
-        for (UiControl control : List.of(title, paramsButton, calculateButton, expandButton)) control.setFocusable(true);
+        for (UiControl control : List.of(expandButton, probeButton, paramsButton, resetButton, calculateButton)) {
+            control.setFocusable(true);
+        }
     }
 
-    @Override public void applyLayout(BookLayout layout) {
+    public void setTargetNavigation(BiPredicate<String, String> visible,
+                                    BiConsumer<String, String> locate,
+                                    Runnable viewDrops) {
+        this.targetVisible = visible;
+        this.locateTarget = (kind, target) -> {
+            if (overlays.isOpen()) {
+                overlays.close();
+            }
+            locate.accept(kind, target);
+        };
+        this.viewDrops = viewDrops;
+    }
+
+    @Override
+    public void applyLayout(BookLayout layout) {
         saveCurrentPosition();
         this.layout = layout;
-        revision = Long.MIN_VALUE;
+        catalogRevision = Long.MIN_VALUE;
     }
 
     public void setTable(@Nullable ResourceLocation value) {
-        if (Objects.equals(table, value)) return;
+        if (Objects.equals(table, value)) {
+            return;
+        }
         saveCurrentPosition();
         table = value;
         viewKey = null;
-        revision = Long.MIN_VALUE;
-        showOther = false;
+        catalogRevision = Long.MIN_VALUE;
     }
 
-    @Override public UiPointerHit hitTest(double x, double y) { return UiInputContainer.super.hitTest(x, y); }
-    @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
-    @Override public void prepareUi() { sync(Minecraft.getInstance().font); }
-    @Override public void render(GuiGraphics graphics, Font font, int x, int y) { }
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
+        return UiInputContainer.super.hitTest(x, y);
+    }
+
+    @Override
+    public UiChildren<UiInputTarget> inputChildren() {
+        return children;
+    }
+
+    @Override
+    public void prepareUi() {
+        sync(Minecraft.getInstance().font);
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, Font font, int x, int y) {
+    }
+
+    @Override
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
-        for (UiControl control : controls) control.render(graphics, font, pointer);
-        if (conditions != null) conditions.render(graphics, pointer);
+        for (UiControl control : controls) {
+            control.render(graphics, font, pointer);
+        }
+        if (conditions != null) {
+            conditions.render(graphics, pointer);
+        }
     }
 
-    @Override public boolean containsMouse(double x, double y) {
+    @Override
+    public boolean containsMouse(double x, double y) {
         return PagePanel.containsPageBounds(x, y,
                 layout.rightPageX(), layout.rightPageY(),
                 layout.rightPageRight(), layout.rightPageBottom());
     }
 
-    List<CatalogTableDto.ScenarioAssumptions> scenes() {
-        CatalogTableDto dto = structure();
-        return dto == null || dto.options() == null ? List.of() : dto.options().scenes();
+    @Nullable
+    CatalogTableDto structure() {
+        return table == null ? null : ScenarioSimulationClientState.table(table);
     }
 
-    @Nullable CatalogTableDto structure() { return table == null ? null : ScenarioSimulationClientState.table(table); }
-    @Nullable SimulationPreferenceStore.Selection selection() {
+    @Nullable
+    SimulationPreferenceStore.Selection selection() {
         return table == null ? null : ScenarioSimulationClientState.selection(table);
     }
 
-    private int selectedSceneIndex() {
-        var selected = selection();
-        List<CatalogTableDto.ScenarioAssumptions> scenes = scenes();
-        if (selected != null) for (int i = 0; i < scenes.size(); i++) {
-            if (scenes.get(i).scenarioKey().equals(selected.scene())) return i;
-        }
+    @Override
+    public int pageCount() {
+        return 1;
+    }
+
+    @Override
+    public int getPage() {
         return 0;
     }
 
-    private void selectSceneAt(int index) {
-        var selected = selection();
-        var scenes = scenes();
-        if (table == null || selected == null || scenes.isEmpty()) return;
-        ScenarioSimulationClientState.select(table, scenes.get(Math.clamp(index, 0, scenes.size() - 1)).scenarioKey(),
-                selected.params());
+    @Override
+    public void setPage(int page) {
     }
 
-    @Override public int pageCount() { return 1; }
-    @Override public int getPage() { return 0; }
-    @Override public void setPage(int page) { }
-    @Override public void changePage(int delta) { }
+    @Override
+    public void changePage(int delta) {
+    }
 
     private void sync(Font font) {
-        if (table != null) ScenarioSimulationClientState.ensureCacheQuery(table);
+        if (table != null) {
+            ScenarioSimulationClientState.ensureCacheQuery(table);
+        }
         if (conditions == null || measuredFont != font) {
             saveCurrentPosition();
             measuredFont = font;
-            if (conditions != null) children.remove(conditions);
+            if (conditions != null) {
+                children.remove(conditions);
+            }
             conditions = new ScenarioConditionView(font);
             children.add(conditions);
             viewKey = null;
-            revision = Long.MIN_VALUE;
+            catalogRevision = Long.MIN_VALUE;
         }
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
         int width = layout.rightPageWidth() - 8;
-        title.setBounds(x, y + 3, width, 14);
-        summary.setBounds(x, y + 19, 20, 16);
-        paramsButton.setBounds(x + width - 16, y + 19, 16, 16);
-        int readoutWidth = Math.max(0, width - 42);
-        int luckWidth = readoutWidth / 2;
-        luck.setBounds(x + 22, y + 19, luckWidth, 16);
-        samples.setBounds(x + 22 + luckWidth, y + 19, readoutWidth - luckWidth, 16);
+        overview.setBounds(x, y + 3, Math.max(0, width - 20), 14);
+        expandButton.setBounds(x + width - 18, y + 2, 18, 14);
+        summary.setBounds(x, y + 19, 18, 16);
+        int readoutWidth = Math.max(0, width - 74);
+        int luckWidth = readoutWidth / 2 + 4;
+        luck.setBounds(x + 20, y + 19, luckWidth, 16);
+        enchantments.setBounds(x + 20 + luckWidth, y + 19, Math.max(0, readoutWidth - luckWidth), 16);
+        probeButton.setBounds(x + width - 52, y + 19, 16, 16);
+        paramsButton.setBounds(x + width - 34, y + 19, 16, 16);
+        resetButton.setBounds(x + width - 16, y + 19, 16, 16);
         calculateButton.setBounds(x, y + 37, width, 14);
-        conditionsHeading.setBounds(x, y + 53, width - 20, 12);
-        expandButton.setBounds(x + width - 18, y + 52, 18, 14);
-        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - (y + 67));
-        conditions.setBounds(x, y + 67, width, contentHeight);
+        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - (y + 54));
+        conditions.setBounds(x, y + 54, width, contentHeight);
 
         var choice = selection();
         CatalogTableDto structure = structure();
         String nextInput = choice == null ? "" : ScenarioSimulationClientState.inputKey(choice);
         String nextStatus = table == null || nextInput.isEmpty()
                 ? "uncomputed" : ScenarioSimulationClientState.status(table, nextInput);
-        long nextRevision = ArchaeologyJournalClientState.getCatalogRevision();
+        long nextCatalogRev = ArchaeologyJournalClientState.getCatalogRevision();
+        long nextSimRev = ScenarioSimulationClientState.revision();
         Language nextLanguage = Language.getInstance();
-        if (revision == nextRevision && input.equals(nextInput) && requestStatus.equals(nextStatus)
-                && language == nextLanguage) return;
+        if (catalogRevision == nextCatalogRev && simulationRevision == nextSimRev
+                && input.equals(nextInput) && requestStatus.equals(nextStatus)
+                && language == nextLanguage) {
+            return;
+        }
 
-        saveCurrentPosition();
-        revision = nextRevision;
+        boolean sameViewKey = table != null && Objects.equals(viewKey, table.toString());
+        int preservedOffset = sameViewKey ? conditions.offset() : -1;
+        if (!sameViewKey) {
+            saveCurrentPosition();
+        }
+        catalogRevision = nextCatalogRev;
+        simulationRevision = nextSimRev;
         language = nextLanguage;
         input = nextInput;
         requestStatus = nextStatus;
-        viewKey = table == null || nextInput.isEmpty() ? null : table + "#" + nextInput;
+        viewKey = table == null ? null : table.toString();
+
         if (structure == null || structure.options() == null || choice == null) {
             configureUnavailable(font);
         } else {
             configureAvailable(font, structure, choice, nextStatus);
         }
         if (viewKey != null) {
-            conditions.setOffset(conditionPositions.getOrDefault(viewKey, 0));
+            conditions.setOffset(preservedOffset >= 0
+                    ? preservedOffset : conditionPositions.getOrDefault(viewKey, 0));
         }
     }
 
@@ -215,39 +265,39 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
             control.configure(font, Component.empty(), UiTextScheme.PARCHMENT.body(), null, List.of(), null);
             control.setVisible(false);
         }
-        title.setVisible(true);
-        title.configure(font, ScenarioSimulationClientState.text("unavailable"),
+        overview.setVisible(true);
+        overview.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
+        overview.configure(font, ScenarioSimulationClientState.text("unavailable"),
                 UiTextScheme.PARCHMENT.label(), null, List.of(), null);
-        fullSceneLabel = null;
+        overviewLabel = null;
     }
 
     private void configureAvailable(Font font, CatalogTableDto structure,
                                     SimulationPreferenceStore.Selection choice, String rawStatus) {
         ScenarioConditionView conditionView = Objects.requireNonNull(conditions);
-        var options = Objects.requireNonNull(structure.options());
+        SimulationOptions options = Objects.requireNonNull(structure.options());
         for (UiControl control : controls) {
             control.setVisible(true);
             control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         }
         ResourceLocation currentTable = Objects.requireNonNull(table);
-        UiAction openParams = () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.scene(),
-                options, choice.params()));
-        conditionTree = ScenarioPageBuilder.buildConditions(structure, choice.scene(), showOther,
-                () -> { showOther = !showOther; revision = Long.MIN_VALUE; },
-                child -> ScenarioRecommendationOverlay.open(overlays, currentTable,
-                        SimulationAssistTarget.childTable(child)), targetVisible, locateTarget);
-        conditionView.setContent(conditionTree);
-        Component failure = "failed".equals(rawStatus)
-                ? ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(currentTable, input))
-                : null;
 
-        fullSceneLabel = ScenarioLabel.shortLabel(choice.scene());
-        List<Component> titleTooltip = new ArrayList<>(ScenarioLabel.tooltip(options, choice.scene()));
-        title.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
-        title.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextScheme.PARCHMENT.title(),
-                UiAtlas.icon(UiAtlas.Icon.CHEVRON_DOWN), titleTooltip, () ->
-                        overlays.open(new ScenarioSelectionOverlay(overlays, currentTable,
-                                options, choice.params(), selectedSceneIndex(), this::selectSceneAt)));
+        conditionTree = ScenarioPageBuilder.buildConditions(
+                structure,
+                choice.conditions(),
+                choice.params(),
+                ScenarioSimulationClientState.notesFor(currentTable),
+                ScenarioSimulationClientState::clearNotes,
+                conditionId -> ScenarioSimulationClientState.toggleCondition(currentTable, conditionId),
+                target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target),
+                targetVisible,
+                locateTarget);
+        conditionView.setContent(conditionTree);
+
+        overviewLabel = buildOverviewText(structure, options, choice.conditions());
+        overview.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
+        overview.configure(font, overviewLabel, UiTextScheme.PARCHMENT.title(), null,
+                List.of(overviewLabel.copy().withStyle(TooltipBuilder.BODY)), null);
 
         Component toolName = Component.literal(choice.params().toolId().toString());
         for (var tool : options.tools()) {
@@ -258,71 +308,132 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
         }
         List<Component> paramsTooltip = new ArrayList<>();
         paramsTooltip.add(ScenarioSimulationClientState.text("params.current", toolName,
-                choice.params().luck(), choice.params().sampleCount()));
+                choice.params().luck(), choice.params().sampleCount()).copy().withStyle(TooltipBuilder.BODY));
         choice.params().toolEnchantments().forEach((id, level) -> paramsTooltip.add(
                 ScenarioSimulationClientState.text("params.enchant_level",
-                        ScenarioParamsOverlay.enchantmentName(id), level)));
+                        ScenarioParamsOverlay.enchantmentName(id), level).copy().withStyle(TooltipBuilder.ACCENT)));
+
         summary.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
         summary.configure(font, Component.empty(), JournalTextColors.NAME,
                 new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(choice.params().toolId()))),
-                List.of(toolName), null);
-        configureValue(font, luck, "params.luck_short", String.format(Locale.ROOT, "%s", choice.params().luck()));
-        configureValue(font, samples, "params.enchantments_short", String.valueOf(choice.params().toolEnchantments().size()));
-        paramsButton.configure(font, Component.empty(),
-                UiAtlas.icon(UiAtlas.Icon.PARAMS), paramsTooltip, openParams);
+                List.of(toolName.copy().withStyle(TooltipBuilder.BODY)), null);
+        configureValue(font, luck, "params.luck_short",
+                String.format(Locale.ROOT, "%s", choice.params().luck()));
+        configureValue(font, enchantments, "params.enchantments_short",
+                String.valueOf(choice.params().toolEnchantments().size()));
+
+        probeButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.BIOME),
+                List.of(ScenarioSimulationClientState.text("probe.button").copy().withStyle(TooltipBuilder.TITLE),
+                        ScenarioSimulationClientState.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL)),
+                () -> ScenarioSimulationClientState.requestPlayerProbe(currentTable));
+        probeButton.setAccessibleName(ScenarioSimulationClientState.text("probe.button"));
+        probeButton.setEnabled(!ScenarioSimulationClientState.assistPending());
+
+        paramsButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.PARAMS), paramsTooltip,
+                () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.conditions(),
+                        options, choice.params())));
         paramsButton.setAccessibleName(ScenarioSimulationClientState.text("params.title"));
+
+        boolean isBaseline = choice.conditions().isEmpty()
+                && choice.params().equals(ScenarioParams.baseline(options.tools().getFirst().id()));
+        resetButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.BACK),
+                List.of(ScenarioSimulationClientState.text("reset.button").copy().withStyle(TooltipBuilder.TITLE),
+                        ScenarioSimulationClientState.text("reset.hint").copy().withStyle(TooltipBuilder.LABEL)),
+                () -> ScenarioSimulationClientState.resetToBaseline(currentTable));
+        resetButton.setAccessibleName(ScenarioSimulationClientState.text("reset.button"));
+        resetButton.setEnabled(!isBaseline);
+
+        Component failure = "failed".equals(rawStatus)
+                ? ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(currentTable, input))
+                : null;
         calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        calculateButton.configure(font, ScenarioSimulationClientState.text("cached".equals(rawStatus)
-                        ? "view_drops" : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
+        calculateButton.configure(font,
+                ScenarioSimulationClientState.text("cached".equals(rawStatus)
+                        ? "view_drops"
+                        : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
                         || "query_failed".equals(rawStatus) ? "calculate" : "results.status." + rawStatus),
-                UiAtlas.icon(UiAtlas.Icon.CALCULATE),
-                failure == null ? List.of(ScenarioSimulationClientState.text("calculate"), ScenarioSimulationClientState.text(rawStatus)) : List.of(failure),
-                () -> { if ("cached".equals(rawStatus)) viewDrops.run(); else ScenarioSimulationClientState.request(currentTable, true); });
+                UiAtlas.statusBadge(rawStatus),
+                failure == null
+                        ? List.of(ScenarioSimulationClientState.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
+                        ScenarioSimulationClientState.text(rawStatus).copy().withStyle(TooltipBuilder.LABEL))
+                        : List.of(failure.copy().withStyle(TooltipBuilder.NEGATIVE)),
+                () -> {
+                    if ("cached".equals(rawStatus)) {
+                        viewDrops.run();
+                    } else {
+                        ScenarioSimulationClientState.request(currentTable, true);
+                    }
+                });
         calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(rawStatus));
 
-        conditionsHeading.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        conditionsHeading.configure(font, ScenarioSimulationClientState.text("conditions.heading"),
-                UiTextScheme.PARCHMENT.title(), null, List.of(), null);
         expandButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.EXPAND),
-                List.of(ScenarioSimulationClientState.text("frame.expand")), () -> {
+                List.of(ScenarioSimulationClientState.text("frame.expand").copy().withStyle(TooltipBuilder.BODY)),
+                () -> {
                     ScenarioExpandedOverlay content = new ScenarioExpandedOverlay(this, font);
                     UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
                     ScenarioUi.styleLightbox(lightbox);
-                    lightbox.setText(ScenarioSimulationClientState.text("conditions.title", fullSceneLabel), null);
+                    lightbox.setText(ScenarioSimulationClientState.text("conditions.title",
+                            overviewLabel == null ? structure.displayName() : overviewLabel), null);
                     lightbox.setMaskClickCloses(false);
                     overlays.open(lightbox);
                 });
         expandButton.setAccessibleName(ScenarioSimulationClientState.text("frame.expand"));
     }
 
-    private static void configureValue(Font font, UiControl control, String key, String value) {
-        Component full = ScenarioSimulationClientState.text(key, value);
-        Component label = font.width(full) <= control.bounds().width() - 6 ? full : Component.literal(value);
-        control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        control.configure(font, label, null, List.of(full), null);
+    private static Component buildOverviewText(CatalogTableDto structure,
+                                               SimulationOptions options,
+                                               List<String> enabledConditions) {
+        int toggleCount = options.conditions().size();
+        if (toggleCount > 0) {
+            return ScenarioSimulationClientState.text("overview.with_conditions",
+                    enabledConditions.size(), toggleCount);
+        }
+        boolean hasSpecialBranch = structure.branches().stream().anyMatch(branch ->
+                !branch.injectionSource().isEmpty() || !branch.conditions().isEmpty()
+                        || !branch.requirements().isEmpty() || !branch.luck().isTrivial());
+        if (hasSpecialBranch || options.toolSelectionAllowed() || !options.enchantments().isEmpty()) {
+            return ScenarioSimulationClientState.text("overview.params_or_random");
+        }
+        return ScenarioSimulationClientState.text("overview.unconditional");
     }
 
-    List<UiNode> tree() { return conditionTree; }
+    private static void configureValue(Font font, UiControl control, String key, String value) {
+        Component full = ScenarioSimulationClientState.text(key, value);
+        Component label = font.width(full) <= control.bounds().width() - 4 ? full : Component.literal(value);
+        control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
+        control.configure(font, label, null, List.of(full.copy().withStyle(TooltipBuilder.BODY)), null);
+    }
+
+    List<UiNode> tree() {
+        return conditionTree;
+    }
+
     private void saveCurrentPosition() {
-        if (viewKey == null || conditions == null) return;
+        if (viewKey == null || conditions == null) {
+            return;
+        }
         remember(conditionPositions, viewKey, conditions.offset());
     }
 
     private static void remember(Map<String, Integer> positions, String key, int offset) {
         positions.put(key, offset);
-        while (positions.size() > MAX_SAVED_POSITIONS) positions.remove(positions.keySet().iterator().next());
+        while (positions.size() > MAX_SAVED_POSITIONS) {
+            positions.remove(positions.keySet().iterator().next());
+        }
     }
 
-    @Override public void saveUiState(CompoundTag tag) {
+    @Override
+    public void saveUiState(CompoundTag tag) {
         saveCurrentPosition();
         tag.put("conditionOffsets", savePositions(conditionPositions));
     }
 
-    @Override public void loadUiState(CompoundTag tag) {
+    @Override
+    public void loadUiState(CompoundTag tag) {
         conditionPositions.clear();
         loadPositions(tag.getCompound("conditionOffsets"), conditionPositions);
         viewKey = null;
-        revision = Long.MIN_VALUE;
+        catalogRevision = Long.MIN_VALUE;
     }
 
     private static CompoundTag savePositions(Map<String, Integer> positions) {
@@ -333,7 +444,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiStat
 
     private static void loadPositions(CompoundTag tag, Map<String, Integer> positions) {
         for (String key : tag.getAllKeys()) {
-            if (positions.size() >= MAX_SAVED_POSITIONS) break;
+            if (positions.size() >= MAX_SAVED_POSITIONS) {
+                break;
+            }
             positions.put(key, Math.max(0, tag.getInt(key)));
         }
     }

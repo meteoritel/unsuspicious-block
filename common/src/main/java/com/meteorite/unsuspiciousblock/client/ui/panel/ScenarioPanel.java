@@ -1,16 +1,15 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiControlGroup;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.geometry.*;
-import com.meteorite.meteosuikit.api.input.*;
-import com.meteorite.meteosuikit.api.layout.*;
-import com.meteorite.meteosuikit.api.render.*;
-import com.meteorite.meteosuikit.api.style.*;
-import com.meteorite.meteosuikit.api.text.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
@@ -29,12 +28,15 @@ import java.util.Objects;
 
 import static com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text;
 
-/** 网格页的紧凑场景栏：场景选择与计算按钮，参数调整由场景 Tab 承担。 */
+/** 网格页的紧凑条件栏：展示当前条件勾选摘要、打开条件勾选浮层与触发计算。 */
 public final class ScenarioPanel implements UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
-    private final int x, y, width;
+    private final UiChildren<UiInputTarget> children = new UiChildren<>();
+    private final int x;
+    private final int y;
+    private final int width;
     @Nullable private ResourceLocation table;
-    @Nullable private Runnable openScenes;
+    @Nullable private Runnable openConditions;
     @Nullable private Font measuredFont;
     private String headerKey = "";
 
@@ -47,40 +49,63 @@ public final class ScenarioPanel implements UiInputContainer {
     }
 
     public void setTable(@Nullable ResourceLocation value) {
-        if (Objects.equals(table, value)) return;
+        if (Objects.equals(table, value)) {
+            return;
+        }
         table = value;
         headerKey = "";
-
-        if (value != null) ScenarioSimulationClientState.queryCache(value, false);
+        if (value != null) {
+            ScenarioSimulationClientState.queryCache(value, false);
+        }
     }
-    public void setOpenScenes(@Nullable Runnable value) { openScenes = value; }
+
+    public void setOpenScenes(@Nullable Runnable value) {
+        openConditions = value;
+    }
 
     private void sync(Font font) {
-        if (table != null) ScenarioSimulationClientState.ensureCacheQuery(table);
+        if (table != null) {
+            ScenarioSimulationClientState.ensureCacheQuery(table);
+        }
         var choice = ScenarioSimulationClientState.selection(table);
         var structure = ScenarioSimulationClientState.table(table);
         if (choice == null || structure == null || structure.options() == null) {
-            controls.beginUpdate(); controls.endUpdate();
-             headerKey = "";
+            controls.beginUpdate();
+            controls.endUpdate();
+            headerKey = "";
             return;
         }
         String input = ScenarioSimulationClientState.inputKey(choice);
-        ScenarioPresentation presentation = ScenarioPresentation.resolve(table, choice.scene(), choice.params());
+        ScenarioPresentation presentation = ScenarioPresentation.resolve(table, choice.conditions(), choice.params());
         String key = table + "#" + input + "#" + presentation.status() + "#"
                 + ArchaeologyJournalClientState.getCatalogRevision() + "#"
+                + ScenarioSimulationClientState.revision() + "#"
                 + Minecraft.getInstance().getLanguageManager().getSelected();
-        if (headerKey.equals(key) && measuredFont == font) return;
-        headerKey = key; measuredFont = font;
+        if (headerKey.equals(key) && measuredFont == font) {
+            return;
+        }
+        headerKey = key;
+        measuredFont = font;
         controls.beginUpdate();
+
         UiControl scene = place("scene", x, y + 6, width - 60);
         scene.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
-        scene.configure(font, ScenarioLabel.shortLabel(choice.scene()), UiTextScheme.PARCHMENT.title(),
-                UiAtlas.icon(UiAtlas.Icon.CHEVRON_DOWN), ScenarioLabel.tooltip(structure.options(), choice.scene()),
-                () -> { if (openScenes != null) openScenes.run(); });
+        Component summary = ScenarioLabel.selectionSummary(structure.options(), choice.conditions());
+        scene.configure(font, summary, UiTextScheme.PARCHMENT.title(),
+                UiAtlas.icon(UiAtlas.Icon.CHEVRON_DOWN),
+                ScenarioLabel.selectionTooltip(structure.options(), choice.conditions(), choice.params()),
+                () -> {
+                    if (openConditions != null) {
+                        openConditions.run();
+                    }
+                });
+
         List<Component> calculationNotes = new ArrayList<>();
         calculationNotes.add(text("calculate"));
         calculationNotes.add(text(presentation.status()));
-        if ("failed".equals(presentation.status())) calculationNotes.add(text("failure." + ScenarioSimulationClientState.failure(table, input)));
+        if ("failed".equals(presentation.status())) {
+            calculationNotes.add(text("failure." + ScenarioSimulationClientState.failure(table, input)));
+        }
         UiControl calculate = place("calculate", x + width - 58, y + 6, 58);
         calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         String status = presentation.status();
@@ -99,9 +124,15 @@ public final class ScenarioPanel implements UiInputContainer {
         return control;
     }
 
-    private final UiChildren<UiInputTarget> children = new UiChildren<>();
-    @Override public UiChildren<UiInputTarget> inputChildren() { return children; }
-    public void prepareUi() { sync(Minecraft.getInstance().font); }
+    @Override
+    public UiChildren<UiInputTarget> inputChildren() {
+        return children;
+    }
+
+    public void prepareUi() {
+        sync(Minecraft.getInstance().font);
+    }
+
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
         controls.render(graphics, font, pointer);
     }

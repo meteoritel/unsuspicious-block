@@ -491,6 +491,12 @@ public final class LootProbabilityData extends SavedData {
         return entry != null && entry.inputs().containsKey(inputKey);
     }
 
+    /** 返回该表当前全部已缓存输入的只读快照（供同参数跨条件集合派生区间）。 */
+    public synchronized Map<String, InputMeasurement> getMeasurements(ResourceLocation tableId) {
+        TableProbabilityEntry entry = entries.get(tableId);
+        return entry == null ? Map.of() : Map.copyOf(entry.inputs());
+    }
+
     /**
      * 写入一次模拟的结果：表哈希、表级发现记录与该输入的测量值。
      * <p>

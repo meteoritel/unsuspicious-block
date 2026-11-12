@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.network.journal;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.*;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.*;
@@ -34,7 +35,7 @@ public final class SimulationAssistHandler {
                 try {
                     var params = new ScenarioParams(selected.luck(), selected.toolId(),
                             selected.toolEnchantments(), selected.sampleCount());
-                    var previous = catalog.resolve(selected.scenarioKey(), params);
+                    var previous = catalog.resolve(selected.enabledConditions(), params);
                     boolean validTarget = switch (request.target().kind()) {
                         case PLAYER_STATE -> request.target().value().isEmpty();
                         case ITEM -> !request.target().value().isBlank();
@@ -50,7 +51,7 @@ public final class SimulationAssistHandler {
                             if (witness.isPresent()) result = witness.get().input();
                             else notes.add(note("no_witness"));
                         } else {
-                            var probe = PlayerStateProbe.probe(player, table, catalog, previous.get());
+                            var probe = PlayerStateProbe.probe(player, catalog, previous.get());
                             result = probe.input();
                             notes.addAll(probe.notes());
                         }
@@ -58,14 +59,22 @@ public final class SimulationAssistHandler {
                             found = true;
                             var p = result.params();
                             response = new RequestScenarioSimulationPayload(generation.generation(), table.id(),
-                                    selected.tableHash(), result.scenarioKey(), p.luck(), p.toolId(),
+                                    selected.tableHash(), result.enabledConditions(), p.luck(), p.toolId(),
                                     p.toolEnchantments(), p.sampleCount());
                         }
-                    } else notes.add(note("assist_invalid"));
+                    } else {
+                        Constants.LOG.warn("{} 辅助请求校验失败: table={}, resolved={}, validTarget={}",
+                                Constants.LOG_TAG, selected.tableId(), previous.isPresent(), validTarget);
+                        notes.add(note("assist_invalid"));
+                    }
                 } catch (RuntimeException exception) {
+                    Constants.LOG.warn("{} 辅助请求处理异常: table={}", Constants.LOG_TAG, selected.tableId(), exception);
                     notes.add(note("assist_invalid"));
                 }
-            } else notes.add(note("assist_invalid"));
+            } else {
+                Constants.LOG.warn("{} 辅助请求缺少约束或规划表: table={}", Constants.LOG_TAG, selected.tableId());
+                notes.add(note("assist_invalid"));
+            }
         }
         Services.NETWORK.sendToPlayer(player, new SyncSimulationAssistPayload(
                 request.requestId(), recommendation, found, response, List.copyOf(notes)));

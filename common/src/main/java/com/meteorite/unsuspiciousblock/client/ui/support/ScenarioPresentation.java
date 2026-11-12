@@ -5,15 +5,22 @@ import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientStat
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInputKey;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-/** 场景页和下拉共享的显示口径：同参数的明确场景引用可以复用，禁止借用其它场景的总概率。 */
+import java.util.List;
+
+/** 场景页和网格顶栏共享的显示口径：精确解析当前条件勾选集合与参数对应的本地结果与状态。 */
 public record ScenarioPresentation(@Nullable CatalogTableDto source, boolean exactInput, String status) {
-    /** 解析指定表与输入对应的场景展示快照。 */
-    public static ScenarioPresentation resolve(ResourceLocation table, String scene, ScenarioParams params) {
-        var resolved = ScenarioSimulationClientState.sceneSource(table, scene, params);
-        return new ScenarioPresentation(resolved.source(), resolved.exactInput(), resolved.status());
+    /** 解析指定表、勾选条件集合与参数对应的场景展示快照。 */
+    public static ScenarioPresentation resolve(ResourceLocation table, List<String> conditions, ScenarioParams params) {
+        String inputKey = SimulationInputKey.of(conditions, params);
+        CatalogTableDto direct = ScenarioSimulationClientState.result(table, inputKey);
+        if (direct != null) {
+            return new ScenarioPresentation(direct, true, "cached");
+        }
+        return new ScenarioPresentation(null, false, ScenarioSimulationClientState.status(table, inputKey));
     }
 
     /** 返回当前场景状态对应的 12×12 图集角标。 */

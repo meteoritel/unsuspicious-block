@@ -3,16 +3,22 @@ package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParam;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSet;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.LinkedHashSet;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -36,8 +42,27 @@ import java.util.Set;
  */
 public final class LootContextParamFiller {
     private static final Logger LOGGER = LogUtils.getLogger();
+    // 条件/推荐/工具预求值共用：三项均为 optional，避免借用 ALL_PARAMS 时因缺失其余必填参数而抛异常
+    private static final LootContextParamSet CONDITION_TEST_PARAM_SET = LootContextParamSet.builder()
+            .optional(LootContextParams.ORIGIN)
+            .optional(LootContextParams.TOOL)
+            .optional(LootContextParams.THIS_ENTITY)
+            .build();
 
     private LootContextParamFiller() {
+    }
+
+    /** 构建供单条条件、工具谓词或玩家状态探测使用的轻量战利品上下文。 */
+    public static LootContext createConditionTestContext(ServerLevel level, Vec3 origin, ItemStack tool,
+                                                         @Nullable Entity thisEntity, float luck) {
+        LootParams.Builder builder = new LootParams.Builder(level)
+                .withParameter(LootContextParams.ORIGIN, origin)
+                .withParameter(LootContextParams.TOOL, tool)
+                .withLuck(luck);
+        if (thisEntity != null) {
+            builder.withParameter(LootContextParams.THIS_ENTITY, thisEntity);
+        }
+        return new LootContext.Builder(builder.create(CONDITION_TEST_PARAM_SET)).create(Optional.empty());
     }
 
     /**

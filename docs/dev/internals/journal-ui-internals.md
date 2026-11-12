@@ -68,10 +68,10 @@
 
 ## 4. 场景条件页与文档动作
 
-- **面板分工**：`ScenarioPanel` 置于网格页顶部提供快捷场景切换与计算触发；`ScenarioDetailPanel` 专门用于阅读复杂条件树（展示短场景名、状态、工具/参数读数、配置/计算入口与放大按钮），**物品列表与概率统一留在网格页**。
-- **场景详情阅读与选择**：条件树由 `ScenarioPageBuilder` 直接从服务端场景与条件 DTO 组装（逻辑、取反、`partial`/`unreadable` 及不成立项均按分组展开），并由 `ScenarioConditionLayout` 按当前字体宽度折行（续行不重复连接线与动作按钮）。点击详情页标题弹出场景选择列表，方向键仅预览高亮，点击或 `Enter` 激活后才切换场景（普通翻页与条件区未消费的滚轮不意外切换场景）。
-- **文档动作与聚焦 (`UiDocument`)**：条件区使用独立的 UI Kit `UiDocument` 配合 `UiScrollView`，动作列表、标题底纹与键盘/鼠标命中统一读取 `UiDocument.targets()` 的实时布局。Tab 聚焦条件区后支持上下选择动作、PageUp/PageDown 翻页及 `Enter`/`Space` 触发动作；内容版本、字体、资源或视口变化时重建文档缓存。
-- **跨场景来源一致性**：`ScenarioSimulationClientState.sceneSource` 统一详情、列表与网格的场景口径；仅当目标场景存在同参数/同档位缓存引用时复用测值，缺引用保持未知，客户端绝不擅自挑选“最有利场景”充当当前显示值。
+- **面板分工**：`ScenarioPanel` 置于网格页顶部提供当前已启用条件摘要与参数/计算/条件配置入口（点击条件区弹出 `ScenarioConditionOverlay`）；`ScenarioDetailPanel` 专注于直观展现战利品表的条件结构与交互式组合试算，**物品具体概率仍留在网格页**（且严格遵循未解锁物品 `?` 防剧透规则）。
+- **场景详情交互式布局 (`ScenarioPageBuilder`)**：页面自顶向下由状态摘要横幅（无额外条件 / 有条件掉落待选或已选数量 / 当前结果状态与缓存提示）、操作栏（`[同步自身]` 触发 `PlayerStateProbe`、`[重置]` 回退基准、`[参数…]` 与 `[计算]`）、可交互条件勾选清单（原子环境条件复选框 + 当前工具/附魔/幸运生效条件即时求值状态）、以及分目标条件树（子表与物品分支及对应的「推荐参数」快捷按钮）构成；条件文本经 `ScenarioConditionLayout` 按当前字体宽度折行（续行不重复连接线与动作按钮）。
+- **文档动作与聚焦 (`UiDocument`)**：条件区使用独立的 UI Kit `UiDocument` 配合 `UiScrollView`，复选框切换、分支推荐按钮、标题底纹与键盘/鼠标命中统一读取 `UiDocument.targets()` 的实时布局。Tab 聚焦条件区后支持上下选择动作、PageUp/PageDown 翻页及 `Enter`/`Space` 触发动作；内容版本、字体、资源或视口变化时重建文档缓存。
+- **跨输入来源一致性**：`ScenarioSimulationClientState.selection` 统一详情、浮层与网格页的 `enabledConditions + params` 组合；仅当当前规范化的 `inputKey` 存在同参数/同档位缓存引用时复用测值，缺引用保持未知并保留已有结果缓存供切换对比，客户端绝不擅自挑选“最有利条件组合”充当当前显示值。
 
 ## 5. 场景浮层与灯箱 (`JournalOverlays`)
 
@@ -79,9 +79,9 @@
 
 | 浮层类 | 职责与交互约束 |
 |---|---|
-| `ScenarioSelectionOverlay` | 按服务端顺序展示代表场景列表（短名、状态与摘要，完整条件见 Tooltip）；方向键预览，点击/`Enter` 激活并关闭，`Esc` 取消 |
+| `ScenarioConditionOverlay` | 供网格页顶部栏打开的轻量条件勾选浮层：展示可勾选原子 `ConditionOption` 清单与条件 Tooltip，提供 `[重置]`、`[同步自身]`、`[参数…]`、`[应用并计算]`、`[仅应用]` 与 `[取消]`；方向键与 `Space` 预览勾选，确认后才提交选中状态 |
 | `ScenarioParamsOverlay` | 持有单份独立参数草稿：合法幸运范围的 `UiNumberField` + `UiScalarSlider`（精细步长 `0.01`）、工具选择列表、附魔搜索与等级增减按钮及固定抽样次数读数。「仅应用」保存输入草稿，「应用并计算」校验表哈希、选项代次与参数边界后发包（失败保留草稿） |
-| `ScenarioRecommendationOverlay` | 展示物品/子表入口推荐求解的等待、失败重试与参数变更预览；应用推荐只填回参数草稿，仍需显式计算。关闭、切表、切输入或目录失效时取消旧请求 |
+| `ScenarioRecommendationOverlay` | 展示物品/子表入口推荐求解的等待、失败重试与参数及建议启用条件变更预览；应用推荐同时填回推荐的启用条件与参数草稿，仍需显式计算。关闭、切表、切输入或目录失效时取消旧请求 |
 | `ScenarioExpandedOverlay` | 在 `UiLightbox` 中使用 `ScenarioFrameView` 全屏放大条件树：初始按窗口尺寸适配档位（不超过自然字号），支持滚轮缩放与拖动平移，窗口 resize 保持手动缩放比并钳制；`Esc` 关闭（点击遮罩不关闭），关闭不破坏页内原滚动位置 |
 
 所有功能图标、状态徽章、按钮九宫格与场景底纹均统一取自 `ui_atlas.png`（由 `tools/drawer/generate_ui_atlas.py` 生成），分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。

@@ -12,7 +12,7 @@
 | 编译 | `core/loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`、`LootConditionInfo`、`LootFunctionHandler(s)`、`LootFunctionInfo`、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil` |
 | 读模型与查询 | `core/loottable/catalog/`：`LootTableCatalog`（跨模块共享记录类型）、`LootOriginKind`、`Probability`、`DeclaredChance`、`LootTableProjector`、`StaticTableProjection`、`ItemDefinitionAccumulator`、`CatalogQueryIndex`、`CatalogTableDto`、`LootTablePattern`、`LootTableNames`、`LootTableTranslationStore`、`MissingTranslationKeyExporter` |
 | 签名 | `core/loottable/signature/`：`LootResultSignature`、`LootResultMatcher`、`LootResultPreviewCache`、`LootCounts`、`SignatureExcludedComponents` |
-| 模拟 | `core/loottable/simulation/`：输入参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、场景规划（`SimulationScenarioPlanner` / `SimulationScenario`）、引擎调度（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement` / `LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与捕获（`SimulationAssistTarget` / `RecommendationSolver` / `FunctionTraceSession` / `ObservedFunctionChain`）、展示派生（`PathHintAnalyzer` / `ProbabilityFormat`） |
+| 模拟 | `core/loottable/simulation/`：输入参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、条件规划与求值（`SimulationScenarioPlanner` / `ConditionOption` / `ScenarioConditionEvaluator` / `SimulationScenario`）、引擎调度（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement` / `LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与捕获（`SimulationAssistTarget` / `RecommendationSolver` / `FunctionTraceSession` / `ObservedFunctionChain`）、展示派生（`PathHintAnalyzer` / `ProbabilityFormat`） |
 | 注入 | `core/loottable/injection/`：`ArchaeologyLootInjector`、`ArchaeologyLootInjectors` |
 | 自定义条件 | `core/loottable/condition/`：`ModLootConditions`、`ToolEnchantmentCondition` |
 | 诊断 | `core/loottable/diagnostics/`：`LootSimulationMetrics`、`LootDebugMode` |
@@ -71,7 +71,7 @@ flowchart TD
 | `LootResultSignature` | 玩家进度匹配与存档持久化的物品身份核心 |
 | `LootProbabilitySimulator` | 单输入抽取模拟引擎 |
 | `LootProbabilitySimulationWorker` | 主线程 tick 调度器（双优先级队列、`(表, 输入键)` 去重） |
-| `SimulationConstraintCatalog` | 签发单表可选约束（场景、工具、附魔上限、抽样档位），不预先枚举组合 |
+| `SimulationConstraintCatalog` | 签发单表可选约束（原子条件选项 `ConditionOption`、工具、附魔上限、抽样档位），不预先枚举组合 |
 | `PathHintAnalyzer` | 静态获取提示生成与「基准测值 → 展示模型」派生 |
 | `ProbabilityFormat` | 概率与声明触发率的展示格式化唯一入口（仅在 UI 边界调用） |
 | `ArchaeologyLootInjectors` | 全局平台注入器单例 |

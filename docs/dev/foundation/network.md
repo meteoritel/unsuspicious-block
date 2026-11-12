@@ -57,7 +57,7 @@ NeoForge 握手阶段要求服务端具备客户端声明的必需通道；同�
 - **协议版本与共用编解码器**：目录全量下发与按需结果共用 `CatalogStreamCodec` 和 `CatalogTableDto`。线格式字段顺序或结构调整必须成套修改读写两端并同步递增 `ModPayloads.PROTOCOL_VERSION`。
 - **目录快照一致性**：全量目录下发与目录 SHA-256 计算共同消费 `CatalogGeneration.readSnapshot()` 生成的冻结字节流，确保服务端校验与客户端读取同源（构建细节见[笔记目录构建细节](../internals/journal-catalog-build.md)）。
 - **按需模拟的协议不变量**（业务链路见[战利品表系统](../subsystems/loottable.md)）：
-  - **传结构化字段而非拼装键**：客户端传场景 key 与独立参数字段，条件赋值由服务端从场景规划恢复，防止客户端通过构造非法字符串绕过校验；
+  - **传结构化字段而非拼装键**：客户端传已勾选原子条件 ID 列表（`enabledConditions`）与独立参数字段，完整模拟场景由服务端从 `ConditionPlan` 与 `ConditionOption` 校验装配，防止客户端通过构造非法字符串绕过校验；
   - **结果三要素校验**：响应携带有 `generation`（目录代次）、`tableHash`（表哈希）与 `inputKey`（输入键），任一不匹配时客户端直接丢弃，防止 `/reload` 或切换参数后的迟到包覆盖当前画面；
   - **拒绝必回执**：请求被限流、过期或越界拒绝时必须返回 `ScenarioRequestRejectedPayload`，使界面能明确区分“计算中”与“已拒绝”；
   - **结果个人独享**：按需模拟结果只单播回请求玩家，不写入全服共享目录；

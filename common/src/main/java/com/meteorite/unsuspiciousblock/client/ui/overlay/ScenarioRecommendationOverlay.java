@@ -11,6 +11,8 @@ import com.meteorite.meteosuikit.api.geometry.*;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
 import net.minecraft.client.Minecraft;
@@ -26,7 +28,9 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 
 import static com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text;
@@ -102,8 +106,9 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         else if (pending) content.add(text("assist_pending"));
         else if (recommendation != null) {
             content.add(text("recommend.compare"));
-            content.add(text("recommend.change", text("tab"), ScenarioLabel.shortLabel(original.scenarioKey()),
-                    ScenarioLabel.shortLabel(recommendation.scenarioKey())));
+            var structure = ScenarioSimulationClientState.table(table);
+            SimulationOptions options = structure == null ? null : structure.options();
+            appendConditionDiff(content, options, original.enabledConditions(), recommendation.enabledConditions());
             content.add(text("recommend.change", text("params.tool"), toolName(original.toolId()), toolName(recommendation.toolId())));
             content.add(text("recommend.change", text("params.luck"), original.luck(), recommendation.luck()));
             content.add(text("recommend.change", text("params.samples"), original.sampleCount(), recommendation.sampleCount()));
@@ -114,10 +119,6 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
                 content.add(text("recommend.change", ScenarioParamsOverlay.enchantmentName(enchantment),
                         original.toolEnchantments().getOrDefault(enchantment, 0),
                         recommendation.toolEnchantments().getOrDefault(enchantment, 0)));
-            }
-            var structure = ScenarioSimulationClientState.table(table);
-            if (structure != null && structure.options() != null) {
-                content.addAll(ScenarioLabel.definition(structure.options(), recommendation.scenarioKey()));
             }
             content.add(text("recommend.help"));
         } else if (notes.isEmpty()) content.add(text("assist_invalid"));
@@ -149,6 +150,29 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         control.setBounds(x, y, width, 16);
         control.configure(font, label, null, List.of(label), action);
         return control;
+    }
+
+    private static void appendConditionDiff(List<Component> content, @Nullable SimulationOptions options,
+                                            List<String> current, List<String> recommended) {
+        if (options == null || options.conditions().isEmpty()) {
+            return;
+        }
+        Set<String> currentSet = new LinkedHashSet<>(current);
+        Set<String> recommendedSet = new LinkedHashSet<>(recommended);
+        boolean anyDiff = false;
+        for (ConditionOption option : options.conditions()) {
+            boolean was = currentSet.contains(option.id());
+            boolean will = recommendedSet.contains(option.id());
+            if (was == will) {
+                continue;
+            }
+            anyDiff = true;
+            content.add(text(will ? "recommend.check_condition" : "recommend.uncheck_condition",
+                    ScenarioLabel.shortConditionLabel(option.condition())));
+        }
+        if (!anyDiff) {
+            content.add(text("recommend.conditions_unchanged"));
+        }
     }
 
     private static Component toolName(ResourceLocation id) {
