@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from toolslib.cli import configure_console
 from toolslib.repo import repo_root
 from probelib.autojs import ProbeError
-from probelib.cases import CASES, Case
+from probelib.cases import CASES, CORE_CASES, Case
 from probelib.report import render
 from probelib.runtime import Runtime, read_artifact, read_config, write_json
 
@@ -21,17 +21,20 @@ def main():
     configure_console()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, help='本地依赖配置，默认 .local/probes.json')
-    parser.add_argument('--only', action='append', choices=CASES, help='精确选例，可重复')
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--only', action='append', choices=CASES, help='精确选例，可重复，保留输入顺序')
+    selection.add_argument('--suite', choices=('core', 'all'), help='默认 core；all 包含全部注册专项')
     parser.add_argument('--validate', action='store_true', help='只校验输入，不构建或启动')
     parser.add_argument('--run-dir', type=Path, help='本次全新输出目录')
     parser.add_argument('--artifact', type=Path, help='使用本次已构建的 artifact manifest，跳过宿主构建')
     parser.add_argument('--background', action='store_true', help='在独立 Windows desktop 运行客户端，不抢焦点或鼠标')
     arguments = parser.parse_args()
     root = repo_root()
-    selected = list(dict.fromkeys(arguments.only or CASES))
+    source = 'explicit' if arguments.only else arguments.suite or 'core'
+    selected = list(dict.fromkeys(arguments.only)) if arguments.only else list(CASES if source == 'all' else CORE_CASES)
     directory = (arguments.run_dir or root / 'neoforge/build/probe-runs' / datetime.now().strftime('%Y%m%d-%H%M%S-%f')).resolve()
     runtime = None
-    record = dict(selected=selected, cases=[], phase='validate', cleanupErrors=[])
+    record = dict(selection=source, selected=selected, cases=[], phase='validate', cleanupErrors=[])
     exit_code = 0
     try:
         config = read_config(arguments.config or root / '.local/probes.json')
@@ -73,12 +76,11 @@ def main():
             finally:
                 if case['status'] != 'pass' and probe is not None:
                     probe.diagnostic_screenshot()
-                if 'client' in runtime.controls:
-                    try:
-                        runtime.controls['client'].evaluate('Probe.releaseInput()')
-                    except ProbeError as error:
-                        case.setdefault('cleanupErrors', []).append(str(error))
-                        exit_code = 2
+                if probe is not None and probe.cleanup():
+                    case['primaryStatus'] = case['status']
+                    case['primaryMessage'] = case.get('message')
+                    case.update(status='error', message=case.get('message', '') + '\n清理失败: ' + '; '.join(case['cleanupErrors']))
+                    exit_code = 2
                 case['duration'] = round(time.monotonic() - started, 3)
                 case['diagnostics'] = {side: control.diagnostics[:] for side, control in runtime.controls.items()}
                 case['actionRecoveries'] = {side: control.recoveries[:] for side, control in runtime.controls.items()}

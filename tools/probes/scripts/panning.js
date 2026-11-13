@@ -27,6 +27,7 @@ Probe.panningState = function() {
             new (this.type('net.minecraft.world.phys.AABB'))(-6, 98, -6, 6, 107, 6)).iterator();
     while (drops.hasNext()) { var stack = drops.next().getItem(); if (stack.is(gold)) total += Number(stack.getCount()); }
     result.produced = total;
+    result.target = String(target.getUUID());
     result.remaining = target.getPanRemaining();
     result.damage = player.getMainHandItem().getDamageValue();
     result.using = player.isUsingItem();
@@ -34,10 +35,6 @@ Probe.panningState = function() {
     result.tick = Number(this.server().getTickCount());
     result.duration = player.getMainHandItem().getUseDuration(player);
     return result;
-};
-Probe.beginPanning = function() {
-    var result = this.panTarget.interact(this.player(), this.type('net.minecraft.world.InteractionHand').MAIN_HAND);
-    return {interaction: String(result), state: this.panningState()};
 };
 Probe.cleanPanning = function() {
     this.player().releaseUsingItem();

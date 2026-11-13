@@ -1,14 +1,14 @@
 Probe.simulationState = function(table) {
-    var state = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState');
+    var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
     var id = this.id(table), dto = state.table(id), selection = state.selection(id);
     if (dto === null || dto.options() === null || selection === null) return null;
-    var input = String(state.inputKey(selection)), result = state.result(id, input);
+    var input = String(this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSession').inputKey(selection)), result = state.result(id, input);
     return {generation: Number(dto.options().generation()), hash: String(dto.hash()), input: input,
             status: String(state.status(id, input)), failure: String(state.failure(id, input)),
-            measured: result === null ? 0 : result.simulationCount(), revision: Number(state.revision())};
+            measured: result === null ? 0 : result.simulationCount(), revision: Number(state.projectionRevision())};
 };
 Probe.requestSimulation = function(table) {
-    var state = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState');
+    var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
     var id = this.id(table), dto = state.table(id);
     var Params = this.type('com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams');
     state.select(id, this.type('java.util.List').of(), new Params(0.37, dto.options().tools().getFirst().id(), this.type('java.util.Map').of(), 10000));
@@ -16,7 +16,7 @@ Probe.requestSimulation = function(table) {
     return this.simulationState(table);
 };
 Probe.requestUnissuedTool = function(table) {
-    var state = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState');
+    var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
     var id = this.id(table), dto = state.table(id), options = dto.options();
     var tools = new (this.type('java.util.ArrayList'))(options.tools());
     var component = this.type('net.minecraft.network.chat.Component');
@@ -36,10 +36,10 @@ Probe.requestUnissuedTool = function(table) {
     return this.simulationState(table);
 };
 Probe.saveSimulation = function(table, path) {
-    var state = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState');
-    var id = this.id(table), dto = state.table(id), key = state.inputKey(state.selection(id));
+    var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
+    var id = this.id(table), dto = state.table(id), key = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSession').inputKey(state.selection(id));
     var Payload = this.type('com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload');
-    var payload = new Payload(dto.options().generation(), dto.hash(), key, state.result(id, key));
+    var payload = new Payload(0, true, dto.options().generation(), dto.hash(), key, state.result(id, key));
     var buffer = new (this.type('net.minecraft.network.RegistryFriendlyByteBuf'))(
             this.type('io.netty.buffer.Unpooled').buffer(), this.client().level.registryAccess());
     try {
@@ -56,10 +56,10 @@ Probe.receiveOldSimulation = function(path) {
         var input = new (this.type('java.io.FileInputStream'))(path);
         try { buffer.writeBytes(input, input.available()); } finally { input.close(); }
         var payload = this.type('com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload').STREAM_CODEC.decode(buffer);
-        var state = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState');
-        var before = Number(state.revision());
+        var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
+        var before = Number(state.projectionRevision());
         state.receive(payload);
-        return {before: before, after: Number(state.revision()), oldGeneration: Number(payload.generation()),
+        return {before: before, after: Number(state.projectionRevision()), oldGeneration: Number(payload.generation()),
                 currentGeneration: Number(state.table(payload.table().id()).options().generation())};
     } finally { buffer.release(); }
 };

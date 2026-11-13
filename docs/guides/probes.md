@@ -38,8 +38,11 @@ python tools/probes/run.py --validate --only runtime-artifact
 # 运行指定核心用例
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only scan-take-journal --only journal-viewport
 
-# 运行完整核心回归套件（将使用默认隔离运行目录并重新构建）
+# 运行日常核心集合（使用默认隔离目录并构建）
 python tools/probes/run.py --background
+
+# 使用同一发布物运行全部注册专项
+python tools/probes/run.py --background --artifact build/probes/artifact.json --suite all
 ```
 
 判定与输出约定：
@@ -47,6 +50,8 @@ python tools/probes/run.py --background
 - 退出码：`0` 为选定用例全通过，`1` 为业务断言失败，`2` 为配置、MCP 协议、截图采集或环境错误。
 - 判定源：每次运行在全新运行目录下生成 `probe-run.json`（唯一判定源）、`manifest.json`、服务端/客户端日志及派生 HTML / JUnit 报告。
 - 定向选跑映射表与核心用例职责见[核心探针](../../tools/probes/README.md)。
+
+无选择参数与 `--suite core` 运行日常核心旅程；`--suite all` 包括详细 UI、模型、绑定和模拟专项。重复 `--only` 去重并保持输入顺序，精确执行指定场景；`--suite` 与 `--only` 互斥。Tooltip 使用独立巡检入口。
 
 ## 4. 编写临时诊断与 GUI 截图探针
 
@@ -70,6 +75,7 @@ run_dir.mkdir(parents=True, exist_ok=False)
 
 runtime = Runtime(ROOT, run_dir, config)
 record = dict(name='inspect', phase='prepare', actions=[], assertions=[], screenshots=[])
+case = None
 
 try:
     runtime.prepare(ROOT / 'build/probes/artifact.json')
@@ -83,10 +89,11 @@ try:
 
     # 通过 case.client 首次启动并等待双端玩家就绪
     client = case.client
-    case.server.command('execute as UsbProbe run usb give journal')
+    case.action('server', 'Probe.command("execute as UsbProbe run usb give journal")')
     ...
 finally:
-    runtime.close()
+    record['cleanupErrors'] = case.cleanup() if case is not None else []
+    record['cleanupErrors'].extend(runtime.close())
 ```
 
 ### 4.2 多语言与资源包切换
@@ -98,14 +105,19 @@ finally:
 
 1. **打开笔记与点击控件**：使用 `Probe.openJournal()` 或执行 `/execute as UsbProbe run ...` 后 `case.stable_layout()`，再用 `case.click('<layout-key>')` 点击目标；每次交互前后重新读取 `Probe.layout()` 获取最新坐标与可见裁剪区。无业务 key 的字段可通过唯一语义选择器定位，例如 `case.click({'kind': 'TEXT_INPUT', 'name': '<字段名>'})`；字段值与逻辑焦点也来自同一活动快照。
 2. **模拟滚轮与按键**：使用 `Probe.scroll(selector, delta)` 与 `Probe.key(keyCode, modifiers)`，由 UI 输入 module 统一派发。发送滚轮后若界面启用平滑滚动插值，使用 `wait_for(...)` 等待预期位置后再截图。
-3. **悬停 Tooltip 截图**：使用 `case.hover('<layout-key>')` 由已安装的 GLFW 回调更新 `MouseHandler`，系统鼠标保持原位，再调用 `case.screenshot('<tag>')`；`Case.screenshot` 会自动等待 Toast 消失、布局连续两帧稳定并验证输出 PNG 尺寸。
+3. **悬停 Tooltip 截图**：使用 `case.hover('<layout-key>')` 由已安装的 GLFW 回调更新 `MouseHandler`，系统鼠标保持原位，再调用 `case.screenshot('<tag>')`；`Case.screenshot` 会清除无关 Toast、等待布局连续两帧稳定并验证输出 PNG 尺寸。
+
+业务完成条件使用 `case.expect(label, query, accept, expected=...)`，query 仅读取真实状态；超时形成带最后 actual 的业务失败。启动、布局和采集前置使用 `wait_for(...)`。实际输入只投递一次，等待期间持续查询；传输和程序异常交给运行器记录并停止实例。
+
+准备场景时用 `case.own_scene()` 登记自有区域和权限恢复，用 `case.own_table(table)` 经正式命令建立单表基线；额外资源创建后立即 `case.defer(side, expression)` 登记清理。清理表达式通过当前 Runtime 连接执行，避免捕获重启前的 control。破坏性表单使用专属表，实物预期采用固定输入与玩法常量；镜像检查读取自然网络同步后的状态。
 
 ### 4.4 Rhino / AutoJS 短求值注意事项
 
 | 场景 | 正确写法 | 说明 |
 |---|---|---|
 | **求值耗时限制** | 保持单次 `eval_js` 为纯同步短操作 | AutoJS `eval_js` 有约 3 秒同步超时；耗时过程用 Python `wait_for(...)` 分步轮询 |
-| **需要玩家源的指令** | `case.server.command('execute as UsbProbe run ...')` | `server.command(...)` 以控制台身份执行，无实体执行者，依赖玩家上下文的指令必须包一层 `execute as` |
+| **需要玩家源的指令** | `case.action('server', 'Probe.command("execute as UsbProbe run ...")')` | `Probe.command(...)` 以控制台身份执行，依赖玩家上下文的指令使用 `execute as` |
+| **Long 观察值** | 使用共享观察的十进制字符串，需要计算时 Python `int(value)` | 保留 Java 64 位整数精度，避免先转换成 JavaScript Number |
 | **Java 反射与类型判断** | 直接使用 `Probe.type('...')` 与 `instanceof` | Rhino 代理对象调用 JS `.getClass()` 易触发歧义；优先通过 [`shared.js`](../../tools/probes/scripts/shared.js) 与 [`client.js`](../../tools/probes/scripts/client.js) 封装的助手访问类 |
 | **Windows 运行目录锁定** | 每次测试创建全新目录，避免覆盖旧 `run_dir` | Windows 上日志句柄未完全释放前复用旧目录容易触发文件占用或残留 `world/` 状态干扰 |
 

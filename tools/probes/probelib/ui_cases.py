@@ -118,7 +118,7 @@ def form_bodies(case, table):
     limit_query = ('Probe.type("com.meteorite.unsuspiciousblock.core.world.JournalLogStorage")'
                    '.getPlayerState(Probe.server(),Probe.player().getUUID())'
                    f'.getTable(Probe.id({json.dumps(table)})).getRetentionLimit()')
-    limit = wait_for(lambda: case.server.evaluate(limit_query), lambda value: value == 2)
+    limit = case.expect('保留策略提交', lambda: case.server.evaluate(limit_query), lambda value: value == 2, expected=2)
     case.equal('自动保留提交到服务端', limit, 2)
     case.click(_control(case, retention+'open_tooltip'))
     case.click(first)
@@ -130,7 +130,7 @@ def form_bodies(case, table):
     case.click(second)
     case.action('client', 'Probe.replaceText("0")')
     case.click(_control(case, retention+'prune_now'))
-    logs = wait_for(lambda: case.server.evaluate(f'Probe.journal({json.dumps(table)}).logs'), lambda value: value == [])
+    logs = case.expect('裁剪日志提交', lambda: case.server.evaluate(f'Probe.journal({json.dumps(table)}).logs'), lambda value: value == [], expected=[])
     case.equal('一次性裁剪允许零并执行对应请求', logs, [])
 
     case.action('server', 'Probe.command("op UsbProbe")')

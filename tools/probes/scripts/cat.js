@@ -80,3 +80,42 @@ Probe.bindingState = function() {
             boxedOwner: String(item.getOwnerUuid(token).map(function(uuid) { return String(uuid); }).orElse('')),
             extraBound: item.isBound(inventory.getItem(1)), tick: Number(this.server().getTickCount())};
 };
+Probe.prepareCatJourney = function() {
+    this.resetCat();
+    var player = this.player(), level = player.serverLevel();
+    this.command('gamemode survival UsbProbe');
+    this.command('fill -4 99 -4 4 99 4 minecraft:stone');
+    this.command('fill -4 100 -4 4 104 4 minecraft:air');
+    this.command('tp UsbProbe 0.5 100 -1.5 0 22');
+    this.feedCat = this.type('net.minecraft.world.entity.EntityType').CAT.create(level);
+    this.feedCat.setTame(true, false);
+    this.feedCat.setOwnerUUID(player.getUUID());
+    this.feedCat.setNoAi(true);
+    this.feedCat.setNoGravity(true);
+    this.feedCat.setPos(0.5, 100, 1.5);
+    this.feedCat.setHealth(5);
+    level.addFreshEntity(this.feedCat);
+    player.getInventory().selected = 0;
+    player.getInventory().setItem(0, new (this.type('net.minecraft.world.item.ItemStack'))(this.type('net.minecraft.world.item.Items').COD, 3));
+    player.inventoryMenu.broadcastChanges();
+    return this.catJourneyState();
+};
+Probe.carryCatToken = function() {
+    this.player().getInventory().setItem(2, new (this.type('net.minecraft.world.item.ItemStack'))(
+        this.type('com.meteorite.unsuspiciousblock.core.item.ModItems').HAND_OF_CAT));
+    this.player().inventoryMenu.broadcastChanges();
+    return true;
+};
+Probe.catJourneyState = function() {
+    var player = this.player(), view = this.type('com.meteorite.unsuspiciousblock.core.cat.CatFavorManager').view(player);
+    var token = player.getInventory().getItem(2);
+    return {bond: view.getCatBond(), lives: view.getNineLivesCount(), relationship: view.isRelationshipEstablished(),
+        owned: this.type('com.meteorite.unsuspiciousblock.core.cat.HandOfCatBinding').hasOwned(player),
+        tokenOwner: String(this.type('com.meteorite.unsuspiciousblock.core.item.HandOfCatItem').getOwnerUuid(token).orElse(null)),
+        target: String(this.feedCat.getUUID()), owner: String(this.feedCat.getOwnerUUID()), health: this.feedCat.getHealth(),
+        food: this.inventoryCount('minecraft:cod'), tick: Number(this.server().getTickCount())};
+};
+Probe.injureFeedCat = function() {
+    this.feedCat.setHealth(5);
+    return this.catJourneyState();
+};

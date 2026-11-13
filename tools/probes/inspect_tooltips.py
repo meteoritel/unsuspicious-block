@@ -23,7 +23,7 @@ CAT_STATES = [
 def capture_container_screenshot(case: Case, png_path: Path):
     """在原版容器界面采帧末截图，并校验 PNG 原始尺寸。"""
     png_path.parent.mkdir(parents=True, exist_ok=True)
-    wait_for(lambda: case.client.evaluate('Probe.toastsCleared()'), bool)
+    case.action('client', 'Probe.dismissNotifications()')
     case.client.evaluate(f'Probe.capture({json.dumps(str(png_path))})')
     result = wait_for(lambda: case.client.evaluate('Probe.captureResult()'), lambda value: value is not None)
     dims = png_dimensions(png_path)

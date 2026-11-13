@@ -74,3 +74,32 @@ Probe.inventoryCount = function(itemId) {
     for (var i = 0; i < inventory.getContainerSize(); i++) { var stack = inventory.getItem(i); if (stack.is(item)) total += Number(stack.getCount()); }
     return total;
 };
+
+Probe.resetCat = function() {
+    this.player().getInventory().clearContent();
+    this.player().inventoryMenu.broadcastChanges();
+    this.command('execute as UsbProbe run usb favor reset');
+    return true;
+};
+Probe.cleanScene = function() {
+    var player = this.player();
+    player.releaseUsingItem();
+    this.resetCat();
+    if (this.panTarget && !this.panTarget.isRemoved()) this.panTarget.discard();
+    if (this.feedCat && !this.feedCat.isRemoved()) this.feedCat.discard();
+    var drops = player.serverLevel().getEntitiesOfClass(this.type('net.minecraft.world.entity.item.ItemEntity'),
+        new (this.type('net.minecraft.world.phys.AABB'))(-6,98,-6,6,107,6)).iterator();
+    while (drops.hasNext()) drops.next().discard();
+    this.command('fill -4 100 -4 4 104 4 minecraft:air');
+    player.clearFire();
+    return true;
+};
+Probe.prepareRestartMetadata = function(table, entry) {
+    var handler = this.type('com.meteorite.unsuspiciousblock.core.network.journal.JournalLogHandler');
+    var Note = this.type('com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogNotePayload');
+    var Retention = this.type('com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogRetentionPayload');
+    var Action = this.type('com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogRetentionPayload$Action');
+    handler.handleUpdateNote(this.player(), new Note(this.id(table), this.type('java.util.UUID').fromString(entry), 'Probe recovery note'));
+    handler.handleUpdateRetention(this.player(), new Retention(this.id(table), Action.SET_LIMIT, 7));
+    return this.journal(table);
+};

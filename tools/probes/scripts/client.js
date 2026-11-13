@@ -28,6 +28,16 @@ Probe.scanInputReady = function() {
             && hit.getBlockPos().equals(new (this.type('net.minecraft.core.BlockPos'))(0, 100, 1))
             && client.level.getBlockState(hit.getBlockPos()).is(this.type('net.minecraft.world.level.block.Blocks').SUSPICIOUS_SAND);
 };
+Probe.entityInput = function() {
+    var client = this.client(), hit = client.hitResult;
+    return {ready: client.screen === null && client.getOverlay() === null,
+        target: hit instanceof this.type('net.minecraft.world.phys.EntityHitResult') ? String(hit.getEntity().getUUID()) : null,
+        item: String(this.type('net.minecraft.core.registries.BuiltInRegistries').ITEM.getKey(client.player.getMainHandItem().getItem()))};
+};
+Probe.catMirror = function() {
+    var state = this.type('com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState');
+    return {bond: state.getCachedCatBond(), lives: state.getCachedNineLivesCount(), relationship: state.isRelationshipEstablished()};
+};
 Probe.holdUse = function() {
     var client = this.client();
     if (client.screen !== null) throw new Error('持续右键需要关闭 Screen');
@@ -51,11 +61,9 @@ Probe.capture = function(path) {
             this.type('java.nio.file.Path').of(path));
     return true;
 };
-Probe.toastsCleared = function() {
-    var toasts = this.client().getToasts(), toast = this.type('net.minecraft.client.gui.components.toasts.Toast');
-    return toasts.getToast(toast, toast.NO_TOKEN) === null
-            && toasts.getToast(this.type('net.minecraft.client.gui.components.toasts.SystemToast'),
-                    this.type('net.minecraft.client.gui.components.toasts.SystemToast$SystemToastId').UNSECURE_SERVER_WARNING) === null;
+Probe.dismissNotifications = function() {
+    this.client().getToasts().clear();
+    return true;
 };
 Probe.captureResult = function() {
     var future = this.captureFuture;
@@ -87,4 +95,13 @@ Probe.environment = function() {
     return {java: String(system.getProperty('java.version')), os: String(system.getProperty('os.name')),
             renderer: String(this.type('com.mojang.blaze3d.platform.GlUtil').getRenderer()),
             framebuffer: [window.getWidth(), window.getHeight()], guiScale: window.getGuiScale()};
+};
+Probe.presentation = function() {
+    var client = this.client(), window = client.getWindow();
+    return {width: window.getScreenWidth(), height: window.getScreenHeight(), scale: client.options.guiScale().get()};
+};
+Probe.restorePresentation = function(value) {
+    this.releaseInput(); this.closeScreen();
+    this.guiScale(value.scale); this.resize(value.width, value.height);
+    return true;
 };

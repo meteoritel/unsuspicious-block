@@ -24,6 +24,11 @@ def wait_for(query, accept, timeout=45):
 class Case:
     def __init__(self, runtime, record):
         self.runtime, self.record = runtime, record
+        self.cleanups = []
+        self.client_baseline = None
+        self.tables = set()
+        self.scene_owned = False
+        self.original_op = None
 
     @property
     def server(self):
@@ -38,13 +43,86 @@ class Case:
             self.equal('两端玩家身份', client['uuid'], server['uuid'])
             self.runtime.manifest.setdefault('clientEnvironments', []).append(self.runtime.controls['client'].evaluate('Probe.environment()'))
             write_json(self.runtime.directory / 'manifest.json', self.runtime.manifest)
-        return self.runtime.controls['client']
+        control = self.runtime.controls['client']
+        if self.client_baseline is None:
+            self.client_baseline = control.evaluate('Probe.presentation()')
+            self.record['presentationBefore'] = self.client_baseline
+            self.defer('client', f'Probe.restorePresentation({json.dumps(self.client_baseline)})')
+        return control
+
+    def defer(self, side, expression):
+        self.cleanups.append((side, expression))
+
+    def own_scene(self):
+        if not self.scene_owned:
+            was_op = self.server.evaluate('Probe.server().getPlayerList().isOp(Probe.player().getGameProfile())')
+            self.original_op = was_op
+            self.record['opBefore'] = was_op
+            self.defer('server', 'Probe.command("' + ('op' if was_op else 'deop') + ' UsbProbe")')
+            self.defer('server', 'Probe.cleanScene()')
+            self.scene_owned = True
+
+    def own_table(self, table):
+        if table not in self.tables:
+            self.own_scene()
+            expression = f'Probe.command({json.dumps("execute as UsbProbe run usb journal clear " + table)})'
+            self.defer('server', expression)
+            self.action('server', expression)
+            self.expect('清空本场景表并自然同步', lambda: self.client.evaluate(f'Probe.journal({json.dumps(table)})'),
+                        lambda value: not value['unlocked'] and value['history'] is None,
+                        expected='未解锁且无历史')
+            self.tables.add(table)
+            self.record['ownedTables'] = sorted(self.tables)
+
+    def cleanup(self):
+        errors = self.record.setdefault('cleanupErrors', [])
+        # 清理只使用已启动且当前有效的连接；重启不会留下旧 control。
+        if 'client' in self.runtime.controls:
+            try:
+                self.runtime.controls['client'].evaluate('(Probe.releaseInput(), Probe.closeScreen())')
+            except Exception as error:
+                errors.append(f'释放输入: {error}')
+        for side, expression in reversed(self.cleanups):
+            try:
+                self.runtime.controls[side].evaluate(expression)
+            except Exception as error:
+                errors.append(f'{side} {expression}: {error}')
+        if self.client_baseline is not None and 'client' in self.runtime.controls:
+            try:
+                self.record['presentationAfter'] = wait_for(
+                    lambda: self.runtime.controls['client'].evaluate('Probe.presentation()'),
+                    lambda value: value == self.client_baseline, timeout=10)
+            except Exception as error:
+                errors.append(f'恢复窗口: {error}')
+        if self.original_op is not None:
+            try:
+                actual = self.server.evaluate('Probe.server().getPlayerList().isOp(Probe.player().getGameProfile())')
+                self.record['opAfter'] = actual
+                if actual != self.original_op:
+                    errors.append(f'恢复权限: expected={self.original_op}, actual={actual}')
+            except Exception as error:
+                errors.append(f'恢复权限: {error}')
+        return errors
 
     def equal(self, label, actual, expected):
         self.record['phase'] = 'assert'
         self.record['assertions'].append(dict(label=label, expected=expected, actual=actual, passed=actual == expected))
         if actual != expected:
             raise AssertionError(f'{label}: expected={expected!r}, actual={actual!r}')
+
+    def expect(self, label, query, accept, *, expected, timeout=45):
+        self.record['phase'] = 'assert'
+        deadline = time.monotonic() + timeout
+        actual = None
+        while True:
+            actual = query()
+            passed = bool(accept(actual))
+            if passed or time.monotonic() >= deadline:
+                self.record['assertions'].append(dict(label=label, expected=expected, actual=actual, passed=passed))
+                if not passed:
+                    raise AssertionError(f'{label}: expected={expected!r}, actual={actual!r}')
+                return actual
+            time.sleep(.15)
 
     def action(self, side, expression):
         self.record['phase'] = side + '-action'
@@ -76,7 +154,7 @@ class Case:
 
     def screenshot(self, name):
         self.record['phase'] = 'capture'
-        wait_for(lambda: self.client.evaluate('Probe.toastsCleared()'), bool)
+        self.action('client', 'Probe.dismissNotifications()')
         layout = self.stable_layout()
         path = self.runtime.directory / f'{self.record["name"]}-{name}.png'
         self.action('client', f'Probe.capture({json.dumps(str(path))})')
@@ -157,10 +235,26 @@ def runtime_artifact(case):
 
 SCAN_TABLE = 'usb_probe:archaeology/scan'
 COMPLETE_TABLE = 'usb_probe:archaeology/complete'
+FORM_TABLE = 'usb_probe:archaeology/ui_forms'
+
+
+def journal_snapshot(value):
+    return {key: value[key] for key in ('unlocked', 'claimed', 'items', 'logs', 'history')}
+
+
+def new_logs(case, before, after):
+    previous = {entry['id'] for entry in before['logs']}
+    added = [entry for entry in after['logs'] if entry['id'] not in previous]
+    case.equal('本次新增日志身份', len(added), 1)
+    baseline = int(before['history']['lifetimeEntryCount']) if before['history'] is not None else 0
+    case.equal('终身累计增加一次', int(after['history']['lifetimeEntryCount']), baseline + 1)
+    return added
 
 
 def scan_and_take(case, table=SCAN_TABLE, item='minecraft:iron_ingot'):
     client = case.client
+    signature = f'usb_sig|PLAIN|{item}|'
+    case.own_table(table)
     case.action('client', 'Probe.closeScreen()')
     wait_for(lambda: case.server.evaluate(f'Probe.catalogReady({json.dumps(table)})'),
              lambda value: value['exists'] and value['tracked'])
@@ -172,31 +266,33 @@ def scan_and_take(case, table=SCAN_TABLE, item='minecraft:iron_ingot'):
              lambda value: abs(value['x'] - .5) < .01 and abs(value['z'] + 1.5) < .01
              and 'archaeological_shovel' in value['off'] and value['ready'])
     dispatched = case.action('client', 'Probe.use()')
-    scanned = wait_for(lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['scanned'])
+    scanned = case.expect('扫描完成', lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['scanned'], expected='scanned=true')
     case.equal('扫描解锁表', scanned['unlocked'], True)
-    case.equal('扫描解锁物品', scanned['items'][item]['unlocked'], True)
-    case.equal('扫描不累计实得', scanned['items'][item]['count'], before['items'].get(item, {}).get('count', 0))
+    case.equal('扫描解锁物品', scanned['items'][signature]['unlocked'], True)
+    case.equal('扫描不累计实得', scanned['items'][signature]['count'], before['items'].get(signature, {}).get('count', 0))
     case.equal('扫描暂存待定日志', scanned['pending'], True)
+    for key in ('iron', 'emerald'):
+        case.equal('扫描保持背包 ' + key, scanned[key], before[key])
     # 原版 startUseItem 的右键间隔为四个客户端 tick；观察 tick 后再投递下一次独立点击。
     wait_for(lambda: client.evaluate('Probe.ready()'), lambda value: value['tick'] >= dispatched['tick'] + 4)
     case.action('client', 'Probe.use()')
-    taken = wait_for(lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['loot'] == 0 and not value['pending'])
-    case.equal('取物只累计一次', taken['items'][item]['count'], scanned['items'][item]['count'] + 1)
-    case.equal('取物新增一条日志', len(taken['logs']), len(before['logs']) + 1)
+    taken = case.expect('取物完成', lambda: case.server.evaluate(f'Probe.scanState({json.dumps(table)})'), lambda value: value['loot'] == 0 and not value['pending'], expected='loot=0, pending=false')
+    case.equal('取物只累计一次', taken['items'][signature]['count'], scanned['items'][signature]['count'] + 1)
+    entries = new_logs(case, before, taken)
+    physical = {'minecraft:iron_ingot': 'iron', 'minecraft:emerald': 'emerald'}[item]
+    case.equal('取物实物进入背包', taken[physical], before[physical] + 1)
     expected_key = f'usb_sig|PLAIN|{item}|'
-    case.equal('日志实得', taken['logs'][-1]['actual'], {expected_key: 1})
-    case.equal('日志预期', taken['logs'][-1]['expected'], {expected_key: 1})
+    case.equal('日志实得', entries[0]['actual'], {expected_key: 1})
+    case.equal('日志预期', entries[0]['expected'], {expected_key: 1})
     tick = case.server.evaluate('Probe.ready().tick')
     dispatched = case.action('client', 'Probe.use()')
     wait_for(lambda: client.evaluate('Probe.ready()'), lambda value: value['tick'] >= dispatched['tick'] + 2)
     wait_for(lambda: case.server.evaluate('Probe.ready()'), lambda value: value['tick'] >= tick + 4)
     repeated = case.server.evaluate(f'Probe.scanState({json.dumps(table)})')
-    for key in ('unlocked', 'claimed', 'items', 'logs', 'pending', 'loot', 'iron', 'emerald', 'coins'):
+    for key in ('unlocked', 'claimed', 'items', 'logs', 'history', 'pending', 'loot', 'iron', 'emerald', 'coins'):
         case.equal('重复右键保持 ' + key, repeated[key], taken[key])
-    mirrored = wait_for(lambda: client.evaluate(f'Probe.journal({json.dumps(table)})'),
-                        lambda value: value['items'].get(item, {}).get('count') == taken['items'][item]['count']
-                        and len(value['logs']) == len(taken['logs']))
-    case.equal('客户端镜像日志', mirrored['logs'], taken['logs'])
+    mirrored = case.expect('客户端自然同步', lambda: client.evaluate(f'Probe.journal({json.dumps(table)})'),
+                        lambda value: value == journal_snapshot(taken), expected=journal_snapshot(taken))
     case.action('client', 'Probe.openJournal()')
     wait_for(lambda: client.evaluate('Probe.ready()'), lambda value: (value['screen'] or '').endswith('ArchaeologyJournalScreen'))
     return taken
@@ -229,6 +325,22 @@ def scan_take_journal(case):
     case.equal('点击日志条目打开实际详情',
                any(node['key'] == detail_key for node in case.stable_layout()['nodes']), True)
     case.screenshot('log-detail')
+    case.action('client', 'Probe.resize(853,481)')
+    wait_for(lambda: case.client.evaluate('Probe.layout().window'), lambda value: value == [853, 481])
+    layout = case.stable_layout()
+    case.equal('奇数窗口保留本次日志详情', any(node['key'] == detail_key for node in layout['nodes']), True)
+    search = next(node for node in layout['nodes'] if node['key'] == 'journal/search')
+    case.equal('奇数窗口保留搜索', search['text'], '@usb_probe')
+    case.click('journal/log-back')
+    case.click('log/' + taken['logs'][-1]['id'])
+    case.equal('resize 后正常点击命中本次日志', any(node['key'] == detail_key for node in case.stable_layout()['nodes']), True)
+    case.screenshot('odd-log-detail')
+    case.click('journal/log-back')
+    case.click('journal/log-clear-table')
+    case.equal('清空确认接管输入', any(node['key'] == 'journal/tab/log' for node in case.stable_layout()['nodes']), False)
+    case.action('client', 'Probe.key(256,0)')
+    case.equal('取消清空恢复页面', any(node['key'] == 'journal/tab/log' for node in case.stable_layout()['nodes']), True)
+    case.equal('取消清空保持权威日志', case.server.evaluate(f'Probe.journal({json.dumps(SCAN_TABLE)}).logs'), taken['logs'])
 
 
 def journal_viewport(case):
@@ -318,6 +430,9 @@ def cat_ledger(case):
 
 def cat_carried_binding(case):
     case.client
+    case.own_scene()
+    case.action('server', 'Probe.resetCat()')
+    case.defer('server', 'Probe.resetCat()')
     case.action('client', 'Probe.closeScreen()')
     case.server.install((case.runtime.root / 'tools/probes/scripts/cat.js').read_text(encoding='utf-8'))
     before = case.action('server', 'Probe.prepareForeignToken()')
@@ -326,53 +441,111 @@ def cat_carried_binding(case):
     case.equal('他人信物不建立关系', foreign['relationship'], False)
     case.equal('他人绑定不覆盖', foreign['boxedOwner'], '00000000-0000-0000-0000-000000000003')
     case.action('server', 'Probe.prepareBlankTokens()')
-    bound = wait_for(lambda: case.server.evaluate('Probe.bindingState()'), lambda value: value['owned'] and value['relationship'])
+    bound = case.expect('信物绑定并建立关系', lambda: case.server.evaluate('Probe.bindingState()'), lambda value: value['owned'] and value['relationship'], expected='owned=true, relationship=true')
     case.equal('第一层标本箱内容写回本人 UUID', bound['boxedOwner'], case.server.evaluate('Probe.ready().uuid'))
     case.equal('已有本人信物时额外空白保持空白', bound['extraBound'], False)
 
 
+def entity_input_ready(case, target, item):
+    case.action('client', 'Probe.closeScreen()')
+    return wait_for(lambda: case.client.evaluate('Probe.entityInput()'),
+                    lambda value: value['ready'] and value['target'] == target and value['item'] == item)
+
+
+def cat_player_journey(case):
+    case.client
+    case.action('client', 'Probe.closeScreen()')
+    case.own_scene()
+    case.server.install((case.runtime.root / 'tools/probes/scripts/cat.js').read_text(encoding='utf-8'))
+    baseline = case.action('server', 'Probe.prepareCatJourney()')
+    query = lambda: case.server.evaluate('Probe.catJourneyState()')
+    case.equal('无信物重置基线', [baseline['bond'], baseline['lives'], baseline['relationship'], baseline['owned']], [0, 0, False, False])
+    case.equal('猫归属于测试玩家', baseline['owner'], case.server.evaluate('Probe.ready().uuid'))
+    case.expect('客户端重置同步', lambda: case.client.evaluate('Probe.catMirror()'),
+                lambda value: value == dict(bond=0, lives=0, relationship=False), expected=dict(bond=0, lives=0, relationship=False))
+    case.action('server', 'Probe.carryCatToken()')
+    bound = case.expect('真实 tick 绑定并建立关系', query, lambda value: value['owned'] and value['relationship'],
+                        expected='owned=true, relationship=true')
+    case.equal('猫之手绑定本人', bound['tokenOwner'], bound['owner'])
+    case.equal('绑定不增加羁绊', bound['bond'], 0)
+    case.expect('关系自然同步', lambda: case.client.evaluate('Probe.catMirror()'),
+                lambda value: value == dict(bond=0, lives=0, relationship=True), expected=dict(bond=0, lives=0, relationship=True))
+    for name in ('首次喂食', '冷却内再次喂食'):
+        before = case.action('server', 'Probe.injureFeedCat()')
+        entity_input_ready(case, before['target'], 'minecraft:cod')
+        dispatched = case.action('client', 'Probe.use()')
+        fed = case.expect(name + '消耗食物并治疗', query,
+                          lambda value: value['food'] == before['food'] - 1 and value['health'] > before['health'],
+                          expected={'food': before['food'] - 1, 'healthAbove': before['health']})
+        result = case.expect(name + '结算羁绊', query, lambda value: value['bond'] == 5, expected='bond=5')
+        case.equal(name + '处于同一冷却周期', result['tick'] - bound['tick'] < 12000, True)
+        case.expect(name + '客户端镜像', lambda: case.client.evaluate('Probe.catMirror()'),
+                    lambda value: value == dict(bond=5, lives=0, relationship=True), expected=dict(bond=5, lives=0, relationship=True))
+        wait_for(lambda: case.client.evaluate('Probe.ready().tick'), lambda tick: tick >= dispatched['tick'] + 4)
+    # 第二次治疗之后再观察服务端 tick，覆盖延迟到 tick 末的结算。
+    final = wait_for(query, lambda value: value['tick'] >= fed['tick'] + 4)
+    case.equal('冷却内治疗保持羁绊', final['bond'], 5)
+
+
 def panning_settlement(case):
     case.client
+    case.own_scene()
+    table = 'unsuspiciousblock:gameplay/panning/river'
+    case.own_table(table)
     case.server.install((case.runtime.root / 'tools/probes/scripts/panning.js').read_text(encoding='utf-8'))
-    case.action('server', 'Probe.preparePanning("water")')
-    before = wait_for(lambda: case.server.evaluate('Probe.panningState()'), lambda value: value['targeted'])
-    case.action('client', 'Probe.closeScreen()')
+    case.defer('server', 'Probe.cleanPanning()')
+    query = lambda: case.server.evaluate('Probe.panningState()')
+    before = case.action('server', 'Probe.preparePanning("water")')
+    entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
+    wait_for(query, lambda value: value['targeted'])
     case.action('client', 'Probe.holdUse()')
-    begun = case.action('server', 'Probe.beginPanning()')
-    case.equal('正式交互开始使用', begun['state']['using'], True)
-    settled = wait_for(lambda: case.server.evaluate('Probe.panningState()'),
-                       lambda value: value['remaining'] == before['remaining'] - 1)
+    case.expect('normal input starts panning', query, lambda value: value['using'], expected='using=true')
+    case.expect('panning completes', query, lambda value: value['remaining'] == before['remaining'] - 1,
+                expected={'remaining': before['remaining'] - 1})
     case.action('client', 'Probe.releaseInput()')
-    settled = case.server.evaluate('Probe.panningState()')
-    case.equal('完成一次扣一次数', settled['remaining'], before['remaining'] - 1)
-    case.equal('完成一次扣一点耐久', settled['damage'], 1)
-    case.equal('真实产出数量', settled['produced'], before['produced'] + 2)
-    case.equal('即时日志追加', len(settled['logs']), len(before['logs']) + 1)
-    case.equal('即时日志实得', settled['logs'][-1]['actual'], {'usb_sig|PLAIN|minecraft:gold_nugget|': 2})
-    case.action('server', 'Probe.preparePanning("water")')
-    before = wait_for(lambda: case.server.evaluate('Probe.panningState()'), lambda value: value['targeted'])
-    case.action('client', 'Probe.closeScreen()')
+    settled = query()
+    case.equal('one use consumed', settled['remaining'], before['remaining'] - 1)
+    case.equal('one durability consumed', settled['damage'], before['damage'] + 1)
+    case.equal('physical gold delivered', settled['produced'], before['produced'] + 2)
+    entries = new_logs(case, before, settled)
+    case.equal('panning actual loot', entries[0]['actual'], {'usb_sig|PLAIN|minecraft:gold_nugget|': 2})
+    case.expect('panning mirror', lambda: case.client.evaluate(f'Probe.journal({json.dumps(table)})'),
+                lambda value: value == journal_snapshot(settled), expected=journal_snapshot(settled))
+
+    before = case.action('server', 'Probe.preparePanning("water")')
+    entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
+    wait_for(query, lambda value: value['targeted'])
     case.action('client', 'Probe.holdUse()')
-    case.action('server', 'Probe.beginPanning()')
+    case.expect('interruption starts from actual use', query, lambda value: value['using'], expected='using=true')
     case.action('server', 'Probe.command("tp UsbProbe 0.5 100 -1.5 180 0")')
-    interrupted = wait_for(lambda: case.server.evaluate('Probe.panningState()'), lambda value: not value['using'] and not value['targeted'])
+    interrupted = case.expect('look away interrupts', query, lambda value: not value['using'] and not value['targeted'],
+                              expected='using=false, targeted=false')
     case.action('client', 'Probe.releaseInput()')
-    for key in ('remaining', 'damage', 'produced', 'logs'):
-        case.equal('移开中断保持 ' + key, interrupted[key], before[key])
-    case.action('server', 'Probe.preparePanning("glimmer")')
-    before = wait_for(lambda: case.server.evaluate('Probe.panningState()'), lambda value: value['targeted'])
-    rejected = case.action('server', 'Probe.beginPanning()')
-    case.equal('铜盘不支持岩浆点', rejected['interaction'], 'PASS')
-    for key in ('remaining', 'damage', 'produced', 'logs', 'using'):
-        case.equal('不支持变体保持 ' + key, rejected['state'][key], before[key])
-    case.action('server', 'Probe.cleanPanning()')
+    for key in ('remaining', 'damage', 'produced', 'logs', 'history'):
+        case.equal('interrupted preserves ' + key, interrupted[key], before[key])
+
+    before = case.action('server', 'Probe.preparePanning("glimmer")')
+    entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
+    case.action('client', 'Probe.holdUse()')
+    rejected = wait_for(query, lambda value: value['tick'] >= before['tick'] + before['duration'] + 4)
+    case.action('client', 'Probe.releaseInput()')
+    for key in ('remaining', 'damage', 'produced', 'logs', 'history', 'using'):
+        case.equal('unsupported variant preserves ' + key, rejected[key], before[key])
 
 
 def journal_restart(case):
     taken = scan_and_take(case, COMPLETE_TABLE, 'minecraft:emerald')
     case.equal('完整表领取奖励', taken['claimed'], True)
     case.equal('完成奖励一枚', taken['coins'], 1)
-    expected = case.server.evaluate(f'Probe.journal({json.dumps(COMPLETE_TABLE)})')
+    expected = case.action('server', f'Probe.prepareRestartMetadata({json.dumps(COMPLETE_TABLE)},{json.dumps(taken["logs"][-1]["id"])})')
+    entry = expected['logs'][-1]
+    case.equal('恢复基线维度', entry['context']['dimension'], 'minecraft:overworld')
+    case.equal('恢复基线坐标', entry['context']['pos'], [0, 100, 1])
+    case.equal('恢复基线备注', entry['note'], 'Probe recovery note')
+    case.equal('恢复基线保留设置', expected['history']['retentionLimit'], 7)
+    case.equal('记录实际游戏时间', int(entry['created']['gameTime']) > 0, True)
+    case.expect('重启前元数据自然同步', lambda: case.client.evaluate(f'Probe.journal({json.dumps(COMPLETE_TABLE)})'),
+                lambda value: value == expected, expected=expected)
     case.record['savedBeforeRestart'] = expected
     case.runtime.stop('client')
     case.runtime.stop('server')
@@ -381,7 +554,7 @@ def journal_restart(case):
     client = case.client
     restored = case.server.evaluate(f'Probe.journal({json.dumps(COMPLETE_TABLE)})')
     case.equal('服务端重启恢复进度与日志', restored, expected)
-    mirrored = wait_for(lambda: client.evaluate(f'Probe.journal({json.dumps(COMPLETE_TABLE)})'), lambda value: value == expected)
+    mirrored = case.expect('客户端自然同步', lambda: client.evaluate(f'Probe.journal({json.dumps(COMPLETE_TABLE)})'), lambda value: value == expected, expected=expected)
     case.equal('空客户端缓存重新同步', mirrored, expected)
     case.equal('重启登录不重复奖励', case.server.evaluate('Probe.inventoryCount("unsuspiciousblock:ancient_coin")'), 1)
     case.runtime.stop('client')
@@ -403,12 +576,12 @@ def simulation_reload(case):
     case.client.install(script)
     table = json.dumps(SCAN_TABLE)
     case.action('client', f'Probe.requestSimulation({table})')
-    normal = wait_for(lambda: case.client.evaluate(f'Probe.simulationState({table})'), lambda value: value['status'] == 'cached')
+    normal = case.expect('模拟完成', lambda: case.client.evaluate(f'Probe.simulationState({table})'), lambda value: value['status'] == 'cached', expected='status=cached')
     case.equal('真实模拟抽样完成', normal['measured'], 10000)
     snapshot = case.runtime.directory / 'simulation-before-reload.bin'
     case.action('client', f'Probe.saveSimulation({table},{json.dumps(str(snapshot))})')
     case.action('client', f'Probe.requestUnissuedTool({table})')
-    rejected = wait_for(lambda: case.client.evaluate(f'Probe.simulationState({table})'), lambda value: value['status'] == 'failed')
+    rejected = case.expect('未签发输入被拒绝', lambda: case.client.evaluate(f'Probe.simulationState({table})'), lambda value: value['status'] == 'failed', expected='status=failed')
     case.equal('未签发工具收到网络拒绝', rejected['failure'], 'rejected_input')
     case.screenshot('rejected-input')
     case.action('server', 'Probe.command("reload")')
@@ -418,15 +591,15 @@ def simulation_reload(case):
     for side in ('server', 'client'):
         case.runtime.install(side)
     case.client.install(script)
-    current = wait_for(lambda: case.client.evaluate(f'Probe.simulationState({table})'),
-                       lambda value: value is not None and value['generation'] > normal['generation'])
+    current = case.expect('重载目录同步', lambda: case.client.evaluate(f'Probe.simulationState({table})'),
+                       lambda value: value is not None and value['generation'] > normal['generation'], expected={'generationGreaterThan': normal['generation']})
     replay = case.action('client', f'Probe.receiveOldSimulation({json.dumps(str(snapshot))})')
     case.record['oldDtoReception'] = replay
     case.equal('接收规则丢弃旧代次 DTO', replay['after'], replay['before'])
     case.equal('旧 DTO 代次', replay['oldGeneration'], normal['generation'])
     case.equal('新目录代次', replay['currentGeneration'], current['generation'])
     case.action('client', f'Probe.requestSimulation({table})')
-    result = wait_for(lambda: case.client.evaluate(f'Probe.simulationState({table})'), lambda value: value['status'] == 'cached')
+    result = case.expect('重载后模拟完成', lambda: case.client.evaluate(f'Probe.simulationState({table})'), lambda value: value['status'] == 'cached', expected='status=cached')
     case.equal('重载后合法输入仍完成', result['measured'], 10000)
     select_probe_table(case)
     case.click('journal/tab/scenario')
@@ -442,14 +615,17 @@ def ui_member_tree(case):
 
 def ui_form_bodies(case):
     from .ui_cases import form_bodies
-    scan_and_take(case)
-    select_probe_table(case)
-    form_bodies(case, SCAN_TABLE)
+    scan_and_take(case, FORM_TABLE)
+    select_probe_table(case, FORM_TABLE)
+    form_bodies(case, FORM_TABLE)
 
 
 CASES = {'runtime-artifact': ('server', runtime_artifact),
          'scan-take-journal': ('gui', scan_take_journal), 'journal-viewport': ('gui', journal_viewport),
          'cat-ledger': ('model', cat_ledger), 'cat-carried-binding': ('server', cat_carried_binding),
+         'cat-player-journey': ('server', cat_player_journey),
          'panning-settlement': ('server', panning_settlement), 'journal-restart': ('gui', journal_restart),
          'simulation-reload': ('gui', simulation_reload),
          'ui-member-tree': ('gui', ui_member_tree), 'ui-form-bodies': ('gui', ui_form_bodies)}
+
+CORE_CASES = ('runtime-artifact', 'scan-take-journal', 'journal-restart', 'panning-settlement', 'cat-player-journey')
