@@ -8,7 +8,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atlas.palette import IconSpec, LayeredIcon, place_zone1_icons, run_source_preview
-from drawlib import AsciiLayer, AtlasBuilder, flip_y_ascii
+from drawlib import AsciiLayer, AtlasBuilder, PixelCanvas, flip_y_ascii
 
 _ARROW_UP = (
     '..........',
@@ -198,9 +198,38 @@ ICONS: dict[tuple[int, int, str], IconSpec] = {
 }
 
 
+def _paint_category_card(
+    c: PixelCanvas,
+    border: str,
+    fill: str,
+    highlight: str | None = None,
+    shadow: str | None = None,
+) -> None:
+    c.rounded_rect(0, 0, 12, 12, radius=3, fill=fill, border=border)
+    if highlight is not None:
+        c.hline(3, 1, 6, highlight)
+        c.vline(1, 3, 6, highlight)
+    if shadow is not None:
+        c.hline(3, 10, 6, shadow)
+        c.vline(10, 3, 6, shadow)
+
+
 def apply(atlas: AtlasBuilder) -> None:
-    """将目录来源图标写入图集 Zone 1。"""
+    """将目录来源图标与九宫格圆角分类卡片 9-slice 写入图集。"""
     place_zone1_icons(atlas, ICONS)
+
+    atlas.paint(
+        'CARD_CATEGORY_NORMAL', 116, 76, 12, 12,
+        lambda c: _paint_category_card(c, border='#C4A570', fill='#EFE2C2', highlight='#FFF7E6', shadow='#DECD9F'),
+    )
+    atlas.paint(
+        'CARD_CATEGORY_HOVER', 128, 76, 12, 12,
+        lambda c: _paint_category_card(c, border='#C89030', fill='#FBF2DA', highlight='#FFFFFF', shadow='#ECCF8E'),
+    )
+    atlas.paint(
+        'CARD_CATEGORY_SELECTED', 140, 76, 12, 12,
+        lambda c: _paint_category_card(c, border='#A47020', fill='#F7E0AF', highlight='#FFF3CE', shadow='#DEBC70'),
+    )
 
 
 if __name__ == '__main__':

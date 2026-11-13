@@ -12,6 +12,7 @@ import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
 import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
+import com.meteorite.meteosuikit.api.render.UiNineSlice;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.text.TextScroll;
@@ -142,9 +143,9 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     private static final int CARD_BORDER = JournalPalette.BORDER_WARM;
     private static final int CARD_BG = JournalPalette.CARD_BG;
     private static final int CARD_HOVER = JournalPalette.CARD_HOVER;
-    private static final int CARD_WIDTH = 64;
-    private static final int CARD_HEIGHT = 49;
-    private static final int CARD_GAP_X = 5;
+    private static final int CARD_WIDTH = 70;
+    private static final int CARD_HEIGHT = 50;
+    private static final int CARD_GAP_X = 4;
     private static final int CARD_GAP_Y = 5;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_GAP = 2;
@@ -344,22 +345,37 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
             UiRect rect = categoryRect(index);
             boolean hovered = rect.contains(mouseX, mouseY);
             boolean selected = index == selectedIndex;
-            int bg = hovered || selected ? CARD_HOVER : CARD_BG;
-            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), bg);
-            drawBorder(graphics, rect, selected ? SELECTED_COLOR : CARD_BORDER);
-            int iconX = rect.x() + (rect.width() - 16) / 2;
-            int iconY = rect.y() + 3;
-            UiRenderLayers.item(graphics, new UiRect(iconX, iconY, 16, 16),
+            UiNineSlice cardSlice = selected ? UiAtlas.CATEGORY_CARD_SELECTED
+                    : hovered ? UiAtlas.CATEGORY_CARD_HOVER : UiAtlas.CATEGORY_CARD_NORMAL;
+            cardSlice.render(graphics, rect);
+
+            int iconSize = 16;
+            int iconX = rect.x() + (rect.width() - iconSize) / 2;
+            int iconY = rect.y() + 5;
+            UiRenderLayers.item(graphics, new UiRect(iconX, iconY, iconSize, iconSize),
                     local -> local.renderItem(category.icon(), iconX, iconY));
+
             int ticks = hovered ? this.categoryScrollTicks.merge(category.id(), 1, Integer::sum) : 0;
             if (!hovered) this.categoryScrollTicks.put(category.id(), 0);
             PanelTextMetrics.Measured name = this.metrics.measure(categoryNameText(category), font);
-            TextScroll.draw(graphics, font, name.text(), name.width(), rect.x() + 4, rect.y() + 22,
-                    rect.width() - 8, NORMAL_COLOR, hovered, ticks, true);
+            TextScroll.draw(graphics, font, name.text(), name.width(), rect.x() + 3, rect.y() + 25,
+                    rect.width() - 6, NORMAL_COLOR, hovered, ticks, true);
             PanelTextMetrics.Measured progress = this.metrics.measure(categoryProgressText(category), font);
             TextScroll.draw(graphics, font, progress.text(), progress.width(),
-                    rect.x() + 4, rect.bottom() - 13,
-                    rect.width() - 8, UiTextScheme.PARCHMENT.label(), hovered, ticks, true);
+                    rect.x() + 3, rect.bottom() - 14,
+                    rect.width() - 6, UiTextScheme.PARCHMENT.label(), hovered, ticks, true);
+
+            // 卡片底部 2 像素精致迷你进度条
+            if (category.total() > 0) {
+                int barWidth = rect.width() - 8;
+                int filled = Math.clamp(Math.round(barWidth * (category.unlocked() / (float) category.total())), 0, barWidth);
+                int barY = rect.bottom() - 3;
+                graphics.fill(rect.x() + 4, barY, rect.x() + 4 + barWidth, barY + 2, 0x258B6914);
+                if (filled > 0) {
+                    int barColor = category.unlocked() >= category.total() ? JournalPalette.PROGRESS_FILL_DONE : JournalPalette.PROGRESS_FILL_ACTIVE;
+                    graphics.fill(rect.x() + 4, barY, rect.x() + 4 + filled, barY + 2, barColor);
+                }
+            }
         }
     }
 

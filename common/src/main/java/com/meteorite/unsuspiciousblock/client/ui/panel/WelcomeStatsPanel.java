@@ -45,7 +45,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     private static final int SEPARATOR_COLOR = JournalPalette.SEPARATOR;
     private static final int COLUMN_GAP = 8;
     private static final int ITEM_SIZE = 16;
-    private static final int ITEM_GAP = 2;
+    private static final int ITEM_GAP = 4;
 
     private final JournalBookBackground.BookLayout layout;
     private long lastConnectionEpoch = Long.MIN_VALUE;
@@ -83,28 +83,31 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
         int contentWidth = this.layout.rightPageWidth() - 24;
         int columnWidth = (contentWidth - COLUMN_GAP) / 2;
         int rightColumnX = contentX + columnWidth + COLUMN_GAP;
-        int firstRowY = firstSeparatorY + 12;
+        int firstRowY = firstSeparatorY + 10;
 
         ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
-        drawMetric(graphics, font, contentX, firstRowY, columnWidth,
+        drawMetricCard(graphics, font, contentX, firstRowY, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.lifetime_entries",
                 Long.toString(this.lifetimeEntries));
-        drawMetric(graphics, font, rightColumnX, firstRowY, columnWidth,
+        drawMetricCard(graphics, font, rightColumnX, firstRowY, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.chest_opens",
                 Long.toString(logState.getLifetimeEntryCount(LootSourceType.LOOT_CONTAINER)));
-        drawMetric(graphics, font, contentX, firstRowY + 17, columnWidth,
+        drawMetricCard(graphics, font, contentX, firstRowY + 20, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.current_entries",
                 Integer.toString(this.currentEntries));
-        drawMetric(graphics, font, rightColumnX, firstRowY + 17, columnWidth,
+        drawMetricCard(graphics, font, rightColumnX, firstRowY + 20, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.noted_entries",
                 Integer.toString(this.notedEntries));
 
         int recentY = recentY(font);
-        drawLabelAndValue(graphics, font, contentX, recentY, contentWidth,
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.latest_record"),
-                this.latestRecord);
+        Component recentLabel = Component.translatable(
+                "screen.unsuspiciousblock.archaeology_journal.welcome.latest_record");
+        graphics.drawString(font, recentLabel.getString(), contentX, recentY, LABEL_COLOR, false);
+        int recordValY = recentY + font.lineHeight + 2;
+        String valText = TextScroll.trimToWidth(font, this.latestRecord.getString(), contentWidth);
+        graphics.drawString(font, valText, contentX, recordValY, VALUE_COLOR, false);
 
-        int discoveryY = recentY + 22;
+        int discoveryY = discoveryY(font);
         Component discoveryLabel = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.welcome.latest_discovery");
         graphics.drawString(font, discoveryLabel.getString(), contentX, discoveryY, LABEL_COLOR, false);
@@ -117,6 +120,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
             UiGridMetrics grid = itemGrid();
             for (int index = 0; index < latestItems.size(); index++) {
                 UiRect cell = grid.cellBounds(index);
+                JournalPalette.drawSlot(graphics, contentX + cell.x() - 1, itemsY + cell.y() - 1, ITEM_SIZE + 2, false);
                 new UiIcon.Item(latestItems.get(index)).render(graphics, contentX + cell.x(), itemsY + cell.y());
             }
         }
@@ -126,16 +130,20 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     }
 
     private int recentY(Font font) {
-        return layout.rightPageY() + 83 + font.lineHeight;
+        return layout.rightPageY() + 85 + font.lineHeight;
+    }
+
+    private int discoveryY(Font font) {
+        return recentY(font) + font.lineHeight * 2 + 10;
     }
 
     private UiGridMetrics itemGrid() {
-        return new UiGridMetrics(Math.max(1, (layout.rightPageWidth() - 24) / (ITEM_SIZE + ITEM_GAP)), ITEM_SIZE, ITEM_SIZE, ITEM_GAP, 2);
+        return new UiGridMetrics(Math.max(1, (layout.rightPageWidth() - 24) / (ITEM_SIZE + ITEM_GAP)), ITEM_SIZE, ITEM_SIZE, ITEM_GAP, 4);
     }
 
     private UiRect itemBounds(int index, Font font) {
         UiRect cell = itemGrid().cellBounds(index);
-        return new UiRect(layout.rightPageX() + 12 + cell.x(), recentY(font) + 36 + cell.y(), ITEM_SIZE, ITEM_SIZE);
+        return new UiRect(layout.rightPageX() + 12 + cell.x(), discoveryY(font) + 14 + cell.y(), ITEM_SIZE, ITEM_SIZE);
     }
 
     /**
@@ -171,7 +179,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
                         .withPresentation((graphics, textFont, px, py) -> graphics.renderTooltip(textFont, stack, px, py));
             }
         }
-        UiRect recent = new UiRect(left, recentY, layout.rightPageWidth() - 24, font.lineHeight);
+        UiRect recent = new UiRect(left, recentY, layout.rightPageWidth() - 24, font.lineHeight * 2 + 4);
         return recent.contains(x, y) ? UiPointerHit.leaf(this, x, y).withTextTooltip(List.of(latestRecord), recent) : null;
     }
 
@@ -246,25 +254,17 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
         return latest;
     }
 
-    private static void drawMetric(GuiGraphics graphics, Font font, int x, int y, int width,
-                                   String labelKey, String value) {
+    private static void drawMetricCard(GuiGraphics graphics, Font font, int x, int y, int width,
+                                       String labelKey, String value) {
+        JournalPalette.drawStatPill(graphics, x - 2, y - 3, width + 4, font.lineHeight + 6, false);
         Component label = Component.translatable(labelKey);
         int valueWidth = font.width(value);
         int labelWidth = Math.max(0, width - valueWidth - 4);
         String labelText = TextScroll.trimToWidth(font, label.getString(), labelWidth);
-        graphics.drawString(font, labelText, x, y, LABEL_COLOR, false);
-        graphics.drawString(font, value, x + width - valueWidth, y, VALUE_COLOR, false);
+        graphics.drawString(font, labelText, x + 1, y, LABEL_COLOR, false);
+        graphics.drawString(font, value, x + width - valueWidth - 1, y, UiTextScheme.PARCHMENT.title(), false);
     }
 
-    private static void drawLabelAndValue(GuiGraphics graphics, Font font, int x, int y, int width,
-                                          Component label, Component value) {
-        String labelText = label.getString();
-        graphics.drawString(font, labelText, x, y, LABEL_COLOR, false);
-        int valueX = x + font.width(labelText) + 5;
-        int valueWidth = Math.max(0, x + width - valueX);
-        String valueText = TextScroll.trimToWidth(font, value.getString(), valueWidth);
-        graphics.drawString(font, valueText, valueX, y, VALUE_COLOR, false);
-    }
 
     private static void drawCenteredTrimmed(GuiGraphics graphics, Font font, Component text,
                                             int x, int y, int width, int color) {

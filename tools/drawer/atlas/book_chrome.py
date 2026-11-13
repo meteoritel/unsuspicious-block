@@ -185,8 +185,38 @@ def _paint_side_tab(c: PixelCanvas, pal: dict[str, str]) -> None:
     c.vline(22, 3, 15, pal['shadow'])
 
 
+def _paint_pill_card(
+    c: PixelCanvas,
+    border: str,
+    fill: str,
+    highlight: str | None = None,
+    shadow: str | None = None,
+) -> None:
+    c.rounded_rect(0, 0, 12, 12, radius=3, fill=fill, border=border)
+    if highlight is not None:
+        c.hline(3, 1, 6, highlight)
+        c.vline(1, 3, 6, highlight)
+    if shadow is not None:
+        c.hline(3, 10, 6, shadow)
+        c.vline(10, 3, 6, shadow)
+
+
+def _paint_slot_inset(
+    c: PixelCanvas,
+    border: str,
+    fill: str,
+    shadow: str,
+    highlight: str,
+) -> None:
+    c.rounded_rect(0, 0, 12, 12, radius=2, fill=fill, border=border)
+    c.hline(2, 1, 8, shadow)
+    c.vline(1, 2, 8, shadow)
+    c.hline(2, 10, 8, highlight)
+    c.vline(10, 2, 8, highlight)
+
+
 def apply(atlas: AtlasBuilder) -> None:
-    """将书本导航、帮助问号、外链与按钮皮肤写入图集。"""
+    """将书本导航、帮助问号、外链、按钮皮肤与圆角药丸/槽位 9-slice 写入图集。"""
     place_zone1_icons(atlas, ICONS)
 
     for name, u, grid in EXTERNAL_LOGOS:
@@ -206,6 +236,23 @@ def apply(atlas: AtlasBuilder) -> None:
                 0, 0, 12, 12, border=br, fill=fl, highlight=hi, shade=sh, highlight_width=1, shade_width=1
             ),
         )
+
+    atlas.paint(
+        'STAT_PILL', 152, 64, 12, 12,
+        lambda c: _paint_pill_card(c, border='#BCA068', fill='#F5ECDA', highlight='#FFFDF7', shadow='#E2D1AB'),
+    )
+    atlas.paint(
+        'STAT_PILL_SUBTLE', 164, 64, 12, 12,
+        lambda c: _paint_pill_card(c, border='#CDB78B', fill='#EFE4CC', highlight='#FAF4E3', shadow='#DFD0AD'),
+    )
+    atlas.paint(
+        'SLOT_INSET', 176, 64, 12, 12,
+        lambda c: _paint_slot_inset(c, border='#8A6E44', fill='#D5C399', shadow='#755930', highlight='#F4E8D0'),
+    )
+    atlas.paint(
+        'SLOT_INSET_HOVER', 188, 64, 12, 12,
+        lambda c: _paint_slot_inset(c, border='#C89030', fill='#DFCDA6', shadow='#8A6B38', highlight='#FFF8EA'),
+    )
 
 
 if __name__ == '__main__':

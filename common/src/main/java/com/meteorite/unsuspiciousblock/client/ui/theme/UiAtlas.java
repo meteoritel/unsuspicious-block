@@ -149,6 +149,34 @@ public final class UiAtlas {
     public static final UiNineSlice SCENARIO_PANEL = new UiNineSlice(
             TEXTURE, 164, 52, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
+    /** 通用柔和圆角指标药丸 / 卡片底板（9-slice，12×12，corner=3）。 */
+    public static final UiNineSlice STAT_PILL = new UiNineSlice(
+            TEXTURE, 152, 64, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /** 轻量浅底圆角卡片底板（用于空状态、详情底衬，9-slice，12×12，corner=3）。 */
+    public static final UiNineSlice STAT_PILL_SUBTLE = new UiNineSlice(
+            TEXTURE, 164, 64, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /** 拟物内凹物品插槽底框（9-slice，12×12，corner=2）。 */
+    public static final UiNineSlice SLOT_INSET = new UiNineSlice(
+            TEXTURE, 176, 64, 12, 2, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /** 拟物内凹物品插槽悬停高亮态底框（9-slice，12×12，corner=2）。 */
+    public static final UiNineSlice SLOT_INSET_HOVER = new UiNineSlice(
+            TEXTURE, 188, 64, 12, 2, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /** 欢迎页分类九宫格圆角卡片常态（9-slice，12×12，corner=3）。 */
+    public static final UiNineSlice CATEGORY_CARD_NORMAL = new UiNineSlice(
+            TEXTURE, 116, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /** 欢迎页分类九宫格圆角卡片悬停态（9-slice，12×12，corner=3）。 */
+    public static final UiNineSlice CATEGORY_CARD_HOVER = new UiNineSlice(
+            TEXTURE, 128, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /** 欢迎页分类九宫格圆角卡片选中态（9-slice，12×12，corner=3）。 */
+    public static final UiNineSlice CATEGORY_CARD_SELECTED = new UiNineSlice(
+            TEXTURE, 140, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
     private static final UiSkinImages.Image PARCHMENT_NORMAL = nineSliceImage(104, 52);
     private static final UiSkinImages.Image PARCHMENT_HOVER = nineSliceImage(116, 52);
     private static final UiSkinImages.Image PARCHMENT_PRESSED = nineSliceImage(128, 52);

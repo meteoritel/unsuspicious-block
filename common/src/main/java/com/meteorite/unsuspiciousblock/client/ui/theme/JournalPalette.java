@@ -1,11 +1,15 @@
 package com.meteorite.unsuspiciousblock.client.ui.theme;
 
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.render.UiNineSlice;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * 羊皮纸书页 GUI 的结构色板与共用进度条绘制工具。
@@ -41,14 +45,23 @@ public final class JournalPalette {
 
     // —— 场景文档连线与标题底纹 ——
     public static final int SCENARIO_BRANCH_LINE = 0xFFA99370;
-    public static final int SCENARIO_SECTION_FILL = 0x40B99A60;
-    public static final int SCENARIO_ENTRY_FILL = 0x18B99A60;
+    public static final int SCENARIO_SECTION_FILL = 0x258B6914;
+    public static final int SCENARIO_ENTRY_FILL = 0x148B6914;
+    public static final int SCENARIO_ACCENT_BAR = 0xFF8B6914;
+
+    // —— 物品插槽与药丸指标底纹 ——
+    public static final int SLOT_BG = 0x20000000;
+    public static final int SLOT_BORDER = 0x558B6914;
+    public static final int SLOT_BORDER_HOVER = 0xFFC89B48;
+    public static final int STAT_PILL_BG = 0x1A8B6914;
+    public static final int STAT_PILL_BORDER = 0x508B6914;
+    public static final int STAT_PILL_HOVER = 0x30C8A050;
 
     // —— 统一进度条（左侧目录 / 介绍页 / 日志详情页共用） ——
-    public static final int PROGRESS_BORDER = BORDER_WARM;
+    public static final int PROGRESS_BORDER = 0xFF7A5722;
     public static final int PROGRESS_TRACK = 0xFFD8C0A0;
     public static final int PROGRESS_FILL_ACTIVE = 0xFFC89B48;
-    public static final int PROGRESS_FILL_DONE = 0xFF8FA65A;
+    public static final int PROGRESS_FILL_DONE = 0xFF7D9C4A;
     public static final int PROGRESS_TEXT = UiTextScheme.PARCHMENT.title();
 
     // —— 物品图标前景角标（带原版阴影渲染在物品图标上） ——
@@ -61,7 +74,57 @@ public final class JournalPalette {
     }
 
     /**
-     * 绘制统一羊皮纸风格进度条（边框 + 底槽 + 按完成态切换的填充 + 居中无阴影文本）。
+     * 绘制精致羊皮纸风格插槽底框（程序化 9-slice 内凹阴影凹槽 + 底部高光 + 悬停强调）。
+     */
+    public static void drawSlot(GuiGraphics graphics, int x, int y, int size, boolean hovered) {
+        UiNineSlice slice = hovered ? UiAtlas.SLOT_INSET_HOVER : UiAtlas.SLOT_INSET;
+        slice.render(graphics, new UiRect(x, y, size, size));
+    }
+
+    /**
+     * 绘制精致羊皮纸风格状态指标药丸（程序化 9-slice 柔和圆角矩形）。
+     */
+    public static void drawStatPill(GuiGraphics graphics, int x, int y, int width, int height, boolean subtle) {
+        UiNineSlice slice = subtle ? UiAtlas.STAT_PILL_SUBTLE : UiAtlas.STAT_PILL;
+        slice.render(graphics, new UiRect(x, y, width, height));
+    }
+
+    /**
+     * 绘制居中空状态占位卡片（带装饰物品插槽与自动换行说明文本）。
+     */
+    public static void drawEmptyState(GuiGraphics graphics, Font font, UiRect area,
+                                      ItemStack icon, Component message) {
+        if (area.width() < 24 || area.height() < 24) {
+            return;
+        }
+        int maxTextWidth = Math.max(20, area.width() - 24);
+        var lines = font.split(message, maxTextWidth);
+        int textHeight = lines.size() * (font.lineHeight + 2);
+        int iconBlock = icon.isEmpty() ? 0 : 26;
+        int totalHeight = iconBlock + textHeight;
+        int startY = area.y() + Math.max(6, (area.height() - totalHeight) / 2);
+
+        if (!icon.isEmpty()) {
+            int slotSize = 20;
+            int slotX = area.x() + (area.width() - slotSize) / 2;
+            int itemX = slotX + 2;
+            int itemY = startY + 2;
+            drawSlot(graphics, slotX, startY, slotSize, false);
+            UiRenderLayers.item(graphics, new UiRect(itemX, itemY, 16, 16),
+                    local -> local.renderItem(icon, itemX, itemY));
+            startY += iconBlock;
+        }
+
+        for (var line : lines) {
+            int lineWidth = font.width(line);
+            int lineX = area.x() + (area.width() - lineWidth) / 2;
+            graphics.drawString(font, line, lineX, startY, UiTextScheme.PARCHMENT.label(), false);
+            startY += font.lineHeight + 2;
+        }
+    }
+
+    /**
+     * 绘制统一羊皮纸风格进度条（内凹槽 + 渐变高光填充 + 居中文本）。
      *
      * @param graphics 绘制上下文
      * @param font     字体
@@ -79,6 +142,10 @@ public final class JournalPalette {
                                        int current, int total, Component label, boolean hovered, int ticks) {
         graphics.fill(x, y, x + width, y + height, PROGRESS_BORDER);
         graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, PROGRESS_TRACK);
+        // 凹槽内顶阴影与左侧阴影
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 2, 0x30000000);
+        graphics.fill(x + 1, y + 1, x + 2, y + height - 1, 0x20000000);
+
         int innerWidth = Math.max(0, width - 2);
         if (total > 0 && innerWidth > 0) {
             int clamped = Mth.clamp(current, 0, total);
@@ -86,6 +153,9 @@ public final class JournalPalette {
             if (filled > 0) {
                 int fillColor = clamped >= total ? PROGRESS_FILL_DONE : PROGRESS_FILL_ACTIVE;
                 graphics.fill(x + 1, y + 1, x + 1 + filled, y + height - 1, fillColor);
+                // 填充条上沿亮光与下沿微阴影，营造微立体质感
+                graphics.fill(x + 1, y + 1, x + 1 + filled, y + 2, 0x40FFFFFF);
+                graphics.fill(x + 1, y + height - 2, x + 1 + filled, y + height - 1, 0x30000000);
             }
         }
         int textY = y + (height - font.lineHeight + 1) / 2;

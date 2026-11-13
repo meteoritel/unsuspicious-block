@@ -13,6 +13,8 @@ import com.meteorite.meteosuikit.api.number.*;
 import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
@@ -25,6 +27,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
@@ -63,6 +66,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         UiScalarSlider slider = new UiScalarSlider(UiNumberPolicy.of(LuckGateAnalysis.MIN_LUCK, LuckGateAnalysis.MAX_LUCK, 1, 0.01));
         slider.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiSliderRole.COMPACT);
         slider.setLabel(text("params.luck"));
+        slider.setFormatter(ignored -> Component.empty());
         slider.setValue(current.luck());
         luck = new UiNumberField(slider, luckText, ScenarioParamsOverlay::parseLuck,
                 value -> String.format(Locale.ROOT, "%.2f", value), () -> error = null, () -> { }, null, null,
@@ -71,21 +75,25 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         luck.setText(Float.toString(current.luck()));
         luck.acceptText();
         tools = new UiListView<>(() -> UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, tool, index, row, selected, hovered, focused) -> {
-            new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(tool.id()))).render(graphics, row.x() + 2, row.y() + 2);
-            graphics.drawString(rowFont, rowFont.plainSubstrByWidth(tool.displayName().getString(), Math.max(0, row.width() - 24)),
-                    row.x() + 22, row.y() + 6, UiTextScheme.PARCHMENT.body(), false);
+            JournalPalette.drawSlot(graphics, row.x() + 2, row.y() + 2, 18, hovered || selected);
+            new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(tool.id()))).render(graphics, row.x() + 3, row.y() + 3);
+            int textColor = selected ? JournalTextColors.SELECTED : UiTextScheme.PARCHMENT.body();
+            graphics.drawString(rowFont, rowFont.plainSubstrByWidth(tool.displayName().getString(), Math.max(0, row.width() - 26)),
+                    row.x() + 24, row.y() + 7, textColor, false);
         });
         tools.setItems(options.tools()).setRowHeight(22);
         for (int i = 0; i < options.tools().size(); i++) if (options.tools().get(i).id().equals(current.toolId())) tools.setSelectedIndex(i);
         tools.setEnabled(options.toolSelectionAllowed());
         enchantments = new UiListView<>(() -> UnsuspiciousUiTheme.PARCHMENT, (graphics, rowFont, id, index, row, selected, hovered, focused) -> {
             Component name = text("params.enchant_level", enchantmentName(id), levels.getOrDefault(id, 0));
-            graphics.drawString(rowFont, rowFont.plainSubstrByWidth(name.getString(), Math.max(0, row.width() - 6)),
-                    row.x() + 3, row.y() + 6, UiTextScheme.PARCHMENT.body(), false);
+            int textColor = selected ? JournalTextColors.SELECTED : UiTextScheme.PARCHMENT.body();
+            graphics.drawString(rowFont, rowFont.plainSubstrByWidth(name.getString(), Math.max(0, row.width() - 8)),
+                    row.x() + 4, row.y() + 6, textColor, false);
         });
         enchantments.setRowHeight(22);
-        enchantments.setEmptyMessage(text("params.no_enchantments"));
+        enchantments.setEmptyMessage(Component.empty());
         search = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font, text("params.search"));
+        search.setEnabled(!options.enchantments().isEmpty());
         search.setOnValueChanged(() -> { query = search.value(); filterEnchantments(); });
         filterEnchantments();
         actions.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
@@ -151,15 +159,17 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         int innerWidth = Math.max(0, width - 16);
         int column = Math.max(0, (innerWidth - 8) / 2);
         int left = bounds.x() + 8, right = left + column + 8;
-        luck.setBounds(left, bounds.y() + 26, innerWidth, 22);
-        search.setBounds(right, bounds.y() + 66, column, 20);
-        int bodyY = bounds.y() + 90;
-        int bodyHeight = Math.max(0, height - 162);
-        tools.setBounds(left, bodyY, column, bodyHeight + 24);
-        enchantments.setBounds(right, bodyY, column, bodyHeight);
+        luck.setBounds(left, bounds.y() + 27, innerWidth, 24);
+        search.setBounds(right, bounds.y() + 62, column, 19);
+        int toolsTop = bounds.y() + 74;
+        int enchantTop = bounds.y() + 85;
+        int toolsHeight = Math.max(0, bounds.bottom() - 42 - toolsTop);
+        int enchantHeight = Math.max(0, bounds.bottom() - 68 - enchantTop);
+        tools.setBounds(left, toolsTop, column, toolsHeight);
+        enchantments.setBounds(right, enchantTop, column, enchantHeight);
         List<UiControl> buttons = actions.controls();
-        buttons.get(0).setBounds(right, bounds.bottom() - 70, column / 2 - 2, 20);
-        buttons.get(1).setBounds(right + column / 2 + 2, bounds.bottom() - 70, column / 2 - 2, 20);
+        buttons.get(0).setBounds(right, bounds.bottom() - 62, column / 2 - 2, 18);
+        buttons.get(1).setBounds(right + column / 2 + 2, bounds.bottom() - 62, column / 2 - 2, 18);
         int buttonWidth = Math.max(0, (innerWidth - 8) / 3);
         for (int i = 2; i < buttons.size(); i++) buttons.get(i).setBounds(left + (i - 2) * (buttonWidth + 4), bounds.bottom() - 28, buttonWidth, 20);
         ResourceLocation selected = enchantments.selectedItem();
@@ -169,14 +179,24 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     }
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.renderPage(graphics, bounds);
-        graphics.drawString(font, text("params.title"), bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
+        graphics.drawString(font, text("params.title"), bounds.x() + 8, bounds.y() + 9, UiTextScheme.PARCHMENT.title(), false);
         Component samples = text("params.fixed_samples");
-        graphics.drawString(font, samples, bounds.right() - 8 - font.width(samples), bounds.y() + 8,
+        int samplesW = font.width(samples);
+        JournalPalette.drawStatPill(graphics, bounds.right() - 12 - samplesW, bounds.y() + 6, samplesW + 8, 14, false);
+        graphics.drawString(font, samples, bounds.right() - 8 - samplesW, bounds.y() + 9,
                 UiTextScheme.PARCHMENT.label(), false);
-        graphics.drawString(font, text("params.tool"), bounds.x() + 8, bounds.y() + 70, UiTextScheme.PARCHMENT.label(), false);
+        graphics.fill(bounds.x() + 8, bounds.y() + 23, bounds.right() - 8, bounds.y() + 24, JournalPalette.SEPARATOR);
+        graphics.fill(bounds.x() + 8, bounds.y() + 55, bounds.right() - 8, bounds.y() + 56, JournalPalette.SEPARATOR);
+        graphics.drawString(font, text("params.tool"), bounds.x() + 8, bounds.y() + 62, UiTextScheme.PARCHMENT.label(), false);
         luck.render(graphics, font, pointer); tools.render(graphics, font, pointer);
-        search.render(graphics, font, pointer); enchantments.render(graphics, font, pointer); actions.render(graphics, font, pointer);
-        if (error != null) graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 43, UiTextScheme.PARCHMENT.negative(), false);
+        search.render(graphics, font, pointer); enchantments.render(graphics, font, pointer);
+        if (enchantments.items().isEmpty()) {
+            ItemStack emptyIcon = new ItemStack(options.enchantments().isEmpty() ? Items.ENCHANTED_BOOK : Items.SPYGLASS);
+            JournalPalette.drawEmptyState(graphics, font, enchantments.bounds(), emptyIcon, text("params.no_enchantments"));
+        }
+        graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
+        actions.render(graphics, font, pointer);
+        if (error != null) graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 45, UiTextScheme.PARCHMENT.negative(), false);
         if (pointer.allowsTooltip() && pointer.hit() != null)
             pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
     }

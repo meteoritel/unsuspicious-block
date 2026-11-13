@@ -20,6 +20,8 @@ import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
@@ -32,6 +34,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashSet;
@@ -71,28 +75,28 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
                             .render(graphics, row.x() + 4, row.y() + (row.height() - UiAtlas.ICON_SIZE) / 2);
                     Component label = ScenarioLabel.shortConditionLabel(option.condition());
                     String clipped = rowFont.plainSubstrByWidth(label.getString(), Math.max(0, row.width() - 22));
-                    int textColor = checked ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.body();
+                    int textColor = checked ? JournalTextColors.COMPLETED : UiTextScheme.PARCHMENT.body();
                     graphics.drawString(rowFont, clipped, row.x() + 18,
                             row.y() + (row.height() - rowFont.lineHeight) / 2, textColor, false);
                 });
         list.setItems(options.conditions()).setRowHeight(22);
-        list.setEmptyMessage(ScenarioSimulationClientState.text("conditions.overlay_empty"));
+        list.setEmptyMessage(Component.empty());
         list.setActivateOnSingleClick(true);
         list.setOnActivate(this::toggle);
 
         actions.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
         actions.beginUpdate();
-        button(font, "reset", ScenarioSimulationClientState.text("reset.button"), () -> draftConditions.clear());
-        button(font, "probe", ScenarioSimulationClientState.text("probe.short"), () -> {
+        button(font, "probe", ScenarioSimulationClientState.text("probe.short"), UiAtlas.Icon.BIOME, () -> {
             ScenarioSimulationClientState.requestPlayerProbe(table);
             owner.close();
         });
-        button(font, "params", ScenarioSimulationClientState.text("params.short"), () ->
+        button(font, "params", ScenarioSimulationClientState.text("params.short"), UiAtlas.Icon.PARAMS, () ->
                 owner.open(new ScenarioParamsOverlay(owner, table, List.copyOf(draftConditions), options, params)));
-        button(font, "calculate", ScenarioSimulationClientState.text("params.apply_calculate"), () -> confirm(true))
+        button(font, "reset", ScenarioSimulationClientState.text("reset.button"), UiAtlas.Icon.BACK, () -> draftConditions.clear());
+        button(font, "calculate", ScenarioSimulationClientState.text("params.apply_calculate"), null, () -> confirm(true))
                 .setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        button(font, "apply", ScenarioSimulationClientState.text("params.apply_only"), () -> confirm(false));
-        button(font, "cancel", Component.translatable("gui.cancel"), owner::close);
+        button(font, "apply", ScenarioSimulationClientState.text("params.apply_only"), null, () -> confirm(false));
+        button(font, "cancel", Component.translatable("gui.cancel"), null, owner::close);
         actions.endUpdate();
 
         children.add(list);
@@ -102,9 +106,10 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
                         () -> render(graphics, rowFont, pointer)), null);
     }
 
-    private UiControl button(Font font, String key, Component label, UiAction action) {
+    private UiControl button(Font font, String key, Component label, @Nullable UiAtlas.Icon icon, UiAction action) {
         UiControl button = actions.obtain(key);
-        button.configure(font, label, null, List.of(label.copy().withStyle(TooltipBuilder.BODY)), action);
+        button.configure(font, label, icon == null ? null : UiAtlas.icon(icon),
+                List.of(label.copy().withStyle(TooltipBuilder.BODY)), action);
         return button;
     }
 
@@ -126,15 +131,24 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.renderPage(graphics, bounds);
         graphics.drawString(font, ScenarioSimulationClientState.text("conditions.overlay_title"),
-                bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
+                bounds.x() + 8, bounds.y() + 9, UiTextScheme.PARCHMENT.title(), false);
         List<String> currentDraft = SimulationInput.canonicalize(List.copyOf(draftConditions));
         ScenarioPresentation presentation = ScenarioPresentation.resolve(table, currentDraft, params);
-        presentation.badge().render(graphics, bounds.right() - 20, bounds.y() + 6);
         Component countLabel = ScenarioSimulationClientState.text("conditions.summary_count",
                 currentDraft.size(), options.conditions().size());
-        graphics.drawString(font, countLabel, bounds.right() - 24 - font.width(countLabel),
-                bounds.y() + 8, UiTextScheme.PARCHMENT.label(), false);
+        int countWidth = font.width(countLabel);
+        int pillWidth = countWidth + 22;
+        JournalPalette.drawStatPill(graphics, bounds.right() - 8 - pillWidth, bounds.y() + 6, pillWidth, 14, false);
+        presentation.badge().render(graphics, bounds.right() - 22, bounds.y() + 7);
+        graphics.drawString(font, countLabel, bounds.right() - 26 - countWidth,
+                bounds.y() + 9, UiTextScheme.PARCHMENT.label(), false);
+        graphics.fill(bounds.x() + 8, bounds.y() + 23, bounds.right() - 8, bounds.y() + 24, JournalPalette.SEPARATOR);
         list.render(graphics, font, pointer);
+        if (options.conditions().isEmpty()) {
+            JournalPalette.drawEmptyState(graphics, font, list.bounds(), new ItemStack(Items.COMPASS),
+                    ScenarioSimulationClientState.text("conditions.overlay_empty"));
+        }
+        graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
         actions.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {
             pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.PARCHMENT.surfaces(),
@@ -170,22 +184,43 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
 
     @Override
     public void prepare(Font font) {
-        int width = Math.clamp(owner.width() - 20, 0, 310);
-        int height = Math.clamp(owner.height() - 20, 0, 270);
+        boolean empty = options.conditions().isEmpty();
+        int width = Math.clamp(owner.width() - 20, 0, 316);
+        int desiredHeight = empty
+                ? 156
+                : Math.clamp(96 + options.conditions().size() * 22 + 12, 180, 270);
+        int height = Math.clamp(owner.height() - 20, 0, desiredHeight);
         bounds = new UiRect((owner.width() - width) / 2, (owner.height() - height) / 2, width, height);
         int innerWidth = Math.max(0, width - 16);
         int left = bounds.x() + 8;
-        list.setBounds(left, bounds.y() + 24, innerWidth, Math.max(0, height - 78));
 
         List<UiControl> buttons = actions.controls();
-        int utilWidth = Math.max(0, (innerWidth - 8) / 3);
-        for (int i = 0; i < 3; i++) {
-            buttons.get(i).setBounds(left + i * (utilWidth + 4), bounds.bottom() - 48, utilWidth, 18);
+        // 顶部工具栏：同步自身、参数配置，以及仅在有条件时展示的轻量重置按钮
+        UiControl probe = buttons.get(0);
+        UiControl paramsBtn = buttons.get(1);
+        UiControl reset = buttons.get(2);
+        reset.setVisible(!empty);
+        reset.setEnabled(!empty && !draftConditions.isEmpty());
+
+        int utilY = bounds.y() + 27;
+        if (empty) {
+            int twoWidth = Math.max(0, (innerWidth - 4) / 2);
+            probe.setBounds(left, utilY, twoWidth, 18);
+            paramsBtn.setBounds(left + twoWidth + 4, utilY, innerWidth - twoWidth - 4, 18);
+        } else {
+            int utilWidth = Math.max(0, (innerWidth - 8) / 3);
+            probe.setBounds(left, utilY, utilWidth, 18);
+            paramsBtn.setBounds(left + utilWidth + 4, utilY, utilWidth, 18);
+            reset.setBounds(left + (utilWidth + 4) * 2, utilY, innerWidth - (utilWidth + 4) * 2, 18);
         }
-        buttons.get(0).setEnabled(!draftConditions.isEmpty());
+
+        int listTop = bounds.y() + 49;
+        list.setBounds(left, listTop, innerWidth, Math.max(0, bounds.bottom() - 39 - listTop));
+
+        // 底部主操作区：仅保留核心确认/取消三联，层次分明
         int mainWidth = Math.max(0, (innerWidth - 8) / 3);
         for (int i = 3; i < buttons.size(); i++) {
-            buttons.get(i).setBounds(left + (i - 3) * (mainWidth + 4), bounds.bottom() - 26, mainWidth, 18);
+            buttons.get(i).setBounds(left + (i - 3) * (mainWidth + 4), bounds.bottom() - 28, mainWidth, 20);
         }
     }
 }

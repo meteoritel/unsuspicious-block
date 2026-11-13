@@ -29,6 +29,7 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
@@ -147,6 +148,18 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
     @Override
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
+        if (summary.isVisible()) {
+            UiRect sb = summary.bounds();
+            JournalPalette.drawSlot(graphics, sb.x(), sb.y(), sb.width(), sb.contains(pointer.x(), pointer.y()));
+        }
+        if (luck.isVisible()) {
+            UiRect lb = luck.bounds();
+            JournalPalette.drawStatPill(graphics, lb.x(), lb.y(), lb.width(), lb.height(), lb.contains(pointer.x(), pointer.y()));
+        }
+        if (enchantments.isVisible()) {
+            UiRect eb = enchantments.bounds();
+            JournalPalette.drawStatPill(graphics, eb.x(), eb.y(), eb.width(), eb.height(), eb.contains(pointer.x(), pointer.y()));
+        }
         for (UiControl control : controls) {
             control.render(graphics, font, pointer);
         }
@@ -211,19 +224,22 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
         int width = layout.rightPageWidth() - 8;
-        overview.setBounds(x, y + 3, Math.max(0, width - 20), 14);
-        expandButton.setBounds(x + width - 18, y + 2, 18, 14);
-        summary.setBounds(x, y + 19, 18, 16);
-        int readoutWidth = Math.max(0, width - 74);
-        int luckWidth = readoutWidth / 2 + 4;
-        luck.setBounds(x + 20, y + 19, luckWidth, 16);
-        enchantments.setBounds(x + 20 + luckWidth, y + 19, Math.max(0, readoutWidth - luckWidth), 16);
+        overview.setBounds(x, y + 2, Math.max(0, width - 20), 14);
+        expandButton.setBounds(x + width - 16, y + 1, 16, 15);
+        summary.setBounds(x, y + 18, 18, 18);
+        int readoutAreaWidth = Math.max(0, width - 76);
+        int pillGap = 3;
+        int luckWidth = (readoutAreaWidth - pillGap) / 2 + 3;
+        int enchWidth = Math.max(0, readoutAreaWidth - pillGap - luckWidth);
+        luck.setBounds(x + 21, y + 19, luckWidth, 16);
+        enchantments.setBounds(x + 21 + luckWidth + pillGap, y + 19, enchWidth, 16);
         probeButton.setBounds(x + width - 52, y + 19, 16, 16);
         paramsButton.setBounds(x + width - 34, y + 19, 16, 16);
         resetButton.setBounds(x + width - 16, y + 19, 16, 16);
-        calculateButton.setBounds(x, y + 37, width, 14);
-        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - (y + 54));
-        conditions.setBounds(x + 6, y + 60, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
+        calculateButton.setBounds(x, y + 38, width, 16);
+        int panelTop = y + 57;
+        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - panelTop);
+        conditions.setBounds(x + 6, panelTop + 6, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
 
         var choice = selection();
         CatalogTableDto structure = structure();
@@ -413,11 +429,24 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
     static void renderConditionBackground(GuiGraphics graphics, UiDocumentTarget target, boolean selected) {
         UiRect rect = target.contentBounds();
-        if (target.hit().payload() instanceof ScenarioPageBuilder.Heading heading) {
-            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), heading == ScenarioPageBuilder.Heading.SECTION
-                    ? JournalPalette.SCENARIO_SECTION_FILL : JournalPalette.SCENARIO_ENTRY_FILL);
+        Object payload = target.hit().payload();
+        if (payload instanceof ScenarioPageBuilder.Heading heading) {
+            boolean isSection = heading == ScenarioPageBuilder.Heading.SECTION;
+            int bg = isSection ? JournalPalette.SCENARIO_SECTION_FILL : JournalPalette.SCENARIO_ENTRY_FILL;
+            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), bg);
+            // 左侧古铜色竖线强调，呈现手抄本章节标记感
+            graphics.fill(rect.x(), rect.y(), rect.x() + 2, rect.bottom(), JournalPalette.SCENARIO_ACCENT_BAR);
+            graphics.fill(rect.x() + 2, rect.y(), rect.right(), rect.y() + 1, 0x25FFFFFF);
+            if (isSection) {
+                graphics.fill(rect.x() + 2, rect.bottom() - 1, rect.right(), rect.bottom(), 0x18000000);
+            }
+        } else if (payload instanceof ScenarioBranch) {
+            // 为条件树中的候选掉落物与子表图标绘制内凹物品插槽框
+            JournalPalette.drawSlot(graphics, rect.x() - 1, rect.y() - 1, Math.max(rect.width(), rect.height()) + 2, selected);
         }
-        if (selected) graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), ScenarioUi.selectionHighlight());
+        if (selected && !(payload instanceof ScenarioBranch)) {
+            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), ScenarioUi.selectionHighlight());
+        }
     }
 
     List<UiNode> tree() {
