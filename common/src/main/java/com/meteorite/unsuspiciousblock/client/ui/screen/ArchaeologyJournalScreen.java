@@ -1,55 +1,45 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
-import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.JournalViewModel;
-import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogToolbar;
-import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
-import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
-
-import java.util.Set;
-
-import net.minecraft.world.item.ItemStack;
 import com.meteorite.meteosuikit.api.control.*;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
+import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
+import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
+import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogPanel;
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogToolbar;
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.JournalViewModel;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
+import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
+import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
+import com.meteorite.unsuspiciousblock.client.ui.support.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
-import net.minecraft.Util;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
-import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogPanel;
-import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
-import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
-import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
-import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
-import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
-import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+
+import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemStack;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.function.BooleanSupplier;
 
 /**
  * 考古笔记主界面。
@@ -66,6 +56,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             "https://github.com/meteoritel/unsuspicious-block/wiki";
     private static final int MINIMUM_CANVAS_WIDTH = 412;
     private static final int MINIMUM_CANVAS_HEIGHT = 256;
+    private static final int NAVIGATION_HISTORY_CAPACITY = 64;
 
     @Override
     protected int minimumUiWidth() {
@@ -103,15 +94,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final JournalContent content = new JournalContent();
     private final UiInputScope scope = new UiInputScope(content);
     private final UiModalStack confirmations = new UiModalStack(() -> UnsuspiciousUiTheme.PARCHMENT);
-    private final UiNavigationHistory<NavigationState> history =
-            new UiNavigationHistory<>(64);
-
-    /**
-     * 只恢复阅读状态与条件勾选，不回滚参数提交或服务端操作。
-     */
-    private record NavigationState(@Nullable ResourceLocation table, List<String> conditions, UiStateSnapshot view,
-                                   boolean home, @Nullable ResourceLocation category, Set<ResourceLocation> expanded) {
-    }
+    private final UiNavigationHistory<UiStateSnapshot> history =
+            new UiNavigationHistory<>(NAVIGATION_HISTORY_CAPACITY);
+    private long backRevision;
 
     private record NavigationKey(@Nullable ResourceLocation table, List<String> conditions, boolean home,
                                  @Nullable ResourceLocation category, RightPageContainer.Tab tab,
@@ -119,34 +104,35 @@ public class ArchaeologyJournalScreen extends UiScreen {
                                  @Nullable ResourceLocation activeItemTag) {
     }
 
-    private NavigationState navigationState() {
-        ResourceLocation table = viewModel.selectedTableId();
-        var selection = table == null ? null : JournalClientConnection.scenario().selection(table);
-        return rightPage == null ? null : new NavigationState(table,
-                selection == null ? List.of() : selection.conditions(),
-                captureUiState(), viewModel.isCategoryHomeMode(), viewModel.selectedCategory(), viewModel.expandedRoots());
+    private boolean trackNavigation(BooleanSupplier input) {
+        UiStateSnapshot before = captureUiState();
+        long revision = backRevision;
+        boolean consumed = input.getAsBoolean();
+        if (revision == backRevision && !navigationKey(before).equals(navigationKey(captureUiState()))) {
+            history.push(before);
+        }
+        return consumed;
     }
 
-    private void rememberNavigation(NavigationState before) {
-        NavigationState after = navigationState();
-        if (before == null || after == null) return;
-        if (!navigationKey(before).equals(navigationKey(after))) history.push(before);
-    }
-
-    private static NavigationKey navigationKey(NavigationState state) {
-        RightPageContainer.ReadingState reading = state.view().rightPage();
+    private static NavigationKey navigationKey(UiStateSnapshot state) {
+        RightPageContainer.ReadingState reading = state.rightPage();
         return new NavigationKey(state.table(), state.conditions(), state.home(), state.category(), reading.tab(),
                 reading.logDetail(), reading.logEntryId(), reading.activeItemTag());
     }
 
-    private boolean validNavigation(NavigationState state) {
-        return state.home() || state.table() == null && viewModel.categoryViews().stream().anyMatch(category -> category.id().equals(state.category()))
-                || state.table() != null && JournalClientConnection.scenario().table(state.table()) != null
+    private boolean validNavigation(UiStateSnapshot state) {
+        if (state.home()) return true;
+        if (state.table() == null) {
+            return viewModel.categoryViews().stream().anyMatch(category -> category.id().equals(state.category()));
+        }
+        return JournalClientConnection.scenario().table(state.table()) != null
                 && viewModel.isNavigationTargetValid(state.table());
     }
 
+    // 回退事件的外层输入记录也要跳过，避免把刚离开的页面重新压回历史。
     private void goBack() {
-        history.back(this::validNavigation, state -> restoreUiState(state.view()));
+        backRevision++;
+        if (!history.back(this::validNavigation, this::restoreUiState)) onClose();
     }
 
     public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
@@ -156,6 +142,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.logToolbar = new LogToolbar();
         this.initialItemSearch = initialItemSearch;
         scope.setEscape(this::onClose);
+        scope.setNavigationBack(this::goBack);
         confirmations.setOnScopeChanged(this::refreshUiState);
     }
 
@@ -215,8 +202,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (savedLogGroupMode != null) {
             this.logToolbar.setGroupMode(savedLogGroupMode);
         }
-
-
     }
 
     @Override
@@ -290,22 +275,20 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         pendingReading = null;
-        NavigationState before = navigationState();
-        try {
+        return trackNavigation(() -> {
             if (super.keyPressed(keyCode, scanCode, modifiers)) return true;
             if (catalogToolbar.isSearchFocused()) return false;
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-                goBack();
-                return true;
-            }
             if (this.minecraft != null && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
                 onClose();
                 return true;
             }
             return false;
-        } finally {
-            if (keyCode != GLFW.GLFW_KEY_BACKSPACE) rememberNavigation(before);
-        }
+        });
+    }
+
+    @Override
+    public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        return trackNavigation(() -> super.keyReleased(keyCode, scanCode, modifiers));
     }
 
     // 分类首页按网格导航；目录列表使用上下选择、左右展开折叠，Page Up/Down 跨越一个视口。
@@ -598,22 +581,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         pendingReading = null;
-        NavigationState before = navigationState();
-        try {
-            return super.mouseClicked(x, y, button);
-        } finally {
-            rememberNavigation(before);
-        }
+        return trackNavigation(() -> super.mouseClicked(x, y, button));
     }
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
-        NavigationState before = navigationState();
-        try {
-            return super.mouseReleased(x, y, button);
-        } finally {
-            rememberNavigation(before);
-        }
+        return trackNavigation(() -> super.mouseReleased(x, y, button));
     }
 
     // 书页内容与控件共用根命中；页内业务由当前页容器处理。
@@ -1098,7 +1071,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 .cancel(Component.translatable("gui.cancel")));
     }
 
-    // 捕获当前 UI 状态快照，用于窗口 resize 后恢复
     private UiStateSnapshot captureUiState() {
         ResourceLocation table = this.viewModel.selectedTableId();
         var selection = table == null ? null : JournalClientConnection.scenario().selection(table);
@@ -1141,7 +1113,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
         return Optional.empty();
     }
 
-    // UI 状态快照，用于窗口 resize 时保存/恢复跨布局重建的状态
+    /**
+     * 历史回退、布局重建和子页返回共用同一份阅读快照。
+     */
     private record UiStateSnapshot(
             RightPageContainer.ReadingState rightPage,
             int catalogScrollOffset,

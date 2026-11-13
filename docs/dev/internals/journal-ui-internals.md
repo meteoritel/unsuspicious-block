@@ -20,14 +20,14 @@
 ### 1.1 输入路由与焦点规则
 
 - **单一根路由与逻辑坐标**：`ArchaeologyJournalScreen` 只持有一个 UI Kit 路由器，所有渲染、指针坐标与拖动增量均经 `UiScreen.viewport()` 换算；`JournalContent` 的 `UiChildren` 按绘制层序登记目录、欢迎页/活动右页与顶层 widgets；Tab 独立保留 widgets → 目录 → 右页顺序。命中、焦点、普通字符、配对释放、退出通知和布局从同一成员树派生，控件与行热点按稳定业务键复用。
-- **焦点与键盘导航**：当前顶层 `UiInputScope` 拥有唯一输入与焦点权。目录列表与条件文档区各贡献自身的键盘停靠点；鼠标点击可切换逻辑焦点，轮廓随键盘模式显隐。输入框编辑与顶层浮层优先截获按键，`Backspace` 未被文本编辑或浮层消费时才回退导航历史（无历史则关闭笔记；历史回退只恢复阅读状态，不撤回已提交的网络请求）。
+- **焦点与页面回退**：当前顶层 `UiInputScope` 拥有唯一输入与焦点权。目录列表与条件文档区各贡献自身的键盘停靠点；鼠标点击可切换逻辑焦点，轮廓随键盘模式显隐。笔记根 scope 绑定统一页面回退：响应常见鼠标回退侧键，或文本编辑与顶层浮层未消费的 `Backspace`。两种入口共用阅读历史，没有有效历史时关闭笔记；回退只恢复阅读状态，不撤回已提交的网络请求。事件结束的普通导航记录通过回退版本跳过本次恢复，避免重复入栈。通用输入配对与生命周期见 [UI Kit](ui-kit-api.md)。
 - **按钮激活与悬停命中**：按钮遵循“按下并同目标释放”才执行动作，拖出范围释放取消。`UiPointerHit` 是 Tooltip 与 JEI 物品查询的统一来源（网格、介绍页与日志详情在准备阶段将已解析的 `ItemStack` 写入 `UiPointerHit.Row.key`，不再二次反查坐标）；当模态框、文本框或持续拖动占用输入时，底层 JEI 悬停查询返回空栈。
 - **只读布局**：根 `layoutNodes()` 沿当前输入树聚合控件与自绘目录行，提供 `table/<id>`、`log/<entryId>`、日志坐标动作及工具栏的稳定 key。目录行复用实际滚动几何并裁剪到视口，锁定条目保留隐藏语义；根统一投影到原版 GUI 坐标。运行探针与截图见[核心探针](../../../tools/probes/README.md)。
 - **固定画布**：双页保留最小逻辑尺寸 `412 × 256`，根使用可容纳画布的整数物理像素倍率，GUI 设置决定放大上限。缩小窗口可降低整数倍率，实际像素不足 `1×` 时连续缩小；正文随书页倍率绘制，Tooltip 由 Kit 转入原版 GUI 空间。统一接入契约见 [UI Kit](ui-kit-api.md#31-普通页面与考古笔记)。
 
 ### 1.2 右页装配 (`RightPageContainer`)
 
-- `RightPageContainer` 实现 `UiInputContainer`，稳定成员集合只登记当前活动面板；切页签或日志模式时结清旧交互并传播本地退出。通过局部 `PageDescriptor` 绑定右页各 Tab 的内容面板、书签皮肤、指示器位置及切换生命周期回调，并通过 `chromeControls()` 将书签与翻页按钮统一交给 Screen 注册（分类首页时 Screen 通过 `setChromeAvailable(false)` 整体隐藏）。
+- `RightPageContainer` 实现 `UiInputContainer`，稳定成员集合只登记当前活动面板；切页签或日志模式时结清旧交互并传播本地退出。通过局部 `PageDescriptor` 绑定右页各 Tab 的内容面板、书签皮肤、指示器位置及切换生命周期回调，并通过 `chromeControls()` 将书签与翻页按钮统一交给 Screen 注册（分类首页时 Screen 通过 `setChromeAvailable(false)` 整体隐藏）。实际切换 Tab 时，若逻辑焦点属于书签，焦点跟随新的活动书签；同 Tab 数据刷新保留正在遍历的焦点。
 - **分页状态由活动面板自有**：`ARCHAEOLOGY` 由 `ArchaeologyPage` 组合 `ItemGridPanel` 与 `ScenarioPanel`（同一实际成员集合按 grid → scenario 登记，场景栏命中优先，Tab 焦点顺序为网格 → 场景栏）；`LOG` 按列表/详情模式切换面板。分页动作调用活动面板的 `setPage` / `changePage`，由面板自身维护脏状态、页码边界并在准备阶段同步更新翻页按钮状态。
 
 ## 2. 目录面板与追踪管理界面

@@ -9,7 +9,7 @@
 | API 包 | 宿主消费场景 |
 |---|---|
 | `control` | `UiScreen` / `UiThemedScreen`、单多行文本编辑、列表、表单正文与滚动视图/容器、分页状态、控件组、文档阅读控件、模态框与灯箱 |
-| `input` | 成员树 `UiChildren`、输入作用域 `UiInputScope`、唯一路由器 `UiInputRouter`、容器桥 `UiInputBridge`、焦点与持续交互 |
+| `input` | 成员树 `UiChildren`、输入作用域 `UiInputScope`、唯一路由器 `UiInputRouter`、容器桥 `UiInputBridge`、页面回退、焦点与持续交互 |
 | `layout` / `geometry` | 排版文档 `UiDocument` 及其目标快照、行/网格几何计算、坐标变换与矩形 |
 | `style` | 主题上下文、语义文字配色（`UiTextScheme`）、控件与滑块外观、宿主皮肤与表面样式 |
 | `number` | 精确数值输入框、合法数值域与滑条（如幸运值参数草稿） |
@@ -42,6 +42,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 ### 3.2 模态框与持续交互
 
 - 每个根屏幕同一时刻只激活当前顶层 `UiInputScope`：二次确认使用 `UiModalStack`，场景选择与参数浮层使用 `UiOverlay`，条件放大使用 `UiLightbox`；笔记由 `JournalOverlays` 统一管理层切换和业务清理回调，底层路由器自动负责遮罩拦截、焦点归还与迟到事件阻断。
+- 页面通过活动 scope 的 `setNavigationBack` 注入返回动作，kit 处理第四个鼠标键及内容未消费的 Backspace；文本局部撤销保持独立。回退前取消持续交互，侧键的配对释放只消费，不重复导航。输入回调卸载 `UiScreen` 后，事件结束刷新保持旧根关闭。
 - 拖动、长按与框选等持续操作通过所属作用域的 `UiInteractionSession` 绑定实际交互目标，在目标隐藏、禁用、切域或销毁时自动结清，禁止在控件内部自建第二套全局指针捕获。
 
 ### 3.3 文档阅读与业务呈现

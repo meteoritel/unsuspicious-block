@@ -4,17 +4,13 @@ import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState.PagePositions;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
@@ -333,15 +329,24 @@ public final class RightPageContainer implements UiInputContainer {
         syncPageChrome();
     }
 
+    /**
+     * 切换内容与书签选中态；书签持焦时让键盘后续激活跟随新页。
+     */
     public void setActiveTab(Tab tab) {
         if (this.activeTab == tab) {
             return;
         }
+        UiFocusTarget focused = scope.focus().focused();
+        boolean hasBookmarkFocus = focused instanceof UiControl bookmark && bookmarks.contains(bookmark);
         activePage().leave().run();
         this.activeTab = tab;
         activePage().enter().run();
         syncBookmarks();
         syncPageChrome();
+        if (hasBookmarkFocus) {
+            scope.refreshFocus();
+            scope.focus().focusOn(activePage().bookmark());
+        }
     }
 
     // 捕获当前游戏刻作为时间分组参考，仅在切换到日志页或屏幕初始化时调用
