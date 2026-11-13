@@ -1,4 +1,4 @@
-"""解析 journal reload 热运行日志，保留逐表观测数据并生成 CPU 对照表。"""
+"""解析 catalog rebuild 热运行基准日志，保留逐表观测数据并生成 CPU 对照表。"""
 
 import argparse
 import csv
@@ -14,9 +14,10 @@ if str(_TOOLS_ROOT) not in sys.path:
 from toolslib.cli import configure_console
 from toolslib.repo import repo_root
 
-START = re.compile(r"已开始在后台重新模拟 (\d+) 个考古战利品表")
+START = re.compile(r"\[catalog-rebuild\] tables=(\d+)")
+PENDING = re.compile(r"概率缓存命中 \d+ 个表的基准输入，(\d+) 个待模拟")
 DONE = re.compile(
-    r"已完成战利品表 (\S+) 的概率模拟，有效计算 (\d+)ms"
+    r"已完成战利品表 (\S+) 的输入模拟（publication=(BASELINE|REQUEST_ONLY), scenario=([^,]+), (.*?)），有效计算 (\d+)ms"
     r"（线程 CPU (\d+)ms），跨 tick 历时 (\d+)ms，剩余队列 (\d+)(.*)"
 )
 DETAIL = re.compile(r"\b([A-Z_]+(?:_ns)?)=(\d+)")
@@ -34,13 +35,25 @@ def read_round(log_path, round_number):
     for number, line in enumerate(log_path.read_text(encoding="utf-8-sig").splitlines(), 1):
         start = START.search(line)
         if start:
-            current = {"expected": int(start[1]), "rows": [], "evidence": [line]}
+            current = {"expected": int(start[1]), "rows": [], "evidence": [line], "complete": False}
             rounds.append(current)
+            continue
+        pending = PENDING.search(line)
+        if current is not None and pending:
+            current["expected"] = int(pending[1])
+            current["evidence"].append(line)
             continue
         match = DONE.search(line)
         if current is None or not match:
             continue
-        table, active, cpu, elapsed, remaining, suffix = match.groups()
+        table, publication, _scenario, _params, active, cpu, elapsed, remaining, suffix = match.groups()
+        current["evidence"].append(line)
+        if int(remaining) == 0:
+            current["complete"] = True
+        if publication != "BASELINE":
+            if current["complete"]:
+                current = None
+            continue
         row = dict(zip(BASE_FIELDS, [table, int(active), int(cpu), int(elapsed),
                                      int(remaining), "v1" if "profile=v1" in suffix else "off", number]))
         row.update({key: int(value) for key, value in DETAIL.findall(suffix)})
@@ -50,17 +63,16 @@ def read_round(log_path, round_number):
             parent_ms = sum(row.get(stage + "_ns", 0) for stage in PARENTS) / 1_000_000
             row["unattributed_ms"] = round(row["active_ms"] - parent_ms, 3)
         current["rows"].append(row)
-        current["evidence"].append(line)
-        if int(remaining) == 0:
+        if current["complete"]:
             current = None
     if not rounds:
-        raise ValueError("没有找到 journal reload 热运行标记；不使用启动期数字替代")
+        raise ValueError("没有找到 catalog rebuild 热运行标记；不使用启动期数字替代")
     index = len(rounds) - 1 if round_number == "last" else int(round_number) - 1
     if not 0 <= index < len(rounds):
         raise ValueError(f"轮次超出范围：日志中共有 {len(rounds)} 轮")
     chosen = rounds[index]
     rows = chosen["rows"]
-    if (len(rows) != chosen["expected"] or not rows or rows[-1]["remaining"] != 0
+    if (len(rows) != chosen["expected"] or not rows or not chosen["complete"]
             or len({row["table"] for row in rows}) != len(rows)):
         raise ValueError(f"第 {index + 1} 轮不完整或有重复表，拒绝生成对照")
     return rows, chosen["evidence"], index + 1

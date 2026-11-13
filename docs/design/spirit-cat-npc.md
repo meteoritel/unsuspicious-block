@@ -222,38 +222,35 @@
 
 - 通过原版 `/summon` 创建的灵体默认为预览灵体：不运行 AI，也不受最长现世时间限制，只用于模型展示。
 - 职责功能通过 Mod 自定义调试指令触发；调试实体自动绑定指令执行玩家。
-- 统一使用 `/usb spirit_cat` 命令组管理调试与清理操作（命令结构见第 10 节）。
+- 统一使用 `/usb cat spirit` 命令组管理调试与清理操作（命令结构见第 10 节）。
 
 ## 10. 调试命令
 
 ### 命令结构
 
 ```text
-/usb spirit_cat debug spawn <messenger|swordsman|merchant>
-/usb spirit_cat debug info <messenger|swordsman|merchant>
-/usb spirit_cat debug state <messenger|swordsman|merchant> <state>
-/usb spirit_cat debug discard <messenger|swordsman|merchant>
+/usb cat spirit spawn <messenger|swordsman|merchant>
+/usb cat spirit info <messenger|swordsman|merchant>
+/usb cat spirit phase <messenger|swordsman|merchant> <phase>
+/usb cat spirit discard <messenger|swordsman|merchant>
 
-/usb spirit_cat clear at <x y z> <all|messenger|swordsman|merchant>
-/usb spirit_cat clear area <x1 y1 z1> <x2 y2 z2> <all|messenger|swordsman|merchant>
+/usb cat spirit clear <all|messenger|swordsman|merchant> <x1 y1 z1> <x2 y2 z2>
 ```
 
-- 统一命令替代旧 `/usb messenger_cat` 子树，不长期保留重复入口。
 - 沿用 `/usb` 的权限等级 `2`；全部反馈文本使用本地化 key，并同步维护 `en_us.json` 与 `zh_cn.json`。
 
 ### 职责调试实体
 
-- `debug spawn` 自动绑定执行玩家；每名执行者、每种职业最多一个调试实体，再次生成时先清理旧实体。
+- `spawn` 自动绑定执行玩家；每名执行者、每种职业最多一个调试实体，再次生成时先清理旧实体。
 - 调试信使跳过羁绊与猫之手要求，执行完整配送并生成真实 Loot Table 礼物，但不增加猫之九命。
 - 调试剑士绑定执行玩家、提供正常 Buff 并进入默认护卫，不消耗猫之九命；玩家受到生物攻击时可正常唤醒其战斗行为。
 - 调试商人以执行玩家当前位置为活动中心并生成真实库存；只有执行者跳过交易资格，其他玩家遵守正常规则。
 - 调试商人不占用正常世界商人的唯一名额。
-- `debug state` 按职业提供状态补全，只操作执行者绑定的对应调试实体。
+- `phase` 按职业提供阶段补全，只操作执行者绑定的对应调试实体。
 
 ### 坐标与区域清理
 
-- `clear at` 清除当前维度中碰撞箱与指定方块相交的目标猫国灵体。
-- `clear area` 使用两个坐标组成闭合长方体，只处理当前已加载实体，不强制加载区块；每个坐标轴跨度不得超过 `256` 格。
+- `clear` 使用两个坐标组成闭合长方体，只处理当前已加载实体，不强制加载区块；每个坐标轴的端点坐标差不得超过 `256` 格。两个端点相同即清理单个方块。
 - 类型参数可选择全部猫国灵体或单一职业。
 - 清理同时覆盖正常职责实体、调试实体和预览灵体，并清理对应的活跃 UUID 与调试绑定记录。
 

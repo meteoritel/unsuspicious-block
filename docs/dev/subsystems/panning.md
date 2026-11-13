@@ -14,7 +14,7 @@
 | 结算与物品 | `core/pan/PanningLootService.java`、`core/item/PanItem.java`、`core/item/PanProfile.java` |
 | 数据资源 | `data/unsuspiciousblock/loot_table/gameplay/panning/{river,lava}.json`、`worldgen/{configured_feature,placed_feature}/*shimmer*.json`、`assets/minecraft/atlases/blocks.json` |
 | 客户端 | `client/pan/`（`PanningAnimation` / `PanningVisuals` / `PanningSound` / `PanningSoundController` / `PanningMediumIndex`）、`client/renderer/ShimmerSurfaceRenderer`、`client/renderer/ShimmerRenderer` |
-| 调试指令 | `core/command/ShimmerDebugCommand.java`（`/usb shimmer`，OP 2） |
+| 调试指令 | `core/command/ShimmerCommand.java`（`/usb shimmer`，OP 2） |
 | Mixin | `client/mixin/HumanoidPanningMixin`（第三人称）、`client/mixin/fabric/ItemInHandPanningMixin`（Fabric 第一人称） |
 | 平台差异 | 世界生成注入（`BiomeModifications` vs `neoforge/biome_modifier/*.json`）；第一人称动画（Mixin vs `RenderHandEvent`）；配置实现（`IPanningConfig`） |
 
@@ -57,7 +57,7 @@ flowchart TD
 | `ShimmerLedger` | 维度持久化账本，维护区块空间索引、按变体自然计数、寿命到期与采空冷却 |
 | `PanningLootService` | 按目标变体与综合幸运抽取并抛出战利品 |
 | `PanItem` / `PanProfile` | 全部淘盘共同基类及各把淘盘的能力差异配置 |
-| `ShimmerDebugCommand` | `/usb shimmer` 调试与速率统计命令 |
+| `ShimmerCommand` | `/usb shimmer` 调试与速率统计命令 |
 
 ## 4. 数据驱动变体系统
 

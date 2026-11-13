@@ -10,9 +10,12 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 
-/** 目录同步处理器——管理目录的哈希校验按需同步与全量下发 */
+/**
+ * 目录同步处理器——管理目录的哈希校验按需同步与全量下发
+ */
 public final class JournalCatalogHandler {
-    private JournalCatalogHandler() {}
+    private JournalCatalogHandler() {
+    }
 
     // 向玩家发送目录哈希（用于按需同步比对）
     public static void syncCatalogHash(ServerPlayer player) {
@@ -49,7 +52,9 @@ public final class JournalCatalogHandler {
         syncFullCatalog(player);
     }
 
-    /** 数据包重载：暂停 worker → 失效内存目录 → 重新解析入队 → 恢复 worker → 同步哈希 */
+    /**
+     * 数据包重载：暂停 worker → 失效内存目录 → 重新解析入队 → 恢复 worker → 同步哈希
+     */
     public static void onDataPackReload(MinecraftServer server) {
         ServerLootTableConfigManager.reload(server);
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
@@ -73,13 +78,15 @@ public final class JournalCatalogHandler {
      * 玩家会随模拟完成渐进收到哈希更新。
      */
     public static void forceFlushCatalog(MinecraftServer server) {
-        LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
-        probabilityData.clear();
-
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker != null) worker.clearQueue();
-
-        ArchaeologyJournalServerCatalog.invalidate();
-        ArchaeologyJournalServerCatalog.ensureLoaded(server);
+        if (worker != null) worker.pauseForReload();
+        try {
+            LootProbabilityData.get(server.overworld()).clear();
+            if (worker != null) worker.clearQueue();
+            ArchaeologyJournalServerCatalog.invalidate();
+            ArchaeologyJournalServerCatalog.ensureLoaded(server);
+        } finally {
+            if (worker != null) worker.resumeAfterReload();
+        }
     }
 }

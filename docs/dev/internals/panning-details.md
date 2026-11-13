@@ -34,7 +34,7 @@
 
 - **内存索引与持久化字段**：保存 `entries`（UUID → `(pos, source, variant)`）、`nextAttempt`、`expirations`（绝对到期游戏刻）、`expired`（已到期或被清除但尚未卸载清理的 UUID）与 `cooldowns`；加载时在内存实时重建区块空间索引 `entriesByChunk` 与按变体计数 `naturalCounts`，使间距校验（跨变体共享）与计数查询无需全表扫描。
 - **一致性与兼容性**：
-  - 实体卸载保留账本记录，到期后账本将其移出自然名额并在 `expired` 留下标记；实体下次加载、服务端 tick 与结算交互均核对到期状态，防止复活。
+  - 实体卸载保留账本记录，到期后账本将其移出自然名额并在 `expired` 留下标记；重新加载后，在已接入实体管理器的首个服务端 tick 消散并消费标记。交互与结算也即时检查到期状态。
   - 兼容读取缺少截止时间或缺少 `variant` 的旧存档（缺变体回退为 `water`）。**注意事项**：将新版本存档降级至旧版运行时，旧版无法解析 `unsuspiciousblock:glimmer` 实体会导致实体静默消失而账本条目永久等待注销。
 
 ## 3. 客户端表现
@@ -55,19 +55,20 @@
 
 ## 4. 调试命令 (`/usb shimmer`)
 
-[`ShimmerDebugCommand`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/command/ShimmerDebugCommand.java)（权限等级 `2`）基于命令执行者所在维度与坐标运行：
+[`ShimmerCommand`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/command/ShimmerCommand.java) 继承 `/usb` 根节点的 OP 2 权限，使用命令源的维度与坐标。变体、来源和范围各占独立参数位置；指定单个维度使用原版 `/execute in`，位置可用 `/execute positioned`。
 
 | 子指令 | 功能说明 |
 |---|---|
-| `help` | 显示全部子指令用法 |
-| `spawn <pos> [<变体>\|<来源>] [<来源>] [frozen]` | 铺设代表介质（`frozen` 改铺冰）并复用正式生成逻辑生成测试点（跳过间距与上限检查）；变体字面量随注册表自动生成，并与保留关键字防重名校验 |
-| `attempt` | 在当前区块执行一次正式自然生成尝试（校验加载、上限、冷却、群系与间距，不改自动节拍） |
-| `stats [<变体>] [all]` | 查看当前或全部维度的各来源统计、过期记录与已加载/未加载数量 |
-| `chunk` | 查看当前区块冷却剩余时间及最多 20 条点位明细 |
-| `expire <uuid>` | 强制使当前维度指定自然/特殊点立即过期（可操作未加载点，不影响世界点） |
-| `cooldown set <seconds>` / `clear` | 对当前区块周围 `3×3` 区域手动设置（1–86400 秒）或清除冷却 |
-| `rate start <seconds> [intervalTicks]` / `status` / `stop` | 在当前维度启动独立速率测试（临时替代常规节拍、绕过数量上限但保留其余校验；按服务器实际 tick 计时输出估算速率，停服清理且不写配置/账本） |
-| `clear <变体\|来源\|all> [<来源\|all>] [current\|all\|dimension <id>]` | 清理已加载实体并在账本中标记未加载点过期（不触发冷却/掉落，不强制加载区块，不修改尚未物化的原版生成期队列） |
+| `spawn <variant> <source> <pos> [frozen]` | 显式选择注册变体与来源；铺设代表介质后生成测试点，跳过间距与上限。坐标指依附方块；`frozen` 仅接受能够依附冰面的变体，并在替换方块前校验 |
+| `attempt` | 在当前区块执行一次自然生成尝试，检查加载、上限、冷却、群系与间距，保持自动节拍 |
+| `stats <variant\|all> <current\|all>` | 按指定变体统计当前或全部维度的来源存量；待移除记录与自动节拍是维度级信息 |
+| `chunk` | 查看当前区块冷却及最多 20 条账本明细 |
+| `expire <uuid>` | 使当前维度指定自然或特殊点立即过期，支持未加载点；世界生成点保持原状 |
+| `cooldown <seconds>` | `0` 清除当前区块周围 `3×3` 冷却；`1–86400` 秒按较晚截止时间合并冷却 |
+| `rate start <seconds> [interval_ticks]` / `status` / `stop` | 当前维度的真实速率测试：临时替代常规节拍，绕过上限并保留其余生成条件；按服务器 tick 计时，结束后恢复配置节拍 |
+| `clear <variant\|all> <source\|all> <current\|all>` | 必须填写全部筛选条件；立即移除已加载点，并标记未加载点待移除。保留已加载实体的实际来源优先、无需强制加载区块的账本处理 |
+
+来源为 `natural`、`special`、`worldgen`。人工 `natural` 样本使用 `MANUAL` 触发方式，具有自然点来源与有限寿命，并保持自然生成广播关闭。`clear water all all` 表示全部维度的水域变体、全部来源；裸 `/usb` 提供当前注册树的用法。
 
 ## 5. 相关文档
 

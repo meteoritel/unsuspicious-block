@@ -2,7 +2,9 @@ package com.meteorite.unsuspiciousblock.core.command;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatBondStage;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+
 import java.util.stream.Stream;
+
 import com.meteorite.unsuspiciousblock.core.cat.CatGiftService;
 import com.meteorite.unsuspiciousblock.core.cat.CatPassiveAbilities;
 import com.meteorite.unsuspiciousblock.core.cat.SpiritCatDebugRegistry;
@@ -43,8 +45,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class SpiritCatCommand {
     private static final String TYPE_ARG = "type";
-    private static final String STATE_ARG = "state";
-    private static final String POS_ARG = "pos";
+    private static final String STATE_ARG = "phase";
     private static final String FROM_ARG = "from";
     private static final String TO_ARG = "to";
     private static final int MAX_CLEAR_AXIS_SPAN = 256;
@@ -52,29 +53,24 @@ public final class SpiritCatCommand {
     private SpiritCatCommand() {
     }
 
+    /**
+     * 构建灵体子树；绑定操作使用执行玩家，区域清理使用命令源维度。
+     */
     public static LiteralArgumentBuilder<CommandSourceStack> build() {
-        return Commands.literal("spirit_cat")
-                .then(Commands.literal("debug")
-                        .then(Commands.literal("spawn")
-                                .then(roleArgument().executes(SpiritCatCommand::spawnDebug)))
-                        .then(Commands.literal("info")
-                                .then(roleArgument().executes(SpiritCatCommand::showDebugInfo)))
-                        .then(Commands.literal("state")
-                                .then(Commands.argument(TYPE_ARG, StringArgumentType.word())
-                                        .suggests(SpiritCatCommand::suggestRoles)
-                                        .then(Commands.argument(STATE_ARG, StringArgumentType.word())
-                                                .suggests(SpiritCatCommand::suggestStates)
-                                                .executes(SpiritCatCommand::forceDebugState))))
-                        .then(Commands.literal("discard")
-                                .then(roleArgument().executes(SpiritCatCommand::discardDebug))))
+        return Commands.literal("spirit")
+                .then(Commands.literal("spawn").then(roleArgument().executes(SpiritCatCommand::spawnDebug)))
+                .then(Commands.literal("info").then(roleArgument().executes(SpiritCatCommand::showDebugInfo)))
+                .then(Commands.literal("phase")
+                        .then(roleArgument()
+                                .then(Commands.argument(STATE_ARG, StringArgumentType.word())
+                                        .suggests(SpiritCatCommand::suggestStates)
+                                        .executes(SpiritCatCommand::forceDebugState))))
+                .then(Commands.literal("discard").then(roleArgument().executes(SpiritCatCommand::discardDebug)))
                 .then(Commands.literal("clear")
-                        .then(Commands.literal("at")
-                                .then(Commands.argument(POS_ARG, BlockPosArgument.blockPos())
-                                        .then(clearTypeArgument().executes(SpiritCatCommand::clearAt))))
-                        .then(Commands.literal("area")
+                        .then(clearTypeArgument()
                                 .then(Commands.argument(FROM_ARG, BlockPosArgument.blockPos())
                                         .then(Commands.argument(TO_ARG, BlockPosArgument.blockPos())
-                                                .then(clearTypeArgument().executes(SpiritCatCommand::clearArea))))));
+                                                .executes(SpiritCatCommand::clearArea)))));
     }
 
     private static RequiredArgumentBuilder<CommandSourceStack, String> roleArgument() {
@@ -99,7 +95,7 @@ public final class SpiritCatCommand {
         SpiritCat cat = createDebugCat(level, player, role);
         if (cat == null || !level.addFreshEntity(cat)) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.spirit_cat.error.spawn_failed", role.commandName()));
+                    "command.unsuspiciousblock.usb.cat.spirit.error.spawn_failed", role.commandName()));
             return 0;
         }
         SpiritCatDebugRegistry.bind(player.getUUID(), role, cat.getUUID());
@@ -107,7 +103,7 @@ public final class SpiritCatCommand {
             CatPassiveAbilities.grantNineLivesProtection(player, false);
         }
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.spirit_cat.spawn.success", role.commandName(), cat.getId()), true);
+                "command.unsuspiciousblock.usb.cat.spirit.spawn.success", role.commandName(), cat.getId()), true);
         return 1;
     }
 
@@ -170,7 +166,7 @@ public final class SpiritCatCommand {
         String position = String.format(Locale.ROOT, "%.2f, %.2f, %.2f", cat.getX(), cat.getY(), cat.getZ());
         String state = describeState(cat);
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.spirit_cat.info.summary", role.commandName(), cat.getId(),
+                "command.unsuspiciousblock.usb.cat.spirit.info.summary", role.commandName(), cat.getId(),
                 position, state, cat.getSpiritLifetimeRemaining()), false);
         return 1;
     }
@@ -207,11 +203,11 @@ public final class SpiritCatCommand {
             }
         } catch (IllegalArgumentException exception) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.spirit_cat.error.unknown_state", requested, role.commandName()));
+                    "command.unsuspiciousblock.usb.cat.spirit.error.unknown_phase", requested, role.commandName()));
             return 0;
         }
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.spirit_cat.state.success", role.commandName(), cat.getId(), normalized), true);
+                "command.unsuspiciousblock.usb.cat.spirit.phase.success", role.commandName(), cat.getId(), normalized), true);
         return 1;
     }
 
@@ -225,23 +221,18 @@ public final class SpiritCatCommand {
         int id = cat.getId();
         cat.discard();
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.spirit_cat.discard.success", role.commandName(), id), true);
+                "command.unsuspiciousblock.usb.cat.spirit.discard.success", role.commandName(), id), true);
         return 1;
     }
 
-    private static int clearAt(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        BlockPos pos = BlockPosArgument.getBlockPos(context, POS_ARG);
-        return clear(context, new AABB(pos));
-    }
-
-    private static int clearArea(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+    private static int clearArea(CommandContext<CommandSourceStack> context) {
         BlockPos from = BlockPosArgument.getBlockPos(context, FROM_ARG);
         BlockPos to = BlockPosArgument.getBlockPos(context, TO_ARG);
         if (axisSpan(from.getX(), to.getX()) > MAX_CLEAR_AXIS_SPAN
                 || axisSpan(from.getY(), to.getY()) > MAX_CLEAR_AXIS_SPAN
                 || axisSpan(from.getZ(), to.getZ()) > MAX_CLEAR_AXIS_SPAN) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.spirit_cat.error.area_too_large", MAX_CLEAR_AXIS_SPAN));
+                    "command.unsuspiciousblock.usb.cat.spirit.error.area_too_large", MAX_CLEAR_AXIS_SPAN));
             return 0;
         }
         AABB area = new AABB(
@@ -257,7 +248,7 @@ public final class SpiritCatCommand {
         SpiritCatRole role = "all".equalsIgnoreCase(typeName) ? null : SpiritCatRole.parse(typeName);
         if (role == null && !"all".equalsIgnoreCase(typeName)) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.spirit_cat.error.unknown_type", typeName));
+                    "command.unsuspiciousblock.usb.cat.spirit.error.unknown_type", typeName));
             return 0;
         }
         var cats = level.getEntitiesOfClass(SpiritCat.class, area,
@@ -265,7 +256,7 @@ public final class SpiritCatCommand {
         cats.forEach(SpiritCat::discard);
         int count = cats.size();
         context.getSource().sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.spirit_cat.clear.success", count, typeName), true);
+                "command.unsuspiciousblock.usb.cat.spirit.clear.success", count, typeName), true);
         return count;
     }
 
@@ -281,7 +272,7 @@ public final class SpiritCatCommand {
         SpiritCat cat = SpiritCatDebugRegistry.find(context.getSource().getServer(), player.getUUID(), role);
         if (cat == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.spirit_cat.error.not_found", role.commandName()));
+                    "command.unsuspiciousblock.usb.cat.spirit.error.not_found", role.commandName()));
         }
         return cat;
     }
@@ -291,7 +282,7 @@ public final class SpiritCatCommand {
         SpiritCatRole role = SpiritCatRole.parse(typeName);
         if (role == null) {
             context.getSource().sendFailure(Component.translatable(
-                    "command.unsuspiciousblock.usb.spirit_cat.error.unknown_type", typeName));
+                    "command.unsuspiciousblock.usb.cat.spirit.error.unknown_type", typeName));
         }
         return role;
     }

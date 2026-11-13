@@ -128,6 +128,14 @@ flowchart TD
 - **猫之手绑定不可覆盖**：他人信物不可接管，遗失后只能绑定新的空白信物。
 - **猫之手结构自然生成当前停用**：自 `1.4.1` 起已停用自然生成（见[实体与 AI](entities-world.md)）。
 
+### 管理命令
+
+`/usb cat` 继承根节点 OP 2 权限。`bond get` 返回执行玩家当前羁绊，`bond set <0–100>` 与 `bond add <delta>` 经账本修改羁绊，成功返回 `1`。增量输入先在 `long` 中相加再夹取，支持完整 `int` 输入范围。
+
+`reset` 触发完整关系重置，清除关系建立标志、羁绊、命数、冷却、偏好与活跃槽位；保留物品内信物归属。玩家仍携带本人猫之手时，正常 tick 会重新建立关系。控制台通过 `/execute as <player> run usb cat ...` 指定玩家。
+
+`spirit` 的职责调试与区域清理见[猫国灵体规格](../../design/spirit-cat-npc.md)的“调试命令”。
+
 ## 10. 相关文档
 
 - [猫族关系机制细节](../internals/cat-favor-mechanics.md)

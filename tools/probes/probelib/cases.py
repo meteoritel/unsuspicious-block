@@ -65,7 +65,7 @@ class Case:
     def own_table(self, table):
         if table not in self.tables:
             self.own_scene()
-            expression = f'Probe.command({json.dumps("execute as UsbProbe run usb journal clear " + table)})'
+            expression = f'Probe.command({json.dumps("execute as UsbProbe run usb journal reset " + table)})'
             self.defer('server', expression)
             self.action('server', expression)
             self.expect('清空本场景表并自然同步', lambda: self.client.evaluate(f'Probe.journal({json.dumps(table)})'),

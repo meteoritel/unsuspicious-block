@@ -38,12 +38,15 @@ flowchart TD
 
 ## 3. 调试命令与目录稳定性
 
-`/usb journal`（由 `JournalCommand` 提供）与目录口径的交互规则如下：
+`/usb journal` 的玩家进度由 `JournalCommand` 提供，共享目录维护由 `JournalCatalogCommand` 提供；根 `/usb` 统一检查 OP 2 权限。
 
-- **`/usb journal reload`**：清空 `LootProbabilityData` 缓存、worker 队列与服务端内存目录后重新构建与模拟；**不删除任何玩家的笔记进度或日志**。任务完成或玩家中途离线时会立即解除进度监听器，不遗留悬空引用。
-- **`/usb journal unlock table [table_id]`**：读取启动即完整的静态视图（`staticTables()`），不等待模拟队列完成。
-- **`/usb journal unlock item [table_id]`**：需要动态发现物品稳定入库，因此当 worker 仍在忙碌或 `simulatedTables()` 尚未覆盖全部收录表时**拒绝执行**，防止将半成品目录写入玩家存档。
-- **子树闭包去重 (`CatalogQueryIndex.subtreeItems`)**：父表介绍页、`unlock item` 与 100% 完成奖励统一计算“本表及所有后代表按 `LootResultSignature` 去重后的物品全集”，共享子表与循环引用只遍历一次。
+- **`catalog rebuild`**：通过 `JournalCatalogHandler.forceFlushCatalog` 暂停 worker、清空持久化概率缓存与队列、失效并重建目录，最后在 `finally` 中恢复消费。玩家笔记进度与日志保持原状；命令返回受理成功，后续用 `catalog status` 查询。
+- **`catalog status`**：分别显示队列忙碌状态和模拟视图覆盖情况；队列空闲时仍可能存在未成功模拟的表，具体原因见服务端失败日志。
+- **`catalog list`**：列出当前静态目录，使用常规名称解析。缺失翻译仍在目录加载结束时集中汇总。
+- **`unlock tables <all|table_id>`**：读取启动即完整的静态视图（`staticTables()`）；选择目标为必填项。
+- **`unlock items <all|table_id>`**：等待 worker 空闲且模拟视图覆盖全部收录表后，通过 `CatalogQueryIndex.subtreeItems` 解锁本表与后代去重后的物品全集；共享子表与循环引用只遍历一次。
+- **`reset <all|table_id>`**：修改执行玩家的进度，发送全量状态，再清除相应日志。普通解锁使用增量状态同步。
+- **执行者**：玩家进度命令要求玩家源，控制台可用 `/execute as <player> run usb journal ...`；目录维护可直接由控制台执行。裸 `/usb` 根据已注册树生成用法导航。
 
 ## 4. 相关文档
 

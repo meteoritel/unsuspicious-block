@@ -1,9 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.command;
 
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
@@ -11,7 +8,6 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogHandler;
-import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.core.network.journal.JournalStateHandler;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -25,7 +21,6 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.Set;
@@ -34,32 +29,34 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-/** 考古笔记调试子指令树：/usb journal ... */
+/**
+ * 执行玩家的笔记进度操作，以及服务器共享目录子树。
+ */
 public final class JournalCommand {
     private static final String TABLE_ID_ARG = "table_id";
     private static final DynamicCommandExceptionType UNKNOWN_TABLE = new DynamicCommandExceptionType(
             tableId -> Component.translatable("command.unsuspiciousblock.usb.journal.error.unknown_table", tableId)
     );
 
-    private JournalCommand() {}
-
-    // 构建 journal 子树
-    public static LiteralArgumentBuilder<CommandSourceStack> build() {
-        return Commands.literal("journal")
-                .requires(source -> source.hasPermission(2))
-                .then(buildClearSubcommand())
-                .then(buildUnlockSubcommand())
-                .then(buildReloadSubcommand())
-                .then(buildListSubcommand());
+    private JournalCommand() {
     }
 
-    // clear [table_id]：清空玩家考古数据，可指定单表
-    private static LiteralArgumentBuilder<CommandSourceStack> buildClearSubcommand() {
-        return Commands.literal("clear")
-                .executes(context -> mutateCurrentPlayer(context,
+    /**
+     * 构建笔记子树，由 /usb 根节点统一检查权限。
+     */
+    public static LiteralArgumentBuilder<CommandSourceStack> build() {
+        return Commands.literal("journal")
+                .then(buildResetSubcommand())
+                .then(buildUnlockSubcommand())
+                .then(JournalCatalogCommand.build());
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildResetSubcommand() {
+        return Commands.literal("reset")
+                .then(Commands.literal("all").executes(context -> mutateCurrentPlayer(context,
                         ArchaeologyJournalState::clear,
                         JournalLogHandler::clearLogs,
-                        Component.translatable("command.unsuspiciousblock.usb.journal.clear.success")))
+                        Component.translatable("command.unsuspiciousblock.usb.journal.reset.success"))))
                 .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                         .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
                         .executes(context -> {
@@ -69,23 +66,22 @@ public final class JournalCommand {
                             return mutateAndSyncFull(context.getSource(), player,
                                     state -> state.removeTable(tableId),
                                     target -> JournalLogHandler.clearLogsForTable(target, tableId),
-                                    Component.translatable("command.unsuspiciousblock.usb.journal.clear_table.success", tableId.toString()));
+                                    Component.translatable("command.unsuspiciousblock.usb.journal.reset_table.success", tableId.toString()));
                         }));
     }
 
-    // unlock table|item [table_id]：解锁表或物品，无参=全部
     private static LiteralArgumentBuilder<CommandSourceStack> buildUnlockSubcommand() {
         return Commands.literal("unlock")
-                .then(Commands.literal("table")
-                        .executes(context -> {
+                .then(Commands.literal("tables")
+                        .then(Commands.literal("all").executes(context -> {
                             ServerPlayer player = requirePlayer(context);
                             Map<ResourceLocation, TableDefinition> catalog = getRawCatalog(context.getSource());
                             return mutateAndSync(context.getSource(), player, state -> {
                                 for (ResourceLocation tableId : catalog.keySet()) {
                                     state.unlockTable(tableId);
                                 }
-                            }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.table.all.success", catalog.size()));
-                        })
+                            }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.tables.all.success", catalog.size()));
+                        }))
                         .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                                 .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
                                 .executes(context -> {
@@ -94,10 +90,10 @@ public final class JournalCommand {
                                     requireTable(context.getSource(), tableId);
                                     return mutateAndSync(context.getSource(), player,
                                             state -> state.unlockTable(tableId),
-                                            Component.translatable("command.unsuspiciousblock.usb.journal.unlock.table.success", tableId.toString()));
+                                            Component.translatable("command.unsuspiciousblock.usb.journal.unlock.tables.success", tableId.toString()));
                                 })))
-                .then(Commands.literal("item")
-                        .executes(context -> {
+                .then(Commands.literal("items")
+                        .then(Commands.literal("all").executes(context -> {
                             ServerPlayer player = requirePlayer(context);
                             if (rejectIncompleteSimulation(context.getSource())) {
                                 return 0;
@@ -109,8 +105,8 @@ public final class JournalCommand {
                                 for (ResourceLocation tableId : catalog.keySet()) {
                                     unlockTableItems(state, tableId, queryIndex.subtreeItems(tableId));
                                 }
-                            }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.all.success", itemCount, catalog.size()));
-                        })
+                            }, Component.translatable("command.unsuspiciousblock.usb.journal.unlock.items.all.success", itemCount, catalog.size()));
+                        }))
                         .then(Commands.argument(TABLE_ID_ARG, ResourceLocationArgument.id())
                                 .suggests((context, builder) -> suggestTableIds(context.getSource(), builder))
                                 .executes(context -> {
@@ -123,77 +119,8 @@ public final class JournalCommand {
                                     List<ItemDefinition> items = getQueryIndex(context.getSource()).subtreeItems(tableId);
                                     return mutateAndSync(context.getSource(), player,
                                             state -> unlockTableItems(state, tableId, items),
-                                            Component.translatable("command.unsuspiciousblock.usb.journal.unlock.item.success", tableId.toString(), items.size()));
+                                            Component.translatable("command.unsuspiciousblock.usb.journal.unlock.items.success", tableId.toString(), items.size()));
                                 })));
-    }
-
-    // reload：强制清空概率缓存，重新加载并重新模拟所有跟踪的战利品表
-    private static LiteralArgumentBuilder<CommandSourceStack> buildReloadSubcommand() {
-        return Commands.literal("reload")
-                .executes(context -> flushTablesWithFeedback(context.getSource()));
-    }
-
-    // list：列出所有已加载的考古战利品表
-    private static LiteralArgumentBuilder<CommandSourceStack> buildListSubcommand() {
-        return Commands.literal("list")
-                .executes(context -> sendTableList(context.getSource()));
-    }
-
-    // reload/flush：清空缓存 + 异步重新模拟，并向执行玩家逐条发送进度
-    private static int flushTablesWithFeedback(CommandSourceStack source) {
-        MinecraftServer server = source.getServer();
-        ServerPlayer player = source.getPlayer();
-
-        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker == null) {
-            // 工作线程未启动（异常情况）：回退到无反馈的同步 flush
-            JournalCatalogHandler.forceFlushCatalog(server);
-            int tableCount = ArchaeologyJournalServerCatalog.simulatedTables().size();
-            source.sendSuccess(() -> Component.translatable(
-                    "command.unsuspiciousblock.usb.journal.reload.success", tableCount), false);
-            return tableCount;
-        }
-
-        // 暂停 worker，避免 flush 入队后立刻消费导致 total 未就绪时回调触发
-        worker.pauseForReload();
-
-        final AtomicInteger done = new AtomicInteger(0);
-        final AtomicInteger total = new AtomicInteger(0);
-        final UUID playerId = player != null ? player.getUUID() : null;
-
-        worker.setProgressListener((tableId, result) -> {
-            int idx = done.incrementAndGet();
-            int expected = total.get();
-            boolean completed = expected > 0 && idx >= expected;
-            if (completed) {
-                worker.setProgressListener(null);
-            }
-            if (playerId == null) return;
-            ServerPlayer p = server.getPlayerList().getPlayer(playerId);
-            if (p == null) return;
-            String displayName = LootTableNames.resolveDisplayName(tableId).getString();
-            p.sendSystemMessage(Component.translatable(
-                    "command.unsuspiciousblock.usb.journal.reload.progress",
-                    idx, expected, tableId.toString(), displayName));
-            if (completed) {
-                p.sendSystemMessage(Component.translatable(
-                        "command.unsuspiciousblock.usb.journal.reload.complete", idx));
-            }
-        });
-
-        // 执行 flush：清空缓存 + 重新解析 + 入队（worker 已暂停，不会消费）
-        JournalCatalogHandler.forceFlushCatalog(server);
-        total.set(ArchaeologyJournalServerCatalog.staticTables().size());
-        if (total.get() == 0) {
-            worker.setProgressListener(null);
-        }
-
-        // 恢复 worker 消费
-        worker.resumeAfterReload();
-
-        source.sendSuccess(() -> Component.translatable(
-                "command.unsuspiciousblock.usb.journal.reload.started", total.get()), false);
-        return total.get();
     }
 
     private static void unlockTableItems(ArchaeologyJournalState state, ResourceLocation tableId,
@@ -203,34 +130,6 @@ public final class JournalCommand {
             return;
         }
         state.unlockItems(tableId, items.stream().map(ItemDefinition::signature).toList());
-    }
-
-    private static int sendTableList(CommandSourceStack source) {
-        Map<ResourceLocation, TableDefinition> catalog = getRawCatalog(source);
-        if (catalog.isEmpty()) {
-            source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.journal.list.empty"), false);
-            return 0;
-        }
-
-        source.sendSuccess(() -> Component.translatable("command.unsuspiciousblock.usb.journal.list.header", catalog.size()), false);
-        int index = 1;
-        for (TableDefinition table : catalog.values()) {
-            int lineIndex = index++;
-            ResourceLocation tableId = table.id();
-            // 调试命令强制重新检索缺失 key 并写盘，作为 catalog 加载失败时的手动补救手段
-            String displayName = LootTableNames.forceResolveDisplayName(tableId).getString();
-            String translationKey = LootTableNames.translationKey(tableId);
-            String fallbackName = LootTableNames.fallbackName(tableId);
-            source.sendSuccess(() -> Component.translatable(
-                    "command.unsuspiciousblock.usb.journal.list.entry",
-                    lineIndex,
-                    tableId.toString(),
-                    translationKey,
-                    fallbackName,
-                    displayName
-            ), false);
-        }
-        return catalog.size();
     }
 
     private static ServerPlayer requirePlayer(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {

@@ -81,7 +81,7 @@ Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>`
 
 | 入口 | 用途 | 参数查 `--help` |
 |---|---|---|
-| [`loot_simulation_profile.py`](diagnostics/loot_simulation_profile.py) | 解析 `/usb journal reload` 热运行日志各阶段耗时并导出 CSV / Markdown 对照表 | 支持 `--log`、`--round`、`--baseline`、`--csv`、`--report` |
+| [`loot_simulation_profile.py`](diagnostics/loot_simulation_profile.py) | 解析 `/usb journal catalog rebuild` 热运行日志各阶段耗时并导出 CSV / Markdown 对照表 | 支持 `--log`、`--round`、`--baseline`、`--csv`、`--report` |
 | [`read_loot_probability_save.py`](diagnostics/read_loot_probability_save.py) | 读取 `unsuspiciousblock_loot_probability.dat`（gzip/zlib NBT）摘要与指定表输入键明细 | 支持显式 `.dat` 路径、`--table`、`--show-items` |
 
 ## 相关文档

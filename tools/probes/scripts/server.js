@@ -78,7 +78,7 @@ Probe.inventoryCount = function(itemId) {
 Probe.resetCat = function() {
     this.player().getInventory().clearContent();
     this.player().inventoryMenu.broadcastChanges();
-    this.command('execute as UsbProbe run usb favor reset');
+    this.command('execute as UsbProbe run usb cat reset');
     return true;
 };
 Probe.cleanScene = function() {

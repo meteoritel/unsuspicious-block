@@ -104,10 +104,6 @@ public final class LootProbabilitySimulationWorker {
      * 当前队列全部处理完毕后的回调
      */
     private volatile Consumer<MinecraftServer> queueDrainedHandler;
-    /**
-     * 调试用进度回调（由 /usb journal reload 设置），可能为 null
-     */
-    private volatile ProgressListener progressListener;
 
     private LootProbabilitySimulationWorker() {
     }
@@ -345,13 +341,6 @@ public final class LootProbabilitySimulationWorker {
     }
 
     /**
-     * 设置调试用进度回调
-     */
-    public void setProgressListener(ProgressListener listener) {
-        this.progressListener = listener;
-    }
-
-    /**
      * 判断当前是否仍有模拟任务或正处于 reload 暂停阶段。
      */
     public boolean isBusy() {
@@ -405,7 +394,7 @@ public final class LootProbabilitySimulationWorker {
             return;
         }
         LOGGER.warn("{} 个模拟输入失败，其概率保持未知（不会显示为 0），"
-                        + "将在下次数据包重载或 /usb journal reload 时重新尝试：{}",
+                        + "将在下次数据包重载或 /usb journal catalog rebuild 时重新尝试：{}",
                 this.failedInputs.size(), String.join(", ", this.failedInputs.keySet()));
         this.failedInputs.clear();
     }
@@ -461,9 +450,9 @@ public final class LootProbabilitySimulationWorker {
         if (result.successful()) {
             // 三个时间各有用处：线程 CPU 回答"这张表本身有多贵"；"有效计算"是墙钟，在服务端启动阶段
             // 会因与区块生成等工作争抢 CPU 而虚高；"跨 tick 历时"还包含 tick 之间的等待。
-            LOGGER.info("已完成战利品表 {} 的输入模拟（scenario={}, {}），有效计算 {}ms（线程 CPU {}ms），"
+            LOGGER.info("已完成战利品表 {} 的输入模拟（publication={}, scenario={}, {}），有效计算 {}ms（线程 CPU {}ms），"
                             + "跨 tick 历时 {}ms，剩余队列 {}{}",
-                    item.request.tableId(), item.request.scenario().key(),
+                    item.request.tableId(), item.publication, item.request.scenario().key(),
                     item.request.input().params().describe(),
                     activeElapsedMs, cpuElapsedMs, wallElapsedMs,
                     enqueued.size(), item.job != null ? item.job.metricsSummary() : "");
@@ -477,10 +466,7 @@ public final class LootProbabilitySimulationWorker {
             LOGGER.warn("战利品表 {} 的输入模拟未成功，不写入缓存，有效计算 {}ms（线程 CPU {}ms），跨 tick 历时 {}ms",
                     item.request.tableId(), activeElapsedMs, cpuElapsedMs, wallElapsedMs);
         }
-        ProgressListener listener = this.progressListener;
-        if (listener != null) {
-            listener.onTableSimulated(result.tableId(), result.measurement());
-        }
+
     }
 
     // 当前线程已消耗的 CPU 时间；平台不支持时返回 0，日志退化为只报墙钟时间
@@ -541,13 +527,4 @@ public final class LootProbabilitySimulationWorker {
                     MinecraftServer server);
     }
 
-    /**
-     * 调试用进度回调（在主线程调用）
-     */
-    public interface ProgressListener {
-        /**
-         * 单表单个输入模拟完成
-         */
-        void onTableSimulated(ResourceLocation tableId, SimulationMeasurement measurement);
-    }
 }

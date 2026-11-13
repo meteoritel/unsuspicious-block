@@ -482,7 +482,7 @@ public abstract class ShimmerEntity extends Entity {
         this.anchorPos = tag.contains(NBT_ANCHOR) ? BlockPos.of(tag.getLong(NBT_ANCHOR)) : this.blockPosition();
         this.snapToAnchor();
         this.ledgerRegistered = false;
-        this.discardIfExpired();
+        // NBT 读取时尚未接入实体管理器；过期清理留到首 tick，确保移除回调已安装。
     }
 
     // ========== 物理与抗性 ==========

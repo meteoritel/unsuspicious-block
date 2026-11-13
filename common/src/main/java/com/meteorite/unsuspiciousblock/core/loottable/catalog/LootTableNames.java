@@ -13,7 +13,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-/** 考古战利品表名称注册表——提供名称映射、本地化 key 规则与 fallback 解析 */
+/**
+ * 考古战利品表名称注册表——提供名称映射、本地化 key 规则与 fallback 解析
+ */
 public final class LootTableNames {
     private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.table.";
     private static final Map<ResourceLocation, NameRegistration> REGISTRATIONS = new LinkedHashMap<>();
@@ -101,15 +103,6 @@ public final class LootTableNames {
         return Component.translatableWithFallback(translationKey, fallbackName);
     }
 
-    // 强制版本：立即输出缺失汇总并落盘，忽略收集去重；仅供调试命令手动补救使用
-    public static Component forceResolveDisplayName(ResourceLocation tableId) {
-        String translationKey = translationKey(tableId);
-        String fallbackName = fallbackName(tableId);
-        PENDING_MISSING.put(tableId, new MissingEntry(translationKey, fallbackName));
-        logMissingTranslationSummary();
-        return Component.translatableWithFallback(translationKey, fallbackName);
-    }
-
     // 收集缺失 key（同一 tableId 去重），分类与输出推迟到 logMissingTranslationSummary
     private static void collectMissingTranslation(ResourceLocation tableId, String translationKey, String fallbackName) {
         PENDING_MISSING.putIfAbsent(tableId, new MissingEntry(translationKey, fallbackName));
@@ -121,7 +114,7 @@ public final class LootTableNames {
      *   <li>当前语言与 en_us 均缺失 -- 界面使用 fallback 名称</li>
      *   <li>当前语言缺失但 en_us 已有翻译 -- 界面显示英文，可按 en_us 值翻译</li>
      * </ul>
-     * 批处理边界（目录加载结束、调试命令）调用；输出后清空收集。
+     * 目录加载结束时调用；输出后清空收集。
      * 无客户端语言环境（专用服务端）时统一按 fallback 类别输出。
      */
     public static void logMissingTranslationSummary() {
@@ -141,7 +134,7 @@ public final class LootTableNames {
             boolean currentLanguageHas = serverContext
                     ? Language.getInstance().has(translationKey)
                     : snapshot.currentResource().containsKey(translationKey)
-                            || snapshot.currentOverrides().containsKey(translationKey);
+                    || snapshot.currentOverrides().containsKey(translationKey);
             if (currentLanguageHas) {
                 continue;
             }
@@ -265,7 +258,9 @@ public final class LootTableNames {
     private record NameRegistration(String translationKey, String fallbackName) {
     }
 
-    /** 单个待汇总的缺失 key 条目 */
+    /**
+     * 单个待汇总的缺失 key 条目
+     */
     private record MissingEntry(String translationKey, String fallbackName) {
     }
 }

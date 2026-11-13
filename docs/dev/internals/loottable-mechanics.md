@@ -157,7 +157,7 @@ flowchart TD
 | `MATCHED` / `RAW_SKIPPED` / `DERIVED` | 三个掉落处理分支计数，正常任务三者之和等于 `DROPS` |
 | `CANDIDATES_ADDED` | 各场景动态新增的候选签名总数 |
 
-各阶段 `*_ns` 字段记录 `System.nanoTime` 累计墙钟纳秒；其中 `GENERATE` 包含原版、Mixin 与 NeoForge GLM，而 `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 为嵌套子明细（已包含在父段内，不可重复叠加）。使用 [`tools/diagnostics/loot_simulation_profile.py`](../../../tools/diagnostics/loot_simulation_profile.py) 解析 `/usb journal reload` 标记后的完整测试轮次。
+各阶段 `*_ns` 字段记录 `System.nanoTime` 累计墙钟纳秒；其中 `GENERATE` 包含原版、Mixin 与 NeoForge GLM，而 `SERIALIZE_DETAIL` / `STORED_KEY_DETAIL` / `PREVIEW_DETAIL` 为嵌套子明细（已包含在父段内，不可重复叠加）。使用 [`tools/diagnostics/loot_simulation_profile.py`](../../../tools/diagnostics/loot_simulation_profile.py) 解析 `/usb journal catalog rebuild` 标记后的完整测试轮次。
 
 ## 5. 结果缓存与失效机制
 
@@ -180,7 +180,7 @@ flowchart TD
 - **启动只算基准输入**：首次加载仅从缓存恢复或入队每表的 `baseline` 输入，按「哈希变化」与「缺少测量」分别统计未命中原因；其余场景按需触发。
 - **数据包重载**：`DataPackReloadListener` 仅置脏标记，由 `ServerLootTableConfigManager` 在服务端 tick 路径统一失效重建（避免阻塞平台重载回调）。
 - **构建期机制拦截**：`LootMechanismSupport` 在构建期拦截 `paramSet` 不兼容的表（如 `barter` 缺少 `ORIGIN`、或在非工具上下文引用 `enchantment_level`），直接标为 `Unknown(UNPARSED)` 并输出一次可行动日志；同时遵循原版缺省语义，将空 `type` 视为 `generic`。
-- **确定性失败不自动重排**：执行异常的输入记录为失败并维持「未知」展示，直到下次数据包重载或执行 `/usb journal reload` 时才重新尝试。
+- **确定性失败不自动重排**：执行异常的输入记录为失败并维持「未知」展示，直到下次数据包重载或执行 `/usb journal catalog rebuild` 时才重新尝试。
 - **唯一展示派生路径**：从缓存恢复与刚刚模拟完成统一调用 `ArchaeologyJournalServerCatalog.deriveTable` 装配展示结果。
 
 ## 6. 约束目录与按需请求链路

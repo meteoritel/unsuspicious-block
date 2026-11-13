@@ -15,7 +15,7 @@
 | 日志存储与同步 | `core/world/JournalLogStorage.java`（分片权威存储）、`core/world/JournalLogSavedData.java`（旧单文件迁移读桥）、`core/journal/sync/ArchaeologyJournalLogSyncSession(Holder)` |
 | 网络处理 | `core/network/journal/`（各 Handler；Payload 定义见[网络与同步](../foundation/network.md)） |
 | 数据资源 | `data/<namespace>/journal_categories/*.json`（目录分类规则，支持任意命名空间扩展） |
-| 调试命令 | `core/command/JournalCommand.java`（`/usb journal ...`） |
+| 调试命令 | `core/command/JournalCommand.java`（玩家进度）、`JournalCatalogCommand.java`（共享目录维护）；语法与同步见[目录构建细节](../internals/journal-catalog-build.md) |
 | Mixin | `PlayerDataMixin`、`ServerPlayerDataMixin`、`NestedLootTableMixin`、`container/*`、`FishingHookMixin`（清单见[Mixin 边界与接线](../foundation/mixin.md)） |
 | 平台差异 | 无核心分叉（各平台触发事件均转交同一份 `common` 追踪实现） |
 
