@@ -16,14 +16,15 @@ import com.meteorite.meteosuikit.api.layout.UiNode;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground.BookLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
@@ -50,9 +51,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
-import java.util.function.BiPredicate;
 
-/** 场景详情页：顶部总览与快捷控制栏 + 原子环境条件勾选与实时分支/物品状态清单。 */
+/**
+ * 场景详情页：顶部总览与快捷控制栏 + 原子环境条件勾选与实时分支/物品状态清单。
+ */
 public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInputContainer {
     private static final int MAX_SAVED_POSITIONS = 512;
 
@@ -73,20 +75,24 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     private final Map<String, Integer> conditionPositions = new LinkedHashMap<>();
 
     private BookLayout layout;
-    @Nullable private ResourceLocation table;
-    @Nullable private Font measuredFont;
-    @Nullable private UiDocumentView conditions;
-    @Nullable private String viewKey;
-    private long catalogRevision = Long.MIN_VALUE;
-    private long simulationRevision = Long.MIN_VALUE;
-    private String input = "";
-    private String requestStatus = "";
+    @Nullable
+    private ResourceLocation table;
+    @Nullable
+    private Font measuredFont;
+    @Nullable
+    private UiDocumentView conditions;
+    @Nullable
+    private String viewKey;
+    private boolean documentDirty = true;
     private Language language;
     private List<UiNode> conditionTree = List.of();
-    @Nullable private Component overviewLabel;
-    private BiPredicate<String, String> targetVisible = (kind, target) -> false;
-    private BiConsumer<String, String> locateTarget = (kind, target) -> { };
-    private Runnable viewDrops = () -> { };
+    @Nullable
+    private Component overviewLabel;
+    private @Nullable ScenarioTableSnapshot snapshot;
+    private BiConsumer<String, String> locateTarget = (kind, target) -> {
+    };
+    private Runnable viewDrops = () -> {
+    };
 
     public ScenarioDetailPanel(BookLayout layout, JournalOverlays overlays) {
         this.layout = layout;
@@ -97,10 +103,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         }
     }
 
-    public void setTargetNavigation(BiPredicate<String, String> visible,
-                                    BiConsumer<String, String> locate,
+    public void setTargetNavigation(BiConsumer<String, String> locate,
                                     Runnable viewDrops) {
-        this.targetVisible = visible;
         this.locateTarget = (kind, target) -> {
             if (overlays.isOpen()) {
                 overlays.close();
@@ -114,7 +118,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     public void applyLayout(BookLayout layout) {
         saveCurrentPosition();
         this.layout = layout;
-        catalogRevision = Long.MIN_VALUE;
+        documentDirty = true;
     }
 
     public void setTable(@Nullable ResourceLocation value) {
@@ -124,7 +128,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         saveCurrentPosition();
         table = value;
         viewKey = null;
-        catalogRevision = Long.MIN_VALUE;
+        documentDirty = true;
     }
 
     @Override
@@ -177,16 +181,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 layout.rightPageRight(), layout.rightPageBottom());
     }
 
-    @Nullable
-    CatalogTableDto structure() {
-        return table == null ? null : ScenarioSimulationClientState.table(table);
-    }
-
-    @Nullable
-    SimulationPreferenceStore.Selection selection() {
-        return table == null ? null : ScenarioSimulationClientState.selection(table);
-    }
-
     @Override
     public int pageCount() {
         return 1;
@@ -207,7 +201,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
     private void sync(Font font) {
         if (table != null) {
-            ScenarioSimulationClientState.ensureCacheQuery(table);
+            JournalClientConnection.scenario().ensureCacheQuery(table);
         }
         if (conditions == null || measuredFont != font) {
             saveCurrentPosition();
@@ -215,11 +209,11 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
             if (conditions != null) {
                 children.remove(conditions);
             }
-            conditions = new UiDocumentView(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT, ScenarioSimulationClientState.text("conditions.heading"));
+            conditions = new UiDocumentView(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT, ScenarioSession.text("conditions.heading"));
             conditions.setBackground(ScenarioDetailPanel::renderConditionBackground);
             children.add(conditions);
             viewKey = null;
-            catalogRevision = Long.MIN_VALUE;
+            documentDirty = true;
         }
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
@@ -241,31 +235,22 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - panelTop);
         conditions.setBounds(x + 6, panelTop + 6, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
 
-        var choice = selection();
-        CatalogTableDto structure = structure();
-        String nextInput = choice == null ? "" : ScenarioSimulationClientState.inputKey(choice);
-        String nextStatus = table == null || nextInput.isEmpty()
-                ? "uncomputed" : ScenarioSimulationClientState.status(table, nextInput);
-        long nextCatalogRev = ArchaeologyJournalClientState.getCatalogRevision();
-        long nextSimRev = ScenarioSimulationClientState.revision();
+        ScenarioTableSnapshot nextSnapshot = JournalClientConnection.scenario().snapshot(table);
+        var choice = nextSnapshot == null ? null : nextSnapshot.choice();
+        CatalogTableDto structure = nextSnapshot == null ? null : nextSnapshot.structure();
+        String nextStatus = nextSnapshot == null ? "uncomputed" : nextSnapshot.status();
         Language nextLanguage = Language.getInstance();
-        if (catalogRevision == nextCatalogRev && simulationRevision == nextSimRev
-                && input.equals(nextInput) && requestStatus.equals(nextStatus)
-                && language == nextLanguage) {
-            return;
-        }
+        if (!documentDirty && snapshot == nextSnapshot && language == nextLanguage) return;
+        snapshot = nextSnapshot;
 
         boolean sameViewKey = table != null && Objects.equals(viewKey, table.toString());
         int preservedOffset = sameViewKey ? conditions.offset() : -1;
         if (!sameViewKey) {
             saveCurrentPosition();
         }
-        catalogRevision = nextCatalogRev;
-        simulationRevision = nextSimRev;
+        documentDirty = false;
         if (language != nextLanguage) conditions.invalidateLayout();
         language = nextLanguage;
-        input = nextInput;
-        requestStatus = nextStatus;
         viewKey = table == null ? null : table.toString();
 
         if (structure == null || structure.options() == null || choice == null) {
@@ -281,7 +266,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
     private void configureUnavailable(Font font) {
         UiDocumentView conditionView = Objects.requireNonNull(conditions);
-        conditionTree = List.of(new UiNode.Row(ScenarioSimulationClientState.text("unavailable"),
+        conditionTree = List.of(new UiNode.Row(ScenarioSession.text("unavailable"),
                 UiTextScheme.PARCHMENT.label()));
         conditionView.setContent(conditionTree);
         for (UiControl control : controls) {
@@ -290,7 +275,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         }
         overview.setVisible(true);
         overview.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        overview.configure(font, ScenarioSimulationClientState.text("unavailable"),
+        overview.configure(font, ScenarioSession.text("unavailable"),
                 UiTextScheme.PARCHMENT.label(), null, List.of(), null);
         overviewLabel = null;
     }
@@ -305,16 +290,10 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         }
         ResourceLocation currentTable = Objects.requireNonNull(table);
 
-        conditionTree = ScenarioPageBuilder.buildConditions(
-                structure,
-                choice.conditions(),
-                choice.params(),
-                ScenarioSimulationClientState.notesFor(currentTable),
-                ScenarioSimulationClientState::clearNotes,
-                conditionId -> ScenarioSimulationClientState.toggleCondition(currentTable, conditionId),
-                target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target),
-                targetVisible,
-                locateTarget);
+        conditionTree = ScenarioPageBuilder.buildConditions(Objects.requireNonNull(snapshot),
+                () -> JournalClientConnection.scenario().clearNotes(),
+                conditionId -> JournalClientConnection.scenario().toggleCondition(currentTable, conditionId),
+                target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target), locateTarget);
         conditionView.setContent(conditionTree);
 
         overviewLabel = buildOverviewText(structure, options, choice.conditions());
@@ -330,10 +309,10 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
             }
         }
         List<Component> paramsTooltip = new ArrayList<>();
-        paramsTooltip.add(ScenarioSimulationClientState.text("params.current", toolName,
+        paramsTooltip.add(ScenarioSession.text("params.current", toolName,
                 choice.params().luck(), choice.params().sampleCount()).copy().withStyle(TooltipBuilder.BODY));
         choice.params().toolEnchantments().forEach((id, level) -> paramsTooltip.add(
-                ScenarioSimulationClientState.text("params.enchant_level",
+                ScenarioSession.text("params.enchant_level",
                         ScenarioParamsOverlay.enchantmentName(id), level).copy().withStyle(TooltipBuilder.ACCENT)));
 
         summary.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
@@ -346,61 +325,61 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 String.valueOf(choice.params().toolEnchantments().size()));
 
         probeButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.BIOME),
-                List.of(ScenarioSimulationClientState.text("probe.button").copy().withStyle(TooltipBuilder.TITLE),
-                        ScenarioSimulationClientState.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL)),
-                () -> ScenarioSimulationClientState.requestPlayerProbe(currentTable));
-        probeButton.setAccessibleName(ScenarioSimulationClientState.text("probe.button"));
-        probeButton.setEnabled(!ScenarioSimulationClientState.assistPending());
+                List.of(ScenarioSession.text("probe.button").copy().withStyle(TooltipBuilder.TITLE),
+                        ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL)),
+                () -> JournalClientConnection.scenario().requestPlayerProbe(currentTable));
+        probeButton.setAccessibleName(ScenarioSession.text("probe.button"));
+        probeButton.setEnabled(!JournalClientConnection.scenario().assistPending());
 
         paramsButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.PARAMS), paramsTooltip,
                 () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.conditions(),
                         options, choice.params())));
-        paramsButton.setAccessibleName(ScenarioSimulationClientState.text("params.title"));
+        paramsButton.setAccessibleName(ScenarioSession.text("params.title"));
 
         boolean isBaseline = choice.conditions().isEmpty()
                 && choice.params().equals(ScenarioParams.baseline(options.tools().getFirst().id()));
         resetButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.BACK),
-                List.of(ScenarioSimulationClientState.text("reset.button").copy().withStyle(TooltipBuilder.TITLE),
-                        ScenarioSimulationClientState.text("reset.hint").copy().withStyle(TooltipBuilder.LABEL)),
-                () -> ScenarioSimulationClientState.resetToBaseline(currentTable));
-        resetButton.setAccessibleName(ScenarioSimulationClientState.text("reset.button"));
+                List.of(ScenarioSession.text("reset.button").copy().withStyle(TooltipBuilder.TITLE),
+                        ScenarioSession.text("reset.hint").copy().withStyle(TooltipBuilder.LABEL)),
+                () -> JournalClientConnection.scenario().resetToBaseline(currentTable));
+        resetButton.setAccessibleName(ScenarioSession.text("reset.button"));
         resetButton.setEnabled(!isBaseline);
 
         Component failure = "failed".equals(rawStatus)
-                ? ScenarioSimulationClientState.text("failure." + ScenarioSimulationClientState.failure(currentTable, input))
+                ? ScenarioSession.text("failure." + Objects.requireNonNull(snapshot).failure())
                 : null;
         calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         calculateButton.configure(font,
-                ScenarioSimulationClientState.text("cached".equals(rawStatus)
+                ScenarioSession.text("cached".equals(rawStatus)
                         ? "view_drops"
                         : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
                         || "query_failed".equals(rawStatus) ? "calculate" : "results.status." + rawStatus),
                 UiAtlas.statusBadge(rawStatus),
                 failure == null
-                        ? List.of(ScenarioSimulationClientState.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
-                        ScenarioSimulationClientState.text(rawStatus).copy().withStyle(TooltipBuilder.LABEL))
+                        ? List.of(ScenarioSession.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
+                        ScenarioSession.text(rawStatus).copy().withStyle(TooltipBuilder.LABEL))
                         : List.of(failure.copy().withStyle(TooltipBuilder.NEGATIVE)),
                 () -> {
                     if ("cached".equals(rawStatus)) {
                         viewDrops.run();
                     } else {
-                        ScenarioSimulationClientState.request(currentTable, true);
+                        JournalClientConnection.scenario().request(currentTable, true);
                     }
                 });
         calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(rawStatus));
 
         expandButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.EXPAND),
-                List.of(ScenarioSimulationClientState.text("frame.expand").copy().withStyle(TooltipBuilder.BODY)),
+                List.of(ScenarioSession.text("frame.expand").copy().withStyle(TooltipBuilder.BODY)),
                 () -> {
                     var content = ScenarioExpandedOverlay.create(this, font);
                     UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
                     ScenarioUi.styleLightbox(lightbox);
-                    lightbox.setText(ScenarioSimulationClientState.text("conditions.title",
+                    lightbox.setText(ScenarioSession.text("conditions.title",
                             overviewLabel == null ? structure.displayName() : overviewLabel), null);
                     lightbox.setMaskClickCloses(false);
                     overlays.open(lightbox);
                 });
-        expandButton.setAccessibleName(ScenarioSimulationClientState.text("frame.expand"));
+        expandButton.setAccessibleName(ScenarioSession.text("frame.expand"));
     }
 
     private static Component buildOverviewText(CatalogTableDto structure,
@@ -408,20 +387,20 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                                                List<String> enabledConditions) {
         int toggleCount = options.conditions().size();
         if (toggleCount > 0) {
-            return ScenarioSimulationClientState.text("overview.with_conditions",
+            return ScenarioSession.text("overview.with_conditions",
                     enabledConditions.size(), toggleCount);
         }
         boolean hasSpecialBranch = structure.branches().stream().anyMatch(branch ->
                 !branch.injectionSource().isEmpty() || !branch.conditions().isEmpty()
                         || !branch.requirements().isEmpty() || !branch.luck().isTrivial());
         if (hasSpecialBranch || options.toolSelectionAllowed() || !options.enchantments().isEmpty()) {
-            return ScenarioSimulationClientState.text("overview.params_or_random");
+            return ScenarioSession.text("overview.params_or_random");
         }
-        return ScenarioSimulationClientState.text("overview.unconditional");
+        return ScenarioSession.text("overview.unconditional");
     }
 
     private static void configureValue(Font font, UiControl control, String key, String value) {
-        Component full = ScenarioSimulationClientState.text(key, value);
+        Component full = ScenarioSession.text(key, value);
         Component label = font.width(full) <= control.bounds().width() - 4 ? full : Component.literal(value);
         control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
         control.configure(font, label, null, List.of(full.copy().withStyle(TooltipBuilder.BODY)), null);
@@ -467,18 +446,22 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         }
     }
 
-    /** 按表捕获条件正文位置，供宿主阅读快照统一持有。 */
+    /**
+     * 按表捕获条件正文位置，供宿主阅读快照统一持有。
+     */
     public Map<String, Integer> captureConditionOffsets() {
         saveCurrentPosition();
         return new LinkedHashMap<>(conditionPositions);
     }
 
-    /** 恢复有界位置表，正文重建后由实际视口钳制偏移。 */
+    /**
+     * 恢复有界位置表，正文重建后由实际视口钳制偏移。
+     */
     public void restoreConditionOffsets(Map<String, Integer> offsets) {
         if (conditionPositions.equals(offsets)) return;
         conditionPositions.clear();
         offsets.forEach((key, value) -> remember(conditionPositions, key, Math.max(0, value)));
         viewKey = null;
-        catalogRevision = Long.MIN_VALUE;
+        documentDirty = true;
     }
 }

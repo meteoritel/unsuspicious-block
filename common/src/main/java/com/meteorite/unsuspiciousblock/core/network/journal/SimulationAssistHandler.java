@@ -1,19 +1,34 @@
 package com.meteorite.unsuspiciousblock.core.network.journal;
 
+import com.meteorite.unsuspiciousblock.core.network.payload.ScenarioSelection;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.*;
-import com.meteorite.unsuspiciousblock.core.network.payload.c2s.*;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.Recommendation;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranchCatalog.Candidate;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.PlayerStateProbe;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.RecommendationSolver;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInput;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestSimulationAssistPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncSimulationAssistPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import java.util.*;
 
-/** 推荐与读取共用版本校验和每玩家冷却；只在主动请求时执行。 */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+
+/**
+ * 推荐与读取共用版本校验和每玩家冷却；只在主动请求时执行。
+ */
 public final class SimulationAssistHandler {
     private static final Map<ServerPlayer, Long> LAST_REQUEST = new WeakHashMap<>();
-    private SimulationAssistHandler() {}
+
+    private SimulationAssistHandler() {
+    }
 
     public static void handle(ServerPlayer player, RequestSimulationAssistPayload request) {
         var selected = request.selection();
@@ -21,7 +36,9 @@ public final class SimulationAssistHandler {
         var generation = ArchaeologyJournalServerCatalog.simulationContext(selected.tableId());
         var notes = new ArrayList<Component>();
         boolean found = false;
-        RequestScenarioSimulationPayload response = selected;
+        Recommendation.Witness witness = null;
+        RecommendationSolver.Outcome outcome = null;
+        ScenarioSelection response = selected;
         long now = System.nanoTime();
         Long last = LAST_REQUEST.put(player, now);
         if (last != null && now - last < 500_000_000L) notes.add(note("assist_busy"));
@@ -31,14 +48,18 @@ public final class SimulationAssistHandler {
         else {
             var catalog = generation.constraints();
             var raw = generation.planningTable();
-            if (catalog != null && raw != null) {
+            var branches = generation.branches();
+            if (catalog != null && raw != null && branches != null) {
                 try {
                     var params = new ScenarioParams(selected.luck(), selected.toolId(),
                             selected.toolEnchantments(), selected.sampleCount());
                     var previous = catalog.resolve(selected.enabledConditions(), params);
                     boolean validTarget = switch (request.target().kind()) {
                         case PLAYER_STATE -> request.target().value().isEmpty();
-                        case ITEM -> !request.target().value().isBlank();
+                        case ITEM ->
+                                raw.items().stream().anyMatch(item -> item.signature().toStoredKey().equals(request.target().value()));
+                        case BRANCH -> branches.branches().stream().anyMatch(branch -> branch.recommendable()
+                                && branch.reference().equals(request.target().value()));
                         case CHILD_TABLE -> raw.childTables().stream()
                                 .anyMatch(child -> child.toString().equals(request.target().value()));
                     };
@@ -46,10 +67,32 @@ public final class SimulationAssistHandler {
                         var table = generation.planningTable();
                         SimulationInput result = null;
                         if (recommendation) {
-                            var witness = RecommendationSolver.solve(table, request.target(),
-                                    catalog, previous.get(), player.serverLevel());
-                            if (witness.isPresent()) result = witness.get().input();
-                            else notes.add(note("no_witness"));
+                            List<Candidate> candidates = branches.candidates().entrySet().stream()
+                                    .filter(entry -> request.target().kind() != SimulationAssistTarget.Kind.BRANCH
+                                            || entry.getKey().equals(request.target().value()))
+                                    .flatMap(entry -> entry.getValue().stream())
+                                    .filter(candidate -> switch (request.target().kind()) {
+                                        case ITEM -> candidate.itemSignature().equals(request.target().value());
+                                        case CHILD_TABLE ->
+                                                candidate.kind().equals("table") && candidate.target().equals(request.target().value());
+                                        case BRANCH -> true;
+                                        case PLAYER_STATE -> false;
+                                    }).toList();
+                            var solved = RecommendationSolver.solve(candidates, catalog, previous.get());
+                            outcome = solved.outcome();
+                            if (solved.recommendation() != null) {
+                                result = solved.recommendation().input();
+                                witness = solved.recommendation().witness();
+                            } else {
+                                notes.add(note(switch (solved.outcome()) {
+                                    case UNSUPPORTED -> "recommend.unsupported";
+                                    case BUDGET_EXHAUSTED -> "no_witness";
+                                    default -> "recommend.no_candidate";
+                                }));
+                                for (String reason : solved.reasons())
+                                    notes.add(Component.translatable(
+                                            "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.reason", reason));
+                            }
                         } else {
                             var probe = PlayerStateProbe.probe(player, catalog, previous.get());
                             result = probe.input();
@@ -58,7 +101,7 @@ public final class SimulationAssistHandler {
                         if (result != null) {
                             found = true;
                             var p = result.params();
-                            response = new RequestScenarioSimulationPayload(generation.generation(), table.id(),
+                            response = new ScenarioSelection(generation.generation(), table.id(),
                                     selected.tableHash(), result.enabledConditions(), p.luck(), p.toolId(),
                                     p.toolEnchantments(), p.sampleCount());
                         }
@@ -77,7 +120,7 @@ public final class SimulationAssistHandler {
             }
         }
         Services.NETWORK.sendToPlayer(player, new SyncSimulationAssistPayload(
-                request.requestId(), recommendation, found, response, List.copyOf(notes)));
+                request.requestId(), request.target(), found, response, outcome, witness, List.copyOf(notes)));
     }
 
     private static Component note(String key) {

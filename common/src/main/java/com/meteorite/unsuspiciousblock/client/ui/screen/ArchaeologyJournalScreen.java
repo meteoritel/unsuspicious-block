@@ -18,10 +18,9 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.Util;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
@@ -122,7 +121,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private NavigationState navigationState() {
         ResourceLocation table = viewModel.selectedTableId();
-        var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
+        var selection = table == null ? null : JournalClientConnection.scenario().selection(table);
         return rightPage == null ? null : new NavigationState(table,
                 selection == null ? List.of() : selection.conditions(),
                 captureUiState(), viewModel.isCategoryHomeMode(), viewModel.selectedCategory(), viewModel.expandedRoots());
@@ -142,7 +141,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private boolean validNavigation(NavigationState state) {
         return state.home() || state.table() == null && viewModel.categoryViews().stream().anyMatch(category -> category.id().equals(state.category()))
-                || state.table() != null && ScenarioSimulationClientState.table(state.table()) != null
+                || state.table() != null && JournalClientConnection.scenario().table(state.table()) != null
                 && viewModel.isNavigationTargetValid(state.table());
     }
 
@@ -427,9 +426,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.rebuildViewModels();
         if (snapshot.table() != null) {
             setSelectedTable(snapshot.table());
-            var choice = ScenarioSimulationClientState.selection(snapshot.table());
+            var choice = JournalClientConnection.scenario().selection(snapshot.table());
             if (choice != null) {
-                ScenarioSimulationClientState.select(snapshot.table(), snapshot.conditions(), choice.params());
+                JournalClientConnection.scenario().select(snapshot.table(), snapshot.conditions(), choice.params());
             }
         }
 
@@ -1102,7 +1101,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     // 捕获当前 UI 状态快照，用于窗口 resize 后恢复
     private UiStateSnapshot captureUiState() {
         ResourceLocation table = this.viewModel.selectedTableId();
-        var selection = table == null ? null : ScenarioSimulationClientState.selection(table);
+        var selection = table == null ? null : JournalClientConnection.scenario().selection(table);
         return new UiStateSnapshot(
                 this.rightPage != null ? this.rightPage.captureReadingState() : RightPageContainer.ReadingState.empty(),
                 this.catalogPanel != null ? this.catalogPanel.getScrollOffset() : 0,

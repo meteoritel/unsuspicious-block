@@ -103,20 +103,24 @@ flowchart TD
 
 ### 3.2 条件组合模型与按需规划 (`SimulationScenarioPlanner`)
 
-运行时表保留完整的原版条件树，禁止通过篡改 JSON 条件并重新解码来构造模拟副本（否则会破坏 `all_of`、`any_of`、`inverted` 组合语义并绕过加载期修改）。
+运行时抽取直接使用加载后的 `LootTable` 和完整活谓词，保留 `all_of / any_of / inverted`、加载期修改与平台注入。静态阅读和推荐使用冻结后的条件事实，环境候选投影与实际执行各有职责。
 
-- **逻辑树与展示树分离**：`LootConditionInfo` 将逻辑节点（`ALL` / `ANY` / `NOT` / `LEAF` 与 `logicChildren`）与纯展示文本 `ConditionDisplayRow` 分开存储；`ScenarioConditionEvaluator` 基于三值 Kleene 逻辑（`TRUE` / `FALSE` / `UNKNOWN`）结合已勾选原子条件与当前工具/附魔/幸运对分支条件即时求值，为前端展示与服务端按需规划提供统一判据。
-- **场景控制条件处理方式**：
+- **逻辑与展示分离**：`LootConditionInfo` 的 `ALL / ANY / NOT / LEAF` 与 `logicChildren` 表达原树，`ConditionDisplayRow` 只负责文本。`ScenarioConditionEvaluator` 用同一份 `SimulationInput` 一次折叠整树；条件与附加门槛按顶层 AND 合并，幸运门槛独立核对。类别只用于说明可调参数。
+- **冻结叶子事实**：分析 handler 生成 `ConditionSemantics`，随 `CatalogStreamCodec` 往返并参与目录冻结摘要。环境叶子按已签发 identity 读取勾选值；工具叶子保存物品/标签集合、数量与 vanilla `ENCHANTMENTS` 子谓词的附魔集合及等级范围，并保留组件存在性要求。附魔读取与 `ScenarioParams.createToolStack` 一致：空手没有附魔，非空覆盖替换默认组件，否则沿用工具默认组件。额外组件与未覆盖子谓词保留 `Unknown` 原因；已知约束为假仍能确定阻塞。
+- **随机支持与未知**：`random_chance`、`tool_enchantment`、`table_bonus` 保存概率或等级曲线，正向判断 `p > 0`、反向判断 `p < 1`，超出档位的 `table_bonus` 沿用末档。求值传播极性与 Kleene 三值，已知短路保留，未解释规则只影响依赖它的路径；阅读与推荐均使用支持集，不抽签。页面据此区分阻塞、存在机会和未知，函数保留项单独展示。
 
-| 条件类型 | 模拟处理方式 |
+| 条件类型 | 实际模拟处理 |
 |---|---|
-| `location_check`、`weather_check`、`time_check`、`entity_scores` | 注册 `SCENARIO` 能力，由 `SimulationScenarioPlanner` 提取去重后的原子条件选项 `ConditionOption` 下发；玩家自主勾选要启用的条件 ID 后，服务端按需构造 `SimulationScenario` 并由单目标 Mixin 转交 `LootSimulationScope`（未勾选的条件在模拟作用域中按不成立处理，不修改世界状态、不访问真实区块或计分板） |
-| `match_tool`、`tool_enchantment`、`table_bonus` | **不作为环境勾选条件**，直接由 `SimulationProfile` 填充的真实 `TOOL` 物品栈与附魔交由原版 `ItemPredicate` / 自定义条件求值，使工具匹配与时运/附魔等级曲线保持一致 |
-| `block_state_property`、`damage_source_properties`、`entity_properties` | 由 `SimulationProfile` 填充对应方块状态、伤害来源或假玩家/鱼钩上下文 |
+| `location_check`、`weather_check`、`time_check`、`entity_scores` | 注册 `SCENARIO` 能力，提取为 `ConditionOption`；单目标 Mixin 在 `LootSimulationScope` 内使用玩家勾选赋值，世界天气、区块和计分板保持原状 |
+| `match_tool`、`tool_enchantment`、`table_bonus` | 使用 `SimulationProfile` 填充的真实 `TOOL` 栈和附魔执行原版或自定义谓词 |
+| `block_state_property`、`damage_source_properties`、`entity_properties` | 使用填充的方块状态、伤害来源或假玩家/鱼钩上下文执行活谓词；静态未覆盖语义显示未知 |
 
-- **原子提取规模预算**：`SimulationScenarioPlanner.planConditions` 提取全表与注入子树去重后的原子 `SCENARIO` 条件 `ConditionOption` 并保留稳定顺序，单表展开过程共享 `4096` 访问节点上限（且条件/函数嵌套深度受解析预算约束）。触发预算耗尽或解析不完整时标记 `budgetExhausted = true`，服务端保留静态条目但停用该表数值模拟（标为未知），避免缺失条件回退真实天气或时间。
-- **条件语义身份 (`ConditionIdentity`)**：通过 `LootItemCondition.DIRECT_CODEC` 与实际 `RegistryOps` 编码并排序 JSON 键生成跨运行一致的摘要；无法编码的不透明条件仅保留本代去重身份，不作为可选条件选项并在模拟中按真实逻辑求值。
-- **注入路径规划与推荐求解**：`ArchaeologyJournalServerCatalog.constraintTable` 将已声明的注入子树与继承门槛直接并入约束与规划输入，工具与附魔统一由 `ScenarioParams` 驱动而不使用额外满级工具特判。子表与物品推荐（`SimulationAssistTarget.CHILD_TABLE` / `ITEM`）复用 `RecommendationSolver` 从最小合法等级与最小需勾选环境条件组合开始联合搜索（预算 `2,048` 次尝试 / `15ms`），仅用于查找可证明的支持输入。
+- **环境候选投影**：`buildScenario` 只解释可控环境叶子，其余叶子取 `UNKNOWN`；仅剔除确定为假的路径。工具、随机与上下文条件继续交给实际抽取。
+- **原子提取与身份**：`planConditions` 沿获取路径、函数条件和子表入口提取去重保序选项，整表共享节点与条件数量预算。预算耗尽或分析不完整时停用该表数值模拟并保留静态条目。`ConditionIdentity` 经实际注册表上下文编码、JSON 键排序后生成稳定摘要；不透明条件保留本代身份并执行真实逻辑，签发选项只采用稳定身份。
+- **分支范围与路径见证**：`ScenarioBranchCatalog.Plan` 同源派生展示分支和完整候选。展示同义去重合并候选集合，原始 `sourceKey` 区分同名注入来源；`CatalogGeneration` 保存本代索引。`BRANCH` 只搜索该引用的集合，`ITEM / CHILD_TABLE` 可选目标的任意候选。空子表入口保留入口条件；纯运行时观测分支没有可规划路径，tag 分支保留目标级候选并说明分支推荐能力。成功返回分支、实际目标、物品签名与 pathId；引用在 generation/hash 所属内容版本内有效。
+- **结构化有界搜索**：`RecommendationSolver` 先检查范围内是否已有路径支持当前完整输入，再沿 `ALL / ANY / NOT` 惰性生成需求。AND 合并时剔除同 identity 的真假冲突，OR 保留替代项，未涉及的勾选和附魔沿用当前值。工具与附魔仅搜索需求引用的维度，等级取当前值及语义变化点；wildcard 在已签发附魔域内构造候选，求值仍读取默认工具实际组件。幸运按真实 `LuckSpec` 公式在合法网格查找，动态 provider 保留未知。候选经约束目录及完整树回验，执行尝试与时间预算由求解器统一管理。
+
+搜索终态为 `FOUND`、`NO_CANDIDATE`、`UNSUPPORTED`、`BUDGET_EXHAUSTED`；未知诊断保留条件身份或幸运原因。推荐只提供可核对的输入见证，实际掉落与数值概率由显式模拟产生。
 
 ### 3.3 逐路径幸运门槛 (`LuckGateAnalysis`)
 
@@ -137,7 +141,7 @@ flowchart TD
 
 - **单线程安全性**：`getRandomItems` 与 `LootContextParamFiller` 访问非线程安全的 `LegacyRandomSource`，故严格在服务端主线程分片运行，每 tick 使用 `15ms` 软预算（每 32 次抽取检查一次截止时间），并在时间片内复用模拟作用域。
 - **双队列与抢占**：`highQueue`（玩家按需请求与解锁插队）优先于 `lowQueue`（启动基准填充）；已排在低队列的同输入会被提升，新到达的高优先级任务可在下个 tick 边界无损抢占低优先级任务。
-- **去重与限流**：任务按 `(tableId, inputKey)` 去重；多请求者命中队列中已有任务时合并登记为等待者，完成后逐个回执。`highQueue` 待处理上限 `32`、每玩家在途按需请求上限 `2`（仅约束玩家手动按需请求，不限制启动批处理与物品解锁插队）。
+- **去重与限流**：任务按 `(tableId, inputKey)` 去重；多请求者命中已有任务时合并等待关系，同玩家保存最新票据，完成后按各自票据回执并释放一次额度。`highQueue` 待处理上限 `32`、每玩家在途按需请求上限 `2`（仅约束玩家手动按需请求，不限制启动批处理与物品解锁插队）。
 - **三口径完成日志**：完成日志分别报告**线程 CPU 时间**（衡量单表计算真实成本）、**有效计算耗时**（受启动阶段并发争抢影响较大）与**跨 tick 总历时**。
 
 ### 4.1 可选性能观测 (`LootSimulationMetrics`)
@@ -181,31 +185,33 @@ flowchart TD
 
 ## 6. 约束目录与按需请求链路
 
-[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 仅签发合法参数边界（可选原子条件列表 `ConditionOption`、基座工具与已满足工具条件、被引用附魔最高等级与抽样档位），**不预先枚举笛卡尔乘积**，从源头避免数万组合造成的计算与缓存爆炸。默认工具直接复用 `JournalCategoryLoader` 分类的 `default_tool`（缺省回退空手）；基座工具列表取自整棵子树的 `match_tool`（标签谓词仅取首个成员作为代表，并随附谓词原文说明）。
+[`SimulationConstraintCatalog`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/SimulationConstraintCatalog.java) 签发原子环境条件、基座工具、被引用附魔最高等级与抽样档位，按完整输入校验而不预先枚举组合。默认工具复用分类 `default_tool`，缺省为空手；工具来自整棵子树的 `match_tool`，标签取代表成员并保留谓词说明。附魔引用覆盖路径和子表入口的冻结语义，工具选项仅承载选择域，当前附魔真值由完整输入解释。
 
 ```mermaid
 sequenceDiagram
     actor C as 客户端
     participant S as 服务端主线程
-    participant D as "LootProbabilityData (存档)"
+    participant W as Worker
+    participant D as LootProbabilityData
 
-    C->>S: RequestScenarioSimulationPayload (generation, tableId, tableHash, enabledConditions, params)
-    S->>S: ScenarioSimulationHandler (校验在途<=2，构建并校验 ScenarioParams)
-    S->>S: requestSimulation 校验追踪资格 / 表哈希 / 条件与参数约束
-    alt 参数或条件越权或目录过期
-        S-->>C: ScenarioRequestRejectedPayload(原因)
+    C->>S: RequestScenarioSimulationPayload(requestId, ScenarioSelection)
+    S->>S: 核对 generation/hash、签发域及等待关系/额度
+    alt 过期、越界或限流
+        S-->>C: 拒绝(requestId, 原内容上下文, currentGeneration, 原因)
     else 命中缓存
-        D-->>S: 读取对应 inputKey 测量值
-        S-->>C: SyncScenarioResultPayload(单表 DTO)
-    else 未命中缓存
-        S->>S: 入 HIGH 队列，按 tick 15ms 分片计算
-        S->>D: 写回测量结果与动态发现记录
-        S-->>C: SyncScenarioResultPayload(单表 DTO，仅发请求者)
+        D-->>S: 读取 inputKey 测值
+        S-->>C: 结果(requestId, simulation=true, 测值身份, DTO)
+    else 入队或加入同输入工作
+        S->>W: 保存该玩家最新票据，按 tick 分片执行
+        W->>S: 完成并携带等待票据快照
+        S->>D: 校验当前代次/hash后提交测值
+        S-->>C: 按个人票据单播结果或过期终态
     end
 ```
 
-- **结果包三要素校验**：客户端同时核对 `generation`、`tableHash` 与 `inputKey`，任一不符立即丢弃；客户端本地按 `(tableId, inputKey)` 有限容量缓存最近查看的结果。
-- **推荐/辅助通道分离**：`SimulationAssistHandler` 独立响应辅助推荐请求，执行版本校验与每玩家 `500ms` 冷却（通过 `notes` 返回 `assist_busy` / `assist_stale`）；客户端绑定请求序号，15 秒无答复提示超时，“应用参数”只更新输入草稿，仍需玩家显式触发计算。
+- **共享工作与个人票据**：同代 `(tableId, inputKey)` 只运行一项工作；同玩家重试替换票据，额度按玩家与该工作的等待关系计一次。完成只消费一次提交权，释放等待额度。基准工作可同时接收玩家等待者，基准发布与个人单播各按其归属交付。
+- **结果缓存与交互终态**：客户端按内容身份验证测值，再写入对应输入缓存；晚到的有效旧输入可供以后切换查看，当前选择保持原值。模拟回执仅结束同 requestId 的 pending，缓存拉取保留独立种类。拒绝先匹配原票据，再触发所需目录刷新。完整字段与线程边界见[网络与同步](../foundation/network.md#31-通用协议原则)。
+- **推荐通道**：`SimulationAssistHandler` 校验同代内容和签发目标后调用范围内求解，独立冷却、超时与预览由辅助交互管理；应用推荐使用原草稿版本，显式计算另行触发。客户端动作、快照和版本草稿见[笔记 GUI 内部机制](journal-ui-internals.md#4-场景条件页与文档动作)。
 
 ## 7. 相关文档
 

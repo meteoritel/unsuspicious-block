@@ -23,8 +23,9 @@ import org.jetbrains.annotations.NotNull;
  * 而"场景假设每表只发一次"的优化在这里退化成"每个结果各带一次假设"——单表场景假设很小，
  * 换来的是这条通道完全自洽（不依赖此前发过哪份目录）。线格式见 {@link CatalogStreamCodec}。
  */
-public record SyncScenarioResultPayload(long generation, String tableHash, String inputKey,
-                                       CatalogTableDto table) implements CustomPacketPayload {
+public record SyncScenarioResultPayload(long requestId, boolean simulation, long generation, String tableHash,
+                                        String inputKey,
+                                        CatalogTableDto table) implements CustomPacketPayload {
 
     public static final Type<SyncScenarioResultPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "sync_scenario_result"));
@@ -38,6 +39,8 @@ public record SyncScenarioResultPayload(long generation, String tableHash, Strin
             StreamCodec.of(SyncScenarioResultPayload::encode, SyncScenarioResultPayload::decode);
 
     private static void encode(RegistryFriendlyByteBuf buf, SyncScenarioResultPayload payload) {
+        buf.writeVarLong(payload.requestId());
+        buf.writeBoolean(payload.simulation());
         buf.writeVarLong(payload.generation());
         buf.writeUtf(payload.tableHash());
         buf.writeUtf(payload.inputKey());
@@ -45,10 +48,12 @@ public record SyncScenarioResultPayload(long generation, String tableHash, Strin
     }
 
     private static SyncScenarioResultPayload decode(RegistryFriendlyByteBuf buf) {
+        long requestId = buf.readVarLong();
+        boolean simulation = buf.readBoolean();
         long generation = buf.readVarLong();
         String tableHash = buf.readUtf();
         String inputKey = buf.readUtf();
-        return new SyncScenarioResultPayload(generation, tableHash, inputKey,
+        return new SyncScenarioResultPayload(requestId, simulation, generation, tableHash, inputKey,
                 CatalogStreamCodec.readTable(buf));
     }
 }

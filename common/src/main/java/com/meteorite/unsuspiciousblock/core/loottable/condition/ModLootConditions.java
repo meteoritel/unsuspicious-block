@@ -1,12 +1,16 @@
 package com.meteorite.unsuspiciousblock.core.loottable.condition;
 
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionSemantics;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
+
 import java.util.Set;
+
 import com.mojang.serialization.MapCodec;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -16,7 +20,6 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -31,7 +34,9 @@ import java.util.function.Supplier;
  */
 public final class ModLootConditions {
 
-    /** 规范条件名——"工具附魔门槛 + 可选按等级变化的概率"。 */
+    /**
+     * 规范条件名——"工具附魔门槛 + 可选按等级变化的概率"。
+     */
     public static final ResourceLocation TOOL_ENCHANTMENT =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "tool_enchantment");
 
@@ -43,7 +48,9 @@ public final class ModLootConditions {
     private ModLootConditions() {
     }
 
-    /** 使用时读取平台注册类型，绑定本身不求值 DeferredHolder。 */
+    /**
+     * 使用时读取平台注册类型，绑定本身不求值 DeferredHolder。
+     */
     public static LootItemConditionType toolEnchantment() {
         if (toolEnchantmentType == null) {
             throw new IllegalStateException("tool_enchantment 条件类型尚未绑定到 common init");
@@ -78,28 +85,31 @@ public final class ModLootConditions {
     private static final class ToolEnchantmentDescriptionHandler implements LootConditionHandler {
         @Override
         public LootConditionInfo analyze(LootItemCondition condition) {
-            if (!(condition instanceof ToolEnchantmentCondition toolCondition)) {
+            if (!(condition instanceof ToolEnchantmentCondition(var enchantment, int minLevel, var chance))) {
                 return null;
             }
             List<LootConditionInfo> children = new ArrayList<>();
-            if (toolCondition.minLevel() > ToolEnchantmentCondition.DEFAULT_MIN_LEVEL) {
-                children.add(row("tool_enchantment_min_level", toolCondition.minLevel()));
+            if (minLevel > ToolEnchantmentCondition.DEFAULT_MIN_LEVEL) {
+                children.add(row("tool_enchantment_min_level", minLevel));
             }
-            Optional<LevelBasedValue> chance = toolCondition.chance();
-            if (chance.isPresent()) {
-                children.add(chanceRow(chance.get()));
-            }
+            chance.ifPresent(value -> children.add(chanceRow(value)));
             LootConditionInfo info = new LootConditionInfo(TOOL_ENCHANTMENT,
-                    toolCondition.enchantment().value().description(), null, children);
-            String enchantmentId = toolCondition.enchantment().unwrapKey()
+                    enchantment.value().description(), null, children);
+            String enchantmentId = enchantment.unwrapKey()
                     .map(key -> key.location().toString())
                     .orElse(null);
             if (enchantmentId != null) {
                 info = info.withMetadata(ScenarioConditionEvaluator.METADATA_ENCHANTMENT, enchantmentId)
                         .withMetadata(ScenarioConditionEvaluator.METADATA_MIN_LEVEL,
-                                Integer.toString(toolCondition.minLevel()));
+                                Integer.toString(minLevel));
             }
-            return info;
+            List<Float> probabilities = new ArrayList<>();
+            for (int level = 0; level <= ScenarioParams.MAX_ENCHANTMENT_LEVEL; level++) {
+                probabilities.add(level < minLevel ? 0F
+                        : chance.isPresent() ? chance.get().calculate(level) : 1F);
+            }
+            return enchantmentId == null ? info : info.withSemantics(new ConditionSemantics.EnchantedChance(
+                    ResourceLocation.parse(enchantmentId), probabilities));
         }
 
         private LootConditionInfo chanceRow(LevelBasedValue chance) {

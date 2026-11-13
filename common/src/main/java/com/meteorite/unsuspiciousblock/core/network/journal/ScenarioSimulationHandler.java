@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInputKey;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioCachePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker.SimulationTicket;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.ScenarioRequestRejectedPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioCachePayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
@@ -26,7 +27,9 @@ public final class ScenarioSimulationHandler {
     private ScenarioSimulationHandler() {
     }
 
-    /** 处理客户端的只读缓存状态查询；命中且请求拉取时附带下发完整单表结果。 */
+    /**
+     * 处理客户端的只读缓存状态查询；命中且请求拉取时附带下发完整单表结果。
+     */
     public static void handleCache(ServerPlayer player, RequestScenarioCachePayload payload) {
         var request = payload.selection();
         String inputKey = "";
@@ -48,7 +51,7 @@ public final class ScenarioSimulationHandler {
                     request.tableHash(), request.enabledConditions(), params, payload.fetchSelected());
             cached = status.cached();
             if (status.selected() != null) {
-                CatalogSimulationDelivery.deliver(player, status.selected());
+                CatalogSimulationDelivery.deliverCached(player, status.selected(), payload.requestId());
             }
         } catch (IllegalArgumentException exception) {
             error = "stale_hash".equals(exception.getMessage()) ? "stale_hash"
@@ -60,17 +63,20 @@ public final class ScenarioSimulationHandler {
                         inputKey, cached, error));
     }
 
-    /** 处理一次按需模拟请求（在服务端主线程调用）。 */
+    /**
+     * 处理一次按需模拟请求（在服务端主线程调用）。
+     */
     public static void handleRequest(ServerPlayer player, RequestScenarioSimulationPayload payload) {
-        if (payload.generation() != ArchaeologyJournalServerCatalog.currentGenerationId()) {
+        var request = payload.selection();
+        if (request.generation() != ArchaeologyJournalServerCatalog.currentGenerationId()) {
             reject(player, payload, "", ScenarioRequestRejectedPayload.Reason.STALE_HASH);
             return;
         }
 
         ScenarioParams params;
         try {
-            params = new ScenarioParams(payload.luck(), payload.toolId(),
-                    payload.toolEnchantments(), payload.sampleCount());
+            params = new ScenarioParams(request.luck(), request.toolId(),
+                    request.toolEnchantments(), request.sampleCount());
         } catch (IllegalArgumentException exception) {
             LOGGER.debug("拒绝越界的模拟参数请求（{}）：{}",
                     player.getGameProfile().getName(), exception.getMessage());
@@ -79,13 +85,15 @@ public final class ScenarioSimulationHandler {
         }
 
         ArchaeologyJournalServerCatalog.OnDemandResult result =
-                ArchaeologyJournalServerCatalog.requestSimulation(player, payload.tableId(),
-                        payload.tableHash(), payload.enabledConditions(), params);
+                ArchaeologyJournalServerCatalog.requestSimulation(player, request.tableId(),
+                        request.tableHash(), request.enabledConditions(), params,
+                        new SimulationTicket(payload.requestId(), request.generation(), request.tableHash()));
         String inputKey = result.input() == null ? "" : result.input().key();
         switch (result.outcome()) {
-            case QUEUED -> { }
-            case SIMULATED_INLINE, CACHE_HIT -> CatalogSimulationDelivery.deliver(
-                    player, Objects.requireNonNull(result.scenario()));
+            case QUEUED -> {
+            }
+            case SIMULATED_INLINE, CACHE_HIT -> CatalogSimulationDelivery.deliverSimulation(
+                    player, Objects.requireNonNull(result.scenario()), payload.requestId());
             case UNKNOWN_TABLE -> reject(player, payload, inputKey,
                     ScenarioRequestRejectedPayload.Reason.UNKNOWN_TABLE);
             case STALE_HASH -> reject(player, payload, inputKey,
@@ -103,15 +111,9 @@ public final class ScenarioSimulationHandler {
 
     private static void reject(ServerPlayer player, RequestScenarioSimulationPayload payload,
                                String inputKey, ScenarioRequestRejectedPayload.Reason reason) {
-        if (inputKey.isEmpty()) {
-            try {
-                inputKey = SimulationInputKey.of(payload.enabledConditions(), new ScenarioParams(payload.luck(),
-                        payload.toolId(), payload.toolEnchantments(), payload.sampleCount()));
-            } catch (IllegalArgumentException ignored) {
-                // 非法参数不能生成规范键；客户端以请求超时兜底。
-            }
-        }
+        var request = payload.selection();
         Services.NETWORK.sendToPlayer(player, new ScenarioRequestRejectedPayload(
-                ArchaeologyJournalServerCatalog.currentGenerationId(), payload.tableId(), inputKey, reason));
+                payload.requestId(), request.generation(), request.tableId(), request.tableHash(), inputKey,
+                ArchaeologyJournalServerCatalog.currentGenerationId(), reason));
     }
 }

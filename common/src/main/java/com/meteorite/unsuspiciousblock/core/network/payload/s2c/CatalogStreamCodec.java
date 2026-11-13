@@ -2,12 +2,15 @@ package com.meteorite.unsuspiciousblock.core.network.payload.s2c;
 
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionSemantics;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
+
 import java.util.Comparator;
+
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionEffectKind;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionFidelity;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler.UncertaintyLevel;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionSemantics;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionDisplayRow;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
@@ -141,6 +144,9 @@ final class CatalogStreamCodec {
             buf.writeBoolean(branch.uncertain());
             buf.writeUtf(branch.injectionSource());
             buf.writeUtf(branch.injectionMode());
+            buf.writeUtf(branch.reference());
+            buf.writeBoolean(branch.recommendable());
+            buf.writeUtf(branch.sourceKey());
         }
     }
 
@@ -195,7 +201,7 @@ final class CatalogStreamCodec {
         for (int index = 0; index < branchCount; index++) {
             branches.add(new ScenarioBranch(
                     buf.readUtf(), buf.readUtf(), readConditionList(buf), readConditionList(buf), readLuckGate(buf),
-                    buf.readBoolean(), buf.readUtf(), buf.readUtf()));
+                    buf.readBoolean(), buf.readUtf(), buf.readUtf(), buf.readUtf(), buf.readBoolean(), buf.readUtf()));
         }
         return new CatalogTableDto(tableId, hash, displayName, type, simulationCount,
                 childTables, items, childProbabilities, options, branches);
@@ -217,10 +223,6 @@ final class CatalogStreamCodec {
             buf.writeBoolean(tool.predicateText() != null);
             if (tool.predicateText() != null)
                 buf.writeUtf(componentJson(tool.predicateText(), buf));
-            buf.writeVarInt(tool.satisfiedConditionIds().size());
-            for (String satisfiedId : tool.satisfiedConditionIds()) {
-                buf.writeUtf(satisfiedId);
-            }
         }
         buf.writeVarInt(options.enchantments().size());
         options.enchantments().entrySet().stream()
@@ -250,12 +252,7 @@ final class CatalogStreamCodec {
             Component name = Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess());
             Component predicate = buf.readBoolean()
                     ? Component.Serializer.fromJson(buf.readUtf(), buf.registryAccess()) : null;
-            int satisfiedCount = SimulationInputCodec.count(buf, SimulationScenarioPlanner.MAX_CONDITIONS);
-            Set<String> satisfied = new LinkedHashSet<>(satisfiedCount);
-            for (int k = 0; k < satisfiedCount; k++) {
-                satisfied.add(buf.readUtf());
-            }
-            tools.add(new ToolOption(id, name, predicate, satisfied));
+            tools.add(new ToolOption(id, name, predicate));
         }
         count = SimulationInputCodec.count(buf, 256);
         Map<ResourceLocation, Integer> enchantments = new LinkedHashMap<>();
@@ -626,6 +623,7 @@ final class CatalogStreamCodec {
         writeConditionList(buf, info.logicChildren());
         writeDisplayRows(buf, info.displayRows());
         writeConditionMetadata(buf, info.metadata());
+        writeSemantics(buf, info.semantics());
     }
 
     private static LootConditionInfo readCondition(RegistryFriendlyByteBuf buf) {
@@ -637,7 +635,87 @@ final class CatalogStreamCodec {
         List<LootConditionInfo> children = readConditionList(buf);
         List<ConditionDisplayRow> rows = readDisplayRows(buf);
         return new LootConditionInfo(type, description, probability, kind, children, rows,
-                readConditionMetadata(buf), null, identity);
+                readConditionMetadata(buf), null, identity, readSemantics(buf));
+    }
+
+    private enum SemanticKind {UNKNOWN, CONTROLLED, CHANCE, ENCHANTED, TOOL}
+
+    private static void writeSemantics(RegistryFriendlyByteBuf buf, ConditionSemantics semantics) {
+        switch (semantics) {
+            case ConditionSemantics.Unknown unknown -> {
+                buf.writeEnum(SemanticKind.UNKNOWN);
+                buf.writeUtf(unknown.reason());
+            }
+            case ConditionSemantics.Controlled ignored -> buf.writeEnum(SemanticKind.CONTROLLED);
+            case ConditionSemantics.Chance chance -> {
+                buf.writeEnum(SemanticKind.CHANCE);
+                buf.writeFloat(chance.probability());
+            }
+            case ConditionSemantics.EnchantedChance chance -> {
+                buf.writeEnum(SemanticKind.ENCHANTED);
+                buf.writeResourceLocation(chance.enchantment());
+                buf.writeVarInt(chance.probabilities().size());
+                chance.probabilities().forEach(buf::writeFloat);
+            }
+            case ConditionSemantics.ToolPredicate tool -> {
+                buf.writeEnum(SemanticKind.TOOL);
+                writeSemanticIds(buf, tool.items());
+                buf.writeBoolean(tool.anyItem());
+                buf.writeVarInt(tool.minCount());
+                buf.writeVarInt(tool.maxCount());
+                buf.writeBoolean(tool.requiresEnchantmentsComponent());
+                buf.writeBoolean(tool.partial());
+                buf.writeVarInt(tool.enchantments().size());
+                for (var requirement : tool.enchantments()) {
+                    writeSemanticIds(buf, requirement.ids());
+                    buf.writeBoolean(requirement.anyEnchantment());
+                    buf.writeVarInt(requirement.min());
+                    buf.writeVarInt(requirement.max());
+                }
+            }
+        }
+    }
+
+    private static ConditionSemantics readSemantics(RegistryFriendlyByteBuf buf) {
+        return switch (buf.readEnum(SemanticKind.class)) {
+            case UNKNOWN -> new ConditionSemantics.Unknown(buf.readUtf());
+            case CONTROLLED -> new ConditionSemantics.Controlled();
+            case CHANCE -> new ConditionSemantics.Chance(buf.readFloat());
+            case ENCHANTED -> {
+                ResourceLocation id = buf.readResourceLocation();
+                int count = SimulationInputCodec.count(buf, 4096);
+                List<Float> probabilities = new ArrayList<>(count);
+                for (int i = 0; i < count; i++) probabilities.add(buf.readFloat());
+                yield new ConditionSemantics.EnchantedChance(id, probabilities);
+            }
+            case TOOL -> {
+                Set<ResourceLocation> items = readSemanticIds(buf);
+                boolean any = buf.readBoolean();
+                int min = buf.readVarInt();
+                int max = buf.readVarInt();
+                boolean requiresEnchantmentsComponent = buf.readBoolean();
+                boolean partial = buf.readBoolean();
+                int count = SimulationInputCodec.count(buf, 256);
+                List<ConditionSemantics.EnchantmentRequirement> requirements = new ArrayList<>(count);
+                for (int i = 0; i < count; i++)
+                    requirements.add(new ConditionSemantics.EnchantmentRequirement(
+                            readSemanticIds(buf), buf.readBoolean(), buf.readVarInt(), buf.readVarInt()));
+                yield new ConditionSemantics.ToolPredicate(items, any, min, max, requirements, requiresEnchantmentsComponent, partial);
+            }
+        };
+    }
+
+    private static void writeSemanticIds(RegistryFriendlyByteBuf buf, Set<ResourceLocation> ids) {
+        buf.writeVarInt(ids.size());
+        ids.stream().sorted(Comparator.comparing(ResourceLocation::toString))
+                .forEach(buf::writeResourceLocation);
+    }
+
+    private static Set<ResourceLocation> readSemanticIds(RegistryFriendlyByteBuf buf) {
+        int count = SimulationInputCodec.count(buf, 4096);
+        Set<ResourceLocation> ids = new LinkedHashSet<>();
+        for (int i = 0; i < count; i++) ids.add(buf.readResourceLocation());
+        return ids;
     }
 
     private static void writeDisplayRows(RegistryFriendlyByteBuf buf, List<ConditionDisplayRow> rows) {

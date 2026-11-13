@@ -63,7 +63,7 @@ flowchart LR
 |---|---|
 | `JournalPlayerDataService` | 玩家笔记数据生命周期入口：服务端启停与 tick、登录恢复、退出落盘与重生复制 |
 | `ArchaeologyJournalServerCatalog` | 服务端目录入口：构建、模拟调度、缓存恢复与查询索引 |
-| `CatalogGeneration` | 一代目录不可变静态部分与模拟 overlay 的原子发布容器 |
+| `CatalogGeneration` | 一代目录不可变静态部分、约束与分支路径索引，以及模拟 overlay 的原子发布容器 |
 | `JournalLogMutation` | 日志变更领域意图（即时/延迟策略）与失败时的同对象恢复 |
 | `ArchaeologyJournalState` | 玩家进度核心模型（表/物品解锁状态、最近遇到表、`revision`、脏表集合） |
 | `LootTrackingContext` | 描述单次抽取的根表、来源、位置与子表栈的不可变记录 |
@@ -73,6 +73,7 @@ flowchart LR
 | `JournalLogStorage` | 按玩家 UUID 与表 ID 哈希分片的服务端权威日志存储 |
 | `JournalDataVersion` / `JournalNbtMigrator` | NBT 与存储布局双版本轴及连续升级迁移链 |
 | `ArchaeologyJournalClientState` | 客户端目录快照与玩家进度读模型 |
+| `JournalClientConnection` / `ScenarioSession` | 客户端连接生命周期与场景交互入口；页面快照、草稿提交和局部刷新见[笔记 GUI 内部机制](../internals/journal-ui-internals.md#4-场景条件页与文档动作) |
 
 ## 4. 目录构建与分类规则
 

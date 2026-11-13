@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalLogSnapshotPayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.client.Minecraft;
@@ -13,11 +13,22 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-/** 连接归属、加载、接包提交与持久化的唯一推进宿主。 */
+/**
+ * 连接归属、加载、接包提交与持久化的唯一推进宿主。
+ */
 public final class JournalClientConnection {
     private static final Queue<Inbound> incoming = new ConcurrentLinkedQueue<>();
     private static volatile @Nullable Session current;
     private static long epoch;
+    private static ScenarioSession scenario = new ScenarioSession(ClientNetwork::sendToServer, System::currentTimeMillis);
+
+    /**
+     * 当前连接唯一的场景动作与快照入口。
+     */
+    public static ScenarioSession scenario() {
+        return scenario;
+    }
+
     private static final List<Runnable> connectionResets = new ArrayList<>();
 
     private record Inbound(ClientPacketListener source, long epoch, Runnable apply) {
@@ -43,7 +54,9 @@ public final class JournalClientConnection {
     private JournalClientConnection() {
     }
 
-    /** 安装连接作用域复位动作，连接切换与断连共用同一序列。 */
+    /**
+     * 安装连接作用域复位动作，连接切换与断连共用同一序列。
+     */
     public static void registerConnectionReset(Runnable reset) {
         connectionResets.add(reset);
     }
@@ -94,7 +107,7 @@ public final class JournalClientConnection {
                 message.apply().run();
             }
         }
-        ScenarioSimulationClientState.tick();
+        JournalClientConnection.scenario().tick();
         ArchaeologyJournalLogLocalStore.tick();
         JournalUiPreferencesStore.tick();
     }
@@ -106,13 +119,15 @@ public final class JournalClientConnection {
         epoch++;
         incoming.clear();
         ArchaeologyJournalLogLocalStore.beginConnection(
-                new JournalMirror(System::currentTimeMillis, () -> {}));
+                new JournalMirror(System::currentTimeMillis, () -> {
+                }));
         resetConnectionStates();
     }
 
     private static void resetConnectionStates() {
         ArchaeologyJournalClientState.resetConnectionMemory();
-        ScenarioSimulationClientState.clear();
+        scenario.retire();
+        scenario = new ScenarioSession(ClientNetwork::sendToServer, System::currentTimeMillis);
         for (Runnable reset : connectionResets) {
             reset.run();
         }

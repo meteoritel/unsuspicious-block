@@ -2,10 +2,16 @@ package com.meteorite.unsuspiciousblock.core.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInputKey;
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranchCatalog;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker.SimulationTicket;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionSemantics;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionPreviewContext;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Iterator;
+
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootTableCompiler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootMechanismSupport;
@@ -69,9 +75,11 @@ import java.util.LinkedHashSet;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * 服务端目录——解析所有考古战利品表，按需通过主线程 tick 工作器填充概率。
@@ -86,7 +94,7 @@ import java.util.UUID;
  *   <li>{@link #ensureLoaded(MinecraftServer)}：非阻塞，构建并发布新一代目录 + 从 SavedData 恢复已缓存的
  *       **基准输入** + 把未缓存的基准输入排进低优先级队列分 tick 模拟。构建失败时保留上一代完整状态；
  *       无上一代可用时进入明确的空状态。</li>
- *   <li>{@link #requestSimulation(ServerPlayer, ResourceLocation, String, List, ScenarioParams)}：
+ *   <li>{@link #requestSimulation(ServerPlayer, ResourceLocation, String, List, ScenarioParams, SimulationTicket)}：
  *       由网络层在主线程调用，校验后把玩家的按需输入排进高优先级队列。</li>
  *   <li>{@link #invalidate()}：释放当代目录（含资源快照与投影），下次 ensureLoaded 重新构建。</li>
  * </ul>
@@ -116,9 +124,13 @@ public final class ArchaeologyJournalServerCatalog {
      */
     private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v28";
 
-    /** 唯一发布点：整代目录状态一次成型后整体替换。 */
+    /**
+     * 唯一发布点：整代目录状态一次成型后整体替换。
+     */
     private static volatile CatalogGeneration currentGeneration;
-    /** 代次计数器；仅在主线程递增。 */
+    /**
+     * 代次计数器；仅在主线程递增。
+     */
     private static long generationCounter;
     private static volatile boolean loaded;
 
@@ -176,8 +188,9 @@ public final class ArchaeologyJournalServerCatalog {
         for (ResourceLocation id : declarationTables) {
             List<DeclaredLootInjection> rules = List.copyOf(Services.PLATFORM.describeLootInjections(id));
             declarations.put(id, rules);
-            for (DeclaredLootInjection rule : rules) sourceNames.computeIfAbsent(rule.source(),
-                    Services.PLATFORM::getModDisplayName);
+            for (DeclaredLootInjection rule : rules)
+                sourceNames.computeIfAbsent(rule.source(),
+                        Services.PLATFORM::getModDisplayName);
         }
         Map<ResourceLocation, TableDefinition> projectionTables = new LinkedHashMap<>(loadResult.staticTables());
         loadResult.session().staticProjections().forEach((id, projection) -> projectionTables.putIfAbsent(id,
@@ -186,7 +199,8 @@ public final class ArchaeologyJournalServerCatalog {
         Map<ResourceLocation, ExpandedTable> expansions = DeclaredInjectionExpansion.build(projectionTables,
                 declarations, RuntimeLootLinks.injectionEdges(), server.registryAccess());
         Map<ResourceLocation, TableDefinition> staticTables = new LinkedHashMap<>();
-        for (ResourceLocation id : loadResult.staticTables().keySet()) staticTables.put(id, expansions.get(id).display());
+        for (ResourceLocation id : loadResult.staticTables().keySet())
+            staticTables.put(id, expansions.get(id).display());
         LOGGER.info("解析到 {} 个考古战利品表原始目录", staticTables.size());
 
         // 3. 先判不可用机制（决策 31）：这类表不能入队模拟，否则会在 getRandomItems 里抛异常后
@@ -272,7 +286,7 @@ public final class ArchaeologyJournalServerCatalog {
                 uncached.add(new LootProbabilitySimulationWorker.SimulationRequest(
                         tableId, entry.getValue(), baseline,
                         constraint.baselineScenario(expansions.get(tableId).planning()),
-                        generation, hash, null));
+                        generation, hash, null, null));
             }
         }
         // 四个数字必须各算各的：不可用表也走 publishSimulated，直接读 overlay 大小会把它们算成"从缓存恢复"；
@@ -324,7 +338,19 @@ public final class ArchaeologyJournalServerCatalog {
                                 holder.value().definition().maxLevel()));
             }
         }
-        return SimulationConstraintCatalog.build(plan, table, level, baseProfile, tools, toolSelectionAllowed,
+        Set<ResourceLocation> semanticEnchantments = new LinkedHashSet<>();
+        Stream.concat(table.items().stream().flatMap(item -> item.acquisitionPaths().stream())
+                                .flatMap(path -> path.allConditions().stream()),
+                        table.childTableProbabilities().stream().flatMap(child -> child.conditions().stream()))
+                .forEach(condition -> ConditionTree.walkLogic(condition, leaf -> {
+                    if (leaf.semantics() instanceof ConditionSemantics.EnchantedChance chance)
+                        semanticEnchantments.add(chance.enchantment());
+                    if (leaf.semantics() instanceof ConditionSemantics.ToolPredicate tool)
+                        tool.enchantments().forEach(requirement -> semanticEnchantments.addAll(requirement.ids()));
+                }));
+        semanticEnchantments.forEach(id -> enchantments.get(ResourceKey.create(Registries.ENCHANTMENT, id))
+                .ifPresent(holder -> enchantmentLevels.putIfAbsent(id, holder.value().definition().maxLevel())));
+        return SimulationConstraintCatalog.build(plan, baseProfile, tools, toolSelectionAllowed,
                 enchantmentLevels, expansion.childEntryGates());
     }
 
@@ -338,18 +364,24 @@ public final class ArchaeologyJournalServerCatalog {
         return (generation == null ? CatalogGeneration.empty(generationCounter) : generation).readSnapshot();
     }
 
-    /** 推荐/探测使用同一代的固定上下文，不暴露当代可变对象。 */
+    /**
+     * 推荐/探测使用同一代的固定上下文，不暴露当代可变对象。
+     */
     public record SimulationContext(long generation, String tableHash,
-            SimulationConstraintCatalog constraints, TableDefinition planningTable) {}
+                                    SimulationConstraintCatalog constraints, TableDefinition planningTable,
+                                    ScenarioBranchCatalog.Plan branches) {
+    }
 
     public static @Nullable SimulationContext simulationContext(ResourceLocation id) {
         CatalogGeneration generation = currentGeneration;
         if (generation == null || generation.constraintCatalog(id) == null) return null;
         return new SimulationContext(generation.generation(), generation.tableHash(id),
-                generation.constraintCatalog(id), generation.planningTable(id));
+                generation.constraintCatalog(id), generation.planningTable(id), generation.branches(id));
     }
 
-    /** 展示入口统一选择 overlay，尚未完成模拟时使用静态表。 */
+    /**
+     * 展示入口统一选择 overlay，尚未完成模拟时使用静态表。
+     */
     public static @Nullable TableDefinition displayTable(ResourceLocation id) {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? null : generation.displayTable(id);
@@ -377,7 +409,7 @@ public final class ArchaeologyJournalServerCatalog {
     // 这里依赖既有 reload 协议：数据包重载走 pause → clearQueue → invalidate → ensureLoaded → resume，
     // 队列与在跑任务都会被丢弃，且暂停期间不会产出结果，因此旧代结果不可能落到新代处理器上。
     private static void enqueueSimulation(MinecraftServer server, CatalogGeneration generation,
-                                         List<LootProbabilitySimulationWorker.SimulationRequest> uncached) {
+                                          List<LootProbabilitySimulationWorker.SimulationRequest> uncached) {
         long generationId = generation.generation();
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         if (worker == null) {
@@ -394,7 +426,7 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 同步回退模拟（仅在 worker 未启动时使用）
     private static void simulateSynchronously(MinecraftServer server,
-                                             List<LootProbabilitySimulationWorker.SimulationRequest> requests) {
+                                              List<LootProbabilitySimulationWorker.SimulationRequest> requests) {
         CatalogGeneration generation = currentGeneration;
         if (generation == null) {
             return;
@@ -405,22 +437,13 @@ public final class ArchaeologyJournalServerCatalog {
                     request.input(), request.scenario());
             CatalogSimulationDelivery.deliver(server, commitSimulated(result,
                     new CatalogSimulationSubmission(request, request.requester() == null
-                            ? Set.of() : Set.of(request.requester())), server));
+                            ? Map.of() : Map.of(request.requester(), Objects.requireNonNull(request.ticket()))), server));
         }
     }
 
     /**
-     * 服务端处理一份按需模拟请求——校验、查缓存、入队。回执与限流由调用方（网络层）负责。
-     * <p>
-     * 四条校验（决策 15/36）：表仍在追踪、哈希未变（变了说明这份输入属于上一版内容）、
-     * 输入由当前目录签发（场景、工具、附魔等级、抽样次数逐项落在约束内）、
-     * 需要入队时该玩家的在途额度还有空位。
-     * <p>
-     * **缓存先于队列**：同一个 {@code (表, 输入)} 可能已经由别的玩家、上一次会话或启动批次算过，
-     * 而按需模型的意义正是"一个问题只算一次"。命中缓存时直接派生下发，不占队列、不烧 tick 预算，
-     * 也不受在途额度限制——额度保护的是抽取成本，而这里没有抽取。
+     * 查询当前选定条件组合与参数的服务端缓存状态，并在请求时直接下发命中结果。
      */
-    /** 查询当前选定条件组合与参数的服务端缓存状态，并在请求时直接下发命中结果。 */
     public static CachedStatus cachedStatus(ServerPlayer player, ResourceLocation tableId, String hash,
                                             List<String> enabledConditions, ScenarioParams params,
                                             boolean fetchSelected) {
@@ -445,10 +468,12 @@ public final class ArchaeologyJournalServerCatalog {
         return new CachedStatus(cached, selected);
     }
 
-    /** 服务端受理一次按需模拟请求：校验输入与表哈希，命中缓存则直接派生，否则入高优先级队列。 */
+    /**
+     * 服务端受理一次按需模拟请求：校验输入与表哈希，命中缓存则直接派生，否则入高优先级队列。
+     */
     public static OnDemandResult requestSimulation(ServerPlayer player, ResourceLocation tableId,
                                                    String expectedTableHash, List<String> enabledConditions,
-                                                   ScenarioParams params) {
+                                                   ScenarioParams params, SimulationTicket ticket) {
         CatalogGeneration generation = currentGeneration;
         if (generation == null || !generation.isTracked(tableId)) {
             return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
@@ -486,18 +511,18 @@ public final class ArchaeologyJournalServerCatalog {
                 return new OnDemandResult(OnDemandOutcome.SIMULATION_FAILED, input);
             }
             var request = new LootProbabilitySimulationWorker.SimulationRequest(tableId, raw, input, scenario,
-                    generation.generation(), hash, player.getUUID());
+                    generation.generation(), hash, player.getUUID(), ticket);
             SubmissionResult committed = commitSimulated(result,
-                    new CatalogSimulationSubmission(request, Set.of(player.getUUID())), player.server);
+                    new CatalogSimulationSubmission(request, Map.of(player.getUUID(), ticket)), player.server);
             return new OnDemandResult(OnDemandOutcome.SIMULATED_INLINE, input, committed.scenario());
         }
-        if (!worker.canAcceptFor(player.getUUID())) {
+        if (!worker.isWaiting(player.getUUID(), tableId, input) && !worker.canAcceptFor(player.getUUID())) {
             return new OnDemandResult(OnDemandOutcome.PLAYER_LIMIT, input);
         }
         CatalogSimulationDelivery.install(worker, generation.generation());
         LootProbabilitySimulationWorker.EnqueueOutcome outcome = worker.enqueuePlayerRequest(
                 new LootProbabilitySimulationWorker.SimulationRequest(
-                        tableId, raw, input, scenario, generation.generation(), hash, player.getUUID()));
+                        tableId, raw, input, scenario, generation.generation(), hash, player.getUUID(), ticket));
         return switch (outcome) {
             case ACCEPTED -> new OnDemandResult(OnDemandOutcome.QUEUED, input);
             case REJECTED_QUEUE_FULL -> new OnDemandResult(OnDemandOutcome.REJECTED_QUEUE_FULL, input);
@@ -525,33 +550,51 @@ public final class ArchaeologyJournalServerCatalog {
         CatalogSimulationDelivery.install(worker, generation.generation());
         worker.enqueuePriority(new LootProbabilitySimulationWorker.SimulationRequest(
                 tableId, raw, constraint.baselineInput(), constraint.baselineScenario(planningTable),
-                generation.generation(), generation.tableHash(tableId), null));
+                generation.generation(), generation.tableHash(tableId), null, null));
     }
 
-    /** 按需请求的受理结果——{@code input} 非空时调用方可以拿它生成回执里的输入键。 */
+    /**
+     * 按需请求的受理结果——{@code input} 非空时调用方可以拿它生成回执里的输入键。
+     */
     public record OnDemandResult(OnDemandOutcome outcome, @Nullable SimulationInput input,
-            @Nullable ScenarioResult scenario) {
+                                 @Nullable ScenarioResult scenario) {
         public OnDemandResult(OnDemandOutcome outcome, @Nullable SimulationInput input) {
             this(outcome, input, null);
         }
     }
 
-    /** 单输入缓存查询及可选的当前选择结果，由 handler 发送。 */
-    public record CachedStatus(boolean cached, @Nullable ScenarioResult selected) {}
+    /**
+     * 单输入缓存查询及可选的当前选择结果，由 handler 发送。
+     */
+    public record CachedStatus(boolean cached, @Nullable ScenarioResult selected) {
+    }
 
-    /** 完整且归属于一份签发输入的展示结果。 */
-    public record ScenarioResult(long generation, String hash, String inputKey, CatalogTableDto table) {}
+    /**
+     * 完整且归属于一份签发输入的展示结果。
+     */
+    public record ScenarioResult(long generation, String hash, String inputKey, CatalogTableDto table) {
+    }
 
-    /** 单次提交的结果，传输层只消费它，不再判定缓存或发布规则。 */
+    /**
+     * 单次提交的结果，传输层只消费它，不再判定缓存或发布规则。
+     */
     public record SubmissionResult(SubmissionOutcome outcome, long generation, ResourceLocation tableId,
-            String inputKey, Set<UUID> requesters, @Nullable ScenarioResult scenario) {}
+                                   String inputKey, Map<UUID, SimulationTicket> requesters,
+                                   @Nullable ScenarioResult scenario) {
+    }
 
-    /** 提交终态；过期与重复完成没有发送动作。 */
-    public enum SubmissionOutcome { COMMITTED, FAILED, STALE, DUPLICATE, NO_WAITERS }
+    /**
+     * 提交终态；过期结果按原票据拒绝，重复完成不再交付。
+     */
+    public enum SubmissionOutcome {COMMITTED, FAILED, STALE, DUPLICATE, NO_WAITERS}
 
-    /** 按需模拟请求的受理结果。 */
+    /**
+     * 按需模拟请求的受理结果。
+     */
     public enum OnDemandOutcome {
-        /** 已入队，结果随后由 {@code SyncScenarioResultPayload} 下发。 */
+        /**
+         * 已入队，结果随后由 {@code SyncScenarioResultPayload} 下发。
+         */
         QUEUED,
         /**
          * 该输入在当前表内容下已有测量值：当场派生并下发，未占用队列与在途额度。
@@ -560,31 +603,49 @@ public final class ArchaeologyJournalServerCatalog {
          * 缓存还是又算了一遍"在受理路径上是一个可判别的事实，而不是只能靠启动日志推测。
          */
         CACHE_HIT,
-        /** worker 未启动，已在主线程同步算完并下发。 */
+        /**
+         * worker 未启动，已在主线程同步算完并下发。
+         */
         SIMULATED_INLINE,
-        /** 表未收录或不可用。 */
+        /**
+         * 表未收录或不可用。
+         */
         UNKNOWN_TABLE,
-        /** 客户端持有的表哈希已过期，需要先重新同步目录。 */
+        /**
+         * 客户端持有的表哈希已过期，需要先重新同步目录。
+         */
         STALE_HASH,
-        /** 输入未被当前目录签发（自造参数、超界幸运、未签发的档位）。 */
+        /**
+         * 输入未被当前目录签发（自造参数、超界幸运、未签发的档位）。
+         */
         REJECTED_INPUT,
-        /** 玩家请求队列已满。 */
+        /**
+         * 玩家请求队列已满。
+         */
         REJECTED_QUEUE_FULL,
-        /** 该玩家的在途请求已达上限；只在**确实需要入队**时判定，缓存命中不会走到这里。 */
+        /**
+         * 该玩家的在途请求已达上限；只在**确实需要入队**时判定，缓存命中不会走到这里。
+         */
         PLAYER_LIMIT,
-        /** 表为空或抽取过程抛异常：本次没有测量值，不写缓存。 */
+        /**
+         * 表为空或抽取过程抛异常：本次没有测量值，不写缓存。
+         */
         SIMULATION_FAILED
     }
 
-    /** 当代目录代次；未加载时为 0（回执里用它让客户端丢弃过期消息）。 */
+    /**
+     * 当代目录代次；未加载时为 0（回执里用它让客户端丢弃过期消息）。
+     */
     public static long currentGenerationId() {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? 0L : generation.generation();
     }
 
-    /** 校验提交凭据、代次、表哈希与输入归属，成功后才写缓存及共享基准。 */
+    /**
+     * 校验提交凭据、代次、表哈希与输入归属，成功后才写缓存及共享基准。
+     */
     public static SubmissionResult commitSimulated(LootProbabilitySimulator.SimResult result,
-            CatalogSimulationSubmission submission, MinecraftServer server) {
+                                                   CatalogSimulationSubmission submission, MinecraftServer server) {
         var request = submission.request();
         if (!submission.claim()) return submissionResult(SubmissionOutcome.DUPLICATE, submission, null);
         CatalogGeneration generation = currentGeneration;
@@ -632,19 +693,21 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     private static SubmissionResult submissionResult(SubmissionOutcome outcome,
-            CatalogSimulationSubmission submission, @Nullable ScenarioResult scenario) {
+                                                     CatalogSimulationSubmission submission, @Nullable ScenarioResult scenario) {
         var request = submission.request();
         return new SubmissionResult(outcome, request.generation(), request.tableId(), request.input().key(),
                 submission.requesters(), scenario);
     }
 
     private static ScenarioResult scenarioResult(CatalogGeneration generation, ResourceLocation tableId,
-            SimulationInput input, LootProbabilityData data) {
+                                                 SimulationInput input, LootProbabilityData data) {
         TableDefinition derived = deriveTable(generation, tableId, generation.constraintCatalog(tableId), input, data);
         return new ScenarioResult(generation.generation(), generation.tableHash(tableId), input.key(), generation.project(derived));
     }
 
-    /** 当前代次排空后可广播的目录摘要，旧代事件返回空串。 */
+    /**
+     * 当前代次排空后可广播的目录摘要，旧代事件返回空串。
+     */
     public static String catalogHashFor(long generationId) {
         CatalogGeneration generation = currentGeneration;
         return generation == null || generation.generation() != generationId ? "" : generation.catalogHash();
@@ -657,12 +720,16 @@ public final class ArchaeologyJournalServerCatalog {
         return generation == null ? "" : generation.catalogHash();
     }
 
-    /** 是否已完成首轮加载；平台重载监听器用它区分"启动时的首次资源加载"与真正的重载。 */
+    /**
+     * 是否已完成首轮加载；平台重载监听器用它区分"启动时的首次资源加载"与真正的重载。
+     */
     public static boolean isLoaded() {
         return loaded;
     }
 
-    /** 释放当代目录并标记为未加载；下次 ensureLoaded 会重新构建（含资源快照与投影一并释放） */
+    /**
+     * 释放当代目录并标记为未加载；下次 ensureLoaded 会重新构建（含资源快照与投影一并释放）
+     */
     public static void invalidate() {
         currentGeneration = null;
         loaded = false;
@@ -670,26 +737,34 @@ public final class ArchaeologyJournalServerCatalog {
         LootResultPreviewCache.clear();
     }
 
-    /** 获取已填充概率的目录只读视图（随模拟完成渐进增长） */
+    /**
+     * 获取已填充概率的目录只读视图（随模拟完成渐进增长）
+     */
     public static Map<ResourceLocation, TableDefinition> simulatedTables() {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? Map.of() : generation.simulatedTables();
     }
 
-    /** 获取原始目录的只读视图（概率为 "?" 占位符，但物品列表完整）。
-     *  ensureLoaded 后立即可用，不受渐进模拟影响；供成就判定等需要完整表集合的场景使用 */
+    /**
+     * 获取原始目录的只读视图（概率为 "?" 占位符，但物品列表完整）。
+     * ensureLoaded 后立即可用，不受渐进模拟影响；供成就判定等需要完整表集合的场景使用
+     */
     public static Map<ResourceLocation, TableDefinition> staticTables() {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? Map.of() : generation.staticTables();
     }
 
-    /** 获取当代查询索引（子树物品等跨表聚合的唯一入口）；目录尚未加载时返回空索引 */
+    /**
+     * 获取当代查询索引（子树物品等跨表聚合的唯一入口）；目录尚未加载时返回空索引
+     */
     public static CatalogQueryIndex queryIndex() {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? CatalogQueryIndex.EMPTY : generation.queryIndex();
     }
 
-    /** 获取原始表定义（概率为占位符），供工作线程模拟时查询 */
+    /**
+     * 获取原始表定义（概率为占位符），供工作线程模拟时查询
+     */
     @Nullable
     public static TableDefinition staticTable(ResourceLocation tableId) {
         CatalogGeneration generation = currentGeneration;
@@ -714,7 +789,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 分场景列表仅包含同参数下有测量缓存的场景，且采用相同展示派生；缺少引用表示尚未计算。
      */
     private static TableDefinition deriveTable(CatalogGeneration generation, ResourceLocation tableId,
-            SimulationConstraintCatalog constraint, SimulationInput input, LootProbabilityData probabilityData) {
+                                               SimulationConstraintCatalog constraint, SimulationInput input, LootProbabilityData probabilityData) {
         TableDefinition raw = generation.staticTable(tableId);
         TableDefinition planning = generation.planningTable(tableId);
         if (raw == null || planning == null) throw new IllegalStateException("表不在当代目录中: " + tableId);
@@ -802,8 +877,9 @@ public final class ArchaeologyJournalServerCatalog {
             ResourceManager resources, Map<ResourceLocation, List<DeclaredLootInjection>> declarations) {
         Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
         List<String> injectionInputs;
-        try { injectionInputs = Services.PLATFORM.lootInjectionHashInputs(resources); }
-        catch (IOException | RuntimeException exception) {
+        try {
+            injectionInputs = Services.PLATFORM.lootInjectionHashInputs(resources);
+        } catch (IOException | RuntimeException exception) {
             LOGGER.warn("读取平台注入摘要失败，本代不复用旧缓存", exception);
             String unavailableHash = "injection-unavailable-" + UUID.randomUUID();
             tables.keySet().forEach(id -> hashes.put(id, unavailableHash));
@@ -932,7 +1008,9 @@ public final class ArchaeologyJournalServerCatalog {
         }
     }
 
-    /** 一轮构建的产物：可发布的当代目录、待入队模拟的基准输入，以及无法模拟的表。 */
+    /**
+     * 一轮构建的产物：可发布的当代目录、待入队模拟的基准输入，以及无法模拟的表。
+     */
     private record BuildResult(CatalogGeneration generation,
                                List<LootProbabilitySimulationWorker.SimulationRequest> uncachedRequests,
                                Set<ResourceLocation> unavailableTables) {

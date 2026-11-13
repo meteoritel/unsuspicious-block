@@ -49,11 +49,17 @@ public record ScenarioParams(float luck, ResourceLocation toolId,
      * 唯一签发的抽样次数：旧档位和客户端自造次数在构造点直接拒绝，不做迁移。
      */
     public static final List<Integer> SAMPLE_COUNT_TIERS = List.of(10_000);
-    /** 基准档位：启动时每表只跑这一个（决策 17）。 */
+    /**
+     * 基准档位：启动时每表只跑这一个（决策 17）。
+     */
     public static final int DEFAULT_SAMPLE_COUNT = 10_000;
-    /** 附魔等级的数值边界；vanilla 组件 codec 与构造器都用 0..255（见规划 §3.2）。 */
+    /**
+     * 附魔等级的数值边界；vanilla 组件 codec 与构造器都用 0..255（见规划 §3.2）。
+     */
     public static final int MAX_ENCHANTMENT_LEVEL = 255;
-    /** 量化用的网格分母：幸运精度 0.01。 */
+    /**
+     * 量化用的网格分母：幸运精度 0.01。
+     */
     private static final float LUCK_GRID = 100.0F;
 
     public ScenarioParams {
@@ -75,7 +81,9 @@ public record ScenarioParams(float luck, ResourceLocation toolId,
         toolEnchantments = canonicalizeEnchantments(toolEnchantments);
     }
 
-    /** 基准参数（决策 17）：无附魔、幸运 0、基准档位。工具基座由调用方按表类型给出。 */
+    /**
+     * 基准参数（决策 17）：无附魔、幸运 0、基准档位。工具基座由调用方按表类型给出。
+     */
     public static ScenarioParams baseline(ResourceLocation toolId) {
         return new ScenarioParams(0.0F, toolId, Map.of(), DEFAULT_SAMPLE_COUNT);
     }
@@ -135,7 +143,31 @@ public record ScenarioParams(float luck, ResourceLocation toolId,
         return tool;
     }
 
-    /** 便于日志与调试的紧凑描述。 */
+    /**
+     * 未指定覆盖时，资格读取与实际构栈相同的默认附魔。
+     */
+    public Map<ResourceLocation, Integer> effectiveToolEnchantments() {
+        if (toolId.equals(ResourceLocation.withDefaultNamespace("air"))) return Map.of();
+        if (!toolEnchantments.isEmpty()) return toolEnchantments;
+        ItemEnchantments defaults = new ItemStack(BuiltInRegistries.ITEM.get(toolId)).get(DataComponents.ENCHANTMENTS);
+        if (defaults == null) return Map.of();
+        Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
+        defaults.entrySet().forEach(entry -> entry.getKey().unwrapKey().ifPresent(key ->
+                levels.put(key.location(), entry.getIntValue())));
+        return Map.copyOf(levels);
+    }
+
+    /**
+     * ENCHANTMENTS 子谓词要求组件存在，空规则列表也遵循该要求。
+     */
+    public boolean hasToolEnchantmentsComponent() {
+        return !toolId.equals(ResourceLocation.withDefaultNamespace("air")) && (!toolEnchantments.isEmpty()
+                || new ItemStack(BuiltInRegistries.ITEM.get(toolId)).has(DataComponents.ENCHANTMENTS));
+    }
+
+    /**
+     * 便于日志与调试的紧凑描述。
+     */
     public String describe() {
         if (this.toolEnchantments.isEmpty()) {
             return "luck=" + this.luck + ",tool=" + this.toolId + ",n=" + this.sampleCount;

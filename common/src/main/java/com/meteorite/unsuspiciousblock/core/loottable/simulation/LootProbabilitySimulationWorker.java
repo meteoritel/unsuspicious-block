@@ -2,12 +2,12 @@ package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission.Publication;
+
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
+
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
@@ -42,7 +42,9 @@ import java.util.UUID;
 public final class LootProbabilitySimulationWorker {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    /** 每 tick 用于模拟抽取的软时间预算；单次抽取本身无法被中断。 */
+    /**
+     * 每 tick 用于模拟抽取的软时间预算；单次抽取本身无法被中断。
+     */
     private static final long TICK_BUDGET_NANOS = 15_000_000L;
 
     /**
@@ -54,41 +56,65 @@ public final class LootProbabilitySimulationWorker {
      */
     private static final int MAX_PENDING_PLAYER_REQUESTS = 32;
 
-    /** 每个玩家同时可有的在途请求数（决策 15）。连点场景是真实攻击面，限流按玩家计数。 */
+    /**
+     * 每个玩家同时可有的在途请求数（决策 15）。连点场景是真实攻击面，限流按玩家计数。
+     */
     private static final int MAX_IN_FLIGHT_PER_PLAYER = 2;
 
-    /** 线程 CPU 时间计量器；不支持时相关字段退化为 0，不影响调度行为。 */
+    /**
+     * 线程 CPU 时间计量器；不支持时相关字段退化为 0，不影响调度行为。
+     */
     private static final ThreadMXBean THREAD_MX =
             ManagementFactory.getThreadMXBean();
     private static final boolean CPU_TIME_SUPPORTED = THREAD_MX.isCurrentThreadCpuTimeSupported();
 
-    /** 单例，随服务端生命周期创建/销毁 */
+    /**
+     * 单例，随服务端生命周期创建/销毁
+     */
     private static volatile LootProbabilitySimulationWorker instance;
 
-    /** 高优先级队列（玩家按需请求，插队） */
+    /**
+     * 高优先级队列（玩家按需请求，插队）
+     */
     private final Deque<WorkItem> highQueue = new ArrayDeque<>();
-    /** 低优先级队列（启动基准填充） */
+    /**
+     * 低优先级队列（启动基准填充）
+     */
     private final Deque<WorkItem> lowQueue = new ArrayDeque<>();
-    /** 已入队任务索引，键是 {@code (表, 输入键)}，同时用于去重与优先级提升。 */
+    /**
+     * 已入队任务索引，键是 {@code (表, 输入键)}，同时用于去重与优先级提升。
+     */
     private final Map<String, WorkItem> enqueued = new HashMap<>();
-    /** 本轮实际失败的 {@code (表, 输入)}；仅供结束时汇总，不参与重试。 */
+    /**
+     * 本轮实际失败的 {@code (表, 输入)}；仅供结束时汇总，不参与重试。
+     */
     private final Map<String, String> failedInputs = new LinkedHashMap<>();
-    /** 每玩家在途请求计数——入队时加、完成时减；玩家退出时残留由上限自行收敛。 */
+    /**
+     * 每玩家在途请求计数——入队时加、完成时减；玩家退出时残留由上限自行收敛。
+     */
     private final Map<UUID, Integer> playerInFlight = new HashMap<>();
 
     private WorkItem current;
     private volatile boolean paused = false;
-    /** 模拟结果回调（由调用方设置，如写入目录、广播等） */
+    /**
+     * 模拟结果回调（由调用方设置，如写入目录、广播等）
+     */
     private volatile ResultHandler resultHandler;
-    /** 当前队列全部处理完毕后的回调 */
+    /**
+     * 当前队列全部处理完毕后的回调
+     */
     private volatile Consumer<MinecraftServer> queueDrainedHandler;
-    /** 调试用进度回调（由 /usb journal reload 设置），可能为 null */
+    /**
+     * 调试用进度回调（由 /usb journal reload 设置），可能为 null
+     */
     private volatile ProgressListener progressListener;
 
     private LootProbabilitySimulationWorker() {
     }
 
-    /** 创建并注册单例（服务端启动时调用） */
+    /**
+     * 创建并注册单例（服务端启动时调用）
+     */
     public static void start() {
         if (instance != null) {
             LOGGER.warn("模拟工作器已在运行，忽略重复 start 调用");
@@ -98,18 +124,24 @@ public final class LootProbabilitySimulationWorker {
         LOGGER.info("战利品概率模拟工作器已就绪（主线程 tick 驱动，按 (表, 输入) 去重）");
     }
 
-    /** 销毁单例（服务端停止时调用） */
+    /**
+     * 销毁单例（服务端停止时调用）
+     */
     public static void stop() {
         instance = null;
         LOGGER.info("战利品概率模拟工作器已停止");
     }
 
-    /** 取得当前实例，未启动时返回 null */
+    /**
+     * 取得当前实例，未启动时返回 null
+     */
     public static LootProbabilitySimulationWorker get() {
         return instance;
     }
 
-    /** 便捷方法：若实例存在则驱动一次 tick（供平台 tick 事件调用） */
+    /**
+     * 便捷方法：若实例存在则驱动一次 tick（供平台 tick 事件调用）
+     */
     public static void tickIfPresent(MinecraftServer server) {
         LootProbabilitySimulationWorker worker = instance;
         if (worker != null) worker.tick(server);
@@ -124,24 +156,47 @@ public final class LootProbabilitySimulationWorker {
      */
     public record SimulationRequest(ResourceLocation tableId, TableDefinition rawTable,
                                     SimulationInput input, SimulationScenario scenario,
-                                    long generation, String tableHash, @Nullable UUID requester) {
+                                    long generation, String tableHash, @Nullable UUID requester,
+                                    @Nullable SimulationTicket ticket) {
         public SimulationRequest {
             if (tableId == null || rawTable == null || input == null || scenario == null) {
                 throw new IllegalArgumentException("模拟请求的表、输入与场景都不可为空");
             }
         }
 
-        /** 去重键——表 + 输入身份。 */
+        /**
+         * 去重键——表 + 输入身份。
+         */
         public String dedupKey() {
             return tableId + "#" + input.key();
         }
     }
 
-    /** 入队结果——调用方据此区分"已排队"与"被限流拒绝"。 */
+    /**
+     * 等待某项工作的最新交互身份，重试替换它而不增加工作或额度。
+     */
+    public record SimulationTicket(long requestId, long generation, String tableHash) {
+    }
+
+    /**
+     * 识别同一工作的既有等待关系，重试替换票据时复用其额度。
+     */
+    public boolean isWaiting(UUID player, ResourceLocation table, SimulationInput input) {
+        WorkItem item = enqueued.get(table + "#" + input.key());
+        return item != null && item.extraRequesters.containsKey(player);
+    }
+
+    /**
+     * 入队结果——调用方据此区分"已排队"与"被限流拒绝"。
+     */
     public enum EnqueueOutcome {
-        /** 已入队（或已在队列中被提升优先级）。 */
+        /**
+         * 已入队（或已在队列中被提升优先级）。
+         */
         ACCEPTED,
-        /** 玩家请求超出待处理上界，已拒绝。 */
+        /**
+         * 玩家请求超出待处理上界，已拒绝。
+         */
         REJECTED_QUEUE_FULL
     }
 
@@ -175,7 +230,7 @@ public final class LootProbabilitySimulationWorker {
             promote(existing);
             // 只在**确实登记成功**时加在途计数：额度按 extraRequesters 在完成时逐个释放，
             // 同一位玩家重复请求同一个输入若加两次却只释放一次，会把自己永久挡在额度外
-            if (request.requester() != null && existing.extraRequesters.add(request.requester())) {
+            if (request.requester() != null && existing.extraRequesters.put(request.requester(), request.ticket()) == null) {
                 addInFlight(request.requester(), 1);
             }
             return EnqueueOutcome.ACCEPTED;
@@ -185,7 +240,7 @@ public final class LootProbabilitySimulationWorker {
         }
         WorkItem item = new WorkItem(request, Priority.HIGH);
         if (request.requester() != null) {
-            item.extraRequesters.add(request.requester());
+            item.extraRequesters.put(request.requester(), request.ticket());
             addInFlight(request.requester(), 1);
         }
         this.enqueued.put(key, item);
@@ -212,12 +267,16 @@ public final class LootProbabilitySimulationWorker {
         this.highQueue.addLast(item);
     }
 
-    /** 某玩家当前在途（排队或计算中）的请求数。 */
+    /**
+     * 某玩家当前在途（排队或计算中）的请求数。
+     */
     public int inFlightFor(UUID playerId) {
         return this.playerInFlight.getOrDefault(playerId, 0);
     }
 
-    /** 该玩家是否还能再发一个请求（决策 15 的每玩家在途上界）。 */
+    /**
+     * 该玩家是否还能再发一个请求（决策 15 的每玩家在途上界）。
+     */
     public boolean canAcceptFor(UUID playerId) {
         return inFlightFor(playerId) < MAX_IN_FLIGHT_PER_PLAYER;
     }
@@ -234,7 +293,9 @@ public final class LootProbabilitySimulationWorker {
         }
     }
 
-    /** 当前 HIGH 队列中待处理（含正在跑）的玩家请求数。 */
+    /**
+     * 当前 HIGH 队列中待处理（含正在跑）的玩家请求数。
+     */
     public int pendingPlayerRequests() {
         int count = this.highQueue.size();
         if (this.current != null && this.current.priority == Priority.HIGH) {
@@ -243,7 +304,9 @@ public final class LootProbabilitySimulationWorker {
         return count;
     }
 
-    /** 清空队列（reload/flush 时丢弃旧任务） */
+    /**
+     * 清空队列（reload/flush 时丢弃旧任务）
+     */
     public void clearQueue() {
         highQueue.clear();
         lowQueue.clear();
@@ -253,32 +316,44 @@ public final class LootProbabilitySimulationWorker {
         playerInFlight.clear();
     }
 
-    /** 暂停消费（数据包重载前调用） */
+    /**
+     * 暂停消费（数据包重载前调用）
+     */
     public void pauseForReload() {
         paused = true;
     }
 
-    /** 恢复消费（数据包重载完成后调用） */
+    /**
+     * 恢复消费（数据包重载完成后调用）
+     */
     public void resumeAfterReload() {
         paused = false;
     }
 
-    /** 设置模拟结果回调 */
+    /**
+     * 设置模拟结果回调
+     */
     public void setResultHandler(ResultHandler handler) {
         this.resultHandler = handler;
     }
 
-    /** 设置队列排空回调，用于合并一批模拟产生的后续操作 */
+    /**
+     * 设置队列排空回调，用于合并一批模拟产生的后续操作
+     */
     public void setQueueDrainedHandler(Consumer<MinecraftServer> handler) {
         this.queueDrainedHandler = handler;
     }
 
-    /** 设置调试用进度回调 */
+    /**
+     * 设置调试用进度回调
+     */
     public void setProgressListener(ProgressListener listener) {
         this.progressListener = listener;
     }
 
-    /** 判断当前是否仍有模拟任务或正处于 reload 暂停阶段。 */
+    /**
+     * 判断当前是否仍有模拟任务或正处于 reload 暂停阶段。
+     */
     public boolean isBusy() {
         return this.paused || this.current != null || !this.enqueued.isEmpty();
     }
@@ -381,7 +456,7 @@ public final class LootProbabilitySimulationWorker {
             if (handler != null) handler.handle(result,
                     new CatalogSimulationSubmission(item.request, item.publication, item.extraRequesters), server);
         } finally {
-            for (UUID waiter : item.extraRequesters) addInFlight(waiter, -1);
+            for (UUID waiter : item.extraRequesters.keySet()) addInFlight(waiter, -1);
         }
         if (result.successful()) {
             // 三个时间各有用处：线程 CPU 回答"这张表本身有多贵"；"有效计算"是墙钟，在服务端启动阶段
@@ -423,17 +498,23 @@ public final class LootProbabilitySimulationWorker {
         }
     }
 
-    /** 可排队并保留续跑任务状态的工作项。 */
+    /**
+     * 可排队并保留续跑任务状态的工作项。
+     */
     private static final class WorkItem {
         private final SimulationRequest request;
-        /** 与原始触发者之外、还等着这一份结果的其他玩家（按内容去重后的复用者）。 */
-        private final Set<UUID> extraRequesters = new LinkedHashSet<>();
+        /**
+         * 与原始触发者之外、还等着这一份结果的其他玩家（按内容去重后的复用者）。
+         */
+        private final Map<UUID, SimulationTicket> extraRequesters = new LinkedHashMap<>();
         private Priority priority;
         private Publication publication;
         private LootProbabilitySimulationJob job;
         private long startedNanos;
         private long activeNanos;
-        /** 同一批切片的线程 CPU 时间；用于把"这张表有多贵"从墙钟里分离出来。 */
+        /**
+         * 同一批切片的线程 CPU 时间；用于把"这张表有多贵"从墙钟里分离出来。
+         */
         private long activeCpuNanos;
 
         private WorkItem(SimulationRequest request, Priority priority) {
@@ -460,9 +541,13 @@ public final class LootProbabilitySimulationWorker {
                     MinecraftServer server);
     }
 
-    /** 调试用进度回调（在主线程调用） */
+    /**
+     * 调试用进度回调（在主线程调用）
+     */
     public interface ProgressListener {
-        /** 单表单个输入模拟完成 */
+        /**
+         * 单表单个输入模拟完成
+         */
         void onTableSimulated(ResourceLocation tableId, SimulationMeasurement measurement);
     }
 }

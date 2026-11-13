@@ -1151,5 +1151,18 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.branch.unmet": "Needs setup",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.check_condition": "+ Check: %s",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.uncheck_condition": "- Uncheck: %s",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.conditions_unchanged": "Conditions: unchanged"
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.conditions_unchanged": "Conditions: unchanged",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.connection_changed": "Connection changed. Reopen the configuration.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.unavailable": "This table cannot currently be simulated.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.content_changed": "Table content changed. Keep the draft or cancel and reopen.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.selection_changed": "The selection changed. Keep the draft or cancel and reopen.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.branch": "Recommend this branch for %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.branch_scope": "Scope: current branch %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.path": "Path witness: branch %s / path %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.actual_item": "Actual candidate: %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.observed": "Only runtime observations are available; automatic recommendation is unavailable.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.tag": "Use a discovered item’s grid menu to recommend a tag entry.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.unsupported": "These rules contain unsupported conditions or luck requirements.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.no_candidate": "No input in the issued domain satisfies this path.",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.reason": "Unresolved rule: %s"
 }

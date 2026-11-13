@@ -50,24 +50,32 @@ import net.minecraft.server.level.ServerPlayer;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
 import net.minecraft.resources.ResourceLocation;
+
 import java.util.function.BiConsumer;
 
-/** 公共网络声明：维护通道类型、codec 与 C2S 服务端处理函数。 */
+/**
+ * 公共网络声明：维护通道类型、codec 与 C2S 服务端处理函数。
+ */
 public final class ModPayloads {
-    public static final String PROTOCOL_VERSION = "4.13";
+    public static final String PROTOCOL_VERSION = "4.16";
 
     private ModPayloads() {
     }
 
-    /** C2S payload 描述：类型 + 编解码 + 服务端处理函数 */
+    /**
+     * C2S payload 描述：类型 + 编解码 + 服务端处理函数
+     */
     public record C2S<T extends CustomPacketPayload>(
             CustomPacketPayload.Type<T> type,
             StreamCodec<RegistryFriendlyByteBuf, T> streamCodec,
             BiConsumer<ServerPlayer, T> handler) {
     }
 
-    /** C2S payload 列表（服务端处理） */
+    /**
+     * C2S payload 列表（服务端处理）
+     */
     public static final List<C2S<?>> C2S_PAYLOADS = List.of(
             new C2S<>(RequestSimulationAssistPayload.TYPE, RequestSimulationAssistPayload.STREAM_CODEC, SimulationAssistHandler::handle),
             new C2S<>(UpdateReaderScanLevelPayload.TYPE, UpdateReaderScanLevelPayload.STREAM_CODEC,
@@ -101,14 +109,18 @@ public final class ModPayloads {
                     ScenarioSimulationHandler::handleRequest)
     );
 
-    /** 下行通道声明：类型与编解码由公共网络层持有，客户端接收绑定留在 client。 */
+    /**
+     * 下行通道声明：类型与编解码由公共网络层持有，客户端接收绑定留在 client。
+     */
     public record S2C<T extends CustomPacketPayload>(
             CustomPacketPayload.Type<T> type,
             StreamCodec<RegistryFriendlyByteBuf, T> streamCodec) {
 
     }
 
-    /** 公共 codec 注册与客户端绑定直接引用同一类型化声明。 */
+    /**
+     * 公共 codec 注册与客户端绑定直接引用同一类型化声明。
+     */
     public static final S2C<SyncArchaeologyCatalogPayload> SYNC_ARCHAEOLOGY_CATALOG =
             new S2C<>(SyncArchaeologyCatalogPayload.TYPE, SyncArchaeologyCatalogPayload.STREAM_CODEC);
     public static final S2C<SyncCatalogHashPayload> SYNC_CATALOG_HASH =

@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
 import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
@@ -60,6 +59,9 @@ public final class ArchaeologyJournalClientState {
         private ArchaeologyJournalState journalState = new ArchaeologyJournalState();
         private Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
         private long catalogProjectionRevision = -1L;
+        private long observedCatalog = -1L;
+        private long observedSimulation = -1L;
+        private long viewRevision;
         private @Nullable String cachedCatalogHash;
         private boolean catalogInitialized;
         private boolean stateInitialized;
@@ -89,8 +91,12 @@ public final class ArchaeologyJournalClientState {
         logDeleteNotifier = notifier;
     }
 
-    /** 完整目录与进度均已提交，空目录也属于已就绪状态。 */
-    public static boolean isReadingReady() { return connectionState.catalogInitialized && connectionState.stateInitialized; }
+    /**
+     * 完整目录与进度均已提交，空目录也属于已就绪状态。
+     */
+    public static boolean isReadingReady() {
+        return connectionState.catalogInitialized && connectionState.stateInitialized;
+    }
 
     public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
         // 网络形态还原为客户端内存读模型：表级场景假设按 key 回填到每个分场景概率
@@ -98,7 +104,7 @@ public final class ArchaeologyJournalClientState {
         for (CatalogTableDto table : payload.catalog()) {
             tables.put(table.id(), table.toTableDefinition());
         }
-        ScenarioSimulationClientState.catalog(payload.catalog());
+        JournalClientConnection.scenario().catalog(payload.catalog());
         connectionState.serverCatalog = Collections.unmodifiableMap(tables);
         connectionState.catalogStructure = payload.structure();
         connectionState.catalogInitialized = true;
@@ -236,8 +242,8 @@ public final class ArchaeologyJournalClientState {
     /**
      * 目录投影：在原始目录上叠加当前模拟选择与结果，供日志详情、tooltip 与网格共用。
      * <p>
-     * 缓存键由目录版本与场景 Module 的 revision 合成：
-     * 收到完整目录（{@link #receiveCatalog}）、模拟选择/结果变化（场景 revision）、
+     * 目录版本与场景投影版本分别观察，任一变化推进单调视图版本：
+     * 收到完整目录（{@link #receiveCatalog}）、模拟选择/当前测值变化（投影版本）、
      * 断连重置（由 {@link JournalClientConnection} 负责）。命中时返回同一份**不可修改**映射，
      * 调用方只能读取。语言切换无需失效：投影只持有 {@code Component} 与 record，翻译在渲染时解析。
      */
@@ -247,7 +253,7 @@ public final class ArchaeologyJournalClientState {
             return connectionState.catalogProjection;
         }
         Map<ResourceLocation, TableDefinition> projection = Collections.unmodifiableMap(
-                ScenarioSimulationClientState.overlay(connectionState.serverCatalog));
+                JournalClientConnection.scenario().overlay(connectionState.serverCatalog));
         // 先发布投影再发布版本号，读取方看到新版本号时必然能看到对应投影
         connectionState.catalogProjection = projection;
         connectionState.catalogProjectionRevision = revision;
@@ -278,8 +284,14 @@ public final class ArchaeologyJournalClientState {
     }
 
     public static long getCatalogRevision() {
-        return catalogRevision.get()
-                + ScenarioSimulationClientState.revision();
+        long catalog = catalogRevision.get();
+        long simulation = JournalClientConnection.scenario().projectionRevision();
+        if (connectionState.observedCatalog != catalog || connectionState.observedSimulation != simulation) {
+            connectionState.observedCatalog = catalog;
+            connectionState.observedSimulation = simulation;
+            connectionState.viewRevision++;
+        }
+        return connectionState.viewRevision;
     }
 
     public static long getStateRevision() {
@@ -372,11 +384,11 @@ public final class ArchaeologyJournalClientState {
 
     // 收集单个表中物品的新解锁
     private static void collectItemUnlocks(ResourceLocation tableId,
-                                          ArchaeologyJournalState.TableProgress newProgress,
-                                          ArchaeologyJournalState.TableProgress oldProgress,
-                                          Map<ResourceLocation, TableDefinition> catalog,
-                                          List<Component> outNames,
-                                          List<ItemStack> outIcons) {
+                                           ArchaeologyJournalState.TableProgress newProgress,
+                                           ArchaeologyJournalState.TableProgress oldProgress,
+                                           Map<ResourceLocation, TableDefinition> catalog,
+                                           List<Component> outNames,
+                                           List<ItemStack> outIcons) {
         TableDefinition tableDef = catalog.get(tableId);
         for (LootTableCatalog.ItemDefinition itemDef : tableDef != null ? tableDef.items() : List.<LootTableCatalog.ItemDefinition>of()) {
             if (newProgress.isItemUnlocked(itemDef.signature())

@@ -1151,5 +1151,18 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.branch.unmet": "需调整",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.check_condition": "+ 勾选：%s",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.uncheck_condition": "- 取消：%s",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.conditions_unchanged": "环境条件：无需修改"
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.conditions_unchanged": "环境条件：无需修改",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.connection_changed": "连接已变化，请重新打开配置",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.unavailable": "当前表不可模拟",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.content_changed": "表内容已更新，请保留草稿或取消后重新打开",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.draft.selection_changed": "当前选择已变化，请保留草稿或取消后重新打开",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.branch": "为「%s」推荐此分支",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.branch_scope": "范围：当前分支 %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.path": "路径见证：分支 %s / 路径 %s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.actual_item": "实际候选：%s",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.observed": "仅有运行时观测，暂无法自动推荐规则。",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.tag": "标签入口请从已发现物品的网格菜单推荐。",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.unsupported": "当前规则含尚未支持的条件或幸运要求。",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.no_candidate": "已检查的签发范围内没有满足该路径的配置。",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.reason": "待解释规则：%s"
 }

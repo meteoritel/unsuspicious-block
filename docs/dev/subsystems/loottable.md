@@ -9,7 +9,7 @@
 |---|---|
 | 资源快照 | `core/loottable/source/LootTableSourceSnapshot.java`（一次列举获取全表有效原文与完整资源栈） |
 | 引用图 | `core/loottable/graph/`：`LootTableReferenceGraph`（直接子表、可达集、子树、强连通环与子树摘要）、`LootTableEdge`（边类型）、`RuntimeLootLinks`（平台注入边与钓鱼上下文判定的唯一来源） |
-| 编译 | `core/loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`、`LootConditionInfo`、`LootFunctionHandler(s)`、`LootFunctionInfo`、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil` |
+| 编译 | `core/loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`、`LootConditionInfo`、`ConditionSemantics`、`LootFunctionHandler(s)`、`LootFunctionInfo`、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil` |
 | 读模型与查询 | `core/loottable/catalog/`：`LootTableCatalog`（跨模块共享记录类型）、`LootOriginKind`、`Probability`、`DeclaredChance`、`LootTableProjector`、`StaticTableProjection`、`ItemDefinitionAccumulator`、`CatalogQueryIndex`、`CatalogTableDto`、`LootTablePattern`、`LootTableNames`、`LootTableTranslationStore`、`MissingTranslationKeyExporter` |
 | 签名 | `core/loottable/signature/`：`LootResultSignature`、`LootResultMatcher`、`LootResultPreviewCache`、`LootCounts`、`SignatureExcludedComponents` |
 | 模拟 | `core/loottable/simulation/`：输入参数（`SimulationInput` / `ScenarioParams` / `SimulationInputKey`）、条件规划与求值（`SimulationScenarioPlanner` / `ConditionOption` / `ScenarioConditionEvaluator` / `SimulationScenario`）、引擎调度（`LootProbabilitySimulator` / `LootProbabilitySimulationJob` / `SimulationMeasurement` / `LootProbabilitySimulationWorker`）、约束目录（`SimulationConstraintCatalog` / `ToolOption`）、上下文填充（`SimulationProfile` / `LootContextParamFiller` / `SimulationFakePlayer` / `SimulationFishingHook` / `LootSimulationScope` / `PlayerStateProbe`）、推荐与捕获（`SimulationAssistTarget` / `RecommendationSolver` / `FunctionTraceSession` / `ObservedFunctionChain`）、展示派生（`PathHintAnalyzer` / `ProbabilityFormat`） |
@@ -72,6 +72,9 @@ flowchart TD
 | `LootProbabilitySimulator` | 单输入抽取模拟引擎 |
 | `LootProbabilitySimulationWorker` | 主线程 tick 调度器（双优先级队列、`(表, 输入键)` 去重） |
 | `SimulationConstraintCatalog` | 签发单表可选约束（原子条件选项 `ConditionOption`、工具、附魔上限、抽样档位），不预先枚举组合 |
+| `ConditionSemantics` / `ScenarioConditionEvaluator` | 冻结叶子事实并一次解释完整条件树，供场景阅读与推荐回验共用；实际抽取执行活谓词 |
+| `ScenarioBranchCatalog` | 同源派生展示分支与完整候选路径，绑定内容版本内的分支引用及原始注入来源 |
+| `RecommendationSolver` | 在请求范围内沿树构造需求，搜索相关工具/附魔与幸运，返回输入及路径见证或明确终态 |
 | `PathHintAnalyzer` | 静态获取提示生成与「基准测值 → 展示模型」派生 |
 | `ProbabilityFormat` | 概率与声明触发率的展示格式化唯一入口（仅在 UI 边界调用） |
 | `ArchaeologyLootInjectors` | 全局平台注入器单例 |

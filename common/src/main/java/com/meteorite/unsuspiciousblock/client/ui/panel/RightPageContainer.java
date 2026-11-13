@@ -2,7 +2,13 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.input.*;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState.PagePositions;
@@ -102,7 +108,7 @@ public final class RightPageContainer implements UiInputContainer {
         this.scenarioPanel.setOpenScenes(this::openSceneOverlay);
         this.scenarioDetailPanel = new ScenarioDetailPanel(layout, overlays);
         this.gridPanel = new ItemGridPanel(layout);
-        this.scenarioDetailPanel.setTargetNavigation(gridPanel::targetVisible, (kind, target) -> {
+        this.scenarioDetailPanel.setTargetNavigation((kind, target) -> {
             if (gridPanel.locateTarget(kind, target)) setActiveTab(Tab.ARCHAEOLOGY);
         }, () -> setActiveTab(Tab.ARCHAEOLOGY));
         this.pageIndicator = new PageIndicator(layout);
@@ -130,7 +136,7 @@ public final class RightPageContainer implements UiInputContainer {
                         JournalLayout.LOG_PAGE_INDICATOR_Y, false, tabLabel("log"),
                         this::captureReferenceGameTime, leaveLog),
                 page(Tab.SCENARIO, () -> scenarioDetailPanel, JournalLayout.SCENARIO_PAGE_INDICATOR_Y, false,
-                        ScenarioSimulationClientState.text("tab"), leaveLog, noAction));
+                        ScenarioSession.text("tab"), leaveLog, noAction));
         this.bookmarks = this.pages.stream().map(PageDescriptor::bookmark).toList();
         syncBookmarks();
         gridPanel.setActions(this::syncPageChrome, target -> {
@@ -170,13 +176,29 @@ public final class RightPageContainer implements UiInputContainer {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
         ReadingState previous = captureReadingState();
 
-        this.gridPanel.setTable(items, childTables);
+        Map<String, ScenarioTableSnapshot.Target> targets = new LinkedHashMap<>();
+        for (var item : items) {
+            targets.put("item#" + item.signature().toStoredKey(), new ScenarioTableSnapshot.Target(item.unlocked(),
+                    item.unlocked() ? item.displayName() : Component.empty()));
+            for (var path : item.acquisitionPaths()) {
+                if (path.sourceChildTable() != null || path.sourceItemTag() == null) continue;
+                String key = "tag#" + path.sourceItemTag();
+                boolean visible = item.unlocked() || targets.containsKey(key) && targets.get(key).visible();
+                targets.put(key, new ScenarioTableSnapshot.Target(visible,
+                        visible ? Component.literal(path.sourceItemTag().toString()) : Component.empty()));
+            }
+        }
+        for (var child : childTables)
+            targets.put("table#" + child.tableId(),
+                    new ScenarioTableSnapshot.Target(child.unlocked(), child.unlocked() ? child.displayName() : Component.empty()));
+        if (tableId != null) JournalClientConnection.scenario().setTargets(tableId, targets);
+        this.gridPanel.setTable(items, childTables, targets);
         this.detailPanel.setData(tableId, parsedCount, totalCount, introItems);
         this.logPanel.setData(logRef);
 
         if (!sameTable) {
             overlays.close();
-            ScenarioSimulationClientState.cancelAssist();
+            JournalClientConnection.scenario().cancelAssist();
             gridPanel.setActiveTag(null);
             gridPanel.resetPage();
             detailPanel.setPage(0);
@@ -360,8 +382,8 @@ public final class RightPageContainer implements UiInputContainer {
     // 网格页的「条件栏」打开条件勾选浮层，也可在浮层内一键同步状态或切换参数。
     private void openSceneOverlay() {
         if (currentTableId == null) return;
-        CatalogTableDto dto = ScenarioSimulationClientState.table(currentTableId);
-        var selection = ScenarioSimulationClientState.selection(currentTableId);
+        CatalogTableDto dto = JournalClientConnection.scenario().table(currentTableId);
+        var selection = JournalClientConnection.scenario().selection(currentTableId);
         if (dto == null || dto.options() == null || selection == null) return;
         overlays.open(new ScenarioConditionOverlay(overlays,
                 currentTableId, dto.options(), selection.conditions(), selection.params()));

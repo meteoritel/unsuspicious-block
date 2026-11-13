@@ -7,14 +7,19 @@ import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbability
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.ScenarioRequestRejectedPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload;
+
 import java.util.Objects;
+
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
-/** 同步与异步模拟结果共用的传输 adapter。 */
+/**
+ * 同步与异步模拟结果共用的传输 adapter。
+ */
 public final class CatalogSimulationDelivery {
-    private CatalogSimulationDelivery() {}
+    private CatalogSimulationDelivery() {
+    }
 
     public static void install(LootProbabilitySimulationWorker worker, long generation) {
         worker.setResultHandler((result, submission, server) ->
@@ -22,21 +27,31 @@ public final class CatalogSimulationDelivery {
         worker.setQueueDrainedHandler(server -> broadcastHash(server, generation));
     }
 
-    public static void deliver(ServerPlayer player, ScenarioResult result) {
-        Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(
+    public static void deliverSimulation(ServerPlayer player, ScenarioResult result, long requestId) {
+        Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(requestId, true,
+                result.generation(), result.hash(), result.inputKey(), result.table()));
+    }
+
+    public static void deliverCached(ServerPlayer player, ScenarioResult result, long requestId) {
+        Services.NETWORK.sendToPlayer(player, new SyncScenarioResultPayload(requestId, false,
                 result.generation(), result.hash(), result.inputKey(), result.table()));
     }
 
     public static void deliver(MinecraftServer server, SubmissionResult result) {
-        for (var requester : result.requesters()) {
-            ServerPlayer player = server.getPlayerList().getPlayer(requester);
+        for (var entry : result.requesters().entrySet()) {
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
             if (player == null) continue;
+            var ticket = entry.getValue();
             switch (result.outcome()) {
-                case COMMITTED -> deliver(player, Objects.requireNonNull(result.scenario()));
-                case FAILED -> Services.NETWORK.sendToPlayer(player, new ScenarioRequestRejectedPayload(
-                        result.generation(), result.tableId(), result.inputKey(),
-                        ScenarioRequestRejectedPayload.Reason.SIMULATION_FAILED));
-                case STALE, DUPLICATE, NO_WAITERS -> { }
+                case COMMITTED ->
+                        deliverSimulation(player, Objects.requireNonNull(result.scenario()), ticket.requestId());
+                case FAILED, STALE -> Services.NETWORK.sendToPlayer(player, new ScenarioRequestRejectedPayload(
+                        ticket.requestId(), ticket.generation(), result.tableId(), ticket.tableHash(), result.inputKey(),
+                        ArchaeologyJournalServerCatalog.currentGenerationId(), result.outcome()
+                        == ArchaeologyJournalServerCatalog.SubmissionOutcome.STALE
+                        ? ScenarioRequestRejectedPayload.Reason.STALE_HASH : ScenarioRequestRejectedPayload.Reason.SIMULATION_FAILED));
+                case DUPLICATE, NO_WAITERS -> {
+                }
             }
         }
     }

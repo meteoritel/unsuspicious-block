@@ -23,19 +23,21 @@ import java.util.Set;
 
 /**
  * 从战利品表静态路径中提取可勾选的原子环境条件（{@link ConditionOption}），
- * 并按任意勾选集合即时构建模拟执行场景与求解满足条件。
- * <p>
- * 与旧版预先枚举至多 32 个 {@code scene-N} 组合的规划器不同，本类只做线性提取与单路径求值：
- * 不存在指数组合爆炸，也不再因 32 上界而截断玩家可探索的条件组合。
+ * 并按已校验勾选集合即时构建模拟执行场景；推荐搜索由 {@link RecommendationSolver} 负责。
  */
 public final class SimulationScenarioPlanner {
-    /** 单表签发的可勾选环境条件上限（同时作为网络编解码边界）。 */
+    /**
+     * 单表签发的可勾选环境条件上限（同时作为网络编解码边界）。
+     */
     public static final int MAX_CONDITIONS = 256;
-    /** 基准场景的稳定键（未勾选任何条件时的默认输入）。 */
+    /**
+     * 基准场景的稳定键（未勾选任何条件时的默认输入）。
+     */
     public static final String BASELINE_SCENARIO_KEY = "baseline";
-    /** 单张表的条件与函数节点访问预算，防止病态嵌套 JSON 拖垮构建。 */
+    /**
+     * 单张表的条件与函数节点访问预算，防止病态嵌套 JSON 拖垮构建。
+     */
     private static final int EXPANSION_NODE_BUDGET = 4096;
-    private static final int MAX_SATISFACTION_CHECKS = 512;
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Set<ResourceLocation> WARNED_UNSTABLE_TYPES = new LinkedHashSet<>();
     private static final Set<ResourceLocation> WARNED_BUDGET_TABLES = new LinkedHashSet<>();
@@ -43,7 +45,9 @@ public final class SimulationScenarioPlanner {
     private SimulationScenarioPlanner() {
     }
 
-    /** 判断条件类型是否属于需要由场景勾选控制的类型；其余类型在模拟中按真实逻辑求值。 */
+    /**
+     * 判断条件类型是否属于需要由场景勾选控制的类型；其余类型在模拟中按真实逻辑求值。
+     */
     public static boolean isScenarioControlled(ResourceLocation conditionType) {
         return LootConditionHandlers.supports(conditionType, ConditionTypeDescriptor.Capability.SCENARIO);
     }
@@ -60,7 +64,9 @@ public final class SimulationScenarioPlanner {
         }
     }
 
-    /** 线性扫描整张表的获取路径、函数条件与子表入口条件，提取所有可勾选原子环境条件。 */
+    /**
+     * 线性扫描整张表的获取路径、函数条件与子表入口条件，提取所有可勾选原子环境条件。
+     */
     public static ConditionPlan planConditions(ResourceLocation tableId, TableDefinition table) {
         Map<String, ConditionOption> collected = new LinkedHashMap<>();
         NodeBudget budget = new NodeBudget();
@@ -98,7 +104,9 @@ public final class SimulationScenarioPlanner {
         return new ConditionPlan(result, budget.exhausted);
     }
 
-    /** 根据已校验的条件勾选集合，即时构建供模拟器使用的 {@link SimulationScenario}。 */
+    /**
+     * 根据已校验的条件勾选集合，即时构建供模拟器使用的 {@link SimulationScenario}。
+     */
     public static SimulationScenario buildScenario(String scenarioKey,
                                                    List<String> enabledConditions,
                                                    List<ConditionOption> issuedConditions,
@@ -151,133 +159,6 @@ public final class SimulationScenarioPlanner {
                 enabledSet.isEmpty());
     }
 
-    /**
-     * 为一条目标条件列表求取能满足它的勾选集合（供推荐求解器使用）。
-     * 优先保留 {@code preferredEnabled} 中已勾选的无关条件，尽量减少玩家当前勾选的改动。
-     */
-    public static List<List<String>> satisfyingAssignments(List<LootConditionInfo> conditions,
-                                                           Set<String> preferredEnabled,
-                                                           int maxSolutions) {
-        if (maxSolutions <= 0) {
-            return List.of();
-        }
-        List<String> localIds = collectLocalControlledIds(conditions);
-        if (localIds.isEmpty()) {
-            return ScenarioConditionEvaluator.areScenarioConditionsSatisfied(conditions, preferredEnabled)
-                    ? List.of(SimulationInput.canonicalize(List.copyOf(preferredEnabled)))
-                    : List.of();
-        }
-
-        List<List<String>> solutions = new ArrayList<>();
-        Set<String> seenKeys = new LinkedHashSet<>();
-        if (ScenarioConditionEvaluator.areScenarioConditionsSatisfied(conditions, preferredEnabled)) {
-            List<String> current = SimulationInput.canonicalize(List.copyOf(preferredEnabled));
-            solutions.add(current);
-            seenKeys.add(String.join(",", current));
-            if (solutions.size() >= maxSolutions) {
-                return List.copyOf(solutions);
-            }
-        }
-
-        int[] checks = {0};
-        int maxFlips = Math.min(localIds.size(), 6);
-        for (int flips = 1; flips <= maxFlips && solutions.size() < maxSolutions && checks[0] < MAX_SATISFACTION_CHECKS; flips++) {
-            searchByHammingDistance(conditions, localIds, preferredEnabled, 0, flips,
-                    new LinkedHashSet<>(preferredEnabled), solutions, seenKeys, maxSolutions, checks);
-        }
-        if (solutions.isEmpty() && localIds.size() > maxFlips && checks[0] < MAX_SATISFACTION_CHECKS) {
-            backtrackSatisfying(conditions, localIds, 0, new LinkedHashSet<>(preferredEnabled),
-                    solutions, seenKeys, maxSolutions, checks);
-        }
-        return List.copyOf(solutions);
-    }
-
-    private static void searchByHammingDistance(List<LootConditionInfo> conditions, List<String> localIds,
-                                                Set<String> preferredEnabled, int index, int remainingFlips,
-                                                Set<String> working, List<List<String>> solutions,
-                                                Set<String> seenKeys, int maxSolutions, int[] checks) {
-        if (solutions.size() >= maxSolutions || checks[0] >= MAX_SATISFACTION_CHECKS) {
-            return;
-        }
-        if (remainingFlips == 0) {
-            checks[0]++;
-            if (ScenarioConditionEvaluator.areScenarioConditionsSatisfied(conditions, working)) {
-                List<String> candidate = SimulationInput.canonicalize(List.copyOf(working));
-                if (seenKeys.add(String.join(",", candidate))) {
-                    solutions.add(candidate);
-                }
-            }
-            return;
-        }
-        if (localIds.size() - index < remainingFlips) {
-            return;
-        }
-        // 不翻转当前位
-        searchByHammingDistance(conditions, localIds, preferredEnabled, index + 1, remainingFlips,
-                working, solutions, seenKeys, maxSolutions, checks);
-        // 翻转当前位
-        String id = localIds.get(index);
-        boolean wasEnabled = preferredEnabled.contains(id);
-        if (wasEnabled) {
-            working.remove(id);
-        } else {
-            working.add(id);
-        }
-        searchByHammingDistance(conditions, localIds, preferredEnabled, index + 1, remainingFlips - 1,
-                working, solutions, seenKeys, maxSolutions, checks);
-        if (wasEnabled) {
-            working.add(id);
-        } else {
-            working.remove(id);
-        }
-    }
-
-    private static void backtrackSatisfying(List<LootConditionInfo> conditions, List<String> localIds, int index,
-                                            Set<String> working, List<List<String>> solutions,
-                                            Set<String> seenKeys, int maxSolutions, int[] checks) {
-        if (solutions.size() >= maxSolutions || checks[0] >= MAX_SATISFACTION_CHECKS) {
-            return;
-        }
-        if (index >= localIds.size()) {
-            checks[0]++;
-            if (ScenarioConditionEvaluator.areScenarioConditionsSatisfied(conditions, working)) {
-                List<String> candidate = SimulationInput.canonicalize(List.copyOf(working));
-                if (seenKeys.add(String.join(",", candidate))) {
-                    solutions.add(candidate);
-                }
-            }
-            return;
-        }
-        String id = localIds.get(index);
-        boolean initial = working.contains(id);
-        backtrackSatisfying(conditions, localIds, index + 1, working, solutions, seenKeys, maxSolutions, checks);
-        if (initial) {
-            working.remove(id);
-        } else {
-            working.add(id);
-        }
-        backtrackSatisfying(conditions, localIds, index + 1, working, solutions, seenKeys, maxSolutions, checks);
-        if (initial) {
-            working.add(id);
-        } else {
-            working.remove(id);
-        }
-    }
-
-    private static List<String> collectLocalControlledIds(List<LootConditionInfo> conditions) {
-        Set<String> ids = new LinkedHashSet<>();
-        for (LootConditionInfo condition : conditions) {
-            ConditionTree.walkLogic(condition, node -> {
-                if (ConditionTree.kind(node) == ConditionTree.Kind.LEAF
-                        && isScenarioControlled(node.conditionType())
-                        && ConditionIdentity.isStable(node)) {
-                    ids.add(ConditionIdentity.of(node).key());
-                }
-            });
-        }
-        return List.copyOf(ids);
-    }
-
     private static void collectConditions(List<LootConditionInfo> conditions,
                                           Map<String, ConditionOption> collected,
                                           NodeBudget budget) {
@@ -324,7 +205,7 @@ public final class SimulationScenarioPlanner {
     private static void warnUnstableFingerprint(ResourceLocation conditionType) {
         if (WARNED_UNSTABLE_TYPES.add(conditionType)) {
             LOGGER.warn("战利品条件 {} 的指纹不稳定（未实现确定性编码），无法参与条件勾选控制，"
-                    + "该条件已按无约束处理", conditionType);
+                    + "该条件在模拟中执行真实逻辑", conditionType);
         }
     }
 

@@ -4,13 +4,13 @@ import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.meteosuikit.api.layout.UiNode;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
-import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDescriptor;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
@@ -20,19 +20,17 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInput;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator.BranchStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationScenarioPlanner;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.ToolOption;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -52,32 +50,31 @@ import java.util.function.Consumer;
 final class ScenarioPageBuilder {
     private static final int INDENT_STEP = 10;
     private static final int ITEM_INDENT = 14;
-    private static final ResourceLocation MATCH_TOOL = ResourceLocation.withDefaultNamespace("match_tool");
 
-    enum Heading { SECTION, ENTRY }
+    enum Heading {SECTION, ENTRY}
 
     private record Group(List<LootConditionInfo> conditions, List<LootConditionInfo> extras, LuckGate luck,
-                         boolean uncertain, String source, String mode) {
+                         boolean uncertain, String source, String mode, String sourceKey) {
     }
 
     private ScenarioPageBuilder() {
     }
 
-    static List<UiNode> buildConditions(CatalogTableDto structure,
-                                        List<String> enabledConditions,
-                                        ScenarioParams params,
-                                        List<Component> notes,
+    static List<UiNode> buildConditions(ScenarioTableSnapshot snapshot,
                                         Runnable dismissNotes,
                                         Consumer<String> toggleCondition,
                                         Consumer<SimulationAssistTarget> recommend,
-                                        BiPredicate<String, String> visible,
                                         BiConsumer<String, String> locate) {
+        CatalogTableDto structure = snapshot.structure();
+        List<String> enabledConditions = snapshot.choice().conditions();
+        ScenarioParams params = snapshot.choice().params();
+        List<Component> notes = snapshot.notes();
+        BiPredicate<String, String> visible = (kind, target) -> snapshot.target(kind, target).visible();
         SimulationOptions options = structure.options();
         if (options == null) {
             return List.of();
         }
         Set<String> enabledSet = Set.copyOf(enabledConditions);
-        ToolOption selectedTool = findTool(options, params.toolId());
         List<UiNode> content = new ArrayList<>();
 
         if (!notes.isEmpty()) {
@@ -122,7 +119,7 @@ final class ScenarioPageBuilder {
                 continue;
             }
             Group group = new Group(branch.conditions(), branch.requirements(), branch.luck(),
-                    branch.uncertain(), branch.injectionSource(), branch.injectionMode());
+                    branch.uncertain(), branch.injectionSource(), branch.injectionMode(), branch.sourceKey());
             groups.computeIfAbsent(group, ignored -> new ArrayList<>()).add(branch);
         }
 
@@ -132,7 +129,7 @@ final class ScenarioPageBuilder {
             if (!entry.getKey().source().isEmpty()) {
                 continue;
             }
-            addBranch(content, structure, enabledSet, params, selectedTool,
+            addBranch(content, snapshot, enabledSet, params,
                     ++ordinal, entry.getKey(), entry.getValue(), toggleCondition, visible, locate, recommend);
         }
         boolean hasInjection = groups.keySet().stream().anyMatch(group -> !group.source().isEmpty());
@@ -154,7 +151,7 @@ final class ScenarioPageBuilder {
                 if (entry.getKey().source().isEmpty()) {
                     continue;
                 }
-                addBranch(content, structure, enabledSet, params, selectedTool,
+                addBranch(content, snapshot, enabledSet, params,
                         ++ordinal, entry.getKey(), entry.getValue(), toggleCondition, visible, locate, recommend);
             }
         }
@@ -162,10 +159,9 @@ final class ScenarioPageBuilder {
     }
 
     private static void addBranch(List<UiNode> nodes,
-                                  CatalogTableDto table,
+                                  ScenarioTableSnapshot snapshot,
                                   Set<String> enabledSet,
                                   ScenarioParams params,
-                                  @Nullable ToolOption selectedTool,
                                   int ordinal,
                                   Group group,
                                   List<ScenarioBranch> branches,
@@ -173,11 +169,12 @@ final class ScenarioPageBuilder {
                                   BiPredicate<String, String> visible,
                                   BiConsumer<String, String> locate,
                                   Consumer<SimulationAssistTarget> recommend) {
+        CatalogTableDto table = snapshot.structure();
         nodes.add(new UiNode.Gap(6));
         int parent = nodes.size();
         ScenarioBranch representative = branches.getFirst();
         BranchStatus status = ScenarioConditionEvaluator.evaluateBranch(
-                representative, enabledSet, params, selectedTool);
+                representative, enabledSet, params);
 
         MutableComponent title = (group.source().equals("observed") ? text("injection.observed")
                 : !group.source().isEmpty() ? text("injection.known", group.source())
@@ -199,7 +196,7 @@ final class ScenarioPageBuilder {
         nodes.add(heading(title, Heading.ENTRY, List.of(title)));
 
         for (LootConditionInfo condition : group.conditions()) {
-            addScenarioCondition(nodes, condition, enabledSet, ITEM_INDENT, parent, toggleCondition);
+            addScenarioCondition(nodes, condition, enabledSet, params, parent, toggleCondition);
         }
         if (group.conditions().isEmpty()) {
             nodes.add(new UiNode.Row(ITEM_INDENT, parent,
@@ -216,7 +213,7 @@ final class ScenarioPageBuilder {
             nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.additional"),
                     UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
             for (LootConditionInfo extra : group.extras()) {
-                addExtraCondition(nodes, extra, params, selectedTool, ITEM_INDENT + INDENT_STEP, extraParent);
+                addExtraCondition(nodes, extra, params, extraParent);
             }
             LuckGate luck = group.luck();
             if (luck.minLuck().isPresent()) {
@@ -249,7 +246,8 @@ final class ScenarioPageBuilder {
 
         Set<String> seen = new HashSet<>();
         List<UiNode.InlineIcon> icons = new ArrayList<>();
-        SimulationAssistTarget recommendTarget = null;
+        ScenarioBranch recommendBranch = branches.stream().filter(branch -> branch.recommendable()
+                && visible.test(branch.kind(), branch.target())).findFirst().orElse(null);
         for (ScenarioBranch branch : branches) {
             if (!seen.add(branch.kind() + "#" + branch.target())) {
                 continue;
@@ -271,18 +269,9 @@ final class ScenarioPageBuilder {
                             .map(CatalogTableDto.ItemEntry::displayName)
                             .findFirst()
                             .orElse(Component.literal(signature.itemId().toString()));
-                    if (recommendTarget == null) {
-                        recommendTarget = SimulationAssistTarget.item(branch.target());
-                    }
                 } else {
                     icon = new UiIcon.Item(new ItemStack(branch.kind().equals("table") ? Items.BOOK : Items.NAME_TAG));
-                    ResourceLocation parsed = ResourceLocation.tryParse(branch.target());
-                    var child = parsed == null ? null : ScenarioSimulationClientState.table(parsed);
-                    name = branch.kind().equals("table") && child != null
-                            ? child.displayName() : Component.literal(branch.target());
-                    if (branch.kind().equals("table") && parsed != null) {
-                        recommendTarget = SimulationAssistTarget.childTable(parsed);
-                    }
+                    name = snapshot.target(branch.kind(), branch.target()).name();
                 }
                 tooltip = List.of(
                         text("conditions.target." + branch.kind(), name).withStyle(TooltipBuilder.BODY),
@@ -299,16 +288,23 @@ final class ScenarioPageBuilder {
         if (!icons.isEmpty()) {
             nodes.add(candidateRow(parent, List.copyOf(icons)));
         }
-        if (recommendTarget != null && !status.allDeterministicSatisfied()) {
-            SimulationAssistTarget chosenTarget = recommendTarget;
-            nodes.add(action("recommend.title", UiAtlas.Icon.RECOMMEND, () -> recommend.accept(chosenTarget)));
+        if (recommendBranch != null) {
+            Component label = text("recommend.branch", snapshot.target(recommendBranch.kind(), recommendBranch.target()).name());
+            UiAction action = () -> recommend.accept(SimulationAssistTarget.branch(recommendBranch.reference()));
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent,
+                    new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.RECOMMEND), List.of(label), null, action),
+                    label, UiTextScheme.PARCHMENT.accent(), List.of(), List.of(label), null, action));
+        } else if (branches.stream().anyMatch(branch -> visible.test(branch.kind(), branch.target()))) {
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent,
+                    text(group.source().equals("observed") ? "recommend.observed" : "recommend.tag"),
+                    UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
         }
     }
 
     private static void addScenarioCondition(List<UiNode> nodes,
                                              LootConditionInfo condition,
                                              Set<String> enabledSet,
-                                             int indent,
+                                             ScenarioParams params,
                                              int parent,
                                              Consumer<String> toggleCondition) {
         if (ConditionTree.kind(condition) == ConditionTree.Kind.LEAF
@@ -318,31 +314,22 @@ final class ScenarioPageBuilder {
             Component styled = prefixMark(met).append(ScenarioLabel.shortConditionLabel(condition));
             List<Component> tooltip = ScenarioLabel.conditionTooltip(condition, met);
             UiAction action = () -> toggleCondition.accept(condition.identity().key());
-            nodes.add(new UiNode.Row(indent, parent, null, styled,
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent, null, styled,
                     met ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative(),
                     List.of(), tooltip, condition.identity().key(), action));
             return;
         }
-        ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluateScenarioTree(condition, enabledSet);
-        addGenericConditionNode(nodes, condition, truth, indent, parent, false);
+        ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(condition, new SimulationInput(List.copyOf(enabledSet), params));
+        addGenericConditionNode(nodes, condition, truth, ITEM_INDENT, parent, false);
     }
 
     private static void addExtraCondition(List<UiNode> nodes,
                                           LootConditionInfo condition,
                                           ScenarioParams params,
-                                          @Nullable ToolOption selectedTool,
-                                          int indent,
                                           int parent) {
-        ConditionTree.Truth truth = ConditionTree.Truth.UNKNOWN;
-        if (MATCH_TOOL.equals(condition.conditionType())) {
-            truth = ScenarioConditionEvaluator.areToolConditionsSatisfied(List.of(condition), selectedTool)
-                    ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE;
-        } else if (condition.metadata().containsKey(ScenarioConditionEvaluator.METADATA_ENCHANTMENT)) {
-            truth = ScenarioConditionEvaluator.areEnchantmentConditionsSatisfied(
-                    List.of(condition), params.toolEnchantments())
-                    ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE;
-        }
-        addGenericConditionNode(nodes, condition, truth, indent, parent, true);
+        ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(condition,
+                new SimulationInput(List.of(), params));
+        addGenericConditionNode(nodes, condition, truth, ITEM_INDENT + INDENT_STEP, parent, true);
     }
 
     private static void addGenericConditionNode(List<UiNode> nodes,
@@ -376,7 +363,7 @@ final class ScenarioPageBuilder {
         styled.append(inner);
         if (uncertain) {
             styled.append(" · ").append(text("conditions."
-                            + condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
+                    + condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
                     .withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.negative())));
         }
         int color = truth == ConditionTree.Truth.FALSE
@@ -398,15 +385,6 @@ final class ScenarioPageBuilder {
                 .withStyle(style -> style.withColor(met ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative()));
     }
 
-    private static @Nullable ToolOption findTool(SimulationOptions options, ResourceLocation toolId) {
-        for (ToolOption tool : options.tools()) {
-            if (tool.id().equals(toolId)) {
-                return tool;
-            }
-        }
-        return null;
-    }
-
     private static UiNode.Row candidateRow(int parent, List<UiNode.InlineIcon> icons) {
         return new UiNode.Row(ITEM_INDENT, parent,
                 new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.BRANCH_ARROW), List.of(), null, null),
@@ -419,15 +397,7 @@ final class ScenarioPageBuilder {
                 UiTextScheme.PARCHMENT.title(), List.of(), tooltip, kind, null);
     }
 
-    private static UiNode.Row action(String key, UiAtlas.Icon icon, UiAction action) {
-        Component label = text(key);
-        return new UiNode.Row(4, UiNode.NO_PARENT,
-                new UiNode.InlineIcon(UiAtlas.icon(icon), List.of(label), null, action),
-                label.copy().withStyle(ChatFormatting.UNDERLINE), UiTextScheme.PARCHMENT.body(),
-                List.of(), List.of(label), null, action);
-    }
-
     private static MutableComponent text(String key, Object... args) {
-        return ScenarioSimulationClientState.text(key, args).copy();
+        return ScenarioSession.text(key, args).copy();
     }
 }

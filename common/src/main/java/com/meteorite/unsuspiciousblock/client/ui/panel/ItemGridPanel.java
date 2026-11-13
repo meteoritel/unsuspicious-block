@@ -7,7 +7,8 @@ import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -96,7 +97,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 UiRect r = recommendationBounds(cell);
                 control.setBounds(r.x(), r.y(), r.width(), r.height());
                 JournalControls.configureHotspot(control,
-                        ScenarioSimulationClientState.text("recommend.title"),
+                        ScenarioSession.text("recommend.title"),
                         () -> onRecommend.accept(SimulationAssistTarget.childTable(child.tableId())));
             } else if (cell.item() != null && cell.item().unlocked()
                     && cell.item().probability() instanceof Probability.NeedsCondition) {
@@ -105,7 +106,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 UiRect r = recommendationBounds(cell);
                 control.setBounds(r.x(), r.y(), r.width(), r.height());
                 JournalControls.configureHotspot(control,
-                        ScenarioSimulationClientState.text("recommend.title"),
+                        ScenarioSession.text("recommend.title"),
                         () -> onRecommend.accept(SimulationAssistTarget.item(storedKey)));
             }
         }
@@ -270,6 +271,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private final List<GridItem> items = new ArrayList<>();
     private final List<GridItem> directItems = new ArrayList<>();
     private final List<ChildTableEntry> childTables = new ArrayList<>();
+    private Map<String, ScenarioTableSnapshot.Target> targets = Map.of();
     private final LinkedHashMap<ResourceLocation, TagGroup> tagGroups = new LinkedHashMap<>();
     private final JournalBookBackground.BookLayout layout;
     private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
@@ -299,7 +301,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     }
 
     // 设置当前展示的战利品表数据
-    public void setTable(List<GridItem> items, List<ChildTableEntry> childTables) {
+    public void setTable(List<GridItem> items, List<ChildTableEntry> childTables, Map<String, ScenarioTableSnapshot.Target> targets) {
+        this.targets = Map.copyOf(targets);
         this.items.clear();
         this.items.addAll(items);
         this.childTables.clear();
@@ -367,16 +370,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         activeTag = null;
         setPage(index / JournalLayout.GRID_ITEMS_PER_PAGE);
         return true;
-    }
-
-    public boolean targetVisible(String kind, String target) {
-        if (kind.equals("table")) return childTables.stream().anyMatch(child -> child.unlocked()
-                && child.tableId().toString().equals(target));
-        if (kind.equals("tag")) {
-            var group = tagGroups.get(ResourceLocation.tryParse(target));
-            return group != null && group.unlocked();
-        }
-        return items.stream().anyMatch(item -> item.unlocked() && item.signature().toStoredKey().equals(target));
     }
 
     public void changePage(int delta) {
@@ -793,7 +786,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (!child.unlocked())
             return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
         if (recommendationBounds(cell).contains(mouseX, mouseY)) return List.of(
-                ScenarioSimulationClientState.text("recommend.title"));
+                ScenarioSession.text("recommend.title"));
         return JournalTooltipBuilder.buildChildTable(child.displayName(), child.tableId(), child.probability(),
                 child.scenarioProbabilities(), child.conditions(), child.luckAffected());
     }
@@ -825,7 +818,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             this.tagGroups.put(entry.getKey(), new TagGroup(
                     entry.getKey(),
                     members,
-                    members.stream().anyMatch(GridItem::unlocked),
+                    targets.getOrDefault("tag#" + entry.getKey(), new ScenarioTableSnapshot.Target(false, Component.empty())).visible(),
                     (int) members.stream().filter(GridItem::unlocked).count(),
                     members.stream().anyMatch(GridItem::highlighted),
                     members.stream().filter(GridItem::unlocked).limit(3).map(GridItem::stack).toList()));
@@ -907,21 +900,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                               @Nullable FunctionObservationSummary observedFunctions,
                               @Nullable Component displayName,
                               @Nullable LootResultSignature signature) {
-        // 便利构造：仅 stack + hint（无统计信息，如日志详情页）
-        public TooltipData(ItemStack stack, @Nullable Component hint) {
-            this(stack, hint, -1, null, List.of(), false,
-                    LootConditionHandler.UncertaintyLevel.NONE, true, List.of(), List.of(), 0, null, null, null);
-        }
-
-        // 兼容构造：无函数观测摘要
-        public TooltipData(ItemStack stack, @Nullable Component hint, int count, @Nullable Probability probability,
-                           List<LootAcquisitionPath> acquisitionPaths, boolean injected,
-                           LootConditionHandler.UncertaintyLevel uncertaintyLevel, boolean discovered,
-                           List<ScenarioProbability> scenarioProbabilities,
-                           List<DeclaredChance> declaredChances, int simulationCount) {
-            this(stack, hint, count, probability, acquisitionPaths, injected, uncertaintyLevel, discovered,
-                    scenarioProbabilities, declaredChances, simulationCount, null, null, null);
-        }
     }
 
     // 物品网格条目；highlighted 标记搜索匹配（true = 匹配/无搜索，false = 搜索不匹配）

@@ -1,6 +1,10 @@
 package com.meteorite.unsuspiciousblock.core.journal.catalog;
 
 import net.minecraft.core.RegistryAccess;
+
+import java.util.HashMap;
+
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranchCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
@@ -29,13 +33,21 @@ public final class CatalogGeneration {
 
     private final LootTableAnalysisSession session;
     private final CatalogStructure structure;
-    /** 解析态视图（概率为 "?" 占位符），由本代静态投影转换而来，供模拟与无需概率的查询使用。 */
+    /**
+     * 解析态视图（概率为 "?" 占位符），由本代静态投影转换而来，供模拟与无需概率的查询使用。
+     */
     private final Map<ResourceLocation, TableDefinition> staticTables;
-    /** 每表的内容哈希，用于判断缓存是否失效。 */
+    /**
+     * 每表的内容哈希，用于判断缓存是否失效。
+     */
     private final Map<ResourceLocation, String> tableHashes;
-    /** 已填充概率的模拟结果，随模拟完成渐进增长。 */
+    /**
+     * 已填充概率的模拟结果，随模拟完成渐进增长。
+     */
     private final Map<ResourceLocation, TableDefinition> simulatedTables = new ConcurrentHashMap<>();
-    /** 本代查询索引——子树物品等跨表聚合的唯一入口，随模拟提交读到的 overlay 自动变化。 */
+    /**
+     * 本代查询索引——子树物品等跨表聚合的唯一入口，随模拟提交读到的 overlay 自动变化。
+     */
     private final CatalogQueryIndex queryIndex;
     /**
      * 每表的约束描述与场景规划结果。
@@ -48,6 +60,7 @@ public final class CatalogGeneration {
     private final Map<ResourceLocation, ExpandedTable> expansions;
     private final Map<String, String> sourceNames;
     private final RegistryAccess registries;
+    private final Map<ResourceLocation, ScenarioBranchCatalog.Plan> branches = new HashMap<>();
     private long overlayRevision;
     private CatalogReadSnapshot readSnapshot;
 
@@ -65,11 +78,17 @@ public final class CatalogGeneration {
         this.staticTables = Map.copyOf(staticTables);
         this.tableHashes = Map.copyOf(tableHashes);
         this.constraintCatalogs = Map.copyOf(constraintCatalogs);
+        this.staticTables.forEach((id, table) -> {
+            if (this.constraintCatalogs.containsKey(id)) this.branches.put(id,
+                    ScenarioBranchCatalog.plan(table, this.expansions.get(id), this.sourceNames));
+        });
         this.queryIndex = new CatalogQueryIndex(
                 session.referenceGraph(), session.staticProjections(), this::simulatedTables);
     }
 
-    /** 一个明确的空状态——构建失败时使用，避免发布半成品。 */
+    /**
+     * 一个明确的空状态——构建失败时使用，避免发布半成品。
+     */
     public static CatalogGeneration empty(long generation) {
         return new CatalogGeneration(LootTableAnalysisSession.empty(generation),
                 CatalogStructure.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
@@ -81,16 +100,27 @@ public final class CatalogGeneration {
                 this.expansions.get(table.id()), this.sourceNames, generation());
     }
 
-    /** 展开后的规划视图，复用构建时条件身份。 */
+    /**
+     * 展开后的规划视图，复用构建时条件身份。
+     */
     public @Nullable TableDefinition planningTable(ResourceLocation id) {
         ExpandedTable expansion = this.expansions.get(id);
         return expansion == null ? null : expansion.planning();
     }
 
-    /** 该表的约束描述；未收录或该表不可用时返回 {@code null}。 */
+    /**
+     * 该表的约束描述；未收录或该表不可用时返回 {@code null}。
+     */
     @Nullable
     public SimulationConstraintCatalog constraintCatalog(ResourceLocation tableId) {
         return this.constraintCatalogs.get(tableId);
+    }
+
+    /**
+     * 本代展示分支与完整路径的签发索引；未收录或不可模拟时为空。
+     */
+    public @Nullable ScenarioBranchCatalog.Plan branches(ResourceLocation id) {
+        return branches.get(id);
     }
 
     public long generation() {
@@ -105,49 +135,67 @@ public final class CatalogGeneration {
         return this.structure;
     }
 
-    /** 本代查询索引（子树物品等跨表聚合的唯一入口）。 */
+    /**
+     * 本代查询索引（子树物品等跨表聚合的唯一入口）。
+     */
     public CatalogQueryIndex queryIndex() {
         return this.queryIndex;
     }
 
-    /** 本代的解析态目录（概率为 "?" 占位符），不受模拟进度影响。 */
+    /**
+     * 本代的解析态目录（概率为 "?" 占位符），不受模拟进度影响。
+     */
     public Map<ResourceLocation, TableDefinition> staticTables() {
         return this.staticTables;
     }
 
-    /** 取解析态表定义；本代未收录时返回 {@code null}。 */
+    /**
+     * 取解析态表定义；本代未收录时返回 {@code null}。
+     */
     @Nullable
     public TableDefinition staticTable(ResourceLocation tableId) {
         return this.staticTables.get(tableId);
     }
 
-    /** 本代是否收录该表；不受概率模拟进度影响。 */
+    /**
+     * 本代是否收录该表；不受概率模拟进度影响。
+     */
     public boolean isTracked(ResourceLocation tableId) {
         return this.staticTables.containsKey(tableId);
     }
 
-    /** 该表在本代的哈希；未收录时返回空串（等价于"哈希不可用 → 触发重新模拟"）。 */
+    /**
+     * 该表在本代的哈希；未收录时返回空串（等价于"哈希不可用 → 触发重新模拟"）。
+     */
     public String tableHash(ResourceLocation tableId) {
         return this.tableHashes.getOrDefault(tableId, "");
     }
 
-    /** 模拟结果视图（随模拟完成渐进增长）。 */
+    /**
+     * 模拟结果视图（随模拟完成渐进增长）。
+     */
     public Map<ResourceLocation, TableDefinition> simulatedTables() {
         return Collections.unmodifiableMap(this.simulatedTables);
     }
 
-    /** 同代内的展示读取，集中 overlay 优先和静态回退。 */
+    /**
+     * 同代内的展示读取，集中 overlay 优先和静态回退。
+     */
     public @Nullable TableDefinition displayTable(ResourceLocation id) {
         TableDefinition simulated = this.simulatedTables.get(id);
         return simulated == null ? this.staticTables.get(id) : simulated;
     }
 
-    /** 该表是否已有模拟结果。 */
+    /**
+     * 该表是否已有模拟结果。
+     */
     public boolean hasSimulated(ResourceLocation tableId) {
         return this.simulatedTables.containsKey(tableId);
     }
 
-    /** 提交单表模拟结果，并失效本代目录哈希缓存。 */
+    /**
+     * 提交单表模拟结果，并失效本代目录哈希缓存。
+     */
     public synchronized void publishSimulated(TableDefinition table) {
         this.simulatedTables.put(table.id(), table);
         this.overlayRevision++;
@@ -155,7 +203,9 @@ public final class CatalogGeneration {
     }
 
 
-    /** overlay 提交与快照捕获共用锁，投影与摘要一起按 revision 缓存。 */
+    /**
+     * overlay 提交与快照捕获共用锁，投影与摘要一起按 revision 缓存。
+     */
     public synchronized CatalogReadSnapshot readSnapshot() {
         if (this.readSnapshot == null) {
             List<CatalogTableDto> tables = this.simulatedTables.values().stream()

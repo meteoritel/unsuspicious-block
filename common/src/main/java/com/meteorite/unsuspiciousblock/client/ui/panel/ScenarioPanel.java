@@ -8,11 +8,10 @@ import com.meteorite.meteosuikit.api.input.UiInputTarget;
 import com.meteorite.meteosuikit.api.input.UiPointer;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.Minecraft;
@@ -26,18 +25,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import static com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState.text;
+import static com.meteorite.unsuspiciousblock.client.state.ScenarioSession.text;
 
-/** 网格页的紧凑条件栏：展示当前条件勾选摘要、打开条件勾选浮层与触发计算。 */
+/**
+ * 网格页的紧凑条件栏：展示当前条件勾选摘要、打开条件勾选浮层与触发计算。
+ */
 public final class ScenarioPanel implements UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
     private final int x;
     private final int y;
     private final int width;
-    @Nullable private ResourceLocation table;
-    @Nullable private Runnable openConditions;
-    @Nullable private Font measuredFont;
+    @Nullable
+    private ResourceLocation table;
+    @Nullable
+    private Runnable openConditions;
+    @Nullable
+    private Font measuredFont;
     private String headerKey = "";
 
     public ScenarioPanel(JournalBookBackground.BookLayout layout) {
@@ -55,7 +59,7 @@ public final class ScenarioPanel implements UiInputContainer {
         table = value;
         headerKey = "";
         if (value != null) {
-            ScenarioSimulationClientState.queryCache(value, false);
+            JournalClientConnection.scenario().queryCache(value, false);
         }
     }
 
@@ -65,21 +69,20 @@ public final class ScenarioPanel implements UiInputContainer {
 
     private void sync(Font font) {
         if (table != null) {
-            ScenarioSimulationClientState.ensureCacheQuery(table);
+            JournalClientConnection.scenario().ensureCacheQuery(table);
         }
-        var choice = ScenarioSimulationClientState.selection(table);
-        var structure = ScenarioSimulationClientState.table(table);
-        if (choice == null || structure == null || structure.options() == null) {
+        ScenarioTableSnapshot presentation = JournalClientConnection.scenario().snapshot(table);
+        if (presentation == null || presentation.structure().options() == null) {
             controls.beginUpdate();
             controls.endUpdate();
             headerKey = "";
             return;
         }
-        String input = ScenarioSimulationClientState.inputKey(choice);
-        ScenarioPresentation presentation = ScenarioPresentation.resolve(table, choice.conditions(), choice.params());
-        String key = table + "#" + input + "#" + presentation.status() + "#"
-                + ArchaeologyJournalClientState.getCatalogRevision() + "#"
-                + ScenarioSimulationClientState.revision() + "#"
+        var choice = presentation.choice();
+        var structure = presentation.structure();
+        String input = presentation.inputKey();
+        String key = table + "#" + structure.hash() + "#" + input + "#" + presentation.status() + "#"
+                + presentation.revision() + "#"
                 + Minecraft.getInstance().getLanguageManager().getSelected();
         if (headerKey.equals(key) && measuredFont == font) {
             return;
@@ -104,7 +107,7 @@ public final class ScenarioPanel implements UiInputContainer {
         calculationNotes.add(text("calculate"));
         calculationNotes.add(text(presentation.status()));
         if ("failed".equals(presentation.status())) {
-            calculationNotes.add(text("failure." + ScenarioSimulationClientState.failure(table, input)));
+            calculationNotes.add(text("failure." + JournalClientConnection.scenario().failure(table, input)));
         }
         UiControl calculate = place("calculate", x + width - 58, y + 6, 58);
         calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
@@ -112,7 +115,7 @@ public final class ScenarioPanel implements UiInputContainer {
         calculate.configure(font, text(List.of("uncomputed", "failed", "query_failed").contains(status)
                         ? "calculate" : "results.status." + status),
                 null, calculationNotes,
-                () -> ScenarioSimulationClientState.request(table, true));
+                () -> JournalClientConnection.scenario().request(table, true));
         calculate.setEnabled(List.of("uncomputed", "failed", "query_failed", "available").contains(status));
 
         controls.endUpdate();

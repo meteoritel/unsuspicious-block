@@ -48,6 +48,8 @@ flowchart LR
 
 `JournalReadingStateCodec` 以 `uiPreferencesVersion` 管理 `journal_ui_preferences.dat`：无版本视为 v0，迁移在副本中加入阅读默认值后标记 v1。保留根 `lastSelectedTable`、`lastRightPageTab`、排序/搜索/收藏与 `simulationPreferences`，已有 `panels.scenario.conditionOffsets` 仍按表 ID 保存有界偏移。
 
+`simulationPreferences` 保存各表已提交的条件与参数；`ScenarioSession` 通过现有 store 恢复和写入。请求票据、内容版本内的分支引用、版本化草稿和单表快照属于连接内状态，断线时随会话退役。会话的归属与提交规则见[笔记 GUI 内部机制](../internals/journal-ui-internals.md#4-场景条件页与文档动作)。
+
 v1 的 `reading` compound 保存具名页号、可选 active tag、日志 entry ID 与详情模式；表身份与 Tab 来自同一次快照。批选和临时输入不落盘，页号上界由内容面板钳制。旧偏好缺页号时使用首页，合法旧字段照常恢复。`JournalUiPreferencesStore` 在版本类型错误、未来版本或 IO 读取失败时报告并禁止覆盖当前路径源文件，连接切换重新载入对应路径资格。
 
 ## 3. 新增格式迁移流程

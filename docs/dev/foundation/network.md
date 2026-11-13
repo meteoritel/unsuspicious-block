@@ -57,11 +57,11 @@ NeoForge 握手阶段要求服务端具备客户端声明的必需通道；同�
 - **协议版本与共用编解码器**：目录全量下发与按需结果共用 `CatalogStreamCodec` 和 `CatalogTableDto`。线格式字段顺序或结构调整必须成套修改读写两端并同步递增 `ModPayloads.PROTOCOL_VERSION`。
 - **目录快照一致性**：全量目录下发与目录 SHA-256 计算共同消费 `CatalogGeneration.readSnapshot()` 生成的冻结字节流，确保服务端校验与客户端读取同源（构建细节见[笔记目录构建细节](../internals/journal-catalog-build.md)）。
 - **按需模拟的协议不变量**（业务链路见[战利品表系统](../subsystems/loottable.md)）：
-  - **传结构化字段而非拼装键**：客户端传已勾选原子条件 ID 列表（`enabledConditions`）与独立参数字段，完整模拟场景由服务端从 `ConditionPlan` 与 `ConditionOption` 校验装配，防止客户端通过构造非法字符串绕过校验；
-  - **结果三要素校验**：响应携带有 `generation`（目录代次）、`tableHash`（表哈希）与 `inputKey`（输入键），任一不匹配时客户端直接丢弃，防止 `/reload` 或切换参数后的迟到包覆盖当前画面；
-  - **拒绝必回执**：请求被限流、过期或越界拒绝时必须返回 `ScenarioRequestRejectedPayload`，使界面能明确区分“计算中”与“已拒绝”；
+  - **共享选择值**：`ScenarioSelection` 保存原始 generation/hash、表身份、已勾选原子条件与独立参数，模拟、缓存查询和辅助请求各自拥有外层 `requestId`；参数规范化与 `ConditionPlan` / `ConditionOption` 签发校验由服务端受理入口执行；
+  - **测值身份与交互身份分开**：结果按 `generation + tableHash + inputKey` 校验并进入对应输入缓存；有效旧输入结果保留供切换查看，当前选择保持原值。只有种类和 `requestId` 匹配的回执能结束对应等待。Worker 按同代 `(表, 输入)` 去重，每玩家等待关系保存最新票据，重试替换票据且只占一次额度；
+  - **拒绝必回执**：`ScenarioRequestRejectedPayload` 回显原 requestId、表及 generation/hash，另带 `currentGeneration` 和原因。客户端先匹配票据结束等待，再按过期原因请求目录刷新；非法输入尚无有效 inputKey 时同样能结束等待；
   - **结果个人独享**：按需模拟结果只单播回请求玩家，不写入全服共享目录；
-  - **推荐请求与模拟分离**：辅助推荐请求与模拟请求使用独立通道、独立冷却与请求序号，只更新前端参数草稿，不跳过显式模拟确认。
+  - **推荐范围与见证**：辅助请求使用独立通道、冷却与请求序号，携带目标级 `ITEM / CHILD_TABLE` 或同内容版本的 `BRANCH` 引用。响应回显范围、候选选择、搜索终态及路径见证；客户端核对版本、基础输入、签发域与见证归属后提供应用预览，计算由玩家另行触发。求解边界见[战利品表机制](../internals/loottable-mechanics.md#32-条件组合模型与按需规划-simulationscenarioplanner)。
 
 ### 3.2 三种可复用同步模式
 

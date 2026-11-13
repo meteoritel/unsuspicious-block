@@ -11,13 +11,27 @@ import java.util.List;
  */
 public record ScenarioBranch(String kind, String target, List<LootConditionInfo> conditions,
                              List<LootConditionInfo> requirements, LuckGate luck,
-                             boolean uncertain, String injectionSource, String injectionMode) {
+                             boolean uncertain, String injectionSource, String injectionMode, String reference,
+                             boolean recommendable, String sourceKey) {
+    public ScenarioBranch(String kind, String target, List<LootConditionInfo> conditions,
+                          List<LootConditionInfo> requirements, LuckGate luck, boolean uncertain,
+                          String source, String mode) {
+        this(kind, target, conditions, requirements, luck, uncertain, source, mode, "", false, source);
+    }
+
+    public ScenarioBranch withReference(String value, boolean supported) {
+        return new ScenarioBranch(kind, target, conditions, requirements, luck, uncertain,
+                injectionSource, injectionMode, value, supported, sourceKey);
+    }
+
     public ScenarioBranch {
         conditions = List.copyOf(conditions);
         requirements = List.copyOf(requirements);
     }
 
-    /** 构造普通非注入分支。 */
+    /**
+     * 构造普通非注入分支。
+     */
     public ScenarioBranch(String kind, String target, List<LootConditionInfo> conditions,
                           List<LootConditionInfo> requirements, LuckGate luck, boolean uncertain) {
         this(kind, target, conditions, requirements, luck, uncertain, "", "");

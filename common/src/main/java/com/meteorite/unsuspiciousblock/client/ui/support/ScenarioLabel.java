@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
@@ -31,7 +31,9 @@ public final class ScenarioLabel {
     private ScenarioLabel() {
     }
 
-    /** 勾选框与列表行的紧凑文本：优先展示具象子描述（如具体群系/天气/开阔水域），避免千篇一律的通用前缀。 */
+    /**
+     * 勾选框与列表行的紧凑文本：优先展示具象子描述（如具体群系/天气/开阔水域），避免千篇一律的通用前缀。
+     */
     public static Component shortConditionLabel(ConditionPresentation condition) {
         if (condition.displayChildren().isEmpty()) {
             return conditionText(condition);
@@ -53,36 +55,40 @@ public final class ScenarioLabel {
         return joined;
     }
 
-    /** 网格顶栏或页头的简洁状态摘要。 */
+    /**
+     * 网格顶栏或页头的简洁状态摘要。
+     */
     public static Component selectionSummary(SimulationOptions options, List<String> enabledConditions) {
         int total = options.conditions().size();
         if (total == 0) {
-            return ScenarioSimulationClientState.text("no_assumptions");
+            return ScenarioSession.text("no_assumptions");
         }
         if (enabledConditions.isEmpty()) {
-            return ScenarioSimulationClientState.text("conditions.summary_count", 0, total);
+            return ScenarioSession.text("conditions.summary_count", 0, total);
         }
         if (enabledConditions.size() == 1) {
             String target = enabledConditions.getFirst();
             for (ConditionOption option : options.conditions()) {
                 if (option.id().equals(target)) {
-                    return ScenarioSimulationClientState.text("conditions.summary_single",
+                    return ScenarioSession.text("conditions.summary_single",
                             shortConditionLabel(option.condition()).getString());
                 }
             }
         }
-        return ScenarioSimulationClientState.text("conditions.summary_count", enabledConditions.size(), total);
+        return ScenarioSession.text("conditions.summary_count", enabledConditions.size(), total);
     }
 
-    /** 暗底 Tooltip：展示当前勾选条件与工具/幸运/附魔摘要（严格使用 {@link TooltipBuilder} 亮色语义）。 */
+    /**
+     * 暗底 Tooltip：展示当前勾选条件与工具/幸运/附魔摘要（严格使用 {@link TooltipBuilder} 亮色语义）。
+     */
     public static List<Component> selectionTooltip(SimulationOptions options, List<String> enabledConditions,
                                                    ScenarioParams params) {
         List<Component> lines = new ArrayList<>();
-        lines.add(ScenarioSimulationClientState.text("scene.tooltip.assumptions").copy().withStyle(TooltipBuilder.TITLE));
+        lines.add(ScenarioSession.text("scene.tooltip.assumptions").copy().withStyle(TooltipBuilder.TITLE));
         if (options.conditions().isEmpty()) {
-            lines.add(ScenarioSimulationClientState.text("no_assumptions").copy().withStyle(TooltipBuilder.LABEL));
+            lines.add(ScenarioSession.text("no_assumptions").copy().withStyle(TooltipBuilder.LABEL));
         } else if (enabledConditions.isEmpty()) {
-            lines.add(ScenarioSimulationClientState.text("conditions.none_checked", options.conditions().size())
+            lines.add(ScenarioSession.text("conditions.none_checked", options.conditions().size())
                     .copy().withStyle(TooltipBuilder.LABEL));
         } else {
             Set<String> enabled = new LinkedHashSet<>(enabledConditions);
@@ -95,16 +101,18 @@ public final class ScenarioLabel {
             }
         }
         Component toolName = toolDisplayName(options, params);
-        lines.add(ScenarioSimulationClientState.text("params.current", toolName, params.luck(), params.sampleCount())
+        lines.add(ScenarioSession.text("params.current", toolName, params.luck(), params.sampleCount())
                 .copy().withStyle(TooltipBuilder.LABEL));
         params.toolEnchantments().forEach((id, level) -> lines.add(
-                ScenarioSimulationClientState.text("params.enchant_level",
+                ScenarioSession.text("params.enchant_level",
                                 ScenarioParamsOverlay.enchantmentName(id), level)
                         .copy().withStyle(TooltipBuilder.ACCENT)));
         return List.copyOf(lines);
     }
 
-    /** 单个原子条件的暗底完整 Tooltip。 */
+    /**
+     * 单个原子条件的暗底完整 Tooltip。
+     */
     public static List<Component> conditionTooltip(ConditionPresentation condition, boolean checked) {
         List<Component> lines = new ArrayList<>();
         lines.add(shortConditionLabel(condition).copy().withStyle(TooltipBuilder.TITLE));
@@ -114,7 +122,7 @@ public final class ScenarioLabel {
                     .append(displayDescription(child).copy().withStyle(TooltipBuilder.LABEL)));
         }
         lines.add(Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT));
-        lines.add(ScenarioSimulationClientState.text(checked
+        lines.add(ScenarioSession.text(checked
                         ? "conditions.click_uncheck" : "conditions.click_check")
                 .copy().withStyle(TooltipBuilder.POSITIVE));
         return List.copyOf(lines);

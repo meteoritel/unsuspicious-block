@@ -14,11 +14,13 @@ import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.render.UiLayer;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSimulationClientState;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioPresentation;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
+import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
@@ -51,6 +53,9 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
     private final ResourceLocation table;
     private final SimulationOptions options;
     private final ScenarioParams params;
+    private final ScenarioSession session;
+    private final ScenarioSession.Draft baseDraft;
+    private @Nullable Component error;
     private final Set<String> draftConditions = new LinkedHashSet<>();
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
     private final UiOverlay overlay = new UiOverlay(this);
@@ -65,6 +70,8 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         this.table = table;
         this.options = options;
         this.params = params;
+        session = JournalClientConnection.scenario();
+        baseDraft = session.draft(table, currentConditions, params);
         this.draftConditions.addAll(currentConditions);
 
         Font font = Minecraft.getInstance().font;
@@ -86,16 +93,16 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
 
         actions.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
         actions.beginUpdate();
-        button(font, "probe", ScenarioSimulationClientState.text("probe.short"), UiAtlas.Icon.BIOME, () -> {
-            ScenarioSimulationClientState.requestPlayerProbe(table);
+        button(font, "probe", ScenarioSession.text("probe.short"), UiAtlas.Icon.BIOME, () -> {
+            session.requestPlayerProbe(table);
             owner.close();
         });
-        button(font, "params", ScenarioSimulationClientState.text("params.short"), UiAtlas.Icon.PARAMS, () ->
-                owner.open(new ScenarioParamsOverlay(owner, table, List.copyOf(draftConditions), options, params)));
-        button(font, "reset", ScenarioSimulationClientState.text("reset.button"), UiAtlas.Icon.BACK, () -> draftConditions.clear());
-        button(font, "calculate", ScenarioSimulationClientState.text("params.apply_calculate"), null, () -> confirm(true))
+        button(font, "params", ScenarioSession.text("params.short"), UiAtlas.Icon.PARAMS, () ->
+                owner.open(new ScenarioParamsOverlay(owner, options, baseDraft.withInput(new SimulationInput(List.copyOf(draftConditions), params)))));
+        button(font, "reset", ScenarioSession.text("reset.button"), UiAtlas.Icon.BACK, draftConditions::clear);
+        button(font, "calculate", ScenarioSession.text("params.apply_calculate"), null, () -> confirm(true))
                 .setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        button(font, "apply", ScenarioSimulationClientState.text("params.apply_only"), null, () -> confirm(false));
+        button(font, "apply", ScenarioSession.text("params.apply_only"), null, () -> confirm(false));
         button(font, "cancel", Component.translatable("gui.cancel"), null, owner::close);
         actions.endUpdate();
 
@@ -121,34 +128,38 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
 
     private void confirm(boolean calculate) {
         List<String> next = SimulationInput.canonicalize(List.copyOf(draftConditions));
-        ScenarioSimulationClientState.select(table, next, params);
-        if (calculate) {
-            ScenarioSimulationClientState.request(table, true);
+        var draft = baseDraft.withInput(new SimulationInput(next, params));
+        var result = calculate ? session.applyDraftAndSimulate(draft) : session.applyDraft(draft);
+        if (!result.applied()) {
+            error = result.error();
+            return;
         }
         owner.close();
     }
 
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.renderPage(graphics, bounds);
-        graphics.drawString(font, ScenarioSimulationClientState.text("conditions.overlay_title"),
+        graphics.drawString(font, ScenarioSession.text("conditions.overlay_title"),
                 bounds.x() + 8, bounds.y() + 9, UiTextScheme.PARCHMENT.title(), false);
         List<String> currentDraft = SimulationInput.canonicalize(List.copyOf(draftConditions));
-        ScenarioPresentation presentation = ScenarioPresentation.resolve(table, currentDraft, params);
-        Component countLabel = ScenarioSimulationClientState.text("conditions.summary_count",
+        ScenarioTableSnapshot presentation = session.snapshot(table, new SimulationPreferenceStore.Selection(currentDraft, params));
+        Component countLabel = ScenarioSession.text("conditions.summary_count",
                 currentDraft.size(), options.conditions().size());
         int countWidth = font.width(countLabel);
         int pillWidth = countWidth + 22;
         JournalPalette.drawStatPill(graphics, bounds.right() - 8 - pillWidth, bounds.y() + 6, pillWidth, 14, false);
-        presentation.badge().render(graphics, bounds.right() - 22, bounds.y() + 7);
+        UiAtlas.statusBadge(presentation == null ? "uncomputed" : presentation.status()).render(graphics, bounds.right() - 22, bounds.y() + 7);
         graphics.drawString(font, countLabel, bounds.right() - 26 - countWidth,
                 bounds.y() + 9, UiTextScheme.PARCHMENT.label(), false);
         graphics.fill(bounds.x() + 8, bounds.y() + 23, bounds.right() - 8, bounds.y() + 24, JournalPalette.SEPARATOR);
         list.render(graphics, font, pointer);
         if (options.conditions().isEmpty()) {
             JournalPalette.drawEmptyState(graphics, font, list.bounds(), new ItemStack(Items.COMPASS),
-                    ScenarioSimulationClientState.text("conditions.overlay_empty"));
+                    ScenarioSession.text("conditions.overlay_empty"));
         }
         graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
+        if (error != null) graphics.drawString(font, font.plainSubstrByWidth(error.getString(),
+                Math.max(0, bounds.width() - 16)), bounds.x() + 8, bounds.bottom() - 40, UiTextScheme.PARCHMENT.negative(), false);
         actions.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {
             pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.PARCHMENT.surfaces(),
@@ -188,7 +199,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         int width = Math.clamp(owner.width() - 20, 0, 316);
         int desiredHeight = empty
                 ? 156
-                : Math.clamp(96 + options.conditions().size() * 22 + 12, 180, 270);
+                : Math.clamp(96 + options.conditions().size() * 22L + 12, 180, 270);
         int height = Math.clamp(owner.height() - 20, 0, desiredHeight);
         bounds = new UiRect((owner.width() - width) / 2, (owner.height() - height) / 2, width, height);
         int innerWidth = Math.max(0, width - 16);
