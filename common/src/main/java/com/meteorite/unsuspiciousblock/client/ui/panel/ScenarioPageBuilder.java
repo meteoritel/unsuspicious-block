@@ -54,7 +54,7 @@ final class ScenarioPageBuilder {
     enum Heading {SECTION, ENTRY}
 
     private record Group(List<LootConditionInfo> conditions, List<LootConditionInfo> extras, LuckGate luck,
-                         boolean uncertain, String source, String mode, String sourceKey) {
+                         boolean uncertain, String source) {
     }
 
     private ScenarioPageBuilder() {
@@ -119,11 +119,15 @@ final class ScenarioPageBuilder {
                 continue;
             }
             Group group = new Group(branch.conditions(), branch.requirements(), branch.luck(),
-                    branch.uncertain(), branch.injectionSource(), branch.injectionMode(), branch.sourceKey());
+                    branch.uncertain(), branch.injectionSource());
             groups.computeIfAbsent(group, ignored -> new ArrayList<>()).add(branch);
         }
 
         content.add(heading(text("conditions.branches"), List.of(text("conditions.candidates_hint"))));
+        content.add(new UiNode.Row(6, UiNode.NO_PARENT,
+                text("conditions.candidates_intro"), UiTextScheme.PARCHMENT.hint(),
+                List.of(), List.of(), null, null));
+        content.add(new UiNode.Gap(2));
         int ordinal = 0;
         for (var entry : groups.entrySet()) {
             if (!entry.getKey().source().isEmpty()) {
@@ -133,12 +137,7 @@ final class ScenarioPageBuilder {
                     ++ordinal, entry.getKey(), entry.getValue(), toggleCondition, visible, locate, recommend);
         }
         boolean hasInjection = groups.keySet().stream().anyMatch(group -> !group.source().isEmpty());
-        if (ordinal == 0 && !hasInjection && options.conditions().isEmpty()) {
-            content.add(new UiNode.Gap(4));
-            content.add(new UiNode.Row(6, UiNode.NO_PARENT,
-                    text("conditions.all_unconditional"), UiTextScheme.PARCHMENT.positive(),
-                    List.of(), List.of(), null, null));
-        } else if (ordinal == 0) {
+        if (ordinal == 0 && !hasInjection) {
             content.add(new UiNode.Gap(4));
             content.add(new UiNode.Row(6, UiNode.NO_PARENT,
                     text("conditions.no_branches"), UiTextScheme.PARCHMENT.label(),
@@ -191,26 +190,22 @@ final class ScenarioPageBuilder {
             badgeText = text(status.hasRandomCondition() ? "branch.triggerable" : "branch.met");
             badgeColor = UiTextScheme.PARCHMENT.positive();
         }
+        List<Component> branchTooltip = new ArrayList<>();
+        branchTooltip.add(badgeText.copy().withStyle(style -> style.withColor(badgeColor)));
+        if (group.uncertain()) {
+            branchTooltip.add(text(group.source().equals("observed")
+                    ? "injection.observed_hint" : "conditions.hypothetical"));
+        }
         UiIcon statusIcon = branchStatusIcon(status);
         nodes.add(new UiNode.Row(4, UiNode.NO_PARENT,
                 new UiNode.InlineIcon(statusIcon,
-                        List.of(badgeText.copy().withStyle(style -> style.withColor(badgeColor))),
+                        branchTooltip,
                         status, null),
-                title, UiTextScheme.PARCHMENT.title(), List.of(), List.of(title),
+                title, UiTextScheme.PARCHMENT.title(), List.of(), branchTooltip,
                 Heading.ENTRY, null));
 
         for (LootConditionInfo condition : group.conditions()) {
             addScenarioCondition(nodes, condition, enabledSet, params, parent, toggleCondition);
-        }
-        if (group.conditions().isEmpty()) {
-            nodes.add(new UiNode.Row(ITEM_INDENT, parent,
-                    text("conditions.unconditional"), UiTextScheme.PARCHMENT.label(),
-                    List.of(), List.of(), null, null));
-        }
-        if (group.uncertain()) {
-            nodes.add(new UiNode.Row(ITEM_INDENT, parent,
-                    text(group.source().equals("observed") ? "injection.observed_hint" : "conditions.hypothetical"),
-                    UiTextScheme.PARCHMENT.negative(), List.of(), List.of(), null, null));
         }
         if (!group.extras().isEmpty() || !group.luck().isTrivial()) {
             int extraParent = nodes.size();
@@ -244,12 +239,6 @@ final class ScenarioPageBuilder {
                         List.of(), List.of(), null, null));
             }
         }
-        if (!group.mode().isEmpty()) {
-            nodes.add(new UiNode.Row(ITEM_INDENT, parent,
-                    text("injection." + group.mode()), UiTextScheme.PARCHMENT.label(),
-                    List.of(), List.of(), null, null));
-        }
-
         Set<String> seen = new HashSet<>();
         List<UiNode.InlineIcon> icons = new ArrayList<>();
         ScenarioBranch recommendBranch = branches.stream().filter(branch -> branch.recommendable()
@@ -400,6 +389,32 @@ final class ScenarioPageBuilder {
                 new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.BRANCH_ARROW), List.of(), null, null),
                 Component.empty(), UiTextScheme.PARCHMENT.accent(), icons,
                 List.of(text("conditions.candidates_hint").withStyle(TooltipBuilder.LABEL)), null, null);
+    }
+
+    /**
+     * 灯箱只负责阅读与拖动，移除节点动作以免按住可点击图标时阻断平移。
+     */
+    static List<UiNode> copyForLightbox(List<UiNode> nodes) {
+        return nodes.stream().map(ScenarioPageBuilder::copyWithoutActions).toList();
+    }
+
+    private static UiNode copyWithoutActions(UiNode node) {
+        if (node instanceof UiNode.Row row) {
+            UiNode.InlineIcon leading = row.leading() == null ? null : copyWithoutAction(row.leading());
+            List<UiNode.InlineIcon> icons = row.icons().stream()
+                    .map(ScenarioPageBuilder::copyWithoutAction).toList();
+            return new UiNode.Row(row.indent(), row.parentRow(), leading, row.text(), row.color(), icons,
+                    row.tooltip(), row.payload(), null);
+        }
+        if (node instanceof UiNode.Frame(var spec, var content)) {
+            return new UiNode.Frame(spec, content.stream()
+                    .map(ScenarioPageBuilder::copyWithoutActions).toList());
+        }
+        return node;
+    }
+
+    private static UiNode.InlineIcon copyWithoutAction(UiNode.InlineIcon icon) {
+        return new UiNode.InlineIcon(icon.icon(), icon.tooltip(), icon.payload(), null);
     }
 
     private static UiNode.Row heading(Component value, List<Component> tooltip) {

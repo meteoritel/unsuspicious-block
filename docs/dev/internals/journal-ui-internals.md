@@ -74,9 +74,9 @@
 - **连接内动作所有者**：`JournalClientConnection` 创建、tick 推进并退役 `ScenarioSession`；入站消息仍按连接 epoch 在偏好加载后应用。选择、按输入缓存、模拟票据、辅助请求与提示由会话管理；退役会话的旧浮层动作停止提交。进程内序号持续递增，换连接时保持票据隔离。
 - **完整单表快照**：`ScenarioTableSnapshot` 聚合结构/选项、当前条件与参数、当前测值、inputKey、状态、失败与提示、推荐预览、目标展示及单表 revision。`RightPageContainer` 从玩家进度派生的物品与子表条目构造可见性和名称，再提交会话供网格与场景阅读共用。未发现目标使用未知图标与名称，跳转与推荐按同一可见性开放。
 - **局部失效**：选择与当前测值改变时只失效所属表投影；请求等待、推荐和提示只推进所属表呈现。其他表的 `TableDefinition` 保持对象复用，目录消费者由 `projectionRevision` 更新概率排序与搜索。发现变化更新目标展示并推进快照身份；`ScenarioDetailPanel` 按单表快照、语言与本地文档脏状态复用内容，字号/宽度排版由 reader 管理。
-- **面板分工**：`ScenarioPanel` 位于网格页顶部，提供已启用条件摘要及参数、计算和条件入口。`ScenarioDetailPanel` 展示表名、当前输入、条件结构与组合状态，具体概率仍在网格；场景页不承担页面回退或恢复默认动作。`ScenarioPageBuilder` 从传入快照生成状态图标、条件清单与目标分支树；动作回调进入会话。条件浮层提供“清除条件”文字操作，条件灯箱的工具栏提供缩放与平移复位。
+- **面板分工**：`ScenarioPanel` 位于网格页顶部，提供已启用条件摘要及参数、计算和条件入口。表名由左侧目录承担，`ScenarioDetailPanel` 只展示当前输入、条件结构与组合状态，具体概率仍在网格；场景页不承担页面回退或恢复默认动作。`ScenarioPageBuilder` 从传入快照生成状态图标、条件清单与目标分支树；动作回调进入会话。条件浮层提供“清除条件”文字操作，条件灯箱的工具栏提供缩放与平移复位。
 - **条件与推荐语境**：分支徽章按完整树、当前工具附魔及幸运即时求值，区分阻塞、机会和未知。组内稳定选择可见且可推荐的成员，按钮明确“为〈目标〉推荐此分支”并发送该成员引用；网格保留目标级推荐。观测与 tag 分支显示能力说明。条件语义、候选签发与求解边界见[战利品表机制](loottable-mechanics.md#32-条件组合模型与按需规划-simulationscenarioplanner)。
-- **文档与灯箱共源**：`ScenarioDetailPanel` 持有 `UiDocumentView` 和业务文档，`ScenarioExpandedOverlay` 复用同一文档所有者。快照变化时页内与放大阅读获得相同内容；kit reader 负责折行、滚动、命中、动作导航及配对激活，契约见[UI kit 文档阅读](ui-kit-api.md#33-文档阅读与业务呈现)。条件 offset 按表 ID 捕获进阅读快照。
+- **文档与灯箱共源**：`ScenarioDetailPanel` 持有 `UiDocumentView` 和业务文档，`ScenarioExpandedOverlay` 复用同一节点结构；灯箱复制节点并保留提示，关闭节点动作以便在文字和图标上都能直接拖动。快照变化时页内与放大阅读获得相同内容；kit reader 负责折行、滚动、命中、动作导航及配对激活，契约见[UI kit 文档阅读](ui-kit-api.md#33-文档阅读与业务呈现)。条件 offset 按表 ID 捕获进阅读快照。
 - **测值展示**：完整规范化 inputKey 命中对应参数/档位缓存时才复用测值，其他输入保持未知；旧有效输入保留缓存供切换对比。请求状态与缓存命中各有身份，晚到结果保持当前选择。线路字段与终态见[网络与同步](../foundation/network.md#31-通用协议原则)。
 
 ## 5. 场景浮层与灯箱 (`JournalOverlays`)
@@ -87,10 +87,10 @@
 
 | 浮层类 | 职责与交互约束 |
 |---|---|
-| `ScenarioConditionOverlay` | 预览原子条件勾选与 Tooltip，提供重置、同步自身、参数、应用并计算、仅应用和取消；确认通过会话提交整份草稿 |
+| `ScenarioConditionOverlay` | 预览原子条件勾选与 Tooltip，提供清除条件、同步自身、参数、应用并计算、仅应用和取消；确认通过会话提交整份草稿 |
 | `ScenarioParamsOverlay` | 编辑幸运数值/滑块、工具和附魔等级；保留条件及固定抽样档位，统一通过会话动作提交 |
 | `ScenarioRecommendationOverlay` | 预览请求目标、分支范围、实际候选与 pathId，并比较条件/参数变更；未发现候选保留未知名称。客户端核对范围、版本、基础输入、签发域与见证归属后接收；应用沿用请求时的草稿版本，失败原因留在浮层。关闭、切表、切输入或内容失效时取消旧辅助交互 |
-| `ScenarioExpandedOverlay` | 为 `UiLightbox` 装配同源条件文档，按窗口适配初始缩放；支持滚轮缩放、拖动、resize 钳制与 Esc 关闭，保留页内滚动位置 |
+| `ScenarioExpandedOverlay` | 为 `UiLightbox` 装配同源条件文档的只读副本，按窗口适配初始缩放；文字和图标区域均可自由拖动，支持滚轮缩放、resize 钳制与 Esc 关闭，保留页内滚动位置 |
 
 所有图标、徽章、九宫格与场景底纹取自 `ui_atlas.png`，分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
 

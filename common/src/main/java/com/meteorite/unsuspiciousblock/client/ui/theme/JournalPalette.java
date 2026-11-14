@@ -45,7 +45,6 @@ public final class JournalPalette {
 
     // —— 场景文档连线与标题底纹 ——
     public static final int SCENARIO_SECTION_FILL = 0x258B6914;
-    public static final int SCENARIO_ENTRY_FILL = 0x148B6914;
     public static final int SCENARIO_ACCENT_BAR = 0xFF8B6914;
 
     // —— 物品插槽与药丸指标底纹 ——

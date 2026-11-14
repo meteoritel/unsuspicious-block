@@ -59,7 +59,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
     private final JournalOverlays overlays;
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
-    private final UiControl overview = new UiControl();
     private final UiControl expandButton = new UiControl();
     private final UiControl summary = new UiControl();
     private final UiControl luck = new UiControl();
@@ -68,7 +67,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     private final UiControl paramsButton = new UiControl();
     private final UiControl calculateButton = new UiControl();
     private final List<UiControl> controls = List.of(
-            overview, expandButton, summary, luck, enchantments,
+            expandButton, summary, luck, enchantments,
             probeButton, paramsButton, calculateButton);
     private final Map<String, Integer> conditionPositions = new LinkedHashMap<>();
 
@@ -216,19 +215,23 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
         int width = layout.rightPageWidth() - 8;
-        overview.setBounds(x, y + 2, Math.max(0, width - 20), 14);
-        expandButton.setBounds(x + width - 16, y + 1, 16, 15);
-        summary.setBounds(x, y + 18, 18, 18);
-        int readoutAreaWidth = Math.max(0, width - 76);
+        int headerY = y + 2;
+        int iconSize = 16;
+        int iconGap = 2;
+        int actionWidth = iconSize * 3 + iconGap * 2;
+        int actionX = x + Math.max(0, width - actionWidth);
+        summary.setBounds(x, headerY, 18, 18);
+        int readoutAreaWidth = Math.max(0, actionX - x - 21 - 3);
         int pillGap = 3;
-        int luckWidth = (readoutAreaWidth - pillGap) / 2 + 3;
+        int luckWidth = Math.max(0, (readoutAreaWidth - pillGap) / 2);
         int enchWidth = Math.max(0, readoutAreaWidth - pillGap - luckWidth);
-        luck.setBounds(x + 21, y + 19, luckWidth, 16);
-        enchantments.setBounds(x + 21 + luckWidth + pillGap, y + 19, enchWidth, 16);
-        probeButton.setBounds(x + width - 34, y + 19, 16, 16);
-        paramsButton.setBounds(x + width - 16, y + 19, 16, 16);
-        calculateButton.setBounds(x, y + 38, width, 16);
-        int panelTop = y + 57;
+        luck.setBounds(x + 21, headerY + 1, luckWidth, 16);
+        enchantments.setBounds(x + 21 + luckWidth + pillGap, headerY + 1, enchWidth, 16);
+        probeButton.setBounds(actionX, headerY + 1, iconSize, iconSize);
+        paramsButton.setBounds(actionX + iconSize + iconGap, headerY + 1, iconSize, iconSize);
+        expandButton.setBounds(actionX + (iconSize + iconGap) * 2, headerY + 1, iconSize, iconSize);
+        calculateButton.setBounds(x, y + 23, width, 16);
+        int panelTop = y + 43;
         int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - panelTop);
         conditions.setBounds(x + 6, panelTop + 6, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
 
@@ -270,10 +273,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
             control.configure(font, Component.empty(), UiTextScheme.PARCHMENT.body(), null, List.of(), null);
             control.setVisible(false);
         }
-        overview.setVisible(true);
-        overview.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        overview.configure(font, ScenarioSession.text("unavailable"),
-                UiTextScheme.PARCHMENT.label(), null, List.of(), null);
         overviewLabel = null;
     }
 
@@ -293,13 +292,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target), locateTarget);
         conditionView.setContent(conditionTree);
 
-        Component tableName = structure.displayName();
-        overviewLabel = tableName;
-        overview.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        overview.configure(font, tableName, UiTextScheme.PARCHMENT.title(), null,
-                List.of(tableName.copy().withStyle(TooltipBuilder.TITLE),
-                        buildOverviewText(structure, options, choice.conditions())
-                                .copy().withStyle(TooltipBuilder.BODY)), null);
+        overviewLabel = structure.displayName();
 
         Component toolName = Component.literal(choice.params().toolId().toString());
         for (var tool : options.tools()) {
@@ -373,23 +366,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         expandButton.setAccessibleName(ScenarioSession.text("frame.expand"));
     }
 
-    private static Component buildOverviewText(CatalogTableDto structure,
-                                               SimulationOptions options,
-                                               List<String> enabledConditions) {
-        int toggleCount = options.conditions().size();
-        if (toggleCount > 0) {
-            return ScenarioSession.text("overview.with_conditions",
-                    enabledConditions.size(), toggleCount);
-        }
-        boolean hasSpecialBranch = structure.branches().stream().anyMatch(branch ->
-                !branch.injectionSource().isEmpty() || !branch.conditions().isEmpty()
-                        || !branch.requirements().isEmpty() || !branch.luck().isTrivial());
-        if (hasSpecialBranch || options.toolSelectionAllowed() || !options.enchantments().isEmpty()) {
-            return ScenarioSession.text("overview.params_or_random");
-        }
-        return ScenarioSession.text("overview.unconditional");
-    }
-
     private static void configureValue(Font font, UiControl control, String key, String value) {
         Component full = ScenarioSession.text(key, value);
         Component label = font.width(full) <= control.bounds().width() - 4 ? full : Component.literal(value);
@@ -402,12 +378,10 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         Object payload = target.hit().payload();
         if (payload instanceof ScenarioPageBuilder.Heading heading) {
             boolean isSection = heading == ScenarioPageBuilder.Heading.SECTION;
-            int bg = isSection ? JournalPalette.SCENARIO_SECTION_FILL : JournalPalette.SCENARIO_ENTRY_FILL;
-            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), bg);
-            // 左侧古铜色竖线强调，呈现手抄本章节标记感
-            graphics.fill(rect.x(), rect.y(), rect.x() + 2, rect.bottom(), JournalPalette.SCENARIO_ACCENT_BAR);
-            graphics.fill(rect.x() + 2, rect.y(), rect.right(), rect.y() + 1, 0x25FFFFFF);
             if (isSection) {
+                graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), JournalPalette.SCENARIO_SECTION_FILL);
+                graphics.fill(rect.x(), rect.y(), rect.x() + 2, rect.bottom(), JournalPalette.SCENARIO_ACCENT_BAR);
+                graphics.fill(rect.x() + 2, rect.y(), rect.right(), rect.y() + 1, 0x25FFFFFF);
                 graphics.fill(rect.x() + 2, rect.bottom() - 1, rect.right(), rect.bottom(), 0x18000000);
             }
         } else if (payload instanceof ScenarioBranch) {

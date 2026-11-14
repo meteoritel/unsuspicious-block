@@ -58,7 +58,7 @@ final class ScenarioExpandedOverlay {
     static UiDocumentLightboxContent create(ScenarioDetailPanel owner, Font font) {
         var content = new UiDocumentLightboxContent(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT,
                 ScenarioSession.text("conditions.heading"));
-        content.setContentSource(owner::tree);
+        content.setContentSource(() -> ScenarioPageBuilder.copyForLightbox(owner.tree()));
         content.setBackground(ScenarioDetailPanel::renderConditionBackground);
         return content;
     }
