@@ -262,9 +262,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void advanceUiFrame() {
         confirmations.tick();
-        if (this.catalogPanel != null) {
-            this.catalogPanel.advanceFrame();
-        }
     }
 
     @Override
@@ -337,7 +334,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             }
         }
         this.categoryFocusIndex = Mth.clamp(target, 0, count - 1);
-        this.catalogPanel.ensureIndexVisible(this.categoryFocusIndex, true);
+        this.catalogPanel.ensureIndexVisibleSmoothly(this.categoryFocusIndex);
         syncButtonState();
         return true;
     }
@@ -887,7 +884,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
         this.viewModel.setSelectedIndex(Mth.clamp(index, 0, this.viewModel.tableViews().size() - 1));
         if (this.catalogPanel != null) {
-            this.catalogPanel.ensureIndexVisible(this.viewModel.selectedIndex(), true);
+            this.catalogPanel.ensureIndexVisibleSmoothly(this.viewModel.selectedIndex());
         }
         updateItemGridPanel();
         syncButtonState();

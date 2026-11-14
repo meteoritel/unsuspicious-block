@@ -35,9 +35,11 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **语义状态入口**：普通页面直接使用 `UiStatefulWidget` 的 bounds、可见性、可用性和布局身份操作。具体控件同步原版模型并在隐藏/禁用时结清子会话；配置行通过 editor 的 `setEnabled` 应用权限。自定义控件私有组合 `UiWidgetShell`，包装器与核心共享真实焦点和状态。
 - **主题覆盖**：换根主题保留显式结构、完整 skin 与文字覆盖；组 `setStyle` / `clearStyleOverride` 广播到当前成员并更新后续默认值，组 `style()` 查询后续成员默认。单控件清结构与清完整 skin 使用各自明确入口。
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
+- **单行呈现**：`UiTextInput` 保留原版编辑模型，私有视图统一无阴影正文、占位文字、光标、选区与鼠标寻址；颜色读取当前主题，水平窗口随编辑、resize 和语言资源更新。搜索及数值字段直接消费同一控件。
 - **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 根据实际 framebuffer 与原版 GUI 倍率选择整数物理像素倍率，统一 GUI 与书页逻辑坐标的正逆换算；绘制、鼠标位置和拖动增量共用同一比例。像素不足 `1×` 时连续缩小以保留访问能力。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **Tooltip 与裁剪**：普通与物品提示统一经过 `UiPointerHit.renderTooltip` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。
 - **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置、日志保留和管理详情使用 `UiFormBody` 装配真实字段、标签、动作和自绘说明。正文拥有排版、滚动与裁剪，宿主将 `reveal(current)` 接入已有焦点 listener；底部固定操作栏留在正文之外。短正文固定预留轨道带宽，内容、自然高度或字体资源改变后调用 `invalidateLayout()`。
+- **阻尼与成员帧**：`UiScrollView` 唯一持有实际偏移与阻尼目标。滚轮累积目标，恢复位置及焦点滚入立即定位，键盘平滑导航调用 `ensureVisibleSmoothly`。`UiScreen` 在准备、布局和选域后推进活动内容的 `advanceFrame(long)`，再解析命中与绘制；容器沿实际成员树转发，私有持有滚动视图的包装器转发帧和退出通知。表单推进后更新真实字段坐标，隐藏、禁用或切域结清旧目标。目录只提供内容和条目索引快照。
 
 ### 3.2 模态框与持续交互
 

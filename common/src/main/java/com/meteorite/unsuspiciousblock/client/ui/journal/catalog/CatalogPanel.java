@@ -23,13 +23,11 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import net.minecraft.Util;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -43,8 +41,8 @@ import java.util.function.IntPredicate;
 /**
  * 考古笔记左页目录——渲染分类网格与可平滑滚动的战利品表层级列表。
  *
- * <p>滚动偏移与滚动条由 {@link UiScrollView} 统一持有（像素口径），本类维护平滑阻尼目标偏移并在每帧
- * 推进；对外持久化/快照仍以条目索引为单位。</p>
+ * <p>滚动偏移、阻尼与滚动条由 {@link UiScrollView} 统一持有（像素口径）；
+ * 本类转发成员帧与退出通知，对外持久化/快照仍以条目索引为单位。</p>
  */
 public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.Target, UiLayoutSource {
     private BiConsumer<ClickResult, Boolean> onActivate = (click, shift) -> {
@@ -99,10 +97,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
 
     @Override
     public boolean mousePressed(UiInputContext context) {
-        if (view.mousePressed(context)) {
-            syncScrollImmediate();
-            return true;
-        }
+        if (view.mousePressed(context)) return true;
         if (context.button() != 0) return false;
         pressed = handleClick(context.pointerX(), context.pointerY());
         if (pressed.index() < 0) return false;
@@ -129,7 +124,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         if (sy == 0.0 || this.view.maxOffset() <= 0) {
             return false;
         }
-        this.targetOffset = Mth.clamp(this.targetOffset - sy * this.view.step(), 0.0, this.view.maxOffset());
+        this.view.scrollByPixels(sy * this.view.step());
         return true;
     }
 
@@ -149,16 +144,11 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     private static final int CARD_GAP_Y = 5;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_GAP = 2;
-    private static final double SMOOTH_SCROLL_RATE = 18.0;
-    private static final double SMOOTH_SCROLL_SNAP_PX = 0.35;
     private static final UiGridMetrics CATEGORY_METRICS = new UiGridMetrics(2, CARD_WIDTH, CARD_HEIGHT, CARD_GAP_X, CARD_GAP_Y);
     public static final int CATEGORY_GRID_WIDTH = CARD_WIDTH * 2 + CARD_GAP_X;
 
     private JournalBookBackground.BookLayout layout;
     private final UiScrollView view = new UiScrollView();
-    private double targetOffset;
-    private double animatedOffset;
-    private long lastScrollFrameMs;
     private final List<CategoryEntryData> categories = new ArrayList<>();
     private final List<CatalogEntryData> entries = new ArrayList<>();
     private final Map<ResourceLocation, Integer> categoryScrollTicks = new HashMap<>();
@@ -174,43 +164,28 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         this.view.setScrollbarVisible(true);
         syncViewport();
         syncContentHeight();
-        syncScrollImmediate();
     }
 
     public void applyLayout(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
         syncViewport();
-        syncScrollImmediate();
     }
 
     /**
-     * 每渲染帧推进一次平滑滚动阻尼插值；拖动滚动条时直接跟随真实位置。
+     * 由活动成员树传入同一帧时间，滚动几何由 kit 更新。
      */
-    public void advanceFrame() {
-        long now = Util.getMillis();
-        if (this.view.isDragging()) {
-            this.lastScrollFrameMs = now;
-            syncScrollImmediate();
-            return;
-        }
-        int max = this.view.maxOffset();
-        this.targetOffset = Mth.clamp(this.targetOffset, 0.0, max);
-        if (this.lastScrollFrameMs == 0L) {
-            this.lastScrollFrameMs = now;
-            this.animatedOffset = this.targetOffset;
-            this.view.setOffset((int) Math.round(this.animatedOffset));
-            return;
-        }
-        double dt = Math.clamp((now - this.lastScrollFrameMs) / 1000.0, 0.0, 0.1);
-        this.lastScrollFrameMs = now;
-        double delta = this.targetOffset - this.animatedOffset;
-        if (Math.abs(delta) <= SMOOTH_SCROLL_SNAP_PX) {
-            this.animatedOffset = this.targetOffset;
-        } else {
-            double alpha = 1.0 - Math.exp(-dt * SMOOTH_SCROLL_RATE);
-            this.animatedOffset += delta * alpha;
-        }
-        this.view.setOffset((int) Math.round(this.animatedOffset));
+    @Override
+    public void advanceFrame(long nowMillis) {
+        view.advanceFrame(nowMillis);
+    }
+
+    /**
+     * 退出时保留实际阅读位置，并结清滚动与条目按压。
+     */
+    @Override
+    public void scopeExited(UiInteractionSession.EndReason reason) {
+        view.scopeExited(reason);
+        pressed = ClickResult.NONE;
     }
 
     public void setCategories(List<CategoryEntryData> values) {
@@ -223,7 +198,6 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         this.metrics.clear();
         syncContentHeight();
         this.view.setOffset(itemsToPixels(carriedOffset));
-        syncScrollImmediate();
     }
 
     public void setEntries(List<CatalogEntryData> values) {
@@ -238,7 +212,6 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         this.metrics.clear();
         syncContentHeight();
         this.view.setOffset(sameMode ? carriedPixelOffset : itemsToPixels(carriedItemOffset));
-        syncScrollImmediate();
     }
 
     public Mode mode() {
@@ -267,25 +240,25 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         return List.copyOf(nodes);
     }
 
+    /**
+     * 立即露出索引所在条目，用于恢复阅读位置。
+     */
     public void ensureIndexVisible(int index) {
-        ensureIndexVisible(index, false);
+        if (index < 0) return;
+        view.ensureVisible(contentBounds(index));
     }
 
-    public void ensureIndexVisible(int index, boolean smooth) {
+    /**
+     * 平滑露出键盘导航条目，连续导航从 kit 的待完成目标累积。
+     */
+    public void ensureIndexVisibleSmoothly(int index) {
         if (index < 0) return;
-        UiRect rect = this.mode == Mode.CATEGORIES ? CATEGORY_METRICS.cellBounds(index)
+        view.ensureVisibleSmoothly(contentBounds(index));
+    }
+
+    private UiRect contentBounds(int index) {
+        return mode == Mode.CATEGORIES ? CATEGORY_METRICS.cellBounds(index)
                 : new UiRect(0, index * rowStride(), buttonWidth(), JournalLayout.CATALOG_ROW_HEIGHT);
-        if (!smooth) {
-            this.view.ensureVisible(rect);
-            syncScrollImmediate();
-            return;
-        }
-        int current = this.view.offset();
-        this.view.setOffset((int) Math.round(this.targetOffset));
-        this.view.ensureVisible(rect);
-        int nextTarget = this.view.offset();
-        this.view.setOffset(current);
-        this.targetOffset = nextTarget;
     }
 
     public int visibleItemCount() {
@@ -298,7 +271,6 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
 
     public void setScrollOffset(int scrollOffset) {
         this.view.setOffset(itemsToPixels(scrollOffset));
-        syncScrollImmediate();
     }
 
     public ClickResult handleClick(double mouseX, double mouseY) {
@@ -438,12 +410,6 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         int from = Math.min(totalCount, firstRow * perRow);
         int to = Math.min(totalCount, endRow * perRow);
         return new int[]{from, to};
-    }
-
-    private void syncScrollImmediate() {
-        this.targetOffset = this.view.offset();
-        this.animatedOffset = this.targetOffset;
-        this.lastScrollFrameMs = Util.getMillis();
     }
 
     private int scrollStep() {
