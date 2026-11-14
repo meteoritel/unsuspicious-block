@@ -553,6 +553,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             return;
         }
         if (!ArchaeologyJournalClientState.isReadingReady()) return;
+        boolean categoryHomeMode = viewModel.isCategoryHomeMode();
         pendingReading = null;
         if (target.table() == null) {
             viewModel.showCategoryHome();
@@ -566,7 +567,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
         updateItemGridPanel();
         restoreRightPage(target.table(), target.rightPage());
-        syncButtonState();
+        if (categoryHomeMode != viewModel.isCategoryHomeMode()) rebuildWidgets();
+        else syncButtonState();
     }
 
     private void restoreRightPage(@Nullable ResourceLocation table, RightPageContainer.ReadingState reading) {
