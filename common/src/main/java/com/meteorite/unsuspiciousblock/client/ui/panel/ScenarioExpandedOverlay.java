@@ -33,7 +33,7 @@ final class ScenarioExpandedOverlay {
 
         @Override
         public Component fit() {
-            return text("fit");
+            return ScenarioSession.text("frame.reset");
         }
 
         @Override

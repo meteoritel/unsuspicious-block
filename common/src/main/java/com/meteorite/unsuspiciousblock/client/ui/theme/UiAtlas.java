@@ -89,7 +89,8 @@ public final class UiAtlas {
         DARK_UNTRACKED(1, 4),
         POTTERY_ENABLED(2, 4),
         POTTERY_DISABLED(3, 4),
-        POTTERY_REDSTONE(4, 4);
+        POTTERY_REDSTONE(4, 4),
+        RESET(5, 4);
 
         private final int column;
         private final int row;

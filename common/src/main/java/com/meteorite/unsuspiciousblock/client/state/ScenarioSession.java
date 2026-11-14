@@ -324,17 +324,6 @@ public final class ScenarioSession {
     }
 
     /**
-     * 重置为基准状态（取消全部条件勾选并恢复默认工具/幸运/附魔）。
-     */
-    public void resetToBaseline(ResourceLocation table) {
-        var dto = table(table);
-        if (dto == null || dto.options() == null || dto.options().tools().isEmpty()) {
-            return;
-        }
-        select(table, List.of(), ScenarioParams.baseline(dto.options().tools().getFirst().id()));
-    }
-
-    /**
      * 向服务端查询当前选择的缓存状态。
      */
     public void queryCache(ResourceLocation table, boolean force) {

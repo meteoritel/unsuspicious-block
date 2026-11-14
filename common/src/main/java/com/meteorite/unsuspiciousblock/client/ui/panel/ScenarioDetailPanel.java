@@ -32,7 +32,6 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -67,11 +66,10 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     private final UiControl enchantments = new UiControl();
     private final UiControl probeButton = new UiControl();
     private final UiControl paramsButton = new UiControl();
-    private final UiControl resetButton = new UiControl();
     private final UiControl calculateButton = new UiControl();
     private final List<UiControl> controls = List.of(
             overview, expandButton, summary, luck, enchantments,
-            probeButton, paramsButton, resetButton, calculateButton);
+            probeButton, paramsButton, calculateButton);
     private final Map<String, Integer> conditionPositions = new LinkedHashMap<>();
 
     private BookLayout layout;
@@ -98,7 +96,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         this.layout = layout;
         this.overlays = overlays;
         children.addAll(controls);
-        for (UiControl control : List.of(expandButton, probeButton, paramsButton, resetButton, calculateButton)) {
+        for (UiControl control : List.of(expandButton, probeButton, paramsButton, calculateButton)) {
             control.setFocusable(true);
         }
     }
@@ -227,9 +225,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         int enchWidth = Math.max(0, readoutAreaWidth - pillGap - luckWidth);
         luck.setBounds(x + 21, y + 19, luckWidth, 16);
         enchantments.setBounds(x + 21 + luckWidth + pillGap, y + 19, enchWidth, 16);
-        probeButton.setBounds(x + width - 52, y + 19, 16, 16);
-        paramsButton.setBounds(x + width - 34, y + 19, 16, 16);
-        resetButton.setBounds(x + width - 16, y + 19, 16, 16);
+        probeButton.setBounds(x + width - 34, y + 19, 16, 16);
+        paramsButton.setBounds(x + width - 16, y + 19, 16, 16);
         calculateButton.setBounds(x, y + 38, width, 16);
         int panelTop = y + 57;
         int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - panelTop);
@@ -296,10 +293,13 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target), locateTarget);
         conditionView.setContent(conditionTree);
 
-        overviewLabel = buildOverviewText(structure, options, choice.conditions());
+        Component tableName = structure.displayName();
+        overviewLabel = tableName;
         overview.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        overview.configure(font, overviewLabel, UiTextScheme.PARCHMENT.title(), null,
-                List.of(overviewLabel.copy().withStyle(TooltipBuilder.BODY)), null);
+        overview.configure(font, tableName, UiTextScheme.PARCHMENT.title(), null,
+                List.of(tableName.copy().withStyle(TooltipBuilder.TITLE),
+                        buildOverviewText(structure, options, choice.conditions())
+                                .copy().withStyle(TooltipBuilder.BODY)), null);
 
         Component toolName = Component.literal(choice.params().toolId().toString());
         for (var tool : options.tools()) {
@@ -335,15 +335,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.conditions(),
                         options, choice.params())));
         paramsButton.setAccessibleName(ScenarioSession.text("params.title"));
-
-        boolean isBaseline = choice.conditions().isEmpty()
-                && choice.params().equals(ScenarioParams.baseline(options.tools().getFirst().id()));
-        resetButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.BACK),
-                List.of(ScenarioSession.text("reset.button").copy().withStyle(TooltipBuilder.TITLE),
-                        ScenarioSession.text("reset.hint").copy().withStyle(TooltipBuilder.LABEL)),
-                () -> JournalClientConnection.scenario().resetToBaseline(currentTable));
-        resetButton.setAccessibleName(ScenarioSession.text("reset.button"));
-        resetButton.setEnabled(!isBaseline);
 
         Component failure = "failed".equals(rawStatus)
                 ? ScenarioSession.text("failure." + Objects.requireNonNull(snapshot).failure())

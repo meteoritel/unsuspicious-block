@@ -99,7 +99,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         });
         button(font, "params", ScenarioSession.text("params.short"), UiAtlas.Icon.PARAMS, () ->
                 owner.open(new ScenarioParamsOverlay(owner, options, baseDraft.withInput(new SimulationInput(List.copyOf(draftConditions), params)))));
-        button(font, "reset", ScenarioSession.text("reset.button"), UiAtlas.Icon.BACK, draftConditions::clear);
+        button(font, "clear", ScenarioSession.text("conditions.clear"), null, draftConditions::clear);
         button(font, "calculate", ScenarioSession.text("params.apply_calculate"), null, () -> confirm(true))
                 .setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         button(font, "apply", ScenarioSession.text("params.apply_only"), null, () -> confirm(false));
@@ -206,12 +206,12 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         int left = bounds.x() + 8;
 
         List<UiControl> buttons = actions.controls();
-        // 顶部工具栏：同步自身、参数配置，以及仅在有条件时展示的轻量重置按钮
+        // 顶部工具栏：同步自身、参数配置，以及仅在有条件时展示的清除按钮
         UiControl probe = buttons.get(0);
         UiControl paramsBtn = buttons.get(1);
-        UiControl reset = buttons.get(2);
-        reset.setVisible(!empty);
-        reset.setEnabled(!empty && !draftConditions.isEmpty());
+        UiControl clear = buttons.get(2);
+        clear.setVisible(!empty);
+        clear.setEnabled(!empty && !draftConditions.isEmpty());
 
         int utilY = bounds.y() + 27;
         if (empty) {
@@ -222,7 +222,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
             int utilWidth = Math.max(0, (innerWidth - 8) / 3);
             probe.setBounds(left, utilY, utilWidth, 18);
             paramsBtn.setBounds(left + utilWidth + 4, utilY, utilWidth, 18);
-            reset.setBounds(left + (utilWidth + 4) * 2, utilY, innerWidth - (utilWidth + 4) * 2, 18);
+            clear.setBounds(left + (utilWidth + 4) * 2, utilY, innerWidth - (utilWidth + 4) * 2, 18);
         }
 
         int listTop = bounds.y() + 49;

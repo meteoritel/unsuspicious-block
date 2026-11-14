@@ -4,7 +4,6 @@ import com.meteorite.meteosuikit.api.control.UiLightbox;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.gui.GuiGraphics;
@@ -14,8 +13,6 @@ import java.util.Map;
 
 /** 场景界面的轻量纸面容器、连线色与灯箱样式装配。 */
 public final class ScenarioUi {
-    public static final int BRANCH = JournalPalette.SCENARIO_BRANCH_LINE;
-
     private ScenarioUi() {
     }
 
@@ -41,7 +38,7 @@ public final class ScenarioUi {
         lightbox.setSurface(UiAtlas.SCENARIO_PANEL);
         lightbox.setIcons(Map.of(
                 "close", UiAtlas.icon(UiAtlas.Icon.CLOSE),
-                "fit", UiAtlas.icon(UiAtlas.Icon.FIT),
+                "fit", UiAtlas.icon(UiAtlas.Icon.RESET),
                 "zoom_in", UiAtlas.icon(UiAtlas.Icon.PLUS),
                 "zoom_out", UiAtlas.icon(UiAtlas.Icon.MINUS)));
         lightbox.setBarHint(Component.translatable(

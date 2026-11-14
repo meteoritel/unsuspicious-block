@@ -44,7 +44,6 @@ public final class JournalPalette {
     public static final int DIM_MASK = 0x709C8B74;
 
     // —— 场景文档连线与标题底纹 ——
-    public static final int SCENARIO_BRANCH_LINE = 0xFFA99370;
     public static final int SCENARIO_SECTION_FILL = 0x258B6914;
     public static final int SCENARIO_ENTRY_FILL = 0x148B6914;
     public static final int SCENARIO_ACCENT_BAR = 0xFF8B6914;

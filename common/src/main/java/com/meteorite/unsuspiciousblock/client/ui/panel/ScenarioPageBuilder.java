@@ -92,7 +92,7 @@ final class ScenarioPageBuilder {
         }
 
         if (!options.conditions().isEmpty()) {
-            content.add(heading(text("conditions.toggles"), Heading.SECTION,
+            content.add(heading(text("conditions.toggles"),
                     List.of(text("conditions.toggles_hint"))));
             content.add(new UiNode.Gap(3));
             for (ConditionOption option : options.conditions()) {
@@ -123,7 +123,7 @@ final class ScenarioPageBuilder {
             groups.computeIfAbsent(group, ignored -> new ArrayList<>()).add(branch);
         }
 
-        content.add(heading(text("conditions.branches"), Heading.SECTION, List.of(text("conditions.candidates_hint"))));
+        content.add(heading(text("conditions.branches"), List.of(text("conditions.candidates_hint"))));
         int ordinal = 0;
         for (var entry : groups.entrySet()) {
             if (!entry.getKey().source().isEmpty()) {
@@ -146,7 +146,7 @@ final class ScenarioPageBuilder {
         }
         if (hasInjection) {
             content.add(new UiNode.Gap(10));
-            content.add(heading(text("injection.title"), Heading.SECTION, List.of(text("injection.limit"))));
+            content.add(heading(text("injection.title"), List.of(text("injection.limit"))));
             for (var entry : groups.entrySet()) {
                 if (entry.getKey().source().isEmpty()) {
                     continue;
@@ -191,9 +191,13 @@ final class ScenarioPageBuilder {
             badgeText = text(status.hasRandomCondition() ? "branch.triggerable" : "branch.met");
             badgeColor = UiTextScheme.PARCHMENT.positive();
         }
-        title.append(Component.literal(" · ").withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.label())))
-                .append(badgeText.copy().withStyle(style -> style.withColor(badgeColor)));
-        nodes.add(heading(title, Heading.ENTRY, List.of(title)));
+        UiIcon statusIcon = branchStatusIcon(status);
+        nodes.add(new UiNode.Row(4, UiNode.NO_PARENT,
+                new UiNode.InlineIcon(statusIcon,
+                        List.of(badgeText.copy().withStyle(style -> style.withColor(badgeColor))),
+                        status, null),
+                title, UiTextScheme.PARCHMENT.title(), List.of(), List.of(title),
+                Heading.ENTRY, null));
 
         for (LootConditionInfo condition : group.conditions()) {
             addScenarioCondition(nodes, condition, enabledSet, params, parent, toggleCondition);
@@ -218,9 +222,10 @@ final class ScenarioPageBuilder {
             LuckGate luck = group.luck();
             if (luck.minLuck().isPresent()) {
                 boolean luckOk = params.luck() >= luck.minLuck().getAsDouble();
-                Component luckText = prefixMark(luckOk)
-                        .append(text("conditions.luck_gate", String.format(Locale.ROOT, "%.2f", luck.minLuck().getAsDouble())));
-                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent, luckText,
+                Component luckText = text("conditions.luck_gate", String.format(Locale.ROOT, "%.2f", luck.minLuck().getAsDouble()));
+                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
+                        new UiNode.InlineIcon(conditionIcon(luckOk ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
+                                List.of(luckText), null, null), luckText,
                         luckOk ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative(),
                         List.of(), List.of(), null, null));
             }
@@ -231,9 +236,10 @@ final class ScenarioPageBuilder {
             }
             if (luck.bonusRollsGate().isPresent()) {
                 boolean bonusOk = params.luck() >= luck.bonusRollsGate().getAsDouble();
-                Component bonusText = prefixMark(bonusOk)
-                        .append(text("conditions.bonus_luck", String.format(Locale.ROOT, "%.2f", luck.bonusRollsGate().getAsDouble())));
-                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent, bonusText,
+                Component bonusText = text("conditions.bonus_luck", String.format(Locale.ROOT, "%.2f", luck.bonusRollsGate().getAsDouble()));
+                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
+                        new UiNode.InlineIcon(conditionIcon(bonusOk ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
+                                List.of(bonusText), null, null), bonusText,
                         bonusOk ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative(),
                         List.of(), List.of(), null, null));
             }
@@ -311,10 +317,12 @@ final class ScenarioPageBuilder {
                 && SimulationScenarioPlanner.isScenarioControlled(condition.conditionType())
                 && ConditionIdentity.isStable(condition)) {
             boolean met = enabledSet.contains(condition.identity().key());
-            Component styled = prefixMark(met).append(ScenarioLabel.shortConditionLabel(condition));
+            Component styled = ScenarioLabel.shortConditionLabel(condition);
             List<Component> tooltip = ScenarioLabel.conditionTooltip(condition, met);
             UiAction action = () -> toggleCondition.accept(condition.identity().key());
-            nodes.add(new UiNode.Row(ITEM_INDENT, parent, null, styled,
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent,
+                    new UiNode.InlineIcon(conditionIcon(met ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
+                            tooltip, condition.identity().key(), action), styled,
                     met ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative(),
                     List.of(), tooltip, condition.identity().key(), action));
             return;
@@ -341,29 +349,18 @@ final class ScenarioPageBuilder {
         int self = nodes.size();
         boolean uncertain = condition.metadata().containsKey(LootConditionHandlers.FIDELITY_METADATA_KEY);
         MutableComponent styled = Component.empty();
-        if (truth == ConditionTree.Truth.TRUE) {
-            styled.append(prefixMark(true));
-        } else if (truth == ConditionTree.Truth.FALSE) {
-            styled.append(prefixMark(false));
-        }
         Component inner = ScenarioLabel.conditionText(condition).copy();
-        ConditionTree.Kind kind = condition instanceof LootConditionInfo node ? node.kind() : ConditionTree.Kind.LEAF;
-        if (kind == ConditionTree.Kind.ALL) {
-            inner = ScenarioLabel.symbol("∧ ").copy().append(inner);
-        } else if (kind == ConditionTree.Kind.ANY) {
-            inner = ScenarioLabel.symbol("∨ ").copy().append(inner);
-        } else if (kind == ConditionTree.Kind.NOT) {
-            inner = ScenarioLabel.symbol("¬ ").copy().append(text("conditions.negation"));
-        }
         if (condition.conditionType().getPath().contains("random_chance")
                 || condition.conditionType().getPath().equals("table_bonus")) {
             styled.append(text("conditions.random_trigger").withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.accent())))
                     .append(" · ");
         }
         styled.append(inner);
+        List<Component> tooltip = new ArrayList<>();
+        tooltip.add(condition.description().copy().withStyle(TooltipBuilder.BODY));
+        tooltip.add(Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT));
         if (uncertain) {
-            styled.append(" · ").append(text("conditions."
-                    + condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
+            tooltip.add(text("conditions." + condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
                     .withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.negative())));
         }
         int color = truth == ConditionTree.Truth.FALSE
@@ -371,18 +368,31 @@ final class ScenarioPageBuilder {
                 : truth == ConditionTree.Truth.TRUE && !secondary
                 ? UiTextScheme.PARCHMENT.positive()
                 : secondary ? UiTextScheme.PARCHMENT.label() : UiTextScheme.PARCHMENT.body();
-        nodes.add(new UiNode.Row(indent, parent, styled, color, List.of(),
-                List.of(condition.description().copy().withStyle(TooltipBuilder.BODY),
-                        Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT)),
-                null, null));
+        nodes.add(new UiNode.Row(indent, parent,
+                new UiNode.InlineIcon(conditionIcon(uncertain ? ConditionTree.Truth.UNKNOWN : truth),
+                        tooltip, null, null), styled, color, List.of(), tooltip, null, null));
         for (ConditionPresentation child : condition.displayChildren()) {
             addGenericConditionNode(nodes, child, ConditionTree.Truth.UNKNOWN, indent + INDENT_STEP, self, secondary);
         }
     }
 
-    private static MutableComponent prefixMark(boolean met) {
-        return Component.literal(met ? "✓ " : "✗ ")
-                .withStyle(style -> style.withColor(met ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative()));
+    private static UiIcon branchStatusIcon(BranchStatus status) {
+        if (!status.allDeterministicSatisfied()) {
+            return UiAtlas.icon(UiAtlas.Icon.CHECKBOX_UNCHECKED);
+        }
+        if (status.hasUnresolvedCondition()) {
+            return UiAtlas.icon(UiAtlas.Icon.HELP_CREAM);
+        }
+        return UiAtlas.icon(status.hasRandomCondition()
+                ? UiAtlas.Icon.CLOCK : UiAtlas.Icon.CHECKBOX_CHECKED);
+    }
+
+    private static UiIcon conditionIcon(ConditionTree.Truth truth) {
+        return switch (truth) {
+            case TRUE -> UiAtlas.icon(UiAtlas.Icon.CHECKBOX_CHECKED);
+            case FALSE -> UiAtlas.icon(UiAtlas.Icon.CHECKBOX_UNCHECKED);
+            case UNKNOWN -> UiAtlas.icon(UiAtlas.Icon.HELP_CREAM);
+        };
     }
 
     private static UiNode.Row candidateRow(int parent, List<UiNode.InlineIcon> icons) {
@@ -392,9 +402,9 @@ final class ScenarioPageBuilder {
                 List.of(text("conditions.candidates_hint").withStyle(TooltipBuilder.LABEL)), null, null);
     }
 
-    private static UiNode.Row heading(Component value, Heading kind, List<Component> tooltip) {
+    private static UiNode.Row heading(Component value, List<Component> tooltip) {
         return new UiNode.Row(4, UiNode.NO_PARENT, value.copy().withStyle(ChatFormatting.BOLD),
-                UiTextScheme.PARCHMENT.title(), List.of(), tooltip, kind, null);
+                UiTextScheme.PARCHMENT.title(), List.of(), tooltip, Heading.SECTION, null);
     }
 
     private static MutableComponent text(String key, Object... args) {

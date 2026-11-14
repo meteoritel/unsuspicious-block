@@ -54,7 +54,7 @@
 | 2 | 1 | `GROUP` | 四方格（退出批量选择） |
 | 2 | 2 | `COPY` | 重叠双页（`CopyCoordinateButton` 复制坐标） |
 | 2 | 3 | `EXPAND` | 全屏放大（展开条件灯箱） |
-| 2 | 4 | `FIT` | 适应窗口（灯箱 `fit`） |
+| 2 | 4 | `FIT` | 适应窗口（通用内容适配） |
 | 2 | 5 | `PLUS` | 加号（灯箱放大） |
 | 2 | 6 | `MINUS` | 减号（灯箱缩小） |
 | 2 | 7 | `PARAMS` | 滑杆调校（打开场景参数配置） |
@@ -79,7 +79,8 @@
 | 4 | 2 | `POTTERY_ENABLED` | [`PotteryWheelScreen`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/screen/PotteryWheelScreen.java) 暗底启用态对钩 |
 | 4 | 3 | `POTTERY_DISABLED` | `PotteryWheelScreen` 暗底禁用态闭合锁 |
 | 4 | 4 | `POTTERY_REDSTONE` | `PotteryWheelScreen` 暗底红石启用态图标 |
-| 4 | 5–11 | — | 预留槽位 |
+| 4 | 5 | `RESET` | 灯箱复位缩放与平移 |
+| 4 | 6–11 | — | 预留槽位 |
 
 ## 4. Zone 2 – Zone 4 专项精灵与皮肤映射
 
@@ -103,7 +104,7 @@
 
 ## 5. 使用与修改约束
 
-- **禁止修改已有槽位坐标**：新增图标仅追加至 `Row 4 (col 5..11)` 或图集空白区，并同步更新 `generate_ui_atlas.py` 与 `UiAtlas.java`。
+- **禁止修改已有槽位坐标**：新增图标仅追加至 `Row 4 (col 6..11)` 或图集空白区，并同步更新 `generate_ui_atlas.py` 与 `UiAtlas.java`。`RESET` 已占用 `Row 4 / col 5`，只用于灯箱复位。
 - **保持独立的大尺寸背景纹理**：书本背景（`archaeology_journal_book.png` `384x256`）、陶轮容器底图（`pottery_wheel_gui.png` `256x256`）、定宽条目条带（`catalog_entry.png`、`log_entry.png`、`bookmark_tab.png`）与标本箱预览（`specimen_box_preview.png`）保持各自独立 PNG。
 - **修改纹理必须经过生成器**：修改图标或皮肤像素时更新 [`tools/drawer/atlas/`](../../../tools/drawer/atlas/) 中对应来源模块并运行 `python tools/drawer/generate_ui_atlas.py`，保证代码与 PNG 同源。
 
