@@ -38,14 +38,6 @@ public final class JournalPalette {
     // —— 搜索未命中暖色淡化遮罩 ——
     public static final int DIM_MASK = 0x709C8B74;
 
-    // —— 物品插槽与药丸指标底纹 ——
-    public static final int SLOT_BG = 0x20000000;
-    public static final int SLOT_BORDER = 0x558B6914;
-    public static final int SLOT_BORDER_HOVER = 0xFFC89B48;
-    public static final int STAT_PILL_BG = 0x1A8B6914;
-    public static final int STAT_PILL_BORDER = 0x508B6914;
-    public static final int STAT_PILL_HOVER = 0x30C8A050;
-
     // —— 统一进度条（左侧目录 / 介绍页 / 日志详情页共用） ——
     public static final int PROGRESS_BORDER = 0xFF7A5722;
     public static final int PROGRESS_TRACK = 0xFFD8C0A0;

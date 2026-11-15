@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.theme;
 
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.style.UiControlPainter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiControlSkin;
 import com.meteorite.meteosuikit.api.style.UiControlStyle;
