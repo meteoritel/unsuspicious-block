@@ -93,7 +93,8 @@ flowchart TD
 ## 6. 淘盘 (`PanItem`) 与战利品结算 (`PanningLootService`)
 
 - **能力交集判定 (`canHarvest`)**：`PanProfile.harvestTargets` 声明每把盘可采的变体集合（三把盘耐久、修复材料与加成对比见[方块与物品](blocks-items.md)），`canHarvest` 在起手、持续使用与最终结算三处统一调用，确保铜盘/金盘无法越界淘洗岩浆变体，且移动减速直接复用原版「正在使用物品」逻辑。
-- **幸运分化机制**：三把盘共用变体对应的同一张战利品表（采用 `LootContextParamSets.BLOCK` 且接入笔记 `immediate` 立即结算），通过 `玩家自身幸运 + PanProfile.luckByVariant` 配合原版 `weight` / `quality` / `bonus_rolls` 分化掉落（`bonus_rolls` 必须独立成池，防止负幸运清零基础掉落池）。产出物体从液面朝玩家方向抛射掉落（水平 `0.3` 格/刻，竖直 `0.4` 格/刻）。
+- **幸运分化机制**：三把盘共用变体对应的同一张战利品表（采用 `LootContextParamSets.BLOCK` 且接入笔记 `immediate` 立即结算），通过 `玩家自身幸运 + PanProfile.luckByVariant` 配合原版 `weight` / `quality` / `bonus_rolls` 分化掉落（`bonus_rolls` 必须独立成池，防止负幸运清零基础掉落池）。
+- **产出抛射与拾取**：产出使用原版 `ItemEntity`，从液面上方飞向结算时玩家的位置；按物品实体逐刻施加重力、移动与空气阻力的顺序，反算固定飞行时长的初速度，统一处理距离与高差。生成后即可按原版规则拾取，使近距产出在进入拾取范围时及时入包。
 
 ## 7. 配置要求
 

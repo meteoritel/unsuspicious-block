@@ -26,6 +26,15 @@ import java.util.List;
  * 产出从液面向上、朝玩家抛出；考古笔记按本次淘洗产出立即结算，与钓鱼一致。
  */
 public final class PanningLootService {
+    private static final int LOOT_FLIGHT_TICKS = 10;
+    private static final double ITEM_AIR_DRAG = 0.98D;
+    private static final double ITEM_GRAVITY = 0.04D;
+    private static final double FLIGHT_DRAG_SUM = (1.0D - Math.pow(ITEM_AIR_DRAG, LOOT_FLIGHT_TICKS))
+            / (1.0D - ITEM_AIR_DRAG);
+    // ItemEntity 每刻先受重力、再移动并衰减速度，竖直初速度按此顺序补偿。
+    private static final double GRAVITY_COMPENSATION = ITEM_GRAVITY
+            * (LOOT_FLIGHT_TICKS / FLIGHT_DRAG_SUM - ITEM_AIR_DRAG) / (1.0D - ITEM_AIR_DRAG);
+
     private PanningLootService() {
     }
 
@@ -47,17 +56,20 @@ public final class PanningLootService {
                 () -> level.getServer().reloadableRegistries().getLootTable(variant.lootTable())
                         .getRandomItems(lootParams, player.getRandom()));
 
+        Vec3 spawnPosition = Vec3.atBottomCenterOf(surfacePos.above());
+        Vec3 toPlayer = player.position().subtract(spawnPosition);
+        Vec3 launchVelocity = toPlayer.scale(1.0D / FLIGHT_DRAG_SUM)
+                .add(0.0D, GRAVITY_COMPENSATION, 0.0D);
+
         for (ItemStack drop : generated) {
             if (drop.isEmpty()) {
                 continue;
             }
-            double x = surfacePos.getX() + 0.5D;
-            double z = surfacePos.getZ() + 0.5D;
-            Vec3 towardPlayer = new Vec3(player.getX() - x, 0.0D, player.getZ() - z).normalize();
-            ItemEntity itemEntity = new ItemEntity(level, x, surfacePos.getY() + 1.0D, z, drop.copy());
-            // 水平速度固定，避免玩家距离较远时抛射过快；玩家恰在正上方时只向上抛。
-            itemEntity.setDeltaMovement(towardPlayer.scale(0.3D).add(0.0D, 0.3D, 0.0D));
-            itemEntity.setDefaultPickUpDelay();
+            ItemEntity itemEntity = new ItemEntity(level,
+                    spawnPosition.x, spawnPosition.y, spawnPosition.z, drop.copy());
+            itemEntity.setDeltaMovement(launchVelocity);
+            // 近距产出会很快进入拾取范围，默认延迟会让物品穿过玩家。
+            itemEntity.setNoPickUpDelay();
             level.addFreshEntity(itemEntity);
         }
     }
