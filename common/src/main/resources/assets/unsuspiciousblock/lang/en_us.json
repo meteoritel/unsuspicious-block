@@ -1,4 +1,8 @@
 {
+  "block.unsuspiciousblock.purrmint": "Purrmint",
+  "block.unsuspiciousblock.purrmint_crop": "Purrmint Crop",
+  "block.unsuspiciousblock.potted_purrmint": "Potted Purrmint",
+  "item.unsuspiciousblock.purrmint_seeds": "Purrmint Seeds",
   "unsuspiciousblock.configgui.panning.spawn_interval_ticks": "Spawn interval (ticks)",
   "unsuspiciousblock.configgui.panning.max_natural_per_dimension": "Natural limit per dimension",
   "unsuspiciousblock.configgui.panning.spacing_blocks": "Minimum spacing (blocks)",

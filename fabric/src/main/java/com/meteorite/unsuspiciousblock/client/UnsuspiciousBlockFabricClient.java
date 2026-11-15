@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client;
 
 import com.meteorite.unsuspiciousblock.client.tooltip.BreakdownPreview;
+import com.meteorite.unsuspiciousblock.core.block.ModBlocks;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.ModTooltipComponents;
 import com.meteorite.unsuspiciousblock.client.keybind.ModKeyBindings;
@@ -23,10 +24,12 @@ import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.TooltipComponentCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
@@ -35,6 +38,8 @@ public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ModClientLifecycle.install(ClientPlayNetworking::send);
+        BlockRenderLayerMap.INSTANCE.putBlocks(RenderType.cutout(),
+                ModBlocks.PURRMINT.get(), ModBlocks.PURRMINT_CROP.get(), ModBlocks.POTTED_PURRMINT.get());
         // 注册按键绑定
         for (var keyMapping : ModKeyBindings.MANIFEST) {
             KeyBindingHelper.registerKeyBinding(keyMapping);

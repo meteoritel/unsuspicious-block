@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.core.bootstrap.Registrar;
 
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
 import java.util.List;
@@ -18,6 +19,9 @@ public final class ModBlocks {
     public static Supplier<Block> UNSUSPICIOUS_GRAVEL;
     public static Supplier<Block> POTTERY_WHEEL;
     public static Supplier<Block> UNFIRED_DECORATED_POT;
+    public static Supplier<Block> PURRMINT;
+    public static Supplier<Block> PURRMINT_CROP;
+    public static Supplier<Block> POTTED_PURRMINT;
 
     private ModBlocks() {
     }
@@ -38,7 +42,16 @@ public final class ModBlocks {
                     block -> POTTERY_WHEEL = block),
             new BlockEntry("unfired_decorated_pot",
                     ModBlocks::createUnfiredDecoratedPot,
-                    block -> UNFIRED_DECORATED_POT = block)
+                    block -> UNFIRED_DECORATED_POT = block),
+            new BlockEntry("purrmint",
+                    ModBlocks::createPurrmint,
+                    block -> PURRMINT = block),
+            new BlockEntry("purrmint_crop",
+                    ModBlocks::createPurrmintCrop,
+                    block -> PURRMINT_CROP = block),
+            new BlockEntry("potted_purrmint",
+                    ModBlocks::createPottedPurrmint,
+                    block -> POTTED_PURRMINT = block)
     );
 
     // 创建不可疑的沙子，基础属性与原版可疑的沙子保持一致
@@ -63,6 +76,23 @@ public final class ModBlocks {
                 .strength(0.6F)
                 // 模型为内缩的非完整方块，避免按完整方块参与光照遮挡
                 .noOcclusion());
+    }
+
+    /** 创建成熟咕噜荆芥，沿用火把花的可放置植物属性。 */
+    public static Block createPurrmint() {
+        return new PurrmintBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER));
+    }
+
+    /** 创建仅在耕地上生长的咕噜荆芥幼苗。 */
+    public static Block createPurrmintCrop() {
+        return new PurrmintCropBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER_CROP));
+    }
+
+    /** 创建与原版花盆交互相连的装饰盆栽。 */
+    // NeoForge 保留此原版构造器作为兼容入口，并单独标记为弃用。
+    @SuppressWarnings({"deprecation", "RedundantSuppression"})
+    public static Block createPottedPurrmint() {
+        return new FlowerPotBlock(PURRMINT.get(), BlockBehaviour.Properties.ofFullCopy(Blocks.POTTED_TORCHFLOWER));
     }
 
     // 遍历清单并交由平台完成注册

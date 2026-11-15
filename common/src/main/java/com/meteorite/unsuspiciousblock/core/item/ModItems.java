@@ -12,6 +12,7 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemNameBlockItem;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.component.ItemContainerContents;
 
@@ -46,6 +47,8 @@ public class ModItems {
     public static BlockItem POTTERY_WHEEL;
     public static UnfiredDecoratedPotItem UNFIRED_DECORATED_POT;
     public static UnfiredDecoratedSherdItem UNFIRED_DECORATED_SHERD;
+    public static BlockItem PURRMINT;
+    public static ItemNameBlockItem PURRMINT_SEEDS;
 
     // 通用标签的命名空间——由 Fabric API 与 NeoForge 各自的数据包提供并填充原版物品
     private static final String COMMON_TAG_NAMESPACE = "c";
@@ -124,6 +127,14 @@ public class ModItems {
                     ModItems::createHandOfCat,
                     item -> HAND_OF_CAT = (HandOfCatItem) item,
                     () -> HAND_OF_CAT, 18, Category.STANDARD),
+            new ItemEntry("purrmint",
+                    ModItems::createPurrmint,
+                    item -> PURRMINT = (BlockItem) item,
+                    () -> PURRMINT, 19, Category.STANDARD),
+            new ItemEntry("purrmint_seeds",
+                    ModItems::createPurrmintSeeds,
+                    item -> PURRMINT_SEEDS = (ItemNameBlockItem) item,
+                    () -> PURRMINT_SEEDS, 20, Category.STANDARD),
             new ItemEntry("copper_pan",
                     ModItems::createCopperPan,
                     item -> COPPER_PAN = (PanItem) item,
@@ -294,6 +305,16 @@ public class ModItems {
     // 创建猫之手实例
     public static HandOfCatItem createHandOfCat() {
         return new HandOfCatItem(new Item.Properties().stacksTo(1).rarity(Rarity.EPIC));
+    }
+
+    /** 创建成熟植株的可放置物品。 */
+    public static BlockItem createPurrmint() {
+        return new BlockItem(ModBlocks.PURRMINT.get(), new Item.Properties());
+    }
+
+    /** 创建使用独立物品名称的幼苗种子。 */
+    public static ItemNameBlockItem createPurrmintSeeds() {
+        return new ItemNameBlockItem(ModBlocks.PURRMINT_CROP.get(), new Item.Properties());
     }
 
     // 遍历清单，调用平台回调完成注册

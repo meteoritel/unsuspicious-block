@@ -1,6 +1,6 @@
 # 方块与物品
 
-> `core/block/`、`core/blockentity/`、`core/item/`、`core/specimen/`、`core/pottery/`、`core/recipe/` 与 `core/inventory/` 包的架构：不可疑方块封存、制陶工作站、可疑解析仪与考古铲、标本箱便携代理、回溯粉与自定义配方。
+> `core/block/`、`core/blockentity/`、`core/item/`、`core/specimen/`、`core/pottery/`、`core/recipe/` 与 `core/inventory/` 包的架构：不可疑方块封存、制陶工作站、可疑解析仪与考古铲、标本箱便携代理、回溯粉、咕噜荆芥与自定义配方。
 > 本文件是上述内容的权威入口。通用清单注册模式见[注册架构](../foundation/registration.md)；淘盘变体与淘洗点系统见[淘洗系统](panning.md)；结构回溯的随机重放细节见[方块与物品机制细节](../internals/blocks-items-details.md)。
 
 ## 1. 代码地图
@@ -12,6 +12,7 @@
 | 不可疑的沙子 / 沙砾 | `core/block/UnsuspiciousBlock` + `core/blockentity/UnsuspiciousBlockEntity` | 可放置的伪装可疑方块，封存玩家放入的物品，具重力与碎裂掉落 |
 | 纹饰陶轮台 | `core/block/PotteryWheelBlock` + `core/blockentity/PotteryWheelBlockEntity` + `core/pottery/PotteryWheelMenu` | 制陶工作站，支持漏斗自动化 |
 | 未烧制陶罐 | `core/block/UnfiredDecoratedPotBlock` + `core/blockentity/UnfiredDecoratedPotBlockEntity` | 携带四面纹饰数据的半成品方块 |
+| 咕噜荆芥 | `core/block/PurrmintCropBlock` + `core/block/PurrmintBlock` | 耕地幼苗与独立成熟植株，盆栽复用 `FlowerPotBlock` |
 | 扫描与容器状态注入 | `ScanStateHost`、`BrushableBlockEntityScanState`、`TrackedContainerLootState`、`ContainerLootTracking`、`DecoratedPotLootState` | 注入原版方块实体与容器的鸭子接口及持久状态（见[Mixin 边界与接线](../foundation/mixin.md)） |
 
 **物品**（统一登记在 `core/item/ModItems.REGISTRY_MANIFEST`）
@@ -132,7 +133,16 @@ flowchart LR
 | 花火粉 | 2 火把花无序合成为 4 花火粉；作燃料可烧炼 `800t`（4 个物品）；与木棍合成 2 火把（**刻意不加入 `minecraft:coals` 标签**，防止被原版配方识别为煤炭而产出 4 个火把） |
 | 考古笔记 | 右键或按 `C` 打开笔记 GUI（数据挂接于玩家存档而非物品自身） |
 
-## 9. 自定义配方序列化器 (`ModRecipeSerializers`)
+## 9. 咕噜荆芥
+
+[`PurrmintCropBlock`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/PurrmintCropBlock.java) 沿用火把花的成熟替换模式：幼苗保留 `age=0/1/2`，最后一步由 `getStateForAge` 返回 [`PurrmintBlock`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/PurrmintBlock.java) 的默认状态。自然生长、骨粉和原版蜜蜂均调用这个入口，成熟形态使用独立方块与 `stage_3` 模型。
+
+- **生长与存活**：种子只种在耕地上；幼苗忽略亮度，保留火把花的随机生长节奏、湿润耕地加速和相邻种植影响。两平台的原版生长速度辅助方法签名不同，因此耕地算法由 `PurrmintCropBlock` 共用。骨粉固定推进一个阶段。
+- **蜜蜂接线**：幼苗加入 `minecraft:crops`，经原版 `minecraft:bee_growables` 进入蜜蜂生长目标；携带花粉且巢有效的蜜蜂按原版行为概率推进一个阶段。
+- **种子来源与掉落**：[`SnifferDiggingLoot`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/injection/SnifferDiggingLoot.java) 提供独立追加池，由两平台的 `SnifferDiggingLootInjection` 接入 `minecraft:gameplay/sniffer_digging`，同名数据包表也追加。原有池保留，咕噜荆芥种子以 `50%` 概率额外掉落。未成熟幼苗破坏返还一个种子；成熟植株掉自身。
+- **盆栽与渲染**：盆栽复用原版放入、取出及破坏交互。Fabric 在客户端入口登记 `cutout`，NeoForge 读取模型中的 `render_type`；运行资源统一使用 `unsuspiciousblock` 命名空间。
+
+## 10. 自定义配方序列化器 (`ModRecipeSerializers`)
 
 [`ModRecipeSerializers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/recipe/ModRecipeSerializers.java) 沿用「清单 + 回调」注册 4 个自定义合成/烧炼序列化器：
 
@@ -140,7 +150,7 @@ flowchart LR
 - **制陶烧炼**：`UnfiredDecoratedPotSmeltingRecipe` 与 `UnfiredDecoratedSherdSmeltingRecipe` 保留独立注册以传递四面纹饰组件数据。
 - **失落书页锻造**：不走此清单，由数据配方 `enchant_book_smithing.json` 与 `SmithingMenuMixin` 协同触发（见[附魔系统](enchantment.md)）。
 
-## 10. 扩展点
+## 11. 扩展点
 
 - **新增物品 / 方块**：按[注册架构](../foundation/registration.md)在 `ModItems` / `ModBlocks` 清单添加一行。
 - **新增便携容器**：实现 `PortableContainer` 接口提供第一层物品流与写回逻辑，`CarriedItems` 自动将其纳入查询范围。
@@ -148,14 +158,14 @@ flowchart LR
 - **新增自定义配方序列化器**：实现 `RecipeSerializer` 并在 `ModRecipeSerializers` 清单登记，同步添加 `data/unsuspiciousblock/recipe/*.json`。
 - **新增淘盘**：新增 `PanProfile` 并在 `ModItems` 选用 `Category.PAN`（见[淘洗系统](panning.md)）。
 
-## 11. 约束与陷阱
+## 12. 约束与陷阱
 
 - **花火粉禁止加入 `minecraft:coals` 标签**：否则会命中原版火把配方，导致火把产出翻倍。
 - **考古铲必须潜行才能破坏可疑方块**：非潜行下仅显示裂纹而不完成破坏或连挖，属防误操作刻意设计。
 - **淘盘 `canHarvest` 校验须三处一致**：起手、持续使用与结算必须共用能力交集判定。
 - **结构回溯不是快照回档且不跨停服续跑**：任务仅驻留内存，停服即取消且已写入区块不回滚；会覆盖玩家建筑并重新产生容器/实体。
 
-## 12. 相关文档
+## 13. 相关文档
 
 - [方块与物品机制细节](../internals/blocks-items-details.md)
 - [注册架构](../foundation/registration.md)

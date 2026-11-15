@@ -1,4 +1,8 @@
 {
+  "block.unsuspiciousblock.purrmint": "咕噜荆芥",
+  "block.unsuspiciousblock.purrmint_crop": "咕噜荆芥幼苗",
+  "block.unsuspiciousblock.potted_purrmint": "咕噜荆芥盆栽",
+  "item.unsuspiciousblock.purrmint_seeds": "咕噜荆芥种子",
   "unsuspiciousblock.configgui.panning.spawn_interval_ticks": "生成尝试间隔（刻）",
   "unsuspiciousblock.configgui.panning.max_natural_per_dimension": "每维度自然生成上限",
   "unsuspiciousblock.configgui.panning.spacing_blocks": "最小间距（格）",

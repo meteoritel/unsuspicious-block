@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.core.bootstrap.UnsuspiciousBlockCommon;
+import com.meteorite.unsuspiciousblock.platform.loot.SnifferDiggingLootInjection;
 
 import com.meteorite.unsuspiciousblock.core.bootstrap.ModServerLifecycle;
 import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
@@ -111,6 +112,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
         // 注册村庄铁匠铺标本箱战利品注入：30% 概率生成 1 个
         VillageWeaponsmithLootInjection.register();
+        SnifferDiggingLootInjection.register();
 
         // 注册 Fabric 端背包存在触发适配器（tick 驱动 diff，下线清理状态）
 
