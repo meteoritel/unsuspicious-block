@@ -28,6 +28,7 @@ import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationO
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.ScenarioAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
@@ -166,7 +167,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         }
         if (conditions != null) {
             UiRect inner = conditions.bounds();
-            UiAtlas.SCENARIO_PANEL.render(graphics, new UiRect(inner.x() - 6, inner.y() - 6, inner.width() + 12, inner.height() + 12));
+            ScenarioAtlas.PANEL.render(graphics, new UiRect(inner.x() - 6, inner.y() - 6, inner.width() + 12, inner.height() + 12));
             conditions.render(graphics, font, pointer);
         }
     }
@@ -379,17 +380,14 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         if (payload instanceof ScenarioPageBuilder.Heading heading) {
             boolean isSection = heading == ScenarioPageBuilder.Heading.SECTION;
             if (isSection) {
-                graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), JournalPalette.SCENARIO_SECTION_FILL);
-                graphics.fill(rect.x(), rect.y(), rect.x() + 2, rect.bottom(), JournalPalette.SCENARIO_ACCENT_BAR);
-                graphics.fill(rect.x() + 2, rect.y(), rect.right(), rect.y() + 1, 0x25FFFFFF);
-                graphics.fill(rect.x() + 2, rect.bottom() - 1, rect.right(), rect.bottom(), 0x18000000);
+                ScenarioAtlas.SECTION.render(graphics, rect);
             }
         } else if (payload instanceof ScenarioBranch) {
             // 为条件树中的候选掉落物与子表图标绘制内凹物品插槽框
             JournalPalette.drawSlot(graphics, rect.x() - 1, rect.y() - 1, Math.max(rect.width(), rect.height()) + 2, selected);
         }
         if (selected && !(payload instanceof ScenarioBranch)) {
-            graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), ScenarioUi.selectionHighlight());
+            ScenarioAtlas.SELECTED.render(graphics, rect);
         }
     }
 

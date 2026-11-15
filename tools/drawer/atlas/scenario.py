@@ -137,6 +137,30 @@ ICONS: dict[tuple[int, int, str], IconSpec] = {
         '..........',
         '..........',
     ),
+    (6, 4, 'PAN_LOCK'): (
+        '...IIII...',
+        '..II..II..',
+        '..II..II..',
+        '.IIIIIIII.',
+        '.IIIIIIII.',
+        '.II..I.II.',
+        '.II..I.II.',
+        '.IIIIIIII.',
+        '..........',
+        '..........',
+    ),
+    (7, 4, 'PAN_UNLOCK'): (
+        '..IIII....',
+        '.II..II...',
+        '.II.......',
+        '.IIIIIIII.',
+        '.IIIIIIII.',
+        '.II..I.II.',
+        '.II..I.II.',
+        '.IIIIIIII.',
+        '..........',
+        '..........',
+    ),
 }
 
 
@@ -195,11 +219,5 @@ def apply(atlas: AtlasBuilder) -> None:
         atlas.paint(label, 128 + idx * 12, 0, 12, 12, lambda c, b=bg, h=hi, k=kind: _paint_status_badge(c, b, h, k))
 
     atlas.paint('UNKNOWN_ITEM', 180, 0, 16, 16, _paint_unknown_item)
-    atlas.paint(
-        'SCENARIO_PANEL', 164, 52, 12, 12,
-        lambda c: c.bevel_rect(0, 0, 12, 12, border='#b49b73', fill='#f2e5c6', top_left='#fff4d9', bottom='#dfcca4'),
-    )
-
-
 if __name__ == '__main__':
     raise SystemExit(run_source_preview('scenario', apply, bg='#F3E7C8'))

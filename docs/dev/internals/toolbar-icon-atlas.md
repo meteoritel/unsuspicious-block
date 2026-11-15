@@ -20,7 +20,9 @@
 | **Zone 1** | `(0, 0)` – `(119, 49)` | `10 x 10 px` 功能与行内图标网格（`12 列 x 5 行`：`u = col * 10`, `v = row * 10`） |
 | **Zone 2** | `(128, 0)` – `(211, 33)` | `12 x 12` 场景计算状态角标（4 态）、`16 x 16` 未知物品、`16 x 16` 猫爪 HUD、3 枚 `16 x 16` 外链图标 |
 | **Zone 3** | `(0, 52)` – `(97, 91)` | `23 x 13` 羊皮纸翻页箭头（常态 / 悬停 / 禁用）与 `24 x 20` 书本左侧阶梯标签底板（管理 / 帮助 各 2 态） |
-| **Zone 4** | `(104, 52)` – `(175, 87)` | `12 x 12` 9-slice 按钮与面板底纹（常规羊皮纸 5 态、铜金强调 4 态、轻量内嵌常态与场景面板底纹） |
+| **Zone 4** | `(104, 52)` – `(199, 87)` | `12 x 12` 9-slice 按钮与通用卡片底纹（常规羊皮纸 5 态、铜金强调 4 态、轻量内嵌常态、指标、插槽与分类卡片） |
+
+场景页、条件分区和合集卡片使用独立的 [`scenario_panels.png`](../../../common/src/main/resources/assets/unsuspiciousblock/textures/gui/scenario_panels.png) 底板图集，由 [`generate_scenario_atlas.py`](../../../tools/drawer/generate_scenario_atlas.py) 生成。该图集按场景功能划分，避免把大面积底板与小图标混排。
 
 ## 3. Zone 1 (`10 x 10` 图标网格映射)
 
@@ -80,7 +82,9 @@
 | 4 | 3 | `POTTERY_DISABLED` | `PotteryWheelScreen` 暗底禁用态闭合锁 |
 | 4 | 4 | `POTTERY_REDSTONE` | `PotteryWheelScreen` 暗底红石启用态图标 |
 | 4 | 5 | `RESET` | 灯箱复位缩放与平移 |
-| 4 | 6–11 | — | 预留槽位 |
+| 4 | 6 | `PAN_LOCK` | 锁定灯箱拖拽平移 |
+| 4 | 7 | `PAN_UNLOCK` | 解锁灯箱拖拽平移 |
+| 4 | 8–11 | — | 预留槽位 |
 
 ## 4. Zone 2 – Zone 4 专项精灵与皮肤映射
 
@@ -100,13 +104,18 @@
   - 拟物内凹物品插槽（`SLOT_INSET` / `SLOT_INSET_HOVER`，`corner = 2`）：`(176 / 188, 64, 12, 12)`。
   - 轻量内嵌按钮（`QUIET_BUTTON_SKIN`，`corner = 2`）：常态 `(104, 76)` 衔接羊皮纸悬停/按压态，供场景下拉标题与 `CopyCoordinateButton` 使用。
   - 欢迎页圆角分类卡片（`CATEGORY_CARD_NORMAL` / `HOVER` / `SELECTED`，`corner = 3`）：`(116 / 128 / 140, 76, 12, 12)`。
-  - 场景条件底板（`SCENARIO_PANEL`，`corner = 3`）：`(164, 52, 12, 12)`。
+  - 场景底板已迁至独立图集，图标图集不再存放场景面板。
+- **场景底板图集**（`scenario_panels.png`，`80 x 16 px`）：
+  - `PANEL` `(0, 0)`：场景页和浮层外壳。
+  - `SECTION` `(16, 0)`：条件树分区标题。
+  - `CARD` / `CARD_HOVER` `(32 / 48, 0)`：合集卡片常态与悬停态。
+  - `SELECTED` `(64, 0)`：条件树焦点与定位提示。
 
 ## 5. 使用与修改约束
 
-- **禁止修改已有槽位坐标**：新增图标仅追加至 `Row 4 (col 6..11)` 或图集空白区，并同步更新 `generate_ui_atlas.py` 与 `UiAtlas.java`。`RESET` 已占用 `Row 4 / col 5`，只用于灯箱复位。
-- **保持独立的大尺寸背景纹理**：书本背景（`archaeology_journal_book.png` `384x256`）、陶轮容器底图（`pottery_wheel_gui.png` `256x256`）、定宽条目条带（`catalog_entry.png`、`log_entry.png`、`bookmark_tab.png`）与标本箱预览（`specimen_box_preview.png`）保持各自独立 PNG。
-- **修改纹理必须经过生成器**：修改图标或皮肤像素时更新 [`tools/drawer/atlas/`](../../../tools/drawer/atlas/) 中对应来源模块并运行 `python tools/drawer/generate_ui_atlas.py`，保证代码与 PNG 同源。
+- **禁止修改已有槽位坐标**：新增图标仅追加至 `Row 4 (col 8..11)` 或图集空白区，并同步更新 `tools/drawer/atlas/` 与 `UiAtlas.java`。`RESET`、`PAN_LOCK` 和 `PAN_UNLOCK` 分别占用 `Row 4 / col 5..7`。
+- **保持独立的功能底图**：书本背景（`archaeology_journal_book.png` `384x256`）、陶轮容器底图（`pottery_wheel_gui.png` `256x256`）、场景底板（`scenario_panels.png`）、定宽条目条带（`catalog_entry.png`、`log_entry.png`、`bookmark_tab.png`）与标本箱预览（`specimen_box_preview.png`）按各自用途维护。
+- **修改纹理必须经过生成器**：修改图标或皮肤像素时更新 [`tools/drawer/atlas/`](../../../tools/drawer/atlas/) 中对应来源模块并运行 `python tools/drawer/generate_ui_atlas.py`；修改场景底板时运行 `python tools/drawer/generate_scenario_atlas.py`，保证代码与 PNG 同源。
 
 ## 6. 相关文档
 

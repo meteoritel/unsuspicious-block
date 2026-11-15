@@ -37,6 +37,16 @@ final class ScenarioExpandedOverlay {
         }
 
         @Override
+        public Component panLock() {
+            return ScenarioSession.text("frame.pan_lock");
+        }
+
+        @Override
+        public Component panUnlock() {
+            return ScenarioSession.text("frame.pan_unlock");
+        }
+
+        @Override
         public Component previous() {
             return text("previous");
         }

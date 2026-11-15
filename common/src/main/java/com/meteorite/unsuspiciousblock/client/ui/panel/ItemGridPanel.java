@@ -20,6 +20,7 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.ScenarioAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
@@ -263,8 +264,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static final int PENDING_COLOR = JournalTextColors.PROB_UNKNOWN;
     private static final int BADGE_COLOR_NORMAL = JournalPalette.ITEM_COUNT_NORMAL;
     private static final int BADGE_COLOR_ABBR = JournalPalette.ITEM_COUNT_ABBR;
-    private static final int TAG_GROUP_BORDER_COLOR = JournalPalette.COLLECTION_BORDER;
-    private static final int TAG_GROUP_BG_COLOR = JournalPalette.COLLECTION_BG;
     private static final int TAG_GROUP_TEXT_COLOR = JournalTextColors.COLLECTION;
     private static final int TAG_GROUP_MEMBERS_PER_PAGE = JournalLayout.GRID_ITEMS_PER_PAGE - 1;
 
@@ -492,10 +491,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                                     TagGroup group, boolean hovered, int scrollTicks) {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
-        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
-                hovered ? JournalPalette.COLLECTION_HOVER : TAG_GROUP_BG_COLOR);
-        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
-        guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
+        (hovered ? ScenarioAtlas.CARD_HOVER : ScenarioAtlas.CARD).render(guiGraphics,
+                new UiRect(cellX, cellY, cellW, cellH));
 
         if (!group.unlocked()) {
             renderLockedCollectionCell(guiGraphics, font, cellX, cellY);
@@ -529,10 +526,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                                       ChildTableEntry child, boolean hovered, int scrollTicks) {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
-        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
-                hovered ? JournalPalette.COLLECTION_HOVER : TAG_GROUP_BG_COLOR);
-        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + 1, TAG_GROUP_BORDER_COLOR);
-        guiGraphics.fill(cellX, cellY + cellH - 1, cellX + cellW, cellY + cellH, TAG_GROUP_BORDER_COLOR);
+        (hovered ? ScenarioAtlas.CARD_HOVER : ScenarioAtlas.CARD).render(guiGraphics,
+                new UiRect(cellX, cellY, cellW, cellH));
         if (!child.unlocked()) {
             renderLockedCollectionCell(guiGraphics, font, cellX, cellY);
             return;
@@ -592,8 +587,8 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                                    boolean hovered, ResourceLocation tagId, int scrollTicks) {
         int cellW = JournalLayout.GRID_CELL_WIDTH;
         int cellH = JournalLayout.GRID_CELL_HEIGHT;
-        guiGraphics.fill(cellX, cellY, cellX + cellW, cellY + cellH,
-                hovered ? JournalPalette.COLLECTION_HOVER : TAG_GROUP_BG_COLOR);
+        (hovered ? ScenarioAtlas.CARD_HOVER : ScenarioAtlas.CARD).render(guiGraphics,
+                new UiRect(cellX, cellY, cellW, cellH));
         UiAtlas.icon(UiAtlas.Icon.BACK).render(guiGraphics,
                 cellX + (cellW - UiAtlas.ICON_SIZE) / 2, cellY + ICON_TOP + 4);
         PanelTextMetrics.Measured tagText = this.metrics.measure(tagId.toString(), font);

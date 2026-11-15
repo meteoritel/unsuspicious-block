@@ -12,7 +12,7 @@
 | `journal/catalog/` | 聚合 `JournalViewModel`、查询状态、工具栏、目录面板与展示投影；根 Screen 提交同批分类/行/选择，模型只计算投影 |
 | `CatalogToolbar` / `LogToolbar` | 维护搜索草稿、防抖输入、排序、过滤与日志批量操作入口 |
 | `CatalogPanel` / `RightPageContainer` | 组装左页目录面板与右页（`INTRO` / `ARCHAEOLOGY` / `LOG` / `SCENARIO`）内容树与侧边书签/翻页控件 |
-| `JournalControls` / `UiAtlas` / `UnsuspiciousUiTheme` | 切分 `ui_atlas.png` 图标与九宫格皮肤、构造侧签/书签/翻页/行热点皮肤，维护羊皮纸与深色两套主题 |
+| `JournalControls` / `UiAtlas` / `ScenarioAtlas` / `UnsuspiciousUiTheme` | 管理图标与控件皮肤图集、场景专用底板图集，构造侧签/书签/翻页/行热点皮肤并维护羊皮纸与深色主题 |
 | `JournalOverlays` | 持有当前打开的场景浮层/灯箱的准备与退出清理回调 |
 | `journal/` / `RightPageContainer` | 类型化捕获与恢复阅读位置，生成持久投影；NBT 编码集中在 `JournalReadingStateCodec` |
 | `support/` | 提供搜索、排序、格式转换、概率显示、本地持久化与网络请求适配 |
@@ -90,9 +90,9 @@
 | `ScenarioConditionOverlay` | 预览原子条件勾选与 Tooltip，提供清除条件、同步自身、参数、应用并计算、仅应用和取消；确认通过会话提交整份草稿 |
 | `ScenarioParamsOverlay` | 编辑幸运数值/滑块、工具和附魔等级；保留条件及固定抽样档位，统一通过会话动作提交 |
 | `ScenarioRecommendationOverlay` | 预览请求目标、分支范围、实际候选与 pathId，并比较条件/参数变更；未发现候选保留未知名称。客户端核对范围、版本、基础输入、签发域与见证归属后接收；应用沿用请求时的草稿版本，失败原因留在浮层。关闭、切表、切输入或内容失效时取消旧辅助交互 |
-| `ScenarioExpandedOverlay` | 为 `UiLightbox` 装配同源条件文档的只读副本，按窗口适配初始缩放；文字和图标区域均可自由拖动，支持滚轮缩放、resize 钳制与 Esc 关闭，保留页内滚动位置 |
+| `ScenarioExpandedOverlay` | 为 `UiLightbox` 装配同源条件文档的只读副本，按窗口适配初始缩放；文字和图标区域均可自由拖动，支持工具栏切换拖拽锁定、滚轮缩放、resize 钳制与 Esc 关闭，保留页内滚动位置 |
 
-所有图标、徽章、九宫格与场景底纹取自 `ui_atlas.png`，分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
+图标、徽章与通用控件皮肤取自 `ui_atlas.png`；场景页、条件分区和合集卡片底纹由 `ScenarioAtlas` 从 `scenario_panels.png` 提供。分区与 UV 见[UI 图标与控件皮肤图集](toolbar-icon-atlas.md)。
 
 ## 6. 阅读状态与本地持久化
 

@@ -4,6 +4,7 @@ import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
@@ -224,7 +225,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     }
 
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
-        UiAtlas.SCENARIO_PANEL.render(graphics, bounds);
+        ScenarioUi.renderPage(graphics, bounds);
         graphics.drawString(font, text("recommend.title"), bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
         scroll.push(graphics);
         try {

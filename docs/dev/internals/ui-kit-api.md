@@ -49,7 +49,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 ### 3.3 文档阅读与业务呈现
 
-场景页由 `ScenarioPageBuilder` 构造逻辑 `UiNode` 与业务动作，`ScenarioDetailPanel` 组合 `UiDocumentView`，通过背景回调识别 Heading payload、绘制分区底纹与键盘选择提示。宿主绘制外边框并保存 offset；折行、滚动条、动作导航、裁剪与鼠标/键盘配对激活归 kit。`ScenarioExpandedOverlay` 只装配业务节点与背景，灯箱持有独立的 `UiDocumentLightboxContent`。
+场景页由 `ScenarioPageBuilder` 构造逻辑 `UiNode` 与业务动作，`ScenarioDetailPanel` 组合 `UiDocumentView`，通过背景回调识别 Heading payload 并绘制分区贴图。宿主绘制外边框并保存 offset；折行、滚动条、动作导航、裁剪与鼠标/键盘配对激活归 kit。`ScenarioExpandedOverlay` 只装配业务节点与背景，灯箱持有独立的 `UiDocumentLightboxContent`；`UiLightbox` 可显示拖拽锁定按钮并将状态同步给内容，锁定时拖动仍取消内容按压但不改变平移。
 
 `UiDocument` 默认单行悬停滚动，reader 显式使用带样式折行。视觉续行共用逻辑父行和动作身份，leading/trailing 图标只出现一次；命中使用实际片段，Frame 使用自身裁剪和变换。`UiDocument.targets()` 提供实际叶子文档、出现路径、payload 与内容/屏幕矩形；`contentClip()` 给出祖先 Frame 裁剪，根外层由 reader 裁剪。出现路径服务当前内容树，跨内容版本的业务身份放入 payload。
 

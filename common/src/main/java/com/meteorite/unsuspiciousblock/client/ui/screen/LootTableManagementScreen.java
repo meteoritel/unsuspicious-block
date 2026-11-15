@@ -17,6 +17,7 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import net.minecraft.client.Minecraft;
@@ -261,7 +262,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         int pHeight = panelHeight();
 
         // 羊皮纸档案台大底板
-        UiAtlas.SCENARIO_PANEL.render(graphics, new UiRect(left, top, pWidth, pHeight));
+        ScenarioUi.renderPage(graphics, new UiRect(left, top, pWidth, pHeight));
         graphics.fill(left + 8, top + 23, left + pWidth - 8, top + 24, JournalPalette.SEPARATOR);
         graphics.fill(left + 8, top + pHeight - 34, left + pWidth - 8, top + pHeight - 33, JournalPalette.SEPARATOR);
 

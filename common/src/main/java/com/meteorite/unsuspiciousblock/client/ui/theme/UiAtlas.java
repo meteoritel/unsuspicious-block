@@ -17,20 +17,30 @@ import java.util.Map;
  * 全模组共享 UI 图标与控件皮肤图集注册表，统一从 {@code textures/gui/ui_atlas.png}（256×128 px）取样。
  */
 public final class UiAtlas {
-    /** 统一 UI 图集资源路径。 */
+    /**
+     * 统一 UI 图集资源路径。
+     */
     public static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/gui/ui_atlas.png");
 
-    /** 图集总宽度（像素）。 */
+    /**
+     * 图集总宽度（像素）。
+     */
     public static final int ATLAS_WIDTH = 256;
 
-    /** 图集总高度（像素）。 */
+    /**
+     * 图集总高度（像素）。
+     */
     public static final int ATLAS_HEIGHT = 128;
 
-    /** Zone 1 常规小图标单元格边长（像素）。 */
+    /**
+     * Zone 1 常规小图标单元格边长（像素）。
+     */
     public static final int ICON_SIZE = 10;
 
-    /** Zone 1（10×10 网格）所有功能图标与行内状态标识的槽位定义。 */
+    /**
+     * Zone 1（10×10 网格）所有功能图标与行内状态标识的槽位定义。
+     */
     public enum Icon {
         SEARCH(0, 0),
         CLOSE(1, 0),
@@ -90,7 +100,9 @@ public final class UiAtlas {
         POTTERY_ENABLED(2, 4),
         POTTERY_DISABLED(3, 4),
         POTTERY_REDSTONE(4, 4),
-        RESET(5, 4);
+        RESET(5, 4),
+        PAN_LOCK(6, 4),
+        PAN_UNLOCK(7, 4);
 
         private final int column;
         private final int row;
@@ -100,18 +112,24 @@ public final class UiAtlas {
             this.row = row;
         }
 
-        /** @return 在 Zone 1 网格中的列号（从 0 起）。 */
+        /**
+         * @return 在 Zone 1 网格中的列号（从 0 起）。
+         */
         public int column() {
             return column;
         }
 
-        /** @return 在 Zone 1 网格中的行号（从 0 起）。 */
+        /**
+         * @return 在 Zone 1 网格中的行号（从 0 起）。
+         */
         public int row() {
             return row;
         }
     }
 
-    /** 书本左侧阶梯标签底板种类。 */
+    /**
+     * 书本左侧阶梯标签底板种类。
+     */
     public enum SideTabKind {
         MANAGEMENT(52),
         HELP(72);
@@ -131,50 +149,70 @@ public final class UiAtlas {
             sprite(164, 0, 12, 12)
     };
 
-    /** 未知/未解锁物品与路径槽位的 16×16 占位图标。 */
+    /**
+     * 未知/未解锁物品与路径槽位的 16×16 占位图标。
+     */
     public static final UiIcon UNKNOWN_ITEM = sprite(180, 0, 16, 16);
 
-    /** 猫之恩惠 HUD 专用可染色中性猫爪图标（16×16）。 */
+    /**
+     * 猫之恩惠 HUD 专用可染色中性猫爪图标（16×16）。
+     */
     public static final UiIcon CAT_FAVOR_HUD = sprite(196, 0, 16, 16);
 
-    /** 欢迎页 GitHub 外链 16×16 像素图标。 */
+    /**
+     * 欢迎页 GitHub 外链 16×16 像素图标。
+     */
     public static final UiIcon EXTERNAL_GITHUB = sprite(128, 18, 16, 16);
 
-    /** 欢迎页 CurseForge 外链 16×16 像素图标。 */
+    /**
+     * 欢迎页 CurseForge 外链 16×16 像素图标。
+     */
     public static final UiIcon EXTERNAL_CURSEFORGE = sprite(144, 18, 16, 16);
 
-    /** 欢迎页 Modrinth 外链 16×16 像素图标。 */
+    /**
+     * 欢迎页 Modrinth 外链 16×16 像素图标。
+     */
     public static final UiIcon EXTERNAL_MODRINTH = sprite(160, 18, 16, 16);
 
-    /** 场景条件框与浮层的统一 9-slice 羊皮纸底板。 */
-    public static final UiNineSlice SCENARIO_PANEL = new UiNineSlice(
-            TEXTURE, 164, 52, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
-
-    /** 通用柔和圆角指标药丸 / 卡片底板（9-slice，12×12，corner=3）。 */
+    /**
+     * 通用柔和圆角指标药丸 / 卡片底板（9-slice，12×12，corner=3）。
+     */
     public static final UiNineSlice STAT_PILL = new UiNineSlice(
             TEXTURE, 152, 64, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    /** 轻量浅底圆角卡片底板（用于空状态、详情底衬，9-slice，12×12，corner=3）。 */
+    /**
+     * 轻量浅底圆角卡片底板（用于空状态、详情底衬，9-slice，12×12，corner=3）。
+     */
     public static final UiNineSlice STAT_PILL_SUBTLE = new UiNineSlice(
             TEXTURE, 164, 64, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    /** 拟物内凹物品插槽底框（9-slice，12×12，corner=2）。 */
+    /**
+     * 拟物内凹物品插槽底框（9-slice，12×12，corner=2）。
+     */
     public static final UiNineSlice SLOT_INSET = new UiNineSlice(
             TEXTURE, 176, 64, 12, 2, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    /** 拟物内凹物品插槽悬停高亮态底框（9-slice，12×12，corner=2）。 */
+    /**
+     * 拟物内凹物品插槽悬停高亮态底框（9-slice，12×12，corner=2）。
+     */
     public static final UiNineSlice SLOT_INSET_HOVER = new UiNineSlice(
             TEXTURE, 188, 64, 12, 2, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    /** 欢迎页分类九宫格圆角卡片常态（9-slice，12×12，corner=3）。 */
+    /**
+     * 欢迎页分类九宫格圆角卡片常态（9-slice，12×12，corner=3）。
+     */
     public static final UiNineSlice CATEGORY_CARD_NORMAL = new UiNineSlice(
             TEXTURE, 116, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    /** 欢迎页分类九宫格圆角卡片悬停态（9-slice，12×12，corner=3）。 */
+    /**
+     * 欢迎页分类九宫格圆角卡片悬停态（9-slice，12×12，corner=3）。
+     */
     public static final UiNineSlice CATEGORY_CARD_HOVER = new UiNineSlice(
             TEXTURE, 128, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    /** 欢迎页分类九宫格圆角卡片选中态（9-slice，12×12，corner=3）。 */
+    /**
+     * 欢迎页分类九宫格圆角卡片选中态（9-slice，12×12，corner=3）。
+     */
     public static final UiNineSlice CATEGORY_CARD_SELECTED = new UiNineSlice(
             TEXTURE, 140, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
@@ -209,30 +247,40 @@ public final class UiAtlas {
             UiTextScheme.PARCHMENT.title(),
             UiTextScheme.PARCHMENT.hint());
 
-    /** 常规羊皮纸按钮 9-slice 皮肤（用于工具栏、目录、返回及一般浮层按钮）。 */
+    /**
+     * 常规羊皮纸按钮 9-slice 皮肤（用于工具栏、目录、返回及一般浮层按钮）。
+     */
     public static final UiControlSkin PARCHMENT_BUTTON_SKIN = new UiSkinImages(
             PARCHMENT_NORMAL, PARCHMENT_HOVER, PARCHMENT_PRESSED,
             PARCHMENT_SELECTED, PARCHMENT_DISABLED, PARCHMENT_HOVER
     ).control(BASE_BODY_SKIN);
 
-    /** 铜金强调按钮 9-slice 皮肤（用于开始模拟、保存并计算等主路径操作）。 */
+    /**
+     * 铜金强调按钮 9-slice 皮肤（用于开始模拟、保存并计算等主路径操作）。
+     */
     public static final UiControlSkin ACCENT_BUTTON_SKIN = new UiSkinImages(
             ACCENT_NORMAL, ACCENT_HOVER, ACCENT_PRESSED,
             ACCENT_HOVER, ACCENT_DISABLED, ACCENT_HOVER
     ).control(BASE_TITLE_SKIN);
 
-    /** 轻量内嵌按钮 9-slice 皮肤（用于页内下拉标题与复制坐标按钮）。 */
+    /**
+     * 轻量内嵌按钮 9-slice 皮肤（用于页内下拉标题与复制坐标按钮）。
+     */
     public static final UiControlSkin QUIET_BUTTON_SKIN = new UiSkinImages(
             QUIET_NORMAL, PARCHMENT_HOVER, PARCHMENT_PRESSED,
             PARCHMENT_SELECTED, PARCHMENT_DISABLED, PARCHMENT_HOVER
     ).control(BASE_BODY_SKIN);
 
-    /** 禁用态羊皮纸按钮 9-slice 皮肤。 */
+    /**
+     * 禁用态羊皮纸按钮 9-slice 皮肤。
+     */
     public static final UiControlSkin PARCHMENT_DISABLED_SKIN = new UiSkinImages(
             PARCHMENT_DISABLED
     ).control(BASE_BODY_SKIN);
 
-    /** 透明只读标签皮肤（用于场景页只读数值与小节标题）。 */
+    /**
+     * 透明只读标签皮肤（用于场景页只读数值与小节标题）。
+     */
     public static final UiControlSkin READOUT_SKIN = new UiControlSkin(
             READOUT_STYLE, UiControlPainter.FILL,
             UiTextScheme.PARCHMENT.body(), UiTextScheme.PARCHMENT.hint());
@@ -255,12 +303,16 @@ public final class UiAtlas {
     private UiAtlas() {
     }
 
-    /** 获取指定 10×10 图集图标。 */
+    /**
+     * 获取指定 10×10 图集图标。
+     */
     public static UiIcon icon(Icon icon) {
         return ICONS.get(icon);
     }
 
-    /** 根据场景计算状态返回对应 12×12 状态角标。 */
+    /**
+     * 根据场景计算状态返回对应 12×12 状态角标。
+     */
     public static UiIcon statusBadge(String status) {
         int slot = switch (status) {
             case "pending", "querying", "retrieving" -> 1;
@@ -271,13 +323,17 @@ public final class UiAtlas {
         return STATUS_BADGES[slot];
     }
 
-    /** 获取右页底部 23×13 翻页箭头精灵。 */
+    /**
+     * 获取右页底部 23×13 翻页箭头精灵。
+     */
     public static UiIcon pageArrow(boolean forward, boolean disabled, boolean highlighted) {
         int index = disabled ? 2 : highlighted ? 1 : 0;
         return forward ? PAGE_NEXT_ARROWS[index] : PAGE_PREV_ARROWS[index];
     }
 
-    /** 获取书本左侧 24×20 阶梯标签底板精灵。 */
+    /**
+     * 获取书本左侧 24×20 阶梯标签底板精灵。
+     */
     public static UiIcon sideTabPlate(SideTabKind kind, boolean highlighted) {
         return SIDE_TAB_PLATES[kind.ordinal()][highlighted ? 1 : 0];
     }

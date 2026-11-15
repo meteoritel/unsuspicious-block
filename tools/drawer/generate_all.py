@@ -8,6 +8,7 @@ from generate_book_texture import SPEC as BOOK_SPEC
 from generate_bookmark_texture import SPEC as BOOKMARK_SPEC
 from generate_lantern_pet_texture import SPEC as LANTERN_PET_SPEC
 from generate_log_entry_texture import SPEC as LOG_ENTRY_SPEC
+from generate_scenario_atlas import SPEC as SCENARIO_ATLAS_SPEC
 from generate_ui_atlas import SPEC as UI_ATLAS_SPEC
 
 SPECS = (
@@ -15,6 +16,7 @@ SPECS = (
     BOOK_SPEC,
     BOOKMARK_SPEC,
     LOG_ENTRY_SPEC,
+    SCENARIO_ATLAS_SPEC,
     LANTERN_PET_SPEC,
 )
 

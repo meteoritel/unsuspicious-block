@@ -35,17 +35,8 @@ public final class JournalPalette {
     public static final int NOTE_BADGE_HOVER_BG = 0x60A08060;
     public static final int SELECTED_BAR = 0xC07B3E18;
 
-    // —— 子表 / 物品标签合集卡片 ——
-    public static final int COLLECTION_BG = 0x186B7D46;
-    public static final int COLLECTION_HOVER = 0x306B7D46;
-    public static final int COLLECTION_BORDER = 0x806B7D46;
-
     // —— 搜索未命中暖色淡化遮罩 ——
     public static final int DIM_MASK = 0x709C8B74;
-
-    // —— 场景文档连线与标题底纹 ——
-    public static final int SCENARIO_SECTION_FILL = 0x258B6914;
-    public static final int SCENARIO_ACCENT_BAR = 0xFF8B6914;
 
     // —— 物品插槽与药丸指标底纹 ——
     public static final int SLOT_BG = 0x20000000;
