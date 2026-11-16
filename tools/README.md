@@ -1,6 +1,6 @@
 # 仓库工具
 
-`tools/` 统一收纳仓库全部工程工具——包括源码与发布校验、程序化纹理绘制架构与生成器、以及运行时性能与存档诊断脚本。工具统一基于 Python 3.12+ 与 Git（其中 `drawer/` 额外依赖 Pillow），默认从自身位置向上定位仓库根目录，中文诊断输出统一使用 UTF-8。
+`tools/` 统一收纳源码与发布校验、纹理生成、运行诊断和 wiki 配方卡片导出。命令入口统一基于 Python 3.12+ 与 Git（`drawer/` 额外依赖 Pillow，`recipe_cards/` 使用工具专属 Java/JEI 插件），默认从自身位置向上定位仓库根目录，中文诊断输出统一使用 UTF-8。
 
 ## 目录分包与依赖架构
 
@@ -11,6 +11,7 @@
 | [`drawer/`](drawer/) | 程序化像素艺术与 UI 纹理生成框架及脚本 | 基于 [`drawlib/`](drawer/drawlib/) 封装画布、色板、ASCII 字形、九宫格、防重叠图集与预览 |
 | [`diagnostics/`](diagnostics/) | 游戏运行期日志性能分析与存档检验 | 读取指定或最新测试日志与 `.dat` 缓存，只读源存档、仅向显式路径输出报告 |
 | [`probes/`](probes/README.md) | NeoForge 开发阶段核心探针与专项巡检模板 | 本地命令入口；独立存档、AutoJS 短调用、真实客户端与帧末 PNG（含 [`inspect_tooltips.py`](probes/inspect_tooltips.py) 纯 Tooltip 巡检） |
+| [`recipe_cards/`](recipe_cards/README.md) | NeoForge JEI 配方卡片导出 PNG，供 wiki Markdown 排版 | JS 自动筛选、独立 Java 插件帧末绘制；主 Mod 发布物保持隔离 |
 
 ```mermaid
 flowchart LR
@@ -18,6 +19,8 @@ flowchart LR
     DR["drawer/ (贴图生成与 --check)"] --> DL["drawer/drawlib/"]
     DG["diagnostics/ (日志与存档诊断)"] --> TL["toolslib/ (仓库定位与 CLI)"]
     PR["probes/ (本地开发探针)"] --> TL
+    RC["recipe_cards/ (wiki 配方 PNG)"] --> TL
+    RC --> AT["probes/probelib/autojs.py (HTTP 传输)"]
     CL --> TL
     DL --> TL
 ```

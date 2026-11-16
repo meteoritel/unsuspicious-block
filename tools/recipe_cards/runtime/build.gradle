@@ -1,0 +1,40 @@
+import groovy.json.JsonOutput
+
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '2.0.49-beta'
+}
+
+def host = new Properties()
+file('../../../gradle.properties').withInputStream { host.load(it) }
+group = 'com.meteorite.tools'
+version = '0.1.0'
+base { archivesName = 'usb-recipe-cards-neoforge' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(host.java_version as int)
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.blamejared.com' }
+}
+neoForge { version = host.neoforge_version }
+dependencies {
+    compileOnly "mezz.jei:jei-${host.minecraft_version}-neoforge-api:${host.jei_version}"
+}
+processResources {
+    def metadata = [version: project.version, minecraft: host.minecraft_version,
+                    neoforge: host.neoforge_version, jei: host.jei_version]
+    inputs.properties metadata
+    filesMatching('META-INF/neoforge.mods.toml') { expand metadata }
+}
+
+tasks.register('writeToolArtifact') {
+    dependsOn 'build'
+    doLast {
+        def target = layout.buildDirectory.file('artifact.json').get().asFile
+        target.text = JsonOutput.prettyPrint(JsonOutput.toJson([
+                jar: tasks.named('jar').get().archiveFile.get().asFile.absolutePath,
+                minecraft: host.minecraft_version, neoforge: host.neoforge_version,
+                jei: host.jei_version])) + '\n'
+    }
+}

@@ -1,0 +1,28 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+
+[[mods]]
+modId="usb_recipe_cards"
+version="${version}"
+displayName="Unsuspicious Block Recipe Cards"
+description='''Client-side JEI recipe PNG export bridge for repository tools.'''
+
+[[dependencies.usb_recipe_cards]]
+modId="minecraft"
+type="required"
+versionRange="[${minecraft}]"
+side="CLIENT"
+
+[[dependencies.usb_recipe_cards]]
+modId="neoforge"
+type="required"
+versionRange="[${neoforge},21.2)"
+side="CLIENT"
+
+[[dependencies.usb_recipe_cards]]
+modId="jei"
+type="required"
+versionRange="[${jei}]"
+ordering="AFTER"
+side="CLIENT"
