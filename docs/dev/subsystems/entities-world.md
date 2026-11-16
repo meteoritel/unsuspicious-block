@@ -1,6 +1,6 @@
 # 实体与 AI
 
-> `core/entity/` 与 `core/world/` 包的实体架构：猫国灵体基类与三种职业实体、灵体 AI 框架、灵魂提灯宠物、自然骨块追踪及猫之手结构。
+> `core/entity/` 与 `core/world/` 包的实体架构：猫国灵体、灵魂提灯宠物、区域光环与驱避、自然骨块追踪及猫之手结构。
 > 本文件是上述实体的权威入口。淘洗点实体 `ShimmerEntity` 归属[淘洗系统](panning.md)；`core/world/` 下属笔记与战利品的持久化类仅在此作包索引，机制权威见对应子系统文档。
 
 ## 1. 代码地图
@@ -11,6 +11,7 @@
 | 其他实体 | `core/entity/LanternPet.java`（独立宠物）；`WaterShimmerEntity` / `GlimmerEntity` / `ShimmerEntity`（见[淘洗系统](panning.md)） |
 | 灵体 AI | `core/entity/ai/spiritcat/`：`SpiritRunMode`、`SpiritCatRole`、`SpiritMovementState`、`SpiritFlightController`、各职业 `*Phase`、`MessengerCatBehavior`、`MorningGiftBehavior`、`MessengerCatGiftGoal`、`MessengerCatPositioning` |
 | 宠物 AI | `core/entity/ai/lantern/`：`LanternPetFollowSoulCarrierGoal`、`LanternPetWanderGoal` |
+| 区域光环与驱避 | `core/world/aura/`：`BlockAuras`、`BlockAuraField`、`AuraEffect`；`core/entity/ai/aura/`：`AuraRepulsion`、`AuraMovement` |
 | 注册 | `core/entity/ModEntities.java`（`REGISTRY_MANIFEST` 清单见[注册架构](../foundation/registration.md)）、`core/entity/EntityRegistrar.java` |
 | 自然骨块追踪 | `core/world/NaturalBoneBlockTracker.java`（静态门面）、`platform/services/IBoneBlockTracker.java`（SPI） |
 | 世界结构与生成 | `data/unsuspiciousblock/structure/hand_of_cat_cache.nbt`、`worldgen/{structure,template_pool}/hand_of_cat_cache.json`、`tags/worldgen/biome/has_structure/` |
@@ -18,6 +19,7 @@
 | 网络 | 无专属 Payload（灵体不保存、不跨会话同步，运行态走 `SynchedEntityData`） |
 | Mixin | `StructureTemplateMixin`（结构生成骨块扫描）；Fabric 骨块追踪使用 `platform/mixin/chunk/{ChunkAccess,ChunkSerializer,LevelChunk}Mixin` |
 | 平台差异 | 骨块追踪：Fabric 使用 Mixin + 区块事件；NeoForge 使用 `DataAttachment`（`NeoForgeBoneBlockTracker`） |
+| 光环平台接入 | `platform/world/FabricAuraEvents`、`NeoForgeAuraEvents` 接入装卸；目标写入分别使用 Fabric Mixin 与 NeoForge `LivingChangeTargetEvent`，NeoForge 扩展液体跳跃由平台 Mixin 补齐 |
 
 ## 2. 核心数据流
 
@@ -109,20 +111,30 @@ data/unsuspiciousblock/
 
 当前测试与获取需使用 `/place structure` 手动放置；结构生成时同样触发 `NaturalBoneBlockTracker.scanBoundingBox` 标记内部骨块，生物群系范围受 `tags/worldgen/biome/has_structure/` 控制。
 
-## 9. 扩展点
+## 9. 区域光环
+
+[`BlockAuras`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/aura/BlockAuras.java) 拥有服务端世界与光环场的关联；[`BlockAuraField`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/aura/BlockAuraField.java) 提供位置能力与移动线段查询，集中处理范围、重叠、缓存和卸载。调用限定服务端主线程，客户端与服务端专用逻辑分离。
+
+[`AuraRepulsion`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/ai/aura/AuraRepulsion.java) 统一判断苦力怕与幻翼的目标、目的地和通行条件。地面 Adapter 过滤游走候选、路径目的地和 A* 候选边，提交 waypoint 时复核；幻翼 Adapter 对接原版盘旋选点和俯冲目标。[`AuraMovement`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/entity/ai/aura/AuraMovement.java) 在地面推进、跳跃与幻翼控制器写入速度时复核，只撤回或调整本次 AI 贡献。携带速度继续参与原版物理处理，惯性与外力可将怪物带入区域。幻翼备用盘旋目标保留原版控制器可执行的水平距离。
+
+目标受保护时清空追踪、旧路径和待执行移动。苦力怕分别在自然引信推进前及 `SwellGoal` 缓存目标消费前检查；幻翼俯冲读取目标时复核，随后由原版 Goal 停止逻辑恢复盘旋。幻翼自然生成的玩家筛选同时消费脚部光环与现有猫之威慑，任一成立即跳过该玩家；其他区外玩家保持原版生成机会。
+
+源方块接线见[方块与物品](blocks-items.md)的「咕噜荆芥」。空间算法、性能口径与效果扩展方式见[光环场内部机制](../internals/aura-field.md)。
+
+## 10. 扩展点
 
 - **新增灵体职业**：继承 `SpiritCat` 并编写职责 AI → 在 `ModEntities.REGISTRY_MANIFEST` 注册（见[注册架构](../foundation/registration.md)）→ 按需在 `SpiritCatRole` 与 `SpiritCatDebugRegistry` 登记 → 在 `ModEntityRenderers` 与 `ModModelLayers` 注册渲染器。
 - **新增世界结构**：在 `data/unsuspiciousblock/worldgen/` 与 `structure/` 添加 JSON/NBT 并配置生物群系标签；若需开启自然生成则补充 `structure_set`。
 - **调整灵体时长**：修改服务端配置 `ISpiritCatConfig`（见[配置与第三方联动](../foundation/config-and-integrations.md)）。
 
-## 10. 约束与陷阱
+## 11. 约束与陷阱
 
 - **灵体不随世界存档保存**：`shouldBeSaved` 返回 `false`，调试时请区分实体的持久性；`PREVIEW` 灵体不会运行 AI 或自然消失。
 - **追击低处目标的职业需关闭 `clampToSpawnHeight`**：否则灵体会卡在初始召唤高度无法下潜追敌。
 - **活跃灵体槽位 (`ActiveSpiritSlot`) 的所有权语义**：玩家分别按 `SpiritCatRole` 持有信使与剑士槽位（仅保存 UUID，重生与重新加载时重置），商人槽位保存在当前 `ServerLevel` 的 `MerchantCatSpawnData` 中；仅当实体成功加入世界后才占槽，释放旧 UUID 时不误删新占用者。
 - **骨块自然标记必须用完即删 (`consumeNatural`)**：无论随机掉落是否命中均须消耗标记，且玩家或机器后放的骨块绝不触发化石猎手。
 
-## 11. 相关文档
+## 12. 相关文档
 
 - [实体与 AI 机制细节](../internals/entities-world-details.md)
 - [猫族关系系统](cat-favor.md)

@@ -30,6 +30,7 @@ Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工�
 7. [标本箱](zh-Specimen-Box)
 8. [纹饰陶轮台](zh-Pottery-Wheel)
 9. [不可疑方块](zh-Unsuspicious-Blocks)
+10. [咕噜荆芥](zh-Purrmint)
 
 ## 支持环境
 

@@ -13,6 +13,7 @@
 - [Specimen Box](en-Specimen-Box)
 - [Pottery Wheel](en-Pottery-Wheel)
 - [Unsuspicious Blocks](en-Unsuspicious-Blocks)
+- [Purrmint](en-Purrmint)
 - [Compatibility and Settings](en-Compatibility-and-Settings)
 - [FAQ](en-FAQ)
 
@@ -27,6 +28,7 @@
 - [标本箱](zh-Specimen-Box)
 - [纹饰陶轮台](zh-Pottery-Wheel)
 - [不可疑方块](zh-Unsuspicious-Blocks)
+- [咕噜荆芥](zh-Purrmint)
 - [联动与服务器设置](zh-Compatibility-and-Settings)
 - [常见问题](zh-FAQ)
 

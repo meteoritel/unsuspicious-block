@@ -30,6 +30,7 @@ Unsuspicious Block adds more complete exploration tools and documentation system
 7. [Specimen Box](en-Specimen-Box)
 8. [Pottery Wheel](en-Pottery-Wheel)
 9. [Unsuspicious Blocks](en-Unsuspicious-Blocks)
+10. [Purrmint](en-Purrmint)
 
 ## Supported Environments
 

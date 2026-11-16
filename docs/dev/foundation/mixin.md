@@ -8,6 +8,7 @@ Mixin 仅用于补充原版事件缺口、向原版类附加持久化/瞬态状�
 |---|---|
 | [common 公共配置](../../../common/src/main/resources/unsuspiciousblock.mixins.json) | 双端共用的状态附加、战利品追踪与模拟条件捕获 |
 | [Fabric 配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.mixins.json) | 补齐 Fabric 原生事件缺失的平台接入 |
+| [NeoForge 配置](../../../neoforge/src/main/resources/unsuspiciousblock.neoforge.mixins.json) | 补齐 NeoForge 扩展液体跳跃的主动推进接入 |
 | [Lootr 兼容配置](../../../common/src/main/resources/unsuspiciousblock.lootr.mixins.json) | 随 `lootr_compat_*` 构建开关及 Lootr 安装条件启用的容器追踪 |
 | [common 客户端配置](../../../common/src/main/resources/unsuspiciousblock.client.mixins.json) | `client.mixin` 包下的跨平台客户端注入 |
 | [Fabric 客户端配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.client.mixins.json) | `client.mixin.fabric` 包下的 Fabric 专用客户端接入 |
@@ -23,6 +24,7 @@ Lootr 配置的 `requiredMods` 与元数据联动由 `multiloader-common.gradle`
 | 玩家与容器状态 | 附加持久化或瞬态字段，桥接 NBT 读写与宿主回调 | [考古笔记系统](../subsystems/journal.md)、[猫族关系系统](../subsystems/cat-favor.md)、[方块与物品](../subsystems/blocks-items.md) |
 | 战利品追踪 | 捕获刷拭、容器打开、钓鱼收杆与嵌套表调用边界 | [战利品追踪核心数据流](../internals/journal-tracking.md) |
 | 条件与函数模拟 | 将条件求值与函数执行捕获转交当前线程的模拟作用域 | [战利品表机制细节](../internals/loottable-mechanics.md)、[战利品表函数与展示规则](../internals/loottable-functions-and-display.md) |
+| 区域驱避 | 接入索敌、生成玩家筛选、路径候选、AI 推进写入和原版缓存动作 | [实体与 AI](../subsystems/entities-world.md)的「区域光环」 |
 | 客户端表现 | 读取受保护界面字段，或转交附魔预览、动态语言与淘盘动画 | [客户端与 GUI](../subsystems/client-ui.md) |
 | Fabric 专用补齐 | 补齐铁砧修复、刷拭掉落、剪羊毛、骨块追踪与第一人称手部动画 | [实体与 AI](../subsystems/entities-world.md)、[附魔系统](../subsystems/enchantment.md)、[淘洗系统](../subsystems/panning.md) |
 
@@ -65,7 +67,7 @@ public abstract class AnvilMenuMixin {
 1. **确定包归属**：
    - `common` 公共注入 → `core/mixin/<子系统>/`
    - `common` 客户端注入 → `client/mixin/`
-   - Fabric 公共注入 → `platform/mixin/`；Fabric 客户端 → `client/mixin/fabric/`
+   - 平台公共注入 → 对应平台模块的 `platform/mixin/`；Fabric 客户端 → `client/mixin/fabric/`
    - Lootr 兼容注入 → `core/mixin/compat/lootr/`
 2. **编写薄入口**：只负责捕获时机与整理参数，随即转交普通业务类（如 `CatFavorManager`、`PanningAnimation`、`LootSimulationScope`、`FunctionTraceSession`）。
 3. **登记配置文件**：添加到对应 JSON 的 `mixins` 或 `client` 数组，保持配置 `package` 限定在专属 Mixin 包下。

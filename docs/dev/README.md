@@ -32,6 +32,7 @@
 | 新增附魔 / 附魔效果 | [附魔系统](subsystems/enchantment.md) |
 | 改猫族羁绊行为 / 新增恩惠能力 | [猫族关系系统](subsystems/cat-favor.md) |
 | 改灵体猫 AI / 灯笼宠物 / 骨块追踪 | [实体与 AI](subsystems/entities-world.md) |
+| 改区域光环 / 怪物驱避与绕行 | [实体与 AI](subsystems/entities-world.md)的「区域光环」 |
 | 改淘洗生成 / 结算 / 客户端表现 | [淘洗系统](subsystems/panning.md) |
 | 改可疑方块 / 陶轮 / 标本箱 / 回溯粉 / 花火粉 / 便携容器 / 自定义配方 | [方块与物品](subsystems/blocks-items.md) |
 | 查图标图集槽位与 UV | [UI 图标与控件皮肤图集](internals/toolbar-icon-atlas.md) |

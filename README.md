@@ -36,6 +36,8 @@ Fabric 版本需要 [Fabric API](https://modrinth.com/mod/fabric-api)。NeoForge
 - **[纹饰陶轮台](https://github.com/meteoritel/unsuspicious-block/wiki/Pottery-Wheel)**：复制纹饰陶片、制作纹饰陶罐，并支持漏斗自动化。
 - **[不可疑方块](https://github.com/meteoritel/unsuspicious-block/wiki/Unsuspicious-Blocks)**：把物品封存在伪装成可疑方块的沙子或沙砾中——拿去整蛊你的朋友。
 
+- **[咕噜荆芥](docs/wiki/zh-Purrmint.md)**：成熟植株与盆栽提供穿墙的立方体光环，使苦力怕与幻翼避开区域及其中的目标。
+
 ## 文档
 
 - **[玩家 Wiki](https://github.com/meteoritel/unsuspicious-block/wiki)**：安装说明、快速上手、各系统的详细玩法、可选联动与 FAQ。

@@ -1,8 +1,10 @@
 package com.meteorite.unsuspiciousblock.core.block;
 
+import com.meteorite.unsuspiciousblock.core.world.aura.BlockAuras;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.BushBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -23,6 +25,20 @@ public class PurrmintBlock extends BushBlock {
     @Override
     public @NotNull MapCodec<PurrmintBlock> codec() {
         return CODEC;
+    }
+
+    @Override
+    protected void onPlace(@NotNull BlockState state, @NotNull Level level, @NotNull BlockPos pos,
+                           @NotNull BlockState previous, boolean isMoving) {
+        super.onPlace(state, level, pos, previous, isMoving);
+        BlockAuras.updateSource(level, pos, state);
+    }
+
+    @Override
+    protected void onRemove(@NotNull BlockState state, @NotNull Level level, @NotNull BlockPos pos,
+                            @NotNull BlockState replacement, boolean isMoving) {
+        super.onRemove(state, level, pos, replacement, isMoving);
+        BlockAuras.updateSource(level, pos, replacement);
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock;
 
 import com.meteorite.unsuspiciousblock.core.bootstrap.UnsuspiciousBlockCommon;
 import com.meteorite.unsuspiciousblock.platform.loot.SnifferDiggingLootInjection;
+import com.meteorite.unsuspiciousblock.platform.world.FabricAuraEvents;
 
 import com.meteorite.unsuspiciousblock.core.bootstrap.ModServerLifecycle;
 import com.meteorite.unsuspiciousblock.core.bootstrap.ModContent;
@@ -88,6 +89,7 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        FabricAuraEvents.register();
 
         BiomeModifications.addFeature(BiomeSelectors.tag(BiomeTags.IS_RIVER),
                 GenerationStep.Decoration.VEGETAL_DECORATION, ModFeatures.RIVER_SHIMMER);

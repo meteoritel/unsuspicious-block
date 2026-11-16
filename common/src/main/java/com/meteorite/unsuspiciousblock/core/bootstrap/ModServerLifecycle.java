@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.core.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.core.world.StructureRewindService;
+import com.meteorite.unsuspiciousblock.core.world.aura.BlockAuras;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,11 +32,12 @@ public final class ModServerLifecycle {
             StructureRewindService::tick, StructureRewindService::stop);
     private static final Entry BONE_BREAKS = new Entry("bone-breaks", null, null,
             server -> NaturalBoneBlockTracker.clearPendingPlayerBreaks());
+    private static final Entry BLOCK_AURAS = new Entry("block-auras", null, null, BlockAuras::stop);
 
     private static final List<Entry> START = List.of(CONFIG, PLAYERS, WORKER, CATALOG);
     private static final List<Entry> TICK = List.of(PLAYERS, CONFIG, WORKER, MERCHANT, SHIMMER, REWIND);
     // 玩家落盘仍需 worker、目录与配置可用，不能直接逆序释放。
-    private static final List<Entry> STOP = List.of(PLAYERS, WORKER, CATALOG, CONFIG, BONE_BREAKS, SHIMMER, REWIND);
+    private static final List<Entry> STOP = List.of(PLAYERS, WORKER, CATALOG, CONFIG, BONE_BREAKS, SHIMMER, REWIND, BLOCK_AURAS);
 
     private ModServerLifecycle() {
     }

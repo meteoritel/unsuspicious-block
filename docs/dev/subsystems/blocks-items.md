@@ -12,7 +12,7 @@
 | 不可疑的沙子 / 沙砾 | `core/block/UnsuspiciousBlock` + `core/blockentity/UnsuspiciousBlockEntity` | 可放置的伪装可疑方块，封存玩家放入的物品，具重力与碎裂掉落 |
 | 纹饰陶轮台 | `core/block/PotteryWheelBlock` + `core/blockentity/PotteryWheelBlockEntity` + `core/pottery/PotteryWheelMenu` | 制陶工作站，支持漏斗自动化 |
 | 未烧制陶罐 | `core/block/UnfiredDecoratedPotBlock` + `core/blockentity/UnfiredDecoratedPotBlockEntity` | 携带四面纹饰数据的半成品方块 |
-| 咕噜荆芥 | `core/block/PurrmintCropBlock` + `core/block/PurrmintBlock` | 耕地幼苗与独立成熟植株，盆栽复用 `FlowerPotBlock` |
+| 咕噜荆芥 | `core/block/PurrmintCropBlock`、`PurrmintBlock`、`PottedPurrmintBlock` | 耕地幼苗、独立成熟植株及沿用原版花盆交互的光环盆栽 |
 | 扫描与容器状态注入 | `ScanStateHost`、`BrushableBlockEntityScanState`、`TrackedContainerLootState`、`ContainerLootTracking`、`DecoratedPotLootState` | 注入原版方块实体与容器的鸭子接口及持久状态（见[Mixin 边界与接线](../foundation/mixin.md)） |
 
 **物品**（统一登记在 `core/item/ModItems.REGISTRY_MANIFEST`）
@@ -140,7 +140,8 @@ flowchart LR
 - **生长与存活**：种子只种在耕地上；幼苗忽略亮度，保留火把花的随机生长节奏、湿润耕地加速和相邻种植影响。两平台的原版生长速度辅助方法签名不同，因此耕地算法由 `PurrmintCropBlock` 共用。骨粉固定推进一个阶段。
 - **蜜蜂接线**：幼苗加入 `minecraft:crops`，经原版 `minecraft:bee_growables` 进入蜜蜂生长目标；携带花粉且巢有效的蜜蜂按原版行为概率推进一个阶段。
 - **种子来源与掉落**：[`SnifferDiggingLoot`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/injection/SnifferDiggingLoot.java) 提供独立追加池，由两平台的 `SnifferDiggingLootInjection` 接入 `minecraft:gameplay/sniffer_digging`，同名数据包表也追加。原有池保留，咕噜荆芥种子以 `50%` 概率额外掉落。未成熟幼苗破坏返还一个种子；成熟植株掉自身。
-- **盆栽与渲染**：盆栽复用原版放入、取出及破坏交互。Fabric 在客户端入口登记 `cutout`，NeoForge 读取模型中的 `render_type`；运行资源统一使用 `unsuspiciousblock` 命名空间。
+- **盆栽与渲染**：[`PottedPurrmintBlock`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/PottedPurrmintBlock.java) 继承原版 `FlowerPotBlock`，保留放入、取出及破坏交互。Fabric 在客户端入口登记 `cutout`，NeoForge 读取模型中的 `render_type`；运行资源统一使用 `unsuspiciousblock` 命名空间。
+- **光环源生命周期**：成熟植株和盆栽通过服务端 `onPlace` / `onRemove` 向 `BlockAuras` 登记实际新状态，幼苗不登记。两平台区块加载恢复存档中的源，卸载移除跨区块覆盖，世界及服务器停止释放瞬态索引。空间查询与怪物驱避见[实体与 AI](entities-world.md)的「区域光环」。
 
 ## 10. 自定义配方序列化器 (`ModRecipeSerializers`)
 

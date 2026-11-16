@@ -36,6 +36,8 @@ The Fabric build requires [Fabric API](https://modrinth.com/mod/fabric-api). The
 - **[Decorated Pottery Wheel](https://github.com/meteoritel/unsuspicious-block/wiki/Pottery-Wheel)**: Duplicates decorated sherds, crafts decorated pots, and supports hopper automation.
 - **[Unsuspicious Blocks](https://github.com/meteoritel/unsuspicious-block/wiki/Unsuspicious-Blocks)**: Seal items inside sand or gravel disguised as suspicious blocks -- perfect for pranking your friends.
 
+- **[Purrmint](docs/wiki/en-Purrmint.md)**: Mature plants and potted Purrmint provide a cubic aura through walls, causing creepers and phantoms to avoid the area and targets within it.
+
 ## Documentation
 
 - **[Player Wiki](https://github.com/meteoritel/unsuspicious-block/wiki)**: Installation, getting started, detailed mechanics for each system, optional integrations, and FAQ.

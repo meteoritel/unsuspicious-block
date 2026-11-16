@@ -4,7 +4,6 @@ import com.meteorite.unsuspiciousblock.core.bootstrap.Registrar;
 
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
 import java.util.List;
@@ -88,11 +87,9 @@ public final class ModBlocks {
         return new PurrmintCropBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER_CROP));
     }
 
-    /** 创建与原版花盆交互相连的装饰盆栽。 */
-    // NeoForge 保留此原版构造器作为兼容入口，并单独标记为弃用。
-    @SuppressWarnings({"deprecation", "RedundantSuppression"})
+    /** 创建沿用原版花盆交互的光环盆栽。 */
     public static Block createPottedPurrmint() {
-        return new FlowerPotBlock(PURRMINT.get(), BlockBehaviour.Properties.ofFullCopy(Blocks.POTTED_TORCHFLOWER));
+        return new PottedPurrmintBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.POTTED_TORCHFLOWER));
     }
 
     // 遍历清单并交由平台完成注册
