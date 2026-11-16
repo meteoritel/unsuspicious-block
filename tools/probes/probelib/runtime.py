@@ -55,6 +55,31 @@ def read_artifact(path: Path) -> dict:
     return host
 
 
+def read_recipe_card_artifact(path: Path, host: dict) -> dict:
+    """读取并校验工具专属产物，防止探针加载错误版本的客户端 Mod。"""
+    try:
+        artifact = json.loads(path.read_text(encoding='utf-8'))
+    except FileNotFoundError as error:
+        raise ProbeError(f'配方卡片工具产物清单不存在：{path}') from error
+    if not isinstance(artifact, dict) or any(not isinstance(artifact.get(key), str) or not artifact[key]
+                                            for key in ('jar', 'minecraft', 'neoforge', 'jei')):
+        raise ProbeError('配方卡片产物 manifest 需要 jar、minecraft、neoforge、jei 字符串')
+    expected_jei = None
+    for line in (Path(__file__).resolve().parents[3] / 'gradle.properties').read_text(encoding='utf-8').splitlines():
+        if line.startswith('jei_version='):
+            expected_jei = line.split('=', 1)[1].strip()
+            break
+    if (artifact['minecraft'], artifact['neoforge']) != (host['minecraft'], host['neoforge']) \
+            or (expected_jei is not None and artifact['jei'] != expected_jei):
+        raise ProbeError('配方卡片工具与宿主 Minecraft、NeoForge 或 JEI 版本不一致')
+    jar = Path(artifact['jar']).resolve(strict=True)
+    with zipfile.ZipFile(jar) as archive:
+        metadata = tomllib.loads(archive.read('META-INF/neoforge.mods.toml').decode('utf-8'))
+        if 'usb_recipe_cards' not in {entry['modId'] for entry in metadata.get('mods', [])}:
+            raise ProbeError(f'配方卡片产物缺少 usb_recipe_cards：{jar}')
+    return dict(artifact, jar=str(jar), sha256=digest(jar))
+
+
 def gradle(root: Path, arguments: list[str], log: Path):
     command = [str(root / ('gradlew.bat' if os.name == 'nt' else 'gradlew')), *arguments, '--console=plain']
     with log.open('w', encoding='utf-8') as output:
@@ -65,7 +90,7 @@ def gradle(root: Path, arguments: list[str], log: Path):
 
 
 class Runtime:
-    def __init__(self, root: Path, directory: Path, config: dict):
+    def __init__(self, root: Path, directory: Path, config: dict, recipe_cards: dict | None = None):
         self.root, self.directory, self.config = root, directory, config
         self.processes = {}
         self.outputs = {}
@@ -74,8 +99,10 @@ class Runtime:
         self.manifest = {}
         self.history = []
         self.desktop = None
+        self.recipe_cards = recipe_cards
+        self.recipe_card_artifact = None
 
-    def prepare(self, artifact: Path | None):
+    def prepare(self, artifact: Path | None, recipe_card_artifact: Path | None = None):
         if artifact is None:
             gradle(self.root, ['build', 'writeProbeArtifact'], self.directory / 'build.log')
             artifact = self.root / 'build/probes/artifact.json'
@@ -86,11 +113,27 @@ class Runtime:
                       for name in archive.namelist() if name.endswith('.jar')}
             if not any('meteos-ui-kit' in name for name in nested):
                 raise ProbeError('宿主发布 JAR 未内嵌 kit')
+        if self.recipe_cards is not None:
+            tool_runtime = self.root / 'tools/recipe_cards/runtime'
+            tool_manifest = recipe_card_artifact or tool_runtime / 'build/artifact.json'
+            if recipe_card_artifact is not None and not tool_manifest.exists():
+                raise ProbeError(f'指定的配方卡片工具产物清单不存在：{tool_manifest}')
+            if recipe_card_artifact is None and not tool_manifest.exists():
+                gradle(self.root, ['-p', str(tool_runtime), 'writeToolArtifact'],
+                      self.directory / 'recipe-cards-build.log')
+            self.recipe_card_artifact = read_recipe_card_artifact(tool_manifest, host)
+
         runtime = self.root / 'tools/probes/runtime'
-        gradle(self.root, ['-p', str(runtime), 'prepareProbeRuntime'], self.directory / 'prepare.log')
+        runtime_args = ['-p', str(runtime)]
+        if self.recipe_cards is not None:
+            runtime_args.append('-Pinclude_recipe_cards=true')
+        runtime_args.append('prepareProbeRuntime')
+        gradle(self.root, runtime_args, self.directory / 'prepare.log')
         self.launch = json.loads((runtime / 'build/launch.json').read_text(encoding='utf-8'))
         if (host['minecraft'], host['neoforge']) != (self.launch['minecraft'], self.launch['neoforge']):
             raise ProbeError('发布物 manifest 与运行 Loader 不一致')
+        if self.recipe_cards is not None and self.launch.get('jei') != self.recipe_card_artifact['jei']:
+            raise ProbeError('探针启动面未包含与工具匹配的 JEI runtime')
         # 独立工程无需宿主输出；意外接入源码时提前拒绝。
         for path in (runtime / 'build/moddev').glob('*Classpath.txt'):
             text = path.read_text(encoding='utf-8').replace('\\\\', '/').replace('\\', '/')
@@ -100,12 +143,19 @@ class Runtime:
         self.manifest = dict(artifactMode='jar', host=host, nested=nested,
                              dependencies=[dict(path=str(jar), sha256=digest(jar)) for jar in jars],
                              launch=self.launch, processes=self.history)
+        if self.recipe_card_artifact is not None:
+            self.manifest['recipeCardTool'] = self.recipe_card_artifact
         for side in ('server', 'client'):
             game = self.directory / side
             (game / 'mods').mkdir(parents=True)
-            for jar in jars:
+            side_jars = jars + ([Path(self.recipe_card_artifact['jar'])] if side == 'client'
+                                and self.recipe_card_artifact is not None else [])
+            expected_digests = [entry['sha256'] for entry in self.manifest['dependencies']]
+            if side == 'client' and self.recipe_card_artifact is not None:
+                expected_digests.append(self.recipe_card_artifact['sha256'])
+            for jar, expected in zip(side_jars, expected_digests):
                 shutil.copy2(jar, game / 'mods' / jar.name)
-                if digest(game / 'mods' / jar.name) != self.manifest['dependencies'][jars.index(jar)]['sha256']:
+                if digest(game / 'mods' / jar.name) != expected:
                     raise ProbeError(f'复制期间发布物变化: {jar}')
             write_json(game / 'config/autojs.json', dict(enabled=True, unrestricted=True,
                        bindAddress='127.0.0.1', port=self.config[f'{side}McpPort'],
@@ -168,6 +218,8 @@ class Runtime:
         source += (self.root / f'tools/probes/scripts/{side}.js').read_text(encoding='utf-8')
         if side == 'client':
             source += (self.root / 'tools/probes/scripts/ui.js').read_text(encoding='utf-8')
+            if self.recipe_cards is not None:
+                source += '\n' + (self.root / 'tools/recipe_cards/scripts/export.js').read_text(encoding='utf-8')
         self.controls[side].install(source)
 
     def stop(self, side: str):

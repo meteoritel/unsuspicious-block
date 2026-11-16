@@ -37,6 +37,7 @@ python tools/probes/run.py --validate --only runtime-artifact
 ```powershell
 # 运行指定核心用例
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only scan-take-journal --only journal-viewport
+python tools/probes/run.py --background --artifact build/probes/artifact.json --only recipe-card-export
 
 # 运行日常核心集合（使用默认隔离目录并构建）
 python tools/probes/run.py --background
@@ -52,6 +53,8 @@ python tools/probes/run.py --background --artifact build/probes/artifact.json --
 - 定向选跑映射表与核心用例职责见[核心探针](../../tools/probes/README.md)。
 
 无选择参数与 `--suite core` 运行日常核心旅程；`--suite all` 包括详细 UI、模型、绑定和模拟专项。重复 `--only` 去重并保持输入顺序，精确执行指定场景；`--suite` 与 `--only` 互斥。Tooltip 使用独立巡检入口。
+
+`recipe-card-export` 是按需执行的 GUI 分支，不进入默认核心集合。它启动探针专属的 JEI runtime 与 `usb_recipe_cards` 工具 JAR，通过同一 AutoJS 客户端会话筛选并串行导出 JEI 原生配方卡片。结果位于本次运行目录的 `recipe-cards/`，并由 `probe-run.json` 的 `recipeCards`、`recipeCardManifest` 字段关联。默认使用 `unsuspiciousblock`、倍率 3、候选序号 0；筛选和倍率参数见[核心探针](../../tools/probes/README.md)。
 
 ## 4. 编写临时诊断与 GUI 截图探针
 

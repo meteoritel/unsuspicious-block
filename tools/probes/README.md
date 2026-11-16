@@ -17,12 +17,17 @@ python tools/probes/run.py --background --only scan-take-journal --only journal-
 python tools/probes/run.py --background --artifact build/probes/artifact.json
 python tools/probes/run.py --background --artifact build/probes/artifact.json --suite all
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only ui-member-tree --only ui-form-bodies
+python tools/probes/run.py --background --artifact build/probes/artifact.json --only recipe-card-export
 python tools/probes/inspect_tooltips.py --background --artifact build/probes/artifact.json --lang both --shift both
 ```
 
 默认串行执行宿主完整构建、运行准备和核心集合。已有本次构建时，传 `--artifact build/probes/artifact.json` 消费其准确归档；该 manifest 由 Gradle `writeProbeArtifact` 从实际任务输出生成。运行目录须全新，原始记录、进程日志和派生报告保存在控制台显示的目录中。
 
 无选择参数或 `--suite core` 按顺序运行 `runtime-artifact`、`scan-take-journal`、`journal-restart`、`panning-settlement`、`cat-player-journey`。`--suite all` 运行全部注册场景。重复 `--only` 精确选例、去重并保留输入顺序；`--suite` 与 `--only` 互斥。原始记录的 `selection` 保存 `core/all/explicit` 来源，`selected` 保存实际顺序。
+
+`recipe-card-export` 是独立可选分支，不属于默认核心集合；`--suite all` 会包含它。选择该分支时，运行器按需构建 `tools/recipe_cards/runtime`，只把工具 JAR 放入隔离客户端，并在启动面加入根版本对应的 JEI runtime。它默认筛选 `unsuspiciousblock` 命名空间的 JEI 配方，使用三倍整数倍率和第一个候选材料；可用 `--recipe-card-namespace`、`--recipe-card-category`、`--recipe-card`、`--recipe-card-scale` 与 `--recipe-card-variant` 调整。已有工具产物时可传 `--recipe-card-artifact tools/recipe_cards/runtime/build/artifact.json` 跳过工具构建。
+
+该分支通过同一 AutoJS 客户端会话调用 JEI bridge，串行提交每张卡片，并将 PNG、`recipe-cards/recipe-cards.json`、请求状态和摘要写入运行目录；`probe-run.json` 的 `recipeCards` 与 `recipeCardManifest` 字段保存对应证据。传输超时只查询原请求，不重复提交。分支失败保留已经完成的 PNG，按探针退出码记录为业务失败或环境错误。
 
 > **专项巡检模板**：[`inspect_tooltips.py`](inspect_tooltips.py) 配合 [`scripts/tooltip_inspect.js`](scripts/tooltip_inspect.js) 提供纯检查全部物品 Tooltip 的独立入口（支持 `--lang zh_cn|en_us|both`、`--shift up|down|both`、`--items` 与 `--no-screenshots`），输出 `tooltip-report.json` / `tooltip-report.md` 及容器槽位悬停 PNG，不拖慢日常核心回归套件。
 
@@ -39,8 +44,10 @@ flowchart TD
     Control --> Assert["核心逻辑、真实 tick 与服务器断言"]
     Control --> Client["真实客户端进入世界与正常输入"]
     Client --> PNG["kit 帧末采集原尺寸 PNG"]
+    Client -. "可选 recipe-card-export" .-> Cards["JEI bridge 帧末导出 PNG"]
     Assert --> Record["probe-run.json 与 manifest.json"]
     PNG --> Record
+    Cards --> Record
     Record --> Report["JUnit XML、HTML 与日志链接"]
 ```
 
@@ -77,6 +84,7 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | `cat-ledger` | 专项 / model | 独立状态的关系门槛、冷却边界、去重、阶段、命数和序列化 |
 | `cat-carried-binding` | 专项 / server | 第一层标本箱绑定写回、他人身份、额外空白信物规则 |
 | `simulation-reload` | 专项 / gui | 真实模拟与拒绝回执、重载代次、旧 DTO 接收规则和新请求 |
+| `recipe-card-export` | 可选 / gui | JEI public layout、筛选清单、串行 PNG、请求状态与来源清单 |
 
 `model` 仅创建独立状态、显式传入时间并调用真实 Java 规则。淘洗由正常客户端长按进入 use/tick/finish 流程。模拟拒绝例通过公开目录接收 Interface 构造客户端未签发工具输入，服务端签发目录保持真实；旧 DTO 以实际 Codec 保存，在 reload 后直接调用客户端接收 Interface，覆盖代次过滤。
 
@@ -89,6 +97,7 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | 猫族关系、喂食或携带扫描 | `cat-player-journey`，按改动追加 `cat-ledger`、`cat-carried-binding` |
 | 淘盘与淘洗点 | `panning-settlement` |
 | 模拟、目录重载、相关网络 | `simulation-reload` |
+| wiki 配方卡片导出 | `recipe-card-export` |
 | 公共网络或玩家生命周期 | 全部受影响的同步/恢复用例 |
 
 范围排除：Fabric 游戏探针、全资源/全屏幕/语言/分辨率矩阵、像素黄金图、动画手感、随机世界生成、完整 NPC AI、可选模组兼容矩阵、概率大样本与压力测试。资源接线由现有源码门禁负责；外观与手感通过代表 PNG 和人工游戏复核确认。

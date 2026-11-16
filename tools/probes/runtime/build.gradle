@@ -5,6 +5,18 @@ plugins { id 'net.neoforged.moddev' version '2.0.49-beta' }
 def host = new Properties()
 file('../../../gradle.properties').withInputStream { host.load(it) }
 java.toolchain.languageVersion = JavaLanguageVersion.of(host.java_version as int)
+
+repositories {
+    maven { url = 'https://maven.blamejared.com' }
+}
+
+def includeRecipeCards = providers.gradleProperty('include_recipe_cards').orElse('false').get().toBoolean()
+if (includeRecipeCards) {
+    dependencies {
+        // 仅配方卡片分支需要 JEI runtime；普通探针保持最小运行面。
+        runtimeOnly "mezz.jei:jei-${host.minecraft_version}-neoforge:${host.jei_version}"
+    }
+}
 neoForge {
     version = host.neoforge_version
     runs {
@@ -19,7 +31,8 @@ tasks.register('prepareProbeRuntime') {
     doLast {
         def launcher = javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile
         def directory = layout.buildDirectory.dir('moddev').get().asFile
-        def result = [java: launcher.absolutePath, minecraft: host.minecraft_version, neoforge: host.neoforge_version]
+        def result = [java: launcher.absolutePath, minecraft: host.minecraft_version,
+                      neoforge: host.neoforge_version, jei: includeRecipeCards ? host.jei_version : null]
         ['client', 'server'].each { side ->
             result[side] = ["@${directory}/${side}RunClasspath.txt", "@${directory}/${side}RunVmArgs.txt",
                             '-Dfml.modFolders=', 'net.neoforged.devlaunch.Main', "@${directory}/${side}RunProgramArgs.txt"]

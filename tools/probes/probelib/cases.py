@@ -1,7 +1,9 @@
 """普通函数表达核心链路，准备场景与断言保持同一层控制流。"""
 from pathlib import Path
+import hashlib
 import json
 import math
+import re
 import struct
 import time
 import zlib
@@ -620,12 +622,79 @@ def ui_form_bodies(case):
     form_bodies(case, FORM_TABLE)
 
 
+def recipe_card_filename(entry, variant):
+    """为探针证据生成稳定文件名，具名配方不依赖清单当前顺序。"""
+    position = entry['sourceIndex'] if entry['recipe'] is None else entry.get('occurrence', 0)
+    identity = json.dumps([entry['category'], entry['recipe'], position, variant], separators=(',', ':'))
+    suffix = hashlib.sha256(identity.encode()).hexdigest()[:12]
+    stem = entry['recipe'] or f"{entry['category']}-anonymous-{entry['sourceIndex']}"
+    stem = re.sub(r'[^a-zA-Z0-9._-]', '_', stem)[:90].rstrip('. ')
+    return f'card-{stem}-v{variant}-{suffix}.png'
+
+
+def recipe_card_export(case):
+    """通过已装载的 JEI bridge 导出本分支筛选到的全部配方。"""
+    client = case.client
+    options = case.runtime.recipe_cards
+    output = case.runtime.directory / 'recipe-cards'
+    output.mkdir(parents=True, exist_ok=False)
+    filters = {key: options[key] for key in ('namespaces', 'categories', 'recipes')}
+    token = f'{case.record["name"]}/{case.runtime.directory.name}'
+    encoded_token = json.dumps(token)
+    encoded_filters = json.dumps(filters, ensure_ascii=False)
+    started = case.action('client', f'RecipeCards.begin({json.dumps(token)},{encoded_filters})')
+    case.equal('配方卡片扫描启动', started['state'], 'scanning')
+    state = wait_for(lambda: client.evaluate(f'RecipeCards.step({encoded_token})'),
+                     lambda value: value['state'] != 'scanning', timeout=90)
+    if state['state'] != 'ready':
+        raise ProbeError(f'配方卡片清单失败: {state}')
+    entries = []
+    for offset in range(0, state['total'], 64):
+        entries.extend(client.evaluate(f'RecipeCards.page({encoded_token},{offset})'))
+    case.equal('配方卡片清单分页完整', len(entries), state['total'])
+    if not entries:
+        raise AssertionError(f'配方卡片筛选结果为空: {filters}')
+
+    cards = []
+    manifest = dict(schemaVersion=1, filters=filters, scale=options['scale'],
+                    variant=options['variant'], cards=cards)
+    write_json(output / 'recipe-cards.json', manifest)
+    case.record['recipeCardManifest'] = str((output / 'recipe-cards.json').relative_to(case.runtime.directory))
+    for entry in entries:
+        index = entry['index']
+        request_id = f'{token}/{index}'
+        path = output / recipe_card_filename(entry, options['variant'])
+        submit_options = dict(id=request_id, path=str(path), scale=options['scale'],
+                              variant=options['variant'], overwrite=False)
+        case.action('client', f'RecipeCards.submit({encoded_token},{index},{json.dumps(submit_options, ensure_ascii=False)})')
+        result = wait_for(lambda: client.evaluate(f'RecipeCards.status({json.dumps(request_id)})'),
+                          lambda value: value['state'] in ('done', 'failed'), timeout=60)
+        card = dict(entry, requestId=request_id, file=path.name, result=result, state=result['state'])
+        if result['state'] == 'done':
+            if not path.is_file():
+                raise ProbeError(f'配方卡片 PNG 缺失: {path}')
+            dimensions = png_dimensions(path)
+            case.equal(f'PNG 尺寸 {path.name}', dimensions, [result['width'], result['height']])
+            card['sha256'] = digest(path)
+            case.record['screenshots'].append(dict(relative=str(path.relative_to(case.runtime.directory)),
+                                                   width=dimensions[0], height=dimensions[1], recipeCard=True))
+        cards.append(card)
+        case.record.setdefault('recipeCards', []).append(card)
+        write_json(output / 'recipe-cards.json', manifest)
+        if result['state'] == 'failed':
+            raise ProbeError(f'配方卡片导出失败: {result}')
+
+    write_json(output / 'recipe-cards.json', manifest)
+    case.equal('配方卡片全部完成', all(card['state'] == 'done' for card in cards), True)
+
+
 CASES = {'runtime-artifact': ('server', runtime_artifact),
          'scan-take-journal': ('gui', scan_take_journal), 'journal-viewport': ('gui', journal_viewport),
          'cat-ledger': ('model', cat_ledger), 'cat-carried-binding': ('server', cat_carried_binding),
          'cat-player-journey': ('server', cat_player_journey),
          'panning-settlement': ('server', panning_settlement), 'journal-restart': ('gui', journal_restart),
          'simulation-reload': ('gui', simulation_reload),
-         'ui-member-tree': ('gui', ui_member_tree), 'ui-form-bodies': ('gui', ui_form_bodies)}
+         'ui-member-tree': ('gui', ui_member_tree), 'ui-form-bodies': ('gui', ui_form_bodies),
+         'recipe-card-export': ('gui', recipe_card_export)}
 
 CORE_CASES = ('runtime-artifact', 'scan-take-journal', 'journal-restart', 'panning-settlement', 'cat-player-journey')
