@@ -1,15 +1,17 @@
 # Archaeology Journal
 
-The Archaeology Journal is this mod's main record-keeping tool. It organizes discovered loot tables, loot actually found, and acquisition conditions into a single interface.
+The Archaeology Journal records the loot you find, where you found it, and the conditions for obtaining it, helping you plan your next expedition.
 
 ## Obtaining
 
 Combine a book and a brush in a crafting table to make the Archaeology Journal.
 
+![Crafting an Archaeology Journal with a book and a brush](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-archaeology-journal.png)
+
 - Right-click the journal in hand to open it.
 - Press `C` (default) to open a journal you are carrying.
 - When opened via the hotkey, the journal can sit in your inventory; with a Curios/Trinkets integration installed, it can also rest in an accessory slot.
-- Hover over any item in your inventory and press `C` to search the journal by the item's registry name; if there is a match, the journal opens directly at that entry. With JEI installed, hovering over the JEI item list works the same way.
+- Hover over an item in your inventory and press `C` to look it up in the journal. If a matching entry is found, the journal opens directly to it. With JEI installed, this also works in JEI's item list.
 
 ## Home Page
 
@@ -17,7 +19,7 @@ The right side of the first page after opening the journal shows collection stat
 
 ## Catalog
 
-The Catalog is used to view loot tables and the items that can appear in them. As you explore, new loot tables and items unlock gradually.
+The Catalog groups possible finds by loot source. New sources and items unlock as you explore.
 
 The Catalog supports:
 
@@ -25,9 +27,9 @@ The Catalog supports:
 - Favoriting entries
 - Hiding locked (undiscovered) content
 - Viewing item acquisition conditions and estimated probabilities
-- Viewing source relationships between nested loot tables
+- Viewing how loot sources are related
 
-Probabilities are estimates based on the loot tables and their conditions. Actual results are still affected by random chance, biomes, dimensions, tool enchantments, and other loot conditions.
+The probabilities shown are estimates. Your actual finds also depend on the biome, dimension, tool enchantments, and other conditions.
 
 ## Log
 
@@ -37,11 +39,11 @@ The Log records discoveries that have actually happened, including:
 - Coordinates, dimension, and biome
 - Structure or container source
 - Time of discovery
-- The loot table path associated with the discovery
+- The detailed source of the loot
 
 Logs can be grouped by time, dimension, biome, and note status. Opening a log entry's details lets you add a note and copy a teleport command for returning to the discovery site.
 
-Log entries are stored separately per loot table. Servers can set a retention cap per table; once the cap is reached, the oldest unprotected records are cleaned up.
+Each loot source has its own log records. Servers can set a limit for each source; once it is reached, the oldest unprotected records are removed.
 
 ## What Unlocks Records
 
@@ -56,11 +58,11 @@ The Suspicious Reader's scan results help you learn where suspicious blocks are 
 
 ## Collection Progress and Rewards
 
-When every item in a tracked loot table and its child tables has been unlocked at least once, that table reaches 100% completion and grants a one-time reward of 1 Ancient Coin.
+When every item in a catalog entry and its sources listed beneath it has been unlocked at least once, the entry reaches 100% completion and grants a one-time reward of 1 Ancient Coin.
 
 ## What Can Be Tracked
 
-By default, the mod recognizes common archaeology loot tables, decorated pots, fishing, buried treasure, the Ancient City, and the mod's own special loot. Different modpacks may add new loot tables, so the catalog's contents change with the installed mods and datapacks.
+By default, the journal covers common archaeology finds, decorated pots, fishing, buried treasure, the Ancient City, and this mod's special loot. Other mods and datapacks may add more loot sources to the Catalog.
 
 ## JEI Integration
 

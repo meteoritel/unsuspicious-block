@@ -14,7 +14,7 @@ Creepers and phantoms avoid movement destinations and attack targets inside the 
 
 Natural phantom spawning skips players whose feet are inside the aura. Cat deterrence also provides independent spawning protection. Other players outside the area can still trigger phantom spawning.
 
-Protection uses the block containing an entity's feet. Mobs already inside can leave on their own; the aura does not actively drive them out.
+Whether a mob or player is inside the protected area depends on the block at their feet. Mobs already inside can leave on their own; the aura does not actively drive them out.
 
 ## Behavior and Limits
 

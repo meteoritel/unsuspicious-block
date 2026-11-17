@@ -28,7 +28,7 @@ The following mods are not required to run this mod:
 - **REI / EMI**: Can be used to view regular recipes; this mod does not hard-depend on them.
 - **Jade**: View the loot already scanned from suspicious blocks.
 - **Trinkets** (Fabric) or **Curios** (NeoForge): Provide accessory slots for the Archaeology Journal, Eye of Cat, and Specimen Box.
-- **Artifacts**: Lets the Specimen Box proxy the effects of compatible artifacts.
+- **Artifacts**: Lets compatible artifacts keep working while stored in the Specimen Box.
 - **Lootr**: Optional compatibility provided by the NeoForge build.
 
 ## Updating or Switching Loaders

@@ -1,6 +1,6 @@
 # Compatibility and Settings
 
-This page only covers what players need to know when installing other mods or joining multiplayer servers. All integrations are optional.
+These optional mods can help you browse recipes, carry accessories, and record discoveries in multiplayer.
 
 ## Recipe Viewers
 
@@ -9,15 +9,15 @@ This page only covers what players need to know when installing other mods or jo
 
 ## Jade
 
-With Jade installed, suspicious blocks that the current player has already scanned can display the parsed loot in the block info. Unscanned blocks do not leak their contents through Jade.
+With Jade installed, the block information can show the loot inside suspicious blocks you have already scanned. Unscanned blocks keep their contents hidden.
 
 ## Accessory Slots
 
-With Trinkets (Fabric) or Curios (NeoForge) installed, the Archaeology Journal, Eye of Cat, and Specimen Box can be equipped in the matching accessory slots. Carryable items inside the Specimen Box also keep participating in the mod's carry detection.
+With Trinkets (Fabric) or Curios (NeoForge) installed, the Archaeology Journal, Eye of Cat, and Specimen Box can be equipped in the matching accessory slots. Items such as the Archaeology Journal and Eye of Cat keep working while stored in a carried Specimen Box.
 
 ## Artifacts
 
-With Artifacts installed, the Specimen Box can proxy the equipment effects of compatible artifacts. Which artifacts can be proxied depends on the current Artifacts version and that artifact's own implementation.
+With Artifacts installed, compatible artifacts can keep their equipment effects while stored in the Specimen Box. Support varies by Artifacts version and artifact.
 
 ## Lootr
 
@@ -27,8 +27,8 @@ The NeoForge build offers optional Lootr compatibility: different players openin
 
 Loot tracking settings are saved per world; switching saves does not carry over another world's rules. Server administrators can adjust:
 
-- The loot table matching rules that determine what gets included in the Archaeology Journal
-- The log retention cap per loot table: 512 entries by default, adjustable from 64 to 4096
+- Which loot sources appear in the Archaeology Journal
+- The log limit for each loot source: 512 entries by default, adjustable from 64 to 4096
 - The loot container tracking timeout: 6000 game ticks by default, i.e. 5 minutes
 
 These settings affect what the Log and Catalog include; they do not change the Suspicious Reader's scan radius or the fixed effects of the four enchantments.

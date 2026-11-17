@@ -4,43 +4,57 @@ The Decorated Pottery Wheel is used to craft unfired decorated pots and unfired 
 
 ## Crafting the Wheel
 
-The crafting table recipe requires materials of the following categories:
+Arrange these materials in a crafting table as shown to make 1 Decorated Pottery Wheel:
 
-- Pottery sherds
-- Logs
-- Wood fences
-- Wooden planks
-- Stone crafting materials
+- 2 pottery sherds
+- 1 log
+- 2 wooden fences
+- 2 wooden planks
+- 2 cobblestone
 
-Different wood and stone variants can be used through the corresponding tags. Use JEI to view the full arrangement in your modpack.
+![Crafting table recipe for the Decorated Pottery Wheel](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-pottery-wheel.png)
+
+You can use other kinds of wood and pottery sherds. Other materials used to craft stone tools, such as blackstone, can replace the cobblestone.
 
 ## Interface and Inputs
 
 Right-click the wheel to open its interface. It has seven slots:
 
-- Top, left, right, bottom: hold pottery sherds or other decorated pot materials
+- Top, left, right, bottom: hold pottery sherds or bricks to choose the patterns
 - Clay: hold a clay block or clay balls
 - Water: hold a vanilla water bottle
 - Output: take the finished product
 
-Each process takes 8 seconds, and pottery sherds are not consumed.
+Each process takes 8 seconds. Sherds and bricks used as patterns are kept; each process consumes clay and one bottle of water, leaving an empty glass bottle.
 
 ## Crafting Decorated Pots
 
-Put four pottery sherds into the four pattern slots together with the corresponding consumables. When the process finishes, you get an unfired decorated pot with the matching patterns.
+1. Put one sherd into each of the four pattern slots. Use a brick for any side you want to leave undecorated.
+2. Put 1 clay block or 4 clay balls into the clay slot, and 1 water bottle into the water slot.
+3. Take out 1 unfired decorated pot with patterns matching the four materials you placed.
+
+![Making an unfired decorated pot with clay, water, and four pottery sherds](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unfired-pot.png)
 
 Smelt the unfired decorated pot in a furnace to turn it into a vanilla decorated pot.
 
+![Furnace recipe for an unfired decorated pot](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-pot-smelting.png)
+
 ## Duplicating Pottery Sherds
 
-Put an existing pottery sherd into any pattern slot, clay material into the clay slot, and a water bottle into the water slot to duplicate:
+Put the sherd you want to copy into any pattern slot and leave the other pattern slots empty. Add clay and 1 water bottle:
 
-- Using a clay block yields 4 identical unfired decorated pottery sherds.
-- Using clay balls yields 1 identical unfired decorated pottery sherd.
+- Consume 1 clay block to get 4 unfired sherds with the same pattern.
+- Consume 1 clay ball to get 1 unfired sherd with the same pattern.
+
+![Duplicating an Angler Pottery Sherd with a clay block](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unfired-sherd.png)
+
+Smelt the unfired sherds in a furnace to get sherds with the copied pattern. The images use the Angler pattern; other patterns are copied and fired the same way. The original sherd is kept.
+
+![Smelting an unfired sherd into an Angler Pottery Sherd](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-sherd-smelting.png)
 
 ## Hopper Automation
 
-The wheel's hopper interfaces are as follows:
+Hoppers can insert or extract items from these directions:
 
 - Top: input clay and water bottles
 - Sides: input pottery sherds and other pattern materials

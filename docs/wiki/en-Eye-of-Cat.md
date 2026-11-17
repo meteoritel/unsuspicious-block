@@ -1,6 +1,6 @@
 # Eye of Cat
 
-The Eye of Cat is a released archaeology reward item that reveals information the vanilla enchanting interface does not normally show in full.
+The Eye of Cat reveals information normally hidden in enchanting tables, anvils, and grindstones.
 
 ## Obtaining
 

@@ -13,9 +13,9 @@
 
 ## What this mod does / 模组简介
 
-Unsuspicious Block adds more complete exploration tools and documentation systems to Minecraft archaeology. You can scan suspicious blocks, quickly retrieve identified loot, and organize discovered loot tables, items, conditions, and locations in the archaeology journal.
+Unsuspicious Block adds exploration tools and a discovery journal to Minecraft archaeology. You can scan suspicious blocks, quickly retrieve identified loot, and organize your finds, their sources, conditions, and locations in the Archaeology Journal.
 
-Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工具和记录方式。你可以扫描可疑方块、快速取出已经确认的战利品，并在考古笔记中整理发现过的战利品表、物品、条件和位置。
+Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工具和记录方式。你可以扫描可疑方块、快速取出已经确认的战利品，并在考古笔记中整理发现过的物品、来源、获取条件和位置。
 
 ## Supported Environments / 支持环境
 

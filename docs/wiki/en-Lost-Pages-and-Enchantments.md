@@ -8,15 +8,19 @@ Lost Pages have an 8% chance to appear in the rare archaeology loot pool of Trai
 
 ## Crafting Base Pages
 
-Place 3 pitcher plants in a row in a crafting table to get 3 Base Pages. A Base Page can also be crafted on its own into paper.
+Place 3 pitcher plants in a row in a crafting table to get 3 Base Pages. Each Base Page can also be crafted on its own into 1 paper.
+
+![Three pitcher plants craft into three Base Pages](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-base-page.png)
 
 ## Forging a Random Enchanted Book
 
-Place the following into a smithing table in this order:
+Place one of each into a smithing table, from left to right:
 
 1. Base Page
 2. Book
 3. Lost Page
+
+![Forging a random enchanted book with a Base Page, book, and Lost Page](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-enchanted-book.png)
 
 The output is a random enchanted book. The result may be:
 
@@ -28,10 +32,10 @@ The output is a random enchanted book. The result may be:
 
 | Enchantment | Applies to | Effect |
 |---|---|---|
-| Mud Dredging I–III | Fishing Rod | While fishing, a chance to dredge up an extra treasure: 20% at level I, +10% per additional level. In swamps, an extra loot table biased toward higher-value treasures is used. |
+| Mud Dredging I–III | Fishing Rod | While fishing, a chance to dredge up an extra treasure: 20% at level I, +10% per additional level. Extra finds in swamps favor higher-value treasures. |
 | Textile Recovery | Shears | Shearing sheep drops an extra 1–3 string. |
 | Precision Excavation I–III | Brush | When brushing suspicious blocks, a chance to double that brush's loot: 28%, 44%, and 60% respectively. |
-| Fossil Hunter | Pickaxe | Mining naturally generated bone blocks has a 50% chance to grant a bonus from the current dimension's fossil loot table. |
+| Fossil Hunter | Pickaxe | Mining naturally generated bone blocks has a 50% chance to grant extra fossil loot. The possible rewards vary by dimension. |
 
 ### Fossil Hunter Restrictions
 

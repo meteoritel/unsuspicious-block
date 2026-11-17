@@ -12,10 +12,12 @@ The recipe requires:
 - 1 glass pane
 - 2 iron ingots
 - 1 ender pearl
-- 2 redstone
-- 1 quartz
+- 2 redstone dust
+- 1 nether quartz
 
-We recommend using JEI, REI, or EMI to view the exact recipe in your modpack.
+Arrange the materials in a crafting table as shown to make 1 Suspicious Reader.
+
+![Crafting table recipe for the Suspicious Reader](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-suspicious-reader.png)
 
 ### Single-Block Scan
 
@@ -34,7 +36,7 @@ While holding the Reader, press `V` to cycle scan levels:
 | Mid Range | 5×5×5 | Base cost 2 levels of energy |
 | High Range | 7×7×7 | Base cost 3 levels of energy, suited to sweeping large areas |
 
-A ranged scan highlights suspicious blocks and unopened loot containers in range. Every ranged scan costs at least the energy for the current level, and each suspicious block parsed for the first time in that scan costs 1 extra energy point.
+A ranged scan highlights suspicious blocks and unopened loot containers in range. Every ranged scan costs at least the energy for the current level, and each suspicious block scanned for the first time costs 1 extra energy point.
 
 ### Energy and Recharging
 
@@ -49,6 +51,8 @@ When the consumed energy is less than 256 points (i.e. the remaining space canno
 ### Crafting and Base Stats
 
 The Archaeological Shovel requires 3 iron ingots, 1 copper ingot, and 1 stick. It has the mining tier of iron tools and 256 durability.
+
+![Crafting table recipe for the Archaeological Shovel](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-archaeological-shovel.png)
 
 ### Direct Excavation
 

@@ -6,7 +6,7 @@
 
 ## What this mod does
 
-Unsuspicious Block adds more complete exploration tools and documentation systems to Minecraft archaeology. You can scan suspicious blocks, quickly retrieve identified loot, and organize discovered loot tables, items, conditions, and locations in the archaeology journal.
+Unsuspicious Block adds exploration tools and a discovery journal to Minecraft archaeology. You can scan suspicious blocks, quickly retrieve identified loot, and organize your finds, their sources, conditions, and locations in the Archaeology Journal.
 
 ## Features
 

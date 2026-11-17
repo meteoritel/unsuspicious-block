@@ -12,10 +12,12 @@
 - 1 个玻璃板
 - 2 个铁锭
 - 1 个末影珍珠
-- 2 个红石
-- 1 个石英
+- 2 个红石粉
+- 1 个下界石英
 
-建议使用 JEI、REI 或 EMI 查看当前整合包中的具体配方。
+在工作台中按图摆放，得到 1 个可疑解析仪。
+
+![可疑解析仪的工作台配方](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-suspicious-reader.png)
 
 ### 单方块扫描
 
@@ -49,6 +51,8 @@
 ### 制作与基础属性
 
 考古铲需要 3 个铁锭、1 个铜锭和 1 根木棍。它拥有铁质工具的挖掘等级和 256 点耐久。
+
+![考古铲的工作台配方](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-archaeological-shovel.png)
 
 ### 直接发掘
 
