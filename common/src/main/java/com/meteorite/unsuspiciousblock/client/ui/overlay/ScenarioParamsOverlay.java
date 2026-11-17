@@ -1,17 +1,11 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
 import com.meteorite.meteosuikit.api.control.UiControl;
-import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.control.UiListView;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.input.UiAction;
-import com.meteorite.meteosuikit.api.input.UiChildren;
-import com.meteorite.meteosuikit.api.input.UiInputContainer;
-import com.meteorite.meteosuikit.api.input.UiInputTarget;
-import com.meteorite.meteosuikit.api.input.UiPointer;
-import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.number.UiNumberField;
 import com.meteorite.meteosuikit.api.number.UiNumberPolicy;
 import com.meteorite.meteosuikit.api.number.UiScalarSlider;
@@ -32,11 +26,6 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInput;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ToolOption;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -48,10 +37,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.*;
+import java.util.function.Function;
+
 /**
  * 场景参数草稿；kit 负责数值编辑和列表导航，显式应用后才修改模拟选择。
  */
 public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiInputContainer {
+    private static final int ENCHANTMENT_LEVEL_STEP = 1;
     private final JournalOverlays owner;
     private final List<String> conditions;
     private final ScenarioSession session;
@@ -61,7 +54,10 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
     private final UiOverlay overlay = new UiOverlay(this);
     private final UiLayer layer;
-    private final UiControlGroup actions = new UiControlGroup();
+    private final UiChildren<UiControl> actions = new UiChildren<>();
+    private final UiControl decrease;
+    private final UiControl increase;
+    private final List<UiControl> confirmationActions;
     private final UiTextInput luckText;
     private final UiNumberField luck;
     private final UiTextInput search;
@@ -125,15 +121,13 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
             filterEnchantments();
         });
         filterEnchantments();
-        actions.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
-        actions.beginUpdate();
-        button(font, "minus", text("params.decrease"), () -> changeLevel(-1));
-        button(font, "plus", text("params.increase"), () -> changeLevel(1));
-        button(font, "calculate", text("params.apply_calculate"), () -> confirm(true))
-                .setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        button(font, "apply", text("params.apply_only"), () -> confirm(false));
-        button(font, "cancel", Component.translatable("gui.cancel"), owner::close);
-        actions.endUpdate();
+        decrease = button(font, text("params.decrease"), () -> changeLevel(-ENCHANTMENT_LEVEL_STEP));
+        increase = button(font, text("params.increase"), () -> changeLevel(ENCHANTMENT_LEVEL_STEP));
+        UiControl calculate = button(font, text("params.apply_calculate"), () -> submitDraft(session::applyDraftAndSimulate));
+        calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
+        confirmationActions = List.of(calculate,
+                button(font, text("params.apply_only"), () -> submitDraft(session::applyDraft)),
+                button(font, Component.translatable("gui.cancel"), owner::close));
         children.add(luck);
         children.add(tools);
         children.add(search);
@@ -144,9 +138,12 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
                 () -> render(graphics, rowFont, pointer)), null);
     }
 
-    private UiControl button(Font font, String key, Component label, UiAction action) {
-        UiControl button = actions.obtain(key);
+    private UiControl button(Font font, Component label, UiAction action) {
+        UiControl button = new UiControl();
+        button.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
+        button.setFocusable(true);
         button.configure(font, label, null, List.of(label), action);
+        actions.add(button);
         return button;
     }
 
@@ -176,7 +173,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         }
     }
 
-    private void confirm(boolean calculate) {
+    private void submitDraft(Function<ScenarioSession.Draft, ScenarioSession.CommitResult> submit) {
         Double value = parseLuck(luckText.value());
         ToolOption tool = tools.selectedItem();
         if (value == null || tool == null) {
@@ -185,7 +182,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         }
         ScenarioParams params = new ScenarioParams(value.floatValue(), tool.id(), levels, ScenarioParams.DEFAULT_SAMPLE_COUNT);
         var draft = baseDraft.withInput(new SimulationInput(conditions, params));
-        var result = calculate ? session.applyDraftAndSimulate(draft) : session.applyDraft(draft);
+        var result = submit.apply(draft);
         if (!result.applied()) {
             error = result.error();
             return;
@@ -219,16 +216,15 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         int enchantHeight = Math.max(0, bounds.bottom() - 68 - enchantTop);
         tools.setBounds(left, toolsTop, column, toolsHeight);
         enchantments.setBounds(right, enchantTop, column, enchantHeight);
-        List<UiControl> buttons = actions.controls();
-        buttons.get(0).setBounds(right, bounds.bottom() - 62, column / 2 - 2, 18);
-        buttons.get(1).setBounds(right + column / 2 + 2, bounds.bottom() - 62, column / 2 - 2, 18);
-        int buttonWidth = Math.max(0, (innerWidth - 8) / 3);
-        for (int i = 2; i < buttons.size(); i++)
-            buttons.get(i).setBounds(left + (i - 2) * (buttonWidth + 4), bounds.bottom() - 28, buttonWidth, 20);
+        decrease.setBounds(right, bounds.bottom() - 62, column / 2 - 2, 18);
+        increase.setBounds(right + column / 2 + 2, bounds.bottom() - 62, column / 2 - 2, 18);
+        int buttonWidth = Math.max(0, (innerWidth - (confirmationActions.size() - 1) * 4) / confirmationActions.size());
+        for (int i = 0; i < confirmationActions.size(); i++)
+            confirmationActions.get(i).setBounds(left + i * (buttonWidth + 4), bounds.bottom() - 28, buttonWidth, 20);
         ResourceLocation selected = enchantments.selectedItem();
         int level = selected == null ? 0 : levels.getOrDefault(selected, 0);
-        buttons.get(0).setEnabled(selected != null && level > 0);
-        buttons.get(1).setEnabled(selected != null && level < options.enchantments().get(selected));
+        decrease.setEnabled(selected != null && level > 0);
+        increase.setEnabled(selected != null && level < options.enchantments().get(selected));
     }
 
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
@@ -251,7 +247,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
             JournalPalette.drawEmptyState(graphics, font, enchantments.bounds(), emptyIcon, text("params.no_enchantments"));
         }
         graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
-        actions.render(graphics, font, pointer);
+        for (UiControl action : actions) action.render(graphics, font, pointer);
         if (error != null)
             graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 45, UiTextScheme.PARCHMENT.negative(), false);
         if (pointer.allowsTooltip() && pointer.hit() != null)

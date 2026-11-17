@@ -35,6 +35,9 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **语义状态入口**：普通页面直接使用 `UiStatefulWidget` 的 bounds、可见性、可用性和布局身份操作。具体控件同步原版模型并在隐藏/禁用时结清子会话；配置行通过 editor 的 `setEnabled` 应用权限。自定义控件私有组合 `UiWidgetShell`，包装器与核心共享真实焦点和状态。
 - **主题覆盖**：换根主题保留显式结构、完整 skin 与文字覆盖；组 `setStyle` / `clearStyleOverride` 广播到当前成员并更新后续默认值，组 `style()` 查询后续成员默认。单控件清结构与清完整 skin 使用各自明确入口。
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
+- **固定与动态操作**：固定按钮可由页面稳定持有具名 `UiControl` 引用，并注册到实际 `UiChildren`；动态操作使用 `UiControlGroup` 按业务身份复用。`obtain(Object)` 接受局部枚举、资源标识等稳定键，接入辅助方法保留所需键类型及返回的控件引用。按钮的文案、等级变更和提交动作由宿主定义。
+- **身份与层序**：`UiControlGroup.controls()` 返回当前控件的绘制层序，保留已有控件的首次创建顺序；更新时重新排列 `obtain` 调用只复用实例，已有控件的层序保持原样。按业务身份更新可用性、主题或几何时使用具名引用；均匀排布可以遍历布局列表。动态成员移除后重新加入会创建新实例，宿主同步更新所持引用。
+- **布局组合**：不同用途的操作分别组成布局列表，几何分配与控件摆放共用同一列表顺序。`UiLinearLayout` 提供有界横纵几何，`UiFlowLayout` 提供按宽度换行几何；宿主负责将结果应用到实际控件，并按业务需求选择布局。
 - **单行呈现**：`UiTextInput` 保留原版编辑模型，私有视图统一无阴影正文、占位文字、光标、选区与鼠标寻址；颜色读取当前主题，水平窗口随编辑、resize 和语言资源更新。搜索及数值字段直接消费同一控件。
 - **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 根据实际 framebuffer 与原版 GUI 倍率选择整数物理像素倍率，统一 GUI 与书页逻辑坐标的正逆换算；绘制、鼠标位置和拖动增量共用同一比例。像素不足 `1×` 时连续缩小以保留访问能力。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **Tooltip 与裁剪**：普通与物品提示统一经过 `UiTooltipPresenter.render` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。普通 kit tooltip 默认位于当前作用域加 400，整体高于原版槽位物品；富提示回调保留作用域基线，原版 tooltip 自行加层。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。

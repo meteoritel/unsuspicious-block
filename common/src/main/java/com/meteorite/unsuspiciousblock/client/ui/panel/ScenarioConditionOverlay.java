@@ -1,27 +1,21 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.meteosuikit.api.control.UiControl;
-import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.control.UiListView;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.input.UiAction;
-import com.meteorite.meteosuikit.api.input.UiChildren;
-import com.meteorite.meteosuikit.api.input.UiInputContainer;
-import com.meteorite.meteosuikit.api.input.UiInputTarget;
-import com.meteorite.meteosuikit.api.input.UiPointer;
-import com.meteorite.meteosuikit.api.input.UiPointerHit;
-import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
+import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.UiLayer;
+import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
+import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
@@ -44,6 +38,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * 网格页顶栏打开的紧凑条件勾选浮层：允许玩家直接勾选想要组合测试的环境条件，
@@ -61,7 +56,11 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
     private final UiOverlay overlay = new UiOverlay(this);
     private final UiListView<ConditionOption> list;
-    private final UiControlGroup actions = new UiControlGroup();
+    private final UiChildren<UiControl> actions = new UiChildren<>();
+    private final UiControl probe;
+    private final UiControl paramsButton;
+    private final UiControl clear;
+    private final List<UiControl> confirmationActions;
     private final UiLayer layer;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
 
@@ -92,20 +91,19 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         list.setActivateOnSingleClick(true);
         list.setOnActivate(this::toggle);
 
-        actions.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
-        actions.beginUpdate();
-        button(font, "probe", ScenarioSession.text("probe.short"), UiAtlas.Icon.BIOME, () -> {
+        probe = button(font, ScenarioSession.text("probe.short"), UiAtlas.Icon.BIOME, () -> {
             session.requestPlayerProbe(table);
             owner.close();
         });
-        button(font, "params", ScenarioSession.text("params.short"), UiAtlas.Icon.PARAMS, () ->
+        paramsButton = button(font, ScenarioSession.text("params.short"), UiAtlas.Icon.PARAMS, () ->
                 owner.open(new ScenarioParamsOverlay(owner, options, baseDraft.withInput(new SimulationInput(List.copyOf(draftConditions), params)))));
-        button(font, "clear", ScenarioSession.text("conditions.clear"), null, draftConditions::clear);
-        button(font, "calculate", ScenarioSession.text("params.apply_calculate"), null, () -> confirm(true))
-                .setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        button(font, "apply", ScenarioSession.text("params.apply_only"), null, () -> confirm(false));
-        button(font, "cancel", Component.translatable("gui.cancel"), null, owner::close);
-        actions.endUpdate();
+        clear = button(font, ScenarioSession.text("conditions.clear"), null, draftConditions::clear);
+        UiControl calculate = button(font, ScenarioSession.text("params.apply_calculate"), null,
+                () -> submitDraft(session::applyDraftAndSimulate));
+        calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
+        confirmationActions = List.of(calculate,
+                button(font, ScenarioSession.text("params.apply_only"), null, () -> submitDraft(session::applyDraft)),
+                button(font, Component.translatable("gui.cancel"), null, owner::close));
 
         children.add(list);
         children.add(actions);
@@ -114,10 +112,13 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
                         () -> render(graphics, rowFont, pointer)), null);
     }
 
-    private UiControl button(Font font, String key, Component label, @Nullable UiAtlas.Icon icon, UiAction action) {
-        UiControl button = actions.obtain(key);
+    private UiControl button(Font font, Component label, @Nullable UiAtlas.Icon icon, UiAction action) {
+        UiControl button = new UiControl();
+        button.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
+        button.setFocusable(true);
         button.configure(font, label, icon == null ? null : UiAtlas.icon(icon),
                 List.of(label.copy().withStyle(TooltipBuilder.BODY)), action);
+        actions.add(button);
         return button;
     }
 
@@ -127,10 +128,10 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         }
     }
 
-    private void confirm(boolean calculate) {
+    private void submitDraft(Function<ScenarioSession.Draft, ScenarioSession.CommitResult> submit) {
         List<String> next = SimulationInput.canonicalize(List.copyOf(draftConditions));
         var draft = baseDraft.withInput(new SimulationInput(next, params));
-        var result = calculate ? session.applyDraftAndSimulate(draft) : session.applyDraft(draft);
+        var result = submit.apply(draft);
         if (!result.applied()) {
             error = result.error();
             return;
@@ -161,7 +162,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
         if (error != null) graphics.drawString(font, font.plainSubstrByWidth(error.getString(),
                 Math.max(0, bounds.width() - 16)), bounds.x() + 8, bounds.bottom() - 40, UiTextScheme.PARCHMENT.negative(), false);
-        actions.render(graphics, font, pointer);
+        for (UiControl action : actions) action.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {
             UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.surfaces(),
                     (int) pointer.x(), (int) pointer.y());
@@ -206,11 +207,6 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         int innerWidth = Math.max(0, width - 16);
         int left = bounds.x() + 8;
 
-        List<UiControl> buttons = actions.controls();
-        // 顶部工具栏：同步自身、参数配置，以及仅在有条件时展示的清除按钮
-        UiControl probe = buttons.get(0);
-        UiControl paramsBtn = buttons.get(1);
-        UiControl clear = buttons.get(2);
         clear.setVisible(!empty);
         clear.setEnabled(!empty && !draftConditions.isEmpty());
 
@@ -218,21 +214,20 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         if (empty) {
             int twoWidth = Math.max(0, (innerWidth - 4) / 2);
             probe.setBounds(left, utilY, twoWidth, 18);
-            paramsBtn.setBounds(left + twoWidth + 4, utilY, innerWidth - twoWidth - 4, 18);
+            paramsButton.setBounds(left + twoWidth + 4, utilY, innerWidth - twoWidth - 4, 18);
         } else {
             int utilWidth = Math.max(0, (innerWidth - 8) / 3);
             probe.setBounds(left, utilY, utilWidth, 18);
-            paramsBtn.setBounds(left + utilWidth + 4, utilY, utilWidth, 18);
+            paramsButton.setBounds(left + utilWidth + 4, utilY, utilWidth, 18);
             clear.setBounds(left + (utilWidth + 4) * 2, utilY, innerWidth - (utilWidth + 4) * 2, 18);
         }
 
         int listTop = bounds.y() + 49;
         list.setBounds(left, listTop, innerWidth, Math.max(0, bounds.bottom() - 39 - listTop));
 
-        // 底部主操作区：仅保留核心确认/取消三联，层次分明
-        int mainWidth = Math.max(0, (innerWidth - 8) / 3);
-        for (int i = 3; i < buttons.size(); i++) {
-            buttons.get(i).setBounds(left + (i - 3) * (mainWidth + 4), bounds.bottom() - 28, mainWidth, 20);
+        int mainWidth = Math.max(0, (innerWidth - (confirmationActions.size() - 1) * 4) / confirmationActions.size());
+        for (int i = 0; i < confirmationActions.size(); i++) {
+            confirmationActions.get(i).setBounds(left + i * (mainWidth + 4), bounds.bottom() - 28, mainWidth, 20);
         }
     }
 }
