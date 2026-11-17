@@ -927,6 +927,8 @@
   "screen.unsuspiciousblock.lightbox.fit": "Fit to window",
   "screen.unsuspiciousblock.lightbox.previous": "Previous image",
   "screen.unsuspiciousblock.lightbox.next": "Next image",
+  "screen.unsuspiciousblock.lightbox.pan_lock": "Lock drag panning",
+  "screen.unsuspiciousblock.lightbox.pan_unlock": "Unlock drag panning",
   "screen.unsuspiciousblock.lightbox.position": "%s / %s",
   "screen.unsuspiciousblock.lightbox.missing": "Image unavailable",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.title": "Simulated Loadout",

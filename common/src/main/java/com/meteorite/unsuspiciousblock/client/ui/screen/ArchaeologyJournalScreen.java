@@ -1,8 +1,21 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiModal;
+import com.meteorite.meteosuikit.api.control.UiModalStack;
+import com.meteorite.meteosuikit.api.control.UiScreen;
+import com.meteorite.meteosuikit.api.control.UiWidget;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputContext;
+import com.meteorite.meteosuikit.api.input.UiInputScope;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiInteractionSession;
+import com.meteorite.meteosuikit.api.input.UiNavigationHistory;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
@@ -16,7 +29,13 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
-import com.meteorite.unsuspiciousblock.client.ui.support.*;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
+import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
+import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
@@ -26,20 +45,22 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.*;
-import java.util.function.BooleanSupplier;
 
 /**
  * 考古笔记主界面。
@@ -443,7 +464,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.overlays.render(guiGraphics, this.font, mouseX, mouseY);
         confirmations.render(guiGraphics, font, inputScope().pointer(mouseX, mouseY));
         if (pointer.allowsTooltip() && pointer.hit() != null)
-            pointer.hit().renderTooltip(guiGraphics, font, UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), mouseX, mouseY);
+            UiTooltipPresenter.render(guiGraphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), mouseX, mouseY);
     }
 
     // 检测服务端数据变更并按需刷新

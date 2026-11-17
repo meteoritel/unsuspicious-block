@@ -1,16 +1,26 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiControlGroup;
+import com.meteorite.meteosuikit.api.control.UiListView;
+import com.meteorite.meteosuikit.api.control.UiOverlay;
+import com.meteorite.meteosuikit.api.control.UiTextInput;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.input.UiAction;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.number.UiNumberField;
+import com.meteorite.meteosuikit.api.number.UiNumberPolicy;
+import com.meteorite.meteosuikit.api.number.UiScalarSlider;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiLayer;
+import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiSliderRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
-import com.meteorite.meteosuikit.api.input.UiAction;
-
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.input.*;
-import com.meteorite.meteosuikit.api.number.*;
-import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
@@ -19,19 +29,24 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.*;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInput;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ToolOption;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.*;
 
 /**
  * 场景参数草稿；kit 负责数值编辑和列表导航，显式应用后才修改模拟选择。
@@ -240,7 +255,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         if (error != null)
             graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 45, UiTextScheme.PARCHMENT.negative(), false);
         if (pointer.allowsTooltip() && pointer.hit() != null)
-            pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
+            UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
     }
 
     @Override

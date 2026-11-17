@@ -1,22 +1,37 @@
 package com.meteorite.unsuspiciousblock.client.ui.overlay;
 
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiControlGroup;
+import com.meteorite.meteosuikit.api.control.UiOverlay;
+import com.meteorite.meteosuikit.api.control.UiScrollView;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.input.UiAction;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputContext;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.render.UiLayer;
+import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
-import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.geometry.*;
-import com.meteorite.meteosuikit.api.input.*;
-import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
+import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.network.payload.ScenarioSelection;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -27,14 +42,6 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
-
 import static com.meteorite.unsuspiciousblock.client.state.ScenarioSession.text;
 
 /**
@@ -240,7 +247,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         }
         scroll.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
         controls.render(graphics, font, pointer);
-        if (pointer.allowsTooltip() && pointer.hit() != null) pointer.hit().renderTooltip(graphics, font,
+        if (pointer.allowsTooltip() && pointer.hit() != null) UiTooltipPresenter.render(graphics, font, pointer.hit(),
                 UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
     }
 

@@ -927,6 +927,8 @@
   "screen.unsuspiciousblock.lightbox.fit": "适应窗口",
   "screen.unsuspiciousblock.lightbox.previous": "上一张",
   "screen.unsuspiciousblock.lightbox.next": "下一张",
+  "screen.unsuspiciousblock.lightbox.pan_lock": "锁定拖拽平移",
+  "screen.unsuspiciousblock.lightbox.pan_unlock": "解锁拖拽平移",
   "screen.unsuspiciousblock.lightbox.position": "%s / %s",
   "screen.unsuspiciousblock.lightbox.missing": "图片不可用",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.title": "模拟装备",

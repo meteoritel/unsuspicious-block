@@ -1,20 +1,25 @@
 package com.meteorite.unsuspiciousblock.client.ui.screen;
 
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiIconLightboxContent;
+import com.meteorite.meteosuikit.api.control.UiLightbox;
+import com.meteorite.meteosuikit.api.control.UiScreenBridge;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.geometry.UiViewport;
+import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.UiFlatText;
+import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
+import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
-import org.lwjgl.glfw.GLFW;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.PotteryPreviewRenderer;
-import com.meteorite.unsuspiciousblock.core.item.ModItems;
-import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
-import com.meteorite.unsuspiciousblock.core.blockentity.PotteryWheelBlockEntity;
-import com.meteorite.meteosuikit.api.control.*;
-import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.input.*;
-import com.meteorite.meteosuikit.api.render.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import java.util.List;
+import com.meteorite.unsuspiciousblock.core.blockentity.PotteryWheelBlockEntity;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -26,8 +31,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import org.jetbrains.annotations.NotNull;
+import org.lwjgl.glfw.GLFW;
 
-/** 纹饰陶轮台界面，右侧放大显示陶罐或复制陶片的结果预览。 */
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 纹饰陶轮台界面，右侧放大显示陶罐或复制陶片的结果预览。
+ */
 public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu> {
     private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/gui/pottery_wheel_gui.png");
@@ -45,6 +56,8 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private static final int PREVIEW_X = 134;
     private static final int PREVIEW_Y = 17;
     private static final int PREVIEW_SIZE = 38;
+    private static final double PREVIEW_CLICK_DRAG_THRESHOLD = 2.0D;
+    private static final float PREVIEW_ROTATION_PER_PIXEL = 4;
 
     private final PotteryPreviewRenderer previewRenderer = new PotteryPreviewRenderer();
     private float manualRotation;
@@ -54,8 +67,87 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private final UiChildren<UiInputTarget> content = new UiChildren<>();
     private final UiInputScope scope = new UiInputScope(content);
     private final UiInputRouter input = new UiInputRouter();
-    private final UiInputBridge bridge = new UiInputBridge(input);
+    private final UiScreenBridge bridge = new UiScreenBridge(input, new UiScreenBridge.Host() {
+        @Override
+        public UiInputScope inputScope() {
+            return activeScope();
+        }
+
+        @Override
+        public UiViewport viewport() {
+            return new UiViewport(1, width, height, new UiRect(0, 0, width, height));
+        }
+
+        @Override
+        public void prepareUi() {
+            PotteryWheelScreen.this.prepareUi();
+        }
+
+        @Override
+        public void layoutUi() {
+            PotteryWheelScreen.this.layoutUi();
+        }
+
+        @Override
+        public void invalidateUiResources() {
+            PotteryWheelScreen.this.invalidateUiResources();
+        }
+    });
     private static final UiIcon BACKGROUND = new UiIcon.Sprite(TEXTURE, 0, 0, 176, 166, 256, 256);
+    private static final UiLightbox.Labels LIGHTBOX_LABELS = new UiLightbox.Labels() {
+        @Override
+        public Component close() {
+            return lightboxText("close");
+        }
+
+        @Override
+        public Component zoomIn() {
+            return lightboxText("zoom_in");
+        }
+
+        @Override
+        public Component zoomOut() {
+            return lightboxText("zoom_out");
+        }
+
+        @Override
+        public Component fit() {
+            return lightboxText("fit");
+        }
+
+        @Override
+        public Component panLock() {
+            return lightboxText("pan_lock");
+        }
+
+        @Override
+        public Component panUnlock() {
+            return lightboxText("pan_unlock");
+        }
+
+        @Override
+        public Component previous() {
+            return lightboxText("previous");
+        }
+
+        @Override
+        public Component next() {
+            return lightboxText("next");
+        }
+
+        @Override
+        public Component position(int index, int total) {
+            return lightboxText("position", index, total);
+        }
+    };
+    private static final Map<String, UiIcon> LIGHTBOX_ICONS = Map.of(
+            "close", UiAtlas.icon(UiAtlas.Icon.CLOSE),
+            "fit", UiAtlas.icon(UiAtlas.Icon.RESET),
+            "zoom_in", UiAtlas.icon(UiAtlas.Icon.PLUS),
+            "zoom_out", UiAtlas.icon(UiAtlas.Icon.MINUS));
+
+    private UiLightbox lightbox;
+    private ItemStack lightboxSource = ItemStack.EMPTY;
 
     public PotteryWheelScreen(PotteryWheelMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -63,21 +155,46 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         this.imageHeight = 166;
         this.titleLabelX = 19;
         this.inventoryLabelY = 72;
-        content.add(modeButton); content.add(previewRotation);
+        content.add(modeButton);
+        content.add(previewRotation);
         modeButton.setFocusable(true);
         modeButton.setTheme(() -> UnsuspiciousUiTheme.DARK, UiControlRole.SECONDARY);
         scope.setEscape(this::onClose);
+        scope.setNavigationBack(this::onClose);
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        scope.interaction().end(previewRotation, UiInteractionSession.EndReason.CANCEL);
+        bridge.refresh();
     }
 
     private void prepareUi() {
-        modeButton.setBounds(leftPos + 8, topPos + 17, 14, 14);
         updateModeButton();
-        if (menu.getPreviewResult().isEmpty()) scope.interaction().end(previewRotation, UiInteractionSession.EndReason.HIDDEN);
-        scope.refreshFocus(); input.select(scope);
+        ItemStack result = menu.getPreviewResult();
+        if (lightbox != null && !ItemStack.isSameItemSameComponents(result, lightboxSource)) closePreviewLightbox();
+        if (scope.interaction().owns(previewRotation)
+                && !ItemStack.isSameItemSameComponents(result, previewRotation.source)) {
+            scope.interaction().end(previewRotation, UiInteractionSession.EndReason.UNMOUNTED);
+        }
     }
-    private UiInputContext pointer(double x, double y, int button) {
-        prepareUi();
-        return UiInputContext.of(scope, x, y, button, hasShiftDown(), hasControlDown(), hasAltDown());
+
+    private void layoutUi() {
+        modeButton.setBounds(leftPos + 8, topPos + 17, 14, 14);
+        if (lightbox != null) lightbox.prepare(font, width, height);
+    }
+
+    private void invalidateUiResources() {
+        displayedMode = null;
+        if (lightbox != null) {
+            lightbox.setText(previewStack(lightboxSource).getHoverName(), null);
+            lightbox.invalidateResources();
+        }
+    }
+
+    private UiInputScope activeScope() {
+        return lightbox == null ? scope : lightbox.inputScope();
     }
 
     private void updateModeButton() {
@@ -103,7 +220,8 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         modeButton.setAccessibleName(label);
     }
 
-    @Override protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
+    @Override
+    protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
         UiFlatText.drawWrapped(graphics, font, title,
                 titleLabelX, titleLabelY, imageWidth - titleLabelX - 6, 0x404040);
         UiFlatText.drawWrapped(graphics, font, playerInventoryTitle,
@@ -140,82 +258,189 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private void renderPreview(GuiGraphics graphics) {
         ItemStack previewResult = menu.getPreviewResult();
         if (previewResult.isEmpty()) return;
+        UiIcon preview = createPreviewIcon(previewResult, manualRotation);
+        if (isDecoratedPotPreview(previewResult)) {
+            preview.render(graphics, previewBounds().x(), previewBounds().y());
+            return;
+        }
+        preview.renderScaled(graphics,
+                new UiRect(leftPos + 137, topPos + 20, 32, 32), () -> UnsuspiciousUiTheme.DARK);
+    }
+
+    private UiRect previewBounds() {
+        return new UiRect(leftPos + PREVIEW_X, topPos + PREVIEW_Y, PREVIEW_SIZE, PREVIEW_SIZE);
+    }
+
+    private UiIcon createPreviewIcon(ItemStack previewResult, float rotation) {
+        ItemStack preview = previewStack(previewResult);
+        if (preview.is(Items.DECORATED_POT)) {
+            ItemStack renderedPreview = preview.copy();
+            return new UiIcon.Rendered(PREVIEW_SIZE, PREVIEW_SIZE,
+                    (graphics, bounds) -> previewRenderer.render(graphics, renderedPreview, bounds, rotation));
+        }
+        return new UiIcon.Item(preview);
+    }
+
+    private ItemStack previewStack(ItemStack previewResult) {
         if (previewResult.is(ModItems.UNFIRED_DECORATED_POT)) {
             ItemStack decoratedPotPreview = Items.DECORATED_POT.getDefaultInstance();
             decoratedPotPreview.set(DataComponents.POT_DECORATIONS,
                     previewResult.getOrDefault(DataComponents.POT_DECORATIONS, PotDecorations.EMPTY));
-            renderDecoratedPot(graphics, decoratedPotPreview);
-            return;
+            return decoratedPotPreview;
         }
-        if (previewResult.is(Items.DECORATED_POT)) {
-            renderDecoratedPot(graphics, previewResult);
-            return;
-        }
-        ItemStack preview = previewResult;
+        if (previewResult.is(Items.DECORATED_POT)) return previewResult;
         if (previewResult.is(ModItems.UNFIRED_DECORATED_SHERD)) {
             PotDecorations decorations = previewResult.get(DataComponents.POT_DECORATIONS);
             if (decorations != null && !decorations.ordered().isEmpty()) {
-                preview = new ItemStack(decorations.ordered().getFirst());
+                return new ItemStack(decorations.ordered().getFirst());
             }
         }
-        new UiIcon.Item(preview).renderScaled(graphics,
-                new UiRect(leftPos + 137, topPos + 20, 32, 32), () -> UnsuspiciousUiTheme.DARK);
+        return previewResult;
     }
 
-    private UiRect previewBounds() { return new UiRect(leftPos + PREVIEW_X, topPos + PREVIEW_Y, PREVIEW_SIZE, PREVIEW_SIZE); }
-    private void renderDecoratedPot(GuiGraphics graphics, ItemStack output) {
-        previewRenderer.render(graphics, output, previewBounds(), manualRotation);
+    private boolean isDecoratedPotPreview(ItemStack previewResult) {
+        return previewResult.is(ModItems.UNFIRED_DECORATED_POT) || previewResult.is(Items.DECORATED_POT);
     }
 
-    /** 预览旋转只登记 kit 会话；槽位仍由原版父类处理。 */
+    private void openPreviewLightbox() {
+        ItemStack previewResult = menu.getPreviewResult();
+        if (previewResult.isEmpty()) return;
+        ItemStack preview = previewStack(previewResult).copy();
+        UiIconLightboxContent content = new UiIconLightboxContent(
+                createPreviewIcon(previewResult, manualRotation), () -> UnsuspiciousUiTheme.DARK);
+        UiLightbox next = new UiLightbox(LIGHTBOX_LABELS, content, this::closePreviewLightbox);
+        next.setTheme(() -> UnsuspiciousUiTheme.DARK);
+        next.setIcons(LIGHTBOX_ICONS);
+        next.setText(preview.getHoverName(), null);
+        next.setMaskClickCloses(false);
+        next.inputScope().setEscape(this::closePreviewLightbox);
+        next.inputScope().setNavigationBack(this::closePreviewLightbox);
+        lightbox = next;
+        lightboxSource = previewResult.copy();
+    }
+
+    private void closePreviewLightbox() {
+        UiLightbox current = lightbox;
+        if (current == null) return;
+        lightbox = null;
+        lightboxSource = ItemStack.EMPTY;
+        current.onClosed();
+    }
+
+    private static Component lightboxText(String key, Object... args) {
+        return Component.translatable("screen.unsuspiciousblock.lightbox." + key, args);
+    }
+
+    /**
+     * 预览拖动与点击通过 kit 会话路由；槽位仍由原版父类处理。
+     */
     private final class PreviewRotation implements UiInteractionSession.Target {
-        @Override public UiPointerHit hitTest(double x, double y) {
+        private double pressX;
+        private double pressY;
+        private boolean dragged;
+        private ItemStack source = ItemStack.EMPTY;
+
+        @Override
+        public UiPointerHit hitTest(double x, double y) {
             return !menu.getPreviewResult().isEmpty() && previewBounds().contains(x, y) ? UiPointerHit.leaf(this, x, y).preservingFocus() : null;
         }
-        @Override public boolean mousePressed(UiInputContext context) {
-            if (context.button() != 0) return false;
-            scope.interaction().begin(this, UiInteractionSession.Source.POINTER, 0); return true;
+
+        @Override
+        public boolean mousePressed(UiInputContext context) {
+            if (context.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+            pressX = context.pointerX();
+            pressY = context.pointerY();
+            dragged = false;
+            source = menu.getPreviewResult().copy();
+            scope.interaction().begin(this, UiInteractionSession.Source.POINTER, GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            return true;
         }
-        @Override public boolean mouseDragged(UiInputContext context, double dx, double dy) {
-            manualRotation += (float) dx * 4; return true;
+
+        @Override
+        public boolean mouseDragged(UiInputContext context, double dx, double dy) {
+            updateDragDistance(context);
+            if (dragged) manualRotation += (float) dx * PREVIEW_ROTATION_PER_PIXEL;
+            return true;
         }
-        @Override public boolean mouseReleased(UiInputContext context) { return true; }
-        @Override public void interactionEnded(UiInteractionSession.EndReason reason) { }
+
+        @Override
+        public boolean mouseReleased(UiInputContext context) {
+            updateDragDistance(context);
+            if (!dragged && previewBounds().contains(context.pointerX(), context.pointerY())
+                    && ItemStack.isSameItemSameComponents(source, menu.getPreviewResult())) openPreviewLightbox();
+            return true;
+        }
+
+        private void updateDragDistance(UiInputContext context) {
+            double movedX = context.pointerX() - pressX;
+            double movedY = context.pointerY() - pressY;
+            dragged |= movedX * movedX + movedY * movedY >= PREVIEW_CLICK_DRAG_THRESHOLD * PREVIEW_CLICK_DRAG_THRESHOLD;
+        }
+
+        @Override
+        public void interactionEnded(UiInteractionSession.EndReason reason) {
+            dragged = false;
+            source = ItemStack.EMPTY;
+        }
     }
 
-    @Override public boolean mouseClicked(double x, double y, int button) {
-        return bridge.mousePressed(pointer(x, y, button)) || super.mouseClicked(x, y, button);
+    @Override
+    public boolean mouseClicked(double x, double y, int button) {
+        return bridge.mousePressed(x, y, button) || super.mouseClicked(x, y, button);
     }
-    @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
-        return bridge.mouseDragged(pointer(x, y, button), dx, dy) || super.mouseDragged(x, y, button, dx, dy);
+
+    @Override
+    public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        return bridge.mouseDragged(x, y, button, dx, dy) || super.mouseDragged(x, y, button, dx, dy);
     }
-    @Override public boolean mouseReleased(double x, double y, int button) {
-        return bridge.mouseReleased(pointer(x, y, button)) || super.mouseReleased(x, y, button);
+
+    @Override
+    public boolean mouseReleased(double x, double y, int button) {
+        return bridge.mouseReleased(x, y, button) || super.mouseReleased(x, y, button);
     }
-    @Override public boolean mouseScrolled(double x, double y, double sx, double sy) {
-        return bridge.mouseScrolled(pointer(x, y, -1), sx, sy) || super.mouseScrolled(x, y, sx, sy);
+
+    @Override
+    public boolean mouseScrolled(double x, double y, double sx, double sy) {
+        return bridge.mouseScrolled(x, y, sx, sy) || super.mouseScrolled(x, y, sx, sy);
     }
-    @Override public boolean keyPressed(int key, int scan, int modifiers) {
-        prepareUi();
-        if (bridge.keyPressed(key, scan, modifiers)) return true;
-        if (key == GLFW.GLFW_KEY_BACKSPACE) { onClose(); return true; }
-        return super.keyPressed(key, scan, modifiers);
+
+    @Override
+    public boolean keyPressed(int key, int scan, int modifiers) {
+        return bridge.keyPressed(key, scan, modifiers) || super.keyPressed(key, scan, modifiers);
     }
-    @Override public boolean keyReleased(int key, int scan, int modifiers) {
-        prepareUi(); return bridge.keyReleased(key, scan, modifiers) || super.keyReleased(key, scan, modifiers);
+
+    @Override
+    public boolean keyReleased(int key, int scan, int modifiers) {
+        return bridge.keyReleased(key, scan, modifiers) || super.keyReleased(key, scan, modifiers);
     }
-    @Override public boolean charTyped(char value, int modifiers) {
-        prepareUi(); return bridge.charTyped(value, modifiers) || super.charTyped(value, modifiers);
+
+    @Override
+    public boolean charTyped(char value, int modifiers) {
+        return bridge.charTyped(value, modifiers) || super.charTyped(value, modifiers);
     }
-    @Override public void removed() {
-        bridge.close(); UiRenderLayers.releaseModels(); super.removed();
+
+    @Override
+    public void removed() {
+        bridge.close();
+        closePreviewLightbox();
+        super.removed();
     }
-    @Override public void render(@NotNull GuiGraphics graphics, int x, int y, float partialTick) {
-        prepareUi();
+
+    @Override
+    public void render(@NotNull GuiGraphics graphics, int x, int y, float partialTick) {
+        bridge.beginFrame(Util.getMillis());
         super.render(graphics, x, y, partialTick);
         UiPointer pointer = scope.pointer(x, y).resolve(content);
-        modeButton.render(graphics, font, pointer);
-        if (pointer.hit() == null) renderTooltip(graphics, x, y);
-        else if (pointer.allowsTooltip()) pointer.hit().renderTooltip(graphics, font, UnsuspiciousUiTheme.DARK.surfaces(), x, y);
+        UiRenderLayers.draw(graphics, UiRenderLayers.FOREGROUND,
+                () -> modeButton.render(graphics, font, pointer));
+        if (lightbox == null) {
+            if (pointer.allowsTooltip() && (pointer.hit() == null || pointer.hit().owners().isEmpty())) {
+                renderTooltip(graphics, x, y);
+            } else if (pointer.allowsTooltip()) {
+                UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.DARK.surfaces(), x, y);
+            }
+        } else {
+            lightbox.layer().render(graphics, font, x, y, 0);
+        }
     }
 }

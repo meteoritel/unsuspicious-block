@@ -8,8 +8,8 @@
 
 | API 包 | 宿主消费场景 |
 |---|---|
-| `control` | `UiScreen` / `UiThemedScreen`、单多行文本编辑、列表、表单正文与滚动视图/容器、分页状态、控件组、文档阅读控件、模态框与灯箱 |
-| `input` | 成员树 `UiChildren`、输入作用域 `UiInputScope`、唯一路由器 `UiInputRouter`、容器桥 `UiInputBridge`、页面回退、焦点与持续交互 |
+| `control` | `UiScreen` / `UiThemedScreen`、组合根 `UiScreenBridge`、单多行文本编辑、列表、表单正文与滚动视图/容器、分页状态、控件组、文档阅读控件、模态框与灯箱 |
+| `input` | 成员树 `UiChildren`、输入作用域 `UiInputScope`、唯一路由器 `UiInputRouter`、低层输入回退桥 `UiInputBridge`、页面回退、焦点与持续交互 |
 | `layout` / `geometry` | 排版文档 `UiDocument` 及其目标快照、行/网格几何计算、坐标变换与矩形 |
 | `style` | 主题上下文、语义文字配色（`UiTextScheme`）、控件与滑块外观、宿主皮肤与表面样式 |
 | `number` | 精确数值输入框、合法数值域与滑条（如幸运值参数草稿） |
@@ -37,7 +37,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **控件与输入**：`UiControl` 显式启用可聚焦能力并在“配对释放且仍命中”时执行动作；`UiControlGroup` 按稳定业务键复用列表项；`UiTextInput` / `UiTextArea` 自身持有草稿、选区与局部撤销，提交前由宿主执行业务校验。
 - **单行呈现**：`UiTextInput` 保留原版编辑模型，私有视图统一无阴影正文、占位文字、光标、选区与鼠标寻址；颜色读取当前主题，水平窗口随编辑、resize 和语言资源更新。搜索及数值字段直接消费同一控件。
 - **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 根据实际 framebuffer 与原版 GUI 倍率选择整数物理像素倍率，统一 GUI 与书页逻辑坐标的正逆换算；绘制、鼠标位置和拖动增量共用同一比例。像素不足 `1×` 时连续缩小以保留访问能力。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
-- **Tooltip 与裁剪**：普通与物品提示统一经过 `UiPointerHit.renderTooltip` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。
+- **Tooltip 与裁剪**：普通与物品提示统一经过 `UiTooltipPresenter.render` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。普通 kit tooltip 默认位于当前作用域加 400，整体高于原版槽位物品；富提示回调保留作用域基线，原版 tooltip 自行加层。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。
 - **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置、日志保留和管理详情使用 `UiFormBody` 装配真实字段、标签、动作和自绘说明。正文拥有排版、滚动与裁剪，宿主将 `reveal(current)` 接入已有焦点 listener；底部固定操作栏留在正文之外。短正文固定预留轨道带宽，内容、自然高度或字体资源改变后调用 `invalidateLayout()`。
 - **阻尼与成员帧**：`UiScrollView` 唯一持有实际偏移与阻尼目标。滚轮累积目标，恢复位置及焦点滚入立即定位，键盘平滑导航调用 `ensureVisibleSmoothly`。`UiScreen` 在准备、布局和选域后推进活动内容的 `advanceFrame(long)`，再解析命中与绘制；容器沿实际成员树转发，私有持有滚动视图的包装器转发帧和退出通知。表单推进后更新真实字段坐标，隐藏、禁用或切域结清旧目标。目录只提供内容和条目索引快照。
 
@@ -57,9 +57,9 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 ### 3.4 容器屏幕与只读呈现
 
-- **`PotteryWheelScreen`**：保留原版 `AbstractContainerScreen`、`Menu` 与 `Slot` 机制，自有的控制模式按钮与右侧预览旋转通过唯一 `UiInputRouter` / `UiInputBridge` 接入（配对输入事件先交桥接器，未消费再交容器父类）。
+- **`PotteryWheelScreen`**：保留原版 `AbstractContainerScreen`、Menu 与 Slot；模式按钮、预览交互和灯箱由唯一 router 与 `UiScreenBridge` 接入。bridge 使用原生 GUI 恒等视口，共同执行准备、布局、选域与帧推进；事件未被 kit 消费或阻断时回退父类。提示直接用 `UiTooltipPresenter` 的默认层，无命中（null 或 EMPTY 的 owners 为空）才回退原版槽位提示，真实 kit 命中保留遮挡关系。预览投影为 `UiIcon.Item` 或 `UiIcon.Rendered`，页面和 `UiIconLightboxContent` 共用同一投影规则；有效左键配对、输出未变、未拖动且释放仍在预览内时打开灯箱。输出变化、隐藏、resize 或切域结清旧按压，拖动保持旋转。灯箱阻断槽位输入，关闭后归还作用域；文字通过本地化 Labels 提供。资源失效钩子刷新模式文案与灯箱标题/布局，图标绘制读取当前游戏资源并保留灯箱缩放和平移。
 - **`SpecimenBoxScreen`**：无自有交互控件，仅用 UI Kit 图标与文本能力绘制表面，槽位交互完全交由容器父类。
-- **HUD、Toast 与局部模型层**：HUD、Toast、富 Tooltip 与 JEI 自有界面保持各自原有生命周期，按需调用 UI Kit 绘制表面、文本或图标；3D 物品与模型在 `UiRenderLayers.item` / `model` 局部深度上下文内渲染，装饰层与主图标处于同一局部层，数量角标绘制在前景层，模型工作区由 UI Kit 管理释放。
+- **HUD、Toast 与局部模型层**：HUD、Toast、富 Tooltip 与 JEI 自有界面保持各自原有生命周期，按需调用 UI Kit 绘制表面、文本或图标；3D 物品与模型在 `UiRenderLayers.item` / `model` 局部深度上下文内渲染，装饰层与主图标处于同一局部层，数量角标绘制在前景层，模型共享 GPU 工作区由 UI Kit 的客户端资源世代与终止事件统一释放，关屏只清理宿主业务资源。
 
 ## 4. 边界检查与构建校验
 
