@@ -3,6 +3,7 @@ if (typeof RecipeCards !== 'undefined') RecipeCards.closeStream();
 var RecipeCards = {
     plugin: Java.loadClass('com.meteorite.tools.recipecards.client.RecipeCardJeiPlugin'),
     bridge: Java.loadClass('com.meteorite.tools.recipecards.client.RecipeCardExports'),
+    objects: Java.loadClass('java.util.Objects'),
     session: null,
     closeStream: function() {
         if (this.session && this.session.stream) {
@@ -12,7 +13,7 @@ var RecipeCards = {
     },
     requireSession: function(token) {
         if (!this.session || this.session.token !== token) throw new Error('配方清单会话已变化，请重新获取');
-        if (!this.session.runtime.equals(this.plugin.requireRuntime())) throw new Error('JEI 已重新加载，请重新获取配方清单');
+        if (!this.objects.equals(this.session.runtime, this.plugin.requireRuntime())) throw new Error('JEI 已重新加载，请重新获取配方清单');
         return this.session;
     },
     begin: function(token, filters) {

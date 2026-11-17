@@ -220,16 +220,16 @@ def selection(client, args):
     if state['state'] != 'ready':
         raise ProbeError(f'JEI 配方清单失败：{state}')
     entries = []
-    for offset in range(0, state['total'], 64):
+    for offset in range(0, int(state['total']), 64):
         entries.extend(call(client, f'RecipeCards.page({key}, {offset})'))
     return token, filters, entries
 
 
 def filename(entry, variant):
-    position = entry['sourceIndex'] if entry['recipe'] is None else entry.get('occurrence', 0)
+    position = int(entry['sourceIndex'] if entry['recipe'] is None else entry.get('occurrence', 0))
     identity = json.dumps([entry['category'], entry['recipe'], position, variant], separators=(',', ':'))
     suffix = hashlib.sha256(identity.encode()).hexdigest()[:12]
-    name = entry['recipe'] or f"{entry['category']}-anonymous-{entry['sourceIndex']}"
+    name = entry['recipe'] or f"{entry['category']}-anonymous-{int(entry['sourceIndex'])}"
     stem = re.sub(r'[^a-zA-Z0-9._-]', '_', name)[:90].rstrip('. ')
     return f'card-{stem}-v{variant}-{suffix}.png'
 

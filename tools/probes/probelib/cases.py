@@ -624,10 +624,10 @@ def ui_form_bodies(case):
 
 def recipe_card_filename(entry, variant):
     """为探针证据生成稳定文件名，具名配方不依赖清单当前顺序。"""
-    position = entry['sourceIndex'] if entry['recipe'] is None else entry.get('occurrence', 0)
+    position = int(entry['sourceIndex'] if entry['recipe'] is None else entry.get('occurrence', 0))
     identity = json.dumps([entry['category'], entry['recipe'], position, variant], separators=(',', ':'))
     suffix = hashlib.sha256(identity.encode()).hexdigest()[:12]
-    stem = entry['recipe'] or f"{entry['category']}-anonymous-{entry['sourceIndex']}"
+    stem = entry['recipe'] or f"{entry['category']}-anonymous-{int(entry['sourceIndex'])}"
     stem = re.sub(r'[^a-zA-Z0-9._-]', '_', stem)[:90].rstrip('. ')
     return f'card-{stem}-v{variant}-{suffix}.png'
 
@@ -649,7 +649,7 @@ def recipe_card_export(case):
     if state['state'] != 'ready':
         raise ProbeError(f'配方卡片清单失败: {state}')
     entries = []
-    for offset in range(0, state['total'], 64):
+    for offset in range(0, int(state['total']), 64):
         entries.extend(client.evaluate(f'RecipeCards.page({encoded_token},{offset})'))
     case.equal('配方卡片清单分页完整', len(entries), state['total'])
     if not entries:
@@ -661,7 +661,7 @@ def recipe_card_export(case):
     write_json(output / 'recipe-cards.json', manifest)
     case.record['recipeCardManifest'] = str((output / 'recipe-cards.json').relative_to(case.runtime.directory))
     for entry in entries:
-        index = entry['index']
+        index = int(entry['index'])
         request_id = f'{token}/{index}'
         path = output / recipe_card_filename(entry, options['variant'])
         submit_options = dict(id=request_id, path=str(path), scale=options['scale'],

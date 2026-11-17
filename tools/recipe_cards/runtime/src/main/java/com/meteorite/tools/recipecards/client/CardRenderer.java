@@ -68,12 +68,15 @@ final class CardRenderer {
 
         minecraft.renderBuffers().bufferSource().endBatch();
         RenderState state = new RenderState();
+        double guiScale = minecraft.getWindow().getGuiScale();
         TextureTarget target = null;
         GuiGraphics graphics = new GuiGraphics(minecraft, minecraft.renderBuffers().bufferSource());
         var modelView = RenderSystem.getModelViewStack();
         modelView.pushMatrix();
         NativeImage image = null;
         try {
+            // 嵌套模型工作区按 Window 的 GUI 倍率换算像素裁剪。
+            minecraft.getWindow().setGuiScale(options.scale());
             target = new TextureTarget(width, height, true, Minecraft.ON_OSX);
             RenderSystem.disableScissor();
             target.setClearColor(0, 0, 0, 0);
@@ -108,6 +111,7 @@ final class CardRenderer {
                 modelView.popMatrix();
                 RenderSystem.applyModelViewMatrix();
                 state.restore();
+                minecraft.getWindow().setGuiScale(guiScale);
             }
         }
     }
