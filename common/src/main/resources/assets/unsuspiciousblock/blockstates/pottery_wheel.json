@@ -1,20 +1,8 @@
 {
   "variants": {
-    "facing=north,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
-    "facing=north,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
-    "facing=north,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
-    "facing=north,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
-    "facing=south,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
-    "facing=south,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
-    "facing=south,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
-    "facing=south,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
-    "facing=west,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
-    "facing=west,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
-    "facing=west,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
-    "facing=west,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 },
-    "facing=east,wet_clay=false,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
-    "facing=east,wet_clay=false,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
-    "facing=east,wet_clay=true,working=false": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
-    "facing=east,wet_clay=true,working=true": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 }
+    "facing=north": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay" },
+    "facing=east": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 90 },
+    "facing=south": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 180 },
+    "facing=west": { "model": "unsuspiciousblock:block/pottery_wheel_no_clay", "y": 270 }
   }
 }

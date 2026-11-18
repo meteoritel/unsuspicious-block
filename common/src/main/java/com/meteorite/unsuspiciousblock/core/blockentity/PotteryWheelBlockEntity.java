@@ -29,6 +29,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
@@ -203,19 +204,22 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
                 && (slot == OUTPUT || slot == WATER && stack.is(Items.GLASS_BOTTLE));
     }
 
-    // 输入变化后重新计时，并同步“湿黏土”方块状态
+    // 输入变化后重新计时，并同步陶坯与水槽的外观状态。
     private void inputsChanged() {
         processProgress = 0;
-        updateWetClayState();
+        updateInputVisualState();
         setChanged();
     }
 
-    // 黏土槽有材料时立即显示黏土，水瓶只决定能否实际加工
-    private void updateWetClayState() {
-        boolean wet = isClayMaterial(items.get(CLAY));
-        if (level != null && level.getBlockState(worldPosition).hasProperty(PotteryWheelBlock.WET_CLAY)
-                && level.getBlockState(worldPosition).getValue(PotteryWheelBlock.WET_CLAY) != wet) {
-            level.setBlock(worldPosition, level.getBlockState(worldPosition).setValue(PotteryWheelBlock.WET_CLAY, wet), 3);
+    private void updateInputVisualState() {
+        if (level == null || level.isClientSide()) return;
+        BlockState state = level.getBlockState(worldPosition);
+        if (!(state.getBlock() instanceof PotteryWheelBlock)) return;
+        BlockState updated = state
+                .setValue(PotteryWheelBlock.WET_CLAY, isClayMaterial(items.get(CLAY)))
+                .setValue(PotteryWheelBlock.HAS_WATER, isWaterBottle(items.get(WATER)));
+        if (updated != state) {
+            level.setBlock(worldPosition, updated, Block.UPDATE_ALL);
         }
     }
 
@@ -230,7 +234,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
 
     // 服务端每 tick 推进一次制作；输入失效或结果槽无法容纳产物时停止并清空进度
     public static void serverTick(PotteryWheelBlockEntity wheel) {
-        wheel.updateWetClayState();
+        wheel.updateInputVisualState();
         if (!wheel.canWorkNow()) {
             wheel.updateWorkingState(false);
             return;
@@ -298,7 +302,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         storeOutput(insertIntoHopperBelow(result));
         items.set(WATER, insertIntoHopperBelow(bottle));
         processProgress = 0;
-        updateWetClayState();
+        updateInputVisualState();
         updateWorkingState(false);
         setChanged();
     }

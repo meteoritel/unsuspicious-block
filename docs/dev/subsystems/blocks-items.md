@@ -90,7 +90,7 @@ flowchart LR
 
 ### 4.2 纹饰陶轮台与半成品
 
-- **纹饰陶轮台**：`PotteryWheelBlock` 与 `PotteryWheelBlockEntity` 实现制陶工作站及漏斗自动化，由 `PotteryWheelMenu` / `PotteryWheelScreen` 提供界面与预览，`PotteryWheelRenderer` 渲染方块实体状态。
+- **纹饰陶轮台**：`PotteryWheelBlock` 与 `PotteryWheelBlockEntity` 实现制陶工作站及漏斗自动化，由 `PotteryWheelMenu` / `PotteryWheelScreen` 提供界面与预览。`PotteryWheelRenderer` 根据方块状态渲染转盘、湿黏土和槽内水面。水瓶槽持有原版水瓶时，凹槽内显示使用原版静水动画与群系水色的水面。
 - **未烧制陶罐与陶片**：`UnfiredDecoratedPotBlock`（配 `UnfiredDecoratedPotItem` 与方块实体）及 `UnfiredDecoratedSherdItem` 承载四面纹饰数据，烧制后经 `UnfiredDecoratedPotSmeltingRecipe` / `UnfiredDecoratedSherdSmeltingRecipe` 转为成品。
 
 ## 5. 可疑解析仪与考古铲

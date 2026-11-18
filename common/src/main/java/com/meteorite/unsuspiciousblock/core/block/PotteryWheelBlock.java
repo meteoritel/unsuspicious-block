@@ -37,6 +37,7 @@ import java.util.List;
 /** 纹饰陶轮台方块，提供陶罐合成和陶片压印工作界面。 */
 public class PotteryWheelBlock extends Block implements EntityBlock {
     public static final BooleanProperty WET_CLAY = BooleanProperty.create("wet_clay");
+    public static final BooleanProperty HAS_WATER = BooleanProperty.create("has_water");
     public static final BooleanProperty WORKING = BooleanProperty.create("working");
     private static final VoxelShape SHAPE = Shapes.or(
             Block.box(1.0D, 0.0D, 1.0D, 4.0D, 9.0D, 4.0D),
@@ -52,6 +53,7 @@ public class PotteryWheelBlock extends Block implements EntityBlock {
         this.registerDefaultState(this.stateDefinition.any()
                 .setValue(HorizontalDirectionalBlock.FACING, Direction.NORTH)
                 .setValue(WET_CLAY, false)
+                .setValue(HAS_WATER, false)
                 .setValue(WORKING, false));
     }
 
@@ -64,7 +66,7 @@ public class PotteryWheelBlock extends Block implements EntityBlock {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(HorizontalDirectionalBlock.FACING, WET_CLAY, WORKING);
+        builder.add(HorizontalDirectionalBlock.FACING, WET_CLAY, HAS_WATER, WORKING);
     }
 
     @Override
