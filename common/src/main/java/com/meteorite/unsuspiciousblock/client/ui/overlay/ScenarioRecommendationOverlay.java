@@ -3,15 +3,15 @@ package com.meteorite.unsuspiciousblock.client.ui.overlay;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiControlGroup;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
-import com.meteorite.meteosuikit.api.control.UiScrollView;
+import com.meteorite.meteosuikit.api.control.UiDocumentView;
+import com.meteorite.meteosuikit.api.layout.UiNode;
+import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.meteosuikit.api.input.UiChildren;
 import com.meteorite.meteosuikit.api.input.UiInputContainer;
-import com.meteorite.meteosuikit.api.input.UiInputContext;
 import com.meteorite.meteosuikit.api.input.UiInputTarget;
 import com.meteorite.meteosuikit.api.input.UiPointer;
-import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.render.UiLayer;
 import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
@@ -38,7 +38,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
@@ -53,13 +52,12 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     private final SimulationAssistTarget target;
     private final ScenarioSelection original;
     private final ScenarioSession session;
-    private final UiScrollView scroll = new UiScrollView();
+    private final UiDocumentView document;
     private final UiControlGroup controls = new UiControlGroup();
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
     private final UiOverlay overlay = new UiOverlay(this);
     private final UiLayer presentation;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
-    private List<FormattedCharSequence> lines = List.of();
     @Nullable
     private ScenarioSelection displayed;
     private List<Component> displayedNotes = List.of();
@@ -79,13 +77,14 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         this.target = target;
         this.original = original;
         session = JournalClientConnection.scenario();
-        children.add(scroll);
+        document = new UiDocumentView(TextMeasurer.of(Minecraft.getInstance().font),
+                () -> UnsuspiciousUiTheme.PARCHMENT, text("recommend.title"));
+        document.setScrollStep(24);
+        children.add(document);
         children.add(controls);
-        presentation = new UiLayer(overlay.inputScope(), (graphics, font, pointer, depth) -> overlay.render(graphics,
-                new UiRect(0, 0, layer.width(), layer.height()), depth, 0x88000000,
-                () -> render(graphics, font, pointer)), null);
+        presentation = overlay.layer(() -> new UiRect(0, 0, layer.width(), layer.height()), 0x88000000,
+                (graphics, font, pointer, depth) -> render(graphics, font, pointer));
         controls.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
-        scroll.setStep(24);
     }
 
     public static void open(JournalOverlays layer, ResourceLocation table, SimulationAssistTarget target) {
@@ -115,7 +114,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         language = nextLanguage;
         measuredFont = font;
         bounds = nextBounds;
-        scroll.setViewport(bounds.x() + 8, bounds.y() + 26, Math.max(1, width - 16), Math.max(1, height - 55));
+        document.setBounds(bounds.x() + 8, bounds.y() + 26, Math.max(1, width - 16), Math.max(1, height - 55));
         List<Component> content = new ArrayList<>();
         var snapshot = session.snapshot(table);
         String kind = target.kind() == SimulationAssistTarget.Kind.CHILD_TABLE ? "table" : "item";
@@ -162,11 +161,9 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
             content.add(text("recommend.help"));
         } else if (notes.isEmpty()) content.add(text("assist_invalid"));
         if (!pending && !stale) content.addAll(notes);
-        List<FormattedCharSequence> wrapped = new ArrayList<>();
-        for (Component line : content) wrapped.addAll(font.split(line, Math.max(1, scroll.viewport().width() - 6)));
-        lines = List.copyOf(wrapped);
-        scroll.setContentHeight(lines.size() * (font.lineHeight + 4));
-        scroll.setScrollbarVisible(scroll.maxOffset() > 0);
+        document.setContent(content.stream()
+                .<UiNode>map(line -> new UiNode.Row(line, UiTextScheme.PARCHMENT.body()))
+                .toList());
         controls.beginUpdate();
         UiControl close = button(font, "close", text("params.cancel"), bounds.right() - 22, bounds.y() + 4, 18, layer::close);
         close.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.CLOSE),
@@ -234,18 +231,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.renderPage(graphics, bounds);
         graphics.drawString(font, text("recommend.title"), bounds.x() + 8, bounds.y() + 8, UiTextScheme.PARCHMENT.title(), false);
-        scroll.push(graphics);
-        try {
-            int lineHeight = font.lineHeight + 4;
-            int first = scroll.offset() / lineHeight;
-            int end = Math.min(lines.size(), (scroll.offset() + scroll.viewport().height() + lineHeight - 1) / lineHeight);
-            for (int index = first; index < end; index++) {
-                graphics.drawString(font, lines.get(index), 0, index * lineHeight, UiTextScheme.PARCHMENT.body(), false);
-            }
-        } finally {
-            scroll.pop(graphics);
-        }
-        scroll.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
+        document.render(graphics, font, pointer);
         controls.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) UiTooltipPresenter.render(graphics, font, pointer.hit(),
                 UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
@@ -267,22 +253,16 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     }
 
     @Override
-    public UiPointerHit hitTest(double x, double y) {
-        UiPointerHit hit = children.hitTest(x, y);
-        return hit != null ? hit.within(this) : scroll.contains(x, y) ? UiPointerHit.leaf(this, x, y) : null;
-    }
-
-    @Override
-    public boolean mouseScrolled(UiInputContext context, double x, double y) {
-        if (!scroll.contains(context.pointerX(), context.pointerY())) return false;
-        scroll.scrollBy(y);
-        return true;
+    public void invalidateResources() {
+        dirty = true;
+        document.invalidateLayout();
     }
 
     @Override
     public boolean keyPressed(int key, int scan, int modifiers) {
         if (key == GLFW.GLFW_KEY_PAGE_UP || key == GLFW.GLFW_KEY_PAGE_DOWN) {
-            scroll.setOffset(scroll.offset() + (key == GLFW.GLFW_KEY_PAGE_DOWN ? 1 : -1) * scroll.viewport().height());
+            int direction = key == GLFW.GLFW_KEY_PAGE_DOWN ? 1 : -1;
+            document.setOffset(document.offset() + direction * document.bounds().height());
             return true;
         }
         return UiInputContainer.super.keyPressed(key, scan, modifiers);

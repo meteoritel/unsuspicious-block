@@ -3,6 +3,8 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiListView;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
+import com.meteorite.meteosuikit.api.control.UiWidgetRow;
+import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.render.UiLayer;
@@ -60,7 +62,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
     private final UiControl probe;
     private final UiControl paramsButton;
     private final UiControl clear;
-    private final List<UiControl> confirmationActions;
+    private final UiWidgetRow confirmationRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
     private final UiLayer layer;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
 
@@ -101,15 +103,19 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         UiControl calculate = button(font, ScenarioSession.text("params.apply_calculate"), null,
                 () -> submitDraft(session::applyDraftAndSimulate));
         calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        confirmationActions = List.of(calculate,
+        List<UiControl> confirmationActions = List.of(calculate,
                 button(font, ScenarioSession.text("params.apply_only"), null, () -> submitDraft(session::applyDraft)),
                 button(font, Component.translatable("gui.cancel"), null, owner::close));
+        for (UiControl action : confirmationActions) {
+            actions.remove(action);
+            confirmationRow.add(action, UiLinearLayout.Child.remain());
+        }
 
         children.add(list);
         children.add(actions);
-        layer = new UiLayer(overlay.inputScope(), (graphics, rowFont, pointer, depth) ->
-                overlay.render(graphics, new UiRect(0, 0, owner.width(), owner.height()), depth, 0x88000000,
-                        () -> render(graphics, rowFont, pointer)), null);
+        children.add(confirmationRow);
+        layer = overlay.layer(() -> new UiRect(0, 0, owner.width(), owner.height()), 0x88000000,
+                (graphics, rowFont, pointer, depth) -> render(graphics, rowFont, pointer));
     }
 
     private UiControl button(Font font, Component label, @Nullable UiAtlas.Icon icon, UiAction action) {
@@ -163,6 +169,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         if (error != null) graphics.drawString(font, font.plainSubstrByWidth(error.getString(),
                 Math.max(0, bounds.width() - 16)), bounds.x() + 8, bounds.bottom() - 40, UiTextScheme.PARCHMENT.negative(), false);
         for (UiControl action : actions) action.render(graphics, font, pointer);
+        confirmationRow.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {
             UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.surfaces(),
                     (int) pointer.x(), (int) pointer.y());
@@ -225,9 +232,6 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         int listTop = bounds.y() + 49;
         list.setBounds(left, listTop, innerWidth, Math.max(0, bounds.bottom() - 39 - listTop));
 
-        int mainWidth = Math.max(0, (innerWidth - (confirmationActions.size() - 1) * 4) / confirmationActions.size());
-        for (int i = 0; i < confirmationActions.size(); i++) {
-            confirmationActions.get(i).setBounds(left + i * (mainWidth + 4), bounds.bottom() - 28, mainWidth, 20);
-        }
+        confirmationRow.setBounds(left, bounds.bottom() - 28, innerWidth, 20);
     }
 }

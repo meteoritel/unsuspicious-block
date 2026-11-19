@@ -206,7 +206,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         }
     }
 
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private final List<LogEntryState> allEntries = new ArrayList<>();
     private final List<LogEntryState> filteredEntries = new ArrayList<>();
     private final List<DisplayRow> displayRows = new ArrayList<>();
@@ -225,6 +225,11 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     private UUID selectedEntryId;
     private boolean batchSelectionMode;
     private final Set<UUID> selectedEntryIds = new LinkedHashSet<>();
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) {
+        this.layout = layout;
+        controlsDirty = true;
+    }
 
     public LogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -389,7 +394,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics guiGraphics, Font font, UiPointer pointer) {
         this.metrics.beginFrame(font);
         int leftX = this.layout.rightPageX() + 8;
         int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
@@ -415,7 +420,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
             if (row instanceof GroupHeaderRow header) {
                 renderGroupHeader(guiGraphics, font, leftX, rowY, header);
             } else if (row instanceof EntryRow(LogEntryState state)) {
-                renderEntry(guiGraphics, font, leftX, rowY, state, mouseX, mouseY);
+                renderEntry(guiGraphics, font, leftX, rowY, state, pointer);
             }
             yOffset += row.height();
         }
@@ -505,9 +510,9 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
     // 渲染单个日志条目
     private void renderEntry(GuiGraphics guiGraphics, Font font, int leftX, int rowY,
-                             LogEntryState state, int mouseX, int mouseY) {
-        boolean hovered = mouseX >= leftX - 4 && mouseX < leftX - 4 + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH
-                && mouseY >= rowY && mouseY < rowY + JournalLayout.LOG_ROW_HEIGHT;
+                             LogEntryState state, UiPointer pointer) {
+        boolean hovered = pointer.contains(new UiRect(leftX - 4, rowY,
+                JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, JournalLayout.LOG_ROW_HEIGHT));
         boolean selected = this.batchSelectionMode
                 ? this.selectedEntryIds.contains(state.entry.entryId())
                 : state.entry.entryId().equals(this.selectedEntryId);
@@ -576,7 +581,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         // 已备注标记：右下角绘制备注铅笔图集图标，悬停时高亮提示可点击编辑（几何与命中盒同一来源）
         if (state.entry.hasNote() && !this.batchSelectionMode) {
             NoteBadge badge = noteBadge(bgX, rowY);
-            boolean badgeHovered = badge.hit(mouseX, mouseY);
+            boolean badgeHovered = pointer.allowed() && badge.hit(pointer.x(), pointer.y());
             if (badgeHovered) {
                 guiGraphics.fill(badge.hitX(), badge.hitY(), badge.hitX() + badge.hitW(),
                         badge.hitY() + badge.hitH(), JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);

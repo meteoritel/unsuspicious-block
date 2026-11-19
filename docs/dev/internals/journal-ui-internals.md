@@ -27,6 +27,8 @@
 
 ### 1.2 右页装配 (`RightPageContainer`)
 
+右页替换通过根路由器登记新成员并结束已离场分支的交互。窗口 resize 重新摆放现有右页、书签和覆盖面，保留阅读位置。考古笔记按书页、活动场景浮层或灯箱、确认框登记呈现顺序，顶部作用域决定输入、悬浮与提示。场景推荐正文使用 Kit 文档视图，根资源失效通知活动覆盖面重新排版。
+
 - `RightPageContainer` 实现 `UiInputContainer`，稳定成员集合只登记当前活动面板；切页签或日志模式时结清旧交互并传播本地退出。通过局部 `PageDescriptor` 绑定右页各 Tab 的内容面板、书签皮肤、指示器位置及切换生命周期回调，并通过 `chromeControls()` 将书签与翻页按钮统一交给 Screen 注册（分类首页时 Screen 通过 `setChromeAvailable(false)` 整体隐藏）。实际切换 Tab 时，若逻辑焦点属于书签，焦点跟随新的活动书签；同 Tab 数据刷新保留正在遍历的焦点。
 - **分页状态由活动面板自有**：`ARCHAEOLOGY` 由 `ArchaeologyPage` 组合 `ItemGridPanel` 与 `ScenarioPanel`（同一实际成员集合按 grid → scenario 登记，场景栏命中优先，Tab 焦点顺序为网格 → 场景栏）；`LOG` 按列表/详情模式切换面板。分页动作调用活动面板的 `setPage` / `changePage`，由面板自身维护脏状态、页码边界并在准备阶段同步更新翻页按钮状态。
 
@@ -35,7 +37,7 @@
 ### 2.1 左页分类与表目录
 
 - 分类首页使用两列卡片网格，战利品表目录使用支持独立展开的树形行列表；两者均由 `UiScrollView` 驱动连续滚动，绘制、命中与 Tooltip 共用同一几何投影。
-- 目录的实际偏移与阻尼目标由 kit 唯一持有，`CatalogPanel` 沿活动成员树转发帧和退出通知；滚轮提交实际像素量，键盘导航通过 `ensureIndexVisibleSmoothly` 请求平滑滚入，阅读恢复通过立即定位入口完成。其他列表、正文和表单的共同接入契约见 [UI kit 接入规范](ui-kit-api.md#31-普通页面与考古笔记)。
+- 目录的实际偏移与阻尼目标由 kit 持有。`CatalogPanel` 用同一行格几何绘制、命中和导出快照。滚轮提交实际像素量，键盘调用 `ensureIndexVisibleSmoothly`，阅读恢复立即定位。释放时以实际分类 ID 或目录条目出现路径及热点类型匹配按压。 [UI kit 接入规范](ui-kit-api.md#31-普通页面与考古笔记)
 - 展开父表仅展示其直接子表；从父表点击子表入口或从全局搜索选中条目时，同步切换所属分类并自动展开对应父路径。
 - 对外暴露的滚动偏移 API（`getScrollOffset` / `setScrollOffset`）保持以条目为单位，内部按当前视图步长转换为像素并在模式切换或窗口变化后重新钳制。
 

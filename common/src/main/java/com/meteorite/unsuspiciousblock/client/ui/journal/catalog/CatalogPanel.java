@@ -2,16 +2,18 @@ package com.meteorite.unsuspiciousblock.client.ui.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
 import com.meteorite.meteosuikit.api.control.UiScrollView;
+import com.meteorite.meteosuikit.api.control.UiScrollContainer;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.UiFocusState;
 import com.meteorite.meteosuikit.api.input.UiFocusTarget;
 import com.meteorite.meteosuikit.api.input.UiInputContext;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
 import com.meteorite.meteosuikit.api.input.UiInteractionSession;
+import com.meteorite.meteosuikit.api.input.UiPointer;
 import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
-import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
 import com.meteorite.meteosuikit.api.render.UiNineSlice;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
@@ -28,6 +30,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -35,6 +38,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.IntPredicate;
 
@@ -79,7 +83,9 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         return isFocused() && navigate.test(key);
     }
 
-    private ClickResult pressed = ClickResult.NONE;
+    private record PressedRow(Mode mode, ResourceLocation id, List<ResourceLocation> parentPath,
+                              boolean toggleExpansion) { }
+    private @Nullable PressedRow pressed;
 
     public void setOnActivate(BiConsumer<ClickResult, Boolean> action) {
         onActivate = action;
@@ -88,44 +94,52 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     @Override
     public UiPointerHit hitTest(double x, double y) {
         if (!containsMouse(x, y)) return null;
-        UiPointerHit thumb = view.hitTest(x, y);
-        if (thumb != null) return thumb.within(this);
+        UiPointerHit hit = container.hitTest(x, y);
+        return hit == null ? null : hit.within(this);
+    }
+
+    private UiPointerHit hitContent(double x, double y) {
         int index = hoveredIndex(x, y);
         UiPointerHit hit = UiPointerHit.leaf(this, x, y);
-        return index < 0 ? hit : hit.withRow(this, index, index, view.viewport());
+        return index < 0 ? hit : hit.withRow(this, index, index, screenBounds(index).intersect(view.viewport()));
     }
 
     @Override
     public boolean mousePressed(UiInputContext context) {
-        if (view.mousePressed(context)) return true;
+        if (context.hits(view)) return container.mousePressed(context);
         if (context.button() != 0) return false;
-        pressed = handleClick(context.pointerX(), context.pointerY());
-        if (pressed.index() < 0) return false;
-        context.scope().interaction().begin(this, UiInteractionSession.Source.POINTER, 0);
+        pressed = identityOf(handleClick(context.pointerX(), context.pointerY()));
+        if (pressed == null) return false;
+        context.scope().interaction().begin(this, UiInteractionSession.Source.POINTER, context.button());
         return true;
     }
 
     @Override
     public boolean mouseReleased(UiInputContext context) {
         ClickResult clicked = handleClick(context.pointerX(), context.pointerY());
-        ClickResult original = pressed;
-        pressed = ClickResult.NONE;
-        if (original.index() >= 0 && original.equals(clicked)) onActivate.accept(clicked, context.shift());
+        PressedRow original = pressed;
+        pressed = null;
+        if (original != null && original.equals(identityOf(clicked))) onActivate.accept(clicked, context.shift());
         return true;
     }
 
     @Override
     public void interactionEnded(UiInteractionSession.EndReason reason) {
-        pressed = ClickResult.NONE;
+        pressed = null;
     }
 
     @Override
     public boolean mouseScrolled(UiInputContext context, double sx, double sy) {
-        if (sy == 0.0 || this.view.maxOffset() <= 0) {
-            return false;
+        return container.mouseScrolled(context, sx, sy);
+    }
+
+    private @Nullable PressedRow identityOf(ClickResult click) {
+        if (click.index() < 0) return null;
+        if (mode == Mode.CATEGORIES) {
+            return new PressedRow(mode, categories.get(click.index()).id(), List.of(), false);
         }
-        this.view.scrollByPixels(sy * this.view.step());
-        return true;
+        CatalogEntryData entry = entries.get(click.index());
+        return new PressedRow(mode, entry.id(), entry.parentPath(), click.toggleExpansion());
     }
 
     private static final ResourceLocation ENTRY_TEXTURE =
@@ -145,10 +159,16 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_GAP = 2;
     private static final UiGridMetrics CATEGORY_METRICS = new UiGridMetrics(2, CARD_WIDTH, CARD_HEIGHT, CARD_GAP_X, CARD_GAP_Y);
+    private static final UiGridMetrics TABLE_METRICS = new UiGridMetrics(1,
+            JournalLayout.CATALOG_TEXTURE_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_GAP - 1,
+            JournalLayout.CATALOG_ROW_HEIGHT, 0, JournalLayout.CATALOG_ROW_GAP);
     public static final int CATEGORY_GRID_WIDTH = CARD_WIDTH * 2 + CARD_GAP_X;
 
     private JournalBookBackground.BookLayout layout;
     private final UiScrollView view = new UiScrollView();
+    private final UiScrollContainer container = UiScrollContainer.forPixelWheel(view, new UiInputTarget() {
+        @Override public UiPointerHit hitTest(double x, double y) { return hitContent(x, y); }
+    });
     private final List<CategoryEntryData> categories = new ArrayList<>();
     private final List<CatalogEntryData> entries = new ArrayList<>();
     private final Map<ResourceLocation, Integer> categoryScrollTicks = new HashMap<>();
@@ -158,6 +178,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     private final PanelTextMetrics metrics = new PanelTextMetrics();
     private Language cachedLanguage;
     private Mode mode = Mode.CATEGORIES;
+    private @Nullable ResourceLocation directoryCategory;
 
     public CatalogPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -176,7 +197,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
      */
     @Override
     public void advanceFrame(long nowMillis) {
-        view.advanceFrame(nowMillis);
+        container.advanceFrame(nowMillis);
     }
 
     /**
@@ -184,12 +205,14 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
      */
     @Override
     public void scopeExited(UiInteractionSession.EndReason reason) {
-        view.scopeExited(reason);
-        pressed = ClickResult.NONE;
+        container.scopeExited(reason);
+        pressed = null;
     }
 
     public void setCategories(List<CategoryEntryData> values) {
         int carriedOffset = firstVisibleIndex();
+        if (mode != Mode.CATEGORIES) pressed = null;
+        directoryCategory = null;
         this.mode = Mode.CATEGORIES;
         this.categories.clear();
         this.categories.addAll(values);
@@ -200,8 +223,10 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         this.view.setOffset(itemsToPixels(carriedOffset));
     }
 
-    public void setEntries(List<CatalogEntryData> values) {
+    public void setEntries(@Nullable ResourceLocation category, List<CatalogEntryData> values) {
         boolean sameMode = this.mode == Mode.TABLES;
+        if (!sameMode || !Objects.equals(directoryCategory, category)) pressed = null;
+        directoryCategory = category;
         int carriedPixelOffset = this.view.offset();
         int carriedItemOffset = firstVisibleIndex();
         this.mode = Mode.TABLES;
@@ -225,11 +250,10 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     public List<UiLayoutNode> layoutNodes() {
         List<UiLayoutNode> nodes = new ArrayList<>();
         int count = mode == Mode.CATEGORIES ? categories.size() : entries.size();
-        int[] range = visibleRange(count);
-        for (int index = range[0]; index < range[1]; index++) {
+        var range = visibleRange(count);
+        for (int index = range.from(); index < range.to(); index++) {
             boolean category = mode == Mode.CATEGORIES;
-            UiRect rect = category ? categoryRect(index) : new UiRect(buttonX(), view.toScreenY(index * rowStride()),
-                    buttonWidth(), JournalLayout.CATALOG_ROW_HEIGHT);
+            UiRect rect = screenBounds(index);
             boolean unlocked = category || entries.get(index).unlocked();
             Component text = category ? categories.get(index).name() : unlocked ? entries.get(index).displayName() : Component.empty();
             String key = category ? "category/" + categories.get(index).id()
@@ -257,8 +281,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     }
 
     private UiRect contentBounds(int index) {
-        return mode == Mode.CATEGORIES ? CATEGORY_METRICS.cellBounds(index)
-                : new UiRect(0, index * rowStride(), buttonWidth(), JournalLayout.CATALOG_ROW_HEIGHT);
+        return (mode == Mode.CATEGORIES ? CATEGORY_METRICS : TABLE_METRICS).cellBounds(index);
     }
 
     public int visibleItemCount() {
@@ -281,7 +304,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
             return index < 0 ? ClickResult.NONE : new ClickResult(index, false);
         }
         if (mouseX < buttonX() || mouseX >= buttonX() + buttonWidth()) return ClickResult.NONE;
-        int index = UiRowMetrics.fixedRowIndex(y, rowStride(), JournalLayout.CATALOG_ROW_HEIGHT, entries.size());
+        int index = TABLE_METRICS.indexAt(mouseX - buttonX(), y, entries.size());
         if (index < 0) return ClickResult.NONE;
         CatalogEntryData entry = entries.get(index);
         return new ClickResult(index, entry.hasChildren() && mouseX < buttonX() + 15 + entry.depth() * 8);
@@ -292,30 +315,24 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
     }
 
     public boolean containsMouse(double mouseX, double mouseY) {
-        return mouseX >= buttonX() && mouseX <= this.view.viewport().right()
-                && mouseY >= listTop() && mouseY <= listBottom();
+        return view.contains(mouseX, mouseY);
     }
 
-    public void render(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
+    public void render(GuiGraphics graphics, Font font, int selectedIndex, UiPointer pointer) {
         refreshTextCacheLanguage();
         this.metrics.beginFrame(font);
-        UiRenderLayers.enableScissor(graphics,
-                new UiRect(view.viewport().x(), listTop(), view.viewport().width(), listBottom() - listTop()));
-        try {
-            if (this.mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, mouseX, mouseY);
-            else renderEntries(graphics, font, selectedIndex, mouseX, mouseY);
-        } finally {
-            UiRenderLayers.disableScissor(graphics);
-        }
-        this.view.renderScrollbar(graphics, () -> UnsuspiciousUiTheme.PARCHMENT);
+        container.render(graphics, pointer, () -> UnsuspiciousUiTheme.PARCHMENT, clipped -> {
+            if (mode == Mode.CATEGORIES) renderCategories(graphics, font, selectedIndex, clipped);
+            else renderEntries(graphics, font, selectedIndex, clipped);
+        });
     }
 
-    private void renderCategories(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
-        int[] range = visibleRange(this.categories.size());
-        for (int index = range[0]; index < range[1]; index++) {
+    private void renderCategories(GuiGraphics graphics, Font font, int selectedIndex, UiPointer pointer) {
+        var range = visibleRange(categories.size());
+        for (int index = range.from(); index < range.to(); index++) {
             CategoryEntryData category = this.categories.get(index);
-            UiRect rect = categoryRect(index);
-            boolean hovered = rect.contains(mouseX, mouseY);
+            UiRect rect = screenBounds(index);
+            boolean hovered = pointer.contains(rect);
             boolean selected = index == selectedIndex;
             UiNineSlice cardSlice = selected ? UiAtlas.CATEGORY_CARD_SELECTED
                     : hovered ? UiAtlas.CATEGORY_CARD_HOVER : UiAtlas.CATEGORY_CARD_NORMAL;
@@ -351,14 +368,12 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         }
     }
 
-    private void renderEntries(GuiGraphics graphics, Font font, int selectedIndex, int mouseX, int mouseY) {
-        int[] range = visibleRange(this.entries.size());
-        for (int index = range[0]; index < range[1]; index++) {
+    private void renderEntries(GuiGraphics graphics, Font font, int selectedIndex, UiPointer pointer) {
+        var range = visibleRange(entries.size());
+        for (int index = range.from(); index < range.to(); index++) {
             CatalogEntryData entry = this.entries.get(index);
-            int y = view.toScreenY(index * rowStride());
-            boolean hovered = mouseX >= buttonX() && mouseX <= buttonX() + buttonWidth()
-                    && mouseY >= y && mouseY < y + JournalLayout.CATALOG_ROW_HEIGHT;
-            renderEntry(graphics, font, entry, buttonX(), y, hovered, index == selectedIndex);
+            UiRect rect = screenBounds(index);
+            renderEntry(graphics, font, entry, rect.x(), rect.y(), pointer.contains(rect), index == selectedIndex);
         }
     }
 
@@ -397,19 +412,9 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
 
     // 精确计算与当前视口像素区间 [offset, offset + viewportHeight) 相交的条目索引区间 [from, to)。
     // 保证最下方条目在平滑滚动过程中按视口裁剪边完整进入与退出，不会提前消失。
-    private int[] visibleRange(int totalCount) {
-        if (totalCount <= 0) {
-            return new int[]{0, 0};
-        }
-        int stride = stride();
-        int perRow = itemsPerRow();
-        int offset = this.view.offset();
-        int viewportHeight = this.view.viewport().height();
-        int firstRow = Math.max(0, offset / stride);
-        int endRow = viewportHeight <= 0 ? firstRow : (offset + viewportHeight - 1) / stride + 1;
-        int from = Math.min(totalCount, firstRow * perRow);
-        int to = Math.min(totalCount, endRow * perRow);
-        return new int[]{from, to};
+    private UiGridMetrics.VisibleCells visibleRange(int totalCount) {
+        UiGridMetrics geometry = mode == Mode.CATEGORIES ? CATEGORY_METRICS : TABLE_METRICS;
+        return geometry.visibleCells(view.offset(), view.viewport().height(), totalCount);
     }
 
     private int scrollStep() {
@@ -450,9 +455,10 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
         return layout.leftPageX() + (layout.leftPageWidth() - CATEGORY_GRID_WIDTH) / 2;
     }
 
-    private UiRect categoryRect(int index) {
-        UiRect cell = CATEGORY_METRICS.cellBounds(index);
-        return new UiRect(categoryLeft() + cell.x(), view.toScreenY(cell.y()), cell.width(), cell.height());
+    private UiRect screenBounds(int index) {
+        UiRect cell = contentBounds(index);
+        return new UiRect(cell.x() + (mode == Mode.CATEGORIES ? categoryLeft() : buttonX()),
+                view.toScreenY(cell.y()), cell.width(), cell.height());
     }
 
     private void syncViewport() {
@@ -464,7 +470,7 @@ public final class CatalogPanel implements UiFocusTarget, UiInteractionSession.T
 
     private void syncContentHeight() {
         this.view.setContentHeight(mode == Mode.CATEGORIES ? CATEGORY_METRICS.contentHeight(categories.size())
-                : entries.isEmpty() ? 0 : entries.size() * rowStride() - JournalLayout.CATALOG_ROW_GAP);
+                : TABLE_METRICS.contentHeight(entries.size()));
         this.view.setStep(scrollStep());
     }
 

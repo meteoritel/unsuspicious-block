@@ -5,6 +5,7 @@ import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 
 import com.meteorite.meteosuikit.api.layout.UiFormLayout;
+import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import net.minecraft.client.gui.Font;
 
@@ -60,7 +61,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private final UiTextInput searchBox;
     private final UiTextInput languageBox;
     private final UiTextInput nameBox;
-    private UiControl filterButton;
+    private final UiControl filterButton = new UiControl();
+    private final UiWidgetRow searchRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
     private UiControl backButton;
     private UiControl applyButton;
     private UiControl clearOverride;
@@ -124,7 +126,11 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             syncControls();
         });
         details = new UiFormBody(theme(), TextMeasurer.of(font));
-        content.addAll(List.of(searchBox, list, details, controls));
+        filterButton.setTheme(theme(), UiControlRole.SECONDARY);
+        filterButton.setFocusable(true);
+        searchRow.add(searchBox, UiLinearLayout.Child.remain());
+        searchRow.add(filterButton, UiLinearLayout.Child.fixed(72));
+        content.addAll(List.of(searchRow, list, details, controls));
         scope.setEscape(this::onClose);
         scope.focus().setListener((previous, current) -> details.reveal(current));
         modals.setOnScopeChanged(this::refreshUiState);
@@ -159,7 +165,6 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     }
 
     private void configureControls() {
-        filterButton = controls.obtain("filter");
         filterButton.configure(font, filter.label(), null, List.of(), this::cycleFilter);
         languageButton = detailControls.obtain("language");
         languageButton.configure(font, Component.translatable(PREFIX + "choose_language"), null, List.of(), this::chooseLanguage);
@@ -215,8 +220,9 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         int detailsX = left + INNER_MARGIN + listWidth() + COLUMN_GAP;
         details.setBounds(detailsX + 3, top + 30, Math.max(0, detailsWidth() - 6), Math.max(0, panelHeight() - 70));
         int backY = top + panelHeight() - 28;
-        searchBox.setBounds(left + INNER_MARGIN, top + 29, Math.max(0, listWidth() - 76), 20);
-        filterButton.setBounds(left + INNER_MARGIN + Math.max(0, listWidth() - 72), top + 29, 72, 20);
+        int searchWidth = listWidth();
+        searchRow.add(filterButton, UiLinearLayout.Child.fixed(Math.min(72, Math.max(0, searchWidth - 4))));
+        searchRow.setBounds(left + INNER_MARGIN, top + 29, searchWidth, 20);
         int actionWidth = Math.max(0, (detailsWidth() - 5) / 2);
         importButton.setBounds(detailsX, backY, actionWidth, 20);
         backButton.setBounds(detailsX + actionWidth + 5, backY, actionWidth, 20);
@@ -225,16 +231,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     }
 
     @Override
-    protected void renderThemedBackground(GuiGraphics graphics, int x, int y, float delta) {
-        graphics.pose().pushPose();
-        float inverse = (float) (1 / viewport().scale());
-        graphics.pose().scale(inverse, inverse, 1);
-        try {
-            renderBackground(graphics, (int) (x * viewport().scale()), (int) (y * viewport().scale()), delta);
-        } finally {
-            graphics.pose().popPose();
-        }
-    }
+    protected void renderThemedBackground(GuiGraphics graphics, int x, int y, float delta) { }
 
     private void syncControls() {
         if (applyButton == null) return;
@@ -288,7 +285,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         graphics.drawCenteredString(font, title, width / 2, top + 8, UiTextScheme.PARCHMENT.title());
         UiPointer pointer = scope.pointer(x, y).resolve(content);
         list.render(graphics, font, pointer);
-        searchBox.render(graphics, font, pointer);
+        searchRow.render(graphics, font, pointer);
         details.render(graphics, font, pointer);
         controls.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {

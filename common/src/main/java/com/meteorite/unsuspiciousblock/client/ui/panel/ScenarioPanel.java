@@ -33,9 +33,7 @@ import static com.meteorite.unsuspiciousblock.client.state.ScenarioSession.text;
 public final class ScenarioPanel implements UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
-    private final int x;
-    private final int y;
-    private final int width;
+    private JournalBookBackground.BookLayout layout;
     @Nullable
     private ResourceLocation table;
     @Nullable
@@ -45,11 +43,14 @@ public final class ScenarioPanel implements UiInputContainer {
     private String headerKey = "";
 
     public ScenarioPanel(JournalBookBackground.BookLayout layout) {
-        x = layout.rightPageX() + 4;
-        y = layout.rightPageY() + 6;
-        width = layout.rightPageWidth() - 8;
+        this.layout = layout;
         controls.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT);
         children.add(controls);
+    }
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) {
+        this.layout = layout;
+        headerKey = "";
     }
 
     public void setTable(@Nullable ResourceLocation value) {
@@ -91,6 +92,9 @@ public final class ScenarioPanel implements UiInputContainer {
         measuredFont = font;
         controls.beginUpdate();
 
+        int x = layout.rightPageX() + 4;
+        int y = layout.rightPageY() + 6;
+        int width = layout.rightPageWidth() - 8;
         UiControl scene = place("scene", x, y + 6, width - 60);
         scene.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
         Component summary = ScenarioLabel.selectionSummary(structure.options(), choice.conditions());

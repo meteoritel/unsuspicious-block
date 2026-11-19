@@ -145,22 +145,22 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     }
 
     @Override
-    public void render(GuiGraphics graphics, Font font, int x, int y) {
+    public void render(GuiGraphics graphics, Font font, UiPointer pointer) {
     }
 
     @Override
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
         if (summary.isVisible()) {
             UiRect sb = summary.bounds();
-            JournalPalette.drawSlot(graphics, sb.x(), sb.y(), sb.width(), sb.contains(pointer.x(), pointer.y()));
+            JournalPalette.drawSlot(graphics, sb.x(), sb.y(), sb.width(), pointer.contains(sb));
         }
         if (luck.isVisible()) {
             UiRect lb = luck.bounds();
-            JournalPalette.drawStatPill(graphics, lb.x(), lb.y(), lb.width(), lb.height(), lb.contains(pointer.x(), pointer.y()));
+            JournalPalette.drawStatPill(graphics, lb.x(), lb.y(), lb.width(), lb.height(), pointer.contains(lb));
         }
         if (enchantments.isVisible()) {
             UiRect eb = enchantments.bounds();
-            JournalPalette.drawStatPill(graphics, eb.x(), eb.y(), eb.width(), eb.height(), eb.contains(pointer.x(), pointer.y()));
+            JournalPalette.drawStatPill(graphics, eb.x(), eb.y(), eb.width(), eb.height(), pointer.contains(eb));
         }
         for (UiControl control : controls) {
             control.render(graphics, font, pointer);

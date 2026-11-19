@@ -23,7 +23,7 @@ public interface PagePanel extends UiInputTarget {
     }
 
 
-    void render(GuiGraphics graphics, Font font, int mouseX, int mouseY);
+    void render(GuiGraphics graphics, Font font, UiPointer pointer);
 
     boolean containsMouse(double mouseX, double mouseY);
 

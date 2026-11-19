@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiFormBody;
+import com.meteorite.meteosuikit.api.control.UiWidgetRow;
+import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.control.UiStatefulWidget;
 import com.meteorite.meteosuikit.api.control.UiTextArea;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
@@ -34,7 +36,8 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
     private final UiControl reset = new UiControl();
     private final UiControl cancel = new UiControl();
     private final UiControl save = new UiControl();
-    private final UiChildren<UiControl> actions = new UiChildren<>();
+    private final List<UiControl> actions = List.of(reset, cancel, save);
+    private final UiWidgetRow footer = new UiWidgetRow(8, UiWidgetRow.Alignment.CENTER);
     private final UiChildren<UiInputTarget> content = new UiChildren<>();
     private final UiInputScope scope = new UiInputScope(content);
     private @Nullable Component validationMessage;
@@ -43,9 +46,9 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
         super(title, new UiThemeContext<>(UnsuspiciousUiTheme.DARK));
         this.parent = parent;
         body = new UiFormBody(theme(), TextMeasurer.of(Minecraft.getInstance().font));
-        actions.addAll(List.of(reset, cancel, save));
+        for (UiControl action : actions) footer.add(action, UiLinearLayout.Child.remain(0, 100));
         content.add(body);
-        content.add(actions);
+        content.add(footer);
         scope.setEscape(this::onClose);
         scope.focus().setListener((previous, current) -> body.reveal(current));
     }
@@ -118,14 +121,11 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
 
     @Override
     protected void layoutUi() {
+        int width = viewport().logicalWidth();
+        int height = viewport().logicalHeight();
         int contentWidth = Math.clamp(width - 28, 0, 420);
         body.setBounds((width - contentWidth) / 2, 48, contentWidth, Math.max(0, height - 98));
-        int buttonWidth = Math.clamp((width - 32) / actions.size(), 0, 100);
-        int x = (width - (buttonWidth * actions.size() + (actions.size() - 1) * 8)) / 2;
-        for (UiControl action : actions) {
-            action.setBounds(x, height - 30, buttonWidth, 20);
-            x += buttonWidth + 8;
-        }
+        footer.setBounds(8, height - 30, Math.max(0, width - 16), 20);
     }
 
     @Override
@@ -140,11 +140,13 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
 
     @Override
     protected void renderThemedUi(GuiGraphics graphics, int x, int y, float delta) {
+        int width = viewport().logicalWidth();
+        int height = viewport().logicalHeight();
         graphics.drawCenteredString(font, title, width / 2, 12, UiTextScheme.DARK.title());
         graphics.drawCenteredString(font, notice(), width / 2, 28, UiTextScheme.DARK.label());
         UiPointer pointer = scope.pointer(x, y).resolve(content);
         body.render(graphics, font, pointer);
-        for (UiControl action : actions) action.render(graphics, font, pointer);
+        footer.render(graphics, font, pointer);
         if (validationMessage != null) graphics.drawCenteredString(font, validationMessage,
                 width / 2, height - 44, UiTextScheme.DARK.negative());
     }

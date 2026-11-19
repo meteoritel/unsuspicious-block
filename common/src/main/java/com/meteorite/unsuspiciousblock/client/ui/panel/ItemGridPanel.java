@@ -272,7 +272,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private final List<ChildTableEntry> childTables = new ArrayList<>();
     private Map<String, ScenarioTableSnapshot.Target> targets = Map.of();
     private final LinkedHashMap<ResourceLocation, TagGroup> tagGroups = new LinkedHashMap<>();
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     @Nullable
     private ResourceLocation activeTag;
@@ -293,6 +293,12 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     // 已测宽度缓存：与文案缓存同一失效事件（语言/字体实例、setTable）
     private final PanelTextMetrics metrics = new PanelTextMetrics();
     private Language cachedLanguage;
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) {
+        this.layout = layout;
+        rebuildVisibleCells();
+        controlsDirty = true;
+    }
 
     public ItemGridPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -413,7 +419,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     }
 
     // 渲染物品网格（仅图标，不含进度/页码）
-    public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics guiGraphics, Font font, UiPointer pointer) {
         refreshTextCacheLanguage();
         this.metrics.beginFrame(font);
         if (this.items.isEmpty() && this.childTables.isEmpty()) {
@@ -433,7 +439,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             int visualIndex = cell.index();
             int cellX = cell.bounds().x();
             int cellY = cell.bounds().y();
-            boolean hovered = cell.bounds().contains(mouseX, mouseY);
+            boolean hovered = pointer.contains(cell.bounds());
             updateHoverState(visualIndex, hovered);
             switch (cell.content()) {
                 case TagBack back -> renderTagBackCell(guiGraphics, font, cellX, cellY,

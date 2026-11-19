@@ -94,7 +94,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     private static final int ICON_GAP = 2;
     private static final int LABEL_GAP = JournalLayout.LOG_DETAIL_META_LABEL_GAP;
 
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     @Nullable
     private ExcavationLogEntry entry;
@@ -118,6 +118,11 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     // 元信息行悬停追踪：用于文字超宽滚动
     private int hoveredMetaRow = -1;
     private final int[] metaRowScrollTicks = new int[JournalLayout.LOG_DETAIL_META_ROWS];
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) {
+        this.layout = layout;
+        contentDirty = true;
+    }
 
     public LogDetailPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -216,7 +221,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         return this.tableId;
     }
 
-    public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics guiGraphics, Font font, UiPointer pointer) {
 
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
@@ -233,7 +238,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         }
 
         // 1. Spacetime 卡片：时间/结构/群系/坐标
-        y += renderSpacetimeCard(guiGraphics, font, leftX, y, contentWidth, entry, mouseX, mouseY)
+        y += renderSpacetimeCard(guiGraphics, font, leftX, y, contentWidth, entry, pointer)
                 + JournalLayout.LOG_DETAIL_CARD_GAP;
 
         // 2. Loot 卡片：合并收集清单
@@ -276,7 +281,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
 
     // —— Spacetime 卡片：标签+值文字布局，6 行 ——
     private int renderSpacetimeCard(GuiGraphics g, Font font, int x, int y, int w,
-                                    ExcavationLogEntry entry, int mouseX, int mouseY) {
+                                  ExcavationLogEntry entry, UiPointer pointer) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int lineHeight = font.lineHeight;
         int lineGap = JournalLayout.LOG_DETAIL_META_LINE_GAP;
@@ -329,12 +334,12 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         // 行1：创建时间
         ty += drawMetaRow(g, font, 0, createdLabel.getString(), createdValue,
                 x + pad, ty, valueX, valueW, rowFullWidth,
-                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, pointer, prevHovered) + lineGap;
 
         // 行2：更新时间
         ty += drawMetaRow(g, font, 1, updatedLabel.getString(), updatedValue,
                 x + pad, ty, valueX, valueW, rowFullWidth,
-                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, pointer, prevHovered) + lineGap;
 
         // 行3：结构/特征/未知（未知时降低视觉权重）
         int structColor = structInfo.isUnknown()
@@ -342,34 +347,33 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                 : JournalLayout.LOG_DETAIL_VALUE_COLOR;
         ty += drawMetaRow(g, font, 2, structLabel.getString(), structInfo.displayName(),
                 x + pad, ty, valueX, valueW, rowFullWidth,
-                structColor, mouseX, mouseY, prevHovered) + lineGap;
+                structColor, pointer, prevHovered) + lineGap;
 
         // 行4：群系
         ty += drawMetaRow(g, font, 3, biomeLabel.getString(), biomeValue,
                 x + pad, ty, valueX, valueW, rowFullWidth,
-                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, pointer, prevHovered) + lineGap;
 
         // 行5：维度
         ty += drawMetaRow(g, font, 4, dimensionLabel.getString(), dimValue,
                 x + pad, ty, valueX, valueW, rowFullWidth,
-                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered) + lineGap;
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, pointer, prevHovered) + lineGap;
 
         // 行6：坐标 + 复制按钮（放在坐标行最右侧）
         drawMetaRow(g, font, 5, coordsLabel.getString(), coordsValue,
                 x + pad, ty, valueX, lastRowValueW, rowFullWidth,
-                JournalLayout.LOG_DETAIL_VALUE_COLOR, mouseX, mouseY, prevHovered);
+                JournalLayout.LOG_DETAIL_VALUE_COLOR, pointer, prevHovered);
         return cardH;
     }
 
     // 绘制单行元信息：标签（固定宽度，次要色）+ 值（剩余宽度，主要色，超宽滚动）
     private int drawMetaRow(GuiGraphics g, Font font, int rowIndex, String label, String value,
                             int rowX, int rowY, int valueX, int valueW, int rowFullWidth,
-                            int valueColor, int mouseX, int mouseY, int prevHovered) {
+                            int valueColor, UiPointer pointer, int prevHovered) {
         int rowH = font.lineHeight;
 
         // 检测当前行是否被悬停（行高度 = lineHeight，但适当放宽垂直判定范围以提升体验）
-        boolean hovered = mouseX >= rowX && mouseX < rowX + rowFullWidth
-                && mouseY >= rowY - 1 && mouseY < rowY + rowH + 1;
+        boolean hovered = pointer.contains(new UiRect(rowX, rowY - 1, rowFullWidth, rowH + 2));
         if (hovered) {
             this.hoveredMetaRow = rowIndex;
             if (prevHovered != rowIndex) {

@@ -12,7 +12,7 @@ import net.minecraft.network.chat.Component;
 public final class PageIndicator {
     private int page;
     private int pageCount;
-    private final int centerX;
+    private int centerX;
     private int textY;
 
     public PageIndicator(JournalBookBackground.BookLayout layout) {
@@ -50,4 +50,5 @@ public final class PageIndicator {
     }
 
     public void setTextY(int textY) { this.textY = textY; }
+    public void setCenterX(int centerX) { this.centerX = centerX; }
 }

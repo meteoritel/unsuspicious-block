@@ -10,11 +10,12 @@ import com.meteorite.meteosuikit.api.input.UiInputContainer;
 import com.meteorite.meteosuikit.api.input.UiInputContext;
 import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.input.UiInputTarget;
-import com.meteorite.meteosuikit.api.input.UiInteractionSession;
 import com.meteorite.meteosuikit.api.input.UiNavigationHistory;
 import com.meteorite.meteosuikit.api.input.UiPointer;
 import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiLayer;
+import com.meteorite.meteosuikit.api.render.UiLayers;
 import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.text.TextScroll;
@@ -112,8 +113,11 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Nullable
     private final ResourceLocation initialItemSearch;
     private final UiChildren<UiWidget> widgets = new UiChildren<>();
+    private final List<UiWidget> widgetLayout = new ArrayList<>();
     private final JournalContent content = new JournalContent();
     private final UiInputScope scope = new UiInputScope(content);
+    private final UiLayers layers = new UiLayers(new UiLayer(scope,
+            (graphics, font, pointer, depth) -> renderBook(graphics, pointer), content));
     private final UiModalStack confirmations = new UiModalStack(() -> UnsuspiciousUiTheme.PARCHMENT);
     private final UiNavigationHistory<UiStateSnapshot> history =
             new UiNavigationHistory<>(NAVIGATION_HISTORY_CAPACITY);
@@ -173,7 +177,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (resumeStateEpoch != JournalClientConnection.epoch()) resumeState = null;
         this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
         this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
-        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, scope);
+        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, scope, inputRouter());
         this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
 
         // 恢复上次关闭时持久化的 UI 状态
@@ -258,8 +262,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     @Override
     protected UiInputScope inputScope() {
-        if (!confirmations.isEmpty()) return confirmations.top().inputScope();
-        return overlays.isOpen() ? overlays.inputScope() : scope;
+        List<UiLayer> topLayers = new ArrayList<>();
+        UiLayer scenario = overlays.layer();
+        if (scenario != null) topLayers.add(scenario);
+        topLayers.addAll(confirmations.layers());
+        layers.setOverlays(topLayers);
+        return layers.activeScope();
     }
 
     @Override
@@ -278,6 +286,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void invalidateUiResources() {
         if (rightPage != null) rebuildViewModels();
+        overlays.invalidateResources();
     }
 
     @Override
@@ -399,16 +408,16 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     @Override
     protected void repositionElements() {
-        UiStateSnapshot snapshot = captureUiState();
-        this.overlays.close();
-        this.confirmations.clear();
-
-        this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
-        this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
-        this.rightPage = new RightPageContainer(this.bookLayout, this.overlays, scope);
-        this.welcomeStatsPanel = new WelcomeStatsPanel(this.bookLayout);
-
-        restoreUiState(snapshot);
+        var viewport = viewport();
+        JournalBookBackground.BookLayout nextLayout = JournalBookBackground.compute(
+                viewport.logicalWidth(), viewport.logicalHeight());
+        this.overlays.setBounds(viewport.logicalWidth(), viewport.logicalHeight());
+        if (nextLayout.equals(bookLayout)) return;
+        this.bookLayout = nextLayout;
+        this.rightPage.applyLayout(nextLayout);
+        this.welcomeStatsPanel.applyLayout(nextLayout);
+        positionWidgets(catalogPanel.getScrollOffset(), false);
+        syncButtonState();
     }
 
     private void restoreUiState(UiStateSnapshot snapshot) {
@@ -448,23 +457,21 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     @Override
     protected void renderUi(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        layers.render(guiGraphics, font, mouseX, mouseY);
+    }
 
-        int underlayMouseX = (this.overlays.isOpen() || !confirmations.isEmpty()) ? -10000 : mouseX;
-        int underlayMouseY = (this.overlays.isOpen() || !confirmations.isEmpty()) ? -10000 : mouseY;
+    private void renderBook(GuiGraphics guiGraphics, UiPointer pointer) {
         JournalBookBackground.render(guiGraphics, this.bookLayout);
-        renderCatalogArea(guiGraphics, underlayMouseX, underlayMouseY);
+        renderCatalogArea(guiGraphics, pointer);
         if (this.viewModel.isCategoryHome()) this.welcomeStatsPanel.render(
                 guiGraphics, this.font);
         else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
-        else this.rightPage.render(guiGraphics, this.font, underlayMouseX, underlayMouseY);
-        UiPointer pointer = scope.pointer(mouseX, mouseY).resolve(content);
+        else this.rightPage.render(guiGraphics, this.font, pointer);
         if (hasSelectedTable()) rightPage.renderControls(guiGraphics, font, pointer);
         for (UiWidget widget : widgets) if (widget.isVisible()) widget.render(guiGraphics, font, pointer);
-        // 覆盖面使用各自的 kit 层，普通控件提示来自根的同一次命中。
-        this.overlays.render(guiGraphics, this.font, mouseX, mouseY);
-        confirmations.render(guiGraphics, font, inputScope().pointer(mouseX, mouseY));
         if (pointer.allowsTooltip() && pointer.hit() != null)
-            UiTooltipPresenter.render(guiGraphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), mouseX, mouseY);
+            UiTooltipPresenter.render(guiGraphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(),
+                    (int) pointer.x(), (int) pointer.y());
     }
 
     // 检测服务端数据变更并按需刷新
@@ -482,13 +489,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     // 渲染左侧目录区域（滚动目录、解锁进度、空状态）
-    private void renderCatalogArea(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    private void renderCatalogArea(GuiGraphics guiGraphics, UiPointer pointer) {
         if (this.catalogPanel != null) {
-            this.catalogPanel.render(guiGraphics, this.font, this.viewModel.selectedIndex(), mouseX, mouseY);
+            this.catalogPanel.render(guiGraphics, this.font, this.viewModel.selectedIndex(), pointer);
         }
 
         if (this.viewModel.totalTableCount() > 0) {
-            renderCatalogProgress(guiGraphics, mouseX, mouseY);
+            renderCatalogProgress(guiGraphics, pointer);
         }
 
         if (!this.viewModel.isCategoryHome() && this.viewModel.isEmpty()) {
@@ -497,7 +504,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                     + JournalLayout.CATALOG_X_OFFSET + JournalLayout.CATALOG_LEFT_PAD;
             int y = this.bookLayout.leftPageY() + JournalLayout.CATALOG_LIST_TOP;
             int width = JournalLayout.CATALOG_TEXTURE_WIDTH - JournalLayout.CATALOG_LEFT_PAD * 2;
-            boolean hovered = isTextHovered(mouseX, mouseY, x, y, width);
+            boolean hovered = isTextHovered(pointer, x, y, width);
             this.emptyCatalogScrollTicks = hovered ? this.emptyCatalogScrollTicks + 1 : 0;
             TextScroll.draw(guiGraphics, this.font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.empty_catalog").getString(),
@@ -507,7 +514,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
     }
 
-    private void renderCatalogProgress(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void renderCatalogProgress(GuiGraphics graphics, UiPointer pointer) {
         int unlocked = this.viewModel.displayedUnlockedTableCount();
         int total = this.viewModel.displayedTableCount();
         int x = this.bookLayout.leftPageX()
@@ -518,13 +525,16 @@ public class ArchaeologyJournalScreen extends UiScreen {
         int height = 11;
         Component label = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.unlocked_tables", unlocked, total);
-        boolean hovered = isTextHovered(mouseX, mouseY, x + 2, y + 1, width - 4);
+        boolean hovered = isTextHovered(pointer, x + 2, y + 1, width - 4);
         this.catalogProgressScrollTicks = hovered ? this.catalogProgressScrollTicks + 1 : 0;
         JournalPalette.drawProgressBar(graphics, this.font, x, y, width, height, unlocked, total,
                 label, hovered, this.catalogProgressScrollTicks);
     }
 
-    private boolean isTextHovered(int mouseX, int mouseY, int x, int y, int width) {
+    private boolean isTextHovered(UiPointer pointer, int x, int y, int width) {
+        if (!pointer.allowed()) return false;
+        double mouseX = pointer.x();
+        double mouseY = pointer.y();
         return mouseX >= x && mouseX < x + width
                 && mouseY >= y && mouseY < y + this.font.lineHeight + 1;
     }
@@ -619,14 +629,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             if (viewModel.isCategoryHome() && welcomeStatsPanel != null) next.add(welcomeStatsPanel);
             else if (hasSelectedTable()) next.add(rightPage);
             next.add(widgets);
-            if (members.equals(next)) return;
-            for (UiInputTarget previous : List.copyOf(members))
-                if (!next.contains(previous)) {
-                    scope.interaction().end(UiInteractionSession.EndReason.UNMOUNTED);
-                    previous.scopeExited(UiInteractionSession.EndReason.UNMOUNTED);
-                }
-            members.clear();
-            members.addAll(next);
+            inputRouter().replaceChildren(scope, members, next);
             members.setTabOrder(widgets, -1);
         }
 
@@ -691,9 +694,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 ? this.catalogPanel.getScrollOffset() : this.restoredCatalogScrollOffset;
         // 同步目录投影后统一提交视图，保留跨模式的目录偏移。
         this.rebuildViewModels(false);
-        scope.interaction().end(UiInteractionSession.EndReason.UNMOUNTED);
-        widgets.scopeExited(UiInteractionSession.EndReason.UNMOUNTED);
-        this.widgets.clear();
+        positionWidgets(previousCatalogScrollOffset, true);
+        this.syncButtonState();
+    }
+
+    private void positionWidgets(int previousCatalogScrollOffset, boolean updateCatalogProjection) {
+        widgetLayout.clear();
 
         // 右页 chrome 由容器统一持有，根只注册实际控件。
         this.rightPage.chromeControls().forEach(this::registerWidget);
@@ -708,7 +714,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.catalogToolbar.setHorizontalOffset(toolbarOffset);
         this.catalogToolbar.setExpandedSearchFieldWidth(searchRightEdge - JournalLayout.SEARCH_ICON_SIZE);
         this.catalogToolbar.createWidgets(this, this.bookLayout, this.font);
-        applySearchFocusRequest();
         this.catalogToolbar.setCategoryHomeMode(categoryHomeMode);
 
         if (showDirectoryBack) {
@@ -740,7 +745,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.catalogPanel.setNavigation(this::handleCatalogNavigation);
         this.catalogPanel.setOnActivate(this::activateCatalog);
         CatalogPanel.Mode previousMode = catalogPanel.mode();
-        syncCatalogProjection();
+        if (updateCatalogProjection) syncCatalogProjection();
         if (isNewCatalogPanel || previousMode != catalogPanel.mode()) {
             catalogPanel.setScrollOffset(previousCatalogScrollOffset);
             catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
@@ -786,7 +791,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         // 日志列表页备注图标点击回调：直接打开备注编辑界面，无需进入详情页
         this.rightPage.getLogPanel().setNoteClickHandler(this::openNoteEditorForEntry);
 
-        this.syncButtonState();
+        inputRouter().replaceChildren(scope, widgets, widgetLayout);
+        applySearchFocusRequest();
     }
 
     private void createExternalLinkButtons() {
@@ -853,7 +859,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void syncCatalogProjection() {
         if (catalogPanel == null) return;
         if (viewModel.isCategoryHome()) catalogPanel.setCategories(viewModel.categoryViews());
-        else catalogPanel.setEntries(viewModel.buildCatalogEntries());
+        else catalogPanel.setEntries(viewModel.selectedCategory(), viewModel.buildCatalogEntries());
         catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
     }
 
@@ -914,7 +920,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     public <T extends UiWidget> T registerWidget(T widget) {
-        widgets.add(widget);
+        widgetLayout.add(widget);
         return widget;
     }
 

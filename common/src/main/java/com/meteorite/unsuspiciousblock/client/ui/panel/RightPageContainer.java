@@ -40,6 +40,7 @@ public final class RightPageContainer implements UiInputContainer {
 
     private final UiChildren<UiInputTarget> members = new UiChildren<>();
     private final UiInputScope scope;
+    private final UiInputRouter router;
 
     /**
      * 活动页是实际输入成员，chrome 继续由根登记。
@@ -51,13 +52,7 @@ public final class RightPageContainer implements UiInputContainer {
 
     private void syncActiveMember() {
         PagePanel next = activePanel();
-        if (!members.isEmpty() && members.getFirst() == next) return;
-        if (!members.isEmpty()) {
-            scope.interaction().end(UiInteractionSession.EndReason.UNMOUNTED);
-            members.scopeExited(UiInteractionSession.EndReason.UNMOUNTED);
-        }
-        members.clear();
-        members.add(next);
+        router.replaceChildren(scope, members, List.of(next));
     }
 
     // 书签尺寸与间距
@@ -70,7 +65,7 @@ public final class RightPageContainer implements UiInputContainer {
     private enum LogMode {LIST, DETAIL}
 
     private final ScenarioPanel scenarioPanel;
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private final ScenarioDetailPanel scenarioDetailPanel;
     private final ItemGridPanel gridPanel;
     private final PageIndicator pageIndicator;
@@ -96,8 +91,9 @@ public final class RightPageContainer implements UiInputContainer {
     private final JournalOverlays overlays;
 
     public RightPageContainer(JournalBookBackground.BookLayout layout,
-                              JournalOverlays overlays, UiInputScope scope) {
+                              JournalOverlays overlays, UiInputScope scope, UiInputRouter router) {
         this.scope = scope;
+        this.router = router;
         this.layout = layout;
         this.overlays = overlays;
         this.scenarioPanel = new ScenarioPanel(layout);
@@ -145,6 +141,24 @@ public final class RightPageContainer implements UiInputContainer {
 
     private static Component tabLabel(String name) {
         return Component.translatable("screen.unsuspiciousblock.archaeology_journal.tab_" + name);
+    }
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) {
+        this.layout = layout;
+        gridPanel.applyLayout(layout);
+        detailPanel.applyLayout(layout);
+        logPanel.applyLayout(layout);
+        logDetailPanel.applyLayout(layout);
+        scenarioPanel.applyLayout(layout);
+        scenarioDetailPanel.applyLayout(layout);
+        pageIndicator.setCenterX(layout.rightPageX() + layout.rightPageWidth() / 2);
+        for (PageDescriptor page : pages) {
+            UiControl bookmark = page.bookmark();
+            bookmark.setBounds(layout.rightPageRight(),
+                    layout.rightPageY() + BOOKMARK_TOP_OFFSET + page.tab().ordinal() * (BOOKMARK_HEIGHT + BOOKMARK_GAP),
+                    bookmark.bounds().width(), BOOKMARK_HEIGHT);
+        }
+        syncPageChrome();
     }
 
     private PageDescriptor page(Tab tab, Supplier<PagePanel> content, int indicatorOffset,
@@ -241,10 +255,10 @@ public final class RightPageContainer implements UiInputContainer {
         syncPageChrome();
     }
 
-    public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics guiGraphics, Font font, UiPointer pointer) {
         syncPageChrome();
         PagePanel panel = activePanel();
-        panel.render(guiGraphics, font, mouseX, mouseY);
+        panel.render(guiGraphics, font, pointer);
         // 指示器的可见性与位置由当前页描述决定。
         if (activePage().alwaysIndicator() || panel.pageCount() > 1) {
             this.pageIndicator.render(guiGraphics, font);
@@ -440,8 +454,8 @@ public final class RightPageContainer implements UiInputContainer {
         }
 
         @Override
-        public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
-            grid.render(graphics, font, mouseX, mouseY);
+        public void render(GuiGraphics graphics, Font font, UiPointer pointer) {
+            grid.render(graphics, font, pointer);
         }
 
         @Override

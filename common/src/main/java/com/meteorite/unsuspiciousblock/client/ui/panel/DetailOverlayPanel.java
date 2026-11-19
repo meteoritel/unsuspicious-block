@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.input.UiPointer;
 import com.meteorite.meteosuikit.api.layout.UiRowMetrics;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.render.UiRenderLayers;
@@ -39,7 +40,7 @@ public final class DetailOverlayPanel implements PagePanel {
     private static final int FOOTER_HEIGHT = 32;
     private static final int MOD_SOURCE_TOP_OFFSET = 42;
 
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
     private int parsedCount;
     private int totalCount;
@@ -50,6 +51,10 @@ public final class DetailOverlayPanel implements PagePanel {
     private List<DiscoveredItemEntry> unlockedItems = List.of();
     // 已测宽度缓存（P-10）：与 setData 同一失效事件（外加语言/字体实例变化）
     private final PanelTextMetrics metrics = new PanelTextMetrics();
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) {
+        this.layout = layout;
+    }
 
     public DetailOverlayPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -93,7 +98,7 @@ public final class DetailOverlayPanel implements PagePanel {
                 this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
-    public void render(GuiGraphics guiGraphics, Font font, int mouseX, int mouseY) {
+    public void render(GuiGraphics guiGraphics, Font font, UiPointer pointer) {
         this.metrics.beginFrame(font);
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
@@ -103,7 +108,7 @@ public final class DetailOverlayPanel implements PagePanel {
         Component progressLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.parse_progress");
         PanelTextMetrics.Measured progressLabelText = this.metrics.measure(progressLabel.getString(), font);
         int progressLabelWidth = progressLabelText.width();
-        boolean progressLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
+        boolean progressLabelHovered = pointer.contains(new UiRect(leftX, y, contentWidth, font.lineHeight));
         this.progressLabelScrollTicks = progressLabelHovered ? this.progressLabelScrollTicks + 1 : 0;
         TextScroll.draw(guiGraphics, font, progressLabelText.text(), progressLabelWidth,
                 leftX, y, contentWidth,
@@ -126,7 +131,7 @@ public final class DetailOverlayPanel implements PagePanel {
 
         // 已发现物品列表
         Component discoveredLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.discovered_items");
-        boolean discoveredLabelHovered = isTextHovered(mouseX, mouseY, leftX, y, contentWidth, font.lineHeight);
+        boolean discoveredLabelHovered = pointer.contains(new UiRect(leftX, y, contentWidth, font.lineHeight));
         this.discoveredLabelScrollTicks = discoveredLabelHovered ? this.discoveredLabelScrollTicks + 1 : 0;
         PanelTextMetrics.Measured discoveredText = this.metrics.measure(discoveredLabel.getString(), font);
         TextScroll.draw(guiGraphics, font, discoveredText.text(), discoveredText.width(),
@@ -136,7 +141,7 @@ public final class DetailOverlayPanel implements PagePanel {
 
         if (this.unlockedItems.isEmpty()) {
             int emptyWidth = contentWidth - 4;
-            boolean emptyHovered = isTextHovered(mouseX, mouseY, leftX + 2, y, emptyWidth, font.lineHeight);
+            boolean emptyHovered = pointer.contains(new UiRect(leftX + 2, y, emptyWidth, font.lineHeight));
             this.emptyStateScrollTicks = emptyHovered ? this.emptyStateScrollTicks + 1 : 0;
             PanelTextMetrics.Measured emptyText = this.metrics.measure(Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.no_discoveries").getString(), font);
@@ -177,8 +182,7 @@ public final class DetailOverlayPanel implements PagePanel {
                 // 名称
                 int nameX = leftX + 22;
                 int nameMaxWidth = Math.max(0, countX - nameX - 4);
-                boolean hovered = mouseX >= nameX && mouseX < nameX + nameMaxWidth
-                        && mouseY >= rowY && mouseY < rowY + ITEM_ROW_HEIGHT;
+                boolean hovered = pointer.contains(new UiRect(nameX, rowY, nameMaxWidth, ITEM_ROW_HEIGHT));
                 if (!entry.wasHovered && hovered) {
                     entry.scrollTicks = 0;
                 }
@@ -288,10 +292,6 @@ public final class DetailOverlayPanel implements PagePanel {
 
     private static String formatCount(int count) {
         return "×" + count;
-    }
-
-    private static boolean isTextHovered(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
     private static final class DiscoveredItemEntry {

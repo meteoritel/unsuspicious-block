@@ -41,7 +41,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 - **单行呈现**：`UiTextInput` 保留原版编辑模型，私有视图统一无阴影正文、占位文字、光标、选区与鼠标寻址；颜色读取当前主题，水平窗口随编辑、resize 和语言资源更新。搜索及数值字段直接消费同一控件。
 - **笔记视口与工具**：宿主声明最小逻辑画布，`UiScreen.viewport()` 根据实际 framebuffer 与原版 GUI 倍率选择整数物理像素倍率，统一 GUI 与书页逻辑坐标的正逆换算；绘制、鼠标位置和拖动增量共用同一比例。像素不足 `1×` 时连续缩小以保留访问能力。`UnsuspiciousUiTheme.PARCHMENT` 通过 `UiThemes.builder()` 与 `UiSkinImages` + `UiNineSlice` 注入图集按钮皮肤，`UiAtlas` 托管统一 `ui_atlas.png` 精灵切片，`JournalControls` 组装图标、侧签/书签与翻页皮肤，点击与持续交互由 UI Kit 接管。
 - **Tooltip 与裁剪**：普通与物品提示统一经过 `UiTooltipPresenter.render` 转入原版 GUI 空间，提示字号和屏幕限位沿用 GUI 设置，物品提示继续调用原版渲染及 Loader Hook。普通 kit tooltip 默认位于当前作用域加 400，整体高于原版槽位物品；富提示回调保留作用域基线，原版 tooltip 自行加层。自绘内容裁剪使用 `UiRenderLayers.enableScissor/disableScissor` 在 `finally` 中配对；在裁剪恢复后呈现提示。
-- **分页、滚动与表单**：分页复用 `UiPaginationState`，通用滚动容器使用 `UiScrollContainer`，配置、日志保留和管理详情使用 `UiFormBody` 装配真实字段、标签、动作和自绘说明。正文拥有排版、滚动与裁剪，宿主将 `reveal(current)` 接入已有焦点 listener；底部固定操作栏留在正文之外。短正文固定预留轨道带宽，内容、自然高度或字体资源改变后调用 `invalidateLayout()`。
+- **分页、滚动与表单**。分页复用 `UiPaginationState`。目录通过 `UiScrollContainer` 和 `UiGridMetrics` 处理滚动视口内的实际行格。配置、日志保留和管理详情使用 `UiFormBody` 装配字段、标签、动作与自绘说明，焦点监听器调用 `reveal(current)`。配置页页脚、管理页搜索行及场景确认动作通过 `UiWidgetRow` 登记真实控件。内容、自然高度或字体资源改变后调用 `invalidateLayout()`。
 - **阻尼与成员帧**：`UiScrollView` 唯一持有实际偏移与阻尼目标。滚轮累积目标，恢复位置及焦点滚入立即定位，键盘平滑导航调用 `ensureVisibleSmoothly`。`UiScreen` 在准备、布局和选域后推进活动内容的 `advanceFrame(long)`，再解析命中与绘制；容器沿实际成员树转发，私有持有滚动视图的包装器转发帧和退出通知。表单推进后更新真实字段坐标，隐藏、禁用或切域结清旧目标。目录只提供内容和条目索引快照。
 
 ### 3.2 模态框与持续交互

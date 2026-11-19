@@ -47,7 +47,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     private static final int ITEM_SIZE = 16;
     private static final int ITEM_GAP = 4;
 
-    private final JournalBookBackground.BookLayout layout;
+    private JournalBookBackground.BookLayout layout;
     private long lastConnectionEpoch = Long.MIN_VALUE;
     private long lastLogRevision = Long.MIN_VALUE;
     private long lastCatalogRevision = Long.MIN_VALUE;
@@ -61,6 +61,8 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     public WelcomeStatsPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
     }
+
+    public void applyLayout(JournalBookBackground.BookLayout layout) { this.layout = layout; }
 
     public void render(GuiGraphics graphics, Font font) {
         refreshSnapshot();

@@ -3,6 +3,8 @@ package com.meteorite.unsuspiciousblock.client.ui.overlay;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiListView;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
+import com.meteorite.meteosuikit.api.control.UiWidgetRow;
+import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
@@ -57,7 +59,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     private final UiChildren<UiControl> actions = new UiChildren<>();
     private final UiControl decrease;
     private final UiControl increase;
-    private final List<UiControl> confirmationActions;
+    private final UiWidgetRow confirmationRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
     private final UiTextInput luckText;
     private final UiNumberField luck;
     private final UiTextInput search;
@@ -125,17 +127,21 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         increase = button(font, text("params.increase"), () -> changeLevel(ENCHANTMENT_LEVEL_STEP));
         UiControl calculate = button(font, text("params.apply_calculate"), () -> submitDraft(session::applyDraftAndSimulate));
         calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        confirmationActions = List.of(calculate,
+        List<UiControl> confirmationActions = List.of(calculate,
                 button(font, text("params.apply_only"), () -> submitDraft(session::applyDraft)),
                 button(font, Component.translatable("gui.cancel"), owner::close));
+        for (UiControl action : confirmationActions) {
+            actions.remove(action);
+            confirmationRow.add(action, UiLinearLayout.Child.remain());
+        }
         children.add(luck);
         children.add(tools);
         children.add(search);
         children.add(enchantments);
         children.add(actions);
-        layer = new UiLayer(overlay.inputScope(), (graphics, rowFont, pointer, depth) -> overlay.render(graphics,
-                new UiRect(0, 0, owner.width(), owner.height()), depth, 0x88000000,
-                () -> render(graphics, rowFont, pointer)), null);
+        children.add(confirmationRow);
+        layer = overlay.layer(() -> new UiRect(0, 0, owner.width(), owner.height()), 0x88000000,
+                (graphics, rowFont, pointer, depth) -> render(graphics, rowFont, pointer));
     }
 
     private UiControl button(Font font, Component label, UiAction action) {
@@ -218,9 +224,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         enchantments.setBounds(right, enchantTop, column, enchantHeight);
         decrease.setBounds(right, bounds.bottom() - 62, column / 2 - 2, 18);
         increase.setBounds(right + column / 2 + 2, bounds.bottom() - 62, column / 2 - 2, 18);
-        int buttonWidth = Math.max(0, (innerWidth - (confirmationActions.size() - 1) * 4) / confirmationActions.size());
-        for (int i = 0; i < confirmationActions.size(); i++)
-            confirmationActions.get(i).setBounds(left + i * (buttonWidth + 4), bounds.bottom() - 28, buttonWidth, 20);
+        confirmationRow.setBounds(left, bounds.bottom() - 28, innerWidth, 20);
         ResourceLocation selected = enchantments.selectedItem();
         int level = selected == null ? 0 : levels.getOrDefault(selected, 0);
         decrease.setEnabled(selected != null && level > 0);
@@ -248,6 +252,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         }
         graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
         for (UiControl action : actions) action.render(graphics, font, pointer);
+        confirmationRow.render(graphics, font, pointer);
         if (error != null)
             graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 45, UiTextScheme.PARCHMENT.negative(), false);
         if (pointer.allowsTooltip() && pointer.hit() != null)
