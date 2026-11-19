@@ -44,7 +44,7 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStat
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
-import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingSettings;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -997,7 +997,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         var history = ArchaeologyJournalLogLocalStore.getState().getTable(tableId);
         int retentionLimit = history != null
                 ? history.getRetentionLimit()
-                : ILootTableConfig.DEFAULT_MAX_LOG_ENTRIES_PER_TABLE;
+                : LootTrackingSettings.DEFAULT_LOG_ENTRIES;
         int entryCount = history != null ? history.getTotalEntryCount() : 0;
         Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
                 .setScreen(new JournalLogRetentionScreen(this, tableId, retentionLimit, entryCount));

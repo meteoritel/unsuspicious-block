@@ -1,7 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable.signature;
 
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -44,7 +44,7 @@ public final class SignatureExcludedComponents {
 
     // 当前生效的排除组件 id 列表——失效链与诊断需要使用同一口径
     public static List<String> configuredIds() {
-        return List.copyOf(Services.LOOT_TABLE_CONFIG.getSignatureExcludedComponents());
+        return ServerLootTableConfigManager.snapshot().settings().signatureExclusions();
     }
 
     // 解析配置为组件类型集合；配置内容未变化时复用上一次结果

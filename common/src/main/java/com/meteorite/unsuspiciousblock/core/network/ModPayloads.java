@@ -59,7 +59,7 @@ import java.util.function.BiConsumer;
  * 公共网络声明：维护通道类型、codec 与 C2S 服务端处理函数。
  */
 public final class ModPayloads {
-    public static final String PROTOCOL_VERSION = "4.16";
+    public static final String PROTOCOL_VERSION = "4.17";
 
     private ModPayloads() {
     }

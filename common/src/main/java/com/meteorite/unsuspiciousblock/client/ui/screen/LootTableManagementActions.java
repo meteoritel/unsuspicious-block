@@ -5,9 +5,7 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateLootTableTranslationsPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
@@ -36,16 +34,6 @@ import java.util.Set;
 final class LootTableManagementActions {
     /** 单条本地化名称长度上限，与服务端 payload 约定一致。 */
     private static final int MAX_NAME_LENGTH = 128;
-
-    /** 请求服务端下发管理页快照。 */
-    void requestSnapshot() {
-        ClientNetwork.sendToServer(new RequestLootTableManagementPayload());
-    }
-
-    /** 提交追踪状态切换。 */
-    void submitTracking(ResourceLocation tableId, boolean tracked) {
-        ClientNetwork.sendToServer(new UpdateTrackedLootTablePayload(tableId, tracked));
-    }
 
     /** 提交本地化名称草稿：Screen 只把草稿转成提交项，协议组包在这里。 */
     void submitNameDrafts(List<NameDraft> drafts) {

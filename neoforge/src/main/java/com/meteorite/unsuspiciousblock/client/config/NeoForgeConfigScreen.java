@@ -6,6 +6,7 @@ import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
+import com.meteorite.unsuspiciousblock.client.ui.screen.LootTrackingConfigScreen;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -25,6 +26,7 @@ public final class NeoForgeConfigScreen extends UiThemedScreen {
     private final UiInputScope scope = new UiInputScope(content);
     private final UiListView<ModConfig> configs;
     private final UiControl done = new UiControl();
+    private final UiControl lootTracking = new UiControl();
 
     public NeoForgeConfigScreen(ModContainer mod, Screen parent) {
         super(Component.translatable("unsuspiciousblock.config.title"), new UiThemeContext<>(UnsuspiciousUiTheme.DARK));
@@ -45,6 +47,7 @@ public final class NeoForgeConfigScreen extends UiThemedScreen {
             if (canEdit(config)) Minecraft.getInstance().setScreen(new NeoForgeConfigEditor(this, config));
         });
         content.add(configs);
+        content.add(lootTracking);
         content.add(done);
         scope.setEscape(this::onClose);
     }
@@ -67,6 +70,10 @@ public final class NeoForgeConfigScreen extends UiThemedScreen {
     }
 
     @Override protected void init() {
+        lootTracking.setTheme(theme(), UiControlRole.SECONDARY);
+        lootTracking.setFocusable(true);
+        lootTracking.configure(font, Component.translatable("unsuspiciousblock.config.server.open"),
+                null, List.of(), () -> Minecraft.getInstance().setScreen(new LootTrackingConfigScreen(this)));
         done.setTheme(theme(), UiControlRole.SECONDARY);
         done.setFocusable(true);
         done.configure(font, Component.translatable("gui.done"), null, List.of(), this::onClose);
@@ -74,7 +81,8 @@ public final class NeoForgeConfigScreen extends UiThemedScreen {
     @Override protected UiInputScope inputScope() { return scope; }
     @Override protected void layoutUi() {
         int listWidth = Math.clamp(width - 32, 0, 420);
-        configs.setBounds((width - listWidth) / 2, 40, listWidth, Math.max(0, height - 80));
+        configs.setBounds((width - listWidth) / 2, 40, listWidth, Math.max(0, height - 107));
+        lootTracking.setBounds((width - listWidth) / 2, height - 55, listWidth, 20);
         done.setBounds(width / 2 - 50, height - 28, 100, 20);
     }
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }

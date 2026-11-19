@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.journal.state;
 
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.journal.migration.JournalDataVersion;
 import com.meteorite.unsuspiciousblock.core.journal.migration.JournalNbtMigrator;
 
@@ -238,7 +238,7 @@ public final class ArchaeologyJournalLogState {
 
         // 服务端配置是所有玩家、所有表共享的最后兜底上限
         public static int getGlobalMaxEntries() {
-            return Math.max(1, Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable());
+            return Math.max(1, ServerLootTableConfigManager.snapshot().settings().logLimit());
         }
 
         @Nullable

@@ -114,7 +114,7 @@ flowchart TD
 - **新增淘洗点变体**：
   1. 在 `ShimmerVariants` 注册新变体（指定 id、`AnchorRule`、`SpawnDomain`、`GlowStyle`、产出表与实体类型）；
   2. 新增 `ShimmerEntity` 子类并在 `ModEntities.REGISTRY_MANIFEST` 登记；
-  3. 添加产出表 JSON 并纳入 `ILootTableConfig` 默认追踪前缀；
+  3. 添加产出表 JSON 并纳入 `LootTrackingRules.BUILTINS` 的淘洗前缀；
   4. 按需配置 `configured_feature`、`placed_feature` 与双端群系修改器；
   5. 补齐贴图帧、粒子与音效。生成、账本、调试指令与客户端渲染全部自动适配。
 - **新增淘盘**：在 `ModItems` 新增条目并传入自定义 `PanProfile`（类别选 `Category.PAN`），`PanningVisuals` 与 `PanningLootService` 无需改动。

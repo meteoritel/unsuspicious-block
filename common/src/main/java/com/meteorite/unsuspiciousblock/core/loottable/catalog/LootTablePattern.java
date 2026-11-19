@@ -61,6 +61,14 @@ public record LootTablePattern(@Nullable String namespace, String path, boolean 
         return this.prefix ? targetPath.startsWith(this.path) : targetPath.equals(this.path);
     }
 
+    public String selector() {
+        return namespace == null ? path : namespace + ":" + path;
+    }
+
+    public boolean isValidSelector() {
+        return ResourceLocation.tryParse(namespace == null ? "minecraft:" + path : selector()) != null;
+    }
+
     /**
      * 剥离命中规则后的剩余 path 片段，用于生成本地化 key 与展示名。
      * 前缀规则剥去前缀部分；精确规则保留完整 path（无前缀可剥）。

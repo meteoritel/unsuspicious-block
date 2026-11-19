@@ -25,7 +25,7 @@ import com.meteorite.unsuspiciousblock.platform.loot.AddItemLootModifier;
 import com.meteorite.unsuspiciousblock.platform.loot.FishingLootModifier;
 import com.meteorite.unsuspiciousblock.platform.loot.InjectItemLootModifier;
 import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
-import com.meteorite.unsuspiciousblock.platform.NeoForgeLootTableConfig;
+import com.meteorite.unsuspiciousblock.platform.NeoForgeSpiritCatConfig;
 import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
@@ -221,8 +221,7 @@ public class UnsuspiciousBlockNeoForge {
         // 在 common init 前设置平台注册的 LootItemConditionType，供 ToolEnchantmentCondition 运行时使用
         UnsuspiciousBlockCommon.init(TOOL_ENCHANTMENT_TYPE);
 
-        container.registerConfig(ModConfig.Type.SERVER, NeoForgeLootTableConfig.SERVER_CONFIG_SPEC);
-        container.registerConfig(ModConfig.Type.COMMON, NeoForgeLootTableConfig.COMMON_CONFIG_SPEC);
+        container.registerConfig(ModConfig.Type.COMMON, NeoForgeSpiritCatConfig.COMMON_CONFIG_SPEC);
         container.registerConfig(ModConfig.Type.SERVER, NeoForgePanningConfig.SERVER_CONFIG_SPEC,
                 NeoForgePanningConfig.SERVER_CONFIG_FILE_NAME);
 

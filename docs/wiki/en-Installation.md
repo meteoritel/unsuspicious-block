@@ -33,4 +33,4 @@ The following mods are not required to run this mod:
 
 ## Updating or Switching Loaders
 
-When switching between Fabric and NeoForge, keep a backup of your world. Config file locations and optional integrations differ between the two sides; do not copy config files from one loader directly into the other.
+Keep a world backup when switching between Fabric and NeoForge. The Archaeology Journal’s world rules travel with the save in `serverconfig/unsuspiciousblock-loot-tracking.json`. When upgrading from an older version, open the world with its original loader first to import its settings. Each loader manages its own global settings and optional integrations.

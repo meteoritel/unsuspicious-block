@@ -4,7 +4,6 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.world.LootProbabilityData;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -53,23 +52,20 @@ public final class JournalCatalogHandler {
     }
 
     /**
-     * 数据包重载：暂停 worker → 失效内存目录 → 重新解析入队 → 恢复 worker → 同步哈希
+     * 根据已发布的世界配置和资源构建新代目录，并在完成后同步哈希。
      */
-    public static void onDataPackReload(MinecraftServer server) {
-        ServerLootTableConfigManager.reload(server);
+    public static boolean refreshCatalog(MinecraftServer server) {
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker != null) {
-            worker.pauseForReload();
-            worker.clearQueue();
+        if (worker != null) worker.pauseForReload();
+        try {
+            if (!ArchaeologyJournalServerCatalog.rebuild(server)) return false;
+        } finally {
+            if (worker != null) worker.resumeAfterReload();
         }
-        ArchaeologyJournalServerCatalog.invalidate();
-        ArchaeologyJournalServerCatalog.ensureLoaded(server);
-        if (worker != null) worker.resumeAfterReload();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             syncCatalogHash(player);
         }
-        // /reload 也会重新读取服务端语言目录，随后同步管理快照供客户端一次性刷新语言
-        LootTableManagementHandler.broadcast(server);
+        return true;
     }
 
     /**

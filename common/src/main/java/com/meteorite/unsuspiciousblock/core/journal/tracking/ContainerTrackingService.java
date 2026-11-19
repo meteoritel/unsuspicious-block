@@ -1,12 +1,12 @@
 package com.meteorite.unsuspiciousblock.core.journal.tracking;
 
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -61,7 +61,7 @@ public final class ContainerTrackingService {
     public static void onContainerLootResolved(ServerPlayer player, TrackedContainerLootState container,
             CaptureHandle capture, Map<String, Integer> itemCounts) {
         long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
+        long timeoutTicks = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
         UUID trackedPlayerUuid = container.unsuspiciousblock$getTrackedPlayerUuid();
         if (trackedPlayerUuid != null && !trackedPlayerUuid.equals(player.getUUID())) {
             if (container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
@@ -81,7 +81,7 @@ public final class ContainerTrackingService {
     // 仅处理当前玩家拥有的追踪容器，超时的先 flush
     public static void reconcileTrackedContainers(ServerPlayer player, Collection<Container> rootContainers) {
         long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
+        long timeoutTicks = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
 
         for (TrackedContainerLootState trackedContainer : collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks)) {
             ResourceLocation tableId = trackedContainer.unsuspiciousblock$tracking().settlementTable();

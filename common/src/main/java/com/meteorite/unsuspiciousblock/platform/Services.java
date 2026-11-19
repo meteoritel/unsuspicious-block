@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.platform;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.platform.services.ICatEventAdapter;
 import com.meteorite.unsuspiciousblock.platform.services.IAccessoryHelper;
-import com.meteorite.unsuspiciousblock.platform.services.ILootTableConfig;
+import com.meteorite.unsuspiciousblock.platform.services.ILegacyLootTrackingConfig;
 import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPanningConfig;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
@@ -19,7 +19,7 @@ public class Services {
     public static final IPlatformHelper PLATFORM = load(IPlatformHelper.class);
     public static final INetworkHelper NETWORK = load(INetworkHelper.class);
     public static final IAccessoryHelper ACCESSORY = load(IAccessoryHelper.class);
-    public static final ILootTableConfig LOOT_TABLE_CONFIG = load(ILootTableConfig.class);
+    public static final ILegacyLootTrackingConfig LEGACY_LOOT_TRACKING_CONFIG = load(ILegacyLootTrackingConfig.class);
     public static final ISpiritCatConfig SPIRIT_CAT_CONFIG = load(ISpiritCatConfig.class);
     public static final IPanningConfig PANNING_CONFIG = load(IPanningConfig.class);
     public static final IEnchantmentEventAdapter ENCHANTMENT = load(IEnchantmentEventAdapter.class);

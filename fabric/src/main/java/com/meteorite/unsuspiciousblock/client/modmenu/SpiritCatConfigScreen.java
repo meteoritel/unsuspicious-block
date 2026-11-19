@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.modmenu;
 
 import com.meteorite.meteosuikit.api.control.UiTextInput;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ConfigFormScreen;
-import com.meteorite.unsuspiciousblock.platform.FabricLootTableConfig;
+import com.meteorite.unsuspiciousblock.platform.FabricSpiritCatConfig;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
 import net.minecraft.client.gui.screens.Screen;
@@ -60,9 +60,10 @@ public final class SpiritCatConfigScreen extends ConfigFormScreen {
                 return false;
             }
         }
-        ((FabricLootTableConfig) Services.SPIRIT_CAT_CONFIG).saveSpiritCatConfig(
+        boolean saved = ((FabricSpiritCatConfig) Services.SPIRIT_CAT_CONFIG).saveSpiritCatConfig(
                 values[0], values[1], values[2], values[3], values[4], values[5]);
-        return true;
+        if (!saved) showValidation(Component.translatable("unsuspiciousblock.config.loot_tracking.write_failed"));
+        return saved;
     }
     @Override protected Component notice() { return Component.translatable("unsuspiciousblock.config.common.notice"); }
 }

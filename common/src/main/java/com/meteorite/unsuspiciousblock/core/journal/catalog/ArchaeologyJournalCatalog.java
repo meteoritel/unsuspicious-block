@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.core.loottable.diagnostics.LootDebugMode;
+import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingRules;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootTableCompiler;
@@ -17,6 +18,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,22 +46,15 @@ public final class ArchaeologyJournalCatalog {
      * @param resourceManager 仅用于加载目录分类资源，不再用于读取战利品表
      */
     public static LoadResult load(long generation, LootTableSourceSnapshot sourceSnapshot,
-                                  ResourceManager resourceManager, HolderLookup.Provider registries) {
-        return load(generation, sourceSnapshot, resourceManager, registries, null);
-    }
-
-    // 服务器加载入口提供当前配方及修饰器视图；原有纯资源入口仍可用于无世界的解析。
-    public static LoadResult load(long generation, LootTableSourceSnapshot sourceSnapshot,
                                   ResourceManager resourceManager, HolderLookup.Provider registries,
-                                  @org.jetbrains.annotations.Nullable LootFunctionPreviewContext previewContext) {
+                                  @Nullable LootFunctionPreviewContext previewContext, LootTrackingRules rules) {
         LootTableReferenceGraph referenceGraph = LootTableReferenceGraph.build(
                 sourceSnapshot, RuntimeLootLinks.syntheticEdges());
 
         Set<ResourceLocation> trackedRoots = new LinkedHashSet<>();
         for (ResourceLocation tableId : referenceGraph.nodes()) {
             // 调试表只在调试模式下进入收录闭包：关闭时它连"可被抽取的表"都不是，目录里完全不出现
-            if (LootTableNames.isArchaeologyLootTable(tableId)
-                    && LootDebugMode.allows(tableId)) {
+            if (rules.isRootCandidate(tableId) && LootDebugMode.allows(tableId)) {
                 trackedRoots.add(tableId);
             }
         }

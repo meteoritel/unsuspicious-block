@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.journal.state;
 
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -146,7 +146,7 @@ public final class JournalLogMutation {
 
     /** 成就使用全局配置门槛，与每表的有效保留上限独立。 */
     public static boolean crossesAchievementThreshold(long previous, long current) {
-        long achievementThreshold = Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable();
+        long achievementThreshold = ServerLootTableConfigManager.snapshot().settings().logLimit();
         return previous < achievementThreshold && current >= achievementThreshold;
     }
 

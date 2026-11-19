@@ -18,7 +18,9 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
+import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingRules.TableEdit;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -61,6 +63,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private UiControl filterButton;
     private UiControl backButton;
     private UiControl applyButton;
+    private UiControl clearOverride;
+    private UiControl editRules;
     private UiControl saveNameButton;
     private UiControl languageButton;
     private UiControl importButton;
@@ -77,6 +81,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private @Nullable ResourceLocation selectedTableId;
     private @Nullable Component importStatus;
     private int importStatusColor = IMPORT_STATUS_OK_COLOR;
+    private int pendingTrackingRequest;
+    private @Nullable Component trackingStatus;
 
     public LootTableManagementScreen(Screen parent) {
         super(Component.translatable(PREFIX + "title"), new UiThemeContext<>(UnsuspiciousUiTheme.PARCHMENT));
@@ -98,7 +104,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                 x += 11;
             }
             if (row.entry() != null) {
-                UiAtlas.icon(row.entry().tracked() ? UiAtlas.Icon.CHECK : UiAtlas.Icon.CLOSE)
+                UiAtlas.icon(row.entry().isCollected() ? UiAtlas.Icon.CHECK : UiAtlas.Icon.CLOSE)
                         .render(graphics, x, rect.y() + 5);
                 x += 11;
             }
@@ -136,15 +142,17 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         if (!detailsAssembled) {
             detailsAssembled = true;
             details.add(Component.empty(), summary, summary, List.of());
+            details.add(Component.empty(), editRules, 20);
+            details.add(Component.empty(), applyButton, 20);
+            details.add(Component.empty(), clearOverride, 20);
             details.add(Component.translatable(PREFIX + "language"), languageBox, 20);
             details.add(Component.empty(), languageButton, 20);
             details.add(Component.translatable(PREFIX + "localized_name"), nameBox, 20);
-            details.add(Component.empty(), applyButton, 20);
             details.add(Component.empty(), saveNameButton, 20);
         }
         if (!initialized) {
             initialized = true;
-            actions.requestSnapshot();
+            LootTableManagementClientState.requestSnapshot();
         }
         refreshSnapshot();
         syncControls();
@@ -155,7 +163,13 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         filterButton.configure(font, filter.label(), null, List.of(), this::cycleFilter);
         languageButton = detailControls.obtain("language");
         languageButton.configure(font, Component.translatable(PREFIX + "choose_language"), null, List.of(), this::chooseLanguage);
+        editRules = detailControls.obtain("rules");
+        editRules.configure(font, Component.translatable(PREFIX + "world_rules"), null, List.of(),
+                () -> Minecraft.getInstance().setScreen(new LootTrackingConfigScreen(this)));
         applyButton = detailControls.obtain("tracking");
+        clearOverride = detailControls.obtain("clear-override");
+        clearOverride.configure(font, Component.translatable(PREFIX + "clear_override"), null, List.of(),
+                () -> submitTracking(TableEdit.CLEAR));
         saveNameButton = detailControls.obtain("name");
         saveNameButton.configure(font, Component.translatable(PREFIX + "save_name"), null, List.of(), this::saveName);
         importButton = controls.obtain("import");
@@ -225,15 +239,16 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private void syncControls() {
         if (applyButton == null) return;
         var entry = selectedEntry();
-        boolean selected = entry != null && LootTableManagementClientState.canEdit();
-        applyButton.setEnabled(selected);
-        applyButton.configure(Minecraft.getInstance().font, Component.translatable(PREFIX
-                + (entry != null && entry.tracked() ? "remove" : "add")), null, List.of(), this::applySelection);
-        if (entry != null && !entry.tracked()) {
-            applyButton.setTheme(theme(), UiControlRole.PRIMARY);
-        } else {
-            applyButton.setTheme(theme(), UiControlRole.SECONDARY);
-        }
+        boolean canEditName = entry != null && LootTableManagementClientState.canEdit();
+        boolean canEditTable = entry != null && canEditTracking();
+        boolean isRootCandidate = entry != null && entry.match().isRootCandidate();
+        applyButton.setEnabled(canEditTable);
+        applyButton.configure(font, Component.translatable(PREFIX
+                + (isRootCandidate ? "exclude_root" : "include_root")), null, List.of(),
+                () -> submitTracking(isRootCandidate ? TableEdit.EXCLUDE : TableEdit.INCLUDE));
+        applyButton.setTheme(theme(), isRootCandidate ? UiControlRole.SECONDARY : UiControlRole.PRIMARY);
+        clearOverride.setEnabled(canEditTable && entry.hasExactOverride());
+        editRules.setEnabled(pendingTrackingRequest == 0);
         boolean canSave = LootTableManagementClientState.canEdit() && !nameDrafts.isEmpty() && !hasInvalidEnglishDraft();
         saveNameButton.setEnabled(canSave);
         if (canSave) {
@@ -241,9 +256,9 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         } else {
             saveNameButton.setTheme(theme(), UiControlRole.SECONDARY);
         }
-        languageButton.setEnabled(selected);
-        languageBox.setEnabled(selected);
-        nameBox.setEnabled(selected && hasValidLanguageCode()
+        languageButton.setEnabled(canEditName);
+        languageBox.setEnabled(canEditName);
+        nameBox.setEnabled(canEditName && hasValidLanguageCode()
                 && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null);
         importButton.setEnabled(LootTableManagementClientState.canEdit());
         summary.refresh();
@@ -361,19 +376,27 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             var selected = selectedEntry();
             if (selected != null) {
                 next.add(new DetailLine(Component.literal(selected.tableId().toString()), UiTextScheme.PARCHMENT.label()));
-                next.add(new DetailLine(Component.translatable(PREFIX + (selected.tracked() ? "tracked" : "not_tracked")),
-                        selected.tracked() ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.hint()));
+                String match = selected.match().name().toLowerCase(Locale.ROOT);
+                next.add(new DetailLine(Component.translatable(PREFIX + "match." + match), UiTextScheme.PARCHMENT.label()));
+                String catalog = selected.isCatalogRoot() ? "root" : selected.isCollected() ? "child" : "absent";
+                next.add(new DetailLine(Component.translatable(PREFIX + "catalog." + catalog),
+                        selected.isCollected() ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.hint()));
             }
             if (!nameDrafts.isEmpty())
                 next.add(new DetailLine(Component.translatable(PREFIX + "source.draft", nameDrafts.size()), UiTextScheme.PARCHMENT.accent()));
             if (!LootTableManagementClientState.canEdit())
-                next.add(new DetailLine(Component.translatable(PREFIX + "read_only"), UiTextScheme.PARCHMENT.accent()));
+                next.add(new DetailLine(Component.translatable(PREFIX + "names_read_only"), UiTextScheme.PARCHMENT.accent()));
             else if (!hasValidLanguageCode())
                 next.add(new DetailLine(Component.translatable(PREFIX + "invalid_language_code"), UiTextScheme.PARCHMENT.negative()));
             else if (requiresEnglishName())
                 next.add(new DetailLine(Component.translatable(PREFIX + "english_name_required"), UiTextScheme.PARCHMENT.accent()));
             else if (selected != null)
                 next.add(new DetailLine(nameSourceLabel(selected.tableId()), UiTextScheme.PARCHMENT.label()));
+            var config = LootTableManagementClientState.configuration();
+            if (config != null && config.isCatalogPending()) {
+                next.add(new DetailLine(Component.translatable(PREFIX + "catalog.pending"), UiTextScheme.PARCHMENT.accent()));
+            }
+            if (trackingStatus != null) next.add(new DetailLine(trackingStatus, UiTextScheme.PARCHMENT.accent()));
             if (importStatus != null) next.add(new DetailLine(importStatus, importStatusColor));
             if (next.equals(content)) return;
             content = List.copyOf(next);
@@ -417,6 +440,11 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     }
 
     private void refreshSnapshot() {
+        var receipt = LootTableManagementClientState.receipt(pendingTrackingRequest);
+        if (receipt != null) {
+            pendingTrackingRequest = 0;
+            trackingStatus = LootTrackingConfigScreen.resultMessage(receipt.result());
+        }
         long revision = LootTableManagementClientState.revision();
         if (revision != this.observedRevision) {
             this.observedRevision = revision;
@@ -433,7 +461,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         this.filteredEntries.clear();
         LinkedHashMap<String, TreeNode> namespaces = new LinkedHashMap<>();
         for (SyncLootTableManagementPayload.Entry entry : entriesForCurrentFilter()) {
-            if (!this.filter.matches(entry.tracked()) || !matchesQuery(entry, query)) continue;
+            if (!this.filter.matches(entry.isCollected()) || !matchesQuery(entry, query)) continue;
             this.filteredEntries.add(entry);
             TreeNode node = namespaces.computeIfAbsent(entry.tableId().getNamespace(), namespace ->
                     new TreeNode(namespace, "namespace:" + namespace));
@@ -491,10 +519,18 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         rebuildTree();
     }
 
-    private void applySelection() {
+    private boolean canEditTracking() {
+        var config = LootTableManagementClientState.configuration();
+        return config != null && config.canEdit() && config.isWritable() && pendingTrackingRequest == 0;
+    }
+
+    private void submitTracking(TableEdit edit) {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || !LootTableManagementClientState.canEdit()) return;
-        this.actions.submitTracking(entry.tableId(), !entry.tracked());
+        if (entry == null || !canEditTracking()) return;
+        var config = LootTableManagementClientState.configuration();
+        pendingTrackingRequest = LootTableManagementClientState.submit(config.revision(),
+                new UpdateTrackedLootTablePayload.Single(entry.tableId(), edit));
+        trackingStatus = Component.translatable("unsuspiciousblock.config.loot_tracking.saving");
     }
 
     private void saveName() {

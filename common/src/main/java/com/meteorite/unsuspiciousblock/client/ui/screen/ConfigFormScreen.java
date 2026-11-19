@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 配置页共享的滚动排版与固定操作区；配置类型、校验和保存由平台页面提供。
+ * 配置页共享的滚动排版与固定操作区；页面提供字段、校验与提交。
  */
 public abstract class ConfigFormScreen extends UiThemedScreen {
     private final Screen parent;
@@ -72,6 +72,10 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
 
     protected abstract void resetDraft();
 
+    protected Component resetLabel() {
+        return Component.translatable("unsuspiciousblock.config.reset");
+    }
+
     protected abstract boolean saveDraft();
 
     protected boolean canEdit() {
@@ -92,7 +96,7 @@ public abstract class ConfigFormScreen extends UiThemedScreen {
             action.setTheme(theme(), UiControlRole.SECONDARY);
             action.setFocusable(true);
         }
-        reset.configure(font, Component.translatable("unsuspiciousblock.config.reset"),
+        reset.configure(font, resetLabel(),
                 null, List.of(), () -> {
                     resetDraft();
                     validationMessage = null;

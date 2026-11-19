@@ -152,11 +152,11 @@ classDiagram
 | 以 `/` 结尾 | 前缀匹配 | `archaeology/` 命中全部考古表 |
 | 不以 `/` 结尾 | 精确 ID 匹配 | `minecraft:chests/buried_treasure` |
 
-默认规则定义在 `ILootTableConfig.DEFAULT_ARCHAEOLOGY_PATH_PREFIXES`。命中规则的表纳入目录并沿引用闭包递归收录子表。
+`LootTrackingRules.BUILTINS` 定义内置规则。世界以附加规则扩展收录根表、按标识禁用内置规则，或以完整表 ID 排除根表。目录沿有效根表的引用闭包递归收录子表；根表排除的表仍可经其他父表收录。世界文件与迁移见[配置与联动](../foundation/config-and-integrations.md#2-世界战利品追踪配置)。
 
 ### 追踪管理与自定义名称
 
-- **权威表集合**：候选清单仅取服务端 `ReloadableServerRegistries` 中已注册的战利品表（排除 `entities/` 与 `blocks/` 前缀），修改追踪规则与排除项需权限等级 `2`。
+- **权威表集合**：候选清单仅取服务端 `ReloadableServerRegistries` 中已注册的战利品表（排除 `entities/` 与 `blocks/` 前缀），编辑权限和配置作用域见[配置与联动](../foundation/config-and-integrations.md#22-配置界面与热重载)。
 - **名称覆写规则**：翻译键由 `LootTableNames.createTranslationKey(ResourceLocation)` 统一生成；游戏资源语言为只读优先来源，服务端补充表名保存在 `config/unsuspiciousblock/loot_table_lang/<language>.json`，经 `ClientLanguageMixin` 仅在资源缺失时补齐（断连即清除内存快照）。
 - **管理页草稿与导入**：支持按 `(languageCode, tableId)` 暂存草稿并批量写入，也支持预览并导入标准语言 JSON；仅已注册、可管理且键名符合自动规则的条目允许提交。
 
@@ -188,7 +188,7 @@ classDiagram
 
 ## 8. 扩展点
 
-- **调整收录范围或实例态排除组件**：修改 `ILootTableConfig` 默认前缀或 `signature_excluded_components`（默认 `relics:data`）。变更排除组件会改变表哈希并触发重算，但旧存档里已记录的精确变体键成为孤儿键，不参与完成度计算。
+- **调整收录范围或实例态排除组件**：修改内置规则、世界规则覆盖或 `signature_excluded_components`（默认 `relics:data`）。变更排除组件会改变表哈希并触发重算，但旧存档里已记录的精确变体键成为孤儿键，不参与完成度计算。
 - **新增签名类型**：扩展 `LootResultSignature.SignatureType` 与 `fromStoredKey` 解析，并在 `JournalNbtMigrator` 补充连续迁移步骤。
 - **新增战利品条件 / 场景控制类型**：在 `ModLootConditions` 注册类型，并在 `LootConditionHandlers` 统一登记描述器、能力标识与所需上下文参数；需受代表场景控制的叶子条件须登记 `SCENARIO` 能力并补写单目标 `test` 转交 Mixin。
 - **新增函数描述或预览**：在 `LootFunctionHandlers` 注册 `LootFunctionDescription` 与可选 `LootFunctionPreview`，通过 `withSemantics` 提供类型化策略，并在 `en_us.json` / `zh_cn.json` 同步 `function.*` 键（详见[战利品表函数与展示规则](../internals/loottable-functions-and-display.md)）。

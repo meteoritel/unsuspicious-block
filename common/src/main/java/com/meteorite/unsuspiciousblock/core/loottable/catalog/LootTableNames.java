@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.loottable.catalog;
 
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,56 +22,17 @@ public final class LootTableNames {
     // 收集阶段零 I/O，由 logMissingTranslationSummary 统一分类汇总输出
     private static final Map<ResourceLocation, MissingEntry> PENDING_MISSING = new LinkedHashMap<>();
 
-    // 缓存上次解析的规则列表，避免每次匹配重复解析配置字符串
-    private static volatile List<String> cachedRawPatterns;
-    private static volatile List<LootTablePattern> cachedPatterns = List.of();
-
     private LootTableNames() {
     }
 
     // 注册战利品表名称映射；使用规则生成 key，fallback 名称由 path 自动清洗得到
     public static void register(ResourceLocation tableId) {
-        validateArchaeologyTableId(tableId);
         registerInternal(tableId, createTranslationKey(tableId), null);
     }
 
     // 注册战利品表名称映射；使用规则生成 key，并允许显式指定 fallback 展示名
     public static void register(ResourceLocation tableId, String fallbackName) {
-        validateArchaeologyTableId(tableId);
         registerInternal(tableId, createTranslationKey(tableId), fallbackName);
-    }
-
-    // 判断该表是否命中任一配置规则（命名空间 + 路径前缀/精确）
-    public static boolean isArchaeologyLootTable(ResourceLocation tableId) {
-        if (Services.LOOT_TABLE_CONFIG.getExcludedLootTables().contains(tableId.toString())) {
-            return false;
-        }
-        for (LootTablePattern pattern : patterns()) {
-            if (pattern.matches(tableId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // 获取当前生效的匹配规则列表；配置变化时重新解析并缓存
-    private static List<LootTablePattern> patterns() {
-        List<String> rawPatterns = Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes();
-        if (rawPatterns.equals(cachedRawPatterns)) {
-            return cachedPatterns;
-        }
-
-        List<LootTablePattern> parsed = new ArrayList<>(rawPatterns.size());
-        for (String raw : rawPatterns) {
-            LootTablePattern pattern = LootTablePattern.parse(raw);
-            if (pattern != null) {
-                parsed.add(pattern);
-            }
-        }
-        List<LootTablePattern> immutable = List.copyOf(parsed);
-        cachedPatterns = immutable;
-        cachedRawPatterns = List.copyOf(rawPatterns);
-        return immutable;
     }
 
     // 确保该战利品表已进入名称映射；若外部未显式注册，则自动生成默认 key 与 fallback 规则
@@ -189,12 +149,6 @@ public final class LootTableNames {
         if (previous != null && !Objects.equals(previous, registration)) {
             Constants.LOG.warn("Archaeology loot table name registration for {} was overridden: {} -> {}",
                     tableId, previous.translationKey(), registration.translationKey());
-        }
-    }
-
-    private static void validateArchaeologyTableId(ResourceLocation tableId) {
-        if (!isArchaeologyLootTable(tableId)) {
-            throw new IllegalArgumentException("Only archaeology loot tables are supported: " + tableId);
         }
     }
 

@@ -1,10 +1,10 @@
 package com.meteorite.unsuspiciousblock.core.journal.tracking;
 
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
-import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -32,7 +32,7 @@ public final class MenuTrackingSnapshotService {
     // 仅收集当前玩家拥有的追踪容器，超时的容器先 flush
     public static MenuTrackingSnapshot captureMenuTrackingSnapshot(ServerPlayer player, Collection<Container> rootContainers, ItemStack carriedItem) {
         long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks();
+        long timeoutTicks = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
 
         List<TrackedContainerLootState> trackedContainers = ContainerTrackingService.collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks);
         if (trackedContainers.isEmpty()) {

@@ -1,108 +1,137 @@
 package com.meteorite.unsuspiciousblock.core.loottable;
 
-import com.meteorite.unsuspiciousblock.platform.Services;
-
+import com.google.gson.JsonParseException;
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableTranslationStore;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
+import com.meteorite.unsuspiciousblock.core.network.journal.LootTableManagementHandler;
+import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
 
-import java.util.List;
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * 服务端战利品配置生命周期协调器——加载世界配置并在规则变化后重建目录。
- * <p>
- * 同时也是**数据包重载脏标记**的汇聚点：平台侧的重载监听器只置标记（见
- * {@link #markDataPackReload()}），真正的重建仍在 tick 路径上做（D9）——在重载回调里
- * 同步跑全量构建会拖住重载本身，而两个平台的重载事件时序并不一致，只置标记能把差异压到最小。
- */
+/** 服务端世界配置的生命周期、持久化提交和目录刷新。 */
 public final class ServerLootTableConfigManager {
-    private static final int CHECK_INTERVAL_TICKS = 20;
+    private static final AtomicBoolean DATA_PACK_RELOAD = new AtomicBoolean();
+    private static volatile Snapshot current = new Snapshot(0, LootTrackingSettings.DEFAULT, false);
+    private static boolean hasWorldFile;
+    private static boolean refreshRequested;
+    private static boolean catalogPending;
+    private static Path configFile;
 
-    private static Snapshot snapshot;
-    /** 数据包重载待处理标记；由平台重载监听器置位、由 {@link #tick} 在主线程消费。 */
-    private static volatile boolean dataPackReloadPending;
-
-    private ServerLootTableConfigManager() {
+    /** 世界会话中的不可变配置与编译后的规则。 */
+    public record Snapshot(long revision, LootTrackingSettings settings, LootTrackingRules rules, boolean canSave) {
+        private Snapshot(long revision, LootTrackingSettings settings, boolean canSave) {
+            this(revision, settings, new LootTrackingRules(settings), canSave);
+        }
     }
 
-    /**
-     * 标记"数据包已重载，需要重建目录"。
-     * <p>
-     * 平台重载监听器在资源重载期间调用它：此时只置位，不做任何读取——重载尚未结束，
-     * 此刻读资源会读到半成品。目录尚未加载时忽略（服务端启动时的首次资源加载不属于
-     * "重载"，由启动路径自己构建目录）。
-     */
+    /** 服务端编辑的可展示结果。 */
+    public enum EditResult { SAVED, UNCHANGED, CONFLICT, INVALID, READ_ONLY, WRITE_FAILED }
+
+    private ServerLootTableConfigManager() {}
+
+    public static Snapshot snapshot() {
+        return current;
+    }
+
+    public static boolean isCatalogPending() {
+        return catalogPending;
+    }
+
+    /** 数据包监听器仅置位，实际读取在服务器 tick 上执行。 */
     public static void markDataPackReload() {
-        if (!ArchaeologyJournalServerCatalog.isLoaded()) {
-            return;
-        }
-        dataPackReloadPending = true;
+        if (ArchaeologyJournalServerCatalog.isLoaded()) DATA_PACK_RELOAD.set(true);
     }
 
-    // 在首次构建目录前加载当前世界配置
+    /** 首次构建目录前解析并提交可能需要迁移的世界设置。 */
     public static void start(MinecraftServer server) {
-        Services.LOOT_TABLE_CONFIG.loadForServer(server);
+        configFile = server.getWorldPath(LevelResource.ROOT).resolve(LootTrackingConfigFile.DIRECTORY)
+                .resolve(LootTrackingConfigFile.NAME);
+        current = new Snapshot(0, LootTrackingSettings.EMPTY, false);
+        load();
         LootTableTranslationStore.load(server);
-        snapshot = Snapshot.capture();
-        dataPackReloadPending = false;
     }
 
-    // /reload 时重新读取平台配置文件，并更新变化检测基线
-    public static void reload(MinecraftServer server) {
-        Services.LOOT_TABLE_CONFIG.loadForServer(server);
-        LootTableTranslationStore.load(server);
-        snapshot = Snapshot.capture();
-        dataPackReloadPending = false;
+    /** 新版本发布以磁盘提交为准，避免 GUI 与目录读取到只存在于内存的更改。 */
+    public static EditResult save(long revision, LootTrackingSettings settings) {
+        if (!current.canSave()) return EditResult.READ_ONLY;
+        if (revision != current.revision() || DATA_PACK_RELOAD.get()) return EditResult.CONFLICT;
+        if (settings.equals(current.settings())) return EditResult.UNCHANGED;
+        try {
+            LootTrackingConfigFile.save(configFile, settings);
+        } catch (IOException exception) {
+            Constants.LOG.error("{}Cannot save loot tracking config {}", Constants.LOG_TAG, configFile, exception);
+            return EditResult.WRITE_FAILED;
+        }
+        Snapshot next = new Snapshot(current.revision() + 1, settings, true);
+        if (next.rules().affectsCatalogComparedTo(current.rules())) {
+            refreshRequested = true;
+            catalogPending = true;
+        }
+        current = next;
+        return EditResult.SAVED;
     }
 
-    // 低频检查配置变化与数据包重载标记；两者都会重建目录与概率任务
+    /** 合并同一周期的配置提交和数据包重载；构建失败可由下一次重载重试。 */
     public static void tick(MinecraftServer server) {
-        if (server.getTickCount() % CHECK_INTERVAL_TICKS != 0) {
-            return;
+        boolean resourceReload = DATA_PACK_RELOAD.getAndSet(false);
+        if (resourceReload) {
+            load();
+            LootTableTranslationStore.load(server);
         }
-        if (dataPackReloadPending) {
-            // 先清标记再重建：重建过程本身不该被自己的重载事件再触发一次
-            dataPackReloadPending = false;
-            Constants.LOG.info("Detected a data pack reload; rebuilding archaeology catalog.");
-            JournalCatalogHandler.onDataPackReload(server);
-            return;
-        }
-        Snapshot current = Snapshot.capture();
-        Snapshot previous = snapshot;
-        snapshot = current;
-        if (previous != null && (!previous.archaeologyPathPrefixes().equals(current.archaeologyPathPrefixes())
-                || !previous.excludedLootTables().equals(current.excludedLootTables())
-                || !previous.signatureExcludedComponents().equals(current.signatureExcludedComponents()))) {
-            Constants.LOG.info("Server loot table tracking rules changed; rebuilding archaeology catalog.");
-            JournalCatalogHandler.onDataPackReload(server);
-        }
+        if (!resourceReload && !refreshRequested) return;
+        refreshRequested = false;
+        catalogPending = !JournalCatalogHandler.refreshCatalog(server);
+        LootTableManagementHandler.broadcast(server);
     }
 
-    // 清除当前世界绑定，确保下一次启动重新加载对应世界配置
     public static void stop() {
-        snapshot = null;
-        dataPackReloadPending = false;
+        configFile = null;
+        hasWorldFile = false;
+        refreshRequested = false;
+        catalogPending = false;
+        DATA_PACK_RELOAD.set(false);
+        current = new Snapshot(0, LootTrackingSettings.DEFAULT, false);
         LootTableTranslationStore.unload();
-        // 同步清空名称注册与缺失收集，避免跨世界累积旧条目
         LootTableNames.clear();
-        Services.LOOT_TABLE_CONFIG.unloadServer();
     }
 
-    private record Snapshot(List<String> archaeologyPathPrefixes,
-                            List<String> excludedLootTables,
-                            List<String> signatureExcludedComponents,
-                            int maxLogEntriesPerTable,
-                            long trackingTimeoutTicks) {
-        private static Snapshot capture() {
-            return new Snapshot(
-                    List.copyOf(Services.LOOT_TABLE_CONFIG.getArchaeologyPathPrefixes()),
-                    List.copyOf(Services.LOOT_TABLE_CONFIG.getExcludedLootTables()),
-                    List.copyOf(Services.LOOT_TABLE_CONFIG.getSignatureExcludedComponents()),
-                    Services.LOOT_TABLE_CONFIG.getMaxLogEntriesPerTable(),
-                    Services.LOOT_TABLE_CONFIG.getTrackingTimeoutTicks());
+    private static void load() {
+        try {
+            try {
+                publish(LootTrackingConfigFile.load(configFile), true);
+                hasWorldFile = true;
+                return;
+            } catch (NoSuchFileException exception) {
+                if (hasWorldFile) throw exception;
+            }
+
+            LegacyLootTrackingConfig source = Services.LEGACY_LOOT_TRACKING_CONFIG.readLegacy(configFile.getParent());
+            LootTrackingSettings settings = source == null ? LootTrackingSettings.DEFAULT : source.migrate();
+            try {
+                LootTrackingConfigFile.save(configFile, settings);
+            } catch (IOException exception) {
+                if (source != null) publish(source.asReadOnlySettings(), false);
+                throw exception;
+            }
+            hasWorldFile = true;
+            publish(settings, true);
+        } catch (IOException | JsonParseException | IllegalArgumentException exception) {
+            Constants.LOG.error("{}Cannot activate loot tracking config {}", Constants.LOG_TAG, configFile, exception);
+            publish(current.settings(), false);
+        }
+    }
+
+    private static void publish(LootTrackingSettings settings, boolean canSave) {
+        if (!settings.equals(current.settings()) || canSave != current.canSave()) {
+            current = new Snapshot(current.revision() + 1, settings, canSave);
         }
     }
 }

@@ -6,6 +6,7 @@ import com.meteorite.meteosuikit.api.control.UiTextArea;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ConfigFormScreen;
+import com.meteorite.unsuspiciousblock.platform.NeoForgeSpiritCatConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -42,6 +43,9 @@ public final class NeoForgeConfigEditor extends ConfigFormScreen {
     }
 
     private void addValue(ModConfigSpec.ConfigValue<?> value) {
+        if (spec == NeoForgeSpiritCatConfig.COMMON_CONFIG_SPEC && !value.getPath().getFirst().equals("spirit_cat")) {
+            return;
+        }
         String path = String.join(".", value.getPath());
         String key = value.getSpec().getTranslationKey();
         Component label = Component.translatable(key == null ? "unsuspiciousblock.configuration." + path : key);

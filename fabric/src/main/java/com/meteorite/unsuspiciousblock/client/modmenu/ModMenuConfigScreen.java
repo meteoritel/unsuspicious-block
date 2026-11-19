@@ -6,6 +6,7 @@ import com.meteorite.meteosuikit.api.control.UiThemedScreen;
 import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
+import com.meteorite.unsuspiciousblock.client.ui.screen.LootTrackingConfigScreen;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -31,7 +32,7 @@ public final class ModMenuConfigScreen extends UiThemedScreen {
         controls.obtain("common").configure(font, Component.translatable("unsuspiciousblock.config.common.open"),
                 null, List.of(), () -> Minecraft.getInstance().setScreen(new SpiritCatConfigScreen(this)));
         controls.obtain("server").configure(font, Component.translatable("unsuspiciousblock.config.server.open"),
-                null, List.of(), () -> Minecraft.getInstance().setScreen(new ServerLootConfigScreen(this)));
+                null, List.of(), () -> Minecraft.getInstance().setScreen(new LootTrackingConfigScreen(this)));
         controls.obtain("done").configure(font, Component.translatable("gui.done"), null, List.of(), this::onClose);
         controls.endUpdate();
     }

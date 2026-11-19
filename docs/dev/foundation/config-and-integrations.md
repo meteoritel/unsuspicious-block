@@ -2,58 +2,43 @@
 
 本文档说明模组的配置架构、双端存储与配置界面、数据驱动与硬编码边界，以及与第三方模组的联动接入方式。
 
-> 配置键名、默认数值与合法上下限以各 SPI 接口与平台声明为唯一事实源；可选联动的惰性反射机制见[平台抽象](platform-spi.md)。
+## 1. 配置归属
 
-## 1. 配置接口概览
+| 配置 | 代码入口 | 作用域 |
+| --- | --- | --- |
+| 战利品追踪与考古日志参数 | [`LootTrackingSettings`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/LootTrackingSettings.java)、[`ServerLootTableConfigManager`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/ServerLootTableConfigManager.java) | 双端共用世界文件，服务端权威 |
+| 灵体猫现世时长与九命保护 | [`FabricSpiritCatConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricSpiritCatConfig.java)、[`NeoForgeSpiritCatConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgeSpiritCatConfig.java) | Fabric 全局 JSON，NeoForge COMMON spec |
+| 淘洗点生成和淘盘数值 | [`FabricPanningConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricPanningConfig.java)、[`NeoForgePanningConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgePanningConfig.java) | Fabric 全局 `config/unsuspiciousblock/panning.json`，NeoForge 独立 `unsuspiciousblock-panning-server.toml` SERVER spec |
 
-模组通过三个配置 SPI 接口将可调参数注入 `common`：
+`PanProfile` 在读取服务端工具参数时使用延迟求值，因为 NeoForge 在注册物品时尚未加载 SERVER spec。
 
-| SPI 接口 | 覆盖范围 | 说明 |
-|---|---|---|
-| [`ILootTableConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ILootTableConfig.java) | 世界追踪范围规则、精确排除项、实例态排除组件、日志上限与容器追踪超时 | 按世界保存，服务端权威 |
-| [`ISpiritCatConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/ISpiritCatConfig.java) | 灵体猫现世时长与猫之九命触发后的保护效果时长 | 全局配置 |
-| [`IPanningConfig`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IPanningConfig.java) | 淘洗点自然生成节拍、寿命、间距、采空冷却与淘盘数值加成 | 独立配置文件 / Spec |
+## 2. 世界战利品追踪配置
 
-> **物品构造期的延迟求值约束**：`PanProfile` 读取 `gold_pan_luck_bonus` 等工具标量时必须使用 `DoubleSupplier` 延迟求值，因为 NeoForge 在注册物品期间尚未加载 `SERVER` 类型的 `ModConfigSpec`。
+Fabric 与 NeoForge 共用 `<世界目录>/serverconfig/unsuspiciousblock-loot-tracking.json`。服务端启动时加载此文件，然后构建考古笔记目录。字段格式由 [`LootTrackingConfigFile`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/LootTrackingConfigFile.java) 定义：
 
-## 2. 双端配置实现与生命周期
+| 字段 | 生效规则 |
+| --- | --- |
+| `schema_version` | 世界配置格式版本，当前为 `1` |
+| `follow_builtin_rules` | 是否使用当前模组内置规则，默认 `true` |
+| `disabled_builtin_rules` | 禁用的内置规则标识 |
+| `additional_tracking_rules` | 世界附加选择器，语法见[战利品表系统](../subsystems/loottable.md#5-收录范围与自定义表名) |
+| `excluded_loot_tables` | 使用完整 `namespace:path` 的根表排除项 |
+| `signature_excluded_components`、`max_log_entries_per_table`、`tracking_timeout_ticks` | 可选覆盖。省略字段继承默认值，显式空组件列表关闭签名排除 |
 
-### 2.1 Fabric 实现
+### 2.1 旧配置导入
 
-- [`FabricLootTableConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricLootTableConfig.java) 同时实现 `ILootTableConfig` 与 `ISpiritCatConfig`，使用 GSON 读写 JSON：
-  - **世界战利品追踪配置**：保存在 `<世界目录>/serverconfig/unsuspiciousblock.json`，服务端启动时加载，停止时解除世界绑定；首次为世界创建配置时，会从旧全局 JSON 迁移三项战利品设置。
-  - **灵体猫全局配置**：保存在 `config/unsuspiciousblock/unsuspiciousblock.json`，缺失字段自动补写默认值。
-  - 自动在配置旁生成 `README_CN.txt` / `README_EN.txt`（若已存在则保留用户修改）。
-- [`FabricPanningConfig`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/FabricPanningConfig.java) 实现 `IPanningConfig`，读写全局文件 `config/unsuspiciousblock/panning.json`，缺失字段自动补齐。
-- 所有数值读取与写盘均经过范围钳制（越界回退默认值）；`save(...)` 仅在集成服务器运行期间允许写入当前世界配置，并在落盘前完成去重清洗。
+首次装载该世界且缺少共用文件时，平台适配器按优先级读取旧配置：
 
-### 2.2 NeoForge 实现
+- Fabric 先查世界旧 `serverconfig/unsuspiciousblock.json`，其次查实例 `config/unsuspiciousblock/unsuspiciousblock.json` 的旧追踪规则和日志参数。
+- NeoForge 依次查世界 `serverconfig/`、实例 `config/` 和 FML 默认配置目录中的 `unsuspiciousblock-server.toml`。合法显式 SERVER 字段优先。未从 COMMON 复制的旧文件可用旧 COMMON 补齐缺字段，已复制的旧文件对缺字段采用旧默认值。
 
-- [`NeoForgeLootTableConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgeLootTableConfig.java) 基于 `ModConfigSpec` 同时实现 `ILootTableConfig` 与 `ISpiritCatConfig`：
-  - `SERVER_CONFIG_SPEC`（`ModConfig.Type.SERVER`）：由 NeoForge 放入世界目录的 `serverconfig/` 下；首次加载新世界时通过一次性迁移标记复制旧 `COMMON` 配置中的追踪值，此后世界配置独立演进。
-  - `COMMON_CONFIG_SPEC`：保存灵体猫全局参数及仅用于初次迁移的旧追踪字段。
-- [`NeoForgePanningConfig`](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/NeoForgePanningConfig.java) 实现 `IPanningConfig`，注册为独立的 `SERVER` 规格并显式指定文件名 `unsuspiciousblock-panning-server.toml`，避免与同模组同类型默认配置文件名冲突导致 `ConfigTracker` 中断启动。
-- 所有范围校验由 `defineInRange` 声明，与 Fabric 端钳制规则保持一致；多人游戏以服务端配置为权威。
+与 `v1.5.2` 规则等价的条目跟随内置规则，缺少的旧默认项保留为禁用，自定义项保留为附加规则。显式空规则列表继续关闭内置规则。迁移和编辑原子写入世界文件。原有迁移输入仍保留；配置读取失败时可查看现有规则，服务端日志记录出错路径。修复文件后执行 `/reload` 即可重读。
 
-### 2.3 配置界面与可写性规则
+### 2.2 配置界面与热重载
 
-两端配置页面均使用 **Meteo's UI Kit** 的通用表单容器 `ConfigFormScreen` 负责滚动排版、输入控件与固定底部操作栏；字段定义、校验规则与保存逻辑仍由各自平台页面持有。重置操作仅修改草稿状态，点击取消不落盘。
+Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 [`LootTrackingConfigScreen`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/screen/LootTrackingConfigScreen.java)。页面使用 `ConfigFormScreen` 展示草稿，应用才提交，恢复默认清除规则覆盖。专用服务器及 LAN 需要权限等级 2，私有单人的世界主人可以编辑。旧 NeoForge COMMON 追踪字段只作为迁移输入，通用配置表单显示当前可编辑字段。
 
-- **Fabric（ModMenu 入口）**：[`ModMenuIntegration`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuIntegration.java) 与 [`ModMenuConfigScreen`](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/client/modmenu/ModMenuConfigScreen.java) 提供入口，划分为两类子页：
-  - `SpiritCatConfigScreen`：编辑灵体猫全局参数并保存到 `config/unsuspiciousblock/unsuspiciousblock.json`。
-  - `ServerLootConfigScreen`：编辑当前世界的战利品追踪规则（重置时同步清空管理页产生的精确排除项）。仅在本机运行集成服务器时允许修改与保存；主菜单或多人游戏客户端仅显示提示，防止本地修改误导玩家。
-- **NeoForge（Mods 配置工厂）**：从本模组已注册的 `ModConfigSpec` 自动派生文件入口与字段（含独立的淘洗 `SERVER` 配置），复用同一组默认值与校验器，全部通过校验后写回并调用 `save()`。未加载的规格、远程多人服务器配置以及已开放局域网联机的集成服务器 `SERVER` 配置均为只读。当前所有配置项均不需要重启游戏。
-
-### 2.4 运行时热重载与补充表名文件
-
-[`ServerLootTableConfigManager`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/ServerLootTableConfigManager.java) 统一管理服务端配置生命周期：
-
-- 服务端启动时先于目录解析加载当前世界配置，停服时清除绑定。
-- 每秒比对一次配置快照：
-  - 日志保留上限与追踪超时由业务代码实时读取，更改后立即生效，无需重建目录；
-  - 追踪前缀或排除规则变化时，暂停概率模拟并失效重建目录，完成后向在线玩家广播新的目录哈希。
-- 数据包重载（`/reload`）时，平台监听仅标记脏状态，由管理器在服务端 tick 路径上与配置变更走同一条重建链路；Fabric 端在 `/reload` 时同步重读世界 JSON，NeoForge 端由平台自动重载 `SERVER` 规格。
-- **补充表名语言文件**：服务端将自定义战利品表名称保存在全局文件 `config/unsuspiciousblock/loot_table_lang/<language>.json`（与按世界保存的 `ILootTableConfig` 分离）。合并迁移、资源优先语义与运行时覆盖规则见[战利品表系统](../subsystems/loottable.md)与[战利品表机制细节](../internals/loottable-mechanics.md)。
+已提交的规则或签名组件变更与数据包重载共用服务端目录刷新路径。提交按世界会话版本检查，旧草稿应载入服务端当前值后重新编辑。两端可在服务端直接编辑共用 JSON 并用 `/reload` 应用。日志上限与容器追踪超时由运行中的业务代码读取。补充表名的作用域和合并规则见[战利品表系统](../subsystems/loottable.md)。
 
 ## 3. 数据驱动与硬编码边界
 
@@ -70,7 +55,7 @@
 
 ### 3.2 服务端配置与代码核心常量边界
 
-- **服务端配置暴露**：战利品追踪前缀/排除规则、日志上限与追踪超时（`ILootTableConfig`）；灵体猫现世时长与九命效果持续时间（`ISpiritCatConfig`）；淘洗生成频率、寿命、冷却与工具数值加成（`IPanningConfig`）。
+- **服务端配置暴露**：战利品追踪前缀/排除规则、日志上限与追踪超时（`LootTrackingSettings`）；灵体猫现世时长与九命效果持续时间（`ISpiritCatConfig`）；淘洗生成频率、寿命、冷却与工具数值加成（`IPanningConfig`）。
 - **保持硬编码的核心契约**：
   - 猫族关系的基础不变量（0–100 范围、6 个阶段边界与恩惠归属、UUID 绑定替代、扣分去重、跌破 100 清空命数、九命与图腾/虚空规则、灵体单玩家数量限制与剑士排除玩家）；目前行为增减与冷却也在 `CatFavorAction` 中以代码常量维护；
   - 玩家状态偏好（猫之威慑与轻步开关）保存于服务端玩家存档；猫之恩惠 HUD 始终按携带与阶段规则自动绘制，不提供客户端隐藏开关。
@@ -117,7 +102,7 @@
 
 ## 5. 扩展点
 
-- **新增配置参数**：在 `ILootTableConfig`、`ISpiritCatConfig` 或 `IPanningConfig` 中增加方法与默认值/边界常量，并在两端平台配置类与配置页面同步实现。
+- **新增配置参数**：在对应配置入口定义字段、默认值和取值范围，同步更新读写与界面。战利品追踪字段在 common 实现，灵体猫和淘洗参数由平台实现。
 - **新增数据驱动条目**：在 `common/src/main/resources/data/unsuspiciousblock/` 对应子目录添加 JSON 定义。
 - **新增第三方联动**：
   1. 在 `fabric/build.gradle` 与 `neoforge/build.gradle` 添加 `compileOnly`（及按需 `runtimeOnly`）；

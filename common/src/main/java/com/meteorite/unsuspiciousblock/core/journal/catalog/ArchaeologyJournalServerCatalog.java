@@ -30,6 +30,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.graph.LootTableReferenceGr
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultPreviewCache;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExcludedComponents;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulator;
@@ -144,24 +145,28 @@ public final class ArchaeologyJournalServerCatalog {
     public static void ensureLoaded(MinecraftServer server) {
         if (loaded) return;
 
-        List<LootProbabilitySimulationWorker.SimulationRequest> uncached = List.of();
-        try {
-            BuildResult buildResult = buildGeneration(server);
-            currentGeneration = buildResult.generation();
-            uncached = buildResult.uncachedRequests();
-        } catch (Exception e) {
-            LOGGER.error("加载考古战利品表目录失败", e);
-            // 构建失败时进入明确的空状态而不是把半成品留在引用上；
-            // invalidate 与失败路径都会让 loaded=false 与 currentGeneration=null 成对出现，
-            // 因此这里不存在"上一代可保留"的情形。
+        if (!rebuild(server)) {
             currentGeneration = CatalogGeneration.empty(++generationCounter);
+            loaded = true;
         }
-        loaded = true;
+    }
 
-        CatalogGeneration generation = currentGeneration;
-        if (generation != null && !uncached.isEmpty()) {
-            enqueueSimulation(server, generation, uncached);
+    /** 发布完整的新代目录；构建失败时保留上一代与其模拟队列。 */
+    public static boolean rebuild(MinecraftServer server) {
+        BuildResult buildResult;
+        try {
+            buildResult = buildGeneration(server);
+        } catch (Exception exception) {
+            LOGGER.error("加载考古战利品表目录失败", exception);
+            return false;
         }
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker != null) worker.clearQueue();
+        LootResultPreviewCache.clear();
+        currentGeneration = buildResult.generation();
+        loaded = true;
+        enqueueSimulation(server, buildResult.generation(), buildResult.uncachedRequests());
+        return true;
     }
 
     /**
@@ -177,7 +182,7 @@ public final class ArchaeologyJournalServerCatalog {
         // 2. 建图 → 编译 → 投影 → 组装静态读模型
         ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
                 generation, sourceSnapshot, server.getResourceManager(), server.registryAccess(),
-                new LootFunctionPreviewContext(server.overworld()));
+                new LootFunctionPreviewContext(server.overworld()), ServerLootTableConfigManager.snapshot().rules());
         Map<ResourceLocation, List<DeclaredLootInjection>> declarations = new LinkedHashMap<>();
         Map<String, String> sourceNames = new LinkedHashMap<>();
         sourceNames.put(Constants.MOD_ID,
@@ -406,8 +411,7 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     // 未缓存的**基准输入**入队分 tick 模拟；提交与排空回调都捕获本代 generation，提交时校验。
-    // 这里依赖既有 reload 协议：数据包重载走 pause → clearQueue → invalidate → ensureLoaded → resume，
-    // 队列与在跑任务都会被丢弃，且暂停期间不会产出结果，因此旧代结果不可能落到新代处理器上。
+    // 新代发布时废弃旧队列，提交与排空回调仍校验代次。
     private static void enqueueSimulation(MinecraftServer server, CatalogGeneration generation,
                                           List<LootProbabilitySimulationWorker.SimulationRequest> uncached) {
         long generationId = generation.generation();
@@ -752,6 +756,12 @@ public final class ArchaeologyJournalServerCatalog {
     public static Map<ResourceLocation, TableDefinition> staticTables() {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? Map.of() : generation.staticTables();
+    }
+
+    /** 返回本代实际显示为收录根表的战利品表。 */
+    public static Set<ResourceLocation> rootTableIds() {
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? Set.of() : generation.structure().rootCategories().keySet();
     }
 
     /**

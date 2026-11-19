@@ -51,7 +51,7 @@ public record LootResultSignature(ResourceLocation itemId, SignatureType type, @
 
 ### 2.1 实例态组件排除
 
-配置 `ILootTableConfig.getSignatureExcludedComponents()`（默认包含 `relics:data`）声明的组件会在每次实例生成或读取时随机物化（例如 Relics 在 `verifyComponentsAfterLoad` 中随机写回品质），不属于战利品表静态定义。命中此类组件的物品在签名派生时统一退化为 `PLAIN`：
+配置 `LootTrackingSettings.signatureExclusions()`（默认包含 `relics:data`）声明的组件会在每次实例生成或读取时随机物化（例如 Relics 在 `verifyComponentsAfterLoad` 中随机写回品质），不属于战利品表静态定义。命中此类组件的物品在签名派生时统一退化为 `PLAIN`：
 
 - **退化为 `PLAIN` 而非“剔除后编码 `COMPONENT_EXACT`”**：精确匹配哈希与组件比对读取未剔除的原始 `ItemStack`，双侧不对称会导致永远匹配失败。退化为 `PLAIN` 后仅比对物品 ID，并与静态路径保持同键合并，代价是不区分随机实例品质。
 
@@ -178,7 +178,7 @@ flowchart TD
 ### 启动、重载与失败保护
 
 - **启动只算基准输入**：首次加载仅从缓存恢复或入队每表的 `baseline` 输入，按「哈希变化」与「缺少测量」分别统计未命中原因；其余场景按需触发。
-- **数据包重载**：`DataPackReloadListener` 仅置脏标记，由 `ServerLootTableConfigManager` 在服务端 tick 路径统一失效重建（避免阻塞平台重载回调）。
+- **数据包重载**：`DataPackReloadListener` 仅置脏标记，由 `ServerLootTableConfigManager` 在服务端 tick 路径读取配置并构建新代目录（避免阻塞平台重载回调）。
 - **构建期机制拦截**：`LootMechanismSupport` 在构建期拦截 `paramSet` 不兼容的表（如 `barter` 缺少 `ORIGIN`、或在非工具上下文引用 `enchantment_level`），直接标为 `Unknown(UNPARSED)` 并输出一次可行动日志；同时遵循原版缺省语义，将空 `type` 视为 `generic`。
 - **确定性失败不自动重排**：执行异常的输入记录为失败并维持「未知」展示，直到下次数据包重载或执行 `/usb journal catalog rebuild` 时才重新尝试。
 - **唯一展示派生路径**：从缓存恢复与刚刚模拟完成统一调用 `ArchaeologyJournalServerCatalog.deriveTable` 装配展示结果。

@@ -18,6 +18,7 @@
 | 考古笔记进度、日志状态、表历史与日志条目 | NBT v2 | `JournalDataVersion`；保留 `v0 → v1 → v2` 连续读取迁移链 |
 | 服务端考古日志目录 | 布局 v2 | `JournalDataVersion`；保留单文件 v1 → 分片目录 v2 迁移 |
 | 玩家猫族关系 | NBT v2 | `CatFavorState`；兼容无版本旧格式及历史整数版本读取 |
+| 世界战利品追踪配置 | JSON v1 | 各 Loader 旧配置一次导入，共用 JSON 为世界权威；见[配置与联动](config-and-integrations.md#2-世界战利品追踪配置) |
 | 战利品表概率模拟缓存 | 格式 v5 | `LootProbabilityData`；版本或标签类型不匹配时整体按缓存未命中重算，不做迁移 |
 | 客户端笔记 UI 偏好 | NBT v1 | `JournalReadingStateCodec`；无标记 v0 经副本迁移，保留旧偏好与条件偏移键 |
 | 淘洗账本、商人生成、结构回溯冷却、实体/方块实体扩展 | 各自现有格式 | 沿用既有序列化器与字段位置；若未来首次变更，以当前无标记格式作为隐式 v0 |

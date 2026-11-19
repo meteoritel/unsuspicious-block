@@ -15,7 +15,7 @@
 | `IPlatformHelper` | 平台身份判断、可选模组检测、游戏根目录与战利品注入描述 |
 | `INetworkHelper` | 服务端向指定玩家发送 S2C 网络包（C2S 发送见[网络与同步](network.md)） |
 | `IAccessoryHelper` | 查询 Trinkets / Curios 饰品栏物品（未安装对应模组时返回未装备或空流） |
-| `ILootTableConfig`、`ISpiritCatConfig` | 读取战利品追踪与灵体猫配置；双端由各自的同一配置类实现两项契约 |
+| `ILegacyLootTrackingConfig`、`ISpiritCatConfig` | 读取平台旧追踪配置与灵体猫全局配置；当前世界追踪设置由 common 管理 |
 | `IPanningConfig` | 读取独立的淘洗配置 |
 | `ICatEventAdapter`、`IEnchantmentEventAdapter` | 将 Loader 原生事件转换为统一上下文并转交 `core` 业务入口 |
 | `IBoneBlockTracker` | 查询、标记、消费与持久化自然骨块来源 |

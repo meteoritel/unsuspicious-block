@@ -33,4 +33,4 @@
 
 ## 更新或更换加载器
 
-更换 Fabric 与 NeoForge 时，请保留世界备份。两端的配置文件位置和可选联动方式不同，不要把一种加载器的配置文件直接复制到另一种加载器中。
+更换 Fabric 与 NeoForge 时，请保留世界备份。考古笔记的「世界规则」随存档保存在 `serverconfig/unsuspiciousblock-loot-tracking.json`；从旧版升级时先用原 Loader 打开世界以导入旧配置。全局配置和可选联动由各 Loader 管理。
