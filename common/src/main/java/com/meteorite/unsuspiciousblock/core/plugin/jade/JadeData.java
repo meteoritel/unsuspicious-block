@@ -9,10 +9,11 @@ public final class JadeData {
             ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "scanned_loot");
     public static final ResourceLocation SEALED_CONTENTS_ID =
             ResourceLocation.fromNamespaceAndPath("unsuspiciousblock", "sealed_contents");
-    public static final ResourceLocation SHIMMER_LIFETIME_ID =
+    // 保留 Jade 配置中用于启用此 provider 的标识。
+    public static final ResourceLocation SHIMMER_STATUS_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "shimmer_lifetime");
 
-    public static final String TAG_SHIMMER_REMAINING = "ShimmerRemainingTicks";
+    public static final String TAG_SHIMMER_DEADLINE = "ShimmerDeadline";
 
     public static final String TAG_SEALED_ITEM = "SealedItem";
     public static final String TAG_CRAFTER_NAME = "CrafterName";

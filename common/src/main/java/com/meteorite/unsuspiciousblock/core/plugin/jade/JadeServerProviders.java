@@ -12,12 +12,12 @@ import snownee.jade.api.IServerDataProvider;
 import snownee.jade.api.IWailaCommonRegistration;
 
 import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SEALED_CONTENTS_ID;
-import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SHIMMER_LIFETIME_ID;
-import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SHIMMER_REMAINING;
-import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SEALED_ITEM;
+import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SHIMMER_STATUS_ID;
 import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_CRAFTER_NAME;
+import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SEALED_ITEM;
+import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SHIMMER_DEADLINE;
 
-/** Jade 服务端数据提供者，按请求读取封存内容和淘洗点寿命。 */
+/** Jade 服务端数据提供者，按请求读取封存内容和淘洗点状态截止时间。 */
 public final class JadeServerProviders {
     private JadeServerProviders() {
     }
@@ -25,23 +25,22 @@ public final class JadeServerProviders {
     /** 在 Jade 公共注册相位安装数据提供者。 */
     public static void register(IWailaCommonRegistration registration) {
         registration.registerBlockDataProvider(SealedContentsServerDataProvider.INSTANCE, UnsuspiciousBlockEntity.class);
-        registration.registerEntityDataProvider(ShimmerLifetimeServerProvider.INSTANCE, ShimmerEntity.class);
+        registration.registerEntityDataProvider(ShimmerStatusServerProvider.INSTANCE, ShimmerEntity.class);
     }
 
-    enum ShimmerLifetimeServerProvider implements IServerDataProvider<EntityAccessor> {
+    enum ShimmerStatusServerProvider implements IServerDataProvider<EntityAccessor> {
         INSTANCE;
 
         @Override
         public void appendServerData(CompoundTag data, EntityAccessor accessor) {
             if (accessor.getEntity() instanceof ShimmerEntity shimmer) {
-                data.putLong(TAG_SHIMMER_REMAINING, shimmer.getSpawnSource().hasLifetime()
-                        ? Math.max(0L, shimmer.getExpiresAt() - shimmer.level().getGameTime()) : -1L);
+                shimmer.getNextTimedChangeAt().ifPresent(deadline -> data.putLong(TAG_SHIMMER_DEADLINE, deadline));
             }
         }
 
         @Override
         public ResourceLocation getUid() {
-            return SHIMMER_LIFETIME_ID;
+            return SHIMMER_STATUS_ID;
         }
     }
 

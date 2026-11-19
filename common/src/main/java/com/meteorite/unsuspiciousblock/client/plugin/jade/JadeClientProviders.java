@@ -3,31 +3,33 @@ package com.meteorite.unsuspiciousblock.client.plugin.jade;
 import com.meteorite.unsuspiciousblock.core.block.SealedContentsDisplay;
 import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlock;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScanState;
-import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.SharedConstants;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.BrushableBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import snownee.jade.api.config.IPluginConfig;
-import snownee.jade.api.ui.IElementHelper;
 import snownee.jade.api.BlockAccessor;
 import snownee.jade.api.EntityAccessor;
 import snownee.jade.api.IBlockComponentProvider;
 import snownee.jade.api.IEntityComponentProvider;
 import snownee.jade.api.ITooltip;
 import snownee.jade.api.IWailaClientRegistration;
+import snownee.jade.api.config.IPluginConfig;
+import snownee.jade.api.ui.IElementHelper;
 
 import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SCANNED_LOOT_ID;
 import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SEALED_CONTENTS_ID;
-import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SHIMMER_LIFETIME_ID;
-import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SHIMMER_REMAINING;
-import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SEALED_ITEM;
+import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.SHIMMER_STATUS_ID;
 import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_CRAFTER_NAME;
+import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SEALED_ITEM;
+import static com.meteorite.unsuspiciousblock.core.plugin.jade.JadeData.TAG_SHIMMER_DEADLINE;
 
 /** Jade 客户端展示，消费服务端数据并保持现有 tooltip 语义。 */
 public final class JadeClientProviders {
@@ -38,40 +40,52 @@ public final class JadeClientProviders {
     public static void register(IWailaClientRegistration registration) {
         registration.registerBlockComponent(ScannedLootProvider.INSTANCE, BrushableBlock.class);
         registration.registerBlockComponent(SealedContentsProvider.INSTANCE, UnsuspiciousBlock.class);
-        registration.registerEntityComponent(ShimmerLifetimeProvider.INSTANCE, ShimmerEntity.class);
+        registration.registerEntityComponent(ShimmerStatusProvider.INSTANCE, ShimmerEntity.class);
     }
 
-    enum ShimmerLifetimeProvider implements IEntityComponentProvider {
+    enum ShimmerStatusProvider implements IEntityComponentProvider {
         INSTANCE;
+
+        private static final String KEY = "jade.unsuspiciousblock.shimmer.";
+        private static final int SECONDS_PER_MINUTE = SharedConstants.TICKS_PER_MINUTE / SharedConstants.TICKS_PER_SECOND;
 
         @Override
         public void appendTooltip(ITooltip tooltip, EntityAccessor accessor, IPluginConfig config) {
             if (!(accessor.getEntity() instanceof ShimmerEntity shimmer)) return;
 
+            boolean permanent = shimmer.isPermanent();
+            tooltip.add(statusLine("type", Component.translatable(KEY + (permanent ? "permanent" : "temporary"))));
+            tooltip.add(statusLine("pan_remaining", Component.literal(Integer.toString(shimmer.getPanRemaining()))));
+
             CompoundTag data = accessor.getServerData();
-            if (data.contains(TAG_SHIMMER_REMAINING, Tag.TAG_LONG)) {
-                long ticks = data.getLong(TAG_SHIMMER_REMAINING);
-                if (ticks < 0L) {
-                    tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.permanent"));
-                } else {
-                    // 向上取整，避免尚有不足一秒寿命时提前显示零秒。
-                    long seconds = ticks / 20L + (ticks % 20L == 0L ? 0L : 1L);
-                    tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.remaining",
-                            seconds / 60L, seconds % 60L));
-                }
+            if (!data.contains(TAG_SHIMMER_DEADLINE, Tag.TAG_LONG)) {
+                return;
             }
 
-            // 采集次数随 entityData 同步，客户端可直接读取；采空后实体会消失，无需处理耗尽状态。
-            int panRemaining = shimmer.getPanRemaining();
-            if (panRemaining > 0) {
-                tooltip.add(Component.translatable("jade.unsuspiciousblock.shimmer.pan_remaining",
-                        panRemaining).withStyle(TooltipBuilder.TITLE));
+            long ticksLeft = data.getLong(TAG_SHIMMER_DEADLINE) - shimmer.level().getGameTime();
+            // 恢复完成后，等待下一份 Jade 数据刷新恢复行。
+            if (ticksLeft <= 0L && permanent) return;
+
+            tooltip.add(statusLine(permanent ? "recovers_in" : "disappears_in", formatDuration(Math.max(0L, ticksLeft))));
+        }
+
+        private static Component statusLine(String label, MutableComponent value) {
+            return Component.translatable(KEY + label, value.withStyle(TooltipBuilder.BODY))
+                    .withStyle(TooltipBuilder.LABEL);
+        }
+
+        private static MutableComponent formatDuration(long ticks) {
+            long seconds = Math.ceilDiv(ticks, SharedConstants.TICKS_PER_SECOND);
+            if (seconds < SECONDS_PER_MINUTE) {
+                return Component.translatable(KEY + "duration_seconds", seconds);
             }
+            return Component.translatable(KEY + "duration_minutes_seconds",
+                    seconds / SECONDS_PER_MINUTE, seconds % SECONDS_PER_MINUTE);
         }
 
         @Override
         public ResourceLocation getUid() {
-            return SHIMMER_LIFETIME_ID;
+            return SHIMMER_STATUS_ID;
         }
     }
 

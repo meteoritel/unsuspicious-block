@@ -69,7 +69,7 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
 
 - **发现入口**：[`JadePlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/jade/JadePlugin.java) 与 [`JadeClientPlugin`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/plugin/jade/JadeClientPlugin.java) 位于 `common`，由 Fabric `jade` entrypoint 与 NeoForge `@WailaPlugin` 扫描装配。插件构造期不接触客户端类，客户端 Provider 仅在物理客户端调用 `registerClient` 时注册。
 - **服务端/客户端分离**：`core.plugin.jade.JadeServerProviders` 注册服务端数据提供器，`client.plugin.jade.JadeClientProviders` 注册显示组件，共享字段声明在 `JadeData`。
-- **提供信息**：显示已扫描的可疑方块战利品；针对淘洗点（如闪烁的光），按需同步剩余游戏刻并在客户端显示“X 分 Y 秒后消散”或“不会自然消失”（无服务端数据时不显示寿命）。
+- **提供信息**：展示当前玩家已解析的可疑方块战利品、封存内容和[淘洗点状态](../internals/panning-details.md#32-粒子音效与摇洗动画)。
 
 ### 4.2 JEI（配方与物品查询）
 

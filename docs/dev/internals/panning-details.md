@@ -51,7 +51,7 @@
   - `assets/minecraft/atlases/blocks.json` 使用 `unstitch` 将 `16×64` 帧图拆为 `4` 个精灵（左、中、右、中）。双端客户端按 `ModItems.PAN_ITEMS` 遍历注册 `panning_frame`（由代码按游戏刻切换，不用 `.mcmeta` 防错帧）与 `panning_medium`（`0` 水 / `1` 岩浆；仅黑曜石盘配置双介质 8 条谓词）。
   - 前 `8 tick`（或短总时长的 `1/4`）下探装水抬盘，随后以 `20 tick` 为周期左右摇洗（前 `5 tick` 幅度渐增）；`PanningAnimation` 在第一人称以 `ItemDisplayContext.NONE` 接管手部绘制，在第三人称通过 `HumanoidPanningMixin` 调整手臂姿态。
 - **循环水声 (`PanningSoundController`)**：每 `5 tick` 扫描玩家 `16` 格内工作中的淘洗点，每点最多维持一个 `PanningSound` 实例并随摇洗周期调制音调与音量。
-- **Jade 展示**：展示剩余淘洗次数（`jade.unsuspiciousblock.shimmer.pan_remaining`），键规范见[文本格式规范](../foundation/text-format.md)。
+- **Jade 展示**：`ShimmerStatusProvider` 读取实体已同步的类型和剩余次数（含 0 次）。`ShimmerEntity#getNextTimedChangeAt` 提供当前相关的游戏刻，临时点为消散时刻，永久点在次数未满时为下次恢复时刻。Jade 服务端按需发送该时刻，客户端用世界游戏时间计算剩余时长，并按[文本格式规范](../foundation/text-format.md)生成状态行。
 
 ## 4. 调试命令 (`/usb shimmer`)
 

@@ -11,6 +11,8 @@ These optional mods can help you browse recipes, carry accessories, and record d
 
 With Jade installed, the block information can show the loot inside suspicious blocks you have already scanned. Unscanned blocks keep their contents hidden.
 
+Aim at a panning spot to see its type and remaining uses. With Jade on the server, temporary spots show when they disappear, and permanent spots below capacity show when they regain one use.
+
 ## Accessory Slots
 
 With Trinkets (Fabric) or Curios (NeoForge) installed, the Archaeology Journal, Eye of Cat, and Specimen Box can be equipped in the matching accessory slots. Items such as the Archaeology Journal and Eye of Cat keep working while stored in a carried Specimen Box.

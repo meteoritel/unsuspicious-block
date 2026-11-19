@@ -29,11 +29,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /***
  * 闪烁的光——淘盘专属的液面淘洗点实体的抽象基类，全部变体共用这套机制骨架。
@@ -152,6 +148,27 @@ public abstract class ShimmerEntity extends Entity {
 
     public long getExpiresAt() {
         return this.expiresAt;
+    }
+
+    /**
+     * 返回淘洗点是否会保留并恢复次数，供两端读取。
+     */
+    public boolean isPermanent() {
+        return this.entityData.get(DATA_WORLDGEN);
+    }
+
+    /**
+     * 返回服务端下一次消散或恢复一次淘洗次数的绝对游戏刻。
+     * 永久点次数已满时返回空值。
+     */
+    public OptionalLong getNextTimedChangeAt() {
+        if (this.hasLifetime) {
+            return OptionalLong.of(this.getExpiresAt());
+        }
+        if (this.recoveryIntervalTicks > 0 && this.getPanRemaining() < this.initialPanUses) {
+            return OptionalLong.of(this.nextRecoveryAt);
+        }
+        return OptionalLong.empty();
     }
 
     // 来源标记统一入口：特殊生成只能建立在有寿命的来源之上，世界生成标记恒与寿命相反。
@@ -276,7 +293,7 @@ public abstract class ShimmerEntity extends Entity {
     private void publishPanners() {
         StringBuilder builder = new StringBuilder();
         for (UUID uuid : this.panners.keySet()) {
-            if (builder.length() > 0) {
+            if (!builder.isEmpty()) {
                 builder.append(',');
             }
             builder.append(uuid);
@@ -386,7 +403,7 @@ public abstract class ShimmerEntity extends Entity {
     private void clientTick() {
         GlowStyle glow = this.getVariant().glow();
         // 世界生成点即使暂时采空也保留低频闪光，方便玩家辨认与再次寻找。
-        if (this.entityData.get(DATA_WORLDGEN) && this.tickCount % 10 == 0) {
+        if (this.isPermanent() && this.tickCount % 10 == 0) {
             this.level().addParticle(glow.idleParticle(),
                     this.getX() + (this.random.nextDouble() - 0.5D) * 0.7D,
                     this.getSurfaceY() + 0.08D,
