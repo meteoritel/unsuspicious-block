@@ -1,4 +1,5 @@
 """独立启动材料与隔离存档的所有权。"""
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -13,6 +14,21 @@ import zipfile
 from .autojs import AutoJS, ProbeError
 
 
+WITH_CLIENT = ('server', 'client')
+PORT_DEFAULTS = {'serverMcpPort': 25585, 'clientMcpPort': 25586, 'gamePort': 25575}
+
+
+@dataclass(frozen=True)
+class LaunchNeeds:
+    sides: tuple[str, ...] = ('server',)
+    fixtures: tuple[str, ...] = ()
+    recipe_cards: bool = False
+    own_world: bool = False
+
+    def describe(self):
+        return dict(sides=self.sides, fixtures=self.fixtures, recipeCards=self.recipe_cards, ownWorld=self.own_world)
+
+
 def write_json(path: Path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
@@ -23,7 +39,7 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def read_config(path: Path) -> dict:
+def read_config(path: Path, sides: tuple[str, ...]) -> dict:
     config = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(config, dict):
         raise ProbeError('探针配置须为 JSON 对象')
@@ -36,9 +52,9 @@ def read_config(path: Path) -> dict:
         config[key] = str(jar)
     if config.get('acceptEula') is not True:
         raise ProbeError('首次运行需接受 Minecraft EULA，并在本地配置显式设置 acceptEula=true')
-    ports = [config.setdefault(key, default) for key, default in
-             (('serverMcpPort', 25585), ('clientMcpPort', 25586), ('gamePort', 25575))]
-    if len(set(ports)) != len(ports) or any(type(port) is not int or not 1024 <= port <= 65535 for port in ports):
+    keys = ('gamePort', *(f'{side}McpPort' for side in sides))
+    ports = [config.setdefault(key, PORT_DEFAULTS[key]) for key in keys]
+    if any(type(port) is not int or not 1024 <= port <= 65535 for port in ports) or len(set(ports)) != len(ports):
         raise ProbeError('游戏与 MCP 端口需互异且位于 1024..65535')
     for port in ports:
         with socket.socket() as listener:
@@ -90,8 +106,9 @@ def gradle(root: Path, arguments: list[str], log: Path):
 
 
 class Runtime:
-    def __init__(self, root: Path, directory: Path, config: dict, recipe_cards: dict | None = None):
+    def __init__(self, root: Path, directory: Path, config: dict, needs: LaunchNeeds, *, recipe_cards=None, loot_profile=None):
         self.root, self.directory, self.config = root, directory, config
+        self.needs = needs
         self.processes = {}
         self.outputs = {}
         self.controls = {}
@@ -100,12 +117,10 @@ class Runtime:
         self.history = []
         self.desktop = None
         self.recipe_cards = recipe_cards
+        self.loot_profile = loot_profile
         self.recipe_card_artifact = None
 
-    def prepare(self, artifact: Path | None, recipe_card_artifact: Path | None = None):
-        if artifact is None:
-            gradle(self.root, ['build', 'writeProbeArtifact'], self.directory / 'build.log')
-            artifact = self.root / 'build/probes/artifact.json'
+    def prepare(self, artifact: Path, recipe_card_artifact: Path | None = None):
         host = read_artifact(artifact)
         host_jar = Path(host['jar']).resolve(strict=True)
         with zipfile.ZipFile(host_jar) as archive:
@@ -124,38 +139,45 @@ class Runtime:
             self.recipe_card_artifact = read_recipe_card_artifact(tool_manifest, host)
 
         runtime = self.root / 'tools/probes/runtime'
-        runtime_args = ['-p', str(runtime)]
+        launch_dir = self.directory / 'launch'
+        runtime_args = ['-p', str(runtime), f'-Pprobe_sides={",".join(self.needs.sides)}',
+                        f'-Pprobe_launch_dir={launch_dir}']
         if self.recipe_cards is not None:
             runtime_args.append('-Pinclude_recipe_cards=true')
         runtime_args.append('prepareProbeRuntime')
         gradle(self.root, runtime_args, self.directory / 'prepare.log')
-        self.launch = json.loads((runtime / 'build/launch.json').read_text(encoding='utf-8'))
+        self.launch = json.loads((launch_dir / 'launch.json').read_text(encoding='utf-8'))
         if (host['minecraft'], host['neoforge']) != (self.launch['minecraft'], self.launch['neoforge']):
             raise ProbeError('发布物 manifest 与运行 Loader 不一致')
         if self.recipe_cards is not None and self.launch.get('jei') != self.recipe_card_artifact['jei']:
             raise ProbeError('探针启动面未包含与工具匹配的 JEI runtime')
         # 独立工程无需宿主输出；意外接入源码时提前拒绝。
-        for path in (runtime / 'build/moddev').glob('*Classpath.txt'):
+        for path in launch_dir.glob('*Classpath.txt'):
             text = path.read_text(encoding='utf-8').replace('\\\\', '/').replace('\\', '/')
             if '/classes/java/main' in text or '/resources/main' in text or 'unsuspiciousBlock-1.21.1-multi/neoforge/build' in text:
                 raise ProbeError(f'运行面混入宿主源码: {path}')
         jars = [host_jar, Path(self.config['autojsJar']), Path(self.config['rhinoJar'])]
         self.manifest = dict(artifactMode='jar', host=host, nested=nested,
                              dependencies=[dict(path=str(jar), sha256=digest(jar)) for jar in jars],
-                             launch=self.launch, processes=self.history)
+                             launch=self.launch, processes=self.history, needs=self.needs.describe(), fixtures={})
         if self.recipe_card_artifact is not None:
             self.manifest['recipeCardTool'] = self.recipe_card_artifact
-        for side in ('server', 'client'):
+            jei = Path(self.launch['jeiJar'])
+            self.manifest['clientDependencies'] = [
+                dict(path=self.recipe_card_artifact['jar'], sha256=self.recipe_card_artifact['sha256']),
+                dict(path=str(jei), sha256=digest(jei)),
+            ]
+        write_json(self.directory / 'manifest.json', self.manifest)
+        for side in self.needs.sides:
             game = self.directory / side
             (game / 'mods').mkdir(parents=True)
-            side_jars = jars + ([Path(self.recipe_card_artifact['jar'])] if side == 'client'
-                                and self.recipe_card_artifact is not None else [])
-            expected_digests = [entry['sha256'] for entry in self.manifest['dependencies']]
-            if side == 'client' and self.recipe_card_artifact is not None:
-                expected_digests.append(self.recipe_card_artifact['sha256'])
-            for jar, expected in zip(side_jars, expected_digests):
+            side_jars = self.manifest['dependencies']
+            if side == 'client':
+                side_jars = side_jars + self.manifest.get('clientDependencies', [])
+            for entry in side_jars:
+                jar = Path(entry['path'])
                 shutil.copy2(jar, game / 'mods' / jar.name)
-                if digest(game / 'mods' / jar.name) != expected:
+                if digest(game / 'mods' / jar.name) != entry['sha256']:
                     raise ProbeError(f'复制期间发布物变化: {jar}')
             write_json(game / 'config/autojs.json', dict(enabled=True, unrestricted=True,
                        bindAddress='127.0.0.1', port=self.config[f'{side}McpPort'],
@@ -165,23 +187,33 @@ class Runtime:
         (server / 'eula.txt').write_text('eula=true\n', encoding='utf-8')
         (server / 'server.properties').write_text(
             f'server-ip=127.0.0.1\nserver-port={self.config["gamePort"]}\nonline-mode=false\n'
-            'level-type=minecraft:flat\nspawn-protection=0\nview-distance=3\nsimulation-distance=3\n'
+            'level-type=minecraft:flat\nlevel-seed=1\nspawn-protection=0\nview-distance=3\nsimulation-distance=3\n'
             'max-players=1\nallow-flight=true\ngamemode=survival\ndifficulty=peaceful\n', encoding='utf-8')
         resources = self.root / 'tools/probes/datapack'
-        if resources.exists():
-            shutil.copytree(resources, server / 'world/datapacks/usb_probe')
-        (self.directory / 'client/options.txt').write_text(
-            'pauseOnLostFocus:false\nguiScale:2\nrenderDistance:3\nmaxFps:30\nfullscreen:false\n'
-            'tutorialStep:none\nlang:en_us\n', encoding='utf-8')
+        if self.needs.fixtures:
+            pack = server / 'world/datapacks/usb_probe'
+            for relative in dict.fromkeys(('pack.mcmeta', *self.needs.fixtures)):
+                target = pack / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(resources / relative, target)
+                self.manifest['fixtures'][relative] = digest(target)
+        if 'client' in self.needs.sides:
+            (self.directory / 'client/options.txt').write_text(
+                'pauseOnLostFocus:false\nguiScale:2\nrenderDistance:3\nmaxFps:30\nfullscreen:false\n'
+                'tutorialStep:none\nlang:en_us\n', encoding='utf-8')
         write_json(self.directory / 'manifest.json', self.manifest)
 
     def start(self, side: str):
+        if side not in self.needs.sides:
+            raise ProbeError(f'会话未声明 {side}')
         if side in self.processes and self.processes[side].poll() is None:
             raise ProbeError(f'{side} 已在运行')
         output = (self.directory / f'{side}-process-{time.time_ns()}.log').open('w', encoding='utf-8')
         self.outputs[side] = output
         argv = [self.config.get('java', self.launch['java']), '-Xmx2G',
                 f'-Dautojs.port={self.config[f"{side}McpPort"]}', *self.launch[side]]
+        if self.loot_profile is not None:
+            argv[1:1] = ['-Xlog:gc=info', '-Dusb.loot.profile=' + self.loot_profile]
         if side == 'client':
             argv += ['--username', 'UsbProbe', '--uuid', 'b9c5a31d4c87383899d08bb059420281',
                      '--accessToken', '0', '--quickPlayMultiplayer', f'127.0.0.1:{self.config["gamePort"]}',
@@ -229,8 +261,11 @@ class Runtime:
         forced = False
         if process.poll() is None:
             if side == 'server':
-                process.stdin.write('stop\n')
-                process.stdin.flush()
+                try:
+                    process.stdin.write('stop\n')
+                    process.stdin.flush()
+                except BrokenPipeError:
+                    pass  # 退出码仍由自有进程报告。
             else:
                 try:
                     self.controls[side].evaluate('(Probe.type("net.minecraft.client.Minecraft").getInstance().stop(), true)')

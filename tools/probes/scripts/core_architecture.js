@@ -184,7 +184,7 @@ Probe.archCatalogTable = function(path) {
     var loot = server.reloadableRegistries().getLootTable(key);
     var builder = new (this.type('net.minecraft.world.level.storage.loot.LootParams$Builder'))(server.overworld());
     builder.withParameter(this.type('net.minecraft.world.level.storage.loot.parameters.LootContextParams').ORIGIN,
-        this.player().position());
+        new (this.type('net.minecraft.world.phys.Vec3'))(0.5, 100, 0.5));
     var params = builder.create(this.type('net.minecraft.world.level.storage.loot.parameters.LootContextParamSets').ARCHAEOLOGY);
     var generated = {};
     for (var index = 0; index < 24; index++) {
@@ -195,7 +195,7 @@ Probe.archCatalogTable = function(path) {
             child: definition.childTables().contains(this.id('usb_probe:archaeology/architecture_leaf'))};
 };
 
-Probe.archMeasureGraph = function(path, rounds) {
+Probe.graphProjection = function(path) {
     var server = this.server();
     var registries = server.registryAccess();
     var Snapshot = this.type('com.meteorite.unsuspiciousblock.core.loottable.source.LootTableSourceSnapshot');
@@ -204,26 +204,26 @@ Probe.archMeasureGraph = function(path, rounds) {
     var Projector = this.type('com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableProjector');
     var Map = this.type('java.util.Map');
     var Set = this.type('java.util.Set');
-    var System = this.type('java.lang.System');
     var id = this.id(path);
     var snapshot = Snapshot.capture(server.getResourceManager());
     var graph = Graph.build(snapshot, Map.of());
     var compiled = new Compiler(registries).compile(snapshot, graph.descendantsInclusive(id));
-    var samples = [];
-    var result;
-    for (var repeat = 0; repeat < rounds; repeat++) {
-        var projector = new Projector(graph, compiled, Set.of(), registries);
-        var start = System.nanoTime();
-        result = projector.project(id);
-        samples.push((System.nanoTime() - start) / 1000000);
-    }
-    return {ms: samples, items: Number(result.items().size()),
-            paths: Number(result.items().getFirst().acquisitionPaths().size())};
+    return function() { return new Projector(graph, compiled, Set.of(), registries).project(id); };
+};
+
+Probe.graphFacts = function(result) {
+    var items = [], iterator = result.items().iterator();
+    while (iterator.hasNext()) items.push(String(iterator.next().id()));
+    return {items: items.sort(), paths: items.length === 0 ? 0 : Number(result.items().getFirst().acquisitionPaths().size())};
+};
+
+Probe.archProjectGraph = function(path) {
+    return this.graphFacts(this.graphProjection(path)());
 };
 
 Probe.archTradeOffers = function() {
     var offers = this.type('com.meteorite.unsuspiciousblock.core.cat.merchant.MerchantCatTradeManager')
-        .createOffers(this.player().serverLevel(), this.type('net.minecraft.util.RandomSource').create(1234), 100);
+        .createOffers(this.server().overworld(), this.type('net.minecraft.util.RandomSource').create(1234), 100);
     var candidates = [];
     var iterator = offers.iterator();
     while (iterator.hasNext()) candidates.push(this.archItemId(iterator.next().getResult()));
@@ -248,39 +248,6 @@ Probe.archLedgerExpired = function() {
     var ledger = this.type('com.meteorite.unsuspiciousblock.core.pan.ShimmerLedger').of(this.player().serverLevel());
     var variant = this.type('com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariants').WATER_ID;
     return ledger.isExpired(this.archLedgerUuid) && Number(ledger.countNatural(variant)) === this.archLedgerBaseline;
-};
-
-Probe.archMeasureLedger = function(entries) {
-    var server = this.server();
-    var level = server.overworld();
-    var data = server.getWorldData().overworldData();
-    var Ledger = this.type('com.meteorite.unsuspiciousblock.core.pan.ShimmerLedger');
-    var source = this.type('com.meteorite.unsuspiciousblock.core.pan.ShimmerLedger$Source');
-    var variant = this.type('com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariants').WATER_ID;
-    var system = this.type('java.lang.System');
-    var ledger = Ledger.of(level);
-    var startTick = Number(data.getGameTime());
-    var ids = [];
-    var blocks = this.type('net.minecraft.core.BlockPos');
-    var uuid = this.type('java.util.UUID');
-    var samples = [];
-    try {
-        for (var i = 0; i < entries; i++) {
-            var id = uuid.randomUUID();
-            ids.push(id);
-            ledger.register(id, new blocks(1000 + i * 16, 65, 1000), source.NATURAL, variant, startTick + 10000);
-        }
-        for (var repeat = 1; repeat <= 12; repeat++) {
-            data.setGameTime(startTick + repeat);
-            var start = system.nanoTime();
-            Ledger.of(level);
-            samples.push((system.nanoTime() - start) / 1000000);
-        }
-    } finally {
-        for (var index = 0; index < ids.length; index++) ledger.unregister(ids[index]);
-        data.setGameTime(startTick);
-    }
-    return samples;
 };
 
 Probe.archCatalogState = function() {

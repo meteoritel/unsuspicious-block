@@ -2,6 +2,7 @@
 import html
 import json
 from pathlib import Path
+from urllib.parse import quote
 import xml.etree.ElementTree as ET
 
 
@@ -20,17 +21,23 @@ def render(directory: Path):
         node = ET.SubElement(suite, 'testcase', name=case['name'], classname=case['surface'], time=str(case['duration']))
         if case['status'] != 'pass':
             ET.SubElement(node, 'failure' if case['status'] == 'fail' else 'error', message=case['message']).text = case['message']
-        links = ''.join(f'<li><a href="{html.escape(shot["relative"], quote=True)}">{html.escape(shot["relative"])}</a></li>'
-                        for shot in case['screenshots'])
+        links = ''.join(f'<li><a href="{quote((Path(case.get("session", "")) / shot["relative"]).as_posix())}">'
+                        f'{html.escape(shot["relative"])}</a></li>' for shot in case['screenshots'])
         sections.append(f'<section><h2>{html.escape(case["name"])}: {case["status"]}</h2>'
                         f'<p>阶段: {html.escape(case.get("phase", record["phase"]))}</p>'
                         f'<p>{html.escape(case.get("message", ""))}</p><ul>{links}</ul>'
-                        f'<pre>{html.escape(json.dumps(case["assertions"], ensure_ascii=False, indent=2))}</pre></section>')
+                        f'<pre>{html.escape(json.dumps(case.get("checks", []) + case["assertions"], ensure_ascii=False, indent=2))}</pre></section>')
     ET.indent(suite)
     ET.ElementTree(suite).write(directory / 'junit.xml', encoding='utf-8', xml_declaration=True)
+    files = [path.name for path in sorted(directory.glob('*.log'))]
+    for session in record.get('sessions', []):
+        if session.get('manifest'):
+            files.append(session['manifest'])
+        files.extend(path.relative_to(directory).as_posix()
+                     for path in sorted((directory / session['name']).glob('*.log')))
     (directory / 'index.html').write_text('<!doctype html><meta charset="utf-8"><title>NeoForge probes</title>'
         '<style>body{font:16px system-ui;max-width:70em;margin:2em auto}pre{white-space:pre-wrap}section{border-top:1px solid #ccc}</style>'
-        '<h1>NeoForge probes</h1><p><a href="probe-run.json">原始记录</a> · <a href="manifest.json">产物身份</a></p>'
+        '<h1>NeoForge probes</h1><p><a href="probe-run.json">原始记录</a></p>'
         + '<p>退出码: ' + str(record['exitCode']) + '</p><ul>'
-        + ''.join(f'<li><a href="{html.escape(path.name, quote=True)}">{html.escape(path.name)}</a></li>' for path in sorted(directory.glob('*.log')))
+        + ''.join(f'<li><a href="{quote(path)}">{html.escape(path)}</a></li>' for path in files)
         + '</ul>' + ''.join(sections), encoding='utf-8')

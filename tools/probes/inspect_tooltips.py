@@ -10,7 +10,7 @@ from toolslib.cli import configure_console
 from toolslib.repo import repo_root
 from probelib.autojs import ProbeError
 from probelib.cases import Case, png_dimensions, wait_for
-from probelib.runtime import Runtime, read_artifact, read_config, write_json
+from probelib.runtime import LaunchNeeds, Runtime, WITH_CLIENT, read_artifact, read_config, write_json
 
 DEFAULT_MAX_LINE_PX = 240
 CAT_STATES = [
@@ -51,7 +51,7 @@ def run_locale(root: Path, config: dict, artifact: Path, base_dir: Path, lang: s
     """在独立全新目录运行单一语种的 Tooltip 全量检查。"""
     run_dir = (base_dir / lang).resolve()
     run_dir.mkdir(parents=True)
-    runtime = Runtime(root, run_dir, config)
+    runtime = Runtime(root, run_dir, config, LaunchNeeds(WITH_CLIENT))
     record = dict(name=f'tooltip-{lang}', phase='prepare', actions=[], assertions=[], screenshots=[])
     results = []
     warnings = []
@@ -178,7 +178,7 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
-    config = read_config(args.config or root / '.local/probes.json')
+    config = read_config(args.config or root / '.local/probes.json', WITH_CLIENT)
     if args.background:
         config['background'] = True
     artifact_path = (args.artifact or root / 'build/probes/artifact.json').resolve()

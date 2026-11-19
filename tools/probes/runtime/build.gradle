@@ -11,11 +11,11 @@ repositories {
 }
 
 def includeRecipeCards = providers.gradleProperty('include_recipe_cards').orElse('false').get().toBoolean()
+def probeJei
 if (includeRecipeCards) {
-    dependencies {
-        // 仅配方卡片分支需要 JEI runtime；普通探针保持最小运行面。
-        runtimeOnly "mezz.jei:jei-${host.minecraft_version}-neoforge:${host.jei_version}"
-    }
+    probeJei = configurations.detachedConfiguration(
+            dependencies.create("mezz.jei:jei-${host.minecraft_version}-neoforge:${host.jei_version}"))
+    probeJei.transitive = false
 }
 neoForge {
     version = host.neoforge_version
@@ -26,17 +26,40 @@ neoForge {
 }
 
 // 独立工程不声明宿主 mod/sourceSet；游戏只扫描运行目录的发布 JAR。
+def probeSides = providers.gradleProperty('probe_sides').orElse('server,client').get().split(',')
+def probeLaunchDir = providers.gradleProperty('probe_launch_dir')
 tasks.register('prepareProbeRuntime') {
-    dependsOn 'createMinecraftArtifacts', 'createClientLaunchScript', 'createServerLaunchScript'
+    dependsOn 'createMinecraftArtifacts'
+    dependsOn probeSides.collect { "create${it.capitalize()}LaunchScript" }
     doLast {
         def launcher = javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile
         def directory = layout.buildDirectory.dir('moddev').get().asFile
+        def output = probeLaunchDir.isPresent() ? file(probeLaunchDir.get()) : layout.buildDirectory.get().asFile
         def result = [java: launcher.absolutePath, minecraft: host.minecraft_version,
                       neoforge: host.neoforge_version, jei: includeRecipeCards ? host.jei_version : null]
-        ['client', 'server'].each { side ->
-            result[side] = ["@${directory}/${side}RunClasspath.txt", "@${directory}/${side}RunVmArgs.txt",
-                            '-Dfml.modFolders=', 'net.neoforged.devlaunch.Main', "@${directory}/${side}RunProgramArgs.txt"]
+        if (probeJei != null) result.jeiJar = probeJei.singleFile.absolutePath
+        probeSides.each { side ->
+            def arguments = ['Classpath', 'VmArgs', 'ProgramArgs'].collect { "${side}Run${it}.txt".toString() }
+            def legacyClasspath = "${side}LegacyClasspath.txt"
+            def logConfig = "${side}Log4j2.xml"
+            copy {
+                from directory
+                include arguments
+                include legacyClasspath, logConfig
+                into output
+            }
+            def vmArgs = new File(output, arguments[1])
+            def properties = ['-DlegacyClassPath.file=': legacyClasspath, '-Dlog4j2.configurationFile=': logConfig]
+            def lines = vmArgs.readLines('UTF-8').collect { line ->
+                def property = properties.keySet().find { line.startsWith(it) || line.startsWith('"' + it) }
+                if (property == null) return line
+                def path = new File(output, properties[property]).absolutePath.replace('\\', '\\\\')
+                return '"' + property + path + '"'
+            }
+            vmArgs.setText(lines.join('\n') + '\n', 'UTF-8')
+            result[side] = ["@${output}/${arguments[0]}", "@${output}/${arguments[1]}",
+                            '-Dfml.modFolders=', 'net.neoforged.devlaunch.Main', "@${output}/${arguments[2]}"]
         }
-        layout.buildDirectory.file('launch.json').get().asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(result)) + '\n'
+        new File(output, 'launch.json').setText(JsonOutput.prettyPrint(JsonOutput.toJson(result)) + '\n', 'UTF-8')
     }
 }

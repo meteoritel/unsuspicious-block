@@ -2,7 +2,7 @@
 
 本指南说明项目开发阶段如何授权使用、运行与编写 NeoForge 运行时探针（AutoJS + Rhino + kit 帧末截图）。核心回归套件内部架构、用例清单与模块选跑矩阵见[核心探针](../../tools/probes/README.md)。
 
-## 1. 授权与两类探针边界
+## 1. 授权与工具选择
 
 Agent 调用任何探针前，须遵守仓库根目录 `AGENTS.md` 中的「探针调用授权」：
 
@@ -13,6 +13,7 @@ Agent 调用任何探针前，须遵守仓库根目录 `AGENTS.md` 中的「探�
 |---|---|---|
 | **核心回归探针** | [`tools/probes/`](../../tools/probes/README.md) | 覆盖主链路记账、同步、持久化与关键视口；随代码长期演进并纳入 Git |
 | **可复用专项巡检模板** | [`tools/probes/inspect_tooltips.py`](../../tools/probes/inspect_tooltips.py) | 纯检查全部物品 Tooltip 双语文案、色值、像素行宽与真实容器悬停 PNG |
+| **性能基准** | [`tools/probes/benchmark.py`](../../tools/probes/benchmark.py) | 单独采集真实负载并比较同口径原始记录 |
 | **临时诊断 / 截图探针** | 会话 `scratch/` 目录或 `.local/`（不入库） | 定向复现 UI 缺陷、切换语言截多图、排查崩溃；任务验收后随临时目录清理，勿污染 `tools/probes/` |
 
 ## 2. 环境准备与快速校验
@@ -22,11 +23,12 @@ Agent 调用任何探针前，须遵守仓库根目录 `AGENTS.md` 中的「探�
 1. **构建宿主 JAR 与 Manifest**：用户级 Gradle 属性 `meteos_ui_kit_maven_dir` 指向本地 UI Kit Maven 仓库，运行 `./gradlew.bat build writeProbeArtifact --no-daemon` 生成 `build/probes/artifact.json`。
 2. **本地探针配置**：复制 [`config.example.json`](../../tools/probes/config.example.json) 为仓库根目录 `.local/probes.json`（已纳入 Git 忽略），填入本机 `autojsJar` 与 `rhinoJar` 绝对路径；接受 Minecraft EULA 后显式设置 `"acceptEula": true`。
 3. **后台客户端**：Windows 在本地配置设置 `"background": true`，或命令行传入 `--background`。客户端在独立 desktop 内渲染，主桌面与系统鼠标保持原有归属；运行结果见 `manifest.json` 的 `desktop` 字段。
-4. **检查端口与配置**：默认使用 `serverMcpPort`（25585）、`clientMcpPort`（25586）和 `gamePort`（25575），三个端口需互异且空闲。
+4. **检查端口与配置**。所选服务端使用 `serverMcpPort`（25585）和 `gamePort`（25575）。需要客户端的会话还使用 `clientMcpPort`（25586），本轮用到的端口须互异且空闲。
 
 快速干跑验证配置与产物配对（不启动游戏进程）：
 
 ```powershell
+python tools/probes/run.py --list
 python tools/probes/run.py --validate --only runtime-artifact
 ```
 
@@ -39,8 +41,9 @@ python tools/probes/run.py --validate --only runtime-artifact
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only scan-take-journal --only journal-viewport
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only recipe-card-export
 
-# 运行日常核心集合（使用默认隔离目录并构建）
-python tools/probes/run.py --background
+# 运行考古笔记目录专项或日常核心集合
+python tools/probes/run.py --background --suite journal-catalog
+python tools/probes/run.py --background --suite core
 
 # 使用同一发布物运行全部注册专项
 python tools/probes/run.py --background --artifact build/probes/artifact.json --suite all
@@ -49,12 +52,12 @@ python tools/probes/run.py --background --artifact build/probes/artifact.json --
 判定与输出约定：
 
 - 退出码：`0` 为选定用例全通过，`1` 为业务断言失败，`2` 为配置、MCP 协议、截图采集或环境错误。
-- 判定源：每次运行在全新运行目录下生成 `probe-run.json`（唯一判定源）、`manifest.json`、服务端/客户端日志及派生 HTML / JUnit 报告。
+- 判定源为 `probe-run.json`。每个会话目录保存 `manifest.json`、运行日志与 PNG，HTML 和 JUnit 由原始记录派生。
 - 定向选跑映射表与核心用例职责见[核心探针](../../tools/probes/README.md)。
 
-无选择参数与 `--suite core` 运行日常核心旅程；`--suite all` 包括详细 UI、模型、绑定和模拟专项。重复 `--only` 去重并保持输入顺序，精确执行指定场景；`--suite` 与 `--only` 互斥。Tooltip 使用独立巡检入口。
+运行时显式选择套件或用例。修改判定前先写下业务预期、观察来源及应失败的反例。性能采样与对照的命令、范围和接入见[性能基准](../../tools/probes/README.md#性能基准)。
 
-`recipe-card-export` 是按需执行的 GUI 分支，不进入默认核心集合。它启动探针专属的 JEI runtime 与 `usb_recipe_cards` 工具 JAR，通过同一 AutoJS 客户端会话筛选并串行导出 JEI 原生配方卡片。结果位于本次运行目录的 `recipe-cards/`，并由 `probe-run.json` 的 `recipeCards`、`recipeCardManifest` 字段关联。默认使用 `unsuspiciousblock`、倍率 3、候选序号 0；筛选和倍率参数见[核心探针](../../tools/probes/README.md)。
+`recipe-card-export` 在专属会话加载 JEI 与导出工具。结果位于该会话的 `recipe-cards/`，由 `probe-run.json` 关联。筛选与倍率参数见[核心探针](../../tools/probes/README.md)。
 
 ## 4. 编写临时诊断与 GUI 截图探针
 
@@ -70,13 +73,14 @@ ROOT = Path(r'<仓库根目录>')
 sys.path.insert(0, str(ROOT / 'tools/probes'))
 
 from probelib.cases import Case, wait_for
-from probelib.runtime import Runtime, read_config
+from probelib.runtime import LaunchNeeds, Runtime, WITH_CLIENT, read_config
 
-config = read_config(ROOT / '.local/probes.json')
+needs = LaunchNeeds(WITH_CLIENT)
+config = read_config(ROOT / '.local/probes.json', needs.sides)
 run_dir = Path(r'<全新临时运行目录>')
 run_dir.mkdir(parents=True, exist_ok=False)
 
-runtime = Runtime(ROOT, run_dir, config)
+runtime = Runtime(ROOT, run_dir, config, needs)
 record = dict(name='inspect', phase='prepare', actions=[], assertions=[], screenshots=[])
 case = None
 

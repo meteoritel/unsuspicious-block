@@ -1,51 +1,45 @@
-Probe.catalogSnapshot = function(table) {
-    var catalog = this.type('com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog');
-    var snapshot = catalog.readSnapshot();
-    var payload = snapshot.payload();
-    var ids = [], projected = null, rows = payload.catalog().iterator();
-    var id = this.id(table);
+Probe.fixtureCatalog = function(tables, structure) {
+    var members = {}, roots = {};
+    var rows = tables.iterator();
     while (rows.hasNext()) {
-        var dto = rows.next();
-        ids.push(String(dto.id()));
-        if (dto.id().equals(id)) projected = dto;
+        var table = rows.next(), id = table.id();
+        if (String(id.getNamespace()) !== 'usb_probe') continue;
+        var children = [], iterator = table.childTables().iterator();
+        while (iterator.hasNext()) children.push(String(iterator.next()));
+        members[String(id)] = children.sort();
     }
-    var staticIds = [], members = catalog.staticTables().keySet().iterator();
-    while (members.hasNext()) staticIds.push(String(members.next()));
-    var buffer = new (this.type('net.minecraft.network.RegistryFriendlyByteBuf'))(
-            this.type('io.netty.buffer.Unpooled').buffer(), this.server().registryAccess());
-    var codec = this.type('com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncArchaeologyCatalogPayload').STREAM_CODEC;
-    var system = this.type('java.lang.System'), encodeMs = [], bytes;
-    try {
-        for (var attempt = 0; attempt < 5; attempt++) {
-            buffer.clear();
-            var start = system.nanoTime();
-            codec.encode(buffer, payload);
-            encodeMs.push((system.nanoTime() - start) / 1000000);
-        }
-        bytes = buffer.readableBytes();
-    } finally {
-        buffer.release();
+    var entries = structure.rootCategories().entrySet().iterator();
+    while (entries.hasNext()) {
+        var root = entries.next();
+        if (String(root.getKey().getNamespace()) === 'usb_probe')
+            roots[String(root.getKey())] = String(root.getValue());
     }
-    return {generation: Number(snapshot.generation()), ids: ids, staticIds: staticIds.sort(),
-            groups: payload.structure().categories().size(), roots: payload.structure().rootCategories().size(),
-            measured: projected === null ? null : projected.simulationCount(), bytes: bytes,
-            encodeMs: encodeMs, busy: this.catalogProgress(table).busy};
+    return {members: members, roots: roots};
 };
 
-Probe.rebuildColdCatalog = function(table) {
+Probe.catalogSnapshot = function(table) {
     var catalog = this.type('com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog');
-    var system = this.type('java.lang.System'), start = system.nanoTime();
+    var snapshot = catalog.readSnapshot(), payload = snapshot.payload(), rows = payload.catalog().iterator();
+    var id = this.id(table), measured = null;
+    while (rows.hasNext()) {
+        var row = rows.next();
+        if (row.id().equals(id)) measured = row.simulationCount();
+    }
+    return {generation: Number(snapshot.generation()), measured: measured,
+            fixtures: this.fixtureCatalog(payload.catalog(), payload.structure()), busy: this.catalogProgress(table).busy};
+};
+
+Probe.rebuildColdCatalog = function() {
+    var catalog = this.type('com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog');
     if (!catalog.rebuildWithoutCache(this.server())) throw new Error('目录重建失败');
-    var rebuildMs = (system.nanoTime() - start) / 1000000;
-    var snapshot = this.catalogSnapshot(table);
-    snapshot.rebuildMs = rebuildMs;
-    return snapshot;
+    return Number(catalog.currentGenerationId());
 };
 
 Probe.catalogProgress = function(table) {
     var worker = this.type('com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker').get();
     var catalog = this.type('com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog');
-    return {busy: worker.isBusy(), measured: catalog.simulatedTables().containsKey(this.id(table))};
+    return {generation: Number(catalog.currentGenerationId()), busy: worker.isBusy(),
+            measured: catalog.simulatedTables().containsKey(this.id(table))};
 };
 
 Probe.catalogView = function(table) {
@@ -64,7 +58,6 @@ Probe.catalogView = function(table) {
     }
     var logs = this.type('com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore').getState();
     return {ready: state.isReadingReady(), generation: Number(dto.options().generation()),
-            measured: entry.simulationCount(), sharedSamples: dto.simulationCount(), items: items, count: tables.size(),
-            groups: state.getCatalogStructure().categories().size(),
-            roots: state.getCatalogStructure().rootCategories().size(), logs: logs.getTotalEntryCount()};
+            measured: entry.simulationCount(), sharedSamples: dto.simulationCount(), items: items,
+            fixtures: this.fixtureCatalog(tables.values(), state.getCatalogStructure()), logs: logs.getTotalEntryCount()};
 };

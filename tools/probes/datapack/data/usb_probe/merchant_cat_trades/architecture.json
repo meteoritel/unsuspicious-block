@@ -1,0 +1,7 @@
+[
+  {"pool":"regular","weight":2147483647,"buy":{"item":"minecraft:gold_ingot"},"sell":{"item":"minecraft:end_stone"}},
+  {"pool":"regular","weight":2147483647,"buy":{"item":"minecraft:gold_ingot"},"sell":{"item":"minecraft:amethyst_shard"}},
+  {"pool":"regular","weight":2147483647,"buy":{"item":"minecraft:gold_ingot"},"sell":{"item":"minecraft:missing_item"}},
+  {"pool":"regular","weight":2147483647,"buy":{"item":"minecraft:gold_ingot"},"sell":{"item":"minecraft:air"}},
+  {"pool":"regular","weight":2147483647,"buy":{"tag":"usb_probe:missing"},"sell":{"item":"minecraft:barrier"}}
+]

@@ -35,31 +35,14 @@ Probe.requestUnissuedTool = function(table) {
     state.request(id, true);
     return this.simulationState(table);
 };
-Probe.saveSimulation = function(table, path) {
+Probe.replaySimulation = function(table, generationOffset, samples) {
     var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
     var id = this.id(table), dto = state.table(id), key = this.type('com.meteorite.unsuspiciousblock.client.state.ScenarioSession').inputKey(state.selection(id));
+    var result = state.result(id, key);
+    var Catalog = this.type('com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto');
+    var candidate = new Catalog(result.id(), result.hash(), result.displayName(), result.type(), samples,
+            result.childTables(), result.items(), result.childProbabilities(), result.options(), result.branches());
     var Payload = this.type('com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload');
-    var payload = new Payload(0, true, dto.options().generation(), dto.hash(), key, state.result(id, key));
-    var buffer = new (this.type('net.minecraft.network.RegistryFriendlyByteBuf'))(
-            this.type('io.netty.buffer.Unpooled').buffer(), this.client().level.registryAccess());
-    try {
-        Payload.STREAM_CODEC.encode(buffer, payload);
-        var output = new (this.type('java.io.FileOutputStream'))(path);
-        try { buffer.readBytes(output, buffer.readableBytes()); } finally { output.close(); }
-    } finally { buffer.release(); }
-    return this.simulationState(table);
-};
-Probe.receiveOldSimulation = function(path) {
-    var buffer = new (this.type('net.minecraft.network.RegistryFriendlyByteBuf'))(
-            this.type('io.netty.buffer.Unpooled').buffer(), this.client().level.registryAccess());
-    try {
-        var input = new (this.type('java.io.FileInputStream'))(path);
-        try { buffer.writeBytes(input, input.available()); } finally { input.close(); }
-        var payload = this.type('com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload').STREAM_CODEC.decode(buffer);
-        var state = this.type('com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection').scenario();
-        var before = Number(state.projectionRevision());
-        state.receive(payload);
-        return {before: before, after: Number(state.projectionRevision()), oldGeneration: Number(payload.generation()),
-                currentGeneration: Number(state.table(payload.table().id()).options().generation())};
-    } finally { buffer.release(); }
+    state.receive(new Payload(0, true, Number(dto.options().generation()) + generationOffset, dto.hash(), key, candidate));
+    return true;
 };

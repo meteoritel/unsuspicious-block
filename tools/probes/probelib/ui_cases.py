@@ -45,12 +45,12 @@ def _fully_visible(node):
 
 
 def member_tree(case, taken, table):
-    from .cases import open_log_list, wait_for
+    from .journal_cases import active_log_detail, open_log_list
     open_log_list(case)
     entry_key = 'log/' + taken['logs'][-1]['id']
     detail_key = 'log/coordinates/' + taken['logs'][-1]['id']
     case.click(entry_key)
-    case.equal('日志条目真实输入进入详情', bool(_nodes(case, key=detail_key)), True)
+    case.check('member-log-detail', active_log_detail(case), detail_key)
     case.screenshot('detail-member')
     case.click('journal/log-back')
     case.equal('详情退出后活动布局恢复列表', bool(_nodes(case, key=entry_key)), True)
@@ -67,8 +67,7 @@ def member_tree(case, taken, table):
     pressed = case.action('client', 'Probe.press("journal/tab/archaeology")')
     case.equal('书签按下等待配对释放', bool(_nodes(case, key=entry_key)), True)
     width = 1100 if case.stable_layout()['window'][0] == 1000 else 1000
-    case.action('client', f'Probe.resize({width},700)')
-    wait_for(lambda: case.client.evaluate('Probe.layout().window'), lambda size: size == [width, 700])
+    case.resize(width, 700)
     case.stable_layout()
     case.action('client', f'Probe.pointer("release",{json.dumps(pressed)})')
     case.equal('resize 后旧按压释放不切页', bool(_nodes(case, key=entry_key)), True)
@@ -92,9 +91,10 @@ def member_tree(case, taken, table):
 
 def form_bodies(case, table):
     retention = 'screen.unsuspiciousblock.archaeology_journal.log_retention.'
-    from .cases import open_log_list, wait_for
+    from .cases import wait_for
+    from .journal_cases import open_log_list
     case.action('client', 'Probe.guiScale(2)')
-    case.action('client', 'Probe.resize(1100,720)')
+    case.resize(1100, 720)
     open_log_list(case)
     case.click(_control(case, retention+'open_tooltip'))
     fields = _nodes(case, kind='TEXT_INPUT')
@@ -103,23 +103,21 @@ def form_bodies(case, table):
     case.click(first)
     case.action('client', 'Probe.replaceText("42x")')
     case.equal('数字过滤拒绝非数字字符', bool(_nodes(case, kind='TEXT_INPUT', value='42')), True)
-    case.action('client', 'Probe.resize(640,480)')
+    case.resize(640, 480)
     second = dict(kind='TEXT_INPUT', name=_label(case, retention+'keep_recent_label'))
     prune = _control(case, retention+'prune_now')
-    wait_for(lambda: case.client.evaluate('Probe.layout().window'), lambda size: size == [640, 480])
     case.equal('窄窗动作需要正文揭示', _fully_visible(_node(case, prune)), False)
     current = _tab_to(case, prune)
     case.equal('Tab 自动揭示正文外动作', _fully_visible(current), True)
     case.screenshot('retention-narrow')
-    case.action('client', 'Probe.resize(1100,720)')
+    case.resize(1100, 720)
     case.click(first)
     case.action('client', 'Probe.replaceText("2")')
     case.click(_control(case, retention+'apply_limit'))
     limit_query = ('Probe.type("com.meteorite.unsuspiciousblock.core.world.JournalLogStorage")'
                    '.getPlayerState(Probe.server(),Probe.player().getUUID())'
                    f'.getTable(Probe.id({json.dumps(table)})).getRetentionLimit()')
-    limit = case.expect('保留策略提交', lambda: case.server.evaluate(limit_query), lambda value: value == 2, expected=2)
-    case.equal('自动保留提交到服务端', limit, 2)
+    case.await_check('retention-limit', lambda: case.server.evaluate(limit_query), 2)
     case.click(_control(case, retention+'open_tooltip'))
     case.click(first)
     case.action('client', 'Probe.replaceText("0")')
@@ -144,16 +142,16 @@ def form_bodies(case, table):
     case.equal('管理列表直接输出 LIST', _node(case, {'key':'management/tables'})['kind'], 'LIST')
     name = dict(kind='TEXT_INPUT', name=_label(case, prefix+'localized_name'))
     language = dict(kind='TEXT_INPUT', name=_label(case, prefix+'language'))
-    case.click(name)
+    _tab_to(case, name)
     case.action('client', 'Probe.replaceText("Probe draft EN")')
-    case.click(language)
+    _tab_to(case, language)
     case.action('client', 'Probe.replaceText("zh_cn")')
-    case.click(name)
+    _tab_to(case, name)
     case.action('client', 'Probe.replaceText("Probe draft ZH")')
-    case.click(language)
+    _tab_to(case, language)
     case.action('client', 'Probe.replaceText("en_us")')
     case.equal('语言切换保留复合名称草稿', _node(case, name)['value'], 'Probe draft EN')
-    case.action('client', 'Probe.resize(640,480)')
+    case.resize(640, 480)
     field = _tab_to(case, name)
     case.equal('管理详情 Tab reveal', _fully_visible(field), True)
     case.equal('管理详情 resize 保留草稿', field['value'], 'Probe draft EN')
@@ -172,7 +170,7 @@ def form_bodies(case, table):
     case.screenshot('language-modal')
     _key(case, 256)
     case.equal('退出语言模态恢复管理列表', bool(_nodes(case, key='management/tables')), True)
-    case.action('client', 'Probe.resize(1100,720)')
+    case.resize(1100, 720)
     case.click(_control(case, 'gui.back'))
 
     case.client.install((case.runtime.root / 'tools/probes/scripts/ui_scenarios.js').read_text(encoding='utf-8'))
@@ -184,7 +182,7 @@ def form_bodies(case, table):
     case.click(_control(case, 'unsuspiciousblock.config.save'))
     case.equal('配置保存校验失败保留页面与草稿', _node(case, selector)['value'], 'invalid')
     case.equal('配置校验失败保持实际配置', case.client.evaluate('Probe.configurationValues()'), original)
-    case.action('client', 'Probe.resize(640,480)')
+    case.resize(640, 480)
     field = _tab_to(case, selector)
     case.equal('窄窗配置 Tab reveal', _fully_visible(field), True)
     case.equal('配置 resize 保留无效草稿', field['value'], 'invalid')
@@ -195,4 +193,4 @@ def form_bodies(case, table):
     case.click(_control(case, 'gui.cancel'))
     case.equal('取消不保存配置', case.client.evaluate('Probe.configurationValues()'), original)
     case.equal('配置取消返回原父页面', case.stable_layout()['screen'].endswith('ArchaeologyJournalScreen'), True)
-    case.action('client', 'Probe.resize(1100,720)')
+    case.resize(1100, 720)

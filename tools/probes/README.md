@@ -11,21 +11,23 @@ Agent 调用前先按根目录 `AGENTS.md` 的「探针调用授权」核对授�
 AutoJS 使用 `/mcp` 的 `initialize → tools/list → status → eval_js`；每端独立进程、端口和 JS 作用域。脚本使用 `Java.loadClass`，仅依赖 Rhino，无需安装 KubeJS。客户端需要可用的桌面与 OpenGL 环境。Windows 使用 `--background` 或本地配置 `background: true` 在独立 desktop 启动客户端；启动器保留原生进程所有权，不切换用户输入 desktop。服务端与 Gradle 隐藏控制台运行。游戏与 MCP 仅监听 loopback，端口须互异且空闲。
 
 ```powershell
+python tools/probes/run.py --list
 python tools/probes/run.py --validate --only runtime-artifact
 python tools/probes/run.py --only runtime-artifact
 python tools/probes/run.py --background --only scan-take-journal --only journal-viewport
-python tools/probes/run.py --background --artifact build/probes/artifact.json
+python tools/probes/run.py --background --artifact build/probes/artifact.json --suite journal-catalog
+python tools/probes/run.py --background --artifact build/probes/artifact.json --suite core
 python tools/probes/run.py --background --artifact build/probes/artifact.json --suite all
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only ui-member-tree --only ui-form-bodies
 python tools/probes/run.py --background --artifact build/probes/artifact.json --only recipe-card-export
 python tools/probes/inspect_tooltips.py --background --artifact build/probes/artifact.json --lang both --shift both
 ```
 
-默认串行执行宿主完整构建、运行准备和核心集合。已有本次构建时，传 `--artifact build/probes/artifact.json` 消费其准确归档；该 manifest 由 Gradle `writeProbeArtifact` 从实际任务输出生成。运行目录须全新，原始记录、进程日志和派生报告保存在控制台显示的目录中。
+宿主构建和各会话串行执行。已有本次构建时，可传 `--artifact build/probes/artifact.json` 使用 Gradle `writeProbeArtifact` 生成的发布物清单。控制台输出本次全新运行目录，目录中保存原始记录、分会话清单和派生报告。
 
-无选择参数或 `--suite core` 按顺序运行 `runtime-artifact`、`scan-take-journal`、`journal-restart`、`panning-settlement`、`cat-player-journey`。`--suite all` 运行全部注册场景。重复 `--only` 精确选例、去重并保留输入顺序；`--suite` 与 `--only` 互斥。原始记录的 `selection` 保存 `core/all/explicit` 来源，`selected` 保存实际顺序。
+运行前用 `--list` 查看任务、套件、所需游戏端和夹具。通过 `--only` 精确选例，重复指定时自动去重并保留输入顺序。`--suite core` 运行日常回归，`--suite journal-catalog` 与 `--suite journal-ui` 运行专项，`--suite all` 运行全部功能用例。`--validate` 校验所选运行环境并输出会话计划。原始记录保存选择来源、执行顺序及会话关联。
 
-`recipe-card-export` 是独立可选分支，不属于默认核心集合；`--suite all` 会包含它。选择该分支时，运行器按需构建 `tools/recipe_cards/runtime`，只把工具 JAR 放入隔离客户端，并在启动面加入根版本对应的 JEI runtime。它默认筛选 `unsuspiciousblock` 命名空间的 JEI 配方，使用三倍整数倍率和第一个候选材料；可用 `--recipe-card-namespace`、`--recipe-card-category`、`--recipe-card`、`--recipe-card-scale` 与 `--recipe-card-variant` 调整。已有工具产物时可传 `--recipe-card-artifact tools/recipe_cards/runtime/build/artifact.json` 跳过工具构建。
+`recipe-card-export` 可单独选择，也随 `--suite all` 执行。运行器按需构建 `tools/recipe_cards/runtime`，将工具 JAR 与 JEI runtime 装入对应会话的客户端。默认筛选 `unsuspiciousblock` 命名空间的 JEI 配方，使用三倍整数倍率和第一个候选材料。筛选与倍率参数见 `--help`。已有工具产物时可传 `--recipe-card-artifact tools/recipe_cards/runtime/build/artifact.json`。
 
 该分支通过同一 AutoJS 客户端会话调用 JEI bridge，串行提交每张卡片，并将 PNG、`recipe-cards/recipe-cards.json`、请求状态和摘要写入运行目录；`probe-run.json` 的 `recipeCards` 与 `recipeCardManifest` 字段保存对应证据。传输超时只查询原请求，不重复提交。分支失败保留已经完成的 PNG，按探针退出码记录为业务失败或环境错误。
 
@@ -37,7 +39,7 @@ python tools/probes/inspect_tooltips.py --background --artifact build/probes/art
 
 ```mermaid
 flowchart TD
-    Gate["输入校验与宿主串行 build"] --> Artifact["writeProbeArtifact：确切发布 JAR"]
+    Gate["专项选择与隔离会话规划"] --> Artifact["校验环境并确定发布 JAR"]
     Artifact --> Stage["独立 NeoForge 启动材料与隔离 mods"]
     Stage --> Server["专用服务器：独立存档和测试数据包"]
     Server --> Control["AutoJS 短调用与动作结果登记"]
@@ -51,9 +53,9 @@ flowchart TD
     Record --> Report["JUnit XML、HTML 与日志链接"]
 ```
 
-`runtime/` 是独立 ModDevGradle 工程，只准备 Minecraft、NeoForge、启动依赖和参数文件；不接入宿主源码输出。`mods/` 只放本次宿主 JAR、AutoJS 和 Rhino，kit 从宿主内嵌加载。运行记录核对实际模组路径与 SHA-256，清单保存依赖摘要、启动参数、PID、退出码和客户端图形环境。
+`probelib/selection.py` 登记用例及启动需求。启动需求匹配的相邻用例可以共享会话，改写世界的用例使用独立会话。每个会话单独暂存所需端的启动参数、Mod 和数据包夹具。独立 ModDevGradle 工程提供 Minecraft 与 NeoForge 运行材料，宿主使用指定 JAR。会话的 `manifest.json` 记录产物、夹具摘要、进程与图形环境。
 
-`scripts/` 构造场景并读取真实业务对象；`probelib/cases.py` 用普通函数组织输入、等待和独立预期。服务端状态与客户端镜像分别读取。主副手用例等待加载覆盖层退出、物品同步及准星命中后，向原版 `KeyMapping` 投递右键；淘洗先核对双端命中同一目标 UUID 与铜盘同步，再保持客户端右键，服务端只观察真实 use/tick/finish 链。猫族旅程以主人治疗受伤猫的正常右键触发喂食，再观察 tick 末记账和自然镜像。UI 输入 module 位于 `scripts/ui.js`，从当前活动布局读取唯一业务 key，或由 `kind/name/text` 组成的唯一语义选择器。几何、裁剪、可见/可用状态与焦点值来自真实 target；有 key 时核对根命中，无 key 时核对字段命中，最终由 Screen 和 NeoForge Pre/Post Hook 派发输入。悬停只调用已安装的 GLFW 指针回调通知 MouseHandler，不移动系统鼠标。代表截图前通过原版公开 API 清除无关通知，等待业务就绪与几何稳定后，由 kit 在后续完成帧采集，工具校验 PNG 数据和原始尺寸。
+`scripts/` 构造场景并读取真实业务对象。Python 场景按考古笔记、世界玩法与 UI 组织，复用 Case 编排动作、等待和截图。扫描、淘洗和猫族旅程经正常客户端输入触发，服务端读取真实结算，客户端单独读取镜像。UI 从活动布局按业务 key 或唯一语义选择器解析命中，经 Screen 和 NeoForge Hook 派发。kit 在后续完成帧采集截图，Case 校验文件格式和原始尺寸。
 
 `scripts/shared.js` 统一双端的业务观察：物品按完整稳定签名索引，条目保留 itemId/type/data；日志保留身份、来源、位置/维度/生物群系/结构、创建/更新时间、预期/实得、备注和 tableStack。history 为 null 表示不存在，空日志仍保留自动保留设置、终身及来源累计、首次解锁。Java long 经十进制字符串传递，Python 计算时转 int。扫描和淘洗的实物数量预期来自固定场景；日志身份差集与 lifetime 增量用于识别新结算。
 
@@ -63,9 +65,9 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 
 新增 UI 场景时，优先选择稳定业务 key；无 key 的字段可使用 `case.click({'kind': 'TEXT_INPUT', 'name': '<字段无障碍名称>'})`。每个选择器须唯一，操作后断言实际页面、字段或服务端结果；PNG 用于复核渲染。普通 Tab 路径验证 reveal，避免直接调用字段 setter 或正文 reveal 代替用户操作。
 
-`probe-run.json` 是判定源，HTML 与 JUnit 从它派生。GUI 成功同时要求目标 PNG；失败时尽力采诊断图，采集错误单独记录。准备或协议错误结束实例；业务失败保留断言，清理成功后继续后例；清理错误保留最初业务失败并使场景成为 error，整体返回 `2`、停止后例。原始记录先写入，再生成展示；派生失败保留已有证据。每次使用全新目录，正常重启在同一服务器存档进行，客户端旧目录保留并换用空缓存目录验证恢复来源。
+`probe-run.json` 保存判定，HTML 与 JUnit 从它派生。业务通过要求每个登记的必验项完成且相等，GUI 还需目标 PNG。缺项、准备、协议或清理错误归工具错误，停止后例。清理成功时，发生业务失败的运行可继续其他用例。正常重启在同一服务端存档中进行，通过空缓存客户端验证恢复。
 
-场景模板发生未预期异常时，运行器保存异常类型、消息和 traceback，停止后续场景，仍执行自身进程清理并生成 HTML/JUnit；模板错误不会被重试或吞掉。新增场景先用系统临时输入验证该故障路径，再接入真实 NeoForge 用例。
+新增必验项时，在注册表登记 ID、预期依据与观察面，并通过 `Case.check` 或 `Case.await_check` 提交业务观察。报告保留独立预期、实际值和比较结果。动作回执、截图、就绪条件和两端镜像各对应自身验证目标。评审时用固定夹具和真实入口，并用已知旧产物、受控业务变化或契约反例核对断言确实失败，再用正常产物执行同一用例。
 
 ## 核心用例与选择
 
@@ -86,11 +88,12 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | `simulation-reload` | 专项 / gui | 真实模拟与拒绝回执、重载代次、旧 DTO 接收规则和新请求 |
 | `journal-catalog-loading` | 专项 / gui | 冷缓存完整目录、欢迎页、在队列排空前收到单表结果、共享回填与阅读位置 |
 | `core-architecture-inventory` | 专项 / server | 标本箱、失落书页、自然骨块、陶轮及世界状态到期 |
-| `core-architecture-catalog` | 专项 / server | 组合条目、内联引用、目录重建、投影耗时和商人交易池 |
+| `core-architecture-catalog` | 专项 / server | 组合条目、内联引用、目录重建与投影结果 |
+| `merchant-trade-pool` | 专项 / server | 高权重报价与无效条目过滤 |
 | `core-architecture-storage` | 专项 / server | 商人与淘洗点旧 NBT 的一次迁移、正常停服与重启读取 |
 | `recipe-card-export` | 可选 / gui | JEI public layout、筛选清单、串行 PNG、请求状态与来源清单 |
 
-`model` 仅创建独立状态、显式传入时间并调用真实 Java 规则。淘洗由正常客户端长按进入 use/tick/finish 流程。模拟拒绝例通过公开目录接收 Interface 构造客户端未签发工具输入，服务端签发目录保持真实；旧 DTO 以实际 Codec 保存，在 reload 后直接调用客户端接收 Interface，覆盖代次过滤。
+`model` 通过独立状态和显式时间调用真实 Java 规则。模拟拒绝例用未签发工具触发真实网络回执。重载后的接收检查分别投递旧代和同代的对照负载，除代次外，两份负载的表、哈希、输入键与样本标记相同。两次分别读取客户端缓存，以验证接收或丢弃。
 
 | 改动落点 | 定向集合 |
 |---|---|
@@ -104,6 +107,26 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | wiki 配方卡片导出 | `recipe-card-export` |
 | 公共网络或玩家生命周期 | 全部受影响的同步/恢复用例 |
 
-范围排除：Fabric 游戏探针、全资源/全屏幕/语言/分辨率矩阵、像素黄金图、动画手感、随机世界生成、完整 NPC AI、可选模组兼容矩阵、概率大样本与压力测试。资源接线由现有源码门禁负责；外观与手感通过代表 PNG 和人工游戏复核确认。
+## 性能基准
+
+[`benchmark.py`](benchmark.py) 复用 NeoForge 隔离运行器和发布物清单。 `list` 枚举负载，`run --only <id>` 采样，`compare` 离线读取两份原始 JSON。功能用例的通过条件由业务断言决定，性能结果有自己的记录与退出码。
+
+```powershell
+python tools/probes/benchmark.py list
+python tools/probes/benchmark.py run --only loot-projection --artifact build/probes/artifact.json
+python tools/probes/benchmark.py compare baseline/benchmark.json current/benchmark.json --report perf.md --csv perf.csv
+```
+
+| 负载 | 计量边界 |
+| --- | --- |
+| `loot-projection` | 已编译引用图上的根表投影，包含新投影器初始化。 |
+| `catalog-codec` | 已稳定目录的实际 Codec 编码。另报编码字节数。 |
+| `shimmer-ledger` | 固定自然条目、新 tick、无到期时的账本维护。 |
+| `journal-simulation` | 正式重建命令到观测到队列排空，附每表有效计算、可用的线程 CPU 与跨 tick 历时。 |
+| `journal-visible` | 目录同步可见、选表后的概率可见及共享回填。输出 Python 轮询观测区间，并记录点击前已有概率的轮次。 |
+
+扩展负载时在 [基准注册](probelib/benchmarks.py) 声明所需端、夹具、主指标、缓存口径和固定输入。采样函数返回原始指标与负载身份，另核对正确的业务产物。同步 Java 计时使用线程内单调时钟，跨 tick 计时由 Python 发起和观察。各轮在正常 tick rate 下串行采集。冷缓存目录负载在预热后的同一 JVM 内按轮重建。
+
+比较要求负载、环境、缓存、profile 模式、采样配置和单位一致。先同机运行同产物确认波动，再交替采样基线与候选。原始文件保留各轮样本；输出包括中位数和离散程度，样本充足时附 p95。指定 `--absolute`、`--percent` 与 `--min-samples` 后，主指标同时超过两种阈值时返回 `1`。采样及兼容比较返回 `0`，不可比较或采集错误返回 `2`。
 
 依赖与验证入口见[仓库工具](../README.md)；授权边界、临时诊断/截图脚本编写与 Rhino/AutoJS 注意事项见[探针使用指南](../../docs/guides/probes.md)。
