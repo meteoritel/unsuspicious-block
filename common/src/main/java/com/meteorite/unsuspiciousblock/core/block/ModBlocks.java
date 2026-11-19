@@ -79,12 +79,14 @@ public final class ModBlocks {
 
     /** 创建成熟咕噜荆芥，沿用火把花的可放置植物属性。 */
     public static Block createPurrmint() {
-        return new PurrmintBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER));
+        return new PurrmintBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER)
+                .offsetType(BlockBehaviour.OffsetType.NONE));
     }
 
     /** 创建仅在耕地上生长的咕噜荆芥幼苗。 */
     public static Block createPurrmintCrop() {
-        return new PurrmintCropBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER_CROP));
+        return new PurrmintCropBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.TORCHFLOWER_CROP)
+                .offsetType(BlockBehaviour.OffsetType.NONE));
     }
 
     /** 创建沿用原版花盆交互的光环盆栽。 */
