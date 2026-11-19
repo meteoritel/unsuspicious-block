@@ -850,7 +850,7 @@
   "entity.unsuspiciousblock.shimmer": "Shimmer",
   "entity.unsuspiciousblock.glimmer": "Glimmer",
   "screen.unsuspiciousblock.archaeology_journal.category.panning": "Panning",
-  "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "Loot panned out of river sediment with the Copper Pan.",
+  "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "Loot panned from alluvial sediments or molten lava slag with panning trays.",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "Panning",
   "unsuspiciousblock.configgui.panning.harvest_cooldown_ticks": "Harvest area cooldown (ticks)",
   "unsuspiciousblock.configgui.panning.gold_pan_luck_bonus": "Gold Pan luck bonus (luck points)",

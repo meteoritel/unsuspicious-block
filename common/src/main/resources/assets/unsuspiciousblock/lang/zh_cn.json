@@ -850,7 +850,7 @@
   "entity.unsuspiciousblock.shimmer": "闪烁的光",
   "entity.unsuspiciousblock.glimmer": "幽微的光",
   "screen.unsuspiciousblock.archaeology_journal.category.panning": "淘筛采集",
-  "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "用淘盘从河流沉积物中淘洗出的战利品。",
+  "screen.unsuspiciousblock.archaeology_journal.category.panning.description": "用淘盘从水域沉积物中淘洗黏土与古物，或从熔岩沉渣中淘取耐火遗珍。",
   "screen.unsuspiciousblock.archaeology_journal.loot_source_type.panning": "淘洗",
   "unsuspiciousblock.configgui.panning.harvest_cooldown_ticks": "采空区域冷却（游戏刻）",
   "unsuspiciousblock.configgui.panning.gold_pan_luck_bonus": "金淘盘的幸运加成（幸运值）",
