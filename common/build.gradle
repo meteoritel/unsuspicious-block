@@ -51,15 +51,6 @@ dependencies {
     if (lootrCompat) {
         compileOnly "maven.modrinth:lootr:${lootr_version}"
     }
-
-    // ========== test ========== //
-
-    testImplementation platform('org.junit:junit-bom:5.10.2')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-}
-
-tasks.named('test', Test) {
-    useJUnitPlatform()
 }
 
 if (!lootrCompat) {
@@ -80,13 +71,6 @@ if (!lootrCompat) {
     tasks.named('processResources', ProcessResources) {
         exclude 'unsuspiciousblock.lootr.mixins.json'
         exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
-    }
-}
-
-sourceSets {
-    test {
-        compileClasspath += sourceSets.main.compileClasspath
-        runtimeClasspath += sourceSets.main.runtimeClasspath
     }
 }
 
