@@ -12,7 +12,7 @@ public enum UnknownReason {
     UNCOVERED,
     /** 规则无法解析：条件或函数引用了该表 paramSet 不允许的参数。 */
     UNPARSED,
-    /** 尚未请求计算。 */
+    /** 当前输入尚无测量，可处于未请求或排队计算状态。 */
     NOT_SIMULATED,
     /** 计算失败（模拟抛异常或注册表中没有该表）；不自动重试，等下次数据包重载。 */
     SIMULATION_FAILED

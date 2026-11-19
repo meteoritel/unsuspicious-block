@@ -73,7 +73,7 @@ public final class ItemDefinitionAccumulator {
     // 构建条目；概率保持未知占位，等待模拟填充。
     public ItemDefinition build() {
         return new ItemDefinition(this.id, this.displayName, mergedTooltipHint(),
-                Probability.unknown(UnknownReason.UNCOVERED),
+                Probability.unknown(UnknownReason.NOT_SIMULATED),
                 this.signature, this.acquisitionPaths, false);
     }
 }

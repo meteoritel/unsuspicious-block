@@ -53,6 +53,21 @@ public final class LootTableCatalog {
                     this.simulationCount, children,
                     children.stream().map(ChildTableProbability::pending).toList());
         }
+
+        /**
+         * 保留静态候选、路径和条件，使用指定原因表达缺少测量的条目。
+         */
+        public TableDefinition withUnknownProbabilities(UnknownReason reason) {
+            Probability unknown = Probability.unknown(reason);
+            List<ItemDefinition> items = this.items.stream()
+                    .map(item -> new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
+                            unknown, item.signature(), item.acquisitionPaths(), item.origins()))
+                    .toList();
+            List<ChildTableProbability> children = this.childTableProbabilities.stream()
+                    .map(child -> new ChildTableProbability(child.tableId(), unknown, List.of(), child.conditions()))
+                    .toList();
+            return new TableDefinition(this.id, this.displayName, this.type, items, 0, this.childTables, children);
+        }
     }
 
     /** 目录分类定义——由服务端 Data Pack 加载并同步给客户端。 */
@@ -200,7 +215,7 @@ public final class LootTableCatalog {
 
         public static ChildTableProbability pending(ResourceLocation tableId) {
             return new ChildTableProbability(tableId,
-                    Probability.unknown(UnknownReason.UNCOVERED), List.of(), List.of());
+                    Probability.unknown(UnknownReason.NOT_SIMULATED), List.of(), List.of());
         }
     }
 

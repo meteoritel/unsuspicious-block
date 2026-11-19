@@ -84,6 +84,7 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | `cat-ledger` | 专项 / model | 独立状态的关系门槛、冷却边界、去重、阶段、命数和序列化 |
 | `cat-carried-binding` | 专项 / server | 第一层标本箱绑定写回、他人身份、额外空白信物规则 |
 | `simulation-reload` | 专项 / gui | 真实模拟与拒绝回执、重载代次、旧 DTO 接收规则和新请求 |
+| `journal-catalog-loading` | 专项 / gui | 冷缓存完整目录、欢迎页、在队列排空前收到单表结果、共享回填与阅读位置 |
 | `core-architecture-inventory` | 专项 / server | 标本箱、失落书页、自然骨块、陶轮及世界状态到期 |
 | `core-architecture-catalog` | 专项 / server | 组合条目、内联引用、目录重建、投影耗时和商人交易池 |
 | `core-architecture-storage` | 专项 / server | 商人与淘洗点旧 NBT 的一次迁移、正常停服与重启读取 |
@@ -99,7 +100,7 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | 配置、表单正文、管理详情 | `ui-form-bodies` |
 | 猫族关系、喂食或携带扫描 | `cat-player-journey`，按改动追加 `cat-ledger`、`cat-carried-binding` |
 | 淘盘与淘洗点 | `panning-settlement` |
-| 模拟、目录重载、相关网络 | `simulation-reload` |
+| 模拟、目录重载、相关网络 | `journal-catalog-loading`、`simulation-reload` |
 | wiki 配方卡片导出 | `recipe-card-export` |
 | 公共网络或玩家生命周期 | 全部受影响的同步/恢复用例 |
 

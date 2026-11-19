@@ -8,6 +8,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranchCata
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationConstraintCatalog;
@@ -47,6 +48,7 @@ public final class CatalogGeneration {
      * 已填充概率的模拟结果，随模拟完成渐进增长。
      */
     private final Map<ResourceLocation, TableDefinition> simulatedTables = new ConcurrentHashMap<>();
+    private final Map<ResourceLocation, TableDefinition> failedBaselines = new ConcurrentHashMap<>();
     /**
      * 本代查询索引——子树物品等跨表聚合的唯一入口，随模拟提交读到的 overlay 自动变化。
      */
@@ -192,7 +194,7 @@ public final class CatalogGeneration {
      */
     public @Nullable TableDefinition displayTable(ResourceLocation id) {
         TableDefinition simulated = this.simulatedTables.get(id);
-        return simulated == null ? this.staticTables.get(id) : simulated;
+        return simulated == null ? this.failedBaselines.getOrDefault(id, this.staticTables.get(id)) : simulated;
     }
 
     /**
@@ -207,18 +209,28 @@ public final class CatalogGeneration {
      */
     public synchronized void publishSimulated(TableDefinition table) {
         this.simulatedTables.put(table.id(), table);
+        this.failedBaselines.remove(table.id());
         this.overlayRevision++;
         this.readSnapshot = null;
     }
 
+    /**
+     * 发布基准抽样失败的展示状态，保留静态候选与获取规则。
+     */
+    public synchronized void publishBaselineFailure(TableDefinition table) {
+        this.failedBaselines.put(table.id(), table.withUnknownProbabilities(UnknownReason.SIMULATION_FAILED));
+        this.overlayRevision++;
+        this.readSnapshot = null;
+    }
 
     /**
-     * overlay 提交与快照捕获共用锁，投影与摘要一起按 revision 缓存。
+     * 按静态目录的完整成员捕获展示快照，投影与摘要一起按 revision 缓存。
      */
     public synchronized CatalogReadSnapshot readSnapshot() {
         if (this.readSnapshot == null) {
-            List<CatalogTableDto> tables = this.simulatedTables.values().stream()
-                    .sorted(Comparator.comparing(table -> table.id().toString()))
+            List<CatalogTableDto> tables = this.staticTables.keySet().stream()
+                    .sorted(Comparator.comparing(ResourceLocation::toString))
+                    .map(this::displayTable)
                     .map(this::project).toList();
             this.readSnapshot = CatalogReadSnapshot.freeze(generation(), this.overlayRevision,
                     tables, this.structure, this.registries);

@@ -21,9 +21,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectio
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ChildTableProbability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.LootTableReferenceGraph;
@@ -264,7 +262,7 @@ public final class ArchaeologyJournalServerCatalog {
         if (!unavailableReasons.isEmpty()) {
             Map<ResourceLocation, TableDefinition> marked = new LinkedHashMap<>(staticTables);
             unavailableReasons.keySet().forEach(tableId ->
-                    marked.put(tableId, markUnparsed(marked.get(tableId))));
+                    marked.put(tableId, marked.get(tableId).withUnknownProbabilities(UnknownReason.UNPARSED)));
             staticTables = Map.copyOf(marked);
         }
         Map<ResourceLocation, String> tableHashes = computeTableHashes(
@@ -405,24 +403,6 @@ public final class ArchaeologyJournalServerCatalog {
     public static @Nullable TableDefinition displayTable(ResourceLocation id) {
         CatalogGeneration generation = currentGeneration;
         return generation == null ? null : generation.displayTable(id);
-    }
-
-    // 不可用表的条目一律标记为「规则未解析」：这是与"未覆盖""尚未计算"都不同的失败原因，
-    // 玩家据此知道该表的规则本模组读不了，而不是自己的处境问题
-    private static TableDefinition markUnparsed(TableDefinition table) {
-        List<ItemDefinition> items = table.items().stream()
-                .map(item -> new ItemDefinition(item.id(), item.displayName(), item.tooltipHint(),
-                        Probability.unknown(UnknownReason.UNPARSED), item.signature(),
-                        item.acquisitionPaths(), item.injected(), List.of(), item.origins(), null))
-                .toList();
-        List<ChildTableProbability> children = table.childTableProbabilities().stream()
-                .map(child -> new ChildTableProbability(child.tableId(),
-                        Probability.unknown(UnknownReason.UNPARSED), List.of(),
-                        // 规则未解析时仍然如实给出"入口需要什么"：那是静态声明，不依赖解析结果
-                        child.conditions()))
-                .toList();
-        return new TableDefinition(table.id(), table.displayName(), table.type(), items,
-                table.simulationCount(), table.childTables(), children);
     }
 
     // 未缓存的**基准输入**入队分 tick 模拟；提交与排空回调都捕获本代 generation，提交时校验。
@@ -682,7 +662,10 @@ public final class ArchaeologyJournalServerCatalog {
             return submissionResult(SubmissionOutcome.STALE, submission, null);
         if (submission.publishesBaseline() && !request.input().equals(constraint.baselineInput()))
             return submissionResult(SubmissionOutcome.STALE, submission, null);
-        if (!result.successful()) return submissionResult(SubmissionOutcome.FAILED, submission, null);
+        if (!result.successful()) {
+            if (submission.publishesBaseline()) generation.publishBaselineFailure(request.rawTable());
+            return submissionResult(SubmissionOutcome.FAILED, submission, null);
+        }
         LootProbabilityData probabilityData = LootProbabilityData.get(server.overworld());
         ResourceLocation tableId = result.tableId();
         String hash = request.tableHash();

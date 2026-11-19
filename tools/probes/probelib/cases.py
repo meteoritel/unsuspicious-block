@@ -609,6 +609,65 @@ def simulation_reload(case):
     case.screenshot('after-reload')
 
 
+def journal_catalog_loading(case):
+    scan_and_take(case)
+    script = (case.runtime.root / 'tools/probes/scripts/catalog_loading.js').read_text(encoding='utf-8')
+    case.server.install(script)
+    case.client.install(script)
+    table = json.dumps(SCAN_TABLE)
+    initial = case.client.evaluate(f'Probe.catalogView({table})')
+    case.defer('server', 'Probe.command("tick rate 20")')
+    case.action('server', 'Probe.command("tick rate 2")')
+    started = time.monotonic()
+    cold = case.action('server', f'Probe.rebuildColdCatalog({table})')
+    case.record['coldSnapshot'] = cold
+    case.equal('工作器排队时发行完整静态目录', cold['ids'], cold['staticIds'])
+    case.equal('重建完成后基准尚未模拟', (cold['busy'], cold['measured']), (True, 0))
+
+    query = lambda: case.client.evaluate(f'Probe.catalogView({table})')
+    pending = case.expect('客户端自然收到新代完整静态目录', query,
+                          lambda value: value and value['generation'] == cold['generation'] and value['ready'],
+                          expected={'generation': cold['generation'], 'ready': True})
+    case.record['coldViewMs'] = (time.monotonic() - started) * 1000
+    case.equal('静态成员、分类和来源统计完整', (pending['count'], pending['groups'], pending['roots']),
+               (len(cold['staticIds']), cold['groups'], cold['roots']))
+    case.equal('历史日志独立保留', pending['logs'], initial['logs'])
+    case.equal('显示静态候选与待计算状态', {item['id']: item['state'] for item in pending['items']},
+               {'minecraft:iron_ingot': 'NOT_SIMULATED', 'minecraft:diamond': 'NOT_SIMULATED'})
+    welcome = case.stable_layout()
+    case.equal('欢迎页和分类同时可浏览',
+               any(node['key'] == 'journal/welcome' for node in welcome['nodes'])
+               and any(node['key'].startswith('category/') for node in welcome['nodes']), True)
+    case.screenshot('catalog-before-measurement')
+    opened = time.monotonic()
+    select_probe_table(case)
+    open_log_list(case)
+
+    ready = case.expect('抽样后当前表概率单独回填', query,
+                        lambda value: value and value['measured'] > 0,
+                        expected='simulationCount > 0')
+    case.record['readyViewMs'] = (time.monotonic() - started) * 1000
+    case.record['visibleTableMs'] = (time.monotonic() - opened) * 1000
+    progress = case.server.evaluate(f'Probe.catalogProgress({table})')
+    case.equal('基准任务成果已入共享视图，其他表仍排队',
+               (progress['measured'], progress['busy'], ready['sharedSamples']), (True, True, 0))
+    case.equal('下一次更新保留目录成员', ready['count'], pending['count'])
+    case.equal('冷缓存重新抽样所得物品概率',
+               {item['id']: item['state'] for item in ready['items']}.get('minecraft:iron_ingot'), 'MEASURED')
+    current = case.stable_layout()
+    case.equal('基准结果刷新保留当前表与日志阅读页',
+               any(node['key'] == f'table/{SCAN_TABLE}' for node in current['nodes'])
+               and any(node['key'].startswith('log/') for node in current['nodes']), True)
+    case.screenshot('catalog-after-measurement')
+
+    case.action('server', 'Probe.command("tick rate 20")')
+    committed = case.expect('队列排空后客户端收到共享基准', query,
+                            lambda value: value and value['sharedSamples'] == ready['measured'],
+                            expected={'sharedSamples': ready['measured']})
+    case.equal('共享更新保留已显示的概率状态', committed['items'], ready['items'])
+    case.record['readySnapshot'] = case.server.evaluate(f'Probe.catalogSnapshot({table})')
+
+
 def ui_member_tree(case):
     from .ui_cases import member_tree
     taken = scan_and_take(case)
@@ -885,7 +944,7 @@ CASES = {'runtime-artifact': ('server', runtime_artifact),
          'cat-ledger': ('model', cat_ledger), 'cat-carried-binding': ('server', cat_carried_binding),
          'cat-player-journey': ('server', cat_player_journey),
          'panning-settlement': ('server', panning_settlement), 'journal-restart': ('gui', journal_restart),
-         'simulation-reload': ('gui', simulation_reload),
+         'simulation-reload': ('gui', simulation_reload), 'journal-catalog-loading': ('gui', journal_catalog_loading),
          'core-architecture-inventory': ('server', core_architecture_inventory),
          'core-architecture-catalog': ('server', core_architecture_catalog),
          'core-architecture-storage': ('server', core_architecture_storage),

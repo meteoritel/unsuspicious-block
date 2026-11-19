@@ -1,8 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ChildTableProbability;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Recommendation.Witness;
@@ -397,6 +395,25 @@ public final class ScenarioSession {
     }
 
     /**
+     * 为正在查看的表取回尚待计算的基准结果。沿用场景请求的在途去重与服务端调度。
+     */
+    public void requestVisibleBaseline(ResourceLocation table) {
+        var base = state.TABLES.get(table);
+        var choice = selection(table);
+        if (base == null || base.simulationCount() > 0 || choice == null || !isBaselineInput(base, inputKey(choice))) {
+            return;
+        }
+        if (base.items().stream().anyMatch(item -> isWaitingForSimulation(item.probability()))
+                || base.childProbabilities().stream().anyMatch(child -> isWaitingForSimulation(child.probability()))) {
+            request(table, false);
+        }
+    }
+
+    private static boolean isWaitingForSimulation(Probability probability) {
+        return probability instanceof Probability.Unknown(var reason) && reason == UnknownReason.NOT_SIMULATED;
+    }
+
+    /**
      * 触发一次按需模拟请求。
      */
     public void request(ResourceLocation table, boolean manual) {
@@ -555,15 +572,13 @@ public final class ScenarioSession {
             return found;
         }
         var base = state.TABLES.get(id);
-        if (base != null && base.options() != null && !base.options().tools().isEmpty()
-                && base.simulationCount() > 0) {
-            String baseline = SimulationInputKey.of(List.of(),
-                    ScenarioParams.baseline(base.options().tools().getFirst().id()));
-            if (baseline.equals(input)) {
-                return base;
-            }
-        }
-        return null;
+        return base != null && base.simulationCount() > 0 && isBaselineInput(base, input) ? base : null;
+    }
+
+    private static boolean isBaselineInput(CatalogTableDto table, String input) {
+        var options = table.options();
+        return options != null && !options.tools().isEmpty() && input.equals(SimulationInputKey.of(List.of(),
+                ScenarioParams.baseline(options.tools().getFirst().id())));
     }
 
     /**
@@ -587,14 +602,8 @@ public final class ScenarioSession {
             } else {
                 var structure = state.TABLES.get(id);
                 var table = structure == null ? base.get(id) : structure.toTableDefinition();
-                var unknown = new Probability.Unknown(UnknownReason.NOT_SIMULATED);
-                output.put(id, new TableDefinition(id, table.displayName(), table.type(),
-                        table.items().stream().map(i -> new ItemDefinition(i.id(), i.displayName(),
-                                i.tooltipHint(), unknown, i.signature(), i.acquisitionPaths(), i.origins(),
-                                List.of(), null)).toList(),
-                        selection.params().sampleCount(), table.childTables(),
-                        table.childTableProbabilities().stream().map(ch -> new ChildTableProbability(
-                                ch.tableId(), unknown, List.of(), ch.conditions())).toList()));
+                output.put(id, structure != null && isBaselineInput(structure, input)
+                        ? table : table.withUnknownProbabilities(UnknownReason.NOT_SIMULATED));
             }
             projections.put(id, output.get(id));
         });

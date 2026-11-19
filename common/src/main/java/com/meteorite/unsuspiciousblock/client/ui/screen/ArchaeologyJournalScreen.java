@@ -888,6 +888,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
         } else {
             this.rightPage.setTable(result.tableId(), result.gridItems(), result.childTables(), result.introItems(),
                     result.parsedCount(), result.totalCount(), result.logRef());
+            if (this.viewModel.isNavigationTargetValid(result.tableId())) {
+                JournalClientConnection.scenario().requestVisibleBaseline(result.tableId());
+            }
         }
     }
 

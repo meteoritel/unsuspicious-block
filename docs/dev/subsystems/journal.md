@@ -27,11 +27,13 @@
 flowchart LR
     Start["SERVER_STARTED"] --> Load["ArchaeologyJournalServerCatalog.ensureLoaded"]
     Load --> Build["快照全表 → 建图 → 编译 → 投影 (未模拟概率占位为 ?)"]
-    Build --> Pub["单个 volatile 引用原子发布静态读模型"]
-    Pub --> Cache["命中缓存表：从 SavedData 恢复"]
-    Pub --> Queue["未命中表：入队 Worker 主线程分片模拟"]
+    Build --> Cache["从 SavedData 恢复已缓存基准"]
+    Cache --> Pub["原子发布目录并通知客户端"]
+    Pub --> Queue["未命中表入队，Worker 主线程分片模拟"]
+    Pub --> Browse["客户端可浏览完整分类和表层级"]
+    Browse --> Queue
     Queue --> Overlay["写回当代 overlay"]
-    Overlay --> Hash["排空后向在线玩家广播目录哈希"]
+    Overlay --> Hash["排空后广播目录哈希，等待者直接收到单表结果"]
 ```
 
 ### 2.2 战利品发现与结算
