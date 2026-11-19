@@ -102,7 +102,11 @@ public final class UiAtlas {
         POTTERY_REDSTONE(4, 4),
         RESET(5, 4),
         PAN_LOCK(6, 4),
-        PAN_UNLOCK(7, 4);
+        PAN_UNLOCK(7, 4),
+        POTTERY_LIGHTBOX_CLOSE(8, 4),
+        POTTERY_LIGHTBOX_RESET(9, 4),
+        POTTERY_LIGHTBOX_PLUS(10, 4),
+        POTTERY_LIGHTBOX_MINUS(11, 4);
 
         private final int column;
         private final int row;

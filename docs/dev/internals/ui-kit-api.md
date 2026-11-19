@@ -60,7 +60,7 @@ Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端
 
 ### 3.4 容器屏幕与只读呈现
 
-- **`PotteryWheelScreen`**：保留原版 `AbstractContainerScreen`、Menu 与 Slot；模式按钮、预览交互和灯箱由唯一 router 与 `UiScreenBridge` 接入。bridge 使用原生 GUI 恒等视口，共同执行准备、布局、选域与帧推进；事件未被 kit 消费或阻断时回退父类。提示直接用 `UiTooltipPresenter` 的默认层，无命中（null 或 EMPTY 的 owners 为空）才回退原版槽位提示，真实 kit 命中保留遮挡关系。预览投影为 `UiIcon.Item` 或 `UiIcon.Rendered`，页面和 `UiIconLightboxContent` 共用同一投影规则；有效左键配对、输出未变、未拖动且释放仍在预览内时打开灯箱。输出变化、隐藏、resize 或切域结清旧按压，拖动保持旋转。灯箱阻断槽位输入，关闭后归还作用域；文字通过本地化 Labels 提供。资源失效钩子刷新模式文案与灯箱标题/布局，图标绘制读取当前游戏资源并保留灯箱缩放和平移。
+- **`PotteryWheelScreen`**：保留原版 `AbstractContainerScreen`、Menu 与 Slot；模式按钮、预览交互和灯箱由唯一 router 与 `UiScreenBridge` 接入。bridge 使用原生 GUI 恒等视口，共同执行准备、布局、选域与帧推进；事件未被 kit 消费或阻断时回退父类。提示直接用 `UiTooltipPresenter` 的默认层，无命中（null 或 EMPTY 的 owners 为空）才回退原版槽位提示，真实 kit 命中保留遮挡关系。预览投影为 `UiIcon.Item` 或 `UiIcon.Rendered`，页面和 `UiIconLightboxContent` 共用同一投影规则；有效左键配对、输出未变、未拖动且释放仍在预览内时打开灯箱。输出变化、隐藏、resize 或切域结清旧按压，拖动保持旋转。灯箱通过 `UiScreenBridge.attach(this)` 在平台前置事件中接收鼠标，并暂停底层槽位悬停。JEI 的并排界面与进度箭头配方热区跟随灯箱状态，关闭后随容器作用域恢复。文字通过本地化 Labels 提供。资源失效钩子刷新模式文案与灯箱标题/布局，图标绘制读取当前游戏资源并保留灯箱缩放和平移。
 - **`SpecimenBoxScreen`**：无自有交互控件，仅用 UI Kit 图标与文本能力绘制表面，槽位交互完全交由容器父类。
 - **HUD、Toast 与局部模型层**：HUD、Toast、富 Tooltip 与 JEI 自有界面保持各自原有生命周期，按需调用 UI Kit 绘制表面、文本或图标；3D 物品与模型在 `UiRenderLayers.item` / `model` 局部深度上下文内渲染，装饰层与主图标处于同一局部层，数量角标绘制在前景层，模型共享 GPU 工作区由 UI Kit 的客户端资源世代与终止事件统一释放，关屏只清理宿主业务资源。
 

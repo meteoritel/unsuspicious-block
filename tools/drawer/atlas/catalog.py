@@ -66,6 +66,20 @@ _STAR_TEMPLATE = (
     '..........',
 )
 
+CLOSE_GLYPH = (
+    '..........',
+    '.II....II.',
+    '..II..II..',
+    '...IIII...',
+    '....II....',
+    '....II....',
+    '...IIII...',
+    '..II..II..',
+    '.II....II.',
+    '..........',
+)
+
+
 ICONS: dict[tuple[int, int, str], IconSpec] = {
     # —— 目录工具栏 (Row 0, cols 0..11) ——
     (0, 0, 'SEARCH'): (
@@ -80,18 +94,7 @@ ICONS: dict[tuple[int, int, str], IconSpec] = {
         '........I.',
         '..........',
     ),
-    (1, 0, 'CLOSE'): (
-        '..........',
-        '.II....II.',
-        '..II..II..',
-        '...IIII...',
-        '....II....',
-        '....II....',
-        '...IIII...',
-        '..II..II..',
-        '.II....II.',
-        '..........',
-    ),
+    (1, 0, 'CLOSE'): CLOSE_GLYPH,
     (2, 0, 'ARROW_UP'): _ARROW_UP,
     (3, 0, 'ARROW_DOWN'): flip_y_ascii(_ARROW_UP),
     (4, 0, 'SHOW_LOCKED'): _EYE_OPEN,

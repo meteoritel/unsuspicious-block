@@ -76,10 +76,9 @@ public class JeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
-        registration.addRecipeClickArea(
-                PotteryWheelScreen.class,
-                110, 36, 20, 16,
-                PotteryWheelJeiCategory.TYPE);
+        PotteryWheelJeiGuiHandler potteryWheel = new PotteryWheelJeiGuiHandler();
+        registration.addGuiScreenHandler(PotteryWheelScreen.class, potteryWheel);
+        registration.addGuiContainerHandler(PotteryWheelScreen.class, potteryWheel);
         registration.addGlobalGuiHandler(new JournalJeiGuiHandler(
                 registration.getJeiHelpers().getIngredientManager()));
         registration.addGuiScreenHandler(ArchaeologyJournalScreen.class, screen -> {

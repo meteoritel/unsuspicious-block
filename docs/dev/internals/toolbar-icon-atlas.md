@@ -84,7 +84,10 @@
 | 4 | 5 | `RESET` | 灯箱复位缩放与平移 |
 | 4 | 6 | `PAN_LOCK` | 锁定灯箱拖拽平移 |
 | 4 | 7 | `PAN_UNLOCK` | 解锁灯箱拖拽平移 |
-| 4 | 8–11 | — | 预留槽位 |
+| 4 | 8 | `POTTERY_LIGHTBOX_CLOSE` | 陶轮灯箱关闭，原版灰按钮深灰字形 |
+| 4 | 9 | `POTTERY_LIGHTBOX_RESET` | 陶轮灯箱复位缩放与平移 |
+| 4 | 10 | `POTTERY_LIGHTBOX_PLUS` | 陶轮灯箱放大 |
+| 4 | 11 | `POTTERY_LIGHTBOX_MINUS` | 陶轮灯箱缩小 |
 
 ## 4. Zone 2 – Zone 4 专项精灵与皮肤映射
 
@@ -113,7 +116,7 @@
 
 ## 5. 使用与修改约束
 
-- **禁止修改已有槽位坐标**：新增图标仅追加至 `Row 4 (col 8..11)` 或图集空白区，并同步更新 `tools/drawer/atlas/` 与 `UiAtlas.java`。`RESET`、`PAN_LOCK` 和 `PAN_UNLOCK` 分别占用 `Row 4 / col 5..7`。
+- **保留已有槽位坐标**：新增图标使用图集空白区，并同步更新 `tools/drawer/atlas/` 与 `UiAtlas.java`。
 - **保持独立的功能底图**：书本背景（`archaeology_journal_book.png` `384x256`）、陶轮容器底图（`pottery_wheel_gui.png` `256x256`）、场景底板（`scenario_panels.png`）、定宽条目条带（`catalog_entry.png`、`log_entry.png`、`bookmark_tab.png`）与标本箱预览（`specimen_box_preview.png`）按各自用途维护。
 - **修改纹理必须经过生成器**：修改图标或皮肤像素时更新 [`tools/drawer/atlas/`](../../../tools/drawer/atlas/) 中对应来源模块并运行 `python tools/drawer/generate_ui_atlas.py`；修改场景底板时运行 `python tools/drawer/generate_scenario_atlas.py`，保证代码与 PNG 同源。
 

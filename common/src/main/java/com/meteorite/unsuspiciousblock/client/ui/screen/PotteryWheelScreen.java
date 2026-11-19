@@ -47,12 +47,10 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     private static final ResourceLocation CLAY_SLOT = ResourceLocation.fromNamespaceAndPath(
             Constants.MOD_ID, "textures/item/clay_slot.png");
     private static final float SLOT_GHOST_ALPHA = 0.6F;
-    private static final int PROGRESS_X = 110;
-    private static final int PROGRESS_Y = 36;
+    /** 原版 GUI 坐标下相对于陶轮容器的进度箭头区域，供绘制和配方入口共用。 */
+    public static final UiRect PROGRESS_BOUNDS = new UiRect(110, 36, 20, 16);
     private static final int PROGRESS_TEXTURE_X = 176;
     private static final int PROGRESS_TEXTURE_Y = 16;
-    private static final int PROGRESS_WIDTH = 20;
-    private static final int PROGRESS_HEIGHT = 16;
     private static final int PREVIEW_X = 134;
     private static final int PREVIEW_Y = 17;
     private static final int PREVIEW_SIZE = 38;
@@ -141,10 +139,10 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         }
     };
     private static final Map<String, UiIcon> LIGHTBOX_ICONS = Map.of(
-            "close", UiAtlas.icon(UiAtlas.Icon.CLOSE),
-            "fit", UiAtlas.icon(UiAtlas.Icon.RESET),
-            "zoom_in", UiAtlas.icon(UiAtlas.Icon.PLUS),
-            "zoom_out", UiAtlas.icon(UiAtlas.Icon.MINUS));
+            "close", UiAtlas.icon(UiAtlas.Icon.POTTERY_LIGHTBOX_CLOSE),
+            "fit", UiAtlas.icon(UiAtlas.Icon.POTTERY_LIGHTBOX_RESET),
+            "zoom_in", UiAtlas.icon(UiAtlas.Icon.POTTERY_LIGHTBOX_PLUS),
+            "zoom_out", UiAtlas.icon(UiAtlas.Icon.POTTERY_LIGHTBOX_MINUS));
 
     private UiLightbox lightbox;
     private ItemStack lightboxSource = ItemStack.EMPTY;
@@ -167,7 +165,23 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
     protected void init() {
         super.init();
         scope.interaction().end(previewRotation, UiInteractionSession.EndReason.CANCEL);
+        bridge.attach(this);
         bridge.refresh();
+    }
+
+    /** 返回实际容器在原版 GUI 中的区域，供并排界面布局。 */
+    public UiRect containerBounds() {
+        return new UiRect(leftPos, topPos, imageWidth, imageHeight);
+    }
+
+    /** 装饰物预览灯箱是否覆盖陶轮容器。 */
+    public boolean isPreviewLightboxOpen() {
+        return lightbox != null;
+    }
+
+    @Override
+    protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY) {
+        return !isPreviewLightboxOpen() && super.isHovering(x, y, width, height, mouseX, mouseY);
     }
 
     private void prepareUi() {
@@ -237,10 +251,10 @@ public class PotteryWheelScreen extends AbstractContainerScreen<PotteryWheelMenu
         if (!menu.getSlot(5).hasItem()) {
             renderGhostSlot(graphics, WATER_BOTTLE_SLOT, leftPos + 89, topPos + 36);
         }
-        int progressWidth = menu.getScaledProgress(PROGRESS_WIDTH);
+        int progressWidth = menu.getScaledProgress(PROGRESS_BOUNDS.width());
         if (progressWidth > 0) {
-            new UiIcon.Sprite(TEXTURE, PROGRESS_TEXTURE_X, PROGRESS_TEXTURE_Y, progressWidth, PROGRESS_HEIGHT, 256, 256)
-                    .render(graphics, leftPos + PROGRESS_X, topPos + PROGRESS_Y);
+            new UiIcon.Sprite(TEXTURE, PROGRESS_TEXTURE_X, PROGRESS_TEXTURE_Y, progressWidth, PROGRESS_BOUNDS.height(), 256, 256)
+                    .render(graphics, leftPos + PROGRESS_BOUNDS.x(), topPos + PROGRESS_BOUNDS.y());
         }
         // 预览必须在槽位和 tooltip 之前绘制，避免物品图标覆盖 tooltip。
         renderPreview(graphics);

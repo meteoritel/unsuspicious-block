@@ -7,7 +7,9 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atlas.palette import CAT_FAVOR_PALETTE, IconSpec, place_zone1_icons, run_source_preview
+from atlas.catalog import CLOSE_GLYPH
+from atlas.palette import CAT_FAVOR_PALETTE, UI_PALETTE, IconSpec, place_zone1_icons, run_source_preview
+from atlas.scenario import MINUS_GLYPH, PLUS_GLYPH, RESET_GLYPH
 from drawlib import AtlasBuilder
 
 ICONS: dict[tuple[int, int, str], IconSpec] = {
@@ -99,6 +101,14 @@ ICONS: dict[tuple[int, int, str], IconSpec] = {
     ),
 }
 
+_POTTERY_LIGHTBOX_PALETTE = UI_PALETTE.extend({'I': '#101010'})
+_POTTERY_LIGHTBOX_ICONS: dict[tuple[int, int, str], IconSpec] = {
+    (8, 4, 'POTTERY_LIGHTBOX_CLOSE'): CLOSE_GLYPH,
+    (9, 4, 'POTTERY_LIGHTBOX_RESET'): RESET_GLYPH,
+    (10, 4, 'POTTERY_LIGHTBOX_PLUS'): PLUS_GLYPH,
+    (11, 4, 'POTTERY_LIGHTBOX_MINUS'): MINUS_GLYPH,
+}
+
 CAT_FAVOR_GRID = (
     '................',
     '....rr....rr....',
@@ -122,6 +132,7 @@ CAT_FAVOR_GRID = (
 def apply(atlas: AtlasBuilder) -> None:
     """将暗色界面与猫爪 HUD 图标写入图集。"""
     place_zone1_icons(atlas, ICONS)
+    place_zone1_icons(atlas, _POTTERY_LIGHTBOX_ICONS, palette=_POTTERY_LIGHTBOX_PALETTE)
     atlas.place_ascii('CAT_FAVOR_HUD', 196, 0, CAT_FAVOR_GRID, CAT_FAVOR_PALETTE, expected_size=(16, 16))
 
 
