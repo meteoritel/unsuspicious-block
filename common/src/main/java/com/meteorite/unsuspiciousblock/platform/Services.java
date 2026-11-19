@@ -8,7 +8,6 @@ import com.meteorite.unsuspiciousblock.platform.services.INetworkHelper;
 import com.meteorite.unsuspiciousblock.platform.services.IPanningConfig;
 import com.meteorite.unsuspiciousblock.platform.services.IPlatformHelper;
 import com.meteorite.unsuspiciousblock.platform.services.ISpiritCatConfig;
-import com.meteorite.unsuspiciousblock.platform.services.IEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.platform.services.IBoneBlockTracker;
 
 import java.util.ServiceLoader;
@@ -22,7 +21,6 @@ public class Services {
     public static final ILegacyLootTrackingConfig LEGACY_LOOT_TRACKING_CONFIG = load(ILegacyLootTrackingConfig.class);
     public static final ISpiritCatConfig SPIRIT_CAT_CONFIG = load(ISpiritCatConfig.class);
     public static final IPanningConfig PANNING_CONFIG = load(IPanningConfig.class);
-    public static final IEnchantmentEventAdapter ENCHANTMENT = load(IEnchantmentEventAdapter.class);
     public static final ICatEventAdapter CAT = load(ICatEventAdapter.class);
     public static final IBoneBlockTracker BONE_BLOCK_TRACKER = load(IBoneBlockTracker.class);
 

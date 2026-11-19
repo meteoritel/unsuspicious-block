@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
-import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -56,16 +55,20 @@ public final class JournalCatalogCommand {
         var simulated = ArchaeologyJournalServerCatalog.simulatedTables().keySet();
         long ready = tables.stream().filter(simulated::contains).count();
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        Component queue = Component.translatable(KEY + (worker != null && worker.isBusy() ? "busy" : "idle"));
+        String status = ArchaeologyJournalServerCatalog.hasRebuildFailed() ? "rebuild.failed"
+                : worker != null && worker.isBusy() ? "busy" : "idle";
+        Component queue = Component.translatable(KEY + status);
         source.sendSuccess(() -> Component.translatable(KEY + "status", queue, ready, tables.size()), false);
         return 1;
     }
 
     private static int rebuild(CommandSourceStack source) {
-        ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
+        if (!ArchaeologyJournalServerCatalog.rebuildWithoutCache(source.getServer())) {
+            source.sendFailure(Component.translatable(KEY + "rebuild.failed"));
+            return 0;
+        }
         int total = ArchaeologyJournalServerCatalog.staticTables().size();
         Constants.LOG.info(Constants.LOG_TAG + "[catalog-rebuild] tables={}", total);
-        JournalCatalogHandler.forceFlushCatalog(source.getServer());
         source.sendSuccess(() -> Component.translatable(KEY + "rebuild.started", total), true);
         return 1;
     }

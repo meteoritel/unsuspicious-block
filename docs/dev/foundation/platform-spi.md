@@ -17,7 +17,7 @@
 | `IAccessoryHelper` | 查询 Trinkets / Curios 饰品栏物品（未安装对应模组时返回未装备或空流） |
 | `ILegacyLootTrackingConfig`、`ISpiritCatConfig` | 读取平台旧追踪配置与灵体猫全局配置；当前世界追踪设置由 common 管理 |
 | `IPanningConfig` | 读取独立的淘洗配置 |
-| `ICatEventAdapter`、`IEnchantmentEventAdapter` | 将 Loader 原生事件转换为统一上下文并转交 `core` 业务入口 |
+| `ICatEventAdapter` | 将 Loader 原生事件转换为猫族关系的统一触发上下文 |
 | `IBoneBlockTracker` | 查询、标记、消费与持久化自然骨块来源 |
 
 配置 SPI 接口同时持有共享的默认值与范围约束常量，供双端实现复用；配置文件路径与生命周期见[配置与第三方联动](config-and-integrations.md)。

@@ -2,12 +2,12 @@ package com.meteorite.unsuspiciousblock.core.bootstrap;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.cat.merchant.MerchantCatSpawner;
+import com.meteorite.unsuspiciousblock.core.cat.merchant.MerchantCatTradeManager;
 import com.meteorite.unsuspiciousblock.core.journal.JournalPlayerDataService;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.core.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
-import com.meteorite.unsuspiciousblock.core.world.NaturalBoneBlockTracker;
 import com.meteorite.unsuspiciousblock.core.world.StructureRewindService;
 import com.meteorite.unsuspiciousblock.core.world.aura.BlockAuras;
 import net.minecraft.server.MinecraftServer;
@@ -26,18 +26,16 @@ public final class ModServerLifecycle {
             LootProbabilitySimulationWorker::tickIfPresent, server -> LootProbabilitySimulationWorker.stop());
     private static final Entry CATALOG = new Entry("journal-catalog", ArchaeologyJournalServerCatalog::ensureLoaded,
             null, server -> ArchaeologyJournalServerCatalog.invalidate());
-    private static final Entry MERCHANT = new Entry("merchant-cat", null, MerchantCatSpawner::tick, null);
+    private static final Entry MERCHANT = new Entry("merchant-cat", null, MerchantCatSpawner::tick, MerchantCatTradeManager::stop);
     private static final Entry SHIMMER = new Entry("shimmer", null, ShimmerSpawnService::tick, ShimmerSpawnService::stop);
     private static final Entry REWIND = new Entry("structure-rewind", null,
             StructureRewindService::tick, StructureRewindService::stop);
-    private static final Entry BONE_BREAKS = new Entry("bone-breaks", null, null,
-            server -> NaturalBoneBlockTracker.clearPendingPlayerBreaks());
     private static final Entry BLOCK_AURAS = new Entry("block-auras", null, null, BlockAuras::stop);
 
     private static final List<Entry> START = List.of(CONFIG, PLAYERS, WORKER, CATALOG);
     private static final List<Entry> TICK = List.of(PLAYERS, CONFIG, WORKER, MERCHANT, SHIMMER, REWIND);
     // 玩家落盘仍需 worker、目录与配置可用，不能直接逆序释放。
-    private static final List<Entry> STOP = List.of(PLAYERS, WORKER, CATALOG, CONFIG, BONE_BREAKS, SHIMMER, REWIND, BLOCK_AURAS);
+    private static final List<Entry> STOP = List.of(PLAYERS, WORKER, CATALOG, CONFIG, MERCHANT, SHIMMER, REWIND, BLOCK_AURAS);
 
     private ModServerLifecycle() {
     }

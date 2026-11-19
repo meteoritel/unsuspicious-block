@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxContents;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxMenu;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTooltip;
-import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -57,16 +56,15 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
     @Override
     public boolean mutateFirst(ItemStack container, Predicate<ItemStack> predicate,
                                Consumer<ItemStack> mutator) {
-        NonNullList<ItemStack> contents = SpecimenBoxContents.read(container);
-        NonNullList<ItemStack> previous = SpecimenBoxContents.copy(contents);
-        for (ItemStack stack : contents) {
-            if (!stack.isEmpty() && predicate.test(stack)) {
-                mutator.accept(stack);
-                SpecimenBoxContents.writeIfChanged(container, previous, contents);
-                return true;
+        return SpecimenBoxContents.edit(container, contents -> {
+            for (ItemStack stack : contents) {
+                if (!stack.isEmpty() && predicate.test(stack)) {
+                    mutator.accept(stack);
+                    return true;
+                }
             }
-        }
-        return false;
+            return false;
+        });
     }
 
     @Override
@@ -83,11 +81,6 @@ public class SpecimenBoxItem extends Item implements PortableContainer {
 
     @Override
     public @NotNull Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
-        ItemContainerContents contents = stack.getOrDefault(
-                DataComponents.CONTAINER, ItemContainerContents.EMPTY);
-        NonNullList<ItemStack> items = NonNullList.withSize(
-                SpecimenBoxMenu.CONTAINER_SIZE, ItemStack.EMPTY);
-        contents.copyInto(items);
-        return Optional.of(new SpecimenBoxTooltip(items));
+        return Optional.of(new SpecimenBoxTooltip(SpecimenBoxContents.read(stack)));
     }
 }

@@ -141,6 +141,11 @@ public abstract class SpiritCat extends Cat {
         return (int) Math.min(lifetime, Math.max(0L, lifetime - remaining));
     }
 
+    /** 返回服务端持久化的绝对寿命截止游戏刻。 */
+    public long getSpiritExpiryGameTime() {
+        return this.expiresAtGameTime;
+    }
+
     public int getSpiritLifetimeRemaining() {
         int lifetime = this.getSpiritLifetime();
         return lifetime <= 0 ? 0 : Math.max(0, lifetime - this.getSpiritLifetimeAge());

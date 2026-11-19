@@ -33,7 +33,7 @@ public final class SimulationAssistHandler {
     public static void handle(ServerPlayer player, RequestSimulationAssistPayload request) {
         var selected = request.selection();
         boolean recommendation = request.target().recommendation();
-        var generation = ArchaeologyJournalServerCatalog.simulationContext(selected.tableId());
+        var generation = ArchaeologyJournalServerCatalog.simulationContext(player.server, selected.tableId());
         var notes = new ArrayList<Component>();
         boolean found = false;
         Recommendation.Witness witness = null;

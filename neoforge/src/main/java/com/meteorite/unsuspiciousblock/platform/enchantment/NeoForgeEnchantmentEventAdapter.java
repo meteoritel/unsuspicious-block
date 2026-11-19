@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.platform.enchantment;
 
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.EnchantmentManager;
-import com.meteorite.unsuspiciousblock.platform.services.IEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.trigger.TriggerContext;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.trigger.TriggerType;
 import net.minecraft.server.level.ServerPlayer;
@@ -12,26 +11,15 @@ import net.minecraft.world.item.Items;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.level.BlockEvent;
 
 /** NeoForge 平台附魔事件适配器——注册 NeoForge 事件监听，抹平平台差异后路由到 EnchantmentManager */
-public class NeoForgeEnchantmentEventAdapter implements IEnchantmentEventAdapter {
-
-    @Override
-    public void registerListeners() {
-        NeoForge.EVENT_BUS.register(this);
+public final class NeoForgeEnchantmentEventAdapter {
+    private NeoForgeEnchantmentEventAdapter() {
     }
 
-    @SubscribeEvent
-    public void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (event.getPlayer() instanceof ServerPlayer sp) {
-            TriggerContext ctx = TriggerContext.builder(sp, sp.serverLevel())
-                    .pos(event.getPos())
-                    .blockState(event.getState())
-                    .tool(sp.getMainHandItem())
-                    .build();
-            EnchantmentManager.dispatch(TriggerType.BLOCK_BREAK, ctx);
-        }
+    /** 安装 NeoForge 的剪羊毛事件入口。 */
+    public static void register() {
+        NeoForge.EVENT_BUS.register(new NeoForgeEnchantmentEventAdapter());
     }
 
     // 玩家右键绵羊剪羊毛——在 NeoForge 的 ShearsItem.interactLivingEntity 走 IShearable 路径之前触发

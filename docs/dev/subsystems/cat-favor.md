@@ -110,7 +110,7 @@ flowchart TD
 ## 7. 猫猫商人 (`core/cat/merchant/`)
 
 - `MerchantCatSpawner` 在服务端 tick 末尾检查符合条件（羁绊 `100` 且携带本人信物）的玩家，尝试在其附近村庄生成商人（每维度至多一名）。
-- `MerchantCatTradeManager` 从 `data/unsuspiciousblock/merchant_cat_trades/` 加载交易 JSON，`TaggedMerchantOffer` 支持 `#unsuspiciousblock:random/*` 包装 Tag（统一纳入 `c:` 通用标签）。商人全服共享库存，主要回收古代金币并限量供应高成本换币交易。
+- `MerchantCatTradeManager` 在有效数据包代次首次生成报价时解析物品和 Tag，从可交易候选按权重无放回抽取。新商人使用当前代次，已有商人保存实际报价和库存。`TaggedMerchantOffer` 支持 `#unsuspiciousblock:random/*` 包装 Tag（统一纳入 `c:` 通用标签）。商人全服共享库存，主要回收古代金币并限量供应高成本换币交易。
 
 ## 8. 扩展点
 

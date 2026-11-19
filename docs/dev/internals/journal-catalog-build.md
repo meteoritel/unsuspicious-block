@@ -26,7 +26,7 @@ flowchart TD
 - **双视图口径分离**：
   - `staticTables()` / `staticTable()`、`tracked()` 与 `queryIndex()` 提供启动即完整的解析态资格，不随模拟进度变化；
   - `displayTable()` 自动优先读取模拟 overlay 并回退静态态；`simulatedTables()` 供命令校验完整模拟覆盖进度。
-- **Worker 交付与重载生命周期**：工作器将去重任务的等待者汇总交付给 `CatalogSimulationSubmission`，目录校验代次、表哈希与签发输入后，仅基准输入贡献允许写入共享 overlay，随后由 `CatalogSimulationDelivery` 构造单播回执（离线等待者跳过发送），待当前代次队列排空后广播完整目录哈希。数据包重载严格按「暂停任务 → 清空队列 → 失效旧代 → 重建 → 恢复」执行。
+- **Worker 交付与重载生命周期**：工作器将去重任务的等待者汇总交付给 `CatalogSimulationSubmission`，目录校验代次、表哈希与签发输入后，仅基准输入贡献允许写入共享 overlay，随后由 `CatalogSimulationDelivery` 构造单播回执（离线等待者跳过发送），待当前代次队列排空后广播完整目录哈希。目录只在有效资源代次匹配时允许执行模拟。资源切换后构建失败仍可读取旧快照，旧任务退役并结束在途请求。资源未切换时，构建失败保留原有任务。
 
 ## 2. 冻结目录与按需同步
 
@@ -40,7 +40,7 @@ flowchart TD
 
 `/usb journal` 的玩家进度由 `JournalCommand` 提供，共享目录维护由 `JournalCatalogCommand` 提供；根 `/usb` 统一检查 OP 2 权限。
 
-- **`catalog rebuild`**：通过 `JournalCatalogHandler.forceFlushCatalog` 暂停 worker、清空持久化概率缓存与队列、失效并重建目录，最后在 `finally` 中恢复消费。玩家笔记进度与日志保持原状；命令返回受理成功，后续用 `catalog status` 查询。
+- **`catalog rebuild`**：目录所有者忽略旧缓存构建候选。候选成功后清缓存、发布读模型并切换任务，失败时保留已发布读模型和缓存。用 `catalog status` 查询失败状态、队列和目录覆盖。
 - **`catalog status`**：分别显示队列忙碌状态和模拟视图覆盖情况；队列空闲时仍可能存在未成功模拟的表，具体原因见服务端失败日志。
 - **`catalog list`**：列出当前静态目录，使用常规名称解析。缺失翻译仍在目录加载结束时集中汇总。
 - **`unlock tables <all|table_id>`**：读取启动即完整的静态视图（`staticTables()`）；选择目标为必填项。

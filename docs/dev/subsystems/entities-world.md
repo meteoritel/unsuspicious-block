@@ -41,8 +41,8 @@ flowchart TD
 flowchart TD
     Chunk["区块首次生成 (Fabric CHUNK_GENERATE / NeoForge ChunkEvent.Load)"] --> ScanC["NaturalBoneBlockTracker.scanChunk — 标记自然骨块"]
     Struct["结构生成"] --> ScanB["scanBoundingBox — 标记结构内骨块"]
-    Break["玩家破坏骨块"] --> Pending["markPlayerBreaking (内存延迟消费，防止移除事件过早清标记)"]
-    Pending --> Fossil["FossilHunterEffect.apply 调用 consumeNatural — 仅自然骨块触发额外化石掉落"]
+    Break["玩家破坏前读取自然标记"] --> Removed["实际移除时清除旧坐标标记"]
+    Removed --> Fossil["成功采掘时使用破坏前工具快照"]
 ```
 
 ## 3. 关键类
@@ -91,7 +91,7 @@ flowchart TD
 
 ## 7. 自然骨块追踪与 `core/world/` 索引
 
-- **自然骨块追踪**：[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/NaturalBoneBlockTracker.java) 经 `IBoneBlockTracker` 标记新生成区块与结构中的骨块，供 `FossilHunterEffect` 消费判定。方法清单、双端实现与内存延迟消费 `PENDING_PLAYER_BREAKS` 见[实体与 AI 机制细节](../internals/entities-world-details.md)。
+- **自然骨块追踪**：[`NaturalBoneBlockTracker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/world/NaturalBoneBlockTracker.java) 经 `IBoneBlockTracker` 标记新生成区块与结构中的骨块，借区块标记确定自然来源。标记、移除与双端接入见[实体与 AI 机制细节](../internals/entities-world-details.md)。
 - **`core/world/` 包内其他持久化类的权威文档**：
   - `LootProbabilityData` → [战利品表系统](loottable.md)
   - `JournalLogStorage` / `JournalLogSavedData` / `GameTimeFormatHelper` → [考古笔记系统](journal.md)
@@ -131,8 +131,8 @@ data/unsuspiciousblock/
 
 - **灵体不随世界存档保存**：`shouldBeSaved` 返回 `false`，调试时请区分实体的持久性；`PREVIEW` 灵体不会运行 AI 或自然消失。
 - **追击低处目标的职业需关闭 `clampToSpawnHeight`**：否则灵体会卡在初始召唤高度无法下潜追敌。
-- **活跃灵体槽位 (`ActiveSpiritSlot`) 的所有权语义**：玩家分别按 `SpiritCatRole` 持有信使与剑士槽位（仅保存 UUID，重生与重新加载时重置），商人槽位保存在当前 `ServerLevel` 的 `MerchantCatSpawnData` 中；仅当实体成功加入世界后才占槽，释放旧 UUID 时不误删新占用者。
-- **骨块自然标记必须用完即删 (`consumeNatural`)**：无论随机掉落是否命中均须消耗标记，且玩家或机器后放的骨块绝不触发化石猎手。
+- **活跃灵体槽位**：玩家分别持有信使和剑士的 `ActiveSpiritSlot`。自然商人成功添加到世界后，`MerchantCatSpawnData` 保存 UUID 与绝对到期游戏刻。未到期卸载仍占用名额，卸载中到期可释放。旧实体重载后按占位归属离场。只存 UUID 的旧档暂按当前配置寿命保留名额，实体加载后以实际截止时间为准。
+- **骨块自然标记随移除清理**：普通工具、创造模式和非玩家移除也会清除原位置的标记。
 
 ## 12. 相关文档
 

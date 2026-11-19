@@ -27,6 +27,8 @@ flowchart LR
   3. 函数链继承与签名降级。同一子表在多处以不同条件被引用时保留各自独立路径，不合并丢失上下文。
 - **静态读模型**：`StaticTableProjection` 展平出的目录只保留实际存在物品产出的表（分析会话仍保留空表投影）；未模拟条目的初始概率占位为 `Probability.unknown(UnknownReason.UNCOVERED)`。
 
+**条目展开**：组合条目按原版顺序决定哪些候选可交给池，候选权重随后生效。具名引用和内联表共享条目读取规则，内联表保留外层门槛与函数链。共享子表仅在同一根表内的第一跳、条件、函数链和幸运约束均一致时复用展开。
+
 **编译与投影解耦的原因**：同一张子表在不同父表引用点的条件与函数链各不相同，因此编译阶段绝不缓存展开后的子表结果，由投影阶段按引用路径实时合成，且条件分析、函数链拼接与多路径归并各自保持唯一实现（`LootParseUtil`、`ItemDefinitionAccumulator`）。
 
 ### 1.1 多路径物品提示合并
@@ -178,7 +180,7 @@ flowchart TD
 ### 启动、重载与失败保护
 
 - **启动只算基准输入**：首次加载仅从缓存恢复或入队每表的 `baseline` 输入，按「哈希变化」与「缺少测量」分别统计未命中原因；其余场景按需触发。
-- **数据包重载**：`DataPackReloadListener` 仅置脏标记，由 `ServerLootTableConfigManager` 在服务端 tick 路径读取配置并构建新代目录（避免阻塞平台重载回调）。
+- **数据包重载**：`ServerLootTableConfigManager` 在服务端 tick 观察服务器已生效的资源代次，并据此读取配置和构建新目录。
 - **构建期机制拦截**：`LootMechanismSupport` 在构建期拦截 `paramSet` 不兼容的表（如 `barter` 缺少 `ORIGIN`、或在非工具上下文引用 `enchantment_level`），直接标为 `Unknown(UNPARSED)` 并输出一次可行动日志；同时遵循原版缺省语义，将空 `type` 视为 `generic`。
 - **确定性失败不自动重排**：执行异常的输入记录为失败并维持「未知」展示，直到下次数据包重载或执行 `/usb journal catalog rebuild` 时才重新尝试。
 - **唯一展示派生路径**：从缓存恢复与刚刚模拟完成统一调用 `ArchaeologyJournalServerCatalog.deriveTable` 装配展示结果。

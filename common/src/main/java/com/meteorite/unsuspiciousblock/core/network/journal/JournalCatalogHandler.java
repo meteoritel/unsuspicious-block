@@ -1,10 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.network.journal;
 
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.core.world.LootProbabilityData;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -49,40 +47,5 @@ public final class JournalCatalogHandler {
     // 处理客户端请求完整目录
     public static void handleRequestCatalog(ServerPlayer player) {
         syncFullCatalog(player);
-    }
-
-    /**
-     * 根据已发布的世界配置和资源构建新代目录，并在完成后同步哈希。
-     */
-    public static boolean refreshCatalog(MinecraftServer server) {
-        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker != null) worker.pauseForReload();
-        try {
-            if (!ArchaeologyJournalServerCatalog.rebuild(server)) return false;
-        } finally {
-            if (worker != null) worker.resumeAfterReload();
-        }
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            syncCatalogHash(player);
-        }
-        return true;
-    }
-
-    /**
-     * 强制清空概率缓存并重新模拟所有表（异步语义）。
-     * 清空 SavedData + 内存目录 → 重新解析原始目录 → 全部表入队后台模拟。
-     * 玩家会随模拟完成渐进收到哈希更新。
-     */
-    public static void forceFlushCatalog(MinecraftServer server) {
-        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker != null) worker.pauseForReload();
-        try {
-            LootProbabilityData.get(server.overworld()).clear();
-            if (worker != null) worker.clearQueue();
-            ArchaeologyJournalServerCatalog.invalidate();
-            ArchaeologyJournalServerCatalog.ensureLoaded(server);
-        } finally {
-            if (worker != null) worker.resumeAfterReload();
-        }
     }
 }

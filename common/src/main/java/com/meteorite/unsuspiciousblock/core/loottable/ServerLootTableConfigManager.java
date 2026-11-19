@@ -5,24 +5,22 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableTranslationStore;
-import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.core.network.journal.LootTableManagementHandler;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ReloadableServerRegistries;
 import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /** 服务端世界配置的生命周期、持久化提交和目录刷新。 */
 public final class ServerLootTableConfigManager {
-    private static final AtomicBoolean DATA_PACK_RELOAD = new AtomicBoolean();
+    private static ReloadableServerRegistries.Holder observedRegistries;
     private static volatile Snapshot current = new Snapshot(0, LootTrackingSettings.DEFAULT, false);
     private static boolean hasWorldFile;
     private static boolean refreshRequested;
-    private static boolean catalogPending;
     private static Path configFile;
 
     /** 世界会话中的不可变配置与编译后的规则。 */
@@ -42,16 +40,12 @@ public final class ServerLootTableConfigManager {
     }
 
     public static boolean isCatalogPending() {
-        return catalogPending;
-    }
-
-    /** 数据包监听器仅置位，实际读取在服务器 tick 上执行。 */
-    public static void markDataPackReload() {
-        if (ArchaeologyJournalServerCatalog.isLoaded()) DATA_PACK_RELOAD.set(true);
+        return refreshRequested || ArchaeologyJournalServerCatalog.hasRebuildFailed();
     }
 
     /** 首次构建目录前解析并提交可能需要迁移的世界设置。 */
     public static void start(MinecraftServer server) {
+        observedRegistries = server.reloadableRegistries();
         configFile = server.getWorldPath(LevelResource.ROOT).resolve(LootTrackingConfigFile.DIRECTORY)
                 .resolve(LootTrackingConfigFile.NAME);
         current = new Snapshot(0, LootTrackingSettings.EMPTY, false);
@@ -60,9 +54,11 @@ public final class ServerLootTableConfigManager {
     }
 
     /** 新版本发布以磁盘提交为准，避免 GUI 与目录读取到只存在于内存的更改。 */
-    public static EditResult save(long revision, LootTrackingSettings settings) {
+    public static EditResult save(MinecraftServer server, long revision, LootTrackingSettings settings) {
         if (!current.canSave()) return EditResult.READ_ONLY;
-        if (revision != current.revision() || DATA_PACK_RELOAD.get()) return EditResult.CONFLICT;
+        if (revision != current.revision() || server.reloadableRegistries() != observedRegistries) {
+            return EditResult.CONFLICT;
+        }
         if (settings.equals(current.settings())) return EditResult.UNCHANGED;
         try {
             LootTrackingConfigFile.save(configFile, settings);
@@ -73,7 +69,6 @@ public final class ServerLootTableConfigManager {
         Snapshot next = new Snapshot(current.revision() + 1, settings, true);
         if (next.rules().affectsCatalogComparedTo(current.rules())) {
             refreshRequested = true;
-            catalogPending = true;
         }
         current = next;
         return EditResult.SAVED;
@@ -81,14 +76,16 @@ public final class ServerLootTableConfigManager {
 
     /** 合并同一周期的配置提交和数据包重载；构建失败可由下一次重载重试。 */
     public static void tick(MinecraftServer server) {
-        boolean resourceReload = DATA_PACK_RELOAD.getAndSet(false);
+        ReloadableServerRegistries.Holder registries = server.reloadableRegistries();
+        boolean resourceReload = registries != observedRegistries;
         if (resourceReload) {
+            observedRegistries = registries;
             load();
             LootTableTranslationStore.load(server);
         }
         if (!resourceReload && !refreshRequested) return;
         refreshRequested = false;
-        catalogPending = !JournalCatalogHandler.refreshCatalog(server);
+        ArchaeologyJournalServerCatalog.rebuild(server);
         LootTableManagementHandler.broadcast(server);
     }
 
@@ -96,8 +93,7 @@ public final class ServerLootTableConfigManager {
         configFile = null;
         hasWorldFile = false;
         refreshRequested = false;
-        catalogPending = false;
-        DATA_PACK_RELOAD.set(false);
+        observedRegistries = null;
         current = new Snapshot(0, LootTrackingSettings.DEFAULT, false);
         LootTableTranslationStore.unload();
         LootTableNames.clear();

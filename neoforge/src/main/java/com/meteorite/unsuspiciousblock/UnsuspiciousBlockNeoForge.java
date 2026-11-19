@@ -30,8 +30,8 @@ import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
+import com.meteorite.unsuspiciousblock.platform.enchantment.NeoForgeEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.core.bootstrap.DataPackReloadListener;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -220,6 +220,7 @@ public class UnsuspiciousBlockNeoForge {
     public UnsuspiciousBlockNeoForge(IEventBus modEventBus, ModContainer container) {
         // 在 common init 前设置平台注册的 LootItemConditionType，供 ToolEnchantmentCondition 运行时使用
         UnsuspiciousBlockCommon.init(TOOL_ENCHANTMENT_TYPE);
+        NeoForgeEnchantmentEventAdapter.register();
 
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeSpiritCatConfig.COMMON_CONFIG_SPEC);
         container.registerConfig(ModConfig.Type.SERVER, NeoForgePanningConfig.SERVER_CONFIG_SPEC,
@@ -332,13 +333,9 @@ public class UnsuspiciousBlockNeoForge {
         UsbCommand.register(event.getDispatcher());
     }
 
-    // 数据包重载：只置脏标记，重建交给服务端 tick 路径（D9）。
-    // 挂在这里而不是别处：/reload 与整合包换表都走服务器数据包重载，本事件是唯一能保证
-    // "重载真的发生了"的入口；在回调里同步跑全量构建会拖住重载本身。
     @SubscribeEvent
     public void onAddReloadListener(AddReloadListenerEvent event) {
         LootInjectionDescriptions.beginReload();
-        event.addListener(DataPackReloadListener.INSTANCE);
     }
 
     // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）

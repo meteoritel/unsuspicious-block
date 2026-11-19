@@ -9,17 +9,21 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ReloadableServerRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
+import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -27,38 +31,52 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.random.RandomGenerator;
 
 /**
- * 猫猫商人交易加载与抽取器——每次生成都从当前 Datapack 资源重新读取，天然响应 `/reload`。
+ * 解析当前数据包的猫猫商人报价，并按权重无放回抽取有效候选。
  */
 public final class MerchantCatTradeManager {
     private static final String DIRECTORY = "merchant_cat_trades";
+    private static TradeCatalog catalog;
 
     private MerchantCatTradeManager() {
     }
 
+    /** 按世界与羁绊条件为新商人生成报价。 */
     public static MerchantOffers createOffers(ServerLevel level, RandomSource random, int catBond) {
-        Map<MerchantCatTradePool, List<MerchantCatTradeDefinition>> pools = load(level.getServer().getResourceManager());
+        Map<MerchantCatTradePool, List<PreparedTrade>> pools = currentPools(level);
         MerchantOffers offers = new MerchantOffers();
-        addWeightedOffers(level, random, filter(level, catBond, pools.get(MerchantCatTradePool.EARNING)), 1, offers);
-        addWeightedOffers(level, random, filter(level, catBond, pools.get(MerchantCatTradePool.REGULAR)), 3, offers);
-        addWeightedOffers(level, random, filter(level, catBond, pools.get(MerchantCatTradePool.RARE)), 2, offers);
+        ResourceLocation dimension = level.dimension().location();
+        addWeightedOffers(random, candidates(pools.get(MerchantCatTradePool.EARNING), catBond, dimension), 1, offers);
+        addWeightedOffers(random, candidates(pools.get(MerchantCatTradePool.REGULAR), catBond, dimension), 3, offers);
+        addWeightedOffers(random, candidates(pools.get(MerchantCatTradePool.RARE), catBond, dimension), 2, offers);
         return offers;
     }
 
-    private static List<MerchantCatTradeDefinition> filter(ServerLevel level, int catBond,
-                                                           List<MerchantCatTradeDefinition> entries) {
-        if (entries == null) {
-            return List.of();
-        }
-        ResourceLocation dimension = level.dimension().location();
+    /** 服务器结束时释放该次世界的资源与物品标签。 */
+    public static void stop(MinecraftServer server) {
+        catalog = null;
+    }
+
+    private static List<PreparedTrade> candidates(List<PreparedTrade> entries, int catBond, ResourceLocation dimension) {
         return entries.stream()
-                .filter(entry -> entry.conditions().matches(catBond, dimension))
+                .filter(entry -> entry.definition().conditions().matches(catBond, dimension))
                 .toList();
     }
 
-    private static Map<MerchantCatTradePool, List<MerchantCatTradeDefinition>> load(ResourceManager manager) {
-        Map<MerchantCatTradePool, List<MerchantCatTradeDefinition>> result = new EnumMap<>(MerchantCatTradePool.class);
+    private static Map<MerchantCatTradePool, List<PreparedTrade>> currentPools(ServerLevel level) {
+        MinecraftServer server = level.getServer();
+        ReloadableServerRegistries.Holder registries = server.reloadableRegistries();
+        if (catalog == null || catalog.registries() != registries) {
+            Registry<Item> items = level.registryAccess().registryOrThrow(Registries.ITEM);
+            catalog = new TradeCatalog(registries, load(server.getResourceManager(), items));
+        }
+        return catalog.pools();
+    }
+
+    private static Map<MerchantCatTradePool, List<PreparedTrade>> load(ResourceManager manager, Registry<Item> items) {
+        Map<MerchantCatTradePool, List<PreparedTrade>> result = new EnumMap<>(MerchantCatTradePool.class);
         for (MerchantCatTradePool pool : MerchantCatTradePool.values()) {
             result.put(pool, new ArrayList<>());
         }
@@ -71,19 +89,26 @@ public final class MerchantCatTradeManager {
                     throw new IllegalArgumentException("根节点必须是数组");
                 }
                 for (JsonElement element : root.getAsJsonArray()) {
-                    MerchantCatTradeDefinition definition = parseDefinition(element.getAsJsonObject());
-                    result.get(definition.pool()).add(definition);
+                    try {
+                        MerchantCatTradeDefinition definition = parseDefinition(element.getAsJsonObject());
+                        result.get(definition.pool()).add(new PreparedTrade(definition,
+                                resolve(items, definition.buy()), resolve(items, definition.sell())));
+                    } catch (RuntimeException exception) {
+                        Constants.LOG.warn("{}忽略无效猫猫商人交易 {}: {}", Constants.LOG_TAG,
+                                entry.getKey(), exception.getMessage());
+                    }
                 }
-            } catch (Exception exception) {
-                Constants.LOG.error("无法加载猫猫商人交易资源 {}", entry.getKey(), exception);
+            } catch (IOException | RuntimeException exception) {
+                Constants.LOG.error("{}无法加载猫猫商人交易资源 {}", Constants.LOG_TAG, entry.getKey(), exception);
             }
         }
-        return result;
+        result.replaceAll((pool, entries) -> List.copyOf(entries));
+        return Map.copyOf(result);
     }
 
     private static MerchantCatTradeDefinition parseDefinition(JsonObject object) {
         MerchantCatTradePool pool = MerchantCatTradePool.parse(object.get("pool").getAsString());
-        int weight = Math.max(1, object.has("weight") ? object.get("weight").getAsInt() : 1);
+        int weight = Math.max(1, object.has("weight") ? object.get("weight").getAsBigDecimal().intValueExact() : 1);
         int maxUses = Math.max(1, object.has("max_uses") ? object.get("max_uses").getAsInt() : 1);
         return new MerchantCatTradeDefinition(
                 pool,
@@ -131,73 +156,70 @@ public final class MerchantCatTradeManager {
         return new MerchantCatTradeDefinition.TradeIngredient(id, count, tag);
     }
 
-    private static void addWeightedOffers(ServerLevel level, RandomSource random,
-                                          List<MerchantCatTradeDefinition> source, int count,
-                                          MerchantOffers output) {
-        if (source == null || source.isEmpty()) {
-            return;
-        }
-        List<MerchantCatTradeDefinition> available = new ArrayList<>(source);
+    private static void addWeightedOffers(RandomSource random, List<PreparedTrade> source,
+                                          int count, MerchantOffers output) {
+        List<PreparedTrade> available = new ArrayList<>(source);
+        long totalWeight = available.stream().mapToLong(trade -> trade.definition().weight()).sum();
         for (int i = 0; i < count && !available.isEmpty(); i++) {
-            MerchantCatTradeDefinition selected = removeWeighted(available, random);
-            MerchantOffer offer = createOffer(level, random, selected);
-            if (offer != null) {
-                output.add(offer);
+            long roll = rollWeight(random, totalWeight);
+            for (int index = 0; index < available.size(); index++) {
+                PreparedTrade trade = available.get(index);
+                int weight = trade.definition().weight();
+                roll -= weight;
+                if (roll < 0) {
+                    available.remove(index);
+                    totalWeight -= weight;
+                    output.add(createOffer(random, trade));
+                    break;
+                }
             }
         }
     }
 
-    private static MerchantCatTradeDefinition removeWeighted(List<MerchantCatTradeDefinition> entries,
-                                                             RandomSource random) {
-        int totalWeight = entries.stream().mapToInt(MerchantCatTradeDefinition::weight).sum();
-        int roll = random.nextInt(totalWeight);
-        for (int i = 0; i < entries.size(); i++) {
-            MerchantCatTradeDefinition entry = entries.get(i);
-            roll -= entry.weight();
-            if (roll < 0) {
-                entries.remove(i);
-                return entry;
-            }
+    private static long rollWeight(RandomSource random, long totalWeight) {
+        if (totalWeight <= Integer.MAX_VALUE) {
+            return random.nextInt((int) totalWeight);
         }
-        return entries.removeLast();
+        RandomGenerator sampler = random::nextLong;
+        return sampler.nextLong(totalWeight);
     }
 
-    private static MerchantOffer createOffer(ServerLevel level, RandomSource random,
-                                             MerchantCatTradeDefinition definition) {
-        Registry<Item> items = level.registryAccess().registryOrThrow(Registries.ITEM);
-        ResolvedIngredient buy = resolve(items, definition.buy(), random);
-        ResolvedIngredient sell = resolve(items, definition.sell(), random);
-        if (buy == null || sell == null) {
-            return null;
-        }
-        ItemCost displayedCost = new ItemCost(buy.item(), definition.buy().count());
-        ItemStack result = new ItemStack(sell.item(), definition.sell().count());
+    private static MerchantOffer createOffer(RandomSource random, PreparedTrade trade) {
+        MerchantCatTradeDefinition definition = trade.definition();
+        Item buy = select(random, definition.buy(), trade.buy());
+        Item sell = select(random, definition.sell(), trade.sell());
+        ItemCost displayedCost = new ItemCost(buy, definition.buy().count());
+        ItemStack result = new ItemStack(sell, definition.sell().count());
         if (definition.buy().tag()) {
             TagKey<Item> tag = TagKey.create(Registries.ITEM, definition.buy().id());
-            return new TaggedMerchantOffer(
-                    displayedCost, result, definition.maxUses(), tag, definition.buy().count());
+            return new TaggedMerchantOffer(displayedCost, result, definition.maxUses(), tag, definition.buy().count());
         }
         return new MerchantOffer(displayedCost, result, definition.maxUses(), 0, 0.05F);
     }
 
-    private static ResolvedIngredient resolve(Registry<Item> items,
-                                              MerchantCatTradeDefinition.TradeIngredient ingredient,
-                                              RandomSource random) {
-        if (!ingredient.tag()) {
-            Item item = items.get(ingredient.id());
-            return item == null ? null : new ResolvedIngredient(item);
-        }
-        TagKey<Item> tag = TagKey.create(Registries.ITEM, ingredient.id());
-        List<Holder<Item>> values = items.getTag(tag)
-                .map(named -> named.stream().toList())
-                .orElseGet(List::of);
-        if (values.isEmpty()) {
-            Constants.LOG.warn("猫猫商人交易引用了空物品 Tag: {}", ingredient.id());
-            return null;
-        }
-        return new ResolvedIngredient(values.get(random.nextInt(values.size())).value());
+    private static Item select(RandomSource random, MerchantCatTradeDefinition.TradeIngredient ingredient,
+                               List<Item> options) {
+        return ingredient.tag() ? options.get(random.nextInt(options.size())) : options.getFirst();
     }
 
-    private record ResolvedIngredient(Item item) {
+    private static List<Item> resolve(Registry<Item> items, MerchantCatTradeDefinition.TradeIngredient ingredient) {
+        if (!ingredient.tag()) {
+            Item item = items.getOptional(ingredient.id()).filter(value -> value != Items.AIR)
+                    .orElseThrow(() -> new IllegalArgumentException("无效交易物品 " + ingredient.id()));
+            return List.of(item);
+        }
+        TagKey<Item> tag = TagKey.create(Registries.ITEM, ingredient.id());
+        List<Item> candidates = items.getTag(tag)
+                .map(values -> values.stream().map(Holder::value).filter(item -> item != Items.AIR).toList())
+                .orElseGet(List::of);
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("空交易物品 Tag " + ingredient.id());
+        }
+        return candidates;
     }
+
+    private record PreparedTrade(MerchantCatTradeDefinition definition, List<Item> buy, List<Item> sell) {}
+
+    private record TradeCatalog(ReloadableServerRegistries.Holder registries,
+                                Map<MerchantCatTradePool, List<PreparedTrade>> pools) {}
 }

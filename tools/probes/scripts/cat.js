@@ -44,10 +44,9 @@ Probe.catLedger = function() {
 Probe.specimenWith = function(stack) {
     var items = this.type('com.meteorite.unsuspiciousblock.core.item.ModItems');
     var box = new (this.type('net.minecraft.world.item.ItemStack'))(items.SPECIMEN_BOX);
-    var contents = this.type('com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxContents');
-    var values = contents.read(box), previous = contents.copy(values);
-    values.set(0, stack);
-    contents.writeIfChanged(box, previous, values);
+    var components = this.type('net.minecraft.core.component.DataComponents');
+    var contents = this.type('net.minecraft.world.item.component.ItemContainerContents');
+    box.set(components.CONTAINER, contents.fromItems(this.type('java.util.List').of(stack)));
     return box;
 };
 Probe.prepareForeignToken = function() {

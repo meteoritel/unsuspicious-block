@@ -10,13 +10,13 @@
 | 附魔数据 | `data/unsuspiciousblock/enchantment/*.json`（1.21 数据驱动附魔定义） |
 | 附魔 Key | `core/enchantment/ModEnchantments.java`（4 个 `ResourceKey<Enchantment>`） |
 | 效果框架 | `core/enchantment/framework/`：`EnchantmentManager`、`EnchantmentEffects`、`effect/`、`trigger/`、`builtin/`（`FossilHunterEffect`、`TextileRecoveryEffect`、`PrecisionExcavationEffect`） |
-| 平台事件适配 | `platform/services/IEnchantmentEventAdapter.java`；由 `FabricEnchantmentEventAdapter` 与 `NeoForgeEnchantmentEventAdapter` 实现 |
+| 剪羊毛接入 | Fabric 的 `SheepMixin` 与 `NeoForgeEnchantmentEventAdapter` 创建共用触发上下文 |
 | 泥底打捞门槛 | `core/loottable/condition/ToolEnchantmentCondition.java` + `core/loottable/graph/RuntimeLootLinks.java` |
 | 失落书页锻造 | `core/enchantment/EnchantedBookRoller.java`；配方 `data/unsuspiciousblock/recipe/enchant_book_smithing.json` |
 | 附魔揭示 | `core/enchantment/reveal/`：`EnchantmentRevealManager`、`EnchantmentRevealConditions`、`IEnchantmentRevealCondition` |
 | 客户端展示 | `client/enchantment/EnchantmentRevealClientState.java`、`client/mixin/EnchantmentScreenMixin` |
 | 网络 | `SyncEnchantmentRevealListPayload`（见[网络与同步](../foundation/network.md)） |
-| Mixin | `core/mixin/enchantment/EnchantmentMenuMixin`、`core/mixin/container/SmithingMenuMixin`、`client/mixin/EnchantmentScreenMixin`；Fabric 端另有 `platform/mixin/interaction/{BrushableBlockEntityMixin,SheepMixin}` |
+| Mixin | `core/mixin/enchantment/EnchantmentMenuMixin`、`core/mixin/container/{SmithingMenuMixin,ItemCombinerMenuMixin}`、`client/mixin/EnchantmentScreenMixin`；Fabric 端另有 `platform/mixin/interaction/{BrushableBlockEntityMixin,SheepMixin}` |
 
 ## 2. 核心数据流
 
@@ -24,8 +24,8 @@
 
 ```mermaid
 flowchart TD
-    Evt["平台事件 (方块破坏 / 剪羊毛 / 刷拭可疑方块)"] --> Adapter["IEnchantmentEventAdapter — 转换为统一 TriggerContext"]
-    Adapter --> Dispatch["EnchantmentManager.dispatch / dispatchValue(triggerType, ctx)"]
+    Evt["方块采掘、剪羊毛、刷拭"] --> Ctx["记录统一 TriggerContext"]
+    Ctx --> Dispatch["EnchantmentManager.dispatch / dispatchValue(triggerType, ctx)"]
     Dispatch --> Lookup["查表取该 TriggerType 下所有注册项"]
     Lookup --> Holder["lookupEnchantment(registryAccess, key) 获取 Holder"]
     Holder --> Level{"findEnchantmentLevel > 0?"}
@@ -86,16 +86,13 @@ EnchantmentManager.register(ENTITY_SHEAR, TEXTILE_RECOVERY, new TextileRecoveryE
 EnchantmentManager.registerValueEffect(BRUSH_ITEM_DROP, PRECISION_EXCAVATION, new PrecisionExcavationEffect());
 ```
 
-平台事件经 SPI 接口 [`IEnchantmentEventAdapter`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/platform/services/IEnchantmentEventAdapter.java) 统一转换为 `TriggerContext` 后交给调度器。
+原版 Mixin 与 Loader 的事件接入各自创建 `TriggerContext` 并交给调度器。
 
 ### 5.1 化石猎手 (`FossilHunterEffect`)
 
-破坏方块事件到达 [`FossilHunterEffect`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/enchantment/framework/builtin/FossilHunterEffect.java) 后按以下顺序结算：
+`ServerPlayerGameModeMixin` 在成功采掘自然骨块时派发 `BLOCK_BREAK`，附魔等级取破坏前的工具快照。标记随实际移除清理，见[自然骨块追踪](../internals/entities-world-details.md)。
 
-1. 仅响应骨块（Bone Block）破坏；
-2. 调用 `NaturalBoneBlockTracker.consumeNatural` **消费自然生成标记**（无论后续是否命中奖励都必须清除标记）；
-3. 排除创造模式、关闭方块掉落、非自然生成（玩家或机器放置的骨块不触发）与 `50%` 未命中分支；
-4. `rollExtraLoot` 按维度选择 `overworld_bone_block` 或 `nether_bone_block` 战利品表，构造 `BLOCK` 参数集的 `LootParams`，并通过 `LootTrackingContext.root(..., FOSSIL_HUNTER, ...)` 与 `LootTrackingEvents.submit(..., immediate())` 结算产出并自动解锁考古笔记。
+[`FossilHunterEffect`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/enchantment/framework/builtin/FossilHunterEffect.java) 在开启方块掉落时按 `50%` 概率执行，使用当前维度的骨块战利品表与 `BLOCK` 参数集。产出通过 `LootCapture` 立即结算考古笔记，再作为物品掉落。
 
 ### 5.2 织物采集与精准发掘
 
@@ -112,7 +109,7 @@ EnchantmentManager.registerValueEffect(BRUSH_ITEM_DROP, PRECISION_EXCAVATION, ne
 
 ## 7. 失落书页锻造 (`EnchantedBookRoller`)
 
-玩家在锻造台放入**基页 + 书 + 失落书页**（数据配方 `enchant_book_smithing.json` 产出带 `unsuspiciousblock_pending_enchant` 标记的临时附魔书），取出成品时由 `SmithingMenuMixin` 拦截并调用服务端的 `EnchantedBookRoller.roll` 写入随机附魔（写入 `STORED_ENCHANTMENTS`，不经过 `ModRecipeSerializers`）：
+玩家在锻造台放入**基页 + 书 + 失落书页**（数据配方 `enchant_book_smithing.json` 产出带 `unsuspiciousblock_pending_enchant` 标记的临时附魔书），取出时由 `EnchantedBookRoller` 鉴定实际交付的物品栈并清除待鉴定键。普通取出由 `SmithingMenuMixin` 接入，快速移动在 `ItemCombinerMenuMixin` 找到空槽后鉴定，再执行原版扣料。
 
 ```mermaid
 flowchart TD
@@ -132,7 +129,7 @@ flowchart TD
 ## 9. 扩展点
 
 - **新增附魔**：在 `data/unsuspiciousblock/enchantment/` 添加定义 JSON → 在 `ModEnchantments` 添加 `ResourceKey` → 同步补充 `en_us.json` 与 `zh_cn.json`（遵循[文本格式规范](../foundation/text-format.md)）。
-- **新增附魔效果**：实现 `EnchantmentEffect` 或 `EnchantmentValueEffect<T>` 并在 `EnchantmentEffects.registerAll` 注册；如需新触发时机，先在 `TriggerType` 新增枚举并在 Fabric/NeoForge 双端 `IEnchantmentEventAdapter` 接入对应事件。
+- **新增附魔效果**：实现 `EnchantmentEffect` 或 `EnchantmentValueEffect<T>` 并在 `EnchantmentEffects.registerAll` 注册；如需新触发时机，在 `TriggerType` 登记并接入实际触发点，核对双 Loader 的事件时序。
 - **新增附魔揭示条件**：实现 `IEnchantmentRevealCondition` 并向 `EnchantmentRevealManager.registerCondition` 登记。
 - **调整失落书页分布**：修改 `EnchantedBookRoller.roll` 的概率分支与经验等级范围。
 

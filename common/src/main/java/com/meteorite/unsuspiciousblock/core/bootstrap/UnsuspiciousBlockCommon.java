@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.core.bootstrap;
 import com.meteorite.unsuspiciousblock.Constants;
 
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.EnchantmentEffects;
-import com.meteorite.unsuspiciousblock.core.enchantment.framework.EnchantmentManager;
 import com.meteorite.unsuspiciousblock.core.enchantment.reveal.EnchantmentRevealConditions;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingBootstrap;
 import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
@@ -18,7 +17,6 @@ public class UnsuspiciousBlockCommon {
     public static void init(Supplier<LootItemConditionType> toolEnchantmentType) {
         ModLootConditions.registerAnalysisHandlers(toolEnchantmentType);
         Constants.LOG.info(Constants.LOG_TAG + "Common init start (platform={})", Services.PLATFORM.getPlatformName());
-        EnchantmentManager.init(Services.ENCHANTMENT);
         EnchantmentEffects.registerAll();
         // 注册附魔揭示内建条件（服务端评估，决定是否下发完整候选列表）
         EnchantmentRevealConditions.register();

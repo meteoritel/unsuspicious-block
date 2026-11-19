@@ -83,6 +83,7 @@ public final class ShimmerLedger extends SavedData {
     private final Map<Long, Long> cooldowns = new HashMap<>();
     private long nextAttempt;
     private long lastMaintenanceTime = Long.MIN_VALUE;
+    private boolean hasLegacyExpirations;
 
     private ShimmerLedger() {
     }
@@ -90,18 +91,23 @@ public final class ShimmerLedger extends SavedData {
     // 取得该维度的账本，不存在时创建
     public static ShimmerLedger of(ServerLevel level) {
         ShimmerLedger ledger = level.getDataStorage().computeIfAbsent(FACTORY, FILE_NAME);
-        if (ledger.lastMaintenanceTime == level.getGameTime()) return ledger;
-        ledger.lastMaintenanceTime = level.getGameTime();
-        // 旧账本没有截止时间，迁移时最多保留一个配置寿命上限。
-        ledger.expirations.replaceAll((uuid, time) -> {
-            if (time < 0) {
-                ledger.setDirty();
-                return level.getGameTime() + Services.PANNING_CONFIG.getMaxLifetimeTicks();
-            }
-            return time;
-        });
-        ledger.expireDue(level.getGameTime());
+        long now = level.getGameTime();
+        if (ledger.lastMaintenanceTime != now) {
+            ledger.lastMaintenanceTime = now;
+            ledger.migrateLegacyExpirations(now);
+            ledger.expireDue(now);
+        }
         return ledger;
+    }
+
+    private void migrateLegacyExpirations(long now) {
+        if (!hasLegacyExpirations) {
+            return;
+        }
+        long deadline = now + Services.PANNING_CONFIG.getMaxLifetimeTicks();
+        expirations.replaceAll((uuid, time) -> time < 0 ? deadline : time);
+        hasLegacyExpirations = false;
+        setDirty();
     }
 
     private static ShimmerLedger load(CompoundTag tag, HolderLookup.Provider registries) {
@@ -117,8 +123,9 @@ public final class ShimmerLedger extends SavedData {
             ledger.register(entryTag.getUUID(UUID_TAG), BlockPos.of(entryTag.getLong(POS_TAG)), source,
                     readVariant(entryTag));
             if (source.hasLifetime()) {
-                ledger.expirations.put(entryTag.getUUID(UUID_TAG),
-                        entryTag.contains(EXPIRES_AT_TAG) ? entryTag.getLong(EXPIRES_AT_TAG) : -1L);
+                long expiresAt = entryTag.contains(EXPIRES_AT_TAG) ? entryTag.getLong(EXPIRES_AT_TAG) : -1L;
+                ledger.expirations.put(entryTag.getUUID(UUID_TAG), expiresAt);
+                ledger.hasLegacyExpirations |= expiresAt < 0;
             }
         }
         ListTag expiredTags = tag.getList(EXPIRED_TAG, Tag.TAG_COMPOUND);

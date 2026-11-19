@@ -175,12 +175,10 @@ public final class SpecimenBoxCurio implements ICurioItem {
     // 执行可能修改内部 ItemStack 的回调，并仅在内容实际变化时写回组件。
     private static void mutateInnerCurios(ItemStack boxStack, LivingEntity entity,
                                           Consumer<InnerCurio> action) {
-        NonNullList<ItemStack> items = SpecimenBoxContents.read(boxStack);
-        NonNullList<ItemStack> previous = SpecimenBoxContents.copy(items);
-        for (InnerCurio inner : findInnerCurios(items, entity)) {
-            action.accept(inner);
-        }
-        SpecimenBoxContents.writeIfChanged(boxStack, previous, items);
+        SpecimenBoxContents.edit(boxStack, items -> {
+            findInnerCurios(items, entity).forEach(action);
+            return null;
+        });
     }
 
     private static List<InnerCurio> findInnerCurios(ItemStack boxStack, LivingEntity entity) {

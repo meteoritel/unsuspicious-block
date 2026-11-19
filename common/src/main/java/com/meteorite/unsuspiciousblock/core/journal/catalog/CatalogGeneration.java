@@ -12,6 +12,8 @@ import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectio
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationConstraintCatalog;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ReloadableServerRegistries;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
@@ -60,6 +62,7 @@ public final class CatalogGeneration {
     private final Map<ResourceLocation, ExpandedTable> expansions;
     private final Map<String, String> sourceNames;
     private final RegistryAccess registries;
+    private final @Nullable ReloadableServerRegistries.Holder runtimeRegistries;
     private final Map<ResourceLocation, ScenarioBranchCatalog.Plan> branches = new HashMap<>();
     private long overlayRevision;
     private CatalogReadSnapshot readSnapshot;
@@ -69,7 +72,9 @@ public final class CatalogGeneration {
                              Map<ResourceLocation, String> tableHashes,
                              Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs,
                              Map<ResourceLocation, ExpandedTable> expansions,
-                             Map<String, String> sourceNames, RegistryAccess registries) {
+                             Map<String, String> sourceNames, RegistryAccess registries,
+                             @Nullable ReloadableServerRegistries.Holder runtimeRegistries) {
+        this.runtimeRegistries = runtimeRegistries;
         this.registries = registries;
         this.expansions = Map.copyOf(expansions);
         this.sourceNames = Map.copyOf(sourceNames);
@@ -92,7 +97,11 @@ public final class CatalogGeneration {
     public static CatalogGeneration empty(long generation) {
         return new CatalogGeneration(LootTableAnalysisSession.empty(generation),
                 CatalogStructure.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                RegistryAccess.EMPTY);
+                RegistryAccess.EMPTY, null);
+    }
+
+    boolean matchesResources(MinecraftServer server) {
+        return this.runtimeRegistries == server.reloadableRegistries();
     }
 
     public CatalogTableDto project(TableDefinition table) {

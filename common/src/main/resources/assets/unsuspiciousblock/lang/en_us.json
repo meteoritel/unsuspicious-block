@@ -1205,6 +1205,7 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.unsupported": "These rules contain unsupported conditions or luck requirements.",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.no_candidate": "No input in the issued domain satisfies this path.",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.reason": "Unresolved rule: %s",
+  "command.unsuspiciousblock.usb.journal.catalog.rebuild.failed": "Catalog rebuild failed",
   "command.unsuspiciousblock.usb.journal.catalog.rebuild.started": "Catalog rebuild started for %d loot tables. Use /usb journal catalog status to inspect the queue and catalog coverage.",
   "command.unsuspiciousblock.usb.journal.catalog.status": "Simulation queue: %1$s; simulated catalog coverage: %2$s / %3$s tables. If idle with missing tables, check simulation failure logs.",
   "command.unsuspiciousblock.usb.journal.catalog.busy": "busy",

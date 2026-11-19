@@ -17,7 +17,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -30,7 +29,7 @@ import java.util.List;
 /**
  * 化石猎手附魔效果：玩家破坏自然生成的骨块时，有概率额外 roll 一份对应维度的骨块掉落表。
  * <p>
- * 自然生成的判定由 {@link NaturalBoneBlockTracker} 负责——仅 chunk 首次生成时记录的位置才视为自然生成，
+ * 自然生成的判定由 {@link NaturalBoneBlockTracker} 负责——使用移除前的区块标记，
  * 玩家放置或其它模组机器放置的骨块均不触发额外奖励。
  */
 public final class FossilHunterEffect implements EnchantmentEffect {
@@ -46,21 +45,8 @@ public final class FossilHunterEffect implements EnchantmentEffect {
         var triggerCtx = ctx.triggerContext();
         BlockState state = triggerCtx.blockState;
         BlockPos pos = triggerCtx.pos;
-        // 仅骨块触发
-        if (state == null || pos == null || !state.is(Blocks.BONE_BLOCK)) {
-            return;
-        }
-
         ServerLevel level = triggerCtx.level;
-        // 先消费自然生成标记——无论是否发放奖励，被破坏的自然骨块都不应保留标记
-        boolean wasNatural = NaturalBoneBlockTracker.consumeNatural(level, pos);
-        // 创造模式或关闭方块掉落时不触发额外奖励
-        if (triggerCtx.player.isCreative()
-                || !level.getGameRules().getBoolean(GameRules.RULE_DOBLOCKDROPS)) {
-            return;
-        }
-        // 非自然生成则不额外掉落
-        if (!wasNatural) {
+        if (!level.getGameRules().getBoolean(GameRules.RULE_DOBLOCKDROPS)) {
             return;
         }
 

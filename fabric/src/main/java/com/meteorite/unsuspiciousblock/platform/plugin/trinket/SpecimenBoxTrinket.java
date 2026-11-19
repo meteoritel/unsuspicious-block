@@ -96,12 +96,10 @@ public final class SpecimenBoxTrinket implements Trinket {
     // 执行可能修改内部 ItemStack 的回调，并仅在内容实际变化时写回组件。
     private static void mutateInnerTrinkets(ItemStack boxStack, SlotReference boxReference,
                                             LivingEntity entity, Consumer<InnerTrinket> action) {
-        NonNullList<ItemStack> items = SpecimenBoxContents.read(boxStack);
-        NonNullList<ItemStack> previous = SpecimenBoxContents.copy(items);
-        for (InnerTrinket inner : findInnerTrinkets(items, boxReference, entity)) {
-            action.accept(inner);
-        }
-        SpecimenBoxContents.writeIfChanged(boxStack, previous, items);
+        SpecimenBoxContents.edit(boxStack, items -> {
+            findInnerTrinkets(items, boxReference, entity).forEach(action);
+            return null;
+        });
     }
 
     private static List<InnerTrinket> findInnerTrinkets(

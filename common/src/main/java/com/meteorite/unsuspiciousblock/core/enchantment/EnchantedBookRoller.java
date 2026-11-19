@@ -1,5 +1,9 @@
 package com.meteorite.unsuspiciousblock.core.enchantment;
 
+import com.meteorite.unsuspiciousblock.core.achievement.AchievementManager;
+import com.meteorite.unsuspiciousblock.core.achievement.ModAchievements;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.HolderSet;
@@ -36,7 +40,22 @@ public final class EnchantedBookRoller {
     private EnchantedBookRoller() {
     }
 
-    // 向给定附魔书写入随机附魔（按 30%/30%/40% 三类分布）
+    private static final String PENDING_ENCHANT_KEY = "unsuspiciousblock_pending_enchant";
+
+    /** 判断锻造产物是否仍待鉴定。 */
+    public static boolean isPending(ItemStack stack) {
+        return stack.is(Items.ENCHANTED_BOOK)
+                && stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).contains(PENDING_ENCHANT_KEY);
+    }
+
+    /** 鉴定正被交付的附魔书，并保留栈上的其他自定义数据。 */
+    public static void reveal(ItemStack stack, ServerPlayer player) {
+        roll(stack, player.serverLevel().getRandom(), player.serverLevel().registryAccess());
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.remove(PENDING_ENCHANT_KEY));
+        AchievementManager.grantIfNotAlready(player, ModAchievements.ANCIENT_SCHOLARSHIP);
+    }
+
+    /** 按失落书页配方的三档概率生成附魔。 */
     public static void roll(ItemStack book, RandomSource random, RegistryAccess registries) {
         HolderLookup.RegistryLookup<Enchantment> lookup = registries.lookupOrThrow(Registries.ENCHANTMENT);
         ItemEnchantments.Mutable result = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);

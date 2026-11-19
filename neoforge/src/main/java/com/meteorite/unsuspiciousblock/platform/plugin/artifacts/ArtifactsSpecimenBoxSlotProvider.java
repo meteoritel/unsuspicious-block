@@ -48,16 +48,18 @@ public final class ArtifactsSpecimenBoxSlotProvider
                 if (!equipped.is(ModItems.SPECIMEN_BOX)) {
                     continue;
                 }
-                NonNullList<ItemStack> innerItems = SpecimenBoxContents.read(equipped);
-                NonNullList<ItemStack> previous = SpecimenBoxContents.copy(innerItems);
-                for (ItemStack inner : innerItems) {
-                    if (!inner.is(ModItems.SPECIMEN_BOX)
-                            && !inner.isEmpty()
-                            && !CuriosApi.getItemStackSlots(inner, entity).isEmpty()) {
-                        result = reducer.apply(inner, result);
+                T beforeBox = result;
+                result = SpecimenBoxContents.edit(equipped, innerItems -> {
+                    T reduced = beforeBox;
+                    for (ItemStack inner : innerItems) {
+                        if (!inner.is(ModItems.SPECIMEN_BOX)
+                                && !inner.isEmpty()
+                                && !CuriosApi.getItemStackSlots(inner, entity).isEmpty()) {
+                            reduced = reducer.apply(inner, reduced);
+                        }
                     }
-                }
-                SpecimenBoxContents.writeIfChanged(equipped, previous, innerItems);
+                    return reduced;
+                });
             }
         }
         return result;

@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission.Publication;
 
@@ -37,7 +38,7 @@ import java.util.UUID;
  * 同一张表的两个参数组合是两个不同的问题，按表去重会让后一个请求把前一个顶掉。
  * <p>
  * 优先级：HIGH（玩家按需请求）先于 LOW（启动基准填充）。
- * 数据包重载期间通过 {@link #pauseForReload()} / {@link #resumeAfterReload()} 暂停消费。
+ * 模拟仅消费与服务器有效资源一致的目录代次。
  */
 public final class LootProbabilitySimulationWorker {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -95,7 +96,6 @@ public final class LootProbabilitySimulationWorker {
     private final Map<UUID, Integer> playerInFlight = new HashMap<>();
 
     private WorkItem current;
-    private volatile boolean paused = false;
     /**
      * 模拟结果回调（由调用方设置，如写入目录、广播等）
      */
@@ -300,30 +300,19 @@ public final class LootProbabilitySimulationWorker {
         return count;
     }
 
-    /**
-     * 清空队列（reload/flush 时丢弃旧任务）
-     */
-    public void clearQueue() {
+    /** 退役任务并返回尚未结束的玩家请求。 */
+    public List<CatalogSimulationSubmission> retire() {
+        List<CatalogSimulationSubmission> waiting = this.enqueued.values().stream()
+                .filter(item -> !item.extraRequesters.isEmpty())
+                .map(item -> new CatalogSimulationSubmission(item.request, item.publication, item.extraRequesters))
+                .toList();
         highQueue.clear();
         lowQueue.clear();
         current = null;
         enqueued.clear();
         failedInputs.clear();
         playerInFlight.clear();
-    }
-
-    /**
-     * 暂停消费（数据包重载前调用）
-     */
-    public void pauseForReload() {
-        paused = true;
-    }
-
-    /**
-     * 恢复消费（数据包重载完成后调用）
-     */
-    public void resumeAfterReload() {
-        paused = false;
+        return waiting;
     }
 
     /**
@@ -341,10 +330,10 @@ public final class LootProbabilitySimulationWorker {
     }
 
     /**
-     * 判断当前是否仍有模拟任务或正处于 reload 暂停阶段。
+     * 判断当前是否仍有模拟任务。
      */
     public boolean isBusy() {
-        return this.paused || this.current != null || !this.enqueued.isEmpty();
+        return this.current != null || !this.enqueued.isEmpty();
     }
 
     /**
@@ -352,7 +341,7 @@ public final class LootProbabilitySimulationWorker {
      * 所有操作（模拟、写 SavedData、写 catalog、广播、回调）均在主线程完成，无并发风险。
      */
     public void tick(MinecraftServer server) {
-        if (paused) return;
+        if (!ArchaeologyJournalServerCatalog.canExecute(server)) return;
         long deadlineNanos = System.nanoTime() + TICK_BUDGET_NANOS;
         boolean completedAny = false;
         ServerLevel level = server.overworld();

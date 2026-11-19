@@ -90,7 +90,7 @@ flowchart LR
 
 ### 4.2 纹饰陶轮台与半成品
 
-- **纹饰陶轮台**：`PotteryWheelBlock` 与 `PotteryWheelBlockEntity` 实现制陶工作站及漏斗自动化，由 `PotteryWheelMenu` / `PotteryWheelScreen` 提供界面与预览。`PotteryWheelRenderer` 根据方块状态渲染转盘、湿黏土和槽内水面。水瓶槽持有原版水瓶时，凹槽内显示使用原版静水动画与群系水色的水面。
+- **纹饰陶轮台**：`PotteryWheelBlock` 与 `PotteryWheelBlockEntity` 实现制陶工作站及漏斗自动化，由 `PotteryWheelMenu` / `PotteryWheelScreen` 提供界面与预览。服务端复用同一加工判定确定产物和材料成本，输入或资源代次变化时重算。材料齐备时，菜单预览实际产物。`PotteryWheelRenderer` 根据方块状态渲染转盘、湿黏土和槽内水面。水瓶槽持有原版水瓶时，凹槽内显示使用原版静水动画与群系水色的水面。
 - **未烧制陶罐与陶片**：`UnfiredDecoratedPotBlock`（配 `UnfiredDecoratedPotItem` 与方块实体）及 `UnfiredDecoratedSherdItem` 承载四面纹饰数据，烧制后经 `UnfiredDecoratedPotSmeltingRecipe` / `UnfiredDecoratedSherdSmeltingRecipe` 转为成品。
 
 ## 5. 可疑解析仪与考古铲
@@ -112,7 +112,7 @@ flowchart LR
 ## 6. 淘盘、标本箱与便携容器
 
 - **淘盘 (`PanItem` + `PanProfile`)**：铜、金、黑曜石三把盘共享基类，差异全部由 `PanProfile` 声明（耐久、铁砧材料、可采变体集合、幸运加成与再生概率），通过能力交集判定保证不支持的组合直接让位原版；详情见[淘洗系统](panning.md)。
-- **标本箱与 `CarriedItems`**：[`SpecimenBoxItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/SpecimenBoxItem.java) 为 `5` 格便携容器（`SpecimenBoxContents` 封装 `CONTAINER` 读写，`SpecimenBoxTooltip` 提供悬停预览）。放于背包、饰品栏时，箱内**第一层**可随身生效物品（如考古笔记、猫之瞳、猫之手绑定、兼容 Artifacts 饰品）经 `CarriedItems` 纳入个人携带范围；箱内不死图腾经 `SpecimenBoxTotemProxy` 代理原版死亡保护（详情见[方块与物品机制细节](../internals/blocks-items-details.md)）。
+- **标本箱与 `CarriedItems`**：[`SpecimenBoxItem`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/item/SpecimenBoxItem.java) 为 `5` 格便携容器（`CONTAINER` 组件持有箱内物品，`SpecimenBoxTooltip` 提供悬停预览）。放于背包、饰品栏时，箱内**第一层**可随身生效物品（如考古笔记、猫之瞳、猫之手绑定、兼容 Artifacts 饰品）经 `CarriedItems` 纳入个人携带范围；箱内不死图腾经 `SpecimenBoxTotemProxy` 代理原版死亡保护。服务端菜单绑定实际打开的物品栈并同步载体槽，每次交互从当前内容开始，和随身物品、图腾及饰品 adapter 共用 `SpecimenBoxContents` 的提交规则（详情见[方块与物品机制细节](../internals/blocks-items-details.md)）。
 
 ## 7. 结构回溯 (`RewindDustItem`)
 

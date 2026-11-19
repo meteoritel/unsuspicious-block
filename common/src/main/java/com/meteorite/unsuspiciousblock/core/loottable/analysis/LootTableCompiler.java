@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.meteorite.unsuspiciousblock.core.loottable.source.LootTableSourceSnapshot;
+import com.meteorite.unsuspiciousblock.Constants;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
@@ -11,35 +12,32 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 战利品表编译器——把单张表的 JSON 编译成上下文无关的 {@link CompiledLootTable}。
- * <p>
- * 编译只走本表自己的 JSON：遇到 {@code loot_table} 引用记录一个
- * {@link CompiledLootTable.ReferenceSite} 就停下，不跟随展开；遇到 {@code item} / {@code tag}
- * 记录物品路径，其中 item tag 在编译期展开为具体物品（签名按具体物品生成，存档缓存也按
- * 具体签名索引，因此 tag 展开结果必须进入编译产物，见规划 §3.4）。
- * <p>
- * 遍历结构（pool → entry → 组合 entry 子节点）与条件/函数链的累积次序与解析路径逐条对齐：
- * 条件链自外向内追加、函数链自外向内 prepend，任何顺序变化都会改变获取路径展示与签名。
- * 组合型条目（{@code group} / {@code alternatives} / {@code sequence}）只把自身条件并入继承链、
- * 不并入自身函数，这与既有解析行为一致。
- */
+/** 将单张表编译为带权重、条件及函数链的物品路径与具名引用。 */
 public final class LootTableCompiler {
     private static final Logger LOGGER = LogUtils.getLogger();
+
+    private static final String NESTED_TABLE = "loot_table";
+    private static final String CONDITION_KEY = "screen.unsuspiciousblock.archaeology_journal.condition.";
+    private static final LootConditionInfo ALWAYS = conjunction(List.of());
+    private static final LootConditionInfo NEVER = LootConditionInfo.branch(ConditionTree.Kind.ANY,
+            ConditionTree.ANY, Component.translatable(CONDITION_KEY + "any_of"), List.of());
 
     private final DynamicOps<JsonElement> lootOps;
 
@@ -216,8 +214,7 @@ public final class LootTableCompiler {
         List<LootConditionInfo> inheritedConditions = List.of();
         List<JsonElement> inheritedFunctions = List.of();
         boolean luckAffected;
-        /** 当前事件自身的 weight/quality 是否参与选择；group/sequence 的子节点不参与（见 walkChildren…）。 */
-        boolean weightApplies = true;
+        List<LuckSpec> inheritedLuckSpecs = List.of();
         /** 当前池的 {@code rolls} 常量；{@code null} 表示动态（"未知"而不是零）。 */
         Double poolRolls = null;
         /** 当前池的 {@code bonus_rolls} 常量；{@code null} 表示动态。 */
@@ -318,55 +315,104 @@ public final class LootTableCompiler {
         };
     }
 
-    private boolean walkArrayIfPresent(JsonObject object, String key, CompileState state) {
-        if (!object.has(key) || !object.get(key).isJsonArray()) {
-            return false;
-        }
-        walkArray(object.getAsJsonArray(key), state);
-        return true;
-    }
-
-    private void walkEntry(JsonObject object, CompileState state) {
-        String type = LootParseUtil.getString(object, "type", "");
-        List<LootConditionInfo> entryConditions = LootParseUtil.parseConditions(object, this.lootOps);
-
-        switch (LootParseUtil.normalizeType(type)) {
-            case "item" -> recordItem(object, state, entryConditions);
-            case "tag" -> recordTag(object, state, entryConditions);
-            case "loot_table" -> recordReferenceSite(object, state, entryConditions);
-            case "group", "alternatives", "sequence" ->
-                    walkChildrenWithInheritedConditions(object, state, entryConditions,
-                            !"alternatives".equals(LootParseUtil.normalizeType(type)));
-            default -> {
-                List<LootConditionInfo> previousConditions = state.inheritedConditions;
-                try {
-                    state.inheritedConditions = LootParseUtil.appendConditions(previousConditions, entryConditions);
-                    if (!walkArrayIfPresent(object, "children", state)) {
-                        walkArrayIfPresent(object, "entries", state);
-                    }
-                } finally {
-                    state.inheritedConditions = previousConditions;
-                }
+    // 返回条目是否成功展开。权重只在池选择候选时生效，不能控制组合短路。
+    private LootConditionInfo walkEntry(JsonObject object, CompileState state) {
+        String type = entryType(object);
+        List<LootConditionInfo> conditions = LootParseUtil.parseConditions(object, this.lootOps);
+        LootConditionInfo canRun = allOf(conditions);
+        return switch (type) {
+            case "item" -> {
+                recordItem(object, state, conditions);
+                yield canRun;
             }
-        }
+            case "tag" -> {
+                recordTag(object, state, conditions);
+                yield canRun;
+            }
+            case "empty", "dynamic" -> canRun;
+            case NESTED_TABLE -> {
+                recordNestedTable(object, state, conditions);
+                yield canRun;
+            }
+            case "group", "alternatives", "sequence" ->
+                    and(canRun, walkChildren(object, state, conditions, type));
+            default -> {
+                if (object.has("children")) {
+                    walkChildren(object, state, conditions, "group");
+                }
+                ResourceLocation id = ResourceLocation.tryParse(LootParseUtil.getString(object, "type", ""));
+                yield and(canRun, new LootConditionInfo(id == null ? ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "unreadable_entry") : id,
+                        Component.literal(type), null));
+            }
+        };
     }
 
-    // 组合型条目：只把自身条件并入继承链，子节点用 children 字段。
-    // 子节点是否参与"权重竞争"取决于组合类型：alternatives 按权重选一个，group/sequence 则全部产出，
-    // 因此后者的子节点权重根本不参与选择——把它当成门槛会在门槛分析里把可达条目误判为不可达。
-    private void walkChildrenWithInheritedConditions(JsonObject object, CompileState state,
-                                                      List<LootConditionInfo> entryConditions,
-                                                      boolean weightIgnored) {
-        List<LootConditionInfo> previousConditions = state.inheritedConditions;
-        boolean previousWeightApplies = state.weightApplies;
-        try {
-            state.inheritedConditions = LootParseUtil.appendConditions(previousConditions, entryConditions);
-            state.weightApplies = previousWeightApplies && !weightIgnored;
-            walkArrayIfPresent(object, "children", state);
-        } finally {
-            state.inheritedConditions = previousConditions;
-            state.weightApplies = previousWeightApplies;
+    private LootConditionInfo walkChildren(JsonObject object, CompileState state,
+            List<LootConditionInfo> conditions, String type) {
+        JsonElement children = object.get("children");
+        if (children == null || !children.isJsonArray()) {
+            return "alternatives".equals(type) ? NEVER : ALWAYS;
         }
+
+        JsonArray entries = children.getAsJsonArray();
+        List<LootConditionInfo> outer = state.inheritedConditions;
+        List<LootConditionInfo> inherited = LootParseUtil.appendConditions(outer, conditions);
+        LootConditionInfo next = ALWAYS;
+        try {
+            for (JsonElement child : entries) {
+                if (!child.isJsonObject() || next == NEVER) {
+                    continue;
+                }
+                state.inheritedConditions = next == ALWAYS ? inherited
+                        : LootParseUtil.appendConditions(inherited, List.of(next));
+                LootConditionInfo succeeded = walkEntry(child.getAsJsonObject(), state);
+                if (entries.size() == 1) {
+                    return succeeded;
+                }
+                next = switch (type) {
+                    case "alternatives" -> and(next, negate(succeeded));
+                    case "sequence" -> and(next, succeeded);
+                    default -> next;
+                };
+            }
+        } finally {
+            state.inheritedConditions = outer;
+        }
+        return "alternatives".equals(type) ? negate(next) : next;
+    }
+
+    private static LootConditionInfo allOf(List<LootConditionInfo> conditions) {
+        return switch (conditions.size()) {
+            case 0 -> ALWAYS;
+            case 1 -> conditions.getFirst();
+            default -> conjunction(conditions);
+        };
+    }
+
+    private static LootConditionInfo conjunction(List<LootConditionInfo> terms) {
+        return LootConditionInfo.branch(ConditionTree.Kind.ALL, ConditionTree.ALL,
+                Component.translatable(CONDITION_KEY + "all_of"), terms);
+    }
+
+    private static LootConditionInfo and(LootConditionInfo first, LootConditionInfo second) {
+        if (first == NEVER || second == NEVER) {
+            return NEVER;
+        }
+        if (first == ALWAYS) {
+            return second;
+        }
+        return second == ALWAYS ? first : conjunction(List.of(first, second));
+    }
+
+    private static LootConditionInfo negate(LootConditionInfo term) {
+        if (term == ALWAYS || term == NEVER) {
+            return term == ALWAYS ? NEVER : ALWAYS;
+        }
+        if (term.kind() == ConditionTree.Kind.NOT) {
+            return term.logicChildren().getFirst();
+        }
+        return LootConditionInfo.branch(ConditionTree.Kind.NOT, ConditionTree.NOT,
+                Component.translatable(CONDITION_KEY + "inverted", term.description()), List.of(term));
     }
 
     private void recordItem(JsonObject object, CompileState state, List<LootConditionInfo> entryConditions) {
@@ -376,7 +422,7 @@ public final class LootTableCompiler {
         }
         state.events.add(new CompiledLootTable.ItemPath(itemId, null, entryConditions,
                 ownFunctions(object), state.inheritedConditions, state.inheritedFunctions, state.luckAffected,
-                luckSpec(object, state)));
+                state.inheritedLuckSpecs, luckSpec(object, state)));
     }
 
     // 物品 tag 在编译期展开为具体物品；展开顺序与注册表遍历顺序一致
@@ -404,33 +450,84 @@ public final class LootTableCompiler {
         for (ResourceLocation itemId : itemIds) {
             state.events.add(new CompiledLootTable.ItemPath(itemId, tagId, entryConditions,
                     ownFunctions, state.inheritedConditions, state.inheritedFunctions, state.luckAffected,
-                    luckSpec));
+                    state.inheritedLuckSpecs, luckSpec));
         }
     }
 
-    // 引用位置只记录不跟随；目标缺失、成环与排除集判定都由投影层按图处理
-    private void recordReferenceSite(JsonObject object, CompileState state,
-                                      List<LootConditionInfo> entryConditions) {
-        String rawId = object.has("value")
-                ? object.get("value").getAsString()
-                : LootParseUtil.getString(object, "name", "");
-        ResourceLocation target = ResourceLocation.tryParse(rawId);
-        if (target == null) {
-            LOGGER.warn("loot_table 引用缺少 value/name 字段，跳过展开");
+    private void recordNestedTable(JsonObject object, CompileState state, List<LootConditionInfo> conditions) {
+        JsonElement value = nestedValue(object);
+        if (value != null && value.isJsonObject()) {
+            List<LootConditionInfo> outerConditions = state.inheritedConditions;
+            List<JsonElement> outerFunctions = state.inheritedFunctions;
+            List<LuckSpec> outerLuck = state.inheritedLuckSpecs;
+            try {
+                state.inheritedConditions = LootParseUtil.appendConditions(outerConditions, conditions);
+                state.inheritedFunctions = LootParseUtil.prependFunctions(outerFunctions, object);
+                List<LuckSpec> luck = new ArrayList<>(outerLuck);
+                luck.add(luckSpec(object, state));
+                state.inheritedLuckSpecs = List.copyOf(luck);
+                walkNode(value, state);
+            } finally {
+                state.inheritedConditions = outerConditions;
+                state.inheritedFunctions = outerFunctions;
+                state.inheritedLuckSpecs = outerLuck;
+            }
             return;
         }
-        state.events.add(new CompiledLootTable.ReferenceSite(target, entryConditions, ownFunctions(object),
-                state.inheritedConditions, state.inheritedFunctions, state.luckAffected,
-                luckSpec(object, state)));
+
+        ResourceLocation target = namedReference(value);
+        if (target != null) {
+            state.events.add(new CompiledLootTable.ReferenceSite(target, conditions, ownFunctions(object),
+                    state.inheritedConditions, state.inheritedFunctions, state.luckAffected,
+                    state.inheritedLuckSpecs, luckSpec(object, state)));
+        }
     }
 
-    // 条目自身权重/品质 + 所在池的抽取次数——门槛算法所需的全部静态输入（决策 34）。
-    // 权重不参与选择时（group/sequence 的子节点）按原版缺省处理：那里的 weight/quality 不构成门槛，
-    // 照抄数值会让门槛分析把"组内必然产出"的条目误判为需要幸运或不可达。
-    private static LuckSpec luckSpec(JsonObject entry, CompileState state) {
-        if (!state.weightApplies) {
-            return new LuckSpec(1, 0, state.poolRolls, state.poolBonusRolls);
+    /** 按条目结构收集本表里的具名引用，包括内联表中的引用。 */
+    public static Set<ResourceLocation> namedReferences(@Nullable JsonElement json) {
+        Set<ResourceLocation> result = new LinkedHashSet<>();
+        collectNamedReferences(json, result);
+        return Collections.unmodifiableSet(result);
+    }
+
+    private static void collectNamedReferences(@Nullable JsonElement json, Set<ResourceLocation> result) {
+        if (json == null) {
+            return;
         }
+        if (json.isJsonArray()) {
+            json.getAsJsonArray().forEach(entry -> collectNamedReferences(entry, result));
+        } else if (json.isJsonObject()) {
+            JsonObject object = json.getAsJsonObject();
+            if (NESTED_TABLE.equals(entryType(object))) {
+                JsonElement value = nestedValue(object);
+                ResourceLocation name = namedReference(value);
+                if (name == null) {
+                    collectNamedReferences(value, result);
+                } else {
+                    result.add(name);
+                }
+            } else {
+                collectNamedReferences(object.get("pools"), result);
+                collectNamedReferences(object.get("entries"), result);
+                collectNamedReferences(object.get("children"), result);
+            }
+        }
+    }
+
+    private static String entryType(JsonObject object) {
+        return LootParseUtil.normalizeType(LootParseUtil.getString(object, "type", ""));
+    }
+
+    private static @Nullable JsonElement nestedValue(JsonObject entry) {
+        return entry.has("value") ? entry.get("value") : entry.get("name");
+    }
+
+    private static @Nullable ResourceLocation namedReference(@Nullable JsonElement value) {
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
+                ? ResourceLocation.tryParse(value.getAsString()) : null;
+    }
+
+    private static LuckSpec luckSpec(JsonObject entry, CompileState state) {
         return new LuckSpec(intField(entry, "weight", 1), intField(entry, "quality", 0),
                 state.poolRolls, state.poolBonusRolls);
     }

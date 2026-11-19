@@ -1,7 +1,5 @@
 package com.meteorite.unsuspiciousblock.core.enchantment.framework;
 
-import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.platform.services.IEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EffectContext;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EnchantmentEffect;
 import com.meteorite.unsuspiciousblock.core.enchantment.framework.effect.EnchantmentValueEffect;
@@ -20,7 +18,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-/** 附魔效果统一调度器——接收来自 Platform Adapter 的触发事件，查找已注册的效果组件并执行 */
+/** 附魔效果统一调度器——从共用触发上下文查找附魔并执行已注册效果 */
 public final class EnchantmentManager {
 
     // 副作用效果注册表：按触发类型分组
@@ -30,13 +28,6 @@ public final class EnchantmentManager {
     private static final Map<TriggerType, List<ValueEffectEntry<?>>> VALUE_EFFECT_REGISTRY = new EnumMap<>(TriggerType.class);
 
     private EnchantmentManager() {}
-
-    // 初始化：注入平台适配器并注册事件监听
-    public static void init(IEnchantmentEventAdapter adapter) {
-        adapter.registerListeners();
-        Constants.LOG.info(Constants.LOG_TAG + "Enchantment system initialized (adapter={})",
-                adapter.getClass().getSimpleName());
-    }
 
     // 注册副作用效果组件
     public static void register(TriggerType triggerType, ResourceKey<Enchantment> enchantmentKey,
@@ -52,7 +43,7 @@ public final class EnchantmentManager {
                 .add(new ValueEffectEntry<>(enchantmentKey, effect));
     }
 
-    // 副作用事件入口——由 Platform Adapter 调用
+    // 副作用触发入口
     public static void dispatch(TriggerType triggerType, TriggerContext ctx) {
         List<EffectEntry> entries = EFFECT_REGISTRY.get(triggerType);
         if (entries == null || entries.isEmpty()) return;

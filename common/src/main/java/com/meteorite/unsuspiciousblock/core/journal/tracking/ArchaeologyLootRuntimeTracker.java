@@ -65,7 +65,7 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         if (changed) {
             JournalStateHandler.syncState(player);
-            triggerPrioritySimulation(commit.rootContext().rootTableId());
+            ArchaeologyJournalServerCatalog.enqueueBaselinePriority(player.server, commit.rootContext().rootTableId());
         }
     }
 
@@ -87,11 +87,6 @@ public final class ArchaeologyLootRuntimeTracker {
         ExcavationLogEntry entry = new ExcavationLogEntry(UUID.randomUUID(), trackingContext.lootSource(), context,
                 timestamp, timestamp, normalizedLoot, normalizedLoot, "", commit.tableStack());
         upsertForTrackedTables(player, trackingContext.rootTableId(), entry, null);
-    }
-
-    // 解锁触发：若该表尚未纳入概率缓存，向后台工作线程插队模拟它的基准输入
-    private static void triggerPrioritySimulation(ResourceLocation tableId) {
-        ArchaeologyJournalServerCatalog.enqueueBaselinePriority(tableId);
     }
 
     @Nullable

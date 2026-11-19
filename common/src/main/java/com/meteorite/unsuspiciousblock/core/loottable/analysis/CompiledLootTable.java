@@ -70,6 +70,9 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
 
         /** 当前路径在权重竞争与奖励抽取两处的原始数值；无法静态求值的成分为 {@code null}。 */
         LuckSpec luckSpec();
+
+        /** 进入内联表前必须通过的外层池与条目选择。 */
+        List<LuckSpec> inheritedLuckSpecs();
     }
 
     /**
@@ -83,12 +86,14 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
                            List<LootConditionInfo> inheritedConditions,
                            List<JsonElement> inheritedFunctions,
                            boolean luckAffected,
+                           List<LuckSpec> inheritedLuckSpecs,
                            LuckSpec luckSpec) implements Event {
         public ItemPath {
             entryConditions = List.copyOf(entryConditions);
             entryFunctions = List.copyOf(entryFunctions);
             inheritedConditions = List.copyOf(inheritedConditions);
             inheritedFunctions = List.copyOf(inheritedFunctions);
+            inheritedLuckSpecs = List.copyOf(inheritedLuckSpecs);
             luckSpec = luckSpec == null ? LuckSpec.DEFAULT : luckSpec;
         }
     }
@@ -105,12 +110,14 @@ public record CompiledLootTable(ResourceLocation id, String declaredType, List<E
                                 List<LootConditionInfo> inheritedConditions,
                                 List<JsonElement> inheritedFunctions,
                                 boolean luckAffected,
-                                LuckSpec luckSpec) implements Event {
+                                List<LuckSpec> inheritedLuckSpecs,
+                           LuckSpec luckSpec) implements Event {
         public ReferenceSite {
             siteConditions = List.copyOf(siteConditions);
             siteFunctions = List.copyOf(siteFunctions);
             inheritedConditions = List.copyOf(inheritedConditions);
             inheritedFunctions = List.copyOf(inheritedFunctions);
+            inheritedLuckSpecs = List.copyOf(inheritedLuckSpecs);
             luckSpec = luckSpec == null ? LuckSpec.DEFAULT : luckSpec;
         }
     }

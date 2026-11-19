@@ -192,6 +192,15 @@ public class MerchantCat extends SpiritCat implements Merchant {
                 || !(this.level() instanceof ServerLevel level)) {
             return;
         }
+        if (!ownsMerchantSlot(level)) {
+            if (level.getNearestPlayer(this, ACTIVE_PLAYER_RANGE) == null) {
+                this.discard();
+                return;
+            }
+            if (this.phase != MerchantCatPhase.DISSIPATE) {
+                this.setPhase(MerchantCatPhase.DISSIPATE);
+            }
+        }
         if (this.activityCenter == null) {
             this.activityCenter = this.blockPosition();
         }
@@ -452,6 +461,10 @@ public class MerchantCat extends SpiritCat implements Merchant {
         return true;
     }
 
+    private boolean ownsMerchantSlot(ServerLevel level) {
+        return this.isDebugDuty() || MerchantCatSpawnData.get(level).isActive(this.getUUID());
+    }
+
     @Override
     public @NotNull InteractionResult mobInteract(@NotNull Player player, @NotNull InteractionHand hand) {
         if (!this.isDutyActive()) {
@@ -463,6 +476,10 @@ public class MerchantCat extends SpiritCat implements Merchant {
         if (!(player instanceof ServerPlayer serverPlayer) || !this.isQualified(serverPlayer)) {
             player.displayClientMessage(
                     Component.translatable("message.unsuspiciousblock.merchant_cat.unqualified"), true);
+            return InteractionResult.CONSUME;
+        }
+        if (!ownsMerchantSlot(serverPlayer.serverLevel())
+                || this.getSpiritLifetimeRemaining() == 0 && this.tradingPlayer != player) {
             return InteractionResult.CONSUME;
         }
         if (this.tradingPlayer != null && this.tradingPlayer != player) {
@@ -551,7 +568,7 @@ public class MerchantCat extends SpiritCat implements Merchant {
 
     @Override
     public void remove(Entity.@NotNull RemovalReason reason) {
-        if (!this.level().isClientSide && this.level() instanceof ServerLevel serverLevel) {
+        if (reason.shouldDestroy() && this.level() instanceof ServerLevel serverLevel) {
             MerchantCatSpawnData.get(serverLevel).clearActive(this.getUUID());
         }
         super.remove(reason);

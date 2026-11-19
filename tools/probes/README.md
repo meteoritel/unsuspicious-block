@@ -84,6 +84,9 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | `cat-ledger` | 专项 / model | 独立状态的关系门槛、冷却边界、去重、阶段、命数和序列化 |
 | `cat-carried-binding` | 专项 / server | 第一层标本箱绑定写回、他人身份、额外空白信物规则 |
 | `simulation-reload` | 专项 / gui | 真实模拟与拒绝回执、重载代次、旧 DTO 接收规则和新请求 |
+| `core-architecture-inventory` | 专项 / server | 标本箱、失落书页、自然骨块、陶轮及世界状态到期 |
+| `core-architecture-catalog` | 专项 / server | 组合条目、内联引用、目录重建、投影耗时和商人交易池 |
+| `core-architecture-storage` | 专项 / server | 商人与淘洗点旧 NBT 的一次迁移、正常停服与重启读取 |
 | `recipe-card-export` | 可选 / gui | JEI public layout、筛选清单、串行 PNG、请求状态与来源清单 |
 
 `model` 仅创建独立状态、显式传入时间并调用真实 Java 规则。淘洗由正常客户端长按进入 use/tick/finish 流程。模拟拒绝例通过公开目录接收 Interface 构造客户端未签发工具输入，服务端签发目录保持真实；旧 DTO 以实际 Codec 保存，在 reload 后直接调用客户端接收 Interface，覆盖代次过滤。

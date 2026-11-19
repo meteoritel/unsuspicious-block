@@ -70,11 +70,10 @@ unsuspiciousBlock-1.21.1-multi/
 flowchart TD
     Entry["平台入口初始化 (Fabric / NeoForge)"] --> Init["UnsuspiciousBlockCommon.init(toolEnchantmentType)"]
     Init --> S1["1. ModLootConditions.registerAnalysisHandlers (绑定工具附魔条件类型与描述符)"]
-    S1 --> S2["2. EnchantmentManager.init(...)"]
-    S2 --> S3["3. EnchantmentEffects.registerAll()"]
-    S3 --> S4["4. EnchantmentRevealConditions.register()"]
-    S4 --> S5["5. LootTrackingBootstrap.registerListeners()"]
-    S5 --> S6["6. Services.CAT.registerListeners()"]
+    S1 --> S2["2. EnchantmentEffects.registerAll()"]
+    S2 --> S3["3. EnchantmentRevealConditions.register()"]
+    S3 --> S4["4. LootTrackingBootstrap.registerListeners()"]
+    S4 --> S5["5. Services.CAT.registerListeners()"]
 ```
 
 平台向 `init` 传入工具附魔条件类型的 `Supplier`（Fabric 预先即时注册，NeoForge 传入 `DeferredHolder`）。初始化阶段仅保存引用，实际条件求值发生在注册表就绪之后（见[注册架构](registration.md)）。

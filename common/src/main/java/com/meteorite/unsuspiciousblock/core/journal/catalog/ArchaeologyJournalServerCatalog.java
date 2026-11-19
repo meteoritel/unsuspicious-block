@@ -105,25 +105,8 @@ import java.util.stream.Stream;
  */
 public final class ArchaeologyJournalServerCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
-    /**
-     * 统计口径版本——它的唯一用途就是"改了会影响数字的东西，就让旧测量值全部作废"。
-     * <p>
-     * v19：场景键改为**稳定身份**（{@code baseline} / {@code scene-N}），不再编码条件指纹。
-     * 指纹（{@code entity_properties} / {@code location_check} 等）跨 JVM 运行不重复，旧存档里那批
-     * 指纹键属于"同一个场景的另一个名字"，会因为 LRU 按参数组合计数而既不被覆盖也不被淘汰，
-     * 永久留在存档里。升版本让它们整体作废，避免留下一批孤儿条目。
-     * <p>
-     * v18：输入的参数旋钮（幸运、工具、附魔等级）此前**没有真正进入抽取**——任务用合成后的 profile
-     * 开条件作用域，却用场景自带的 profile 构造 {@code LootParams}，于是每次模拟实际上都跑在
-     * "默认工具 + 幸运 1.0"上。修好之后，旧存档里那批数字的统计口径与现在不同，必须整体失效，
-     * 否则它们会被当作缓存命中继续展示。
-     * <p>
-     * v22：函数规则描述改为结构化（{@code LootFunctionInfo}）后，静态规则参与目录摘要、条目 tooltip
-     * 与函数条件归属都变了，且测量里新增了运行时函数观测摘要。旧测量是按旧描述规则算出来的，
-     * 沿用会展示过期口径；{@code LootProbabilityData} 的 {@code format_version} 同时升到 5，
-     * 两者共同保证旧数据不会被当成缓存命中。
-     */
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v28";
+    // 分析语义影响概率缓存身份，改动测量口径时更新此版本。
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v29";
 
     /**
      * 唯一发布点：整代目录状态一次成型后整体替换。
@@ -133,47 +116,80 @@ public final class ArchaeologyJournalServerCatalog {
      * 代次计数器；仅在主线程递增。
      */
     private static long generationCounter;
-    private static volatile boolean loaded;
+    private static boolean loadAttempted;
+    private static boolean rebuildFailed;
 
     private ArchaeologyJournalServerCatalog() {
     }
 
-    /**
-     * 非阻塞加载：构建新一代目录 → 从 SavedData 恢复缓存 → 未缓存表入队后台模拟。
-     * 调用后目录立即可用（仅含缓存表），未缓存表的概率为 "?" 占位符，后台模拟完成后渐进填充。
-     */
+    /** 首次启动时构建目录。后续失败由重载或管理命令触发重试。 */
     public static void ensureLoaded(MinecraftServer server) {
-        if (loaded) return;
-
-        if (!rebuild(server)) {
-            currentGeneration = CatalogGeneration.empty(++generationCounter);
-            loaded = true;
+        if (!loadAttempted) {
+            rebuild(server, CachePolicy.REUSE);
         }
     }
 
-    /** 发布完整的新代目录；构建失败时保留上一代与其模拟队列。 */
+    /** 资源或配置更新后构建并发布新目录。 */
     public static boolean rebuild(MinecraftServer server) {
+        return rebuild(server, CachePolicy.REUSE);
+    }
+
+    /** 候选目录成功构建后废弃旧概率缓存，并重新测量。 */
+    public static boolean rebuildWithoutCache(MinecraftServer server) {
+        return rebuild(server, CachePolicy.REPLACE);
+    }
+
+    private static boolean rebuild(MinecraftServer server, CachePolicy policy) {
+        loadAttempted = true;
         BuildResult buildResult;
         try {
-            buildResult = buildGeneration(server);
-        } catch (Exception exception) {
+            buildResult = buildGeneration(server, policy);
+            buildResult.generation().readSnapshot();
+        } catch (RuntimeException exception) {
+            rebuildFailed = true;
             LOGGER.error("加载考古战利品表目录失败", exception);
+            if (!canExecute(server)) {
+                retireSimulations(server);
+            }
             return false;
         }
-        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
-        if (worker != null) worker.clearQueue();
+
+        if (policy == CachePolicy.REPLACE) {
+            LootProbabilityData.get(server.overworld()).clear();
+        }
         LootResultPreviewCache.clear();
-        currentGeneration = buildResult.generation();
-        loaded = true;
-        enqueueSimulation(server, buildResult.generation(), buildResult.uncachedRequests());
+        CatalogGeneration generation = buildResult.generation();
+        currentGeneration = generation;
+        rebuildFailed = false;
+        retireSimulations(server);
+        enqueueSimulation(server, generation, buildResult.uncachedRequests());
+        CatalogSimulationDelivery.broadcastHash(server, generation.generation());
         return true;
     }
 
-    /**
-     * 在局部对象上构建整代目录状态；全部成功后才由调用方发布。
-     * 失败时抛出，由 {@link #ensureLoaded} 发布明确的空状态。
-     */
-    private static BuildResult buildGeneration(MinecraftServer server) {
+    private static void retireSimulations(MinecraftServer server) {
+        LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
+        if (worker != null) {
+            for (CatalogSimulationSubmission submission : worker.retire()) {
+                CatalogSimulationDelivery.deliver(server, submissionResult(SubmissionOutcome.STALE, submission, null));
+            }
+        }
+    }
+
+    /** 当前资源与已发布目录一致时，模拟器可以读取运行时表。 */
+    public static boolean canExecute(MinecraftServer server) {
+        CatalogGeneration generation = currentGeneration;
+        return generation != null && generation.matchesResources(server);
+    }
+
+    /** 最近一次目录构建是否失败。 */
+    public static boolean hasRebuildFailed() {
+        return rebuildFailed;
+    }
+
+    private enum CachePolicy { REUSE, REPLACE }
+
+    private static BuildResult buildGeneration(MinecraftServer server, CachePolicy policy) {
         long generation = ++generationCounter;
 
         // 1. 捕获本轮资源快照（全表有效原文 + 完整资源栈），编译与哈希共用同一次读盘
@@ -257,7 +273,7 @@ public final class ArchaeologyJournalServerCatalog {
         if (!unavailableReasons.isEmpty()) LOGGER.warn("战利品表不可用原因：{}", unavailableReasons);
         CatalogGeneration catalogGeneration = new CatalogGeneration(
                 loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs,
-                expansions, sourceNames, server.registryAccess());
+                expansions, sourceNames, server.registryAccess(), server.reloadableRegistries());
 
         // 6. 从 SavedData 恢复已缓存的**基准输入**，写入当代 overlay；不可用的表既不入队也不读缓存
         LootProbabilityData probabilityData = LootProbabilityData.get(level);
@@ -277,7 +293,7 @@ public final class ArchaeologyJournalServerCatalog {
             String hash = tableHashes.getOrDefault(tableId, "");
             SimulationConstraintCatalog constraint = constraintCatalogs.get(tableId);
             SimulationInput baseline = constraint.baselineInput();
-            if (probabilityData.needsResimulation(tableId, hash)) {
+            if (policy == CachePolicy.REPLACE || probabilityData.needsResimulation(tableId, hash)) {
                 hashChanged++;
             } else if (probabilityData.getMeasurement(tableId, baseline.key()) != null) {
                 catalogGeneration.publishSimulated(deriveTable(
@@ -300,8 +316,7 @@ public final class ArchaeologyJournalServerCatalog {
                         + "{} 个不可用（共 {} 个表）",
                 restored, uncached.size(), hashChanged, missingInput,
                 unavailableReasons.size(), staticTables.size());
-        return new BuildResult(catalogGeneration, List.copyOf(uncached),
-                Set.copyOf(unavailableReasons.keySet()));
+        return new BuildResult(catalogGeneration, List.copyOf(uncached));
     }
 
     /**
@@ -377,9 +392,9 @@ public final class ArchaeologyJournalServerCatalog {
                                     ScenarioBranchCatalog.Plan branches) {
     }
 
-    public static @Nullable SimulationContext simulationContext(ResourceLocation id) {
+    public static @Nullable SimulationContext simulationContext(MinecraftServer server, ResourceLocation id) {
         CatalogGeneration generation = currentGeneration;
-        if (generation == null || generation.constraintCatalog(id) == null) return null;
+        if (generation == null || !generation.matchesResources(server) || generation.constraintCatalog(id) == null) return null;
         return new SimulationContext(generation.generation(), generation.tableHash(id),
                 generation.constraintCatalog(id), generation.planningTable(id), generation.branches(id));
     }
@@ -452,7 +467,8 @@ public final class ArchaeologyJournalServerCatalog {
                                             List<String> enabledConditions, ScenarioParams params,
                                             boolean fetchSelected) {
         CatalogGeneration generation = currentGeneration;
-        if (generation == null || !generation.isTracked(tableId) || !hash.equals(generation.tableHash(tableId))) {
+        if (generation == null || !generation.matchesResources(player.server)
+                || !generation.isTracked(tableId) || !hash.equals(generation.tableHash(tableId))) {
             throw new IllegalArgumentException("stale_hash");
         }
         SimulationConstraintCatalog constraint = generation.constraintCatalog(tableId);
@@ -481,6 +497,9 @@ public final class ArchaeologyJournalServerCatalog {
         CatalogGeneration generation = currentGeneration;
         if (generation == null || !generation.isTracked(tableId)) {
             return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
+        }
+        if (!generation.matchesResources(player.server)) {
+            return new OnDemandResult(OnDemandOutcome.STALE_HASH, null);
         }
         TableDefinition raw = generation.staticTable(tableId);
         TableDefinition planningTable = generation.planningTable(tableId);
@@ -536,9 +555,9 @@ public final class ArchaeologyJournalServerCatalog {
     /**
      * 玩家解锁一张表时的插队模拟——把它基准输入提到高优先级队列。
      */
-    public static void enqueueBaselinePriority(ResourceLocation tableId) {
+    public static void enqueueBaselinePriority(MinecraftServer server, ResourceLocation tableId) {
         CatalogGeneration generation = currentGeneration;
-        if (generation == null || generation.hasSimulated(tableId)) {
+        if (generation == null || !generation.matchesResources(server) || generation.hasSimulated(tableId)) {
             return;
         }
         TableDefinition raw = generation.staticTable(tableId);
@@ -653,7 +672,8 @@ public final class ArchaeologyJournalServerCatalog {
         var request = submission.request();
         if (!submission.claim()) return submissionResult(SubmissionOutcome.DUPLICATE, submission, null);
         CatalogGeneration generation = currentGeneration;
-        if (generation == null || generation.generation() != request.generation()
+        if (generation == null || !generation.matchesResources(server)
+                || generation.generation() != request.generation()
                 || !generation.tableHash(request.tableId()).equals(request.tableHash())
                 || !result.tableId().equals(request.tableId()) || !result.input().equals(request.input()))
             return submissionResult(SubmissionOutcome.STALE, submission, null);
@@ -719,16 +739,8 @@ public final class ArchaeologyJournalServerCatalog {
 
     // 计算整个目录内容的 SHA-256 哈希（用于按需同步比对）；缓存与失效都在当代内完成
     public static String computeCatalogHash() {
-        if (!loaded) return "";
         CatalogGeneration generation = currentGeneration;
         return generation == null ? "" : generation.catalogHash();
-    }
-
-    /**
-     * 是否已完成首轮加载；平台重载监听器用它区分"启动时的首次资源加载"与真正的重载。
-     */
-    public static boolean isLoaded() {
-        return loaded;
     }
 
     /**
@@ -736,7 +748,8 @@ public final class ArchaeologyJournalServerCatalog {
      */
     public static void invalidate() {
         currentGeneration = null;
-        loaded = false;
+        loadAttempted = false;
+        rebuildFailed = false;
         // 预览栈按签名内容缓存，跨代仍然有效；此处只做释放以限制内存
         LootResultPreviewCache.clear();
     }
@@ -1022,7 +1035,6 @@ public final class ArchaeologyJournalServerCatalog {
      * 一轮构建的产物：可发布的当代目录、待入队模拟的基准输入，以及无法模拟的表。
      */
     private record BuildResult(CatalogGeneration generation,
-                               List<LootProbabilitySimulationWorker.SimulationRequest> uncachedRequests,
-                               Set<ResourceLocation> unavailableTables) {
+                               List<LootProbabilitySimulationWorker.SimulationRequest> uncachedRequests) {
     }
 }

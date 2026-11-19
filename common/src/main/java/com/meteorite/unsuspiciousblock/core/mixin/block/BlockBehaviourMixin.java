@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 骨块被非玩家路径移除时清除自然生成标记；追踪容器被破坏时 flush 日志条目。 */
+/** 骨块移除时清除自然生成标记；追踪容器被破坏时 flush 日志条目。 */
 @Mixin(BlockBehaviour.class)
 public abstract class BlockBehaviourMixin {
     @Inject(
@@ -25,17 +25,14 @@ public abstract class BlockBehaviourMixin {
     private void unsuspiciousblock$onBlockRemove(BlockState state, Level level, BlockPos pos,
                                                  BlockState newState, boolean movedByPiston,
                                                  CallbackInfo ci) {
-        if (!(level instanceof ServerLevel serverLevel) || movedByPiston) {
+        if (!(level instanceof ServerLevel serverLevel)) {
             return;
         }
-        // 骨块非活塞移除时，若非玩家破坏路径则立即清除自然生成标记
-        if (state.is(Blocks.BONE_BLOCK)
-                && !newState.is(Blocks.BONE_BLOCK)
-                && !NaturalBoneBlockTracker.isPlayerBreaking(serverLevel, pos)) {
+        if (state.is(Blocks.BONE_BLOCK) && !newState.is(Blocks.BONE_BLOCK)) {
             NaturalBoneBlockTracker.clearNatural(serverLevel, pos);
         }
         // 追踪容器被破坏时，flush 其日志条目
-        if (state.hasBlockEntity()) {
+        if (!movedByPiston && state.hasBlockEntity()) {
             BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof TrackedContainerLootState) {
                 ContainerTrackingService.onContainerBlockDestroyed(serverLevel, pos);

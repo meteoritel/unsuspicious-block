@@ -1,9 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.loottable.source;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootParseUtil;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootTableCompiler;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
@@ -18,7 +17,6 @@ import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,7 +40,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class LootTableSourceSnapshot {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json("loot_table");
-    private static final String LOOT_TABLE_TYPE = "loot_table";
 
     /** 表 id -> 完整资源栈（index 0 为最高优先级层，即有效原文所在层）。 */
     private final Map<ResourceLocation, List<Resource>> stacks;
@@ -131,25 +128,10 @@ public final class LootTableSourceSnapshot {
         }
     }
 
-    /**
-     * 该表有效原文中的直接 loot_table 引用，保持 JSON 出现顺序并去重。
-     * <p>
-     * 类型判定统一走 {@link LootParseUtil#normalizeType}，与解析器一致；
-     * 命中引用条目后不再递归其内部（与解析器的展开语义一致）。
-     */
+    /** 返回本表的具名引用，按条目顺序保留首次出现位置。 */
     public Set<ResourceLocation> directReferences(ResourceLocation tableId) {
-        Set<ResourceLocation> cached = this.directReferences.get(tableId);
-        if (cached != null) {
-            return cached;
-        }
-        JsonElement element = effectiveJson(tableId);
-        LinkedHashSet<ResourceLocation> references = new LinkedHashSet<>();
-        if (element != null) {
-            collectDirectReferences(element, references);
-        }
-        Set<ResourceLocation> result = Collections.unmodifiableSet(references);
-        this.directReferences.put(tableId, result);
-        return result;
+        return this.directReferences.computeIfAbsent(tableId,
+                id -> LootTableCompiler.namedReferences(effectiveJson(id)));
     }
 
     /**
@@ -161,41 +143,6 @@ public final class LootTableSourceSnapshot {
         updateDigest(digest, tableId.toString());
         for (Resource resource : resourceStack(tableId)) {
             updateDigest(digest, readText(resource));
-        }
-    }
-
-    // 递归收集 JSON 元素中的直接战利品表引用
-    private static void collectDirectReferences(JsonElement element, Set<ResourceLocation> output) {
-        if (element == null || element.isJsonNull()) {
-            return;
-        }
-        if (element.isJsonArray()) {
-            for (JsonElement child : element.getAsJsonArray()) {
-                collectDirectReferences(child, output);
-            }
-            return;
-        }
-        if (!element.isJsonObject()) {
-            return;
-        }
-
-        JsonObject object = element.getAsJsonObject();
-        JsonElement typeElement = object.get("type");
-        if (typeElement != null && typeElement.isJsonPrimitive()
-                && typeElement.getAsJsonPrimitive().isString()
-                && LOOT_TABLE_TYPE.equals(LootParseUtil.normalizeType(typeElement.getAsString()))) {
-            JsonElement idElement = object.has("value") ? object.get("value") : object.get("name");
-            if (idElement != null && idElement.isJsonPrimitive()
-                    && idElement.getAsJsonPrimitive().isString()) {
-                ResourceLocation id = ResourceLocation.tryParse(idElement.getAsString());
-                if (id != null) {
-                    output.add(id);
-                }
-            }
-            return;
-        }
-        for (Map.Entry<String, JsonElement> child : object.entrySet()) {
-            collectDirectReferences(child.getValue(), output);
         }
     }
 

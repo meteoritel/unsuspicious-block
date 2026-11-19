@@ -6,49 +6,39 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
 
 import java.util.List;
+import java.util.function.Function;
 
-/**
- * 各平台饰品适配层共用的标本箱内容读写工具。
- */
+/** 标本箱内容的读取和提交。 */
 public final class SpecimenBoxContents {
-
     private SpecimenBoxContents() {
     }
 
-    // 读取可安全修改的箱内物品列表。
+    /** 返回可独立编辑的槽位副本。 */
     public static NonNullList<ItemStack> read(ItemStack boxStack) {
-        NonNullList<ItemStack> items = NonNullList.withSize(
-                SpecimenBoxMenu.CONTAINER_SIZE, ItemStack.EMPTY);
-        boxStack.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY).copyInto(items);
+        NonNullList<ItemStack> items = NonNullList.withSize(SpecimenBoxMenu.CONTAINER_SIZE, ItemStack.EMPTY);
+        contents(boxStack).copyInto(items);
         return items;
     }
 
-    // 创建用于变更比较的完整副本。
-    public static NonNullList<ItemStack> copy(List<ItemStack> items) {
-        NonNullList<ItemStack> result = NonNullList.withSize(items.size(), ItemStack.EMPTY);
-        for (int index = 0; index < items.size(); index++) {
-            result.set(index, items.get(index).copy());
-        }
+    /** 读取当前内容，执行编辑并提交，返回编辑结果。编辑限于当前服务端调用。 */
+    public static <T> T edit(ItemStack boxStack, Function<NonNullList<ItemStack>, T> edit) {
+        NonNullList<ItemStack> items = read(boxStack);
+        T result = edit.apply(items);
+        commit(boxStack, items);
         return result;
     }
 
-    // 仅在内容实际改变时更新组件，避免每次饰品查询都触发同步。
-    public static void writeIfChanged(ItemStack boxStack, List<ItemStack> previous,
-                                      NonNullList<ItemStack> current) {
-        if (!sameItems(previous, current)) {
-            boxStack.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(current));
-        }
+    static ItemContainerContents contents(ItemStack boxStack) {
+        return boxStack.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY);
     }
 
-    private static boolean sameItems(List<ItemStack> first, List<ItemStack> second) {
-        if (first.size() != second.size()) {
-            return false;
+    static ItemContainerContents commit(ItemStack boxStack, List<ItemStack> items) {
+        ItemContainerContents current = contents(boxStack);
+        ItemContainerContents updated = ItemContainerContents.fromItems(items);
+        if (current.equals(updated)) {
+            return current;
         }
-        for (int index = 0; index < first.size(); index++) {
-            if (!ItemStack.matches(first.get(index), second.get(index))) {
-                return false;
-            }
-        }
-        return true;
+        boxStack.set(DataComponents.CONTAINER, updated);
+        return updated;
     }
 }

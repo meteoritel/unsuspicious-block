@@ -17,7 +17,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * 猫猫商人独立生成器——按每世界 25%/50%/75% 渐进概率在合格玩家附近村庄生成。
@@ -47,16 +46,11 @@ public final class MerchantCatSpawner {
             return;
         }
 
-        UUID activeUuid = data.getActiveMerchantUuid();
-        if (activeUuid != null && (!(level.getEntity(activeUuid) instanceof MerchantCat merchant)
-                || merchant.isAlive())) {
+        if (data.hasActiveMerchant(level)) {
             if (gameTime >= data.getNextAttempt()) {
                 data.scheduleNext(gameTime, ATTEMPT_INTERVAL);
             }
             return;
-        }
-        if (activeUuid != null) {
-            data.clearActive(activeUuid);
         }
         if (gameTime < data.getNextAttempt()) {
             return;
@@ -95,7 +89,7 @@ public final class MerchantCatSpawner {
         merchant.configureActivityCenter(location.activityCenter());
         merchant.initializeTrades(level, CatFavorManager.getCatBond(target));
         if (level.addFreshEntity(merchant)) {
-            data.recordSuccess(merchant.getUUID());
+            data.recordSuccess(merchant);
         } else {
             data.recordFailure();
         }

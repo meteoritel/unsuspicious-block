@@ -36,6 +36,7 @@ import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.server.ReloadableServerRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import org.jetbrains.annotations.NotNull;
@@ -72,6 +73,11 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
     private static final int[] SIDE_ACCESS_SLOTS = {TOP, LEFT, RIGHT, BOTTOM, CLAY, WATER};
     private static final int[] BOTTOM_ACCESS_SLOTS = {OUTPUT, WATER};
 
+    private static final int CLAY_UNITS_PER_BLOCK = 4;
+
+    private final NonNullList<ItemStack> inputsAtPlan = NonNullList.withSize(OUTPUT, ItemStack.EMPTY);
+    private @Nullable ProcessingPlan processingPlan;
+    private @Nullable ReloadableServerRegistries.Holder planRegistries;
     private final NonNullList<ItemStack> items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
     private final ContainerData dataAccess = new ContainerData() {
         @Override
@@ -206,6 +212,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
 
     // 输入变化后重新计时，并同步陶坯与水槽的外观状态。
     private void inputsChanged() {
+        processingPlan = null;
         processProgress = 0;
         updateInputVisualState();
         setChanged();
@@ -239,8 +246,8 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
             wheel.updateWorkingState(false);
             return;
         }
-        ItemStack result = getProcessingResult(wheel);
-        if (result.isEmpty() || !wheel.canAcceptOutput(result)) {
+        ProcessingPlan plan = wheel.currentPlan();
+        if (plan.result().isEmpty() || !wheel.canAcceptOutput(plan.result())) {
             wheel.updateWorkingState(false);
             wheel.resetProgress();
             return;
@@ -253,7 +260,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         }
         wheel.processProgress++;
         if (wheel.processProgress >= PROCESS_TIME) {
-            wheel.completeProcessing(result);
+            wheel.completeProcessing(plan);
         }
     }
 
@@ -291,20 +298,18 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
     }
 
     // 完成时消耗材料，优先把空瓶和结果直接写入正下方漏斗
-    private void completeProcessing(ItemStack result) {
-        if (result.is(ModItems.UNFIRED_DECORATED_POT)) {
-            consumeClayUnits();
-        } else {
-            items.get(CLAY).shrink(1);
-        }
+    private void completeProcessing(ProcessingPlan plan) {
+        items.get(CLAY).shrink(plan.clayCost());
         items.get(WATER).shrink(1);
-        ItemStack bottle = new ItemStack(Items.GLASS_BOTTLE);
-        storeOutput(insertIntoHopperBelow(result));
-        items.set(WATER, insertIntoHopperBelow(bottle));
-        processProgress = 0;
-        updateInputVisualState();
+        storeOutput(insertIntoHopperBelow(plan.result().copy()));
+        ItemStack bottle = insertIntoHopperBelow(new ItemStack(Items.GLASS_BOTTLE));
+        if (items.get(WATER).isEmpty()) {
+            items.set(WATER, bottle);
+        } else if (!bottle.isEmpty()) {
+            Block.popResource(level, worldPosition, bottle);
+        }
         updateWorkingState(false);
-        setChanged();
+        inputsChanged();
     }
 
     // 返回漏斗未能接收的剩余物品，调用方将其保存在陶轮台槽位中
@@ -340,17 +345,55 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         setChanged();
     }
 
-    // 根据指定容器的输入计算未来产物，供服务端处理和客户端预览共同使用
-    public static ItemStack getProcessingResult(Container container) {
-        ItemStack result = getPotResult(container);
-        return result.isEmpty() ? getSherdResult(container) : result;
+    private ProcessingPlan currentPlan() {
+        ReloadableServerRegistries.Holder registries = level.getServer().reloadableRegistries();
+        if (processingPlan != null && planRegistries == registries && inputsMatchPlan()) {
+            return processingPlan;
+        }
+        // 漏斗和菜单可以直接增减栈数量，比较输入快照才能识别这种修改。
+        if (processingPlan != null) {
+            resetProgress();
+        }
+        for (int slot = TOP; slot < OUTPUT; slot++) {
+            inputsAtPlan.set(slot, items.get(slot).copy());
+        }
+        planRegistries = registries;
+        processingPlan = plan(this);
+        return processingPlan;
     }
 
-    // 预览只检查陶片槽，黏土和水瓶仅决定能否实际开始加工
-    public static ItemStack getPreviewResult(Container container) {
-        ItemStack result = createPotResult(container);
-        return result.isEmpty() ? createSherdResult(container, 1) : result;
+    private boolean inputsMatchPlan() {
+        for (int slot = TOP; slot < OUTPUT; slot++) {
+            if (!ItemStack.matches(items.get(slot), inputsAtPlan.get(slot))) {
+                return false;
+            }
+        }
+        return true;
     }
+
+    /** 返回当前实际产物，材料未齐时展示纹饰槽匹配的预览。 */
+    public static ItemStack getPreviewResult(Container container) {
+        return plan(container).preview();
+    }
+
+    private static ProcessingPlan plan(Container container) {
+        ItemStack clay = container.getItem(CLAY);
+        boolean isClayBlock = clay.is(Blocks.CLAY.asItem());
+        boolean hasWater = isWaterBottle(container.getItem(WATER));
+        int potCost = isClayBlock ? 1 : CLAY_UNITS_PER_BLOCK;
+        ItemStack pot = createPotResult(container);
+        if (!pot.isEmpty() && hasWater && isClayMaterial(clay) && clay.getCount() >= potCost) {
+            return new ProcessingPlan(pot, pot, potCost);
+        }
+        boolean canCopy = hasWater && isClayMaterial(clay);
+        ItemStack sherd = createSherdResult(container, canCopy && isClayBlock ? CLAY_UNITS_PER_BLOCK : 1);
+        if (canCopy && !sherd.isEmpty()) {
+            return new ProcessingPlan(sherd, sherd, 1);
+        }
+        return new ProcessingPlan(pot.isEmpty() ? sherd : pot, ItemStack.EMPTY, 0);
+    }
+
+    private record ProcessingPlan(ItemStack preview, ItemStack result, int clayCost) {}
 
     public ContainerData getDataAccess() {
         return dataAccess;
@@ -375,14 +418,6 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         };
     }
 
-    // 从任意同步容器计算陶罐结果
-    private static ItemStack getPotResult(Container container) {
-        if (!hasFourClayUnits(container) || !isWaterBottle(container.getItem(WATER))) {
-            return ItemStack.EMPTY;
-        }
-        return createPotResult(container);
-    }
-
     // 仅根据四个陶片槽构造陶罐预览或实际结果
     private static ItemStack createPotResult(Container container) {
         for (int i = TOP; i <= BOTTOM; i++) {
@@ -394,16 +429,6 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
                 container.getItem(TOP).getItem(), container.getItem(LEFT).getItem(),
                 container.getItem(RIGHT).getItem(), container.getItem(BOTTOM).getItem()));
         return result;
-    }
-
-    // 从任意同步容器计算陶片复制结果
-    private static ItemStack getSherdResult(Container container) {
-        if (!isClayMaterial(container.getItem(CLAY))
-                || !isWaterBottle(container.getItem(WATER))) {
-            return ItemStack.EMPTY;
-        }
-        int count = container.getItem(CLAY).is(Blocks.CLAY.asItem()) ? 4 : 1;
-        return createSherdResult(container, count);
     }
 
     // 查找第一个可复制陶片，并按指定数量构造预览或实际结果
@@ -433,18 +458,6 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
         return stack.is(Blocks.CLAY.asItem()) || stack.is(Items.CLAY_BALL);
     }
 
-    // 黏土块等价于四个黏土球
-    private static boolean hasFourClayUnits(Container container) {
-        ItemStack clay = container.getItem(CLAY);
-        return clay.is(Blocks.CLAY.asItem()) || clay.is(Items.CLAY_BALL) && clay.getCount() >= 4;
-    }
-
-    // 当前陶罐配方固定消耗四份，优先保持黏土块的单次消耗语义
-    private void consumeClayUnits() {
-        ItemStack clay = items.get(CLAY);
-        clay.shrink(clay.is(Blocks.CLAY.asItem()) ? 1 : 4);
-    }
-
     // 方块被破坏时掉落全部真实槽位内容
     public void dropInputs(Level level) {
         for (int i = TOP; i <= OUTPUT; i++) {
@@ -468,6 +481,7 @@ public class PotteryWheelBlockEntity extends BlockEntity implements WorldlyConta
     protected void loadAdditional(@NotNull CompoundTag tag, HolderLookup.@NotNull Provider registries) {
         super.loadAdditional(tag, registries);
         ContainerHelper.loadAllItems(tag, items, registries);
+        processingPlan = null;
         processProgress = Math.max(0, Math.min(tag.getInt(PROCESS_PROGRESS_TAG), PROCESS_TIME - 1));
         controlMode = ControlMode.byId(tag.contains(CONTROL_MODE_TAG) ? tag.getInt(CONTROL_MODE_TAG) : 0);
     }

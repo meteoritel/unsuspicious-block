@@ -22,7 +22,7 @@
     "container.BaseContainerBlockEntityMixin",
     "container.DecoratedPotLootStateMixin",
     "block.BlockBehaviourMixin",
-    "block.BlockMixin",
+    "block.ServerPlayerGameModeMixin",
     "block.BrushableBlockEntityMixin",
     "block.DecoratedPotBlockMixin",
     "enchantment.EnchantmentMenuMixin",
@@ -55,6 +55,7 @@
     "loottable.SimulationLocationConditionMixin",
     "loottable.SimulationTimeConditionMixin",
     "loottable.SimulationWeatherConditionMixin",
+    "container.ItemCombinerMenuMixin",
     "container.SmithingMenuMixin",
     "catfavor.TamableAnimalTameMixin",
     "StructureTemplateMixin"

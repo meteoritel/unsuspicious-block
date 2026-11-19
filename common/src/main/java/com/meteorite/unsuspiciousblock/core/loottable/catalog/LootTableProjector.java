@@ -37,8 +37,8 @@ import org.slf4j.Logger;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -146,7 +146,7 @@ public final class LootTableProjector {
             LootFunctionDescriptions.withPreviewContext(this.previewContext,
                     () -> LootFunctionDescriptions.withConditionOps(this.lootOps, () -> {
                 expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, List.of(),
-                        new LinkedHashSet<>(), items);
+                        new ProjectionWalk(rootId, items));
                 return null;
             }));
 
@@ -167,16 +167,15 @@ public final class LootTableProjector {
     private void expand(CompiledLootTable table, List<LootConditionInfo> incomingConditions,
                         List<JsonElement> incomingFunctions, @Nullable ResourceLocation sourceChildTable,
                         boolean incomingLuckAffected, List<LuckSpec> incomingLuckSpecs,
-                        LinkedHashSet<ResourceLocation> expandingStack,
-                        Map<String, ItemDefinitionAccumulator> items) {
+                        ProjectionWalk walk) {
         for (CompiledLootTable.Event event : table.events()) {
             switch (event) {
                 case CompiledLootTable.ItemPath itemPath ->
                         resolveItem(itemPath, incomingConditions, incomingFunctions, sourceChildTable,
-                                incomingLuckAffected || itemPath.luckAffected(), appendLuck(incomingLuckSpecs, itemPath.luckSpec()), items);
+                                incomingLuckAffected || itemPath.luckAffected(), appendLuck(incomingLuckSpecs, itemPath), walk.items);
                 case CompiledLootTable.ReferenceSite site ->
                         expandReferenceSite(site, incomingConditions, incomingFunctions,
-                                sourceChildTable, incomingLuckAffected || site.luckAffected(), appendLuck(incomingLuckSpecs, site.luckSpec()), expandingStack, items);
+                                sourceChildTable, incomingLuckAffected || site.luckAffected(), appendLuck(incomingLuckSpecs, site), walk);
             }
         }
     }
@@ -187,13 +186,12 @@ public final class LootTableProjector {
                                      List<JsonElement> incomingFunctions,
                                      @Nullable ResourceLocation sourceChildTable,
                                      boolean luckAffected, List<LuckSpec> luckSpecs,
-                                     LinkedHashSet<ResourceLocation> expandingStack,
-                                     Map<String, ItemDefinitionAccumulator> items) {
+                                     ProjectionWalk walk) {
         ResourceLocation target = site.target();
         if (this.excludedReferences.contains(target)) {
             return;
         }
-        if (expandingStack.contains(target)) {
+        if (walk.active.contains(target)) {
             LOGGER.warn("检测到 loot_table 循环引用 {}，跳过展开", target);
             return;
         }
@@ -202,15 +200,38 @@ public final class LootTableProjector {
             return;
         }
 
-        LinkedHashSet<ResourceLocation> nextStack = new LinkedHashSet<>(expandingStack);
-        nextStack.add(target);
-        expand(this.compiledTables.get(target),
+        ReferencePath path = new ReferencePath(target, sourceChildTable != null ? sourceChildTable : target,
                 LootParseUtil.appendConditions(
                         LootParseUtil.appendConditions(incomingConditions, site.inheritedConditions()),
                         site.siteConditions()),
                 concatFunctions(site.siteFunctions(), site.inheritedFunctions(), incomingFunctions),
-                sourceChildTable != null ? sourceChildTable : target,
-                luckAffected, luckSpecs, nextStack, items);
+                luckAffected, luckSpecs);
+        if (!walk.expanded.add(path)) {
+            return;
+        }
+        walk.active.add(target);
+        try {
+            expand(this.compiledTables.get(target), path.conditions(), path.functions(), path.firstChild(),
+                    path.luckAffected(), path.luckSpecs(), walk);
+        } finally {
+            walk.active.remove(target);
+        }
+    }
+
+    // 共享子表仅在第一跳及全部继承上下文相同时复用一次展开。
+    private record ReferencePath(ResourceLocation table, ResourceLocation firstChild,
+                                 List<LootConditionInfo> conditions, List<JsonElement> functions,
+                                 boolean luckAffected, List<LuckSpec> luckSpecs) {}
+
+    private static final class ProjectionWalk {
+        private final Set<ResourceLocation> active = new HashSet<>();
+        private final Set<ReferencePath> expanded = new HashSet<>();
+        private final Map<String, ItemDefinitionAccumulator> items;
+
+        private ProjectionWalk(ResourceLocation root, Map<String, ItemDefinitionAccumulator> items) {
+            this.active.add(root);
+            this.items = items;
+        }
     }
 
     // ==================== 单条物品路径的解析 ====================
@@ -392,9 +413,10 @@ public final class LootTableProjector {
     }
 
     // 每一层引用的权重和抽取次数都影响整条路径；联合推荐不能只检查叶子。
-    private static List<LuckSpec> appendLuck(List<LuckSpec> parents, LuckSpec current) {
+    private static List<LuckSpec> appendLuck(List<LuckSpec> parents, CompiledLootTable.Event event) {
         List<LuckSpec> result = new ArrayList<>(parents);
-        result.add(current);
+        result.addAll(event.inheritedLuckSpecs());
+        result.add(event.luckSpec());
         return List.copyOf(result);
     }
 

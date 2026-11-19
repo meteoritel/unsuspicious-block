@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import re
+import shutil
 import struct
 import time
 import zlib
@@ -688,12 +689,206 @@ def recipe_card_export(case):
     case.equal('配方卡片全部完成', all(card['state'] == 'done' for card in cards), True)
 
 
+def core_architecture_inventory(case):
+    _ = case.client
+    case.own_scene()
+    case.server.install((case.runtime.root / 'tools/probes/scripts/core_architecture.js').read_text(encoding='utf-8'))
+    case.action('server', 'Probe.command("gamemode survival UsbProbe")')
+    case.action('server', 'Probe.command("fill -4 99 -4 4 99 4 minecraft:stone")')
+    case.action('server', 'Probe.command("tp UsbProbe 0.5 100 -1.5")')
+    case.defer('server', '(Probe.player().closeContainer(), true)')
+    wait_for(lambda: case.server.evaluate('Number(Probe.player().tickCount)'), lambda ticks: ticks > 60)
+
+    for hand in ('false', 'true'):
+        case.equal('打开指定手的标本箱', case.action('server', f'Probe.archOpenBox({hand})'), True)
+        case.equal('图腾消费后快速移动和同型载体替换', case.action('server', 'Probe.archConsumeBoxTotem()'),
+                   dict(alive=True, consumed=True, moved=True, invalid=True))
+
+    for mode in ('QUICK_MOVE', 'PICKUP', 'SWAP'):
+        case.equal('锻造配方生成预览', case.action('server', 'Probe.archOpenSmithing(false)'), True)
+        case.equal(f'{mode} 交付已鉴定的书', case.action('server', f'Probe.archTakeSmithing("{mode}")'),
+                   dict(enchanted=True, emptyInputs=True, pending=False))
+    case.equal('满背包仍可预览配方', case.action('server', 'Probe.archOpenSmithing(true)'), True)
+    case.equal('满背包不鉴定、不扣料', case.action('server', 'Probe.archTakeSmithing("QUICK_MOVE")'),
+               dict(enchanted=False, emptyInputs=False, pending=True))
+    case.action('server', '(Probe.player().closeContainer(), true)')
+
+    for enchanted in ('false', 'true'):
+        expected = dict(broken=True, cleared=True, emptyTool=enchanted == 'true', bonus=enchanted == 'true')
+        case.equal('成功采掘清除自然标记', case.action('server', f'Probe.archBreakBone({enchanted})'), expected)
+
+    sherd = 'unsuspiciousblock:unfired_decorated_sherd'
+    case.equal('一份黏土时的陶轮预览', case.action('server', 'Probe.archPottery()'), sherd)
+    case.expect('实际产物和预览一致，材料扣除且返还空瓶',
+                lambda: case.server.evaluate('Probe.archPotteryResult()'),
+                lambda result: result == dict(output=sherd, water='minecraft:glass_bottle', clayEmpty=True),
+                expected={'output': sherd, 'water': 'minecraft:glass_bottle', 'clayEmpty': True})
+
+    case.equal('未到期卸载商人仍占位', case.action('server', 'Probe.archPrepareMerchant()'),
+               dict(spawned=True, unloaded=True, occupied=True))
+    case.expect('无人加载旧商人时到期释放占位',
+                lambda: case.server.evaluate('Probe.archMerchantOccupied()'), lambda value: not value, expected=False)
+
+    case.equal('登记了有寿命的淘洗点', case.action('server', 'Probe.archLedgerDeadline()'), True)
+    case.expect('到期点释放配额并留下标记',
+                lambda: case.server.evaluate('Probe.archLedgerExpired()'), bool, expected=True)
+    case.record['ledgerMaintenanceMs'] = {
+        str(entries): case.action('server', f'Probe.archMeasureLedger({entries})') for entries in (0, 32, 256)
+    }
+
+
+def _write_architecture_fixtures(case):
+    pack = case.runtime.directory / 'server/world/datapacks/usb_probe/data/usb_probe'
+
+    def loot(path, entries, kind='minecraft:generic'):
+        write_json(pack / ('loot_table/' + path + '.json'),
+                   {'type': kind, 'pools': [{'rolls': 1, 'entries': entries}]})
+
+    def item(name, **fields):
+        return {'type': 'minecraft:item', 'name': f'minecraft:{name}', **fields}
+
+    def reference(value):
+        return {'type': 'minecraft:loot_table', 'value': value}
+
+    def composite(kind, *entries):
+        return {'type': f'minecraft:{kind}', 'children': entries}
+
+    miss = [{'condition': 'minecraft:random_chance', 'chance': 0}]
+    leaf = 'usb_probe:archaeology/architecture_leaf'
+    loot('archaeology/architecture_leaf', [item('diamond')], 'minecraft:archaeology')
+    ordered = [
+        composite('alternatives', item('iron_ingot', conditions=miss), item('apple')),
+        composite('sequence', item('book'), item('emerald', conditions=miss), item('gold_ingot')),
+        composite('group', item('feather', weight=0), item('coal')),
+        reference({'pools': [{'rolls': 1, 'entries': [reference(leaf)]}]}),
+    ]
+    write_json(pack / 'loot_table/archaeology/architecture_ordered.json',
+               {'type': 'minecraft:archaeology', 'pools': [{'rolls': 1, 'entries': [entry]} for entry in ordered]})
+
+    loot('architecture_graph/leaf', [item('stone')])
+    for layer in range(1, 13):
+        below = [reference(f'usb_probe:architecture_graph/{layer-1}_{side}') for side in ('a', 'b')] if layer > 1 else [
+            reference('usb_probe:architecture_graph/leaf')]
+        for side in ('a', 'b'):
+            loot(f'architecture_graph/{layer}_{side}', below)
+    repeated = [dict(reference('usb_probe:architecture_graph/leaf'), conditions=miss),
+                dict(reference('usb_probe:architecture_graph/leaf'),
+                     functions=[{'function': 'minecraft:set_count', 'count': 2}])]
+    loot('architecture_graph/different', repeated)
+    loot('architecture_graph/different_root', [reference('usb_probe:architecture_graph/different')])
+
+    trades = []
+    for name in ('end_stone', 'amethyst_shard', 'missing_item', 'air'):
+        trades.append({'pool': 'regular', 'weight': 2147483647, 'buy': {'item': 'minecraft:gold_ingot'},
+                       'sell': {'item': f'minecraft:{name}'}})
+    trades.append({'pool': 'regular', 'weight': 2147483647, 'buy': {'tag': 'usb_probe:missing'},
+                   'sell': {'item': 'minecraft:barrier'}})
+    write_json(pack / 'merchant_cat_trades/architecture.json', trades)
+
+
+def core_architecture_catalog(case):
+    _ = case.client
+    _write_architecture_fixtures(case)
+    expr = 'Number(Java.loadClass("com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog").currentGenerationId())'
+    before = case.server.evaluate(expr)
+    case.action('server', 'Probe.command("reload")')
+    case.expect('数据包实际发布新目录', lambda: case.server.evaluate(expr), lambda value: value > before,
+                expected={'generationGreaterThan': before}, timeout=90)
+    for side in ('server', 'client'):
+        case.runtime.install(side)
+    case.server.install((case.runtime.root / 'tools/probes/scripts/core_architecture.js').read_text(encoding='utf-8'))
+    result = case.action('server', 'Probe.archCatalogTable("usb_probe:archaeology/architecture_ordered")')
+    case.equal('实际掉落遵循组合顺序、权重和内联引用', result['drops'],
+               ['minecraft:apple', 'minecraft:book', 'minecraft:coal', 'minecraft:diamond'])
+    case.equal('内联表中的具名引用成为目录子表', result['child'], True)
+    case.equal('零权重组内物品不可产出', result['staticItems']['minecraft:feather']['blockedByWeight'], True)
+    case.equal('回退分支继承前项失败条件',
+               'NOT' in result['staticItems']['minecraft:apple']['gating'], True)
+    case.equal('序列后项继承前项成功条件',
+               'LEAF' in result['staticItems']['minecraft:gold_ingot']['gating'], True)
+
+    results = {}
+    for name in ('leaf', '4_a', '9_a', '12_a'):
+        measurements = case.action('server', f'Probe.archMeasureGraph("usb_probe:architecture_graph/{name}", 4)')
+        results[name] = measurements
+        case.equal(f'共享后缀 {name} 的物品集合', measurements['items'], 1)
+        case.equal(f'共享后缀 {name} 的获取路径', measurements['paths'], 1 if name == 'leaf' else 2)
+    different = case.action('server', 'Probe.archMeasureGraph("usb_probe:architecture_graph/different_root", 1)')
+    case.equal('继承条件或函数不同的路径各自保留', different['paths'], 2)
+    case.record['lootProjectionMeasurements'] = results
+    case.record['vanillaProjectionMeasurement'] = case.action('server', 'Probe.archMeasureGraph("minecraft:gameplay/fishing", 4)')
+
+    offers = case.action('server', 'Probe.archTradeOffers()')
+    case.equal('有效的大权重报价仍可抽出', all(f'minecraft:{item}' in offers for item in ('end_stone', 'amethyst_shard')), True)
+    case.equal('空 Tag、未知物品和空气不会生成报价', not any(item in offers for item in ('minecraft:air', 'minecraft:barrier')), True)
+    _verify_catalog_rebuild_failure(case, expr)
+    before = case.server.evaluate(expr)
+    case.action('server', 'Probe.command("usb journal catalog rebuild")')
+    case.expect('强制重建发布新目录', lambda: case.server.evaluate(expr), lambda value: value > before,
+                expected={'generationGreaterThan': before})
+
+def _verify_catalog_rebuild_failure(case, generation_expression):
+    query = 'Probe.archCatalogState()'
+    healthy = case.expect('基准测量已缓存', lambda: case.server.evaluate(query), lambda state: state['cached'],
+                          expected={'cached': True})
+    failure = case.runtime.directory / 'server/world/datapacks/usb_probe/data/usb_probe/journal_categories/too_long.json'
+    # 分类仍能读入，但目录 wire codec 会拒绝超过 writeUtf 长度的文本。
+    write_json(failure, {'fallback': 'x' * 32768})
+    failed = 'Java.loadClass("com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog").hasRebuildFailed()'
+    try:
+        case.action('server', 'Probe.command("reload")')
+        case.expect('候选目录构建确实失败', lambda: case.server.evaluate(failed), bool, expected=True)
+        for side in ('server', 'client'):
+            case.runtime.install(side)
+        case.server.install((case.runtime.root / 'tools/probes/scripts/core_architecture.js').read_text(encoding='utf-8'))
+        expected = dict(healthy, canExecute=False, failed=True)
+        case.equal('资源已切换，保留快照和概率缓存', case.server.evaluate(query), expected)
+        case.action('server', 'Probe.command("usb journal catalog rebuild")')
+        case.equal('强制重建失败保留相同快照和缓存', case.server.evaluate(query), expected)
+    finally:
+        failure.unlink()
+    case.action('server', 'Probe.command("reload")')
+    case.expect('移除坏资源后恢复目录', lambda: case.server.evaluate(generation_expression),
+                lambda value: value > healthy['generation'], expected={'generationGreaterThan': healthy['generation']})
+    for side in ('server', 'client'):
+        case.runtime.install(side)
+
+
+def core_architecture_storage(case):
+    script = (case.runtime.root / 'tools/probes/scripts/core_architecture.js').read_text(encoding='utf-8')
+    case.server.install(script)
+    fixtures = case.runtime.directory / 'architecture_legacy'
+    fixtures.mkdir()
+    case.equal('生成旧版 NBT 样本',
+               case.action('server', f'Probe.archWriteLegacyState({json.dumps(str(fixtures))})'), True)
+    if 'client' in case.runtime.controls:
+        case.runtime.stop('client')
+    case.runtime.stop('server')
+    world_data = case.runtime.directory / 'server/world/data'
+    for fixture in fixtures.iterdir():
+        shutil.copyfile(fixture, world_data / fixture.name)
+    case.runtime.start('server')
+    case.server.install(script)
+    migrated = case.action('server', 'Probe.archReadLegacyState()')
+    case.equal('旧档商人和淘洗点恢复有效截止时间',
+               migrated['occupied'] and min(migrated['merchantDeadline'], migrated['shimmerDeadline']) > migrated['time'], True)
+    case.runtime.stop('server')
+    case.runtime.start('server')
+    case.server.install(script)
+    restored = case.action('server', 'Probe.archReadLegacyState()')
+    for deadline in ('merchantDeadline', 'shimmerDeadline'):
+        case.equal(f'迁移截止时间重启后保持 {deadline}', restored[deadline], migrated[deadline])
+
+
 CASES = {'runtime-artifact': ('server', runtime_artifact),
          'scan-take-journal': ('gui', scan_take_journal), 'journal-viewport': ('gui', journal_viewport),
          'cat-ledger': ('model', cat_ledger), 'cat-carried-binding': ('server', cat_carried_binding),
          'cat-player-journey': ('server', cat_player_journey),
          'panning-settlement': ('server', panning_settlement), 'journal-restart': ('gui', journal_restart),
          'simulation-reload': ('gui', simulation_reload),
+         'core-architecture-inventory': ('server', core_architecture_inventory),
+         'core-architecture-catalog': ('server', core_architecture_catalog),
+         'core-architecture-storage': ('server', core_architecture_storage),
          'ui-member-tree': ('gui', ui_member_tree), 'ui-form-bodies': ('gui', ui_form_bodies),
          'recipe-card-export': ('gui', recipe_card_export)}
 

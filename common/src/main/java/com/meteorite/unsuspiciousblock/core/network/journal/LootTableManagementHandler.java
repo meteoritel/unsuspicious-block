@@ -76,7 +76,7 @@ public final class LootTableManagementHandler {
         } catch (JsonParseException | IllegalArgumentException exception) {
             return EditResult.INVALID;
         }
-        return ServerLootTableConfigManager.save(payload.revision(), settings);
+        return ServerLootTableConfigManager.save(server, payload.revision(), settings);
     }
 
     private static boolean canEditTracking(MinecraftServer server, ServerPlayer player) {

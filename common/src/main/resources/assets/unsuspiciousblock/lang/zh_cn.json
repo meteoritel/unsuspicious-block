@@ -1205,6 +1205,7 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.unsupported": "当前规则含尚未支持的条件或幸运要求。",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.no_candidate": "已检查的签发范围内没有满足该路径的配置。",
   "screen.unsuspiciousblock.archaeology_journal.simulation.recommend.reason": "待解释规则：%s",
+  "command.unsuspiciousblock.usb.journal.catalog.rebuild.failed": "目录重建失败",
   "command.unsuspiciousblock.usb.journal.catalog.rebuild.started": "已发起 %d 张战利品表的目录重建；使用 /usb journal catalog status 查询队列与目录覆盖。",
   "command.unsuspiciousblock.usb.journal.catalog.status": "模拟队列：%1$s；模拟视图覆盖：%2$s / %3$s 张表。空闲时仍未覆盖的表需检查模拟失败日志。",
   "command.unsuspiciousblock.usb.journal.catalog.busy": "处理中",
