@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "unsuspiciousblock:item/suspicious_reader_scan_level_1"
+  }
+}

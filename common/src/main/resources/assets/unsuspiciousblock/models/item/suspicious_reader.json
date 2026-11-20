@@ -1,6 +1,24 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "unsuspiciousblock:item/suspicious_reader"
-  }
+    "layer0": "unsuspiciousblock:item/suspicious_reader_idle"
+  },
+  "overrides": [
+    {
+      "predicate": { "unsuspiciousblock:reader_model_state": 0.25 },
+      "model": "unsuspiciousblock:item/suspicious_reader_scan_level_1"
+    },
+    {
+      "predicate": { "unsuspiciousblock:reader_model_state": 0.5 },
+      "model": "unsuspiciousblock:item/suspicious_reader_scan_level_2"
+    },
+    {
+      "predicate": { "unsuspiciousblock:reader_model_state": 0.75 },
+      "model": "unsuspiciousblock:item/suspicious_reader_scan_level_3"
+    },
+    {
+      "predicate": { "unsuspiciousblock:reader_model_state": 1 },
+      "model": "unsuspiciousblock:item/suspicious_reader_depleted"
+    }
+  ]
 }

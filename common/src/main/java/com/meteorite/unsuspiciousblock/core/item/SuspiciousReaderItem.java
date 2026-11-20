@@ -124,9 +124,10 @@ public class SuspiciousReaderItem extends Item {
         return Math.min(MAX_ENERGY, customData.copyTag().getInt(TAG_ENERGY));
     }
 
+    /** 读取当前能量，缺少能量字段的物品按满能量处理。 */
     public static int getEnergyOrDefault(ItemStack stack) {
-        int energy = getEnergy(stack);
-        return energy == 0 ? MAX_ENERGY : energy;
+        CustomData customData = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+        return customData.contains(TAG_ENERGY) ? getEnergy(stack) : MAX_ENERGY;
     }
 
     public static void setEnergy(ItemStack stack, int energy) {

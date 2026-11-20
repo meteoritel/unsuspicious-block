@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.client;
 
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
 import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
 import com.meteorite.unsuspiciousblock.client.pan.PanningMediumIndex;
@@ -17,9 +18,13 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguage
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.client.ui.toast.JournalUnlockToast;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.item.SuspiciousReaderItem;
 import com.meteorite.unsuspiciousblock.core.text.ClientTooltipBridge;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import java.util.function.Consumer;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 
@@ -28,6 +33,12 @@ import java.util.List;
 
 /** 客户端安装、tick 与断连清理的公共生命周期入口。 */
 public final class ModClientLifecycle {
+    private static final ResourceLocation READER_MODEL_STATE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "reader_model_state");
+    // 物品属性限制在 [0, 1]，为断电模型保留最高门槛。
+    private static final float READER_SCAN_LEVEL_MODEL_STEP = 0.25F;
+    private static final float READER_DEPLETED_MODEL_STATE = 1.0F;
+
     private ModClientLifecycle() {
     }
 
@@ -43,6 +54,12 @@ public final class ModClientLifecycle {
         ClientTooltipBridge.install(new ClientTooltipHooks());
         ClientLootTableLanguageStore.initialize();
         PanningVisuals.register();
+        ItemProperties.register(ModItems.SUSPICIOUS_READER, READER_MODEL_STATE, (stack, level, entity, seed) -> {
+            if (SuspiciousReaderItem.getEnergyOrDefault(stack) <= 0) {
+                return READER_DEPLETED_MODEL_STATE;
+            }
+            return SuspiciousReaderItem.getScanLevel(stack) * READER_SCAN_LEVEL_MODEL_STEP;
+        });
         ArchaeologyJournalUi.registerOpener((state, itemId) ->
                 Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
         ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
