@@ -1,14 +1,12 @@
 package com.meteorite.unsuspiciousblock.core.recipe;
 
+import com.meteorite.unsuspiciousblock.core.pottery.PotteryFiring;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CookingBookCategory;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
-import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
-import net.minecraft.world.level.block.entity.PotDecorations;
 import org.jetbrains.annotations.NotNull;
 
 /** 将未烧制纹饰陶罐动态转换为保留四面纹饰的原版陶罐。 */
@@ -21,9 +19,7 @@ public class UnfiredDecoratedPotSmeltingRecipe extends PotterySmeltingRecipe {
 
     @Override
     public @NotNull ItemStack assemble(@NotNull SingleRecipeInput input, HolderLookup.@NotNull Provider registries) {
-        PotDecorations decorations = input.item().getOrDefault(
-                DataComponents.POT_DECORATIONS, PotDecorations.EMPTY);
-        return DecoratedPotBlockEntity.createDecoratedPotItem(decorations);
+        return PotteryFiring.POT.fire(input.item());
     }
 
     @Override
