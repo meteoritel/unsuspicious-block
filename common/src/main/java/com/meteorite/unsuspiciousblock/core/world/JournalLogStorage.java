@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -37,7 +38,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 考古日志 v2 分片存储——按玩家 UUID 与战利品表拆分压缩 NBT 文件。
+ * 考古日志分片存储，以每位玩家的提交索引发布完整批次。
  * 所有状态访问和写盘调度都在服务端主线程执行，普通变更延迟合并写入，删除操作立即落盘。
  */
 public final class JournalLogStorage {
@@ -49,8 +50,10 @@ public final class JournalLogStorage {
     private static final long MAX_TABLE_NBT_BYTES = 64L * 1024 * 1024;
     private static final String MANIFEST_FILE = "storage.dat";
     private static final String INDEX_FILE = "index.dat";
+    private static final String COMMITTED_INDEX_FILE = "committed.dat";
     private static final String PLAYERS_DIR = "players";
     private static final String TABLES_DIR = "tables";
+    private static final String REVISIONS_DIR = "revisions";
     private static final String MIGRATION_DIR = "migration";
     private static final String LEGACY_FILE = "unsuspiciousblock_journal_logs.dat";
 
@@ -72,7 +75,7 @@ public final class JournalLogStorage {
 
     private final MinecraftServer server;
     private final Path root;
-    private final Map<UUID, ArchaeologyJournalLogState> loadedStates = new HashMap<>();
+    private final Map<UUID, PlayerLog> loadedPlayers = new HashMap<>();
     private final Map<UUID, Set<ResourceLocation>> dirtyTables = new LinkedHashMap<>();
     private final Set<UUID> dirtyIndexes = new LinkedHashSet<>();
     private final Set<UUID> pendingUnloads = new HashSet<>();
@@ -107,7 +110,7 @@ public final class JournalLogStorage {
             return;
         }
         active.flushAll();
-        active.loadedStates.clear();
+        active.loadedPlayers.clear();
         active.dirtyTables.clear();
         active.dirtyIndexes.clear();
         active.pendingUnloads.clear();
@@ -128,7 +131,7 @@ public final class JournalLogStorage {
     public static ArchaeologyJournalLogState getPlayerState(MinecraftServer server, UUID playerId) {
         JournalLogStorage storage = require(server);
         storage.pendingUnloads.remove(playerId);
-        return storage.loadedStates.computeIfAbsent(playerId, storage::loadPlayer);
+        return storage.loadedPlayers.computeIfAbsent(playerId, storage::loadPlayer).state();
     }
 
     // 玩家退出时刷新其全部 dirty 分片；失败则保留缓存并交给后续 tick 重试
@@ -241,7 +244,13 @@ public final class JournalLogStorage {
                         JournalDataVersion.STORAGE_VERSION_SHARDED,
                         RecoveryPolicy.RESTART_FROM_SOURCE,
                         this::copyStorageV1ToV2,
-                        this::archiveStorageV1AfterV2Commit)));
+                        this::archiveStorageV1AfterV2Commit),
+                        new StorageMigration.Step<>(
+                                JournalDataVersion.STORAGE_VERSION_SHARDED,
+                                JournalDataVersion.STORAGE_VERSION_COMMITTED_INDEX,
+                                RecoveryPolicy.RESTART_FROM_SOURCE,
+                                () -> loadStorageManifest().lastResult(),
+                                () -> {})));
         StorageMigration.State<MigrationResult> migrated = migration.migrate(
                 new StorageMigration.State<>(manifest.committedVersion(), manifest.pending(), manifest.lastResult()),
                 new StorageMigration.Checkpoint<>() {
@@ -273,11 +282,12 @@ public final class JournalLogStorage {
                 ArchaeologyJournalLogState state = player.getValue();
                 for (Map.Entry<ResourceLocation, ArchaeologyJournalLogState.TableLogHistory> table
                         : state.getTables().entrySet()) {
-                    writeTable(player.getKey(), table.getKey(), table.getValue());
+                    writeTable(tableFile(player.getKey(), table.getKey()), player.getKey(), table.getKey(), table.getValue());
                     tables++;
                     entries += table.getValue().getTotalEntryCount();
                 }
-                writeIndex(player.getKey(), state);
+                writeIndex(playerDir(player.getKey()).resolve(INDEX_FILE), player.getKey(),
+                        legacyShards(state), JournalDataVersion.STORAGE_VERSION_SHARDED);
             }
         }
         return new MigrationResult(players, tables, entries);
@@ -299,16 +309,21 @@ public final class JournalLogStorage {
         putCommittedVersion(manifest, committedVersion);
         manifest.putInt(TAG_PENDING_FROM_VERSION, pending.fromVersion());
         manifest.putInt(TAG_PENDING_TO_VERSION, pending.toVersion());
+        putMigrationResult(manifest, loadStorageManifest().lastResult());
         writeCompressedAtomic(this.root.resolve(MANIFEST_FILE), manifest);
     }
 
     private void writeCommittedManifest(int committedVersion, MigrationResult result) throws IOException {
         CompoundTag manifest = new CompoundTag();
         putCommittedVersion(manifest, committedVersion);
+        putMigrationResult(manifest, result);
+        writeCompressedAtomic(this.root.resolve(MANIFEST_FILE), manifest);
+    }
+
+    private static void putMigrationResult(CompoundTag manifest, MigrationResult result) {
         manifest.putInt(TAG_MIGRATED_PLAYERS, result.players());
         manifest.putInt(TAG_MIGRATED_TABLES, result.tables());
         manifest.putInt(TAG_MIGRATED_ENTRIES, result.entries());
-        writeCompressedAtomic(this.root.resolve(MANIFEST_FILE), manifest);
     }
 
     // 同步保留旧字段，让旧版读取时只看到最后完整提交版本
@@ -325,54 +340,122 @@ public final class JournalLogStorage {
                 Math.max(0, tag.getInt(TAG_MIGRATED_ENTRIES)));
     }
 
-    private ArchaeologyJournalLogState loadPlayer(UUID playerId) {
-        ArchaeologyJournalLogState state = new ArchaeologyJournalLogState();
-        Path tablesDir = tablesDir(playerId);
-        if (!Files.isDirectory(tablesDir)) {
-            return state;
-        }
-        Path indexFile = playerDir(playerId).resolve(INDEX_FILE);
-        if (Files.exists(indexFile)) {
+    private PlayerLog loadPlayer(UUID playerId) {
+        Path player = playerDir(playerId);
+        Path committed = player.resolve(COMMITTED_INDEX_FILE);
+        PlayerLog log;
+        if (Files.exists(committed)) {
             try {
-                CompoundTag index = readCompressed(indexFile, MAX_INDEX_NBT_BYTES);
-                if (index.getInt(JournalDataVersion.STORAGE_VERSION_TAG)
-                        != JournalDataVersion.CURRENT_STORAGE_VERSION) {
-                    throw new IOException("玩家日志索引版本不匹配");
-                }
-                ListTag tables = index.getList(TAG_TABLES, Tag.TAG_COMPOUND);
-                for (int i = 0; i < tables.size(); i++) {
-                    ResourceLocation tableId = ResourceLocation.tryParse(
-                            tables.getCompound(i).getString(TAG_TABLE_ID));
-                    if (tableId != null) {
-                        loadTableInto(state, playerId, tableFile(playerId, tableId));
-                    }
-                }
-                return state;
+                log = readPlayer(playerId, readIndex(committed, playerId,
+                        JournalDataVersion.STORAGE_VERSION_COMMITTED_INDEX));
             } catch (IOException | RuntimeException exception) {
-                Constants.LOG.error("读取玩家 {} 的考古日志索引失败，回退扫描分片", playerId, exception);
+                throw new IllegalStateException("读取玩家 " + playerId + " 的考古日志提交索引失败", exception);
+            }
+        } else {
+            log = loadLegacyPlayer(playerId, player.resolve(INDEX_FILE));
+        }
+        cleanUnreferencedShards(player, log.shards());
+        return log;
+    }
+
+    private PlayerLog loadLegacyPlayer(UUID playerId, Path index) {
+        Path tables = tablesDir(playerId);
+        if (!Files.isDirectory(tables)) {
+            return new PlayerLog(new ArchaeologyJournalLogState(), new LinkedHashMap<>());
+        }
+        if (Files.exists(index)) {
+            try {
+                return readPlayer(playerId, readIndex(index, playerId, JournalDataVersion.STORAGE_VERSION_SHARDED));
+            } catch (IOException | RuntimeException exception) {
+                Constants.LOG.error("读取玩家 {} 的考古日志旧索引失败，回退扫描旧分片", playerId, exception);
             }
         }
 
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(tablesDir, "*.dat")) {
+        ArchaeologyJournalLogState state = new ArchaeologyJournalLogState();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(tables, "*.dat")) {
             for (Path file : files) {
                 loadTableInto(state, playerId, file);
             }
         } catch (IOException exception) {
             Constants.LOG.error("扫描玩家 {} 的考古日志分片失败", playerId, exception);
         }
+        Map<ResourceLocation, String> shards = legacyShards(state);
         try {
-            writeIndex(playerId, state);
+            writeIndex(index, playerId, shards, JournalDataVersion.STORAGE_VERSION_SHARDED);
         } catch (IOException exception) {
-            Constants.LOG.error("重建玩家 {} 的考古日志索引失败", playerId, exception);
+            Constants.LOG.error("重建玩家 {} 的考古日志旧索引失败", playerId, exception);
         }
-        return state;
+        return new PlayerLog(state, shards);
+    }
+
+    private PlayerLog readPlayer(UUID playerId, Map<ResourceLocation, String> shards) {
+        ArchaeologyJournalLogState state = new ArchaeologyJournalLogState();
+        Path player = playerDir(playerId);
+        for (String file : shards.values()) {
+            loadTableInto(state, playerId, checkedResolve(player, file));
+        }
+        return new PlayerLog(state, shards);
+    }
+
+    private static Map<ResourceLocation, String> readIndex(Path file, UUID playerId, int version) throws IOException {
+        CompoundTag index = readCompressed(file, MAX_INDEX_NBT_BYTES);
+        if (index.getInt(JournalDataVersion.STORAGE_VERSION_TAG) != version
+                || !playerId.toString().equals(index.getString(TAG_PLAYER_UUID))
+                || !index.contains(TAG_TABLES, Tag.TAG_LIST)) {
+            throw new IOException("玩家日志索引版本、玩家或分片清单不匹配");
+        }
+        Map<ResourceLocation, String> shards = new LinkedHashMap<>();
+        ListTag tables = index.getList(TAG_TABLES, Tag.TAG_COMPOUND);
+        for (int row = 0; row < tables.size(); row++) {
+            CompoundTag table = tables.getCompound(row);
+            ResourceLocation id = ResourceLocation.tryParse(table.getString(TAG_TABLE_ID));
+            if (id == null) {
+                throw new IOException("玩家日志索引含无效的战利品表 ID");
+            }
+            String name = version == JournalDataVersion.STORAGE_VERSION_SHARDED
+                    ? legacyShard(id) : table.getString(TAG_FILE);
+            if (!name.equals(legacyShard(id)) && !Path.of(REVISIONS_DIR).equals(Path.of(name).getParent())) {
+                throw new IOException("玩家日志索引含无效的表 " + id + " 分片路径");
+            }
+            shards.put(id, name);
+        }
+        return shards;
+    }
+
+    private static Map<ResourceLocation, String> legacyShards(ArchaeologyJournalLogState state) {
+        Map<ResourceLocation, String> shards = new LinkedHashMap<>();
+        state.getTables().keySet().forEach(id -> shards.put(id, legacyShard(id)));
+        return shards;
+    }
+
+    private static String legacyShard(ResourceLocation tableId) {
+        return TABLES_DIR + "/" + shardFileName(tableId);
+    }
+
+    private static void cleanUnreferencedShards(Path player, Map<ResourceLocation, String> shards) {
+        Set<String> committed = Set.copyOf(shards.values());
+        for (String directory : List.of(TABLES_DIR, REVISIONS_DIR)) {
+            Path root = player.resolve(directory);
+            if (!Files.isDirectory(root)) {
+                continue;
+            }
+            try (DirectoryStream<Path> files = Files.newDirectoryStream(root, "*.dat")) {
+                for (Path path : files) {
+                    if (!committed.contains(directory + "/" + path.getFileName())) {
+                        deleteUnusedShard(path);
+                    }
+                }
+            } catch (IOException exception) {
+                Constants.LOG.warn("清理未引用的考古日志分片失败: {}", root, exception);
+            }
+        }
     }
 
     private void loadTableInto(ArchaeologyJournalLogState state, UUID playerId, Path file) {
         try {
             CompoundTag tag = readCompressed(file, MAX_TABLE_NBT_BYTES);
             if (tag.getInt(JournalDataVersion.STORAGE_VERSION_TAG)
-                    != JournalDataVersion.CURRENT_STORAGE_VERSION
+                    != JournalDataVersion.STORAGE_VERSION_SHARDED
                     || !playerId.toString().equals(tag.getString(TAG_PLAYER_UUID))) {
                 Constants.LOG.warn("跳过版本或玩家不匹配的考古日志分片: {}", file);
                 return;
@@ -448,34 +531,7 @@ public final class JournalLogStorage {
             Set<ResourceLocation> tables = player.getValue();
             this.dirtyIndexes.remove(playerId);
             tables.forEach(tableId -> removeDirty(playerId, tableId));
-            ArchaeologyJournalLogState state = this.loadedStates.get(playerId);
-            Set<ResourceLocation> failedTables = new LinkedHashSet<>();
-            boolean indexCommitted = false;
-            if (state == null) {
-                Constants.LOG.error(Constants.LOG_TAG + "保存玩家 {} 的日志失败：玩家缓存不存在", playerId);
-                failedTables.addAll(tables);
-            } else {
-                for (ResourceLocation tableId : tables) {
-                    try {
-                        ArchaeologyJournalLogState.TableLogHistory history = state.getTable(tableId);
-                        if (history == null) Files.deleteIfExists(tableFile(playerId, tableId));
-                        else writeTable(playerId, tableId, history);
-                    } catch (IOException exception) {
-                        failedTables.add(tableId);
-                        Constants.LOG.error(Constants.LOG_TAG + "保存玩家 {} 的日志表 {} 失败", playerId, tableId, exception);
-                    }
-                }
-                // 分片失败时保留旧索引，整个批次以同一内存状态重试。
-                if (failedTables.isEmpty()) {
-                    try {
-                        writeIndex(playerId, state);
-                        indexCommitted = true;
-                    } catch (IOException exception) {
-                        Constants.LOG.error(Constants.LOG_TAG + "保存玩家 {} 的日志索引失败", playerId, exception);
-                    }
-                }
-            }
-            CommitResult result = new CommitResult(failedTables, indexCommitted);
+            CommitResult result = commitPlayer(playerId, this.loadedPlayers.get(playerId), tables);
             results.put(playerId, result);
             if (result.successful()) completePendingUnloadIfClean(playerId);
             else {
@@ -484,6 +540,62 @@ public final class JournalLogStorage {
             }
         }
         return results;
+    }
+
+    private CommitResult commitPlayer(UUID playerId, PlayerLog log, Set<ResourceLocation> tables) {
+        Path player = playerDir(playerId);
+        Map<ResourceLocation, String> next = new LinkedHashMap<>(log.shards());
+        List<Path> staged = new ArrayList<>();
+        List<Path> superseded = new ArrayList<>();
+        Set<ResourceLocation> failedTables = new LinkedHashSet<>();
+        for (ResourceLocation tableId : tables) {
+            String previous = next.get(tableId);
+            if (previous != null) {
+                superseded.add(checkedResolve(player, previous));
+            }
+            ArchaeologyJournalLogState.TableLogHistory history = log.state().getTable(tableId);
+            if (history == null) {
+                next.remove(tableId);
+                continue;
+            }
+            String revision = REVISIONS_DIR + "/" + UUID.randomUUID() + ".dat";
+            Path file = player.resolve(revision);
+            staged.add(file);
+            try {
+                writeTable(file, playerId, tableId, history);
+                next.put(tableId, revision);
+            } catch (IOException exception) {
+                failedTables.add(tableId);
+                Constants.LOG.error("保存玩家 {} 的考古日志表 {} 失败", playerId, tableId, exception);
+                break;
+            }
+        }
+        if (!failedTables.isEmpty()) {
+            staged.forEach(JournalLogStorage::deleteUnusedShard);
+            return new CommitResult(failedTables, false);
+        }
+
+        try {
+            writeIndex(player.resolve(COMMITTED_INDEX_FILE), playerId, next,
+                    JournalDataVersion.STORAGE_VERSION_COMMITTED_INDEX);
+        } catch (IOException exception) {
+            Constants.LOG.error("提交玩家 {} 的考古日志索引失败", playerId, exception);
+            staged.forEach(JournalLogStorage::deleteUnusedShard);
+            return new CommitResult(Set.of(), false);
+        }
+
+        log.shards().clear();
+        log.shards().putAll(next);
+        superseded.forEach(JournalLogStorage::deleteUnusedShard);
+        return new CommitResult(Set.of(), true);
+    }
+
+    private static void deleteUnusedShard(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException exception) {
+            Constants.LOG.warn("清理未被引用的考古日志分片失败: {}", file, exception);
+        }
     }
 
     private void flushAndUnloadPlayer(UUID playerId) {
@@ -500,7 +612,7 @@ public final class JournalLogStorage {
         if (this.pendingUnloads.contains(playerId) && !this.dirtyTables.containsKey(playerId)
                 && !this.dirtyIndexes.contains(playerId)) {
             this.pendingUnloads.remove(playerId);
-            this.loadedStates.remove(playerId);
+            this.loadedPlayers.remove(playerId);
         }
     }
 
@@ -519,30 +631,43 @@ public final class JournalLogStorage {
         }
     }
 
-    private void writeTable(UUID playerId, ResourceLocation tableId,
-                            ArchaeologyJournalLogState.TableLogHistory history) throws IOException {
+    private static void writeTable(Path file, UUID playerId, ResourceLocation tableId,
+                                   ArchaeologyJournalLogState.TableLogHistory history) throws IOException {
         CompoundTag tag = new CompoundTag();
-        tag.putInt(JournalDataVersion.STORAGE_VERSION_TAG, JournalDataVersion.CURRENT_STORAGE_VERSION);
+        tag.putInt(JournalDataVersion.STORAGE_VERSION_TAG, JournalDataVersion.STORAGE_VERSION_SHARDED);
         tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
         tag.putString(TAG_PLAYER_UUID, playerId.toString());
         tag.putString(TAG_TABLE_ID, tableId.toString());
         tag.put(TAG_HISTORY, history.toTag());
-        writeCompressedAtomic(tableFile(playerId, tableId), tag);
+        Files.createDirectories(file.getParent());
+        NbtIo.writeCompressed(tag, file);
     }
 
-    private void writeIndex(UUID playerId, ArchaeologyJournalLogState state) throws IOException {
+    private static void writeIndex(Path file, UUID playerId, Map<ResourceLocation, String> shards,
+                                   int version) throws IOException {
         CompoundTag index = new CompoundTag();
-        index.putInt(JournalDataVersion.STORAGE_VERSION_TAG, JournalDataVersion.CURRENT_STORAGE_VERSION);
+        index.putInt(JournalDataVersion.STORAGE_VERSION_TAG, version);
         index.putString(TAG_PLAYER_UUID, playerId.toString());
         ListTag tables = new ListTag();
-        for (ResourceLocation tableId : state.getTables().keySet()) {
+        shards.forEach((tableId, path) -> {
             CompoundTag table = new CompoundTag();
             table.putString(TAG_TABLE_ID, tableId.toString());
-            table.putString(TAG_FILE, shardFileName(tableId));
+            table.putString(TAG_FILE, version == JournalDataVersion.STORAGE_VERSION_SHARDED
+                    ? Path.of(path).getFileName().toString() : path);
             tables.add(table);
-        }
+        });
         index.put(TAG_TABLES, tables);
-        writeCompressedAtomic(playerDir(playerId).resolve(INDEX_FILE), index);
+        if (version == JournalDataVersion.STORAGE_VERSION_COMMITTED_INDEX) {
+            Files.createDirectories(file.getParent());
+            Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
+            NbtIo.writeCompressed(index, temporary);
+            Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            writeCompressedAtomic(file, index);
+        }
+    }
+
+    private record PlayerLog(ArchaeologyJournalLogState state, Map<ResourceLocation, String> shards) {
     }
 
     private Path legacyFile() {

@@ -19,8 +19,9 @@ public final class JournalDataVersion {
     public static final String STORAGE_VERSION_TAG = "storage_version";
     public static final int STORAGE_VERSION_SINGLE_FILE = 1;
     public static final int STORAGE_VERSION_SHARDED = 2;
+    public static final int STORAGE_VERSION_COMMITTED_INDEX = 3;
     public static final int LEGACY_STORAGE_VERSION = STORAGE_VERSION_SINGLE_FILE;
-    public static final int CURRENT_STORAGE_VERSION = STORAGE_VERSION_SHARDED;
+    public static final int CURRENT_STORAGE_VERSION = STORAGE_VERSION_COMMITTED_INDEX;
 
     private JournalDataVersion() {
     }

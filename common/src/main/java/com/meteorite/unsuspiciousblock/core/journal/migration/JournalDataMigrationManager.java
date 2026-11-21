@@ -37,7 +37,7 @@ public final class JournalDataMigrationManager {
         migrateProgressSignatures(player);
     }
 
-    // 将玩家 NBT 中的旧日志合并到 v2 分片；全部持久化成功后才确认清理源数据
+    // 将玩家 NBT 中的旧日志合并到当前分片布局；全部持久化成功后才确认清理源数据
     private static void migrateLegacyPlayerLog(ServerPlayer player,
                                                ArchaeologyJournalLogSyncSession session) {
         if (!(player instanceof LegacyJournalLogAccess access)) {
