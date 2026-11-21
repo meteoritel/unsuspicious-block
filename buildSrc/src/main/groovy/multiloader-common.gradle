@@ -93,7 +93,7 @@ def lootrCompatNeoForge = project.hasProperty('lootr_compat_neoforge') ? project
 def lootrNeoForgeDependency = lootrCompatNeoForge ? """[[dependencies.${mod_id}]]
     modId = "lootr"
     type = "optional"
-    versionRange = "[1.11.37.121,)"
+    versionRange = "[1.11.37.121]"
     ordering = "NONE"
     side = "BOTH"
 """ : ''
@@ -107,7 +107,6 @@ processResources {
             'version'                      : version,
             'group'                        : project.group, //Else we target the task's group.
             'minecraft_version'            : minecraft_version,
-            'minecraft_version_range'      : minecraft_version_range,
             'fabric_version'               : fabric_version,
             'fabric_loader_version'        : fabric_loader_version,
             'mod_name'                     : mod_name,
@@ -117,6 +116,7 @@ processResources {
             'description'                  : project.description,
             'neoforge_version'             : neoforge_version,
             'neoforge_loader_version_range': neoforge_loader_version_range,
+            'mekanism_version'             : mekanism_version,
             'credits'                      : credits,
             'java_version'                 : java_version,
             'meteos_ui_kit_version'         : meteos_ui_kit_version,
