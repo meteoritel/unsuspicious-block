@@ -38,7 +38,7 @@ Unsuspicious Block adds exploration tools and a discovery journal to Minecraft a
 |---|---|
 | Minecraft | 1.21.1 |
 | Fabric | Fabric Loader 0.17.0+, Fabric API required |
-| NeoForge | NeoForge 21.1.195+ |
+| NeoForge | NeoForge 21.1.221+ |
 | Java | 21 |
 | Multiplayer | Required on both client and server |
 | License | MIT |

@@ -9,7 +9,7 @@
 | 项目 | 说明 |
 |---|---|
 | Minecraft | 1.21.1 |
-| Loader | Fabric 0.17.0+ / NeoForge 21.1.195+（双平台同源） |
+| Loader | Fabric 0.17.0+ / NeoForge 21.1.221+（双平台同源） |
 | Java | 21 |
 | 映射 | Mojang 官方映射 + Parchment（版本见 `gradle.properties`） |
 | 构建系统 | Gradle（`multiloader` 自定义插件）+ Wrapper 版本见 `gradle/wrapper/` |

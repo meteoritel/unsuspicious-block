@@ -6,9 +6,9 @@ Mixin 仅用于补充原版事件缺口、向原版类附加持久化/瞬态状�
 
 | 配置文件 | 作用范围 |
 |---|---|
-| [common 公共配置](../../../common/src/main/resources/unsuspiciousblock.mixins.json) | 双端共用的状态附加、战利品追踪与模拟条件捕获 |
-| [Fabric 配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.mixins.json) | 补齐 Fabric 原生事件缺失的平台接入 |
-| [NeoForge 配置](../../../neoforge/src/main/resources/unsuspiciousblock.neoforge.mixins.json) | 补齐 NeoForge 扩展液体跳跃的主动推进接入 |
+| [common 公共配置](../../../common/src/main/resources/unsuspiciousblock.mixins.json) | 双端共用的状态附加、战利品追踪、模板写入标记及精准到原版机关的轻步过滤 |
+| [Fabric 配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.mixins.json) | 补齐 Fabric 原生事件缺失的平台接入及耕地变化过滤 |
+| [NeoForge 配置](../../../neoforge/src/main/resources/unsuspiciousblock.neoforge.mixins.json) | 补齐 NeoForge 扩展液体跳跃的主动推进接入及生效 Global Loot Modifier 读取 |
 | [Create 兼容配置](../../../neoforge/src/main/resources/unsuspiciousblock.create.mixins.json) | 为 NeoForge 的 Create 批量熔炼接入制陶动态产物 |
 | [Lootr 兼容配置](../../../common/src/main/resources/unsuspiciousblock.lootr.mixins.json) | 随 `lootr_compat_*` 构建开关及 Lootr 安装条件启用的容器追踪 |
 | [common 客户端配置](../../../common/src/main/resources/unsuspiciousblock.client.mixins.json) | `client.mixin` 包下的跨平台客户端注入 |
@@ -27,9 +27,11 @@ Create 配置通过 NeoForge 的 `requiredMods` 启用，由配置插件按模�
 | 玩家与容器状态 | 附加持久化或瞬态字段，桥接 NBT 读写与宿主回调 | [考古笔记系统](../subsystems/journal.md)、[猫族关系系统](../subsystems/cat-favor.md)、[方块与物品](../subsystems/blocks-items.md) |
 | 战利品追踪 | 捕获刷拭、容器打开、钓鱼收杆与嵌套表调用边界 | [战利品追踪核心数据流](../internals/journal-tracking.md) |
 | 条件与函数模拟 | 将条件求值与函数执行捕获转交当前线程的模拟作用域 | [战利品表机制细节](../internals/loottable-mechanics.md)、[战利品表函数与展示规则](../internals/loottable-functions-and-display.md) |
+| 模板与骨块来源 | 在结构模板成功写入骨块时记录自然来源 | [方块与物品机制细节](../internals/blocks-items-details.md) |
+| 轻步机关 | 压力板实体筛选及绊线实体判断只对持有轻步的玩家附加过滤；NeoForge 耕地采用可取消事件 | [猫族关系系统](../subsystems/cat-favor.md) |
 | 区域驱避 | 接入索敌、生成玩家筛选、路径候选、AI 推进写入和原版缓存动作 | [实体与 AI](../subsystems/entities-world.md)的「区域光环」 |
 | 客户端表现 | 读取受保护界面字段，或转交附魔预览、动态语言与淘盘动画 | [客户端与 GUI](../subsystems/client-ui.md) |
-| Fabric 专用补齐 | 补齐铁砧修复、刷拭掉落、剪羊毛、骨块追踪与第一人称手部动画 | [实体与 AI](../subsystems/entities-world.md)、[附魔系统](../subsystems/enchantment.md)、[淘洗系统](../subsystems/panning.md) |
+| Fabric 专用补齐 | 补齐铁砧修复、剪羊毛、耕地变化过滤与第一人称手部动画 | [实体与 AI](../subsystems/entities-world.md)、[附魔系统](../subsystems/enchantment.md)、[淘洗系统](../subsystems/panning.md) |
 
 ## 3. 三种典型设计模式
 

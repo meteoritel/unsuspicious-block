@@ -6,7 +6,7 @@
 
 - Minecraft 1.21.1
 - Java 21
-- Fabric Loader 0.17.0 or later, or NeoForge 21.1.195 or later
+- Fabric Loader 0.17.0 or later, or NeoForge 21.1.221 or later
 - The Fabric version requires Fabric API; the NeoForge version has no additional required dependencies
 
 ## Single-player

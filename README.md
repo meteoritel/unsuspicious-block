@@ -18,7 +18,7 @@
 | 项目 | 支持情况 |
 |---|---|
 | Minecraft | 1.21.1 |
-| Loader | Fabric 0.17.0+ / NeoForge 21.1.195+ |
+| Loader | Fabric 0.17.0+ / NeoForge 21.1.221+ |
 | Java | 21 |
 | 当前版本 | 1.5.2 |
 | 多人游戏 | 客户端与服务端均需安装 |

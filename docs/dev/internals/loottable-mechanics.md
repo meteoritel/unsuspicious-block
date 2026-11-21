@@ -141,7 +141,7 @@ flowchart TD
 
 [`LootProbabilitySimulationWorker`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/simulation/LootProbabilitySimulationWorker.java) 在服务端 `END_SERVER_TICK` 调度全部模拟任务：
 
-- **单线程安全性**：`getRandomItems` 与 `LootContextParamFiller` 访问非线程安全的 `LegacyRandomSource`，故严格在服务端主线程分片运行，每 tick 使用 `15ms` 软预算（每 32 次抽取检查一次截止时间），并在时间片内复用模拟作用域。
+- **随机源与执行线程**：模拟器为每项任务持有独立 `RandomSource`，并将该随机源传给普通 `getRandomItems` 重载。NeoForge 泥地打捞子表沿用模拟上下文的随机源。Loot 参数填充和函数仍会访问服务端世界，因此由主线程分片执行；每 tick 使用 `15ms` 软预算（每 32 次抽取检查一次截止时间），并在时间片内复用模拟作用域。
 - **双队列与抢占**：`highQueue`（玩家按需请求与解锁插队）优先于 `lowQueue`（启动基准填充）；已排在低队列的同输入会被提升，新到达的高优先级任务可在下个 tick 边界无损抢占低优先级任务。
 - **去重与限流**：任务按 `(tableId, inputKey)` 去重；多请求者命中已有任务时合并等待关系，同玩家保存最新票据，完成后按各自票据回执并释放一次额度。`highQueue` 待处理上限 `32`、每玩家在途按需请求上限 `2`（仅约束玩家手动按需请求，不限制启动批处理与物品解锁插队）。
 - **三口径完成日志**：完成日志分别报告**线程 CPU 时间**（衡量单表计算真实成本）、**有效计算耗时**（受启动阶段并发争抢影响较大）与**跨 tick 总历时**。

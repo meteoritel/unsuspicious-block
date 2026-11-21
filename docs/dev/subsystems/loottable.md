@@ -199,7 +199,7 @@ classDiagram
 ## 9. 约束与陷阱
 
 - **禁止从原始 JSON 重建模拟表**：必须从服务端 `ReloadableServerRegistries` 读取运行时表，否则会丢失 Fabric `LootTableEvents.MODIFY` 修改。
-- **模拟必须在服务端主线程 tick 分片运行**：原版 `getRandomItems` 触碰非线程安全的 `LegacyRandomSource`，禁止丢入后台线程并发执行。
+- **模拟在服务端主线程 tick 分片运行**：每项模拟使用独立抽样随机源，真实表、Loot 参数填充及函数仍会访问服务端世界。
 - **参数填充须覆盖 `allowed` 内的 required 与 optional 参数**：遗漏 optional 参数会把“未填充”伪装成“条件不成立”。
 - **空 `type` 等价于 `generic`**：判断 `paramSet` 时遵循原版缺省语义，避免误伤未显式写 `type` 的第三方模组表。
 - **不可用 `stack.has(ENCHANTMENTS)` 判定附魔**：工具默认携带空组件，应使用 `isActuallyEnchanted`。

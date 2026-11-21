@@ -17,7 +17,7 @@
 | 世界结构与生成 | `data/unsuspiciousblock/structure/hand_of_cat_cache.nbt`、`worldgen/{structure,template_pool}/hand_of_cat_cache.json`、`tags/worldgen/biome/has_structure/` |
 | 客户端渲染 | `client/renderer/`（`ModEntityRenderers` / `ModModelLayers`、各职业渲染器、`ShimmerSurfaceRenderer`）、`client/model/MessengerCatClothesModel`、`client/renderer/layer/` |
 | 网络 | 无专属 Payload（灵体不保存、不跨会话同步，运行态走 `SynchedEntityData`） |
-| Mixin | `StructureTemplateMixin`（结构生成骨块扫描）；Fabric 骨块追踪使用 `platform/mixin/chunk/{ChunkAccess,ChunkSerializer,LevelChunk}Mixin` |
+| Mixin | `StructureTemplateMixin`（模板本次成功写入的自然骨块标记）；Fabric 区块生成追踪使用 `platform/mixin/chunk/{ChunkAccess,ChunkSerializer,LevelChunk}Mixin` |
 | 平台差异 | 骨块追踪：Fabric 使用 Mixin + 区块事件；NeoForge 使用 `DataAttachment`（`NeoForgeBoneBlockTracker`） |
 | 光环平台接入 | `platform/world/FabricAuraEvents`、`NeoForgeAuraEvents` 接入装卸；目标写入分别使用 Fabric Mixin 与 NeoForge `LivingChangeTargetEvent`，NeoForge 扩展液体跳跃由平台 Mixin 补齐 |
 

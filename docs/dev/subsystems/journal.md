@@ -137,7 +137,7 @@ classDiagram
 
 ```mermaid
 flowchart TD
-    Join["onPlayerJoined(player)"] --> Restore["1. restoreLogState (从 v2 分片恢复日志并回放排队变更)"]
+    Join["onPlayerJoined(player)"] --> Restore["1. restoreLogState (按已提交索引恢复日志并回放排队变更)"]
     Restore --> Migrate["2. JournalDataMigrationManager.migratePlayerData (旧 NBT 日志提交至分片 + 对齐旧进度签名)"]
     Migrate --> Net["3. ArchaeologyJournalNetwork.syncPreparedPlayerOnJoin"]
     Net --> S1["JournalLogHandler.syncLogSnapshot (日志分片快照)"]
@@ -177,7 +177,7 @@ flowchart TD
 ## 10. 约束与陷阱
 
 - **目录整代原子发布**：新增全代派生数据必须放入 `CatalogGeneration` 的静态部分同步构建，禁止在多字段上分步赋值。
-- **禁止混用静态视图与模拟视图**：解锁、管理、完成度与挑战判定必须读取启动即完整的 `staticTables()`；`simulatedTables()` 仅用于展示覆盖率检查与严格要求动态条目就绪的指令。
+- **区分目录候选与运行时发现**：完成度、一次性完成奖励与介绍页分母使用 `CatalogGeneration.completionItems()` 汇总目录声明的 `STATIC` 和 `MOD_INTEGRATION` 签名；`UNKNOWN_RUNTIME` 仍可展示、解锁和写入进度，不改变完成资格。管理解锁读取 `displayTables()`，状态命令分别显示已测、待测、失败与机制未解析的基准表。
 - **状态反序列化只读当前字段**：所有旧存档兼容转换必须注册到 `JournalNbtMigrator`，不得在状态类的 `readFrom` / `fromTag` 编写回退分支。
 - **迁移必须连续且拒绝降级**：遇到高于当前版本的数据立即拒绝；非幂等布局迁移必须使用 `ABORT_IF_INTERRUPTED`。
 - **延迟写盘是有意性能取舍**：普通日志写入每 200 tick 批量落盘（崩溃可能损失约 10 秒最近普通变更），禁止改为每次记录同步刷盘。

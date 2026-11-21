@@ -81,9 +81,11 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
 
 ### 4.3 Lootr（每人独立战利品）
 
-- 实现位于 `common/core/plugin/lootr/`（受 `gradle.properties` 的 `lootr_compat_*` 构建开关控制；当前发布配置仅 NeoForge 启用）：
+- NeoForge 发布配置锁定 Lootr `1.21.1-1.11.37.121`；Fabric 的 `lootr_compat_fabric` 默认关闭，NeoForge 可通过 `lootr_compat_neoforge` 关闭联动。
+- 实现位于 `common/core/plugin/lootr/`：
   - [`LootrArchaeologyFilterProvider`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrArchaeologyFilterProvider.java) 通过 `META-INF/services` 注册；
   - `LootrBrushableTrackingAccess` 与 `LootrTrackingBridge` 负责把 Lootr 的每人独立容器/可疑方块接入模组追踪体系；配套 Mixin 见[Mixin 边界与接线](mixin.md)。
+- 原版埋藏宝藏和村庄武器匠表被同 ID 数据包替换时，Fabric 不追加内置奖励；NeoForge 在 Global Loot Modifier 仍启用时按表 ID 继续追加。数据包作者在 NeoForge 可通过全局修改器列表移除对应规则。
 
 ### 4.4 Trinkets / Curios（饰品栏）
 
@@ -102,7 +104,7 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
 
 ### 4.6 Mekanism（制陶熔炼）
 
-NeoForge 在 Mekanism 已加载时注册 `unsuspiciousblock:mekanism_pottery_smelting` 序列化器，内置配方使用 `neoforge:mod_loaded` 启用。配方以 `input` 声明坯件食材，以 `product` 选择 `pot` 或 `sherd`。机器使用原生 `TYPE_SMELTING` 查询并按实际输入烧制，陶片取组件中的纹饰物品，陶罐保留四面纹饰。Mekanism 的配方查看器展示普通陶罐及当前陶片标签中的可用纹样。[机器配方适配](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/mekanism/MekanismPotterySmeltingRecipe.java)
+NeoForge 制陶 adapter 适配 Mekanism `1.21.1-10.7.19.85`，元数据对其它 Mekanism 版本给出 Loader 依赖提示。加载该版本时注册 `unsuspiciousblock:mekanism_pottery_smelting` 序列化器，内置配方使用 `neoforge:mod_loaded` 启用。配方以 `input` 声明坯件食材，以 `product` 选择 `pot` 或 `sherd`。机器使用原生 `TYPE_SMELTING` 查询并按实际输入烧制，陶片取组件中的纹饰物品，陶罐保留四面纹饰。Mekanism 的配方查看器展示普通陶罐及当前陶片标签中的可用纹样。[机器配方适配](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/mekanism/MekanismPotterySmeltingRecipe.java)
 
 ### 4.7 Create 鼓风机批量熔炼
 

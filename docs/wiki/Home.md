@@ -23,7 +23,7 @@ Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工�
 |---|---|
 | Minecraft | 1.21.1 |
 | Fabric | Fabric Loader 0.17.0+, Fabric API required |
-| NeoForge | NeoForge 21.1.195+ |
+| NeoForge | NeoForge 21.1.221+ |
 | Java | 21 |
 | Multiplayer / 多人游戏 | Required on both client and server / 客户端与服务端都需要安装本模组 |
 | License | MIT |

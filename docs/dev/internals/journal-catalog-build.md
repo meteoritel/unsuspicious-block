@@ -23,9 +23,10 @@ flowchart TD
 
 - **声明注入展开 (`DeclaredInjectionExpansion`)**：在构建期将物品级注入声明与运行时子表边合并为共同贡献，保留来源类型、接入模式、完整函数路径与第一跳子表；构建出的 `ExpandedTable` 同时固定原生、展示与规划三种视图（路径栈用于阻断循环，多父路径分别保留独立门槛）。
 - **展示装配 (`CatalogDisplayDerivation` / `CatalogTableDto.assemble`)**：由静态表、约束描述、输入与只读测量快照装配最终 DTO（包含场景假设、物品、子表条件、分支与参数选项），缓存读写与 LRU 触达保留在调用方。
-- **双视图口径分离**：
-  - `staticTables()` / `staticTable()`、`tracked()` 与 `queryIndex()` 提供启动即完整的解析态资格，不随模拟进度变化；
-  - `displayTable()` 优先读取基准测量，其次是抽样失败时保留的静态展示，最后是解析态；`simulatedTables()` 供命令检查完成覆盖。
+- **完成资格与展示口径分离**：
+  - `staticTables()` / `staticTable()` 与 `tracked()` 提供完整声明候选；`completionItems()` 按发布代次的目录层级与物品签名形成完成资格，只接受 `STATIC` 和 `MOD_INTEGRATION` 来源。
+  - `displayTable()` 优先读取基准测量，其次读取失败状态，最后使用当前静态表；`displayTables()` 发布这一展示读模型给管理解锁。
+  - `baselineCounts()` 依据约束目录和结果 overlay 分别统计待测、已测、失败与机制未解析的表。
 - **Worker 交付与重载生命周期**：玩家查看已解锁表且当前选择为待计算的基准输入时，按需请求加入同一个 `(表, 输入)` 任务并提高其优先级。工作器将等待者汇总交付给 `CatalogSimulationSubmission`，目录校验代次、表哈希和输入后提交共享基准，`CatalogSimulationDelivery` 当即回传单表结果。队列排空后广播完整目录哈希。目录只在有效资源代次匹配时执行模拟。资源切换后构建失败仍可读取旧快照，旧任务退役并结束在途请求。资源未切换时，构建失败保留原有任务。
 
 ## 2. 冻结目录与按需同步
@@ -42,10 +43,10 @@ flowchart TD
 `/usb journal` 的玩家进度由 `JournalCommand` 提供，共享目录维护由 `JournalCatalogCommand` 提供；根 `/usb` 统一检查 OP 2 权限。
 
 - **`catalog rebuild`**：目录所有者忽略旧缓存构建候选。候选成功后清缓存、发布读模型并切换任务，失败时保留已发布读模型和缓存。用 `catalog status` 查询失败状态、队列和目录覆盖。
-- **`catalog status`**：分别显示队列忙碌状态和模拟视图覆盖情况；队列空闲时仍可能存在未成功模拟的表，具体原因见服务端失败日志。
+- **`catalog status`**：显示队列状态与四种基准终态计数。失败原因见服务端模拟日志，机制不可用原因见目录构建日志。
 - **`catalog list`**：列出当前静态目录，使用常规名称解析。缺失翻译仍在目录加载结束时集中汇总。
 - **`unlock tables <all|table_id>`**：读取启动即完整的静态视图（`staticTables()`）；选择目标为必填项。
-- **`unlock items <all|table_id>`**：等待 worker 空闲且模拟视图覆盖全部收录表后，通过 `CatalogQueryIndex.subtreeItems` 解锁本表与后代去重后的物品全集；共享子表与循环引用只遍历一次。
+- **`unlock items <all|table_id>`**：等待 worker 空闲及仍待计算的基准任务结束，再按展示视图解锁本表与后代的去重物品；共享子表只遍历一次。完成后有失败或机制未解析终态时，以当前发布候选执行。
 - **`reset <all|table_id>`**：修改执行玩家的进度，发送全量状态，再清除相应日志。普通解锁使用增量状态同步。
 - **执行者**：玩家进度命令要求玩家源，控制台可用 `/execute as <player> run usb journal ...`；目录维护可直接由控制台执行。裸 `/usb` 根据已注册树生成用法导航。
 

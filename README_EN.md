@@ -18,7 +18,7 @@ Replace the placeholder below with: ![Unsuspicious Block overview](docs/image/re
 | Item | Support |
 |---|---|
 | Minecraft | 1.21.1 |
-| Loader | Fabric 0.17.0+ / NeoForge 21.1.195+ |
+| Loader | Fabric 0.17.0+ / NeoForge 21.1.221+ |
 | Java | 21 |
 | Current version | 1.5.2 |
 | Multiplayer | Install on both client and server |
