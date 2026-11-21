@@ -188,7 +188,7 @@
         {
           "type": "minecraft:tag",
           "name": "minecraft:decorated_pot_sherds",
-          "expand": false,
+          "expand": true,
           "weight": 1,
           "quality": 2
         },
@@ -241,7 +241,7 @@
               "count": {
                 "type": "minecraft:uniform",
                 "min": 1,
-                "max": 2
+                "max": 3
               }
             }
           ]
