@@ -52,6 +52,7 @@ dependencies {
     compileOnly "maven.modrinth:artifacts:${artifacts_version}"
 
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
+    compileOnly "maven.modrinth:create:${create_version}"
 
     // Lootr：neoforge 端 compileOnly 引用 API，runtimeOnly 供本地运行测试
     if (lootrCompat) {

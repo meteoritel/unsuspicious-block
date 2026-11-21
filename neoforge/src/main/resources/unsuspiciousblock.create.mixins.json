@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.meteorite.unsuspiciousblock.platform.mixin.compat.create",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "com.meteorite.unsuspiciousblock.platform.plugin.create.CreateFanMixinPlugin",
+  "mixins": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

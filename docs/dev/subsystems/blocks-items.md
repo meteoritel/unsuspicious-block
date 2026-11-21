@@ -149,7 +149,7 @@ flowchart LR
 [`ModRecipeSerializers`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/recipe/ModRecipeSerializers.java) 沿用「清单 + 回调」注册自定义合成与熔炼序列化器。
 
 - **不可疑方块合成**：`UnsuspiciousCarrier`（`SAND` / `GRAVEL`）作为空方块制作（`UnsuspiciousCreationRecipe`）与封存（`UnsuspiciousSealingRecipe`）的共用载体；序列化器清单以 `(UnsuspiciousCarrier, CraftingKind)` 为键建立映射，初始化时校验重复与缺失组合，配方直接从同一映射获取对应序列化器。
-- **制陶熔炼**由 `PotterySmeltingRecipe` 实现原版 `SmeltingRecipe` 类型契约，陶罐和陶片各用独立序列化器。`assemble` 委托 `PotteryFiring` 按输入的 `POT_DECORATIONS` 计算实际产物，Mekanism 机器配方也调用同一规则。`isSpecial` 和空的 `getResultItem` 为固定产物导入提供跳过信号。NeoForge 熔炉直接调用 `assemble`，Fabric 熔炉在输出槽检查和烧制时经 Mixin 调用同一方法。原版配方书隐藏动态熔炼，JEI 根据已同步的制陶配方生成熔炉展示条目。[Fabric 熔炉 Mixin](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/mixin/container/AbstractFurnaceBlockEntityMixin.java) · [第三方联动](../foundation/config-and-integrations.md)
+- **制陶熔炼**由 `PotterySmeltingRecipe` 实现原版 `SmeltingRecipe` 类型契约，陶罐和陶片各用独立序列化器。`assemble` 委托 `PotteryFiring` 按输入的 `POT_DECORATIONS` 计算实际产物。NeoForge 熔炉直接调用 `assemble`，Fabric 熔炉在输出槽检查和烧制时经 Mixin 调用同一方法。第三方熔炉可通过 `SMELTING` 查找配方，按当前输入执行 `assemble`，并使用完整产物栈检查合并和写入。Create 的批量熔炼接入同一配方入口，Mekanism 的机器配方直接复用 `PotteryFiring`。`isSpecial` 和空的 `getResultItem` 为固定产物导入提供跳过信号。原版配方书隐藏动态熔炼，JEI 根据已同步的制陶配方生成熔炉展示条目。[Fabric 熔炉 Mixin](../../../fabric/src/main/java/com/meteorite/unsuspiciousblock/platform/mixin/container/AbstractFurnaceBlockEntityMixin.java) · [第三方联动](../foundation/config-and-integrations.md)
 - **失落书页锻造**：不走此清单，由数据配方 `enchant_book_smithing.json` 与 `SmithingMenuMixin` 协同触发（见[附魔系统](enchantment.md)）。
 
 ## 11. 扩展点

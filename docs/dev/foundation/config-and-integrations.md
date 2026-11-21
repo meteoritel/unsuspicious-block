@@ -104,6 +104,10 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
 
 NeoForge 在 Mekanism 已加载时注册 `unsuspiciousblock:mekanism_pottery_smelting` 序列化器，内置配方使用 `neoforge:mod_loaded` 启用。配方以 `input` 声明坯件食材，以 `product` 选择 `pot` 或 `sherd`。机器使用原生 `TYPE_SMELTING` 查询并按实际输入烧制，陶片取组件中的纹饰物品，陶罐保留四面纹饰。Mekanism 的配方查看器展示普通陶罐及当前陶片标签中的可用纹样。[机器配方适配](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/mekanism/MekanismPotterySmeltingRecipe.java)
 
+### 4.7 Create 鼓风机批量熔炼
+
+NeoForge 通过 `requiredMods` 启用 Create 的独立 Mixin 配置，配置插件用早期模组列表筛选版本。Create 负责配方选择、加工计时以及掉落物和传送带的交付。选中制陶配方时，适配器用 `assemble` 计算当前坯件的产物，调用 Create 的拆栈方法保留数量和组件。空产物以 `null` 保留输入，其他配方委托原调用。[版本筛选](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/create/CreateFanMixinPlugin.java) · [产物接入](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/mixin/compat/create/BlastingTypeMixin.java)
+
 ## 5. 扩展点
 
 - **新增配置参数**：在对应配置入口定义字段、默认值和取值范围，同步更新读写与界面。战利品追踪字段在 common 实现，灵体猫和淘洗参数由平台实现。

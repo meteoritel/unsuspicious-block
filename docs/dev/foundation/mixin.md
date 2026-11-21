@@ -9,13 +9,16 @@ Mixin 仅用于补充原版事件缺口、向原版类附加持久化/瞬态状�
 | [common 公共配置](../../../common/src/main/resources/unsuspiciousblock.mixins.json) | 双端共用的状态附加、战利品追踪与模拟条件捕获 |
 | [Fabric 配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.mixins.json) | 补齐 Fabric 原生事件缺失的平台接入 |
 | [NeoForge 配置](../../../neoforge/src/main/resources/unsuspiciousblock.neoforge.mixins.json) | 补齐 NeoForge 扩展液体跳跃的主动推进接入 |
+| [Create 兼容配置](../../../neoforge/src/main/resources/unsuspiciousblock.create.mixins.json) | 为 NeoForge 的 Create 批量熔炼接入制陶动态产物 |
 | [Lootr 兼容配置](../../../common/src/main/resources/unsuspiciousblock.lootr.mixins.json) | 随 `lootr_compat_*` 构建开关及 Lootr 安装条件启用的容器追踪 |
 | [common 客户端配置](../../../common/src/main/resources/unsuspiciousblock.client.mixins.json) | `client.mixin` 包下的跨平台客户端注入 |
 | [Fabric 客户端配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.client.mixins.json) | `client.mixin.fabric` 包下的 Fabric 专用客户端接入 |
 
-全部 Mixin 完整类名由配置中的 `package` 与 `mixins` / `client` 数组组合而成，目标与注入点以对应源码声明为准，接线正确性由[仓库工具](../../../tools/README.md)检查。Fabric 通过 Loom 生成共享 `unsuspiciousblock.refmap.json`，NeoForge 使用 ModDev 原生构建接线。
+Mixin 完整类名由配置中的 `package` 与配置数组或插件提供的类名组合而成。目标与注入点以对应源码声明为准。Fabric 通过 Loom 生成共享 `unsuspiciousblock.refmap.json`，NeoForge 使用 ModDev 原生构建接线。[仓库工具](../../../tools/README.md)
 
 Lootr 配置的 `requiredMods` 与元数据联动由 `multiloader-common.gradle` 在构建期展开（见[配置与第三方联动](config-and-integrations.md)）。
+
+Create 配置通过 NeoForge 的 `requiredMods` 启用，由配置插件按模组版本提供注入类。[Create 联动](config-and-integrations.md#47-create-鼓风机批量熔炼)
 
 ## 2. 机制入口与业务归属
 
@@ -80,7 +83,7 @@ public abstract class AnvilMenuMixin {
 - **兼容优先，不抢占已有结果**：如铁砧与工具交互仅在原版未处理时介入。
 - **高频查询读取位掩码缓存**：如威慑、轻步等高频拦截通过 `CatPassiveAbilities` 每 tick 预计算位掩码，Mixin 中禁止直接扫描玩家背包（见[猫族关系系统](../subsystems/cat-favor.md)）。
 - **模拟条件 Mixin 保持单目标**：`Simulation*ConditionMixin` 一对多注入在 Fabric remap 阶段会出错，每个目标类必须单独编写 Mixin。
-- **不在文档维护完整 Mixin 类列表**：完整类名清单以各 `.mixins.json` 配置文件为唯一事实源。
+- **查找完整 Mixin 类清单**：以各 `.mixins.json` 配置及其插件为准。
 
 ## 6. AccessTransformer / AccessWidener
 
