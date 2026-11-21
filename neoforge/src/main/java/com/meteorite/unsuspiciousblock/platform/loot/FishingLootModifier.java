@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -76,7 +77,9 @@ public class FishingLootModifier extends LootModifier {
                 .getLootTable(RuntimeLootLinks.MUD_DREDGING_TABLE_KEY);
 
         if (LootSimulationScope.isActive()) {
-            lootTable.getRandomItemsRaw(mudParams, stack -> {
+            LootContext simulationContext = new LootContext.Builder(mudParams)
+                    .withOptionalRandomSource(context.getRandom()).create(Optional.empty());
+            lootTable.getRandomItemsRaw(simulationContext, stack -> {
                 if (!stack.isEmpty()) {
                     LootSimulationScope.recordChildTableDrop(
                             RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), stack);

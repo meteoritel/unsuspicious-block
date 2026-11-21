@@ -39,9 +39,6 @@ public class RewindDustItem extends Item {
         if (!(context.getLevel() instanceof ServerLevel level)) {
             return InteractionResult.SUCCESS;
         }
-        if (!level.mayInteract(player, context.getClickedPos())) {
-            return InteractionResult.FAIL;
-        }
         if (!StructureRewindService.start(level, context.getClickedPos(), player)) {
             return InteractionResult.FAIL;
         }

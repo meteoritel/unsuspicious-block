@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock;
 
-import com.meteorite.unsuspiciousblock.platform.loot.LootInjectionDescriptions;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import com.meteorite.unsuspiciousblock.core.bootstrap.UnsuspiciousBlockCommon;
@@ -71,7 +70,6 @@ import net.neoforged.neoforge.common.EffectCures;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.bus.api.EventPriority;
-import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.AnvilUpdateEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
@@ -341,11 +339,6 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         UsbCommand.register(event.getDispatcher());
-    }
-
-    @SubscribeEvent
-    public void onAddReloadListener(AddReloadListenerEvent event) {
-        LootInjectionDescriptions.beginReload();
     }
 
     // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）

@@ -96,6 +96,8 @@ public final class DeclaredInjectionExpansion {
             if (tables.containsKey(edge.source()) && tables.containsKey(edge.target()))
                 gates.put(edge, SimulationConstraintCatalog.describeGate(edge.gate(), registries));
         }
+        Map<ResourceLocation, Boolean> members = new LinkedHashMap<>();
+        tables.keySet().forEach(id -> hasCandidates(id, tables, direct, members));
         Map<ResourceLocation, ExpandedTable> result = new LinkedHashMap<>();
         tables.forEach((id, raw) -> {
             List<ExpandedContribution> contributions = new ArrayList<>(direct.getOrDefault(id, List.of()));
@@ -106,17 +108,29 @@ public final class DeclaredInjectionExpansion {
             });
             TableDefinition display = merge(raw, direct.getOrDefault(id, List.of()));
             TableDefinition planning = merge(raw, contributions);
-            List<ChildTableProbability> children = raw.childTables().stream().map(child ->
+            List<ResourceLocation> childTables = raw.childTables().stream().filter(members::get).toList();
+            List<ChildTableProbability> children = childTables.stream().map(child ->
                     new ChildTableProbability(child, Probability.unknown(UnknownReason.NOT_SIMULATED), List.of(),
                             CatalogProjection.mergeConditions(CatalogProjection.commonChildConditions(planning, child),
                                     childGates.getOrDefault(child, List.of())))).toList();
             display = new TableDefinition(id, raw.displayName(), raw.type(), display.items(),
-                    raw.simulationCount(), raw.childTables(), children);
+                    raw.simulationCount(), childTables, children);
             TableDefinition planned = new TableDefinition(id, raw.displayName(), raw.type(), planning.items(),
-                    raw.simulationCount(), raw.childTables(), children);
+                    raw.simulationCount(), childTables, children);
             result.put(id, new ExpandedTable(raw, display, planned, contributions, childGates));
         });
         return Map.copyOf(result);
+    }
+
+    private static boolean hasCandidates(ResourceLocation id, Map<ResourceLocation, TableDefinition> tables,
+            Map<ResourceLocation, List<ExpandedContribution>> direct, Map<ResourceLocation, Boolean> members) {
+        Boolean known = members.get(id);
+        if (known != null) return known;
+        TableDefinition table = tables.get(id);
+        boolean hasCandidates = !table.items().isEmpty() || !direct.getOrDefault(id, List.of()).isEmpty()
+                || table.childTables().stream().anyMatch(child -> hasCandidates(child, tables, direct, members));
+        members.put(id, hasCandidates);
+        return hasCandidates;
     }
 
     private static void expandChildren(ResourceLocation parent, ResourceLocation source,

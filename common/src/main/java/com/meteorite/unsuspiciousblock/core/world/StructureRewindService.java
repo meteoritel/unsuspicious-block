@@ -13,6 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
@@ -22,6 +23,7 @@ import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.levelgen.structure.structures.OceanMonumentPieces.MonumentBuilding;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
 
 import java.util.HashMap;
@@ -35,6 +37,7 @@ import java.util.UUID;
 public final class StructureRewindService {
     private static final long STRUCTURE_COOLDOWN_TICKS = 40L * 60L * 20L;
     private static final int VISUAL_DISTORTION_TICKS = 60;
+    private static final int MONUMENT_WATER_MARGIN = 5;
     private static final Map<MinecraftServer, RewindTask> TASKS = new HashMap<>();
 
     private StructureRewindService() {
@@ -42,6 +45,9 @@ public final class StructureRewindService {
 
     // 仅查询点击区块引用的结构，不扫描整张注册表或附近地形。
     public static boolean start(ServerLevel level, BlockPos pos, Player player) {
+        if (!level.mayInteract(player, pos)) {
+            return false;
+        }
         if (TASKS.containsKey(level.getServer())) {
             tell(player, "busy");
             return false;
@@ -88,6 +94,10 @@ public final class StructureRewindService {
             tell(player, "unsupported");
             return false;
         }
+        if (touchesSpawnProtection(level, player, replay, bounds)) {
+            tell(player, "spawn_protected");
+            return false;
+        }
         cooldowns.start(structureId, startChunk, level.getGameTime(), STRUCTURE_COOLDOWN_TICKS);
         TASKS.put(level.getServer(), new RewindTask(level, replay, bounds, index, player.getUUID(), pos.immutable()));
         showPulse(level, pos, 40, 12);
@@ -98,6 +108,39 @@ public final class StructureRewindService {
                 0, false, false, false));
         tell(player, "started");
         return true;
+    }
+
+    private static boolean touchesSpawnProtection(ServerLevel level, Player player, StructureStart replay,
+                                                  BoundingBox taskBounds) {
+        BlockPos spawn = level.getSharedSpawnPos();
+        MinecraftServer server = level.getServer();
+        if (!server.isUnderSpawnProtection(level, spawn, player)) {
+            return false;
+        }
+        int minX = taskBounds.minX();
+        int maxX = taskBounds.maxX();
+        int minZ = taskBounds.minZ();
+        int maxZ = taskBounds.maxZ();
+        for (var piece : replay.getPieces()) {
+            BoundingBox area = piece.getBoundingBox();
+            if (piece instanceof MonumentBuilding) {
+                // 海底神殿的水环会写到主部件包围盒外，范围仍由本次重放区块裁剪。
+                area = area.inflatedBy(MONUMENT_WATER_MARGIN);
+            }
+            int areaMinX = Math.max(area.minX(), minX);
+            int areaMaxX = Math.min(area.maxX(), maxX);
+            int areaMinZ = Math.max(area.minZ(), minZ);
+            int areaMaxZ = Math.min(area.maxZ(), maxZ);
+            if (areaMinX > areaMaxX || areaMinZ > areaMaxZ) {
+                continue;
+            }
+            BlockPos nearest = new BlockPos(Mth.clamp(spawn.getX(), areaMinX, areaMaxX),
+                    spawn.getY(), Mth.clamp(spawn.getZ(), areaMinZ, areaMaxZ));
+            if (server.isUnderSpawnProtection(level, nearest, player)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 原版按注册顺序在同一个 Decoration 阶段内单独计数，不使用全局 registry ID。

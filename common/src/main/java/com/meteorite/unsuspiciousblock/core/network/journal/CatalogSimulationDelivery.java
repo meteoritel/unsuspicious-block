@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.core.network.journal;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog.ScenarioResult;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog.SubmissionResult;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.ScenarioRequestRejectedPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload;
@@ -19,12 +18,6 @@ import net.minecraft.server.level.ServerPlayer;
  */
 public final class CatalogSimulationDelivery {
     private CatalogSimulationDelivery() {
-    }
-
-    public static void install(LootProbabilitySimulationWorker worker, long generation) {
-        worker.setResultHandler((result, submission, server) ->
-                deliver(server, ArchaeologyJournalServerCatalog.commitSimulated(result, submission, server)));
-        worker.setQueueDrainedHandler(server -> broadcastHash(server, generation));
     }
 
     public static void deliverSimulation(ServerPlayer player, ScenarioResult result, long requestId) {

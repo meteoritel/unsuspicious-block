@@ -180,29 +180,43 @@ public class SuspiciousReaderItem extends Item {
         return -1;
     }
 
-    // 当能量不足时自动消耗硬币充能
-    // 返回充能后的可用能量，若硬币不足返回 -1
-    private int tryRecharge(ItemStack stack, Player player, int needed) {
-        int coinsUsed = 0;
-        int energy = getEnergyOrDefault(stack);
-        while (energy < needed) {
-            int coinSlot = findCoinSlot(player);
-            if (coinSlot < 0) {
-                // 硬币不足，回滚已消耗的硬币
-                return -1;
+    private boolean payForRangeScan(ItemStack reader, ServerPlayer player, int cost) {
+        if (player.isCreative() && !DEBUG_FORCE_ENERGY_COST) {
+            return true;
+        }
+        int energy = getEnergyOrDefault(reader);
+        if (energy >= cost) {
+            setEnergy(reader, energy - cost);
+            return true;
+        }
+
+        int coinsNeeded = Math.ceilDiv(cost - energy, ENERGY_PER_COIN);
+        int coinsRemaining = coinsNeeded;
+        List<ItemStack> coinStacks = new ArrayList<>();
+        var inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize() && coinsRemaining > 0; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack.is(ModItems.ANCIENT_COIN)) {
+                coinStacks.add(stack);
+                coinsRemaining -= stack.getCount();
             }
-            player.getInventory().getItem(coinSlot).shrink(1);
-            energy = Math.min(MAX_ENERGY, energy + ENERGY_PER_COIN);
-            coinsUsed++;
         }
-        setEnergy(stack, energy);
-        if (coinsUsed > 0) {
-            player.sendSystemMessage(
-                    Component.translatable("item.unsuspiciousblock.suspicious_reader.coin_consumed", coinsUsed)
-                            .withStyle(style -> style.withColor(0xFFD700))
-            );
+        if (coinsRemaining > 0) {
+            player.sendSystemMessage(Component.translatable("item.unsuspiciousblock.suspicious_reader.no_coins")
+                    .withStyle(style -> style.withColor(0xFF5555)));
+            return false;
         }
-        return energy;
+
+        coinsRemaining = coinsNeeded;
+        for (ItemStack stack : coinStacks) {
+            int consumed = Math.min(coinsRemaining, stack.getCount());
+            stack.shrink(consumed);
+            coinsRemaining -= consumed;
+        }
+        setEnergy(reader, Math.min(MAX_ENERGY, energy + coinsNeeded * ENERGY_PER_COIN) - cost);
+        player.sendSystemMessage(Component.translatable("item.unsuspiciousblock.suspicious_reader.coin_consumed", coinsNeeded)
+                .withStyle(style -> style.withColor(0xFFD700)));
+        return true;
     }
 
     // ========== 范围扫描几何计算 ==========
@@ -214,16 +228,22 @@ public class SuspiciousReaderItem extends Item {
     }
 
     // 收集扫描范围内的所有可疑方块与含战利品表的容器
-    private ScanTargets findScanTargets(Level level, BlockPos cubeCenter, int halfExtent) {
-        List<BlockPos> suspicious = new ArrayList<>();
+    private ScanTargets findScanTargets(ServerPlayer player, BlockPos cubeCenter, int halfExtent) {
+        Level level = player.level();
+        List<BrushableTarget> suspicious = new ArrayList<>();
         List<BlockPos> lootContainers = new ArrayList<>();
+        int cost = halfExtent;
         for (int dx = -halfExtent; dx <= halfExtent; dx++) {
             for (int dy = -halfExtent; dy <= halfExtent; dy++) {
                 for (int dz = -halfExtent; dz <= halfExtent; dz++) {
                     BlockPos pos = cubeCenter.offset(dx, dy, dz);
                     BlockEntity be = level.getBlockEntity(pos);
-                    if (be instanceof BrushableBlockEntityScanState) {
-                        suspicious.add(pos);
+                    if (be instanceof BrushableBlockEntityScanState state) {
+                        boolean alreadyScanned = state.unsuspiciousblock$isScanner(player.getUUID());
+                        suspicious.add(new BrushableTarget(be, state, alreadyScanned));
+                        if (!alreadyScanned) {
+                            cost++;
+                        }
                     } else if (be instanceof RandomizableContainer container
                             && container.getLootTable() != null) {
                         // 仅检测是否绑定了战利品表，不调用 unpackLootTable（会清空 lootTable 字段导致容器状态改变）
@@ -232,7 +252,7 @@ public class SuspiciousReaderItem extends Item {
                 }
             }
         }
-        return new ScanTargets(suspicious, lootContainers);
+        return new ScanTargets(suspicious, lootContainers, cost);
     }
 
     // ========== 核心交互逻辑 ==========
@@ -262,103 +282,8 @@ public class SuspiciousReaderItem extends Item {
 
         ItemStack stack = context.getItemInHand();
         int scanLevel = getScanLevel(stack);
-        boolean isCreative = player.isCreative() && !DEBUG_FORCE_ENERGY_COST;
-
-        // 范围模式（1-3级）：允许点击任意方块
         if (scanLevel > 0) {
-            // 计算正方体范围
-            Direction faceDir = context.getClickedFace();
-            BlockPos cubeCenter = getRangeScanCenter(clickedPos, faceDir, scanLevel);
-            ScanTargets scanTargets = findScanTargets(level, cubeCenter, scanLevel);
-            List<BlockPos> targets = scanTargets.suspicious();
-            List<BlockPos> lootContainers = scanTargets.lootContainers();
-
-            // 基础消耗 = 等级数（范围模式启动即计费，无论是否扫到可疑方块或战利品容器）
-            if (targets.isEmpty() && lootContainers.isEmpty()) {
-                if (!isCreative) {
-                    int energy = getEnergyOrDefault(stack);
-                    if (energy < scanLevel) {
-                        energy = tryRecharge(stack, player, scanLevel);
-                        if (energy < scanLevel) {
-                            player.sendSystemMessage(
-                                    Component.translatable("item.unsuspiciousblock.suspicious_reader.no_coins")
-                                            .withStyle(style -> style.withColor(0xFF5555))
-                            );
-                            return InteractionResult.FAIL;
-                        }
-                    }
-                    setEnergy(stack, Math.max(0, energy - scanLevel));
-                }
-                // 空扫描也同步新批次，清除旧目标并在 HUD 显示简短反馈。
-                Services.NETWORK.sendToPlayer(serverPlayer,
-                        new SyncReaderScanResultPayload(true, List.of(), List.of()));
-                return InteractionResult.FAIL;
-            }
-
-            // 计算未扫描的可疑方块数（仅未扫描的才消耗额外能量）
-            int unscannedCount = 0;
-            for (BlockPos pos : targets) {
-                BlockEntity be = level.getBlockEntity(pos);
-                if (be instanceof BrushableBlockEntityScanState scanState
-                        && !scanState.unsuspiciousblock$isScanner(serverPlayer.getUUID())) {
-                    unscannedCount++;
-                }
-            }
-            int totalCost = scanLevel + unscannedCount;
-
-            // 检查/补充能量
-            if (!isCreative) {
-                int energy = getEnergyOrDefault(stack);
-                if (energy < totalCost) {
-                    energy = tryRecharge(stack, player, totalCost);
-                    if (energy < totalCost) {
-                        player.sendSystemMessage(
-                                Component.translatable("item.unsuspiciousblock.suspicious_reader.no_coins")
-                                        .withStyle(style -> style.withColor(0xFF5555))
-                        );
-                        return InteractionResult.FAIL;
-                    }
-                }
-            }
-
-            // 执行扫描
-            List<SyncReaderScanResultPayload.ScanEntry> scanResults = new ArrayList<>(targets.size());
-            int newScanned = 0;
-            for (BlockPos pos : targets) {
-                BlockEntity be = level.getBlockEntity(pos);
-                if (be instanceof BrushableBlockEntityScanState targetScanState) {
-                    // 已被同一玩家扫描过的方块仍显示结果，但不消耗额外能量
-                    boolean alreadyScanned = targetScanState.unsuspiciousblock$isScanner(serverPlayer.getUUID());
-                    ScanResult result = scanBrushable(serverPlayer, level, pos, be, targetScanState);
-                    scanResults.add(createScanEntry(pos, result, alreadyScanned));
-                    logScanResult(pos, result);
-                    if (!alreadyScanned) {
-                        newScanned++;
-                    }
-                }
-            }
-
-            // 「满载而归」挑战：单次范围扫描扫出的可疑方块 + 战利品容器合计达标即授予
-            if (targets.size() + lootContainers.size() >= MOTHERLODE_MIN_OBJECTS) {
-                AchievementManager.grantIfNotAlready(serverPlayer, ModAchievements.MOTHERLODE);
-            }
-
-            // 向客户端同步扫描到的高亮方块位置（可疑方块 + 战利品容器），用于描边透视显示
-            Services.NETWORK.sendToPlayer(serverPlayer,
-                    new SyncReaderScanResultPayload(true, scanResults, lootContainers));
-
-            // 实际消耗 = 等级数 + 解析出新可疑方块数（仅1级及以上）
-            if (!isCreative) {
-                int actualCost = scanLevel + newScanned;
-                int energy = getEnergyOrDefault(stack);
-                setEnergy(stack, Math.max(0, energy - actualCost));
-            }
-
-            // 播放扫描音效
-            level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(),
-                    SoundSource.PLAYERS, 1.0F, 1.0F);
-            player.swing(context.getHand());
-            return InteractionResult.SUCCESS;
+            return useRangeScan(context, serverPlayer, scanLevel);
         }
 
         // ===== 单方块模式（0级）：必须点击可疑方块 =====
@@ -382,6 +307,36 @@ public class SuspiciousReaderItem extends Item {
         // 播放扫描音效
         level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(),
                 SoundSource.PLAYERS, 1.0F, 1.0F);
+        player.swing(context.getHand());
+        return InteractionResult.SUCCESS;
+    }
+
+    private InteractionResult useRangeScan(UseOnContext context, ServerPlayer player, int scanLevel) {
+        BlockPos clickedPos = context.getClickedPos();
+        BlockPos center = getRangeScanCenter(clickedPos, context.getClickedFace(), scanLevel);
+        ScanTargets targets = findScanTargets(player, center, scanLevel);
+        if (!payForRangeScan(context.getItemInHand(), player, targets.cost())) {
+            return InteractionResult.FAIL;
+        }
+
+        List<SyncReaderScanResultPayload.ScanEntry> results = new ArrayList<>(targets.suspicious().size());
+        Level level = player.level();
+        for (BrushableTarget target : targets.suspicious()) {
+            BlockPos pos = target.blockEntity().getBlockPos();
+            ScanResult result = scanBrushable(player, level, pos, target.blockEntity(), target.state());
+            results.add(createScanEntry(pos, result, target.alreadyScanned()));
+            logScanResult(pos, result);
+        }
+
+        if (results.size() + targets.lootContainers().size() >= MOTHERLODE_MIN_OBJECTS) {
+            AchievementManager.grantIfNotAlready(player, ModAchievements.MOTHERLODE);
+        }
+        Services.NETWORK.sendToPlayer(player, new SyncReaderScanResultPayload(true, results, targets.lootContainers()));
+        if (results.isEmpty() && targets.lootContainers().isEmpty()) {
+            return InteractionResult.FAIL;
+        }
+
+        level.playSound(null, clickedPos, ModSounds.SUSPICIOUS_READER_SCAN.value(), SoundSource.PLAYERS, 1.0F, 1.0F);
         player.swing(context.getHand());
         return InteractionResult.SUCCESS;
     }
@@ -531,7 +486,10 @@ public class SuspiciousReaderItem extends Item {
                               boolean sealedByPlayer) {
     }
 
-    // 范围扫描结果分类：可疑方块与含战利品表的容器
-    private record ScanTargets(List<BlockPos> suspicious, List<BlockPos> lootContainers) {
+    private record BrushableTarget(BlockEntity blockEntity, BrushableBlockEntityScanState state,
+                                   boolean alreadyScanned) {
+    }
+
+    private record ScanTargets(List<BrushableTarget> suspicious, List<BlockPos> lootContainers, int cost) {
     }
 }

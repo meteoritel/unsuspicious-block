@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationConstraintCatalog;
 import net.minecraft.resources.ResourceLocation;
@@ -17,8 +18,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.ReloadableServerRegistries;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,10 +51,6 @@ public final class CatalogGeneration {
      */
     private final Map<ResourceLocation, TableDefinition> simulatedTables = new ConcurrentHashMap<>();
     private final Map<ResourceLocation, TableDefinition> failedBaselines = new ConcurrentHashMap<>();
-    /**
-     * 本代查询索引——子树物品等跨表聚合的唯一入口，随模拟提交读到的 overlay 自动变化。
-     */
-    private final CatalogQueryIndex queryIndex;
     /**
      * 每表的约束描述与场景规划结果。
      * <p>
@@ -89,8 +87,6 @@ public final class CatalogGeneration {
             if (this.constraintCatalogs.containsKey(id)) this.branches.put(id,
                     ScenarioBranchCatalog.plan(table, this.expansions.get(id), this.sourceNames));
         });
-        this.queryIndex = new CatalogQueryIndex(
-                session.referenceGraph(), session.staticProjections(), this::simulatedTables);
     }
 
     /**
@@ -146,11 +142,9 @@ public final class CatalogGeneration {
         return this.structure;
     }
 
-    /**
-     * 本代查询索引（子树物品等跨表聚合的唯一入口）。
-     */
-    public CatalogQueryIndex queryIndex() {
-        return this.queryIndex;
+    /** 同代静态候选构成的完成资格。 */
+    public List<ItemDefinition> completionItems(ResourceLocation tableId) {
+        return CatalogQueryIndex.completionItems(this.staticTables, tableId);
     }
 
     /**
@@ -182,11 +176,35 @@ public final class CatalogGeneration {
         return this.tableHashes.getOrDefault(tableId, "");
     }
 
-    /**
-     * 模拟结果视图（随模拟完成渐进增长）。
-     */
-    public Map<ResourceLocation, TableDefinition> simulatedTables() {
-        return Collections.unmodifiableMap(this.simulatedTables);
+    /** 冻结当代展示定义，供使用运行时发现的管理查询。 */
+    public synchronized Map<ResourceLocation, TableDefinition> displayTables() {
+        Map<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
+        this.staticTables.keySet().forEach(id -> tables.put(id, displayTable(id)));
+        return Map.copyOf(tables);
+    }
+
+    /** 本代静态表的基准抽样状态。 */
+    public enum BaselineStatus {
+        PENDING, MEASURED, FAILED, UNAVAILABLE
+    }
+
+    /** 汇总当前发布代次中各基准状态的表数。 */
+    public synchronized Map<BaselineStatus, Integer> baselineCounts() {
+        Map<BaselineStatus, Integer> counts = new EnumMap<>(BaselineStatus.class);
+        for (ResourceLocation id : this.staticTables.keySet()) {
+            BaselineStatus status;
+            if (!this.constraintCatalogs.containsKey(id)) {
+                status = BaselineStatus.UNAVAILABLE;
+            } else if (this.simulatedTables.containsKey(id)) {
+                status = BaselineStatus.MEASURED;
+            } else if (this.failedBaselines.containsKey(id)) {
+                status = BaselineStatus.FAILED;
+            } else {
+                status = BaselineStatus.PENDING;
+            }
+            counts.merge(status, 1, Integer::sum);
+        }
+        return Map.copyOf(counts);
     }
 
     /**

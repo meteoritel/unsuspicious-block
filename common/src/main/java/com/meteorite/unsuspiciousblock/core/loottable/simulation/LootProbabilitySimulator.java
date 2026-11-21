@@ -11,8 +11,7 @@ import net.minecraft.server.level.ServerLevel;
  * 抽样次数不再是这里的全局常量：它随 {@link SimulationInput} 一起进来（决策 38/39），
  * 因此同一个参数组合可以有不同的精度，且两种精度共用同一份缓存结构。
  * <p>
- * 注意：{@code LootTable} 内部的 {@code LegacyRandomSource} 不是线程安全的，因此模拟采用顺序执行，
- * 并由 {@link LootProbabilitySimulationWorker} 在主线程 tick 末尾分片驱动。
+ * 抽样使用任务内随机源。Loot 参数填充与函数执行仍会访问服务端世界，因此在主线程顺序推进。
  */
 public final class LootProbabilitySimulator {
     private LootProbabilitySimulator() {
@@ -21,8 +20,7 @@ public final class LootProbabilitySimulator {
     /**
      * 对单个输入执行完整模拟——仅供同步回退与命令路径使用；正常路径走 worker 分片。
      * <p>
-     * 线程安全说明：本方法会触碰 {@code level} 关联的 LegacyRandomSource，
-     * {@link net.minecraft.util.ThreadingDetector} 会检测跨线程访问，因此<b>必须在主线程调用</b>。
+     * 战利品参数填充与函数可能访问服务端世界，调用方在服务器主线程执行本方法。
      */
     public static SimResult simulateOne(ResourceLocation tableId, TableDefinition rawTable,
                                         ServerLevel level, SimulationInput input,

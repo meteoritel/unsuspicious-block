@@ -18,7 +18,6 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.core.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.DynamicOps;
@@ -72,7 +71,6 @@ public final class LootTableProjector {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private final LootTableReferenceGraph referenceGraph;
     private final Map<ResourceLocation, CompiledLootTable> compiledTables;
     private final Set<ResourceLocation> excludedReferences;
     private final DynamicOps<JsonElement> lootOps;
@@ -84,24 +82,20 @@ public final class LootTableProjector {
     private final Map<ResourceLocation, StaticTableProjection> projectionCache = new HashMap<>();
 
     /**
-     * @param referenceGraph     引用关系权威（子表集合与拓扑）
-     * @param compiledTables     编译产物
+     * @param compiledTables 编译产物
      * @param excludedReferences 需排除出收录闭包的环上表
      */
-    public LootTableProjector(LootTableReferenceGraph referenceGraph,
-                              Map<ResourceLocation, CompiledLootTable> compiledTables,
+    public LootTableProjector(Map<ResourceLocation, CompiledLootTable> compiledTables,
                               Set<ResourceLocation> excludedReferences,
                               HolderLookup.Provider registries) {
-        this(referenceGraph, compiledTables, excludedReferences, registries, null);
+        this(compiledTables, excludedReferences, registries, null);
     }
 
     // 当前服务器视图只用于预览，不参与实际掉落执行。
-    public LootTableProjector(LootTableReferenceGraph referenceGraph,
-                              Map<ResourceLocation, CompiledLootTable> compiledTables,
+    public LootTableProjector(Map<ResourceLocation, CompiledLootTable> compiledTables,
                               Set<ResourceLocation> excludedReferences,
                               HolderLookup.Provider registries,
                               @Nullable LootFunctionPreviewContext previewContext) {
-        this.referenceGraph = referenceGraph;
         this.compiledTables = Map.copyOf(compiledTables);
         this.excludedReferences = Set.copyOf(excludedReferences);
         this.lootOps = RegistryOps.create(JsonOps.INSTANCE, registries);
@@ -120,12 +114,7 @@ public final class LootTableProjector {
             return cached;
         }
         List<ItemDefinition> items = itemsOf(tableId);
-        // 子表入口只收录真正产出物品的表：图是纯拓扑，无物品的表不进目录也不作为入口
-        List<ResourceLocation> childTables = this.referenceGraph.directChildren(tableId).stream()
-                .filter(child -> !itemsOf(child).isEmpty())
-                .toList();
-        StaticTableProjection projection =
-                new StaticTableProjection(tableId, compiled.declaredType(), items, childTables);
+        StaticTableProjection projection = new StaticTableProjection(compiled.declaredType(), items);
         this.projectionCache.put(tableId, projection);
         return projection;
     }

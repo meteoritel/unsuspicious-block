@@ -18,6 +18,7 @@ import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableServ
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
+import com.meteorite.unsuspiciousblock.core.loottable.injection.ArchaeologyLootInjectors;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,6 +29,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -43,6 +45,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.util.function.Supplier;
 
 
 /**
@@ -275,8 +279,12 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
             Operation<ObjectArrayList<ItemStack>> original,
             @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         CaptureHandle capture = lootSession.get();
-        return capture == null ? original.call(lootTable, lootParams, seed)
-                : capture.roll(() -> original.call(lootTable, lootParams, seed));
+        Supplier<ObjectArrayList<ItemStack>> roll = () -> {
+            ObjectArrayList<ItemStack> drops = original.call(lootTable, lootParams, seed);
+            ArchaeologyLootInjectors.get().maybeReplace(this.lootTable.location(), drops, RandomSource.create(seed));
+            return drops;
+        };
+        return capture == null ? roll.get() : capture.roll(roll);
     }
 
     // 在战利品表解析后同步考古笔记状态并刷新方块实体

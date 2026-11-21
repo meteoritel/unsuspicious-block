@@ -719,9 +719,12 @@ public class JournalViewModel {
             }
         }
         List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
-        int parsedCount = (int) introItems.stream().filter(DetailOverlayPanel.IntroItem::unlocked).count();
+        List<ItemDefinition> required = CatalogQueryIndex.completionItems(this.catalogDefinitions, selected.id());
+        ArchaeologyJournalState.TableProgress progress = this.state.getTable(selected.id());
+        int parsedCount = progress == null ? 0 : (int) required.stream()
+                .filter(item -> progress.isItemUnlocked(item.signature())).count();
         return new BuildGridResult(selected.id(), List.copyOf(gridItems), List.copyOf(childEntries), introItems,
-                parsedCount, introItems.size(), selected.logRef());
+                parsedCount, required.size(), selected.logRef());
     }
 
     // 表子树物品闭包：CatalogQueryIndex.subtreeItems 是一次整棵子树的 DFS，选中表与每个直接子表各调一次；

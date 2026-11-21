@@ -1,11 +1,9 @@
 package com.meteorite.unsuspiciousblock.platform.loot;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.platform.mixin.loot.LootModifierManagerAccess;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -15,33 +13,28 @@ import net.neoforged.neoforge.common.loot.LootTableIdCondition;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 仅记录本模组修改器执行到的实际字段；不反射 GLM 私有管理器或第三方实现。 */
+/** 从 Loader 启用的修改器读取本模组可声明的掉落注入。 */
 public final class LootInjectionDescriptions {
-    /** 每轮重载独立持有观测映射，旧线程只能写旧映射。 */
-    private record Epoch(long id, Map<ResourceLocation, Map<Object, DeclaredLootInjection>> rules) {}
-    private static final AtomicLong NEXT_EPOCH = new AtomicLong();
-    private static volatile Epoch current = new Epoch(0, new ConcurrentHashMap<>());
     private LootInjectionDescriptions() {}
 
-    public static long epoch() { return current.id(); }
-    public static synchronized void beginReload() { current = new Epoch(NEXT_EPOCH.incrementAndGet(), new ConcurrentHashMap<>()); }
-    public static List<DeclaredLootInjection> observed(ResourceLocation table) {
-        var rules = current.rules().get(table);
-        return rules == null ? List.of() : List.copyOf(rules.values());
-    }
-    public static void record(long ruleEpoch, Object owner, ResourceLocation table, Item item, float chance,
-                              String mode, LootItemCondition[] conditions) {
-        Epoch snapshot = current;
-        if (ruleEpoch != snapshot.id()) return;
-        snapshot.rules().computeIfAbsent(table, ignored -> new ConcurrentHashMap<>())
-                .computeIfAbsent(owner, ignored -> {
-                    var rules = describe(table, item, chance, mode, conditions);
-                    return rules.isEmpty() ? null : rules.getFirst();
-                });
+    /** 返回指定表在当前启用修改器中声明的物品注入。 */
+    public static List<DeclaredLootInjection> activeFor(ResourceLocation table) {
+        List<DeclaredLootInjection> injections = new ArrayList<>();
+        for (var modifier : LootModifierManagerAccess.unsuspiciousblock$getLootModifierManager().getAllLootMods()) {
+            if (modifier instanceof InjectItemLootModifier inject) {
+                injections.addAll(inject.describe(table));
+            } else if (modifier instanceof AddItemLootModifier add) {
+                injections.addAll(add.describe(table));
+            }
+        }
+        return List.copyOf(injections);
     }
 
-    public static List<DeclaredLootInjection> describe(ResourceLocation table, Item item, float chance,
-                                                       String mode, LootItemCondition[] conditions) {
+    static List<DeclaredLootInjection> describe(ResourceLocation table, Item item, float chance,
+                                                String mode, LootItemCondition[] conditions) {
+        if (chance == 0.0F) {
+            return List.of();
+        }
         boolean matches = false;
         List<LootItemCondition> extras = new ArrayList<>();
         for (var condition : conditions) {

@@ -66,14 +66,12 @@ public final class ArchaeologyJournalCatalog {
         // 编译每张表的上下文无关语义，再由投影器沿 JSON 引用把它们链接成静态投影
         Map<ResourceLocation, CompiledLootTable> compiledTables =
                 new LootTableCompiler(registries).compile(sourceSnapshot, validClosure);
-        LootTableProjector projector = new LootTableProjector(
-                referenceGraph, compiledTables, cycleTables, registries, previewContext);
+        LootTableProjector projector = new LootTableProjector(compiledTables, cycleTables, registries, previewContext);
 
         // 按表 id 排序遍历，保持与原解析路径一致的展示名登记顺序
         List<ResourceLocation> orderedTables = new ArrayList<>(validClosure);
         orderedTables.sort(Comparator.comparing(ResourceLocation::toString));
 
-        LinkedHashMap<ResourceLocation, StaticTableProjection> projections = new LinkedHashMap<>();
         LinkedHashMap<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (ResourceLocation tableId : orderedTables) {
             // 展示名登记对闭包内全部表调用一次，与既有调用集合一致（含无物品的表）
@@ -83,13 +81,9 @@ public final class ArchaeologyJournalCatalog {
             if (projection == null) {
                 continue;
             }
-            // 会话保留全部追踪表的投影（含无物品的空表），对外读模型只收有物品的表
-            projections.put(tableId, projection);
-            if (projection.isEmpty()) {
-                continue;
-            }
             tables.put(tableId, new TableDefinition(tableId, displayName, projection.declaredType(),
-                    projection.items(), 0, projection.childTables()));
+                    projection.items(), 0, referenceGraph.directChildren(tableId).stream()
+                            .filter(compiledTables::containsKey).toList()));
         }
         // 批量解析结束：先汇总输出缺失 key 警告（汇总过程中登记待补全条目），再统一落盘
         LootTableNames.logMissingTranslationSummary();
@@ -106,7 +100,7 @@ public final class ArchaeologyJournalCatalog {
         tables.forEach((id, table) -> defaultTools.put(id, categories.defaultTool(
                 rootCategories.containsKey(id) ? rootCategories.get(id) : categories.classify(id, table.type()))));
         LootTableAnalysisSession session = new LootTableAnalysisSession(generation, sourceSnapshot,
-                referenceGraph, compiledTables, projections);
+                referenceGraph, compiledTables);
         return new LoadResult(session, structure, Map.copyOf(tables), Map.copyOf(defaultTools));
     }
 
@@ -127,7 +121,7 @@ public final class ArchaeologyJournalCatalog {
     }
 
     /**
-     * 目录加载结果：本代分析会话、分类结构，以及对外读模型（解析态表定义，概率为 {@code "?"}）。
+     * 目录加载结果：本代分析会话、分类结构及待展开声明注入的表定义。
      * 会话持有引用图与编译产物，哈希等下游据此复用同一份拓扑，不必再解析。
      */
     public record LoadResult(LootTableAnalysisSession session, CatalogStructure structure,

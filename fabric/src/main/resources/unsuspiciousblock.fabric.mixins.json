@@ -11,7 +11,7 @@
     "chunk.LevelChunkMixin",
     "container.AbstractFurnaceBlockEntityMixin",
     "container.AnvilMenuMixin",
-    "interaction.BrushableBlockEntityMixin",
+    "interaction.FarmBlockTrampleMixin",
     "interaction.SheepMixin"
   ],
   "client": [],

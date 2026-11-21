@@ -12,6 +12,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.BlockEvent.FarmlandTrampleEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 /**
@@ -60,6 +61,14 @@ public class NeoForgeCatEventAdapter implements ICatEventAdapter {
         if (event.getEntity() instanceof ServerPlayer player) {
             CatFavorManager.serverTick(player);
             CatPassiveAbilities.serverTick(player);
+        }
+    }
+
+    /** 取消轻步玩家的耕地退化。摔落处理仍由原版执行。 */
+    @SubscribeEvent
+    public void onFarmlandTrample(FarmlandTrampleEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player && CatPassiveAbilities.hasLightStep(player)) {
+            event.setCanceled(true);
         }
     }
 }

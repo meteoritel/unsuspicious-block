@@ -71,6 +71,7 @@ final class LootProbabilitySimulationJob {
     private final Function<LootResultSignature, ItemStack> previewFactory = this::createMeasuredPreview;
     private final Function<LootResultSignature, ItemStack> previewProvider =
             signature -> this.previewCache.computeIfAbsent(signature, this.previewFactory);
+    private final RandomSource samplingRandom = RandomSource.create();
     private final RandomSource injectionRandom = RandomSource.create();
     private Set<ResourceLocation> directChildTables;
     private final Consumer<ResourceLocation> childDropRecorder = this::recordChildTableAppearance;
@@ -259,7 +260,7 @@ final class LootProbabilitySimulationJob {
         LootSimulationScope.beginRoll();
         this.metrics.end(Stage.BEGIN_ROLL, start);
         start = LootSimulationMetrics.now();
-        List<ItemStack> drops = this.lootTable.getRandomItems(this.lootParams);
+        List<ItemStack> drops = this.lootTable.getRandomItems(this.lootParams, this.samplingRandom);
         this.metrics.end(Stage.GENERATE, start);
         this.metrics.add(Count.ROLLS, 1);
         start = LootSimulationMetrics.now();

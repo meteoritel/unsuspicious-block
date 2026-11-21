@@ -62,9 +62,7 @@ public final class JournalCompletionRewardChecker {
             return;
         }
 
-        // 查询索引在未模拟时回退静态投影，因此判定不会因为"还没轮到这张表"而漏掉物品
-        List<ItemDefinition> requiredItems =
-                ArchaeologyJournalServerCatalog.queryIndex().subtreeItems(tableId);
+        List<ItemDefinition> requiredItems = ArchaeologyJournalServerCatalog.completionItems(tableId);
         if (requiredItems.isEmpty()) {
             return;
         }

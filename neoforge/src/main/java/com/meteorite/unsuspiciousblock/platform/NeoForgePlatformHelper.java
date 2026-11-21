@@ -26,7 +26,7 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public List<DeclaredLootInjection> describeLootInjections(
             ResourceLocation table) {
-        return LootInjectionDescriptions.observed(table);
+        return LootInjectionDescriptions.activeFor(table);
     }
 
     @Override

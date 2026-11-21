@@ -1,10 +1,12 @@
 package com.meteorite.unsuspiciousblock.platform.loot;
 
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
@@ -12,6 +14,8 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.neoforge.common.loot.LootModifier;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 /**
  * 全局战利品修改器——按指定概率将目标物品替换进考古战利品表生成结果。
@@ -37,7 +41,6 @@ public class AddItemLootModifier extends LootModifier {
 
     private final Item item;
     private final float chance;
-    private final long descriptionEpoch = LootInjectionDescriptions.epoch();
 
     public AddItemLootModifier(LootItemCondition[] conditionsIn, Item item, float chance) {
         super(conditionsIn);
@@ -47,7 +50,6 @@ public class AddItemLootModifier extends LootModifier {
 
     @Override
     protected @NotNull ObjectArrayList<ItemStack> doApply(@NotNull ObjectArrayList<ItemStack> generatedLoot, LootContext context) {
-        LootInjectionDescriptions.record(descriptionEpoch, this, context.getQueriedLootTableId(), item, chance, "replace", conditions);
         if (context.getRandom().nextFloat() < chance) {
             // 考古表只允许 1 个物品：清空原版结果后放入目标物品，避免被 BrushableBlockEntity 丢弃
             generatedLoot.clear();
@@ -59,6 +61,10 @@ public class AddItemLootModifier extends LootModifier {
     @Override
     public @NotNull MapCodec<? extends IGlobalLootModifier> codec() {
         return CODEC;
+    }
+
+    List<DeclaredLootInjection> describe(ResourceLocation table) {
+        return LootInjectionDescriptions.describe(table, this.item, this.chance, "replace", this.conditions);
     }
 
 }

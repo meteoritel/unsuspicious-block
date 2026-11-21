@@ -4,7 +4,8 @@
   "package": "com.meteorite.unsuspiciousblock.platform.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "aura.FluidJumpAuraMixin"
+    "aura.FluidJumpAuraMixin",
+    "loot.LootModifierManagerAccess"
   ],
   "injectors": {
     "defaultRequire": 1

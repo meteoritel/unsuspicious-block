@@ -1,10 +1,12 @@
 package com.meteorite.unsuspiciousblock.platform.loot;
 
+import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
@@ -12,6 +14,8 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.neoforge.common.loot.LootModifier;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 /**
  * 全局战利品修改器——按指定概率向战利品表生成结果追加目标物品（不替换原版战利品）。
@@ -40,7 +44,6 @@ public class InjectItemLootModifier extends LootModifier {
     private final Item item;
     private final int count;
     private final float chance;
-    private final long descriptionEpoch = LootInjectionDescriptions.epoch();
 
     public InjectItemLootModifier(LootItemCondition[] conditionsIn, Item item, int count, float chance) {
         super(conditionsIn);
@@ -51,7 +54,6 @@ public class InjectItemLootModifier extends LootModifier {
 
     @Override
     protected @NotNull ObjectArrayList<ItemStack> doApply(@NotNull ObjectArrayList<ItemStack> generatedLoot, LootContext context) {
-        LootInjectionDescriptions.record(descriptionEpoch, this, context.getQueriedLootTableId(), item, chance, "append", conditions);
         if (context.getRandom().nextFloat() < chance) {
             // 追加目标物品，保留原版战利品
             generatedLoot.add(new ItemStack(item, count));
@@ -62,6 +64,10 @@ public class InjectItemLootModifier extends LootModifier {
     @Override
     public @NotNull MapCodec<? extends IGlobalLootModifier> codec() {
         return CODEC;
+    }
+
+    List<DeclaredLootInjection> describe(ResourceLocation table) {
+        return LootInjectionDescriptions.describe(table, this.item, this.chance, "append", this.conditions);
     }
 
 }

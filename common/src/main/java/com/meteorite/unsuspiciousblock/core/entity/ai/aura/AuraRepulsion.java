@@ -33,8 +33,8 @@ public final class AuraRepulsion {
     }
 
     /** 生成流程独立于索敌，按被选玩家的脚部位置组合空间保护与猫之威慑。 */
-    public static boolean shouldSkipPhantomSpawn(ServerPlayer player) {
-        return player.isSpectator() || CatPassiveAbilities.hasPhantomDeterrence(player)
+    public static boolean hasPhantomSpawnProtection(ServerPlayer player) {
+        return CatPassiveAbilities.hasPhantomDeterrence(player)
                 || BlockAuras.hasEffect(player.level(), player.blockPosition(), AuraEffect.MONSTER_REPULSION);
     }
 

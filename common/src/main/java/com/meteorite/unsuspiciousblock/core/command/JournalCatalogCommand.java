@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.core.command;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogGeneration.BaselineStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
@@ -51,14 +52,14 @@ public final class JournalCatalogCommand {
 
     private static int status(CommandSourceStack source) {
         ArchaeologyJournalServerCatalog.ensureLoaded(source.getServer());
-        var tables = ArchaeologyJournalServerCatalog.staticTables().keySet();
-        var simulated = ArchaeologyJournalServerCatalog.simulatedTables().keySet();
-        long ready = tables.stream().filter(simulated::contains).count();
+        var counts = ArchaeologyJournalServerCatalog.baselineCounts();
         LootProbabilitySimulationWorker worker = LootProbabilitySimulationWorker.get();
         String status = ArchaeologyJournalServerCatalog.hasRebuildFailed() ? "rebuild.failed"
                 : worker != null && worker.isBusy() ? "busy" : "idle";
         Component queue = Component.translatable(KEY + status);
-        source.sendSuccess(() -> Component.translatable(KEY + "status", queue, ready, tables.size()), false);
+        source.sendSuccess(() -> Component.translatable(KEY + "status", queue,
+                counts.getOrDefault(BaselineStatus.MEASURED, 0), counts.getOrDefault(BaselineStatus.PENDING, 0),
+                counts.getOrDefault(BaselineStatus.FAILED, 0), counts.getOrDefault(BaselineStatus.UNAVAILABLE, 0)), false);
         return 1;
     }
 

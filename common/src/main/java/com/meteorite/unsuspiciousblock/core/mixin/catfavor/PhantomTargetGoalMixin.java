@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.mixin.catfavor;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.meteorite.unsuspiciousblock.core.cat.CatPassiveAbilities;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
@@ -7,24 +9,20 @@ import net.minecraft.world.entity.monster.Phantom;
 import net.minecraft.world.entity.player.Player;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
  * 猫之威慑——幻翼不再以该玩家作为索敌目标。
  * 注入 Phantom$PhantomAttackPlayerTargetGoal 的 canUse / canContinueToUse，
- * 重定向 canAttack 调用：若目标玩家拥有猫的陪伴，则视为不可攻击，
- * 幻翼不会锁定该玩家，已锁定的也会因 canContinueToUse 返回 false 而放弃。
+ * 在原版索敌检查中排除受保护玩家，已锁定的目标也会通过持续检查被放弃。
  */
 @Mixin(targets = "net.minecraft.world.entity.monster.Phantom$PhantomAttackPlayerTargetGoal")
 public abstract class PhantomTargetGoalMixin {
 
-    @Redirect(method = {"canUse", "canContinueToUse"}, at = @At(value = "INVOKE",
+    @WrapOperation(method = {"canUse", "canContinueToUse"}, at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/entity/monster/Phantom;canAttack(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/ai/targeting/TargetingConditions;)Z"))
     private boolean unsuspiciousblock$skipCatCompanion(Phantom phantom, LivingEntity target,
-                                                       TargetingConditions conditions) {
-        if (target instanceof Player player && CatPassiveAbilities.hasPhantomDeterrence(player)) {
-            return false;
-        }
-        return phantom.canAttack(target, conditions);
+                                                       TargetingConditions conditions, Operation<Boolean> original) {
+        return original.call(phantom, target, conditions)
+                && (!(target instanceof Player player) || !CatPassiveAbilities.hasPhantomDeterrence(player));
     }
 }

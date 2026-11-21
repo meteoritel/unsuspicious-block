@@ -1,4 +1,4 @@
-package com.meteorite.unsuspiciousblock.core.mixin.catfavor;
+package com.meteorite.unsuspiciousblock.platform.mixin.interaction;
 
 import com.meteorite.unsuspiciousblock.core.cat.CatPassiveAbilities;
 import net.minecraft.world.entity.Entity;
@@ -9,7 +9,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 
 /**
  * 轻步——践踏耕地不会使其退化，但仍保留原版落地与摔落伤害处理。
@@ -17,12 +18,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(FarmBlock.class)
 public abstract class FarmBlockTrampleMixin {
 
-    @Redirect(method = "fallOn", at = @At(value = "INVOKE",
+    @WrapOperation(method = "fallOn", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/level/block/FarmBlock;turnToDirt(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V"))
     private void unsuspiciousblock$lightStepNoTrample(Entity entity, BlockState state,
-                                                       Level level, BlockPos pos) {
+                                                       Level level, BlockPos pos, Operation<Void> original) {
         if (!(entity instanceof Player player) || !CatPassiveAbilities.hasLightStep(player)) {
-            FarmBlock.turnToDirt(entity, state, level, pos);
+            original.call(entity, state, level, pos);
         }
     }
 }

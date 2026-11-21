@@ -15,7 +15,7 @@ import java.util.Iterator;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootTableCompiler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootMechanismSupport;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogGeneration.BaselineStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogDisplayDerivation;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
@@ -23,6 +23,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInje
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
@@ -201,25 +202,22 @@ public final class ArchaeologyJournalServerCatalog {
         Map<String, String> sourceNames = new LinkedHashMap<>();
         sourceNames.put(Constants.MOD_ID,
                 Services.PLATFORM.getModDisplayName(Constants.MOD_ID));
-        Set<ResourceLocation> declarationTables = new LinkedHashSet<>();
-        loadResult.staticTables().keySet().forEach(id -> declarationTables.addAll(
-                loadResult.session().referenceGraph().descendantsInclusive(id)));
-        for (ResourceLocation id : declarationTables) {
+        for (ResourceLocation id : loadResult.staticTables().keySet()) {
             List<DeclaredLootInjection> rules = List.copyOf(Services.PLATFORM.describeLootInjections(id));
             declarations.put(id, rules);
             for (DeclaredLootInjection rule : rules)
                 sourceNames.computeIfAbsent(rule.source(),
                         Services.PLATFORM::getModDisplayName);
         }
-        Map<ResourceLocation, TableDefinition> projectionTables = new LinkedHashMap<>(loadResult.staticTables());
-        loadResult.session().staticProjections().forEach((id, projection) -> projectionTables.putIfAbsent(id,
-                new TableDefinition(id, Component.literal(id.toString()), projection.declaredType(),
-                        projection.items(), 0, projection.childTables())));
-        Map<ResourceLocation, ExpandedTable> expansions = DeclaredInjectionExpansion.build(projectionTables,
+        Map<ResourceLocation, ExpandedTable> expansions = DeclaredInjectionExpansion.build(loadResult.staticTables(),
                 declarations, RuntimeLootLinks.injectionEdges(), server.registryAccess());
         Map<ResourceLocation, TableDefinition> staticTables = new LinkedHashMap<>();
-        for (ResourceLocation id : loadResult.staticTables().keySet())
-            staticTables.put(id, expansions.get(id).display());
+        for (ResourceLocation id : loadResult.staticTables().keySet()) {
+            TableDefinition table = expansions.get(id).display();
+            if (!table.items().isEmpty() || !table.childTables().isEmpty()) {
+                staticTables.put(id, table);
+            }
+        }
         LOGGER.info("解析到 {} 个考古战利品表原始目录", staticTables.size());
 
         // 3. 先判不可用机制（决策 31）：这类表不能入队模拟，否则会在 getRandomItems 里抛异常后
@@ -269,8 +267,11 @@ public final class ArchaeologyJournalServerCatalog {
                 loadResult.session().referenceGraph(), staticTables,
                 loadResult.session().compiledTables(), server.registryAccess(), server.getResourceManager(), declarations);
         if (!unavailableReasons.isEmpty()) LOGGER.warn("战利品表不可用原因：{}", unavailableReasons);
+        var categories = new LinkedHashMap<>(loadResult.structure().rootCategories());
+        categories.keySet().retainAll(staticTables.keySet());
+        var structure = new CatalogStructure(loadResult.structure().categories(), categories);
         CatalogGeneration catalogGeneration = new CatalogGeneration(
-                loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs,
+                loadResult.session(), structure, staticTables, tableHashes, constraintCatalogs,
                 expansions, sourceNames, server.registryAccess(), server.reloadableRegistries());
 
         // 6. 从 SavedData 恢复已缓存的**基准输入**，写入当代 overlay；不可用的表既不入队也不读缓存
@@ -284,8 +285,6 @@ public final class ArchaeologyJournalServerCatalog {
         for (Map.Entry<ResourceLocation, TableDefinition> entry : staticTables.entrySet()) {
             ResourceLocation tableId = entry.getKey();
             if (unavailableReasons.containsKey(tableId)) {
-                // 不可用表也要发布：否则它在客户端**整表消失**，玩家连"这张表读不了"都看不到。
-                catalogGeneration.publishSimulated(entry.getValue());
                 continue;
             }
             String hash = tableHashes.getOrDefault(tableId, "");
@@ -308,8 +307,6 @@ public final class ArchaeologyJournalServerCatalog {
                         generation, hash, null, null));
             }
         }
-        // 四个数字必须各算各的：不可用表也走 publishSimulated，直接读 overlay 大小会把它们算成"从缓存恢复"；
-        // 两类未命中也要分开报，否则"缓存机制坏了"与"内容确实变了"看起来一模一样。
         LOGGER.info("概率缓存命中 {} 个表的基准输入，{} 个待模拟（未命中原因：哈希变化 {} 个、缺少该输入的测量值 {} 个），"
                         + "{} 个不可用（共 {} 个表）",
                 restored, uncached.size(), hashChanged, missingInput,
@@ -419,7 +416,6 @@ public final class ArchaeologyJournalServerCatalog {
             return;
         }
 
-        CatalogSimulationDelivery.install(worker, generationId);
         worker.enqueueBatch(uncached);
     }
 
@@ -519,16 +515,13 @@ public final class ArchaeologyJournalServerCatalog {
                     new CatalogSimulationSubmission(request, Map.of(player.getUUID(), ticket)), player.server);
             return new OnDemandResult(OnDemandOutcome.SIMULATED_INLINE, input, committed.scenario());
         }
-        if (!worker.isWaiting(player.getUUID(), tableId, input) && !worker.canAcceptFor(player.getUUID())) {
-            return new OnDemandResult(OnDemandOutcome.PLAYER_LIMIT, input);
-        }
-        CatalogSimulationDelivery.install(worker, generation.generation());
         LootProbabilitySimulationWorker.EnqueueOutcome outcome = worker.enqueuePlayerRequest(
                 new LootProbabilitySimulationWorker.SimulationRequest(
                         tableId, raw, input, scenario, generation.generation(), hash, player.getUUID(), ticket));
         return switch (outcome) {
             case ACCEPTED -> new OnDemandResult(OnDemandOutcome.QUEUED, input);
             case REJECTED_QUEUE_FULL -> new OnDemandResult(OnDemandOutcome.REJECTED_QUEUE_FULL, input);
+            case PLAYER_LIMIT -> new OnDemandResult(OnDemandOutcome.PLAYER_LIMIT, input);
         };
     }
 
@@ -550,7 +543,6 @@ public final class ArchaeologyJournalServerCatalog {
         if (worker == null) {
             return;
         }
-        CatalogSimulationDelivery.install(worker, generation.generation());
         worker.enqueuePriority(new LootProbabilitySimulationWorker.SimulationRequest(
                 tableId, raw, constraint.baselineInput(), constraint.baselineScenario(planningTable),
                 generation.generation(), generation.tableHash(tableId), null, null));
@@ -737,12 +729,16 @@ public final class ArchaeologyJournalServerCatalog {
         LootResultPreviewCache.clear();
     }
 
-    /**
-     * 获取已填充概率的目录只读视图（随模拟完成渐进增长）
-     */
-    public static Map<ResourceLocation, TableDefinition> simulatedTables() {
+    /** 获取本代展示定义，包含已发布的运行时发现。 */
+    public static Map<ResourceLocation, TableDefinition> displayTables() {
         CatalogGeneration generation = currentGeneration;
-        return generation == null ? Map.of() : generation.simulatedTables();
+        return generation == null ? Map.of() : generation.displayTables();
+    }
+
+    /** 汇总本代静态目录的基准状态。 */
+    public static Map<BaselineStatus, Integer> baselineCounts() {
+        CatalogGeneration generation = currentGeneration;
+        return generation == null ? Map.of() : generation.baselineCounts();
     }
 
     /**
@@ -760,12 +756,10 @@ public final class ArchaeologyJournalServerCatalog {
         return generation == null ? Set.of() : generation.structure().rootCategories().keySet();
     }
 
-    /**
-     * 获取当代查询索引（子树物品等跨表聚合的唯一入口）；目录尚未加载时返回空索引
-     */
-    public static CatalogQueryIndex queryIndex() {
+    /** 获取指定表及后代的静态完成候选。 */
+    public static List<ItemDefinition> completionItems(ResourceLocation tableId) {
         CatalogGeneration generation = currentGeneration;
-        return generation == null ? CatalogQueryIndex.EMPTY : generation.queryIndex();
+        return generation == null ? List.of() : generation.completionItems(tableId);
     }
 
     /**

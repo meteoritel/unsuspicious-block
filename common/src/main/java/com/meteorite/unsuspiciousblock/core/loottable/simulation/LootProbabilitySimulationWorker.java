@@ -1,5 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.network.journal.CatalogSimulationDelivery;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission.Publication;
@@ -7,7 +8,6 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSub
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.List;
-import java.util.function.Consumer;
 
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.mojang.logging.LogUtils;
@@ -27,9 +27,7 @@ import java.util.UUID;
 /**
  * 战利品概率模拟主线程 tick 驱动器。
  * <p>
- * 不使用后台线程——因为 {@code LootTable.getRandomItems} 与 {@code LootContextParamFiller}
- * 会触碰 {@code ServerLevel} 关联的 {@link net.minecraft.world.level.levelgen.LegacyRandomSource}，
- * 后台线程与主线程 tick 并发会触发 {@link net.minecraft.util.ThreadingDetector} 报错。
+ * 抽样沿真实战利品表、条件和 Loader 修改器执行，它们访问正在运行的服务端世界，故在主线程推进。
  * <p>
  * 改为在服务端每 tick 末尾（{@code END_SERVER_TICK}）由 {@link #tick(MinecraftServer)} 消费队列，
  * 每个 tick 按固定时间预算推进可续跑任务，复杂表会跨多个 tick 保留进度。
@@ -48,13 +46,7 @@ public final class LootProbabilitySimulationWorker {
      */
     private static final long TICK_BUDGET_NANOS = 15_000_000L;
 
-    /**
-     * 玩家请求在 HIGH 队列中的待处理上界（决策 15）。
-     * <p>
-     * 只约束**玩家触发**的部分，不约束启动批量填充：启动批次由服务端自己排定、数量等于收录表数，
-     * 把上界也套在它身上只会让"表很多"被误判成"被刷爆"。真正要防的攻击面是连点场景刷爆 tick 预算，
-     * 那正好全部落在 HIGH 队列里。
-     */
+    /** 含玩家等待者的工作上限，覆盖排队和正在运行的任务。 */
     private static final int MAX_PENDING_PLAYER_REQUESTS = 32;
 
     /**
@@ -96,14 +88,7 @@ public final class LootProbabilitySimulationWorker {
     private final Map<UUID, Integer> playerInFlight = new HashMap<>();
 
     private WorkItem current;
-    /**
-     * 模拟结果回调（由调用方设置，如写入目录、广播等）
-     */
-    private volatile ResultHandler resultHandler;
-    /**
-     * 当前队列全部处理完毕后的回调
-     */
-    private volatile Consumer<MinecraftServer> queueDrainedHandler;
+    private int pendingPlayerTasks;
 
     private LootProbabilitySimulationWorker() {
     }
@@ -174,26 +159,9 @@ public final class LootProbabilitySimulationWorker {
     public record SimulationTicket(long requestId, long generation, String tableHash) {
     }
 
-    /**
-     * 识别同一工作的既有等待关系，重试替换票据时复用其额度。
-     */
-    public boolean isWaiting(UUID player, ResourceLocation table, SimulationInput input) {
-        WorkItem item = enqueued.get(table + "#" + input.key());
-        return item != null && item.extraRequesters.containsKey(player);
-    }
-
-    /**
-     * 入队结果——调用方据此区分"已排队"与"被限流拒绝"。
-     */
+    /** 玩家请求的准入结果。 */
     public enum EnqueueOutcome {
-        /**
-         * 已入队（或已在队列中被提升优先级）。
-         */
-        ACCEPTED,
-        /**
-         * 玩家请求超出待处理上界，已拒绝。
-         */
-        REJECTED_QUEUE_FULL
+        ACCEPTED, REJECTED_QUEUE_FULL, PLAYER_LIMIT
     }
 
     /**
@@ -213,34 +181,35 @@ public final class LootProbabilitySimulationWorker {
         }
     }
 
-    /**
-     * 单条玩家请求入队（高优先级）。
-     * HIGH 队列达到 {@link #MAX_PENDING_PLAYER_REQUESTS} 时拒绝，而不是无限堆积。
-     */
+    /** 合并相同输入的等待者，并原子更新全局与个人额度。 */
     public EnqueueOutcome enqueuePlayerRequest(SimulationRequest request) {
         String key = request.dedupKey();
-        WorkItem existing = this.enqueued.get(key);
-        if (existing != null) {
-            // 队列里已有同一个 (表, 输入)：不重复排一次，但要把这位玩家登记为等待者——
-            // 否则"启动批量正在算的正好是我要的那个输入"会让玩家点了却永远收不到结果。
-            promote(existing);
-            // 只在**确实登记成功**时加在途计数：额度按 extraRequesters 在完成时逐个释放，
-            // 同一位玩家重复请求同一个输入若加两次却只释放一次，会把自己永久挡在额度外
-            if (request.requester() != null && existing.extraRequesters.put(request.requester(), request.ticket()) == null) {
-                addInFlight(request.requester(), 1);
-            }
+        UUID player = request.requester();
+        WorkItem item = this.enqueued.get(key);
+        if (item != null && item.requesters.containsKey(player)) {
+            item.requesters.put(player, request.ticket());
             return EnqueueOutcome.ACCEPTED;
         }
-        if (pendingPlayerRequests() >= MAX_PENDING_PLAYER_REQUESTS) {
+        if (this.playerInFlight.getOrDefault(player, 0) >= MAX_IN_FLIGHT_PER_PLAYER) {
+            return EnqueueOutcome.PLAYER_LIMIT;
+        }
+        boolean takesTaskSlot = item == null || item.requesters.isEmpty();
+        if (takesTaskSlot && this.pendingPlayerTasks >= MAX_PENDING_PLAYER_REQUESTS) {
             return EnqueueOutcome.REJECTED_QUEUE_FULL;
         }
-        WorkItem item = new WorkItem(request, Priority.HIGH);
-        if (request.requester() != null) {
-            item.extraRequesters.put(request.requester(), request.ticket());
-            addInFlight(request.requester(), 1);
+
+        if (item == null) {
+            item = new WorkItem(request, Priority.HIGH);
+            this.enqueued.put(key, item);
+            this.highQueue.addLast(item);
+        } else {
+            promote(item);
         }
-        this.enqueued.put(key, item);
-        this.highQueue.addLast(item);
+        item.requesters.put(player, request.ticket());
+        this.playerInFlight.merge(player, 1, Integer::sum);
+        if (takesTaskSlot) {
+            this.pendingPlayerTasks++;
+        }
         return EnqueueOutcome.ACCEPTED;
     }
 
@@ -263,48 +232,11 @@ public final class LootProbabilitySimulationWorker {
         this.highQueue.addLast(item);
     }
 
-    /**
-     * 某玩家当前在途（排队或计算中）的请求数。
-     */
-    public int inFlightFor(UUID playerId) {
-        return this.playerInFlight.getOrDefault(playerId, 0);
-    }
-
-    /**
-     * 该玩家是否还能再发一个请求（决策 15 的每玩家在途上界）。
-     */
-    public boolean canAcceptFor(UUID playerId) {
-        return inFlightFor(playerId) < MAX_IN_FLIGHT_PER_PLAYER;
-    }
-
-    private void addInFlight(UUID playerId, int delta) {
-        if (playerId == null) {
-            return;
-        }
-        int next = this.playerInFlight.getOrDefault(playerId, 0) + delta;
-        if (next <= 0) {
-            this.playerInFlight.remove(playerId);
-        } else {
-            this.playerInFlight.put(playerId, next);
-        }
-    }
-
-    /**
-     * 当前 HIGH 队列中待处理（含正在跑）的玩家请求数。
-     */
-    public int pendingPlayerRequests() {
-        int count = this.highQueue.size();
-        if (this.current != null && this.current.priority == Priority.HIGH) {
-            count++;
-        }
-        return count;
-    }
-
     /** 退役任务并返回尚未结束的玩家请求。 */
     public List<CatalogSimulationSubmission> retire() {
         List<CatalogSimulationSubmission> waiting = this.enqueued.values().stream()
-                .filter(item -> !item.extraRequesters.isEmpty())
-                .map(item -> new CatalogSimulationSubmission(item.request, item.publication, item.extraRequesters))
+                .filter(item -> !item.requesters.isEmpty())
+                .map(item -> new CatalogSimulationSubmission(item.request, item.publication, item.requesters))
                 .toList();
         highQueue.clear();
         lowQueue.clear();
@@ -312,21 +244,8 @@ public final class LootProbabilitySimulationWorker {
         enqueued.clear();
         failedInputs.clear();
         playerInFlight.clear();
+        pendingPlayerTasks = 0;
         return waiting;
-    }
-
-    /**
-     * 设置模拟结果回调
-     */
-    public void setResultHandler(ResultHandler handler) {
-        this.resultHandler = handler;
-    }
-
-    /**
-     * 设置队列排空回调，用于合并一批模拟产生的后续操作
-     */
-    public void setQueueDrainedHandler(Consumer<MinecraftServer> handler) {
-        this.queueDrainedHandler = handler;
     }
 
     /**
@@ -343,7 +262,7 @@ public final class LootProbabilitySimulationWorker {
     public void tick(MinecraftServer server) {
         if (!ArchaeologyJournalServerCatalog.canExecute(server)) return;
         long deadlineNanos = System.nanoTime() + TICK_BUDGET_NANOS;
-        boolean completedAny = false;
+        long drainedGeneration = 0L;
         ServerLevel level = server.overworld();
 
         // 当前低优先级任务只在 tick 边界被抢占，任务对象保留全部模拟进度。
@@ -362,18 +281,15 @@ public final class LootProbabilitySimulationWorker {
                 break;
             }
             if (advanceCurrent(server, level, deadlineNanos)) {
-                completedAny = true;
+                drainedGeneration = this.current.request.generation();
                 this.current = null;
             } else {
                 break;
             }
         }
-        if (completedAny && this.current == null && highQueue.isEmpty() && lowQueue.isEmpty()) {
+        if (drainedGeneration != 0L && this.current == null && highQueue.isEmpty() && lowQueue.isEmpty()) {
             logFailedSummary();
-            Consumer<MinecraftServer> handler = this.queueDrainedHandler;
-            if (handler != null) {
-                handler.accept(server);
-            }
+            CatalogSimulationDelivery.broadcastHash(server, drainedGeneration);
         }
     }
 
@@ -425,17 +341,15 @@ public final class LootProbabilitySimulationWorker {
                 : (System.nanoTime() - item.startedNanos) / 1_000_000L;
         long activeElapsedMs = item.activeNanos / 1_000_000L;
         long cpuElapsedMs = item.activeCpuNanos / 1_000_000L;
-        // 成功与失败都要回调：结果本身带着 successful 标志，调用方据此决定是写缓存+下发，
-        // 还是只回一份"这一次没算出来"。失败不回调用时，等待中的玩家收不到任何东西，
-        // 只能等到请求超时——那句提示会把"能确定的失败"说成"可能是慢"。
-        if (!this.enqueued.remove(item.request.dedupKey(), item)) return;
-        ResultHandler handler = this.resultHandler;
-        try {
-            if (handler != null) handler.handle(result,
-                    new CatalogSimulationSubmission(item.request, item.publication, item.extraRequesters), server);
-        } finally {
-            for (UUID waiter : item.extraRequesters.keySet()) addInFlight(waiter, -1);
+        this.enqueued.remove(item.request.dedupKey());
+        if (!item.requesters.isEmpty()) {
+            this.pendingPlayerTasks--;
+            for (UUID waiter : item.requesters.keySet()) {
+                this.playerInFlight.computeIfPresent(waiter, (player, count) -> count == 1 ? null : count - 1);
+            }
         }
+        CatalogSimulationSubmission submission = new CatalogSimulationSubmission(item.request, item.publication, item.requesters);
+        CatalogSimulationDelivery.deliver(server, ArchaeologyJournalServerCatalog.commitSimulated(result, submission, server));
         if (result.successful()) {
             // 三个时间各有用处：线程 CPU 回答"这张表本身有多贵"；"有效计算"是墙钟，在服务端启动阶段
             // 会因与区块生成等工作争抢 CPU 而虚高；"跨 tick 历时"还包含 tick 之间的等待。
@@ -478,10 +392,7 @@ public final class LootProbabilitySimulationWorker {
      */
     private static final class WorkItem {
         private final SimulationRequest request;
-        /**
-         * 与原始触发者之外、还等着这一份结果的其他玩家（按内容去重后的复用者）。
-         */
-        private final Map<UUID, SimulationTicket> extraRequesters = new LinkedHashMap<>();
+        private final Map<UUID, SimulationTicket> requesters = new LinkedHashMap<>();
         private Priority priority;
         private Publication publication;
         private LootProbabilitySimulationJob job;
@@ -502,18 +413,6 @@ public final class LootProbabilitySimulationWorker {
     private enum Priority {
         HIGH,
         LOW
-    }
-
-    /**
-     * 模拟结果回调（在主线程调用）。
-     * <p>
-     * 携带 generation 与触发者：调用方据此丢弃旧代结果，并把按需结果只回给请求者
-     * （按内容去重的缓存是全服共享的，但"当前展示哪个输入"是每个玩家自己的选择）。
-     */
-    @FunctionalInterface
-    public interface ResultHandler {
-        void handle(LootProbabilitySimulator.SimResult result, CatalogSimulationSubmission submission,
-                    MinecraftServer server);
     }
 
 }
