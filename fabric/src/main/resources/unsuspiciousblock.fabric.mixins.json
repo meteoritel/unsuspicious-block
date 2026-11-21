@@ -9,6 +9,7 @@
     "chunk.ChunkAccessMixin",
     "chunk.ChunkSerializerMixin",
     "chunk.LevelChunkMixin",
+    "container.AbstractFurnaceBlockEntityMixin",
     "container.AnvilMenuMixin",
     "interaction.BrushableBlockEntityMixin",
     "interaction.SheepMixin"

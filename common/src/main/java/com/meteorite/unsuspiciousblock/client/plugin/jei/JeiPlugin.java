@@ -5,6 +5,8 @@ import com.meteorite.unsuspiciousblock.client.ui.screen.PotteryWheelScreen;
 import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.recipe.PotterySmeltingRecipe;
+import com.meteorite.unsuspiciousblock.core.recipe.UnfiredDecoratedSherdSmeltingRecipe;
 import com.meteorite.unsuspiciousblock.core.recipe.UnsuspiciousCreationRecipe;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.constants.RecipeTypes;
@@ -22,20 +24,25 @@ import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.api.constants.VanillaTypes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.ItemTags;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CookingBookCategory;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
+import net.minecraft.world.level.block.entity.PotDecorations;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /** JEI 联动入口，将模组配方接入原版工作台与熔炉分类。 */
 @mezz.jei.api.JeiPlugin
@@ -62,8 +69,15 @@ public class JeiPlugin implements IModPlugin {
     }
 
     @Override
-    public void registerRecipes(IRecipeRegistration registration) {
-        registration.addRecipes(RecipeTypes.SMELTING, createSherdSmeltingRecipes());
+    public void registerRecipes(@NotNull IRecipeRegistration registration) {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (connection != null) {
+            registration.addRecipes(RecipeTypes.SMELTING, connection.getRecipeManager()
+                    .getAllRecipesFor(RecipeType.SMELTING).stream()
+                    .filter(holder -> holder.value() instanceof PotterySmeltingRecipe && !holder.value().isIncomplete())
+                    .flatMap(holder -> createSmeltingPreviews(holder, connection.registryAccess()))
+                    .toList());
+        }
         registration.addRecipes(PotteryWheelJeiCategory.TYPE, List.of(
                 PotteryWheelJeiRecipe.createPotRecipe(),
                 PotteryWheelJeiRecipe.createSherdRecipe()));
@@ -154,30 +168,36 @@ public class JeiPlugin implements IModPlugin {
         ArchaeologyJournalKeyHandler.clearHoveredItemProvider();
     }
 
-    // 为 tag 中的每种纹饰陶片创建独立的原版熔炉展示配方
-    private static List<RecipeHolder<SmeltingRecipe>> createSherdSmeltingRecipes() {
+    private static Stream<RecipeHolder<SmeltingRecipe>> createSmeltingPreviews(
+            RecipeHolder<SmeltingRecipe> holder, HolderLookup.Provider registries) {
+        SmeltingRecipe recipe = holder.value();
+        ItemStack input = recipe.getIngredients().getFirst().getItems()[0];
+        ResourceLocation previewId = holder.id().withPrefix("jei/");
+        if (!(recipe instanceof UnfiredDecoratedSherdSmeltingRecipe)) {
+            return Stream.of(createSmeltingPreview(previewId, recipe, input, registries));
+        }
+
+        // 每种纹样有独立的展示条目，使 JEI 能按成品陶片查询烧制方式。
         return BuiltInRegistries.ITEM.stream()
                 .filter(item -> BuiltInRegistries.ITEM.wrapAsHolder(item).is(ItemTags.DECORATED_POT_SHERDS))
                 .sorted(Comparator.comparing(item -> BuiltInRegistries.ITEM.getKey(item).toString()))
-                .map(JeiPlugin::createSherdSmeltingRecipe)
-                .toList();
+                .map(pattern -> {
+                    ResourceLocation patternId = BuiltInRegistries.ITEM.getKey(pattern);
+                    ItemStack patternedInput = input.copy();
+                    patternedInput.set(DataComponents.POT_DECORATIONS,
+                            new PotDecorations(pattern, pattern, pattern, pattern));
+                    return createSmeltingPreview(
+                            previewId.withSuffix("/" + patternId.getNamespace() + "/" + patternId.getPath()),
+                            recipe, patternedInput, registries);
+                });
     }
 
-    // 使用无纹饰组件的未烧制陶片作为统一展示输入
-    private static RecipeHolder<SmeltingRecipe> createSherdSmeltingRecipe(Item result) {
-        ResourceLocation resultId = BuiltInRegistries.ITEM.getKey(result);
-        ResourceLocation recipeId = ResourceLocation.fromNamespaceAndPath(
-                Constants.MOD_ID,
-                "jei/unfired_decorated_sherd_smelting/"
-                        + resultId.getNamespace() + "/" + resultId.getPath());
-        SmeltingRecipe recipe = new SmeltingRecipe(
-                "",
-                CookingBookCategory.MISC,
-                Ingredient.of(ModItems.UNFIRED_DECORATED_SHERD),
-                result.getDefaultInstance(),
-                0.1F,
-                200);
-        return new RecipeHolder<>(recipeId, recipe);
+    private static RecipeHolder<SmeltingRecipe> createSmeltingPreview(
+            ResourceLocation previewId, SmeltingRecipe recipe, ItemStack input, HolderLookup.Provider registries) {
+        Ingredient ingredient = recipe.getIngredients().getFirst();
+        ItemStack output = recipe.assemble(new SingleRecipeInput(input), registries);
+        return new RecipeHolder<>(previewId, new SmeltingRecipe(
+                recipe.getGroup(), recipe.category(), ingredient, output, recipe.getExperience(), recipe.getCookingTime()));
     }
 
     /** 为不可疑方块特殊配方提供原版工作台布局。 */
