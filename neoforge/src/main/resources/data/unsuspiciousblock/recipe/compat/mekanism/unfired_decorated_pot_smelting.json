@@ -1,0 +1,8 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "mekanism" }
+  ],
+  "type": "unsuspiciousblock:mekanism_pottery_smelting",
+  "input": { "item": "unsuspiciousblock:unfired_decorated_pot" },
+  "product": "pot"
+}

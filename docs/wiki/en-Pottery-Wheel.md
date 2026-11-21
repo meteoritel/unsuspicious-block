@@ -37,6 +37,8 @@ Each process takes 8 seconds. Sherds and bricks used as patterns are kept; each 
 
 Smelt the unfired decorated pot in a furnace to turn it into a vanilla decorated pot.
 
+With Mekanism installed on NeoForge, the Energized Smelter can also fire decorated pots and pottery sherds. The finished pottery keeps the patterns on the unfired item.
+
 ![Furnace recipe for an unfired decorated pot](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-pot-smelting.png)
 
 ## Duplicating Pottery Sherds

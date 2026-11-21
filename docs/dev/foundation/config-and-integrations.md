@@ -63,7 +63,7 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
 
 ## 4. 第三方联动清单
 
-所有联动均为可选依赖，使用 `compileOnly` + 开发期 `runtimeOnly` 引入，缺失时平滑降级。
+第三方联动均为可选依赖。构建使用 `compileOnly`，开发运行按需使用 `runtimeOnly`。
 
 ### 4.1 Jade（方块与实体信息）
 
@@ -99,6 +99,10 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
 ### 4.5 Artifacts（饰品效果代理）
 
 `fabric/platform/plugin/artifacts/` 与 `neoforge/platform/plugin/artifacts/` 各自实现 `ArtifactsSpecimenBoxSlotProvider`，使标本箱放在背包或饰品栏时能代理箱内兼容 Artifacts 饰品的装备效果。
+
+### 4.6 Mekanism（制陶熔炼）
+
+NeoForge 在 Mekanism 已加载时注册 `unsuspiciousblock:mekanism_pottery_smelting` 序列化器，内置配方使用 `neoforge:mod_loaded` 启用。配方以 `input` 声明坯件食材，以 `product` 选择 `pot` 或 `sherd`。机器使用原生 `TYPE_SMELTING` 查询并按实际输入烧制，陶片取组件中的纹饰物品，陶罐保留四面纹饰。Mekanism 的配方查看器展示普通陶罐及当前陶片标签中的可用纹样。[机器配方适配](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/mekanism/MekanismPotterySmeltingRecipe.java)
 
 ## 5. 扩展点
 

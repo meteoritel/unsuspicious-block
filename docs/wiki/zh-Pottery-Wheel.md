@@ -37,6 +37,8 @@
 
 将未烧制纹饰陶罐放入熔炉，可以烧制为原版纹饰陶罐。
 
+在 NeoForge 安装 Mekanism 后，也可以用电力熔炼炉烧制纹饰陶罐和陶片。成品保留坯件的纹饰。
+
 ![未烧制纹饰陶罐的熔炉烧制配方](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-pot-smelting.png)
 
 ## 复制纹饰陶片

@@ -96,6 +96,11 @@ import java.util.function.Supplier;
 @Mod(Constants.MOD_ID)
 public class UnsuspiciousBlockNeoForge {
 
+    private static final String MEKANISM_MOD_ID = "mekanism";
+    private static final String MEKANISM_POTTERY_SERIALIZER = "mekanism_pottery_smelting";
+    private static final String MEKANISM_POTTERY_RECIPE_CLASS =
+            "com.meteorite.unsuspiciousblock.platform.plugin.mekanism.MekanismPotterySmeltingRecipe";
+
     private static final DeferredRegister.Blocks BLOCKS =
             DeferredRegister.createBlocks(Constants.MOD_ID);
     private static final DeferredRegister.Items ITEMS =
@@ -233,6 +238,11 @@ public class UnsuspiciousBlockNeoForge {
         MENUS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
         FEATURES.register(modEventBus);
+        if (Services.PLATFORM.isModLoaded(MEKANISM_MOD_ID)) {
+            RECIPE_SERIALIZERS.register(MEKANISM_POTTERY_SERIALIZER,
+                    () -> OptionalModIntegration.invokeFactory(
+                            MEKANISM_POTTERY_RECIPE_CLASS, "createSerializer", RecipeSerializer.class));
+        }
         RECIPE_SERIALIZERS.register(modEventBus);
         BLOCK_ENTITY_TYPES.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);

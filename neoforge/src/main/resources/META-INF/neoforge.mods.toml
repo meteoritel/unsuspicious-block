@@ -53,6 +53,12 @@ description = '''${description}'''
     ordering = "NONE"
     side = "BOTH"
 
+[[dependencies.${mod_id}]]
+    modId = "mekanism"
+    type = "optional"
+    ordering = "NONE"
+    side = "BOTH"
+
 ${lootr_neoforge_dependency}
 
 [[mixins]]
