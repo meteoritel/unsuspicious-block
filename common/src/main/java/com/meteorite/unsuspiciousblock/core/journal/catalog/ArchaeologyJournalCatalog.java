@@ -2,7 +2,6 @@ package com.meteorite.unsuspiciousblock.core.journal.catalog;
 
 import com.meteorite.unsuspiciousblock.core.loottable.diagnostics.LootDebugMode;
 import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingRules;
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionPreviewContext;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
@@ -41,7 +40,7 @@ public final class ArchaeologyJournalCatalog {
     private ArchaeologyJournalCatalog() {
     }
 
-    /** 沿收录根表投影生效表，按最终入边确定目录位置。 */
+    /** 沿收录根表投影生效表，保留收录根表的独立分类入口。 */
     static LoadResult load(long generation, ResourceAnalysis resources, HolderLookup.Provider registries,
                            LootFunctionPreviewContext previewContext, LootTrackingRules rules,
                            SignatureExcludedComponents signatureExclusions) {
@@ -101,7 +100,7 @@ public final class ArchaeologyJournalCatalog {
         Map<ResourceLocation, ResourceLocation> defaultTools = new LinkedHashMap<>();
         collected.forEach((id, table) -> {
             ResourceLocation category = categories.classify(id, table.type());
-            if (!parents.containsKey(id)) {
+            if (trackedRoots.contains(id)) {
                 rootCategories.put(id, category);
             }
             defaultTools.put(id, categories.defaultTool(category));

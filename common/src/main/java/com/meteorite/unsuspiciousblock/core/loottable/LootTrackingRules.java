@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable;
 
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTablePattern;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.LinkedHashSet;
@@ -23,11 +24,11 @@ public final class LootTrackingRules {
             new Builtin("archaeology", "archaeology/"),
             new Builtin("archeology", "archeology/"),
             new Builtin("pots", "pots/"),
-            new Builtin("fishing", "minecraft:gameplay/fishing"),
+            new Builtin("fishing", RuntimeLootLinks.FISHING_TABLE.toString()),
             new Builtin("buried_treasure", "minecraft:chests/buried_treasure"),
             new Builtin("ancient_city", "minecraft:chests/ancient_city"),
             new Builtin("ancient_city_ice_box", "minecraft:chests/ancient_city_ice_box"),
-            new Builtin("mod_fishing", "unsuspiciousblock:gameplay/fishing/"),
+            new Builtin("mod_fishing", RuntimeLootLinks.MUD_DREDGING_TABLE.toString()),
             new Builtin("fossil_hunter", "unsuspiciousblock:gameplay/fossil_hunter/"),
             new Builtin("panning", "unsuspiciousblock:gameplay/panning/")
     );

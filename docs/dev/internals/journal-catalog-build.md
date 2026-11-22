@@ -11,7 +11,7 @@
 flowchart TD
     Start["ensureLoaded(server)"] --> Build["buildGeneration(server) 在局部构建整代"]
     Build --> S1["复用本资源代次，编译并投影引用闭包"]
-    S1 --> S2["展开当前 Loader 注入并由最终入边推导顶层分类"]
+    S1 --> S2["展开当前 Loader 注入，为有效收录根表分配顶层分类"]
     S2 --> S3["机制支持检查 → 约束目录规划 → 预算诊断"]
     S3 --> S4["标记不可用表并计算每表 SHA-256 哈希"]
     S4 --> S5["构造 CatalogGeneration — 恢复可用基准缓存与不可用展示 overlay"]
