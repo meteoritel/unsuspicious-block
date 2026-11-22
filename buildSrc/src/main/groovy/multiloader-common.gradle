@@ -64,7 +64,6 @@ repositories {
 ['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements'].each { variant ->
     configurations."$variant".outgoing {
         capability("$group:${base.archivesName.get()}:$version")
-        capability("$group:$mod_id-${project.name}-${minecraft_version}:$version")
         capability("$group:$mod_id:$version")
     }
     publishing.publications.configureEach {
@@ -96,45 +95,53 @@ jar {
     }
 }
 
-def lootrCompatNeoForge = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
-def lootrNeoForgeDependency = lootrCompatNeoForge ? """[[dependencies.${mod_id}]]
-    modId = "lootr"
-    type = "optional"
-    versionRange = "[1.11.37.121]"
-    ordering = "NONE"
-    side = "BOTH"
-""" : ''
-def lootrNeoForgeMixin = lootrCompatNeoForge ? """[[mixins]]
-config = "${mod_id}.lootr.mixins.json"
-requiredMods = ["lootr"]
-""" : ''
+def lootrPlatforms = [
+        fabric: providers.gradleProperty('lootr_compat_fabric').orElse('true').get().toBoolean(),
+        neoforge: providers.gradleProperty('lootr_compat_neoforge').orElse('true').get().toBoolean()
+]
+ext.lootrCompatEnabled = project.name == 'common'
+        ? lootrPlatforms.values().any { it }
+        : lootrPlatforms[project.name]
+
+String lootrArtifactVersion = lootr_version
+String minecraftVersionPrefix = "${minecraft_version}-"
+ext.lootrDependency = "maven.modrinth:lootr:${lootrArtifactVersion}"
+ext.lootrModVersion = lootrArtifactVersion.startsWith(minecraftVersionPrefix)
+        ? lootrArtifactVersion.substring(minecraftVersionPrefix.length())
+        : lootrArtifactVersion
+
+if (!lootrCompatEnabled) {
+    def lootrSources = [
+            'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**',
+            'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
+    ]
+    def lootrResources = [
+            "${mod_id}.lootr.mixins.json".toString(),
+            'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
+    ]
+    tasks.named('compileJava', JavaCompile) { exclude lootrSources }
+    tasks.named('javadoc', Javadoc) { exclude lootrSources }
+    tasks.named('processResources', ProcessResources) { exclude lootrResources }
+    tasks.named('sourcesJar', Jar) { exclude lootrSources + lootrResources }
+}
+
+ext.modMetadata = [
+        version: project.version,
+        minecraft_version: minecraft_version,
+        mod_name: mod_name,
+        mod_author: mod_author,
+        mod_id: mod_id,
+        license: license,
+        description: project.description,
+        meteos_ui_kit_version: meteos_ui_kit_version
+]
 
 processResources {
-    var expandProps = [
-            'version'                      : version,
-            'group'                        : project.group, //Else we target the task's group.
-            'minecraft_version'            : minecraft_version,
-            'fabric_version'               : fabric_version,
-            'fabric_loader_version'        : fabric_loader_version,
-            'mod_name'                     : mod_name,
-            'mod_author'                   : mod_author,
-            'mod_id'                       : mod_id,
-            'license'                      : license,
-            'description'                  : project.description,
-            'neoforge_version'             : neoforge_version,
-            'neoforge_loader_version_range': neoforge_loader_version_range,
-            'mekanism_version'             : mekanism_version,
-            'credits'                      : credits,
-            'java_version'                 : java_version,
-            'meteos_ui_kit_version'         : meteos_ui_kit_version,
-            'lootr_neoforge_dependency'    : lootrNeoForgeDependency,
-            'lootr_neoforge_mixin'         : lootrNeoForgeMixin
-    ]
-
-    filesMatching(['pack.mcmeta', 'fabric.mod.json', 'META-INF/neoforge.mods.toml', '*.mixins.json']) {
-        expand expandProps
+    def resourceMetadata = modMetadata.subMap(['mod_name', 'mod_id'])
+    inputs.properties(resourceMetadata)
+    filesMatching(['pack.mcmeta', '*.mixins.json']) {
+        expand resourceMetadata
     }
-    inputs.properties(expandProps)
 }
 
 publishing {

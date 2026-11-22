@@ -3,8 +3,6 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
-def lootrCompat = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
-
 repositories {
     maven {
         name = "Modrinth"
@@ -48,9 +46,9 @@ dependencies {
     compileOnly "maven.modrinth:create:${create_version}"
 
     // Lootr：neoforge 端 compileOnly 引用 API，runtimeOnly 供本地运行测试
-    if (lootrCompat) {
-        compileOnly "maven.modrinth:lootr:${lootr_version}"
-        runtimeOnly "maven.modrinth:lootr:${lootr_version}"
+    if (lootrCompatEnabled) {
+        compileOnly lootrDependency
+        runtimeOnly lootrDependency
     }
 }
 
@@ -97,3 +95,28 @@ neoForge {
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+processResources {
+    def lootrDependencyMetadata = lootrCompatEnabled ? """[[dependencies.${mod_id}]]
+    modId = "lootr"
+    type = "optional"
+    versionRange = "[${lootrModVersion}]"
+    ordering = "NONE"
+    side = "BOTH"
+""" : ''
+    def lootrMixinMetadata = lootrCompatEnabled ? """[[mixins]]
+config = "${mod_id}.lootr.mixins.json"
+requiredMods = ["lootr"]
+""" : ''
+    def neoForgeMetadata = modMetadata + [
+            neoforge_loader_version_range: neoforge_loader_version_range,
+            neoforge_version: neoforge_version,
+            mekanism_version: mekanism_version,
+            lootr_neoforge_dependency: lootrDependencyMetadata,
+            lootr_neoforge_mixin: lootrMixinMetadata
+    ]
+    inputs.properties(neoForgeMetadata)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand neoForgeMetadata
+    }
+}

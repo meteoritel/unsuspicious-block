@@ -121,7 +121,7 @@ flowchart TD
 - `multiloader-common`（[`multiloader-common.gradle`](../../../buildSrc/src/main/groovy/multiloader-common.gradle)）：统一配置 Java 21 工具链、源码/Javadoc JAR、UTF-8 编码、仓库过滤、能力声明与 `processResources` 占位符展开。
 - `multiloader-loader`：Fabric 与 NeoForge 子模块的公共配置。
 
-`processResources` 中的 `expandProps` 是**构建元数据占位符的唯一展开入口**：`fabric.mod.json`、`neoforge.mods.toml`、`*.mixins.json`、`pack.mcmeta` 中的 `${...}` 均由它替换。新增变量时必须同步加入 `expandProps`，否则产物中会残留字面量 `${xxx}`。
+共享插件通过 `processResources` 展开 `pack.mcmeta` 和 Mixin JSON，并提供公共模组元数据。各 Loader 的 `build.gradle` 在本模块的 `processResources` 中展开自己的描述文件，补充平台属性和可选联动声明。
 
 ### 4.2 各平台构建配置
 
@@ -136,14 +136,9 @@ flowchart TD
 
 ### 4.3 Lootr 构建时开关
 
-Lootr 兼容通过 `gradle.properties` 中的布尔开关在构建期裁决：
+`lootr_compat_fabric` 和 `lootr_compat_neoforge` 各自控制对应平台的 Lootr 依赖、源码与资源。共享插件统一配置排除规则。只要任一平台启用，`common` 就会保留 Lootr 源码与资源供其使用。[Gradle 属性](../../../gradle.properties) · [共享构建插件](../../../buildSrc/src/main/groovy/multiloader-common.gradle)
 
-```properties
-lootr_compat_fabric=false
-lootr_compat_neoforge=true
-```
-
-开关为 `false` 时，`common/build.gradle` 会排除 `core/mixin/compat/lootr/`、`core/plugin/lootr/`、`unsuspiciousblock.lootr.mixins.json` 及对应 `META-INF/services` 声明；`multiloader-common.gradle` 也会从 `neoforge.mods.toml` 模板移除 Lootr 依赖与 Mixin 块。
+启用后，Fabric 元数据声明 `preLaunch` 入口和 Lootr 推荐依赖，NeoForge 元数据声明可选依赖与 Mixin。两个 Loader 的版本约束均从 `lootr_version` 的 Modrinth 版本派生，Fabric 开发运行时使用独立的 `lootr_fabric_version_id`。[Fabric 构建脚本](../../../fabric/build.gradle) · [NeoForge 构建脚本](../../../neoforge/build.gradle)
 
 ### 4.4 可选联动依赖
 

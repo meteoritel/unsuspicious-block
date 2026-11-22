@@ -1,9 +1,10 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
 plugins {
     id 'multiloader-loader'
     id 'fabric-loom'
 }
-
-def lootrCompat = project.hasProperty('lootr_compat_fabric') ? project.lootr_compat_fabric.toBoolean() : true
 
 configurations {
     // Lootr 使用比本项目更新的 Loom 构建，交由 Fabric Loader 在开发运行时完成 remap。
@@ -61,8 +62,8 @@ dependencies {
 
     // Lootr：编译期使用 NeoForge 的 Mojang mappings JAR，开发运行时加载对应的 Fabric JAR。
     // Fabric 文件需使用 Modrinth version id；语义版本坐标默认解析到 NeoForge 文件。
-    if (lootrCompat) {
-        compileOnly "maven.modrinth:lootr:${lootr_version}"
+    if (lootrCompatEnabled) {
+        compileOnly lootrDependency
         lootrFabricRuntime "maven.modrinth:lootr:${lootr_fabric_version_id}"
     }
 }
@@ -95,7 +96,7 @@ loom {
     }
 }
 
-if (lootrCompat) {
+if (lootrCompatEnabled) {
     tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
         doFirst {
             systemProperty 'fabric.addMods', configurations.lootrFabricRuntime.singleFile.absolutePath
@@ -103,16 +104,31 @@ if (lootrCompat) {
     }
 }
 
-if (!lootrCompat) {
-    tasks.named('processResources') {
-        inputs.property('lootrCompatFabric', lootrCompat)
-        doLast {
-            def metadataFile = destinationDir.toPath().resolve('fabric.mod.json').toFile()
-            def metadata = new groovy.json.JsonSlurper().parse(metadataFile)
-            metadata.entrypoints.remove('preLaunch')
-            metadata.suggests.remove('lootr')
-            metadataFile.text = groovy.json.JsonOutput.prettyPrint(
-                    groovy.json.JsonOutput.toJson(metadata)) + System.lineSeparator()
+processResources {
+    def fabricMetadata = modMetadata + [
+            fabric_loader_version: fabric_loader_version,
+            java_version: java_version,
+            lootr_mod_version: lootrModVersion
+    ]
+    inputs.properties(fabricMetadata)
+    inputs.property('lootrCompatFabric', lootrCompatEnabled)
+    filesMatching('fabric.mod.json') {
+        expand fabricMetadata
+        if (!lootrCompatEnabled) {
+            filter(WithoutLootrMetadata)
         }
+    }
+}
+
+class WithoutLootrMetadata extends FilterReader {
+    WithoutLootrMetadata(Reader source) {
+        super(new StringReader(removeLootr(source)))
+    }
+
+    private static String removeLootr(Reader source) {
+        def metadata = source.withCloseable { new JsonSlurper().parse(it) }
+        metadata.entrypoints.remove('preLaunch')
+        metadata.suggests.remove('lootr')
+        return JsonOutput.prettyPrint(JsonOutput.toJson(metadata)) + '\n'
     }
 }

@@ -28,30 +28,41 @@ def sourceCheck = tasks.register('checkSourceRepository', Exec) {
     commandLine repositoryPython.get(), rootProject.file('tools/checks/check-all.py'), '--root', rootProject.projectDir
 }
 
-def packagingCheck = tasks.register('checkUiKitPackaging', Exec) {
+def platformArchives = [fabric: 'remapJar', neoforge: 'jar']
+
+tasks.register('checkUiKitPackaging') {
     group = 'verification'
     description = '校验本次双端发布物的 UI Kit 内嵌与元数据'
-    dependsOn ':fabric:remapJar', ':neoforge:jar'
-    mustRunAfter sourceCheck
-    workingDir rootProject.projectDir
-    doFirst {
-        commandLine repositoryPython.get(), rootProject.file('tools/checks/check-ui-kit-packaging.py'),
-                '--root', rootProject.projectDir,
-                '--fabric-jar', project(':fabric').tasks.named('remapJar').get().archiveFile.get().asFile,
-                '--neoforge-jar', project(':neoforge').tasks.named('jar').get().archiveFile.get().asFile
-    }
+    dependsOn platformArchives.keySet().collect { ":${it}:checkUiKitPackaging" }
 }
 
-subprojects {
+subprojects { platformProject ->
     plugins.withId('java') {
         tasks.named('check') {
             dependsOn sourceCheck
-            if (project.name != 'common') {
-                dependsOn packagingCheck
-            }
         }
         tasks.withType(JavaCompile).configureEach {
             mustRunAfter sourceCheck
+        }
+
+        def platform = platformProject.name
+        def archiveTaskName = platformArchives[platform]
+        if (archiveTaskName != null) {
+            def packagingCheck = tasks.register('checkUiKitPackaging', Exec) {
+                group = 'verification'
+                description = "校验 ${platform} 发布物的 UI Kit 内嵌与元数据"
+                dependsOn archiveTaskName
+                mustRunAfter sourceCheck
+                workingDir rootProject.projectDir
+                doFirst {
+                    def archive = platformProject.tasks.named(archiveTaskName).get().archiveFile.get().asFile
+                    commandLine repositoryPython.get(), rootProject.file('tools/checks/check-ui-kit-packaging.py'),
+                            '--root', rootProject.projectDir, "--${platform}-jar", archive
+                }
+            }
+            tasks.named('check') {
+                dependsOn packagingCheck
+            }
         }
     }
 }

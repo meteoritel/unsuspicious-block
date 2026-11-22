@@ -105,7 +105,11 @@ def check(root: Path, archives: dict[str, Path]) -> list[Finding]:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', help='项目根目录，默认由脚本位置定位')
-    parser.add_argument('--fabric-jar', required=True, type=Path, help='本次 Fabric remapJar 输出')
-    parser.add_argument('--neoforge-jar', required=True, type=Path, help='本次 NeoForge 最终 jar 输出，包含 Jar-in-Jar 内容')
+    parser.add_argument('--fabric-jar', type=Path, help='本次 Fabric remapJar 输出')
+    parser.add_argument('--neoforge-jar', type=Path, help='本次 NeoForge 最终 jar 输出，包含 Jar-in-Jar 内容')
     args = parser.parse_args()
-    sys.exit(execute(lambda: check(repo_root(args.root), {'fabric': args.fabric_jar.resolve(), 'neoforge': args.neoforge_jar.resolve()})))
+    archives = {module: path.resolve() for module, path in
+                [('fabric', args.fabric_jar), ('neoforge', args.neoforge_jar)] if path is not None}
+    if not archives:
+        parser.error('至少提供一个归档参数：--fabric-jar 或 --neoforge-jar')
+    sys.exit(execute(lambda: check(repo_root(args.root), archives)))

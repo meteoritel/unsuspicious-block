@@ -3,10 +3,10 @@ plugins {
 }
 
 configurations {
-    commonJava{
+    commonJava {
         canBeResolved = true
     }
-    commonResources{
+    commonResources {
         canBeResolved = true
     }
 }
@@ -21,45 +21,24 @@ dependencies {
     commonResources project(path: ':common', configuration: 'commonResources')
 }
 
-def lootrCompatProperty = project.name == 'fabric' ? 'lootr_compat_fabric' : 'lootr_compat_neoforge'
-def lootrCompat = project.hasProperty(lootrCompatProperty) ? project.property(lootrCompatProperty).toBoolean() : true
-
 tasks.named('compileJava', JavaCompile) {
     dependsOn(configurations.commonJava)
     source(configurations.commonJava)
-    if (!lootrCompat) {
-        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
-    }
 }
 
 processResources {
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)
-    if (!lootrCompat) {
-        exclude 'unsuspiciousblock.lootr.mixins.json'
-        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
-    }
 }
 
 tasks.named('javadoc', Javadoc).configure {
     dependsOn(configurations.commonJava)
     source(configurations.commonJava)
-    if (!lootrCompat) {
-        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
-    }
 }
 
 tasks.named('sourcesJar', Jar) {
     dependsOn(configurations.commonJava)
     from(configurations.commonJava)
-    if (!lootrCompat) {
-        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
-        exclude 'unsuspiciousblock.lootr.mixins.json'
-        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
-    }
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)
 }

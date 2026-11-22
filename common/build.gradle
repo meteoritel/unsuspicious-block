@@ -23,10 +23,6 @@ repositories {
     }
 }
 
-def lootrCompatFabric = project.hasProperty('lootr_compat_fabric') ? project.lootr_compat_fabric.toBoolean() : true
-def lootrCompatNeoForge = project.hasProperty('lootr_compat_neoforge') ? project.lootr_compat_neoforge.toBoolean() : true
-def lootrCompat = lootrCompatFabric || lootrCompatNeoForge
-
 dependencies {
     compileOnly "com.meteorite.meteosuikit:meteos-ui-kit-common-1.21.1:${meteos_ui_kit_version}"
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.7'
@@ -41,29 +37,8 @@ dependencies {
     // JEI：仅引入跨平台 API，供后续可选联动使用
     compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
     // Lootr API（Modrinth maven，neoforge 平台 jar，common API 类与 fabric 端一致）
-    if (lootrCompat) {
-        compileOnly "maven.modrinth:lootr:${lootr_version}"
-    }
-}
-
-if (!lootrCompat) {
-    tasks.named('compileJava', JavaCompile) {
-        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
-    }
-    tasks.named('javadoc', Javadoc) {
-        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
-    }
-    tasks.named('sourcesJar', Jar) {
-        exclude 'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**'
-        exclude 'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
-        exclude 'unsuspiciousblock.lootr.mixins.json'
-        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
-    }
-    tasks.named('processResources', ProcessResources) {
-        exclude 'unsuspiciousblock.lootr.mixins.json'
-        exclude 'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
+    if (lootrCompatEnabled) {
+        compileOnly lootrDependency
     }
 }
 
