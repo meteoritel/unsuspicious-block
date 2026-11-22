@@ -6,7 +6,6 @@ import java.util.stream.Collectors;
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 
-import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
@@ -39,6 +38,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -87,7 +87,7 @@ public class JournalViewModel {
     private long loadedCatalogRevision = -1L;
     // 关系索引（子表 -> 父表、表 -> 分类）只在目录定义或分类结构变化时重建
     private long relationshipIndexRevision = Long.MIN_VALUE;
-    // 目录内每张表的首条父路径；搜索与子表跳转共用
+    // 从分类顶层出发的最短父路径，顶层入口的路径为空。
     private Map<ResourceLocation, List<ResourceLocation>> firstPathsByTableCache = Map.of();
     private long firstPathsRevision = Long.MIN_VALUE;
     // 表子树物品闭包；值来自 CatalogQueryIndex.subtreeItems，本身即为不可变列表
@@ -214,48 +214,45 @@ public class JournalViewModel {
         if (!this.expandedRoots.add(id)) this.expandedRoots.remove(id);
     }
 
-    // 为子表跳转准备目录状态：切换到可达分类并展开目标的全部祖先。
+    // 默认定位优先使用目标自己的顶层入口。
     public boolean prepareNavigationTo(ResourceLocation tableId) {
-        if (!this.allViews.containsKey(tableId)) {
-            return false;
-        }
-        Set<ResourceLocation> categories = this.categoryIdsByTable.getOrDefault(tableId, Set.of());
-        if (categories.isEmpty()) {
-            return false;
-        }
-        if (this.selectedCategory == null || !categories.contains(this.selectedCategory)) {
-            this.selectedCategory = categories.stream().min(Comparator.comparing(ResourceLocation::toString)).orElse(null);
-        }
+        List<ResourceLocation> parentPath = firstPathsByTable().get(tableId);
+        if (parentPath == null) return false;
+        ResourceLocation rootId = parentPath.isEmpty() ? tableId : parentPath.getFirst();
+        this.selectedCategory = this.structure.rootCategories().get(rootId);
         this.categoryHome = false;
-        this.expandedRoots.addAll(firstPathsByTable().getOrDefault(tableId, List.of()));
+        this.expandedRoots.addAll(parentPath);
         return true;
     }
 
     // 从当前父表的子表入口跳转时，保留当前目录路径，先展开父表再查找其下的子表行。
     public boolean prepareNavigationToChild(ResourceLocation parentId, ResourceLocation childId) {
         TableDefinition parent = this.catalogDefinitions.get(parentId);
-        if (parent == null || !parent.childTables().contains(childId) || !prepareNavigationTo(childId)) {
+        if (parent == null || !parent.childTables().contains(childId)) {
             return false;
         }
-        if (this.selectedIndex >= 0 && this.selectedIndex < this.rowMetadata.size()
-                && this.tableViews.get(this.selectedIndex).id().equals(parentId)) {
+        if (this.currentSearch.isEmpty() && parentId.equals(selectedTableId())) {
             this.expandedRoots.addAll(this.rowMetadata.get(this.selectedIndex).parentPath());
+        } else if (!prepareNavigationTo(parentId)) {
+            return false;
         }
         this.expandedRoots.add(parentId);
         return true;
     }
 
-    // 优先返回指定父表路径下的子表行，避免同一表同时作为分类根表时跳到错误位置。
+    // 指定父表时优先选中直接子表行，普通定位优先选中顶层入口。
     public int findNavigationRow(ResourceLocation tableId, @Nullable ResourceLocation parentTableId) {
         int fallback = -1;
         for (int index = 0; index < this.tableViews.size(); index++) {
             if (!this.tableViews.get(index).id().equals(tableId)) {
                 continue;
             }
-            if (fallback < 0) {
+            List<ResourceLocation> path = this.rowMetadata.get(index).parentPath();
+            if (fallback < 0 || path.isEmpty()) {
                 fallback = index;
             }
-            if (parentTableId != null && this.rowMetadata.get(index).parentPath().contains(parentTableId)) {
+            ResourceLocation directParent = path.isEmpty() ? null : path.getLast();
+            if (Objects.equals(parentTableId, directParent)) {
                 return index;
             }
         }
@@ -376,6 +373,8 @@ public class JournalViewModel {
      */
     public void rebuildViewModels() {
         ResourceLocation selectedId = selectedTableId();
+        List<ResourceLocation> selectedPath = selectedId == null ? List.of()
+                : this.rowMetadata.get(this.selectedIndex).parentPath();
         this.allViews.clear();
         int unlocked = 0;
         for (Map.Entry<ResourceLocation, TableDefinition> entry : this.catalogDefinitions.entrySet()) {
@@ -388,7 +387,6 @@ public class JournalViewModel {
         this.totalTableCount = this.allViews.size();
         this.globalUnlockedTableCount = unlocked;
         rebuildRelationshipIndexes();
-        validateUnlockInvariant();
         rebuildCategories();
         this.expandedRoots.retainAll(this.catalogDefinitions.keySet());
         if (!this.categoryHome && this.currentSearch.isEmpty()
@@ -398,7 +396,7 @@ public class JournalViewModel {
         }
         rebuildTableRows();
 
-        this.selectedIndex = resolveSelectedIndex(selectedId);
+        this.selectedIndex = resolveSelectedIndex(selectedId, selectedPath);
 
     }
 
@@ -614,44 +612,28 @@ public class JournalViewModel {
         });
     }
 
-    // 目录内每张表的首条父路径（搜索与子表跳转都要用），按目录 revision 缓存一次 DFS
+    // 从所有顶层入口同时逐层访问，直接收录的表优先保留自己的入口。
     private Map<ResourceLocation, List<ResourceLocation>> firstPathsByTable() {
         if (this.firstPathsRevision != this.loadedCatalogRevision) {
             Map<ResourceLocation, List<ResourceLocation>> result = new LinkedHashMap<>();
-            this.structure.rootCategories().keySet().stream().sorted(Comparator.comparing(ResourceLocation::toString))
-                    .forEach(root -> collectFirstPaths(root, List.of(), result, new HashSet<>()));
+            List<ResourceLocation> roots = this.structure.rootCategories().keySet().stream().sorted().toList();
+            roots.forEach(root -> result.put(root, List.of()));
+            ArrayDeque<ResourceLocation> pending = new ArrayDeque<>(roots);
+            while (!pending.isEmpty()) {
+                ResourceLocation parent = pending.removeFirst();
+                TableDefinition definition = this.catalogDefinitions.get(parent);
+                if (definition == null || definition.childTables().isEmpty()) continue;
+                List<ResourceLocation> parentPath = new ArrayList<>(result.get(parent));
+                parentPath.add(parent);
+                List<ResourceLocation> path = List.copyOf(parentPath);
+                for (ResourceLocation child : definition.childTables()) {
+                    if (result.putIfAbsent(child, path) == null) pending.addLast(child);
+                }
+            }
             this.firstPathsByTableCache = Map.copyOf(result);
             this.firstPathsRevision = this.loadedCatalogRevision;
         }
         return this.firstPathsByTableCache;
-    }
-
-    private void collectFirstPaths(ResourceLocation current, List<ResourceLocation> parentPath,
-                                   Map<ResourceLocation, List<ResourceLocation>> output,
-                                   Set<ResourceLocation> branch) {
-        if (!branch.add(current)) return;
-        if (!parentPath.isEmpty()) output.putIfAbsent(current, parentPath);
-        TableDefinition table = this.catalogDefinitions.get(current);
-        if (table == null) return;
-        List<ResourceLocation> next = new ArrayList<>(parentPath);
-        next.add(current);
-        for (ResourceLocation child : table.childTables()) {
-            collectFirstPaths(child, List.copyOf(next), output, new HashSet<>(branch));
-        }
-    }
-
-    private void validateUnlockInvariant() {
-        for (TableDefinition parent : this.catalogDefinitions.values()) {
-            ArchaeologyJournalEntry parentView = this.allViews.get(parent.id());
-            if (parentView == null || parentView.unlocked()) continue;
-            for (ResourceLocation childId : parent.childTables()) {
-                if (this.structure.rootCategories().containsKey(childId)) continue;
-                ArchaeologyJournalEntry child = this.allViews.get(childId);
-                if (child != null && child.unlocked()) {
-                    Constants.LOG.warn("考古笔记状态异常：子表 {} 已解锁，但父表 {} 未解锁", childId, parent.id());
-                }
-            }
-        }
     }
 
     public List<CatalogEntryData> buildCatalogEntries() {
@@ -807,13 +789,13 @@ public class JournalViewModel {
         return probability.upperBound();
     }
 
-    private int resolveSelectedIndex(@Nullable ResourceLocation selectedId) {
+    private int resolveSelectedIndex(@Nullable ResourceLocation selectedId, List<ResourceLocation> selectedPath) {
         if (this.tableViews.isEmpty()) return -1;
-        int current = findTableIndex(selectedId);
+        int current = findTableIndex(selectedId, selectedPath);
         if (current >= 0) return current;
         if (this.selectedCategory != null && this.currentSearch.isEmpty()) {
             int categoryRemembered = findTableIndex(
-                    JournalUiPreferencesStore.getCategorySelection(this.selectedCategory));
+                    JournalUiPreferencesStore.getCategorySelection(this.selectedCategory), List.of());
             if (categoryRemembered >= 0) return categoryRemembered;
         }
         for (int index = 0; index < this.tableViews.size(); index++) {
@@ -822,12 +804,13 @@ public class JournalViewModel {
         return -1;
     }
 
-    private int findTableIndex(@Nullable ResourceLocation id) {
+    private int findTableIndex(@Nullable ResourceLocation id, List<ResourceLocation> parentPath) {
         if (id == null) return -1;
         for (int index = 0; index < this.tableViews.size(); index++) {
-            if (this.tableViews.get(index).id().equals(id)) return index;
+            if (this.tableViews.get(index).id().equals(id)
+                    && this.rowMetadata.get(index).parentPath().equals(parentPath)) return index;
         }
-        return -1;
+        return findNavigationRow(id, null);
     }
 
     private record RowMeta(int depth, boolean child, boolean hasChildren, boolean expanded,

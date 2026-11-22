@@ -378,19 +378,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void setCurrentExpansion(boolean expanded) {
         int index = this.viewModel.selectedIndex();
         if (!this.viewModel.rowHasChildren(index) || this.viewModel.rowExpanded(index) == expanded) return;
-        ResourceLocation selected = this.viewModel.selectedTableId();
         this.viewModel.toggleExpanded(index);
         rebuildViewModels();
-        if (selected != null) setSelectedTable(selected);
     }
 
     private void setSelectedTable(ResourceLocation id) {
-        for (int index = 0; index < this.viewModel.tableViews().size(); index++) {
-            if (this.viewModel.tableViews().get(index).id().equals(id)) {
-                setSelectedIndex(index);
-                return;
-            }
-        }
+        int index = this.viewModel.findNavigationRow(id, null);
+        if (index >= 0) setSelectedIndex(index);
     }
 
     private boolean moveCatalogSelection(int delta) {
@@ -678,10 +672,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
             categoryFocusIndex = index;
             enterFocusedCategory();
         } else if (click.toggleExpansion()) {
-            ResourceLocation selected = viewModel.tableViews().get(index).id();
+            viewModel.setSelectedIndex(index);
             viewModel.toggleExpanded(index);
             rebuildViewModels();
-            setSelectedTable(selected);
         } else if (shift) {
             JournalUiPreferencesStore.toggleFavorite(viewModel.tableViews().get(index).id());
             rebuildViewModels();
