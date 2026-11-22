@@ -56,7 +56,7 @@ description = '''${description}'''
 [[dependencies.${mod_id}]]
     modId = "mekanism"
     type = "optional"
-    versionRange = "[${mekanism_version}]"
+    versionRange = "${mekanism_neoforge_version_range}"
     ordering = "NONE"
     side = "BOTH"
 

@@ -100,7 +100,7 @@ processResources {
     def lootrDependencyMetadata = lootrCompatEnabled ? """[[dependencies.${mod_id}]]
     modId = "lootr"
     type = "optional"
-    versionRange = "[${lootrModVersion}]"
+    versionRange = "${lootr_neoforge_version_range}"
     ordering = "NONE"
     side = "BOTH"
 """ : ''
@@ -111,7 +111,7 @@ requiredMods = ["lootr"]
     def neoForgeMetadata = modMetadata + [
             neoforge_loader_version_range: neoforge_loader_version_range,
             neoforge_version: neoforge_version,
-            mekanism_version: mekanism_version,
+            mekanism_neoforge_version_range: mekanism_neoforge_version_range,
             lootr_neoforge_dependency: lootrDependencyMetadata,
             lootr_neoforge_mixin: lootrMixinMetadata
     ]
