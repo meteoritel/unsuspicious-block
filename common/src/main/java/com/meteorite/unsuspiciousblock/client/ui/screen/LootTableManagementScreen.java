@@ -20,9 +20,12 @@ import com.meteorite.meteosuikit.api.control.UiThemedScreen;
 import com.meteorite.meteosuikit.api.control.UiWidgetRow;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputContext;
 import com.meteorite.meteosuikit.api.input.UiInputScope;
 import com.meteorite.meteosuikit.api.input.UiInputTarget;
 import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.control.UiWidget;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.meteosuikit.api.text.TextScroll;
@@ -36,12 +39,14 @@ import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManag
 import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager.EditResult;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -63,10 +68,30 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private static final int COLUMN_GAP = 10;
     private static final int ROW_HEIGHT = 20;
     private static final int INDENT_WIDTH = 10;
+    private static final int ROW_ICON_WIDTH = UiAtlas.ICON_SIZE + 1;
+    private static final int ROW_ICON_TOP = (ROW_HEIGHT - UiAtlas.ICON_SIZE) / 2;
+    private static final long DOUBLE_CLICK_MS = 250L;
     private static final String PREFIX = "screen.unsuspiciousblock.loot_table_management.";
     private final Screen parent;
     private final UiChildren<UiInputTarget> content = new UiChildren<>();
-    private final UiInputScope scope = new UiInputScope(content);
+    private final UiInputScope scope = new UiInputScope(new UiInputContainer() {
+        @Override
+        public UiChildren<UiInputTarget> inputChildren() {
+            return content;
+        }
+
+        @Override
+        public boolean mousePressed(UiInputContext context) {
+            for (UiPointerHit.Row hit : context.hit().rows()) {
+                if (hit.owner() != list) continue;
+                if (context.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+                pressTreeRow(hit, context.pointerX());
+                return true;
+            }
+            lastFolderClick = null;
+            return UiInputContainer.super.mousePressed(context);
+        }
+    });
     private final UiControlGroup controls = new UiControlGroup();
     private final UiControlGroup detailControls = new UiControlGroup();
     private final UiFormBody details;
@@ -83,11 +108,11 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private UiControl clearOverride;
     private UiControl editRules;
     private UiControl editNames;
-    private UiControl toggleFolder;
     private UiControl importButton;
     private final List<SyncLootTableManagementPayload.Entry> filteredEntries = new ArrayList<>();
     private final List<TreeRow> visibleRows = new ArrayList<>();
     private final Set<String> expandedPaths = new HashSet<>();
+    private @Nullable FolderClick lastFolderClick;
     private Filter filter = Filter.ALL;
     private boolean requested;
     private boolean rebuildingRows;
@@ -108,16 +133,16 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         names = new LootTableNameEditor(theme(), modals,
                 () -> selectedEntry() == null ? null : selectedEntry().tableId(), () -> height);
         list = new UiListView<>(theme(), (graphics, rowFont, row, index, rect, selected, hovered, focused) -> {
-            int x = rect.x() + row.depth() * INDENT_WIDTH;
+            int x = treeRowX(rect.x(), row);
             if (row.expandable()) {
                 UiAtlas.icon(row.expanded() ? UiAtlas.Icon.TREE_EXPANDED : UiAtlas.Icon.TREE_COLLAPSED)
-                        .render(graphics, x, rect.y() + 5);
-                x += 11;
+                        .render(graphics, x, rect.y() + ROW_ICON_TOP);
+                x += ROW_ICON_WIDTH;
             }
             if (row.entry() != null) {
                 UiAtlas.icon(row.entry().isCollected() ? UiAtlas.Icon.CHECK : UiAtlas.Icon.CLOSE)
-                        .render(graphics, x, rect.y() + 5);
-                x += 11;
+                        .render(graphics, x, rect.y() + ROW_ICON_TOP);
+                x += ROW_ICON_WIDTH;
             }
             int available = Math.max(0, rect.right() - x);
             int labelY = row.entry() == null ? rect.y() + 6 : rect.y() + 1;
@@ -187,18 +212,23 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                 () -> Minecraft.getInstance().setScreen(new LootTrackingConfigScreen(this)));
         applyButton = detailControls.obtain("tracking");
         editNames = detailControls.obtain("names");
-        toggleFolder = controls.obtain("folder");
-        toggleFolder.setFocusable(true);
         clearOverride = detailControls.obtain("clear-override");
         clearOverride.configure(font, Component.translatable(PREFIX + "clear_override"), null, List.of(),
                 () -> submitTracking(TableEdit.CLEAR));
         importButton = controls.obtain("import");
         importButton.configure(font, Component.translatable(PREFIX + "import_json"), null, List.of(), names::importJson);
         backButton = controls.obtain("back");
-        backButton.configure(font, Component.translatable("gui.back"), null, List.of(), this::onClose);
+        configureBackButton();
+        editNames.configure(font, Component.translatable(PREFIX + "edit_names"), null, List.of(),
+                () -> showNameEditor(true));
         for (UiControl control : List.of(editRules, applyButton, clearOverride, importButton, backButton, editNames)) {
             control.setFocusable(true);
         }
+    }
+
+    private void configureBackButton() {
+        Component label = Component.translatable(namesOpen ? PREFIX + "show_tracking" : "gui.back");
+        backButton.configure(font, label, null, List.of(), this::onClose);
     }
 
     private void chooseFilter() {
@@ -253,7 +283,6 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         searchRow.setBounds(left + INNER_MARGIN, top + 29, searchWidth, 20);
         int actionWidth = Math.max(0, (detailsWidth() - 5) / 2);
         importButton.setBounds(detailsX, backY, actionWidth, 20);
-        toggleFolder.setBounds(left + INNER_MARGIN, backY, listWidth(), 20);
         backButton.setBounds(detailsX + actionWidth + 5, backY, actionWidth, 20);
         syncListGeometry();
         modals.setBounds(0, 0, width, height);
@@ -277,25 +306,16 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         editRules.setVisible(!namesOpen);
         applyButton.setVisible(!namesOpen);
         clearOverride.setVisible(!namesOpen);
-        editNames.configure(font, Component.translatable(PREFIX + (namesOpen ? "show_tracking" : "edit_names")),
-                null, List.of(), () -> {
-                    namesOpen = !namesOpen;
-                    syncControls();
-                });
+        editNames.setVisible(!namesOpen);
         names.refreshControls(namesOpen);
         importButton.setVisible(namesOpen);
-        TreeRow folder = list.selectedItem();
-        toggleFolder.setVisible(folder != null && folder.expandable());
-        if (folder != null && folder.expandable()) {
-            toggleFolder.configure(font, Component.translatable(PREFIX + (folder.expanded() ? "collapse" : "expand")),
-                    null, List.of(), () -> toggleExpanded(folder));
-        }
         importButton.setEnabled(names.canImport());
         summary.refresh();
     }
 
     @Override
     public void removed() {
+        lastFolderClick = null;
         names.preserveDraft();
         if (requested) {
             LootTableManagementClientState.closeSnapshot();
@@ -306,7 +326,22 @@ public final class LootTableManagementScreen extends UiThemedScreen {
 
     @Override
     public void onClose() {
+        if (!modals.isEmpty()) {
+            modals.closeTop();
+            return;
+        }
+        if (namesOpen) {
+            showNameEditor(false);
+            return;
+        }
         names.requestClose(() -> Minecraft.getInstance().setScreen(parent));
+    }
+
+    private void showNameEditor(boolean open) {
+        namesOpen = open;
+        configureBackButton();
+        syncControls();
+        details.setOffset(0);
     }
 
     @Override
@@ -558,7 +593,31 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         return ClientLootTableLanguageStore.displayName(id).getString();
     }
 
+    private static int treeRowX(int contentX, TreeRow row) {
+        return contentX + row.depth() * INDENT_WIDTH;
+    }
+
+    private void pressTreeRow(UiPointerHit.Row hit, double mouseX) {
+        TreeRow row = visibleRows.get(hit.index());
+        list.setSelectedIndex(hit.index());
+        if (!row.expandable()) {
+            lastFolderClick = null;
+            return;
+        }
+        int iconX = treeRowX(hit.bounds().x() + theme().get().selectMarkerWidth(), row);
+        boolean isTriangleClick = mouseX >= iconX && mouseX < iconX + ROW_ICON_WIDTH;
+        long now = Util.getMillis();
+        boolean isDoubleClick = lastFolderClick != null && row.key().equals(lastFolderClick.key())
+                && now - lastFolderClick.time() <= DOUBLE_CLICK_MS;
+        if (isTriangleClick || isDoubleClick) {
+            toggleExpanded(row);
+        } else {
+            lastFolderClick = new FolderClick(row.key(), now);
+        }
+    }
+
     private void toggleExpanded(TreeRow row) {
+        lastFolderClick = null;
         if (row.expanded()) this.expandedPaths.remove(row.key());
         else this.expandedPaths.add(row.key());
         rebuildTree();
@@ -587,6 +646,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     }
 
     private record TrackingDraft(long revision, long resourceRevision, UpdateTrackedLootTablePayload.Single edit) {}
+
+    private record FolderClick(String key, long time) {}
 
     private List<SyncLootTableManagementPayload.Entry> entriesForCurrentFilter() {
         if (this.filter != Filter.RECENT) {
