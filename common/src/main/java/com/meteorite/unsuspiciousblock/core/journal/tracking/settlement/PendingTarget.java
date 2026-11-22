@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.core.journal.tracking.settlement;
 import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootSession;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.InventoryLootTracking;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.PendingJournal;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,6 +31,14 @@ public sealed interface PendingTarget {
             container.unsuspiciousblock$pendingJournal().stage(entry);
             container.unsuspiciousblock$setTrackedLoot(commit.rootContext().rootTableId(), commit.finalItemCounts());
             container.unsuspiciousblock$setTrackedPlayerUuid(commit.rootContext().player().getUUID());
+        }
+    }
+
+    /** 外部分配的库存只保留生成来源，领取者可能与生成者不同。 */
+    record Inventory(InventoryLootTracking inventory) implements PendingTarget {
+        @Override
+        public void stage(LootSession.Commit commit, @Nullable ExcavationLogEntry entry) {
+            if (entry != null) inventory.stage(commit, entry);
         }
     }
 }

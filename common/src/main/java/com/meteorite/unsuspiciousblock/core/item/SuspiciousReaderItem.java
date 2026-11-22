@@ -438,8 +438,7 @@ public class SuspiciousReaderItem extends Item {
 
     private ScanResult scanBrushable(ServerPlayer player, Level level, BlockPos pos, BlockEntity blockEntity,
                                       BrushableBlockEntityScanState scanState) {
-        ItemStack lootItem = scanState.unsuspiciousblock$resolveAndGetLoot(player);
-        scanState.unsuspiciousblock$markScanned(player.getUUID());
+        ItemStack lootItem = scanState.unsuspiciousblock$scanFor(player);
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {

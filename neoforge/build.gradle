@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id 'multiloader-loader'
     id 'net.neoforged.moddev'
@@ -100,12 +102,11 @@ processResources {
     def lootrDependencyMetadata = lootrCompatEnabled ? """[[dependencies.${mod_id}]]
     modId = "lootr"
     type = "optional"
-    versionRange = "${lootr_neoforge_version_range}"
     ordering = "NONE"
     side = "BOTH"
 """ : ''
     def lootrMixinMetadata = lootrCompatEnabled ? """[[mixins]]
-config = "${mod_id}.lootr.mixins.json"
+config = "${mod_id}.lootr-neoforge.mixins.json"
 requiredMods = ["lootr"]
 """ : ''
     def neoForgeMetadata = modMetadata + [
@@ -118,5 +119,18 @@ requiredMods = ["lootr"]
     inputs.properties(neoForgeMetadata)
     filesMatching('META-INF/neoforge.mods.toml') {
         expand neoForgeMetadata
+    }
+    exclude "${mod_id}.lootr.mixins.json".toString()
+    if (lootrCompatEnabled) {
+        def sharedConfig = rootProject.file("common/src/main/resources/${mod_id}.lootr.mixins.json")
+        inputs.file(sharedConfig)
+        def lootrActivation = [
+                versions: lootr_neoforge_versions,
+                mixins: new JsonSlurper().parse(sharedConfig).mixins.join(',')
+        ]
+        inputs.properties(lootrActivation)
+        filesMatching("${mod_id}.lootr-neoforge.properties".toString()) {
+            expand lootrActivation
+        }
     }
 }

@@ -10,13 +10,13 @@ Mixin 仅用于补充原版事件缺口、向原版类附加持久化/瞬态状�
 | [Fabric 配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.mixins.json) | 补齐 Fabric 原生事件缺失的平台接入及耕地变化过滤 |
 | [NeoForge 配置](../../../neoforge/src/main/resources/unsuspiciousblock.neoforge.mixins.json) | 补齐 NeoForge 扩展液体跳跃的主动推进接入及生效 Global Loot Modifier 读取 |
 | [Create 兼容配置](../../../neoforge/src/main/resources/unsuspiciousblock.create.mixins.json) | 为 NeoForge 的 Create 批量熔炼接入制陶动态产物 |
-| [Lootr 兼容配置](../../../common/src/main/resources/unsuspiciousblock.lootr.mixins.json) | 随 `lootr_compat_*` 构建开关及 Lootr 安装条件启用的容器追踪 |
+| [Lootr 共用配置](../../../common/src/main/resources/unsuspiciousblock.lootr.mixins.json) · [NeoForge 接线](../../../neoforge/src/main/resources/unsuspiciousblock.lootr-neoforge.mixins.json) | 共用注入清单供 Fabric 接线和 NeoForge 构建使用。NeoForge 启动时按 Lootr 版本选择整套适配。 |
 | [common 客户端配置](../../../common/src/main/resources/unsuspiciousblock.client.mixins.json) | `client.mixin` 包下的跨平台客户端注入 |
 | [Fabric 客户端配置](../../../fabric/src/main/resources/unsuspiciousblock.fabric.client.mixins.json) | `client.mixin.fabric` 包下的 Fabric 专用客户端接入 |
 
 Mixin 完整类名由配置中的 `package` 与配置数组或插件提供的类名组合而成。目标与注入点以对应源码声明为准。Fabric 通过 Loom 生成共享 `unsuspiciousblock.refmap.json`，NeoForge 使用 ModDev 原生构建接线。[仓库工具](../../../tools/README.md)
 
-Lootr 配置的 `requiredMods` 与元数据联动由 `multiloader-common.gradle` 在构建期展开（见[配置与第三方联动](config-and-integrations.md)）。
+NeoForge 构建生成 Lootr 的 `requiredMods` 与联动清单。Lootr 已安装时，配置插件在准备目标类之前筛选版本。 [NeoForge 接线](../../../neoforge/build.gradle) · [版本筛选](../../../neoforge/src/main/java/com/meteorite/unsuspiciousblock/platform/plugin/lootr/LootrMixinPlugin.java)
 
 Create 配置通过 NeoForge 的 `requiredMods` 启用，由配置插件按模组版本提供注入类。[Create 联动](config-and-integrations.md#47-create-鼓风机批量熔炼)
 

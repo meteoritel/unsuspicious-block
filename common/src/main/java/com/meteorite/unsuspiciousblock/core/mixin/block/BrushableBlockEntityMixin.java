@@ -11,6 +11,7 @@ import com.meteorite.unsuspiciousblock.core.blockentity.ScanIdentity;
 import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntitySync;
 import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableLootDropHelper;
+import com.meteorite.unsuspiciousblock.core.blockentity.BrushableLootDropHelper.BrushStroke;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.PendingJournal;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
@@ -46,6 +47,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.Objects;
 import java.util.function.Supplier;
 
 
@@ -126,10 +128,13 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
         return this.item;
     }
 
-    // 更新当前战利品
     @Override
-    public void unsuspiciousblock$setItem(ItemStack stack) {
-        this.item = stack;
+    public Extraction unsuspiciousblock$takeScannedLoot(ServerPlayer player) {
+        if (!unsuspiciousblock$isScanner(player.getUUID()) || item.isEmpty()) return Extraction.EMPTY;
+        ItemStack extracted = item;
+        this.item = ItemStack.EMPTY;
+        unsuspiciousblock$markBlockEntityChanged();
+        return new Extraction(extracted, null);
     }
 
     // ========== 日志追踪接口实现 ========== //
@@ -194,9 +199,9 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
 
         // 精掘翻倍：dispatch 后更新主物品，额外副本由 helper 弹出
         BrushableLootDropHelper.DropResult result =
-                BrushableLootDropHelper.rollBrushItemDrop(ctx, this.item);
+                BrushableLootDropHelper.rollBrushItemDrop(ctx.stroke(), this.item);
         this.item = result.rolledItem();
-        BrushableLootDropHelper.spawnExtraDrops(ctx, result.extraDrops());
+        BrushableLootDropHelper.spawnExtraDrops(ctx.stroke(), result.extraDrops());
 
         // 使用翻倍后的总计数结算待定日志条目
         BrushableLootDropHelper.settleJournal(ctx, result.totalTrackedItem());
@@ -205,11 +210,9 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
 
     @Unique
     private BrushableLootDropHelper.DropContext unsuspiciousblock$dropContext(ServerPlayer player) {
-        BlockEntity blockEntity = this.unsuspiciousblock$asBlockEntity();
-        Level level = blockEntity.getLevel();
+        BlockPos pos = this.unsuspiciousblock$asBlockEntity().getBlockPos();
         return new BrushableLootDropHelper.DropContext(
-                player, blockEntity.getBlockPos(), level, this.hitDirection,
-                this.unsuspiciousblock$brushTool,
+                new BrushStroke(player, pos, this.hitDirection, this.unsuspiciousblock$brushTool),
                 this.unsuspiciousblock$brushGameTime, this.unsuspiciousblock$brushDayTime,
                 this.unsuspiciousblock$tracking.table(), this.unsuspiciousblock$tracking.pending());
     }
@@ -279,9 +282,10 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
             Operation<ObjectArrayList<ItemStack>> original,
             @Share("lootSession") LocalRef<CaptureHandle> lootSession) {
         CaptureHandle capture = lootSession.get();
+        ResourceLocation table = Objects.requireNonNull(this.lootTable).location();
         Supplier<ObjectArrayList<ItemStack>> roll = () -> {
             ObjectArrayList<ItemStack> drops = original.call(lootTable, lootParams, seed);
-            ArchaeologyLootInjectors.get().maybeReplace(this.lootTable.location(), drops, RandomSource.create(seed));
+            ArchaeologyLootInjectors.get().maybeReplace(table, drops, RandomSource.create(seed));
             return drops;
         };
         return capture == null ? roll.get() : capture.roll(roll);

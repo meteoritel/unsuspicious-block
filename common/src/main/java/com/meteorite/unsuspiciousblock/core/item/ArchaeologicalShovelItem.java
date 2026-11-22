@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.core.item;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScanState;
+import com.meteorite.unsuspiciousblock.core.blockentity.BrushableBlockEntityScanState.Extraction;
 import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
@@ -243,8 +244,7 @@ public class ArchaeologicalShovelItem extends ShovelItem {
     // 从已扫描的可疑方块中取出战利品
     private InteractionResult extractFromSuspicious(UseOnContext context, Level level, BlockPos pos,
                                                     BrushableBlockEntityScanState scanState) {
-        Player player = context.getPlayer();
-        if (level.isClientSide() || player == null) {
+        if (level.isClientSide() || !(context.getPlayer() instanceof ServerPlayer player)) {
             return InteractionResult.SUCCESS;
         }
 
@@ -256,9 +256,9 @@ public class ArchaeologicalShovelItem extends ShovelItem {
             return InteractionResult.FAIL;
         }
 
-        ItemStack lootItem = scanState.unsuspiciousblock$getItem();
-
-        if (lootItem.isEmpty()) {
+        Extraction extraction = scanState.unsuspiciousblock$takeScannedLoot(player);
+        ItemStack extracted = extraction.stack();
+        if (extracted.isEmpty()) {
             player.sendSystemMessage(
                     Component.translatable("item.unsuspiciousblock.archaeological_shovel.already_empty",
                                     pos.getX(), pos.getY(), pos.getZ())
@@ -267,48 +267,41 @@ public class ArchaeologicalShovelItem extends ShovelItem {
             return InteractionResult.SUCCESS;
         }
 
-        ItemStack extracted = lootItem.copy();
-        scanState.unsuspiciousblock$setItem(ItemStack.EMPTY);
-        scanState.unsuspiciousblock$markBlockEntityChanged();
-
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
-        if (lootTableName != null && player instanceof ServerPlayer sp
-                && scanState instanceof PendingJournalHost pendingHost) {
-            RecentLootTableService.record(sp, lootTableName);
+        if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {
+            RecentLootTableService.record(player, lootTableName);
             if (pendingHost.unsuspiciousblock$pendingJournal().current() == null) {
                 LootCapture.submitFinal(new LootCapture.Source(
-                        sp, lootTableName, LootSourceType.ARCHAEOLOGY, pos,
+                        player, lootTableName, LootSourceType.ARCHAEOLOGY, pos,
                         BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()), level.getGameTime(), level.getDayTime()), extracted,
                         LootSettlementTarget.brush(pendingHost.unsuspiciousblock$pendingJournal()));
             }
         }
 
-        // inventory.add() 成功时会将 stack.count 置为 0，需在此之前保存副本用于日志记录
-        ItemStack extractedForLog = extracted.copy();
-        boolean given = player.getInventory().add(extracted);
-        if (!given) {
+        ItemStack delivered = extracted.copy();
+        player.getInventory().add(extracted);
+        if (!extracted.isEmpty()) {
             ItemEntity itemEntity = new ItemEntity(
                     level,
                     pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5,
-                    extractedForLog
+                    extracted
             );
             itemEntity.setDefaultPickUpDelay();
-            level.addFreshEntity(itemEntity);
+            if (!level.addFreshEntity(itemEntity)) delivered.shrink(extracted.getCount());
         }
 
-        // 无论物品是否装入背包（背包满时掉落地面），都应记录获取数据
-        if (lootTableName != null && player instanceof ServerPlayer sp
-                && scanState instanceof PendingJournalHost pendingHost) {
+        extraction.recordDelivery(delivered);
+        if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {
             long gameTime = level.getGameTime();
             long dayTime = level.getDayTime();
             pendingHost.unsuspiciousblock$pendingJournal().mergeActual(
-                    sp, lootTableName, extractedForLog, gameTime, dayTime);
+                    player, lootTableName, delivered, gameTime, dayTime);
         }
 
         scanState.unsuspiciousblock$clearScanned();
         player.swing(context.getHand());
         Constants.LOG.debug("从 {} 处取出了 {} ×{}",
-                pos, extracted.getHoverName().getString(), extracted.getCount());
+                pos, delivered.getHoverName().getString(), delivered.getCount());
         return InteractionResult.SUCCESS;
     }
 }

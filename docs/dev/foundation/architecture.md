@@ -138,7 +138,7 @@ flowchart TD
 
 `lootr_compat_fabric` 和 `lootr_compat_neoforge` 各自控制对应平台的 Lootr 依赖、源码与资源。共享插件统一配置排除规则。只要任一平台启用，`common` 就会保留 Lootr 源码与资源供其使用。[Gradle 属性](../../../gradle.properties) · [共享构建插件](../../../buildSrc/src/main/groovy/multiloader-common.gradle)
 
-启用后，Fabric 元数据声明 `preLaunch` 入口和 Lootr 推荐依赖，NeoForge 元数据声明可选依赖与 Mixin。两个 Loader 的版本约束均从 `lootr_version` 的 Modrinth 版本派生，Fabric 开发运行时使用独立的 `lootr_fabric_version_id`。[Fabric 构建脚本](../../../fabric/build.gradle) · [NeoForge 构建脚本](../../../neoforge/build.gradle)
+启用后，Fabric 加入独立的 Lootr Filter 源码与 SPI 资源，并声明 `preLaunch` 入口。NeoForge 从共用 Mixin 配置提取注入清单，与声明版本一起打入 NeoForge 资源，供启动插件选择。开发依赖和联动准入由各自的构建属性管理。 [Fabric 构建脚本](../../../fabric/build.gradle) · [NeoForge 构建脚本](../../../neoforge/build.gradle)
 
 ### 4.4 可选联动依赖
 

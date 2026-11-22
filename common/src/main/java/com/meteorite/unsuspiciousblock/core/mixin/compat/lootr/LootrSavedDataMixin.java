@@ -1,6 +1,6 @@
 package com.meteorite.unsuspiciousblock.core.mixin.compat.lootr;
 
-import com.meteorite.unsuspiciousblock.core.blockentity.TrackedContainerLootState;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.GeneratedLootInventory;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -20,10 +20,10 @@ public abstract class LootrSavedDataMixin {
     // Lootr 构造 LootrInventory 时只传递物品列表，因此在 load 返回后按 UUID 补读追踪 NBT
     @Inject(method = "load", at = @At("RETURN"))
     private static void unsuspiciousblock$loadTrackedInventoryData(
-            CompoundTag tag, HolderLookup.Provider registries,
+            CompoundTag compound, HolderLookup.Provider provider,
             CallbackInfoReturnable<LootrSavedData> cir) {
         LootrSavedData data = cir.getReturnValue();
-        ListTag inventories = tag.getList("inventories", Tag.TAG_COMPOUND);
+        ListTag inventories = compound.getList("inventories", Tag.TAG_COMPOUND);
         for (Tag rawEntry : inventories) {
             if (!(rawEntry instanceof CompoundTag entry)
                     || !entry.hasUUID("uuid")
@@ -32,8 +32,8 @@ public abstract class LootrSavedDataMixin {
             }
 
             LootrInventory inventory = data.getInventory(entry.getUUID("uuid"));
-            if (inventory instanceof TrackedContainerLootState trackedContainer) {
-                trackedContainer.unsuspiciousblock$readTrackedLootData(entry.getCompound("chest"));
+            if (inventory instanceof GeneratedLootInventory tracked) {
+                tracked.unsuspiciousblock$inventoryLoot().read(entry.getCompound("chest"));
             }
         }
     }

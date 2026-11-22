@@ -9,6 +9,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -106,8 +107,12 @@ public class UnsuspiciousBlockEntity extends BlockEntity implements BrushableBlo
     }
 
     @Override
-    public void unsuspiciousblock$setItem(ItemStack stack) {
-        this.sealedItem = stack.copy();
+    public Extraction unsuspiciousblock$takeScannedLoot(ServerPlayer player) {
+        if (!unsuspiciousblock$isScanner(player.getUUID()) || sealedItem.isEmpty()) return Extraction.EMPTY;
+        ItemStack extracted = sealedItem;
+        this.sealedItem = ItemStack.EMPTY;
+        unsuspiciousblock$markBlockEntityChanged();
+        return new Extraction(extracted, null);
     }
 
     @Override

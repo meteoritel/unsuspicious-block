@@ -73,7 +73,23 @@ public final class JournalLogHandler {
             session.queueUpsertEntry(tableId, entry);
             return;
         }
-        JournalLogMutation.Result mutation = mutations(player, session).apply(new JournalLogMutation.Upsert(tableId, entry));
+        applyExcavationMutation(player, session, tableId, new JournalLogMutation.Upsert(tableId, entry));
+    }
+
+    /** 保留个人条目已有的数量及备注，并沿用日志会话的顺序。 */
+    public static void mergeAcquisition(ServerPlayer player, JournalLogMutation.MergeAcquisition acquisition) {
+        ArchaeologyJournalLogSyncSession session = getLogSession(player);
+        if (session == null) return;
+        if (!session.isSeeded()) {
+            session.queueAcquisition(acquisition);
+            return;
+        }
+        applyExcavationMutation(player, session, acquisition.tableId(), acquisition);
+    }
+
+    private static void applyExcavationMutation(ServerPlayer player, ArchaeologyJournalLogSyncSession session,
+                                                ResourceLocation tableId, JournalLogMutation.Intent intent) {
+        JournalLogMutation.Result mutation = mutations(player, session).apply(intent);
         ArchaeologyJournalLogState.EntryUpsertResult result = Objects.requireNonNull(mutation.upsert());
         if (result.blocked()) {
             ArchaeologyJournalLogState.TableLogHistory table = session.mirroredState().getTable(tableId);
@@ -102,7 +118,8 @@ public final class JournalLogHandler {
                             sessionId, session.nextSequence(), tableId, table.toTag()));
         } else {
             Services.NETWORK.sendToPlayer(player,
-                    SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), tableId, entry.toTag()));
+                    SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), tableId,
+                            Objects.requireNonNull(mutation.entry()).toTag()));
         }
     }
 

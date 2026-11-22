@@ -56,6 +56,11 @@ public final class LootCapture {
                 && parent.lootSource().equals(source.type()) && !parent.currentTableId().equals(source.table())) {
             return new CaptureHandle(parentSession, parent.descend(source.table()), false);
         }
+        return beginIndependent(source);
+    }
+
+    /** 每份新库存独立提交，即使生成发生在另一份库存的回调中。 */
+    public static CaptureHandle beginIndependent(Source source) {
         LootSession session = null;
         LootTrackingContext context = null;
         if (source.player() != null && ArchaeologyJournalServerCatalog.tracked(source.table())
@@ -85,7 +90,8 @@ public final class LootCapture {
 
         public <T> T roll(Supplier<T> generator) {
             requireOpen();
-            try (var ignored = LootTrackingContextHolder.open(session, context())) {
+            try (var ignored = session == null ? LootTrackingContextHolder.suspend()
+                    : LootTrackingContextHolder.open(session, context)) {
                 return generator.get();
             } catch (RuntimeException | Error failure) {
                 close();

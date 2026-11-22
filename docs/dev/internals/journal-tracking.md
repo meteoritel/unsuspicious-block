@@ -31,7 +31,7 @@
 
 - **`LootCapture` 嵌套复用**：`capture(source, target, generator)` 在作用域内执行原生成函数并在返回后提交，`submitFinal` 接收外部已生成物品列表；跨多阶段 Mixin 时使用 `CaptureHandle`（`roll` 仅包住实际生成阶段，`complete` 至多提交一次，`close` 安全清理未提交捕获）。同玩家、同来源的嵌套子表抽取自动复用父会话（如 NeoForge 钓鱼 GLM 路径），由根入口提交最终合并数量；刷拭保留原触发时间。
 - **方块与实体容器共链**：方块容器从 `RandomizableContainer#unpackLootTable` 接入，矿车等实体容器从 `ContainerEntity#unpackChestVehicleLootTable` 接入，两者共用 `LOOT_CONTAINER` 分类与 `ContainerTrackingService`。实体容器的追踪状态持久化于实体 NBT，仅在实体真正销毁时结算，区块卸载不提前清空。
-- **Lootr 兼容链路**：Lootr 奖励箱矿车与普通 Lootr 容器均通过 `DefaultLootFiller` 创建每玩家 `LootrInventory`，Lootr 兼容 Mixin 直接在该通用 filler 上接入，无需为矿车另立分类或额外钩子。
+- **Lootr 兼容链路**：普通箱类和箱子矿车在 `DefaultLootFiller#performFill` 中捕获原生 `LootTable#fill`，待 Lootr 清理筛选状态后提交最终库存。可疑方块只在抽取时捕获子表，待 Lootr 完成筛选并写槽后提交结果。菜单按同一次点击的来源减量、玩家背包与光标增量、待领取余量确认取得量。 [Lootr 追踪桥](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrTrackingBridge.java) · [菜单快照](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/tracking/MenuTrackingSnapshotService.java)
 
 ## 3. 事件总线与命名结算链
 
@@ -66,9 +66,9 @@ flowchart TD
 
 ## 5. 宿主状态持久化与终结
 
-- **待定日志宿主 (`PendingJournalHost` / `PendingJournal`)**：所有支持延迟日志的原版/Lootr 宿主统一实现 `PendingJournalHost`（封存方块只实现扫描与物品读取，不承载待定日志）。`PendingJournal` 负责暂存日志、在玩家分次拿取时按同 `entryId` 合并数量、以及在提交持久化成功后才清内存引用。
-- **容器追踪状态 (`ContainerLootTracking`)**：统一维护当前表 ID、所有者、只读余量视图与 pending，普通方块容器、箱子矿车与 Lootr 每玩家库存共用一套 NBT Codec。菜单打开时先分配双箱间归属并在真实拿取提交后扣减余量；库存校准只缩减余量而不提前销毁 pending，覆盖、超时或实体/方块销毁统一经 `ContainerTrackingService.terminate` 终结。
-- **可疑方块状态 (`BrushableTracking`)**：普通与 Lootr 可疑方块共享扫描状态、`ScanIdentity`（兼容普通布尔标记+UUID 与封存者 UUID；缺失 UUID 时保持已扫描但无扫描者，不做猜测修复）、表解析与 pending 逻辑；Lootr 的每玩家独立库存与临时刷拭工具状态保留在各自宿主适配器中。
+- **原版待定日志 (`PendingJournalHost` / `PendingJournal`)**：普通容器和可疑方块在宿主暂存待定日志。容器用 `ContainerLootTracking` 保存所有者、表和余量。覆盖、超时及销毁由 `ContainerTrackingService` 终结。封存方块保留扫描身份和物品。
+- **Lootr 库存 (`InventoryLootTracking`)**：随 Lootr 的库存 NBT 保存生成标识、实际命中的表和待领取余量，复用既有容器 NBT 字段。玩家或队伍共用的库存来源与个人日志独立。分次领取按同一生成 ID 在本人的日志会话中合并，保留已有备注。 [库存状态](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/journal/tracking/InventoryLootTracking.java)
+- **扫描授权 (`ScanIdentity`)**：Lootr 方块持有扫描者和库存生成标识。考古铲验证该标识并从同一份已有库存取出物品。普通刷拭与考古铲使用同一库存来源结算。旧扫描记录具备扫描者、表和槽位内容时可迁入库存；需要恢复授权时使用扫描仪。 [Lootr 方块适配](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/LootrBrushableBlockEntityMixin.java)
 - **NBT 兼容性**：既有 `unsuspiciousblock_tracked_loot_*` 与 `unsuspiciousblock_pending_journal_entry` 键保持原样读写；即使余量已清空，待定日志内部携带的原 `tableStack` 仍可用于完成最终终结归属。
 
 ## 6. 相关文档

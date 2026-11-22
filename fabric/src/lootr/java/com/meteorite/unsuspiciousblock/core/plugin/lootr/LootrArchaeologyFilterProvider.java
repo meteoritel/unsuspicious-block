@@ -13,7 +13,7 @@ import noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider;
 import java.util.List;
 
 /**
- * 通过 Lootr 原生 Filter API 将平台考古战利品注入器应用到每玩家可疑方块库存。
+ * Fabric 通过 Lootr Filter 将考古战利品注入可疑方块库存。
  */
 public final class LootrArchaeologyFilterProvider implements ILootrFilterProvider {
     private static final ILootrFilter FILTER = new ArchaeologyFilter();

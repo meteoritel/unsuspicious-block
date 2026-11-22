@@ -168,6 +168,11 @@ public record ExcavationLogEntry(UUID entryId,
                 this.expectedLoot, mergedActualLoot, this.note, this.tableStack);
     }
 
+    /** 从库存来源建立个人条目，只使用该领取者的实际数量。 */
+    public ExcavationLogEntry withActualLoot(Map<String, Integer> loot, GameTimestamp updated) {
+        return new ExcavationLogEntry(entryId, lootSource, context, created, updated, expectedLoot, loot, "", tableStack);
+    }
+
     @Nullable
     public ResourceLocation itemId() {
         ResourceLocation actualItemId = firstItemId(this.actualLoot);

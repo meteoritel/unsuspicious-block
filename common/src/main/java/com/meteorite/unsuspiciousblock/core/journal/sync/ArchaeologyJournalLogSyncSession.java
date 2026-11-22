@@ -2,6 +2,8 @@ package com.meteorite.unsuspiciousblock.core.journal.sync;
 
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
+import com.meteorite.unsuspiciousblock.core.journal.state.JournalLogMutation;
+import com.meteorite.unsuspiciousblock.core.journal.state.JournalLogMutation.MergeAcquisition;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -25,7 +27,7 @@ public final class ArchaeologyJournalLogSyncSession {
     // 镜像状态：正常流程下与 JournalLogStorage 中对应玩家的缓存状态为同一引用。
     // 修改后只需标记对应表分片为 dirty，无需深拷贝整个日志。
     private ArchaeologyJournalLogState mirroredState = new ArchaeologyJournalLogState();
-    private final ArrayList<QueuedMutation> queuedMutations = new ArrayList<>();
+    private final ArrayList<JournalLogMutation.Intent> queuedMutations = new ArrayList<>();
 
     // 从服务端持久数据恢复日志到镜像状态（替代旧版的 reset + 客户端上传模式）
     // 直接引用分片存储缓存中的状态对象，消除登录时的全量深拷贝。
@@ -35,18 +37,12 @@ public final class ArchaeologyJournalLogSyncSession {
         this.nextSequence = 1L;
         this.seeded = true;
         this.mirroredState = persisted;
-        Set<ResourceLocation> existingTables = new HashSet<>(persisted.getTables().keySet());
         Set<ResourceLocation> affectedTables = new HashSet<>();
         boolean clearAll = false;
         boolean hadQueuedMutations = !this.queuedMutations.isEmpty();
-        for (QueuedMutation mutation : this.queuedMutations) {
-            if (mutation.type == Type.CLEAR_ALL) {
-                clearAll = true;
-                affectedTables.addAll(existingTables);
-            } else if (mutation.tableId != null) {
-                affectedTables.add(mutation.tableId);
-            }
-            mutation.apply(this.mirroredState);
+        for (JournalLogMutation.Intent mutation : this.queuedMutations) {
+            clearAll |= mutation instanceof JournalLogMutation.ClearAll;
+            affectedTables.addAll(JournalLogMutation.replay(this.mirroredState, mutation));
         }
         this.queuedMutations.clear();
         return new ReplayResult(Set.copyOf(affectedTables), clearAll, hadQueuedMutations);
@@ -106,8 +102,8 @@ public final class ArchaeologyJournalLogSyncSession {
         this.nextSequence = 1L;
         this.seeded = true;
         this.mirroredState.copyFrom(clientState);
-        for (QueuedMutation mutation : this.queuedMutations) {
-            mutation.apply(this.mirroredState);
+        for (JournalLogMutation.Intent mutation : this.queuedMutations) {
+            JournalLogMutation.replay(this.mirroredState, mutation);
         }
         this.queuedMutations.clear();
     }
@@ -138,75 +134,27 @@ public final class ArchaeologyJournalLogSyncSession {
     // 暂存首次解锁元数据变更（seeded 前排队，seeded 后直接应用）
     public void queueFirstUnlockMeta(ResourceLocation tableId, @Nullable LootSourceType lootSource,
                                      long gameTime, long dayTime) {
-        this.queuedMutations.add(QueuedMutation.firstUnlockMeta(tableId, lootSource, gameTime, dayTime));
+        this.queuedMutations.add(new JournalLogMutation.FirstUnlock(tableId, lootSource, gameTime, dayTime));
     }
 
     // 暂存日志条目插入/更新变更
     public void queueUpsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
-        this.queuedMutations.add(QueuedMutation.upsertEntry(tableId, entry));
+        this.queuedMutations.add(new JournalLogMutation.Upsert(tableId, entry));
+    }
+
+    /** 等待读到个人日志后再合并当时收到的领取增量。 */
+    public void queueAcquisition(MergeAcquisition acquisition) {
+        this.queuedMutations.add(acquisition);
     }
 
     // 暂存全部清除变更
     public void queueClearAll() {
-        this.queuedMutations.add(QueuedMutation.clearAll());
+        this.queuedMutations.add(new JournalLogMutation.ClearAll());
     }
 
     // 暂存清除指定表变更
     public void queueClearTable(ResourceLocation tableId) {
-        this.queuedMutations.add(QueuedMutation.clearTable(tableId));
-    }
-
-    private record QueuedMutation(Type type,
-                                  @Nullable ResourceLocation tableId,
-                                  @Nullable LootSourceType lootSource,
-                                  long firstUnlockedGameTime,
-                                  long firstUnlockedDayTime,
-                                  @Nullable ExcavationLogEntry entry) {
-        private static QueuedMutation firstUnlockMeta(ResourceLocation tableId, @Nullable LootSourceType lootSource,
-                                                      long gameTime, long dayTime) {
-            return new QueuedMutation(Type.SET_FIRST_UNLOCK_META, tableId, lootSource, gameTime, dayTime, null);
-        }
-
-        private static QueuedMutation upsertEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
-            return new QueuedMutation(Type.UPSERT_ENTRY, tableId, null, 0L, 0L, entry);
-        }
-
-        private static QueuedMutation clearAll() {
-            return new QueuedMutation(Type.CLEAR_ALL, null, null, 0L, 0L, null);
-        }
-
-        private static QueuedMutation clearTable(ResourceLocation tableId) {
-            return new QueuedMutation(Type.CLEAR_TABLE, tableId, null, 0L, 0L, null);
-        }
-
-        private void apply(ArchaeologyJournalLogState state) {
-            switch (this.type) {
-                case SET_FIRST_UNLOCK_META -> {
-                    if (this.tableId != null) {
-                        state.setFirstUnlockMetaMin(this.tableId, this.lootSource,
-                                this.firstUnlockedGameTime, this.firstUnlockedDayTime);
-                    }
-                }
-                case UPSERT_ENTRY -> {
-                    if (this.tableId != null && this.entry != null) {
-                        state.upsertEntry(this.tableId, this.entry);
-                    }
-                }
-                case CLEAR_ALL -> state.clear();
-                case CLEAR_TABLE -> {
-                    if (this.tableId != null) {
-                        state.removeTable(this.tableId);
-                    }
-                }
-            }
-        }
-    }
-
-    private enum Type {
-        SET_FIRST_UNLOCK_META,
-        UPSERT_ENTRY,
-        CLEAR_ALL,
-        CLEAR_TABLE
+        this.queuedMutations.add(new JournalLogMutation.RemoveTable(tableId));
     }
 
     /** 服务端恢复持久化状态时回放的未 seeded 变更及其持久化影响范围。 */

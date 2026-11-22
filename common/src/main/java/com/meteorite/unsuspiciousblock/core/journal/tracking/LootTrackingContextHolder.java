@@ -29,10 +29,8 @@ public final class LootTrackingContextHolder {
         if (ctx == null) {
             return Scope.INACTIVE;
         }
-        Deque<Frame> stack = STACK.get();
-        LootSession session = stack == null || stack.isEmpty()
-                ? new LootSession(ctx)
-                : stack.peek().session();
+        LootSession session = currentSession();
+        if (session == null) session = new LootSession(ctx);
         return open(session, ctx);
     }
 
@@ -51,6 +49,15 @@ public final class LootTrackingContextHolder {
         }
         int previousDepth = stack.size();
         stack.push(new Frame(session, ctx));
+        return new Scope(Thread.currentThread(), previousDepth);
+    }
+
+    /** 独立的未追踪抽取不继承外层来源；关闭后恢复外层捕获。 */
+    static Scope suspend() {
+        Deque<Frame> stack = STACK.get();
+        if (stack == null || stack.isEmpty()) return Scope.INACTIVE;
+        int previousDepth = stack.size();
+        stack.push(new Frame(null, null));
         return new Scope(Thread.currentThread(), previousDepth);
     }
 
@@ -102,6 +109,6 @@ public final class LootTrackingContextHolder {
         }
     }
 
-    private record Frame(LootSession session, LootTrackingContext context) {
+    private record Frame(@Nullable LootSession session, @Nullable LootTrackingContext context) {
     }
 }

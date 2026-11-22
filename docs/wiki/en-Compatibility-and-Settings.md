@@ -23,7 +23,7 @@ With Artifacts installed, compatible artifacts can keep their equipment effects 
 
 ## Lootr
 
-The NeoForge build offers optional Lootr compatibility: different players opening the same Lootr chest have their contents recorded independently.
+The NeoForge build offers optional Lootr compatibility. Each Archaeology Journal records the loot its player collects, including loot from a shared team inventory. The Archaeological Shovel uses the inventory you scanned. Scan again if Lootr recreates that inventory.
 
 ## Server Settings
 

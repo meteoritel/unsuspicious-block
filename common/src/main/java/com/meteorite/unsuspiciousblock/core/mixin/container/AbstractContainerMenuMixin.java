@@ -1,8 +1,11 @@
 package com.meteorite.unsuspiciousblock.core.mixin.container;
 
+import com.llamalad7.mixinextras.sugar.Share;
+import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ContainerTrackingService;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.MenuTrackingSnapshot;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.MenuTrackingSnapshotService;
+import com.meteorite.unsuspiciousblock.core.journal.tracking.MenuTrackingSnapshotService.GeneratedInventoryClick;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -35,27 +38,31 @@ public abstract class AbstractContainerMenuMixin {
     @Shadow
     public abstract ItemStack getCarried();
 
-    @Shadow
-    public abstract void setCarried(ItemStack stack);
-
     @Unique
     @Nullable
     private MenuTrackingSnapshot unsuspiciousblock$menuTrackingSnapshot;
 
     // 在点击处理前记录玩家背包与光标中相关物品的快照
     @Inject(method = "clicked", at = @At("HEAD"))
-    private void unsuspiciousblock$captureInventoryCountsBeforeClick(int slotId, int button, ClickType clickType, Player player, CallbackInfo ci) {
+    private void unsuspiciousblock$captureInventoryCountsBeforeClick(int slotId, int button, ClickType clickType, Player player, CallbackInfo ci,
+            @Share("generatedInventoryClick") LocalRef<GeneratedInventoryClick> clickRef) {
         if (!(player instanceof ServerPlayer sp)) {
             return;
         }
 
-        this.unsuspiciousblock$menuTrackingSnapshot = MenuTrackingSnapshotService.captureMenuTrackingSnapshot(sp,
-                this.unsuspiciousblock$collectRootContainers(), this.getCarried());
+        Collection<Container> roots = this.unsuspiciousblock$collectRootContainers();
+        ItemStack carried = this.getCarried();
+        this.unsuspiciousblock$menuTrackingSnapshot = MenuTrackingSnapshotService.captureMenuTrackingSnapshot(sp, roots, carried);
+        clickRef.set(MenuTrackingSnapshotService.captureGeneratedInventories(sp, roots, carried));
     }
 
     // 在点击处理后根据背包增量与光标增量结算真正进入背包的战利品
     @Inject(method = "clicked", at = @At("TAIL"))
-    private void unsuspiciousblock$trackInventoryCountsAfterClick(int slotId, int button, ClickType clickType, Player player, CallbackInfo ci) {
+    private void unsuspiciousblock$trackInventoryCountsAfterClick(int slotId, int button, ClickType clickType, Player player, CallbackInfo ci,
+            @Share("generatedInventoryClick") LocalRef<GeneratedInventoryClick> clickRef) {
+        if (player instanceof ServerPlayer sp && clickRef.get() != null) {
+            MenuTrackingSnapshotService.settleGeneratedInventories(sp, clickRef.get(), this.getCarried());
+        }
         if (this.unsuspiciousblock$menuTrackingSnapshot == null) {
             return;
         }
@@ -85,7 +92,9 @@ public abstract class AbstractContainerMenuMixin {
         }
 
         // 校正容器追踪数据（结算残留待定条目后清理）
-        ContainerTrackingService.reconcileTrackedContainers(sp, this.unsuspiciousblock$collectRootContainers());
+        Collection<Container> roots = this.unsuspiciousblock$collectRootContainers();
+        ContainerTrackingService.reconcileTrackedContainers(sp, roots);
+        MenuTrackingSnapshotService.reconcileGeneratedInventories(sp, roots);
     }
 
     // 收集当前菜单关联的根容器，供运行时追踪统一处理

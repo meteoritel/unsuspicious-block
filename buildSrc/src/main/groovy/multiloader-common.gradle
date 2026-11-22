@@ -113,10 +113,13 @@ ext.lootrModVersion = lootrArtifactVersion.startsWith(minecraftVersionPrefix)
 if (!lootrCompatEnabled) {
     def lootrSources = [
             'com/meteorite/unsuspiciousblock/core/mixin/compat/lootr/**',
-            'com/meteorite/unsuspiciousblock/core/plugin/lootr/**'
+            'com/meteorite/unsuspiciousblock/core/plugin/lootr/**',
+            'com/meteorite/unsuspiciousblock/platform/plugin/lootr/**'
     ]
     def lootrResources = [
             "${mod_id}.lootr.mixins.json".toString(),
+            "${mod_id}.lootr-neoforge.mixins.json".toString(),
+            "${mod_id}.lootr-neoforge.properties".toString(),
             'META-INF/services/noobanidus.mods.lootr.common.api.filter.ILootrFilterProvider'
     ]
     tasks.named('compileJava', JavaCompile) { exclude lootrSources }

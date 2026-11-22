@@ -112,6 +112,15 @@ public final class ArchaeologyJournalLogState {
         return history != null && history.containsEntry(entryId);
     }
 
+    /** 按玩家现有条目合并领取增量，旧库存的个人数量只用于首个缺失条目。 */
+    public ExcavationLogEntry mergeAcquisition(ResourceLocation tableId, ExcavationLogEntry delta,
+                                                Map<String, Integer> legacyActual) {
+        TableLogHistory history = tables.get(tableId);
+        ExcavationLogEntry current = history == null ? null : history.entries.get(delta.entryId());
+        if (current == null) current = delta.withActualLoot(legacyActual, delta.created());
+        return current.withActualLootMerged(delta.actualLoot(), delta.lastUpdatedGameTime(), delta.lastUpdatedDayTime());
+    }
+
     // 移除指定表及其所有日志条目
     public boolean removeTable(ResourceLocation tableId) {
         return this.tables.remove(tableId) != null;

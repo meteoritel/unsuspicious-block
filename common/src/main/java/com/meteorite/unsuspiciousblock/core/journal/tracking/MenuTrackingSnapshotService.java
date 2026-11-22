@@ -27,6 +27,80 @@ public final class MenuTrackingSnapshotService {
     private MenuTrackingSnapshotService() {
     }
 
+    /** 单次服务端点击所见的 Lootr 库存及玩家物品；点击完成后即弃用。 */
+    public record GeneratedInventoryClick(
+            List<InventoryBeforeClick> inventories, List<LootResultSignature> signatures,
+            Map<String, Integer> playerCounts) {
+    }
+
+    /** 同一份库存点击前的签名数量。 */
+    public record InventoryBeforeClick(GeneratedLootInventory inventory, Map<String, Integer> counts) {
+    }
+
+    /** 只为当前菜单中仍分配给玩家的库存记录来源槽位。 */
+    public static @Nullable GeneratedInventoryClick captureGeneratedInventories(
+            ServerPlayer player, Collection<Container> roots, ItemStack carried) {
+        List<InventoryBeforeClick> inventories = new ArrayList<>();
+        LinkedHashMap<String, LootResultSignature> signatures = new LinkedHashMap<>();
+        for (Container root : roots) {
+            if (!(root instanceof GeneratedLootInventory inventory)
+                    || !inventory.unsuspiciousblock$isCurrentInventory(player)) continue;
+            InventoryLootTracking tracking = inventory.unsuspiciousblock$inventoryLoot();
+            if (tracking.remaining().isEmpty()) continue;
+            tracking.reconcileMenu(inventory, player.serverLevel().getGameTime());
+            List<LootResultSignature> candidates = ArchaeologyLootRuntimeTracker.toSignatures(tracking.remaining());
+            if (candidates.isEmpty()) continue;
+            inventories.add(new InventoryBeforeClick(inventory, ContainerLootTracking.collect(inventory, candidates)));
+            for (LootResultSignature candidate : candidates) signatures.putIfAbsent(candidate.toStoredKey(), candidate);
+        }
+        if (inventories.isEmpty()) return null;
+        List<LootResultSignature> candidates = List.copyOf(signatures.values());
+        return new GeneratedInventoryClick(inventories, candidates, capturePlayerPossession(player, carried, candidates));
+    }
+
+    /** 用同一次点击的来源减量和玩家增量确认领取；余量由库存再次限额。 */
+    public static void settleGeneratedInventories(ServerPlayer player, GeneratedInventoryClick click, ItemStack carried) {
+        Map<String, Integer> playerGain = capturePlayerPossession(player, carried, click.signatures());
+        playerGain.replaceAll((signature, count) -> Math.max(0, count - click.playerCounts().getOrDefault(signature, 0)));
+        long gameTime = player.serverLevel().getGameTime();
+        for (InventoryBeforeClick before : click.inventories()) {
+            GeneratedLootInventory inventory = before.inventory();
+            if (!inventory.unsuspiciousblock$isCurrentInventory(player)) continue;
+            InventoryLootTracking tracking = inventory.unsuspiciousblock$inventoryLoot();
+            List<LootResultSignature> candidates = ArchaeologyLootRuntimeTracker.toSignatures(before.counts());
+            Map<String, Integer> after = ContainerLootTracking.collect(inventory, candidates);
+            Map<String, Integer> acquired = new LinkedHashMap<>();
+            before.counts().forEach((signature, count) -> {
+                int removed = count - after.getOrDefault(signature, 0);
+                int taken = Math.min(removed, playerGain.getOrDefault(signature, 0));
+                taken = Math.min(taken, tracking.remaining().getOrDefault(signature, 0));
+                if (taken > 0) {
+                    acquired.put(signature, taken);
+                    playerGain.merge(signature, -taken, Integer::sum);
+                }
+            });
+            if (!acquired.isEmpty()) tracking.acquire(player, acquired);
+            tracking.reconcileMenu(inventory, gameTime);
+        }
+    }
+
+    private static Map<String, Integer> capturePlayerPossession(
+            ServerPlayer player, ItemStack carried, List<LootResultSignature> signatures) {
+        Map<String, Integer> counts = capturePlayerInventoryCounts(player.getInventory(), signatures);
+        resolveItemCounts(carried, signatures).forEach((signature, count) -> counts.merge(signature, count, Integer::sum));
+        return counts;
+    }
+
+    /** 关闭菜单只校准仍归该玩家或队伍的实际库存。 */
+    public static void reconcileGeneratedInventories(ServerPlayer player, Collection<Container> roots) {
+        long gameTime = player.serverLevel().getGameTime();
+        for (Container root : roots) {
+            if (root instanceof GeneratedLootInventory inventory && inventory.unsuspiciousblock$isCurrentInventory(player)) {
+                inventory.unsuspiciousblock$inventoryLoot().reconcileMenu(inventory, gameTime);
+            }
+        }
+    }
+
     @Nullable
     // 捕获容器菜单操作前的快照，同时记录光标上的追踪物品
     // 仅收集当前玩家拥有的追踪容器，超时的容器先 flush

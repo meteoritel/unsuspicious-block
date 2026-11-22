@@ -29,17 +29,18 @@ public final class JournalLogMutation {
 
     /** 即时意图在落盘失败时恢复原对象；失败排队由持久化实现承担。 */
     public Result apply(Intent intent) {
-        boolean deferred = intent instanceof FirstUnlock || intent instanceof Upsert || intent instanceof UpdateNote;
-        Set<ResourceLocation> tables = affectedTables(intent);
+        boolean deferred = intent instanceof FirstUnlock || intent instanceof Upsert
+                || intent instanceof MergeAcquisition || intent instanceof UpdateNote;
+        Set<ResourceLocation> tables = affectedTables(state, intent);
         if (!deferred) return applyImmediate(intent, tables);
-        Result result = applyIntent(intent);
+        Result result = applyIntent(state, intent);
         if (result.status() == Status.CHANGED) defer.accept(tables);
         return result;
     }
 
     private Result applyImmediate(Intent intent, Set<ResourceLocation> tables) {
         Snapshot backup = Snapshot.capture(state, tables);
-        Result result = applyIntent(intent);
+        Result result = applyIntent(state, intent);
         if (result.status() == Status.CHANGED && !commit.test(tables)) {
             backup.restore(state);
             return Result.status(Status.FAILED);
@@ -70,10 +71,18 @@ public final class JournalLogMutation {
         }
     }
 
-    private Set<ResourceLocation> affectedTables(Intent intent) {
+    /** 将加载前排队的变更回放到持久化镜像，交还需要写回的表。 */
+    public static Set<ResourceLocation> replay(ArchaeologyJournalLogState state, Intent intent) {
+        Set<ResourceLocation> tables = affectedTables(state, intent);
+        applyIntent(state, intent);
+        return tables;
+    }
+
+    private static Set<ResourceLocation> affectedTables(ArchaeologyJournalLogState state, Intent intent) {
         return switch (intent) {
             case FirstUnlock value -> Set.of(value.tableId());
             case Upsert value -> Set.of(value.tableId());
+            case MergeAcquisition value -> Set.of(value.tableId());
             case UpdateNote value -> Set.of(value.tableId());
             case RemoveEntries value -> Set.of(value.tableId());
             case ClearEntries value -> Set.of(value.tableId());
@@ -87,16 +96,14 @@ public final class JournalLogMutation {
         };
     }
 
-    private Result applyIntent(Intent intent) {
+    private static Result applyIntent(ArchaeologyJournalLogState state, Intent intent) {
         return switch (intent) {
             case FirstUnlock value -> Result.status(state.setFirstUnlockMetaMin(value.tableId(), value.source(),
                     value.gameTime(), value.dayTime()) ? Status.CHANGED : Status.UNCHANGED);
-            case Upsert value -> {
-                ArchaeologyJournalLogState.EntryUpsertResult result = state.upsertEntryWithResult(value.tableId(), value.entry());
-                yield new Result(result.blocked() ? Status.BLOCKED : result.changed() ? Status.CHANGED : Status.UNCHANGED,
-                        result.removedEntryIds().size(), 0, result, value.entry());
-            }
-            case UpdateNote value -> updateNote(value);
+            case Upsert value -> upsert(state, value.tableId(), value.entry());
+            case MergeAcquisition value -> upsert(state, value.tableId(),
+                    state.mergeAcquisition(value.tableId(), value.delta(), value.legacyActual()));
+            case UpdateNote value -> updateNote(state, value);
             case RemoveEntries value -> Result.removed(state.removeEntries(value.tableId(), value.entryIds()));
             case ClearEntries value -> Result.removed(state.clearEntries(value.tableId()));
             case ClearAllEntries ignored -> Result.removed(state.clearAllEntries());
@@ -121,7 +128,13 @@ public final class JournalLogMutation {
         };
     }
 
-    private Result updateNote(UpdateNote value) {
+    private static Result upsert(ArchaeologyJournalLogState state, ResourceLocation tableId, ExcavationLogEntry entry) {
+        ArchaeologyJournalLogState.EntryUpsertResult result = state.upsertEntryWithResult(tableId, entry);
+        return new Result(result.blocked() ? Status.BLOCKED : result.changed() ? Status.CHANGED : Status.UNCHANGED,
+                result.removedEntryIds().size(), 0, result, entry);
+    }
+
+    private static Result updateNote(ArchaeologyJournalLogState state, UpdateNote value) {
         ArchaeologyJournalLogState.TableLogHistory table = state.getTable(value.tableId());
         if (table == null) return Result.status(Status.NOT_FOUND);
         ExcavationLogEntry existing = table.getEntries().stream()
@@ -151,7 +164,7 @@ public final class JournalLogMutation {
     }
 
     /** 不携带网络会话或 payload 的领域意图。 */
-    public sealed interface Intent permits FirstUnlock, Upsert, UpdateNote, RemoveEntries, ClearEntries,
+    public sealed interface Intent permits FirstUnlock, Upsert, MergeAcquisition, UpdateNote, RemoveEntries, ClearEntries,
             ClearAllEntries, RemoveTable, ClearAll, SetRetention, Prune {
     }
 
@@ -165,6 +178,9 @@ public final class JournalLogMutation {
 
     /** 新增或更新日志，保留累计数与自动淘汰规则。 */
     public record Upsert(ResourceLocation tableId, ExcavationLogEntry entry) implements Intent {}
+    /** 领取量按当前玩家的日志增量合并，适用于日志尚在加载的情况。 */
+    public record MergeAcquisition(ResourceLocation tableId, ExcavationLogEntry delta,
+                                   Map<String, Integer> legacyActual) implements Intent {}
     /** 备注清洗后延迟落盘。 */
     public record UpdateNote(ResourceLocation tableId, UUID entryId, @Nullable String note) implements Intent {}
     /** 删除选中条目，保留首次解锁、累计数及策略。 */

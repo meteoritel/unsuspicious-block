@@ -103,7 +103,7 @@ flowchart LR
 - **充能与浪费保护**：耐久条按绿/黄/红显示电量，范围扫描能量不足时自动消耗背包古代金币充能（`tryRecharge`）；潜行右键空气手动充能时，若已损能量不足 `256`，先提示可能浪费并在 `20` tick 窗口内再次操作才强制确认。
 - **客户端外观**：`ModClientLifecycle` 注册的物品属性根据物品栈选取模型。缺省能量按满能量处理，零能量优先显示熄灯的静态贴图。有能量时，单方块模式亮灯并收起扫描棒，范围模式使用各扫描等级对应的贴图帧间隔。
 - **主副手让位**：主手解析仪、副手考古铲面对**已扫描**的可疑方块时，`useOn` 开头识别并让位给副手取物（客户端须返回 `PASS` 以触发原版副手交互）。
-- **扫描宿主与追踪接线**：`ScanStateHost` 统一查询、标记与清除；清除扫描身份时，普通与 Lootr 宿主丢弃 pending（Lootr 另清临时库存），封存宿主仅清身份；`BlockEntitySync` 统一标脏同步。`scanBrushable` 仅为 `PendingJournalHost` 以 `Deferred` 策略接入考古笔记（封存方块只扫描，不入待定日志）。
+- **扫描宿主与追踪接线**：`ScanStateHost` 管理扫描身份，`BrushableBlockEntityScanState` 接收实际使用扫描仪或考古铲的玩家。普通可疑方块暂存待定日志，封存方块保存扫描身份和物品，Lootr 按扫描绑定的库存结算。`BlockEntitySync` 负责标脏和同步。 [追踪数据流](../internals/journal-tracking.md)
 
 ### 5.2 考古铲 (`ArchaeologicalShovelItem`)
 

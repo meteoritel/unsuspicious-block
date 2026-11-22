@@ -61,7 +61,7 @@ public final class ContainerLootTracking {
         }
     }
 
-    private void consume(String signature, int amount) {
+    void consume(String signature, int amount) {
         int consumed = Math.clamp(amount, 0, remaining.getOrDefault(signature, 0));
         if (consumed > 0) {
             int next = remaining.get(signature) - consumed;

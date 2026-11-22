@@ -79,12 +79,11 @@ Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 
   - `JournalJeiGuiHandler`：将考古笔记网格与介绍页中的已解锁物品暴露为 JEI 可点击原料，支持 `U` / `R` 键跳转并沿 Screen 返回链回到笔记；浮层或输入捕获激活时不暴露底层物品。
   - JEI 运行时悬停原料查询配合 `ArchaeologyJournalKeyHandler`，支持在 JEI 列表上按笔记快捷键按注册名搜索。
 
-### 4.3 Lootr（每人独立战利品）
+### 4.3 Lootr 战利品追踪
 
-- NeoForge 使用 Lootr 报告的含 Minecraft 前缀的版本校验最低要求，由 `lootr_neoforge_version_range` 声明。Fabric 的 `lootr_compat_fabric` 默认关闭，NeoForge 可通过 `lootr_compat_neoforge` 关闭联动。[Gradle 属性](../../../gradle.properties)
-- 实现位于 `common/core/plugin/lootr/`：
-  - [`LootrArchaeologyFilterProvider`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrArchaeologyFilterProvider.java) 通过 `META-INF/services` 注册；
-  - `LootrBrushableTrackingAccess` 与 `LootrTrackingBridge` 负责把 Lootr 的每人独立容器/可疑方块接入模组追踪体系；配套 Mixin 见[Mixin 边界与接线](mixin.md)。
+- NeoForge 按 `lootr_neoforge_versions` 中的完整版本号启用整套追踪适配。安装范围外的 Lootr 时，基础模组照常加载，启动日志记录联动停用原因。Fabric 默认关闭该联动。 [构建属性](../../../gradle.properties) · [Mixin 接线](mixin.md)
+- NeoForge 使用 Global Loot Modifier 注入考古奖励。启用 Fabric 联动时，Fabric 通过 `META-INF/services` 注册 Lootr Filter。 [Fabric Filter](../../../fabric/src/lootr/java/com/meteorite/unsuspiciousblock/core/plugin/lootr/LootrArchaeologyFilterProvider.java)
+- Lootr 管理玩家或队伍的库存分配，本模组按实际领取者记录考古笔记。扫描仪的授权与具体库存绑定。 [战利品追踪数据流](../internals/journal-tracking.md)
 - 原版埋藏宝藏和村庄武器匠表被同 ID 数据包替换时，Fabric 不追加内置奖励；NeoForge 在 Global Loot Modifier 仍启用时按表 ID 继续追加。数据包作者在 NeoForge 可通过全局修改器列表移除对应规则。
 
 ### 4.4 Trinkets / Curios（饰品栏）

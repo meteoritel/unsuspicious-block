@@ -97,6 +97,10 @@ loom {
 }
 
 if (lootrCompatEnabled) {
+    sourceSets.main {
+        java.srcDir 'src/lootr/java'
+        resources.srcDir 'src/lootr/resources'
+    }
     tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
         doFirst {
             systemProperty 'fabric.addMods', configurations.lootrFabricRuntime.singleFile.absolutePath

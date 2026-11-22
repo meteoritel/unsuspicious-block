@@ -7,11 +7,11 @@ import com.meteorite.unsuspiciousblock.core.journal.tracking.PendingJournal;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,15 +30,17 @@ public final class BrushableLootDropHelper {
     private BrushableLootDropHelper() {
     }
 
-    /**
-     * 单次刷拭掉落的上下文快照，由 Mixin 在 dropContent HEAD 阶段构造。
-     */
-    public record DropContext(
+    /** 精掘和物品落点只需要当前这一笔的交互数据。 */
+    public record BrushStroke(
             ServerPlayer player,
             BlockPos blockPos,
-            Level level,
             @Nullable Direction hitDirection,
-            ItemStack brushTool,
+            ItemStack brushTool
+    ) {}
+
+    /** 原版可疑方块的待定日志跟随方块保存。 */
+    public record DropContext(
+            BrushStroke stroke,
             long brushGameTime,
             long brushDayTime,
             @Nullable ResourceLocation lootTableName,
@@ -66,7 +68,7 @@ public final class BrushableLootDropHelper {
      * 时序在记录考古笔记物品数量之前，确保日志期望值保留原战利品表结果，
      * 实际值按翻倍后总数结算。
      */
-    public static DropResult rollBrushItemDrop(DropContext ctx, ItemStack originalItem) {
+    public static DropResult rollBrushItemDrop(BrushStroke ctx, ItemStack originalItem) {
         TriggerContext peCtx = TriggerContext.builder(ctx.player(), ctx.player().serverLevel())
                 .pos(ctx.blockPos())
                 .tool(ctx.brushTool())
@@ -100,10 +102,12 @@ public final class BrushableLootDropHelper {
      * 公式复制自 { net.minecraft.world.level.block.entity.BrushableBlockEntity#dropContent}，
      * 集中于此以便原版改动时单点维护。
      */
-    public static void spawnExtraDrops(DropContext ctx, List<ItemStack> extraDrops) {
-        if (extraDrops.isEmpty() || ctx.level() == null) {
-            return;
+    public static List<ItemStack> spawnExtraDrops(BrushStroke ctx, List<ItemStack> extraDrops) {
+        if (extraDrops.isEmpty()) {
+            return List.of();
         }
+        ServerLevel level = ctx.player().serverLevel();
+        List<ItemStack> spawned = new ArrayList<>();
         double d0 = EntityType.ITEM.getWidth();
         double d1 = 1.0 - d0;
         double d2 = d0 / 2.0;
@@ -114,11 +118,12 @@ public final class BrushableLootDropHelper {
         double d5 = blockpos.getZ() + 0.5 * d1 + d2;
         for (ItemStack extra : extraDrops) {
             if (!extra.isEmpty()) {
-                ItemEntity itemEntity = new ItemEntity(ctx.level(), d3, d4, d5, extra.copy());
+                ItemEntity itemEntity = new ItemEntity(level, d3, d4, d5, extra.copy());
                 itemEntity.setDeltaMovement(Vec3.ZERO);
-                ctx.level().addFreshEntity(itemEntity);
+                if (level.addFreshEntity(itemEntity)) spawned.add(itemEntity.getItem());
             }
         }
+        return spawned;
     }
 
     /**
@@ -128,13 +133,14 @@ public final class BrushableLootDropHelper {
         if (ctx.lootTableName() == null || ctx.pendingEntry() == null || ctx.pendingEntry().current() == null) {
             return;
         }
+        ServerPlayer player = ctx.stroke().player();
         long gameTime = ctx.brushGameTime() >= 0L
                 ? ctx.brushGameTime()
-                : ctx.player().serverLevel().getGameTime();
+                : player.serverLevel().getGameTime();
         long dayTime = ctx.brushDayTime() >= 0L
                 ? ctx.brushDayTime()
-                : ctx.player().serverLevel().getDayTime();
-        ctx.pendingEntry().mergeActual(ctx.player(), ctx.lootTableName(), totalTrackedItem, gameTime, dayTime);
+                : player.serverLevel().getDayTime();
+        ctx.pendingEntry().mergeActual(player, ctx.lootTableName(), totalTrackedItem, gameTime, dayTime);
         ctx.pendingEntry().discard();
     }
 }
