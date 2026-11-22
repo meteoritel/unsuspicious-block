@@ -20,7 +20,7 @@ Agent 调用任何探针前，须遵守仓库根目录 `AGENTS.md` 中的「探�
 
 首次在本机运行探针前完成以下步骤：
 
-1. **构建宿主 JAR 与 Manifest**：用户级 Gradle 属性 `meteos_ui_kit_maven_dir` 指向本地 UI Kit Maven 仓库，运行 `./gradlew.bat build writeProbeArtifact --no-daemon` 生成 `build/probes/artifact.json`。
+1. **构建宿主 JAR 与 Manifest**：从远程 Maven 解析固定的 UI Kit 版本，运行 `./gradlew.bat build writeProbeArtifact --no-daemon` 生成 `build/probes/artifact.json`。
 2. **本地探针配置**：复制 [`config.example.json`](../../tools/probes/config.example.json) 为仓库根目录 `.local/probes.json`（已纳入 Git 忽略），填入本机 `autojsJar` 与 `rhinoJar` 绝对路径；接受 Minecraft EULA 后显式设置 `"acceptEula": true`。
 3. **后台客户端**：Windows 在本地配置设置 `"background": true`，或命令行传入 `--background`。客户端在独立 desktop 内渲染，主桌面与系统鼠标保持原有归属；运行结果见 `manifest.json` 的 `desktop` 字段。
 4. **检查端口与配置**。所选服务端使用 `serverMcpPort`（25585）和 `gamePort`（25575）。需要客户端的会话还使用 `clientMcpPort`（25586），本轮用到的端口须互异且空闲。

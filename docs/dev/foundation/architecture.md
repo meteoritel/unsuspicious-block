@@ -151,7 +151,7 @@ Trinkets、Curios、Artifacts、ModMenu、Jade 与 JEI 均采用 `compileOnly`�
 
 ### 4.5 Meteo's UI Kit 依赖环境
 
-模组自有 GUI 消费独立库 **Meteo's UI Kit** 的公开 API，版本号在 `gradle.properties` 的 `meteos_ui_kit_version` 固定；本地 Maven 仓库路径由用户级属性 `meteos_ui_kit_maven_dir` 指定，且构建脚本仅对 `com.meteorite.meteosuikit` 分组开放该本地仓库过滤。
+模组自有 GUI 消费 **Meteo's UI Kit** 的公开 API。`meteos_ui_kit_version` 在 `gradle.properties` 锁定，通用 Gradle 约定只从项目的远程 Maven 解析 `com.meteorite.meteosuikit`。[远程 Maven](https://meteoritel.github.io/meteo-s-ui-kit/)
 
 | 构建单元 | 依赖声明 | 说明 |
 |---|---|---|
@@ -159,7 +159,7 @@ Trinkets、Curios、Artifacts、ModMenu、Jade 与 JEI 均采用 `compileOnly`�
 | `fabric` | `modImplementation` + `include` `meteos-ui-kit-fabric-1.21.1:${meteos_ui_kit_version}` | 参与开发运行并内嵌于 Fabric 发布 JAR |
 | `neoforge` | `implementation` + `jarJar` `meteos-ui-kit-neoforge-1.21.1:${meteos_ui_kit_version}` | 参与开发运行并通过 Jar-in-Jar 内嵌于 NeoForge 发布 JAR |
 
-当前开发配置保持编译、内嵌与运行依赖精确同版本；接入规范与边界校验规则见 [UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)。
+编译、内嵌与运行依赖使用同一精确版本。[UI kit 公开 API 与兼容策略](../internals/ui-kit-api.md)
 
 ## 5. 横切设计原则
 

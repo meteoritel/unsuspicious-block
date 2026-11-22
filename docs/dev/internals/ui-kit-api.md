@@ -19,12 +19,9 @@
 
 ## 2. 版本与兼容策略
 
-Gradle 构建声明、本地仓库属性（`meteos_ui_kit_maven_dir`）与双端内嵌配置见[架构总览](../foundation/architecture.md)的「Meteo's UI Kit 依赖环境」一节。
+三端坐标和远程 Maven 的 Gradle 接线见[架构总览](../foundation/architecture.md#45-meteos-ui-kit-依赖环境)。
 
-- 当前开发消费 `dev` 版本坐标（在 `gradle.properties` 的 `meteos_ui_kit_version` 固定）：Fabric 元数据采用精确版本字符串，NeoForge 元数据与 Jar-in-Jar 采用 `[版本]` 精确区间并配置 `prefer`，锁定编译、内嵌与运行期完全一致。
-- `dev` 版本允许破坏性接口演进，升级时须先完成 UI Kit 自身源码、行为、公开面、JavaDoc 与独立样例校验，发布后核对 publication 和各端 Maven 消费，再同步升级宿主并核对最终打包 JAR 的嵌套依赖与元数据（库中的开发样例不得打入宿主发布包）。
-
-本地供应使用专用 Maven；空仓库从对应源码恢复，隔离缓存核对消费来源。完整流程和不可覆盖规则由 kit 的 `tools/README.md` 维护。
+Fabric 元数据采用精确版本字符串。NeoForge 元数据与 Jar-in-Jar 使用 `[版本]`，Jar-in-Jar 同时配置 `prefer`。库发布并通过远程消费验证后，再升级宿主版本并运行 `checkUiKitPackaging` 校验两端交付归档。[上游版本与迁移约定](https://github.com/meteoritel/meteo-s-ui-kit/blob/v0.1.0-rc1/docs/integration.md#固定版本消费)
 
 ## 3. 接入规范
 

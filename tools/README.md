@@ -60,9 +60,9 @@ UI Kit 检查覆盖公开包消费、客户端归属、已退出仓内的旧 kit
 
 `./gradlew.bat build` 执行 `checkSourceRepository` 与 `checkUiKitPackaging` 门禁。产物路径直接取 Fabric `remapJar` 与 NeoForge `jar` 的输出，后者包含 `jarJar` 任务生成的内嵌内容。
 
-`tools/checks/check-ui-kit-packaging.py` 也可接收 `--fabric-jar` 和 `--neoforge-jar` 显式路径。它核对内嵌平台库、精确 dev 版本约束、宿主误展开的库类与旧 kit。必需输入缺失返回 `2`，归档或元数据违规返回 `1`。
+`tools/checks/check-ui-kit-packaging.py` 也可接收 `--fabric-jar` 和 `--neoforge-jar` 显式路径。它核对内嵌平台库、精确版本约束、宿主误展开的库类与旧 kit。必需输入缺失返回 `2`，归档或元数据违规返回 `1`。
 
-Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>` 指定。独立 UI 库通过用户级 `meteos_ui_kit_maven_dir` 指向专用本地 Maven；kit 的 `publishLibrary`、publication 检查和独立 consumer-check 共同验证供应，行为 CLI 随 kit check 执行。空仓库恢复和同坐标不可覆盖流程见 kit 的 `tools/README.md`。PR / 分支 CI 直接运行源码检查。现有 release 构建仍需要可访问的 UI 库 Maven 来源。
+Gradle 默认使用 `python`，可通过 `-Prepository_python=<解释器路径>` 指定。宿主通过远程 Maven 解析精确的 UI Kit 版本，构建 Release 使用同一来源。PR / 分支 CI 直接运行源码检查。[依赖环境](../docs/dev/foundation/architecture.md)
 
 ## 纹理绘制架构 (`drawer/`)
 

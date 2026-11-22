@@ -17,13 +17,6 @@ neoForge {
 }
 
 repositories {
-    exclusiveContent {
-        forRepository { maven {
-            name = 'MeteosUiKitLocal'
-            url = uri(providers.gradleProperty('meteos_ui_kit_maven_dir').get())
-        } }
-        filter { includeGroup('com.meteorite.meteosuikit') }
-    }
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
