@@ -53,6 +53,8 @@ public record ScenarioParams(float luck, ResourceLocation toolId,
      * 基准档位：启动时每表只跑这一个（决策 17）。
      */
     public static final int DEFAULT_SAMPLE_COUNT = 10_000;
+    /** 基准模拟的幸运值。 */
+    public static final float DEFAULT_LUCK = 0.0F;
     /**
      * 附魔等级的数值边界；vanilla 组件 codec 与构造器都用 0..255（见规划 §3.2）。
      */
@@ -85,7 +87,7 @@ public record ScenarioParams(float luck, ResourceLocation toolId,
      * 基准参数（决策 17）：无附魔、幸运 0、基准档位。工具基座由调用方按表类型给出。
      */
     public static ScenarioParams baseline(ResourceLocation toolId) {
-        return new ScenarioParams(0.0F, toolId, Map.of(), DEFAULT_SAMPLE_COUNT);
+        return new ScenarioParams(DEFAULT_LUCK, toolId, Map.of(), DEFAULT_SAMPLE_COUNT);
     }
 
     private static Map<ResourceLocation, Integer> canonicalizeEnchantments(

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.state;
 
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Recommendation.Witness;
@@ -280,7 +281,7 @@ public final class ScenarioSession {
             }
             var choice = state.SELECTIONS.get(table.id());
             if (choice == null) {
-                choice = SimulationPreferenceStore.get(table.id());
+                choice = restoreSelection(table);
             }
             if (choice == null || options.rejects(choice.conditions(), choice.params())) {
                 choice = new SimulationPreferenceStore.Selection(List.of(),
@@ -297,6 +298,22 @@ public final class ScenarioSession {
         projectionRevision++;
         ids.forEach(this::presentationChanged);
         targets.keySet().retainAll(ids);
+    }
+
+    private static @Nullable SimulationPreferenceStore.Selection restoreSelection(CatalogTableDto table) {
+        var saved = SimulationPreferenceStore.get(table.id());
+        if (saved == null || saved.params().luck() == ScenarioParams.DEFAULT_LUCK || !isLuckAffected(table)) {
+            return saved;
+        }
+        ScenarioParams params = saved.params();
+        return new SimulationPreferenceStore.Selection(saved.conditions(),
+                new ScenarioParams(ScenarioParams.DEFAULT_LUCK, params.toolId(), params.toolEnchantments(), params.sampleCount()));
+    }
+
+    private static boolean isLuckAffected(CatalogTableDto table) {
+        return table.items().stream()
+                .flatMap(item -> item.acquisitionPaths().stream())
+                .anyMatch(LootAcquisitionPath::luckAffected);
     }
 
     /**
@@ -395,16 +412,26 @@ public final class ScenarioSession {
     }
 
     /**
-     * 为正在查看的表取回尚待计算的基准结果。沿用场景请求的在途去重与服务端调度。
+     * 为正在查看的表取回基准结果，或自动计算首次恢复的受幸运影响的输入。
      */
-    public void requestVisibleBaseline(ResourceLocation table) {
+    public void requestVisibleDefault(ResourceLocation table) {
         var base = state.TABLES.get(table);
         var choice = selection(table);
-        if (base == null || base.simulationCount() > 0 || choice == null || !isBaselineInput(base, inputKey(choice))) {
+        if (base == null || base.options() == null || choice == null) {
             return;
         }
-        if (base.items().stream().anyMatch(item -> isWaitingForSimulation(item.probability()))
-                || base.childProbabilities().stream().anyMatch(child -> isWaitingForSimulation(child.probability()))) {
+
+        if (!isBaselineInput(base, inputKey(choice))) {
+            if (!selectionRevisions.containsKey(table) && choice.params().luck() == ScenarioParams.DEFAULT_LUCK
+                    && isLuckAffected(base)) {
+                request(table, false);
+            }
+            return;
+        }
+
+        if (base.simulationCount() == 0
+                && (base.items().stream().anyMatch(item -> isWaitingForSimulation(item.probability()))
+                || base.childProbabilities().stream().anyMatch(child -> isWaitingForSimulation(child.probability())))) {
             request(table, false);
         }
     }

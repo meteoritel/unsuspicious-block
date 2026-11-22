@@ -61,6 +61,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     private final UiControl increase;
     private final UiWidgetRow confirmationRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
     private final UiTextInput luckText;
+    private final UiScalarSlider luckSlider;
     private final UiNumberField luck;
     private final UiTextInput search;
     private final UiListView<ToolOption> tools;
@@ -85,12 +86,12 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         levels.putAll(current.toolEnchantments());
         Font font = Minecraft.getInstance().font;
         luckText = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font, text("params.luck"));
-        UiScalarSlider slider = new UiScalarSlider(UiNumberPolicy.of(LuckGateAnalysis.MIN_LUCK, LuckGateAnalysis.MAX_LUCK, 1, 0.01));
-        slider.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiSliderRole.COMPACT);
-        slider.setLabel(text("params.luck"));
-        slider.setFormatter(ignored -> Component.empty());
-        slider.setValue(current.luck());
-        luck = new UiNumberField(slider, luckText, ScenarioParamsOverlay::parseLuck,
+        luckSlider = new UiScalarSlider(UiNumberPolicy.of(LuckGateAnalysis.MIN_LUCK, LuckGateAnalysis.MAX_LUCK, 1, 0.01));
+        luckSlider.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiSliderRole.COMPACT);
+        luckSlider.setLabel(text("params.luck"));
+        luckSlider.setFormatter(ignored -> Component.empty());
+        luckSlider.setValue(current.luck());
+        luck = new UiNumberField(luckSlider, luckText, ScenarioParamsOverlay::parseLuck,
                 value -> String.format(Locale.ROOT, "%.2f", value), () -> error = null, () -> {
         }, null, null,
                 new UiNumberField.Metrics(6, 50));
@@ -215,9 +216,10 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         int column = Math.max(0, (innerWidth - 8) / 2);
         int left = bounds.x() + 8, right = left + column + 8;
         luck.setBounds(left, bounds.y() + 27, innerWidth, 24);
-        search.setBounds(right, bounds.y() + 62, column, 19);
-        int toolsTop = bounds.y() + 74;
-        int enchantTop = bounds.y() + 85;
+        int toolHeaderY = toolSectionDividerY(font) + 7;
+        search.setBounds(right, toolHeaderY, column, 19);
+        int toolsTop = toolHeaderY + 12;
+        int enchantTop = search.bounds().bottom() + 4;
         int toolsHeight = Math.max(0, bounds.bottom() - 42 - toolsTop);
         int enchantHeight = Math.max(0, bounds.bottom() - 68 - enchantTop);
         tools.setBounds(left, toolsTop, column, toolsHeight);
@@ -231,6 +233,20 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         increase.setEnabled(selected != null && level < options.enchantments().get(selected));
     }
 
+    private int toolSectionDividerY(Font font) {
+        return luck.bounds().bottom() + font.lineHeight + 4;
+    }
+
+    private void renderZeroLuckMark(GuiGraphics graphics, Font font) {
+        double fraction = luckSlider.window().fraction(ScenarioParams.DEFAULT_LUCK);
+        int centerX = luckSlider.trackLeft() + (int) Math.round(fraction * luckSlider.trackWidth());
+        int markY = luckSlider.bounds().bottom() + 1;
+        int color = UiTextScheme.PARCHMENT.label();
+        String label = "0";
+        graphics.fill(centerX, markY, centerX + 1, markY + 2, color);
+        graphics.drawString(font, label, centerX - font.width(label) / 2, markY + 2, color, false);
+    }
+
     private void render(GuiGraphics graphics, Font font, UiPointer pointer) {
         ScenarioUi.renderPage(graphics, bounds);
         graphics.drawString(font, text("params.title"), bounds.x() + 8, bounds.y() + 9, UiTextScheme.PARCHMENT.title(), false);
@@ -240,9 +256,11 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         graphics.drawString(font, samples, bounds.right() - 8 - samplesW, bounds.y() + 9,
                 UiTextScheme.PARCHMENT.label(), false);
         graphics.fill(bounds.x() + 8, bounds.y() + 23, bounds.right() - 8, bounds.y() + 24, JournalPalette.SEPARATOR);
-        graphics.fill(bounds.x() + 8, bounds.y() + 55, bounds.right() - 8, bounds.y() + 56, JournalPalette.SEPARATOR);
-        graphics.drawString(font, text("params.tool"), bounds.x() + 8, bounds.y() + 62, UiTextScheme.PARCHMENT.label(), false);
+        int toolDividerY = toolSectionDividerY(font);
+        graphics.fill(bounds.x() + 8, toolDividerY, bounds.right() - 8, toolDividerY + 1, JournalPalette.SEPARATOR);
+        graphics.drawString(font, text("params.tool"), bounds.x() + 8, toolDividerY + 7, UiTextScheme.PARCHMENT.label(), false);
         luck.render(graphics, font, pointer);
+        renderZeroLuckMark(graphics, font);
         tools.render(graphics, font, pointer);
         search.render(graphics, font, pointer);
         enchantments.render(graphics, font, pointer);
