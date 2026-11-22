@@ -179,7 +179,7 @@ public record ExcavationLogEntry(UUID entryId,
 
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
-        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.EXCAVATION_LOG_ENTRY_NBT.current());
         tag.putString(ENTRY_ID_TAG, this.entryId.toString());
         if (this.lootSource != null) {
             tag.putString(LOOT_SOURCE_TAG, this.lootSource.id().toString());

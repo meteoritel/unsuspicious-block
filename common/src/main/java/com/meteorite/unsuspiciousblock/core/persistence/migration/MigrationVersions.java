@@ -1,5 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.persistence.migration;
 
+import java.util.Set;
+
 /**
  * 一个持久化格式的独立版本轴；版本仅随字段、编码或文件组织变化推进。
  *
@@ -35,6 +37,19 @@ public record MigrationVersions(String name, int oldest, int current) {
         validate(to);
         if (to != from + 1) {
             throw new IllegalArgumentException(name + " 迁移必须连续: " + from + " -> " + to);
+        }
+    }
+
+    /** 校验注册的来源版本恰好覆盖最早支持版本到当前版本之间的每一步。 */
+    public void validateCompleteChain(Set<Integer> fromVersions) {
+        for (int from : fromVersions) {
+            validateStep(from, from + 1);
+        }
+        for (int from = oldest; from < current; from++) {
+            if (!fromVersions.contains(from)) {
+                throw new IllegalArgumentException(name + " 缺少 v" + from
+                        + " -> v" + (from + 1) + " 迁移步骤");
+            }
         }
     }
 }

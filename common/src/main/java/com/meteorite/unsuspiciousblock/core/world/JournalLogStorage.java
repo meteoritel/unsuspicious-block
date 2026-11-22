@@ -3,7 +3,6 @@ package com.meteorite.unsuspiciousblock.core.world;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.journal.migration.JournalDataVersion;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.core.persistence.migration.MigrationVersions;
 import com.meteorite.unsuspiciousblock.core.persistence.migration.StorageMigration;
 import com.meteorite.unsuspiciousblock.core.persistence.migration.StorageMigration.Pending;
 import com.meteorite.unsuspiciousblock.core.persistence.migration.StorageMigration.RecoveryPolicy;
@@ -237,8 +236,7 @@ public final class JournalLogStorage {
 
     private void migrateStorage(StorageManifest manifest) throws IOException {
         StorageMigration<MigrationResult> migration = new StorageMigration<>(
-                new MigrationVersions("考古日志存储", JournalDataVersion.LEGACY_STORAGE_VERSION,
-                        JournalDataVersion.CURRENT_STORAGE_VERSION),
+                JournalDataVersion.STORAGE_LAYOUT,
                 List.of(new StorageMigration.Step<>(
                         JournalDataVersion.STORAGE_VERSION_SINGLE_FILE,
                         JournalDataVersion.STORAGE_VERSION_SHARDED,
@@ -465,8 +463,8 @@ public final class JournalLogStorage {
                 Constants.LOG.warn("跳过缺少表 ID 或历史数据的考古日志分片: {}", file);
                 return;
             }
-            int dataVersion = JournalDataVersion.readNbtVersion(tag);
-            if (dataVersion > JournalDataVersion.CURRENT_NBT_VERSION) {
+            int dataVersion = JournalDataVersion.readNbtVersion(tag, JournalDataVersion.TABLE_LOG_HISTORY_NBT);
+            if (dataVersion > JournalDataVersion.TABLE_LOG_HISTORY_NBT.current()) {
                 Constants.LOG.warn("跳过数据版本过新的考古日志分片 {}: {}", file, dataVersion);
                 return;
             }
@@ -635,7 +633,7 @@ public final class JournalLogStorage {
                                    ArchaeologyJournalLogState.TableLogHistory history) throws IOException {
         CompoundTag tag = new CompoundTag();
         tag.putInt(JournalDataVersion.STORAGE_VERSION_TAG, JournalDataVersion.STORAGE_VERSION_SHARDED);
-        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.TABLE_LOG_HISTORY_NBT.current());
         tag.putString(TAG_PLAYER_UUID, playerId.toString());
         tag.putString(TAG_TABLE_ID, tableId.toString());
         tag.put(TAG_HISTORY, history.toTag());

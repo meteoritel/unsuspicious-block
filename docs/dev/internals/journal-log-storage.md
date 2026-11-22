@@ -43,9 +43,9 @@
 
 ## 3. 版本迁移与事务恢复
 
-考古日志维护由 `JournalDataVersion` 统一声明的两条独立版本轴（通用底座规则见[本地持久化与数据迁移](../foundation/persistence.md)）：
+考古笔记的 NBT 格式与日志磁盘布局分别维护版本轴（通用底座规则见[本地持久化与数据迁移](../foundation/persistence.md)）：
 
-- **NBT Schema 版本（当前 v2）**：描述日志状态与条目的字段编码（缺少 `data_version` 的历史数据视为 `v0`）。全部转换步骤统一注册在 `JournalNbtMigrator` 上，通过 `NbtMigration` 在副本上严格按 `vN → vN+1` 连续升版并拒绝未来版本。
+- **NBT Schema 版本（各格式当前 v2）**：进度、日志状态、单表历史与日志条目分别由 `JournalDataVersion` 声明版本范围（缺少 `data_version` 的历史数据视为各自的 `v0`）。字段转换注册在 `JournalNbtMigrator`，通过 `NbtMigration` 在副本上逐级升版并拒绝未来版本。
 - **存储布局版本（当前 v3）**：描述单文件 v1、分片索引 v2 与提交索引 v3，由 `JournalLogStorage` 登记到 `StorageMigration`。
 
 ### 3.1 迁移事务与旧源合并

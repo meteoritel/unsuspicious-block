@@ -15,10 +15,12 @@
 
 | 数据领域 | 当前版本原点 | 事实源与兼容性策略 |
 |---|---|---|
-| 考古笔记进度、日志状态、表历史与日志条目 | NBT v2 | `JournalDataVersion`；保留 `v0 → v1 → v2` 连续读取迁移链 |
+| 考古笔记进度 | NBT v2 | `JournalDataVersion.JOURNAL_STATE_NBT`；保留历史连续读取版本 |
+| 考古日志状态、表历史与日志条目 | 各自 NBT v2 | `JournalDataVersion` 中每种格式各自声明版本范围，迁移步骤由 `JournalNbtMigrator` 登记 |
 | 服务端考古日志目录 | 布局 v3 | `JournalDataVersion`；读取旧单文件 v1 与分片索引 v2，首次写入时采用提交索引 v3 |
 | 玩家猫族关系 | NBT v2 | `CatFavorState`；兼容无版本旧格式及历史整数版本读取 |
 | 世界战利品追踪配置 | JSON v1 | 各 Loader 旧配置一次导入，共用 JSON 为世界权威；见[配置与联动](config-and-integrations.md#2-世界战利品追踪配置) |
+| 战利品表补充名称 | 标准语言 JSON | 按语言提交旧世界文件，并在整合包配置目录按源内容记录完成标记；保留世界源文件供旧版本读取 |
 | 战利品表概率模拟缓存 | 格式 v5 | `LootProbabilityData`；版本或标签类型不匹配时整体按缓存未命中重算，不做迁移 |
 | 客户端笔记 UI 偏好 | NBT v1 | `JournalReadingStateCodec`；无标记 v0 经副本迁移，保留旧偏好与条件偏移键 |
 | 淘洗账本、商人生成、结构回溯冷却、实体/方块实体扩展 | 各自现有格式 | 沿用既有序列化器与字段位置；若未来首次变更，以当前无标记格式作为隐式 v0 |
@@ -27,7 +29,7 @@
 
 [`core.persistence.migration`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/persistence/migration) 提供统一的平台无关迁移执行器，由底座保证连续版本校验与安全边界，各领域自行提供格式转换实现：
 
-- **`MigrationVersions`**：定义单一格式的最低与最高支持版本，读入时校验版本类型并拒绝越界版本或跳步。
+- **`MigrationVersions`**：定义单一格式的最低与最高支持版本，并校验迁移链覆盖每个连续版本步骤。
 - **`NbtMigration`**：注册 `vN → vN+1` 的逐级字段转换步骤。读取数据时执行整条迁移链的**副本转换**，全部成功后才替换原始输入；已是当前版本的数据直接通过（保留未知字段），缺少版本标记的历史数据按最早支持版本处理。
   - 由 `JournalNbtMigrator`（考古笔记）、`CatFavorState`（猫族关系）与 `JournalReadingStateCodec`（客户端偏好）各自登记；客户端本地日志通过同一反序列化入口复用该迁移链。
 - **`StorageMigration`**：管理文件级布局迁移步骤、断点恢复策略与提交后清理动作，由 `JournalLogStorage` 调用：

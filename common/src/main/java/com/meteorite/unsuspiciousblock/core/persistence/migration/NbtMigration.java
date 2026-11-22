@@ -25,15 +25,7 @@ public final class NbtMigration {
         this.versions = versions;
         this.versionKey = versionKey;
         this.steps = Map.copyOf(steps);
-        for (int from : this.steps.keySet()) {
-            versions.validateStep(from, from + 1);
-        }
-        for (int from = versions.oldest(); from < versions.current(); from++) {
-            if (!this.steps.containsKey(from)) {
-                throw new IllegalArgumentException(versions.name() + " 缺少 v" + from
-                        + " -> v" + (from + 1) + " 迁移步骤");
-            }
-        }
+        versions.validateCompleteChain(this.steps.keySet());
     }
 
     /**

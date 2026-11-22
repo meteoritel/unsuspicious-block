@@ -73,7 +73,7 @@ flowchart LR
 | `LootTrackingEvents` | 战利品追踪事件总线与兼容订阅入口 |
 | `LootSettlementTarget` | sealed 结算目标（`IMMEDIATE` 立即写入 / `Deferred` 延迟暂存） |
 | `JournalLogStorage` | 按玩家 UUID 与表 ID 哈希分片的服务端权威日志存储 |
-| `JournalDataVersion` / `JournalNbtMigrator` | NBT 与存储布局双版本轴及连续升级迁移链 |
+| `JournalDataVersion` / `JournalNbtMigrator` | 各 NBT 格式独立版本轴、存储布局版本与连续升级迁移链 |
 | `ArchaeologyJournalClientState` | 客户端目录快照与玩家进度读模型 |
 | `JournalClientConnection` / `ScenarioSession` | 客户端连接生命周期与场景交互入口；页面快照、草稿提交和局部刷新见[笔记 GUI 内部机制](../internals/journal-ui-internals.md#4-场景条件页与文档动作) |
 

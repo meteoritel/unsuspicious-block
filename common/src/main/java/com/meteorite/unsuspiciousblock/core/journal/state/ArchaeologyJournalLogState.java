@@ -186,7 +186,7 @@ public final class ArchaeologyJournalLogState {
 
     // 将日志状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
-        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.JOURNAL_LOG_STATE_NBT.current());
         CompoundTag tablesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, TableLogHistory> entry : this.tables.entrySet()) {
             tablesTag.put(entry.getKey().toString(), entry.getValue().toTag());
@@ -472,7 +472,7 @@ public final class ArchaeologyJournalLogState {
 
         public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
-            tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
+            tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.TABLE_LOG_HISTORY_NBT.current());
             if (this.firstUnlockedGameTime != null) {
                 tag.putLong(FIRST_UNLOCKED_TIME_TAG, this.firstUnlockedGameTime);
                 tag.putLong(FIRST_UNLOCKED_DAY_TIME_TAG,

@@ -39,17 +39,20 @@ public final class JournalNbtMigrator {
     private static final String LIFETIME_ENTRY_COUNT_TAG = "lifetime_entry_count";
     private static final String RETENTION_LIMIT_TAG = "retention_limit";
 
-    private static final NbtMigration JOURNAL_STATE = migration("ArchaeologyJournalState",
+    private static final NbtMigration JOURNAL_STATE = migration(JournalDataVersion.JOURNAL_STATE_NBT,
             Map.of(0, tag -> {}, 1, tag -> {}));
-    private static final NbtMigration JOURNAL_LOG_STATE = migration("ArchaeologyJournalLogState", Map.of(
-            0, tag -> migrateTables(tag, JournalNbtMigrator::migrateTableLogHistoryV0ToV1,
-                    JournalDataVersion.NBT_VERSION_LOOT_SOURCE),
-            1, tag -> migrateTables(tag, JournalNbtMigrator::migrateTableLogHistoryV1ToV2,
-                    JournalDataVersion.NBT_VERSION_LOG_RETENTION)));
-    private static final NbtMigration TABLE_LOG_HISTORY = migration("TableLogHistory", Map.of(
-            0, JournalNbtMigrator::migrateTableLogHistoryV0ToV1,
-            1, JournalNbtMigrator::migrateTableLogHistoryV1ToV2));
-    private static final NbtMigration EXCAVATION_LOG_ENTRY = migration("ExcavationLogEntry", Map.of(
+    private static final NbtMigration JOURNAL_LOG_STATE = migration(
+            JournalDataVersion.JOURNAL_LOG_STATE_NBT, Map.of(
+                    0, tag -> migrateTables(tag, JournalNbtMigrator::migrateTableLogHistoryV0ToV1,
+                            JournalDataVersion.NBT_VERSION_LOOT_SOURCE),
+                    1, tag -> migrateTables(tag, JournalNbtMigrator::migrateTableLogHistoryV1ToV2,
+                            JournalDataVersion.NBT_VERSION_LOG_RETENTION)));
+    private static final NbtMigration TABLE_LOG_HISTORY = migration(
+            JournalDataVersion.TABLE_LOG_HISTORY_NBT, Map.of(
+                    0, JournalNbtMigrator::migrateTableLogHistoryV0ToV1,
+                    1, JournalNbtMigrator::migrateTableLogHistoryV1ToV2));
+    private static final NbtMigration EXCAVATION_LOG_ENTRY = migration(
+            JournalDataVersion.EXCAVATION_LOG_ENTRY_NBT, Map.of(
             0, JournalNbtMigrator::migrateExcavationLogEntryV0ToV1,
             1, tag -> {}));
 
@@ -76,10 +79,9 @@ public final class JournalNbtMigrator {
         EXCAVATION_LOG_ENTRY.migrate(tag);
     }
 
-    private static NbtMigration migration(String name, Map<Integer, Consumer<CompoundTag>> steps) {
-        return new NbtMigration(new MigrationVersions(name,
-                JournalDataVersion.LEGACY_NBT_VERSION, JournalDataVersion.CURRENT_NBT_VERSION),
-                JournalDataVersion.NBT_VERSION_TAG, steps);
+    private static NbtMigration migration(MigrationVersions versions,
+                                          Map<Integer, Consumer<CompoundTag>> steps) {
+        return new NbtMigration(versions, JournalDataVersion.NBT_VERSION_TAG, steps);
     }
 
     private static void migrateTables(CompoundTag tag, Consumer<CompoundTag> migration, int version) {

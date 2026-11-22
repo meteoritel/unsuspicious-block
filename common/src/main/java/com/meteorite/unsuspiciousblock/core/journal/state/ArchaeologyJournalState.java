@@ -286,7 +286,7 @@ public final class ArchaeologyJournalState {
 
     // 将状态写入已有的 CompoundTag
     public void writeTo(CompoundTag tag) {
-        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.CURRENT_NBT_VERSION);
+        tag.putInt(JournalDataVersion.NBT_VERSION_TAG, JournalDataVersion.JOURNAL_STATE_NBT.current());
         tag.putLong(REVISION_TAG, this.revision);
         tag.putLong(RECENT_SEQUENCE_TAG, this.recentSequence);
         CompoundTag tablesTag = new CompoundTag();

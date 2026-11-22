@@ -157,7 +157,7 @@ classDiagram
 ### 追踪管理与自定义名称
 
 - **权威表集合**：候选清单仅取服务端 `ReloadableServerRegistries` 中已注册的战利品表（排除 `entities/` 与 `blocks/` 前缀），编辑权限和配置作用域见[配置与联动](../foundation/config-and-integrations.md#22-配置界面与热重载)。
-- **名称覆写规则**：翻译键由 `LootTableNames.createTranslationKey(ResourceLocation)` 统一生成；游戏资源语言为只读优先来源，服务端补充表名保存在 `config/unsuspiciousblock/loot_table_lang/<language>.json`，经 `ClientLanguageMixin` 仅在资源缺失时补齐（断连即清除内存快照）。
+- **名称覆写规则**：翻译键由 `LootTableNames.createTranslationKey(ResourceLocation)` 统一生成；游戏资源语言为只读优先来源，服务端补充表名保存在 `config/unsuspiciousblock/loot_table_lang/<language>.json`，经 `ClientLanguageMixin` 仅在资源缺失时补齐（断连即清除内存快照）。旧世界名称文件按语言提交，全部成功后在整合包配置目录按源内容记录完成标记，保留世界源文件供旧版本读取。
 - **管理页草稿与导入**：支持按 `(languageCode, tableId)` 暂存草稿并批量写入，也支持预览并导入标准语言 JSON；仅已注册、可管理且键名符合自动规则的条目允许提交。
 
 ## 6. 战利品注入与自定义条件

@@ -28,12 +28,7 @@ public final class StorageMigration<R> {
                 throw new IllegalArgumentException(versions.name() + " 重复迁移来源: " + step.fromVersion());
             }
         }
-        for (int from = versions.oldest(); from < versions.current(); from++) {
-            if (!indexed.containsKey(from)) {
-                throw new IllegalArgumentException(versions.name() + " 缺少 v" + from
-                        + " -> v" + (from + 1) + " 迁移步骤");
-            }
-        }
+        versions.validateCompleteChain(indexed.keySet());
         this.steps = Map.copyOf(indexed);
     }
 
