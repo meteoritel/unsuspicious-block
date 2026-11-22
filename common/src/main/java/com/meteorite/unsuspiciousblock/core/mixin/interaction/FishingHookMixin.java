@@ -4,7 +4,6 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -48,7 +47,6 @@ public abstract class FishingHookMixin {
             return original.call(lootTable, lootParams);
         }
 
-        RecentLootTableService.record(sp, FISHING_ROOT_TABLE);
         BlockPos pos = hook.blockPosition();
         return LootCapture.capture(new LootCapture.Source(sp, FISHING_ROOT_TABLE, LootSourceType.FISHING,
                 serverLevel, pos, null), LootSettlementTarget.IMMEDIATE,

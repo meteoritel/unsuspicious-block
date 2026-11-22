@@ -4,11 +4,9 @@ import com.google.gson.JsonElement;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNameEdit;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
-import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateLootTableTranslationsPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
-import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -18,42 +16,20 @@ import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 战利品表管理页的客户端动作层。
- * <p>
- * 承接协议组包、原生文件对话框与导入流程，使 {@link LootTableManagementScreen} 只保留绘制、
- * 控件状态与转调。语言 JSON 的读取与文件级校验在 {@link LootTableImportValidator} 完成，
- * 这里只做"与当前连接快照对照后生成预览"的编排；失败原因分类交给 Screen 挑文案，异常在本层记录日志。
- */
+/** 导入文件与当前表 ID、名称来源对照，生成可确认的逐项结果。 */
 final class LootTableManagementActions {
-    /** 单条本地化名称长度上限，与服务端 payload 约定一致。 */
-    private static final int MAX_NAME_LENGTH = 128;
-
-    /** 提交本地化名称草稿：Screen 只把草稿转成提交项，协议组包在这里。 */
-    void submitNameDrafts(List<NameDraft> drafts) {
-        List<UpdateLootTableTranslationsPayload.Entry> entries = new ArrayList<>(drafts.size());
-        for (NameDraft draft : drafts) {
-            entries.add(new UpdateLootTableTranslationsPayload.Entry(
-                    draft.tableId(), draft.languageCode(), draft.value()));
-        }
-        ClientNetwork.sendToServer(new UpdateLootTableTranslationsPayload(entries));
-    }
-
-    /** 提交已确认的导入预览；空预览不发包。 */
-    void submitImport(ImportPreview preview) {
-        if (preview.entries().isEmpty()) return;
-        ClientNetwork.sendToServer(new UpdateLootTableTranslationsPayload(preview.entries()));
-    }
+    private LootTableManagementActions() {}
 
     /** 原生文件选择框；返回 null 表示用户取消。 */
     @Nullable
-    String chooseImportFile() {
+    static String chooseImportFile() {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer filters = stack.mallocPointer(1);
             filters.put(stack.UTF8("*.json")).flip();
@@ -63,89 +39,63 @@ final class LootTableManagementActions {
         }
     }
 
-    // 读取并校验导入文件，再与当前连接快照对照生成预览；失败原因分类并记录日志
-    ImportResult prepareImport(Path file, String fallbackLanguageCode) {
-        LootTableImportValidator.ParsedImport parsed;
+    static ImportResult prepareImport(Path file, String suggestedLanguage) {
         try {
-            parsed = LootTableImportValidator.read(file, fallbackLanguageCode);
+            return new ImportResult.Ready(LootTableImportValidator.read(file, suggestedLanguage));
         } catch (LootTableImportValidator.ImportException exception) {
-            Constants.LOG.warn("战利品表语言导入失败：{}（原因 {}，详情 {}）",
-                    file, exception.failure(), exception.detail(), exception);
+            Constants.LOG.warn("{}导入战利品表名称失败 {} ({})", Constants.LOG_TAG, file, exception.failure(), exception);
             return new ImportResult.Failed(exception.failure());
         }
-        return new ImportResult.Ready(buildPreview(parsed));
     }
 
-    // 预览统计与当前服务端条目、资源包翻译对照：资源包已有译名的不覆盖，未知/歧义键计入未匹配
-    private ImportPreview buildPreview(LootTableImportValidator.ParsedImport parsed) {
-        String languageCode = parsed.languageCode();
-        Map<String, ResourceLocation> tableByKey = new LinkedHashMap<>();
-        Set<String> ambiguousKeys = new HashSet<>();
-        for (SyncLootTableManagementPayload.Entry entry : LootTableManagementClientState.entries()) {
-            String key = LootTableNames.createTranslationKey(entry.tableId());
-            if (tableByKey.putIfAbsent(key, entry.tableId()) != null) {
-                ambiguousKeys.add(key);
-            }
+    static List<ImportRow> preview(Map<String, JsonElement> values, String language,
+                                   Map<String, ResourceLocation> resolvedIds) {
+        Set<ResourceLocation> registered = new HashSet<>();
+        Map<String, List<ResourceLocation>> byLegacyKey = new HashMap<>();
+        for (var entry : LootTableManagementClientState.entries()) {
+            ResourceLocation id = entry.tableId();
+            registered.add(id);
+            byLegacyKey.computeIfAbsent(LootTableNames.createTranslationKey(id), ignored -> new ArrayList<>()).add(id);
         }
-
-        List<UpdateLootTableTranslationsPayload.Entry> accepted = new ArrayList<>();
-        int added = 0;
-        int updated = 0;
-        int resourceSkipped = 0;
-        int unmatched = 0;
-        int invalid = 0;
-        for (Map.Entry<String, JsonElement> jsonEntry : parsed.entries().entrySet()) {
-            ResourceLocation tableId = tableByKey.get(jsonEntry.getKey());
-            if (tableId == null || ambiguousKeys.contains(jsonEntry.getKey())) {
-                unmatched++;
+        List<ImportRow> rows = new ArrayList<>();
+        Set<ResourceLocation> assigned = new HashSet<>();
+        for (var entry : values.entrySet()) {
+            String key = entry.getKey();
+            List<ResourceLocation> candidates = byLegacyKey.getOrDefault(key, List.of());
+            ResourceLocation id = resolvedIds.get(key);
+            if (id == null && candidates.size() > 1) {
+                rows.add(new ImportRow(key, ImportStatus.AMBIGUOUS, null, candidates.stream().sorted().toList()));
                 continue;
             }
-            if (!jsonEntry.getValue().isJsonPrimitive()
-                    || !jsonEntry.getValue().getAsJsonPrimitive().isString()) {
-                invalid++;
+            if (id == null) id = candidates.size() == 1 ? candidates.getFirst() : ResourceLocation.tryParse(key);
+            if (id == null || !registered.contains(id)
+                    || candidates.isEmpty() && !resolvedIds.containsKey(key) && !key.equals(id.toString())) {
+                rows.add(new ImportRow(key, ImportStatus.UNMATCHED, null, List.of()));
                 continue;
             }
-            String value = jsonEntry.getValue().getAsString().trim();
-            if (value.isEmpty() || value.length() > MAX_NAME_LENGTH) {
-                invalid++;
+            JsonElement element = entry.getValue();
+            String value = element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+                    ? element.getAsString().trim() : "";
+            if (value.isEmpty() || !LootTableNameEdit.isName(value) || !assigned.add(id)) {
+                rows.add(new ImportRow(key, ImportStatus.INVALID, null, List.of()));
                 continue;
             }
-            String translationKey = LootTableNames.createTranslationKey(tableId);
-            if (ClientLootTableLanguageStore.findResourceTranslation(languageCode, translationKey) != null) {
-                resourceSkipped++;
-                continue;
-            }
-            if (storedName(languageCode, translationKey).isEmpty()) {
-                added++;
-            } else {
-                updated++;
-            }
-            accepted.add(new UpdateLootTableTranslationsPayload.Entry(tableId, languageCode, value));
+            String current = ClientLootTableLanguageStore.serverTranslation(language, id);
+            var name = ClientLootTableLanguageStore.resolve(id, language);
+            ImportStatus status = name.source() == ClientLootTableLanguageStore.Source.RESOURCE ? ImportStatus.RESOURCE
+                    : current.equals(value) ? ImportStatus.UNCHANGED : current.isEmpty() ? ImportStatus.ADD : ImportStatus.UPDATE;
+            rows.add(new ImportRow(id.toString(), status,
+                    new LootTableNameEdit(id, language, value, current), List.of()));
         }
-        return new ImportPreview(languageCode, List.copyOf(accepted),
-                added, updated, resourceSkipped, unmatched, invalid);
+        return rows.stream().sorted(Comparator.comparing(ImportRow::status)).toList();
     }
 
-    private static String storedName(String languageCode, String translationKey) {
-        return LootTableManagementClientState.translations()
-                .getOrDefault(languageCode, Map.of()).getOrDefault(translationKey, "");
-    }
+    enum ImportStatus { AMBIGUOUS, INVALID, UNMATCHED, RESOURCE, ADD, UPDATE, UNCHANGED }
 
-    /** 待提交的本地化名称草稿：语言码 + 表 id + 名称。 */
-    record NameDraft(String languageCode, ResourceLocation tableId, String value) {
-    }
+    record ImportRow(String key, ImportStatus status, @Nullable LootTableNameEdit edit, List<ResourceLocation> candidates) {}
 
-    /** JSON 导入预览及其可提交条目。 */
-    record ImportPreview(String languageCode, List<UpdateLootTableTranslationsPayload.Entry> entries,
-                         int added, int updated, int resourceSkipped, int unmatched, int invalid) {
-    }
-
-    /** 导入准备结果：成功给预览，失败给可映射到文案键的原因（异常已在本层记录）。 */
     sealed interface ImportResult {
-        record Ready(ImportPreview preview) implements ImportResult {
-        }
-
-        record Failed(LootTableImportValidator.Failure reason) implements ImportResult {
-        }
+        record Ready(LootTableImportValidator.ParsedImport parsed) implements ImportResult {}
+        record Failed(LootTableImportValidator.Failure reason) implements ImportResult {}
     }
 }

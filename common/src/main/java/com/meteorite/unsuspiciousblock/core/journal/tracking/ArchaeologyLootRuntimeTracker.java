@@ -124,7 +124,9 @@ public final class ArchaeologyLootRuntimeTracker {
         if (stack.isEmpty()) {
             return pendingEntry;
         }
-        LootResultSignature signature = resolveSignature(tableId, stack);
+        LootResultSignature signature = pendingEntry == null ? resolveSignature(tableId, stack)
+                : LootResultMatcher.resolve(stack, toSignatures(pendingEntry.expectedLoot()),
+                        LootResultPreviewCache.PROVIDER);
         if (signature == null) {
             return pendingEntry;
         }
@@ -174,17 +176,12 @@ public final class ArchaeologyLootRuntimeTracker {
         }
         LinkedHashMap<ResourceLocation, Map<LootResultSignature, Integer>> acquiredByTable =
                 new LinkedHashMap<>();
-        LinkedHashSet<ResourceLocation> trackedTableIds = new LinkedHashSet<>();
         for (ResourceLocation tableId : tableIds) {
-            if (ArchaeologyJournalServerCatalog.tracked(tableId)) {
-                trackedTableIds.add(tableId);
-                if (acquiredSignatures != null && !acquiredSignatures.isEmpty()) {
-                    acquiredByTable.put(tableId,
-                            canonicalizeSignatureCounts(tableId, acquiredSignatures));
-                }
+            if (acquiredSignatures != null && !acquiredSignatures.isEmpty()) {
+                acquiredByTable.put(tableId, acquiredSignatures);
             }
         }
-        JournalLogRecorder.upsertExcavationEntries(player, trackedTableIds, entry, acquiredByTable);
+        JournalLogRecorder.upsertExcavationEntries(player, tableIds, entry, acquiredByTable);
     }
 
     @Nullable
@@ -246,7 +243,9 @@ public final class ArchaeologyLootRuntimeTracker {
                 matchingItem.add(candidate);
             }
         }
-        return matchingItem.size() == 1 ? matchingItem.getFirst() : signature;
+        if (matchingItem.size() != 1) return signature;
+        LootResultSignature candidate = matchingItem.getFirst();
+        return candidate.type() == LootResultSignature.SignatureType.COMPONENT_EXACT ? signature : candidate;
     }
 
     // 按目标表规范化获取计数，供多表日志与累计统计共享同一签名边界

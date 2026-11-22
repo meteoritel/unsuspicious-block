@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.platform;
 
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks.InjectionEdge;
 import com.google.gson.JsonParser;
 import com.meteorite.unsuspiciousblock.platform.loot.LootInjectionDescriptions;
 import java.io.IOException;
@@ -27,6 +28,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     public List<DeclaredLootInjection> describeLootInjections(
             ResourceLocation table) {
         return LootInjectionDescriptions.activeFor(table);
+    }
+
+    @Override
+    public List<InjectionEdge> activeLootTableInjections() {
+        return LootInjectionDescriptions.activeTableEdges();
     }
 
     @Override

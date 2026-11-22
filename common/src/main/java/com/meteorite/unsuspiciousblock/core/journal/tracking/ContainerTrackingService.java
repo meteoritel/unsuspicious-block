@@ -38,8 +38,7 @@ public final class ContainerTrackingService {
     // 在既有容器填充相位创建捕获句柄；不满足资格时句柄只执行生成。
     public static CaptureHandle prepareContainerCapture(ServerPlayer player, ResourceLocation tableId,
             ServerLevel level, BlockPos pos, @Nullable ResourceLocation sourceBlockId) {
-        RecentLootTableService.record(player, tableId);
-        return LootCapture.begin(new LootCapture.Source(player, tableId, LootSourceType.LOOT_CONTAINER,
+        return LootCapture.beginIndependent(new LootCapture.Source(player, tableId, LootSourceType.LOOT_CONTAINER,
                 level, pos, sourceBlockId));
     }
 
@@ -61,7 +60,7 @@ public final class ContainerTrackingService {
     public static void onContainerLootResolved(ServerPlayer player, TrackedContainerLootState container,
             CaptureHandle capture, Map<String, Integer> itemCounts) {
         long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
+        long timeoutTicks = ServerLootTableConfigManager.effectiveSettings().timeoutTicks();
         UUID trackedPlayerUuid = container.unsuspiciousblock$getTrackedPlayerUuid();
         if (trackedPlayerUuid != null && !trackedPlayerUuid.equals(player.getUUID())) {
             if (container.unsuspiciousblock$isTrackingExpired(gameTime, timeoutTicks)) {
@@ -81,7 +80,7 @@ public final class ContainerTrackingService {
     // 仅处理当前玩家拥有的追踪容器，超时的先 flush
     public static void reconcileTrackedContainers(ServerPlayer player, Collection<Container> rootContainers) {
         long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
+        long timeoutTicks = ServerLootTableConfigManager.effectiveSettings().timeoutTicks();
 
         for (TrackedContainerLootState trackedContainer : collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks)) {
             ResourceLocation tableId = trackedContainer.unsuspiciousblock$tracking().settlementTable();

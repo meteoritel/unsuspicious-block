@@ -9,9 +9,21 @@ import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import net.minecraft.client.gui.Font;
 
-import com.meteorite.meteosuikit.api.control.*;
+import com.meteorite.meteosuikit.api.control.UiControl;
+import com.meteorite.meteosuikit.api.control.UiControlGroup;
+import com.meteorite.meteosuikit.api.control.UiFormBody;
+import com.meteorite.meteosuikit.api.control.UiListView;
+import com.meteorite.meteosuikit.api.control.UiModal;
+import com.meteorite.meteosuikit.api.control.UiModalStack;
+import com.meteorite.meteosuikit.api.control.UiTextInput;
+import com.meteorite.meteosuikit.api.control.UiThemedScreen;
+import com.meteorite.meteosuikit.api.control.UiWidgetRow;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputScope;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.control.UiWidget;
 import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
@@ -20,7 +32,8 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguage
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingRules.TableEdit;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager.Application;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager.EditResult;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateTrackedLootTablePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import net.minecraft.client.Minecraft;
@@ -30,8 +43,14 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 战利品追踪管理；业务树和草稿归宿主，列表、输入与确认统一使用 kit。
@@ -44,11 +63,8 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private static final int COLUMN_GAP = 10;
     private static final int ROW_HEIGHT = 20;
     private static final int INDENT_WIDTH = 10;
-    private static final int IMPORT_STATUS_OK_COLOR = UiTextScheme.PARCHMENT.positive();
-    private static final int IMPORT_STATUS_ERROR_COLOR = UiTextScheme.PARCHMENT.negative();
     private static final String PREFIX = "screen.unsuspiciousblock.loot_table_management.";
     private final Screen parent;
-    private final LootTableManagementActions actions = new LootTableManagementActions();
     private final UiChildren<UiInputTarget> content = new UiChildren<>();
     private final UiInputScope scope = new UiInputScope(content);
     private final UiControlGroup controls = new UiControlGroup();
@@ -59,45 +75,38 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private final UiModalStack modals = new UiModalStack(theme());
     private final UiListView<TreeRow> list;
     private final UiTextInput searchBox;
-    private final UiTextInput languageBox;
-    private final UiTextInput nameBox;
+    private final LootTableNameEditor names;
     private final UiControl filterButton = new UiControl();
     private final UiWidgetRow searchRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
     private UiControl backButton;
     private UiControl applyButton;
     private UiControl clearOverride;
     private UiControl editRules;
-    private UiControl saveNameButton;
-    private UiControl languageButton;
+    private UiControl editNames;
+    private UiControl toggleFolder;
     private UiControl importButton;
     private final List<SyncLootTableManagementPayload.Entry> filteredEntries = new ArrayList<>();
     private final List<TreeRow> visibleRows = new ArrayList<>();
     private final Set<String> expandedPaths = new HashSet<>();
-    private final List<String> languageCodes = new ArrayList<>();
-    private final Map<DraftKey, String> nameDrafts = new LinkedHashMap<>();
     private Filter filter = Filter.ALL;
-    private boolean populatingName;
-    private boolean initialized;
+    private boolean requested;
+    private boolean rebuildingRows;
+    private boolean namesOpen;
+    private boolean flatResults;
     private long observedRevision = -1L;
-    private String selectedLanguageCode = "";
     private @Nullable ResourceLocation selectedTableId;
-    private @Nullable Component importStatus;
-    private int importStatusColor = IMPORT_STATUS_OK_COLOR;
     private int pendingTrackingRequest;
+    private @Nullable TrackingDraft trackingDraft;
     private @Nullable Component trackingStatus;
 
     public LootTableManagementScreen(Screen parent) {
         super(Component.translatable(PREFIX + "title"), new UiThemeContext<>(UnsuspiciousUiTheme.PARCHMENT));
         this.parent = parent;
         var font = Minecraft.getInstance().font;
-        initializeLanguageCodes();
         searchBox = new UiTextInput(theme(), font, Component.translatable(PREFIX + "search"));
-        languageBox = new UiTextInput(theme(), font, Component.translatable(PREFIX + "language"))
-                .setMaxLength(16).setValue(selectedLanguageCode);
-        nameBox = new UiTextInput(theme(), font, Component.translatable(PREFIX + "localized_name")).setMaxLength(128);
         searchBox.setOnValueChanged(this::rebuildTree);
-        languageBox.setOnValueChanged(() -> onLanguageInputChanged(languageBox.value()));
-        nameBox.setOnValueChanged(() -> onNameInputChanged(nameBox.value()));
+        names = new LootTableNameEditor(theme(), modals,
+                () -> selectedEntry() == null ? null : selectedEntry().tableId(), () -> height);
         list = new UiListView<>(theme(), (graphics, rowFont, row, index, rect, selected, hovered, focused) -> {
             int x = rect.x() + row.depth() * INDENT_WIDTH;
             if (row.expandable()) {
@@ -110,20 +119,27 @@ public final class LootTableManagementScreen extends UiThemedScreen {
                         .render(graphics, x, rect.y() + 5);
                 x += 11;
             }
-            graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, row.label(),
-                    Math.max(0, rect.right() - x)), x, rect.y() + 6, UiTextScheme.PARCHMENT.body(), false);
+            int available = Math.max(0, rect.right() - x);
+            int labelY = row.entry() == null ? rect.y() + 6 : rect.y() + 1;
+            graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, row.label(), available),
+                    x, labelY, UiTextScheme.PARCHMENT.body(), false);
+            if (row.entry() != null) {
+                graphics.drawString(rowFont, TextScroll.trimToWidth(rowFont, row.entry().tableId().toString(), available),
+                        x, labelY + rowFont.lineHeight, UiTextScheme.PARCHMENT.hint(), false);
+            }
         });
         list.setRowHeight(ROW_HEIGHT);
         list.setLayoutKey("management/tables");
         list.setItemKey(TreeRow::key);
-        list.setActivateOnSingleClick(true);
-        list.setOnActivate(row -> {
-            if (row.entry() != null) {
-                selectedTableId = row.entry().tableId();
-                populateName();
-            }
-            if (row.expandable()) toggleExpanded(row);
+        list.setOnSelectionChanged(index -> {
+            if (rebuildingRows) return;
+            TreeRow row = list.selectedItem();
+            if (row != null && row.entry() != null) selectedTableId = row.entry().tableId();
+            names.populateName();
             syncControls();
+        });
+        list.setOnActivate(row -> {
+            if (row.expandable()) toggleExpanded(row);
         });
         details = new UiFormBody(theme(), TextMeasurer.of(font));
         filterButton.setTheme(theme(), UiControlRole.SECONDARY);
@@ -151,42 +167,55 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             details.add(Component.empty(), editRules, 20);
             details.add(Component.empty(), applyButton, 20);
             details.add(Component.empty(), clearOverride, 20);
-            details.add(Component.translatable(PREFIX + "language"), languageBox, 20);
-            details.add(Component.empty(), languageButton, 20);
-            details.add(Component.translatable(PREFIX + "localized_name"), nameBox, 20);
-            details.add(Component.empty(), saveNameButton, 20);
+            details.add(Component.empty(), editNames, 20);
+            names.install(details);
         }
-        if (!initialized) {
-            initialized = true;
+        if (!requested && Minecraft.getInstance().level != null) {
+            requested = true;
             LootTableManagementClientState.requestSnapshot();
         }
+        names.configure();
+        names.reopenDraft();
         refreshSnapshot();
         syncControls();
     }
 
     private void configureControls() {
-        filterButton.configure(font, filter.label(), null, List.of(), this::cycleFilter);
-        languageButton = detailControls.obtain("language");
-        languageButton.configure(font, Component.translatable(PREFIX + "choose_language"), null, List.of(), this::chooseLanguage);
+        filterButton.configure(font, filter.label(), null, List.of(), this::chooseFilter);
         editRules = detailControls.obtain("rules");
         editRules.configure(font, Component.translatable(PREFIX + "world_rules"), null, List.of(),
                 () -> Minecraft.getInstance().setScreen(new LootTrackingConfigScreen(this)));
         applyButton = detailControls.obtain("tracking");
+        editNames = detailControls.obtain("names");
+        toggleFolder = controls.obtain("folder");
+        toggleFolder.setFocusable(true);
         clearOverride = detailControls.obtain("clear-override");
         clearOverride.configure(font, Component.translatable(PREFIX + "clear_override"), null, List.of(),
                 () -> submitTracking(TableEdit.CLEAR));
-        saveNameButton = detailControls.obtain("name");
-        saveNameButton.configure(font, Component.translatable(PREFIX + "save_name"), null, List.of(), this::saveName);
         importButton = controls.obtain("import");
-        importButton.configure(font, Component.translatable(PREFIX + "import_json"), null, List.of(), this::importJson);
+        importButton.configure(font, Component.translatable(PREFIX + "import_json"), null, List.of(), names::importJson);
         backButton = controls.obtain("back");
         backButton.configure(font, Component.translatable("gui.back"), null, List.of(), this::onClose);
+        for (UiControl control : List.of(editRules, applyButton, clearOverride, importButton, backButton, editNames)) {
+            control.setFocusable(true);
+        }
     }
 
-    private void cycleFilter() {
-        filter = filter.next();
-        filterButton.configure(font, filter.label(), null, List.of(), this::cycleFilter);
-        rebuildTree();
+    private void chooseFilter() {
+        UiListView<Filter> filters = new UiListView<>(theme(),
+                (graphics, font, item, index, bounds, selected, hovered, focused) ->
+                        graphics.drawString(font, item.label(), bounds.x(), bounds.y() + 5,
+                                UiTextScheme.PARCHMENT.body(), false));
+        filters.setItems(List.of(Filter.values())).setSelectedIndex(filter.ordinal());
+        modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "filter.title"))
+                .contentWidget(filters, 92)
+                .confirm(Component.translatable("gui.done"), () -> {
+                    Filter selected = filters.selectedItem();
+                    if (selected == null) return;
+                    filter = selected;
+                    filterButton.configure(font, filter.label(), null, List.of(), this::chooseFilter);
+                    rebuildTree();
+                }).cancel(Component.translatable("gui.cancel")));
     }
 
     @Override
@@ -208,8 +237,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
 
     @Override
     protected void invalidateUiResources() {
-        initializeLanguageCodes();
-        reconcileDrafts();
+        names.invalidateResources();
         rebuildTree();
     }
 
@@ -225,6 +253,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         searchRow.setBounds(left + INNER_MARGIN, top + 29, searchWidth, 20);
         int actionWidth = Math.max(0, (detailsWidth() - 5) / 2);
         importButton.setBounds(detailsX, backY, actionWidth, 20);
+        toggleFolder.setBounds(left + INNER_MARGIN, backY, listWidth(), 20);
         backButton.setBounds(detailsX + actionWidth + 5, backY, actionWidth, 20);
         syncListGeometry();
         modals.setBounds(0, 0, width, height);
@@ -236,7 +265,6 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     private void syncControls() {
         if (applyButton == null) return;
         var entry = selectedEntry();
-        boolean canEditName = entry != null && LootTableManagementClientState.canEdit();
         boolean canEditTable = entry != null && canEditTracking();
         boolean isRootCandidate = entry != null && entry.match().isRootCandidate();
         applyButton.setEnabled(canEditTable);
@@ -246,24 +274,39 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         applyButton.setTheme(theme(), isRootCandidate ? UiControlRole.SECONDARY : UiControlRole.PRIMARY);
         clearOverride.setEnabled(canEditTable && entry.hasExactOverride());
         editRules.setEnabled(pendingTrackingRequest == 0);
-        boolean canSave = LootTableManagementClientState.canEdit() && !nameDrafts.isEmpty() && !hasInvalidEnglishDraft();
-        saveNameButton.setEnabled(canSave);
-        if (canSave) {
-            saveNameButton.setTheme(theme(), UiControlRole.PRIMARY);
-        } else {
-            saveNameButton.setTheme(theme(), UiControlRole.SECONDARY);
+        editRules.setVisible(!namesOpen);
+        applyButton.setVisible(!namesOpen);
+        clearOverride.setVisible(!namesOpen);
+        editNames.configure(font, Component.translatable(PREFIX + (namesOpen ? "show_tracking" : "edit_names")),
+                null, List.of(), () -> {
+                    namesOpen = !namesOpen;
+                    syncControls();
+                });
+        names.refreshControls(namesOpen);
+        importButton.setVisible(namesOpen);
+        TreeRow folder = list.selectedItem();
+        toggleFolder.setVisible(folder != null && folder.expandable());
+        if (folder != null && folder.expandable()) {
+            toggleFolder.configure(font, Component.translatable(PREFIX + (folder.expanded() ? "collapse" : "expand")),
+                    null, List.of(), () -> toggleExpanded(folder));
         }
-        languageButton.setEnabled(canEditName);
-        languageBox.setEnabled(canEditName);
-        nameBox.setEnabled(canEditName && hasValidLanguageCode()
-                && resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) == null);
-        importButton.setEnabled(LootTableManagementClientState.canEdit());
+        importButton.setEnabled(names.canImport());
         summary.refresh();
     }
 
     @Override
+    public void removed() {
+        names.preserveDraft();
+        if (requested) {
+            LootTableManagementClientState.closeSnapshot();
+            requested = false;
+        }
+        super.removed();
+    }
+
+    @Override
     public void onClose() {
-        Minecraft.getInstance().setScreen(parent);
+        names.requestClose(() -> Minecraft.getInstance().setScreen(parent));
     }
 
     @Override
@@ -296,37 +339,9 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         modals.render(graphics, font, UiPointer.at(x, y));
     }
 
-    private void chooseLanguage() {
-        UiListView<String> languages = new UiListView<>(theme(), (graphics, font, code, index, row, selected, hovered, focused) ->
-                graphics.drawString(font, TextScroll.trimToWidth(font, languageOptionLabel(code).getString(), row.width()),
-                        row.x(), row.y() + 5, UiTextScheme.PARCHMENT.body(), false));
-        languages.setLayoutKey("management/languages");
-        languages.setItemKey(code -> "language/" + code);
-        languages.setItems(languageCodes).setSelectedIndex(languageCodes.indexOf(validLanguageCodeOrFallback()));
-        modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "language_select"))
-                .preferredWidth(340).contentWidget(languages, Math.clamp(height - 110, 20, 180))
-                .confirm(Component.translatable("gui.done"), () -> {
-                    String selected = languages.selectedItem();
-                    if (selected != null) selectLanguage(selected);
-                }).cancel(Component.translatable("gui.cancel")));
-    }
-
-    private void openImportPreview(LootTableManagementActions.ImportPreview preview) {
-        modals.push(UiModal.create(theme(), font).title(Component.translatable(PREFIX + "import_preview.title"))
-                .message(Component.translatable(PREFIX + "import_preview.message", preview.languageCode(), preview.added(),
-                        preview.updated(), preview.resourceSkipped(), preview.unmatched(), preview.invalid()))
-                .confirm(Component.translatable("gui.yes"), () -> {
-                    if (!preview.entries().isEmpty() && LootTableManagementClientState.canEdit()) {
-                        actions.submitImport(preview);
-                        importStatus = Component.translatable(PREFIX + "import_submitted", preview.entries().size());
-                        importStatusColor = IMPORT_STATUS_OK_COLOR;
-                    }
-                }).cancel(Component.translatable("gui.cancel")));
-    }
-
     private void syncListGeometry() {
         list.setBounds(panelLeft() + INNER_MARGIN, panelTop() + 55,
-                listWidth(), Math.max(0, panelHeight() - 65));
+                listWidth(), Math.max(0, panelHeight() - 88));
     }
 
     private int panelWidth() {
@@ -353,13 +368,7 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         return Math.max(0, panelWidth() - INNER_MARGIN * 2 - COLUMN_GAP - detailsWidth());
     }
 
-    private static String readableName(ResourceLocation id) {
-        String path = id.getPath();
-        int slash = path.lastIndexOf('/');
-        return path.substring(slash + 1).replace('_', ' ').replace('-', ' ');
-    }
-
-    private record DetailLine(Component text, int color) {
+    record DetailLine(Component text, int color) {
     }
 
     private final class DetailSummary implements UiWidget, UiFormLayout.Control {
@@ -372,29 +381,26 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             next.add(new DetailLine(Component.translatable(PREFIX + "details"), UiTextScheme.PARCHMENT.title()));
             var selected = selectedEntry();
             if (selected != null) {
+                next.add(new DetailLine(Component.literal(displayName(selected.tableId())), UiTextScheme.PARCHMENT.title()));
                 next.add(new DetailLine(Component.literal(selected.tableId().toString()), UiTextScheme.PARCHMENT.label()));
                 String match = selected.match().name().toLowerCase(Locale.ROOT);
                 next.add(new DetailLine(Component.translatable(PREFIX + "match." + match), UiTextScheme.PARCHMENT.label()));
                 String catalog = selected.isCatalogRoot() ? "root" : selected.isCollected() ? "child" : "absent";
                 next.add(new DetailLine(Component.translatable(PREFIX + "catalog." + catalog),
                         selected.isCollected() ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.hint()));
+                selected.parents().forEach(id -> next.add(new DetailLine(
+                        Component.translatable(PREFIX + "parent", displayName(id)), UiTextScheme.PARCHMENT.label())));
+                if (!selected.selectors().isEmpty()) {
+                    next.add(new DetailLine(Component.literal(String.join(", ", selected.selectors())),
+                            UiTextScheme.PARCHMENT.hint()));
+                }
             }
-            if (!nameDrafts.isEmpty())
-                next.add(new DetailLine(Component.translatable(PREFIX + "source.draft", nameDrafts.size()), UiTextScheme.PARCHMENT.accent()));
-            if (!LootTableManagementClientState.canEdit())
-                next.add(new DetailLine(Component.translatable(PREFIX + "names_read_only"), UiTextScheme.PARCHMENT.accent()));
-            else if (!hasValidLanguageCode())
-                next.add(new DetailLine(Component.translatable(PREFIX + "invalid_language_code"), UiTextScheme.PARCHMENT.negative()));
-            else if (requiresEnglishName())
-                next.add(new DetailLine(Component.translatable(PREFIX + "english_name_required"), UiTextScheme.PARCHMENT.accent()));
-            else if (selected != null)
-                next.add(new DetailLine(nameSourceLabel(selected.tableId()), UiTextScheme.PARCHMENT.label()));
+            if (namesOpen) next.addAll(names.summary());
             var config = LootTableManagementClientState.configuration();
-            if (config != null && config.isCatalogPending()) {
-                next.add(new DetailLine(Component.translatable(PREFIX + "catalog.pending"), UiTextScheme.PARCHMENT.accent()));
+            if (config != null && config.application() != Application.APPLIED) {
+                next.add(new DetailLine(LootTrackingConfigScreen.applicationMessage(config), UiTextScheme.PARCHMENT.accent()));
             }
             if (trackingStatus != null) next.add(new DetailLine(trackingStatus, UiTextScheme.PARCHMENT.accent()));
-            if (importStatus != null) next.add(new DetailLine(importStatus, importStatusColor));
             if (next.equals(content)) return;
             content = List.copyOf(next);
             details.invalidateLayout();
@@ -437,77 +443,119 @@ public final class LootTableManagementScreen extends UiThemedScreen {
     }
 
     private void refreshSnapshot() {
+        names.receiveResults();
         var receipt = LootTableManagementClientState.receipt(pendingTrackingRequest);
         if (receipt != null) {
-            pendingTrackingRequest = 0;
             trackingStatus = LootTrackingConfigScreen.resultMessage(receipt.result());
+            if (receipt.result() == EditResult.PREVIEWED && trackingDraft != null) {
+                var preview = LootTableManagementClientState.preview(pendingTrackingRequest);
+                if (preview != null) {
+                    TrackingDraft draft = trackingDraft;
+                    pendingTrackingRequest = 0;
+                    trackingDraft = null;
+                    LootTrackingPreviewDialog.open(modals, theme(), font, height, preview, () ->
+                            pendingTrackingRequest = LootTableManagementClientState.submit(
+                                    draft.revision(), draft.resourceRevision(), draft.edit()));
+                }
+            } else if (receipt.result() != EditResult.SAVED) {
+                pendingTrackingRequest = 0;
+                trackingDraft = null;
+            }
         }
         long revision = LootTableManagementClientState.revision();
         if (revision != this.observedRevision) {
             this.observedRevision = revision;
-            reconcileDrafts();
             rebuildTree();
         }
     }
 
     private void rebuildTree() {
         TreeRow selectedRow = list.selectedItem();
-        String selectedKey = selectedRow == null ? null : selectedRow.key();
-        String query = this.searchBox.value().trim().toLowerCase(Locale.ROOT);
-        boolean expandSearchResults = !query.isEmpty();
-        this.filteredEntries.clear();
-        LinkedHashMap<String, TreeNode> namespaces = new LinkedHashMap<>();
-        for (SyncLootTableManagementPayload.Entry entry : entriesForCurrentFilter()) {
-            if (!this.filter.matches(entry.isCollected()) || !matchesQuery(entry, query)) continue;
-            this.filteredEntries.add(entry);
-            TreeNode node = namespaces.computeIfAbsent(entry.tableId().getNamespace(), namespace ->
-                    new TreeNode(namespace, "namespace:" + namespace));
-            StringBuilder pathKey = new StringBuilder(entry.tableId().getNamespace()).append(':');
-            for (String segment : entry.tableId().getPath().split("/")) {
-                if (pathKey.charAt(pathKey.length() - 1) != ':') pathKey.append('/');
-                pathKey.append(segment);
-                String key = pathKey.toString();
-                node = node.children.computeIfAbsent(segment, ignored -> new TreeNode(segment, key));
-            }
-            node.entry = entry;
+        String selectedKey = selectedRow != null && selectedRow.entry() == null ? selectedRow.key() : null;
+        String query = searchBox.value().trim().toLowerCase(Locale.ROOT);
+        boolean flat = filter == Filter.RECENT || !query.isEmpty();
+        if (!flat && flatResults && selectedTableId != null) expandPathTo(selectedTableId);
+        flatResults = flat;
+        filteredEntries.clear();
+        visibleRows.clear();
+        for (var entry : entriesForCurrentFilter()) {
+            if (filter.matches(entry.isCollected()) && matchesQuery(entry, query)) filteredEntries.add(entry);
         }
-
-        this.visibleRows.clear();
-        for (TreeNode namespace : namespaces.values()) flattenNode(namespace, 0, expandSearchResults);
-        // 行数变化后重新钳制偏移：同时按当前面板尺寸刷新视口，resize 后的首次重建也拿到正确容量
+        if (flat) {
+            if (filter != Filter.RECENT) {
+                filteredEntries.sort(Comparator.comparing(entry -> displayName(entry.tableId()),
+                        String.CASE_INSENSITIVE_ORDER));
+            }
+            for (var entry : filteredEntries) {
+                visibleRows.add(new TreeRow(displayName(entry.tableId()), entry.tableId().toString(),
+                        0, false, false, entry));
+            }
+        } else {
+            Map<String, TreeNode> namespaces = new LinkedHashMap<>();
+            for (var entry : filteredEntries) {
+                ResourceLocation id = entry.tableId();
+                TreeNode node = namespaces.computeIfAbsent(id.getNamespace(), namespace ->
+                        new TreeNode(namespace, "namespace:" + namespace));
+                StringBuilder path = new StringBuilder(id.getNamespace()).append(':');
+                String[] segments = id.getPath().split("/", -1);
+                for (int index = 0; index < segments.length; index++) {
+                    if (index > 0) path.append('/');
+                    String segment = segments[index];
+                    path.append(segment);
+                    String key = path.toString();
+                    node = node.children.computeIfAbsent(segment, ignored -> new TreeNode(segment, key));
+                }
+                node.entry = entry;
+            }
+            for (TreeNode namespace : namespaces.values()) flattenNode(namespace, 0);
+        }
+        String empty = !LootTableManagementClientState.indexReady() ? "loading"
+                : !query.isEmpty() ? "empty_search" : filter == Filter.RECENT ? "empty_recent" : "empty";
+        list.setEmptyMessage(Component.translatable(PREFIX + empty));
         syncListGeometry();
+        rebuildingRows = true;
         list.setItems(visibleRows);
-        if (selectedEntry() == null) this.selectedTableId = null;
         int selectedIndex = -1;
-        for (int i = 0; i < visibleRows.size(); i++) {
-            if (Objects.equals(visibleRows.get(i).key(), selectedKey)) {
-                selectedIndex = i;
+        for (int index = 0; index < visibleRows.size(); index++) {
+            TreeRow row = visibleRows.get(index);
+            if (selectedKey != null ? selectedKey.equals(row.key())
+                    : row.entry() != null && row.entry().tableId().equals(selectedTableId)) {
+                selectedIndex = index;
                 break;
             }
         }
         list.setSelectedIndex(selectedIndex);
-        populateName();
+        rebuildingRows = false;
+        names.populateName();
         syncControls();
     }
 
-    private void flattenNode(TreeNode node, int depth, boolean forceExpanded) {
+    private void expandPathTo(ResourceLocation id) {
+        expandedPaths.add("namespace:" + id.getNamespace());
+        for (int slash = id.getPath().indexOf('/'); slash >= 0; slash = id.getPath().indexOf('/', slash + 1)) {
+            expandedPaths.add(id.getNamespace() + ":" + id.getPath().substring(0, slash));
+        }
+    }
+
+    private void flattenNode(TreeNode node, int depth) {
         boolean expandable = !node.children.isEmpty();
-        boolean expanded = expandable && (forceExpanded || this.expandedPaths.contains(node.key));
-        this.visibleRows.add(new TreeRow(node.label, node.key, depth, expandable, expanded, node.entry));
+        boolean expanded = expandable && expandedPaths.contains(node.key);
+        String label = node.entry == null ? node.label : displayName(node.entry.tableId());
+        visibleRows.add(new TreeRow(label, node.key, depth, expandable, expanded, node.entry));
         if (expanded) {
             node.children.values().stream()
                     .sorted(Comparator.comparing((TreeNode child) -> child.children.isEmpty()))
-                    .forEach(child -> flattenNode(child, depth + 1, forceExpanded));
+                    .forEach(child -> flattenNode(child, depth + 1));
         }
     }
 
     private boolean matchesQuery(SyncLootTableManagementPayload.Entry entry, String query) {
-        if (query.isEmpty()) return true;
-        String id = entry.tableId().toString().toLowerCase(Locale.ROOT);
-        String fallback = readableName(entry.tableId()).toLowerCase(Locale.ROOT);
-        String localized = Component.translatableWithFallback(
-                LootTableNames.createTranslationKey(entry.tableId()), fallback).getString().toLowerCase(Locale.ROOT);
-        return id.contains(query) || fallback.contains(query) || localized.contains(query);
+        return query.isEmpty() || entry.tableId().toString().contains(query)
+                || displayName(entry.tableId()).toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    private static String displayName(ResourceLocation id) {
+        return ClientLootTableLanguageStore.displayName(id).getString();
     }
 
     private void toggleExpanded(TreeRow row) {
@@ -525,77 +573,20 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         SyncLootTableManagementPayload.Entry entry = selectedEntry();
         if (entry == null || !canEditTracking()) return;
         var config = LootTableManagementClientState.configuration();
-        pendingTrackingRequest = LootTableManagementClientState.submit(config.revision(),
-                new UpdateTrackedLootTablePayload.Single(entry.tableId(), edit));
-        trackingStatus = Component.translatable("unsuspiciousblock.config.loot_tracking.saving");
-    }
-
-    private void saveName() {
-        if (!LootTableManagementClientState.canEdit() || this.nameDrafts.isEmpty()
-                || hasInvalidEnglishDraft()) return;
-        // 这里只做草稿到提交项的数据转换，协议组包交给动作层
-        this.actions.submitNameDrafts(this.nameDrafts.entrySet().stream()
-                .map(entry -> new LootTableManagementActions.NameDraft(
-                        entry.getKey().languageCode(), entry.getKey().tableId(), entry.getValue()))
-                .toList());
-    }
-
-    private void populateName() {
-        SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        String value = "";
-        Component hint = Component.empty();
-        if (entry != null && hasValidLanguageCode()) {
-            DraftKey draftKey = new DraftKey(currentLanguageCode(), entry.tableId());
-            ClientLootTableLanguageStore.ResourceTranslation resource = resourceName(draftKey);
-            if (resource != null) {
-                value = resource.value();
-            } else {
-                value = this.nameDrafts.getOrDefault(draftKey, storedName(draftKey));
-                String fallback = englishFallback(entry.tableId());
-                if (value.isEmpty() && !fallback.isEmpty()) {
-                    hint = Component.literal(fallback);
-                }
-            }
-        }
-        this.populatingName = true;
-        this.nameBox.setValue(value);
-        this.nameBox.setHint(hint);
-        this.populatingName = false;
-    }
-
-    private void onNameInputChanged(String value) {
-        if (this.populatingName || !hasValidLanguageCode()) return;
-        SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || resourceName(new DraftKey(currentLanguageCode(), entry.tableId())) != null) return;
-        DraftKey draftKey = new DraftKey(currentLanguageCode(), entry.tableId());
-        String normalized = value.trim();
-        if (normalized.equals(storedName(draftKey))) {
-            this.nameDrafts.remove(draftKey);
-        } else {
-            this.nameDrafts.put(draftKey, normalized);
-        }
-        syncControls();
-    }
-
-    private String storedName(DraftKey draftKey) {
-        String key = LootTableNames.createTranslationKey(draftKey.tableId());
-        return LootTableManagementClientState.translations()
-                .getOrDefault(draftKey.languageCode(), Map.of()).getOrDefault(key, "");
-    }
-
-    private void reconcileDrafts() {
-        this.nameDrafts.entrySet().removeIf(entry -> resourceName(entry.getKey()) != null
-                || entry.getValue().equals(storedName(entry.getKey())));
+        var draft = new UpdateTrackedLootTablePayload.Single(entry.tableId(), edit);
+        trackingDraft = new TrackingDraft(config.revision(), config.resourceRevision(), draft);
+        pendingTrackingRequest = LootTableManagementClientState.requestPreview(
+                config.revision(), config.resourceRevision(), draft);
+        trackingStatus = Component.translatable(LootTrackingPreviewDialog.KEY + "previewing");
     }
 
     @Nullable
     private SyncLootTableManagementPayload.Entry selectedEntry() {
-        if (this.selectedTableId == null) return null;
-        for (SyncLootTableManagementPayload.Entry entry : this.filteredEntries) {
-            if (entry.tableId().equals(this.selectedTableId)) return entry;
-        }
-        return null;
+        TreeRow row = list.selectedItem();
+        return row == null ? null : row.entry();
     }
+
+    private record TrackingDraft(long revision, long resourceRevision, UpdateTrackedLootTablePayload.Single edit) {}
 
     private List<SyncLootTableManagementPayload.Entry> entriesForCurrentFilter() {
         if (this.filter != Filter.RECENT) {
@@ -605,158 +596,15 @@ public final class LootTableManagementScreen extends UiThemedScreen {
         LootTableManagementClientState.entries().forEach(entry -> entriesById.put(entry.tableId(), entry));
         List<SyncLootTableManagementPayload.Entry> result = new ArrayList<>();
         for (SyncLootTableManagementPayload.RecentEntry recent
-                : LootTableManagementClientState.recentEntries()) {
+                : LootTableManagementClientState.recentEntries().stream()
+                        .sorted(Comparator.comparingLong(SyncLootTableManagementPayload.RecentEntry::encounterOrder).reversed())
+                        .toList()) {
             SyncLootTableManagementPayload.Entry entry = entriesById.get(recent.tableId());
             if (entry != null) {
                 result.add(entry);
             }
         }
         return result;
-    }
-
-    private void initializeLanguageCodes() {
-        this.languageCodes.clear();
-        this.languageCodes.addAll(Minecraft.getInstance().getLanguageManager().getLanguages().keySet());
-        if (!isValidLanguageCode(this.selectedLanguageCode)) {
-            this.selectedLanguageCode = Minecraft.getInstance().getLanguageManager().getSelected();
-        }
-        if (!isValidLanguageCode(this.selectedLanguageCode) && !this.languageCodes.isEmpty()) {
-            this.selectedLanguageCode = this.languageCodes.getFirst();
-        }
-    }
-
-    private static Component languageOptionLabel(String code) {
-        var info = Minecraft.getInstance().getLanguageManager().getLanguages().get(code);
-        return info == null ? Component.literal(code)
-                : Component.literal(code + " - ").append(info.toComponent());
-    }
-
-    private String currentLanguageCode() {
-        return this.languageBox.value().trim();
-    }
-
-    private void onLanguageInputChanged(String value) {
-        boolean valid = isValidLanguageCode(value.trim());
-        if (valid) {
-            this.selectedLanguageCode = value.trim();
-            populateName();
-        }
-        syncControls();
-    }
-
-    private void selectLanguage(String languageCode) {
-        this.selectedLanguageCode = languageCode;
-        if (this.languageBox != null) {
-            this.languageBox.setValue(languageCode);
-        }
-        populateName();
-        syncControls();
-    }
-
-    private boolean hasValidLanguageCode() {
-        return isValidLanguageCode(currentLanguageCode());
-    }
-
-    private String validLanguageCodeOrFallback() {
-        return hasValidLanguageCode() ? currentLanguageCode() : this.selectedLanguageCode;
-    }
-
-    // 语言码口径与导入文件名推断共用同一份实现
-    private static boolean isValidLanguageCode(String languageCode) {
-        return LootTableImportValidator.isValidLanguageCode(languageCode);
-    }
-
-    private boolean requiresEnglishName() {
-        SyncLootTableManagementPayload.Entry entry = selectedEntry();
-        if (entry == null || !hasValidLanguageCode() || "en_us".equals(currentLanguageCode())
-                || this.nameBox.value().trim().isEmpty()) {
-            return false;
-        }
-        return effectiveEnglishName(entry.tableId()).isBlank();
-    }
-
-    private boolean hasInvalidEnglishDraft() {
-        for (Map.Entry<DraftKey, String> entry : this.nameDrafts.entrySet()) {
-            if (!"en_us".equals(entry.getKey().languageCode()) && !entry.getValue().isBlank()
-                    && effectiveEnglishName(entry.getKey().tableId()).isBlank()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String effectiveEnglishName(ResourceLocation tableId) {
-        DraftKey englishKey = new DraftKey("en_us", tableId);
-        ClientLootTableLanguageStore.ResourceTranslation resource = resourceName(englishKey);
-        if (resource != null) return resource.value();
-        return this.nameDrafts.getOrDefault(englishKey, storedName(englishKey));
-    }
-
-    private String englishFallback(ResourceLocation tableId) {
-        if ("en_us".equals(currentLanguageCode())) return "";
-        return effectiveEnglishName(tableId);
-    }
-
-    @Nullable
-    private ClientLootTableLanguageStore.ResourceTranslation resourceName(DraftKey draftKey) {
-        return ClientLootTableLanguageStore.findResourceTranslation(
-                draftKey.languageCode(), LootTableNames.createTranslationKey(draftKey.tableId()));
-    }
-
-    private Component nameSourceLabel(ResourceLocation tableId) {
-        DraftKey draftKey = new DraftKey(currentLanguageCode(), tableId);
-        ClientLootTableLanguageStore.ResourceTranslation resource = resourceName(draftKey);
-        if (resource != null) {
-            return Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.source.resource", resource.sourcePackId());
-        }
-        if (this.nameDrafts.containsKey(draftKey)) {
-            return Component.empty();
-        }
-        if (!storedName(draftKey).isEmpty()) {
-            return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.server");
-        }
-        DraftKey englishKey = new DraftKey("en_us", tableId);
-        ClientLootTableLanguageStore.ResourceTranslation englishResource = resourceName(englishKey);
-        if (englishResource != null && !"en_us".equals(currentLanguageCode())) {
-            return Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.source.fallback_resource",
-                    englishResource.sourcePackId());
-        }
-        if (!storedName(englishKey).isEmpty() && !"en_us".equals(currentLanguageCode())) {
-            return Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.source.fallback_server");
-        }
-        return Component.translatable("screen.unsuspiciousblock.loot_table_management.source.missing");
-    }
-
-    // 导入流程只做转调：文件对话框、读取校验、预览统计都在动作层，失败原因按分类给独立文案
-    private void importJson() {
-        String selectedPath = this.actions.chooseImportFile();
-        if (selectedPath == null) return;
-        LootTableManagementActions.ImportResult result =
-                this.actions.prepareImport(Path.of(selectedPath), validLanguageCodeOrFallback());
-        if (result instanceof LootTableManagementActions.ImportResult.Failed(var reason)) {
-            this.importStatus = importFailureMessage(reason);
-            this.importStatusColor = IMPORT_STATUS_ERROR_COLOR;
-            return;
-        }
-        openImportPreview(((LootTableManagementActions.ImportResult.Ready) result).preview());
-    }
-
-    // 导入失败原因分类：格式无效只是兜底，文件过大 / 读取失败 / 条目超限各有独立文案键
-    private static Component importFailureMessage(LootTableImportValidator.Failure failure) {
-        return switch (failure) {
-            case TOO_LARGE -> Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.import_failed.too_large");
-            case TOO_MANY_ENTRIES -> Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.import_failed.entries",
-                    LootTableImportValidator.MAX_ENTRIES);
-            case IO_ERROR, NOT_A_FILE -> Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.import_failed.io");
-            case INVALID_JSON, ROOT_NOT_OBJECT -> Component.translatable(
-                    "screen.unsuspiciousblock.loot_table_management.import_failed");
-        };
     }
 
     /**
@@ -773,12 +621,6 @@ public final class LootTableManagementScreen extends UiThemedScreen {
             this.label = label;
             this.key = key;
         }
-    }
-
-    /**
-     * 页面内未提交名称的复合键。
-     */
-    private record DraftKey(String languageCode, ResourceLocation tableId) {
     }
 
     /**
@@ -801,10 +643,6 @@ public final class LootTableManagementScreen extends UiThemedScreen {
 
         Filter(String key) {
             this.key = key;
-        }
-
-        private Filter next() {
-            return values()[(ordinal() + 1) % values().length];
         }
 
         private Component label() {

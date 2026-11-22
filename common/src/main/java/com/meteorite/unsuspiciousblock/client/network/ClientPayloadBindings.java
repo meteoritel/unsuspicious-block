@@ -24,6 +24,7 @@ public final class ClientPayloadBindings {
             bind(ModPayloads.SYNC_ARCHAEOLOGY_CATALOG, ArchaeologyJournalClientState::receiveCatalog),
             bind(ModPayloads.SYNC_CATALOG_HASH, ArchaeologyJournalClientState::receiveCatalogHash),
             bind(ModPayloads.SYNC_LOOT_TABLE_MANAGEMENT, LootTableManagementClientState::receive),
+            bind(ModPayloads.SYNC_LOOT_MANAGEMENT_DATA, LootTableManagementClientState::receiveData),
             bind(ModPayloads.SYNC_JOURNAL_STATE, ArchaeologyJournalClientState::receiveState),
             bind(ModPayloads.SYNC_JOURNAL_STATE_INCREMENTAL, ArchaeologyJournalClientState::receiveStateIncremental),
             bind(ModPayloads.SYNC_JOURNAL_LOG, ArchaeologyJournalLogLocalStore::applyUpdate),

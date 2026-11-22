@@ -40,6 +40,7 @@ import com.meteorite.unsuspiciousblock.core.network.payload.s2c.ScenarioRequestR
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncReaderScanResultPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootManagementDataPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogDeleteResultPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -59,7 +60,7 @@ import java.util.function.BiConsumer;
  * 公共网络声明：维护通道类型、codec 与 C2S 服务端处理函数。
  */
 public final class ModPayloads {
-    public static final String PROTOCOL_VERSION = "4.17";
+    public static final String PROTOCOL_VERSION = "4.18";
 
     private ModPayloads() {
     }
@@ -83,7 +84,7 @@ public final class ModPayloads {
             new C2S<>(RequestCatalogPayload.TYPE, RequestCatalogPayload.STREAM_CODEC,
                     (player, payload) -> JournalCatalogHandler.handleRequestCatalog(player)),
             new C2S<>(RequestLootTableManagementPayload.TYPE, RequestLootTableManagementPayload.STREAM_CODEC,
-                    (player, payload) -> LootTableManagementHandler.handleRequest(player)),
+                    LootTableManagementHandler::handleRequest),
             new C2S<>(UpdateTrackedLootTablePayload.TYPE, UpdateTrackedLootTablePayload.STREAM_CODEC,
                     LootTableManagementHandler::handleUpdate),
             new C2S<>(UpdateLootTableTranslationsPayload.TYPE,
@@ -127,6 +128,8 @@ public final class ModPayloads {
             new S2C<>(SyncCatalogHashPayload.TYPE, SyncCatalogHashPayload.STREAM_CODEC);
     public static final S2C<SyncLootTableManagementPayload> SYNC_LOOT_TABLE_MANAGEMENT =
             new S2C<>(SyncLootTableManagementPayload.TYPE, SyncLootTableManagementPayload.STREAM_CODEC);
+    public static final S2C<SyncLootManagementDataPayload> SYNC_LOOT_MANAGEMENT_DATA =
+            new S2C<>(SyncLootManagementDataPayload.TYPE, SyncLootManagementDataPayload.STREAM_CODEC);
     public static final S2C<SyncJournalStatePayload> SYNC_JOURNAL_STATE =
             new S2C<>(SyncJournalStatePayload.TYPE, SyncJournalStatePayload.STREAM_CODEC);
     public static final S2C<SyncJournalStateIncrementalPayload> SYNC_JOURNAL_STATE_INCREMENTAL =
@@ -162,6 +165,7 @@ public final class ModPayloads {
             SYNC_ARCHAEOLOGY_CATALOG,
             SYNC_CATALOG_HASH,
             SYNC_LOOT_TABLE_MANAGEMENT,
+            SYNC_LOOT_MANAGEMENT_DATA,
             SYNC_JOURNAL_STATE,
             SYNC_JOURNAL_STATE_INCREMENTAL,
             SYNC_JOURNAL_LOG,

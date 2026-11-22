@@ -7,8 +7,8 @@
 
 | 层 | 位置 |
 |---|---|
-| 资源快照 | `core/loottable/source/LootTableSourceSnapshot.java`（一次列举获取全表有效原文与完整资源栈） |
-| 引用图 | `core/loottable/graph/`：`LootTableReferenceGraph`（直接子表、可达集、子树、强连通环与子树摘要）、`LootTableEdge`（边类型）、`RuntimeLootLinks`（平台注入边与钓鱼上下文判定的唯一来源） |
+| 资源快照 | `core/loottable/source/LootTableSourceSnapshot.java`（按原版规则选择注册表生效资源，缓存可达表的 JSON、引用与原文摘要） |
+| 引用图 | `core/loottable/graph/`：`LootTableReferenceGraph`（直接子表、可达集、子树与强连通环）、`LootTableEdge`（边类型）、`RuntimeLootLinks`（平台注入边与钓鱼上下文判定的唯一来源） |
 | 编译 | `core/loottable/analysis/`：`LootTableCompiler`、`CompiledLootTable`、`LuckSpec`、`LuckGateAnalysis`、`LuckGate`、`LootConditionHandler(s)`、`LootConditionInfo`、`ConditionSemantics`、`LootFunctionHandler(s)`、`LootFunctionInfo`、`LootFunctionDescriptions`、`LootFunctionDescribeSupport`、`LootParseUtil` |
 | 读模型与查询 | `core/loottable/catalog/`：`LootTableCatalog`（跨模块共享记录类型）、`LootOriginKind`、`Probability`、`DeclaredChance`、`LootTableProjector`、`StaticTableProjection`、`ItemDefinitionAccumulator`、`CatalogQueryIndex`、`CatalogTableDto`、`LootTablePattern`、`LootTableNames`、`LootTableTranslationStore`、`MissingTranslationKeyExporter` |
 | 签名 | `core/loottable/signature/`：`LootResultSignature`、`LootResultMatcher`、`LootResultPreviewCache`、`LootCounts`、`SignatureExcludedComponents` |
@@ -26,12 +26,12 @@
 
 ### 2.1 静态目录四层管线
 
-每次资源加载只读取一次原文快照，随后按层推导并由 `DeclaredInjectionExpansion` 展开声明注入，每层仅依赖上一层：
+每个资源代次共用生效资源索引。收录路径访问的表共用解析和编译结果，随后由 `DeclaredInjectionExpansion` 展开声明注入，每层仅依赖上一层：
 
 ```mermaid
 flowchart LR
-    RM["ResourceManager"] -->|"每次重载读取一次"| Snap["LootTableSourceSnapshot (有效原文 + 资源栈)"]
-    Snap --> Graph["LootTableReferenceGraph (闭包 / SCC / 子树摘要 / 边类型)"]
+    RM["生效资源 + 注册表 ID"] --> Snap["LootTableSourceSnapshot"]
+    Snap --> Graph["LootTableReferenceGraph (闭包 / SCC / 边类型)"]
     Snap --> Comp["CompiledLootTable (上下文无关单表编译)"]
     Graph --> Proj["LootTableProjector (+ DeclaredInjectionExpansion)"]
     Comp --> Proj
@@ -60,8 +60,8 @@ flowchart TD
 
 | 类 | 职责 |
 |---|---|
-| `LootTableSourceSnapshot` | 一次性捕获全表有效原文与完整资源栈，供建图、编译与哈希共用 |
-| `LootTableReferenceGraph` | 引用关系权威：直接子表、可达集、子树、强连通环（SCC）与子树摘要 |
+| `LootTableSourceSnapshot` | 按原版优先级选取生效 JSON，供建图、编译与缓存摘要共用 |
+| `LootTableReferenceGraph` | 引用关系权威：直接子表、可达集、子树与强连通环（SCC） |
 | `RuntimeLootLinks` | 平台注入边与钓鱼上下文判定的唯一事实源，同时声明 `MUD_DREDGING_GATE` 门槛 |
 | `LootTableCompiler` | 将单表 JSON 编译为上下文无关的 `CompiledLootTable` |
 | `LootParseUtil` | 条件分析、函数链拼接与表类型规范化的唯一实现 |
@@ -152,13 +152,13 @@ classDiagram
 | 以 `/` 结尾 | 前缀匹配 | `archaeology/` 命中全部考古表 |
 | 不以 `/` 结尾 | 精确 ID 匹配 | `minecraft:chests/buried_treasure` |
 
-`LootTrackingRules.BUILTINS` 定义内置规则。世界以附加规则扩展收录根表、按标识禁用内置规则，或以完整表 ID 排除根表。目录沿有效根表的引用闭包递归收录子表；根表排除的表仍可经其他父表收录。世界文件与迁移见[配置与联动](../foundation/config-and-integrations.md#2-世界战利品追踪配置)。
+`LootTrackingRules.BUILTINS` 定义内置规则。世界以附加规则扩展收录根表、按标识禁用内置规则，或以完整表 ID 排除根表。目录沿有效根表的引用闭包递归收录子表。根表排除的表仍可经父表收录。最终成员中没有父表的表进入分类顶层，子表沿打开的引用路径继承分类。有效空表保留目录位置。世界文件与迁移见[配置与联动](../foundation/config-and-integrations.md#2-世界战利品追踪配置)。
 
 ### 追踪管理与自定义名称
 
 - **权威表集合**：候选清单仅取服务端 `ReloadableServerRegistries` 中已注册的战利品表（排除 `entities/` 与 `blocks/` 前缀），编辑权限和配置作用域见[配置与联动](../foundation/config-and-integrations.md#22-配置界面与热重载)。
-- **名称覆写规则**：翻译键由 `LootTableNames.createTranslationKey(ResourceLocation)` 统一生成；游戏资源语言为只读优先来源，服务端补充表名保存在 `config/unsuspiciousblock/loot_table_lang/<language>.json`，经 `ClientLanguageMixin` 仅在资源缺失时补齐（断连即清除内存快照）。旧世界名称文件按语言提交，全部成功后在整合包配置目录按源内容记录完成标记，保留世界源文件供旧版本读取。
-- **管理页草稿与导入**：支持按 `(languageCode, tableId)` 暂存草稿并批量写入，也支持预览并导入标准语言 JSON；仅已注册、可管理且键名符合自动规则的条目允许提交。
+- **补充名称**按语言与完整表 ID 保存在实例配置 `config/unsuspiciousblock/loot_table_lang/<language>.json`。客户端按当前语言资源、当前语言补充、英语资源、英语补充、默认显示名的顺序解析。资源包继续使用既有翻译键。新版写盘时将可唯一归属的旧键转换为完整 ID，未归属键保留供人工指定。旧世界文件按语言导入后记录完成标记。
+- **名称编辑与导入**按表 ID 和语言保存草稿，逐项校验预期值并返回现值与结果。每种语言独立原子替换。界面与查询使用同一客户端名称解析和刷新版本。
 
 ## 6. 战利品注入与自定义条件
 
@@ -188,7 +188,7 @@ classDiagram
 
 ## 8. 扩展点
 
-- **调整收录范围或实例态排除组件**：修改内置规则、世界规则覆盖或 `signature_excluded_components`（默认 `relics:data`）。变更排除组件会改变表哈希并触发重算，但旧存档里已记录的精确变体键成为孤儿键，不参与完成度计算。
+- **调整收录范围或实例态排除组件**：修改内置规则、世界规则覆盖或 `signature_excluded_components`（默认 `relics:data`）。排除组件变化触发概率重算。当前候选可按组件排除证据读取历史精确记录，原始签名仍用于恢复变体。
 - **新增签名类型**：扩展 `LootResultSignature.SignatureType` 与 `fromStoredKey` 解析，并在 `JournalNbtMigrator` 补充连续迁移步骤。
 - **新增战利品条件 / 场景控制类型**：在 `ModLootConditions` 注册类型，并在 `LootConditionHandlers` 统一登记描述器、能力标识与所需上下文参数；需受代表场景控制的叶子条件须登记 `SCENARIO` 能力并补写单目标 `test` 转交 Mixin。
 - **新增函数描述或预览**：在 `LootFunctionHandlers` 注册 `LootFunctionDescription` 与可选 `LootFunctionPreview`，通过 `withSemantics` 提供类型化策略，并在 `en_us.json` / `zh_cn.json` 同步 `function.*` 键（详见[战利品表函数与展示规则](../internals/loottable-functions-and-display.md)）。

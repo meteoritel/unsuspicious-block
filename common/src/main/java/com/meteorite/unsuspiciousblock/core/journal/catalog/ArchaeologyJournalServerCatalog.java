@@ -17,19 +17,22 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootTableCompiler
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootMechanismSupport;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogGeneration.BaselineStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogDisplayDerivation;
-import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.LootTableReferenceGraph;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks.InjectionEdge;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultPreviewCache;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState.TableProgress;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExcludedComponents;
 import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager.Snapshot;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulator;
@@ -56,6 +59,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ReloadableServerRegistries;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -65,9 +69,9 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -79,6 +83,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
@@ -105,18 +110,19 @@ import java.util.stream.Stream;
 public final class ArchaeologyJournalServerCatalog {
     private static final Logger LOGGER = LogUtils.getLogger();
     // 分析语义影响概率缓存身份，改动测量口径时更新此版本。
-    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v29";
+    private static final String SIMULATION_CACHE_VERSION = "loot-analysis-v30";
 
     /**
      * 唯一发布点：整代目录状态一次成型后整体替换。
      */
-    private static volatile CatalogGeneration currentGeneration;
+    private static volatile Applied applied;
     /**
      * 代次计数器；仅在主线程递增。
      */
     private static long generationCounter;
     private static boolean loadAttempted;
     private static boolean rebuildFailed;
+    private static ResourceAnalysis resourceAnalysis;
 
     private ArchaeologyJournalServerCatalog() {
     }
@@ -124,25 +130,19 @@ public final class ArchaeologyJournalServerCatalog {
     /** 首次启动时构建目录。后续失败由重载或管理命令触发重试。 */
     public static void ensureLoaded(MinecraftServer server) {
         if (!loadAttempted) {
-            rebuild(server, CachePolicy.REUSE);
+            rebuild(server, ServerLootTableConfigManager.snapshot(), false);
         }
     }
 
-    /** 资源或配置更新后构建并发布新目录。 */
-    public static boolean rebuild(MinecraftServer server) {
-        return rebuild(server, CachePolicy.REUSE);
-    }
-
-    /** 候选目录成功构建后废弃旧概率缓存，并重新测量。 */
-    public static boolean rebuildWithoutCache(MinecraftServer server) {
-        return rebuild(server, CachePolicy.REPLACE);
-    }
-
-    private static boolean rebuild(MinecraftServer server, CachePolicy policy) {
+    /** 资源或配置更新后构建并发布新目录。手动重建可替换旧概率缓存。 */
+    public static boolean rebuild(MinecraftServer server, Snapshot settings, boolean discardMeasurements) {
+        CachePolicy policy = discardMeasurements ? CachePolicy.REPLACE : CachePolicy.REUSE;
         loadAttempted = true;
         BuildResult buildResult;
+        SignatureExcludedComponents signatureExclusions = SignatureExcludedComponents.resolve(
+                settings.settings().signatureExclusions());
         try {
-            buildResult = buildGeneration(server, policy);
+            buildResult = buildGeneration(server, settings, signatureExclusions, policy);
             buildResult.generation().readSnapshot();
         } catch (RuntimeException exception) {
             rebuildFailed = true;
@@ -158,7 +158,7 @@ public final class ArchaeologyJournalServerCatalog {
         }
         LootResultPreviewCache.clear();
         CatalogGeneration generation = buildResult.generation();
-        currentGeneration = generation;
+        applied = new Applied(settings, signatureExclusions, generation);
         rebuildFailed = false;
         retireSimulations(server);
         enqueueSimulation(server, generation, buildResult.uncachedRequests());
@@ -177,7 +177,7 @@ public final class ArchaeologyJournalServerCatalog {
 
     /** 当前资源与已发布目录一致时，模拟器可以读取运行时表。 */
     public static boolean canExecute(MinecraftServer server) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation != null && generation.matchesResources(server);
     }
 
@@ -188,36 +188,88 @@ public final class ArchaeologyJournalServerCatalog {
 
     private enum CachePolicy { REUSE, REPLACE }
 
-    private static BuildResult buildGeneration(MinecraftServer server, CachePolicy policy) {
+    private static ResourceAnalysis resources(MinecraftServer server) {
+        ReloadableServerRegistries.Holder registries = server.reloadableRegistries();
+        if (resourceAnalysis == null || resourceAnalysis.registries() != registries) {
+            ResourceManager manager = server.getResourceManager();
+            LootTableSourceSnapshot sources = LootTableSourceSnapshot.capture(manager,
+                    registries.getKeys(Registries.LOOT_TABLE));
+            List<InjectionEdge> injectionEdges = Services.PLATFORM.activeLootTableInjections().stream()
+                    .filter(edge -> sources.tableIds().contains(edge.source()) && sources.tableIds().contains(edge.target()))
+                    .toList();
+            LootTableReferenceGraph graph = LootTableReferenceGraph.build(sources, RuntimeLootLinks.syntheticEdges(injectionEdges));
+            Map<ResourceLocation, List<DeclaredLootInjection>> declarations = new HashMap<>();
+            resourceAnalysis = new ResourceAnalysis(registries, sources, graph, injectionEdges, readInjectionInputs(manager),
+                    UUID.randomUUID().toString(), new LootTableCompiler(server.registryAccess(), sources),
+                    JournalCategoryLoader.load(manager), id -> declarations.computeIfAbsent(id,
+                            table -> List.copyOf(Services.PLATFORM.describeLootInjections(table))));
+        }
+        return resourceAnalysis;
+    }
+
+    record ResourceAnalysis(ReloadableServerRegistries.Holder registries, LootTableSourceSnapshot sources,
+                                    LootTableReferenceGraph graph, List<InjectionEdge> injectionEdges,
+                                    List<String> injectionInputs, String reloadSalt, LootTableCompiler compiler,
+                                    JournalCategoryLoader.CategorySet categories,
+                                    Function<ResourceLocation, List<DeclaredLootInjection>> declarations) {}
+
+    private record Applied(Snapshot config, SignatureExcludedComponents signatureExclusions,
+                           CatalogGeneration catalog) {}
+
+    private static CatalogGeneration currentGeneration() {
+        Applied current = applied;
+        return current == null ? null : current.catalog();
+    }
+
+    /** 与当前目录同步发布的配置。 */
+    public static @Nullable Snapshot appliedConfiguration() {
+        Applied current = applied;
+        return current == null ? null : current.config();
+    }
+
+    /** 读取供运行时抽样使用的签名策略。 */
+    public static SignatureExcludedComponents signatureExclusions() {
+        Applied current = applied;
+        return current == null ? SignatureExcludedComponents.EMPTY : current.signatureExclusions();
+    }
+
+    /** 应用只影响日志和超时的配置，沿用目录代次和签名策略。 */
+    public static void applyWithoutRebuild(Snapshot config) {
+        Applied current = applied;
+        applied = new Applied(config, current.signatureExclusions(), current.catalog());
+        rebuildFailed = false;
+    }
+
+    /** 用正式目录算法构建候选，省略概率、广播与发布。 */
+    public static ArchaeologyJournalCatalog.LoadResult preview(MinecraftServer server, Snapshot config) {
+        return loadStaticCatalog(server, 0, resources(server), config,
+                SignatureExcludedComponents.resolve(config.settings().signatureExclusions()));
+    }
+
+    private static ArchaeologyJournalCatalog.LoadResult loadStaticCatalog(MinecraftServer server, long generation,
+            ResourceAnalysis resources, Snapshot config, SignatureExcludedComponents signatureExclusions) {
+        return ArchaeologyJournalCatalog.load(generation, resources, server.registryAccess(),
+                new LootFunctionPreviewContext(server.overworld()), config.rules(), signatureExclusions);
+    }
+
+    private static BuildResult buildGeneration(MinecraftServer server, Snapshot config,
+                                               SignatureExcludedComponents signatureExclusions, CachePolicy policy) {
         long generation = ++generationCounter;
-
-        // 1. 捕获本轮资源快照（全表有效原文 + 完整资源栈），编译与哈希共用同一次读盘
-        LootTableSourceSnapshot sourceSnapshot = LootTableSourceSnapshot.capture(server.getResourceManager());
-
-        // 2. 建图 → 编译 → 投影 → 组装静态读模型
-        ArchaeologyJournalCatalog.LoadResult loadResult = ArchaeologyJournalCatalog.load(
-                generation, sourceSnapshot, server.getResourceManager(), server.registryAccess(),
-                new LootFunctionPreviewContext(server.overworld()), ServerLootTableConfigManager.snapshot().rules());
-        Map<ResourceLocation, List<DeclaredLootInjection>> declarations = new LinkedHashMap<>();
+        ResourceAnalysis resources = resources(server);
+        ArchaeologyJournalCatalog.LoadResult loadResult = loadStaticCatalog(
+                server, generation, resources, config, signatureExclusions);
+        loadResult.staticTables().keySet().stream().sorted().forEach(LootTableNames::resolveDisplayName);
+        LootTableNames.logMissingTranslationSummary();
+        if (!loadResult.cyclicTables().isEmpty()) {
+            LOGGER.warn("检测到战利品表循环引用，排除闭环成员 {}", loadResult.cyclicTables());
+        }
+        var declarations = loadResult.declarations();
+        var expansions = loadResult.expansions();
+        Map<ResourceLocation, TableDefinition> staticTables = loadResult.staticTables();
         Map<String, String> sourceNames = new LinkedHashMap<>();
-        sourceNames.put(Constants.MOD_ID,
-                Services.PLATFORM.getModDisplayName(Constants.MOD_ID));
-        for (ResourceLocation id : loadResult.staticTables().keySet()) {
-            List<DeclaredLootInjection> rules = List.copyOf(Services.PLATFORM.describeLootInjections(id));
-            declarations.put(id, rules);
-            for (DeclaredLootInjection rule : rules)
-                sourceNames.computeIfAbsent(rule.source(),
-                        Services.PLATFORM::getModDisplayName);
-        }
-        Map<ResourceLocation, ExpandedTable> expansions = DeclaredInjectionExpansion.build(loadResult.staticTables(),
-                declarations, RuntimeLootLinks.injectionEdges(), server.registryAccess());
-        Map<ResourceLocation, TableDefinition> staticTables = new LinkedHashMap<>();
-        for (ResourceLocation id : loadResult.staticTables().keySet()) {
-            TableDefinition table = expansions.get(id).display();
-            if (!table.items().isEmpty() || !table.childTables().isEmpty()) {
-                staticTables.put(id, table);
-            }
-        }
+        sourceNames.put(Constants.MOD_ID, Services.PLATFORM.getModDisplayName(Constants.MOD_ID));
+        declarations.values().forEach(rules -> rules.forEach(rule ->
+                sourceNames.computeIfAbsent(rule.source(), Services.PLATFORM::getModDisplayName)));
         LOGGER.info("解析到 {} 个考古战利品表原始目录", staticTables.size());
 
         // 3. 先判不可用机制（决策 31）：这类表不能入队模拟，否则会在 getRandomItems 里抛异常后
@@ -240,7 +292,7 @@ public final class ArchaeologyJournalServerCatalog {
                 continue;
             }
             SimulationConstraintCatalog constraint = buildConstraintCatalog(
-                    loadResult.session(), entry.getKey(), expansions.get(entry.getKey()), level,
+                    resources, loadResult.session(), entry.getKey(), expansions.get(entry.getKey()), level,
                     loadResult.defaultTools().get(entry.getKey()));
             // 只为"有信息量"的表留一行：存在可勾选环境条件或分析预算异常的表
             if (!constraint.conditions().isEmpty() || constraint.scenarioBudgetExhausted()) {
@@ -264,15 +316,13 @@ public final class ArchaeologyJournalServerCatalog {
             staticTables = Map.copyOf(marked);
         }
         Map<ResourceLocation, String> tableHashes = computeTableHashes(
-                loadResult.session().referenceGraph(), staticTables,
-                loadResult.session().compiledTables(), server.registryAccess(), server.getResourceManager(), declarations);
+                resources, staticTables, loadResult.session().compiledTables(), server.registryAccess(), declarations,
+                config.settings().signatureExclusions(), loadResult.defaultTools());
         if (!unavailableReasons.isEmpty()) LOGGER.warn("战利品表不可用原因：{}", unavailableReasons);
-        var categories = new LinkedHashMap<>(loadResult.structure().rootCategories());
-        categories.keySet().retainAll(staticTables.keySet());
-        var structure = new CatalogStructure(loadResult.structure().categories(), categories);
         CatalogGeneration catalogGeneration = new CatalogGeneration(
-                loadResult.session(), structure, staticTables, tableHashes, constraintCatalogs,
-                expansions, sourceNames, server.registryAccess(), server.reloadableRegistries());
+                loadResult.session(), loadResult.structure(), staticTables, tableHashes, constraintCatalogs,
+                expansions, sourceNames, server.registryAccess(), server.reloadableRegistries(), loadResult.parents(),
+                config.settings().signatureExclusions(), loadResult.foldedItems());
 
         // 6. 从 SavedData 恢复已缓存的**基准输入**，写入当代 overlay；不可用的表既不入队也不读缓存
         LootProbabilityData probabilityData = LootProbabilityData.get(level);
@@ -321,7 +371,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 读附魔的机制也都写在子表里；只看本表 JSON 会让这些旋钮在父表上凭空消失。
      */
     private static SimulationConstraintCatalog buildConstraintCatalog(
-            LootTableAnalysisSession session, ResourceLocation tableId, ExpandedTable expansion,
+            ResourceAnalysis resources, LootTableAnalysisSession session, ResourceLocation tableId, ExpandedTable expansion,
             ServerLevel level, ResourceLocation defaultToolId) {
         TableDefinition table = expansion.planning();
         SimulationScenarioPlanner.ConditionPlan plan = SimulationScenarioPlanner.planConditions(tableId, table);
@@ -334,7 +384,7 @@ public final class ArchaeologyJournalServerCatalog {
         HolderLookup.RegistryLookup<Enchantment> enchantments =
                 level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
         for (ResourceLocation node : session.referenceGraph().descendantsInclusive(tableId)) {
-            toolSelectionAllowed |= LootTableCompiler.hasMatchTool(session.sourceSnapshot().effectiveJson(node));
+            toolSelectionAllowed |= session.sourceSnapshot().hasMatchTool(node);
             CompiledLootTable compiled = session.compiledTables().get(node);
             if (compiled == null) {
                 continue;
@@ -342,7 +392,7 @@ public final class ArchaeologyJournalServerCatalog {
             compiled.referencedTools().forEach(tools::putIfAbsent);
             // 附魔清单与哈希摘要同源（JSON 引用 ∪ 本表注入边门槛）：门槛移到注入处之后，
             // 父表与子表的 JSON 都不再提这个附魔，而它正是"能不能拿到注入物"的旋钮
-            for (ResourceLocation enchantmentId : summaryEnchantments(compiled, node)) {
+            for (ResourceLocation enchantmentId : summaryEnchantments(resources, compiled, node)) {
                 if (enchantmentLevels.containsKey(enchantmentId)) {
                     continue;
                 }
@@ -370,12 +420,12 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     public static CatalogTableDto clientTable(TableDefinition table) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? CatalogTableDto.assemble(table, "", null, null, Map.of(), 0) : generation.project(table);
     }
 
     public static CatalogReadSnapshot readSnapshot() {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return (generation == null ? CatalogGeneration.empty(generationCounter) : generation).readSnapshot();
     }
 
@@ -388,7 +438,7 @@ public final class ArchaeologyJournalServerCatalog {
     }
 
     public static @Nullable SimulationContext simulationContext(MinecraftServer server, ResourceLocation id) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         if (generation == null || !generation.matchesResources(server) || generation.constraintCatalog(id) == null) return null;
         return new SimulationContext(generation.generation(), generation.tableHash(id),
                 generation.constraintCatalog(id), generation.planningTable(id), generation.branches(id));
@@ -398,7 +448,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 展示入口统一选择 overlay，尚未完成模拟时使用静态表。
      */
     public static @Nullable TableDefinition displayTable(ResourceLocation id) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? null : generation.displayTable(id);
     }
 
@@ -422,7 +472,7 @@ public final class ArchaeologyJournalServerCatalog {
     // 同步回退模拟（仅在 worker 未启动时使用）
     private static void simulateSynchronously(MinecraftServer server,
                                               List<LootProbabilitySimulationWorker.SimulationRequest> requests) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         if (generation == null) {
             return;
         }
@@ -442,7 +492,7 @@ public final class ArchaeologyJournalServerCatalog {
     public static CachedStatus cachedStatus(ServerPlayer player, ResourceLocation tableId, String hash,
                                             List<String> enabledConditions, ScenarioParams params,
                                             boolean fetchSelected) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         if (generation == null || !generation.matchesResources(player.server)
                 || !generation.isTracked(tableId) || !hash.equals(generation.tableHash(tableId))) {
             throw new IllegalArgumentException("stale_hash");
@@ -470,7 +520,7 @@ public final class ArchaeologyJournalServerCatalog {
     public static OnDemandResult requestSimulation(ServerPlayer player, ResourceLocation tableId,
                                                    String expectedTableHash, List<String> enabledConditions,
                                                    ScenarioParams params, SimulationTicket ticket) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         if (generation == null || !generation.isTracked(tableId)) {
             return new OnDemandResult(OnDemandOutcome.UNKNOWN_TABLE, null);
         }
@@ -529,7 +579,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 玩家解锁一张表时的插队模拟——把它基准输入提到高优先级队列。
      */
     public static void enqueueBaselinePriority(MinecraftServer server, ResourceLocation tableId) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         if (generation == null || !generation.matchesResources(server) || generation.hasSimulated(tableId)) {
             return;
         }
@@ -632,7 +682,7 @@ public final class ArchaeologyJournalServerCatalog {
      * 当代目录代次；未加载时为 0（回执里用它让客户端丢弃过期消息）。
      */
     public static long currentGenerationId() {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? 0L : generation.generation();
     }
 
@@ -643,7 +693,7 @@ public final class ArchaeologyJournalServerCatalog {
                                                    CatalogSimulationSubmission submission, MinecraftServer server) {
         var request = submission.request();
         if (!submission.claim()) return submissionResult(SubmissionOutcome.DUPLICATE, submission, null);
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         if (generation == null || !generation.matchesResources(server)
                 || generation.generation() != request.generation()
                 || !generation.tableHash(request.tableId()).equals(request.tableHash())
@@ -708,21 +758,21 @@ public final class ArchaeologyJournalServerCatalog {
      * 当前代次排空后可广播的目录摘要，旧代事件返回空串。
      */
     public static String catalogHashFor(long generationId) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null || generation.generation() != generationId ? "" : generation.catalogHash();
     }
 
     // 计算整个目录内容的 SHA-256 哈希（用于按需同步比对）；缓存与失效都在当代内完成
     public static String computeCatalogHash() {
-        CatalogGeneration generation = currentGeneration;
-        return generation == null ? "" : generation.catalogHash();
+        return readSnapshot().hash();
     }
 
     /**
      * 释放当代目录并标记为未加载；下次 ensureLoaded 会重新构建（含资源快照与投影一并释放）
      */
     public static void invalidate() {
-        currentGeneration = null;
+        applied = null;
+        resourceAnalysis = null;
         loadAttempted = false;
         rebuildFailed = false;
         // 预览栈按签名内容缓存，跨代仍然有效；此处只做释放以限制内存
@@ -731,13 +781,13 @@ public final class ArchaeologyJournalServerCatalog {
 
     /** 获取本代展示定义，包含已发布的运行时发现。 */
     public static Map<ResourceLocation, TableDefinition> displayTables() {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? Map.of() : generation.displayTables();
     }
 
     /** 汇总本代静态目录的基准状态。 */
     public static Map<BaselineStatus, Integer> baselineCounts() {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? Map.of() : generation.baselineCounts();
     }
 
@@ -746,19 +796,56 @@ public final class ArchaeologyJournalServerCatalog {
      * ensureLoaded 后立即可用，不受渐进模拟影响；供成就判定等需要完整表集合的场景使用
      */
     public static Map<ResourceLocation, TableDefinition> staticTables() {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? Map.of() : generation.staticTables();
     }
 
     /** 返回本代实际显示为收录根表的战利品表。 */
     public static Set<ResourceLocation> rootTableIds() {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? Set.of() : generation.structure().rootCategories().keySet();
+    }
+
+    /** 返回与当前完成候选口径一致的玩家进度视图。 */
+    public static TableProgress projectProgress(ResourceLocation tableId, TableProgress progress) {
+        Applied current = applied;
+        return current == null ? progress : progress.viewFor(current.catalog().completionItems(tableId),
+                current.catalog().foldedItems(tableId), current.signatureExclusions());
+    }
+
+    /** 已发布目录中的直接父表。 */
+    public static List<ResourceLocation> parents(ResourceLocation tableId) {
+        CatalogGeneration generation = currentGeneration();
+        return generation == null ? List.of() : generation.parents(tableId);
+    }
+
+    /** 已发布目录中的顶层分类，子表沿打开的父表路径继承分类。 */
+    public static @Nullable ResourceLocation catalogCategory(ResourceLocation tableId) {
+        CatalogGeneration generation = currentGeneration();
+        return generation == null ? null : generation.structure().rootCategories().get(tableId);
+    }
+
+    /** 预览中有已有精确候选将合并到新增的物品级候选。 */
+    public static boolean hasMergedVariants(@Nullable TableDefinition previous, TableDefinition next,
+                                            Set<ResourceLocation> foldedItems, SignatureExcludedComponents exclusions) {
+        if (previous == null) return false;
+        Set<ResourceLocation> plainItems = new HashSet<>();
+        Set<LootResultSignature> remaining = new HashSet<>();
+        next.items().forEach(item -> {
+            remaining.add(item.signature());
+            if (item.signature().type() == LootResultSignature.SignatureType.PLAIN) plainItems.add(item.id());
+        });
+        return previous.items().stream().map(ItemDefinition::signature)
+                .filter(signature -> signature.type() == LootResultSignature.SignatureType.COMPONENT_EXACT)
+                .filter(signature -> foldedItems.contains(signature.itemId())
+                        && plainItems.contains(signature.itemId()) && !remaining.contains(signature))
+                .map(signature -> LootResultSignature.decodeComponentPatch(signature.data()))
+                .anyMatch(patch -> patch != null && exclusions.containsExcluded(patch));
     }
 
     /** 获取指定表及后代的静态完成候选。 */
     public static List<ItemDefinition> completionItems(ResourceLocation tableId) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? List.of() : generation.completionItems(tableId);
     }
 
@@ -767,13 +854,20 @@ public final class ArchaeologyJournalServerCatalog {
      */
     @Nullable
     public static TableDefinition staticTable(ResourceLocation tableId) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation == null ? null : generation.staticTable(tableId);
     }
 
     // 判断指定表是否已被当前服务端的原始目录收录；不受概率模拟进度影响
+    /** 只为当前运行时资源建立新的追踪归属。 */
+    public static boolean tracked(MinecraftServer server, ResourceLocation tableId) {
+        CatalogGeneration generation = currentGeneration();
+        return generation != null && generation.matchesResources(server) && generation.staticTable(tableId) != null;
+    }
+
+    /** 已捕获的会话和显示路径可以读取最近发布的目录。 */
     public static boolean tracked(ResourceLocation tableId) {
-        CatalogGeneration generation = currentGeneration;
+        CatalogGeneration generation = currentGeneration();
         return generation != null && generation.isTracked(tableId);
     }
 
@@ -863,103 +957,87 @@ public final class ArchaeologyJournalServerCatalog {
         return false;
     }
 
-    // 对每个表计算 SHA-256 哈希：缓存版本 + 该表子树的资源栈摘要、编译产物摘要与被引用附魔定义摘要。
-    // 摘要按 descendantsInclusive 覆盖后代每一张表，因此子表引用的 item tag 成员变化
-    // （子表 JSON 文本不变、只有 tag 展开结果变）同样会让父表失效。
-    //
-    // 保证范围拆成两句（决策 35），不要读成一句更大的保证：
-    //   1) "表 JSON 变化必然失效"——由资源栈摘要承担，现在成立；
-    //   2) 附魔定义走内容摘要；reference / furnace_smelt 的外部依赖走保守重载盐。
-    // 已知残余（不列入本摘要的外部注册表依赖）见 docs/dev/internals/loottable-mechanics.md。
-    private static Map<ResourceLocation, String> computeTableHashes(
-            LootTableReferenceGraph graph, Map<ResourceLocation, TableDefinition> tables,
-            Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries,
-            ResourceManager resources, Map<ResourceLocation, List<DeclaredLootInjection>> declarations) {
-        Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
-        List<String> injectionInputs;
+    private static List<String> readInjectionInputs(ResourceManager resources) {
         try {
-            injectionInputs = Services.PLATFORM.lootInjectionHashInputs(resources);
+            return Services.PLATFORM.lootInjectionHashInputs(resources);
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("读取平台注入摘要失败，本代不复用旧缓存", exception);
-            String unavailableHash = "injection-unavailable-" + UUID.randomUUID();
-            tables.keySet().forEach(id -> hashes.put(id, unavailableHash));
-            return hashes;
+            return List.of("injection-unavailable", UUID.randomUUID().toString());
         }
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            LOGGER.warn("SHA-256 算法不可用，所有表将触发重新模拟", e);
-            for (ResourceLocation tableId : tables.keySet()) {
-                hashes.put(tableId, "");
-            }
-            return hashes;
-        }
+    }
 
-        String reloadSalt = UUID.randomUUID().toString();
-        Map<ResourceLocation, Boolean> reloadSensitive = new LinkedHashMap<>();
+    private static Map<ResourceLocation, String> computeTableHashes(
+            ResourceAnalysis resources, Map<ResourceLocation, TableDefinition> tables,
+            Map<ResourceLocation, CompiledLootTable> compiledTables, HolderLookup.Provider registries,
+            Map<ResourceLocation, List<DeclaredLootInjection>> declarations, List<String> signatureExclusions,
+            Map<ResourceLocation, ResourceLocation> defaultTools) {
+        MessageDigest digest = LootTableSourceSnapshot.newDigest();
+        LootTableSourceSnapshot.updateDigest(digest, SIMULATION_CACHE_VERSION);
+        resources.injectionInputs().forEach(value -> LootTableSourceSnapshot.updateDigest(digest, value));
+        signatureExclusions.stream().sorted()
+                .forEach(id -> LootTableSourceSnapshot.updateDigest(digest, id));
+        byte[] sharedDigest = digest.digest();
 
+        Map<ResourceLocation, byte[]> nodeDigests = new HashMap<>();
+        Map<ResourceLocation, String> hashes = new LinkedHashMap<>();
         for (ResourceLocation tableId : tables.keySet()) {
-            try {
-                digest.reset();
-                LootTableSourceSnapshot.updateDigest(digest, SIMULATION_CACHE_VERSION);
-                injectionInputs.forEach(value -> LootTableSourceSnapshot.updateDigest(digest, value));
-                // 排除列表决定物品签名怎么派生，改配置必须让相关表失效（否则会沿用旧签名的缓存结果）
-                LootTableSourceSnapshot.updateDigest(digest,
-                        String.join(",", SignatureExcludedComponents.configuredIds()));
-                graph.updateSubtreeDigest(tableId, digest,
-                        (node, nodeDigest) -> {
-                            updateCompiledProductDigest(nodeDigest, tables.get(node));
-                            for (var rule : declarations.getOrDefault(node, List.of())) {
-                                LootTableSourceSnapshot.updateDigest(nodeDigest, rule.item() + "|" + rule.source()
-                                        + "|" + rule.mode() + "|" + rule.chance());
-                                for (var condition : rule.conditions())
-                                    LootTableSourceSnapshot.updateDigest(nodeDigest, ConditionIdentity.of(condition).key());
+            digest.update(sharedDigest);
+            LootTableSourceSnapshot.updateDigest(digest, defaultTools.get(tableId).toString());
+            for (ResourceLocation node : resources.graph().descendantsInclusive(tableId)) {
+                byte[] localDigest = nodeDigests.computeIfAbsent(node, id -> {
+                    MessageDigest local = LootTableSourceSnapshot.newDigest();
+                    LootTableSourceSnapshot.updateDigest(local, id.toString());
+                    resources.sources().updateSourceDigest(id, local);
+                    for (var edge : resources.graph().directEdges(id)) {
+                        LootTableSourceSnapshot.updateDigest(local, edge.kind().name());
+                        LootTableSourceSnapshot.updateDigest(local, edge.target().toString());
+                    }
+                    CompiledLootTable compiled = compiledTables.get(id);
+                    updateCompiledProductDigest(local, tables.get(id));
+                    if (compiled != null) {
+                        compiled.referencedTools().keySet().stream().sorted()
+                                .forEach(tool -> LootTableSourceSnapshot.updateDigest(local, tool.toString()));
+                        // 保留标签成员与引用位置的对应关系，重叠标签也会改变实际抽取权重。
+                        for (var event : compiled.events()) {
+                            if (event instanceof CompiledLootTable.ItemPath path && path.sourceItemTag() != null) {
+                                LootTableSourceSnapshot.updateDigest(local, path.sourceItemTag().toString());
+                                LootTableSourceSnapshot.updateDigest(local, path.itemId().toString());
                             }
-                            // 附魔定义不在任何战利品表 JSON 里，却决定模拟用的满级工具与等级控件范围
-                            updateEnchantmentDigest(nodeDigest, registries,
-                                    summaryEnchantments(compiledTables.get(node), node));
-                            if (reloadSensitive.computeIfAbsent(node,
-                                    id -> hasReloadSensitiveFunctions(compiledTables.get(id)))) {
-                                LootTableSourceSnapshot.updateDigest(nodeDigest, reloadSalt);
-                            }
-                        });
-                hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
-            } catch (IOException | RuntimeException e) {
-                LOGGER.warn("计算战利品表 {} 哈希失败，将触发重新模拟", tableId, e);
-                hashes.put(tableId, "");
+                        }
+                    }
+                    updateInjectionDigest(local, declarations.getOrDefault(id, List.of()));
+                    updateEnchantmentDigest(local, registries, summaryEnchantments(resources, compiled, id));
+                    if (hasReloadSensitiveFunctions(compiled)) {
+                        LootTableSourceSnapshot.updateDigest(local, resources.reloadSalt());
+                    }
+                    return local.digest();
+                });
+                digest.update(localDigest);
             }
+            hashes.put(tableId, HexFormat.of().formatHex(digest.digest()));
         }
         return hashes;
     }
 
-    // 编译产物记录的"本表引用到的附魔"；表未被编译时写入固定标记，
-    // 使"从无引用变为有引用"同样能改变父表摘要
-    private static Set<ResourceLocation> referencedEnchantments(@Nullable CompiledLootTable compiled) {
-        return compiled == null ? Set.of() : compiled.referencedEnchantments();
+    private static void updateInjectionDigest(MessageDigest digest, List<DeclaredLootInjection> declarations) {
+        for (var rule : declarations) {
+            LootTableSourceSnapshot.updateDigest(digest, rule.item() + "|" + rule.source()
+                    + "|" + rule.mode() + "|" + rule.chance());
+            for (var condition : rule.conditions()) {
+                LootTableSourceSnapshot.updateDigest(digest, ConditionIdentity.of(condition).key());
+            }
+        }
     }
 
-    /**
-     * 该节点摘要要吃到的附魔集合——JSON 里被引用的（五个读附魔的机制）+ **本表注入边门槛**引用的。
-     * <p>
-     * 后者不可省：门槛从"被注入子表自己的池条件"移到"父表注入处"之后，两端 JSON 里都不再出现
-     * {@code enchantment} 字段，而它的 {@code max_level} 仍决定模拟用的满级工具（注入场景要带满级
-     * 附魔才进得去）。不并入这一项，改 {@code max_level} 就不会让任何表失效，决策 35 那句
-     * "影响概率的所有数据变化必然失效"随之破掉。同一份集合同样用于附魔等级旋钮清单。
-     */
-    private static Set<ResourceLocation> summaryEnchantments(@Nullable CompiledLootTable compiled,
-                                                             ResourceLocation node) {
-        Set<ResourceLocation> references = referencedEnchantments(compiled);
-        Set<ResourceLocation> gates = RuntimeLootLinks.injectionGateEnchantments(node);
-        if (gates.isEmpty() || references.containsAll(gates)) {
-            return references;
+    // 与模拟参数共用本表的附魔依赖，包含实际启用的注入门槛。
+    private static Set<ResourceLocation> summaryEnchantments(ResourceAnalysis resources,
+            @Nullable CompiledLootTable compiled, ResourceLocation table) {
+        Set<ResourceLocation> enchantments = new HashSet<>();
+        if (compiled != null) enchantments.addAll(compiled.referencedEnchantments());
+        for (InjectionEdge edge : resources.injectionEdges()) {
+            if (edge.source().equals(table)) enchantments.add(edge.gate().enchantmentId());
         }
-        if (references.isEmpty()) {
-            return gates;
-        }
-        Set<ResourceLocation> union = new HashSet<>(references);
-        union.addAll(gates);
-        return union;
+        return enchantments;
     }
 
     /**

@@ -6,6 +6,7 @@ import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.event.LootTrackingEvents;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootSimulationScope;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -48,6 +49,13 @@ public final class LootCapture {
         }
     }
 
+    /** 扫描暂存预期战利品，等玩家领取时登记最近遇到。 */
+    public static void stageScanned(Source source, ItemStack stack, LootSettlementTarget target) {
+        try (CaptureHandle handle = beginTracking(source)) {
+            handle.complete(stack, target);
+        }
+    }
+
     /** 仅供跨既有注入相位的 adapter 持有；close 只终止，不隐式提交。 */
     public static CaptureHandle begin(Source source) {
         LootTrackingContext parent = LootTrackingContextHolder.current();
@@ -59,17 +67,41 @@ public final class LootCapture {
         return beginIndependent(source);
     }
 
+    /** 平台注入只在已有根会话中追加子表，根表资格决定本次追踪。 */
+    public static CaptureHandle beginInjectedChild(ServerPlayer player, ResourceLocation tableId) {
+        LootTrackingContext parent = LootTrackingContextHolder.current();
+        LootSession session = LootTrackingContextHolder.currentSession();
+        if (session == null || parent == null || parent.player() != player
+                || parent.tableStack().contains(tableId)
+                || !ArchaeologyJournalServerCatalog.tracked(player.server, tableId)) {
+            return new CaptureHandle(null, null, false);
+        }
+        return new CaptureHandle(session, parent.descend(tableId), false);
+    }
+
     /** 每份新库存独立提交，即使生成发生在另一份库存的回调中。 */
     public static CaptureHandle beginIndependent(Source source) {
-        LootSession session = null;
-        LootTrackingContext context = null;
-        if (source.player() != null && ArchaeologyJournalServerCatalog.tracked(source.table())
-                && ArchaeologyJournalStateHolder.getState(source.player()) != null) {
-            context = LootTrackingContext.root(source.player(), source.table(), source.type(),
-                    source.gameTime(), source.dayTime(), source.pos(), source.block());
-            session = new LootSession(context);
+        recordEncounter(source.player(), source.table());
+        return beginTracking(source);
+    }
+
+    private static CaptureHandle beginTracking(Source source) {
+        ServerPlayer player = source.player();
+        if (player == null || LootSimulationScope.isActive()
+                || !ArchaeologyJournalServerCatalog.tracked(player.server, source.table())
+                || ArchaeologyJournalStateHolder.getState(player) == null) {
+            return new CaptureHandle(null, null, true);
         }
-        return new CaptureHandle(session, context, true);
+        LootTrackingContext context = LootTrackingContext.root(player, source.table(), source.type(),
+                source.gameTime(), source.dayTime(), source.pos(), source.block());
+        return new CaptureHandle(new LootSession(context), context, true);
+    }
+
+    /** 记录玩家领取已经生成的扫描来源。 */
+    public static void recordEncounter(@Nullable ServerPlayer player, ResourceLocation tableId) {
+        if (!LootSimulationScope.isActive()) {
+            RecentLootTableService.record(player, tableId);
+        }
     }
 
     /** 每个根入口独占一个句柄；嵌套表继续使用栈顶会话。 */

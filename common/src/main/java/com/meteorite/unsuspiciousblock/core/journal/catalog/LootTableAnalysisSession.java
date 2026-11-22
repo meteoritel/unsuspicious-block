@@ -7,6 +7,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * 单轮重载共享的不可变资源快照、引用图与编译产物。
@@ -27,13 +28,8 @@ public record LootTableAnalysisSession(
      */
     public static LootTableAnalysisSession empty(long generation) {
         LootTableSourceSnapshot emptySnapshot =
-                LootTableSourceSnapshot.capture(ResourceManager.Empty.INSTANCE);
+                LootTableSourceSnapshot.capture(ResourceManager.Empty.INSTANCE, List.of());
         return new LootTableAnalysisSession(generation, emptySnapshot,
                 LootTableReferenceGraph.build(emptySnapshot, Map.of()), Map.of());
     }
-
-
-
-
-
 }

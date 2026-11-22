@@ -8,7 +8,6 @@ import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.UnsuspiciousBlockEntity;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.core.BlockPos;
@@ -269,12 +268,13 @@ public class ArchaeologicalShovelItem extends ShovelItem {
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {
-            RecentLootTableService.record(player, lootTableName);
             if (pendingHost.unsuspiciousblock$pendingJournal().current() == null) {
                 LootCapture.submitFinal(new LootCapture.Source(
                         player, lootTableName, LootSourceType.ARCHAEOLOGY, pos,
                         BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()), level.getGameTime(), level.getDayTime()), extracted,
                         LootSettlementTarget.brush(pendingHost.unsuspiciousblock$pendingJournal()));
+            } else {
+                LootCapture.recordEncounter(player, lootTableName);
             }
         }
 

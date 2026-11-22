@@ -23,6 +23,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -38,6 +39,9 @@ public final class CatalogGeneration {
 
     private final LootTableAnalysisSession session;
     private final CatalogStructure structure;
+    private final Map<ResourceLocation, List<ResourceLocation>> parents;
+    private final List<String> signatureExclusions;
+    private final Map<ResourceLocation, Set<ResourceLocation>> foldedItems;
     /**
      * 解析态视图（概率为 "?" 占位符），由本代静态投影转换而来，供模拟与无需概率的查询使用。
      */
@@ -73,13 +77,18 @@ public final class CatalogGeneration {
                              Map<ResourceLocation, SimulationConstraintCatalog> constraintCatalogs,
                              Map<ResourceLocation, ExpandedTable> expansions,
                              Map<String, String> sourceNames, RegistryAccess registries,
-                             @Nullable ReloadableServerRegistries.Holder runtimeRegistries) {
+                             @Nullable ReloadableServerRegistries.Holder runtimeRegistries,
+                             Map<ResourceLocation, List<ResourceLocation>> parents,
+                             List<String> signatureExclusions, Map<ResourceLocation, Set<ResourceLocation>> foldedItems) {
         this.runtimeRegistries = runtimeRegistries;
         this.registries = registries;
         this.expansions = Map.copyOf(expansions);
         this.sourceNames = Map.copyOf(sourceNames);
         this.session = session;
         this.structure = structure;
+        this.parents = Map.copyOf(parents);
+        this.signatureExclusions = List.copyOf(signatureExclusions);
+        this.foldedItems = Map.copyOf(foldedItems);
         this.staticTables = Map.copyOf(staticTables);
         this.tableHashes = Map.copyOf(tableHashes);
         this.constraintCatalogs = Map.copyOf(constraintCatalogs);
@@ -95,7 +104,7 @@ public final class CatalogGeneration {
     public static CatalogGeneration empty(long generation) {
         return new CatalogGeneration(LootTableAnalysisSession.empty(generation),
                 CatalogStructure.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                RegistryAccess.EMPTY, null);
+                RegistryAccess.EMPTY, null, Map.of(), List.of(), Map.of());
     }
 
     boolean matchesResources(MinecraftServer server) {
@@ -138,8 +147,18 @@ public final class CatalogGeneration {
         return this.session;
     }
 
+    /** 当前目录中直接引用该表的父表。 */
+    public List<ResourceLocation> parents(ResourceLocation tableId) {
+        return this.parents.getOrDefault(tableId, List.of());
+    }
+
     public CatalogStructure structure() {
         return this.structure;
+    }
+
+    /** 已发布目录的签名折叠来源。 */
+    public Set<ResourceLocation> foldedItems(ResourceLocation tableId) {
+        return CatalogQueryIndex.foldedItems(this.staticTables, this.foldedItems, tableId);
     }
 
     /** 同代静态候选构成的完成资格。 */
@@ -251,7 +270,7 @@ public final class CatalogGeneration {
                     .map(this::displayTable)
                     .map(this::project).toList();
             this.readSnapshot = CatalogReadSnapshot.freeze(generation(), this.overlayRevision,
-                    tables, this.structure, this.registries);
+                    tables, this.structure, this.registries, this.signatureExclusions, this.foldedItems);
         }
         return this.readSnapshot;
     }

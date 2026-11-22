@@ -12,6 +12,8 @@ import com.meteorite.unsuspiciousblock.core.loottable.injection.ArchaeologyLootI
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultMatcher;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultMatcher.CandidateIndex;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExcludedComponents;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -89,6 +91,7 @@ final class LootProbabilitySimulationJob {
     private Map<Item, CandidateIndex> candidatesByItem = Map.of();
     private Map<ResourceLocation, RollCounter> childCounters = Map.of();
     private LootParams lootParams;
+    private final SignatureExcludedComponents signatureExclusions;
     private SimResult result;
 
     LootProbabilitySimulationJob(ResourceLocation tableId, TableDefinition rawTable,
@@ -98,6 +101,7 @@ final class LootProbabilitySimulationJob {
         this.level = level;
         this.scenario = scenario;
         this.input = input;
+        this.signatureExclusions = ArchaeologyJournalServerCatalog.signatureExclusions();
     }
 
     private void initialize() {
@@ -434,11 +438,11 @@ final class LootProbabilitySimulationJob {
     }
 
     // 附魔结果继续折叠，其他动态结果保留组件，避免药水等物品在缓存和同步后丢失变体。
-    private static LootResultSignature deriveSignature(ItemStack stack) {
+    private LootResultSignature deriveSignature(ItemStack stack) {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return LootResultSignature.isActuallyEnchanted(stack)
                 ? LootResultSignature.enchantedApprox(itemId)
-                : LootResultSignature.componentExact(stack);
+                : LootResultSignature.componentExact(stack, this.signatureExclusions);
     }
 
     /** 单个场景内按轮次去重的原始计数器。 */

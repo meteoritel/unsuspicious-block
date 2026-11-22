@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.core.journal.migration.JournalDataVersion
 import com.meteorite.unsuspiciousblock.core.journal.migration.JournalNbtMigrator;
 
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExcludedComponents;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -394,6 +397,34 @@ public final class ArchaeologyJournalState {
             return item != null && item.isUnlocked() ? item.getCount() : 0;
         }
 
+        /** 读取当前候选口径的进度。原始记录可在恢复精确签名后重新匹配。 */
+        public TableProgress viewFor(List<ItemDefinition> candidates, Set<ResourceLocation> foldedItems,
+                                     SignatureExcludedComponents exclusions) {
+            if (foldedItems.isEmpty()) return this;
+            Set<LootResultSignature> current = new HashSet<>();
+            candidates.forEach(candidate -> current.add(candidate.signature()));
+            TableProgress projected = null;
+            for (String key : this.items.keySet()) {
+                LootResultSignature stored = LootResultSignature.fromStoredKey(key);
+                if (stored == null || stored.type() != LootResultSignature.SignatureType.COMPONENT_EXACT
+                        || current.contains(stored) || !foldedItems.contains(stored.itemId())) continue;
+                LootResultSignature plain = LootResultSignature.plain(stored.itemId());
+                if (!current.contains(plain)) continue;
+                var patch = LootResultSignature.decodeComponentPatch(stored.data());
+                if (patch != null && exclusions.containsExcluded(patch)) {
+                    if (projected == null) projected = copy();
+                    projected.remapItemSignature(stored, plain);
+                }
+            }
+            return projected == null ? this : projected;
+        }
+
+        /** 检查历史中是否有该物品的收集证据，用于物品级成就。 */
+        public boolean hasCollectedItem(ResourceLocation itemId) {
+            return getItemSignatures().stream()
+                    .anyMatch(signature -> signature.itemId().equals(itemId) && isItemUnlocked(signature));
+        }
+
         // 返回当前表已保存的全部物品签名快照，供目录迁移与一致性检查使用
         public List<LootResultSignature> getItemSignatures() {
             List<LootResultSignature> signatures = new ArrayList<>();
@@ -552,7 +583,9 @@ public final class ArchaeologyJournalState {
                 return false;
             }
 
-            this.count += amount;
+            int next = (int) Math.min(Integer.MAX_VALUE, (long) this.count + amount);
+            if (next == this.count) return false;
+            this.count = next;
             return true;
         }
 

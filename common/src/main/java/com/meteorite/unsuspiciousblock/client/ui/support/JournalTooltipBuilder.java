@@ -7,7 +7,6 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHand
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.PathHint;
@@ -420,7 +419,7 @@ public final class JournalTooltipBuilder {
                 || !ArchaeologyJournalClientState.getCatalog().containsKey(sourceChildTable)) {
             return;
         }
-        Component childTableName = LootTableNames.resolveDisplayName(sourceChildTable);
+        Component childTableName = ClientLootTableLanguageStore.displayName(sourceChildTable);
         lines.add(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.from_child_table", childTableName)
                 .withStyle(TooltipBuilder.ACCENT, ChatFormatting.ITALIC));

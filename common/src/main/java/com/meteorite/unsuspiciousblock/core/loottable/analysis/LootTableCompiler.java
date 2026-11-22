@@ -27,6 +27,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Optional;
 import java.util.Set;
 
 /** 将单张表编译为带权重、条件及函数链的物品路径与具名引用。 */
@@ -40,29 +42,34 @@ public final class LootTableCompiler {
             ConditionTree.ANY, Component.translatable(CONDITION_KEY + "any_of"), List.of());
 
     private final DynamicOps<JsonElement> lootOps;
+    private final LootTableSourceSnapshot sources;
+    private final Map<ResourceLocation, Optional<CompiledLootTable>> compiledById = new HashMap<>();
 
-    public LootTableCompiler(HolderLookup.Provider registries) {
+    public LootTableCompiler(HolderLookup.Provider registries, LootTableSourceSnapshot sources) {
         this.lootOps = RegistryOps.create(JsonOps.INSTANCE, registries);
+        this.sources = sources;
     }
 
     /**
-     * 编译给定表集合。表缺失或 JSON 无法解析时跳过该表并告警，不影响其余表。
+     * 编译引用图选出的生效表。单表语义分析失败时记录并跳过该表。
      */
-    public Map<ResourceLocation, CompiledLootTable> compile(LootTableSourceSnapshot sourceSnapshot,
-                                                            Set<ResourceLocation> tableIds) {
+    public Map<ResourceLocation, CompiledLootTable> compile(Set<ResourceLocation> tableIds) {
         Map<ResourceLocation, CompiledLootTable> compiled = new LinkedHashMap<>();
         for (ResourceLocation tableId : tableIds) {
-            JsonElement element = sourceSnapshot.effectiveJson(tableId);
-            if (element == null) {
-                continue;
-            }
-            try {
-                compiled.put(tableId, compileTable(tableId, element));
-            } catch (RuntimeException exception) {
-                LOGGER.warn("编译战利品表 {} 失败，跳过该表", tableId, exception);
-            }
+            Optional<CompiledLootTable> table = this.compiledById.computeIfAbsent(tableId,
+                    id -> compileSource(id, this.sources.effectiveJson(id)));
+            table.ifPresent(product -> compiled.put(tableId, product));
         }
         return compiled;
+    }
+
+    private Optional<CompiledLootTable> compileSource(ResourceLocation tableId, JsonElement element) {
+        try {
+            return Optional.of(compileTable(tableId, element));
+        } catch (RuntimeException exception) {
+            LOGGER.warn("编译战利品表 {} 失败，跳过该表", tableId, exception);
+            return Optional.empty();
+        }
     }
 
     /** 编译单张表；表声明的 {@code type} 一并记入产物，供模拟上下文判定使用。 */

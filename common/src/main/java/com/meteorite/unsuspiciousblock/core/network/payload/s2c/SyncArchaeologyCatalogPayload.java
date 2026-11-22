@@ -11,6 +11,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashMap;
 
 /**
  * 全量目录同步包 —— 服务端→客户端。
@@ -22,7 +25,9 @@ import java.util.List;
  * 线格式实现见 {@link CatalogStreamCodec}——它与按需结果下发（{@code SyncScenarioResultPayload}）
  * 共用同一份编解码，避免两条通道对同一份数据各写一套。
  */
-public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, CatalogStructure structure)
+public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, CatalogStructure structure,
+                                            List<String> signatureExclusions,
+                                            Map<ResourceLocation, Set<ResourceLocation>> foldedItems)
         implements CustomPacketPayload {
 
     public static final Type<SyncArchaeologyCatalogPayload> TYPE =
@@ -30,6 +35,8 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
 
     public SyncArchaeologyCatalogPayload {
         catalog = List.copyOf(catalog);
+        signatureExclusions = List.copyOf(signatureExclusions);
+        foldedItems = Map.copyOf(foldedItems);
     }
 
     @Override
@@ -46,6 +53,13 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
             CatalogStreamCodec.writeTable(buf, table);
         }
         CatalogStreamCodec.writeStructure(buf, payload.structure());
+        buf.writeCollection(payload.signatureExclusions, (buffer, id) -> buffer.writeUtf(id));
+        buf.writeVarInt(payload.foldedItems.size());
+        for (ResourceLocation tableId : payload.foldedItems.keySet().stream().sorted().toList()) {
+            buf.writeResourceLocation(tableId);
+            buf.writeCollection(payload.foldedItems.get(tableId).stream().sorted().toList(),
+                    (buffer, item) -> buffer.writeResourceLocation(item));
+        }
     }
 
     private static SyncArchaeologyCatalogPayload decode(RegistryFriendlyByteBuf buf) {
@@ -54,6 +68,13 @@ public record SyncArchaeologyCatalogPayload(List<CatalogTableDto> catalog, Catal
         for (int i = 0; i < tableCount; i++) {
             catalog.add(CatalogStreamCodec.readTable(buf));
         }
-        return new SyncArchaeologyCatalogPayload(catalog, CatalogStreamCodec.readStructure(buf));
+        CatalogStructure structure = CatalogStreamCodec.readStructure(buf);
+        List<String> exclusions = buf.readList(buffer -> buffer.readUtf());
+        int foldedCount = buf.readVarInt();
+        Map<ResourceLocation, Set<ResourceLocation>> folded = new LinkedHashMap<>();
+        for (int index = 0; index < foldedCount; index++) {
+            folded.put(buf.readResourceLocation(), Set.copyOf(buf.readList(buffer -> buffer.readResourceLocation())));
+        }
+        return new SyncArchaeologyCatalogPayload(catalog, structure, exclusions, folded);
     }
 }

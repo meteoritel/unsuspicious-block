@@ -8,7 +8,6 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStat
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStateHolder;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -72,7 +71,8 @@ public final class ArchaeologyChallengeChecker {
         }
 
         // 全图鉴：要求解锁所有原版考古战利品表且表中每件物品都至少获得一次
-        if (needCompletionist && isFullCatalogUnlocked(state)) {
+        if (needCompletionist && ArchaeologyJournalServerCatalog.canExecute(player.server)
+                && isFullCatalogUnlocked(state)) {
             AchievementManager.grantIfNotAlready(player, ModAchievements.COMPLETIONISTS_DUST);
         }
     }
@@ -96,11 +96,10 @@ public final class ArchaeologyChallengeChecker {
         return true;
     }
 
-    // 判断某物品是否在玩家任意战利品表中已解锁（陶片/样板均为普通物品，使用 PLAIN 签名匹配）
+    // 判断某物品是否在玩家任意战利品表中已解锁（陶片和样板成就以物品为单位）
     private static boolean isItemCollected(ArchaeologyJournalState state, ResourceLocation itemId) {
-        LootResultSignature signature = LootResultSignature.plain(itemId);
         for (TableProgress table : state.getTables().values()) {
-            if (table.isItemUnlocked(signature)) {
+            if (table.hasCollectedItem(itemId)) {
                 return true;
             }
         }
@@ -120,8 +119,9 @@ public final class ArchaeologyChallengeChecker {
             if (!state.isTableUnlocked(table.id())) {
                 return false;
             }
+            TableProgress progress = ArchaeologyJournalServerCatalog.projectProgress(table.id(), state.getTable(table.id()));
             for (ItemDefinition item : table.items()) {
-                if (!state.isItemUnlocked(table.id(), item.signature())) {
+                if (!progress.isItemUnlocked(item.signature())) {
                     return false;
                 }
             }

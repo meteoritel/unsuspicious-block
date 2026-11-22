@@ -57,6 +57,7 @@ public final class JournalCompletionRewardChecker {
 
     // 检测单张表是否达到 100% 完成条件，达标则发奖+发包
     private static void tryReward(ServerPlayer player, ArchaeologyJournalState state, ResourceLocation tableId) {
+        if (!ArchaeologyJournalServerCatalog.tracked(player.server, tableId)) return;
         TableProgress progress = state.getTable(tableId);
         if (progress == null || !progress.isUnlocked() || progress.isCompletionRewardClaimed()) {
             return;
@@ -68,6 +69,7 @@ public final class JournalCompletionRewardChecker {
         }
 
         // 完成度与父表 Intro 使用同一口径：当前表及全部后代表中的唯一物品签名。
+        progress = ArchaeologyJournalServerCatalog.projectProgress(tableId, progress);
         for (ItemDefinition item : requiredItems) {
             if (!progress.isItemUnlocked(item.signature())) {
                 return;

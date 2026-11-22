@@ -6,21 +6,25 @@ import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncArchaeologyC
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /** 同代同 revision 的线路快照；内容与摘要共用真实 codec 的裁剪和编码。 */
 public record CatalogReadSnapshot(long generation, long revision,
                                   SyncArchaeologyCatalogPayload payload, String hash) {
     static CatalogReadSnapshot freeze(long generation, long revision, List<CatalogTableDto> tables,
-                                       CatalogStructure structure, RegistryAccess registries) {
+                                       CatalogStructure structure, RegistryAccess registries, List<String> signatureExclusions,
+                                       Map<ResourceLocation, Set<ResourceLocation>> foldedItems) {
         RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), registries);
         try {
             SyncArchaeologyCatalogPayload.STREAM_CODEC.encode(buffer,
-                    new SyncArchaeologyCatalogPayload(tables, structure));
+                    new SyncArchaeologyCatalogPayload(tables, structure, signatureExclusions, foldedItems));
             // 解码副本剥离活谓词和服务端内部约束，同时冻结实际线路裁剪后的树。
             SyncArchaeologyCatalogPayload frozen = SyncArchaeologyCatalogPayload.STREAM_CODEC.decode(buffer);
             if (buffer.isReadable()) throw new IllegalStateException("目录快照解码后仍有未消费字节");

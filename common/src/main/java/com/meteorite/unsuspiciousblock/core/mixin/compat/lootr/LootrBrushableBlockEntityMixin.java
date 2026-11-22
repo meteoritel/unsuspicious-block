@@ -17,7 +17,6 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ContainerLootTracking;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.GeneratedLootInventory;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.InventoryLootTracking;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -119,8 +118,6 @@ public abstract class LootrBrushableBlockEntityMixin implements BrushableBlockEn
             unsuspiciousblock$clearScanned();
             return Extraction.EMPTY;
         }
-        ResourceLocation table = unsuspiciousblock$getLootTableName();
-        if (table != null) RecentLootTableService.record(player, table);
         ItemStack original = item.copy();
         return new Extraction(item, delivered -> tracking.acquireBrushLoot(player, original, delivered.getCount()));
     }

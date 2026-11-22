@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogGeneration.BaselineStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootProbabilitySimulationWorker;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
@@ -64,7 +65,7 @@ public final class JournalCatalogCommand {
     }
 
     private static int rebuild(CommandSourceStack source) {
-        if (!ArchaeologyJournalServerCatalog.rebuildWithoutCache(source.getServer())) {
+        if (!ServerLootTableConfigManager.rebuild(source.getServer())) {
             source.sendFailure(Component.translatable(KEY + "rebuild.failed"));
             return 0;
         }

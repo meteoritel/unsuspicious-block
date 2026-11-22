@@ -19,7 +19,7 @@ public final class ArchaeologyJournalNetwork {
     public static void syncPreparedPlayerOnJoin(ServerPlayer player) {
         JournalLogHandler.syncLogSnapshot(player);
         JournalCatalogHandler.syncCatalogHash(player);
-        LootTableManagementHandler.sync(player);
+        LootTableManagementHandler.syncNames(player);
         JournalStateHandler.syncStateFull(player);
         // 状态全量同步之后再补发完成奖励，确保客户端 catalog 已就绪可解析表名
         JournalCompletionRewardChecker.checkAndRewardAll(player);

@@ -5,6 +5,9 @@ import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExcludedComponents;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState.TableProgress;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
@@ -56,6 +59,8 @@ public final class ArchaeologyJournalClientState {
     private static final class ConnectionState {
         private Map<ResourceLocation, TableDefinition> serverCatalog = Collections.emptyMap();
         private CatalogStructure catalogStructure = CatalogStructure.empty();
+        private Map<ResourceLocation, Set<ResourceLocation>> foldedItems = Map.of();
+        private SignatureExcludedComponents exclusions = SignatureExcludedComponents.EMPTY;
         private ArchaeologyJournalState journalState = new ArchaeologyJournalState();
         private Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
         private long catalogProjectionRevision = -1L;
@@ -107,9 +112,20 @@ public final class ArchaeologyJournalClientState {
         JournalClientConnection.scenario().catalog(payload.catalog());
         connectionState.serverCatalog = Collections.unmodifiableMap(tables);
         connectionState.catalogStructure = payload.structure();
+        connectionState.foldedItems = payload.foldedItems();
+        connectionState.exclusions = SignatureExcludedComponents.resolve(payload.signatureExclusions());
         connectionState.catalogInitialized = true;
         catalogRevision.incrementAndGet();
         // 收到完整目录后，哈希由服务端下次同步时更新
+    }
+
+    /** 按服务端目录同代的签名候选读取玩家进度。 */
+    public static @Nullable TableProgress projectProgress(ResourceLocation tableId, @Nullable TableProgress progress) {
+        if (progress == null || connectionState.foldedItems.isEmpty()) return progress;
+        var tables = connectionState.serverCatalog;
+        var folded = CatalogQueryIndex.foldedItems(tables, connectionState.foldedItems, tableId);
+        if (folded.isEmpty()) return progress;
+        return progress.viewFor(CatalogQueryIndex.completionItems(tables, tableId), folded, connectionState.exclusions);
     }
 
     // 收到目录哈希后与本地缓存对比，不一致时请求完整目录
@@ -231,7 +247,7 @@ public final class ArchaeologyJournalClientState {
     public static void receiveTableCompletionReward(NotifyTableCompletionRewardPayload payload) {
         ResourceLocation tableId = payload.tableId();
         TableDefinition def = connectionState.serverCatalog.get(tableId);
-        Component tableName = def != null ? def.displayName()
+        Component tableName = def != null ? ClientLootTableLanguageStore.displayName(payload.tableId())
                 : Component.literal(tableId.getPath());
         Consumer<Component> notifier = tableCompletionNotifier;
         if (notifier != null) {
@@ -407,7 +423,7 @@ public final class ArchaeologyJournalClientState {
     private static Component resolveTableName(ResourceLocation tableId, Map<ResourceLocation, TableDefinition> catalog) {
         TableDefinition def = catalog.get(tableId);
         if (def != null) {
-            return def.displayName();
+            return ClientLootTableLanguageStore.displayName(tableId);
         }
         return Component.literal(tableId.getPath());
     }

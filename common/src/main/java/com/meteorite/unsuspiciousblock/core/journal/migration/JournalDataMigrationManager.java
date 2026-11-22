@@ -73,6 +73,7 @@ public final class JournalDataMigrationManager {
 
     // 将历史回退签名迁移为当前目录中的规范签名
     private static int migrateProgressSignatures(ServerPlayer player) {
+        if (!ArchaeologyJournalServerCatalog.canExecute(player.server)) return 0;
         ArchaeologyJournalState state = ArchaeologyJournalStateHolder.getState(player);
         if (state == null) {
             return 0;

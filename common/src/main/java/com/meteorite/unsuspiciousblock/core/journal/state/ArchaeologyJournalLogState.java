@@ -247,7 +247,7 @@ public final class ArchaeologyJournalLogState {
 
         // 服务端配置是所有玩家、所有表共享的最后兜底上限
         public static int getGlobalMaxEntries() {
-            return Math.max(1, ServerLootTableConfigManager.snapshot().settings().logLimit());
+            return Math.max(1, ServerLootTableConfigManager.effectiveSettings().logLimit());
         }
 
         @Nullable

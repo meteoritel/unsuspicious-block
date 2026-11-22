@@ -4,6 +4,8 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTablePattern;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -11,6 +13,11 @@ import java.util.Set;
 public final class LootTrackingRules {
     /** 稳定标识独立于选择器，世界可以持续禁用同一内置规则。 */
     public record Builtin(String id, String selector) {}
+
+    /** 命中的已启用选择器以及该表的精确覆盖。 */
+    public record Explanation(Match match, List<String> selectors, boolean exactOverride) {}
+
+    private record Rule(String label, LootTablePattern pattern) {}
 
     public static final List<Builtin> BUILTINS = List.of(
             new Builtin("archaeology", "archaeology/"),
@@ -38,27 +45,25 @@ public final class LootTrackingRules {
     public enum TableEdit { INCLUDE, EXCLUDE, CLEAR }
 
     private final LootTrackingSettings settings;
-    private final Set<LootTablePattern> builtins;
-    private final Set<LootTablePattern> additional;
+    private final List<Rule> builtins;
+    private final List<Rule> additional;
     private final Set<LootTablePattern> effective;
     private final Set<String> exclusions;
 
     public LootTrackingRules(LootTrackingSettings settings) {
         this.settings = settings;
-        builtins = settings.followBuiltinRules() ? patterns(BUILTINS.stream()
-                .filter(rule -> !settings.disabledBuiltinRules().contains(rule.id())).map(Builtin::selector).toList())
-                : Set.of();
-        additional = patterns(settings.additionalTrackingRules());
-        Set<LootTablePattern> combined = new LinkedHashSet<>(builtins);
-        combined.addAll(additional);
+        builtins = settings.followBuiltinRules() ? BUILTINS.stream()
+                .filter(rule -> !settings.disabledBuiltinRules().contains(rule.id()))
+                .map(rule -> toRule(rule.selector())).toList() : List.of();
+        additional = settings.additionalTrackingRules().stream().map(LootTrackingRules::toRule).toList();
+        Set<LootTablePattern> combined = new LinkedHashSet<>();
+        builtins.forEach(rule -> combined.add(rule.pattern()));
+        additional.forEach(rule -> combined.add(rule.pattern()));
         effective = Set.copyOf(combined);
         exclusions = Set.copyOf(settings.excludedLootTables());
     }
 
-    public Match match(ResourceLocation table) {
-        if (exclusions.contains(table.toString())) return Match.EXCLUDED;
-        boolean matchesBuiltin = matches(builtins, table);
-        boolean matchesAdditional = matches(additional, table);
+    private static Match match(boolean matchesBuiltin, boolean matchesAdditional) {
         if (matchesBuiltin && matchesAdditional) return Match.BOTH;
         if (matchesBuiltin) return Match.BUILTIN;
         return matchesAdditional ? Match.ADDITIONAL : Match.UNMATCHED;
@@ -68,9 +73,26 @@ public final class LootTrackingRules {
         return !exclusions.contains(table.toString()) && matches(effective, table);
     }
 
+    /** 返回收录判定用到的规则文本。精确排除仍保留被覆盖的命中来源。 */
+    public Explanation explain(ResourceLocation table) {
+        List<String> selectors = new ArrayList<>();
+        collectMatches(builtins, table, selectors);
+        boolean hasBuiltin = !selectors.isEmpty();
+        int builtinCount = selectors.size();
+        collectMatches(additional, table, selectors);
+        Match match = exclusions.contains(table.toString()) ? Match.EXCLUDED
+                : match(hasBuiltin, selectors.size() > builtinCount);
+        return new Explanation(match, selectors.stream().distinct().toList(), hasExactOverride(table));
+    }
+
+    /** 找出当前没有匹配任何可分析表的选择器。 */
+    public List<String> unmatchedSelectors(Collection<ResourceLocation> tables) {
+        return additional.stream().filter(rule -> tables.stream().noneMatch(rule.pattern()::matches))
+                .map(Rule::label).toList();
+    }
+
     public boolean hasExactOverride(ResourceLocation table) {
-        return exclusions.contains(table.toString()) || additional.contains(
-                new LootTablePattern(table.getNamespace(), table.getPath(), false));
+        return exclusions.contains(table.toString()) || settings.additionalTrackingRules().contains(table.toString());
     }
 
     /** 构造单表修改后的覆盖，调用者负责提交。 */
@@ -99,10 +121,14 @@ public final class LootTrackingRules {
                 || !settings.signatureExclusions().equals(previous.settings.signatureExclusions());
     }
 
-    private static Set<LootTablePattern> patterns(List<String> selectors) {
-        Set<LootTablePattern> result = new LinkedHashSet<>();
-        for (String selector : selectors) result.add(LootTablePattern.parse(selector));
-        return Set.copyOf(result);
+    private static Rule toRule(String selector) {
+        return new Rule(selector, LootTablePattern.parse(selector));
+    }
+
+    private static void collectMatches(List<Rule> rules, ResourceLocation table, List<String> selectors) {
+        for (Rule rule : rules) {
+            if (rule.pattern().matches(table)) selectors.add(rule.label());
+        }
     }
 
     private static boolean matches(Set<LootTablePattern> patterns, ResourceLocation table) {

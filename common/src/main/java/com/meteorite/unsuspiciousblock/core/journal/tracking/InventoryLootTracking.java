@@ -87,7 +87,7 @@ public final class InventoryLootTracking {
     public void reconcileMenu(Container inventory, long gameTime) {
         ExcavationLogEntry source = contents.pending().current();
         if (source == null) return;
-        long timeout = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
+        long timeout = ServerLootTableConfigManager.effectiveSettings().timeoutTicks();
         if (gameTime - source.createdGameTime() > timeout) {
             contents.clear();
         } else {
@@ -136,7 +136,6 @@ public final class InventoryLootTracking {
         boolean stateChanged = false;
         try {
             for (ResourceLocation table : tables) {
-                if (!ArchaeologyJournalServerCatalog.tracked(table)) continue;
                 Map<String, Integer> found = discoveries.get(table);
                 Map<String, Integer> tableLoot = rootTable.equals(table) || found == null
                         ? actual : intersect(actual, found);
@@ -147,9 +146,7 @@ public final class InventoryLootTracking {
                     stateChanged = true;
                     ArchaeologyJournalServerCatalog.enqueueBaselinePriority(player.server, table);
                 }
-                stateChanged |= state.recordItemsAcquired(table,
-                        ArchaeologyLootRuntimeTracker.canonicalizeSignatureCounts(table,
-                                ArchaeologyLootRuntimeTracker.toSignatureCounts(tableLoot)));
+                stateChanged |= state.recordItemsAcquired(table, ArchaeologyLootRuntimeTracker.toSignatureCounts(tableLoot));
                 JournalLogHandler.mergeAcquisition(player,
                         new MergeAcquisition(table, source.withActualLoot(actual, timestamp), legacyActual));
                 changedTables.add(table);

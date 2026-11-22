@@ -16,12 +16,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * 平台运行时联动的单一权威——把"两张表之间的注入关系"与"模拟上下文类型判定"
@@ -61,7 +59,7 @@ public final class RuntimeLootLinks {
     /**
      * 平台注入关系的**唯一声明**。
      * <p>
-     * 引用图（{@link #syntheticEdges()}）、门槛判定（两端的注入实现）、每表哈希与附魔等级旋钮、
+     * 引用图（{@link #syntheticEdges(List)}）、门槛判定（两端的注入实现）、每表哈希与附魔等级旋钮、
      * 以及父表页子表入口的"需要什么条件"，全部从这一个列表派生——不另立副本，
      * 因为"同一条边写两遍"的后果是它们会各自漂移，而漂移的症状（图里有边但门槛不判、
      * 或 tooltip 说的和玩法不同）都很难从现象反推成因。
@@ -119,35 +117,14 @@ public final class RuntimeLootLinks {
         return INJECTION_EDGES;
     }
 
-    /**
-     * 平台注入关系：来源表 -&gt; 合成边。
-     * 返回的是未套用存在性守卫的原始声明，建图时按快照过滤。
-     */
-    public static Map<ResourceLocation, List<LootTableEdge>> syntheticEdges() {
+    /** 按来源合并当前 Loader 的注入边，供资源引用图使用。 */
+    public static Map<ResourceLocation, List<LootTableEdge>> syntheticEdges(List<InjectionEdge> injectionEdges) {
         Map<ResourceLocation, List<LootTableEdge>> edges = new LinkedHashMap<>();
-        for (InjectionEdge edge : INJECTION_EDGES) {
+        for (InjectionEdge edge : injectionEdges) {
             edges.computeIfAbsent(edge.source(), ignored -> new ArrayList<>())
                     .add(LootTableEdge.runtimeInjection(edge.target()));
         }
         return Map.copyOf(edges);
-    }
-
-    /**
-     * 该表**发起注入**时，其各条边的门槛附魔；该表没有注入边时返回空集。
-     * <p>
-     * 记在发起注入的一方而不是被注入的子表，是因为"要带几级附魔才进得去"改变的是**父表**能产出什么
-     * （注入场景带满级工具）与父表的旋钮清单；子表自己已经不含这条条件，给它挂旋钮只会多出一个
-     * 点了没反应的控件。每表哈希据此把该附魔的 {@code max_level} 计入摘要，否则改 {@code max_level}
-     * 不会让任何表失效。
-     */
-    public static Set<ResourceLocation> injectionGateEnchantments(ResourceLocation sourceTableId) {
-        Set<ResourceLocation> result = new LinkedHashSet<>();
-        for (InjectionEdge edge : INJECTION_EDGES) {
-            if (edge.source().equals(sourceTableId)) {
-                result.add(edge.gate().enchantmentId());
-            }
-        }
-        return Set.copyOf(result);
     }
 
     /** 模拟上下文——决定默认工具与 THIS_ENTITY 的填充方式。 */

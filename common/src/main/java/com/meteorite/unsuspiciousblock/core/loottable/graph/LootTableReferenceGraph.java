@@ -2,26 +2,18 @@ package com.meteorite.unsuspiciousblock.core.loottable.graph;
 
 import com.meteorite.unsuspiciousblock.core.loottable.source.LootTableSourceSnapshot;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
-
-import java.io.IOException;
-import java.security.MessageDigest;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
 
 /**
  * 战利品表引用关系图——引用关系的唯一权威：直接子表、可达集、子树（含自身）、
- * 强连通环集合与子树摘要。图只消费 {@link LootTableSourceSnapshot}，不产出物品、
- * 不做业务数据聚合，因此解析器、目录加载器与哈希计算都从这里取同一份拓扑。
+ * 强连通环集合。解析器、目录加载器与哈希计算共用这份拓扑。
  * <p>
  * 邻接表按目标表去重并保持出现顺序（JSON 引用在前、合成边在后）；但需要保留每个
  * 引用出现位置语义的场合（同一子表在多处的 conditions / functions 不同）由编译层
@@ -29,75 +21,49 @@ import java.util.function.BiConsumer;
  */
 public final class LootTableReferenceGraph {
     private final LootTableSourceSnapshot snapshot;
-    /** 表 id -> 去重且保序的出边列表。包含图内所有表（叶子表对应空列表）。 */
-    private final Map<ResourceLocation, List<LootTableEdge>> adjacency;
+    private final Map<ResourceLocation, List<LootTableEdge>> syntheticEdges;
+    private final Map<ResourceLocation, List<LootTableEdge>> adjacency = new HashMap<>();
 
     private LootTableReferenceGraph(LootTableSourceSnapshot snapshot,
-                                    Map<ResourceLocation, List<LootTableEdge>> adjacency) {
+                                    Map<ResourceLocation, List<LootTableEdge>> syntheticEdges) {
         this.snapshot = snapshot;
-        this.adjacency = adjacency;
+        this.syntheticEdges = syntheticEdges;
     }
 
     /**
-     * 建图：有效 JSON 引用 + 平台注入合成边。
-     * <p>
-     * 合成边按不变量 #14 施加双端存在守卫——来源与目标都必须有资源，否则该边不注入，
-     * 避免图里出现快照中不存在的节点。目标已由 JSON 引用覆盖时不再重复加边。
+     * 绑定生效资源与平台声明。服务端主线程沿收录路径读取并缓存出边。
      */
     public static LootTableReferenceGraph build(LootTableSourceSnapshot snapshot,
                                                 Map<ResourceLocation, List<LootTableEdge>> syntheticEdges) {
-        Map<ResourceLocation, List<LootTableEdge>> adjacency = new LinkedHashMap<>();
-        for (ResourceLocation tableId : snapshot.tableIds()) {
-            LinkedHashSet<ResourceLocation> seen = new LinkedHashSet<>();
-            List<LootTableEdge> edges = new ArrayList<>();
-            for (ResourceLocation target : snapshot.directReferences(tableId)) {
-                if (seen.add(target)) {
-                    edges.add(LootTableEdge.jsonReference(target));
-                }
-            }
-            adjacency.put(tableId, List.copyOf(edges));
-        }
-
-        for (Map.Entry<ResourceLocation, List<LootTableEdge>> entry : syntheticEdges.entrySet()) {
-            ResourceLocation source = entry.getKey();
-            if (!snapshot.hasResource(source)) {
-                continue;
-            }
-            List<LootTableEdge> existing = adjacency.get(source);
-            LinkedHashSet<ResourceLocation> seen = new LinkedHashSet<>(targetIds(existing));
-            List<LootTableEdge> merged = new ArrayList<>(existing);
-            for (LootTableEdge edge : entry.getValue()) {
-                if (!snapshot.hasResource(edge.target())) {
-                    continue;
-                }
-                if (seen.add(edge.target())) {
-                    merged.add(edge);
-                }
-            }
-            adjacency.put(source, List.copyOf(merged));
-        }
-
-        return new LootTableReferenceGraph(snapshot, Collections.unmodifiableMap(adjacency));
-    }
-
-    /** 建图所依据的资源快照。 */
-    public LootTableSourceSnapshot snapshot() {
-        return this.snapshot;
+        return new LootTableReferenceGraph(snapshot, syntheticEdges);
     }
 
     /** 图中的全部节点（等于快照中的表，含无引用的叶子表）。 */
     public Set<ResourceLocation> nodes() {
-        return this.adjacency.keySet();
+        return this.snapshot.tableIds();
     }
 
     /** 该表是否在图中（即有资源）。 */
     public boolean contains(ResourceLocation tableId) {
-        return this.adjacency.containsKey(tableId);
+        return nodes().contains(tableId);
     }
 
     /** 该表的全部出边（含目标缺失的悬空边，供诊断与告警使用）。 */
     public List<LootTableEdge> directEdges(ResourceLocation tableId) {
-        return this.adjacency.getOrDefault(tableId, List.of());
+        return contains(tableId) ? this.adjacency.computeIfAbsent(tableId, this::readEdges) : List.of();
+    }
+
+    private List<LootTableEdge> readEdges(ResourceLocation tableId) {
+        Set<ResourceLocation> references = this.snapshot.directReferences(tableId);
+        List<LootTableEdge> edges = new ArrayList<>();
+        references.forEach(target -> edges.add(LootTableEdge.jsonReference(target)));
+        Set<ResourceLocation> seen = new LinkedHashSet<>(references);
+        for (LootTableEdge edge : this.syntheticEdges.getOrDefault(tableId, List.of())) {
+            if (contains(edge.target()) && seen.add(edge.target())) {
+                edges.add(edge);
+            }
+        }
+        return List.copyOf(edges);
     }
 
     /**
@@ -108,9 +74,9 @@ public final class LootTableReferenceGraph {
      */
     public List<ResourceLocation> directChildren(ResourceLocation tableId) {
         List<ResourceLocation> children = new ArrayList<>();
-        for (ResourceLocation target : targetIds(directEdges(tableId))) {
-            if (this.snapshot.hasResource(target)) {
-                children.add(target);
+        for (LootTableEdge edge : directEdges(tableId)) {
+            if (contains(edge.target())) {
+                children.add(edge.target());
             }
         }
         return List.copyOf(children);
@@ -130,7 +96,7 @@ public final class LootTableReferenceGraph {
         ArrayList<ResourceLocation> queue = new ArrayList<>(roots);
         for (int index = 0; index < queue.size(); index++) {
             ResourceLocation current = queue.get(index);
-            if (excluded.contains(current) || !this.adjacency.containsKey(current) || !result.add(current)) {
+            if (excluded.contains(current) || !contains(current) || !result.add(current)) {
                 continue;
             }
             for (ResourceLocation child : directChildren(current)) {
@@ -153,7 +119,7 @@ public final class LootTableReferenceGraph {
     }
 
     private void collectDescendants(ResourceLocation tableId, Set<ResourceLocation> output) {
-        if (!this.adjacency.containsKey(tableId) || !output.add(tableId)) {
+        if (!contains(tableId) || !output.add(tableId)) {
             return;
         }
         for (ResourceLocation child : directChildren(tableId)) {
@@ -178,7 +144,7 @@ public final class LootTableReferenceGraph {
         int[] nextIndex = {0};
 
         for (ResourceLocation node : scope) {
-            if (this.adjacency.containsKey(node) && !indexByNode.containsKey(node)) {
+            if (contains(node) && !indexByNode.containsKey(node)) {
                 tarjan(node, scope, indexByNode, lowLinkByNode, stack, onStack, components, nextIndex);
             }
         }
@@ -198,7 +164,7 @@ public final class LootTableReferenceGraph {
         onStack.add(node);
 
         for (ResourceLocation child : directChildren(node)) {
-            if (!scope.contains(child) || !this.adjacency.containsKey(child)) {
+            if (!scope.contains(child)) {
                 continue;
             }
             if (!indexByNode.containsKey(child)) {
@@ -227,30 +193,4 @@ public final class LootTableReferenceGraph {
         }
     }
 
-    /**
-     * 子树摘要——对 {@link #descendantsInclusive} 的每个节点，依次写入该表的完整资源栈摘要
-     * 与编译产物摘要（由 {@code compiledProductDigest} 提供，可为 {@code null}）。
-     * <p>
-     * 编译产物摘要必须覆盖<b>子树内每张表</b>而不是只覆盖根表：子表引用的 item tag 成员变化时
-     * JSON 文本不变，只有子表的 tag 展开结果会变，根表必须因此失效（不变量 #13）。
-     */
-    public void updateSubtreeDigest(ResourceLocation rootId, MessageDigest digest,
-                                    @Nullable BiConsumer<ResourceLocation, MessageDigest> compiledProductDigest)
-            throws IOException {
-        for (ResourceLocation node : descendantsInclusive(rootId)) {
-            this.snapshot.updateResourceStackDigest(node, digest);
-            if (compiledProductDigest != null) {
-                compiledProductDigest.accept(node, digest);
-            }
-        }
-    }
-
-    // 出边目标 id，去重且保持顺序（不判断目标是否存在）
-    private static List<ResourceLocation> targetIds(List<LootTableEdge> edges) {
-        LinkedHashSet<ResourceLocation> targets = new LinkedHashSet<>();
-        for (LootTableEdge edge : edges) {
-            targets.add(edge.target());
-        }
-        return List.copyOf(targets);
-    }
 }

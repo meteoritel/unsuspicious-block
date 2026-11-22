@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.platform.loot;
 
-import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
@@ -8,9 +7,10 @@ import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.LootSimulationScope;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.FishingHook;
@@ -23,7 +23,9 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.neoforge.common.loot.LootModifier;
+import net.neoforged.neoforge.common.loot.LootTableIdCondition;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,6 +50,19 @@ public class FishingLootModifier extends LootModifier {
 
     public FishingLootModifier(LootItemCondition[] conditionsIn) {
         super(conditionsIn);
+    }
+
+    // GLM 用 AND 评估顶层条件，互斥的表 ID 无法同时命中。
+    @Nullable ResourceLocation declaredSource() {
+        ResourceLocation source = null;
+        for (LootItemCondition condition : this.conditions) {
+            if (!(condition instanceof LootTableIdCondition tableCondition)) continue;
+            var encoded = LootTableIdCondition.CODEC.codec().encodeStart(JsonOps.INSTANCE, tableCondition).getOrThrow();
+            ResourceLocation id = ResourceLocation.parse(encoded.getAsJsonObject().get("loot_table_id").getAsString());
+            if (source != null && !source.equals(id)) return null;
+            source = id;
+        }
+        return source;
     }
 
     @Override
@@ -96,10 +111,13 @@ public class FishingLootModifier extends LootModifier {
             return generatedLoot;
         }
 
-        BlockPos pos = BlockPos.containing(origin);
-        try (var capture = LootCapture.begin(new LootCapture.Source(player,
-                RuntimeLootLinks.MUD_DREDGING_TABLE_KEY.location(), LootSourceType.FISHING,
-                context.getLevel(), pos, null))) {
+        try (var capture = LootCapture.beginInjectedChild(player, RuntimeLootLinks.MUD_DREDGING_TABLE)) {
+            if (capture.context() == null) {
+                return capture.roll(() -> {
+                    lootTable.getRandomItemsRaw(mudParams, generatedLoot::add);
+                    return generatedLoot;
+                });
+            }
             List<ItemStack> captured = new ArrayList<>();
             Consumer<ItemStack> consumer = stack -> {
                 if (!stack.isEmpty()) captured.add(stack.copy());

@@ -13,6 +13,7 @@ import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
@@ -30,6 +31,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.I
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import net.minecraft.core.registries.BuiltInRegistries;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -75,6 +77,7 @@ public class JournalViewModel {
     private boolean hideLocked;
     private long lastConnectionEpoch;
     private long lastCatalogRevision;
+    private long lastNameRevision = -1;
     private long lastStateRevision;
     private boolean lastReadingReady;
     private long lastLogRevision;
@@ -348,7 +351,10 @@ public class JournalViewModel {
         boolean readingReady = ArchaeologyJournalClientState.isReadingReady();
         boolean readinessChanged = readingReady != lastReadingReady;
         lastReadingReady = readingReady;
-        if (!connectionChanged && !readinessChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
+        long names = ClientLootTableLanguageStore.revision();
+        boolean namesChanged = names != this.lastNameRevision;
+        this.lastNameRevision = names;
+        if (!namesChanged && !connectionChanged && !readinessChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
                 && logRevision == this.lastLogRevision) return false;
         if (connectionChanged || readinessChanged || stateRevision != this.lastStateRevision) {
             this.lastStateRevision = stateRevision;
@@ -720,7 +726,8 @@ public class JournalViewModel {
         }
         List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
         List<ItemDefinition> required = CatalogQueryIndex.completionItems(this.catalogDefinitions, selected.id());
-        ArchaeologyJournalState.TableProgress progress = this.state.getTable(selected.id());
+        ArchaeologyJournalState.TableProgress progress =
+                ArchaeologyJournalClientState.projectProgress(selected.id(), this.state.getTable(selected.id()));
         int parsedCount = progress == null ? 0 : (int) required.stream()
                 .filter(item -> progress.isItemUnlocked(item.signature())).count();
         return new BuildGridResult(selected.id(), List.copyOf(gridItems), List.copyOf(childEntries), introItems,
@@ -741,9 +748,12 @@ public class JournalViewModel {
     // Intro 按需映射当前表及全部后代物品，避免在每个树节点重复缓存完整子树视图。
     private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId) {
         List<ItemDefinition> definitions = subtreeItems(tableId);
-        ArchaeologyJournalState.TableProgress progress = this.state.getTable(tableId);
+        ArchaeologyJournalState.TableProgress storedProgress = this.state.getTable(tableId);
+        ArchaeologyJournalState.TableProgress progress = ArchaeologyJournalClientState.projectProgress(tableId, storedProgress);
         List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitions.size());
+        Set<LootResultSignature> currentSignatures = new HashSet<>();
         for (ItemDefinition definition : definitions) {
+            currentSignatures.add(definition.signature());
             ArchaeologyJournalState.ItemProgress itemProgress = progress != null
                     ? progress.getItemProgress(definition.signature()) : null;
             boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
@@ -752,6 +762,18 @@ public class JournalViewModel {
                     || this.currentSearch.matchesItem(definition.id(), definition.displayName().getString());
             result.add(new DetailOverlayPanel.IntroItem(
                     definition.id(), definition.displayName(), definition.signature(), unlocked, count, highlighted));
+        }
+        if (storedProgress != null) {
+            for (LootResultSignature signature : storedProgress.getItemSignatures()) {
+                if (signature.type() != LootResultSignature.SignatureType.PLAIN || currentSignatures.contains(signature)
+                        || !storedProgress.isItemUnlocked(signature)) continue;
+                ResourceLocation itemId = signature.itemId();
+                Component name = BuiltInRegistries.ITEM.get(itemId).getDescription();
+                Component history = Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_history", name);
+                boolean highlighted = this.currentSearch.matchesItem(itemId, name.getString());
+                result.add(new DetailOverlayPanel.IntroItem(itemId, history, signature, true,
+                        storedProgress.getItemCount(signature), highlighted));
+            }
         }
         return List.copyOf(result);
     }

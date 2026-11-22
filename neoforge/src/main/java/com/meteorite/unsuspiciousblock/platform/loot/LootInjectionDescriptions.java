@@ -3,6 +3,8 @@ package com.meteorite.unsuspiciousblock.platform.loot;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks.InjectionEdge;
 import com.meteorite.unsuspiciousblock.platform.mixin.loot.LootModifierManagerAccess;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -12,10 +14,26 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.LootTableIdCondition;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 
 /** 从 Loader 启用的修改器读取本模组可声明的掉落注入。 */
 public final class LootInjectionDescriptions {
     private LootInjectionDescriptions() {}
+
+    /** 当前 GLM 清单启用的具名钓鱼表引用。 */
+    public static List<InjectionEdge> activeTableEdges() {
+        LinkedHashSet<InjectionEdge> edges = new LinkedHashSet<>();
+        for (var modifier : LootModifierManagerAccess.unsuspiciousblock$getLootModifierManager().getAllLootMods()) {
+            if (modifier instanceof FishingLootModifier fishing) {
+                ResourceLocation source = fishing.declaredSource();
+                if (source != null) {
+                    edges.add(new InjectionEdge(source, RuntimeLootLinks.MUD_DREDGING_TABLE,
+                            RuntimeLootLinks.MUD_DREDGING_GATE, Constants.MOD_ID, "append"));
+                }
+            }
+        }
+        return List.copyOf(edges);
+    }
 
     /** 返回指定表在当前启用修改器中声明的物品注入。 */
     public static List<DeclaredLootInjection> activeFor(ResourceLocation table) {

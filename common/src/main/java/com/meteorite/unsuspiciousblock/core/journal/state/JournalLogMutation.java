@@ -159,7 +159,7 @@ public final class JournalLogMutation {
 
     /** 成就使用全局配置门槛，与每表的有效保留上限独立。 */
     public static boolean crossesAchievementThreshold(long previous, long current) {
-        long achievementThreshold = ServerLootTableConfigManager.snapshot().settings().logLimit();
+        long achievementThreshold = ServerLootTableConfigManager.effectiveSettings().logLimit();
         return previous < achievementThreshold && current >= achievementThreshold;
     }
 

@@ -3,6 +3,8 @@ package com.meteorite.unsuspiciousblock.client.ui.screen;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNameEdit;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateLootTableTranslationsPayload;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -21,10 +23,7 @@ public final class LootTableImportValidator {
     /** 单个导入文件的大小上限。 */
     public static final long MAX_FILE_BYTES = 2L * 1024L * 1024L;
     /** 单个导入文件的条目数上限。 */
-    public static final int MAX_ENTRIES = 4096;
-    /** 语言码允许的字符与长度：与资源包语言文件命名口径一致。 */
-    private static final String LANGUAGE_CODE_PATTERN = "[a-z0-9_-]{2,16}";
-
+    public static final int MAX_ENTRIES = UpdateLootTableTranslationsPayload.MAX_ENTRIES;
     private LootTableImportValidator() {
     }
 
@@ -94,16 +93,11 @@ public final class LootTableImportValidator {
         return new ParsedImport(inferLanguage(file, fallbackLanguageCode), object);
     }
 
-    /** 判断语言码是否合法；管理页输入框与导入文件名推断共用同一口径。 */
-    public static boolean isValidLanguageCode(String languageCode) {
-        return languageCode != null && languageCode.matches(LANGUAGE_CODE_PATTERN);
-    }
-
     // 优先取文件名（去扩展名）作为语言码，非法时回退到调用方给出的当前语言
     private static String inferLanguage(Path file, String fallbackLanguageCode) {
         String fileName = file.getFileName().toString().toLowerCase(Locale.ROOT);
         int extension = fileName.lastIndexOf('.');
         String inferred = extension > 0 ? fileName.substring(0, extension) : fileName;
-        return isValidLanguageCode(inferred) ? inferred : fallbackLanguageCode;
+        return LootTableNameEdit.isLanguage(inferred) ? inferred : fallbackLanguageCode;
     }
 }

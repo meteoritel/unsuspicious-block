@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.T
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,6 +22,25 @@ public final class CatalogQueryIndex {
     public static List<ItemDefinition> subtreeItems(Map<ResourceLocation, TableDefinition> tables,
                                                     ResourceLocation tableId) {
         return subtreeItems(tables, tableId, item -> true);
+    }
+
+    /** 获取表及后代因排除组件而折叠的物品。 */
+    public static Set<ResourceLocation> foldedItems(Map<ResourceLocation, TableDefinition> tables,
+            Map<ResourceLocation, Set<ResourceLocation>> folded, ResourceLocation tableId) {
+        if (folded.isEmpty()) return Set.of();
+        Set<ResourceLocation> items = new LinkedHashSet<>();
+        Set<ResourceLocation> visited = new LinkedHashSet<>();
+        ArrayDeque<ResourceLocation> queue = new ArrayDeque<>();
+        queue.add(tableId);
+        while (!queue.isEmpty()) {
+            ResourceLocation id = queue.removeFirst();
+            if (!visited.add(id)) continue;
+            TableDefinition table = tables.get(id);
+            if (table == null) continue;
+            items.addAll(folded.getOrDefault(id, Set.of()));
+            queue.addAll(table.childTables());
+        }
+        return items;
     }
 
     /** 返回表及后代的已声明签名，用于完成度和一次性奖励。 */

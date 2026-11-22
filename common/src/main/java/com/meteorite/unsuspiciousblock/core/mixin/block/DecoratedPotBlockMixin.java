@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.DecoratedPotTrackingService;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -55,8 +54,7 @@ public abstract class DecoratedPotBlockMixin {
         ResourceLocation tableId = potState.unsuspiciousblock$getDecoratedPotLootTableName();
         ServerPlayer player = DecoratedPotTrackingService.resolvePlayer(
                 serverLevel, pos, null, potState.unsuspiciousblock$getDecoratedPotPlayerUuid());
-        RecentLootTableService.record(player, tableId);
-        if (tableId != null && player != null && !stack.isEmpty()) {
+        if (tableId != null && player != null) {
             LootCapture.submitFinal(new LootCapture.Source(player, tableId, LootSourceType.DECORATED_POT,
                     serverLevel, pos, BuiltInRegistries.BLOCK.getKey(state.getBlock())),
                     stack, LootSettlementTarget.IMMEDIATE);

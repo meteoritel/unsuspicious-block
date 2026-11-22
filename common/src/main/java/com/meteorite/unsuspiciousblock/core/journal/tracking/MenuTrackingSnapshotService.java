@@ -106,7 +106,7 @@ public final class MenuTrackingSnapshotService {
     // 仅收集当前玩家拥有的追踪容器，超时的容器先 flush
     public static MenuTrackingSnapshot captureMenuTrackingSnapshot(ServerPlayer player, Collection<Container> rootContainers, ItemStack carriedItem) {
         long gameTime = player.serverLevel().getGameTime();
-        long timeoutTicks = ServerLootTableConfigManager.snapshot().settings().timeoutTicks();
+        long timeoutTicks = ServerLootTableConfigManager.effectiveSettings().timeoutTicks();
 
         List<TrackedContainerLootState> trackedContainers = ContainerTrackingService.collectOwnTrackedContainers(player, rootContainers, gameTime, timeoutTicks);
         if (trackedContainers.isEmpty()) {

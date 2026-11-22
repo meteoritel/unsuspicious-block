@@ -36,9 +36,9 @@ Fabric 与 NeoForge 共用 `<世界目录>/serverconfig/unsuspiciousblock-loot-t
 
 ### 2.2 配置界面与热重载
 
-Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 [`LootTrackingConfigScreen`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/screen/LootTrackingConfigScreen.java)。页面使用 `ConfigFormScreen` 展示草稿，应用才提交，恢复默认清除规则覆盖。专用服务器及 LAN 需要权限等级 2，私有单人的世界主人可以编辑。旧 NeoForge COMMON 追踪字段只作为迁移输入，通用配置表单显示当前可编辑字段。
+Fabric ModMenu、NeoForge Mods 和考古笔记追踪管理均可打开共用的 [`LootTrackingConfigScreen`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/screen/LootTrackingConfigScreen.java)。页面使用 `ConfigFormScreen` 展示草稿，通过服务端预览收录影响后提交。加载当前版本时可保留已编辑的字段，退出时可确认舍弃草稿。专用服务器及 LAN 需要权限等级 2，私有单人的世界主人可以编辑世界规则与实例级补充表名。旧 NeoForge COMMON 追踪字段只作为迁移输入，通用配置表单显示当前可编辑字段。
 
-已提交的规则或签名组件变更与数据包重载共用服务端目录刷新路径。提交按世界会话版本检查，旧草稿应载入服务端当前值后重新编辑。两端可在服务端直接编辑共用 JSON 并用 `/reload` 应用。日志上限与容器追踪超时由运行中的业务代码读取。补充表名的作用域和合并规则见[战利品表系统](../subsystems/loottable.md)。
+预览和提交校验配置版本与资源代次。磁盘原子写入成功后给出已保存版本，候选目录构建成功后同步发布目录、规则与签名策略。构建失败可通过 `/reload` 或目录重建命令恢复，管理页保留已保存和已生效版本。仅变更日志上限或追踪超时时可复用已发布目录。两端可直接编辑共用 JSON 后执行 `/reload`。补充表名的作用域和合并规则见[战利品表系统](../subsystems/loottable.md)。
 
 ## 3. 数据驱动与硬编码边界
 

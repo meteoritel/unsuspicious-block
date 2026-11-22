@@ -442,7 +442,7 @@ public class SuspiciousReaderItem extends Item {
 
         ResourceLocation lootTableName = scanState.unsuspiciousblock$getLootTableName();
         if (lootTableName != null && scanState instanceof PendingJournalHost pendingHost) {
-            LootCapture.submitFinal(new LootCapture.Source(
+            LootCapture.stageScanned(new LootCapture.Source(
                     player, lootTableName, LootSourceType.ARCHAEOLOGY, pos,
                     BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()), level.getGameTime(), level.getDayTime()), lootItem,
                     LootSettlementTarget.brush(pendingHost.unsuspiciousblock$pendingJournal()));

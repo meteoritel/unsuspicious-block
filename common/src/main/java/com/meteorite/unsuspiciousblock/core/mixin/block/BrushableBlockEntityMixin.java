@@ -12,10 +12,8 @@ import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntitySync;
 import com.meteorite.unsuspiciousblock.core.blockentity.PendingJournalHost;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableLootDropHelper;
 import com.meteorite.unsuspiciousblock.core.blockentity.BrushableLootDropHelper.BrushStroke;
-import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.PendingJournal;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.journal.tracking.RecentLootTableService;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture.CaptureHandle;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
@@ -248,13 +246,8 @@ public abstract class BrushableBlockEntityMixin implements PendingJournalHost, B
 
         this.unsuspiciousblock$tracking.recordResolved(this.lootTable.location());
         this.unsuspiciousblock$lootTableParsedThisCall = true;
-        if (this.unsuspiciousblock$brushContext && player instanceof ServerPlayer sp) {
-            RecentLootTableService.record(sp, this.unsuspiciousblock$tracking.table());
-        }
-
-        // 命中追踪规则时准备上下文，由 getRandomItems 调用点建立异常安全的作用域
-        if (ArchaeologyJournalServerCatalog.tracked(this.unsuspiciousblock$tracking.table())
-                && player instanceof ServerPlayer sp
+        // 扫描只在领取阶段登记，刷扫在根表抽取时登记。
+        if (this.unsuspiciousblock$brushContext && player instanceof ServerPlayer sp
                 && level instanceof ServerLevel serverLevel) {
             long gameTime = this.unsuspiciousblock$brushContext && this.unsuspiciousblock$brushGameTime >= 0L
                     ? this.unsuspiciousblock$brushGameTime

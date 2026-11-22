@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.platform.services;
 
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredLootInjection;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
+import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks.InjectionEdge;
 import java.io.IOException;
 import java.util.List;
 import net.minecraft.resources.ResourceLocation;
@@ -24,6 +26,11 @@ public interface IPlatformHelper {
     default List<DeclaredLootInjection> describeLootInjections(
             ResourceLocation table) {
         return List.of();
+    }
+
+    /** 返回当前资源代次中的平台表引用。 */
+    default List<InjectionEdge> activeLootTableInjections() {
+        return RuntimeLootLinks.injectionEdges();
     }
 
     default List<String> lootInjectionHashInputs(ResourceManager resources)

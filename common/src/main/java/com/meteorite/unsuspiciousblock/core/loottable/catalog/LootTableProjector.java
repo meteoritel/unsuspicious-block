@@ -19,6 +19,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExcludedComponents;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
@@ -74,32 +75,24 @@ public final class LootTableProjector {
     private final Map<ResourceLocation, CompiledLootTable> compiledTables;
     private final Set<ResourceLocation> excludedReferences;
     private final DynamicOps<JsonElement> lootOps;
+    private final SignatureExcludedComponents signatureExclusions;
     @Nullable
     private final LootFunctionPreviewContext previewContext;
 
     /** 单表展平结果缓存；同一轮重载内多次查询只算一次。 */
-    private final Map<ResourceLocation, List<ItemDefinition>> itemsCache = new HashMap<>();
     private final Map<ResourceLocation, StaticTableProjection> projectionCache = new HashMap<>();
-
-    /**
-     * @param compiledTables 编译产物
-     * @param excludedReferences 需排除出收录闭包的环上表
-     */
-    public LootTableProjector(Map<ResourceLocation, CompiledLootTable> compiledTables,
-                              Set<ResourceLocation> excludedReferences,
-                              HolderLookup.Provider registries) {
-        this(compiledTables, excludedReferences, registries, null);
-    }
 
     // 当前服务器视图只用于预览，不参与实际掉落执行。
     public LootTableProjector(Map<ResourceLocation, CompiledLootTable> compiledTables,
                               Set<ResourceLocation> excludedReferences,
                               HolderLookup.Provider registries,
-                              @Nullable LootFunctionPreviewContext previewContext) {
+                              @Nullable LootFunctionPreviewContext previewContext,
+                              SignatureExcludedComponents signatureExclusions) {
         this.compiledTables = Map.copyOf(compiledTables);
         this.excludedReferences = Set.copyOf(excludedReferences);
         this.lootOps = RegistryOps.create(JsonOps.INSTANCE, registries);
         this.previewContext = previewContext;
+        this.signatureExclusions = signatureExclusions;
     }
 
     /** 取该表的静态投影；表不在编译产物中时返回 {@code null}。 */
@@ -109,47 +102,22 @@ public final class LootTableProjector {
         if (compiled == null) {
             return null;
         }
-        StaticTableProjection cached = this.projectionCache.get(tableId);
-        if (cached != null) {
-            return cached;
-        }
-        List<ItemDefinition> items = itemsOf(tableId);
-        StaticTableProjection projection = new StaticTableProjection(compiled.declaredType(), items);
-        this.projectionCache.put(tableId, projection);
-        return projection;
+        return this.projectionCache.computeIfAbsent(tableId, id -> project(compiled));
     }
 
-    // 以该表为根展平出物品条目；结果只取决于该表自身，可安全缓存。
-    // 未被编译的表（资源缺失、或被环排除集剔出闭包）返回空结果——子表入口据此把它们过滤掉。
-    private List<ItemDefinition> itemsOf(ResourceLocation rootId) {
-        List<ItemDefinition> cached = this.itemsCache.get(rootId);
-        if (cached != null) {
-            return cached;
-        }
-
-        List<ItemDefinition> result = List.of();
-        if (this.compiledTables.containsKey(rootId)) {
-            LinkedHashMap<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
-            // 安装条件解析上下文：包装函数的内层条件要靠 RegistryOps 才能解，而 describe 的冻结签名没有 ops。
-            // 安装点覆盖整棵展开（递归重入会保存并恢复外层上下文），运行时捕获路径不安装、内层条件因此为空。
-            LootFunctionDescriptions.withPreviewContext(this.previewContext,
-                    () -> LootFunctionDescriptions.withConditionOps(this.lootOps, () -> {
-                expand(this.compiledTables.get(rootId), List.of(), List.of(), null, false, List.of(),
-                        new ProjectionWalk(rootId, items));
-                return null;
-            }));
-
-            List<ItemDefinition> definitions = new ArrayList<>(items.size());
-            for (ItemDefinitionAccumulator accumulator : items.values()) {
-                definitions.add(accumulator.build());
-            }
-            definitions.sort(Comparator
-                    .comparing((ItemDefinition definition) -> definition.id().toString())
-                    .thenComparing(definition -> definition.signature().toStoredKey()));
-            result = List.copyOf(definitions);
-        }
-        this.itemsCache.put(rootId, result);
-        return result;
+    private StaticTableProjection project(CompiledLootTable compiled) {
+        ProjectionWalk walk = new ProjectionWalk(compiled.id());
+        LootFunctionDescriptions.withPreviewContext(this.previewContext,
+                () -> LootFunctionDescriptions.withConditionOps(this.lootOps, () -> {
+                    expand(compiled, List.of(), List.of(), null, false, List.of(), walk);
+                    return null;
+                }));
+        List<ItemDefinition> definitions = walk.items.values().stream()
+                .map(ItemDefinitionAccumulator::build)
+                .sorted(Comparator.comparing((ItemDefinition definition) -> definition.id().toString())
+                        .thenComparing(definition -> definition.signature().toStoredKey()))
+                .toList();
+        return new StaticTableProjection(compiled.declaredType(), definitions, walk.foldedItems);
     }
 
     // 按编译产物的事件顺序展开：物品条目就地解析，引用位置递归进入子表
@@ -161,7 +129,7 @@ public final class LootTableProjector {
             switch (event) {
                 case CompiledLootTable.ItemPath itemPath ->
                         resolveItem(itemPath, incomingConditions, incomingFunctions, sourceChildTable,
-                                incomingLuckAffected || itemPath.luckAffected(), appendLuck(incomingLuckSpecs, itemPath), walk.items);
+                                incomingLuckAffected || itemPath.luckAffected(), appendLuck(incomingLuckSpecs, itemPath), walk);
                 case CompiledLootTable.ReferenceSite site ->
                         expandReferenceSite(site, incomingConditions, incomingFunctions,
                                 sourceChildTable, incomingLuckAffected || site.luckAffected(), appendLuck(incomingLuckSpecs, site), walk);
@@ -215,11 +183,11 @@ public final class LootTableProjector {
     private static final class ProjectionWalk {
         private final Set<ResourceLocation> active = new HashSet<>();
         private final Set<ReferencePath> expanded = new HashSet<>();
-        private final Map<String, ItemDefinitionAccumulator> items;
+        private final Map<String, ItemDefinitionAccumulator> items = new LinkedHashMap<>();
+        private final Set<ResourceLocation> foldedItems = new HashSet<>();
 
-        private ProjectionWalk(ResourceLocation root, Map<String, ItemDefinitionAccumulator> items) {
+        private ProjectionWalk(ResourceLocation root) {
             this.active.add(root);
-            this.items = items;
         }
     }
 
@@ -229,7 +197,7 @@ public final class LootTableProjector {
     private void resolveItem(CompiledLootTable.ItemPath path, List<LootConditionInfo> incomingConditions,
                              List<JsonElement> incomingFunctions, @Nullable ResourceLocation sourceChildTable,
                              boolean luckAffected, List<LuckSpec> luckSpecs,
-                             Map<String, ItemDefinitionAccumulator> items) {
+                             ProjectionWalk walk) {
         List<LootConditionInfo> entryConditions = path.entryConditions();
         List<JsonElement> functions = concatFunctions(path.entryFunctions(), path.inheritedFunctions(),
                 incomingFunctions);
@@ -348,7 +316,10 @@ public final class LootTableProjector {
 
         if (!signatureUncertain && signature.type() == LootResultSignature.SignatureType.PLAIN
                 && !previewStack.getComponentsPatch().isEmpty()) {
-            signature = LootResultSignature.componentExact(previewStack);
+            signature = LootResultSignature.componentExact(previewStack, this.signatureExclusions);
+            if (signature.type() == LootResultSignature.SignatureType.PLAIN) {
+                walk.foldedItems.add(signature.itemId());
+            }
         } else if (signatureUncertain && signature.type() == LootResultSignature.SignatureType.PLAIN) {
             signature = LootResultSignature.approximateItemOnly(currentItemId(previewStack), "function");
         }
@@ -376,7 +347,7 @@ public final class LootTableProjector {
                 LootParseUtil.appendConditions(incomingConditions, path.inheritedConditions());
         ResolvedEntry resolved = new ResolvedEntry(currentItemId(previewStack), displayName, tooltipHint,
                 signature, List.copyOf(entryConditions), List.copyOf(resolvedFunctions));
-        ItemDefinitionAccumulator accumulator = items.computeIfAbsent(resolved.signature().toStoredKey(),
+        ItemDefinitionAccumulator accumulator = walk.items.computeIfAbsent(resolved.signature().toStoredKey(),
                 ignored -> new ItemDefinitionAccumulator(resolved.itemId(), resolved.displayName(),
                         resolved.tooltipHint(), resolved.signature()));
         accumulator.merge(resolved.displayName(), resolved.tooltipHint(), new LootAcquisitionPath(

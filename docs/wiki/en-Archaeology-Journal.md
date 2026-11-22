@@ -53,6 +53,7 @@ The following actions advance the journal's catalog and collection progress:
 - Excavating decorated pots
 - Catching fishing loot
 - Opening loot chests
+- Panning for loot or finding loot with the Fossil Hunter enchantment
 
 The Suspicious Reader's scan results help you learn where suspicious blocks are and what they contain, but the Log records a full discovery only when you actually obtain the loot.
 
@@ -63,6 +64,12 @@ When every item in a catalog entry and its sources listed beneath it has been un
 ## What Can Be Tracked
 
 By default, the journal covers common archaeology finds, decorated pots, fishing, buried treasure, the Ancient City, and this mod's special loot. Other mods and datapacks may add more loot sources to the Catalog.
+
+### Managing Loot Tables
+
+Open loot table management from the journal's sidebar. **Recently Encountered** shows recent sources from activities such as brushing, panning, fishing, and opening containers. Filter by tracking status or search by name or full ID. Select a table to see its matching rules and parent tables.
+
+Editors can preview additions, removals, and moves before saving. The page shows when saved rules take effect. Supplemental names are shared by the worlds in the server instance. Choose a language and review the changes before saving imported names. Resource pack names take priority.
 
 ## JEI Integration
 

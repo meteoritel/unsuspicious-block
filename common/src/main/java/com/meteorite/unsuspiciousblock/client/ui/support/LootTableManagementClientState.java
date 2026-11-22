@@ -1,102 +1,176 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import java.util.LinkedHashMap;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
+import com.meteorite.unsuspiciousblock.core.loottable.ServerLootTableConfigManager.Preview;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNameEdit;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNameEdit.Result;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateLootTableTranslationsPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestLootTableManagementPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestLootTableManagementPayload.View;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateTrackedLootTablePayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootManagementDataPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootManagementDataPayload.Kind;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload.ConfigView;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableManagementPayload.Receipt;
+import io.netty.buffer.Unpooled;
+import net.minecraft.network.FriendlyByteBuf;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.ByteArrayOutputStream;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * 客户端战利品表管理快照——供独立管理页面与当前连接的内存语言补充层读取。
- */
+/** 当前客户端连接内的公共索引、个人状态与请求回执。 */
 public final class LootTableManagementClientState {
-    private static final AtomicLong revision = new AtomicLong();
-    private static volatile List<SyncLootTableManagementPayload.Entry> entries = List.of();
-    private static volatile List<SyncLootTableManagementPayload.RecentEntry> recentEntries = List.of();
-    private static volatile Map<String, Map<String, String>> translations = Map.of();
-    private static volatile boolean canEdit;
-    private static volatile @Nullable ConfigView configuration;
-    private static volatile @Nullable Receipt lastReceipt;
-    private static int nextRequestId;
+    private static ConnectionState connection = new ConnectionState();
+    private static long revision;
 
-    private LootTableManagementClientState() {
+    private LootTableManagementClientState() {}
+
+    private static final class ConnectionState {
+        private List<SyncLootTableManagementPayload.Entry> entries = List.of();
+        private List<SyncLootTableManagementPayload.RecentEntry> recent = List.of();
+        private Map<String, Map<String, String>> unresolvedNames = Map.of();
+        private final Map<Integer, List<Result>> nameResults = new LinkedHashMap<>();
+        private long indexRevision = -1;
+        private boolean canEditNames;
+        private @Nullable ConfigView configuration;
+        private final Map<Integer, Receipt> receipts = new LinkedHashMap<>();
+        private @Nullable Preview preview;
+        private long previewRequest;
+        private int nextRequestId;
+        private final Map<Kind, Assembly> incoming = new EnumMap<>(Kind.class);
+    }
+
+    private static final class Assembly {
+        private final long revision;
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private int nextSequence;
+
+        private Assembly(long revision) {
+            this.revision = revision;
+        }
     }
 
     public static void receive(SyncLootTableManagementPayload payload) {
-        entries = List.copyOf(payload.entries());
-        recentEntries = List.copyOf(payload.recentEntries());
-        translations = copyTranslations(payload.translations());
-        canEdit = payload.canEditNames();
-        configuration = payload.config();
-        if (payload.receipt() != null) lastReceipt = payload.receipt();
-        revision.incrementAndGet();
-        ClientLootTableLanguageStore.receiveServerTranslations(translations);
+        connection.configuration = payload.config();
+        connection.canEditNames = payload.canEditNames();
+        if (payload.recentEntries() != null) {
+            connection.recent = List.copyOf(payload.recentEntries());
+            revision++;
+        }
+        if (payload.receipt() != null) {
+            Receipt receipt = payload.receipt();
+            connection.receipts.put(receipt.requestId(), receipt);
+            if (connection.receipts.size() > 16) {
+                connection.receipts.remove(connection.receipts.keySet().iterator().next());
+            }
+        }
     }
 
-    // 断开连接时清空连接级快照：切服后首个管理页响应到来前不应展示上一台服务器的条目或编辑权限。
-    // 生成 key 的资源翻译由 ClientLootTableLanguageStore.resetOnDisconnect() 单独清理，两端入口都已调用。
+    /** 分片完整到达后才替换客户端读取的快照。 */
+    public static void receiveData(SyncLootManagementDataPayload payload) {
+        if (payload.sequence() == 0) connection.incoming.put(payload.kind(), new Assembly(payload.revision()));
+        Assembly assembly = connection.incoming.get(payload.kind());
+        if (assembly == null || assembly.revision != payload.revision()
+                || assembly.nextSequence != payload.sequence()) return;
+        assembly.bytes.writeBytes(payload.bytes());
+        assembly.nextSequence++;
+        if (!payload.last()) return;
+        connection.incoming.remove(payload.kind());
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.wrappedBuffer(assembly.bytes.toByteArray()));
+        try {
+            switch (payload.kind()) {
+                case INDEX -> {
+                    connection.entries = List.copyOf(SyncLootTableManagementPayload.readEntries(buffer));
+                    connection.indexRevision = payload.revision();
+                    revision++;
+                }
+                case NAMES -> {
+                    ClientLootTableLanguageStore.receiveServerTranslations(readNames(buffer));
+                    connection.unresolvedNames = readNames(buffer);
+                    revision++;
+                }
+                case NAME_RESULT -> connection.nameResults.put((int) payload.revision(),
+                        SyncLootManagementDataPayload.readNameResults(buffer));
+                case PREVIEW -> {
+                    connection.preview = SyncLootTableManagementPayload.readPreview(buffer);
+                    connection.previewRequest = payload.revision();
+                }
+            }
+        } finally {
+            buffer.release();
+        }
+    }
+
+    private static Map<String, Map<String, String>> readNames(FriendlyByteBuf buf) {
+        Map<String, Map<String, String>> translations = new LinkedHashMap<>();
+        int languages = buf.readVarInt();
+        for (int index = 0; index < languages; index++) {
+            String language = buf.readUtf();
+            int count = buf.readVarInt();
+            Map<String, String> names = new LinkedHashMap<>();
+            for (int entry = 0; entry < count; entry++) names.put(buf.readUtf(), buf.readUtf());
+            translations.put(language, Map.copyOf(names));
+        }
+        return Map.copyOf(translations);
+    }
+
     public static void reset() {
-        entries = List.of();
-        recentEntries = List.of();
-        translations = Map.of();
-        canEdit = false;
-        configuration = null;
-        lastReceipt = null;
-        revision.incrementAndGet();
+        connection = new ConnectionState();
+        revision++;
     }
 
-    public static List<SyncLootTableManagementPayload.Entry> entries() {
-        return entries;
-    }
-
-    public static List<SyncLootTableManagementPayload.RecentEntry> recentEntries() {
-        return recentEntries;
-    }
-
-    public static Map<String, Map<String, String>> translations() {
-        return translations;
-    }
-
-    public static boolean canEdit() {
-        return canEdit;
-    }
-
-    public static @Nullable ConfigView configuration() {
-        return configuration;
-    }
+    public static List<SyncLootTableManagementPayload.Entry> entries() { return connection.entries; }
+    public static List<SyncLootTableManagementPayload.RecentEntry> recentEntries() { return connection.recent; }
+    public static Map<String, Map<String, String>> unresolvedNames() { return connection.unresolvedNames; }
+    public static boolean canEdit() { return connection.canEditNames; }
+    public static boolean indexReady() { return connection.indexRevision >= 0; }
+    public static @Nullable ConfigView configuration() { return connection.configuration; }
+    public static long revision() { return revision; }
 
     public static @Nullable Receipt receipt(int requestId) {
-        Receipt receipt = lastReceipt;
-        return receipt != null && receipt.requestId() == requestId ? receipt : null;
+        return connection.receipts.remove(requestId);
     }
 
-    /** 请求当前连接的服务端规则和管理列表。 */
-    public static void requestSnapshot() {
-        ClientNetwork.sendToServer(new RequestLootTableManagementPayload());
+    public static @Nullable Preview preview(int requestId) {
+        return connection.previewRequest == requestId ? connection.preview : null;
     }
 
-    /** 提交基于指定配置版本的编辑，并返回对应回执编号。 */
-    public static int submit(long revision, UpdateTrackedLootTablePayload.Edit edit) {
-        int requestId = ++nextRequestId;
-        ClientNetwork.sendToServer(new UpdateTrackedLootTablePayload(requestId, revision, edit));
+    public static int submitNames(List<LootTableNameEdit> entries) {
+        int requestId = ++connection.nextRequestId;
+        UpdateLootTableTranslationsPayload.split(requestId, entries).forEach(ClientNetwork::sendToServer);
         return requestId;
     }
 
-    public static long revision() {
-        return revision.get();
+    public static @Nullable List<Result> takeNameResults(int requestId) {
+        return connection.nameResults.remove(requestId);
     }
 
-    private static Map<String, Map<String, String>> copyTranslations(
-            Map<String, Map<String, String>> source) {
-        LinkedHashMap<String, Map<String, String>> copy = new LinkedHashMap<>();
-        source.forEach((language, values) -> copy.put(language, Map.copyOf(values)));
-        return Map.copyOf(copy);
+    public static void requestSnapshot() { request(View.INDEX); }
+    public static void requestConfiguration() { request(View.CONFIG); }
+    public static void closeSnapshot() { request(View.CLOSED); }
+
+    private static void request(View view) {
+        ClientNetwork.sendToServer(new RequestLootTableManagementPayload(view, connection.indexRevision));
+    }
+
+    /** 请求规则差异，后续提交使用同一配置与资源版本。 */
+    public static int requestPreview(long revision, long resourceRevision, UpdateTrackedLootTablePayload.Edit edit) {
+        return send(revision, resourceRevision, true, edit);
+    }
+
+    public static int submit(long revision, long resourceRevision, UpdateTrackedLootTablePayload.Edit edit) {
+        return send(revision, resourceRevision, false, edit);
+    }
+
+    private static int send(long revision, long resourceRevision, boolean preview, UpdateTrackedLootTablePayload.Edit edit) {
+        int requestId = ++connection.nextRequestId;
+        UpdateTrackedLootTablePayload.split(requestId, revision, resourceRevision, preview, edit)
+                .forEach(ClientNetwork::sendToServer);
+        return requestId;
     }
 }

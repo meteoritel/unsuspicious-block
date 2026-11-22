@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
+import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
@@ -45,6 +47,7 @@ public record ArchaeologyJournalEntry(
             TableDefinition definition,
             @Nullable ArchaeologyJournalState.TableProgress progress,
             @Nullable ArchaeologyJournalLogState.TableLogHistory logHistory) {
+        progress = ArchaeologyJournalClientState.projectProgress(tableId, progress);
         List<ArchaeologyEntryItem> items = new ArrayList<>();
         int parsedCount = 0;
         for (ItemDefinition itemDefinition : definition.items()) {
@@ -71,7 +74,7 @@ public record ArchaeologyJournalEntry(
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         boolean favorite = JournalUiPreferencesStore.isFavorite(tableId);
         ArchaeologyEntryLogRef logRef = ArchaeologyEntryLogRef.from(logHistory);
-        return new ArchaeologyJournalEntry(tableId, definition.displayName(), definition.type(), items,
+        return new ArchaeologyJournalEntry(tableId, ClientLootTableLanguageStore.displayName(tableId), definition.type(), items,
                 definition.simulationCount(), items.size(), parsedCount, tableUnlocked, favorite, logRef);
     }
 }

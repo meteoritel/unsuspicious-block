@@ -1,8 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
+import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableNames;
+import net.minecraft.locale.Language;
+import net.minecraft.network.chat.Component;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.MissingTranslationKeyExporter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
@@ -10,8 +11,7 @@ import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.lang.reflect.Type;
+import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +20,9 @@ import java.util.Map;
  * 客户端战利品表语言视图——读取游戏资源来源，并在内存中应用当前服务端的补充翻译。
  */
 public final class ClientLootTableLanguageStore {
-    private static final Gson GSON = new Gson();
-    private static final Type MAP_TYPE = new TypeToken<Map<String, String>>() { }.getType();
     private static final Map<String, ResourceLanguage> resourceLanguages = new LinkedHashMap<>();
     private static volatile Map<String, Map<String, String>> serverTranslations = Map.of();
+    private static volatile long revision;
 
     private ClientLootTableLanguageStore() {
     }
@@ -33,61 +32,78 @@ public final class ClientLootTableLanguageStore {
         MissingTranslationKeyExporter.configureClient(
                 () -> Minecraft.getInstance().getLanguageManager().getSelected(),
                 languageCode -> resourceLanguage(languageCode).values(),
-                languageCode -> serverTranslations.getOrDefault(languageCode, Map.of()));
+                languageCode -> {
+                    Map<String, String> values = new LinkedHashMap<>();
+                    serverTranslations.getOrDefault(languageCode, Map.of()).forEach((id, value) ->
+                            values.put(LootTableNames.createTranslationKey(ResourceLocation.parse(id)), value));
+                    return values;
+                });
     }
 
     // 服务端快照只驻留当前连接的客户端内存；语言查询会立即读取新快照，无需重载资源
     public static void receiveServerTranslations(Map<String, Map<String, String>> translations) {
-        serverTranslations = copyTranslations(translations);
+        if (!serverTranslations.equals(translations)) {
+            serverTranslations = translations;
+            revision++;
+        }
     }
 
     // 断开连接时清除上一台服务器的覆盖，避免跨服务器残留
     public static void resetOnDisconnect() {
-        serverTranslations = Map.of();
+        receiveServerTranslations(Map.of());
     }
 
-    /**
-     * 资源重载时预热语言索引：失效旧索引，并用**即将生效**的资源栈重建本次语言栈的索引。
-     * <p>
-     * 由 {@code ClientLanguageMixin} 挂在 {@code ClientLanguage.loadFrom} 入口：把"首次命中生成 key 时
-     * 在调用线程（可能是渲染线程）同步遍历资源栈 + GSON 解析全部同语言 JSON"的开销挪到资源重载路径。
-     * 同时预热 en_us，避免英文回退查询触发同样的同步扫描。
-     */
+    /** 资源重载时更新当前语言的来源索引。 */
     public static synchronized void prewarmResourceIndex(ResourceManager resourceManager, List<String> languageCodes) {
         resourceLanguages.clear();
         for (String languageCode : languageCodes) {
             resourceLanguages.put(languageCode, loadResourceLanguage(resourceManager, languageCode));
         }
-        if (!resourceLanguages.containsKey("en_us")) {
-            resourceLanguages.put("en_us", loadResourceLanguage(resourceManager, "en_us"));
-        }
+        revision++;
     }
 
-    // 仅在游戏资源缺少对应语言 key 时返回服务端补充值；null 表示沿用原版查询结果
-    public static String dynamicTranslation(String translationKey) {
-        if (!LootTableNames.isGeneratedTranslationKey(translationKey)) return null;
-        String currentLanguage = Minecraft.getInstance().getLanguageManager().getSelected();
-        if (resourceLanguage(currentLanguage).values().containsKey(translationKey)) return null;
-
-        String currentServerValue = serverTranslation(currentLanguage, translationKey);
-        if (!currentServerValue.isBlank()) return currentServerValue;
-        if ("en_us".equals(currentLanguage)
-                || resourceLanguage("en_us").values().containsKey(translationKey)) {
-            return null;
-        }
-        String englishServerValue = serverTranslation("en_us", translationKey);
-        return englishServerValue.isBlank() ? null : englishServerValue;
+    /** 当前连接的补充名称或本地资源变更后，依赖表名的读模型重建。 */
+    public static long revision() {
+        return revision;
     }
+
+    /** 使用当前游戏语言解析表名，创建可独立显示的组件。 */
+    public static Component displayName(ResourceLocation tableId) {
+        String language = Minecraft.getInstance().getLanguageManager().getSelected();
+        return Component.literal(resolve(tableId, language).value());
+    }
+
+    /** 返回名称及当前命中的来源，供编辑和浏览共用。 */
+    public static Name resolve(ResourceLocation tableId, String language) {
+        String key = LootTableNames.createTranslationKey(tableId);
+        ResourceTranslation resource = findResourceTranslation(language, key);
+        if (resource != null) return new Name(resource.value(), Source.RESOURCE, resource.sourcePackId());
+        String supplemental = serverTranslation(language, tableId);
+        if (!supplemental.isEmpty()) return new Name(supplemental, Source.SERVER, "");
+        if (!"en_us".equals(language)) {
+            ResourceTranslation english = findResourceTranslation("en_us", key);
+            if (english != null) return new Name(english.value(), Source.ENGLISH_RESOURCE, english.sourcePackId());
+            String englishServer = serverTranslation("en_us", tableId);
+            if (!englishServer.isEmpty()) return new Name(englishServer, Source.ENGLISH_SERVER, "");
+        }
+        return new Name(LootTableNames.fallbackName(tableId), Source.FALLBACK, "");
+    }
+
+    /** 表名显示来源。 */
+    public enum Source { RESOURCE, SERVER, ENGLISH_RESOURCE, ENGLISH_SERVER, FALLBACK }
+
+    /** 当前语言中解析出的有效表名。 */
+    public record Name(String value, Source source, String sourcePackId) {}
 
     public static ResourceTranslation findResourceTranslation(String languageCode, String translationKey) {
-        String value = resourceLanguage(languageCode).values().get(translationKey);
+        ResourceLanguage resource = resourceLanguage(languageCode);
+        String value = resource.values().get(translationKey);
         if (value == null) return null;
-        return new ResourceTranslation(value,
-                resourceLanguage(languageCode).sourcePacks().getOrDefault(translationKey, "unknown"));
+        return new ResourceTranslation(value, resource.sourcePacks().get(translationKey));
     }
 
-    public static String serverTranslation(String languageCode, String translationKey) {
-        return serverTranslations.getOrDefault(languageCode, Map.of()).getOrDefault(translationKey, "");
+    public static String serverTranslation(String languageCode, ResourceLocation tableId) {
+        return serverTranslations.getOrDefault(languageCode, Map.of()).getOrDefault(tableId.toString(), "");
     }
 
     private static synchronized ResourceLanguage resourceLanguage(String languageCode) {
@@ -103,37 +119,24 @@ public final class ClientLootTableLanguageStore {
     private static ResourceLanguage loadResourceLanguage(ResourceManager resourceManager, String languageCode) {
         Map<String, String> values = new LinkedHashMap<>();
         Map<String, String> sourcePacks = new LinkedHashMap<>();
-        String expectedPath = "lang/" + languageCode + ".json";
-        try {
-            var stacks = resourceManager.listResourceStacks(
-                    "lang", location -> location.getPath().equals(expectedPath));
-            for (Map.Entry<ResourceLocation, List<Resource>> stackEntry : stacks.entrySet()) {
-                for (Resource resource : stackEntry.getValue()) {
-                    try (Reader reader = resource.openAsReader()) {
-                        Map<String, String> loaded = GSON.fromJson(reader, MAP_TYPE);
-                        if (loaded == null) continue;
-                        loaded.forEach((key, value) -> {
-                            if (LootTableNames.isGeneratedTranslationKey(key) && value != null) {
-                                values.put(key, value);
-                                sourcePacks.put(key, resource.sourcePackId());
-                            }
-                        });
-                    } catch (IOException | RuntimeException ignored) {
-                        // 原版语言加载会记录损坏资源；管理页面忽略单个不可读来源
-                    }
+        String path = "lang/" + languageCode + ".json";
+        for (String namespace : resourceManager.getNamespaces()) {
+            ResourceLocation location = ResourceLocation.fromNamespaceAndPath(namespace, path);
+            for (Resource resource : resourceManager.getResourceStack(location)) {
+                try (InputStream input = resource.open()) {
+                    Language.loadFromJson(input, (key, value) -> {
+                        if (LootTableNames.isGeneratedTranslationKey(key)) {
+                            values.put(key, value);
+                            sourcePacks.put(key, resource.sourcePackId());
+                        }
+                    });
+                } catch (IOException | RuntimeException exception) {
+                    Constants.LOG.warn("{}读取 {} 的资源翻译失败 {}", Constants.LOG_TAG, location,
+                            resource.sourcePackId(), exception);
                 }
             }
-        } catch (RuntimeException ignored) {
-            return new ResourceLanguage(Map.of(), Map.of());
         }
         return new ResourceLanguage(Map.copyOf(values), Map.copyOf(sourcePacks));
-    }
-
-    private static Map<String, Map<String, String>> copyTranslations(
-            Map<String, Map<String, String>> source) {
-        Map<String, Map<String, String>> copy = new LinkedHashMap<>();
-        source.forEach((language, values) -> copy.put(language, Map.copyOf(values)));
-        return Map.copyOf(copy);
     }
 
     /** 游戏资源中的只读翻译及其资源包来源。 */
