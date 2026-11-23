@@ -99,6 +99,7 @@ public final class CatalogDisplayDerivation {
             List<LootConditionInfo> conditions = raw.childTableProbabilities().stream()
                     .filter(child -> child.tableId().equals(childTable))
                     .findFirst().orElseThrow().conditions();
+            conditions = CatalogProjection.mergeConditions(conditions, entryGates);
             List<PathHint> hints = PathHintAnalyzer.hintsForConditions(
                     CatalogProjection.mergeConditions(childTableConditions(raw, childTable), entryGates));
             List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
