@@ -166,6 +166,8 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.assumptions": "Scene assumptions",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.branches": "Available targets",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.candidates_hint": "Candidate targets",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.active": "Active conditions",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.results": "Loot results",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.candidates_intro": "Icons show possible items or subtables; status icons show whether each branch is met.",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.branch": "Branch %s",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.no_branches": "No candidate targets to show",

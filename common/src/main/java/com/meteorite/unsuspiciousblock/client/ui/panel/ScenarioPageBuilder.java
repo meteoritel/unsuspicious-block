@@ -48,8 +48,9 @@ import java.util.function.Consumer;
  * 严格遵守未发现物品防剧透约定：未解锁目标只渲染占位图标且不暴露名称与跳转。
  */
 final class ScenarioPageBuilder {
-    private static final int INDENT_STEP = 10;
-    private static final int ITEM_INDENT = 14;
+    private static final int INDENT_STEP = 6;
+    private static final int ITEM_INDENT = 8;
+    private static final int SECTION_TITLE_COLOR = 0xFFFFF1D0;
 
     enum Heading {SECTION, ENTRY}
 
@@ -204,35 +205,38 @@ final class ScenarioPageBuilder {
                 title, UiTextScheme.PARCHMENT.title(), List.of(), branchTooltip,
                 Heading.ENTRY, null));
 
+        if (!group.conditions().isEmpty()) {
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.active"),
+                    UiTextScheme.PARCHMENT.accent(), List.of(), List.of(), null, null));
+        }
         for (LootConditionInfo condition : group.conditions()) {
             addScenarioCondition(nodes, condition, enabledSet, params, parent, toggleCondition);
         }
         if (!group.extras().isEmpty() || !group.luck().isTrivial()) {
-            int extraParent = nodes.size();
             nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.additional"),
-                    UiTextScheme.PARCHMENT.label(), List.of(), List.of(), null, null));
+                    UiTextScheme.PARCHMENT.accent(), List.of(), List.of(), null, null));
             for (LootConditionInfo extra : group.extras()) {
-                addExtraCondition(nodes, extra, params, extraParent);
+                addExtraCondition(nodes, extra, params, parent);
             }
             LuckGate luck = group.luck();
             if (luck.minLuck().isPresent()) {
                 boolean luckOk = params.luck() >= luck.minLuck().getAsDouble();
                 Component luckText = text("conditions.luck_gate", String.format(Locale.ROOT, "%.2f", luck.minLuck().getAsDouble()));
-                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
+                nodes.add(new UiNode.Row(ITEM_INDENT, parent,
                         new UiNode.InlineIcon(conditionIcon(luckOk ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
                                 List.of(luckText), null, null), luckText,
                         luckOk ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative(),
                         List.of(), List.of(), null, null));
             }
             if (luck.rangeLimited()) {
-                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
+                nodes.add(new UiNode.Row(ITEM_INDENT, parent,
                         text("conditions.luck_range"), UiTextScheme.PARCHMENT.label(),
                         List.of(), List.of(), null, null));
             }
             if (luck.bonusRollsGate().isPresent()) {
                 boolean bonusOk = params.luck() >= luck.bonusRollsGate().getAsDouble();
                 Component bonusText = text("conditions.bonus_luck", String.format(Locale.ROOT, "%.2f", luck.bonusRollsGate().getAsDouble()));
-                nodes.add(new UiNode.Row(ITEM_INDENT + INDENT_STEP, extraParent,
+                nodes.add(new UiNode.Row(ITEM_INDENT, parent,
                         new UiNode.InlineIcon(conditionIcon(bonusOk ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
                                 List.of(bonusText), null, null), bonusText,
                         bonusOk ? UiTextScheme.PARCHMENT.positive() : UiTextScheme.PARCHMENT.negative(),
@@ -243,6 +247,10 @@ final class ScenarioPageBuilder {
         List<UiNode.InlineIcon> icons = new ArrayList<>();
         ScenarioBranch recommendBranch = branches.stream().filter(branch -> branch.recommendable()
                 && visible.test(branch.kind(), branch.target())).findFirst().orElse(null);
+        if (branches.stream().anyMatch(branch -> visible.test(branch.kind(), branch.target()))) {
+            nodes.add(new UiNode.Row(ITEM_INDENT, parent, text("conditions.results"),
+                    UiTextScheme.PARCHMENT.accent(), List.of(), List.of(), null, null));
+        }
         for (ScenarioBranch branch : branches) {
             if (!seen.add(branch.kind() + "#" + branch.target())) {
                 continue;
@@ -326,7 +334,7 @@ final class ScenarioPageBuilder {
                                           int parent) {
         ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(condition,
                 new SimulationInput(List.of(), params));
-        addGenericConditionNode(nodes, condition, truth, ITEM_INDENT + INDENT_STEP, parent, true);
+        addGenericConditionNode(nodes, condition, truth, ITEM_INDENT, parent, true);
     }
 
     private static void addGenericConditionNode(List<UiNode> nodes,
@@ -370,7 +378,7 @@ final class ScenarioPageBuilder {
             return UiAtlas.icon(UiAtlas.Icon.CHECKBOX_UNCHECKED);
         }
         if (status.hasUnresolvedCondition()) {
-            return UiAtlas.icon(UiAtlas.Icon.HELP_CREAM);
+            return UiAtlas.icon(UiAtlas.Icon.HELP);
         }
         return UiAtlas.icon(status.hasRandomCondition()
                 ? UiAtlas.Icon.CLOCK : UiAtlas.Icon.CHECKBOX_CHECKED);
@@ -380,13 +388,13 @@ final class ScenarioPageBuilder {
         return switch (truth) {
             case TRUE -> UiAtlas.icon(UiAtlas.Icon.CHECKBOX_CHECKED);
             case FALSE -> UiAtlas.icon(UiAtlas.Icon.CHECKBOX_UNCHECKED);
-            case UNKNOWN -> UiAtlas.icon(UiAtlas.Icon.HELP_CREAM);
+            case UNKNOWN -> UiAtlas.icon(UiAtlas.Icon.HELP);
         };
     }
 
     private static UiNode.Row candidateRow(int parent, List<UiNode.InlineIcon> icons) {
         return new UiNode.Row(ITEM_INDENT, parent,
-                new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.BRANCH_ARROW), List.of(), null, null),
+                null,
                 Component.empty(), UiTextScheme.PARCHMENT.accent(), icons,
                 List.of(text("conditions.candidates_hint").withStyle(TooltipBuilder.LABEL)), null, null);
     }
@@ -419,7 +427,7 @@ final class ScenarioPageBuilder {
 
     private static UiNode.Row heading(Component value, List<Component> tooltip) {
         return new UiNode.Row(4, UiNode.NO_PARENT, value.copy().withStyle(ChatFormatting.BOLD),
-                UiTextScheme.PARCHMENT.title(), List.of(), tooltip, Heading.SECTION, null);
+                SECTION_TITLE_COLOR, List.of(), tooltip, Heading.SECTION, null);
     }
 
     private static MutableComponent text(String key, Object... args) {

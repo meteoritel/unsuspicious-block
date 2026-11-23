@@ -166,6 +166,8 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.assumptions": "本场景假设",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.branches": "可获得目标",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.candidates_hint": "候选目标",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.active": "生效条件",
+  "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.results": "掉落结果",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.candidates_intro": "图标表示当前可能获得的物品或子表；状态图标表示分支是否满足。",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.branch": "分支 %s",
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.no_branches": "当前没有可展示的候选目标",
