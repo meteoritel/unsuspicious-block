@@ -255,6 +255,10 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static final int ICON_TOP = 3;              // 图标距格子顶部偏移
     private static final int NAME_Y_OFFSET = 25;        // 物品名文字 y 偏移
     private static final int PROB_Y_OFFSET = 37;        // 概率文字 y 偏移
+    private static final int CORNER_BADGE_INSET = 2;
+    private static final int CORNER_BADGE_GAP = 2;
+    private static final int LUCK_BADGE_DARK = 0xFF28633C;
+    private static final int LUCK_BADGE_LIGHT = 0xFF61B84F;
     // 物品名/数量角标颜色
     private static final int NAME_COLOR = JournalTextColors.NAME;
     private static final int PROB_COLOR = JournalTextColors.PROB_DEFAULT;
@@ -539,6 +543,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             return;
         }
         renderPreviewStacks(guiGraphics, child.previewItems(), cellX + cellW / 2, cellY + ICON_TOP);
+        if (child.luckAffected()) {
+            drawLuckBadge(guiGraphics, luckBadgeX(cellX, cellW, true), cellY + CORNER_BADGE_INSET);
+        }
         UiAtlas.icon(UiAtlas.Icon.RECOMMEND)
                 .render(guiGraphics, cellX + cellW - 12, cellY + 2);
         PanelTextMetrics.Measured childName = this.metrics.measure(
@@ -659,9 +666,14 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
             UiRenderLayers.draw(guiGraphics, UiRenderLayers.FOREGROUND,
                     () -> guiGraphics.drawString(font, countText, badgeX, badgeY, badgeColor, true));
         }
-        if (item.probability() instanceof Probability.NeedsCondition) {
+        boolean hasRecommendationBadge = item.probability() instanceof Probability.NeedsCondition;
+        if (hasRecommendationBadge) {
             UiAtlas.icon(UiAtlas.Icon.RECOMMEND)
                     .render(guiGraphics, cellX + cellW - 12, cellY + 2);
+        }
+        if (item.acquisitionPaths().stream().anyMatch(LootAcquisitionPath::luckAffected)) {
+            drawLuckBadge(guiGraphics, luckBadgeX(cellX, cellW, hasRecommendationBadge),
+                    cellY + CORNER_BADGE_INSET);
         }
 
         // 物品名（悬停时走马灯滚动，与 intro/Catalog 风格一致；非悬停时居中静态）
@@ -694,6 +706,27 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (count < 1_000_000) return formatOneDecimal(count / 1000.0) + "K";
         if (count < 1_000_000_000) return formatOneDecimal(count / 1_000_000.0) + "M";
         return formatOneDecimal(count / 1_000_000_000.0) + "B";
+    }
+
+    private static int luckBadgeX(int cellX, int cellWidth, boolean hasRecommendationBadge) {
+        int rightInset = CORNER_BADGE_INSET;
+        if (hasRecommendationBadge) {
+            rightInset += UiAtlas.ICON_SIZE + CORNER_BADGE_GAP;
+        }
+        return cellX + cellWidth - UiAtlas.ICON_SIZE - rightInset;
+    }
+
+    private static void drawLuckBadge(GuiGraphics graphics, int x, int y) {
+        graphics.fill(x + 4, y, x + 6, y + 3, LUCK_BADGE_DARK);
+        graphics.fill(x + 2, y + 2, x + 4, y + 5, LUCK_BADGE_DARK);
+        graphics.fill(x + 6, y + 2, x + 8, y + 5, LUCK_BADGE_DARK);
+        graphics.fill(x + 4, y + 4, x + 6, y + 7, LUCK_BADGE_DARK);
+        graphics.fill(x + 5, y + 6, x + 7, y + 10, LUCK_BADGE_DARK);
+        graphics.fill(x + 3, y + 8, x + 6, y + 9, LUCK_BADGE_DARK);
+        graphics.fill(x + 4, y + 1, x + 6, y + 3, LUCK_BADGE_LIGHT);
+        graphics.fill(x + 3, y + 3, x + 4, y + 4, LUCK_BADGE_LIGHT);
+        graphics.fill(x + 6, y + 3, x + 7, y + 4, LUCK_BADGE_LIGHT);
+        graphics.fill(x + 4, y + 5, x + 6, y + 6, LUCK_BADGE_LIGHT);
     }
 
     // 保留 1 位小数，去除整数的 .0 后缀
